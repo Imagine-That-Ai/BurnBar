@@ -44,8 +44,10 @@ if ([System.Diagnostics.Process]::GetCurrentProcess().SessionId -eq 0) {
     throw 'Computer Use host evidence must run in the signed-in interactive desktop session, not Session 0.'
 }
 
-if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -ne [System.Runtime.InteropServices.Architecture]::Arm64) {
-    throw "This certification lane requires the Windows ARM64 host. Actual: $([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)"
+$computerSystem = Get-CimInstance Win32_ComputerSystem
+$operatingSystem = Get-CimInstance Win32_OperatingSystem
+if ($computerSystem.SystemType -notlike 'ARM64*' -and $operatingSystem.OSArchitecture -notlike 'ARM 64*') {
+    throw "This certification lane requires the Windows ARM64 host. Actual: $($computerSystem.SystemType) / $($operatingSystem.OSArchitecture)"
 }
 
 New-Item -ItemType Directory -Force -Path $output | Out-Null
@@ -98,7 +100,8 @@ $receipt = [ordered]@{
     source = $source
     candidateManifestSha256 = $candidateManifestHash
     sessionId = [System.Diagnostics.Process]::GetCurrentProcess().SessionId
-    osArchitecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+    osArchitecture = $operatingSystem.OSArchitecture
+    systemType = $computerSystem.SystemType
     processArchitecture = [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()
     app = [ordered]@{
         fileName = $appExe.Name

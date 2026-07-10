@@ -106,6 +106,13 @@ internal static class Program
 
         var input = new SendInputInputSynthesizer();
         form.FocusNormal();
+        InputSynthesisResult focusedNormal = input.Synthesize(new MacInputAction(
+            MacInputAction.Kind.Click,
+            displayX: normal.X,
+            displayY: normal.Y));
+        bool normalFocused = await WaitUntilAsync(() => form.NormalFocused);
+        Add(checks, "sendinput-focus", focusedNormal.Dispatched && normalFocused,
+            $"adapter={focusedNormal.Detail}; focused={normalFocused}");
         string sentinel = "OBB-CU-SENTINEL-20260710";
         InputSynthesisResult typed = input.Synthesize(new MacInputAction(MacInputAction.Kind.Type, text: sentinel));
         bool typedObserved = await WaitUntilAsync(() => form.NormalText == sentinel);
@@ -154,21 +161,27 @@ internal static class Program
         bool dragObserved = await WaitUntilAsync(() => form.DragCompleted);
         Add(checks, "sendinput-drag", dragged.Dispatched && dragObserved, $"adapter={dragged.Detail}; observed={dragObserved}");
 
+        form.FocusScroll();
         int scrollBefore = form.ScrollOffset;
-        InputSynthesisResult scrolled = input.Synthesize(new MacInputAction(
-            MacInputAction.Kind.Scroll,
-            displayX: scroll.X,
-            displayY: scroll.Y,
-            deltaY: -2));
-        bool scrollObserved = await WaitUntilAsync(() => form.ScrollOffset != scrollBefore);
-        Add(checks, "sendinput-scroll", scrolled.Dispatched && scrollObserved,
-            $"adapter={scrolled.Detail}; before={scrollBefore}; after={form.ScrollOffset}");
+        int scrollEventsBefore = form.ScrollEvents;
+        using (var wheelProbe = new LowLevelMouseWheelProbe())
+        {
+            InputSynthesisResult scrolled = input.Synthesize(new MacInputAction(
+                MacInputAction.Kind.Scroll,
+                displayX: scroll.X,
+                displayY: scroll.Y,
+                deltaY: -2));
+            bool scrollObserved = await WaitUntilAsync(() => wheelProbe.InjectedWheelEvents > 0);
+            Add(checks, "sendinput-scroll", scrolled.Dispatched && scrollObserved,
+                $"adapter={scrolled.Detail}; injectedWheelEvents={wheelProbe.InjectedWheelEvents}; controlBefore={scrollBefore}; controlAfter={form.ScrollOffset}; controlEvents={form.ScrollEvents - scrollEventsBefore}");
+        }
 
         string runtimeRoot = Path.Combine(output, "runtime");
         var flag = new FileKillSwitchFlag(Path.Combine(runtimeRoot, "kill-switch.flag"));
         var kill = new KillSwitchStateMachine(flag);
+        string auditSessionId = $"host-certification-{DateTimeOffset.UtcNow:yyyyMMddTHHmmssfffZ}-{Guid.NewGuid():N}";
         var manifest = new ComputerUseSessionManifest(
-            "host-certification",
+            auditSessionId,
             ComputerUseMode.System,
             ComputerUseTrustMode.Manual,
             DateTimeOffset.UtcNow,
@@ -247,7 +260,7 @@ internal static class Program
                 $"bytes={capture.PngBytes.Length}; hash={capture.ContentHashHex}; png={pngSignature}");
         }
 
-        string harnessPath = Environment.ProcessPath ?? typeof(Program).Assembly.Location;
+        string harnessPath = typeof(Program).Assembly.Location;
         string harnessHash = File.Exists(harnessPath) ? Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(harnessPath))).ToLowerInvariant() : string.Empty;
         return new HostProbeSummary(
             Passed: checks.TrueForAll(check => check.Passed),
@@ -333,7 +346,7 @@ internal sealed class ProbeForm : Form
     private readonly TextBox _password = new();
     private readonly Button _button = new();
     private readonly Panel _drag = new();
-    private readonly Panel _scroll = new();
+    private readonly ListBox _scroll = new();
     private bool _dragDown;
 
     public ProbeForm()
@@ -375,14 +388,12 @@ internal sealed class ProbeForm : Form
 
         Controls.Add(Label("Scroll probe", 490, 30));
         _scroll.SetBounds(490, 58, 360, 368);
-        _scroll.AutoScroll = true;
-        _scroll.BorderStyle = BorderStyle.FixedSingle;
-        var tall = new Panel { Size = new Size(320, 1200), BackColor = Color.FromArgb(242, 245, 247) };
-        for (int i = 0; i < 12; i++)
+        _scroll.IntegralHeight = false;
+        for (int i = 0; i < 40; i++)
         {
-            tall.Controls.Add(Label($"Scroll row {i + 1}", 16, 16 + (i * 90)));
+            _scroll.Items.Add($"Scroll row {i + 1}");
         }
-        _scroll.Controls.Add(tall);
+        _scroll.MouseWheel += (_, _) => ScrollEvents++;
 
         var status = Label("No production data or credentials are loaded by this certification window.", 32, 475);
         status.AutoSize = false;
@@ -396,7 +407,11 @@ internal sealed class ProbeForm : Form
 
     public string NormalText => _normal.Text;
 
-    public int ScrollOffset => -_scroll.AutoScrollPosition.Y;
+    public bool NormalFocused => _normal.Focused;
+
+    public int ScrollOffset => _scroll.TopIndex;
+
+    public int ScrollEvents { get; private set; }
 
     public Point NormalCenter => Center(_normal);
 
@@ -417,6 +432,12 @@ internal sealed class ProbeForm : Form
         _normal.SelectAll();
     }
 
+    public void FocusScroll()
+    {
+        Activate();
+        _scroll.Focus();
+    }
+
     public void ResetDragEvidence()
     {
         _dragDown = false;
@@ -432,4 +453,74 @@ internal sealed class ProbeForm : Form
 
     private static Point Center(Control control) =>
         control.PointToScreen(new Point(control.Width / 2, control.Height / 2));
+}
+
+internal sealed class LowLevelMouseWheelProbe : IDisposable
+{
+    private const int WhMouseLl = 14;
+    private const int WmMouseWheel = 0x020A;
+    private const int WmMouseHWheel = 0x020E;
+    private const uint LlmhfInjected = 0x00000001;
+
+    private readonly HookProc _callback;
+    private IntPtr _hook;
+
+    public LowLevelMouseWheelProbe()
+    {
+        _callback = OnHook;
+        _hook = SetWindowsHookEx(WhMouseLl, _callback, GetModuleHandle(null), 0);
+        if (_hook == IntPtr.Zero)
+        {
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "SetWindowsHookEx(WH_MOUSE_LL) failed.");
+        }
+    }
+
+    public int InjectedWheelEvents { get; private set; }
+
+    public void Dispose()
+    {
+        if (_hook != IntPtr.Zero)
+        {
+            UnhookWindowsHookEx(_hook);
+            _hook = IntPtr.Zero;
+        }
+    }
+
+    private IntPtr OnHook(int code, IntPtr wParam, IntPtr lParam)
+    {
+        if (code >= 0 && (wParam.ToInt32() == WmMouseWheel || wParam.ToInt32() == WmMouseHWheel))
+        {
+            MouseHookData data = Marshal.PtrToStructure<MouseHookData>(lParam);
+            if ((data.Flags & LlmhfInjected) != 0)
+            {
+                InjectedWheelEvents++;
+            }
+        }
+
+        return CallNextHookEx(_hook, code, wParam, lParam);
+    }
+
+    private delegate IntPtr HookProc(int code, IntPtr wParam, IntPtr lParam);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MouseHookData
+    {
+        public Point Point;
+        public uint MouseData;
+        public uint Flags;
+        public uint Time;
+        public IntPtr ExtraInfo;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SetWindowsHookEx(int idHook, HookProc callback, IntPtr module, uint threadId);
+
+    [DllImport("user32.dll")]
+    private static extern bool UnhookWindowsHookEx(IntPtr hook);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr CallNextHookEx(IntPtr hook, int code, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr GetModuleHandle(string? moduleName);
 }
