@@ -17,6 +17,7 @@ export const AUDIT_DIRS = [
   "extensions/openburnbar",
   "services/hermes-realtime-relay",
   "services/hosted-mcp",
+  "services/linux-attestation-facade",
   "tools/openburnbar-mcp-remote",
   "packages/libsignal-bridge",
   "packages/libsignal-protocol",
