@@ -31,6 +31,12 @@ import { refreshCommunityShareSnapshotForUser } from "./snapshot.js";
 import type { CommunityConsentDoc, CommunityProfileDoc } from "../types/generated/community.js";
 import type { ColumnSource } from "hyparquet-writer";
 
+type CommunityProfileWrite = Partial<Omit<CommunityProfileDoc, "countryCode" | "regionKey" | "cityKey">> & {
+  countryCode?: string | null;
+  regionKey?: string | null;
+  cityKey?: string | null;
+} & Record<string, unknown>;
+
 // ---------------------------------------------------------------------------
 // Callable options
 // ---------------------------------------------------------------------------
@@ -199,13 +205,15 @@ function buildConsentDoc(data: JoinCommunityInput, now: string): CommunityConsen
   };
 }
 
-function applyJoinGeo(profileDoc: Partial<CommunityProfileDoc> & Record<string, unknown>, data: JoinCommunityInput): void {
+function applyJoinGeo(profileDoc: CommunityProfileWrite, data: JoinCommunityInput): void {
   const geo = deriveGeoKeys(data.timezone ?? "", data.locale ?? "");
-  populateGeoKeys(profileDoc, geo, {
+  const derivedProfile: Partial<CommunityProfileDoc> = {};
+  populateGeoKeys(derivedProfile, geo, {
     country: data.l2Country === "granted",
     region: data.l2Region === "granted",
     city: false,
   });
+  Object.assign(profileDoc, derivedProfile);
 
   if (data.l2Country === "granted") {
     const normalized = normalizeGeoKey(data.countryCode);
@@ -248,8 +256,8 @@ function buildJoinProfileDoc(
   finalHandle: string | undefined,
   existingCityKey: string | undefined,
   now: string,
-): Partial<CommunityProfileDoc> & Record<string, unknown> {
-  const profileDoc: Partial<CommunityProfileDoc> & Record<string, unknown> = {
+): CommunityProfileWrite {
+  const profileDoc: CommunityProfileWrite = {
     anonId,
     schemaVersion: COMMUNITY_SCHEMA_VERSION,
     updatedAt: now,
