@@ -210,6 +210,76 @@ extension BurnBarHTTPGatewayServer {
         return routeKeysByFamily
     }
 
+    func configuredRouteUnavailableRejection(
+        clientModelID: String,
+        requestedModel: GatewayRequestedModel,
+        requestPath: String
+    ) async -> (failureMessage: String, response: GatewayHTTPResponse)? {
+        let requestedFormatFamily: BurnBarProviderFormatFamily? = requestPath == "/v1/messages"
+            ? .anthropic
+            : nil
+        let router = BurnBarProviderRouter(
+            configStore: configStore,
+            logger: BurnBarDaemonLogger(category: "gateway-route-unavailable"),
+            routingEventStore: BurnBarProviderRoutingDecisionEventStore(),
+            allowDynamicOpenAICompatibleModels: true
+        )
+
+        let providerID: String
+        do {
+            _ = try await router.candidateRoutes(
+                modelName: requestedModel.modelID,
+                preferredProviderID: requestedModel.providerID,
+                requestedFormatFamily: requestedFormatFamily
+            )
+            return nil
+        } catch let error as BurnBarProviderRouterError {
+            switch error {
+            case .missingCredential(let missingProviderID):
+                providerID = missingProviderID
+            case .credentialsUnavailable(let unavailableProviderID, _):
+                providerID = unavailableProviderID
+            default:
+                return nil
+            }
+        } catch {
+            return nil
+        }
+
+        guard providerID.caseInsensitiveCompare("anthropic") == .orderedSame else {
+            return nil
+        }
+
+        let configSnapshot = try? await configStore.snapshot()
+        let providerSettings = configSnapshot?.providerSettings(id: providerID)
+        let accountID = requestedModel.accountID ?? providerSettings?.preferredCredentialSlotID
+        let selectedSlot = accountID.flatMap { selectedAccountID in
+            providerSettings?.credentialSlots.first {
+                $0.slotID.caseInsensitiveCompare(selectedAccountID) == .orderedSame
+            }
+        }
+        let isClaudeOAuthSlot = selectedSlot?.authMethodID?
+            .caseInsensitiveCompare("anthropic-claude-oauth") == .orderedSame
+            || selectedSlot?.slotID.caseInsensitiveCompare("current-claude-code-login") == .orderedSame
+        guard isClaudeOAuthSlot else { return nil }
+
+        let accountLabel = selectedSlot?.label.trimmingCharacters(in: .whitespacesAndNewlines)
+        let providerName = configStore.catalogSupport.provider(id: providerID)?.displayName ?? providerID
+        let accountDetail: String
+        if let accountLabel, !accountLabel.isEmpty {
+            accountDetail = "\(providerName) account '\(accountLabel)'"
+        } else {
+            accountDetail = providerName
+        }
+        let recovery = "Run `claude auth login` or reconnect Anthropic in OpenBurnBar Settings > Connections."
+        let detail = "No eligible route for \(clientModelID) on \(requestPath). "
+            + "The configured \(accountDetail) credential is missing or expired. \(recovery)"
+        return (
+            failureMessage: "Credential unavailable for \(clientModelID).",
+            response: jsonResponse(status: 503, body: errorBody(detail))
+        )
+    }
+
     func resolveAdvertisedRouteKeys(
         requestedModel: GatewayRequestedModel,
         advertisedRequestedModel: GatewayRequestedModel
