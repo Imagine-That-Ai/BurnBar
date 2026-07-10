@@ -63,13 +63,25 @@ const packageSources = {
   '/usr/lib/openburnbar/swift': 'target/openburnbar-package-payload/swift',
   '/usr/lib/openburnbar/native': 'target/openburnbar-package-payload/native'
 };
-for (const packageType of ['deb', 'rpm', 'appimage']) {
+for (const packageType of ['deb', 'rpm']) {
   const files = tauri.bundle?.linux?.[packageType]?.files ?? {};
   for (const [destination, source] of Object.entries(packageSources)) {
     if (files[destination] !== source) {
       failures.push(`${packageType} must package ${source} at ${destination}`);
     }
   }
+}
+const appImageFiles = tauri.bundle?.linux?.appimage?.files ?? {};
+for (const destination of Object.keys(packageSources)) {
+  if (appImageFiles[destination]) {
+    failures.push(`appimage payload ${destination} must be injected after linuxdeploy to avoid custom-file collisions`);
+  }
+}
+for (const destination of [
+  '/usr/libexec/openburnbar-daemon-launch',
+  '/usr/lib/systemd/user/openburnbar-daemon.service'
+]) {
+  if (!appImageFiles[destination]) failures.push(`appimage must package ${destination}`);
 }
 if (!tauri.bundle?.linux?.deb?.depends?.includes('libsecret-tools')) {
   failures.push('deb package must depend on libsecret-tools');
@@ -80,6 +92,10 @@ if (!tauri.bundle?.linux?.rpm?.depends?.includes('libsecret')) {
 const desktopPackage = readJson(path.join(repoRoot, 'apps/linux-desktop/package.json'));
 if (desktopPackage.scripts?.['pretauri:build'] !== 'node ../../scripts/linux-port/prepare-linux-package-payload.mjs') {
   failures.push('tauri build must stage and runtime-probe the native Linux package payload');
+}
+const releaseBuilder = fs.readFileSync(path.join(repoRoot, 'scripts/linux-port/build-linux-release.mjs'), 'utf8');
+if (!releaseBuilder.includes('embed-linux-appimage-payload.mjs')) {
+  failures.push('release build must inject the staged native payload into the base AppImage');
 }
 const canonicalLauncher = fs.readFileSync(path.join(repoRoot, 'packaging/linux/openburnbar-daemon-launch.sh'));
 const aurLauncher = fs.readFileSync(path.join(repoRoot, 'packaging/linux/aur/openburnbar-daemon-launch'));
