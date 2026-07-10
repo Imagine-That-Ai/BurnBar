@@ -63,8 +63,8 @@ private fun threadInboxHistoryItems(history: AssistantChatHistoryStore, mobileCL
         )
     }
 
-private fun threadInboxCLIRuntimeID(runtime: String): AssistantRuntimeID? =
-    when (runtime) {
+private fun threadInboxCLIRuntimeID(runtime: String): AssistantRuntimeID? {
+    return when (runtime) {
         "codex" -> AssistantRuntimeID.CODEX
         "claude" -> AssistantRuntimeID.CLAUDE
         "openclaw" -> AssistantRuntimeID.OPEN_CLAW
@@ -76,6 +76,7 @@ private fun threadInboxCLIRuntimeID(runtime: String): AssistantRuntimeID? =
         "junie", "junie-agent", "jetbrains-junie" -> AssistantRuntimeID.JUNIE
         else -> null
     }
+}
 
 private fun threadInboxCliMirrorItems(parsed: List<CLIAgentSessionRecord>, mobileCLIThreadIDs: Set<String>): List<ThreadInboxItem> =
     parsed.filter { it.id !in mobileCLIThreadIDs }.map { record ->

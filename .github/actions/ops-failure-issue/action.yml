@@ -65,7 +65,7 @@ runs:
             BLOCKER_LABEL,
             ESCALATED_LABEL,
             evaluateP0Escalation,
-          } = require(`${process.env.GITHUB_WORKSPACE}/.github/actions/ops-failure-issue/escalation.cjs`);
+          } = require(`${process.env.GITHUB_WORKSPACE || require('node:process').cwd()}/.github/actions/ops-failure-issue/escalation.cjs`);
           const mode = process.env.OPS_MODE;
           const rawLane = process.env.OPS_LANE;
           if (!rawLane) {

@@ -260,6 +260,20 @@ final class ComputerUseCapabilityStateIntegrationTests: XCTestCase {
         }
     }
 
+    func testPhoneControlActionsDoNotConsumeHostedActionCap() async throws {
+        let store = makeStore()
+        let service = makeService(store: store)
+        _ = try await service.updateCapabilityState(
+            ComputerUseCapabilityStateUpdateRequest(
+                state: makeState(revision: 1, actionsExecuted: 200, phoneControlIntentsExecuted: 200)
+            )
+        )
+
+        _ = try await service.startSession(startRequest())
+        let hasActiveSession = await service.hasActiveSession()
+        XCTAssertTrue(hasActiveSession)
+    }
+
     func testUnrelatedEntitlementProductDeniesSessionAdmission() async throws {
         let store = makeStore()
         let service = makeService(store: store)
@@ -422,6 +436,7 @@ final class ComputerUseCapabilityStateIntegrationTests: XCTestCase {
         generatedAt: Date = Date(timeIntervalSince1970: 1_800_000_000),
         entitlementActive: Bool = true,
         actionsExecuted: Int = 0,
+        phoneControlIntentsExecuted: Int = 0,
         sessionsStarted: Int = 0,
         visionModelSpendUSD: Double = 0,
         concurrentSessionActive: Bool = false,
@@ -473,6 +488,7 @@ final class ComputerUseCapabilityStateIntegrationTests: XCTestCase {
             quotaUsage: ComputerUseQuotaUsage(
                 dayKey: quotaDayKey,
                 browserActionsExecuted: actionsExecuted,
+                phoneControlIntentsExecuted: phoneControlIntentsExecuted,
                 sessionsStarted: sessionsStarted,
                 visionModelSpendUSD: visionModelSpendUSD,
                 updatedAt: generatedAt

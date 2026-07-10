@@ -154,12 +154,15 @@ public actor ComputerUseService {
 
         let driver = try await makePlaywrightDriverIfNeeded(for: manifest)
         let head: String
+        var didStartCoordinatorSession = false
         do {
             // Driver construction is an actor reentrancy point. Re-read the
             // authoritative state before starting it so a kill/revoke that
             // landed while construction was suspended wins the race.
             let refreshedCapabilityState = try await currentCapabilityState()
             try await enforceSessionAdmission(refreshedCapabilityState, mode: mode)
+            head = try await coordinator.startSession(manifest: manifest, playwrightDriver: driver)
+            didStartCoordinatorSession = true
             let quotaReservation = try quotaLedger.reserveSession(
                 idempotencyKey: sessionId.rawValue,
                 authoritativeUsage: refreshedCapabilityState.quotaUsage,
@@ -169,9 +172,12 @@ public actor ComputerUseService {
             guard quotaReservation.inserted else {
                 throw ServiceError.capabilityDenied(ComputerUseDenyReason.counterReplay.rawValue)
             }
-            head = try await coordinator.startSession(manifest: manifest, playwrightDriver: driver)
         } catch {
-            await driver?.stop()
+            if didStartCoordinatorSession {
+                await coordinator.endSession(sessionId: sessionId, reason: .error)
+            } else {
+                await driver?.stop()
+            }
             throw error
         }
         manifests[sessionId] = manifest
@@ -429,7 +435,7 @@ public actor ComputerUseService {
         guard state.budgetEnvelope.level != .hardCap else {
             throw ServiceError.capabilityDenied(ComputerUseDenyReason.hardCap.rawValue)
         }
-        guard state.quotaUsage.totalActionsExecuted < state.budgetEnvelope.activeActionsPerDay else {
+        guard state.quotaUsage.totalMeteredActionsExecuted < state.budgetEnvelope.activeActionsPerDay else {
             throw ServiceError.capabilityDenied(ComputerUseDenyReason.dailyLimit.rawValue)
         }
         guard state.quotaUsage.sessionsStarted < state.budgetEnvelope.activeSessionsPerDay else {
@@ -456,7 +462,7 @@ public actor ComputerUseService {
                     !state.entitlement.allowsBrowser {
             await terminateAllSessions(source: .revoked)
         } else if state.budgetEnvelope.level == .hardCap ||
-                    state.quotaUsage.totalActionsExecuted >= state.budgetEnvelope.activeActionsPerDay ||
+                    state.quotaUsage.totalMeteredActionsExecuted >= state.budgetEnvelope.activeActionsPerDay ||
                     state.quotaUsage.sessionsStarted >= state.budgetEnvelope.activeSessionsPerDay ||
                     state.quotaUsage.visionModelSpendUSD >= state.budgetEnvelope.perUserDailySpendCeilingUSD {
             await terminateAllSessions(reason: .budgetHardCap)

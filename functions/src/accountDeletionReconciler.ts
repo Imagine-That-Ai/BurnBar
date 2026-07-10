@@ -37,6 +37,12 @@ function errorCode(reason: unknown): string {
   return reason instanceof Error ? reason.name : "unknown";
 }
 
+function incompleteEraseCode(result: unknown): string | undefined {
+  if (result == null || typeof result !== "object") return undefined;
+  const record = result as Record<string, unknown>;
+  return record.cloudDataDeleted === false || record.retryRequired === true ? "external_cleanup_incomplete" : undefined;
+}
+
 function priorAttemptCount(document: PendingErasureTombstone): number {
   const value = document.get("reconciliationAttemptCount");
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
@@ -66,7 +72,11 @@ export async function reconcilePendingAccountErasures(
       }
 
       try {
-        await dependencies.erase(uid);
+        const eraseResult = await dependencies.erase(uid);
+        const incompleteCode = incompleteEraseCode(eraseResult);
+        if (incompleteCode) {
+          throw Object.assign(new Error(incompleteCode), { code: incompleteCode });
+        }
         return { uid, status: "completed" };
       } catch (reason) {
         const code = errorCode(reason);

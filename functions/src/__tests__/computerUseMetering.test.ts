@@ -121,4 +121,17 @@ describe("computer use immediate metering", () => {
     expect(__testing__.dayKeyUTC(new Date("2026-07-10T23:59:59.999Z"))).toBe("2026-07-10");
     expect(__testing__.dayKeyUTC(new Date("2026-07-11T00:00:00.000Z"))).toBe("2026-07-11");
   });
+
+  it("prefers source timestamps over delayed server event time", () => {
+    const snapshot = {
+      exists: true,
+      data: () => ({}),
+      get: (field: string) =>
+        field === "recordedAt" ? Timestamp.fromDate(new Date("2026-07-10T23:55:00.000Z")) : undefined,
+    };
+
+    expect(__testing__.dayKeyUTC(__testing__.sourceEventDate(snapshot, "recordedAt", "2026-07-11T00:10:00.000Z"))).toBe(
+      "2026-07-10",
+    );
+  });
 });

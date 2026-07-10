@@ -120,11 +120,28 @@ function eventDate(value: string | undefined): Date {
   return Number.isFinite(parsed.getTime()) ? parsed : new Date();
 }
 
+function timestampDate(value: unknown): Date | undefined {
+  if (value instanceof Timestamp) return value.toDate();
+  if (value instanceof Date && Number.isFinite(value.getTime())) return value;
+  if (typeof value !== "string") return undefined;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed : undefined;
+}
+
+function sourceEventDate(
+  snapshot: MeteringDocumentSnapshot,
+  field: string,
+  fallbackEventTime: string | undefined,
+): Date {
+  return timestampDate(snapshot.get(field)) ?? eventDate(fallbackEventTime);
+}
+
 export const __testing__ = {
   applyDeltaOnce,
   actionQuotaDelta,
   dayKeyUTC,
   nextQuotaUsage,
+  sourceEventDate,
 };
 
 export const meterComputerUseAction = onDocumentCreated(
@@ -144,7 +161,7 @@ export const meterComputerUseAction = onDocumentCreated(
       uid,
       eventId: event.id,
       markerPrefix: "quotaMetered",
-      occurredAt: eventDate(event.time),
+      occurredAt: sourceEventDate(snapshot, "recordedAt", event.time),
       delta: actionQuotaDelta(snapshot.data()),
     });
   },
@@ -167,7 +184,7 @@ export const meterComputerUseSessionStart = onDocumentCreated(
       uid,
       eventId: event.id,
       markerPrefix: "quotaStartMetered",
-      occurredAt: eventDate(event.time),
+      occurredAt: sourceEventDate(snapshot, "startedAt", event.time),
       delta: { ...ZERO_DELTA, sessionsStarted: 1 },
     });
   },
@@ -198,7 +215,7 @@ export const meterComputerUseSessionCompletion = onDocumentUpdated(
       uid,
       eventId: event.id,
       markerPrefix: "quotaCompletionMetered",
-      occurredAt: eventDate(event.time),
+      occurredAt: sourceEventDate(after, "endedAt", event.time),
       delta: { ...ZERO_DELTA, sessionsCompleted: 1, totalSessionSeconds: elapsed },
     });
   },

@@ -82,6 +82,28 @@ describe("account erasure reconciler", () => {
     expect(success.patches).toEqual([]);
   });
 
+  it("retries when canonical erasure reports incomplete cloud cleanup", async () => {
+    const retry = tombstone("incomplete", 1);
+    const results = await reconcilePendingAccountErasures([retry.document], {
+      isResumable: async () => true,
+      erase: async () => ({
+        cloudDataDeleted: false,
+        retryRequired: true,
+      }),
+      now: () => now,
+    });
+
+    expect(results).toEqual([{ uid: "incomplete", status: "failed", errorCode: "external_cleanup_incomplete" }]);
+    expect(retry.patches).toEqual([
+      expect.objectContaining({
+        reconciliationStatus: "retry_pending",
+        reconciliationErrorCode: "external_cleanup_incomplete",
+        reconciliationAttemptCount: 2,
+        updatedAt: now.toISOString(),
+      }),
+    ]);
+  });
+
   it("declares the oldest-first pending tombstone index", () => {
     const manifest: {
       indexes: Array<{
