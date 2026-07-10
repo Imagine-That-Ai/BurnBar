@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -15,8 +16,17 @@ import {
   sha256,
   writeJson
 } from './lib/linux-release-common.mjs';
+import {
+  measureNativeSignerInputs,
+  preparationReceiptDigest,
+  validateSignedPackageArtifacts,
+  verifyNativePackageSigningReceipt
+} from './lib/linux-native-signing-receipt.mjs';
 
 const args = new Set(process.argv.slice(2));
+const prepareOnly = args.has('--prepare-only');
+const finalizeOnly = args.has('--finalize-only');
+const signingKeyEnvironmentName = 'OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM';
 const versionArgIndex = process.argv.indexOf('--version');
 const outDir = path.resolve(
   process.env.OPENBURNBAR_LINUX_RELEASE_OUT ?? path.join(repoRoot, '.linux-shard')
@@ -25,6 +35,14 @@ const appDir = path.join(repoRoot, 'apps/linux-desktop');
 const manifest = readJson(manifestPath);
 if (!args.has('--architecture-shard')) {
   console.error('build-linux-release.mjs is architecture-shard only; use assemble-linux-release.mjs after both native shards pass.');
+  process.exit(1);
+}
+if (prepareOnly === finalizeOnly) {
+  console.error('exactly one of --prepare-only or --finalize-only is required; one-pass release builds are forbidden.');
+  process.exit(1);
+}
+if (Object.hasOwn(process.env, signingKeyEnvironmentName)) {
+  console.error(`${signingKeyEnvironmentName} is forbidden in build/finalize phases; pass the key only to the dedicated native-package signer by stdin or file.`);
   process.exit(1);
 }
 const requestedVersion = versionArgIndex >= 0 ? process.argv[versionArgIndex + 1] : null;
@@ -46,14 +64,45 @@ if (git.dirty) {
 }
 const logsDir = path.join(outDir, 'logs');
 const artifactsDir = path.join(outDir, 'artifacts');
+// Keep the pre-signing receipt under ignored build output so the dedicated
+// signer still sees a clean Git checkout. Finalize publishes a copy to outDir
+// only after the signer has completed.
+const preparationReceiptPath = path.join(
+  appDir,
+  'src-tauri/target/openburnbar-release/architecture-preparation.json'
+);
+const signingReceiptPath = path.join(
+  appDir,
+  'src-tauri/target/openburnbar-release/native-package-signing.json'
+);
+const signingReceiptSignaturePath = `${signingReceiptPath}.ed25519.sig`;
+const publishedPreparationReceiptPath = path.join(outDir, 'architecture-preparation.json');
+const publishedSigningReceiptPath = path.join(outDir, 'native-package-signing.json');
+const publishedSigningReceiptSignaturePath = `${publishedSigningReceiptPath}.ed25519.sig`;
 const daemonBinary = path.join(repoRoot, 'OpenBurnBarDaemon/.build/release/OpenBurnBarDaemon');
+const attestdManifest = path.join(repoRoot, 'crates/openburnbar-attestd/Cargo.toml');
+const attestdBinary = path.join(repoRoot, 'crates/openburnbar-attestd/target/release/openburnbar-attestd');
 fs.mkdirSync(logsDir, { recursive: true });
 fs.mkdirSync(artifactsDir, { recursive: true });
+if (prepareOnly) {
+  for (const staleReceipt of [
+    preparationReceiptPath,
+    signingReceiptPath,
+    signingReceiptSignaturePath,
+    publishedPreparationReceiptPath,
+    publishedSigningReceiptPath,
+    publishedSigningReceiptSignaturePath
+  ]) fs.rmSync(staleReceipt, { force: true });
+}
 
 const cargoBuildJobs = process.env.OPENBURNBAR_LINUX_CARGO_BUILD_JOBS?.trim() || '4';
 const swiftBuildJobs = process.env.OPENBURNBAR_LINUX_SWIFT_BUILD_JOBS?.trim() || '4';
+const {
+  OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM: _excludedSigningKey,
+  ...nonSigningEnvironment
+} = process.env;
 const packageBuildEnv = {
-  ...process.env,
+  ...nonSigningEnvironment,
   CARGO_BUILD_JOBS: cargoBuildJobs,
   // linuxdeploy (Tauri's AppImage bundler) is itself an AppImage and needs FUSE
   // to self-mount; container builds (local toolchain + CI docker) have no FUSE,
@@ -78,7 +127,7 @@ function writeLog(name, steps) {
 
 const blockers = [];
 const daemonSteps = [];
-if (!args.has('--skip-daemon')) {
+if (!args.has('--skip-daemon') && !finalizeOnly) {
   // Swift 6.1 Linux libswiftObservation.so references swift::threading::fatal which
   // is missing from the shared libswiftCore.so (present only in the static archive).
   // --allow-shlib-undefined lets the link complete; runtime uses matching 6.1 libs.
@@ -95,9 +144,16 @@ if (!args.has('--skip-daemon')) {
     'OpenBurnBarDaemon',
     '-Xlinker',
     '--allow-shlib-undefined'
-  ]));
+  ], { env: packageBuildEnv }));
 }
-writeLog('daemon-build.log', daemonSteps);
+if (!args.has('--skip-daemon') && !finalizeOnly) {
+  daemonSteps.push(runStep('cargo', [
+    'build',
+    '--locked',
+    '--release'
+  ], { cwd: path.dirname(attestdManifest), env: packageBuildEnv }));
+}
+if (!finalizeOnly) writeLog('daemon-build.log', daemonSteps);
 for (const step of daemonSteps) {
   if (step.exitCode !== 0) {
     blockers.push({
@@ -110,6 +166,7 @@ for (const step of daemonSteps) {
 
 const daemonBuildPassed = daemonSteps.every((step) => step.exitCode === 0);
 const daemonReady = daemonBuildPassed && fs.existsSync(daemonBinary);
+const attestdReady = daemonBuildPassed && fs.existsSync(attestdBinary);
 if (!daemonReady) {
   blockers.push({
     kind: 'missing-daemon-artifact',
@@ -119,15 +176,24 @@ if (!daemonReady) {
     log: 'logs/daemon-build.log'
   });
 }
+if (!attestdReady) {
+  blockers.push({
+    kind: 'missing-attestation-broker-artifact',
+    message: args.has('--skip-daemon')
+      ? 'Required openburnbar-attestd executable is missing (stage it when using --skip-daemon).'
+      : 'Required root attestation broker executable was not produced by cargo build.',
+    log: 'logs/daemon-build.log'
+  });
+}
 
 const buildSteps = [];
-if (!args.has('--skip-tauri') && daemonReady) {
+if (!args.has('--skip-tauri') && !finalizeOnly && daemonReady && attestdReady) {
   // Never let an artifact from an earlier architecture/version satisfy this shard.
   fs.rmSync(path.join(appDir, 'src-tauri/target/release/bundle'), { recursive: true, force: true });
   const packageCommands = [
-    ['npm', ['ci', '--no-audit', '--no-fund'], { cwd: appDir }],
-    ['npm', ['run', 'build'], { cwd: appDir }],
-    ['npm', ['run', 'tauri:build', '--', '--bundles', 'deb,rpm,appimage'], {
+    ['npm', ['ci', '--no-audit', '--no-fund'], { cwd: appDir, env: packageBuildEnv }],
+    ['npm', ['run', 'build'], { cwd: appDir, env: packageBuildEnv }],
+    ['npm', ['run', 'tauri:build', '--', '--bundles', 'appimage'], {
       cwd: appDir,
       env: packageBuildEnv
     }],
@@ -142,7 +208,7 @@ if (!args.has('--skip-tauri') && daemonReady) {
     if (step.exitCode !== 0) break;
   }
 }
-writeLog('package-build.log', buildSteps);
+if (!finalizeOnly) writeLog('package-build.log', buildSteps);
 for (const step of buildSteps) {
   if (step.exitCode !== 0) {
     blockers.push({
@@ -153,7 +219,136 @@ for (const step of buildSteps) {
   }
 }
 
-const copied = discoverBundleArtifacts().map((artifact) => {
+if (prepareOnly) {
+  const appImages = discoverBundleArtifacts().filter((artifact) => artifact.type === 'appimage');
+  if (appImages.length !== 1) {
+    blockers.push({
+      kind: 'missing-appimage-preparation-artifact',
+      message: `Expected one prepared AppImage, found ${appImages.length}.`
+    });
+  }
+  let signerInputs = null;
+  try {
+    signerInputs = measureNativeSignerInputs(repoRoot);
+  } catch (error) {
+    blockers.push({
+      kind: 'native-signer-inputs',
+      message: `Cannot measure native package signer inputs: ${error.message}`
+    });
+  }
+  const preparation = {
+    schemaVersion: 1,
+    complete: blockers.length === 0,
+    version,
+    architecture: linuxArch(),
+    gitCommit: git.commit,
+    daemonSha256: daemonReady ? sha256(daemonBinary) : null,
+    attestdSha256: attestdReady ? sha256(attestdBinary) : null,
+    appImageSha256: appImages.length === 1 ? sha256(appImages[0].file) : null,
+    signerInputsRootSha256: signerInputs?.rootSha256 ?? null,
+    signerInputRecordCount: signerInputs?.records.length ?? null,
+    blockers
+  };
+  writeJson(preparationReceiptPath, preparation);
+  console.log(JSON.stringify({
+    outDir: relative(outDir),
+    preparation
+  }, null, 2));
+  process.exit(blockers.length === 0 ? 0 : 1);
+}
+
+let preparationReceipt = null;
+let currentSignerInputs = null;
+let preparationValid = false;
+try {
+  preparationReceipt = readJson(preparationReceiptPath);
+} catch (error) {
+  blockers.push({
+    kind: 'missing-preparation-receipt',
+    message: `Finalize requires a successful --prepare-only receipt: ${error.message}`
+  });
+}
+try {
+  currentSignerInputs = measureNativeSignerInputs(repoRoot);
+} catch (error) {
+  blockers.push({
+    kind: 'native-signer-inputs',
+    message: `Finalize cannot measure native package signer inputs: ${error.message}`
+  });
+}
+if (preparationReceipt && (
+  preparationReceipt.schemaVersion !== 1
+  || preparationReceipt.complete !== true
+  || preparationReceipt.version !== version
+  || preparationReceipt.architecture !== linuxArch()
+  || preparationReceipt.gitCommit !== git.commit
+  || !daemonReady
+  || preparationReceipt.daemonSha256 !== sha256(daemonBinary)
+  || !attestdReady
+  || preparationReceipt.attestdSha256 !== sha256(attestdBinary)
+  || !currentSignerInputs
+  || preparationReceipt.signerInputsRootSha256 !== currentSignerInputs.rootSha256
+  || preparationReceipt.signerInputRecordCount !== currentSignerInputs.records.length
+)) {
+  blockers.push({
+    kind: 'preparation-receipt-mismatch',
+    message: 'Finalize inputs do not match the successful prepare phase for this commit, version, and architecture.'
+  });
+} else if (preparationReceipt) {
+  preparationValid = true;
+}
+
+const discoveredArtifacts = discoverBundleArtifacts();
+const preparedAppImage = discoveredArtifacts.filter((artifact) => artifact.type === 'appimage');
+if (preparationReceipt && (
+  preparedAppImage.length !== 1
+  || preparationReceipt.appImageSha256 !== sha256(preparedAppImage[0].file)
+)) {
+  blockers.push({
+    kind: 'prepared-appimage-mismatch',
+    message: 'Prepared AppImage is missing or changed after the prepare phase.'
+  });
+  preparationValid = false;
+}
+
+let signingReceipt = null;
+try {
+  const signingReceiptBytes = fs.readFileSync(signingReceiptPath);
+  const signingReceiptSignature = fs.readFileSync(signingReceiptSignaturePath);
+  const publicKey = crypto.createPublicKey(fs.readFileSync(
+    path.join(repoRoot, 'packaging/linux/openburnbar-linux-ed25519.pub.pem')
+  ));
+  signingReceipt = verifyNativePackageSigningReceipt(
+    signingReceiptBytes,
+    signingReceiptSignature,
+    publicKey
+  );
+  if (!preparationValid
+      || !preparationReceipt
+      || signingReceipt.version !== version
+      || signingReceipt.architecture !== linuxArch()
+      || signingReceipt.gitCommit !== git.commit
+      || signingReceipt.preparationDigestSha256 !== preparationReceiptDigest(preparationReceipt)
+      || !currentSignerInputs
+      || signingReceipt.signerInputsRootSha256 !== currentSignerInputs.rootSha256) {
+    throw new Error('signed native package receipt does not bind the current preparation and inputs');
+  }
+  validateSignedPackageArtifacts(repoRoot, signingReceipt, discoveredArtifacts);
+} catch (error) {
+  signingReceipt = null;
+  blockers.push({
+    kind: 'native-package-signing-receipt',
+    message: `Finalize requires an authentic signer receipt and unchanged deb/rpm artifacts: ${error.message}`
+  });
+}
+
+if (preparationValid && preparationReceipt && signingReceipt) {
+  writeJson(publishedPreparationReceiptPath, preparationReceipt);
+  fs.copyFileSync(signingReceiptPath, publishedSigningReceiptPath);
+  fs.copyFileSync(signingReceiptSignaturePath, publishedSigningReceiptSignaturePath);
+}
+
+const copied = discoveredArtifacts.map((artifact) => {
   const dest = copyArtifact(artifact.file, artifactsDir);
   return {
     type: artifact.type,

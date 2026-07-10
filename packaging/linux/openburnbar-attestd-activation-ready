@@ -1,0 +1,47 @@
+#!/bin/sh
+set -eu
+
+DEFAULT_ENROLLMENT_STATE=/var/lib/openburnbar-attestd/tpm-enrollment.json
+DEFAULT_ROLLOUT_MARKER=/etc/openburnbar/attestation-rollout-enabled
+
+case "$#" in
+  0)
+    enrollment_state=$DEFAULT_ENROLLMENT_STATE
+    rollout_marker=$DEFAULT_ROLLOUT_MARKER
+    ;;
+  2)
+    # Explicit paths exist only to make the fail-closed file contract testable.
+    # Package lifecycle hooks always use the root-owned production defaults.
+    enrollment_state=$1
+    rollout_marker=$2
+    ;;
+  *)
+    echo "usage: openburnbar-attestd-activation-ready [enrollment-state rollout-marker]" >&2
+    exit 64
+    ;;
+esac
+
+root_owned_mode() {
+  candidate=$1
+  expected_modes=$2
+  [ -f "$candidate" ] && [ ! -L "$candidate" ] || return 1
+  metadata=$(stat -c '%u %a' -- "$candidate" 2>/dev/null) || return 1
+  owner=${metadata%% *}
+  mode=${metadata#* }
+  [ "$owner" = 0 ] || return 1
+  case ":$expected_modes:" in
+    *":$mode:"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Enrollment is sensitive sealed-key metadata and must not be readable by
+# ordinary users. The rollout marker is non-secret but cannot be writable by
+# group or other. The exact marker content prevents an accidental empty file
+# from activating a world-connectable root socket.
+[ -s "$enrollment_state" ] || exit 1
+root_owned_mode "$enrollment_state" '400:600' || exit 1
+root_owned_mode "$rollout_marker" '400:600:644' || exit 1
+[ "$(cat -- "$rollout_marker")" = enabled ] || exit 1
+
+exit 0

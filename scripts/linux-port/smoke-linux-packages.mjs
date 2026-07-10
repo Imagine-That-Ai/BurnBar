@@ -30,6 +30,28 @@ function assertContains(command, haystack, needle, stderr) {
   return ok;
 }
 
+function assertAttestationPackagePayload(packageType, listing) {
+  const prefix = packageType === 'deb' ? '' : '/';
+  for (const [needle, description] of [
+    [`${prefix}usr/libexec/openburnbar-attestd`, 'root broker'],
+    [`${prefix}usr/libexec/openburnbar-attestd-purge-state`, 'explicit purge helper'],
+    [`${prefix}usr/libexec/openburnbar-attestd-activation-ready`, 'activation readiness gate'],
+    [`${prefix}usr/libexec/openburnbar-restart-active-user-daemons`, 'upgrade recovery helper'],
+    [`${prefix}usr/lib/systemd/system/openburnbar-attestd.service`, 'system service'],
+    [`${prefix}usr/lib/systemd/system/openburnbar-attestd.socket`, 'system socket'],
+    [`${prefix}usr/share/openburnbar/attestation/installed-manifest.json`, 'installed manifest'],
+    [`${prefix}usr/share/openburnbar/attestation/installed-manifest.json.sig`, 'manifest signature'],
+    [`${prefix}usr/share/openburnbar/attestation/release-ed25519.pub.pem`, 'pinned release public key']
+  ]) {
+    assertContains(
+      `assert ${packageType} contains attestation ${description}`,
+      listing,
+      needle,
+      `${packageType} package missing attestation ${description}`
+    );
+  }
+}
+
 function runtimeProbeEnv(label) {
   const root = path.join(smokeDir, 'runtime-probes', label);
   fs.rmSync(root, { recursive: true, force: true });
@@ -96,6 +118,7 @@ for (const artifact of closure.artifacts ?? []) {
       'usr/lib/openburnbar/native/libsqlcipher.so.0',
       'deb package missing SQLCipher runtime at /usr/lib/openburnbar/native'
     );
+    assertAttestationPackagePayload('deb', contents.stdout);
     // Prefer sudo when non-root (guest packaging smoke).
     const dpkgInstall = runStep('sudo', ['dpkg', '-i', full]);
     if (dpkgInstall.exitCode !== 0) {
@@ -103,6 +126,9 @@ for (const artifact of closure.artifacts ?? []) {
     } else {
       steps.push(dpkgInstall);
     }
+    steps.push(runStep('sh', ['-c',
+      '! systemctl is-enabled --quiet openburnbar-attestd.socket && test ! -S /run/openburnbar/attestd.sock'
+    ]));
     steps.push(runStep('/usr/libexec/openburnbar-daemon-launch', ['--help'], {
       env: runtimeProbeEnv(`deb-${artifact.architecture}`)
     }));
@@ -117,6 +143,21 @@ for (const artifact of closure.artifacts ?? []) {
     }
   } else if (artifact.type === 'rpm') {
     steps.push(runStep('rpm', ['-qip', full]));
+    const requires = runStep('rpm', ['-qp', '--requires', full]);
+    steps.push(requires);
+    for (const dependency of [
+      'gtk3',
+      'libsecret',
+      'webkit2gtk4.1',
+      'libayatana-appindicator-gtk3'
+    ]) {
+      assertContains(
+        `assert rpm requires ${dependency}`,
+        requires.stdout,
+        dependency,
+        `rpm package omits runtime dependency ${dependency}`
+      );
+    }
     const listing = runStep('rpm', ['-qlp', full]);
     steps.push(listing);
     assertContains(
@@ -149,12 +190,20 @@ for (const artifact of closure.artifacts ?? []) {
       '/usr/lib/openburnbar/native/libsqlcipher.so.0',
       'rpm package missing SQLCipher runtime at /usr/lib/openburnbar/native'
     );
+    assertAttestationPackagePayload('rpm', listing.stdout);
+    // Construction smoke runs in the Debian-based toolchain container, so RPM
+    // dependencies are asserted above and the payload is installed with
+    // --nodeps only to exercise scriptlets. Fedora matrix QA performs the real
+    // dependency-resolving dnf install.
     const rpmInstall = runStep('sudo', ['rpm', '-i', '--nodeps', '--force', full]);
     if (rpmInstall.exitCode !== 0) {
       steps.push(runStep('rpm', ['-i', '--nodeps', '--force', full]));
     } else {
       steps.push(rpmInstall);
     }
+    steps.push(runStep('sh', ['-c',
+      '! systemctl is-enabled --quiet openburnbar-attestd.socket && test ! -S /run/openburnbar/attestd.sock'
+    ]));
     steps.push(runStep('/usr/libexec/openburnbar-daemon-launch', ['--help'], {
       env: runtimeProbeEnv(`rpm-${artifact.architecture}`)
     }));
@@ -208,6 +257,21 @@ for (const artifact of closure.artifacts ?? []) {
           exitCode: present ? 0 : 1,
           stdout: present ? `found ${requiredPath}` : '',
           stderr: present ? '' : `AppImage missing ${requiredPath}`
+        });
+      }
+      for (const forbiddenPath of [
+        'usr/libexec/openburnbar-attestd',
+        'usr/lib/systemd/system/openburnbar-attestd.service',
+        'usr/lib/systemd/system/openburnbar-attestd.socket',
+        'usr/share/openburnbar/attestation/installed-manifest.json'
+      ]) {
+        const absent = !fs.existsSync(path.join(appDir, forbiddenPath));
+        steps.push({
+          command: `assert AppImage excludes ${forbiddenPath}`,
+          cwd: '.',
+          exitCode: absent ? 0 : 1,
+          stdout: absent ? `absent ${forbiddenPath}` : '',
+          stderr: absent ? '' : `AppImage must not ship privileged attestation payload ${forbiddenPath}`
         });
       }
       steps.push(runStep(path.join(appDir, 'usr/libexec/openburnbar-daemon-launch'), ['--help'], {

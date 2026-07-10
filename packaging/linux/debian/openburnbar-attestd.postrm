@@ -1,0 +1,31 @@
+#!/bin/sh
+set -eu
+
+SOCKET_UNIT=openburnbar-attestd.socket
+SERVICE_UNIT=openburnbar-attestd.service
+
+case "${1:-}" in
+  purge)
+    if [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then
+      systemctl --system stop "$SERVICE_UNIT" "$SOCKET_UNIT" >/dev/null 2>&1 || true
+      systemctl --system disable "$SOCKET_UNIT" >/dev/null 2>&1 || true
+    fi
+    rm -rf -- /var/lib/openburnbar-attestd /run/openburnbar
+    rm -f -- /etc/openburnbar/attestation-rollout-enabled
+    rmdir -- /etc/openburnbar 2>/dev/null || true
+    if command -v deb-systemd-helper >/dev/null 2>&1; then
+      deb-systemd-helper purge "$SOCKET_UNIT" >/dev/null || true
+      deb-systemd-helper unmask "$SOCKET_UNIT" >/dev/null || true
+    fi
+    ;;
+  remove)
+    # Sealed identity, replay state, and enrollment metadata survive a normal
+    # remove so reinstall does not silently create a new device identity.
+    ;;
+esac
+
+if [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then
+  systemctl --system daemon-reload
+fi
+
+exit 0

@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+
+if [ "$(id -u)" -ne 0 ]; then
+  echo "openburnbar-attestd-purge-state must run as root" >&2
+  exit 1
+fi
+
+if [ "${1:-}" != "--confirm-device-identity-destruction" ]; then
+  echo "refusing to destroy attestation identity without --confirm-device-identity-destruction" >&2
+  exit 64
+fi
+
+if [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then
+  systemctl --system stop openburnbar-attestd.service openburnbar-attestd.socket >/dev/null 2>&1 || true
+fi
+
+rm -rf -- /var/lib/openburnbar-attestd /run/openburnbar
+rm -f -- /etc/openburnbar/attestation-rollout-enabled
+rmdir -- /etc/openburnbar 2>/dev/null || true

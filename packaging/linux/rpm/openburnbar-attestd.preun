@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+
+if [ "${1:-0}" -eq 0 ]; then
+  if [ -d /run/systemd/system ]; then
+    systemctl stop openburnbar-attestd.service openburnbar-attestd.socket
+  fi
+  systemctl disable openburnbar-attestd.socket >/dev/null || true
+fi

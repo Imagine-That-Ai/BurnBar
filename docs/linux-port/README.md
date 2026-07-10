@@ -20,10 +20,14 @@ environment-certified parity:
   [`LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md`](LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md)
   for the independent executive summary, parity matrix, implementation plan,
   prioritized roadmap, and QA checklist.
-- The Linux App Check challenge/verifier/daemon-client boundary is implemented
-  in source, but production minting defaults off. The real Firebase Web app,
-  privileged TPM/IMA broker and verifier, deployment, and installed matrix are
-  still blocked; Linux remains `linux_lower_trust` and this is not production
+- The Linux App Check challenge/verifier/daemon-client boundary plus the
+  fail-closed root broker transport, per-request kernel credential binding,
+  signed installed-file manifest, default-disabled activation gate, active-user
+  daemon upgrade recovery, and native deb/rpm lifecycle are implemented in
+  source. The broker deliberately returns `attestation_unsupported`; the real
+  Firebase Web app, TPM/IMA backend,
+  enrollment/revocation verifier, deployment, and installed matrix remain
+  blocked. Linux stays `linux_lower_trust`, and this is not production
   attestation proof.
 - For the CMUX-synthesized implementation plan, see
   [`FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md`](FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md).

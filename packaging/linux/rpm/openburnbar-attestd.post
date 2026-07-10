@@ -1,0 +1,34 @@
+#!/bin/sh
+set -eu
+
+install -d -o root -g root -m 0700 /var/lib/openburnbar-attestd
+ACTIVATION_READY=/usr/libexec/openburnbar-attestd-activation-ready
+RECOVER_USER_DAEMONS=/usr/libexec/openburnbar-restart-active-user-daemons
+
+if [ -d /run/systemd/system ]; then
+  systemctl daemon-reload
+fi
+
+if [ -x "$ACTIVATION_READY" ] && "$ACTIVATION_READY"; then
+  systemctl enable openburnbar-attestd.socket >/dev/null
+  if [ -d /run/systemd/system ]; then
+    systemctl restart openburnbar-attestd.socket
+    if [ "${1:-1}" -gt 1 ] && systemctl is-active --quiet openburnbar-attestd.service; then
+      systemctl restart openburnbar-attestd.service
+    fi
+  fi
+else
+  systemctl disable openburnbar-attestd.socket >/dev/null 2>&1 || true
+  if [ -d /run/systemd/system ]; then
+    systemctl stop openburnbar-attestd.service openburnbar-attestd.socket >/dev/null 2>&1 || true
+  fi
+fi
+
+if [ "${1:-1}" -gt 1 ]; then
+  if [ -x "$RECOVER_USER_DAEMONS" ]; then
+    "$RECOVER_USER_DAEMONS" ||
+      echo "openburnbar: one or more active user daemons could not be recovered" >&2
+  else
+    echo "openburnbar: user-daemon recovery helper is missing" >&2
+  fi
+fi

@@ -7,6 +7,7 @@ ARG SQLCIPHER_VERSION=4.5.6
 ARG SQLCIPHER_SHA256=e4a527e38e67090c1d2dc41df28270d16c15f7ca5210a3e7ec4c4b8fda36e28f
 ARG SQLCIPHER_PREFIX=/opt/openburnbar/sqlcipher
 ARG RUST_TOOLCHAIN=1.96.0
+ARG ATTESTD_RUST_TOOLCHAIN=1.94.0
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 update \
@@ -15,6 +16,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         ayatana-indicator-application \
         build-essential \
         ca-certificates \
+        cpio \
         curl \
         dbus \
         dbus-x11 \
@@ -79,9 +81,12 @@ RUN set -eux; \
     curl -fsSL https://sh.rustup.rs -o /tmp/rustup-init.sh; \
     sh /tmp/rustup-init.sh -y --profile minimal --default-toolchain "${RUST_TOOLCHAIN}" \
         --component clippy --component rustfmt; \
+    rustup toolchain install "${ATTESTD_RUST_TOOLCHAIN}" --profile minimal \
+        --component clippy --component rustfmt; \
     rm /tmp/rustup-init.sh; \
     rustc --version; \
     cargo --version; \
+    rustc "+${ATTESTD_RUST_TOOLCHAIN}" --version; \
     rustup show active-toolchain
 
 RUN set -eux; \

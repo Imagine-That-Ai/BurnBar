@@ -27,6 +27,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Linux root attestation broker foundation** - adds a root-owned,
+  socket-activated `openburnbar-attestd` for native deb/rpm packages. The
+  bounded one-request `SOCK_SEQPACKET` protocol authenticates kernel-supplied
+  per-message `SCM_CREDENTIALS`, pins and hashes the exact installed daemon
+  inode, recomputes the signed inventory root, and serves requests through a
+  bounded worker queue. Native package builders own systemd
+  install/upgrade/remove/purge lifecycle and active user-daemon upgrade
+  recovery. The prepare, isolated-signing, and finalize phases bind every
+  generated/runtime/source input and the exact deb/rpm bytes through a signed
+  package receipt; final RPM extraction proves rpmbuild did not rewrite the
+  measured payload. Fresh installs keep the root socket disabled until root-owned TPM
+  enrollment state and an explicit rollout marker exist; AppImage, Flatpak, and
+  AUR remain explicitly unsupported for production host attestation. The
+  backend returns `attestation_unsupported` until TPM enrollment, quote/IMA collection,
+  verifier upload receipts, revocation, and physical-host certification land;
+  production minting remains off with no mock fallback.
+
 - **Linux App Check source foundation** - adds an authenticated two-step custom
   provider boundary with a durable two-minute Firestore challenge, hashed nonce
   storage, atomic single-use replay defense, exact user/app/device/version/
@@ -35,8 +52,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   30-minute token, retain only its SHA-256 hash and verifier receipt, and remain
   `linux_lower_trust`. The daemon coalesces acquisition and keeps account-bound
   token state in memory only. Production minting defaults off and remains
-  blocked on a real Firebase Web app ID, root-owned TPM/IMA broker and verifier,
-  deployment, revocation, and installed Linux matrix certification.
+  blocked on a real Firebase Web app ID, the broker's TPM/IMA backend and Swift
+  adapter, remote verifier deployment, revocation, and installed Linux matrix
+  certification.
 - **Linux App Check endpoint authorization** - classifies every exported Cloud
   Function in the generated security catalog and enforces the classification in
   the shared callable wrapper before handler execution. Linux is explicitly

@@ -97,6 +97,7 @@ jobs:
   build-architecture:
     name: Build Linux ${{ matrix.architecture }} shard
     needs: resolve-release
+    environment: release
     strategy:
       fail-fast: false
       matrix:
@@ -129,7 +130,7 @@ jobs:
       - name: Build mission Linux toolchain image
         run: docker build -t openburnbar-linux-toolchain:mission-001 tools/linux-toolchain
 
-      - name: Build native architecture artifacts
+      - name: Build unsigned native architecture inputs
         run: >
           docker run --rm
           -e OPENBURNBAR_LINUX_RELEASE_OUT=/workspace/.linux-shard
@@ -139,6 +140,37 @@ jobs:
           bash -c "git config --global --add safe.directory /workspace &&
           node scripts/linux-port/build-linux-release.mjs
           --architecture-shard
+          --prepare-only
+          --version '${{ needs.resolve-release.outputs.version }}'"
+
+      - name: Sign installed manifests and build native packages
+        env:
+          OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM: ${{ secrets.OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM }}
+        run: |
+          set -euo pipefail
+          signing_key="$OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM"
+          unset OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM
+          printf '%s' "$signing_key" | docker run --rm -i \
+            -v "$PWD:/workspace" \
+            -w /workspace \
+            openburnbar-linux-toolchain:mission-001 \
+            bash -c "git config --global --add safe.directory /workspace </dev/null && \
+            node scripts/linux-port/build-native-linux-packages.mjs \
+            --private-key-stdin \
+            --version '${{ needs.resolve-release.outputs.version }}'"
+          unset signing_key
+
+      - name: Finalize native architecture artifacts without signing key
+        run: >
+          docker run --rm
+          -e OPENBURNBAR_LINUX_RELEASE_OUT=/workspace/.linux-shard
+          -v "$PWD:/workspace"
+          -w /workspace
+          openburnbar-linux-toolchain:mission-001
+          bash -c "git config --global --add safe.directory /workspace &&
+          node scripts/linux-port/build-linux-release.mjs
+          --architecture-shard
+          --finalize-only
           --version '${{ needs.resolve-release.outputs.version }}'"
 
       - name: Native package inspection/install/uninstall smoke
@@ -250,10 +282,16 @@ jobs:
       - name: Assemble signed two-architecture closure and feed
         env:
           OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM: ${{ secrets.OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM }}
-        run: >
-          node scripts/linux-port/assemble-linux-release.mjs
-          --version '${{ needs.resolve-release.outputs.version }}'
-          --channel '${{ needs.resolve-release.outputs.channel }}'
+        run: |
+          set -euo pipefail
+          signing_key="$OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM"
+          unset OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM
+          printf '%s' "$signing_key" | \
+            node scripts/linux-port/assemble-linux-release.mjs \
+            --private-key-stdin \
+            --version '${{ needs.resolve-release.outputs.version }}' \
+            --channel '${{ needs.resolve-release.outputs.channel }}'
+          unset signing_key
 
       - name: Pre-attestation Linux release verification
         run: >

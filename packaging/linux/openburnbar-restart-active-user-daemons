@@ -1,0 +1,60 @@
+#!/bin/sh
+set -eu
+
+UNIT=openburnbar-daemon.service
+RUNTIME_ROOT=/run/user
+
+if [ "${1:-}" = "--runtime-root" ] && [ "$#" -eq 2 ]; then
+  # Test and recovery environments may point at an equivalent runtime tree.
+  # Package hooks invoke this helper without arguments.
+  RUNTIME_ROOT=$2
+elif [ "$#" -ne 0 ]; then
+  echo "usage: openburnbar-restart-active-user-daemons [--runtime-root directory]" >&2
+  exit 64
+fi
+
+if ! command -v loginctl >/dev/null 2>&1 || ! command -v runuser >/dev/null 2>&1; then
+  echo "openburnbar: user-daemon recovery skipped because loginctl or runuser is unavailable" >&2
+  exit 0
+fi
+
+if ! users=$(loginctl list-users --no-legend 2>/dev/null); then
+  echo "openburnbar: user-daemon recovery could not enumerate active user managers" >&2
+  exit 0
+fi
+
+failures=0
+while IFS=' ' read -r uid username _; do
+  [ -n "${uid:-}" ] && [ -n "${username:-}" ] || continue
+  case "$uid" in *[!0-9]*) continue ;; esac
+  case "$username" in ''|-*|*[!A-Za-z0-9_.-]*) continue ;; esac
+
+  runtime_dir=$RUNTIME_ROOT/$uid
+  [ -d "$runtime_dir" ] || continue
+
+  run_user_systemctl() {
+    runuser -u "$username" -- env \
+      XDG_RUNTIME_DIR="$runtime_dir" \
+      DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" \
+      PATH=/usr/sbin:/usr/bin:/sbin:/bin \
+      systemctl --user "$@"
+  }
+
+  # The explicit is-active check and try-restart are both required. If the
+  # service stops in between, try-restart does not start it again.
+  if run_user_systemctl is-active --quiet "$UNIT" >/dev/null 2>&1; then
+    if ! run_user_systemctl daemon-reload >/dev/null 2>&1; then
+      echo "openburnbar: daemon-reload failed for active user manager uid $uid" >&2
+      failures=1
+      continue
+    fi
+    if ! run_user_systemctl try-restart "$UNIT" >/dev/null 2>&1; then
+      echo "openburnbar: try-restart failed for active user manager uid $uid" >&2
+      failures=1
+    fi
+  fi
+done <<EOF
+$users
+EOF
+
+exit "$failures"

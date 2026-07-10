@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+
+SOCKET_UNIT=openburnbar-attestd.socket
+SERVICE_UNIT=openburnbar-attestd.service
+
+case "${1:-}" in
+  remove|deconfigure)
+    if [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then
+      systemctl --system stop "$SERVICE_UNIT" "$SOCKET_UNIT"
+      systemctl --system disable "$SOCKET_UNIT" >/dev/null || true
+    fi
+    ;;
+  upgrade|failed-upgrade)
+    # Keep the old socket available until postinst atomically activates the
+    # replacement. postinst restarts an already-running broker on upgrade.
+    ;;
+esac
+
+exit 0
