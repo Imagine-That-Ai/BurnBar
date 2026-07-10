@@ -29,11 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Linux native shell authority** - replaces the minimal three-command tray
   with live daemon freshness, daily cost/tokens, quota floor, connected-provider
-  state, dashboard/chat/provider/update/reconnect actions, and XDG login-start
-  control. A single-instance native boundary now queues background and
-  allowlisted `openburnbar://` launches until the renderer is ready, sends only
-  typed route/action pairs into the WebView, and rejects hostile, unknown, or
-  credential-bearing URLs. deb, rpm, AppImage, and AUR packaging share one
+  state, a singleton compact status window, dashboard/chat/provider/update/
+  reconnect actions, Freedesktop notification action routing, and XDG
+  login-start control. A single-instance native boundary now queues background
+  and allowlisted `openburnbar://` launches until the renderer is ready, sends
+  only typed route/action pairs into the WebView, and rejects hostile, unknown,
+  or credential-bearing URLs. deb, rpm, AppImage, and AUR packaging share one
   canonical autostart entry and a drift gate.
 - **Linux daemon event subscription authority** - replaces one-shot terminal
   subscription fixtures with bounded daemon-owned start/resume/stop state,

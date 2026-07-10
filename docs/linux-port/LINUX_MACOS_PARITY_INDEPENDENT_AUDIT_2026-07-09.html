@@ -395,8 +395,8 @@ exercised in installed packages.</li>
 </tr>
 <tr>
 <td>Native shell</td>
-<td>Single-instance/background launch, typed deep links, live tray facts/actions, and user XDG login start are implemented</td>
-<td>Add actionable freedesktop notifications and status window; certify rich/icon-only GNOME, KDE, X11, wlroots, accessibility, and lifecycle rows</td>
+<td>Single-instance/background launch, typed deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, and user XDG login start are implemented</td>
+<td>Certify rich/icon-only GNOME, KDE, X11, wlroots, accessibility, notification, cloud inline-reply, provider OAuth return, and lifecycle rows</td>
 </tr>
 <tr>
 <td>Account auth</td>
@@ -865,7 +865,7 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-26</td>
 <td>Tray and native shell</td>
 <td>Rich live menu-bar status, quick switch, chat, quota, update state</td>
-<td>Live cost/tokens, quota floor, provider count, freshness, dashboard/chat/provider/update/reconnect/login-start/quit actions exist; account quick switch, status window, host-loss behavior, and installed matrix remain</td>
+<td>Live cost/tokens, quota floor, provider count, freshness, compact status window, dashboard/chat/provider/update/reconnect/login-start/quit actions exist; account quick switch, host-loss behavior, and installed matrix remain</td>
 <td>Near parity</td>
 <td>High</td>
 </tr>
@@ -873,7 +873,7 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-27</td>
 <td>Notifications/deep links</td>
 <td>Actionable notifications, OAuth return, global commands, login start</td>
-<td>Single-instance validated deep links, membership return, background launch, XDG login start, and daemon-backed panic shortcut exist; freedesktop actionable notifications, provider OAuth callback contract, and installed shortcut/desktop matrix remain</td>
+<td>Single-instance validated deep links, membership return, background launch, XDG login start, source-level freedesktop notification actions, and daemon-backed panic shortcut exist; cloud agent-reply listener/inline reply, provider OAuth callback contract, and installed shortcut/desktop matrix remain</td>
 <td>Partial</td>
 <td>High</td>
 </tr>
@@ -1566,30 +1566,37 @@ persistence/restart, policy conflicts, telemetry opt-out at emission source,
 unavailable capability copy, and migration from existing localStorage keys.</li>
 </ul>
 <h3>GAP-014 - Build native tray, notifications, deep links, shortcuts, and startup</h3>
-<p><strong>Implementation update (2026-07-10): native launch/tray/startup foundation
-implemented; notification and installed certification remain open.</strong> Rust now
-owns single-instance arbitration, background launch, an allowlisted
-<code>openburnbar://</code> parser, listener-race-safe delivery, window focus, live tray
-actions/facts, and atomic user XDG autostart mutation. The renderer accepts only
-correlated typed route/action pairs. deb, rpm, AppImage, and AUR packaging share
-the canonical autostart entry. Direct ARM64 GNOME X11 evidence now proves hidden
+<p><strong>Implementation update (2026-07-10): native launch/tray/startup foundation,
+compact status window, and source-level freedesktop notification action
+primitive implemented; installed certification, cloud inline reply, and provider
+OAuth return remain open.</strong> Rust now owns single-instance arbitration,
+background launch, an allowlisted <code>openburnbar://</code> parser,
+listener-race-safe delivery, window focus, live tray actions/facts, lazy compact
+status-window lifecycle, freedesktop notification capability/delivery commands,
+and atomic user XDG autostart mutation. The renderer accepts only correlated
+typed route/action pairs. deb, rpm, AppImage, and AUR packaging share the
+canonical autostart entry. Direct ARM64 GNOME X11 evidence now proves hidden
 background launch, one-process Chat routing, the bundled icon/native menu, and
-an exact login-start off/on/off round trip. This is not installed package or
-desktop-matrix certification. See <code>LINUX_NATIVE_SHELL_AUTHORITY.md</code> and
+an exact login-start off/on/off round trip. This is not installed package,
+freedesktop notification server, or desktop-matrix certification. See
+<code>LINUX_NATIVE_SHELL_AUTHORITY.md</code> and
 <code>evidence/mission-003-native-shell/runtime-transcript.txt</code>.</p>
 <ul>
 <li><strong>Difference:</strong> macOS provides a rich menu-bar experience with live cost,
 quota, providers, quick switch, chat, freshness, and update state. Linux now
-exposes live cost/tokens, quota floor, provider count, freshness, primary
-navigation/reconnect/login-start actions, validated membership/navigation
-links, and background launch. It still lacks account quick switch, the compact
-status window, actionable notifications, and a provider OAuth callback matrix.</li>
+exposes live cost/tokens, quota floor, provider count, freshness, a compact
+status window, primary navigation/reconnect/login-start actions, validated
+membership/navigation links, source-level freedesktop notification actions,
+and background launch. It still lacks account quick switch, cloud agent-reply
+inline reply, installed notification certification, and a provider OAuth
+callback matrix.</li>
 <li><strong>Why it matters:</strong> repeated daily workflows, alerts, recovery, auth, and panic
 controls feel incomplete or cannot work outside the main window.</li>
-<li><strong>Recommended solution:</strong> certify the implemented tray, typed deep links,
+<li><strong>Recommended solution:</strong> certify the implemented tray, compact status
+window, typed deep links, source-level freedesktop notifications,
 daemon-backed panic, and XDG startup across installed environments; then add
-the compact status window, freedesktop notification actions, dedicated OAuth
-callback validation, and portal/global shortcut coverage with X11 fallback.</li>
+cloud agent-reply listener/inline reply, dedicated OAuth callback validation,
+and portal/global shortcut coverage with X11 fallback.</li>
 <li><strong>Priority:</strong> <strong>High</strong>.</li>
 <li><strong>Implementation notes:</strong> support GNOME&#39;s icon-only limitations; use shared
 live view models and freshness semantics; never depend on the tray as the sole
@@ -2002,8 +2009,8 @@ queueing, locked keyring, and redaction.</li>
 <tr>
 <td>LNX-NATIVE-001</td>
 <td>Partially implemented</td>
-<td>Single-instance launch, typed deep links, live tray facts/actions, and XDG login start</td>
-<td>Notifications, status window, provider OAuth return, and installed desktop matrix</td>
+<td>Single-instance launch, typed deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, and XDG login start</td>
+<td>Cloud inline reply, provider OAuth return, and installed desktop/notification matrix</td>
 </tr>
 <tr>
 <td>LNX-CAT-001, LNX-DIFF-001</td>
@@ -2183,7 +2190,7 @@ truth-sync, not the first time behavior is documented.</p>
 <tr>
 <td>LNX-NATIVE-001</td>
 <td>LNX-CAP-001</td>
-<td>Single-instance/background launch, typed navigation/membership deep links, live tray facts/actions, and XDG startup are implemented; add notifications, provider OAuth return, status window, and exact-candidate matrix certification</td>
+<td>Single-instance/background launch, typed navigation/membership deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, and XDG startup are implemented; add cloud inline reply, provider OAuth return, and exact-candidate matrix certification</td>
 <td>Repeated native workflows pass on GNOME/KDE/wlroots, rich and icon-only hosts, accessibility, notification, and lifecycle rows</td>
 </tr>
 <tr>
@@ -2469,7 +2476,7 @@ accepted together.</p>
 <tr>
 <td>4</td>
 <td><strong>Daily-use native foundation</strong></td>
-<td>In progress; onboarding, bounded event refresh, single-instance/deep-link, live-tray, XDG login-start, and account-auth foundations implemented; native Linux App Check attestation, membership/cloud/device depth, notifications, and installed matrix remain</td>
+<td>In progress; onboarding, bounded event refresh, single-instance/deep-link, live-tray, compact status, source-level notifications, XDG login-start, and account-auth foundations implemented; native Linux App Check attestation, membership/cloud/device depth, cloud inline reply, provider OAuth return, and installed matrix remain</td>
 <td>LNX-EVT-001, LNX-ONB-001, LNX-AUTH-DEPLOY-001, LNX-APPCHECK-001, LNX-MEMBERSHIP-001, LNX-SYNC-001, LNX-DEVICE-001, LNX-NATIVE-001, LNX-UPD-001, LNX-CAT-001, LNX-DIFF-001</td>
 <td>Setup, deployed auth, data freshness, alerts/tray, update lifecycle, and current provider diff green</td>
 </tr>

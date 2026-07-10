@@ -603,6 +603,34 @@ export type NativeTraySnapshot = {
   quotaFloorRemainingPercent?: number;
   freshness: 'live' | 'stale' | 'offline' | 'unavailable';
 };
+export type NativeStatusSnapshot = {
+  shell: NativeShellSnapshot;
+  tray: NativeTraySnapshot;
+};
+export type NativeNotificationCapabilities = {
+  available: boolean;
+  actions: boolean;
+  persistence: boolean;
+  body: boolean;
+  bodyMarkup: boolean;
+  serverCapabilities: string[];
+  degradedReason?: string;
+};
+export type NativeNotificationUrgency = 'low' | 'normal' | 'critical';
+export type NativeNotificationRequest = {
+  id?: string;
+  title: string;
+  body: string;
+  route: NativeDeepLink['route'];
+  action: NativeDeepLinkAction;
+  urgency?: NativeNotificationUrgency;
+};
+export type NativeNotificationResult = {
+  notificationId: string;
+  delivered: boolean;
+  actionsAttached: boolean;
+  degradedReason?: string;
+};
 
 // ─────────────────────────── Bridge contract ──────────────────────────────
 
@@ -627,9 +655,16 @@ export interface LinuxShellBridge {
   nativeShellReady(): Promise<NativeDeepLink[]>;
   nativeShellSnapshot(): Promise<NativeShellSnapshot>;
   nativeShellSetLoginStart(enabled: boolean): Promise<NativeShellSnapshot>;
+  nativeStatusSnapshot(): Promise<NativeStatusSnapshot>;
+  nativeStatusShow(): Promise<NativeStatusSnapshot>;
+  nativeStatusClose(): Promise<void>;
+  nativeStatusRoute(route: NativeDeepLink['route'], action: NativeDeepLinkAction): Promise<void>;
+  nativeNotificationCapabilities(): Promise<NativeNotificationCapabilities>;
+  nativeNotificationShow(request: NativeNotificationRequest): Promise<NativeNotificationResult>;
   nativeTrayUpdate(snapshot: NativeTraySnapshot): Promise<void>;
   onNativeDeepLink(handler: (link: NativeDeepLink) => void): Promise<() => void>;
   onNativeShellState(handler: (snapshot: NativeShellSnapshot) => void): Promise<() => void>;
+  onNativeStatusSnapshot(handler: (snapshot: NativeStatusSnapshot) => void): Promise<() => void>;
 
   // P01–P11 lane extensions — each maps the raw daemon `result` JSON to a typed shape.
   usageSummary(): Promise<UsageSummary>;
@@ -906,6 +941,78 @@ export function decodeNativeShellSnapshot(raw: RawJsonValue): NativeShellSnapsho
     loginStartPath: typeof source.loginStartPath === 'string' ? source.loginStartPath : '',
     backgroundLaunch: requireBoolean(source.backgroundLaunch, 'native shell.backgroundLaunch'),
     rejectedDeepLinks,
+    degradedReason: typeof degradedReason === 'string' ? degradedReason : undefined
+  };
+}
+
+function decodeNativeTrayFreshness(value: RawJsonValue): NativeTraySnapshot['freshness'] {
+  if (value === 'live' || value === 'stale' || value === 'offline' || value === 'unavailable') return value;
+  throw new Error('native tray.freshness is unsupported.');
+}
+
+export function decodeNativeTraySnapshot(raw: RawJsonValue): NativeTraySnapshot {
+  const source = requireObject(raw, 'native tray snapshot');
+  const todayCostUsd = num(source.todayCostUsd);
+  const todayTokens = requireSequence(source.todayTokens, 'native tray.todayTokens');
+  const connectedProviders = requireSequence(source.connectedProviders, 'native tray.connectedProviders');
+  const quotaFloor = source.quotaFloorRemainingPercent;
+  if (!Number.isFinite(todayCostUsd) || todayCostUsd < 0 || todayCostUsd > 1_000_000_000) {
+    throw new Error('native tray.todayCostUsd is invalid.');
+  }
+  if (connectedProviders > 1_024) throw new Error('native tray.connectedProviders is invalid.');
+  if (
+    quotaFloor !== undefined &&
+    quotaFloor !== null &&
+    (typeof quotaFloor !== 'number' || !Number.isInteger(quotaFloor) || quotaFloor < 0 || quotaFloor > 100)
+  ) {
+    throw new Error('native tray.quotaFloorRemainingPercent is invalid.');
+  }
+  return {
+    todayCostUsd,
+    todayTokens,
+    connectedProviders,
+    quotaFloorRemainingPercent: typeof quotaFloor === 'number' ? quotaFloor : undefined,
+    freshness: decodeNativeTrayFreshness(source.freshness)
+  };
+}
+
+export function decodeNativeStatusSnapshot(raw: RawJsonValue): NativeStatusSnapshot {
+  const source = requireObject(raw, 'native status snapshot');
+  return {
+    shell: decodeNativeShellSnapshot(source.shell),
+    tray: decodeNativeTraySnapshot(source.tray)
+  };
+}
+
+export function decodeNativeNotificationCapabilities(raw: RawJsonValue): NativeNotificationCapabilities {
+  const source = requireObject(raw, 'native notification capabilities');
+  const degradedReason = source.degradedReason;
+  if (degradedReason !== undefined && degradedReason !== null && typeof degradedReason !== 'string') {
+    throw new Error('native notification.degradedReason must be a string when present.');
+  }
+  return {
+    available: requireBoolean(source.available, 'native notification.available'),
+    actions: requireBoolean(source.actions, 'native notification.actions'),
+    persistence: requireBoolean(source.persistence, 'native notification.persistence'),
+    body: requireBoolean(source.body, 'native notification.body'),
+    bodyMarkup: requireBoolean(source.bodyMarkup, 'native notification.bodyMarkup'),
+    serverCapabilities: arr(source.serverCapabilities).map((capability) =>
+      requireString(capability, 'native notification.serverCapabilities[]')
+    ),
+    degradedReason: typeof degradedReason === 'string' ? degradedReason : undefined
+  };
+}
+
+export function decodeNativeNotificationResult(raw: RawJsonValue): NativeNotificationResult {
+  const source = requireObject(raw, 'native notification result');
+  const degradedReason = source.degradedReason;
+  if (degradedReason !== undefined && degradedReason !== null && typeof degradedReason !== 'string') {
+    throw new Error('native notification result.degradedReason must be a string when present.');
+  }
+  return {
+    notificationId: requireString(source.notificationId, 'native notification result.notificationId'),
+    delivered: requireBoolean(source.delivered, 'native notification result.delivered'),
+    actionsAttached: requireBoolean(source.actionsAttached, 'native notification result.actionsAttached'),
     degradedReason: typeof degradedReason === 'string' ? degradedReason : undefined
   };
 }
@@ -2152,12 +2259,31 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       decodeNativeShellSnapshot(
         await invoke<RawJsonValue>('native_shell_set_login_start', { enabled })
       ),
+    nativeStatusSnapshot: async () =>
+      decodeNativeStatusSnapshot(await invoke<RawJsonValue>('native_status_snapshot')),
+    nativeStatusShow: async () =>
+      decodeNativeStatusSnapshot(await invoke<RawJsonValue>('native_status_show')),
+    nativeStatusClose: () => invoke<void>('native_status_close'),
+    nativeStatusRoute: (route, action) =>
+      invoke<void>('native_status_route', { route, action }),
+    nativeNotificationCapabilities: async () =>
+      decodeNativeNotificationCapabilities(
+        await invoke<RawJsonValue>('native_notification_capabilities')
+      ),
+    nativeNotificationShow: async (request) =>
+      decodeNativeNotificationResult(
+        await invoke<RawJsonValue>('native_notification_show', { request })
+      ),
     nativeTrayUpdate: (snapshot) => invoke<void>('native_tray_update', { snapshot }),
     onNativeDeepLink: async (handler) =>
       listen<RawJsonValue>('native-deep-link', (event) => handler(decodeNativeDeepLink(event.payload))),
     onNativeShellState: async (handler) =>
       listen<RawJsonValue>('native-shell-state', (event) =>
         handler(decodeNativeShellSnapshot(event.payload))
+      ),
+    onNativeStatusSnapshot: async (handler) =>
+      listen<RawJsonValue>('native-status-snapshot', (event) =>
+        handler(decodeNativeStatusSnapshot(event.payload))
       ),
 
     // P01 — daemon.usage.recent → aggregated summary

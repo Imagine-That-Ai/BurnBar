@@ -16,10 +16,23 @@ import {
 import { useMembershipStore } from './state/membershipStore.js';
 import { NativeShellSupervisor } from './state/nativeShellSupervisor.js';
 import { useShellStore } from './state/shellStore.js';
+import { CompactStatusApp } from './status/CompactStatusApp.js';
 
 async function boot(): Promise<void> {
   const end = markStart('app.start');
   applyReducedMotionClass();
+  const surface = new URLSearchParams(location.search).get('surface');
+  if (surface === 'status') {
+    const root = document.getElementById('root');
+    if (!root) throw new Error('Missing #root mount point');
+    createRoot(root).render(
+      <StrictMode>
+        <CompactStatusApp />
+      </StrictMode>
+    );
+    end();
+    return;
+  }
   const hadDeepLink = Boolean(location.hash);
 
   // First run lands on the onboarding wizard unless a deep link is present.
