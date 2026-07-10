@@ -118,6 +118,12 @@ public struct BurnBarProxyStreamingUnsupported: Error, Sendable {
 /// a helper that opens a line-framed byte stream from a `URLRequest`.
 public enum BurnBarProxyStreaming {
     private static let logger = BurnBarDaemonLogger(category: "provider-stream")
+    #if os(Linux)
+    // swift-corelibs-foundation can fail to complete a data task after an
+    // upstream RST. Bound post-response silence so the gateway always closes
+    // the downstream client instead of holding a streamed request forever.
+    private static let linuxStreamInactivityTimeoutNanoseconds: UInt64 = 15_000_000_000
+    #endif
 
     /// Streaming responses can stay open far longer than a normal request,
     /// so this session relaxes the per-request and resource timeouts that
@@ -143,7 +149,10 @@ public enum BurnBarProxyStreaming {
         defaultContentType: String
     ) async throws -> BurnBarProviderProxyStream {
         #if os(Linux)
-        let delegate = LinuxURLSessionByteStreamDelegate(defaultContentType: defaultContentType)
+        let delegate = LinuxURLSessionByteStreamDelegate(
+            defaultContentType: defaultContentType,
+            inactivityTimeoutNanoseconds: linuxStreamInactivityTimeoutNanoseconds
+        )
         let stream = delegate.makeStream()
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 300
@@ -269,6 +278,7 @@ private final class LinuxURLSessionByteStreamDelegate: NSObject, URLSessionDataD
 
     private let lock = NSLock()
     private let defaultContentType: String
+    private let inactivityTimeoutNanoseconds: UInt64
     private var responseContinuation: CheckedContinuation<ResponseHead, Error>?
     private var responseResult: Result<ResponseHead, Error>?
     private var streamContinuation: AsyncThrowingStream<Data, Error>.Continuation?
@@ -278,9 +288,11 @@ private final class LinuxURLSessionByteStreamDelegate: NSObject, URLSessionDataD
     private var upstreamErrorData = Data()
     private var upstreamErrorHeaders: [String: String] = [:]
     private var finished = false
+    private var inactivityGeneration: UInt64 = 0
 
-    init(defaultContentType: String) {
+    init(defaultContentType: String, inactivityTimeoutNanoseconds: UInt64) {
         self.defaultContentType = defaultContentType
+        self.inactivityTimeoutNanoseconds = inactivityTimeoutNanoseconds
     }
 
     func makeStream() -> AsyncThrowingStream<Data, Error> {
@@ -334,6 +346,7 @@ private final class LinuxURLSessionByteStreamDelegate: NSObject, URLSessionDataD
             lock.lock()
             successStatusCode = httpResponse.statusCode
             lock.unlock()
+            armInactivityTimeout()
             completeResponse(.success(ResponseHead(statusCode: httpResponse.statusCode, contentType: contentType)))
         } else {
             lock.lock()
@@ -354,6 +367,7 @@ private final class LinuxURLSessionByteStreamDelegate: NSObject, URLSessionDataD
         lock.unlock()
 
         if isSuccess, !data.isEmpty {
+            armInactivityTimeout()
             continuation?.yield(data)
         }
     }
@@ -365,6 +379,7 @@ private final class LinuxURLSessionByteStreamDelegate: NSObject, URLSessionDataD
             return
         }
         finished = true
+        inactivityGeneration &+= 1
         let continuation = streamContinuation
         let upstreamStatus = upstreamErrorStatusCode
         let upstreamBody = String(data: upstreamErrorData, encoding: .utf8) ?? ""
@@ -411,6 +426,39 @@ private final class LinuxURLSessionByteStreamDelegate: NSObject, URLSessionDataD
         } else {
             lock.unlock()
         }
+    }
+
+    private func armInactivityTimeout() {
+        lock.lock()
+        guard !finished else {
+            lock.unlock()
+            return
+        }
+        inactivityGeneration &+= 1
+        let generation = inactivityGeneration
+        let timeout = inactivityTimeoutNanoseconds
+        lock.unlock()
+
+        Task.detached(priority: .utility) { [weak self] in
+            try? await Task.sleep(nanoseconds: timeout)
+            self?.timeoutIfCurrent(generation)
+        }
+    }
+
+    private func timeoutIfCurrent(_ generation: UInt64) {
+        lock.lock()
+        guard !finished, inactivityGeneration == generation else {
+            lock.unlock()
+            return
+        }
+        finished = true
+        inactivityGeneration &+= 1
+        let continuation = streamContinuation
+        lock.unlock()
+
+        let error = URLError(.timedOut)
+        completeResponse(.failure(error))
+        continuation?.finish(throwing: error)
     }
 }
 #endif
