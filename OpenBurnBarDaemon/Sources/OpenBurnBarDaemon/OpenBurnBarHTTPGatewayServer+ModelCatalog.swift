@@ -210,6 +210,76 @@ extension BurnBarHTTPGatewayServer {
         return routeKeysByFamily
     }
 
+    func configuredRouteUnavailableRejection(
+        clientModelID: String,
+        requestedModel: GatewayRequestedModel,
+        requestPath: String
+    ) async -> (failureMessage: String, response: GatewayHTTPResponse)? {
+        let providerID = requestedModel.providerID ?? (requestPath == "/v1/messages" ? "anthropic" : nil)
+        guard let providerID else { return nil }
+        guard providerID.caseInsensitiveCompare("anthropic") == .orderedSame else {
+            return nil
+        }
+
+        let configSnapshot = try? await configStore.snapshot()
+        let providerSettings = configSnapshot?.providerSettings(id: providerID)
+        let accountID = requestedModel.accountID ?? providerSettings?.preferredCredentialSlotID
+        let selectedSlot = accountID.flatMap { selectedAccountID in
+            providerSettings?.credentialSlots.first {
+                $0.slotID.caseInsensitiveCompare(selectedAccountID) == .orderedSame
+            }
+        }
+        let isClaudeOAuthSlot = selectedSlot?.authMethodID?
+            .caseInsensitiveCompare("anthropic-claude-oauth") == .orderedSame
+            || selectedSlot?.slotID.caseInsensitiveCompare("current-claude-code-login") == .orderedSame
+        guard isClaudeOAuthSlot else { return nil }
+
+        let requiresAuthenticationRecovery: Bool
+        switch selectedSlot?.status {
+        case .missingSecret:
+            requiresAuthenticationRecovery = true
+        case .ready:
+            let liveSnapshot = try? await catalogSource.snapshot()
+            let catalog = configStore.catalogSupport.catalog
+            requiresAuthenticationRecovery = liveSnapshot?.models.contains { model in
+                model.providerID.caseInsensitiveCompare(providerID) == .orderedSame
+                    && model.accountID.caseInsensitiveCompare(selectedSlot?.slotID ?? "") == .orderedSame
+                    && modelMatchesRequested(
+                        model,
+                        normalizedRequestedModelID: requestedModel.modelID.lowercased(),
+                        providerID: providerID,
+                        catalog: catalog
+                    )
+                    && model.routeEligible == false
+                    && Self.isCredentialRejection(model.lastError)
+            } == true
+        case .coolingDown, .exhausted, .disabled, .none:
+            requiresAuthenticationRecovery = false
+        }
+        guard requiresAuthenticationRecovery else { return nil }
+
+        let accountLabel = selectedSlot?.label.trimmingCharacters(in: .whitespacesAndNewlines)
+        let providerName = configStore.catalogSupport.provider(id: providerID)?.displayName ?? providerID
+        let accountDetail: String
+        if let accountLabel, !accountLabel.isEmpty {
+            accountDetail = "\(providerName) account '\(accountLabel)'"
+        } else {
+            accountDetail = providerName
+        }
+        let recovery = "Run `claude auth login` or reconnect Anthropic in OpenBurnBar Settings > Connections."
+        let detail = "No eligible route for \(clientModelID) on \(requestPath). "
+            + "The configured \(accountDetail) credential is missing or expired. \(recovery)"
+        return (
+            failureMessage: "Credential unavailable for \(clientModelID).",
+            response: jsonResponse(status: 503, body: errorBody(detail))
+        )
+    }
+
+    private static func isCredentialRejection(_ message: String?) -> Bool {
+        guard let message = message?.lowercased() else { return false }
+        return message.contains("http 401") || message.contains("http 403")
+    }
+
     func resolveAdvertisedRouteKeys(
         requestedModel: GatewayRequestedModel,
         advertisedRequestedModel: GatewayRequestedModel
