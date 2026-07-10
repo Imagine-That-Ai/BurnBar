@@ -5,7 +5,9 @@
   Wraps the UNPACKAGED WinUI 3 shell (windows/app/OpenBurnBar.App) into a signable
   MSIX WITHOUT changing the app project: the app keeps WindowsPackageType=None for the
   direct-download / winget / Chocolatey portable channel, and this WAP produces the
-  MSIX channel from the SAME binaries by referencing the app as its entry point.
+  MSIX channel from the SAME binaries by referencing the app as its entry point. Release
+  CI stages the already-published app with New-MsixPackage.ps1 + MakeAppx instead, avoiding
+  WAP global-property propagation into the unpackaged app build.
 
   BUILD CEILING (honest): the DesktopBridge props/targets, MakeAppx, MakePri, and the
   AppxManifest XSD gate are Windows-only — this project does NOT restore or build on
@@ -68,16 +70,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\app\OpenBurnBar.App\OpenBurnBar.App.csproj">
-      <!--
-        These WAP-only command-line properties are global MSBuild properties. Without this
-        boundary they propagate into the referenced unpackaged WinUI project, where
-        GenerateAppxPackageOnBuild=true correctly conflicts with WindowsPackageType=None.
-        WAP owns package generation; the app reference continues to publish unpackaged files
-        for Desktop Bridge to place into the MSIX.
-      -->
-      <GlobalPropertiesToRemove>GenerateAppxPackageOnBuild;AppxPackageDir;AppxPackageSigningEnabled;AppxBundle;AppxBundlePlatforms;UapAppxPackageBuildMode;AppxSymbolPackageEnabled</GlobalPropertiesToRemove>
-    </ProjectReference>
+    <ProjectReference Include="..\..\app\OpenBurnBar.App\OpenBurnBar.App.csproj" />
   </ItemGroup>
 
   <Import Project="$(WapProjPath)\Microsoft.DesktopBridge.targets" />

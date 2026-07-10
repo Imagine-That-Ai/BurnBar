@@ -33,35 +33,6 @@ for f in \
   if xmllint --noout "$f" 2>/tmp/obb_xmllint.err; then ok "$(basename "$f")"; else err "$(basename "$f"): $(cat /tmp/obb_xmllint.err)"; fi
 done
 
-echo "== WAP project-reference property isolation =="
-python3 - "$pkg_root" <<'PY' || fail=1
-import pathlib
-import sys
-import xml.etree.ElementTree as ET
-
-project = pathlib.Path(sys.argv[1]) / "msix" / "OpenBurnBar.Packaging.wapproj"
-namespace = {"msb": "http://schemas.microsoft.com/developer/msbuild/2003"}
-root = ET.parse(project).getroot()
-reference = root.find(".//msb:ProjectReference", namespace)
-if reference is None:
-    raise SystemExit("FAIL WAP app ProjectReference is missing")
-removed = reference.find("msb:GlobalPropertiesToRemove", namespace)
-values = set((removed.text if removed is not None and removed.text else "").split(";"))
-required = {
-    "GenerateAppxPackageOnBuild",
-    "AppxPackageDir",
-    "AppxPackageSigningEnabled",
-    "AppxBundle",
-    "AppxBundlePlatforms",
-    "UapAppxPackageBuildMode",
-    "AppxSymbolPackageEnabled",
-}
-missing = sorted(required - values)
-if missing:
-    raise SystemExit(f"FAIL WAP ProjectReference leaks package globals: {', '.join(missing)}")
-print("OK   WAP package globals do not propagate into the unpackaged WinUI project")
-PY
-
 echo "== JSON parse (portable layout + schema) =="
 python3 - "$pkg_root" <<'PY' || fail=1
 import json, sys
@@ -250,7 +221,7 @@ fi
 
 echo "== SOFT: PowerShell parse (pwsh, if available) =="
 if command -v pwsh >/dev/null 2>&1; then
-  for ps in "$pkg_root"/portable/New-PortableZip.ps1 "$pkg_root"/chocolatey/tools/*.ps1; do
+  for ps in "$pkg_root"/portable/New-PortableZip.ps1 "$pkg_root"/msix/New-MsixPackage.ps1 "$pkg_root"/chocolatey/tools/*.ps1; do
     if pwsh -NoProfile -NonInteractive -Command "\$e=\$null;[void][System.Management.Automation.Language.Parser]::ParseFile('$ps',[ref]\$null,[ref]\$e); if(\$e){\$e|%{Write-Error \$_.Message}; exit 1} else { exit 0 }" 2>/tmp/obb_ps.err; then
       ok "pwsh parse $(basename "$ps")"
     else

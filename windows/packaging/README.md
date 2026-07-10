@@ -10,6 +10,7 @@ pipeline's channel set (see [`docs/WINDOWS_PORT_MASTER_PLAN.md`](../../docs/WIND
 |------|---------|------------|
 | [`msix/Package.appxmanifest`](msix/Package.appxmanifest) | MSIX | Package identity, capabilities (`runFullTrust`, internet + local-network, `graphicsCaptureProgrammatic`), and the app extensions: `windows.protocol` (`openburnbar://`), two `windows.fileTypeAssociation`s (`.burnbarchat` / `.burnbarpane`), `windows.startupTask` (launch-at-login), `windows.toastNotificationActivation`. |
 | [`msix/OpenBurnBar.Packaging.wapproj`](msix/OpenBurnBar.Packaging.wapproj) | MSIX | Windows Application Packaging Project that wraps the **unpackaged** app (`../../app/OpenBurnBar.App`) into a signable MSIX without changing the app project. |
+| [`msix/New-MsixPackage.ps1`](msix/New-MsixPackage.ps1) | MSIX | Release-side deterministic packager: stages an already-published unpackaged app, stamps the resolved version + architecture into `AppxManifest.xml`, copies the reviewed visual assets, and invokes the Windows SDK's `MakeAppx`. |
 | [`msix/Images/`](msix/Images/) | MSIX | Committed scale-100 tile/logo assets generated from the WinUI app icon; `scripts/verify.sh` fails if any required PNG is missing or mis-sized. |
 | [`portable/portable-layout.json`](portable/portable-layout.json) | Portable zip | Declarative layout (+ [`portable-layout.schema.json`](portable/portable-layout.schema.json)) for the no-installer zip: entry point, `.portable` marker, README, checksum sidecar. |
 | [`portable/New-PortableZip.ps1`](portable/New-PortableZip.ps1) | Portable zip | PS7 script that stages a self-contained `dotnet publish` output into the layout, zips it, and emits the SHA256 sidecar the winget/Choco manifests + update feed consume. |
@@ -38,15 +39,15 @@ consistency) of the three winget files; JSON parse of the portable layout. SOFT 
 + portable layout, NuGet-core XSD validation of the nuspec, and `pwsh` parse of the
 PowerShell scripts.
 
-## Deferred to a Windows runner + the W0 cert (honest ceiling)
+## Deferred release finishing (honest ceiling)
 
-The following **cannot** be produced or proven on macOS and are gated on a Windows
-runner plus the W0 procurement item (Authenticode/EV **or** Azure Trusted Signing cert,
-Store account, winget publisher — Alberto, calendar-bound):
+The unsigned workflow-dispatch rehearsal builds x64 + ARM64 portable and MSIX artifacts on a
+Windows runner. The following remain gated on the W0 procurement item (Azure Trusted Signing
+certificate/profile, Store account, winget publisher — Alberto, calendar-bound):
 
-- **Actual MSIX build + sign** (`MakeAppx`/MSBuild `.wapproj` + `SignTool`/Trusted
-  Signing). `<Identity Publisher>` must equal the signing cert Subject; the release
-  pipeline passes `/p:PackageCertificateThumbprint=<W0>` (or Trusted Signing).
+- **Actual Authenticode signing + timestamp** (Azure Trusted Signing). `<Identity Publisher>`
+  must equal the signing certificate subject before the first signed release; the unsigned
+  rehearsal intentionally retains the reviewed placeholder publisher.
 - **Real artifact hashes**: the winget `InstallerSha256` (per arch), the winget
   `SignatureSha256` + `PackageFamilyName`, and the Chocolatey `checksum` values are
   release-stamped placeholders here (64 zero-hex, schema-valid). `New-PortableZip.ps1`
