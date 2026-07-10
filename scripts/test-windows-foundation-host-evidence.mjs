@@ -290,5 +290,10 @@ assert.match(
   /\^obb-storage-\[0-9a-f\]\{32\}\$/,
   "secret scanner must recognize its generated storage fixture identifiers",
 );
+assert.match(
+  runnerScript,
+  /\^openburnbar-foundation-evidence-\[0-9a-f\]\{7,40\}\$/,
+  "secret scanner must recognize its generated output-directory identifiers",
+);
 
 console.log("windows foundation host evidence validator tests passed");

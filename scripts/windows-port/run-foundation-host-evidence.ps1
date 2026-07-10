@@ -447,7 +447,8 @@ function Test-SecretLeaks([string] $Root) {
         }
         foreach ($match in $highEntropy.Matches($text)) {
             $value = $match.Value
-            $isEvidenceIdentifier = $value -match '^obb-storage-[0-9a-f]{32}$'
+            $isEvidenceIdentifier = $value -match '^obb-storage-[0-9a-f]{32}$' `
+                -or $value -match '^openburnbar-foundation-evidence-[0-9a-f]{7,40}$'
             if (-not $isEvidenceIdentifier -and $value -notmatch '(?i)REDACTED' -and (Measure-Entropy $value) -ge 4.2) {
                 $findings.Add([ordered]@{ path = $file.FullName; kind = 'high-entropy'; valueLength = $value.Length })
             }
