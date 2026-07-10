@@ -68,6 +68,15 @@ assert.ok(
   "Windows release attestations must generate and pass a per-artifact Sigstore predicate",
 );
 assert.match(
+  windowsReleaseWorkflow,
+  /unzip -q "\$archive" -d "sbom-input\/\$\{name\}"[\s\S]*path: sbom-input/,
+  "Windows SBOM generation must inventory expanded package contents",
+);
+assert.ok(
+  windowsReleaseWorkflow.includes("SBOM contains no dependency packages after expanding Windows artifacts"),
+  "Windows SBOM generation must fail closed when package dependencies are absent",
+);
+assert.match(
   read("windows/packaging/msix/New-MsixPackage.ps1"),
   /SetAttribute\("Version", "\$Version\.0"\)[\s\S]*SetAttribute\("ProcessorArchitecture", \$Architecture\)/,
   "MSIX staging must stamp the resolved version and target architecture into the package identity",
