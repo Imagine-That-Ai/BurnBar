@@ -1,0 +1,79 @@
+OpenBurnBar Linux native-shell runtime acceptance
+Date: 2026-07-10
+Guest: Ubuntu 24.04.4 LTS, aarch64, GNOME X11
+Candidate: production custom-protocol ELF
+SHA-256: cfc14d7da1124d32d2370adf515cf4636b7c1c0345376377f71d09bd0099608d
+
+Launch environment:
+  HOME=/home/burnbar
+  DISPLAY=:0
+  XAUTHORITY=/run/user/1000/gdm/Xauthority
+  DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+  XDG_RUNTIME_DIR=/run/user/1000
+  XDG_SESSION_TYPE=x11
+  GDK_BACKEND=x11
+  LIBGL_ALWAYS_SOFTWARE=1
+  WEBKIT_DISABLE_COMPOSITING_MODE=1
+
+1. Background launch
+  /tmp/openburnbar-native --background
+  hidden_processes=1
+  hidden_windows=0
+
+2. Secondary deep-link launch
+  /tmp/openburnbar-native openburnbar://chat
+  routed_processes=1
+  routed_windows=2
+
+  The two X11 window IDs are the window-manager frame and the single
+  OpenBurnBar client surface. Visual inspection confirmed the existing process
+  focused one Chat surface; no second application process or surface appeared.
+
+3. Native StatusNotifier/AppIndicator export
+  Service owner: :1.156 (openburnbar-native)
+  Item path:
+    /org/ayatana/NotificationItem/tray_icon_tray_app_openburnbar_main
+  Menu path:
+    /org/ayatana/NotificationItem/tray_icon_tray_app_openburnbar_main/Menu
+
+  com.canonical.dbusmenu.GetLayout exposed:
+    Open dashboard
+    Open chat
+    Open providers
+    Check updates
+    Connecting to daemon...
+    Today: waiting for usage
+    Quota: waiting for providers
+    Providers: waiting for data
+    Start at login
+    Reconnect daemon
+    Quit OpenBurnBar
+
+  The GNOME top bar rendered the bundled OpenBurnBar icon and the menu. The
+  offline rows remained disabled and explicitly reported waiting state.
+
+4. XDG login-start round trip through the exported native menu item
+  path=/home/burnbar/.config/autostart/dev.openburnbar.OpenBurnBar.desktop
+
+  disable_removed=yes
+  enable_created=yes
+  mode=600 owner=burnbar:burnbar
+  candidate_entry_sha256=e438b15af948bc448594e206f7291c44fa4ecb3f977db7f704cee28a6b963c50
+  canonical_entry_sha256=e438b15af948bc448594e206f7291c44fa4ecb3f977db7f704cee28a6b963c50
+  cleanup_removed=yes
+
+5. Honest degraded state
+  The VM intentionally had no daemon HTTP gateway or media socket. The Chat
+  surface reported "Chat / Hermes is unavailable" and the tray retained
+  connecting/waiting labels; neither surface fabricated live usage or provider
+  data.
+
+Evidence images:
+  native-chat-deep-link-gnome-x11.png
+  native-tray-menu-gnome-x11.png
+
+Scope note:
+  This is direct ARM64 GNOME X11 runtime evidence for the production-protocol
+  executable, not installed package certification. GNOME Wayland, KDE,
+  wlroots, x86_64, login-session relaunch, and package upgrade/uninstall rows
+  remain open.

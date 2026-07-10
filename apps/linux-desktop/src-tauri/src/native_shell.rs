@@ -11,7 +11,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::menu::{
     CheckMenuItem, CheckMenuItemBuilder, MenuBuilder, MenuItem, MenuItemBuilder, PredefinedMenuItem,
 };
-use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, Wry};
 use url::Url;
 
@@ -370,7 +370,12 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         ])
         .build()?;
 
+    let icon = app
+        .default_window_icon()
+        .cloned()
+        .ok_or_else(|| tauri::Error::AssetNotFound("default OpenBurnBar tray icon".to_string()))?;
     let tray = TrayIconBuilder::with_id("openburnbar-main")
+        .icon(icon)
         .menu(&menu)
         .tooltip("OpenBurnBar - connecting")
         .on_menu_event(|app, event| match event.id.as_ref() {
@@ -405,18 +410,8 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             "quit" => app.exit(0),
             _ => {}
         })
-        .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::Click {
-                button: MouseButton::Left,
-                button_state: MouseButtonState::Up,
-                ..
-            } = event
-            {
-                route_from_tray(tray.app_handle(), "overview", "open-dashboard");
-            }
-        })
         .build(app)?;
-    let _ = tray.set_show_menu_on_left_click(false);
+    let _ = tray.set_show_menu_on_left_click(true);
     app.state::<NativeShellState>()
         .install_tray_handles(TrayHandles {
             status,

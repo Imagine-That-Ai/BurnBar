@@ -119,6 +119,17 @@ listener-before-drain ordering, refresh coalescing, freshness projection, XDG
 path rejection, exact autostart round-trip and permissions, Settings mutation,
 and packaging-copy equality.
 
+An ARM64 Ubuntu 24.04 GNOME X11 runtime pass also exercised the
+production-protocol executable with SHA-256
+`cfc14d7da1124d32d2370adf515cf4636b7c1c0345376377f71d09bd0099608d`.
+It proved a hidden background launch, one-process `openburnbar://chat` routing,
+the bundled tray icon and exported native menu, honest daemon-offline labels,
+and a native-menu login-start off/on/off round trip. The created user entry was
+mode `0600`, user-owned, and byte-identical to the canonical packaging entry.
+See `evidence/mission-003-native-shell/runtime-transcript.txt` and the adjacent
+GNOME X11 screenshots. This is direct executable evidence, not installed
+package or desktop-matrix certification.
+
 ## Remaining certification
 
 `LNX-NATIVE-001`, `P-26`, `P-27`, and `GAP-014` remain open until an exact

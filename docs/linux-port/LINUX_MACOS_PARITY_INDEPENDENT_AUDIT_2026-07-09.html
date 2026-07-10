@@ -310,7 +310,7 @@ that historical installed baseline:</p>
 <ul>
 <li><strong>100</strong> fail-closed Swift Core/security/daemon tests passed across XDG paths, provider
 discovery, gateway, switcher, Pensieve/inotify, Computer Use, and Mercury;</li>
-<li><strong>62 files / 418 tests</strong> passed in the Linux desktop suite, including every
+<li><strong>62 files / 419 tests</strong> passed in the Linux desktop suite, including every
 route under axe, six-layout state, provider-path parity, durable memory, and
 real Mercury RPC decoding plus native-shell lifecycle and settings coverage;</li>
 <li><strong>24/24</strong> Tauri Rust tests, <strong>3/3</strong> media-crate tests, <strong>40/40</strong> extension
@@ -460,13 +460,18 @@ oracle. Generated evidence was accepted only when the underlying mechanism and
 live product state were independently reproducible.</p>
 <h3>Verification performed</h3>
 <ul>
-<li><code>npm test --prefix apps/linux-desktop -- --maxWorkers=2</code>: <strong>62 files, 418 tests passed</strong>.</li>
+<li><code>npm test --prefix apps/linux-desktop -- --maxWorkers=2</code>: <strong>62 files, 419 tests passed</strong>.</li>
 <li><code>npm run build --prefix apps/linux-desktop</code>: <strong>passed</strong>; the main JavaScript
-chunk is <strong>662.37 kB</strong> minified and Vite reports a chunk-size warning.</li>
+chunk is <strong>662.74 kB</strong> minified and Vite reports a chunk-size warning.</li>
 <li><code>cargo test --manifest-path apps/linux-desktop/src-tauri/Cargo.toml</code>:
 <strong>24/24 passed</strong>, including native deep-link/autostart, capability-catalog,
 Mercury-probe, update-feed, URL, gateway, panic-shortcut, and wire-contract
 coverage.</li>
+<li>ARM64 Ubuntu 24.04 GNOME X11 native-shell pass: production-protocol ELF
+<code>cfc14d7da1124d32d2370adf515cf4636b7c1c0345376377f71d09bd0099608d</code>
+stayed at one process through <code>openburnbar://chat</code>, rendered the bundled tray
+icon/menu, preserved honest offline state, and completed a native-menu XDG
+login-start off/on/off round trip with canonical <code>0600</code> user-owned content.</li>
 <li>Fail-closed OpenBurnBar Core/security/daemon Linux manifest: <strong>100/100 passed</strong>.</li>
 <li>Linux media crate capability/capture/decode suite: <strong>3/3 passed</strong>.</li>
 <li>Extension daemon-client suite: <strong>40/40 passed</strong>.</li>
@@ -1518,7 +1523,11 @@ owns single-instance arbitration, background launch, an allowlisted
 <code>openburnbar://</code> parser, listener-race-safe delivery, window focus, live tray
 actions/facts, and atomic user XDG autostart mutation. The renderer accepts only
 correlated typed route/action pairs. deb, rpm, AppImage, and AUR packaging share
-the canonical autostart entry. See <code>LINUX_NATIVE_SHELL_AUTHORITY.md</code>.</p>
+the canonical autostart entry. Direct ARM64 GNOME X11 evidence now proves hidden
+background launch, one-process Chat routing, the bundled icon/native menu, and
+an exact login-start off/on/off round trip. This is not installed package or
+desktop-matrix certification. See <code>LINUX_NATIVE_SHELL_AUTHORITY.md</code> and
+<code>evidence/mission-003-native-shell/runtime-transcript.txt</code>.</p>
 <ul>
 <li><strong>Difference:</strong> macOS provides a rich menu-bar experience with live cost,
 quota, providers, quick switch, chat, freshness, and update state. Linux now
@@ -1670,7 +1679,7 @@ backoff and coalesced mounted-route reloads. See
 <li><strong>Difference:</strong> Linux now has daemon-owned bounded pull subscriptions, a
 single-flight data supervisor, packaged startup/reopen/reconnect percentiles,
 a matched Swift workload harness, Rust boundary tests, and a 30-minute soak
-contract. It still lacks a native push stream. The built main chunk is 662.37
+contract. It still lacks a native push stream. The built main chunk is 662.74
 kB minified and still triggers the Vite size warning. Exact-candidate
 suspend/portal/keyring recovery, comparable-hardware macOS/Linux p95/p99, and
 the full desktop matrix remain unproven.</li>
