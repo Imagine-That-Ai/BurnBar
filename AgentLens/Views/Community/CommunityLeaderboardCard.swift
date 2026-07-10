@@ -30,7 +30,8 @@ struct CommunityLeaderboardCard: View {
                         neededCount: CommunityDisplayFormatter.thresholdNeededCount(
                             kThreshold: board.kThreshold,
                             cohortSize: board.cohortSize
-                        )
+                        ),
+                        includesCardChrome: false
                     )
                 } else if let board = displayBoard {
                     leaderboardBody(board)

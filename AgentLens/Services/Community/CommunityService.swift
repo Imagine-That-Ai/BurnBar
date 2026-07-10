@@ -109,8 +109,8 @@ final class CommunityService: ObservableObject {
             async let consentData = community.document("consent").getData()
             async let profileData = community.document("profile").getData()
             let (consent, prof) = try await (consentData, profileData)
-            remoteConsent = try decode(FirestoreCommunityConsentDoc.self, from: consent)
-            profile = try decode(FirestoreCommunityProfileDoc.self, from: prof)
+            remoteConsent = try decodeOptional(FirestoreCommunityConsentDoc.self, from: consent)
+            profile = try decodeOptional(FirestoreCommunityProfileDoc.self, from: prof)
             lastError = nil
         } catch {
             lastError = error.localizedDescription
@@ -196,6 +196,11 @@ final class CommunityService: ObservableObject {
         } catch {
             throw CommunityServiceError.malformedResponse
         }
+    }
+
+    private func decodeOptional<T: Decodable>(_ type: T.Type, from data: Any?) throws -> T? {
+        guard let data, !(data is NSNull) else { return nil }
+        return try decode(type, from: data)
     }
 
     private static func encodeJSONObject<Request: Encodable>(_ request: Request) throws -> NSDictionary {
