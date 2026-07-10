@@ -49,7 +49,7 @@ public struct LinuxDesktopAuthCredentialEnvelope: Codable, Equatable, Sendable {
     }
 }
 
-public struct LinuxDesktopAuthDeliveryKey: Sendable {
+public struct LinuxDesktopAuthDeliveryKey {
     public static let algorithm = "p256-ecdh-aes-256-gcm-v2"
     public static let keyContext = "OpenBurnBar desktop auth credential delivery v2"
     public static let aadPrefix = "openburnbar:desktop-auth:credential-delivery:v2:"

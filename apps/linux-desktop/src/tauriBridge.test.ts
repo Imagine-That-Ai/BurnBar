@@ -5,6 +5,7 @@ import {
   decodeAccountStatus,
   decodeDaemonSubscriptionResponse,
   decodeDaemonSubscriptionStopResponse,
+  decodeProviderExternalAuthFlow,
   decodeNativeDeepLink,
   decodeNativeNotificationCapabilities,
   decodeNativeNotificationResult,
@@ -14,6 +15,92 @@ import {
 } from './tauriBridge';
 
 const ACCOUNT_UPDATED_AT = '2026-07-10T12:00:00Z';
+
+function providerExternalAuthResponse(flow: Record<string, unknown>) {
+  return {
+    flow: {
+      flowID: null,
+      providerID: 'openai',
+      providerDisplayName: 'OpenAI',
+      authMethodID: 'openai-codex-oauth',
+      authMethodDisplayName: 'Sign in with ChatGPT',
+      cliDisplayName: 'Codex',
+      state: 'idle',
+      availability: 'available',
+      cliInstalled: true,
+      connected: false,
+      accountDescription: null,
+      problem: null,
+      startedAt: null,
+      updatedAt: ACCOUNT_UPDATED_AT,
+      expiresAt: null,
+      completedAt: null,
+      ...flow
+    }
+  };
+}
+
+describe('provider external auth wire decoding', () => {
+  it('strictly decodes a registry-backed active flow', () => {
+    expect(decodeProviderExternalAuthFlow(providerExternalAuthResponse({
+      flowID: 'provider-flow-1',
+      state: 'awaiting_user',
+      startedAt: ACCOUNT_UPDATED_AT,
+      expiresAt: '2026-07-10T12:05:00Z'
+    }))).toMatchObject({
+      flowId: 'provider-flow-1',
+      providerId: 'openai',
+      authMethodId: 'openai-codex-oauth',
+      state: 'awaiting_user',
+      cliInstalled: true
+    });
+  });
+
+  it('drops injected credentials, terminal output, paths, and callback material', () => {
+    const decoded = decodeProviderExternalAuthFlow(providerExternalAuthResponse({
+      token: 'oauth-secret',
+      terminalOutput: 'callback-secret',
+      executablePath: '/secret/codex',
+      configDirectory: '/secret/config',
+      callbackURL: 'http://127.0.0.1/?code=secret'
+    }));
+    expect(JSON.stringify(decoded)).not.toMatch(/oauth-secret|callback-secret|\/secret|127\.0\.0\.1/);
+  });
+
+  it('accepts a sanitized preflight failure without inventing a flow', () => {
+    expect(decodeProviderExternalAuthFlow(providerExternalAuthResponse({
+      state: 'failed',
+      availability: 'unavailable',
+      cliInstalled: false,
+      problem: {
+        code: 'executable_not_found',
+        message: 'Codex is not installed.',
+        recoverable: true
+      }
+    }))).toMatchObject({
+      state: 'failed',
+      flowId: undefined,
+      problem: { code: 'executable_not_found' }
+    });
+  });
+
+  it('rejects malformed lifecycle combinations and unknown problem codes', () => {
+    expect(() => decodeProviderExternalAuthFlow(providerExternalAuthResponse({
+      flowID: null,
+      state: 'awaiting_user'
+    }))).toThrow('flowID');
+    expect(() => decodeProviderExternalAuthFlow(providerExternalAuthResponse({
+      state: 'succeeded',
+      flowID: 'provider-flow-1',
+      startedAt: ACCOUNT_UPDATED_AT,
+      completedAt: ACCOUNT_UPDATED_AT,
+      connected: false
+    }))).toThrow('connected');
+    expect(() => decodeProviderExternalAuthFlow(providerExternalAuthResponse({
+      problem: { code: 'raw_oauth_error', message: 'secret', recoverable: true }
+    }))).toThrow('problem.code');
+  });
+});
 
 function accountResponse(account: Record<string, unknown>) {
   return {

@@ -5,6 +5,10 @@ import { fixtureProviderCatalog } from '../../daemonFixture.js';
 import { useShellStore } from '../../state/shellStore.js';
 import { useProvidersStore } from '../../state/providersStore.js';
 import { ProvidersSurface } from '../ProvidersSurface.js';
+import {
+  SETTINGS_PROVIDER_STORAGE_KEY
+} from '../settings/providerSettingsNavigation.js';
+import { SETTINGS_TAB_STORAGE_KEY } from '../settings/settingsTabs.js';
 
 const defaultProvidersLoad = useProvidersStore.getState().load;
 
@@ -87,6 +91,19 @@ describe('ProvidersSurface (quota workspace)', () => {
     await waitFor(() => expect(screen.getByText(/Focused on/i)).toBeTruthy());
     fireEvent.click(screen.getAllByRole('button', { name: 'Show all providers' })[0]);
     await waitFor(() => expect(screen.queryByText(/Focused on/i)).toBeNull());
+  });
+
+  it('opens Agents settings for the provider selected from a quota card', async () => {
+    useShellStore.setState({ fixtureMode: true });
+    const { container } = render(<ProvidersSurface />);
+    await waitFor(() => expect(container.querySelector('.quota-card[data-provider="anthropic"]')).not.toBeNull());
+    const anthropicCard = container.querySelector('.quota-card[data-provider="anthropic"]');
+    const manage = anthropicCard?.querySelector<HTMLButtonElement>('.quota-card-manage');
+    expect(manage).not.toBeNull();
+    fireEvent.click(manage!);
+    expect(useShellStore.getState().route).toBe('settings');
+    expect(localStorage.getItem(SETTINGS_TAB_STORAGE_KEY)).toBe('agents');
+    expect(localStorage.getItem(SETTINGS_PROVIDER_STORAGE_KEY)).toBe('anthropic');
   });
 
   it('shows offline notice without bridge or fixture', async () => {

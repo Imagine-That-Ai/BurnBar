@@ -19,8 +19,13 @@ import { SettingRow } from './SettingRow.js';
 import { ReadOnlyToggle } from './ReadOnlyToggle.js';
 import { SettingsHomeView } from './SettingsHomeView.js';
 import { NativeShellSettings } from './NativeShellSettings.js';
+import { ProviderExternalAuthPanel } from './ProviderExternalAuthPanel.js';
 import { SettingsAppearanceControls } from './SettingsAppearanceControls.js';
 import { SettingsDrillRow } from './SettingsDrillRow.js';
+import {
+  readProviderSettingsSelection,
+  storeProviderSettingsSelection
+} from './providerSettingsNavigation.js';
 import { settingsTabMeta, type SettingsTabId } from './settingsTabs.js';
 
 const UPDATE_CHANNEL_COPY: Record<'deb' | 'rpm' | 'appimage' | 'unknown', string> = {
@@ -142,7 +147,9 @@ function providerDisplay(provider: ProviderSettings): string {
 
 function AgentsDetail({ config }: { config: ConfigSnapshot }) {
   const providers = config.providers ?? [];
-  const [selectedProviderID, setSelectedProviderID] = useState(providers[0]?.providerID ?? '');
+  const [selectedProviderID, setSelectedProviderID] = useState(() =>
+    readProviderSettingsSelection(providers.map((provider) => provider.providerID))
+  );
   const health = useShellStore((s) => s.health);
   const busy = useSettingsWiringStore((s) => s.busy);
   const error = useSettingsWiringStore((s) => s.error);
@@ -214,7 +221,12 @@ function AgentsDetail({ config }: { config: ConfigSnapshot }) {
           label="Router mode"
           description="Matches macOS model proxy routing strategy at daemon config scope."
           control={
-            <select value={config.routerMode ?? 'providerFamilyFailover'} disabled={disabled} onChange={(e) => setRouterMode(e.currentTarget.value)}>
+            <select
+              aria-label="Router mode"
+              value={config.routerMode ?? 'providerFamilyFailover'}
+              disabled={disabled}
+              onChange={(e) => setRouterMode(e.currentTarget.value)}
+            >
               <option value="providerFamilyFailover">Provider family failover</option>
               <option value="exactModelOnly">Exact model only</option>
               <option value="cheapest">Cheapest eligible</option>
@@ -229,7 +241,16 @@ function AgentsDetail({ config }: { config: ConfigSnapshot }) {
           label="Provider"
           description="Choose the daemon provider row to edit."
           control={
-            <select value={provider.providerID} disabled={disabled} onChange={(e) => setSelectedProviderID(e.currentTarget.value)}>
+            <select
+              aria-label="Provider"
+              value={provider.providerID}
+              disabled={disabled}
+              onChange={(event) => {
+                const providerID = event.currentTarget.value;
+                setSelectedProviderID(providerID);
+                storeProviderSettingsSelection(providerID);
+              }}
+            >
               {providers.map((p) => (
                 <option key={p.providerID} value={p.providerID}>
                   {providerDisplay(p)}
@@ -270,6 +291,8 @@ function AgentsDetail({ config }: { config: ConfigSnapshot }) {
           />
         </form>
       </SettingGroup>
+
+      <ProviderExternalAuthPanel key={provider.providerID} providerID={provider.providerID} />
 
       <SettingGroup title="Credential Slots" sectionHeader hideTitle>
         {provider.credentialSlots.map((slot) => (

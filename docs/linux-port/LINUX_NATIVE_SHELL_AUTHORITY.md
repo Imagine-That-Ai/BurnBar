@@ -5,17 +5,19 @@ notification action primitives implemented; the desktop-session harness now
 captures tray, compact-status, deep-link, and deterministic notification action
 and tray-host restart recovery artifacts plus a global panic chord dispatched
 while another X11 window has focus, and the desktop-matrix harness
-requires native-shell evidence before a row can become ready. Installed desktop
-matrix breadth, provider external-login parity, and cloud agent-reply quick-reply
-parity remain open.
+requires native-shell evidence before a row can become ready. Provider external
+login now has a daemon-owned typed source implementation. Installed desktop and
+provider-login matrix breadth plus cloud agent-reply quick-reply parity remain
+open.
 
 This document records the native shell contract introduced for
 `LNX-NATIVE-001`. It covers process ownership, background launch, typed deep
 links, the live tray, the compact status window, source-level freedesktop
-notifications, and user-scoped XDG login start. It does not claim that the
-cloud agent-reply listener/quick-reply path, a provider external-login matrix,
-or every Linux tray host is complete. The matrix gate now prevents those source
-capabilities from being promoted without installed desktop evidence.
+notifications, user-scoped XDG login start, and daemon-owned provider external
+login. It does not claim that the cloud agent-reply listener/quick-reply path,
+an installed provider-login matrix, or every Linux tray host is complete. The
+matrix gate prevents source capabilities from being promoted without installed
+desktop evidence.
 
 ## Authority boundary
 
@@ -29,6 +31,7 @@ only typed data:
 - `NativeStatusSnapshot { shell, tray }`
 - `NativeNotificationCapabilities`
 - `NativeNotificationResult`
+- `BurnBarProviderExternalAuthFlowSnapshot`
 
 Raw URLs and filesystem write paths do not cross into renderer-owned logic.
 The TypeScript bridge independently validates each route, action, route/action
@@ -70,9 +73,19 @@ scheme, and no user info, password, port, query, fragment, or control character.
 Provider/account OAuth callbacks with state or authorization material are not
 accepted by this generic route. Account sign-in uses the daemon-owned device
 approval flow. Codex and Claude provider OAuth remain owned by their provider
-CLIs, matching macOS; Linux still needs a typed native start/status/cancel
-workflow that launches and monitors those trusted CLI flows without exposing
-tokens, callback URLs, auth files, or terminal output to the renderer.
+CLIs, matching macOS. Linux exposes typed `start`, `status`, and `cancel` RPCs
+for the registry-approved `openai`/Codex and `anthropic`/Claude login methods.
+The daemon owns the five-minute flow, creates a private launcher session, opens
+an allowlisted terminal, monitors an exit marker, verifies the provider's local
+auth state, and preserves terminal outcomes across renderer or daemon restarts.
+The renderer receives display metadata, flow state, connection state, bounded
+timestamps, and sanitized problem codes only; tokens, callback URLs, auth paths,
+arguments, stdout, and stderr remain daemon-owned.
+
+This workflow intentionally uses each CLI's standard `~/.codex` or `~/.claude`
+credential directory. It does not claim isolated provider multi-account
+profiles; that requires a separate durable profile/switcher schema before the
+UI can offer account switching honestly.
 
 ## Live tray
 
@@ -327,9 +340,12 @@ installed candidate passes:
 6. portal/global-shortcut behavior and daemon-backed panic latency on the real
    GNOME/KDE/wlroots matrix without the tray becoming a sole safety path;
 7. cloud agent-reply notification listener, App Check, CloudVault reply sealing,
-   and accessible quick-reply send/open parity with macOS.
+   and accessible quick-reply send/open parity with macOS;
+8. provider external-login success, cancellation, timeout, missing-CLI,
+   terminal-close, daemon-restart, keyboard, and assistive-technology behavior
+   on GNOME, KDE, X11, and the declared wlroots fallback.
 
 The source foundation is complete only for the capabilities described above.
-Installed notification breadth, provider external login, cloud quick reply, and
-the final desktop matrix must remain visibly blocked until their product evidence
-exists.
+Installed notification breadth, the provider external-login desktop matrix,
+cloud quick reply, and the final desktop matrix must remain visibly blocked
+until their product evidence exists.

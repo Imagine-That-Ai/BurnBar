@@ -155,7 +155,7 @@ export function QuotaCard({ entry, onManage }: { entry: SubscriptionEntry; onMan
   );
 }
 
-export function QuotaListRow({ entry }: { entry: SubscriptionEntry }) {
+export function QuotaListRow({ entry, onManage }: { entry: SubscriptionEntry; onManage?: () => void }) {
   const glyph = findProviderGlyph(entry.providerId);
   const accent = glyph.accent.startsWith('#') ? 'var(--color-brass-core)' : glyph.accent;
   return (
@@ -170,6 +170,9 @@ export function QuotaListRow({ entry }: { entry: SubscriptionEntry }) {
         <WindowRow label="Long" bucket={entry.longBucket ?? entry.primaryBucket} />
       </div>
       <span className="quota-list-pct mono">{entry.remainingPercentRounded}%</span>
+      <button type="button" className="ghost quota-card-manage" onClick={onManage}>
+        Manage
+      </button>
     </div>
   );
 }

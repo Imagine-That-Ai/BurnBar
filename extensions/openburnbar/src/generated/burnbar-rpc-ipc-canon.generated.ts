@@ -882,6 +882,36 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.provider.external_auth.cancel",
+    "caseName": "providerExternalAuthCancel",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarProviderExternalAuthFlowRequest",
+    "result": "BurnBarProviderExternalAuthResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.provider.external_auth.start",
+    "caseName": "providerExternalAuthStart",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarProviderExternalAuthStartRequest",
+    "result": "BurnBarProviderExternalAuthResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.provider.external_auth.status",
+    "caseName": "providerExternalAuthStatus",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarProviderExternalAuthStatusRequest",
+    "result": "BurnBarProviderExternalAuthResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.provider.model_alias.remove",
     "caseName": "providerModelAliasRemove",
     "domain": "config",

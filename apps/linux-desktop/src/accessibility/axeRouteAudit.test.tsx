@@ -8,8 +8,15 @@ import { App } from '../app/App.js';
 import { ROUTES, type ShellRoute } from '../routes.js';
 import { useShellStore } from '../state/shellStore.js';
 import { resetAccountStoreForTests, useAccountStore } from '../state/accountStore.js';
+import {
+  resetProviderExternalAuthStoreForTests,
+  useProviderExternalAuthStore
+} from '../state/providerExternalAuthStore.js';
+import { useSystemStore } from '../state/systemStore.js';
 import { bridgeStubDefaults, makeAvailableRuntimeCapabilityManifest } from '../testing/bridgeStubs.js';
-import type { LinuxShellBridge } from '../tauriBridge.js';
+import type { LinuxShellBridge, ProviderExternalAuthFlowSnapshot } from '../tauriBridge.js';
+import { fixtureConfigSnapshot } from '../daemonFixture.js';
+import { SETTINGS_TAB_STORAGE_KEY } from '../surfaces/settings/settingsTabs.js';
 
 type AuditRow = {
   state: string;
@@ -147,6 +154,56 @@ describe('axe route accessibility audit', () => {
     });
     auditRows.push(await auditState('account-authorization-pending', 'account'));
     resetAccountStoreForTests();
+
+    const providerAuthFlow = (
+      state: 'awaiting_user' | 'failed'
+    ): ProviderExternalAuthFlowSnapshot => ({
+      flowId: 'axe-provider-flow',
+      providerId: 'openai',
+      providerDisplayName: 'OpenAI',
+      authMethodId: 'openai-codex-oauth',
+      authMethodDisplayName: 'Sign in with OpenAI / Codex',
+      cliDisplayName: 'Codex',
+      state,
+      availability: 'available',
+      cliInstalled: true,
+      connected: false,
+      problem: state === 'failed' ? {
+        code: 'verification_failed',
+        message: 'Codex sign-in could not be verified. Try again.',
+        recoverable: true
+      } : undefined,
+      startedAt: '2026-07-10T12:00:00.000Z',
+      updatedAt: '2026-07-10T12:00:10.000Z',
+      expiresAt: state === 'awaiting_user' ? '2026-07-10T12:05:00.000Z' : undefined,
+      completedAt: state === 'failed' ? '2026-07-10T12:00:10.000Z' : undefined
+    });
+    const config = fixtureConfigSnapshot();
+    for (const providerState of ['awaiting_user', 'failed'] as const) {
+      resetShell('settings');
+      localStorage.setItem(SETTINGS_TAB_STORAGE_KEY, 'agents');
+      useSystemStore.setState({ config, loading: false, error: null });
+      const snapshot = providerAuthFlow(providerState);
+      useProviderExternalAuthStore.setState({ snapshots: { openai: snapshot } });
+      useShellStore.setState({
+        bridge: {
+          ...bridgeStubDefaults,
+          configSnapshot: async () => config,
+          accountStatus: async () => ({
+            state: 'signed_out',
+            signedIn: false,
+            trustClass: 'linux-lower-trust',
+            syncState: 'local-only',
+            updatedAt: '2026-07-10T12:00:00.000Z'
+          }),
+          providerExternalAuthStatus: async () => snapshot
+        } as unknown as LinuxShellBridge,
+        runtimeCapabilities: makeAvailableRuntimeCapabilityManifest(),
+        fixtureMode: false
+      });
+      auditRows.push(await auditState(`provider-auth-${providerState}`, 'settings'));
+      resetProviderExternalAuthStoreForTests();
+    }
 
     const failures = auditRows.filter((row) => row.violationCount > 0);
     expect(failures, JSON.stringify(failures, null, 2)).toEqual([]);
