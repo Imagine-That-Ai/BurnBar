@@ -43,8 +43,9 @@ secondary deep-link relaunch artifacts named by the producer. It also captures a
 deterministic XFCE/AppIndicator StatusNotifier host loss/restart pass that
 refreshes recovered menu handles and rejects duplicate registered items or
 extra app processes. Current installed evidence remains blocked until VM runs
-capture complete login-start relogin/uninstall lifecycle and real desktop
-notification breadth beyond the deterministic test server.
+capture real desktop notification breadth beyond the deterministic test server
+and display-manager/package-manager breadth beyond the deterministic
+login-start lifecycle harness.
 The current auth packet also adds purpose-bound in-app device authorization,
 daemon-owned Firebase token exchange and refresh, writable-keyring preflight,
 local sign-out, and a strict renderer-redacted account contract. Native Linux
@@ -292,7 +293,7 @@ required gates and were not made green by the Ed25519 result.
 | P-23 | Provider/model workspace | Provider and model deep dives, health, catalog, failover, routing | Quota-centric provider route; no equivalent model workspace/failover flow | Partial | Medium |
 | P-24 | Settings | 16 searchable tabs with deep links and writable state | 13 tabs; Model Proxy, Computer Use, Pets omitted; several controls read-only | Partial | Medium |
 | P-25 | Updates | Automatic checks, channel, install/restart truth | Native signed-feed availability check fails closed; valid public feed and package-manager install/restart/rollback proof remain open | Partial | High |
-| P-26 | Tray and native shell | Rich live menu-bar status, quick switch, chat, quota, update state | Live cost/tokens, quota floor, provider count, freshness, compact status window, dashboard/chat/provider/update/reconnect/login-start/quit actions exist; matrix rows now require and can emit native-shell evidence; deterministic installed tray/status/deep-link/notification and XFCE/AppIndicator host-loss captures exist; account quick switch and full installed desktop matrix proof remain | Near parity | High |
+| P-26 | Tray and native shell | Rich live menu-bar status, quick switch, chat, quota, update state | Live cost/tokens, quota floor, provider count, freshness, compact status window, dashboard/chat/provider/update/reconnect/login-start/quit actions exist; matrix rows now require and can emit native-shell evidence; deterministic installed tray/status/deep-link/notification/login-start and XFCE/AppIndicator host-loss captures exist; account quick switch and full installed desktop matrix proof remain | Near parity | High |
 | P-27 | Notifications/deep links | Actionable notifications, OAuth return, global commands, login start | Single-instance validated deep links, membership return, background launch, XDG login start, source-level freedesktop notification actions, deterministic installed notification server/action/response/relaunch capture, and daemon-backed panic shortcut exist; cloud agent-reply listener/inline reply, provider OAuth callback contract, rich desktop notification breadth, and installed shortcut/desktop matrix proof remain | Partial | High |
 | P-28 | SmartHub | Discovery, status, allowlisted device actions | Runtime requires a trusted root-owned packaged CLI and otherwise fails closed; real device outcomes remain unproven | Partial | High |
 | P-29 | Text expansion | Global, secure-field-aware expansion, persistence, sync, previews | Preview-only in-app engine, plaintext localStorage, no normal composer hook | Substitute | High |
@@ -825,8 +826,9 @@ row can become ready; `verify-shell-evidence.mjs` emits that JSON from
 installed-session artifacts and records missing rows instead of claiming false
 success. The packaged desktop-session harness now records tray route actions,
 compact status accessibility, deterministic freedesktop notification
-server/action/response/relaunch routing, secondary deep-link relaunch, and
-XFCE/AppIndicator host-loss/restart recovery artifacts. Direct ARM64 GNOME X11 evidence still proves hidden background
+server/action/response/relaunch routing, secondary deep-link relaunch,
+fresh-session login-start lifecycle, and XFCE/AppIndicator host-loss/restart
+recovery artifacts. Direct ARM64 GNOME X11 evidence still proves hidden background
 launch, one-process Chat routing, the bundled icon/native menu, and an exact
 login-start off/on/off round trip. This is not full installed desktop-matrix,
 rich notification-host, cross-desktop tray-host, or lifecycle certification. See
@@ -1206,7 +1208,7 @@ coverage.
 | LNX-EVT-001 | Implemented in source; installed certification pending | Bounded pull authority, restart/offline recovery, cancellation, and coalesced refresh | Native push and exact-candidate suspend/offline matrix |
 | LNX-ONB-001 | Partially implemented | Daemon-owned transactional state and required prerequisite probes | Provider scan, deployed auth, portal, tray, update, chat, and first-data readback |
 | LNX-AUTH-001 family | Source foundation implemented; deployment and product depth open | Purpose-bound sealed device auth, daemon refresh/keyring custody, redacted state, and local sign-out | Five child packets for deployment, App Check, membership, sync, and trusted devices |
-| LNX-NATIVE-001 | Partially implemented | Single-instance launch, typed deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, deterministic installed notification action capture, deterministic tray-host-loss/restart capture, XDG login start, native-shell evidence requirements in the matrix harness, and verifier-produced native-shell evidence JSON | Cloud inline reply, provider OAuth return, rich notification-host breadth, complete login-start lifecycle, and full installed desktop matrix evidence |
+| LNX-NATIVE-001 | Partially implemented | Single-instance launch, typed deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, deterministic installed notification action capture, deterministic login-start lifecycle capture, deterministic tray-host-loss/restart capture, XDG login start, native-shell evidence requirements in the matrix harness, and verifier-produced native-shell evidence JSON | Cloud inline reply, provider OAuth return, rich notification-host breadth, display-manager/package-manager breadth, and full installed desktop matrix evidence |
 | LNX-CAT-001, LNX-DIFF-001 | Open | Existing provider/path contracts retained | Shared catalog plus same-commit macOS/Linux differential proof |
 | Phase 2 core workflows | Open/partial | Existing routes and bounded mutations retained | Complete product outcomes and daemon-authoritative state |
 | Phase 3 native features | In progress | Mercury core, Linux CU input, panic, and outbound capture foundations are implemented; unsupported outcomes remain capability-gated | Cross-device Mercury proof, system CU capture, SmartHub, IBus/Fcitx, pet adapters |

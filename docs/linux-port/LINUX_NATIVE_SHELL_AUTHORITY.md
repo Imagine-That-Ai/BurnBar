@@ -167,6 +167,14 @@ deb, rpm, and AppImage bundles install the canonical reference at
 the same bytes. `check-packaging-path-sync.mjs` fails if its packaging copy
 drifts from the canonical source.
 
+The installed desktop-session harness now keeps the validated user autostart
+entry enabled, starts a fresh D-Bus/X11 session, parses the `.desktop`
+`Exec=openburnbar-linux-desktop --background` line, launches the installed app in
+background mode, verifies no window is shown before activation, then routes a
+secondary `openburnbar://chat` launch into the same process. After `dpkg -r`, it
+verifies the package-owned `/usr/share/openburnbar/autostart/openburnbar.desktop`
+reference is removed while preserving the user-scoped autostart entry.
+
 ## Verification
 
 Focused source checks:
@@ -257,7 +265,7 @@ window, and fresh `chat / open-chat` route sample all pass.
 `scripts/linux-port/linux-desktop-session.sh` now emits the tray-host,
 tray-actions, compact-status-window, status-window-a11y, notification-server,
 notification-actions, notification-relaunch-route, deep-link-relaunch,
-tray-host-loss-recovery, and partial login-start artifact inputs from a real
+tray-host-loss-recovery, and login-start lifecycle artifact inputs from a real
 installed `.deb` session:
 D-Bus menu activation must return successfully, route actions must create fresh
 `route.navigation` samples summarized in `tray-action-route-results.json`,
@@ -267,10 +275,11 @@ path, and secondary `openburnbar://chat` launch must exit via single-instance
 handoff while the original process stays alive. The tray-host-loss proof kills
 the current tray host, observes the watcher loss, restarts the host, refreshes
 the recovered StatusNotifier item and D-Bus menu, invokes a recovered dashboard
-route, and requires one app process plus one registered item before passing. The
-`native-login-start-roundtrip.json` produced by this session intentionally
-remains `passed: false` until a dedicated lifecycle harness proves relogin and
-package-uninstall removal.
+route, and requires one app process plus one registered item before passing.
+The login-start proof combines tray enable/disable/stale-file replacement,
+fresh-session background autostart, same-process deep-link activation, and
+package-owned autostart reference removal before
+`native-login-start-roundtrip.json` can pass.
 
 Missing, stale, wrong-environment, or partially passed native-shell evidence
 blocks the row even when package and accessibility evidence are present.
@@ -282,8 +291,8 @@ installed candidate passes:
 
 1. rich and icon-only tray hosts on GNOME Wayland, KDE Wayland, X11, and the
    declared wlroots fallback;
-2. login, logout/login, disabled login start, stale file replacement, crash,
-   reinstall, upgrade, and uninstall behavior;
+2. real display-manager login/logout, crash, reinstall, upgrade, and
+   cross-package-manager uninstall behavior;
 3. launch-before-renderer, repeated secondary launch, hostile URL, membership
    return, focus, workspace, and multi-monitor cases;
 4. keyboard, screen-reader, reduced-motion, high-contrast, and 200% text rows;

@@ -96,7 +96,10 @@ function writeCompleteNativeArtifacts(root) {
     disabled: true,
     relogin: true,
     staleFileReplaced: true,
-    uninstallRemoved: true
+    uninstallRemoved: true,
+    uninstallScope: 'package-owned-autostart-reference',
+    finalEnabled: true,
+    userAutostartPreserved: true
   });
   writeJson(root, 'tray-host-loss-recovery.json', {
     passed: true,
