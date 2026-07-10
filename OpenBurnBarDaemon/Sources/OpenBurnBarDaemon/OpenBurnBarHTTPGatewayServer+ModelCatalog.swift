@@ -215,37 +215,8 @@ extension BurnBarHTTPGatewayServer {
         requestedModel: GatewayRequestedModel,
         requestPath: String
     ) async -> (failureMessage: String, response: GatewayHTTPResponse)? {
-        let requestedFormatFamily: BurnBarProviderFormatFamily? = requestPath == "/v1/messages"
-            ? .anthropic
-            : nil
-        let router = BurnBarProviderRouter(
-            configStore: configStore,
-            logger: BurnBarDaemonLogger(category: "gateway-route-unavailable"),
-            routingEventStore: BurnBarProviderRoutingDecisionEventStore(),
-            allowDynamicOpenAICompatibleModels: true
-        )
-
-        let providerID: String
-        do {
-            _ = try await router.candidateRoutes(
-                modelName: requestedModel.modelID,
-                preferredProviderID: requestedModel.providerID,
-                requestedFormatFamily: requestedFormatFamily
-            )
-            return nil
-        } catch let error as BurnBarProviderRouterError {
-            switch error {
-            case .missingCredential(let missingProviderID):
-                providerID = missingProviderID
-            case .credentialsUnavailable(let unavailableProviderID, _):
-                providerID = unavailableProviderID
-            default:
-                return nil
-            }
-        } catch {
-            return nil
-        }
-
+        let providerID = requestedModel.providerID ?? (requestPath == "/v1/messages" ? "anthropic" : nil)
+        guard let providerID else { return nil }
         guard providerID.caseInsensitiveCompare("anthropic") == .orderedSame else {
             return nil
         }
@@ -263,6 +234,30 @@ extension BurnBarHTTPGatewayServer {
             || selectedSlot?.slotID.caseInsensitiveCompare("current-claude-code-login") == .orderedSame
         guard isClaudeOAuthSlot else { return nil }
 
+        let requiresAuthenticationRecovery: Bool
+        switch selectedSlot?.status {
+        case .missingSecret:
+            requiresAuthenticationRecovery = true
+        case .ready:
+            let liveSnapshot = try? await catalogSource.snapshot()
+            let catalog = configStore.catalogSupport.catalog
+            requiresAuthenticationRecovery = liveSnapshot?.models.contains { model in
+                model.providerID.caseInsensitiveCompare(providerID) == .orderedSame
+                    && model.accountID.caseInsensitiveCompare(selectedSlot?.slotID ?? "") == .orderedSame
+                    && modelMatchesRequested(
+                        model,
+                        normalizedRequestedModelID: requestedModel.modelID.lowercased(),
+                        providerID: providerID,
+                        catalog: catalog
+                    )
+                    && model.routeEligible == false
+                    && Self.isCredentialRejection(model.lastError)
+            } == true
+        case .coolingDown, .exhausted, .disabled, .none:
+            requiresAuthenticationRecovery = false
+        }
+        guard requiresAuthenticationRecovery else { return nil }
+
         let accountLabel = selectedSlot?.label.trimmingCharacters(in: .whitespacesAndNewlines)
         let providerName = configStore.catalogSupport.provider(id: providerID)?.displayName ?? providerID
         let accountDetail: String
@@ -278,6 +273,11 @@ extension BurnBarHTTPGatewayServer {
             failureMessage: "Credential unavailable for \(clientModelID).",
             response: jsonResponse(status: 503, body: errorBody(detail))
         )
+    }
+
+    private static func isCredentialRejection(_ message: String?) -> Bool {
+        guard let message = message?.lowercased() else { return false }
+        return message.contains("http 401") || message.contains("http 403")
     }
 
     func resolveAdvertisedRouteKeys(
