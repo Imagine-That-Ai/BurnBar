@@ -168,14 +168,13 @@ public actor BurnBarSubscriptionService {
                 throw BurnBarSubscriptionServiceError.subscriptionMismatch
             }
             records.removeValue(forKey: subscriptionID)
-            stoppedAt[subscriptionID] = timestamp
+            recordStoppedSubscription(subscriptionID, at: timestamp)
             return BurnBarSubscriptionStopResponse(
                 subscriptionID: subscriptionID,
                 stopped: true,
                 lastSeq: record.seq
             )
         }
-        stoppedAt[subscriptionID] = timestamp
         return BurnBarSubscriptionStopResponse(
             subscriptionID: subscriptionID,
             stopped: false,
@@ -269,5 +268,13 @@ public actor BurnBarSubscriptionService {
             return
         }
         records.removeValue(forKey: oldest.id)
+    }
+
+    private func recordStoppedSubscription(_ subscriptionID: String, at timestamp: Date) {
+        stoppedAt[subscriptionID] = timestamp
+        while stoppedAt.count > maximumSubscriptions,
+              let oldest = stoppedAt.min(by: { $0.value < $1.value })?.key {
+            stoppedAt.removeValue(forKey: oldest)
+        }
     }
 }

@@ -134,6 +134,22 @@ final class BurnBarDaemonServerTests: XCTestCase {
         XCTAssertEqual(started.result?.events.first?.snapshot["daemon_session_id"], "socket-daemon-session")
         XCTAssertEqual(started.result?.terminalStateDelivered, false)
 
+        let duplicate: BurnBarRPCResponseEnvelope<BurnBarEmptyResult> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "subscription-duplicate",
+                method: .subscriptionStart,
+                authToken: "test-token",
+                params: BurnBarSubscriptionStartRequest(
+                    topic: "data",
+                    requestedSubscriptionID: "linux-desktop-data",
+                    clientID: "linux-desktop"
+                )
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertEqual(duplicate.id, "subscription-duplicate")
+        XCTAssertEqual(duplicate.error?.code, BurnBarRPCErrorCode.invalidParams)
+
         let resumed: BurnBarRPCResponseEnvelope<BurnBarSubscriptionResponse> = try sendEnvelope(
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "subscription-resume",

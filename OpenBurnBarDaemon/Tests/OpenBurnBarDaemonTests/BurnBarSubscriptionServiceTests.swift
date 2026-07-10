@@ -93,6 +93,63 @@ final class BurnBarSubscriptionServiceTests: XCTestCase {
         }
     }
 
+    func testStopTombstonesAreBoundedAndUnknownStopsDoNotAllocate() async throws {
+        let service = makeService(maximumSubscriptions: 2)
+        for id in ["desktop-1", "desktop-2", "desktop-3"] {
+            _ = try await service.start(
+                BurnBarSubscriptionStartRequest(
+                    topic: "data",
+                    requestedSubscriptionID: id,
+                    clientID: "linux-desktop"
+                )
+            )
+            _ = try await service.stop(
+                BurnBarSubscriptionStopRequest(
+                    subscriptionID: id,
+                    clientID: "linux-desktop"
+                )
+            )
+        }
+
+        var recoveredCount = 0
+        var stoppedCount = 0
+        for id in ["desktop-1", "desktop-2", "desktop-3"] {
+            do {
+                let recovered = try await service.resume(
+                    BurnBarSubscriptionResumeRequest(
+                        subscriptionID: id,
+                        topic: "data",
+                        afterSeq: 1,
+                        clientID: "linux-desktop"
+                    )
+                )
+                XCTAssertTrue(recovered.recoveredAfterRestart)
+                recoveredCount += 1
+            } catch BurnBarSubscriptionServiceError.subscriptionStopped {
+                stoppedCount += 1
+            }
+        }
+        XCTAssertEqual(recoveredCount, 1)
+        XCTAssertEqual(stoppedCount, 2)
+
+        let unknownStop = try await service.stop(
+            BurnBarSubscriptionStopRequest(
+                subscriptionID: "never-started",
+                clientID: "linux-desktop"
+            )
+        )
+        XCTAssertFalse(unknownStop.stopped)
+        let unknownResume = try await service.resume(
+            BurnBarSubscriptionResumeRequest(
+                subscriptionID: "never-started",
+                topic: "data",
+                afterSeq: 0,
+                clientID: "linux-desktop"
+            )
+        )
+        XCTAssertTrue(unknownResume.firstSnapshot)
+    }
+
     func testScopeAndIdentifierValidationFailClosed() async throws {
         let service = makeService()
         _ = try await service.start(
@@ -159,10 +216,14 @@ final class BurnBarSubscriptionServiceTests: XCTestCase {
         }
     }
 
-    private func makeService(sessionID: String = "daemon-test") -> BurnBarSubscriptionService {
+    private func makeService(
+        sessionID: String = "daemon-test",
+        maximumSubscriptions: Int = 128
+    ) -> BurnBarSubscriptionService {
         BurnBarSubscriptionService(
             daemonVersion: "test-daemon",
             daemonSessionID: sessionID,
+            maximumSubscriptions: maximumSubscriptions,
             now: { Date(timeIntervalSince1970: 1_700_000_000) }
         )
     }

@@ -1137,8 +1137,8 @@ export const burnBarRpcIpcCanon = [
     "domain": "run_workspace_approval",
     "capability": "run",
     "owner": "OpenBurnBarDaemon",
-    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
-    "result": "Codable response for subscription.stop",
+    "params": "BurnBarSubscriptionStopRequest",
+    "result": "BurnBarSubscriptionStopResponse",
     "error": "BurnBarRPCError"
   },
   {

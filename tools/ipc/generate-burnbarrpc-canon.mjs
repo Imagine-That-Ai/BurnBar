@@ -136,7 +136,8 @@ const explicitTypes = {
   "workspace.toolResult": ["BurnBarToolResultSubmissionRequest", "BurnBarRunDetailResponse"],
   "approval.respond": ["BurnBarApprovalRespondRequest", "BurnBarRunDetailResponse"],
   "subscription.start": ["BurnBarSubscriptionStartRequest", "BurnBarSubscriptionResponse"],
-  "subscription.resume": ["BurnBarSubscriptionResumeRequest", "BurnBarSubscriptionResponse"]
+  "subscription.resume": ["BurnBarSubscriptionResumeRequest", "BurnBarSubscriptionResponse"],
+  "subscription.stop": ["BurnBarSubscriptionStopRequest", "BurnBarSubscriptionStopResponse"]
 };
 
 function inferTypes(method) {

@@ -120,6 +120,16 @@ describe('SettingsSurface', () => {
     expect(container.querySelector('[data-failure-state="permission-denied"]')).not.toBeNull();
   });
 
+  it('does not assertively announce each healthy subscription cadence update', () => {
+    useShellStore.setState({
+      health: { ok: true, gatewayEnabled: true, gatewayHost: '127.0.0.1', gatewayPort: 8317 },
+      subscriptionState: 'pull',
+      lastDaemonEventAt: '2026-07-10T12:00:00.000Z'
+    });
+    const { container } = render(<SettingsSurface />);
+    expect(container.querySelector('.banner.ok')?.getAttribute('role')).toBeNull();
+  });
+
   it('renders home landing with hero and sidebar sections', () => {
     useShellStore.setState({ fixtureMode: true });
     useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });

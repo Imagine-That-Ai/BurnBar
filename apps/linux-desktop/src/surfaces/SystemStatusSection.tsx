@@ -60,7 +60,7 @@ export function SystemStatusSection({ showRawDiagnostic = false }: { showRawDiag
             : status.detail
         }
         iconGlyph={connected ? '⎔' : undefined}
-        role="alert"
+        role={connected && !refreshDegraded ? 'none' : 'alert'}
         className={connected && !refreshDegraded ? 'banner ok' : 'banner degraded'}
       >
         {showRawDiagnostic && status.rawDetail ? (

@@ -106,34 +106,25 @@ extension BurnBarDaemonServer {
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarSubscriptionStartRequest>.self,
                 from: requestData
             )
-            let response = BurnBarRPCResponseEnvelope(
-                id: typedRequest.id,
-                protocolVersion: BurnBarProtocolVersion.current,
-                result: try await subscriptionService.start(typedRequest.params)
-            )
-            return encode(response)
+            return try await encodeSubscriptionResponse(id: typedRequest.id) {
+                try await subscriptionService.start(typedRequest.params)
+            }
         case .subscriptionResume:
             let typedRequest = try decoder.decode(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarSubscriptionResumeRequest>.self,
                 from: requestData
             )
-            let response = BurnBarRPCResponseEnvelope(
-                id: typedRequest.id,
-                protocolVersion: BurnBarProtocolVersion.current,
-                result: try await subscriptionService.resume(typedRequest.params)
-            )
-            return encode(response)
+            return try await encodeSubscriptionResponse(id: typedRequest.id) {
+                try await subscriptionService.resume(typedRequest.params)
+            }
         case .subscriptionStop:
             let typedRequest = try decoder.decode(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarSubscriptionStopRequest>.self,
                 from: requestData
             )
-            let response = BurnBarRPCResponseEnvelope(
-                id: typedRequest.id,
-                protocolVersion: BurnBarProtocolVersion.current,
-                result: try await subscriptionService.stop(typedRequest.params)
-            )
-            return encode(response)
+            return try await encodeSubscriptionResponse(id: typedRequest.id) {
+                try await subscriptionService.stop(typedRequest.params)
+            }
         case .workspaceExecuteTool:
             let typedRequest = try decoder.decode(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarToolExecutionRequest>.self,
@@ -169,6 +160,25 @@ extension BurnBarDaemonServer {
             return encode(response)
         default:
             preconditionFailure("Unhandled run/workspace/approval RPC method: \(method.rawValue)")
+        }
+    }
+
+    private func encodeSubscriptionResponse<Result: Codable & Sendable>(
+        id: String,
+        operation: () async throws -> Result
+    ) async throws -> Data {
+        do {
+            return encode(BurnBarRPCResponseEnvelope(
+                id: id,
+                protocolVersion: BurnBarProtocolVersion.current,
+                result: try await operation()
+            ))
+        } catch let error as BurnBarSubscriptionServiceError {
+            return encodeErrorResponse(
+                id: id,
+                code: BurnBarRPCErrorCode.invalidParams,
+                message: error.localizedDescription
+            )
         }
     }
 
