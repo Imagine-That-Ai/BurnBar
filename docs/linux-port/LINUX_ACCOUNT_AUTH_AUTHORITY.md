@@ -106,7 +106,8 @@ grant path.
 
 ## Current verification status
 
-The source packet passed **30/30** Linux security tests, **8/8** RPC contract
+At source revision `0d31d4ee9831e9608df7ecb3e9655cdaa3c8a2ba`, the packet
+passed **30/30** Linux security tests, **8/8** RPC contract
 tests, **15/15** daemon auth tests, the full **64-file / 457-test** desktop suite,
 **26/26** Tauri Rust tests, **34/34** focused Functions auth/grant tests, and
 **44/44** website tests. These results validate contracts and failure handling in

@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | Stacked source implementation through `codex/linux-parity-auth`; clean aarch64 and architecture-correct x86_64 release shards at `391fe2847d`. The auth stack is source-validated but not deployed or environment-certified. |
+| Remediation evidence | Stacked source implementation at `0d31d4ee9831e9608df7ecb3e9655cdaa3c8a2ba` on `codex/linux-parity-auth`; clean aarch64 and architecture-correct x86_64 release shards at `391fe2847d`. The auth stack is source-validated but not deployed or environment-certified. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -1501,6 +1501,20 @@ Linux may be called full parity only when all of the following are true:
 
 Primary current evidence and implementation references:
 
+- Linux account-auth source revision:
+  `0d31d4ee9831e9608df7ecb3e9655cdaa3c8a2ba`
+- Linux account-auth authority and primary implementation:
+  `docs/linux-port/LINUX_ACCOUNT_AUTH_AUTHORITY.md`,
+  `OpenBurnBarCore/Sources/OpenBurnBarLinuxSecurity/LinuxDesktopAuthEnvelope.swift`,
+  `OpenBurnBarCore/Sources/OpenBurnBarLinuxSecurity/OpenBurnBarLinuxSecurity.swift`,
+  `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarAccountAuthService.swift`,
+  `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarAccountAuthNetworkClients.swift`,
+  `apps/linux-desktop/src/state/accountStore.ts`,
+  `functions/src/callables/cliLink.ts`, and `website/src/pages/link.astro`
+- Linux account-auth reproducible verification entry points:
+  `bash scripts/linux-port/run-linux-native-tests.sh`,
+  `npm test --prefix apps/linux-desktop -- --maxWorkers=2`,
+  `npx vitest run` in `functions/`, and `npm test --prefix website`
 - macOS route oracle: `AgentLens/Views/Dashboard/DashboardNavigationModel.swift`
 - macOS settings oracle: `AgentLens/Views/Settings/SettingsTab.swift`
 - Linux settings manifest: `apps/linux-desktop/src/surfaces/settings/settingsTabs.ts`

@@ -255,7 +255,7 @@
 </tr>
 <tr>
 <td>Remediation evidence</td>
-<td>Stacked source implementation through <code>codex/linux-parity-auth</code>; clean aarch64 and architecture-correct x86_64 release shards at <code>391fe2847d</code>. The auth stack is source-validated but not deployed or environment-certified.</td>
+<td>Stacked source implementation at <code>0d31d4ee9831e9608df7ecb3e9655cdaa3c8a2ba</code> on <code>codex/linux-parity-auth</code>; clean aarch64 and architecture-correct x86_64 release shards at <code>391fe2847d</code>. The auth stack is source-validated but not deployed or environment-certified.</td>
 </tr>
 </tbody></table>
 <p><strong>Verdict:</strong> <strong>NO-GO for a full-parity claim or stable Linux promotion</strong></p>
@@ -2697,6 +2697,20 @@ limitations, and operator runbooks match live behavior.</li>
 <h2>Evidence Index</h2>
 <p>Primary current evidence and implementation references:</p>
 <ul>
+<li>Linux account-auth source revision:
+<code>0d31d4ee9831e9608df7ecb3e9655cdaa3c8a2ba</code></li>
+<li>Linux account-auth authority and primary implementation:
+<code>docs/linux-port/LINUX_ACCOUNT_AUTH_AUTHORITY.md</code>,
+<code>OpenBurnBarCore/Sources/OpenBurnBarLinuxSecurity/LinuxDesktopAuthEnvelope.swift</code>,
+<code>OpenBurnBarCore/Sources/OpenBurnBarLinuxSecurity/OpenBurnBarLinuxSecurity.swift</code>,
+<code>OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarAccountAuthService.swift</code>,
+<code>OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarAccountAuthNetworkClients.swift</code>,
+<code>apps/linux-desktop/src/state/accountStore.ts</code>,
+<code>functions/src/callables/cliLink.ts</code>, and <code>website/src/pages/link.astro</code></li>
+<li>Linux account-auth reproducible verification entry points:
+<code>bash scripts/linux-port/run-linux-native-tests.sh</code>,
+<code>npm test --prefix apps/linux-desktop -- --maxWorkers=2</code>,
+<code>npx vitest run</code> in <code>functions/</code>, and <code>npm test --prefix website</code></li>
 <li>macOS route oracle: <code>AgentLens/Views/Dashboard/DashboardNavigationModel.swift</code></li>
 <li>macOS settings oracle: <code>AgentLens/Views/Settings/SettingsTab.swift</code></li>
 <li>Linux settings manifest: <code>apps/linux-desktop/src/surfaces/settings/settingsTabs.ts</code></li>
