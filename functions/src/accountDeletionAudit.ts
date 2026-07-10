@@ -6,8 +6,6 @@ import { createHash } from "node:crypto";
 import { AUDIT_ACTIONS, computeAuditHash, type AuditEventCore } from "./callables/auditLog.js";
 import { ACCOUNT_ERASURE_TOMBSTONE_COLLECTION } from "./accountErasureConstants.js";
 
-export { ACCOUNT_ERASURE_TOMBSTONE_COLLECTION } from "./accountErasureConstants.js";
-
 interface AccountDeletionCollection {
   listDocuments(): Promise<AccountDeletionDocumentReference[]>;
 }

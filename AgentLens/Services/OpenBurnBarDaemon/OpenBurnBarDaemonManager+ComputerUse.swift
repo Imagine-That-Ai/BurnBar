@@ -52,8 +52,8 @@ extension OpenBurnBarDaemonManager {
         }
 
         let entitlementStore = MacCloudEntitlementStore.shared
-        let budgetStore = ComputerUseBudgetStatusStore.shared
-        let quotaStore = ComputerUseQuotaUsageStore.shared
+        let budgetStore = computerUseBudgetStatusStore
+        let quotaStore = computerUseQuotaUsageStore
         entitlementStore.start()
         budgetStore.startListening()
         quotaStore.startListening()
@@ -221,7 +221,7 @@ extension OpenBurnBarDaemonManager {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
         Task { @MainActor in
             do {
-                try await ComputerUseCloudMeteringService.shared.recordSessionStart(
+                try await computerUseCloudMeteringService.recordSessionStart(
                     userID: userID,
                     request: request,
                     response: response,
@@ -243,7 +243,7 @@ extension OpenBurnBarDaemonManager {
         guard let userID = Auth.auth().currentUser?.uid else { return }
         Task { @MainActor in
             do {
-                try await ComputerUseCloudMeteringService.shared.recordAction(
+                try await computerUseCloudMeteringService.recordAction(
                     userID: userID,
                     invocation: request.invocation,
                     response: response
@@ -265,7 +265,7 @@ extension OpenBurnBarDaemonManager {
         let reason = Self.computerUseEndReason(for: request.source)
         Task { @MainActor in
             do {
-                try await ComputerUseCloudMeteringService.shared.recordSessionEnd(
+                try await computerUseCloudMeteringService.recordSessionEnd(
                     userID: userID,
                     sessionID: response.sessionId,
                     endedAt: response.endedAt,

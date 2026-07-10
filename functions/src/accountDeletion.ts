@@ -21,14 +21,13 @@ import {
 } from "./accountDeletionAudit.js";
 
 export {
-  ACCOUNT_ERASURE_TOMBSTONE_COLLECTION,
   isAccountErasureResumable,
   verifyRetainedAccountErasureEvents,
 } from "./accountDeletionAudit.js";
 
-export type AccountStoragePrefixKind = "user_data" | "avatar";
+type AccountStoragePrefixKind = "user_data" | "avatar";
 
-export interface AccountDeletionSummary {
+interface AccountDeletionSummary {
   destroyedSecrets: number;
   failedSecretDestroys: number;
   deletedStoragePrefixes: number;
@@ -39,7 +38,7 @@ export interface AccountDeletionSummary {
   retryRequired: boolean;
 }
 
-export interface AccountDeletionResult extends AccountDeletionSummary {
+interface AccountDeletionResult extends AccountDeletionSummary {
   deletedAuthUser: boolean;
   authUserAlreadyMissing: boolean;
 }

@@ -367,14 +367,14 @@ final class ChatSessionControllerSearchStateTests: XCTestCase {
         let threadID = controller.activeThreadID
         let targetedRevocations = OpenBurnBarCore.Locked(0)
         let registrationID = UUID()
-        AgentToolBrokerRevocationRegistry.shared.register(
+        agentToolBrokerRevocationRegistry.register(
             id: registrationID,
             runtimeID: runtimeID,
             threadID: threadID,
             handler: { targetedRevocations.withLock { $0 += 1 } }
         )
         defer {
-            AgentToolBrokerRevocationRegistry.shared.unregister(id: registrationID)
+            agentToolBrokerRevocationRegistry.unregister(id: registrationID)
         }
         let broker = try XCTUnwrap(controller.activeAgentToolBroker())
 

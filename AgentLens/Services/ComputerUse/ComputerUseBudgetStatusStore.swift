@@ -8,8 +8,6 @@ import OpenBurnBarComputerUseCore
 /// Operator USD metrics live at `metrics/current` (ADR 006) and are not read here.
 @MainActor
 final class ComputerUseBudgetStatusStore {
-    static let shared = ComputerUseBudgetStatusStore()
-
     private var listener: ListenerRegistration?
     private(set) var latestEnvelope: ComputerUseBudgetEnvelope?
     private(set) var lastKnownEnvelope: ComputerUseBudgetEnvelope?
@@ -200,6 +198,9 @@ final class ComputerUseBudgetStatusStore {
     }
 }
 
+@MainActor
+let computerUseBudgetStatusStore = ComputerUseBudgetStatusStore()
+
 /// Live mirror of the server-reconciled daily Computer Use counters at
 /// `users/{uid}/computer_use_quota_usage/{YYYY-MM-DD}`.
 ///
@@ -208,8 +209,6 @@ final class ComputerUseBudgetStatusStore {
 /// daemon projection cannot silently turn "not loaded" into unlimited usage.
 @MainActor
 final class ComputerUseQuotaUsageStore {
-    static let shared = ComputerUseQuotaUsageStore()
-
     private var authHandle: AuthStateDidChangeListenerHandle?
     private var listener: ListenerRegistration?
     private var listenerUID: String?
@@ -386,3 +385,6 @@ final class ComputerUseQuotaUsageStore {
         return formatter.string(from: now)
     }
 }
+
+@MainActor
+let computerUseQuotaUsageStore = ComputerUseQuotaUsageStore()

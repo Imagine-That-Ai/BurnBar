@@ -51,22 +51,22 @@ final class ComputerUseRuntimeController: ObservableObject {
     }
 
     private func bindBudgetStatusListener() {
-        ComputerUseBudgetStatusStore.shared.onEnvelopeChanged = { [weak self] envelope in
+        computerUseBudgetStatusStore.onEnvelopeChanged = { [weak self] envelope in
             self?.coordinator.updateBudgetEnvelope(envelope)
             self?.publishDaemonCapabilityState()
         }
-        ComputerUseBudgetStatusStore.shared.onAvailabilityChanged = { [weak self] in
+        computerUseBudgetStatusStore.onAvailabilityChanged = { [weak self] in
             self?.publishDaemonCapabilityState()
         }
-        ComputerUseBudgetStatusStore.shared.startListening()
-        ComputerUseQuotaUsageStore.shared.onStateChanged = { [weak self] in
+        computerUseBudgetStatusStore.startListening()
+        computerUseQuotaUsageStore.onStateChanged = { [weak self] in
             guard let self else { return }
-            if let usage = ComputerUseQuotaUsageStore.shared.currentUsage {
+            if let usage = computerUseQuotaUsageStore.currentUsage {
                 self.coordinator.updateQuotaUsage(usage)
             }
             self.publishDaemonCapabilityState()
         }
-        ComputerUseQuotaUsageStore.shared.startListening()
+        computerUseQuotaUsageStore.startListening()
     }
 
     func attach(relayHostService: HermesRelayHostService) {
@@ -427,7 +427,7 @@ final class ComputerUseRuntimeController: ObservableObject {
             quotaLedger: ComputerUseLocalQuotaLedger(
                 directory: ComputerUseLocalQuotaLedger.defaultDirectory()
             ),
-            cloudMeteringRecorder: ComputerUseCloudMeteringService.shared,
+            cloudMeteringRecorder: computerUseCloudMeteringService,
             scopeRulesProvider: { ComputerUseDenyRegistry.builtInRules },
             approvalPresenter: { request, screenshot in
                 await ComputerUseRuntimeController.presentApproval(request, screenshot: screenshot)

@@ -16,8 +16,6 @@ struct AgentToolExecutionPayload {
 final class AgentToolBrokerRevocationRegistry: Sendable {
     typealias Handler = @Sendable () async -> Void
 
-    static let shared = AgentToolBrokerRevocationRegistry()
-
     private struct Registration: Sendable {
         let runtimeID: AssistantRuntimeID
         let threadID: String
@@ -58,6 +56,8 @@ final class AgentToolBrokerRevocationRegistry: Sendable {
         return handlers.count
     }
 }
+
+let agentToolBrokerRevocationRegistry = AgentToolBrokerRevocationRegistry()
 
 final class AgentToolBroker: Sendable {
     enum DaemonBrowserRevocationOutcome: Equatable, Sendable {
@@ -200,11 +200,11 @@ final class AgentToolBroker: Sendable {
     #endif
 
     deinit {
-        AgentToolBrokerRevocationRegistry.shared.unregister(id: revocationRegistrationID)
+        agentToolBrokerRevocationRegistry.unregister(id: revocationRegistrationID)
     }
 
     private func registerForRevocation() {
-        AgentToolBrokerRevocationRegistry.shared.register(
+        agentToolBrokerRevocationRegistry.register(
             id: revocationRegistrationID,
             runtimeID: grant.runtimeID,
             threadID: grant.threadID,
@@ -219,7 +219,7 @@ final class AgentToolBroker: Sendable {
         runtimeID: AssistantRuntimeID,
         threadID: String
     ) async -> Int {
-        await AgentToolBrokerRevocationRegistry.shared.revoke(
+        await agentToolBrokerRevocationRegistry.revoke(
             runtimeID: runtimeID,
             threadID: threadID
         )

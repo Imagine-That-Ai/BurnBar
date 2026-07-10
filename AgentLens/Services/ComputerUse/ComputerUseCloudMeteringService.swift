@@ -34,8 +34,6 @@ public protocol ComputerUseCloudMeteringRecording: AnyObject {
 /// synchronous admission authority when the network is unavailable.
 @MainActor
 final class ComputerUseCloudMeteringService: ComputerUseCloudMeteringRecording {
-    static let shared = ComputerUseCloudMeteringService()
-
     private let firestoreProvider: () -> Firestore
 
     init(firestoreProvider: @escaping () -> Firestore = { Firestore.firestore() }) {
@@ -195,4 +193,7 @@ final class ComputerUseCloudMeteringService: ComputerUseCloudMeteringRecording {
 private enum ComputerUseCloudMeteringError: Error {
     case missingAuthenticatedUser
 }
+
+@MainActor
+let computerUseCloudMeteringService = ComputerUseCloudMeteringService()
 #endif
