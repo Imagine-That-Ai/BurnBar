@@ -717,9 +717,15 @@ public enum CLIAuthDiscovery {
         ambient: [String: String] = ProcessInfo.processInfo.environment
     ) -> [String: String] {
         let home = ambient["HOME"] ?? FileManager.default.homeDirectoryForCurrentUser.path
+        #if os(macOS) || os(Linux)
+        let trustedExecutablePath = CLILaunchAdapter.trustedExecutableEnvironmentPath(homeDirectory: home)
+        #else
+        // Local CLI execution is unavailable on mobile and Windows builds.
+        let trustedExecutablePath = ""
+        #endif
         var environment: [String: String] = [
             "HOME": home,
-            "PATH": CLILaunchAdapter.trustedExecutableEnvironmentPath(homeDirectory: home)
+            "PATH": trustedExecutablePath
         ]
         for key in ["LANG", "LC_ALL", "LC_CTYPE"] {
             if let value = ambient[key], !value.isEmpty {
