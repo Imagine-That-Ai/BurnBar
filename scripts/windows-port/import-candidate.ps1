@@ -69,7 +69,9 @@ if (-not $VerifyOnly) {
     if ([string]::IsNullOrWhiteSpace($destinationParent)) {
         throw "Destination parent could not be resolved for $destinationFull"
     }
-    New-Item -ItemType Directory -Force -Path $destinationParent | Out-Null
+    if (-not (Test-Path -LiteralPath $destinationParent -PathType Container)) {
+        New-Item -ItemType Directory -Force -Path $destinationParent | Out-Null
+    }
 
     $extractRoot = Join-Path $destinationParent ('.candidate-extract-' + [Guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Force -Path $extractRoot | Out-Null
