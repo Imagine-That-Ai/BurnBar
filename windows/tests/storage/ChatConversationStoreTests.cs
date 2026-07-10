@@ -222,7 +222,14 @@ public sealed class ChatConversationStoreTests : IDisposable
 
     private static void AssertFileDoesNotContain(string path, string text)
     {
-        byte[] haystack = File.ReadAllBytes(path);
+        using var stream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete);
+        using var memory = new MemoryStream();
+        stream.CopyTo(memory);
+        byte[] haystack = memory.ToArray();
         byte[] needle = Encoding.UTF8.GetBytes(text);
         for (var i = 0; i <= haystack.Length - needle.Length; i++)
         {
