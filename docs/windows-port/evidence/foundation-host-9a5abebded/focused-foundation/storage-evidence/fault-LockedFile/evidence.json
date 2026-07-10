@@ -1,0 +1,21 @@
+{
+  "name": "fault-LockedFile",
+  "databasePath": "C:\\WINDOWS\\SystemTemp\\obb-storage-620855b5de014a82b05557cb82436776\\openburnbar.sqlite",
+  "databaseExists": false,
+  "encryptedHeader": false,
+  "walExists": false,
+  "shmExists": false,
+  "report": null,
+  "recovery": {
+    "Kind": 2,
+    "Title": "The local encrypted database is locked by another process.",
+    "Message": "Close the process holding the file and retry. OpenBurnBar will not show this as empty data.",
+    "Actions": [
+      0,
+      3
+    ],
+    "DatabasePath": "C:\\WINDOWS\\SystemTemp\\obb-storage-620855b5de014a82b05557cb82436776\\openburnbar.sqlite",
+    "JournalPath": "C:\\WINDOWS\\SystemTemp\\obb-storage-620855b5de014a82b05557cb82436776\\openburnbar.sqlite.windows-migration-journal.json",
+    "RedactedLogPath": "C:\\WINDOWS\\SystemTemp\\obb-storage-620855b5de014a82b05557cb82436776\\openburnbar.sqlite.recovery.log"
+  }
+}

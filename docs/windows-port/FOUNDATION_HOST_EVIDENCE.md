@@ -55,6 +55,11 @@ Run the same committed candidate on hosted Windows x64 and the UTM Windows 11
 ARM64 guest. Keep the two host identities and manifests separate. A green run
 on one architecture does not substitute for the other.
 
+The latest committed ARM64 receipt is
+[`evidence/foundation-host-9a5abebded/`](evidence/foundation-host-9a5abebded/README.md).
+It binds 53 required scenarios and 14 interactive UIA scenarios to exact
+candidate `9a5abebded057f59729fff1bd731e94d97fd6c27`.
+
 ## Data handling
 
 The harness injects synthetic canaries, records environment variable names and

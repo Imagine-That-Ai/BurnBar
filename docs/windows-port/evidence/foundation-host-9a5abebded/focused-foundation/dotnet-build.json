@@ -1,0 +1,7 @@
+{
+    "name":  "dotnet-build",
+    "command":  "dotnet build windows\\OpenBurnBar.sln --configuration Debug --no-restore -p:Platform=ARM64",
+    "exitCode":  0,
+    "log":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\dotnet-build.log",
+    "completedAt":  "2026-07-10T18:19:00.5515239Z"
+}

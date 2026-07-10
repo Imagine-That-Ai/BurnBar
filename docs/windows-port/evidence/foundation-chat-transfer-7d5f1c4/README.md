@@ -28,9 +28,11 @@ powershell.exe -File C:\candidate\scripts\windows-port\run-candidate-evidence.ps
   -OutputDir C:\candidate-evidence
 ```
 
-The 407 MB candidate archive is intentionally not committed. The committed
-manifest and export script reproduce it and bind its commit, tree, archive hash,
-manifest payload hash, and every tracked file hash.
+The 407 MB candidate archive and raw manifest are intentionally not committed.
+The manifest captured a private physical-device identifier from an unrelated
+tracked path. The export script reproduces the candidate; the redacted
+`provenance-summary.json` retains the commit, tree, file count, archive hash,
+manifest hash, and manifest-payload hash without publishing that identifier.
 
 ## Evidence boundary
 

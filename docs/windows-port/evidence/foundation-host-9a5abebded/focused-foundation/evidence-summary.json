@@ -1,0 +1,93 @@
+{
+    "schema":  "openburnbar.windows.foundation-current-candidate-evidence.v1",
+    "status":  "passed",
+    "completedAt":  "2026-07-10T18:20:44.7796151Z",
+    "candidate":  {
+                      "branch":  "codex/windows-parity-foundation-exact-final",
+                      "commit":  "9a5abebded057f59729fff1bd731e94d97fd6c27",
+                      "commitDate":  "2026-07-10T13:10:07-05:00",
+                      "parentCommits":  [
+                                            "587d32296e8affcbd6445e9731158d3354fd5c0b"
+                                        ],
+                      "ref":  "HEAD",
+                      "tree":  "ecdc551805003ebf55b7ee7b1ff2009942475005"
+                  },
+    "host":  {
+                 "computerName":  "%COMPUTERNAME%",
+                 "osCaption":  "Microsoft Windows 11 Pro",
+                 "osVersion":  "10.0.26200",
+                 "processorArchitecture":  "AMD64",
+                 "platform":  "ARM64"
+             },
+    "candidateVerification":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\candidate-tree-verification.json",
+    "steps":  [
+                  {
+                      "name":  "dotnet-restore",
+                      "command":  "dotnet restore windows\\OpenBurnBar.sln -p:Platform=ARM64",
+                      "exitCode":  0,
+                      "log":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\dotnet-restore.log",
+                      "completedAt":  "2026-07-10T18:17:37.5021002Z"
+                  },
+                  {
+                      "name":  "dotnet-build",
+                      "command":  "dotnet build windows\\OpenBurnBar.sln --configuration Debug --no-restore -p:Platform=ARM64",
+                      "exitCode":  0,
+                      "log":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\dotnet-build.log",
+                      "completedAt":  "2026-07-10T18:19:00.5515239Z"
+                  },
+                  {
+                      "name":  "configuration-tests",
+                      "command":  "dotnet test windows\\tests\\configuration\\OpenBurnBar.App.Configuration.Tests.csproj --configuration Debug --no-build --nologo --logger trx;LogFileName=configuration.trx",
+                      "exitCode":  0,
+                      "log":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\configuration-tests.log",
+                      "completedAt":  "2026-07-10T18:19:03.5024040Z"
+                  },
+                  {
+                      "name":  "chat-runtime-tests",
+                      "command":  "dotnet test windows\\tests\\chat\\OpenBurnBar.App.Chat.Runtime.Tests.csproj --configuration Debug --no-build --nologo --logger trx;LogFileName=chat-runtime.trx",
+                      "exitCode":  0,
+                      "log":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\chat-runtime-tests.log",
+                      "completedAt":  "2026-07-10T18:19:06.7298791Z"
+                  },
+                  {
+                      "name":  "storage-tests",
+                      "command":  "dotnet test windows\\tests\\storage\\OpenBurnBar.App.Storage.Tests.csproj --configuration Debug --no-build --nologo --logger trx;LogFileName=storage.trx",
+                      "exitCode":  0,
+                      "log":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-tests.log",
+                      "completedAt":  "2026-07-10T18:19:27.2452209Z"
+                  },
+                  {
+                      "name":  "sqlcipher-storage-tests",
+                      "command":  "dotnet test windows\\storage\\OpenBurnBar.Storage.Tests\\OpenBurnBar.Storage.Tests.csproj --configuration Debug --no-build --nologo --logger trx;LogFileName=sqlcipher-storage.trx",
+                      "exitCode":  0,
+                      "log":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\sqlcipher-storage-tests.log",
+                      "completedAt":  "2026-07-10T18:19:39.1835482Z"
+                  },
+                  {
+                      "name":  "chat-presentation-tests",
+                      "command":  "dotnet test windows\\tests\\presentation\\OpenBurnBar.App.Presentation.Tests.csproj --configuration Debug --no-build --nologo --filter FullyQualifiedName~Chat --logger trx;LogFileName=chat-presentation.trx",
+                      "exitCode":  0,
+                      "log":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\chat-presentation-tests.log",
+                      "completedAt":  "2026-07-10T18:19:41.5882572Z"
+                  },
+                  {
+                      "name":  "storage-evidence",
+                      "command":  "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\\windows-port\\storage-evidence.ps1 -RepoRoot C:\\candidate-current -OutputDir C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence",
+                      "exitCode":  0,
+                      "log":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence.log",
+                      "completedAt":  "2026-07-10T18:20:16.2148956Z"
+                  },
+                  {
+                      "name":  "chat-evidence",
+                      "command":  "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\\windows-port\\chat-evidence.ps1 -RepoRoot C:\\candidate-current -OutputDir C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\chat-evidence",
+                      "exitCode":  0,
+                      "log":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\chat-evidence.log",
+                      "completedAt":  "2026-07-10T18:20:44.4900566Z"
+                  }
+              ],
+    "requiredExternalArtifacts":  [
+                                      "Windows UIA screenshots/trees for chat setup, approval, rotate/remove, denial, storage unavailable, retry/restart, durable rehydrate",
+                                      "Process image/path/ArgumentList traces for approved and denied chat launches",
+                                      "Native x64 hosted-runner artifact bundle when this script is not itself run on x64"
+                                  ]
+}

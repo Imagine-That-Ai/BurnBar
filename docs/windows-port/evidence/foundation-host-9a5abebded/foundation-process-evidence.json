@@ -1,0 +1,8 @@
+{
+    "name":  "foundation-process-evidence",
+    "command":  "C:\\candidate-current\\windows\\tools\\OpenBurnBar.FoundationHostEvidence\\bin\\Debug\\net8.0\\OpenBurnBar.FoundationHostEvidence.exe --output C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\process-traces --expected-candidate 9a5abebded057f59729fff1bd731e94d97fd6c27",
+    "exitCode":  0,
+    "log":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\foundation-process-evidence.log",
+    "startedAtUtc":  "2026-07-10T18:20:46.9419443+00:00",
+    "completedAtUtc":  "2026-07-10T18:21:07.5016101Z"
+}

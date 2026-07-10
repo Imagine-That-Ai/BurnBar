@@ -1,0 +1,24 @@
+{
+  "schema": "openburnbar.windows.foundation-public-redaction.v1",
+  "sourceArchiveSha256": "cfb84e9c9e0e967c4ab6a1b882ec2d1ec6f9f3f46004afe902766f4b3d5bd015",
+  "sourceArchiveSize": 2595950,
+  "sourceManifestSha256": "406af0e7fd61823a977d1ace6f116cdbc2ffee2ee650170af99842b2148dcf6e",
+  "publicManifestSha256": "3f009a83d3d3ed865289f184e44563c6b448ec540b8e96cd6e8d8082c08587e6",
+  "replacements": {
+    "user-profile": 0,
+    "computer-name": 29,
+    "vm-uuid": 1,
+    "username": 34,
+    "key-fingerprint": 14
+  },
+  "note": "Public receipt replaces raw profile, machine, VM, and username identifiers; cryptographic identity hashes are retained.",
+  "normalization": {
+    "textFilesNormalized": 154,
+    "lineEndings": "LF",
+    "bomRemoved": true
+  },
+  "publicPruning": {
+    "helperExecutablesRemoved": 6,
+    "setupOnlyProfileCaptureDirectoriesRemoved": 4
+  }
+}

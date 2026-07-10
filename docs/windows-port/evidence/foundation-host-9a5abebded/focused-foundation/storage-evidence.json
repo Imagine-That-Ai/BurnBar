@@ -1,0 +1,7 @@
+{
+    "name":  "storage-evidence",
+    "command":  "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\\windows-port\\storage-evidence.ps1 -RepoRoot C:\\candidate-current -OutputDir C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence",
+    "exitCode":  0,
+    "log":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence.log",
+    "completedAt":  "2026-07-10T18:20:16.2148956Z"
+}

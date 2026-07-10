@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  parseJsonFile,
   REQUIRED_SCENARIO_IDS,
   validateWindowsFoundationHostEvidence,
 } from "./validate-windows-foundation-host-evidence.mjs";
@@ -19,6 +20,13 @@ function sha256(path) {
 
 function writeJSON(path, value) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+{
+  const dir = mkdtempSync(join(tmpdir(), "obb-foundation-evidence-bom-"));
+  const path = join(dir, "powershell-json.json");
+  writeFileSync(path, `\uFEFF${JSON.stringify({ status: "passed" })}\n`);
+  assert.deepEqual(parseJsonFile(path), { status: "passed" });
 }
 
 function artifact(baseDir, relativePath, scenario, kind, payload = { ok: true }) {

@@ -83,6 +83,10 @@ function sha256(path) {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
+export function parseJsonFile(path) {
+  return JSON.parse(readFileSync(path, "utf8").replace(/^\uFEFF/, ""));
+}
+
 function resolveArtifactPath(baseDir, artifact) {
   if (!isRecord(artifact)) return null;
   if (typeof artifact.relativePath === "string" && artifact.relativePath.length > 0) {
@@ -96,7 +100,7 @@ function resolveArtifactPath(baseDir, artifact) {
 
 function readJson(path, errors, label) {
   try {
-    return JSON.parse(readFileSync(path, "utf8"));
+    return parseJsonFile(path);
   } catch (error) {
     fail(errors, `${label}: cannot read JSON: ${error.message}`);
     return null;
@@ -268,7 +272,7 @@ if (isMain) {
   try {
     const args = parseArgs(process.argv.slice(2));
     const manifestPath = resolve(args.manifestPath);
-    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    const manifest = parseJsonFile(manifestPath);
     const result = validateWindowsFoundationHostEvidence(manifest, {
       manifestPath,
       expectedCandidate: args.expectedCandidate,

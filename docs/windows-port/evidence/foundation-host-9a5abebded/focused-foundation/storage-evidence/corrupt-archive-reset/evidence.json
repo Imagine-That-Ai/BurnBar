@@ -1,0 +1,36 @@
+{
+  "name": "corrupt-archive-reset",
+  "databasePath": "C:\\WINDOWS\\SystemTemp\\obb-storage-1ca8785b05b34ed09208c6bd53f8cf97\\openburnbar.sqlite",
+  "databaseExists": true,
+  "encryptedHeader": true,
+  "walExists": false,
+  "shmExists": false,
+  "report": {
+    "DatabasePath": "C:\\WINDOWS\\SystemTemp\\obb-storage-1ca8785b05b34ed09208c6bd53f8cf97\\openburnbar.sqlite",
+    "JournalPath": "C:\\WINDOWS\\SystemTemp\\obb-storage-1ca8785b05b34ed09208c6bd53f8cf97\\openburnbar.sqlite.windows-migration-journal.json",
+    "RedactedLogPath": "C:\\WINDOWS\\SystemTemp\\obb-storage-1ca8785b05b34ed09208c6bd53f8cf97\\openburnbar.sqlite.recovery.log",
+    "KeyProvenance": "protected-generated:openburnbar.windows.sqlcipher.passphrase",
+    "PathOwner": "WORKGROUP\\%COMPUTERNAME%$",
+    "CipherVersion": "4.5.2 community",
+    "SchemaEndpoint": "v54_provider_quota_snapshots",
+    "MigrationCount": 55,
+    "UserVersion": 0,
+    "SchemaHash": "79bc8290e924d1cb395bba3c93574cfbe5637187655879c63d82032e9f42a2b0",
+    "Created": true,
+    "RetriedInterruptedMigration": false
+  },
+  "recovery": {
+    "Kind": 1,
+    "Title": "The local encrypted database could not be read.",
+    "Message": "Retry, archive the damaged file for support, or reset only after explicit confirmation.",
+    "Actions": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "DatabasePath": "C:\\WINDOWS\\SystemTemp\\obb-storage-1ca8785b05b34ed09208c6bd53f8cf97\\openburnbar.sqlite",
+    "JournalPath": "C:\\WINDOWS\\SystemTemp\\obb-storage-1ca8785b05b34ed09208c6bd53f8cf97\\openburnbar.sqlite.windows-migration-journal.json",
+    "RedactedLogPath": "C:\\WINDOWS\\SystemTemp\\obb-storage-1ca8785b05b34ed09208c6bd53f8cf97\\openburnbar.sqlite.recovery.log"
+  }
+}

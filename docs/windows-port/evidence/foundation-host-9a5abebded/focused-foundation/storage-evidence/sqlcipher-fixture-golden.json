@@ -1,0 +1,7 @@
+{
+    "name":  "sqlcipher-fixture-golden",
+    "command":  "dotnet test windows\\storage\\OpenBurnBar.Storage.Tests\\OpenBurnBar.Storage.Tests.csproj --logger trx;LogFileName=sqlcipher-fixture.trx",
+    "exitCode":  0,
+    "log":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence\\sqlcipher-fixture-golden.log",
+    "completedAt":  "2026-07-10T18:20:15.7811899Z"
+}

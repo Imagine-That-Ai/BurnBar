@@ -1,0 +1,21 @@
+{
+  "name": "fault-AccessDenied",
+  "databasePath": "C:\\WINDOWS\\SystemTemp\\obb-storage-1c1c8dbe36314c4e9f1ed574eed160b0\\openburnbar.sqlite",
+  "databaseExists": false,
+  "encryptedHeader": false,
+  "walExists": false,
+  "shmExists": false,
+  "report": null,
+  "recovery": {
+    "Kind": 6,
+    "Title": "Windows denied access to the local storage path.",
+    "Message": "Fix folder permissions or choose a writable profile path, then retry.",
+    "Actions": [
+      0,
+      3
+    ],
+    "DatabasePath": "C:\\WINDOWS\\SystemTemp\\obb-storage-1c1c8dbe36314c4e9f1ed574eed160b0\\openburnbar.sqlite",
+    "JournalPath": "C:\\WINDOWS\\SystemTemp\\obb-storage-1c1c8dbe36314c4e9f1ed574eed160b0\\openburnbar.sqlite.windows-migration-journal.json",
+    "RedactedLogPath": "C:\\WINDOWS\\SystemTemp\\obb-storage-1c1c8dbe36314c4e9f1ed574eed160b0\\openburnbar.sqlite.recovery.log"
+  }
+}

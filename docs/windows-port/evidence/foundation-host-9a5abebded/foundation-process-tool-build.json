@@ -1,0 +1,8 @@
+{
+    "name":  "foundation-process-tool-build",
+    "command":  "dotnet build windows\\tools\\OpenBurnBar.FoundationHostEvidence\\OpenBurnBar.FoundationHostEvidence.csproj --configuration Debug",
+    "exitCode":  0,
+    "log":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\foundation-process-tool-build.log",
+    "startedAtUtc":  "2026-07-10T18:20:44.9180264+00:00",
+    "completedAtUtc":  "2026-07-10T18:20:46.9137332Z"
+}
