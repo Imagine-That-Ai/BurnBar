@@ -99,7 +99,12 @@ if (-not $VerifyOnly) {
     }
     finally {
         if (Test-Path -LiteralPath $extractRoot) {
-            Remove-Item -LiteralPath $extractRoot -Recurse -Force
+            try {
+                Remove-Item -LiteralPath $extractRoot -Recurse -Force -ErrorAction Stop
+            }
+            catch {
+                Write-Warning "Could not remove temporary extract root ${extractRoot}: $($_.Exception.Message)"
+            }
         }
     }
 } elseif (-not (Test-Path -LiteralPath $destinationFull -PathType Container)) {
