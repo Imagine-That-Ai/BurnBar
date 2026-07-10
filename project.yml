@@ -742,6 +742,8 @@ targets:
         product: OpenBurnBarCore
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
+      - package: OpenBurnBarCore
+        product: OpenBurnBarLinuxSecurity
 
   OpenBurnBarMobile:
     type: application
