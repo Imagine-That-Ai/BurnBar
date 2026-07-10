@@ -101,7 +101,7 @@ actor BurnBarAccountAuthService: BurnBarAccountServing, BurnBarAccountTokenProvi
     private static let refreshLeadTime: TimeInterval = 5 * 60
     static let productionFirebaseAPIKey = "AIzaSyBiAIHwf1MKZ6LN5HrsaPYsAR3UTe8hyw4"
 
-    private struct PendingFlow: Sendable {
+    private struct PendingFlow {
         let flowID: String
         let deviceCode: String
         let deviceSecret: String
