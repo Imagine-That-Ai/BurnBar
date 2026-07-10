@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 
 namespace OpenBurnBar.App.Shell;
 
@@ -41,7 +42,7 @@ public static class SurfacePageResolver
     }
 
     /// <summary>Logical page names that have a WinUI <see cref="Type"/> binding (incl. stub).</summary>
-    public static IReadOnlyCollection<string> BoundLogicalPageNames => LogicalToType.Keys;
+    public static IReadOnlyCollection<string> BoundLogicalPageNames => LogicalToType.Keys.ToArray();
 
     /// <summary>The real page type for a destination key, or the stub when deferred/unknown.</summary>
     public static Type Resolve(string key)

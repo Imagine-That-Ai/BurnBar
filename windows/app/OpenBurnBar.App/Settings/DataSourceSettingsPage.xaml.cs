@@ -12,6 +12,7 @@ using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Interop;
 using OpenBurnBar.App.Storage;
 using OpenBurnBar.App.Settings;
+using OpenBurnBar.Storage;
 using Windows.Storage.Pickers;
 using Windows.Storage;
 using Windows.System;
