@@ -1,15 +1,18 @@
 # Linux native shell authority
 
 Status: source-level native shell, compact status window, and freedesktop
-notification action primitives implemented; installed desktop matrix,
-provider OAuth return, and cloud agent-reply inline-reply parity remain open.
+notification action primitives implemented; the desktop-matrix harness now
+requires native-shell evidence before a row can become ready. Installed desktop
+matrix proof, provider OAuth return, and cloud agent-reply inline-reply parity
+remain open.
 
 This document records the native shell contract introduced for
 `LNX-NATIVE-001`. It covers process ownership, background launch, typed deep
 links, the live tray, the compact status window, source-level freedesktop
 notifications, and user-scoped XDG login start. It does not claim that the
 cloud agent-reply listener/inline reply path, an OAuth provider-return matrix,
-or every Linux tray host is complete.
+or every Linux tray host is complete. The matrix gate now prevents those source
+capabilities from being promoted without installed desktop evidence.
 
 ## Authority boundary
 
@@ -182,6 +185,37 @@ mode `0600`, user-owned, and byte-identical to the canonical packaging entry.
 See `evidence/mission-003-native-shell/runtime-transcript.txt` and the adjacent
 GNOME X11 screenshots. This is direct executable evidence, not installed
 package or desktop-matrix certification.
+
+## Desktop matrix evidence contract
+
+`scripts/linux-port/run-linux-matrix-harness.mjs` requires three external
+evidence files before a requested support row can become `ready`:
+
+- `OPENBURNBAR_LINUX_INSTALLED_EVIDENCE`
+- `OPENBURNBAR_LINUX_ACCESSIBILITY_EVIDENCE`
+- `OPENBURNBAR_LINUX_NATIVE_SHELL_EVIDENCE`
+
+The native-shell evidence must be valid JSON with `passed: true`, the exact
+current git commit under `git.commit` or `commit`, and, when `--environment` is
+used, an `environmentId` matching the requested support row. It must also prove
+all of these checks either as booleans on `nativeShell` or as passed entries in
+a `checks` array:
+
+| Check id | Required proof |
+|---|---|
+| `tray-host` | StatusNotifier/AppIndicator host renders the installed tray affordance. |
+| `tray-actions` | Tray dashboard/chat/provider/update/reconnect/login-start/quit actions route correctly. |
+| `compact-status-window` | Compact native status window opens, refreshes, and closes without mounting the full shell. |
+| `status-window-a11y` | Compact status window is keyboard and assistive-technology reachable. |
+| `notification-server` | Freedesktop notification server capability is detected honestly. |
+| `notification-actions` | Notification actions deliver only allowlisted native route/action pairs. |
+| `notification-relaunch-route` | Notification activation relaunches or focuses the installed app and routes correctly. |
+| `deep-link-relaunch` | Secondary `openburnbar://` launches reuse the existing instance and route correctly. |
+| `login-start` | XDG login-start enable, relogin, disable, stale-file, and uninstall paths are proven. |
+| `tray-host-loss-recovery` | Tray host loss, crash, or restart recovers without stale status or orphaned actions. |
+
+Missing, stale, wrong-environment, or partially passed native-shell evidence
+blocks the row even when package and accessibility evidence are present.
 
 ## Remaining certification
 
