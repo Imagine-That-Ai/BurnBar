@@ -2,7 +2,6 @@
 import AppKit
 import Combine
 import Foundation
-@preconcurrency import FirebaseFirestore
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
 
@@ -15,7 +14,7 @@ import OpenBurnBarComputerUseCore
 /// never receives phone-control frames in the running app.
 @MainActor
 final class ComputerUseRuntimeController: ObservableObject {
-    static let computerUseProductId = "com.openburnbar.hostedComputerUseSync.monthly"
+    static let computerUseProductId = ComputerUseEntitlementSnapshot.hostedProductID
 
     @Published private(set) var coordinator: ComputerUseSessionCoordinator
     let panelModel = ComputerUseSessionPanelModel()
@@ -469,10 +468,10 @@ private enum ComputerUseAuditExportSignerPublisherError: LocalizedError {
 private final class ComputerUseAuditExportSignerPublisher: Sendable {
     static let shared = ComputerUseAuditExportSignerPublisher()
 
-    private let firestoreProvider: @Sendable () -> Firestore
+    private let firestoreGateway: any ComputerUseFirestoreGateway
 
-    init(firestoreProvider: @escaping @Sendable () -> Firestore = { Firestore.firestore() }) {
-        self.firestoreProvider = firestoreProvider
+    init(firestoreGateway: any ComputerUseFirestoreGateway = ComputerUseFirestoreLiveGateway()) {
+        self.firestoreGateway = firestoreGateway
     }
 
     func publish(
@@ -489,26 +488,26 @@ private final class ComputerUseAuditExportSignerPublisher: Sendable {
             throw ComputerUseAuditExportSignerPublisherError.unsignedArchive
         }
         let nowMillis = Int64((Date().timeIntervalSince1970 * 1000).rounded())
-        let payload: [String: Any] = [
-            "id": publicKeySHA256Hex,
-            "userId": uid,
-            "deviceId": deviceId,
-            "signerIdentifier": signerIdentifier,
-            "signerKind": signerKind,
-            "trustRoot": trustRoot,
-            "algorithm": algorithm,
-            "publicKeyBase64": publicKeyBase64,
-            "publicKeySHA256Hex": publicKeySHA256Hex,
-            "status": "active",
-            "publishedAtMillis": nowMillis,
-            "lastReadbackAtMillis": nowMillis,
-            "schemaVersion": 1
-        ]
-        try await firestoreProvider()
-            .collection("users").document(uid)
-            .collection("escrow_devices").document(deviceId)
-            .collection("computer_use_audit_export_signers").document(publicKeySHA256Hex)
-            .setData(payload, merge: true)
+        let payload = ComputerUseFirestorePayload(values: [
+            "id": .string(publicKeySHA256Hex),
+            "userId": .string(uid),
+            "deviceId": .string(deviceId),
+            "signerIdentifier": .string(signerIdentifier),
+            "signerKind": .string(signerKind),
+            "trustRoot": .string(trustRoot),
+            "algorithm": .string(algorithm),
+            "publicKeyBase64": .string(publicKeyBase64),
+            "publicKeySHA256Hex": .string(publicKeySHA256Hex),
+            "status": .string("active"),
+            "publishedAtMillis": .integer(nowMillis),
+            "lastReadbackAtMillis": .integer(nowMillis),
+            "schemaVersion": .integer(1)
+        ])
+        try await firestoreGateway.setData(
+            payload,
+            at: "users/\(uid)/escrow_devices/\(deviceId)/computer_use_audit_export_signers/\(publicKeySHA256Hex)",
+            merge: true
+        )
     }
 }
 #endif

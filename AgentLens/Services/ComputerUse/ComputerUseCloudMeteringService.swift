@@ -1,5 +1,4 @@
-#if canImport(AppKit) && !DISTRIBUTION_MAS
-import FirebaseFirestore
+#if canImport(AppKit)
 import Foundation
 import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
@@ -29,15 +28,16 @@ public protocol ComputerUseCloudMeteringRecording: AnyObject {
     ) async throws
 }
 
+#if !DISTRIBUTION_MAS
 /// Writes privacy-safe Computer Use headers. Firestore's persistent local cache
 /// is the durable delivery queue; the file-backed quota ledger remains the
 /// synchronous admission authority when the network is unavailable.
 @MainActor
 final class ComputerUseCloudMeteringService: ComputerUseCloudMeteringRecording {
-    private let firestoreProvider: () -> Firestore
+    private let firestoreGateway: any ComputerUseFirestoreGateway
 
-    init(firestoreProvider: @escaping () -> Firestore = { Firestore.firestore() }) {
-        self.firestoreProvider = firestoreProvider
+    init(firestoreGateway: any ComputerUseFirestoreGateway = ComputerUseFirestoreLiveGateway()) {
+        self.firestoreGateway = firestoreGateway
     }
 
     func recordSessionStart(
@@ -53,8 +53,11 @@ final class ComputerUseCloudMeteringService: ComputerUseCloudMeteringRecording {
             response: response,
             macAppVersion: macAppVersion
         )
-        try await sessionReference(uid: uid, sessionID: response.sessionId)
-            .setData(payload, merge: false)
+        try await firestoreGateway.setData(
+            payload,
+            at: sessionPath(uid: uid, sessionID: response.sessionId),
+            merge: false
+        )
     }
 
     static func sessionStartPayload(
@@ -62,24 +65,24 @@ final class ComputerUseCloudMeteringService: ComputerUseCloudMeteringRecording {
         request: ComputerUseSessionStartRequest,
         response: ComputerUseSessionStartResponse,
         macAppVersion: String
-    ) -> [String: Any] {
-        [
-            "id": response.sessionId,
-            "sessionId": response.sessionId,
-            "userId": userID,
-            "mode": request.mode,
-            "trustMode": request.trustMode,
-            "startedAt": Timestamp(date: response.startedAt),
-            "actionCount": 0,
-            "approvalCount": 0,
-            "rejectionCount": 0,
-            "panicHaltCount": 0,
-            "visionSpendUSD": 0,
-            "manifestHashHex": response.manifestHashHex,
-            "macAppVersion": String(macAppVersion.prefix(80)),
-            "schemaVersion": 1,
-            "updatedAt": Timestamp(date: response.startedAt)
-        ]
+    ) -> ComputerUseFirestorePayload {
+        ComputerUseFirestorePayload(values: [
+            "id": .string(response.sessionId),
+            "sessionId": .string(response.sessionId),
+            "userId": .string(userID),
+            "mode": .string(request.mode),
+            "trustMode": .string(request.trustMode),
+            "startedAt": .timestamp(response.startedAt),
+            "actionCount": .integer(0),
+            "approvalCount": .integer(0),
+            "rejectionCount": .integer(0),
+            "panicHaltCount": .integer(0),
+            "visionSpendUSD": .integer(0),
+            "manifestHashHex": .string(response.manifestHashHex),
+            "macAppVersion": .string(String(macAppVersion.prefix(80))),
+            "schemaVersion": .integer(1),
+            "updatedAt": .timestamp(response.startedAt)
+        ])
     }
 
     func recordAction(
@@ -89,37 +92,38 @@ final class ComputerUseCloudMeteringService: ComputerUseCloudMeteringRecording {
     ) async throws {
         let uid = try validatedUserID(userID)
         guard let record = Self.actionRecord(invocation: invocation, response: response) else { return }
-        try await firestoreProvider()
-            .collection("users").document(uid)
-            .collection("computer_use_actions").document(record.id)
-            .setData(record.payload, merge: false)
+        try await firestoreGateway.setData(
+            record.payload,
+            at: "users/\(uid)/computer_use_actions/\(record.id)",
+            merge: false
+        )
     }
 
     static func actionRecord(
         invocation: BurnBarToolInvocation,
         response: ComputerUseInvokeResponse
-    ) -> (id: String, payload: [String: Any])? {
+    ) -> (id: String, payload: ComputerUseFirestorePayload)? {
         guard let header = response.meteringHeader else { return nil }
         let actionID = ComputerUseAuditHasher.current.hash(
             data: Data("\(response.sessionId)|\(response.callID)|\(header.entryIndex)".utf8)
         )
-        var payload: [String: Any] = [
-            "id": actionID,
-            "sessionId": response.sessionId,
-            "entryIndex": header.entryIndex,
-            "toolKind": invocation.tool.rawValue,
-            "actionKind": String(header.actionKind.prefix(120)),
-            "status": response.status.rawValue,
-            "approvedBy": header.approvedBy,
-            "parentEntryHashHex": header.parentEntryHashHex,
-            "recordedAt": Timestamp(date: header.recordedAt),
-            "schemaVersion": 1
-        ]
+        var payload = ComputerUseFirestorePayload(values: [
+            "id": .string(actionID),
+            "sessionId": .string(response.sessionId),
+            "entryIndex": .integer(Int64(header.entryIndex)),
+            "toolKind": .string(invocation.tool.rawValue),
+            "actionKind": .string(String(header.actionKind.prefix(120))),
+            "status": .string(response.status.rawValue),
+            "approvedBy": .string(header.approvedBy),
+            "parentEntryHashHex": .string(header.parentEntryHashHex),
+            "recordedAt": .timestamp(header.recordedAt),
+            "schemaVersion": .integer(1)
+        ])
         if let scopeRuleID = header.scopeRuleId {
-            payload["scopeRuleId"] = String(scopeRuleID.prefix(200))
+            payload.setString(String(scopeRuleID.prefix(200)), forKey: "scopeRuleId")
         }
         if let denyReason = header.denyReason {
-            payload["denyReason"] = String(denyReason.prefix(200))
+            payload.setString(String(denyReason.prefix(200)), forKey: "denyReason")
         }
         return (actionID, payload)
     }
@@ -139,8 +143,11 @@ final class ComputerUseCloudMeteringService: ComputerUseCloudMeteringRecording {
             state: state,
             auditHeadHashHex: auditHeadHashHex
         )
-        try await sessionReference(uid: uid, sessionID: sessionID)
-            .setData(payload, merge: true)
+        try await firestoreGateway.setData(
+            payload,
+            at: sessionPath(uid: uid, sessionID: sessionID),
+            merge: true
+        )
     }
 
     static func sessionEndPayload(
@@ -148,27 +155,25 @@ final class ComputerUseCloudMeteringService: ComputerUseCloudMeteringRecording {
         reason: ComputerUseEndReason,
         state: ComputerUseSessionState?,
         auditHeadHashHex: String?
-    ) -> [String: Any] {
-        var payload: [String: Any] = [
-            "endedAt": Timestamp(date: endedAt),
-            "endReason": reason.rawValue,
-            "panicHaltCount": Self.isPanic(reason) ? 1 : 0,
-            "updatedAt": Timestamp(date: endedAt)
+    ) -> ComputerUseFirestorePayload {
+        var values: [String: ComputerUseFirestorePayload.Value] = [
+            "endedAt": .timestamp(endedAt),
+            "endReason": .string(reason.rawValue),
+            "panicHaltCount": .integer(Self.isPanic(reason) ? 1 : 0),
+            "updatedAt": .timestamp(endedAt)
         ]
         if let state {
-            payload["actionCount"] = state.actionsExecuted + state.actionsRejected
-            payload["rejectionCount"] = state.actionsRejected
+            values["actionCount"] = .integer(Int64(state.actionsExecuted + state.actionsRejected))
+            values["rejectionCount"] = .integer(Int64(state.actionsRejected))
         }
         if let auditHeadHashHex = auditHeadHashHex ?? state?.auditChainHeadHashHex {
-            payload["auditHeadHashHex"] = auditHeadHashHex
+            values["auditHeadHashHex"] = .string(auditHeadHashHex)
         }
-        return payload
+        return ComputerUseFirestorePayload(values: values)
     }
 
-    private func sessionReference(uid: String, sessionID: String) -> DocumentReference {
-        firestoreProvider()
-            .collection("users").document(uid)
-            .collection("computer_use_sessions").document(sessionID)
+    private func sessionPath(uid: String, sessionID: String) -> String {
+        "users/\(uid)/computer_use_sessions/\(sessionID)"
     }
 
     private func validatedUserID(_ userID: String) throws -> String {
@@ -193,4 +198,32 @@ final class ComputerUseCloudMeteringService: ComputerUseCloudMeteringRecording {
 private enum ComputerUseCloudMeteringError: Error {
     case missingAuthenticatedUser
 }
+#else
+/// Keeps the shared daemon manager constructible while Computer Use execution
+/// remains compiled out of the Mac App Store distribution.
+@MainActor
+final class ComputerUseCloudMeteringService: ComputerUseCloudMeteringRecording {
+    func recordSessionStart(
+        userID _: String,
+        request _: ComputerUseSessionStartRequest,
+        response _: ComputerUseSessionStartResponse,
+        macAppVersion _: String
+    ) async throws {}
+
+    func recordAction(
+        userID _: String,
+        invocation _: BurnBarToolInvocation,
+        response _: ComputerUseInvokeResponse
+    ) async throws {}
+
+    func recordSessionEnd(
+        userID _: String,
+        sessionID _: String,
+        endedAt _: Date,
+        reason _: ComputerUseEndReason,
+        state _: ComputerUseSessionState?,
+        auditHeadHashHex _: String?
+    ) async throws {}
+}
+#endif
 #endif

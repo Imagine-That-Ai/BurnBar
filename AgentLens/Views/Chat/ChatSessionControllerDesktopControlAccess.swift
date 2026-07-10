@@ -53,7 +53,9 @@ extension ChatSessionController {
     func revokeDesktopControl() {
         let runtimeID = assistantRuntimeID(for: chatBackend)
         let threadID = activeThreadID
+        #if canImport(AppKit) && !DISTRIBUTION_MAS
         let runtimeController = computerUseRuntimeController
+        #endif
         AgentCapabilityGrantStore.shared.revoke(
             runtimeID: runtimeID,
             threadID: threadID
@@ -69,9 +71,9 @@ extension ChatSessionController {
                 threadID: threadID
             )
         }
-        Task {
-            await runtimeController?.endSession()
-        }
+        #if canImport(AppKit) && !DISTRIBUTION_MAS
+        Task { await runtimeController?.endSession() }
+        #endif
         Task {
             await cliBridge.cancelAndWait()
         }

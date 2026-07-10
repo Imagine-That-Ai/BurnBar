@@ -14,6 +14,7 @@
 #
 # The sanctioned gateways are exempt — they are *meant* to own the handle:
 #   AgentLens/Services/CloudSync/CloudSyncFirestoreGateway.swift
+#   AgentLens/Services/ComputerUse/ComputerUseFirestoreGateway.swift
 #   OpenBurnBarMobile/Services/FirestoreRepository.swift
 #   android/app/src/main/java/com/openburnbar/data/firebase/FirestoreRepository.kt
 #
@@ -41,6 +42,7 @@ mode = sys.argv[3] if len(sys.argv) > 3 else ""
 # verified present when this baseline was captured.
 allowlist = {
     "AgentLens/Services/CloudSync/CloudSyncFirestoreGateway.swift",
+    "AgentLens/Services/ComputerUse/ComputerUseFirestoreGateway.swift",
     "OpenBurnBarMobile/Services/FirestoreRepository.swift",
     "android/app/src/main/java/com/openburnbar/data/firebase/FirestoreRepository.kt",
 }

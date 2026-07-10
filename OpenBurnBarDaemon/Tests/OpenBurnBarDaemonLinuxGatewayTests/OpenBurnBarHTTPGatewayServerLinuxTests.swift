@@ -423,22 +423,22 @@ private final class LinuxMockOpenAIStreamServer: @unchecked Sendable {
 
         switch response {
         case .openAIChatStream:
-            let transferEncoding = dropsAfterFirstChunk ? "Transfer-Encoding: chunked\r\n" : ""
+            let firstChunk = #"data: {"id":"chatcmpl-linux","object":"chat.completion.chunk","created":1783200000,"model":"glm-5-turbo","choices":[{"index":0,"delta":{"content":"hi"},"finish_reason":null}]}"# + "\n\n"
+            let truncationHeader = dropsAfterFirstChunk
+                ? "Content-Length: \(firstChunk.utf8.count + 1_024)\r\n"
+                : ""
             let head = "HTTP/1.1 200 OK\r\n"
                 + "Content-Type: text/event-stream\r\n"
                 + "Cache-Control: no-cache\r\n"
-                + transferEncoding
+                + truncationHeader
                 + "Connection: close\r\n"
                 + "\r\n"
             _ = try? LinuxSocketSupport.sendAll(Data(head.utf8), to: clientFD)
 
-            let firstChunk = #"data: {"id":"chatcmpl-linux","object":"chat.completion.chunk","created":1783200000,"model":"glm-5-turbo","choices":[{"index":0,"delta":{"content":"hi"},"finish_reason":null}]}"# + "\n\n"
+            _ = try? LinuxSocketSupport.sendAll(Data(firstChunk.utf8), to: clientFD)
             if dropsAfterFirstChunk {
-                let incompleteChunkedBody = "\(String(firstChunk.utf8.count, radix: 16))\r\n\(firstChunk)\r\n"
-                _ = try? LinuxSocketSupport.sendAll(Data(incompleteChunkedBody.utf8), to: clientFD)
                 return
             }
-            _ = try? LinuxSocketSupport.sendAll(Data(firstChunk.utf8), to: clientFD)
             Glibc.usleep(50_000)
             let usageChunk = #"data: {"id":"chatcmpl-linux","object":"chat.completion.chunk","created":1783200000,"model":"glm-5-turbo","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"#
                 + #""usage":{"prompt_tokens":7,"completion_tokens":5,"total_tokens":12,"cache_creation_input_tokens":3,"prompt_tokens_details":{"cached_tokens":2},"completion_tokens_details":{"reasoning_tokens":1}}}"# + "\n\n"

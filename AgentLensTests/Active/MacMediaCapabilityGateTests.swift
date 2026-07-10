@@ -91,11 +91,11 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         let expiration = Date(timeIntervalSinceNow: 3_600)
         let purchase = Date(timeIntervalSinceNow: -7_200)
 
-        store.applyHostedMedia(data: [
+        store.applyHostedMedia(data: MacCloudEntitlementDocument([
             "active": true,
             "expiresAt": expiration,
             "purchaseDate": purchase
-        ])
+        ]))
 
         XCTAssertTrue(store.hostedMediaIsActive)
         XCTAssertEqual(store.hostedMediaExpirationDate?.timeIntervalSince1970, expiration.timeIntervalSince1970)
@@ -130,11 +130,11 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         let future = Date(timeIntervalSinceNow: 7_200)
         let purchase = Date(timeIntervalSince1970: 1_700_000_000)
 
-        store.applyHostedMedia(data: [
+        store.applyHostedMedia(data: MacCloudEntitlementDocument([
             "active": true,
             "expireAt": future.timeIntervalSince1970,
             "originalPurchaseDate": ISO8601DateFormatter().string(from: purchase)
-        ])
+        ]))
 
         XCTAssertTrue(store.hostedMediaIsActive)
         XCTAssertEqual(
@@ -148,11 +148,11 @@ final class MacMediaCapabilityGateTests: XCTestCase {
             accuracy: 0.001
         )
 
-        store.applyHostedMedia(data: [
+        store.applyHostedMedia(data: MacCloudEntitlementDocument([
             "active": true,
             "expirationDate": Int(Date(timeIntervalSinceNow: -60).timeIntervalSince1970),
             "purchaseDate": purchase
-        ])
+        ]))
 
         XCTAssertFalse(store.hostedMediaIsActive)
         XCTAssertEqual(store.hostedMediaPurchaseDate, purchase)
@@ -230,7 +230,7 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         XCTAssertTrue(store.hostedComputerUseIsActive)
 
         store.applyHostedComputerUse(
-            data: ["active": true],
+            data: MacCloudEntitlementDocument(["active": true]),
             isFromCache: true,
             observedAt: Date()
         )
@@ -238,7 +238,7 @@ final class MacMediaCapabilityGateTests: XCTestCase {
 
         let serverObservedAt = Date()
         store.applyHostedComputerUse(
-            data: ["active": false, "updatedAt": serverObservedAt],
+            data: MacCloudEntitlementDocument(["active": false, "updatedAt": serverObservedAt]),
             isFromCache: false,
             observedAt: serverObservedAt
         )
@@ -292,11 +292,11 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         await store.refreshStoreKitEntitlementsForTesting()
         XCTAssertEqual(store.currentTier, .ultra)
 
-        store.applyHostedQuota(data: [
+        store.applyHostedQuota(data: MacCloudEntitlementDocument([
             "active": true,
             "productID": MacCloudStoreKitProductCatalog.cloudMonthlyProductID,
             "expiresAt": cloudExpires
-        ])
+        ]))
 
         XCTAssertTrue(store.isActive)
         XCTAssertFalse(store.hostedComputerUseIsActive)
@@ -331,11 +331,11 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         )
         await store.refreshStoreKitEntitlementsForTesting()
 
-        store.applyHostedQuota(data: [
+        store.applyHostedQuota(data: MacCloudEntitlementDocument([
             "active": true,
             "productID": MacCloudStoreKitProductCatalog.cloudMonthlyProductID,
             "expiresAt": fractionalISO8601.string(from: cloudLapsedExpires)
-        ])
+        ]))
 
         XCTAssertTrue(store.hasVerifiedStoreKitEntitlementSnapshot)
         XCTAssertFalse(store.isActive)

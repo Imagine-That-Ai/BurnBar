@@ -330,6 +330,18 @@ private enum MacCloudMembershipSourceState {
     }
 }
 
+struct MacCloudEntitlementDocument {
+    private let fields: [String: Any]
+
+    init(_ fields: [String: Any]) {
+        self.fields = fields
+    }
+
+    subscript(key: String) -> Any? {
+        fields[key]
+    }
+}
+
 @MainActor
 final class MacCloudEntitlementStore: ObservableObject {
     @Published private(set) var isActive: Bool = false
@@ -475,7 +487,7 @@ final class MacCloudEntitlementStore: ObservableObject {
                 guard !snapshot.metadata.isFromCache else { continue }
                 applyServerMembershipSnapshot(
                     documentID: documentID,
-                    data: snapshot.data(),
+                    data: snapshot.data().map(MacCloudEntitlementDocument.init),
                     exists: snapshot.exists,
                     observedAt: now
                 )
@@ -547,7 +559,7 @@ final class MacCloudEntitlementStore: ObservableObject {
                         self.publishMembershipEntitlements()
                         return
                     }
-                    self.applyHostedQuota(data: data, observedAt: Date())
+                    self.applyHostedQuota(data: MacCloudEntitlementDocument(data), observedAt: Date())
                 }
             }
         computerUseListener = entitlements
@@ -566,7 +578,7 @@ final class MacCloudEntitlementStore: ObservableObject {
                         self.publishMembershipEntitlements()
                         return
                     }
-                    self.applyHostedComputerUse(data: data, observedAt: Date())
+                    self.applyHostedComputerUse(data: MacCloudEntitlementDocument(data), observedAt: Date())
                 }
             }
         // cov:ignore-start -- Firebase snapshot callback delivery is integration-only; parser/clear paths are unit-tested
@@ -583,7 +595,7 @@ final class MacCloudEntitlementStore: ObservableObject {
                         self.clearHostedMediaEntitlement()
                         return
                     }
-                    self.applyHostedMedia(data: data)
+                    self.applyHostedMedia(data: MacCloudEntitlementDocument(data))
                 }
             }
         // cov:ignore-end
@@ -604,9 +616,12 @@ final class MacCloudEntitlementStore: ObservableObject {
                         return
                     }
                     self.proMaxSourceState = .present(
-                        self.membershipState(data: data, defaultTier: .pro)
+                        self.membershipState(data: MacCloudEntitlementDocument(data), defaultTier: .pro)
                     )
-                    self.proMaxProvenance = self.serverProvenance(data: data, observedAt: Date())
+                    self.proMaxProvenance = self.serverProvenance(
+                        data: MacCloudEntitlementDocument(data),
+                        observedAt: Date()
+                    )
                     self.publishMembershipEntitlements()
                 }
             }
@@ -627,22 +642,25 @@ final class MacCloudEntitlementStore: ObservableObject {
                         return
                     }
                     self.ultraSourceState = .present(
-                        self.membershipState(data: data, defaultTier: .ultra)
+                        self.membershipState(data: MacCloudEntitlementDocument(data), defaultTier: .ultra)
                     )
-                    self.ultraProvenance = self.serverProvenance(data: data, observedAt: Date())
+                    self.ultraProvenance = self.serverProvenance(
+                        data: MacCloudEntitlementDocument(data),
+                        observedAt: Date()
+                    )
                     self.publishMembershipEntitlements()
                 }
             }
     }
 
-    func applyHostedQuota(data: [String: Any], observedAt: Date = Date()) {
+    func applyHostedQuota(data: MacCloudEntitlementDocument, observedAt: Date = Date()) {
         hostedQuotaSourceState = .present(membershipState(data: data, defaultTier: .cloud))
         hostedQuotaProvenance = serverProvenance(data: data, observedAt: observedAt)
         publishMembershipEntitlements()
     }
 
     func applyHostedComputerUse(
-        data: [String: Any],
+        data: MacCloudEntitlementDocument,
         isFromCache: Bool = false,
         observedAt: Date = Date()
     ) {
@@ -654,7 +672,7 @@ final class MacCloudEntitlementStore: ObservableObject {
 
     private func applyServerMembershipSnapshot(
         documentID: String,
-        data: [String: Any]?,
+        data: MacCloudEntitlementDocument?,
         exists: Bool,
         observedAt: Date
     ) {
@@ -697,7 +715,7 @@ final class MacCloudEntitlementStore: ObservableObject {
         }
     }
 
-    func applyHostedMedia(data: [String: Any]) {
+    func applyHostedMedia(data: MacCloudEntitlementDocument) {
         let state = activeEntitlementState(data: data)
         hostedMediaIsActive = state.isActive
         hostedMediaExpirationDate = state.expiresAt
@@ -710,7 +728,7 @@ final class MacCloudEntitlementStore: ObservableObject {
         hostedMediaPurchaseDate = nil
     }
 
-    private func activeEntitlementState(data: [String: Any]) -> MacEntitlementActiveState {
+    private func activeEntitlementState(data: MacCloudEntitlementDocument) -> MacEntitlementActiveState {
         let active = (data["active"] as? Bool) ?? false
         let expiresAt = parseDate(data["expireAt"])
             ?? parseDate(data["expiresAt"])
@@ -725,7 +743,10 @@ final class MacCloudEntitlementStore: ObservableObject {
         )
     }
 
-    private func membershipState(data: [String: Any], defaultTier: MacCloudTier) -> MacMembershipEntitlementState {
+    private func membershipState(
+        data: MacCloudEntitlementDocument,
+        defaultTier: MacCloudTier
+    ) -> MacMembershipEntitlementState {
         let entitlement = activeEntitlementState(data: data)
         let productID = (data["productID"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let tier = MacCloudStoreKitProductCatalog.tier(for: productID) ?? defaultTier
@@ -863,7 +884,7 @@ final class MacCloudEntitlementStore: ObservableObject {
     }
 
     private func serverProvenance(
-        data: [String: Any],
+        data: MacCloudEntitlementDocument,
         observedAt: Date
     ) -> ComputerUseAuthorityProvenance {
         ComputerUseAuthorityProvenance(

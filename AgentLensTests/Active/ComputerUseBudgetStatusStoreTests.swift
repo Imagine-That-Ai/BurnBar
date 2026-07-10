@@ -6,17 +6,35 @@ import OpenBurnBarComputerUseCore
 @MainActor
 final class ComputerUseBudgetStatusStoreTests: XCTestCase {
     func testParsePublicEnvelopeOmitsUSDFields() {
-        let envelope = ComputerUseBudgetStatusStore.parsePublicEnvelope([
-            "level": "soft_cap",
-            "activeActionsPerRun": 25,
-            "activeActionsPerDay": 100,
-            "activeSessionsPerDay": 2,
-            "perUserDailySpendCeilingUSD": 2.5
-        ])
+        let envelope = ComputerUseBudgetStatusStore.parsePublicEnvelope(payload([
+            "level": .string("soft_cap"),
+            "activeActionsPerRun": .integer(25),
+            "activeActionsPerDay": .integer(100),
+            "activeSessionsPerDay": .integer(2),
+            "perUserDailySpendCeilingUSD": .double(2.5)
+        ]))
         XCTAssertEqual(envelope.level, .softCap)
         XCTAssertEqual(envelope.activeActionsPerRun, 25)
         XCTAssertEqual(envelope.projectedMonthEndUSD, 0)
         XCTAssertEqual(envelope.monthToDateUSD, 0)
+    }
+
+    func testFirestorePayloadPreservesNSNumberScalarKinds() throws {
+        let payload = ComputerUseFirestorePayload(snapshotData: [
+            "false": NSNumber(value: false),
+            "true": NSNumber(value: true),
+            "one": NSNumber(value: Int64(1)),
+            "two": NSNumber(value: Int64(2)),
+            "wholeDouble": NSNumber(value: 2.0),
+            "fractionalDouble": NSNumber(value: 2.5)
+        ])
+
+        XCTAssertFalse(try XCTUnwrap(payload.bool("false")))
+        XCTAssertTrue(try XCTUnwrap(payload.bool("true")))
+        XCTAssertEqual(payload.int("one"), 1)
+        XCTAssertEqual(payload.int("two"), 2)
+        XCTAssertEqual(payload.double("wholeDouble"), 2.0)
+        XCTAssertEqual(payload.double("fractionalDouble"), 2.5)
     }
 
     func testPermissionDeniedWhileSignedInSetsFailClosed() {
@@ -31,13 +49,13 @@ final class ComputerUseBudgetStatusStoreTests: XCTestCase {
 
     func testUnavailableUsesLastKnownEnvelope() {
         let store = ComputerUseBudgetStatusStore(isSignedInProvider: { true })
-        store.applyPublicEnvelopeData([
-            "level": "soft_cap",
-            "activeActionsPerRun": 25,
-            "activeActionsPerDay": 100,
-            "activeSessionsPerDay": 2,
-            "perUserDailySpendCeilingUSD": 2.5
-        ])
+        store.applyPublicEnvelope(payload([
+            "level": .string("soft_cap"),
+            "activeActionsPerRun": .integer(25),
+            "activeActionsPerDay": .integer(100),
+            "activeSessionsPerDay": .integer(2),
+            "perUserDailySpendCeilingUSD": .double(2.5)
+        ]))
         store.handleSnapshot(snapshot: nil, error: NSError(
             domain: FirestoreErrorDomain,
             code: FirestoreErrorCode.unavailable.rawValue
@@ -49,15 +67,15 @@ final class ComputerUseBudgetStatusStoreTests: XCTestCase {
 
     func testCachedBudgetSnapshotNeverBecomesAuthoritative() {
         let store = ComputerUseBudgetStatusStore(isSignedInProvider: { true })
-        store.handleSnapshotData(
-            [
-                "level": "normal",
-                "activeActionsPerRun": 50,
-                "activeActionsPerDay": 200,
-                "activeSessionsPerDay": 4,
-                "perUserDailySpendCeilingUSD": 5,
-                "updatedAt": Timestamp(date: Date())
-            ],
+        store.handleSnapshotPayload(
+            payload([
+                "level": .string("normal"),
+                "activeActionsPerRun": .integer(50),
+                "activeActionsPerDay": .integer(200),
+                "activeSessionsPerDay": .integer(4),
+                "perUserDailySpendCeilingUSD": .double(5),
+                "updatedAt": .timestamp(Date())
+            ]),
             isFromCache: true,
             observedAt: Date()
         )
@@ -71,15 +89,15 @@ final class ComputerUseBudgetStatusStoreTests: XCTestCase {
         let store = ComputerUseBudgetStatusStore(isSignedInProvider: { true })
         let observedAt = Date(timeIntervalSince1970: 1_800_000_100)
         let updatedAt = Date(timeIntervalSince1970: 1_800_000_000)
-        store.handleSnapshotData(
-            [
-                "level": "normal",
-                "activeActionsPerRun": 50,
-                "activeActionsPerDay": 200,
-                "activeSessionsPerDay": 4,
-                "perUserDailySpendCeilingUSD": 5,
-                "updatedAt": Timestamp(date: updatedAt)
-            ],
+        store.handleSnapshotPayload(
+            payload([
+                "level": .string("normal"),
+                "activeActionsPerRun": .integer(50),
+                "activeActionsPerDay": .integer(200),
+                "activeSessionsPerDay": .integer(4),
+                "perUserDailySpendCeilingUSD": .double(5),
+                "updatedAt": .timestamp(updatedAt)
+            ]),
             isFromCache: false,
             observedAt: observedAt
         )
@@ -97,7 +115,7 @@ final class ComputerUseBudgetStatusStoreTests: XCTestCase {
 
         store.handleSnapshot(
             documentExists: false,
-            data: nil,
+            payload: nil,
             error: nil,
             dayKey: dayKey
         )
@@ -111,14 +129,14 @@ final class ComputerUseBudgetStatusStoreTests: XCTestCase {
         let dayKey = ComputerUseQuotaUsageStore.todayKey()
         store.handleSnapshot(
             documentExists: false,
-            data: nil,
+            payload: nil,
             error: nil,
             dayKey: dayKey
         )
 
         store.handleSnapshot(
             documentExists: nil,
-            data: nil,
+            payload: nil,
             error: NSError(domain: FirestoreErrorDomain, code: FirestoreErrorCode.unavailable.rawValue),
             dayKey: dayKey
         )
@@ -135,7 +153,7 @@ final class ComputerUseBudgetStatusStoreTests: XCTestCase {
 
         store.handleSnapshot(
             documentExists: false,
-            data: nil,
+            payload: nil,
             error: nil,
             dayKey: yesterday
         )
@@ -148,7 +166,7 @@ final class ComputerUseBudgetStatusStoreTests: XCTestCase {
         let dayKey = ComputerUseQuotaUsageStore.todayKey()
         store.handleSnapshot(
             documentExists: false,
-            data: nil,
+            payload: nil,
             error: nil,
             dayKey: dayKey,
             isFromCache: true
@@ -157,5 +175,11 @@ final class ComputerUseBudgetStatusStoreTests: XCTestCase {
         XCTAssertFalse(store.hasAuthoritativeSnapshot)
         XCTAssertNil(store.authorityProvenance)
         XCTAssertNil(store.currentUsage)
+    }
+
+    private func payload(
+        _ values: [String: ComputerUseFirestorePayload.Value]
+    ) -> ComputerUseFirestorePayload {
+        ComputerUseFirestorePayload(values: values)
     }
 }

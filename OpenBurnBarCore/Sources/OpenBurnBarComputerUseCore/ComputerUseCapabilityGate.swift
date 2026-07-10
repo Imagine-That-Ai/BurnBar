@@ -110,6 +110,8 @@ public struct ComputerUseQuotaUsage: Codable, Hashable, Sendable {
 /// `MacCloudEntitlementStore.hostedComputerUseEntitlement`; the iOS
 /// client mirrors it for informational display only.
 public struct ComputerUseEntitlementSnapshot: Codable, Hashable, Sendable {
+    public static let hostedProductID = "com.openburnbar.hostedComputerUseSync.monthly"
+
     public let isActive: Bool
     public let productId: String?
     public let expireAt: Date?

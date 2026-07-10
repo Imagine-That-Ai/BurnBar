@@ -65,7 +65,7 @@ extension OpenBurnBarDaemonManager {
         let userID = Auth.auth().currentUser?.uid ?? ""
         let entitlement = ComputerUseEntitlementSnapshot(
             isActive: entitlementStore.hostedComputerUseIsActive,
-            productId: ComputerUseRuntimeController.computerUseProductId,
+            productId: ComputerUseEntitlementSnapshot.hostedProductID,
             expireAt: entitlementStore.hostedComputerUseExpirationDate,
             allowsBrowser: settingsManager.computerUseBrowserEnabled,
             allowsSystem: settingsManager.computerUseSystemEnabled,

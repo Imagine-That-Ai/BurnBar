@@ -7,6 +7,107 @@ import XCTest
 
 @MainActor
 final class ComputerUseCloudMeteringServiceTests: XCTestCase {
+    func testWritesSessionAndActionDocumentsThroughGatewayWithExpectedMergeSemantics() async throws {
+        let gateway = ComputerUseFirestoreGatewaySpy()
+        let service = ComputerUseCloudMeteringService(firestoreGateway: gateway)
+        let startedAt = Date(timeIntervalSince1970: 1_788_000_000)
+        let request = ComputerUseSessionStartRequest(
+            mode: ComputerUseMode.system.rawValue,
+            trustMode: ComputerUseTrustMode.manual.rawValue,
+            scopeRuleIds: [],
+            phoneViewerNodeId: nil,
+            macHostNodeId: "mac-1",
+            clientID: BurnBarClientID(rawValue: "client-1")
+        )
+        let startResponse = ComputerUseSessionStartResponse(
+            sessionId: "session-1",
+            manifestHashHex: String(repeating: "a", count: 64),
+            startedAt: startedAt,
+            entitlementProductId: "hosted_computer_use_sync",
+            actionCap: 50
+        )
+        let header = ComputerUseActionMeteringHeader(
+            entryIndex: 4,
+            actionKind: "mac.input.click",
+            approvedBy: ComputerUseAuditEntry.ApprovedBy.mac.rawValue,
+            parentEntryHashHex: String(repeating: "b", count: 64),
+            recordedAt: startedAt.addingTimeInterval(10)
+        )
+        let invocation = BurnBarToolInvocation(
+            callID: "call-1",
+            runID: BurnBarRunID(rawValue: "run-1"),
+            tool: .macInputClick,
+            arguments: .object([:]),
+            requestedBy: BurnBarClientID(rawValue: "client-1"),
+            requestedAt: startedAt
+        )
+        let invokeResponse = ComputerUseInvokeResponse(
+            sessionId: "session-1",
+            callID: "call-1",
+            status: .executed,
+            denyReason: nil,
+            auditEntryIndex: 4,
+            auditHeadHashHex: String(repeating: "c", count: 64),
+            meteringHeader: header
+        )
+        let actionID = try XCTUnwrap(
+            ComputerUseCloudMeteringService.actionRecord(
+                invocation: invocation,
+                response: invokeResponse
+            )?.id
+        )
+
+        try await service.recordSessionStart(
+            userID: " user-1 ",
+            request: request,
+            response: startResponse,
+            macAppVersion: "1.0"
+        )
+        try await service.recordAction(
+            userID: " user-1 ",
+            invocation: invocation,
+            response: invokeResponse
+        )
+        try await service.recordSessionEnd(
+            userID: " user-1 ",
+            sessionID: "session-1",
+            endedAt: startedAt.addingTimeInterval(20),
+            reason: .completed,
+            state: nil,
+            auditHeadHashHex: String(repeating: "d", count: 64)
+        )
+
+        XCTAssertEqual(gateway.writes, [
+            .init(
+                path: "users/user-1/computer_use_sessions/session-1",
+                merge: false,
+                id: "session-1",
+                sessionID: "session-1",
+                userID: "user-1",
+                endReason: nil,
+                containsPrivateActionData: false
+            ),
+            .init(
+                path: "users/user-1/computer_use_actions/\(actionID)",
+                merge: false,
+                id: actionID,
+                sessionID: "session-1",
+                userID: nil,
+                endReason: nil,
+                containsPrivateActionData: false
+            ),
+            .init(
+                path: "users/user-1/computer_use_sessions/session-1",
+                merge: true,
+                id: nil,
+                sessionID: nil,
+                userID: nil,
+                endReason: ComputerUseEndReason.completed.rawValue,
+                containsPrivateActionData: false
+            )
+        ])
+    }
+
     func testSessionStartPayloadExcludesDeviceAndAuthorizationDetails() {
         let startedAt = Date(timeIntervalSince1970: 1_788_000_000)
         let request = ComputerUseSessionStartRequest(
@@ -37,8 +138,8 @@ final class ComputerUseCloudMeteringServiceTests: XCTestCase {
             "actionCount", "approvalCount", "rejectionCount", "panicHaltCount",
             "visionSpendUSD", "manifestHashHex", "macAppVersion", "schemaVersion", "updatedAt"
         ])
-        XCTAssertEqual(payload["macAppVersion"] as? String, String(repeating: "v", count: 80))
-        XCTAssertFalse(String(describing: payload).contains("private-"))
+        XCTAssertEqual(payload.string("macAppVersion"), String(repeating: "v", count: 80))
+        XCTAssertFalse(payload.containsStringFragment("private-"))
     }
 
     func testActionPayloadUsesStableIDAndNeverFallsBackToRawResponseError() throws {
@@ -71,10 +172,10 @@ final class ComputerUseCloudMeteringServiceTests: XCTestCase {
         let second = try XCTUnwrap(ComputerUseCloudMeteringService.actionRecord(invocation: invocation, response: response))
 
         XCTAssertEqual(first.id, second.id)
-        XCTAssertNil(first.payload["denyReason"])
-        XCTAssertFalse(String(describing: first.payload).contains("private.example"))
-        XCTAssertNil(first.payload["arguments"])
-        XCTAssertNil(first.payload["result"])
+        XCTAssertFalse(first.payload.contains("denyReason"))
+        XCTAssertFalse(first.payload.containsStringFragment("private.example"))
+        XCTAssertFalse(first.payload.contains("arguments"))
+        XCTAssertFalse(first.payload.contains("result"))
     }
 
     func testDaemonSessionEndPayloadDoesNotRegressUnknownCounters() {
@@ -85,10 +186,64 @@ final class ComputerUseCloudMeteringServiceTests: XCTestCase {
             auditHeadHashHex: String(repeating: "d", count: 64)
         )
 
-        XCTAssertNil(payload["actionCount"])
-        XCTAssertNil(payload["rejectionCount"])
-        XCTAssertEqual(payload["panicHaltCount"] as? Int, 0)
-        XCTAssertEqual(payload["auditHeadHashHex"] as? String, String(repeating: "d", count: 64))
+        XCTAssertFalse(payload.contains("actionCount"))
+        XCTAssertFalse(payload.contains("rejectionCount"))
+        XCTAssertEqual(payload.int("panicHaltCount"), 0)
+        XCTAssertEqual(payload.string("auditHeadHashHex"), String(repeating: "d", count: 64))
     }
+}
+
+private final class ComputerUseFirestoreGatewaySpy: ComputerUseFirestoreGateway {
+    struct Write: Equatable, Sendable {
+        let path: String
+        let merge: Bool
+        let id: String?
+        let sessionID: String?
+        let userID: String?
+        let endReason: String?
+        let containsPrivateActionData: Bool
+    }
+
+    private let recordedWrites = OpenBurnBarCore.Locked<[Write]>([])
+
+    var writes: [Write] {
+        recordedWrites.read()
+    }
+
+    func addSnapshotListener(
+        at _: String,
+        handler _: @escaping @Sendable (ComputerUseFirestoreDocumentSnapshot?, Error?) -> Void
+    ) -> any ComputerUseFirestoreListenerRegistration {
+        ComputerUseFirestoreListenerRegistrationSpy()
+    }
+
+    func getDocumentFromServer(at _: String) async throws -> ComputerUseFirestoreDocumentSnapshot {
+        throw ComputerUseFirestoreGatewaySpyError.unexpectedRead
+    }
+
+    func setData(
+        _ payload: ComputerUseFirestorePayload,
+        at documentPath: String,
+        merge: Bool
+    ) async throws {
+        let write = Write(
+            path: documentPath,
+            merge: merge,
+            id: payload.string("id"),
+            sessionID: payload.string("sessionId"),
+            userID: payload.string("userId"),
+            endReason: payload.string("endReason"),
+            containsPrivateActionData: payload.contains("arguments") || payload.contains("result")
+        )
+        recordedWrites.withLock { $0.append(write) }
+    }
+}
+
+private final class ComputerUseFirestoreListenerRegistrationSpy: ComputerUseFirestoreListenerRegistration {
+    func remove() {}
+}
+
+private enum ComputerUseFirestoreGatewaySpyError: Error {
+    case unexpectedRead
 }
 #endif

@@ -21,7 +21,7 @@ public actor ComputerUseService {
         case capabilityDenied(String)
     }
 
-    private static let computerUseProductId = "com.openburnbar.hostedComputerUseSync.monthly"
+    private static let computerUseProductId = ComputerUseEntitlementSnapshot.hostedProductID
 
     private let coordinator: ComputerUseRunCoordinator
     private let approvalBridge: ComputerUseApprovalBridge
