@@ -28,7 +28,12 @@
     "icon": ["icons/icon.png"],
     "linux": {
       "deb": {
+        "depends": ["libsecret-tools"],
+        "recommends": ["gnome-keyring | libkf5wallet-bin | libkf6wallet-bin"],
         "files": {
+          "/usr/bin/openburnbar-daemon": "target/openburnbar-package-payload/openburnbar-daemon",
+          "/usr/lib/openburnbar/swift": "target/openburnbar-package-payload/swift",
+          "/usr/lib/openburnbar/native": "target/openburnbar-package-payload/native",
           "/usr/libexec/openburnbar-daemon-launch": "../../../packaging/linux/openburnbar-daemon-launch.sh",
           "/usr/lib/systemd/user/openburnbar-daemon.service": "../../../packaging/linux/openburnbar-daemon.service",
           "/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop": "../../../packaging/linux/openburnbar.desktop",
@@ -38,7 +43,11 @@
         }
       },
       "rpm": {
+        "depends": ["libsecret"],
         "files": {
+          "/usr/bin/openburnbar-daemon": "target/openburnbar-package-payload/openburnbar-daemon",
+          "/usr/lib/openburnbar/swift": "target/openburnbar-package-payload/swift",
+          "/usr/lib/openburnbar/native": "target/openburnbar-package-payload/native",
           "/usr/libexec/openburnbar-daemon-launch": "../../../packaging/linux/openburnbar-daemon-launch.sh",
           "/usr/lib/systemd/user/openburnbar-daemon.service": "../../../packaging/linux/openburnbar-daemon.service",
           "/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop": "../../../packaging/linux/openburnbar.desktop",
@@ -49,8 +58,11 @@
       },
       "appimage": {
         "files": {
-          "usr/libexec/openburnbar-daemon-launch": "../../../packaging/linux/openburnbar-daemon-launch.sh",
-          "usr/lib/systemd/user/openburnbar-daemon.service": "../../../packaging/linux/openburnbar-daemon.service"
+          "/usr/bin/openburnbar-daemon": "target/openburnbar-package-payload/openburnbar-daemon",
+          "/usr/lib/openburnbar/swift": "target/openburnbar-package-payload/swift",
+          "/usr/lib/openburnbar/native": "target/openburnbar-package-payload/native",
+          "/usr/libexec/openburnbar-daemon-launch": "../../../packaging/linux/openburnbar-daemon-launch.sh",
+          "/usr/lib/systemd/user/openburnbar-daemon.service": "../../../packaging/linux/openburnbar-daemon.service"
         }
       }
     }

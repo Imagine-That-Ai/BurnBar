@@ -11,6 +11,14 @@ HOME_DIR="${HOME:-/}"
 DATA_HOME="${XDG_DATA_HOME:-$HOME_DIR/.local/share}"
 CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME_DIR/.config}"
 RUNTIME_HOME="${XDG_RUNTIME_DIR:-}"
+APPIMAGE_ROOT=""
+if [[ -n "${APPDIR:-}" ]]; then
+  appdir_real="$(readlink -f "${APPDIR}" 2>/dev/null || true)"
+  script_real="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || true)"
+  case "${script_real}" in
+    "${appdir_real}"/*) APPIMAGE_ROOT="${appdir_real}" ;;
+  esac
+fi
 
 # Canonical peer roots — forced, never replaced by daemon.env / EnvironmentFile.
 # AppImage trust uses SHA-256 pins, not world-writable mount prefixes.
@@ -113,14 +121,18 @@ export OPENBURNBAR_DAEMON_LINUX_PEER_ROOTS="${HARDENED_PEER_ROOTS}"
 export OPENBURNBAR_DAEMON_SUPPORT_DIR="${SUPPORT_DIR}"
 export OPENBURNBAR_INDEX_DATABASE_PATH="${OPENBURNBAR_INDEX_DATABASE_PATH:-${SUPPORT_DIR}/openburnbar.sqlite}"
 
-# Swift runtime for packaged daemon (matches openburnbar-daemon-run).
-# Prefer OPENBURNBAR_SWIFT_LIB_DIR when set (dev toolchains / branch rebuilds).
-# Packaged installs ship ABI-matching libs under /opt/openburnbar/lib/swift.
+# Swift and native runtimes for the packaged daemon. AppImage exposes its
+# extracted root through APPDIR; deb/rpm install the same payload under /usr.
 swift_lib_dirs=()
 if [[ -n "${OPENBURNBAR_SWIFT_LIB_DIR:-}" ]]; then
   swift_lib_dirs+=("${OPENBURNBAR_SWIFT_LIB_DIR}")
 fi
+if [[ -n "${APPIMAGE_ROOT}" ]]; then
+  swift_lib_dirs+=("${APPIMAGE_ROOT}/usr/lib/openburnbar/swift")
+fi
 swift_lib_dirs+=(
+  /usr/lib/openburnbar/swift
+  /usr/lib/swift/linux
   /opt/openburnbar/lib/swift
   /opt/swift/usr/lib/swift/linux
   /opt/swift-6.1-RELEASE-ubuntu24.04-aarch64/usr/lib/swift/linux
@@ -133,15 +145,37 @@ for d in "${swift_lib_dirs[@]}"; do
     break
   fi
 done
-if [[ -n "${swift_ld}" || -d /opt/openburnbar/lib ]]; then
-  export LD_LIBRARY_PATH="${swift_ld:+${swift_ld}:}/opt/openburnbar/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+native_lib_dirs=()
+if [[ -n "${APPIMAGE_ROOT}" ]]; then
+  native_lib_dirs+=("${APPIMAGE_ROOT}/usr/lib/openburnbar/native")
+fi
+native_lib_dirs+=(/usr/lib/openburnbar/native /opt/openburnbar/lib)
+native_ld=""
+for d in "${native_lib_dirs[@]}"; do
+  if [[ -d "${d}" ]]; then
+    native_ld="${d}"
+    break
+  fi
+done
+if [[ -n "${swift_ld}" || -n "${native_ld}" ]]; then
+  library_paths=()
+  [[ -n "${swift_ld}" ]] && library_paths+=("${swift_ld}")
+  [[ -n "${native_ld}" ]] && library_paths+=("${native_ld}")
+  [[ -n "${LD_LIBRARY_PATH:-}" ]] && library_paths+=("${LD_LIBRARY_PATH}")
+  export LD_LIBRARY_PATH="$(IFS=:; echo "${library_paths[*]}")"
 fi
 
-DAEMON_BIN=""
-for candidate in \
+daemon_candidates=()
+if [[ -n "${APPIMAGE_ROOT}" ]]; then
+  daemon_candidates+=("${APPIMAGE_ROOT}/usr/bin/openburnbar-daemon")
+fi
+daemon_candidates+=( \
   /usr/local/bin/openburnbar-daemon \
   /opt/openburnbar/bin/openburnbar-daemon \
-  /usr/bin/openburnbar-daemon; do
+  /usr/bin/openburnbar-daemon \
+)
+DAEMON_BIN=""
+for candidate in "${daemon_candidates[@]}"; do
   if [[ -x "${candidate}" ]]; then
     DAEMON_BIN="${candidate}"
     break

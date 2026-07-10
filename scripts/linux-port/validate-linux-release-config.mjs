@@ -17,6 +17,12 @@ for (const key of ['product', 'appId', 'primaryArtifact', 'requiredArtifacts', '
 for (const artifact of ['appimage', 'deb', 'rpm']) {
   if (!manifest.requiredArtifacts?.includes(artifact)) failures.push(`manifest does not require ${artifact}`);
 }
+if (JSON.stringify(manifest.supportedArchitectures) !== JSON.stringify(['aarch64', 'x86_64'])) {
+  failures.push('manifest supportedArchitectures must be exactly aarch64 and x86_64');
+}
+if (manifest.updateMetadata?.publicUrl !== 'https://downloads.burnbar.ai/latest-linux.json') {
+  failures.push('manifest updateMetadata.publicUrl must be the branded signed-feed URL');
+}
 for (const [kind, relPath] of Object.entries(manifest.tailMetadata ?? {})) {
   if (!fs.existsSync(path.join(repoRoot, relPath))) failures.push(`${kind} metadata missing at ${relPath}`);
 }
@@ -39,6 +45,46 @@ if (!launchRel) {
 }
 if (!manifest.installPaths?.daemonLaunch) {
   failures.push('manifest.installPaths.daemonLaunch is required');
+}
+const expectedInstallPaths = {
+  daemonBinary: '/usr/bin/openburnbar-daemon',
+  swiftRuntime: '/usr/lib/openburnbar/swift',
+  nativeRuntime: '/usr/lib/openburnbar/native'
+};
+for (const [key, expected] of Object.entries(expectedInstallPaths)) {
+  if (manifest.installPaths?.[key] !== expected) {
+    failures.push(`manifest.installPaths.${key} must be ${expected}`);
+  }
+}
+
+const tauri = readJson(path.join(repoRoot, 'apps/linux-desktop/src-tauri/tauri.conf.json'));
+const packageSources = {
+  '/usr/bin/openburnbar-daemon': 'target/openburnbar-package-payload/openburnbar-daemon',
+  '/usr/lib/openburnbar/swift': 'target/openburnbar-package-payload/swift',
+  '/usr/lib/openburnbar/native': 'target/openburnbar-package-payload/native'
+};
+for (const packageType of ['deb', 'rpm', 'appimage']) {
+  const files = tauri.bundle?.linux?.[packageType]?.files ?? {};
+  for (const [destination, source] of Object.entries(packageSources)) {
+    if (files[destination] !== source) {
+      failures.push(`${packageType} must package ${source} at ${destination}`);
+    }
+  }
+}
+if (!tauri.bundle?.linux?.deb?.depends?.includes('libsecret-tools')) {
+  failures.push('deb package must depend on libsecret-tools');
+}
+if (!tauri.bundle?.linux?.rpm?.depends?.includes('libsecret')) {
+  failures.push('rpm package must depend on libsecret');
+}
+const desktopPackage = readJson(path.join(repoRoot, 'apps/linux-desktop/package.json'));
+if (desktopPackage.scripts?.['pretauri:build'] !== 'node ../../scripts/linux-port/prepare-linux-package-payload.mjs') {
+  failures.push('tauri build must stage and runtime-probe the native Linux package payload');
+}
+const canonicalLauncher = fs.readFileSync(path.join(repoRoot, 'packaging/linux/openburnbar-daemon-launch.sh'));
+const aurLauncher = fs.readFileSync(path.join(repoRoot, 'packaging/linux/aur/openburnbar-daemon-launch'));
+if (!canonicalLauncher.equals(aurLauncher)) {
+  failures.push('AUR and canonical daemon launch scripts must be byte-identical');
 }
 if (fs.existsSync(path.join(repoRoot, 'website/public/downloads/latest-linux.json'))) {
   failures.push('website/public/downloads/latest-linux.json must not be checked in before release verification is green');

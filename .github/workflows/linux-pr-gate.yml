@@ -32,7 +32,7 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 25
     env:
-      OB_EVIDENCE_OUT: ${{ runner.temp }}/openburnbar-matched-performance
+      OB_EVIDENCE_OUT: ${{ github.workspace }}/.linux-matched-performance
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -59,7 +59,7 @@ jobs:
     needs: [macos-matched-performance]
     timeout-minutes: 30
     env:
-      OPENBURNBAR_LINUX_EVIDENCE_OUT: ${{ runner.temp }}/openburnbar-linux-evidence
+      OPENBURNBAR_LINUX_EVIDENCE_OUT: ${{ github.workspace }}/.linux-evidence
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -82,9 +82,9 @@ jobs:
         run: node scripts/linux-port/check-linux-docs.mjs
 
       # PR policy (Issue 6 R2): hermetic unit tests always run. Live probe against
-      # burnbar.ai is advisory on PRs (continue-on-error) because the public path
-      # still serves SPA HTML. Release promotion jobs must run the same probe
-      # without continue-on-error (HTML is hard-fail when status 200).
+      # GitHub latest-release feed availability is advisory on PRs until a
+      # release publishes the first signed two-architecture feed. Release
+      # promotion runs this probe without continue-on-error.
       - name: Linux update-feed unit tests (hermetic)
         run: node --test scripts/linux-port/check-linux-update-feed.test.mjs
 
@@ -101,6 +101,9 @@ jobs:
       - name: Linux release integrity unit tests
         run: >
           node --test
+          scripts/linux-port/assemble-linux-release.test.mjs
+          scripts/linux-port/prepare-linux-package-payload.test.mjs
+          scripts/linux-port/credential-storage-contract.test.mjs
           scripts/linux-port/verify-linux-release.test.mjs
           scripts/linux-port/resolve-linux-release-version.test.mjs
 

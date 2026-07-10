@@ -22,7 +22,7 @@ const urlIdx = args.indexOf('--url');
 const url =
   urlIdx >= 0 && args[urlIdx + 1]
     ? args[urlIdx + 1]
-    : 'https://burnbar.ai/latest-linux.json';
+    : 'https://downloads.burnbar.ai/latest-linux.json';
 
 const reportPath = path.join(
   reanchorEvidenceDir,

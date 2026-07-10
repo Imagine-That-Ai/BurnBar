@@ -5,7 +5,7 @@ use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::time::Duration;
 
-const DEFAULT_FEED_URL: &str = "https://burnbar.ai/latest-linux.json";
+const DEFAULT_FEED_URL: &str = "https://downloads.burnbar.ai/latest-linux.json";
 const MAX_FEED_BYTES: usize = 1024 * 1024;
 const MAX_SIGNATURE_BYTES: usize = 1024;
 const PINNED_PUBLIC_KEY_PEM: &str =
@@ -353,13 +353,19 @@ async fn verify_feed_signature(
 }
 
 fn allowed_feed_url(url: &reqwest::Url) -> bool {
-    allowed_download_url(url)
-        && matches!(
-            url.path(),
-            "/latest-linux.json" | "/downloads/latest-linux.json"
-        )
-        && url.query().is_none()
-        && url.fragment().is_none()
+    let allowed_path = match url.host_str() {
+        Some("github.com") => {
+            url.path() == "/Imagine-That-Ai/BurnBar/releases/latest/download/latest-linux.json"
+        }
+        Some("downloads.burnbar.ai") => {
+            matches!(
+                url.path(),
+                "/latest-linux.json" | "/downloads/latest-linux.json"
+            )
+        }
+        _ => false,
+    };
+    allowed_download_url(url) && allowed_path && url.query().is_none() && url.fragment().is_none()
 }
 
 pub fn validate_update_artifact_url(raw_url: &str) -> Result<String, String> {
@@ -392,6 +398,7 @@ fn allowed_download_url(url: &reqwest::Url) -> bool {
             Some(
                 "burnbar.ai"
                     | "www.burnbar.ai"
+                    | "downloads.burnbar.ai"
                     | "github.com"
                     | "objects.githubusercontent.com"
                     | "github-releases.githubusercontent.com"
@@ -545,6 +552,28 @@ mod tests {
             "http://burnbar.ai/downloads/app",
         ] {
             assert!(validate_update_artifact_url(refused).is_err(), "{refused}");
+        }
+    }
+
+    #[test]
+    fn production_feed_url_is_fixed_to_the_branded_download_origin() {
+        assert!(allowed_feed_url(
+            &reqwest::Url::parse(DEFAULT_FEED_URL).unwrap()
+        ));
+        let release_manifest: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../packaging/linux/release-manifest.json"
+        ))
+        .unwrap();
+        assert_eq!(
+            release_manifest["updateMetadata"]["publicUrl"].as_str(),
+            Some(DEFAULT_FEED_URL)
+        );
+        for refused in [
+            "https://burnbar.ai/latest-linux.json",
+            "https://downloads.burnbar.ai/other.json",
+            "https://downloads.burnbar.ai/latest-linux.json?ref=other",
+        ] {
+            assert!(!allowed_feed_url(&reqwest::Url::parse(refused).unwrap()));
         }
     }
 }

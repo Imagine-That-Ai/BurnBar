@@ -33,6 +33,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         libkf5wallet-dev \
         libpipewire-0.3-dev \
         libsecret-1-dev \
+        libsecret-tools \
         libglib2.0-bin \
         libreadline-dev \
         librsvg2-dev \

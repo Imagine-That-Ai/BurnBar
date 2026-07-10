@@ -27,6 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Linux dual-architecture release closure** - builds aarch64 and x86_64
+  AppImage/deb/rpm/daemon shards on native GitHub runners, aggregates only
+  matching clean-commit shards, requires the full eight-artifact matrix, and
+  binds checksums, Ed25519 signatures, source, SBOM, VEX, provenance, parity,
+  Sigstore attestations, and the signed update feed before publication. Every
+  native package now embeds the architecture-matched daemon plus Swift and
+  SQLCipher runtimes and executes that packaged payload during shard smoke.
 - **Linux signed update availability** - adds a native Tauri update verifier
   with a pinned Ed25519 public key and fingerprint, strict signed-feed schema,
   semantic-version/channel/architecture checks, bounded HTTPS fetching, and

@@ -27,6 +27,8 @@
   "installPaths": {
     "daemonLaunch": "/usr/libexec/openburnbar-daemon-launch",
     "daemonBinary": "/usr/bin/openburnbar-daemon",
+    "swiftRuntime": "/usr/lib/openburnbar/swift",
+    "nativeRuntime": "/usr/lib/openburnbar/native",
     "systemdUserService": "/usr/lib/systemd/user/openburnbar-daemon.service",
     "desktopEntry": "/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop"
   },
@@ -54,8 +56,9 @@
   "updateMetadata": {
     "draftName": "latest-linux.draft.json",
     "publishedName": "latest-linux.json",
+    "publicUrl": "https://downloads.burnbar.ai/latest-linux.json",
     "publishOnlyAfter": [
-      "required packages exist",
+      "every required package exists for aarch64 and x86_64",
       "install-launch-uninstall smoke passes",
       "checksums verify",
       "Ed25519/minisign-compatible signatures verify",

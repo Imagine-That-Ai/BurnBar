@@ -147,9 +147,18 @@ if (phase === 'final' && closure.artifacts) {
 
 const gitStatus = runStep('git', ['status', '--porcelain=v1']).stdout.split('\n').filter(Boolean);
 const outRelative = relative(outDir);
+const generatedPrefixes = [
+  outRelative,
+  process.env.OPENBURNBAR_LINUX_SHARDS_DIR
+    ? relative(path.resolve(process.env.OPENBURNBAR_LINUX_SHARDS_DIR))
+    : null,
+  process.env.OPENBURNBAR_LINUX_EVIDENCE_OUT
+    ? relative(path.resolve(process.env.OPENBURNBAR_LINUX_EVIDENCE_OUT))
+    : null
+].filter((value) => value && !value.startsWith('..'));
 const unexpectedDirty = gitStatus.filter((entry) => {
   const dirtyPath = entry.slice(3);
-  return !(outRelative && !outRelative.startsWith('..') && dirtyPath.startsWith(`${outRelative}/`));
+  return !generatedPrefixes.some((prefix) => dirtyPath.startsWith(`${prefix.replace(/\/$/, '')}/`));
 });
 if (unexpectedDirty.length > 0) {
   fail('release checkout has unexpected dirty files outside generated release output.', {

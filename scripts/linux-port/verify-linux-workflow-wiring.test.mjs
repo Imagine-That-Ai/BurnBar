@@ -7,6 +7,7 @@ function valid() {
     pr: [
       'bash scripts/linux-port/run-linux-native-tests.sh',
       'verify-linux-release.test.mjs',
+      'assemble-linux-release.test.mjs',
       'render-parity-ledger.mjs --check',
       'macos-matched-performance',
       'run-matched-performance.mjs',
@@ -32,13 +33,31 @@ function valid() {
       "'*.sigstore.json'",
       "'*source-*.tar'",
       "'*parity-attestation.json'",
+      'architecture: aarch64',
+      'runner: ubuntu-24.04-arm',
+      'architecture: x86_64',
+      'runner: ubuntu-24.04',
+      '--architecture-shard',
+      'linux-release-shard-${{ matrix.architecture }}',
+      'assemble-linux-release.mjs',
+      'merge-multiple: false',
+      "-o -name 'latest-linux.json'",
+      'OPENBURNBAR_R2_CUSTOM_DOMAIN: downloads.burnbar.ai',
+      'upload-linux-downloads-r2.sh',
+      'https://downloads.burnbar.ai/latest-linux.json',
+      'Resolve and validate Linux release version',
+      'Assert native runner architecture',
+      'Build native architecture artifacts',
+      'Native package inspection/install/uninstall smoke',
+      'Download native architecture shards',
       'Verify product parity at release HEAD',
-      'Build Linux release artifacts',
-      'Package install/uninstall/update smoke',
+      'Assemble signed two-architecture closure and feed',
       'Pre-attestation Linux release verification',
       'Attest Linux release sidecars and packages',
       'Final Linux release verification',
-      'Publish Linux GitHub prerelease',
+      'Publish Linux GitHub release',
+      'Configure branded Linux update origin',
+      'Publish signed update feed to downloads origin',
       'Verify live Linux update feed after publish'
     ].join('\n'),
     makefile: 'release-linux:\n\tnode verify\n\nother:',
@@ -138,6 +157,24 @@ test('release closure publication cannot omit source, parity, bundles, or public
   const input = valid();
   input.release += '\ncp packaging/linux/openburnbar-linux-ed25519.pub.pem "$art/" || true';
   assert.equal(verifyLinuxWorkflowWiring(input).passed, false);
+});
+
+test('architecture matrix, aggregate closure, and feed publication cannot be removed', () => {
+  for (const marker of [
+    'architecture: aarch64',
+    'architecture: x86_64',
+    '--architecture-shard',
+    'assemble-linux-release.mjs',
+    'merge-multiple: false',
+    "-o -name 'latest-linux.json'",
+    'OPENBURNBAR_R2_CUSTOM_DOMAIN: downloads.burnbar.ai',
+    'upload-linux-downloads-r2.sh',
+    'https://downloads.burnbar.ai/latest-linux.json'
+  ]) {
+    const input = valid();
+    input.release = input.release.replace(marker, '');
+    assert.equal(verifyLinuxWorkflowWiring(input).passed, false, marker);
+  }
 });
 
 test('attestation and publish order drift fails', () => {

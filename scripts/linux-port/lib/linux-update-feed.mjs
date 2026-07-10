@@ -9,6 +9,7 @@ const CHANNELS = new Set(['stable', 'prerelease', 'nightly']);
 const ALLOWED_HOSTS = new Set([
   'burnbar.ai',
   'www.burnbar.ai',
+  'downloads.burnbar.ai',
   'github.com',
   'objects.githubusercontent.com',
   'github-releases.githubusercontent.com'

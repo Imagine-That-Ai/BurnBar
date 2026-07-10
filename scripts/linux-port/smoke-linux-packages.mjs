@@ -4,12 +4,13 @@ import path from 'node:path';
 import { readJson, releaseEvidenceDir, repoRoot, runStep, writeJson } from './lib/linux-release-common.mjs';
 
 const outDir = path.resolve(process.env.OPENBURNBAR_LINUX_RELEASE_OUT ?? releaseEvidenceDir);
-const closurePath = path.join(outDir, 'package-closure.json');
+const shardMode = process.argv.includes('--architecture-shard');
+const closurePath = path.join(outDir, shardMode ? 'architecture-closure.json' : 'package-closure.json');
 const smokeDir = path.join(outDir, 'smoke');
 fs.mkdirSync(smokeDir, { recursive: true });
 
 if (!fs.existsSync(closurePath)) {
-  console.error('package-closure.json missing; run build-linux-release first.');
+  console.error(`${path.basename(closurePath)} missing; run build-linux-release first.`);
   process.exit(1);
 }
 
@@ -26,6 +27,19 @@ function assertContains(command, haystack, needle, stderr) {
     stderr: ok ? '' : stderr
   });
   return ok;
+}
+
+function runtimeProbeEnv(label) {
+  const root = path.join(smokeDir, 'runtime-probes', label);
+  fs.rmSync(root, { recursive: true, force: true });
+  fs.mkdirSync(root, { recursive: true });
+  return {
+    ...process.env,
+    HOME: root,
+    XDG_CONFIG_HOME: path.join(root, 'config'),
+    XDG_DATA_HOME: path.join(root, 'data'),
+    XDG_RUNTIME_DIR: path.join(root, 'run')
+  };
 }
 
 for (const artifact of closure.artifacts ?? []) {
@@ -54,7 +68,7 @@ for (const artifact of closure.artifacts ?? []) {
     assertContains(
       'assert deb contains openburnbar-daemon binary',
       contents.stdout,
-      'openburnbar-daemon',
+      'usr/bin/openburnbar-daemon',
       'deb package missing /usr/bin/openburnbar-daemon'
     );
     assertContains(
@@ -64,10 +78,16 @@ for (const artifact of closure.artifacts ?? []) {
       'deb package missing systemd user unit'
     );
     assertContains(
-      'assert deb contains Swift runtime under opt/openburnbar/lib/swift',
+      'assert deb contains Swift runtime under usr/lib/openburnbar/swift',
       contents.stdout,
-      'opt/openburnbar/lib/swift',
-      'deb package missing Swift runtime at /opt/openburnbar/lib/swift'
+      'usr/lib/openburnbar/swift',
+      'deb package missing Swift runtime at /usr/lib/openburnbar/swift'
+    );
+    assertContains(
+      'assert deb contains SQLCipher runtime under usr/lib/openburnbar/native',
+      contents.stdout,
+      'usr/lib/openburnbar/native/libsqlcipher.so.0',
+      'deb package missing SQLCipher runtime at /usr/lib/openburnbar/native'
     );
     // Prefer sudo when non-root (guest packaging smoke).
     const dpkgInstall = runStep('sudo', ['dpkg', '-i', full]);
@@ -76,6 +96,9 @@ for (const artifact of closure.artifacts ?? []) {
     } else {
       steps.push(dpkgInstall);
     }
+    steps.push(runStep('/usr/libexec/openburnbar-daemon-launch', ['--help'], {
+      env: runtimeProbeEnv(`deb-${artifact.architecture}`)
+    }));
     // Derive the real package name from the artifact so uninstall targets the
     // exact installed package (Tauri names it `open-burn-bar`, not `openburnbar`).
     const debName = runStep('dpkg-deb', ['-f', full, 'Package']).stdout.trim() || 'open-burn-bar';
@@ -98,14 +121,20 @@ for (const artifact of closure.artifacts ?? []) {
     assertContains(
       'assert rpm contains openburnbar-daemon binary',
       listing.stdout,
-      'openburnbar-daemon',
+      '/usr/bin/openburnbar-daemon',
       'rpm package missing /usr/bin/openburnbar-daemon'
     );
     assertContains(
-      'assert rpm contains Swift runtime under /opt/openburnbar/lib/swift',
+      'assert rpm contains Swift runtime under /usr/lib/openburnbar/swift',
       listing.stdout,
-      '/opt/openburnbar/lib/swift',
-      'rpm package missing Swift runtime at /opt/openburnbar/lib/swift'
+      '/usr/lib/openburnbar/swift',
+      'rpm package missing Swift runtime at /usr/lib/openburnbar/swift'
+    );
+    assertContains(
+      'assert rpm contains SQLCipher runtime under /usr/lib/openburnbar/native',
+      listing.stdout,
+      '/usr/lib/openburnbar/native/libsqlcipher.so.0',
+      'rpm package missing SQLCipher runtime at /usr/lib/openburnbar/native'
     );
     const rpmInstall = runStep('sudo', ['rpm', '-i', '--nodeps', '--force', full]);
     if (rpmInstall.exitCode !== 0) {
@@ -113,6 +142,9 @@ for (const artifact of closure.artifacts ?? []) {
     } else {
       steps.push(rpmInstall);
     }
+    steps.push(runStep('/usr/libexec/openburnbar-daemon-launch', ['--help'], {
+      env: runtimeProbeEnv(`rpm-${artifact.architecture}`)
+    }));
     const rpmName = runStep('rpm', ['-qp', '--queryformat', '%{NAME}', full]).stdout.trim() || 'open-burn-bar';
     const rpmErase = runStep('sudo', ['rpm', '-e', rpmName]);
     if (rpmErase.exitCode !== 0) {
@@ -122,7 +154,32 @@ for (const artifact of closure.artifacts ?? []) {
     }
   } else if (artifact.type === 'appimage') {
     fs.chmodSync(full, 0o755);
-    steps.push(runStep(full, ['--appimage-extract']));
+    const extract = runStep(full, ['--appimage-extract']);
+    steps.push(extract);
+    const appDir = path.join(repoRoot, 'squashfs-root');
+    if (extract.exitCode === 0) {
+      for (const requiredPath of [
+        'usr/bin/openburnbar-daemon',
+        'usr/libexec/openburnbar-daemon-launch',
+        'usr/lib/openburnbar/swift',
+        'usr/lib/openburnbar/native/libsqlcipher.so.0'
+      ]) {
+        const present = fs.existsSync(path.join(appDir, requiredPath));
+        steps.push({
+          command: `assert AppImage contains ${requiredPath}`,
+          cwd: '.',
+          exitCode: present ? 0 : 1,
+          stdout: present ? `found ${requiredPath}` : '',
+          stderr: present ? '' : `AppImage missing ${requiredPath}`
+        });
+      }
+      steps.push(runStep(path.join(appDir, 'usr/libexec/openburnbar-daemon-launch'), ['--help'], {
+        env: {
+          ...runtimeProbeEnv(`appimage-${artifact.architecture}`),
+          APPDIR: appDir
+        }
+      }));
+    }
     // --version fast-exits before any GTK init (see src-tauri run()), so it needs
     // no display; --appimage-extract-and-run avoids the FUSE requirement in CI.
     steps.push(runStep(full, ['--appimage-extract-and-run', '--version']));
@@ -171,6 +228,20 @@ writeJson(path.join(smokeDir, 'package-update-rollback.json'), update);
 fs.writeFileSync(path.join(smokeDir, 'package-update-rollback.log'), `${JSON.stringify(update, null, 2)}\n`, 'utf8');
 
 const failed = steps.filter((step) => step.exitCode !== 0);
+if (shardMode) {
+  const architectureSummary = {
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    architecture: closure.architecture,
+    steps: steps.length,
+    failedCount: failed.length,
+    failed: failed.slice(0, 20),
+    passed: failed.length === 0
+  };
+  writeJson(path.join(smokeDir, 'architecture-smoke.json'), architectureSummary);
+  console.log(JSON.stringify(architectureSummary, null, 2));
+  process.exit(architectureSummary.passed ? 0 : 1);
+}
 const lifecycle = {
   guiLaunch: {
     status: 'blocked',

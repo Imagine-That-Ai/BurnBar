@@ -31,7 +31,9 @@ Key was installed via guest agent into `~/.ssh/authorized_keys` for `burnbar`, `
 
 - Socket: `$XDG_RUNTIME_DIR/openburnbar/daemon.sock`
 - Token: `$XDG_DATA_HOME/openburnbar/daemon-socket-auth-token` (mode 0600)
-- Swift libs: `/opt/openburnbar/lib/swift`
+- Swift libs in the current mutable VM baseline: `/opt/openburnbar/lib/swift`
+  (new release packages use `/usr/lib/openburnbar/swift` and
+  `/usr/lib/openburnbar/native`)
 - Peer RPC probe binary: `/opt/openburnbar/bin/openburnbar-linux-desktop` (app identity) or `/usr/local/bin/openburnbar-cli` (cli identity)
 
 ## Repo on guest
