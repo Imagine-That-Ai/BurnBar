@@ -361,15 +361,49 @@ jobs:
           name: windows-release-v${{ needs.resolve-release.outputs.version }}
           path: artifacts
 
+      - name: Expand packages for dependency inventory
+        run: |
+          set -euo pipefail
+          mkdir -p sbom-input
+          shopt -s nullglob
+          archives=(artifacts/*.zip artifacts/*.msix)
+          if [[ "${#archives[@]}" -eq 0 ]]; then
+            echo "::error::No Windows packages are available for SBOM generation."
+            exit 1
+          fi
+          for archive in "${archives[@]}"; do
+            name="$(basename "$archive")"
+            unzip -q "$archive" -d "sbom-input/${name}"
+          done
+
       - name: Generate SBOM (SPDX) over the Windows artifacts
         id: sbom
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
-          path: artifacts
+          path: sbom-input
           format: spdx-json
           output-file: "sbom-windows-v${{ needs.resolve-release.outputs.version }}.spdx.json"
           upload-artifact: false
           upload-release-assets: false
+
+      - name: Validate SBOM contains package dependencies
+        run: |
+          python3 - "sbom-windows-v${VERSION}.spdx.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          sbom = json.loads(path.read_text(encoding="utf-8"))
+          packages = sbom.get("packages", [])
+          dependency_packages = [
+              package for package in packages
+              if package.get("primaryPackagePurpose") != "FILE"
+          ]
+          if not dependency_packages:
+              raise SystemExit("SBOM contains no dependency packages after expanding Windows artifacts")
+          print(f"SBOM dependency packages: {len(dependency_packages)}")
+          PY
 
       - name: Generate OpenVEX sidecar
         id: vex
