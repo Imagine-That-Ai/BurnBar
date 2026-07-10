@@ -58,23 +58,28 @@ try {
     Copy-Item -Path (Join-Path $publish "*") -Destination $stage -Recurse -Force
     Copy-Item -LiteralPath $imagesSource -Destination (Join-Path $stage "Images") -Recurse -Force
 
-    $document = [System.Xml.Linq.XDocument]::Load($manifestSource)
-    $package = $document.Root
+    $document = [System.Xml.XmlDocument]::new()
+    $document.PreserveWhitespace = $false
+    $document.Load($manifestSource)
+    $package = $document.DocumentElement
     if ($null -eq $package) {
         throw "Package.appxmanifest has no root element."
     }
-    $identity = $package.Element($package.Name.Namespace + "Identity")
+    $namespaces = [System.Xml.XmlNamespaceManager]::new($document.NameTable)
+    $namespaces.AddNamespace("pkg", $package.NamespaceURI)
+    $identity = $document.SelectSingleNode("/pkg:Package/pkg:Identity", $namespaces)
     if ($null -eq $identity) {
         throw "Package.appxmanifest has no Identity element."
     }
-    $identity.SetAttributeValue("Version", "$Version.0")
-    $identity.SetAttributeValue("ProcessorArchitecture", $Architecture)
+    $identity.SetAttribute("Version", "$Version.0")
+    $identity.SetAttribute("ProcessorArchitecture", $Architecture)
     if ($Publisher) {
-        $identity.SetAttributeValue("Publisher", $Publisher)
+        $identity.SetAttribute("Publisher", $Publisher)
     }
 
-    $application = $package.Descendants($package.Name.Namespace + "Application") | Select-Object -First 1
-    $executable = if ($null -eq $application) { "" } else { [string]$application.Attribute("Executable") }
+    $application = $document.SelectSingleNode("/pkg:Package/pkg:Applications/pkg:Application", $namespaces)
+    $executableAttribute = if ($null -eq $application) { $null } else { $application.Attributes["Executable"] }
+    $executable = if ($null -eq $executableAttribute) { "" } else { $executableAttribute.Value }
     if (-not $executable -or -not (Test-Path -LiteralPath (Join-Path $stage $executable) -PathType Leaf)) {
         throw "Manifest executable '$executable' is missing from publish output $publish."
     }

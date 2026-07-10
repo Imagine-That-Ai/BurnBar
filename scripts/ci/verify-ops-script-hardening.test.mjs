@@ -61,8 +61,13 @@ assert.match(
 );
 assert.match(
   read("windows/packaging/msix/New-MsixPackage.ps1"),
-  /SetAttributeValue\("Version", "\$Version\.0"\)[\s\S]*SetAttributeValue\("ProcessorArchitecture", \$Architecture\)/,
+  /SetAttribute\("Version", "\$Version\.0"\)[\s\S]*SetAttribute\("ProcessorArchitecture", \$Architecture\)/,
   "MSIX staging must stamp the resolved version and target architecture into the package identity",
+);
+assert.match(
+  read("windows/packaging/msix/New-MsixPackage.ps1"),
+  /\$executableAttribute\.Value/,
+  "MSIX staging must validate the executable attribute value, not its serialized XML form",
 );
 
 const firebaseRules = read("scripts/ci/deploy-firebase-rules-releases.mjs");
