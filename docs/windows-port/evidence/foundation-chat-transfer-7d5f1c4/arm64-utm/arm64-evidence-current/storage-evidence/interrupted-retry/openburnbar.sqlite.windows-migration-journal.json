@@ -1,0 +1,15 @@
+﻿{
+  "version": 1,
+  "state": "complete",
+  "databasePath": "C:\\WINDOWS\\SystemTemp\\obb-storage-948a73577637435f8e2bd9d95a651857\\openburnbar.sqlite",
+  "pathOwner": "WORKGROUP\\WIN-MIGC91I3AKQ$",
+  "keyProvenance": "protected-generated:openburnbar.windows.sqlcipher.passphrase",
+  "keyFingerprint": "7e97c7feffb4258cd64e4d7c1d21c58693ec988482f39e1c3bf160a111aff412",
+  "targetEndpoint": "v54_provider_quota_snapshots",
+  "targetMigrationCount": 55,
+  "schemaEndpoint": "v54_provider_quota_snapshots",
+  "schemaHash": "79bc8290e924d1cb395bba3c93574cfbe5637187655879c63d82032e9f42a2b0",
+  "cipherVersion": "4.5.2 community",
+  "startedAt": "2026-07-10T02:47:06.1860715+00:00",
+  "completedAt": "2026-07-10T02:47:06.18632+00:00"
+}
