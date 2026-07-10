@@ -39,7 +39,7 @@ public sealed class ReportWriterTests : IDisposable
         string xml = File.ReadAllText(path);
         Assert.Contains("tests=\"3\"", xml);
         Assert.Contains("failures=\"1\"", xml);
-        Assert.Contains("route.dashboard", xml);
+        Assert.Contains("route.baseline.dashboard", xml);
         Assert.Contains("[REDACTED]", xml);
         Assert.DoesNotContain("supersecretvalue", xml);
     }
@@ -58,6 +58,19 @@ public sealed class ReportWriterTests : IDisposable
         string html = File.ReadAllText(path);
         Assert.Contains("routes/dashboard/dashboard.png", html.Replace('\\', '/'));
         Assert.Contains("OpenBurnBar Windows UI Automation", html);
+        Assert.Contains("Certification Scenarios", html);
+    }
+
+    [Fact]
+    public void CertificationScenarioCatalog_AccessibilityProfileIncludesRequiredModes()
+    {
+        IReadOnlyList<UiCertificationScenario> scenarios = CertificationScenarioCatalog.Select("accessibility");
+
+        Assert.Contains(scenarios, scenario => scenario.Key == "baseline" && scenario.RequiresScreenshots);
+        Assert.Contains(scenarios, scenario => scenario.Key == "high-contrast" && scenario.AppearanceMode == "highcontrast" && scenario.ReduceTransparency == true);
+        Assert.Contains(scenarios, scenario => scenario.Key == "reduced-transparency" && scenario.ReduceTransparency == true);
+        Assert.Contains(scenarios, scenario => scenario.Key == "dpi-100" && scenario.DpiScalePercent == 100);
+        Assert.Contains(scenarios, scenario => scenario.Key == "keyboard-contract" && scenario.RequiresKeyboardOnly && scenario.RequiresNarratorProtocol);
     }
 
     [Fact]
@@ -143,10 +156,14 @@ public sealed class ReportWriterTests : IDisposable
             RepoRoot: "/repo",
             AppExe: "/repo/OpenBurnBar.App.exe",
             OutputDirectory: "/out",
+            CertificationProfile: "baseline",
+            Scenarios: CertificationScenarioCatalog.Select("baseline"),
             Manifest: DefaultRouteCatalog.Select(new[] { "dashboard" }),
             Routes: new[]
             {
                 new RouteSmokeEvidence(
+                    "baseline",
+                    "Default route smoke and screenshot pass",
                     "dashboard",
                     routeVerdict,
                     ExitCode: routeVerdict == HarnessVerdict.Pass ? 0 : 1,
@@ -159,6 +176,9 @@ public sealed class ReportWriterTests : IDisposable
                     LumaStdDev: 14.2,
                     ElapsedMs: 450,
                     Message: message,
+                    AppearanceMode: null,
+                    ReduceTransparency: null,
+                    DpiScalePercent: null,
                     ExpectedAutomationId: "RouteRoot.dashboard",
                     ExpectedAutomationIdFound: routeVerdict == HarnessVerdict.Pass),
             },

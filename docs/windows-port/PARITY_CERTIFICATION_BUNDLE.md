@@ -184,6 +184,7 @@ Each row: **(a)** screenshot — Win11 Pro pass; **(b)** test/command; **(c)** a
 | Wrap vector (C3) | _(no screenshot)_ | Committed corpus per **#1254** | — |
 | CloudVault KAT | _(no screenshot)_ | `dotnet test windows/tests/cloudsync`; evidence `docs/windows-port/evidence/cloudsync/cloudvault-kat.md` | — |
 | IPC handshake 20/20 | _(no screenshot)_ | `dotnet test windows/tests/ipc`; evidence `docs/windows-port/evidence/pal/ipc-handshake.md` | — |
+| UIA accessibility profile | _(host screenshots emitted by `scripts/windows-port/run-ui-automation.ps1 -CertificationProfile accessibility`)_ | `dotnet test windows/tests/ui-automation/OpenBurnBar.UiAutomationHarness.Tests.csproj --configuration Debug`; harness scenario manifest covers baseline, high-contrast, reduced-transparency, 100% DPI, and keyboard/input contract | D1 |
 | `pr-windows-full` green | _(CI link)_ | GitHub Actions run URL on `windows-latest` | D3 |
 | SBOM + Sigstore attestation | _(artifact link)_ | Release workflow attestation bundle | D10 |
 | Crash-free 30 min session | _(blocked — Win11 Pro pass pending)_ | ETW/WER-free session log from validation pass | — |

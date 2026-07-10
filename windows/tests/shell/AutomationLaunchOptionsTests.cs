@@ -58,6 +58,33 @@ public sealed class AutomationLaunchOptionsTests : IDisposable
     }
 
     [Fact]
+    public void Parse_HandlesAutomationAppearanceAndTransparencySeed()
+    {
+        var options = AutomationLaunchOptions.Parse(
+            "--automation-appearance high-contrast --automation-reduce-transparency true");
+
+        Assert.NotNull(options);
+        Assert.Equal("highcontrast", options!.AppearanceMode);
+        Assert.Equal(true, options.ReduceTransparency);
+    }
+
+    [Fact]
+    public void ApplyStateSeed_PersistsAutomationAppearanceBeforeThemeStartup()
+    {
+        string profile = Path.Combine(_dir, "profile");
+        var options = AutomationLaunchOptions.Parse(
+            $"--automation-profile \"{profile}\" --automation-appearance highcontrast --automation-reduce-transparency true");
+        options!.ApplyEnvironment();
+
+        var persistence = new AppStatePersistence();
+        options.ApplyStateSeed(persistence);
+
+        Assert.Equal("highcontrast", persistence.State.AppearanceMode);
+        Assert.Equal(true, persistence.State.ReduceTransparency);
+        Assert.True(File.Exists(Path.Combine(profile, "shell-state.json")));
+    }
+
+    [Fact]
     public void ApplyEnvironment_SetsAutomationProfileRoot()
     {
         string profile = Path.Combine(_dir, "profile");
@@ -85,6 +112,8 @@ public sealed class AutomationLaunchOptionsTests : IDisposable
         Assert.Equal(Environment.ProcessId, marker.RootElement.GetProperty("pid").GetInt32());
         Assert.Equal(Path.GetFullPath(profile), marker.RootElement.GetProperty("profileRoot").GetString());
         Assert.Equal(Path.GetFullPath(profile), marker.RootElement.GetProperty("appDataDirectory").GetString());
+        Assert.Equal(JsonValueKind.Null, marker.RootElement.GetProperty("appearanceMode").ValueKind);
+        Assert.Equal(JsonValueKind.Null, marker.RootElement.GetProperty("reduceTransparency").ValueKind);
         Assert.False(string.IsNullOrWhiteSpace(marker.RootElement.GetProperty("generatedAtUtc").GetString()));
     }
 }

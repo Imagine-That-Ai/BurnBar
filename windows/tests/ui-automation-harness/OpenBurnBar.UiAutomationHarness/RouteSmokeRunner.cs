@@ -21,21 +21,24 @@ internal sealed class RouteSmokeRunner
         _timeoutMilliseconds = timeoutMilliseconds;
     }
 
-    public async Task<RouteSmokeEvidence> RunAsync(UiHarnessRoute route, CancellationToken cancellationToken)
+    public async Task<RouteSmokeEvidence> RunAsync(
+        UiHarnessRoute route,
+        UiCertificationScenario scenario,
+        CancellationToken cancellationToken)
     {
-        string routeOut = Path.Combine(_outputDirectory, "routes", route.Key);
-        string profileRoot = Path.Combine(_outputDirectory, "profiles", route.Key);
-        string launchOut = Path.Combine(_outputDirectory, "launches", route.Key);
+        string routeOut = Path.Combine(_outputDirectory, "routes", scenario.Key, route.Key);
+        string profileRoot = Path.Combine(_outputDirectory, "profiles", $"{scenario.Key}-{route.Key}");
+        string launchOut = Path.Combine(_outputDirectory, "launches", scenario.Key, route.Key);
         Directory.CreateDirectory(routeOut);
         Directory.CreateDirectory(profileRoot);
         Directory.CreateDirectory(launchOut);
 
         using var process = new Process();
-        process.StartInfo = CreateStartInfo(route, routeOut, profileRoot, launchOut);
+        process.StartInfo = CreateStartInfo(route, scenario, routeOut, profileRoot, launchOut);
         var stopwatch = Stopwatch.StartNew();
         if (!process.Start())
         {
-            return Failed(route.Key, exitCode: 127, timedOut: false, "Failed to start OpenBurnBar.App.exe.", stopwatch.Elapsed);
+            return Failed(route.Key, scenario, exitCode: 127, timedOut: false, "Failed to start OpenBurnBar.App.exe.", stopwatch.Elapsed);
         }
 
         bool timedOut = false;
@@ -60,6 +63,8 @@ internal sealed class RouteSmokeRunner
         if (timedOut)
         {
             return new RouteSmokeEvidence(
+                scenario.Key,
+                scenario.Title,
                 route.Key,
                 HarnessVerdict.Fail,
                 124,
@@ -72,6 +77,9 @@ internal sealed class RouteSmokeRunner
                 LumaStdDev: 0,
                 ElapsedMs: stopwatch.Elapsed.TotalMilliseconds,
                 Message: $"Timed out after {_timeoutMilliseconds + 5_000}ms.",
+                scenario.AppearanceMode,
+                scenario.ReduceTransparency,
+                scenario.DpiScalePercent,
                 ExpectedAutomationId: route.ExpectedAutomationId,
                 ExpectedAutomationIdFound: false);
         }
@@ -80,6 +88,7 @@ internal sealed class RouteSmokeRunner
         {
             return Failed(
                 route.Key,
+                scenario,
                 process.ExitCode,
                 timedOut: false,
                 $"Route smoke result JSON was not written: {resultPath}",
@@ -88,23 +97,28 @@ internal sealed class RouteSmokeRunner
 
         try
         {
-            return ParseResult(route.Key, process.ExitCode, resultPath, stopwatch.Elapsed);
+            return ParseResult(route.Key, scenario, process.ExitCode, resultPath, stopwatch.Elapsed);
         }
         catch (JsonException ex)
         {
-            return Failed(route.Key, process.ExitCode, timedOut: false, $"Route smoke result JSON was invalid: {ex.Message}", stopwatch.Elapsed);
+            return Failed(route.Key, scenario, process.ExitCode, timedOut: false, $"Route smoke result JSON was invalid: {ex.Message}", stopwatch.Elapsed);
         }
         catch (IOException ex)
         {
-            return Failed(route.Key, process.ExitCode, timedOut: false, $"Route smoke result JSON could not be read: {ex.Message}", stopwatch.Elapsed);
+            return Failed(route.Key, scenario, process.ExitCode, timedOut: false, $"Route smoke result JSON could not be read: {ex.Message}", stopwatch.Elapsed);
         }
         catch (UnauthorizedAccessException ex)
         {
-            return Failed(route.Key, process.ExitCode, timedOut: false, $"Route smoke result JSON could not be accessed: {ex.Message}", stopwatch.Elapsed);
+            return Failed(route.Key, scenario, process.ExitCode, timedOut: false, $"Route smoke result JSON could not be accessed: {ex.Message}", stopwatch.Elapsed);
         }
     }
 
-    private ProcessStartInfo CreateStartInfo(UiHarnessRoute route, string routeOut, string profileRoot, string launchOut)
+    private ProcessStartInfo CreateStartInfo(
+        UiHarnessRoute route,
+        UiCertificationScenario scenario,
+        string routeOut,
+        string profileRoot,
+        string launchOut)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -128,10 +142,27 @@ internal sealed class RouteSmokeRunner
         startInfo.ArgumentList.Add(profileRoot);
         startInfo.ArgumentList.Add("--automation-out");
         startInfo.ArgumentList.Add(launchOut);
+        if (!string.IsNullOrWhiteSpace(scenario.AppearanceMode))
+        {
+            startInfo.ArgumentList.Add("--automation-appearance");
+            startInfo.ArgumentList.Add(scenario.AppearanceMode);
+        }
+
+        if (scenario.ReduceTransparency is bool reduceTransparency)
+        {
+            startInfo.ArgumentList.Add("--automation-reduce-transparency");
+            startInfo.ArgumentList.Add(reduceTransparency ? "true" : "false");
+        }
+
         return startInfo;
     }
 
-    private static RouteSmokeEvidence ParseResult(string routeKey, int processExitCode, string resultPath, TimeSpan elapsed)
+    private static RouteSmokeEvidence ParseResult(
+        string routeKey,
+        UiCertificationScenario scenario,
+        int processExitCode,
+        string resultPath,
+        TimeSpan elapsed)
     {
         using JsonDocument json = JsonDocument.Parse(File.ReadAllText(resultPath));
         JsonElement root = json.RootElement;
@@ -151,6 +182,8 @@ internal sealed class RouteSmokeRunner
         }
 
         return new RouteSmokeEvidence(
+            scenario.Key,
+            scenario.Title,
             routeKey,
             verdict,
             processExitCode,
@@ -163,12 +196,23 @@ internal sealed class RouteSmokeRunner
             lumaStdDev,
             elapsedMs <= 0 ? elapsed.TotalMilliseconds : elapsedMs,
             message,
+            scenario.AppearanceMode,
+            scenario.ReduceTransparency,
+            scenario.DpiScalePercent,
             expectedAutomationId,
             expectedAutomationIdFound);
     }
 
-    private static RouteSmokeEvidence Failed(string routeKey, int exitCode, bool timedOut, string message, TimeSpan elapsed) =>
+    private static RouteSmokeEvidence Failed(
+        string routeKey,
+        UiCertificationScenario scenario,
+        int exitCode,
+        bool timedOut,
+        string message,
+        TimeSpan elapsed) =>
         new(
+            scenario.Key,
+            scenario.Title,
             routeKey,
             HarnessVerdict.Fail,
             exitCode,
@@ -181,6 +225,9 @@ internal sealed class RouteSmokeRunner
             LumaStdDev: 0,
             ElapsedMs: elapsed.TotalMilliseconds,
             Message: message,
+            scenario.AppearanceMode,
+            scenario.ReduceTransparency,
+            scenario.DpiScalePercent,
             ExpectedAutomationId: UiHarnessRouteDefaults.ExpectedAutomationId(routeKey),
             ExpectedAutomationIdFound: false);
 

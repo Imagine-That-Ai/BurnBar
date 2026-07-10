@@ -33,6 +33,23 @@ evidence, physical x64/ARM64 hardware certification, production account/cloud
 lifecycle, and the deeper daemon, Computer Use, and Mercury workflows retain
 their independent release gates.
 
+## Certification Harness Update - 2026-07-10
+
+The UI automation harness now has an explicit `--certification-profile
+accessibility` mode. It keeps the default smoke path fast, while adding a
+machine-readable certification scenario manifest for baseline screenshots,
+high-contrast rendering, reduced-transparency rendering, hosted 100% DPI
+captures, and the keyboard/input safety contract. High-contrast and
+reduced-transparency scenarios seed the real persisted Windows appearance state
+before `ThemeService` initializes, so route captures exercise production theme
+composition rather than a test-only style shim.
+
+This closes part of the certification infrastructure gap: CI and host evidence
+can no longer treat generic route smoke as equivalent to accessibility/DPI
+coverage. It does not replace the remaining physical-device Narrator protocol,
+150%/200% DPI sweeps, high-contrast OS theme validation, or manual keyboard
+certification required before a parity release claim.
+
 ## Executive Summary
 
 Windows is a substantial code port, but it is not at macOS product parity or
