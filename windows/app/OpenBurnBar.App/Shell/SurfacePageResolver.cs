@@ -38,7 +38,7 @@ public static class SurfacePageResolver
     static SurfacePageResolver()
     {
         // Fail closed on dual-map desync: every SurfaceRouteMap product logical name must bind.
-        SurfaceRouteMap.AssertWinUiBindingsCoverProductLogicalNames(LogicalToType.Keys);
+        SurfaceRouteMap.AssertWinUiBindingsCoverProductLogicalNames(LogicalToType.Keys.ToArray());
     }
 
     /// <summary>Logical page names that have a WinUI <see cref="Type"/> binding (incl. stub).</summary>
