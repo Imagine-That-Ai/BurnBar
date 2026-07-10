@@ -139,10 +139,16 @@ jobs:
       - name: Lint packaging props (well-formed XML)
         run: |
           set -euo pipefail
-          for f in windows/dist/props/OpenBurnBar.Windows.Hardening.props \
-                   windows/dist/props/OpenBurnBar.Windows.NativeHardening.props; do
-            xmllint --noout "$f"
-          done
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+
+          for file_name in (
+              "windows/dist/props/OpenBurnBar.Windows.Hardening.props",
+              "windows/dist/props/OpenBurnBar.Windows.NativeHardening.props",
+          ):
+              ET.parse(file_name)
+              print(f"xml parse OK: {file_name}")
+          PY
 
       - name: Enforce version consistency at release time
         env:
