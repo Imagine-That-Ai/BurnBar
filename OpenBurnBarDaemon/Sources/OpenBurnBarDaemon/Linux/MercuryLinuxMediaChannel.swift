@@ -3,6 +3,9 @@ import Foundation
 import Glibc
 import OpenBurnBarMedia
 
+// AUDIT: Socket descriptors, queue, and worker tasks are fully mediated by the
+// condition and lifecycle locks; Foundation cannot verify NSCondition storage.
+// sendable-allowlist: internal-lock-snapshot-store
 public final class MercuryLinuxMediaChannel: @unchecked Sendable {
     public enum ChannelError: Error, LocalizedError, Equatable {
         case runtimeDirectoryUnavailable
@@ -50,8 +53,9 @@ public final class MercuryLinuxMediaChannel: @unchecked Sendable {
     }
 
     private let condition = NSCondition()
+    private let lifecycleLock = NSLock()
     private let maxQueuedFrames: Int
-    private var socketPath: String
+    private let socketPath: String
     private var listenFD: Int32 = -1
     private var clientFD: Int32 = -1
     private var queue: [Data] = []
@@ -76,6 +80,9 @@ public final class MercuryLinuxMediaChannel: @unchecked Sendable {
     }
 
     public func start() throws {
+        lifecycleLock.lock()
+        defer { lifecycleLock.unlock() }
+
         condition.lock()
         if running {
             condition.unlock()
@@ -111,18 +118,20 @@ public final class MercuryLinuxMediaChannel: @unchecked Sendable {
         condition.lock()
         listenFD = fd
         running = true
-        condition.broadcast()
-        condition.unlock()
-
         acceptTask = Task.detached(priority: .utility) { [weak self] in
             self?.acceptLoop(listenFD: fd)
         }
         writerTask = Task.detached(priority: .utility) { [weak self] in
             self?.writerLoop()
         }
+        condition.broadcast()
+        condition.unlock()
     }
 
     public func stop() {
+        lifecycleLock.lock()
+        defer { lifecycleLock.unlock() }
+
         condition.lock()
         guard running || listenFD >= 0 || clientFD >= 0 else {
             condition.unlock()
@@ -134,13 +143,15 @@ public final class MercuryLinuxMediaChannel: @unchecked Sendable {
         listenFD = -1
         clientFD = -1
         queue.removeAll()
+        let oldAcceptTask = acceptTask
+        let oldWriterTask = writerTask
+        acceptTask = nil
+        writerTask = nil
         condition.broadcast()
         condition.unlock()
 
-        acceptTask?.cancel()
-        writerTask?.cancel()
-        acceptTask = nil
-        writerTask = nil
+        oldAcceptTask?.cancel()
+        oldWriterTask?.cancel()
 
         if oldListenFD >= 0 {
             _ = Glibc.shutdown(oldListenFD, Int32(SHUT_RDWR))
@@ -300,6 +311,5 @@ public final class MercuryLinuxMediaChannel: @unchecked Sendable {
         var be = value.bigEndian
         withUnsafeBytes(of: &be) { data.append(contentsOf: $0) }
     }
-
 }
 #endif

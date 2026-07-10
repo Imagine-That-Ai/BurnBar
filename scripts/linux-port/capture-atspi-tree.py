@@ -170,10 +170,7 @@ def find_application(pyatspi: Any, application_name: str, timeout_seconds: float
         for application in applications:
             if application is None:
                 continue
-            if (
-                application_name.casefold() in node_name(application).casefold()
-                and child_count(application) > 0
-            ):
+            if application_name.casefold() in node_name(application).casefold() and child_count(application) > 0:
                 return application
         for application in applications:
             if application is not None and contains_name(application, application_name):
@@ -266,16 +263,12 @@ def summarize(
     minimums: tuple[int, int, int],
 ) -> dict[str, Any]:
     named = [row for row in rows if row["name"]]
-    actionable = [
-        row for row in rows if row["actions"] or row["role"] in ACTIONABLE_ROLES
-    ]
+    actionable = [row for row in rows if row["actions"] or row["role"] in ACTIONABLE_ROLES]
     focusable = [row for row in rows if "focusable" in row["states"]]
     focused = [row for row in rows if "focused" in row["states"]]
     role_counts = dict(sorted(Counter(row["role"] for row in rows).items()))
     expected_present = (
-        True
-        if not expected_name
-        else any(expected_name.casefold() in row["name"].casefold() for row in named)
+        True if not expected_name else any(expected_name.casefold() in row["name"].casefold() for row in named)
     )
     min_nodes, min_named, min_actionable = minimums
     failures = []
@@ -323,10 +316,10 @@ def write_tree_text(path: str, rows: list[dict[str, Any]]) -> None:
         if row["name"]:
             details.append(f'name="{row["name"]}"')
         if row["states"]:
-            details.append(f'states={",".join(row["states"])}')
+            details.append(f"states={','.join(row['states'])}")
         if row["actions"]:
-            details.append(f'actions={",".join(row["actions"])}')
-        lines.append(f'{indent}{row["path"]} ' + " ".join(details))
+            details.append(f"actions={','.join(row['actions'])}")
+        lines.append(f"{indent}{row['path']} " + " ".join(details))
     Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -339,10 +332,7 @@ def self_test() -> int:
         {"role": "button", "name": f"Action {index}", "states": ["focusable"], "actions": ["click"]}
         for index in range(6)
     )
-    rows.extend(
-        {"role": "text", "name": f"Label {index}", "states": [], "actions": []}
-        for index in range(12)
-    )
+    rows.extend({"role": "text", "name": f"Label {index}", "states": [], "actions": []} for index in range(12))
     result = summarize(rows, "OpenBurnBar", "overview", "Overview", False, (20, 8, 5))
     if not result["pass"] or result["actionableNodeCount"] != 6:
         print(json.dumps(result, indent=2), file=sys.stderr)

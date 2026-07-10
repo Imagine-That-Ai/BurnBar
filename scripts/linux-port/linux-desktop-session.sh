@@ -200,7 +200,7 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
   sleep 0.3
   focus_log_offset="$(wc -c <"$out_dir/orca-debug.log")"
   physical_tab_presses=14
-  for step in $(seq 1 "$physical_tab_presses"); do
+  for _ in $(seq 1 "$physical_tab_presses"); do
     xdotool key --clearmodifiers Tab
     # Orca intentionally serializes accessibility events. Fast synthetic input
     # causes its queue to obsolete intermediate focus changes.
@@ -485,7 +485,6 @@ NODE
     fi
     tray_open_samples+=("$(( $(date +%s%3N) - tray_open_start_ms ))")
   done
-  tray_open_ms="${tray_open_samples[0]}"
   xwininfo -id "$reopened_window_id" >"$out_dir/window-after-tray-open-xwininfo.txt"
   scrot "$out_dir/screenshot-linux-desktop-after-tray-open.png"
 
@@ -517,7 +516,6 @@ NODE
     fi
     ipc_health_roundtrip_samples+=("$(( $(date +%s%3N) - reconnect_start_ms ))")
   done
-  ipc_health_roundtrip_ms="${ipc_health_roundtrip_samples[0]}"
 
   quit_start_ms="$(date +%s%3N)"
   send_menu_event "$QUIT_ID" >"$out_dir/tray-quit-menu-event.txt" 2>&1

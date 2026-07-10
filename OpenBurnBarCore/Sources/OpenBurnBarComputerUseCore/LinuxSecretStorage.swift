@@ -26,10 +26,6 @@ enum LinuxSecretServiceClientError: Error, Equatable {
 struct UnavailableLinuxSecretServiceClient: LinuxSecretServiceClient {
     var reason: String
 
-    init(reason: String) {
-        self.reason = reason
-    }
-
     func load(service _: String, account _: String) throws -> Data? {
         throw LinuxSecretServiceClientError.unavailable(reason)
     }
@@ -120,7 +116,7 @@ struct LibsecretLinuxSecretServiceClient: LinuxSecretServiceClient {
 }
 #endif
 
-final class LinuxPersistentSecretStore: @unchecked Sendable {
+final class LinuxPersistentSecretStore: Sendable {
     static let controllerPinService = "com.openburnbar.computeruse.controller-key-pin"
     static let irohHostPinService = "com.openburnbar.iroh.host-key-pin"
     static let remoteUnlockCapabilityService = "com.openburnbar.remote-unlock.capability-token-issuer"
@@ -225,7 +221,7 @@ final class LinuxPersistentSecretStore: @unchecked Sendable {
     }
 }
 
-private final class LinuxEncryptedFileSecretStore: @unchecked Sendable {
+private final class LinuxEncryptedFileSecretStore: Sendable {
     private struct Envelope: Codable, Sendable {
         var schemaVersion: Int
         var service: String
@@ -235,9 +231,9 @@ private final class LinuxEncryptedFileSecretStore: @unchecked Sendable {
     }
 
     private static let schemaVersion = 1
-    private static let masterKeyFileName = ".openburnbar-linux-secret-file-key-v1"
+    private static let fileKeyFileName = ".openburnbar-linux-secret-file-key-v1"
     private static let envelopeExtension = "obbsecret"
-    // The master key is stored as raw bytes protected by 0600 perms + O_NOFOLLOW
+    // The file-encryption key is stored as raw bytes protected by 0600 perms + O_NOFOLLOW
     // (not AEAD-wrapped): there is no lower key-encryption-key to wrap it with
     // on a headless daemon. A TPM/keyring-derived KEK wrap is a named hardening
     // follow-up; not implementing it here avoids a false sense of authentication.
@@ -262,7 +258,7 @@ private final class LinuxEncryptedFileSecretStore: @unchecked Sendable {
                   let sealed = Data(base64Encoded: envelope.sealedBase64) else {
                 return .unreadable(-67674)
             }
-            let key = try loadOrCreateMasterKey()
+            let key = try loadOrCreateFileKey()
             let plaintext = try PlatformCrypto.openAESGCM(
                 combined: sealed,
                 keyData: key,
@@ -281,7 +277,7 @@ private final class LinuxEncryptedFileSecretStore: @unchecked Sendable {
 
         do {
             try prepareDirectory()
-            let key = try loadOrCreateMasterKey()
+            let key = try loadOrCreateFileKey()
             let sealed = try PlatformCrypto.sealAESGCM(
                 plaintext: data,
                 keyData: key,
@@ -317,12 +313,12 @@ private final class LinuxEncryptedFileSecretStore: @unchecked Sendable {
         }
     }
 
-    private func loadOrCreateMasterKey() throws -> Data {
+    private func loadOrCreateFileKey() throws -> Data {
         try prepareDirectory()
-        let url = rootDirectory.appendingPathComponent(Self.masterKeyFileName, isDirectory: false)
+        let url = rootDirectory.appendingPathComponent(Self.fileKeyFileName, isDirectory: false)
         if FileManager.default.fileExists(atPath: url.path) {
             let key = try Data(contentsOf: url)
-            guard key.count == 32 else { throw LinuxSecretFileStoreError.invalidMasterKey }
+            guard key.count == 32 else { throw LinuxSecretFileStoreError.invalidFileKey }
             return key
         }
 
@@ -408,11 +404,11 @@ private final class LinuxEncryptedFileSecretStore: @unchecked Sendable {
 }
 
 private enum LinuxSecretFileStoreError: Error {
-    case invalidMasterKey
+    case invalidFileKey
     case posix(Int32)
 }
 
-public final class LinuxSecretControllerKeyPinBacking: ControllerKeyPinBacking, @unchecked Sendable {
+public final class LinuxSecretControllerKeyPinBacking: ControllerKeyPinBacking, Sendable {
     private let store: LinuxPersistentSecretStore
 
     public convenience init(service: String) {

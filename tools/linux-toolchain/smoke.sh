@@ -97,6 +97,8 @@ echo "== linux-desktop-libs =="
 pkg-config --modversion webkit2gtk-4.1
 pkg-config --modversion ayatana-appindicator3-0.1
 pkg-config --modversion libsecret-1
+dpkg-query -W -f='libpam0g-dev=${Version}\n' libpam0g-dev
+test -f "$(cc -print-file-name=libpam.so)"
 pkg-config --modversion libpipewire-0.3
 pkg-config --modversion dbus-1
 dpkg-query -W -f='xdg-desktop-portal=${Version}\n' xdg-desktop-portal
@@ -164,6 +166,7 @@ dpkg-query -W -f='${binary:Package}=${Version}\n' \
   libwebkit2gtk-4.1-dev \
   libayatana-appindicator3-dev \
   libsecret-1-dev \
+  libpam0g-dev \
   libkf5wallet-dev \
   dbus \
   dbus-x11 \

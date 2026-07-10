@@ -189,10 +189,9 @@ public final class PensieveKnowledgeWatcher: Sendable {
                 includingPropertiesForKeys: [.isDirectoryKey],
                 options: [.skipsHiddenFiles]
             ) else { continue }
-            for child in kids {
-                if (try? child.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true {
-                    stack.append(child)
-                }
+            for child in kids
+            where (try? child.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true {
+                stack.append(child)
             }
         }
     }

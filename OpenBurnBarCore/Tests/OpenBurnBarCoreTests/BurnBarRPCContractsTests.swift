@@ -110,6 +110,16 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .codeExplore: "daemon.code.explore",
         .codeOpsDiagnostics: "daemon.code.ops_diagnostics",
         .runResume: "run.resume",
+        .daemonMediaSessionState: "daemon.media.session.state",
+        .daemonMediaCallAccept: "daemon.media.call.accept",
+        .daemonMediaCallDecline: "daemon.media.call.decline",
+        .daemonMediaCallEnd: "daemon.media.call.end",
+        .daemonMediaCapabilityGet: "daemon.media.capability.get",
+        .daemonMediaStatus: "daemon.media.status",
+        .daemonMediaFileOfferList: "daemon.media.file.offer.list",
+        .daemonMediaFileAccept: "daemon.media.file.accept",
+        .daemonMediaFileDecline: "daemon.media.file.decline",
+        .daemonMediaFileSend: "daemon.media.file.send",
         // Added with the 98-method canon regen (main 69e2a41deb): membership +
         // subscription lifecycle + perf.measure. Wire names pinned to the enum rawValues.
         .membershipStatus: "daemon.membership.status",

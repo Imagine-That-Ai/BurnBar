@@ -11,7 +11,7 @@ public enum RemoteUnlockCapabilitySigningKeyStoreError: Error, Equatable {
     case invalidStoredKey
 }
 
-public final class OpenBurnBarRemoteUnlockCapabilitySigningKeyStore: @unchecked Sendable {
+public final class OpenBurnBarRemoteUnlockCapabilitySigningKeyStore: Sendable {
     public static let defaultService = "com.openburnbar.remote-unlock.capability-token-issuer"
     public static let defaultAccount = "default"
 
@@ -108,7 +108,7 @@ private struct UnavailableRemoteUnlockCapabilityPrivateKeyStore: RemoteUnlockCap
 }
 
 #if os(Linux)
-public final class LinuxRemoteUnlockCapabilityPrivateKeyStore: RemoteUnlockCapabilityPrivateKeyStoring, @unchecked Sendable {
+public final class LinuxRemoteUnlockCapabilityPrivateKeyStore: RemoteUnlockCapabilityPrivateKeyStoring, Sendable {
     private let store: LinuxPersistentSecretStore
     private let account: String
 

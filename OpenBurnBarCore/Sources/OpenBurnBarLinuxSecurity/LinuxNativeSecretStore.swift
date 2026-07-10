@@ -344,6 +344,9 @@ public enum LinuxSecretProcess {
     }
 }
 
+// AUDIT: Foundation.Process lacks Sendable despite this wrapper exposing only
+// waitUntilExit while lifecycle mutation stays with the calling thread.
+// sendable-allowlist: process-handle
 private final class LinuxSecretProcessWaiter: @unchecked Sendable {
     let process: Process
 

@@ -19,7 +19,8 @@ final class DaemonLinuxLocalAuthProofVerifierTests: XCTestCase {
         let store = DaemonPhoneKeyPinStore(backing: backing)
 
         guard case .pinned = store.pin(deviceId: deviceId, key: .ed25519(key.publicKey)) else {
-            return XCTFail("expected Linux file backing to persist pinned key")
+            XCTFail("expected Linux file backing to persist pinned key")
+            return
         }
 
         let reloadedStore = DaemonPhoneKeyPinStore(

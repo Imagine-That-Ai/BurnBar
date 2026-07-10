@@ -31,6 +31,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         libei-dev \
         libgtk-3-dev \
         libkf5wallet-dev \
+        libpam0g-dev \
         libpipewire-0.3-dev \
         libsecret-1-dev \
         libsecret-tools \

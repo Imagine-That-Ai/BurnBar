@@ -48,7 +48,8 @@ final class LinuxComputerUseInputAdapterTests: XCTestCase {
         XCTAssertEqual(recorder.lastExecutable, "/usr/bin/xdotool")
         XCTAssertEqual(recorder.lastArguments, ["type", "--clearmodifiers", "--delay", "0", "super-secret"])
         guard case .object(let object) = result else {
-            return XCTFail("expected object result")
+            XCTFail("expected object result")
+            return
         }
         XCTAssertEqual(object.stringValue(forKey: "adapter"), "x11-xtest")
         XCTAssertEqual(object.intValue(forKey: "textLength"), 12)

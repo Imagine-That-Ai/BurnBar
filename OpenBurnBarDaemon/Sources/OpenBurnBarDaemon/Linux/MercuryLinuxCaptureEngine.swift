@@ -14,17 +14,6 @@ public struct MercuryLinuxScreenCastGrant: Sendable, Equatable {
     public var sessionHandle: String
     public var isLive: Bool
 
-    init(
-        pipeWireFD: Int32,
-        pipeWireNodeID: UInt32,
-        sessionHandle: String,
-        isLive: Bool
-    ) {
-        self.pipeWireFD = pipeWireFD
-        self.pipeWireNodeID = pipeWireNodeID
-        self.sessionHandle = sessionHandle
-        self.isLive = isLive
-    }
 }
 
 public struct MercuryLinuxCaptureRequest: Sendable, Equatable {
@@ -145,7 +134,7 @@ public struct MercuryLinuxMediaCapabilities: Sendable, Equatable {
     }
 }
 
-private final class MercuryLinuxCaptureCallbackBox: @unchecked Sendable {
+private final class MercuryLinuxCaptureCallbackBox: Sendable {
     let onFrame: @Sendable (MediaFrame) -> Void
     let onStopped: @Sendable (String) -> Void
 
@@ -158,13 +147,10 @@ private final class MercuryLinuxCaptureCallbackBox: @unchecked Sendable {
     }
 }
 
-private let mercuryLinuxCaptureFrameCallback:
-    @convention(c) (UnsafePointer<UInt8>?, Int, UInt64, UInt8, UnsafeMutableRawPointer?) -> Void = {
-        payload,
-        len,
-        ptsMS,
-        flags,
-        userData in
+private typealias MercuryLinuxCaptureFrameCallback =
+    @convention(c) (UnsafePointer<UInt8>?, Int, UInt64, UInt8, UnsafeMutableRawPointer?) -> Void
+
+private let mercuryLinuxCaptureFrameCallback: MercuryLinuxCaptureFrameCallback = { payload, len, ptsMS, flags, userData in
         guard let payload, let userData, len > 0 else { return }
         let box = Unmanaged<MercuryLinuxCaptureCallbackBox>
             .fromOpaque(userData)
@@ -178,11 +164,10 @@ private let mercuryLinuxCaptureFrameCallback:
         box.onFrame(frame)
     }
 
-private let mercuryLinuxCaptureStoppedCallback:
-    @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<CChar>?, Int) -> Void = {
-        userData,
-        reasonPointer,
-        reasonLength in
+private typealias MercuryLinuxCaptureStoppedCallback =
+    @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<CChar>?, Int) -> Void
+
+private let mercuryLinuxCaptureStoppedCallback: MercuryLinuxCaptureStoppedCallback = { userData, reasonPointer, reasonLength in
         guard let userData else { return }
         let box = Unmanaged<MercuryLinuxCaptureCallbackBox>
             .fromOpaque(userData)
@@ -209,8 +194,11 @@ public protocol MercuryLinuxCaptureEngineProtocol: Sendable {
     func setBitrate(_ targetBitrateBps: UInt32) throws
 }
 
+// AUDIT: Opaque GStreamer pipeline/context pointers are mutable only while the
+// recursive lifecycle lock is held; the C ABI cannot express that ownership.
+// sendable-allowlist: internal-lock-snapshot-store
 public final class MercuryLinuxCaptureEngine: @unchecked Sendable {
-    private let lock = NSLock()
+    private let lock = NSRecursiveLock()
     private var pipeline: UnsafeMutableRawPointer?
     private var callbackContext: UnsafeMutableRawPointer?
 
@@ -226,6 +214,9 @@ public final class MercuryLinuxCaptureEngine: @unchecked Sendable {
         onStopped: @escaping @Sendable (String) -> Void = { _ in }
     ) throws {
         #if OPENBURNBAR_MEDIA_CAPTURE_LINKED
+        lock.lock()
+        defer { lock.unlock() }
+
         let pipelineStarter: (UnsafeMutableRawPointer) -> UnsafeMutableRawPointer?
         switch request.source {
         case .portal(let grant):
@@ -259,7 +250,7 @@ public final class MercuryLinuxCaptureEngine: @unchecked Sendable {
             }
         }
 
-        stop()
+        stopLocked()
 
         let callbackBox = MercuryLinuxCaptureCallbackBox(onFrame: onFrame, onStopped: onStopped)
         let context = Unmanaged.passRetained(callbackBox).toOpaque()
@@ -268,10 +259,8 @@ public final class MercuryLinuxCaptureEngine: @unchecked Sendable {
             throw MercuryLinuxCaptureError.startFailed
         }
 
-        lock.lock()
         self.pipeline = pipeline
         self.callbackContext = context
-        lock.unlock()
         #else
         _ = request
         _ = onFrame
@@ -283,11 +272,22 @@ public final class MercuryLinuxCaptureEngine: @unchecked Sendable {
     public func stop() {
         #if OPENBURNBAR_MEDIA_CAPTURE_LINKED
         lock.lock()
+        defer { lock.unlock() }
+        stopLocked()
+        #else
+        lock.lock()
+        defer { lock.unlock() }
+        pipeline = nil
+        callbackContext = nil
+        #endif
+    }
+
+    #if OPENBURNBAR_MEDIA_CAPTURE_LINKED
+    private func stopLocked() {
         let oldPipeline = pipeline
         let oldContext = callbackContext
         pipeline = nil
         callbackContext = nil
-        lock.unlock()
 
         if let oldPipeline {
             media_capture_stop(oldPipeline)
@@ -297,24 +297,18 @@ public final class MercuryLinuxCaptureEngine: @unchecked Sendable {
                 .fromOpaque(oldContext)
                 .release()
         }
-        #else
-        lock.lock()
-        pipeline = nil
-        callbackContext = nil
-        lock.unlock()
-        #endif
     }
+    #endif
 
     public func setBitrate(_ targetBitrateBps: UInt32) throws {
         #if OPENBURNBAR_MEDIA_CAPTURE_LINKED
         lock.lock()
+        defer { lock.unlock() }
         let activePipeline = pipeline
         guard let activePipeline else {
-            lock.unlock()
             throw MercuryLinuxCaptureError.noActivePipeline
         }
         media_capture_set_bitrate(activePipeline, targetBitrateBps)
-        lock.unlock()
         #else
         _ = targetBitrateBps
         throw MercuryLinuxCaptureError.mediaCrateUnavailable

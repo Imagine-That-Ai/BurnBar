@@ -240,8 +240,7 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
             // PATH-only fallback even without stored profiles.
             if let binary = BurnBarSwitcherSQLiteProfileStore.defaultBinaryNames(for: request.cliType)
                 .compactMap({ BurnBarSwitcherSQLiteProfileStore.resolveExecutable($0, pathDirs: pathDirectories) })
-                .first
-            {
+                .first {
                 let result = try await runProcess(executable: binary, arguments: request.forwardedArguments, workingDirectory: nil)
                 return BurnBarCLIShellExecutionResult(
                     exitCode: result.status,

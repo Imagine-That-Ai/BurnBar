@@ -23,7 +23,7 @@ public enum MercuryLinuxScreenCastPortalError: Error, LocalizedError, Equatable 
     }
 }
 
-public final class MercuryLinuxGDBusScreenCastPortalClient: MercuryLinuxScreenCastPortalClient, @unchecked Sendable {
+public final class MercuryLinuxGDBusScreenCastPortalClient: MercuryLinuxScreenCastPortalClient, Sendable {
     private let sourceTypes: UInt32
     private let cursorMode: UInt32
     private let timeoutMillis: UInt32
@@ -91,7 +91,7 @@ public protocol MercuryLinuxCaptureAdapterProtocol: Sendable {
     func setOutboundCaptureBitrate(_ targetBitrateBps: UInt32) throws
 }
 
-public final class MercuryLinuxCaptureAdapter: MercuryLinuxCaptureAdapterProtocol, @unchecked Sendable {
+public final class MercuryLinuxCaptureAdapter: MercuryLinuxCaptureAdapterProtocol, Sendable {
     private let portalClient: any MercuryLinuxScreenCastPortalClient
     private let captureEngine: any MercuryLinuxCaptureEngineProtocol
     private let activeGrant = Locked<MercuryLinuxScreenCastGrant?>(nil)
@@ -151,32 +151,28 @@ public final class MercuryLinuxCaptureAdapter: MercuryLinuxCaptureAdapterProtoco
     }
 }
 
-final class MercuryLinuxCaptureFrameQueue: @unchecked Sendable {
+final class MercuryLinuxCaptureFrameQueue: Sendable {
     let stream: AsyncStream<MediaFrame>
-    private let lock = NSLock()
-    private var continuation: AsyncStream<MediaFrame>.Continuation?
+    private let continuation: Locked<AsyncStream<MediaFrame>.Continuation?>
 
     init(bufferingNewest count: Int) {
-        var capturedContinuation: AsyncStream<MediaFrame>.Continuation?
-        stream = AsyncStream(MediaFrame.self, bufferingPolicy: .bufferingNewest(count)) { continuation in
-            capturedContinuation = continuation
-        }
-        continuation = capturedContinuation
+        let pair = AsyncStream.makeStream(
+            of: MediaFrame.self,
+            bufferingPolicy: .bufferingNewest(count)
+        )
+        stream = pair.stream
+        continuation = Locked(pair.continuation)
     }
 
     func offer(_ frame: MediaFrame) {
-        lock.lock()
-        let continuation = continuation
-        lock.unlock()
-        continuation?.yield(frame)
+        continuation.read()?.yield(frame)
     }
 
     func finish() {
-        lock.lock()
-        let continuation = continuation
-        self.continuation = nil
-        lock.unlock()
-        continuation?.finish()
+        continuation.withLock { stored in
+            stored?.finish()
+            stored = nil
+        }
     }
 }
 

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-root="${OB_REPO_ROOT:-/workspace}"
 out_dir="${OB_EVIDENCE_OUT:-/workspace/.linux-shard/session}"
 candidate="${OB_CANDIDATE_DEB:-}"
 previous="${OB_PREVIOUS_DEB:-}"

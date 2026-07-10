@@ -1,20 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "$(dirname "$0")/../.."
+cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 run_xctest_attempt() {
     local binary="$1"
     local selector="$2"
     local output_file
     local status
+    local timeout_seconds="${OPENBURNBAR_LINUX_XCTEST_TIMEOUT_SECONDS:-30}"
+    local kill_after_seconds="${OPENBURNBAR_LINUX_XCTEST_KILL_AFTER_SECONDS:-5}"
 
     output_file="$(mktemp)"
 
-    set +e
-    timeout --signal=TERM --kill-after=5 30 "$binary" "$selector" 2>&1 | tee "$output_file"
-    status=$?
-    set -e
+    if timeout --signal=TERM --kill-after="$kill_after_seconds" "$timeout_seconds" \
+        "$binary" "$selector" 2>&1 | tee "$output_file"; then
+        status=0
+    else
+        status=$?
+    fi
 
     if [[ $status -eq 0 ]] && ! grep -Fq "Executed 1 test" "$output_file"; then
         echo "Linux XCTest selector executed zero or multiple tests: $selector" >&2
@@ -32,14 +36,12 @@ run_xctest_case() {
     # Let libdispatch tear down the previous Linux XCTest process before the
     # next Swift concurrency runtime initializes in the same PID namespace.
     sleep 0.25
-    set +e
-    run_xctest_attempt "$binary" "$selector"
-    status=$?
-    set -e
-
-    if [[ $status -eq 0 ]]; then
+    if run_xctest_attempt "$binary" "$selector"; then
         return 0
+    else
+        status=$?
     fi
+
     if [[ $status -ne 124 ]]; then
         return "$status"
     fi
@@ -48,12 +50,10 @@ run_xctest_case() {
     for retry in 1 2; do
         echo "Linux XCTest runner timed out for $selector; retrying in a fresh process ($retry/2)." >&2
         sleep 1
-        set +e
-        run_xctest_attempt "$binary" "$selector"
-        status=$?
-        set -e
-        if [[ $status -eq 0 ]]; then
+        if run_xctest_attempt "$binary" "$selector"; then
             return 0
+        else
+            status=$?
         fi
         if [[ $status -ne 124 ]]; then
             return "$status"
@@ -96,14 +96,15 @@ run_swift_suite() {
     local first_output
     local first_status
     first_output="$(mktemp)"
-    set +e
-    timeout 900 swift test \
+    if timeout 900 swift test \
         --disable-automatic-resolution \
         --package-path "$package_path" \
         --filter "$first_test" \
-        --scratch-path "$scratch_path" 2>&1 | tee "$first_output"
-    first_status=$?
-    set -e
+        --scratch-path "$scratch_path" 2>&1 | tee "$first_output"; then
+        first_status=0
+    else
+        first_status=$?
+    fi
     if [[ $first_status -eq 0 ]] && ! grep -Fq "Executed 1 test" "$first_output"; then
         echo "Linux Swift test filter executed zero or multiple tests: $first_test" >&2
         first_status=65
@@ -233,22 +234,29 @@ daemon_linux_tests=(
     OpenBurnBarHTTPGatewayServerLinuxTests/testStreamsChatCompletionsThroughConfiguredProviderAndRecordsUsage
 )
 
-run_swift_suite \
-    OpenBurnBarCore \
-    OpenBurnBarCore/.build/linux-native \
-    OpenBurnBarLinuxCoreFoundationTests \
-    "${core_foundation_tests[@]}"
+main() {
+    run_swift_suite \
+        OpenBurnBarCore \
+        OpenBurnBarCore/.build/linux-native \
+        OpenBurnBarLinuxCoreFoundationTests \
+        "${core_foundation_tests[@]}"
 
-run_swift_suite \
-    OpenBurnBarCore \
-    OpenBurnBarCore/.build/linux-native \
-    OpenBurnBarLinuxSecurityTests \
-    "${linux_security_tests[@]}"
+    run_swift_suite \
+        OpenBurnBarCore \
+        OpenBurnBarCore/.build/linux-native \
+        OpenBurnBarLinuxSecurityTests \
+        "${linux_security_tests[@]}"
 
-run_swift_suite \
-    OpenBurnBarDaemon \
-    OpenBurnBarDaemon/.build/linux-native \
-    OpenBurnBarDaemonLinuxGatewayTests \
-    "${daemon_linux_tests[@]}"
+    run_swift_suite \
+        OpenBurnBarDaemon \
+        OpenBurnBarDaemon/.build/linux-native \
+        OpenBurnBarDaemonLinuxGatewayTests \
+        "${daemon_linux_tests[@]}"
 
-cargo test --manifest-path apps/linux-desktop/src-tauri/Cargo.toml --locked
+    CARGO_BUILD_JOBS="${OPENBURNBAR_LINUX_CARGO_BUILD_JOBS:-1}" \
+        cargo test --manifest-path apps/linux-desktop/src-tauri/Cargo.toml --locked
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi

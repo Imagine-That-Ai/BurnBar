@@ -496,7 +496,7 @@ final class MercuryLinuxMediaTests: XCTestCase {
         XCTAssertEqual(capability.codecsKnown, media.capabilitiesKnown)
         XCTAssertNotNil(capability.codecs["vp9"])
         XCTAssertNotNil(capability.codecs["opus"])
-        XCTAssertEqual(capability.codecs["h264"], false)
+        XCTAssertFalse(capability.codecs["h264"] ?? true)
         XCTAssertNotNil(capability.codecs["av1"])
         XCTAssertEqual(capability.source, "COpenBurnBarMediaCapture.media_capability_probe")
     }
@@ -661,8 +661,8 @@ final class MercuryLinuxMediaTests: XCTestCase {
             pipeWireSource: false
         )
         XCTAssertFalse(media.capabilitiesKnown)
-        XCTAssertEqual(media.daemonCodecMap["vp9"], false)
-        XCTAssertEqual(media.daemonCodecMap["opus"], false)
+        XCTAssertFalse(media.daemonCodecMap["vp9"] ?? true)
+        XCTAssertFalse(media.daemonCodecMap["opus"] ?? true)
     }
 
     private func invoke<Response: Decodable>(
