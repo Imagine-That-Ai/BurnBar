@@ -113,7 +113,12 @@ Run before claiming visual or functional parity:
 npm test --prefix apps/linux-desktop
 npm run build --prefix apps/linux-desktop
 OB_EVIDENCE_OUT=/tmp/openburnbar-linux-ui-qa node scripts/linux-port/run-shell-desktop-session.mjs
-node scripts/linux-port/verify-shell-evidence.mjs /tmp/openburnbar-linux-ui-qa
+OB_LINUX_ENVIRONMENT_ID=<support-row-id> \
+  node scripts/linux-port/verify-shell-evidence.mjs /tmp/openburnbar-linux-ui-qa
+OPENBURNBAR_LINUX_INSTALLED_EVIDENCE=<installed-package-evidence.json> \
+OPENBURNBAR_LINUX_ACCESSIBILITY_EVIDENCE=<installed-accessibility-evidence.json> \
+OPENBURNBAR_LINUX_NATIVE_SHELL_EVIDENCE=/tmp/openburnbar-linux-ui-qa/native-shell-evidence.json \
+  node scripts/linux-port/run-linux-matrix-harness.mjs --environment <support-row-id>
 git diff --check
 ```
 

@@ -1,7 +1,9 @@
 #!/usr/bin/env node
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildNativeShellEvidence } from './lib/native-shell-evidence.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const evidenceOutput = process.env.OB_EVIDENCE_OUT ?? process.env.OPENBURNBAR_LINUX_EVIDENCE_OUT;
@@ -117,6 +119,22 @@ function add(target, message) {
 
 function common(message) {
   commonErrors.push(message);
+}
+
+function currentGitCommit() {
+  const result = spawnSync('git', ['rev-parse', 'HEAD'], {
+    cwd: root,
+    encoding: 'utf8'
+  });
+  return result.status === 0
+    ? result.stdout.trim()
+    : process.env.OPENBURNBAR_GIT_COMMIT ?? null;
+}
+
+function requestedEnvironmentId() {
+  return process.env.OPENBURNBAR_LINUX_MATRIX_ENVIRONMENT ??
+    process.env.OB_LINUX_ENVIRONMENT_ID ??
+    null;
 }
 
 function exists(file) {
@@ -499,6 +517,23 @@ if (!fs.existsSync(evidenceDir)) {
   if (mode === 'full') checkPerf();
 }
 
+const nativeShellEvidence = fs.existsSync(evidenceDir)
+  ? buildNativeShellEvidence({
+      evidenceDir,
+      commit: currentGitCommit(),
+      environmentId: requestedEnvironmentId()
+    })
+  : null;
+if (nativeShellEvidence) {
+  fs.writeFileSync(
+    path.join(evidenceDir, 'native-shell-evidence.json'),
+    JSON.stringify(nativeShellEvidence, null, 2) + '\n'
+  );
+  if (process.env.OPENBURNBAR_REQUIRE_NATIVE_SHELL_EVIDENCE === '1' && nativeShellEvidence.passed !== true) {
+    common(`native shell evidence incomplete: ${nativeShellEvidence.missing.join(',')}`);
+  }
+}
+
 const targetStatus = Object.fromEntries(
   [...targetErrors.entries()].map(([target, errors]) => [target, { pass: errors.length === 0, errors }])
 );
@@ -511,6 +546,13 @@ const report = {
   mode,
   evidenceDir,
   targetStatus,
+  nativeShellEvidence: nativeShellEvidence
+    ? {
+        path: path.join(evidenceDir, 'native-shell-evidence.json'),
+        passed: nativeShellEvidence.passed,
+        missing: nativeShellEvidence.missing
+      }
+    : null,
   status: allErrors.length === 0 ? 'ok' : 'failed',
   errors: allErrors
 };

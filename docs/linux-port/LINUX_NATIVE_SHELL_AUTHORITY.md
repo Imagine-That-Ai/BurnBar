@@ -214,6 +214,28 @@ a `checks` array:
 | `login-start` | XDG login-start enable, relogin, disable, stale-file, and uninstall paths are proven. |
 | `tray-host-loss-recovery` | Tray host loss, crash, or restart recovers without stale status or orphaned actions. |
 
+`verify-shell-evidence.mjs` now writes this matrix input as
+`native-shell-evidence.json` in the evidence directory. VM jobs should set
+`OPENBURNBAR_LINUX_MATRIX_ENVIRONMENT` or `OB_LINUX_ENVIRONMENT_ID` to the
+support-row id before running the verifier. Jobs that want the shell verifier
+itself to fail, rather than letting the matrix harness consume the blocked
+artifact, can set `OPENBURNBAR_REQUIRE_NATIVE_SHELL_EVIDENCE=1`.
+
+The producer reads these installed-session artifacts:
+
+| Check id | Evidence files |
+|---|---|
+| `tray-host` | `tray-registered-items.txt`, `tray-status-notifier-introspection.txt` |
+| `tray-actions` | `tray-menu-actions.json`, `tray-open-menu-event.txt`, `tray-chat-menu-event.txt`, `tray-providers-menu-event.txt`, `tray-updates-menu-event.txt`, `tray-reconnect-menu-event.txt`, `tray-login-start-menu-event.txt`, `tray-quit-menu-event.txt` |
+| `compact-status-window` | `native-status-window-report.json`, `screenshot-native-status-window.png` |
+| `status-window-a11y` | `native-status-window-a11y.json` |
+| `notification-server` | `native-notification-capabilities.json` |
+| `notification-actions` | `native-notification-action-result.json` |
+| `notification-relaunch-route` | `native-notification-relaunch-route.json` |
+| `deep-link-relaunch` | `native-deep-link-relaunch.json` |
+| `login-start` | `native-login-start-roundtrip.json` |
+| `tray-host-loss-recovery` | `tray-host-loss-recovery.json` |
+
 Missing, stale, wrong-environment, or partially passed native-shell evidence
 blocks the row even when package and accessibility evidence are present.
 
