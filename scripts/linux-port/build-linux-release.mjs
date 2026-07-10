@@ -130,6 +130,10 @@ if (!args.has('--skip-tauri') && daemonReady) {
     ['npm', ['run', 'tauri:build', '--', '--bundles', 'deb,rpm,appimage'], {
       cwd: appDir,
       env: packageBuildEnv
+    }],
+    ['node', ['scripts/linux-port/embed-linux-appimage-payload.mjs'], {
+      cwd: repoRoot,
+      env: packageBuildEnv
     }]
   ];
   for (const [command, commandArgs, options] of packageCommands) {
