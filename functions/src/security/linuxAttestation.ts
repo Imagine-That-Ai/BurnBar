@@ -273,6 +273,8 @@ interface SignedLinuxVerdictEnvelope {
   signatureBase64: string;
 }
 
+type SignedLinuxVerdict = SignedLinuxVerdictEnvelope["verdict"];
+
 function canonicalVerdict(verdict: SignedLinuxVerdictEnvelope["verdict"]): string {
   return [
     verdict.v,
@@ -339,6 +341,62 @@ async function readBoundedResponse(response: Response, maximumBytes: number): Pr
   return Buffer.concat(chunks, total);
 }
 
+function normalizeBoundedEvidence(evidence: unknown): unknown {
+  const encoded = JSON.stringify(evidence);
+  if (!encoded || Buffer.byteLength(encoded) > MAX_EVIDENCE_BYTES) {
+    throw linuxAttestationError("malformed");
+  }
+  return JSON.parse(encoded) as unknown;
+}
+
+function parseSignedVerdict(body: Buffer): SignedLinuxVerdictEnvelope {
+  if (body.length === 0 || body.length > MAX_VERDICT_BYTES) throw linuxAttestationError("verdict_invalid");
+  try {
+    return JSON.parse(body.toString("utf8")) as SignedLinuxVerdictEnvelope;
+  } catch {
+    throw linuxAttestationError("verdict_invalid");
+  }
+}
+
+function isValidVerdictContext(
+  verdict: SignedLinuxVerdict | undefined,
+  input: { challenge: LinuxAttestationChallenge; nowMillis: number },
+  configuration: { issuer: string; audience: string },
+): verdict is SignedLinuxVerdict {
+  return (
+    verdict?.v === LINUX_ATTESTATION_PROTOCOL_VERSION &&
+    verdict.issuer === configuration.issuer &&
+    verdict.audience === configuration.audience &&
+    verdict.decision === "allow" &&
+    verdict.challengeId === input.challenge.challengeId &&
+    verdict.challengeHashSha256 === sha256Hex(input.challenge.challenge) &&
+    exactDecisionBinding(verdict, input.challenge) &&
+    SHA256_HEX.test(verdict.verifierReceiptHash) &&
+    verdict.attestedAtMillis <= input.nowMillis + 60_000 &&
+    verdict.expiresAtMillis >= input.nowMillis &&
+    verdict.expiresAtMillis <= input.nowMillis + LINUX_ATTESTATION_CHALLENGE_TTL_MS
+  );
+}
+
+function assertValidSignedVerdict(
+  envelope: SignedLinuxVerdictEnvelope,
+  input: { challenge: LinuxAttestationChallenge; nowMillis: number },
+  configuration: { keyId: string; issuer: string; audience: string },
+): { verdict: SignedLinuxVerdict; signature: Buffer } {
+  const verdict = envelope?.verdict;
+  const signature =
+    typeof envelope?.signatureBase64 === "string" ? Buffer.from(envelope.signatureBase64, "base64") : Buffer.alloc(0);
+  if (
+    envelope?.algorithm !== "Ed25519" ||
+    envelope?.keyId !== configuration.keyId ||
+    !isValidVerdictContext(verdict, input, configuration) ||
+    signature.length !== 64
+  ) {
+    throw linuxAttestationError("verdict_invalid");
+  }
+  return { verdict, signature };
+}
+
 export class RemoteSignedLinuxAttestationVerifier implements LinuxAttestationVerifier {
   readonly kind = LINUX_ATTESTATION_KIND;
   private readonly publicKey: ReturnType<typeof createPublicKey>;
@@ -369,16 +427,13 @@ export class RemoteSignedLinuxAttestationVerifier implements LinuxAttestationVer
     evidence: unknown;
     nowMillis: number;
   }): Promise<LinuxAttestationDecision> {
-    const evidenceJSON = JSON.stringify(input.evidence);
-    if (!evidenceJSON || Buffer.byteLength(evidenceJSON) > MAX_EVIDENCE_BYTES) {
-      throw linuxAttestationError("malformed");
-    }
+    const evidence = normalizeBoundedEvidence(input.evidence);
     let response: Response;
     try {
       response = await providerFetch("linux-attestation", "verify", this.configuration.endpoint, {
         method: "POST",
         headers: { "content-type": "application/json", "cache-control": "no-store" },
-        body: JSON.stringify({ challenge: input.challenge, evidence: input.evidence }),
+        body: JSON.stringify({ challenge: input.challenge, evidence }),
         redirect: "error",
         signal: AbortSignal.timeout(10_000),
       });
@@ -389,35 +444,8 @@ export class RemoteSignedLinuxAttestationVerifier implements LinuxAttestationVer
       if (response.status >= 500 || response.status === 429) throw linuxAttestationError("verifier_unavailable");
       throw linuxAttestationError("verdict_denied");
     }
-    const body = await readBoundedResponse(response, MAX_VERDICT_BYTES);
-    if (body.length === 0 || body.length > MAX_VERDICT_BYTES) throw linuxAttestationError("verdict_invalid");
-    let envelope: SignedLinuxVerdictEnvelope;
-    try {
-      envelope = JSON.parse(body.toString("utf8")) as SignedLinuxVerdictEnvelope;
-    } catch {
-      throw linuxAttestationError("verdict_invalid");
-    }
-    const verdict = envelope?.verdict;
-    const signature =
-      typeof envelope?.signatureBase64 === "string" ? Buffer.from(envelope.signatureBase64, "base64") : Buffer.alloc(0);
-    if (
-      envelope?.algorithm !== "Ed25519" ||
-      envelope?.keyId !== this.configuration.keyId ||
-      verdict?.v !== LINUX_ATTESTATION_PROTOCOL_VERSION ||
-      verdict?.issuer !== this.configuration.issuer ||
-      verdict?.audience !== this.configuration.audience ||
-      verdict?.decision !== "allow" ||
-      verdict?.challengeId !== input.challenge.challengeId ||
-      verdict?.challengeHashSha256 !== sha256Hex(input.challenge.challenge) ||
-      !exactDecisionBinding(verdict, input.challenge) ||
-      !SHA256_HEX.test(verdict.verifierReceiptHash) ||
-      verdict.attestedAtMillis > input.nowMillis + 60_000 ||
-      verdict.expiresAtMillis < input.nowMillis ||
-      verdict.expiresAtMillis > input.nowMillis + LINUX_ATTESTATION_CHALLENGE_TTL_MS ||
-      signature.length !== 64
-    ) {
-      throw linuxAttestationError("verdict_invalid");
-    }
+    const envelope = parseSignedVerdict(await readBoundedResponse(response, MAX_VERDICT_BYTES));
+    const { verdict, signature } = assertValidSignedVerdict(envelope, input, this.configuration);
     if (!verifySignature(null, Buffer.from(canonicalVerdict(verdict), "utf8"), this.publicKey, signature)) {
       throw linuxAttestationError("verdict_invalid");
     }
