@@ -20,7 +20,17 @@ param(
 $ErrorActionPreference = 'Stop'
 
 function Resolve-FullPath([string] $Path) {
-    $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
+    try {
+        return $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
+    } catch {
+        $parent = Split-Path -Parent $Path
+        $leaf = Split-Path -Leaf $Path
+        if ([string]::IsNullOrWhiteSpace($parent)) {
+            return [System.IO.Path]::GetFullPath($Path)
+        }
+        $resolvedParent = Resolve-FullPath $parent
+        return Join-Path $resolvedParent $leaf
+    }
 }
 
 function New-StepResult([string] $Name, [string] $Command, [int] $ExitCode, [string] $LogPath) {
