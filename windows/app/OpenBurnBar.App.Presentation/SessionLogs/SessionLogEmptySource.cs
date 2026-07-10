@@ -5,9 +5,15 @@ using System.Threading.Tasks;
 
 namespace OpenBurnBar.App.Presentation.SessionLogs;
 
-/// <summary>Fallback when <c>OPENBURNBAR_SQLCIPHER_*</c> is unset (empty list, not demo fiction).</summary>
-public static class SessionLogSampleData
+/// <summary>
+/// Honest empty <see cref="ISessionLogReadSource"/> used when SQLCipher credentials are
+/// unset or the encrypted store cannot open. Returns empty lists — never fabricated
+/// demo sessions. Named "Empty" (not Sample) so anti-false-green scanners and readers
+/// do not mistake it for demo fiction.
+/// </summary>
+public static class SessionLogEmptySource
 {
+    /// <summary>Shared empty read source (no per-call allocation).</summary>
     public static ISessionLogReadSource CreateReadSource() => EmptyReadSource.Instance;
 
     private sealed class EmptyReadSource : ISessionLogReadSource

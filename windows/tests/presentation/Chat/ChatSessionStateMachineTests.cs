@@ -197,6 +197,23 @@ public sealed class ChatSessionStateMachineTests
     }
 
     [Fact]
+    public void Ingest_StreamFailure_SettlesTypedFailureAndKeepsVisibleMessage()
+    {
+        var sm = new ChatSessionStateMachine();
+        sm.TryBeginUserTurn("a");
+        var assistant = sm.BeginAssistantStream();
+
+        sm.Ingest(new ChatStreamEvent.StreamFailure(ChatFailureKind.MalformedStream, "bad json"));
+
+        Assert.Equal(ChatStreamPhase.Failed, sm.Phase);
+        Assert.Equal(ChatFailureKind.MalformedStream, sm.LastFailureKind);
+        Assert.Equal("bad json", sm.StreamError);
+        Assert.False(sm.IsStreaming);
+        Assert.Equal("bad json", Assert.Single(assistant.TranscriptPieces).Value);
+        Assert.Equal(ChatTranscriptPieceKind.Refusal, assistant.TranscriptPieces[0].Kind);
+    }
+
+    [Fact]
     public void FailStream_Cancelled_DoesNotSurfaceError()
     {
         var sm = new ChatSessionStateMachine();

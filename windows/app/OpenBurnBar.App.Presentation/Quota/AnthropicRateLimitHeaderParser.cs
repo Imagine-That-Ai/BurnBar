@@ -8,7 +8,7 @@ namespace OpenBurnBar.App.Presentation.Quota;
 //
 // Portable parse of the `anthropic-ratelimit-*` response headers Anthropic
 // returns on every Messages API call. The 1-token `/v1/messages` probe that
-// elicits the headers is the adapter-deferred half (AnthropicCredentialProbe);
+// elicits the headers lives in the acquisition adapter (AnthropicCredentialProbe);
 // THIS is the pure header-dictionary → ProviderQuotaSnapshot transform,
 // portable and unit-tested on macOS.
 //

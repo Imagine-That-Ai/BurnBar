@@ -8,11 +8,7 @@
     xmlns:theme="using:OpenBurnBar.App.Theme"
     Title="OpenBurnBar">
 
-    <Grid x:Name="RootGrid"
-          RowSpacing="0"
-          Background="Transparent"
-          RequestedTheme="Dark"
-          AutomationProperties.AutomationId="MainWindow.Root">
+    <Grid x:Name="RootGrid" RowSpacing="0" Background="Transparent" RequestedTheme="Dark">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -26,10 +22,7 @@
                 Style="{StaticResource LiquidGlassToolbarStyle}"
                 Margin="8,4,8,0"
                 theme:LiquidGlass.Surface="True">
-            <Grid x:Name="TitleBar"
-                  Height="32"
-                  ColumnSpacing="10"
-                  AutomationProperties.AutomationId="MainWindow.TitleBar">
+            <Grid x:Name="TitleBar" Height="32" ColumnSpacing="10">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
@@ -43,8 +36,6 @@
             </Grid>
         </Border>
 
-        <shell:AppShell x:Name="ShellControl"
-                        Grid.Row="1"
-                        AutomationProperties.AutomationId="MainWindow.Shell" />
+        <shell:AppShell x:Name="ShellControl" Grid.Row="1" />
     </Grid>
 </Window>

@@ -1,6 +1,5 @@
 using System;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using OpenBurnBar.App.Diagnostics;
 using OpenBurnBar.App.Theme;
@@ -64,7 +63,8 @@ public sealed partial class AppShell : UserControl
 
         // Primary sections in the switcher — macOS DashboardSectionSwitcher lists
         // chat/quota/database/projects/missions/sessionLogs/memory; Windows NavCatalog
-        // is the ordered 12-destination catalog. Dashboard stays first (overview home).
+        // is the ordered catalog (IA-1 adds database/projects as deferred disclosure).
+        // Dashboard stays first (overview home).
         foreach (var destination in NavCatalog.Menu)
         {
             SectionMenu.Items.Add(CreateMenuItem(destination));
@@ -98,8 +98,6 @@ public sealed partial class AppShell : UserControl
                 Glyph = destination.Glyph,
             },
         };
-        AutomationProperties.SetAutomationId(item, $"Shell.NavItem.{destination.Key}");
-        AutomationProperties.SetName(item, destination.Title);
         item.Click += (_, _) => Navigate(destination.Key);
         return item;
     }

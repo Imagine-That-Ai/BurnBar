@@ -103,6 +103,7 @@
       (windows/tests/settings/); the WinUI XAML that binds it is XamlCompiler-deferred.
     -->
     <ProjectReference Include="../OpenBurnBar.App.Settings/OpenBurnBar.App.Settings.csproj" />
+    <ProjectReference Include="../OpenBurnBar.App.Settings.ViewModels/OpenBurnBar.App.Settings.ViewModels.csproj" />
     <!--
       Portable presentation layer (net8.0, no WinUI) for the SessionLogs + Memory
       surfaces (Phase 3 · W7): view-models, ported record types, grouping passes, and
@@ -111,8 +112,11 @@
       render of that same logic.
     -->
     <ProjectReference Include="../OpenBurnBar.App.Presentation/OpenBurnBar.App.Presentation.csproj" />
+    <ProjectReference Include="../OpenBurnBar.App.UsageRuntime/OpenBurnBar.App.UsageRuntime.csproj" />
     <ProjectReference Include="../OpenBurnBar.App.Configuration/OpenBurnBar.App.Configuration.csproj" />
     <ProjectReference Include="../OpenBurnBar.App.CloudSync/OpenBurnBar.App.CloudSync.csproj" />
+    <ProjectReference Include="../../packaging/updater/OpenBurnBar.Updater.Windows/OpenBurnBar.Updater.Windows.csproj" />
+    <ProjectReference Include="../../storage/OpenBurnBar.Storage/OpenBurnBar.Storage.csproj" />
     <!--
       Quota ACQUISITION layer (Wave 1 item 5): the portable sources + coordinator
       feeding the landed Presentation/Quota parsers, and the Windows host half
@@ -183,6 +187,12 @@
     <Content Include="Assets\AppLogo-64.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\AppLogo.ico" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\ProviderLogos\*.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\packaging\updater\feed\latest-windows.json"
+             Link="Resources\Updates\latest-windows.json"
+             CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\packaging\updater\feed\pinned-update-key.pub"
+             Link="Resources\Updates\pinned-update-key.pub"
+             CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!--

@@ -49,6 +49,41 @@ assert layout["architectures"], "architectures must be non-empty"
 print("OK   portable-layout structural checks")
 PY
 
+echo "== MSIX visual assets =="
+python3 - "$pkg_root" <<'PY' || fail=1
+import pathlib
+import struct
+import sys
+
+root = pathlib.Path(sys.argv[1])
+expected = {
+    "Square44x44Logo.png": (44, 44),
+    "Square150x150Logo.png": (150, 150),
+    "SmallTile.png": (71, 71),
+    "LargeTile.png": (310, 310),
+    "Wide310x150Logo.png": (310, 150),
+    "StoreLogo.png": (50, 50),
+}
+errors = []
+for name, dimensions in expected.items():
+    path = root / "msix" / "Images" / name
+    if not path.is_file():
+        errors.append(f"{name}: missing")
+        continue
+    data = path.read_bytes()
+    if len(data) < 24 or not data.startswith(b"\x89PNG\r\n\x1a\n"):
+        errors.append(f"{name}: not a PNG")
+        continue
+    width, height = struct.unpack(">II", data[16:24])
+    if (width, height) != dimensions:
+        errors.append(f"{name}: expected {dimensions[0]}x{dimensions[1]}, got {width}x{height}")
+if errors:
+    for error in errors:
+        print(f"FAIL msix asset {error}", file=sys.stderr)
+    sys.exit(1)
+print("OK   MSIX manifest PNG assets exist with expected scale-100 dimensions")
+PY
+
 echo "== winget manifests (YAML + structural schema rules) =="
 python3 - "$pkg_root" <<'PY' || fail=1
 import sys, re, glob

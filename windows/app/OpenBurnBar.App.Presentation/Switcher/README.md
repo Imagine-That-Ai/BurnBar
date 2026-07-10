@@ -12,7 +12,7 @@ the production backing.
 | In-memory | `SwitcherProfileStore.cs` (`InMemorySwitcherProfileStore`) | View-model/test fixture; explicit list order == `sortKey`. |
 | Real store | `SqlCipherSwitcherProfileStore.cs` | Encrypted backing; maps records ↔ `SwitcherProfileRow` and delegates persistence to the seam. |
 | Storage seam | `../../../storage/OpenBurnBar.Storage/SwitcherProfileWriteSeam.cs` | Parameterised SQL over `switcher_profiles` + `switcher_active_profile`. |
-| Wiring | `../../OpenBurnBar.App/Storage/WindowsStorageDevHost.cs` (`CreateSwitcherProfileStore`) | Prefer-real-then-fallback (mirrors Budget/ElderWand/SessionLogs). |
+| Wiring | `../../OpenBurnBar.App/Storage/WindowsStorageDevHost.cs` (`CreateSwitcherProfileStore`) | Protected SQLCipher runtime provisioning (mirrors Budget/ElderWand/SessionLogs). |
 | Dev seed | `SwitcherSampleData.cs` | Only used when there are no SQLCipher credentials **and** `OPENBURNBAR_SAMPLE_MODE=1`. |
 
 ## Schema (byte-compatible with the Mac DB)
@@ -29,13 +29,15 @@ Timestamps are stored as ISO-8601 `yyyy-MM-ddTHH:mm:ss.fffffffZ` text
 (`StorageDateCodec`), matching the Mac `ORDER BY COALESCE(updatedAt, '1970-01-01T00:00:00Z')`
 oracle. Metadata JSON is camelCase, decodable by the Swift `Codable` structs.
 
-## Prefer-real-then-fallback
+## Protected Runtime
 
 `CreateSwitcherProfileStore()` returns the real `SqlCipherSwitcherProfileStore`
-whenever `OPENBURNBAR_SQLCIPHER_PATH` + `OPENBURNBAR_SQLCIPHER_PASSPHRASE` resolve
-to an openable DB. Missing/invalid credentials fall back to an empty in-memory
-store — or the `SwitcherSampleData` seed only when `OPENBURNBAR_SAMPLE_MODE=1`.
-The real store wins even in sample mode.
+from the process-owned `WindowsStorageDevHost`. A clean profile provisions an
+encrypted database under the OpenBurnBar local app-data directory and stores the
+generated SQLCipher passphrase through the protected app secret store. Plaintext
+`OPENBURNBAR_SQLCIPHER_*` environment variables are rejected by release
+composition and are ignored by storage tests; testability uses injected
+`AppConfiguration`/secret-store seams instead.
 
 ## Tests
 

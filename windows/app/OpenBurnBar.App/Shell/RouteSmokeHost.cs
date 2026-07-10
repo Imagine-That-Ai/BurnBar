@@ -28,6 +28,12 @@ internal static class RouteSmokeHost
         {
             await WaitForRenderAsync(options.TimeoutMilliseconds).ConfigureAwait(true);
             AppDiagnostics.LogEvent("route-smoke.capture.after-render-wait", options.RouteKey);
+            if (options.HoldMilliseconds > 0)
+            {
+                AppDiagnostics.LogEvent("route-smoke.capture.hold", $"{options.RouteKey} holdMs={options.HoldMilliseconds}");
+                await Task.Delay(options.HoldMilliseconds).ConfigureAwait(true);
+            }
+
             FrameworkElement root = window.Content as FrameworkElement
                 ?? throw new InvalidOperationException("MainWindow.Content is not a FrameworkElement.");
 

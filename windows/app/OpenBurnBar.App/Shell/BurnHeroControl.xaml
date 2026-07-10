@@ -27,6 +27,19 @@
                            Foreground="{StaticResource PensieveColorTextBrightBrush}" />
             </StackPanel>
             <Canvas x:Name="SparkCanvas" Width="64" Height="22" VerticalAlignment="Center" />
+            <!-- Honesty (H0): when the capsule renders DashboardUsageSampleData instead of a live
+                 spend, label it so glanceable chrome telemetry is never mistaken for real data.
+                 Mirrors InsightsPage's SampleChip. -->
+            <Border x:Name="SampleChip"
+                    Visibility="Collapsed"
+                    VerticalAlignment="Center"
+                    CornerRadius="{StaticResource PensieveRadiusPillCorner}"
+                    Background="#1FC7CFDD"
+                    Padding="8,3">
+                <TextBlock Text="Sample"
+                           FontSize="10"
+                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+            </Border>
         </StackPanel>
     </Border>
 </UserControl>

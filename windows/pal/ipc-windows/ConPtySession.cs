@@ -13,8 +13,10 @@
 // VAL-P0-CONPTY-019 — see the runbook.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
 using Microsoft.Win32.SafeHandles;
 using OpenBurnBar.Pal.Ipc.Windows.Interop;
 
@@ -61,7 +63,12 @@ public sealed class ConPtySession : IDisposable
     /// the given size.
     /// </summary>
     /// <exception cref="InvalidOperationException">On any Win32 failure.</exception>
-    public static ConPtySession Spawn(string commandLine, short columns, short rows, string? workingDirectory = null)
+    public static ConPtySession Spawn(
+        string commandLine,
+        short columns,
+        short rows,
+        string? workingDirectory = null,
+        IReadOnlyDictionary<string, string>? environment = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(commandLine);
         if (columns <= 0 || rows <= 0)
@@ -86,6 +93,7 @@ public sealed class ConPtySession : IDisposable
 
         IntPtr hpc = IntPtr.Zero;
         IntPtr attrList = IntPtr.Zero;
+        IntPtr environmentBlock = IntPtr.Zero;
         JobObjectProcessTree? job = null;
         var pi = default(PROCESS_INFORMATION);
         bool processCreated = false;
@@ -110,6 +118,7 @@ public sealed class ConPtySession : IDisposable
             var startupInfo = new STARTUPINFOEXW();
             startupInfo.StartupInfo.cb = Marshal.SizeOf<STARTUPINFOEXW>();
             startupInfo.lpAttributeList = attrList;
+            environmentBlock = BuildEnvironmentBlock(environment);
 
             // CREATE_SUSPENDED so the child is assigned to the job BEFORE it runs;
             // otherwise a grandchild spawned in the gap before AssignProcessToJobObject
@@ -125,7 +134,7 @@ public sealed class ConPtySession : IDisposable
                     lpThreadAttributes: IntPtr.Zero,
                     bInheritHandles: false,
                     dwCreationFlags: flags,
-                    lpEnvironment: IntPtr.Zero,
+                    lpEnvironment: environmentBlock,
                     lpCurrentDirectory: workingDirectory,
                     lpStartupInfo: ref startupInfo,
                     lpProcessInformation: out pi))
@@ -133,6 +142,8 @@ public sealed class ConPtySession : IDisposable
                 throw Win32("CreateProcess");
             }
 
+            Marshal.FreeHGlobal(environmentBlock);
+            environmentBlock = IntPtr.Zero;
             processCreated = true;
 
             // Bind the child (and everything it spawns) to a kill-on-close job,
@@ -176,6 +187,11 @@ public sealed class ConPtySession : IDisposable
                 Marshal.FreeHGlobal(attrList);
             }
 
+            if (environmentBlock != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(environmentBlock);
+            }
+
             foreach (IntPtr h in new[] { inputRead, inputWrite, outputRead, outputWrite })
             {
                 if (h != IntPtr.Zero)
@@ -186,6 +202,28 @@ public sealed class ConPtySession : IDisposable
 
             throw;
         }
+    }
+
+    private static IntPtr BuildEnvironmentBlock(IReadOnlyDictionary<string, string>? environment)
+    {
+        if (environment is null)
+        {
+            return IntPtr.Zero;
+        }
+
+        var builder = new StringBuilder();
+        foreach (var pair in environment)
+        {
+            if (string.IsNullOrEmpty(pair.Key))
+            {
+                continue;
+            }
+
+            builder.Append(pair.Key).Append('=').Append(pair.Value).Append('\0');
+        }
+
+        builder.Append('\0');
+        return Marshal.StringToHGlobalUni(builder.ToString());
     }
 
     /// <summary>
