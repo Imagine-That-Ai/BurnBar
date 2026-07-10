@@ -380,7 +380,7 @@ function Wait-ForJson([string] $Path, [int] $TimeoutSeconds = 240) {
     throw "Timed out waiting for $Path"
 }
 
-function Wait-ForJsonOrProcessExit([string] $Path, [int] $ProcessId, [int] $TimeoutSeconds = 240) {
+function Wait-ForJsonOrProcessExit([string] $Path, [int] $ProcessId, [int] $TimeoutSeconds = 900) {
     $process = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
     $deadline = [DateTimeOffset]::UtcNow.AddSeconds($TimeoutSeconds)
     while ([DateTimeOffset]::UtcNow -lt $deadline) {

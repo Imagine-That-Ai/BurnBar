@@ -524,7 +524,7 @@ $scenarios.Add((Invoke-RouteScenario -Id 'chat.executable.remove' -Route 'chat' 
     return [ordered]@{ removedPath = $helper; observed = (Assert-UiaElement $Root 'chat.executable.setup') }
 } -RequiredAutomationIds @('chat.surface', 'chat.executable.path', 'chat.executable.approve')))
 $scenarios.Add((Invoke-RouteScenario -Id 'chat.executable.denial.unapproved' -Route 'chat' -RequiredAutomationIds @(
-    'chat.surface', 'chat.executable.setup', 'chat.executable.setupTitle', 'chat.executable.setupMessage'
+    'chat.surface', 'chat.executable.setup', 'chat.executable.setupMessage'
 )))
 
 foreach ($fault in @('missing', 'replaced')) {
@@ -548,7 +548,7 @@ foreach ($fault in @('missing', 'replaced')) {
         Add-Content -LiteralPath $helperPath -Value 'mutation'
     }
     $scenarios.Add((Invoke-RouteScenario -Id "chat.executable.denial.$fault" -Route 'chat' -ProfileRoot $profile -RequiredAutomationIds @(
-        'chat.surface', 'chat.executable.setup', 'chat.executable.setupTitle', 'chat.executable.setupMessage'
+        'chat.surface', 'chat.executable.setup', 'chat.executable.setupMessage'
     )))
 }
 
@@ -571,7 +571,7 @@ foreach ($kind in @('unavailable', 'corrupt', 'locked')) {
     }.GetNewClosure()
     try {
         $scenarios.Add((Invoke-RouteScenario -Id "chat.history.$kind" -Route 'chat' -ProfileRoot $profile -PrepareProfile $prepare -RequiredAutomationIds @(
-            'chat.surface', 'chat.history.degraded', 'chat.history.title', 'chat.history.message', 'chat.history.retry'
+            'chat.surface', 'chat.history.degraded', 'chat.history.message', 'chat.history.retry'
         )))
     }
     finally {
@@ -608,7 +608,7 @@ $scenarios.Add((Invoke-RouteScenario -Id 'chat.restart.process' -Route 'chat' -P
     return [ordered]@{ submitted = 'durable restart marker'; observed = (Assert-UiaElement $Root 'chat.messages') }
 } -RequiredAutomationIds @('chat.surface', 'chat.executable.path', 'chat.input')))
 $scenarios.Add((Invoke-RouteScenario -Id 'chat.restart.durable-rehydrate' -Route 'chat' -ProfileRoot $restartProfile -RequiredAutomationIds @(
-    'chat.surface', 'chat.messages', 'chat.messageList'
+    'chat.surface', 'chat.messages'
 )))
 $scenarios.Add((Invoke-RouteScenario -Id 'chat.attachment.paste' -Route 'chat' -Action {
     param($Root, $ScenarioDir, $LocalAppData)

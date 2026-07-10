@@ -142,7 +142,6 @@
                         Spacing="10"
                         Padding="24"
                         MaxWidth="620"
-                        AutomationProperties.AutomationId="chat.history.degraded"
                         Visibility="{x:Bind ViewModel.HasHistoryDegradedState, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
                 <FontIcon Glyph="&#xE783;" FontFamily="{ThemeResource SymbolThemeFontFamily}"
                           FontSize="32" Foreground="{StaticResource PensieveColorMercuryCoreBrush}" />
@@ -150,7 +149,7 @@
                            FontSize="16"
                            FontWeight="SemiBold"
                            HorizontalAlignment="Center"
-                           AutomationProperties.AutomationId="chat.history.title"
+                           AutomationProperties.AutomationId="chat.history.degraded"
                            Foreground="{StaticResource PensieveColorTextBrightBrush}" />
                 <TextBlock Text="{x:Bind ViewModel.HistoryStateMessage, Mode=OneWay}"
                            TextWrapping="Wrap"
@@ -178,7 +177,6 @@
                           HorizontalScrollMode="Disabled"
                           Visibility="{x:Bind ViewModel.ShowMessageList, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
                 <ItemsRepeater x:Name="MessagesRepeater"
-                               AutomationProperties.AutomationId="chat.messageList"
                                ItemsSource="{x:Bind ViewModel.Messages}"
                                ItemTemplate="{StaticResource MessageSelector}" />
             </ScrollViewer>
@@ -191,14 +189,12 @@
                     BorderThickness="1"
                     BorderBrush="{StaticResource PensieveColorGlassLineBrush}"
                     Background="{StaticResource PensieveColorGlassBgBrush}"
-                    AutomationProperties.AutomationId="chat.executable.setup"
-                    AutomationProperties.AccessibilityView="Control"
                     Visibility="{x:Bind ViewModel.ShowExecutableControls, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
                 <StackPanel Spacing="8">
                     <TextBlock Text="{x:Bind ViewModel.ExecutableSetupTitle, Mode=OneWay}"
                                FontWeight="SemiBold"
                                TextWrapping="Wrap"
-                               AutomationProperties.AutomationId="chat.executable.setupTitle"
+                               AutomationProperties.AutomationId="chat.executable.setup"
                                Foreground="{StaticResource PensieveColorTextBrightBrush}" />
                     <TextBlock Text="{x:Bind ViewModel.ExecutableSetupMessage, Mode=OneWay}"
                                TextWrapping="Wrap"

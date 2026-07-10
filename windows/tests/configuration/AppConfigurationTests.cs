@@ -8,6 +8,29 @@ namespace OpenBurnBar.App.Configuration.Tests;
 public sealed class AppConfigurationTests
 {
     [Fact]
+    public void Default_secret_store_uses_the_configuration_local_app_data_root()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "obb-profile-test-" + Guid.NewGuid().ToString("N"));
+        string? originalLocalAppData = Environment.GetEnvironmentVariable("LOCALAPPDATA");
+
+        try
+        {
+            Environment.SetEnvironmentVariable("LOCALAPPDATA", dir);
+
+            var store = ProtectedFileSecretStore.CreateDefault();
+            string secretDirectory = Path.GetDirectoryName(store.PathFor(AppSecretNames.SqlCipherPassphrase))!;
+
+            Assert.Equal(Path.Combine(dir, "OpenBurnBar", "app_config.json"), AppConfiguration.DefaultFilePath());
+            Assert.Equal(Path.Combine(dir, "OpenBurnBar", "protected-secrets"), secretDirectory);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("LOCALAPPDATA", originalLocalAppData);
+            try { Directory.Delete(dir, recursive: true); } catch { /* best effort */ }
+        }
+    }
+
+    [Fact]
     public void Sqlcipher_environment_is_rejected_by_release_guard_and_ignored_by_configuration()
     {
         string dir = Path.Combine(Path.GetTempPath(), "obb-config-test-" + Guid.NewGuid().ToString("N"));
