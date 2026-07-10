@@ -20,8 +20,11 @@ releases: real tags must have Azure Trusted Signing plus the pinned update-feed 
 1. **resolve-release** — derive `X.Y.Z` from the tag/input.
 2. **portable-verify** *(ubuntu, always runs)* — the security kernel proof: `dotnet test` over
    `windows/tests/dist`, an end-to-end signer round-trip (good pin verifies, wrong pin fails
-   closed), `xmllint` on the props, and `verify-version-consistency.sh` with
-   `OPENBURNBAR_REQUIRE_CURRENT_WINDOWS_VERSION=1`.
+   closed), dependency-free XML parsing on the props, and `verify-version-consistency.sh`. The
+   resolved release version must always equal the repo marketing version. Tag and signed manual
+   releases also require the Windows app manifest to match; explicit unsigned rehearsals retain
+   the documented deferred manifest version so they can prove the build/package boundary before
+   the first Windows release bump.
 3. **build-sign** *(windows-latest)* — `dotnet publish` the WinUI app for `win-x64` + `win-arm64`,
    **Authenticode-sign** via Azure Trusted Signing, package zips + checksums, then **sign the
    update feed** with the pinned Ed25519 key and self-verify it.
