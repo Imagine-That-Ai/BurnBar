@@ -11,6 +11,14 @@ expected_version="$(grep -E '^\s+MARKETING_VERSION:' "$repo_root/project.yml" | 
 
 echo "Expected version (from project.yml): $expected_version"
 
+requested_version="${OPENBURNBAR_EXPECTED_VERSION:-}"
+if [[ -n "$requested_version" && "$requested_version" != "$expected_version" ]]; then
+  echo "FAIL: requested release version — expected '$expected_version', found '$requested_version'" >&2
+  fail=1
+elif [[ -n "$requested_version" ]]; then
+  echo "PASS: requested release version"
+fi
+
 check() {
   local file="$1"
   local pattern="$2"

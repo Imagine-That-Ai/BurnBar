@@ -33,6 +33,22 @@ assert.match(
   /GITHUB_REF_TYPE:-\}" == "tag"/,
   "version consistency must enforce current Homebrew cask on tag builds",
 );
+assert.ok(
+  versionConsistency.includes("OPENBURNBAR_EXPECTED_VERSION"),
+  "version consistency must reject a requested release version that differs from project.yml",
+);
+
+const windowsReleaseWorkflow = read(".github/workflows/openburnbar-release-windows.yml");
+assert.match(
+  windowsReleaseWorkflow,
+  /OPENBURNBAR_EXPECTED_VERSION: \$\{\{ needs\.resolve-release\.outputs\.version \}\}/,
+  "Windows release workflow must bind the resolved release version to the repo version gate",
+);
+assert.match(
+  windowsReleaseWorkflow,
+  /OPENBURNBAR_REQUIRE_CURRENT_WINDOWS_VERSION: \$\{\{ github\.event_name == 'workflow_dispatch' && github\.event\.inputs\.allow_unsigned == 'true' && '0' \|\| '1' \}\}/,
+  "only an explicit unsigned Windows rehearsal may defer the Windows manifest version",
+);
 
 const firebaseRules = read("scripts/ci/deploy-firebase-rules-releases.mjs");
 assert.ok(
