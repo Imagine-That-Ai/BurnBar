@@ -18,6 +18,18 @@ known platform divergences.
 
 Linux is not at full macOS parity.
 
+> **Execution update (2026-07-10 UTC):** the implementation wave completed the
+> fail-closed 40-requirement inventory, Linux secret custody/native gateway
+> boundary, runtime capability manifest, installed accessibility harness,
+> matched performance/soak harness, native signed-feed verifier, and native
+> aarch64/x86_64 shard/aggregate workflow. A clean aarch64 `.deb` session passed
+> GUI/daemon/version/uninstall, all 19 installed routes, AT-SPI/Orca/keyboard/200%
+> zoom, 28 package-smoke steps, and repeated startup/tray/IPC measurements. The
+> next blocking order is x86_64 installed proof -> prior-version update/rollback
+> -> valid signed public feed -> daily-use/native product workflows -> full
+> desktop/compositor certification. The independent audit is the current status
+> source: `LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md`.
+
 Linux has a real desktop shell, a broad set of route surfaces, a Swift daemon
 path, AF_UNIX RPC, a provider gateway, package metadata, Linux-specific
 evidence scripts, and a public signed aarch64 prerelease. That is a real base.
@@ -34,7 +46,10 @@ turned into a hard Phase 0 gate, or represented as an explicit blocker with an
 owner and acceptance test. It does not mean every future implementation detail
 is risk-free.
 
-## Current Live Context
+## Planning Baseline Live Context
+
+The values below are the source snapshot used to create this plan. They are
+preserved for provenance and are superseded by the execution update above.
 
 - Workspace: `/Users/albertonunez/Documents/Developer/BurnBar`
 - Branch: `windows/liquid-glass-kernel-reskin`
@@ -1040,4 +1055,3 @@ Linux cannot be called full parity until all are true:
     are tested or explicitly blocked with public limitations.
 20. README, CHANGELOG, release docs, support matrix, known limitations,
     rollback docs, and supply-chain docs match live truth.
-
