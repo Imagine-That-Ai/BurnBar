@@ -39,8 +39,10 @@ minted token's SHA-256 hash and verifier receipt under a challenge-derived
 `users/{uid}/linux_app_check_sessions/{sessionHash}` document. Firestore Rules deny client
 access to both collections.
 
-The remote verifier call is exact HTTPS with redirects refused, a ten-second
-timeout, bounded evidence and response bodies, and a pinned Ed25519 public key.
+The remote verifier call is exact HTTPS with redirects refused, a sixty-second
+end-to-end authentication/request timeout, bounded evidence and response bodies,
+and a pinned Ed25519 public key. The verifier lease must exceed that budget so a
+lost response can be recovered from the identical cached result.
 The signed verdict must match the configured key ID, issuer, audience, policy,
 challenge hash, UID, app, device, version, architecture, release digest,
 attestation kind, timestamps, and `linux_lower_trust` class.
