@@ -29,6 +29,8 @@ releases: real tags must have Azure Trusted Signing plus the pinned update-feed 
    discover Visual Studio MSBuild plus the MSIX Packaging/Desktop Bridge component, build the WAP
    project for x64 + ARM64, **Authenticode-sign** via Azure Trusted Signing, package zips +
    checksums, then **sign the update feed** with the pinned Ed25519 key and self-verify it.
+   The WAP project removes package-generation globals from its app `ProjectReference`; this keeps
+   the app's direct-download build unpackaged while WAP alone owns MSIX generation.
 4. **supply-chain** *(ubuntu)* — SPDX **SBOM** over the artifacts, **OpenVEX** sidecar, and keyless
    **Sigstore** (`cosign attest-blob`) provenance over every artifact.
 

@@ -283,6 +283,7 @@ jobs:
               -p:Configuration=Release -p:Platform="$plat" \
               -p:AppxPackageSigningEnabled=false \
               -p:AppxBundle=Never -p:AppxBundlePlatforms="$plat" \
+              -p:UapAppxPackageBuildMode=SideloadOnly \
               -p:AppxSymbolPackageEnabled=true -p:GenerateAppxPackageOnBuild=true \
               -p:AppxPackageDir="$GITHUB_WORKSPACE/msix/$plat/"
           done

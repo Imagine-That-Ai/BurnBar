@@ -59,6 +59,11 @@ assert.match(
   /"\$msbuild" "\$wap" -restore -m/,
   "WAP packaging must use Visual Studio MSBuild so Desktop Bridge targets resolve",
 );
+assert.match(
+  read("windows/packaging/msix/OpenBurnBar.Packaging.wapproj"),
+  /<GlobalPropertiesToRemove>[^<]*GenerateAppxPackageOnBuild[^<]*<\/GlobalPropertiesToRemove>/,
+  "WAP package-generation globals must not leak into the unpackaged WinUI app reference",
+);
 
 const firebaseRules = read("scripts/ci/deploy-firebase-rules-releases.mjs");
 assert.ok(
