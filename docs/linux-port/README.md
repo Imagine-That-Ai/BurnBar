@@ -7,6 +7,9 @@ Current parity status as of 2026-07-09:
 
 - A public signed aarch64 prerelease exists at `linux-v0.1.0`.
 - Full macOS parity is not complete. See
+  the browser-ready
+  [`LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.html`](LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.html)
+  or its Markdown source
   [`LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md`](LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md)
   for the independent executive summary, parity matrix, implementation plan,
   prioritized roadmap, and QA checklist.
@@ -56,6 +59,9 @@ Primary files:
 - [`ui-parity/`](ui-parity/README.md) - W6/W7 UI parity execution plan:
   foundation reference plus parallel task packets P01–P15.
 - [`evidence/`](evidence/) - generated and collected mission evidence.
+- [`evidence/parity-audit-2026-07-10/aarch64-installed-session-summary.json`](evidence/parity-audit-2026-07-10/aarch64-installed-session-summary.json) -
+  compact retained results and source hashes from the current installed aarch64
+  audit sample; it is evidence for this report, not a release-promotion row.
 
 The release verifier refuses to publish `latest-linux.json` while the package
 closure has missing artifacts, missing signatures, missing Sigstore provenance,
