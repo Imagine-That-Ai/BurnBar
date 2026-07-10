@@ -233,7 +233,7 @@ jobs:
           node-version: 22
 
       - name: Download native architecture shards
-        uses: actions/download-artifact@abefc31eafcfbdf6c5336127a9045ea00bc7c9e4 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
         with:
           pattern: linux-release-shard-*
           path: ${{ env.OPENBURNBAR_LINUX_SHARDS_DIR }}

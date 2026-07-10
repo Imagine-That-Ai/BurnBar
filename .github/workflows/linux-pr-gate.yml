@@ -135,7 +135,7 @@ jobs:
         run: docker run --rm -v "$PWD:/workspace" -w /workspace openburnbar-linux-toolchain:mission-001 bash tools/linux-toolchain/smoke.sh
 
       - name: Download macOS matched performance reference
-        uses: actions/download-artifact@abefc31eafcfbdf6c5336127a9045ea00bc7c9e4 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
         with:
           name: linux-parity-macos-performance-pr
           path: ${{ runner.temp }}/openburnbar-macos-performance
