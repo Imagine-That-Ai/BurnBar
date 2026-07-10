@@ -109,7 +109,7 @@ export function embedLinuxAppImagePayload({ appImage, payloadRoot, env = process
     const offsetText = run(image, ['--appimage-offset'], { cwd: work, env: appImageEnv }).trim();
     const offset = Number.parseInt(offsetText, 10);
     if (!Number.isSafeInteger(offset) || offset <= 0) throw new Error(`invalid AppImage filesystem offset: ${offsetText}`);
-    run('mksquashfs', [appDir, squash, '-noappend', '-root-owned', '-comp', 'xz', '-no-xattrs'], {
+    run('mksquashfs', [appDir, squash, '-noappend', '-root-owned', '-comp', 'zstd', '-no-xattrs'], {
       cwd: work,
       env: appImageEnv
     });
