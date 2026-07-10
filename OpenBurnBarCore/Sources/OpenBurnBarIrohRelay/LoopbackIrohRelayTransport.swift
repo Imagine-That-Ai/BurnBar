@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// In-process iroh transport for tests + the spine demo. Pairs Mac-side and
 /// iOS-side endpoints through a shared rendezvous. Frames are encoded with

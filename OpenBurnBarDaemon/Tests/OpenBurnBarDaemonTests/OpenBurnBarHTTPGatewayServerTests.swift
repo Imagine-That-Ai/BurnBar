@@ -390,7 +390,6 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         try await harness.start()
         addTeardownBlock { await harness.stop() }
-
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
             method: "GET",
@@ -5096,6 +5095,143 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
 }
 
 extension BurnBarHTTPGatewayServerTests {
+    func testGatewayKeepsCustomAnthropicModelRouteableForSavedOAuthSlotWhenLiveCatalogOmitsIt() async throws {
+        enqueueAnthropicModelCatalog(["claude-opus-4-7"])
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: """
+            {
+              "id": "msg_fable5",
+              "type": "message",
+              "role": "assistant",
+              "model": "claude-fable-5",
+              "content": [{"type": "text", "text": "OK"}],
+              "stop_reason": "end_turn",
+              "usage": {
+                "input_tokens": 4,
+                "output_tokens": 2,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0
+              }
+            }
+            """
+        )
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        let harness = try GatewayHarness(
+            anthropicExecutor: BurnBarAnthropicProviderExecutor(session: session),
+            modelCatalogSession: session
+        )
+        let slotID = "saved-claude-oauth-slot"
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "anthropic",
+                isEnabled: true,
+                baseURL: "https://gateway-upstream.test/anthropic/v1",
+                preferredModelIDs: ["claude-opus-4-8-family"],
+                preferredCredentialSlotID: slotID
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "anthropic",
+            slotID: slotID,
+            label: "Saved Claude OAuth bearer",
+            apiKey: "sk-ant-oat-saved",
+            authMethodID: "anthropic-claude-oauth"
+        )
+        _ = try await harness.configStore.upsertCustomModel(
+            providerID: "anthropic",
+            customModel: BurnBarCustomModel(modelID: "claude-fable-5", displayName: "Claude Fable 5")
+        )
+        try await harness.start()
+        addTeardownBlock { await harness.stop() }
+
+        let (modelsResponse, modelsBody) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "GET",
+            path: "/v1/models"
+        )
+        XCTAssertEqual(modelsResponse.statusCode, 200)
+        let modelsObject = try XCTUnwrap(JSONSerialization.jsonObject(with: modelsBody) as? [String: Any])
+        let modelsData = try XCTUnwrap(modelsObject["data"] as? [[String: Any]])
+        let fable = try XCTUnwrap(modelsData.first {
+            ($0["account_id"] as? String) == slotID
+                && ($0["id"] as? String) == "claude-fable-5"
+        })
+        XCTAssertEqual(fable["provider_id"] as? String, "anthropic")
+        XCTAssertEqual(fable["route_eligible"] as? Bool, true)
+
+        let (messageResponse, messageBody) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/messages",
+            headers: ["Content-Type": "application/json"],
+            body: Data(
+                #"{"model":"claude-fable-5","max_tokens":16,"messages":[{"role":"user","content":"Reply OK"}]}"#.utf8
+            )
+        )
+        XCTAssertEqual(messageResponse.statusCode, 200, String(decoding: messageBody, as: UTF8.self))
+        let upstreamMessage = try XCTUnwrap(
+            GatewayUpstreamURLProtocol.recordedRequests().first { $0.path == "/anthropic/v1/messages" }
+        )
+        XCTAssertTrue(upstreamMessage.body.contains(#""model":"claude-fable-5""#), upstreamMessage.body)
+    }
+
+    func testGatewayExplainsExpiredSavedOAuthSlotInsteadOfSuggestingAnotherProvider() async throws {
+        enqueueAnthropicModelCatalog(["claude-fable-5"], times: 2)
+        let harness = try GatewayHarness()
+        let slotID = "expired-claude-oauth-slot"
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "anthropic",
+                isEnabled: true,
+                baseURL: "https://gateway-upstream.test/anthropic/v1",
+                preferredModelIDs: ["claude-opus-4-8-family"],
+                preferredCredentialSlotID: slotID,
+                credentialSlots: [
+                    BurnBarProviderCredentialSlot(
+                        slotID: slotID,
+                        label: "Claude Code OAuth",
+                        status: .missingSecret,
+                        authMethodID: "anthropic-claude-oauth"
+                    )
+                ]
+            )
+        )
+        _ = try await harness.configStore.upsertCustomModel(
+            providerID: "anthropic",
+            customModel: BurnBarCustomModel(modelID: "claude-fable-5", displayName: "Claude Fable 5")
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "anthropic",
+            slotID: "healthy-claude-oauth-slot",
+            label: "Healthy Claude OAuth",
+            apiKey: "sk-ant-oat-healthy",
+            authMethodID: "anthropic-claude-oauth"
+        )
+        try await harness.start()
+        addTeardownBlock { await harness.stop() }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/messages",
+            headers: ["Content-Type": "application/json"],
+            body: Data(
+                #"{"model":"anthropic/expired-claude-oauth-slot/claude-fable-5","max_tokens":16,"messages":[{"role":"user","content":"Reply OK"}]}"#.utf8
+            )
+        )
+        XCTAssertEqual(response.statusCode, 503)
+        let bodyText = String(decoding: body, as: UTF8.self)
+        XCTAssertTrue(bodyText.contains("credential is missing or expired"), bodyText)
+        XCTAssertTrue(bodyText.contains("claude auth login"), bodyText)
+        XCTAssertFalse(bodyText.contains("Add or enable an advertised OpenBurnBar provider"), bodyText)
+    }
+
+}
+
+extension BurnBarHTTPGatewayServerTests {
     func testGatewayCapturesRateLimitHeadersAsQuotaSignals() async throws {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
@@ -5416,7 +5552,7 @@ extension BurnBarHTTPGatewayServerTests {
     }
 }
 
-private final class GatewayHarness: @unchecked Sendable {
+final class GatewayHarness: @unchecked Sendable {
     private static let portLock = NSLock()
     private static var nextCandidatePort = Int.random(in: 49_152...60_999)
 
@@ -5789,7 +5925,7 @@ struct CapturingDaemonLogger: BurnBarDaemonLogging {
     }
 }
 
-private struct GatewayUpstreamRequest: Hashable {
+struct GatewayUpstreamRequest: Hashable {
     let authorization: String?
     let path: String
     let query: String?
@@ -5803,7 +5939,7 @@ private struct GatewayUpstreamRequest: Hashable {
     let directBrowserAccess: String?
 }
 
-private final class GatewayUpstreamURLProtocol: URLProtocol {
+final class GatewayUpstreamURLProtocol: URLProtocol {
     private struct Response {
         let status: Int
         let body: Data

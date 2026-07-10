@@ -171,9 +171,15 @@ let packageProducts: [Product] = buildLinuxSecurityOnly ? [
     )
 ] : packageProductsBase
 
+// Phase-1 K2 of docs/SURFACE_SPRAWL_AND_SPLITBRAIN_REMEDIATION_PLAN.md: the
+// privileged-input sibling chain (IrohRelay -> Media -> ComputerUseCore, linked
+// by RemoteAccessAgentCore and the HID-entitled privileged binaries) depends on
+// the UI-free OpenBurnBarKernel, NOT the SwiftUI/AppKit-carrying OpenBurnBarCore
+// target. This is where audit finding #4's link-surface win lands: the most
+// security-sensitive binaries stop transitively linking the UI monolith.
 let irohRelayDependencies: [Target.Dependency] = hasIrohXCFramework
-    ? ["OpenBurnBarCore", "OpenBurnBarIrohFFI"]
-    : ["OpenBurnBarCore"]
+    ? ["OpenBurnBarKernel", "OpenBurnBarIrohFFI"]
+    : ["OpenBurnBarKernel"]
 
 let irohBinaryTargets: [Target] = hasIrohXCFramework ? [
     .binaryTarget(
@@ -566,7 +572,7 @@ let firstPartyTargetsBase: [Target] = [
         ),
         .target(
             name: "OpenBurnBarMedia",
-            dependencies: ["OpenBurnBarCore", "OpenBurnBarIrohRelay", swiftCryptoDependency]
+            dependencies: ["OpenBurnBarKernel", "OpenBurnBarIrohRelay", swiftCryptoDependency]
         ),
         .target(
             name: "BurnBarRemoteEngine",
@@ -574,7 +580,7 @@ let firstPartyTargetsBase: [Target] = [
         ),
         .target(
             name: "OpenBurnBarComputerUseCore",
-            dependencies: ["OpenBurnBarCore", "OpenBurnBarMedia", swiftCryptoDependency]
+            dependencies: ["OpenBurnBarKernel", "OpenBurnBarMedia", swiftCryptoDependency]
                 + (buildOnWindows ? [] : ["Czlib"]),
             exclude: computerUseCoreExcludes,
             linkerSettings: [

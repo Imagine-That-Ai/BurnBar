@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarIrohRelay
 
 /// Transport-agnostic Mercury file transfer driver. Sits between the

@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Storage-agnostic surface for the iroh pairing record. The production
 /// implementation is Firestore-backed (Mac + iOS), but keeping the contract
