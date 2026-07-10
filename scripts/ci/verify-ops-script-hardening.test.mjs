@@ -51,18 +51,18 @@ assert.match(
 );
 assert.match(
   windowsReleaseWorkflow,
-  /Microsoft\.VisualStudio\.ComponentGroup\.MSIX\.Packaging/,
-  "Windows release workflow must preflight the Visual Studio MSIX Packaging component",
+  /Windows Kits\\10\\bin\\\*\\x64\\makeappx\.exe/,
+  "Windows release workflow must locate MakeAppx from the installed Windows SDK",
 );
 assert.match(
   windowsReleaseWorkflow,
-  /"\$msbuild" "\$wap" -restore -m/,
-  "WAP packaging must use Visual Studio MSBuild so Desktop Bridge targets resolve",
+  /windows\/packaging\/msix\/New-MsixPackage\.ps1/,
+  "Windows release workflow must package the already-published app through the reviewed MSIX script",
 );
 assert.match(
-  read("windows/packaging/msix/OpenBurnBar.Packaging.wapproj"),
-  /<GlobalPropertiesToRemove>[^<]*GenerateAppxPackageOnBuild[^<]*<\/GlobalPropertiesToRemove>/,
-  "WAP package-generation globals must not leak into the unpackaged WinUI app reference",
+  read("windows/packaging/msix/New-MsixPackage.ps1"),
+  /SetAttributeValue\("Version", "\$Version\.0"\)[\s\S]*SetAttributeValue\("ProcessorArchitecture", \$Architecture\)/,
+  "MSIX staging must stamp the resolved version and target architecture into the package identity",
 );
 
 const firebaseRules = read("scripts/ci/deploy-firebase-rules-releases.mjs");
