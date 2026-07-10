@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-10T06:55:55.872Z",
+  "architecture": "aarch64",
+  "steps": 28,
+  "failedCount": 0,
+  "failed": [],
+  "passed": true
+}

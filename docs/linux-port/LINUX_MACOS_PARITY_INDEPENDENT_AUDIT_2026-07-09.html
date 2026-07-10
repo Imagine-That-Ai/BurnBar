@@ -255,7 +255,7 @@
 </tr>
 <tr>
 <td>Remediation evidence</td>
-<td><code>codex/linux-parity-final</code> at this report HEAD; clean aarch64 release shard at <code>c4e85dbbd0</code></td>
+<td><code>codex/linux-parity-final</code>; clean aarch64 and architecture-correct x86_64 release shards at <code>391fe2847d</code></td>
 </tr>
 </tbody></table>
 <p><strong>Verdict:</strong> <strong>NO-GO for a full-parity claim or stable Linux promotion</strong></p>
@@ -279,7 +279,9 @@ system Computer Use capture/execution, transactional onboarding, account/cloud/
 device workflows, chat and session depth, global text expansion, and richer
 Linux-native shell integrations. The largest certification gaps are an x86_64
 installed session, a prior-version update/rollback baseline, a valid public
-signed feed, and real GNOME Wayland/KDE/wlroots proof.</p>
+signed feed, and real GNOME Wayland/KDE/wlroots proof. Package construction is
+now green for both architectures, but that does not substitute for those live
+installed-product outcomes.</p>
 <p>The old parity claim is now disabled. The generated product ledger contains all
 40 audited requirements, reports <strong>0 ready / 40 blocked</strong>, and cannot promote a
 stale or incomplete claim. Release verification now checks artifact bytes,
@@ -303,17 +305,19 @@ requested 200% zoom passed;</li>
 <p>The current integration branch adds measured source and package evidence beyond
 that historical installed baseline:</p>
 <ul>
-<li><strong>49</strong> focused Swift Core/daemon tests passed across XDG paths, provider
+<li><strong>95</strong> focused Swift Core/daemon tests passed across XDG paths, provider
 discovery, gateway, switcher, Pensieve/inotify, Computer Use, and Mercury;</li>
 <li><strong>59 files / 394 tests</strong> passed in the Linux desktop suite, including every
 route under axe, six-layout state, provider-path parity, durable memory, and
 real Mercury RPC decoding;</li>
-<li><strong>17/17</strong> Tauri Rust tests, <strong>3/3</strong> media-crate tests, <strong>13/13</strong> extension
-daemon-client tests, and <strong>60/60</strong> release-contract tests passed;</li>
-<li>a clean native aarch64 shard at <code>c4e85dbbd0</code> produced AppImage, deb, rpm, and
-daemon artifacts with SHA-256 closure and zero shard blockers;</li>
-<li>the current x86_64 toolchain is independently constructed rather than relabeling
-an aarch64 image. Exact installed-session evidence remains required.</li>
+<li><strong>17/17</strong> Tauri Rust tests, <strong>3/3</strong> media-crate tests, <strong>40/40</strong> extension
+daemon-client tests, and <strong>78/78</strong> release/workflow contract tests passed;</li>
+<li>clean aarch64 and architecture-correct x86_64 shards at <code>391fe2847d</code> each
+produced AppImage, deb, rpm, and daemon artifacts with SHA-256 closure, zero
+blockers, and <strong>28/28</strong> package-smoke steps passed;</li>
+<li>the x86_64 toolchain produced real x86_64 binaries under Rosetta-assisted
+construction rather than relabeling ARM output. A native hosted runner and an
+exact installed x86_64 user session remain required.</li>
 </ul>
 <p>Promotion remains blocked for three explicit reasons: no previous same-architecture
 Linux package exists to prove update, rollback, and data preservation; no x86_64
@@ -323,8 +327,8 @@ remains invalid until it serves the signed JSON contract rather than website HTM
 <p>The correct release posture is therefore:</p>
 <ol>
 <li>Keep the product-parity claim false and treat the public build as a prerelease.</li>
-<li>Run both native architecture sessions and supply a prior version to the
-package lifecycle gate.</li>
+<li>Run the installed x86_64 architecture session and supply a prior version to
+the package lifecycle gate.</li>
 <li>Complete the Critical product capabilities, then the High daily-use workflows.</li>
 <li>Certify the exact signed candidate on the declared Linux desktop matrix.</li>
 <li>Promote only when every required product row is current, reproducible, and
@@ -376,8 +380,8 @@ exercised in installed packages.</li>
 </tr>
 <tr>
 <td>Packaging</td>
-<td>aarch64 AppImage/deb/rpm/daemon shard and installed <code>.deb</code> session passed</td>
-<td>Produce x86_64 session, signed aggregate, rpm/AppImage lifecycle, and prior-version proof</td>
+<td>aarch64 and x86_64 AppImage/deb/rpm/daemon construction and smoke passed; aarch64 installed <code>.deb</code> session passed</td>
+<td>Produce installed x86_64 session, signed aggregate, rpm/AppImage lifecycle, and prior-version proof</td>
 </tr>
 <tr>
 <td>Core product workflows</td>
@@ -454,10 +458,10 @@ chunk is <strong>641.12 kB</strong> minified and Vite reports a chunk-size warni
 <li><code>cargo test --manifest-path apps/linux-desktop/src-tauri/Cargo.toml</code>:
 <strong>17/17 passed</strong>, including capability-catalog, Mercury-probe, update-feed,
 URL, gateway, panic-shortcut, and wire-contract coverage.</li>
-<li>Focused OpenBurnBar Core/daemon Linux suites: <strong>49/49 passed</strong>.</li>
+<li>Focused OpenBurnBar Core/daemon Linux suites: <strong>95/95 passed</strong>.</li>
 <li>Linux media crate capability/capture/decode suite: <strong>3/3 passed</strong>.</li>
-<li>Extension daemon-client suite: <strong>13/13 passed</strong>.</li>
-<li>Linux release/config/packaging/matrix contract suites: <strong>60/60 passed</strong>.</li>
+<li>Extension daemon-client suite: <strong>40/40 passed</strong>.</li>
+<li>Linux release/config/packaging/matrix contract suites: <strong>78/78 passed</strong>.</li>
 <li>Current source comparison of macOS routes, settings, chat, parser registry,
 daemon lifecycle, cloud/account, Computer Use, Mercury, SmartHub, text
 expansion, accessibility, and recovery behavior.</li>
@@ -469,6 +473,63 @@ daemon multiplicity, X11 capture, and installed executable state.</li>
 local candidate artifacts and the four downloaded public prerelease assets.</li>
 <li>Live check of <code>https://burnbar.ai/latest-linux.json</code> and the public website.</li>
 </ul>
+<h3>Exact architecture-construction snapshot</h3>
+<p>The current source-bound construction proof targets commit
+<code>391fe2847d7a9f1446174575e533112952f99e82</code>. Both closures report a clean
+checkout, four required artifacts, zero blockers, and 28 passed smoke steps.
+Hashes were recomputed independently after closure generation:</p>
+<table>
+<thead>
+<tr>
+<th>Architecture</th>
+<th>Artifact</th>
+<th>SHA-256</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>aarch64</td>
+<td><code>OpenBurnBar_0.1.0_aarch64.AppImage</code></td>
+<td><code>389fd6ec5814037d0c748738ce5370d084054714def2c360d9d63bb996ea291e</code></td>
+</tr>
+<tr>
+<td>aarch64</td>
+<td><code>OpenBurnBar_0.1.0_arm64.deb</code></td>
+<td><code>2cd2e2966394cbd76061b0177b4d8215ab2e841fe48b9ef221cb82659f48a1ff</code></td>
+</tr>
+<tr>
+<td>aarch64</td>
+<td><code>OpenBurnBar-0.1.0-1.aarch64.rpm</code></td>
+<td><code>cd32744330cc6da29a9e3e304bbf6ada4535b715b157f2f9ce41d486f35b9e38</code></td>
+</tr>
+<tr>
+<td>aarch64</td>
+<td><code>openburnbar-daemon-0.1.0-linux-aarch64</code></td>
+<td><code>82f5c9ce5bc3484fcddbd8d6bbd1d3b0946354e38b7b279d774bd9a87de7a11a</code></td>
+</tr>
+<tr>
+<td>x86_64</td>
+<td><code>OpenBurnBar_0.1.0_amd64.AppImage</code></td>
+<td><code>6b5152717ff77f6ced25a1fe059d11f56fc1431079a393637c67ee8666ee9aa3</code></td>
+</tr>
+<tr>
+<td>x86_64</td>
+<td><code>OpenBurnBar_0.1.0_amd64.deb</code></td>
+<td><code>900af78f61842341ebc4e4087192cbb61b88b594f1c3b129b340dd62fff055f6</code></td>
+</tr>
+<tr>
+<td>x86_64</td>
+<td><code>OpenBurnBar-0.1.0-1.x86_64.rpm</code></td>
+<td><code>c1c9e52370e49ffc884b30a0d6120d4c2a868c2412a1564d5ad28b854de3c119</code></td>
+</tr>
+<tr>
+<td>x86_64</td>
+<td><code>openburnbar-daemon-0.1.0-linux-x86_64</code></td>
+<td><code>95890f08f130f75a3a76f5119f464d08c5c98b84f8203780bbf0fd25703a58a6</code></td>
+</tr>
+</tbody></table>
+<p>This closes architecture-correct local package construction. It does <strong>not</strong>
+close installed x86_64 GUI/compositor/keyring/portal behavior, native hosted
+runner evidence, candidate signing, public-feed activation, or lifecycle proof.</p>
 <h3>Release-integrity snapshot</h3>
 <p>The public <code>linux-v0.1.0</code> prerelease assets, detached signatures, and public key
 were downloaded directly from GitHub during this audit. All four public assets
@@ -572,7 +633,7 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-01</td>
 <td>Release integrity</td>
 <td>Signed, notarized, release/update path with installed-app proof</td>
-<td>Strict crypto/closure/feed verification and dual-architecture aggregation implemented; aarch64 unsigned closure passed; final signed two-architecture candidate and update/rollback remain blocked</td>
+<td>Strict crypto/closure/feed verification and dual-architecture aggregation implemented; clean unsigned construction closures passed for aarch64 and x86_64; final signed two-architecture candidate and update/rollback remain blocked</td>
 <td>Partial</td>
 <td>Critical</td>
 </tr>
@@ -596,8 +657,8 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-04</td>
 <td>Architecture reach</td>
 <td>Published build covers the declared macOS architecture support contract</td>
-<td>Native aarch64/x86_64 shard workflow exists; aarch64 proof is green, but x86_64 installed evidence is not yet produced</td>
-<td>Unproven</td>
+<td>Native aarch64/x86_64 shard workflow exists and architecture-correct local construction/smoke is green for both; a native hosted x86_64 run, signed aggregate, and installed x86_64 evidence are not yet produced</td>
+<td>Partial</td>
 <td>Critical</td>
 </tr>
 <tr>
@@ -1028,10 +1089,11 @@ required gates and were not made green by the Ed25519 result.</p>
 branch.</strong> The parity claim is now false, the generated ledger has all 40 audit
 requirements at 0 ready/40 blocked, and strict verification cryptographically
 binds artifacts, signatures, source, SBOM/VEX, provenance, feed, architecture
-sessions, and Sigstore inputs. A clean aarch64 shard produced all four required
-artifacts and passed 28 package-smoke steps. Promotion remains blocked until an
-x86_64 session, final signed aggregate, valid public feed, and prior-version
-update/rollback/data-preservation proof all exist.</p>
+sessions, and Sigstore inputs. Clean aarch64 and architecture-correct x86_64
+shards at <code>391fe2847d</code> each produced all four required artifacts and passed 28
+package-smoke steps. Promotion remains blocked until an installed x86_64
+session, native hosted x86_64 run, final signed aggregate, valid public feed,
+and prior-version update/rollback/data-preservation proof all exist.</p>
 <ul>
 <li><strong>Difference:</strong> macOS release confidence comes from a signed product and a
 delivery path that can be exercised. Linux&#39;s four public Ed25519 artifact pairs
@@ -1126,7 +1188,7 @@ DB, logs, DOM, JavaScript globals, frontend network traces, crash reports, and
 diagnostics for tokens.</li>
 </ul>
 <h3>GAP-004 - Ship the architectures and desktop environments users have</h3>
-<p><strong>Implementation update (2026-07-09): partially closed in the implementation
+<p><strong>Implementation update (2026-07-10): partially closed in the implementation
 branch.</strong> The release workflow now builds native <code>aarch64</code> and <code>x86_64</code> shards
 on separate GitHub runners, asserts runner architecture, runs per-architecture
 package inspection/install/uninstall smoke, and aggregates only after both
@@ -1134,9 +1196,13 @@ hash-bound shard closures pass. The schema-3 verifier requires every
 AppImage/deb/rpm/daemon and architecture pair, exact detached-signature and
 checksum coverage, a hash-bound signed feed, source/SBOM/VEX/provenance/parity,
 and final Sigstore bundles. Mutation tests cover missing, duplicate,
-cross-commit, dirty, cross-architecture, and extra shard inputs. Actual x86_64
-package/session evidence and the GNOME Wayland, KDE Wayland, and wlroots
-certification rows remain open, so GAP-004 and P-37 are not closed.</p>
+cross-commit, dirty, cross-architecture, and extra shard inputs. Clean local
+construction at <code>391fe2847d</code> now proves four architecture-correct artifacts and
+28/28 smoke checks for both aarch64 and x86_64. The x86_64 run used
+Rosetta-assisted construction and extracted AppImage inspection, so a native
+hosted x86_64 workflow run, installed x86_64 session, and the GNOME Wayland,
+KDE Wayland, and wlroots certification rows remain open. GAP-004 and P-37 are
+therefore not closed.</p>
 <ul>
 <li><strong>Difference:</strong> the audited baseline Linux release workflow produced ARM64 artifacts
 only, and live evidence covers Ubuntu 24.04 GNOME ARM64. macOS parity is being
@@ -1795,9 +1861,9 @@ queueing, locked keyring, and redaction.</li>
 </tr>
 <tr>
 <td>LNX-PKG-001</td>
-<td>Implemented in workflow; partially proven</td>
-<td>Four-artifact aarch64 shard green; native dual-architecture aggregation is fail closed</td>
-<td>Native x86_64 session and signed aggregate</td>
+<td>Implemented in workflow; construction proven</td>
+<td>Four-artifact aarch64 and architecture-correct x86_64 shards green with 28/28 smoke checks each; native dual-architecture aggregation is fail closed</td>
+<td>Native hosted x86_64 run, installed x86_64 session, signed aggregate, and channel lifecycle</td>
 </tr>
 <tr>
 <td>LNX-UPD-001</td>
@@ -2190,9 +2256,9 @@ truth-sync, not the first time behavior is documented.</p>
 <tr>
 <td>1</td>
 <td><strong>Trustworthy engineering baseline</strong></td>
-<td>Complete in code; aarch64 live</td>
+<td>Complete in code; dual-architecture construction and aarch64 installed proof live</td>
 <td>LNX-REL-VERIFY-001, LNX-CI-001, LNX-RUN-001, LNX-A11Y-HARNESS-001, LNX-PERF-HARNESS-001</td>
-<td>Add x86_64 and prior-version package sessions without regressing strict gates</td>
+<td>Add installed x86_64 and prior-version package sessions without regressing strict gates</td>
 </tr>
 <tr>
 <td>2</td>
@@ -2204,7 +2270,7 @@ truth-sync, not the first time behavior is documented.</p>
 <tr>
 <td>3</td>
 <td><strong>Mainstream install</strong></td>
-<td>In progress</td>
+<td>Package construction complete; installed/channel proof in progress</td>
 <td>LNX-PKG-001, LNX-CHANNEL-001</td>
 <td>Both architectures and every declared package/repository channel install locally</td>
 </tr>
@@ -2449,7 +2515,13 @@ and <code>apps/linux-desktop/src/providerPathRegistry.ts</code></li>
 <li>Release evidence: <code>docs/linux-port/evidence/mission-002-reanchor/</code></li>
 <li>Current aarch64 installed-session audit summary:
 <code>docs/linux-port/evidence/parity-audit-2026-07-10/aarch64-installed-session-summary.json</code></li>
-<li>Current clean aarch64 package closure:
+<li>Current clean aarch64 package closure and smoke:
+<code>docs/linux-port/evidence/parity-audit-2026-07-10/aarch64-391fe2847d-architecture-closure.json</code>
+and <code>docs/linux-port/evidence/parity-audit-2026-07-10/aarch64-391fe2847d-architecture-smoke.json</code></li>
+<li>Current architecture-correct x86_64 package closure and smoke:
+<code>docs/linux-port/evidence/parity-audit-2026-07-10/x86_64-391fe2847d-architecture-closure.json</code>
+and <code>docs/linux-port/evidence/parity-audit-2026-07-10/x86_64-391fe2847d-architecture-smoke.json</code></li>
+<li>Earlier clean aarch64 remediation closure retained for history:
 <code>docs/linux-port/evidence/parity-audit-2026-07-10/aarch64-c4e85dbbd0-architecture-closure.json</code></li>
 <li>Existing implementation plan and accepted substitutions:
 <code>docs/linux-port/FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md</code></li>

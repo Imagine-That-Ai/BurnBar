@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | `codex/linux-parity-final` at this report HEAD; clean aarch64 release shard at `c4e85dbbd0` |
+| Remediation evidence | `codex/linux-parity-final`; clean aarch64 and architecture-correct x86_64 release shards at `391fe2847d` |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -32,7 +32,9 @@ system Computer Use capture/execution, transactional onboarding, account/cloud/
 device workflows, chat and session depth, global text expansion, and richer
 Linux-native shell integrations. The largest certification gaps are an x86_64
 installed session, a prior-version update/rollback baseline, a valid public
-signed feed, and real GNOME Wayland/KDE/wlroots proof.
+signed feed, and real GNOME Wayland/KDE/wlroots proof. Package construction is
+now green for both architectures, but that does not substitute for those live
+installed-product outcomes.
 
 The old parity claim is now disabled. The generated product ledger contains all
 40 audited requirements, reports **0 ready / 40 blocked**, and cannot promote a
@@ -58,17 +60,19 @@ commit `9886a6ac0b`:
 The current integration branch adds measured source and package evidence beyond
 that historical installed baseline:
 
-- **49** focused Swift Core/daemon tests passed across XDG paths, provider
+- **95** focused Swift Core/daemon tests passed across XDG paths, provider
   discovery, gateway, switcher, Pensieve/inotify, Computer Use, and Mercury;
 - **59 files / 394 tests** passed in the Linux desktop suite, including every
   route under axe, six-layout state, provider-path parity, durable memory, and
   real Mercury RPC decoding;
-- **17/17** Tauri Rust tests, **3/3** media-crate tests, **13/13** extension
-  daemon-client tests, and **60/60** release-contract tests passed;
-- a clean native aarch64 shard at `c4e85dbbd0` produced AppImage, deb, rpm, and
-  daemon artifacts with SHA-256 closure and zero shard blockers;
-- the current x86_64 toolchain is independently constructed rather than relabeling
-  an aarch64 image. Exact installed-session evidence remains required.
+- **17/17** Tauri Rust tests, **3/3** media-crate tests, **40/40** extension
+  daemon-client tests, and **78/78** release/workflow contract tests passed;
+- clean aarch64 and architecture-correct x86_64 shards at `391fe2847d` each
+  produced AppImage, deb, rpm, and daemon artifacts with SHA-256 closure, zero
+  blockers, and **28/28** package-smoke steps passed;
+- the x86_64 toolchain produced real x86_64 binaries under Rosetta-assisted
+  construction rather than relabeling ARM output. A native hosted runner and an
+  exact installed x86_64 user session remain required.
 
 Promotion remains blocked for three explicit reasons: no previous same-architecture
 Linux package exists to prove update, rollback, and data preservation; no x86_64
@@ -79,8 +83,8 @@ remains invalid until it serves the signed JSON contract rather than website HTM
 The correct release posture is therefore:
 
 1. Keep the product-parity claim false and treat the public build as a prerelease.
-2. Run both native architecture sessions and supply a prior version to the
-   package lifecycle gate.
+2. Run the installed x86_64 architecture session and supply a prior version to
+   the package lifecycle gate.
 3. Complete the Critical product capabilities, then the High daily-use workflows.
 4. Certify the exact signed candidate on the declared Linux desktop matrix.
 5. Promote only when every required product row is current, reproducible, and
@@ -97,7 +101,7 @@ The correct release posture is therefore:
 | Accessibility | Route axe plus installed AT-SPI/Orca/keyboard/200% proof passed on aarch64 X11 | Repeat on GNOME Wayland, KDE Wayland, wlroots, x86_64, and high-contrast rows |
 | Performance/reliability | Matched harness, supervisor, percentiles, and nightly soak contracts implemented | Produce final same-hardware macOS/Linux candidate results and desktop-matrix runs |
 | Updates | Native signed-feed verification implemented; invalid endpoint fails honestly | Serve valid signed feed and prove package-manager update/rollback/data preservation |
-| Packaging | aarch64 AppImage/deb/rpm/daemon shard and installed `.deb` session passed | Produce x86_64 session, signed aggregate, rpm/AppImage lifecycle, and prior-version proof |
+| Packaging | aarch64 and x86_64 AppImage/deb/rpm/daemon construction and smoke passed; aarch64 installed `.deb` session passed | Produce installed x86_64 session, signed aggregate, rpm/AppImage lifecycle, and prior-version proof |
 | Core product workflows | Six dashboard layouts, XDG/provider paths, and daemon-authoritative memory decisions are implemented; several routes remain partial/read-only | Complete onboarding, chat, sessions, account/cloud, and workspace depth |
 | Advanced platform features | Mercury implementation and guarded Linux input/panic paths exist; unsupported outcomes remain capability-gated | Certify Mercury; complete system CU capture, SmartHub devices, IBus/Fcitx, and companion overlay |
 
@@ -138,10 +142,10 @@ live product state were independently reproducible.
 - `cargo test --manifest-path apps/linux-desktop/src-tauri/Cargo.toml`:
   **17/17 passed**, including capability-catalog, Mercury-probe, update-feed,
   URL, gateway, panic-shortcut, and wire-contract coverage.
-- Focused OpenBurnBar Core/daemon Linux suites: **49/49 passed**.
+- Focused OpenBurnBar Core/daemon Linux suites: **95/95 passed**.
 - Linux media crate capability/capture/decode suite: **3/3 passed**.
-- Extension daemon-client suite: **13/13 passed**.
-- Linux release/config/packaging/matrix contract suites: **60/60 passed**.
+- Extension daemon-client suite: **40/40 passed**.
+- Linux release/config/packaging/matrix contract suites: **78/78 passed**.
 - Current source comparison of macOS routes, settings, chat, parser registry,
   daemon lifecycle, cloud/account, Computer Use, Mercury, SmartHub, text
   expansion, accessibility, and recovery behavior.
@@ -152,6 +156,28 @@ live product state were independently reproducible.
 - Independent checksum and Ed25519 verification of both the four mission-002
   local candidate artifacts and the four downloaded public prerelease assets.
 - Live check of `https://burnbar.ai/latest-linux.json` and the public website.
+
+### Exact architecture-construction snapshot
+
+The current source-bound construction proof targets commit
+`391fe2847d7a9f1446174575e533112952f99e82`. Both closures report a clean
+checkout, four required artifacts, zero blockers, and 28 passed smoke steps.
+Hashes were recomputed independently after closure generation:
+
+| Architecture | Artifact | SHA-256 |
+|---|---|---|
+| aarch64 | `OpenBurnBar_0.1.0_aarch64.AppImage` | `389fd6ec5814037d0c748738ce5370d084054714def2c360d9d63bb996ea291e` |
+| aarch64 | `OpenBurnBar_0.1.0_arm64.deb` | `2cd2e2966394cbd76061b0177b4d8215ab2e841fe48b9ef221cb82659f48a1ff` |
+| aarch64 | `OpenBurnBar-0.1.0-1.aarch64.rpm` | `cd32744330cc6da29a9e3e304bbf6ada4535b715b157f2f9ce41d486f35b9e38` |
+| aarch64 | `openburnbar-daemon-0.1.0-linux-aarch64` | `82f5c9ce5bc3484fcddbd8d6bbd1d3b0946354e38b7b279d774bd9a87de7a11a` |
+| x86_64 | `OpenBurnBar_0.1.0_amd64.AppImage` | `6b5152717ff77f6ced25a1fe059d11f56fc1431079a393637c67ee8666ee9aa3` |
+| x86_64 | `OpenBurnBar_0.1.0_amd64.deb` | `900af78f61842341ebc4e4087192cbb61b88b594f1c3b129b340dd62fff055f6` |
+| x86_64 | `OpenBurnBar-0.1.0-1.x86_64.rpm` | `c1c9e52370e49ffc884b30a0d6120d4c2a868c2412a1564d5ad28b854de3c119` |
+| x86_64 | `openburnbar-daemon-0.1.0-linux-x86_64` | `95890f08f130f75a3a76f5119f464d08c5c98b84f8203780bbf0fd25703a58a6` |
+
+This closes architecture-correct local package construction. It does **not**
+close installed x86_64 GUI/compositor/keyring/portal behavior, native hosted
+runner evidence, candidate signing, public-feed activation, or lifecycle proof.
 
 ### Release-integrity snapshot
 
@@ -204,10 +230,10 @@ required gates and were not made green by the Ed25519 result.
 
 | ID | Area | macOS gold standard | Linux current state | Status | Priority |
 |---|---|---|---|---|---|
-| P-01 | Release integrity | Signed, notarized, release/update path with installed-app proof | Strict crypto/closure/feed verification and dual-architecture aggregation implemented; aarch64 unsigned closure passed; final signed two-architecture candidate and update/rollback remain blocked | Partial | Critical |
+| P-01 | Release integrity | Signed, notarized, release/update path with installed-app proof | Strict crypto/closure/feed verification and dual-architecture aggregation implemented; clean unsigned construction closures passed for aarch64 and x86_64; final signed two-architecture candidate and update/rollback remain blocked | Partial | Critical |
 | P-02 | Parity certification | Product inventory tied to release head and real behavior | Complete 40-row generated inventory now reports 0 ready/40 blocked and fail-closes stale, missing, contradictory, or self-referential proof | Partial | Critical |
 | P-03 | Installed runtime | Owned app/daemon lifecycle with recovery and one authoritative supervisor | Package-owned aarch64 GUI/daemon/version/uninstall session passed; x86_64 and prior-version lifecycle remain open | Partial | Critical |
-| P-04 | Architecture reach | Published build covers the declared macOS architecture support contract | Native aarch64/x86_64 shard workflow exists; aarch64 proof is green, but x86_64 installed evidence is not yet produced | Unproven | Critical |
+| P-04 | Architecture reach | Published build covers the declared macOS architecture support contract | Native aarch64/x86_64 shard workflow exists and architecture-correct local construction/smoke is green for both; a native hosted x86_64 run, signed aggregate, and installed x86_64 evidence are not yet produced | Partial | Critical |
 | P-05 | Credential custody | Keychain-backed provider, connector, auth, and sync secrets | Secret Service, KWallet, and encrypted headless custodians are wired; live keyring/recovery matrix remains incomplete | Partial | Critical |
 | P-06 | Gateway credential boundary | Native process owns bearer credentials | Rust owns the bearer and proxies bounded authenticated HTTP/SSE; renderer receives typed data, not the token | Near parity | Critical |
 | P-07 | Computer Use | Browser, Agent Watch, Mac System, approval, audit, and three panic paths | Runtime manifest hides unsupported system mode; complete browser action proof and Linux system capture/input adapter remain missing | Partial | Critical |
@@ -289,10 +315,11 @@ Every matrix row maps to a detailed record containing all six requested fields:
 branch.** The parity claim is now false, the generated ledger has all 40 audit
 requirements at 0 ready/40 blocked, and strict verification cryptographically
 binds artifacts, signatures, source, SBOM/VEX, provenance, feed, architecture
-sessions, and Sigstore inputs. A clean aarch64 shard produced all four required
-artifacts and passed 28 package-smoke steps. Promotion remains blocked until an
-x86_64 session, final signed aggregate, valid public feed, and prior-version
-update/rollback/data-preservation proof all exist.
+sessions, and Sigstore inputs. Clean aarch64 and architecture-correct x86_64
+shards at `391fe2847d` each produced all four required artifacts and passed 28
+package-smoke steps. Promotion remains blocked until an installed x86_64
+session, native hosted x86_64 run, final signed aggregate, valid public feed,
+and prior-version update/rollback/data-preservation proof all exist.
 
 - **Difference:** macOS release confidence comes from a signed product and a
   delivery path that can be exercised. Linux's four public Ed25519 artifact pairs
@@ -390,7 +417,7 @@ and diagnostics-redaction states.
 
 ### GAP-004 - Ship the architectures and desktop environments users have
 
-**Implementation update (2026-07-09): partially closed in the implementation
+**Implementation update (2026-07-10): partially closed in the implementation
 branch.** The release workflow now builds native `aarch64` and `x86_64` shards
 on separate GitHub runners, asserts runner architecture, runs per-architecture
 package inspection/install/uninstall smoke, and aggregates only after both
@@ -398,9 +425,13 @@ hash-bound shard closures pass. The schema-3 verifier requires every
 AppImage/deb/rpm/daemon and architecture pair, exact detached-signature and
 checksum coverage, a hash-bound signed feed, source/SBOM/VEX/provenance/parity,
 and final Sigstore bundles. Mutation tests cover missing, duplicate,
-cross-commit, dirty, cross-architecture, and extra shard inputs. Actual x86_64
-package/session evidence and the GNOME Wayland, KDE Wayland, and wlroots
-certification rows remain open, so GAP-004 and P-37 are not closed.
+cross-commit, dirty, cross-architecture, and extra shard inputs. Clean local
+construction at `391fe2847d` now proves four architecture-correct artifacts and
+28/28 smoke checks for both aarch64 and x86_64. The x86_64 run used
+Rosetta-assisted construction and extracted AppImage inspection, so a native
+hosted x86_64 workflow run, installed x86_64 session, and the GNOME Wayland,
+KDE Wayland, and wlroots certification rows remain open. GAP-004 and P-37 are
+therefore not closed.
 
 - **Difference:** the audited baseline Linux release workflow produced ARM64 artifacts
   only, and live evidence covers Ubuntu 24.04 GNOME ARM64. macOS parity is being
@@ -1035,7 +1066,7 @@ coverage.
 | LNX-A11Y-HARNESS-001 | Implemented | All-route axe plus installed AT-SPI/Orca/keyboard/zoom contract | Full architecture/desktop/high-contrast matrix |
 | LNX-PERF-HARNESS-001 | Implemented | Matched workload tools, p50/p95/p99/resource capture, nightly soak contract | Final candidate results on comparable hardware and environments |
 | LNX-RUN-001 | Partially proven | Clean aarch64 package-owned GUI/daemon/version/uninstall session | x86_64, prior-version lifecycle, suspend/resume, compositor breadth |
-| LNX-PKG-001 | Implemented in workflow; partially proven | Four-artifact aarch64 shard green; native dual-architecture aggregation is fail closed | Native x86_64 session and signed aggregate |
+| LNX-PKG-001 | Implemented in workflow; construction proven | Four-artifact aarch64 and architecture-correct x86_64 shards green with 28/28 smoke checks each; native dual-architecture aggregation is fail closed | Native hosted x86_64 run, installed x86_64 session, signed aggregate, and channel lifecycle |
 | LNX-UPD-001 | Partially implemented | Native signed-feed availability verifier rejects invalid public metadata | Valid feed plus deb/rpm/AppImage update, rollback, and data preservation |
 | LNX-CHANNEL-001 through LNX-DIFF-001 | Open/partial | Existing package/channel/product foundations retained | Daily-use platform foundation and current macOS/Linux differential proof |
 | Phase 2 core workflows | Open/partial | Existing routes and bounded mutations retained | Complete product outcomes and daemon-authoritative state |
@@ -1151,9 +1182,9 @@ truth-sync, not the first time behavior is documented.
 | Order | Milestone | Current state | Included tasks | Exit gate |
 |---|---|---|---|---|
 | 0 | **Disable false parity** | Complete | LNX-GATE-001 | Machine claim is off; ledger cannot certify stale/incomplete evidence |
-| 1 | **Trustworthy engineering baseline** | Complete in code; aarch64 live | LNX-REL-VERIFY-001, LNX-CI-001, LNX-RUN-001, LNX-A11Y-HARNESS-001, LNX-PERF-HARNESS-001 | Add x86_64 and prior-version package sessions without regressing strict gates |
+| 1 | **Trustworthy engineering baseline** | Complete in code; dual-architecture construction and aarch64 installed proof live | LNX-REL-VERIFY-001, LNX-CI-001, LNX-RUN-001, LNX-A11Y-HARNESS-001, LNX-PERF-HARNESS-001 | Add installed x86_64 and prior-version package sessions without regressing strict gates |
 | 2 | **Security foundation** | Complete in code; matrix pending | LNX-SEC-001, LNX-IPC-001, LNX-CAP-001 | GNOME/KDE/headless credential and installed adversarial verification green |
-| 3 | **Mainstream install** | In progress | LNX-PKG-001, LNX-CHANNEL-001 | Both architectures and every declared package/repository channel install locally |
+| 3 | **Mainstream install** | Package construction complete; installed/channel proof in progress | LNX-PKG-001, LNX-CHANNEL-001 | Both architectures and every declared package/repository channel install locally |
 | 4 | **Daily-use native foundation** | Next | LNX-EVT-001, LNX-ONB-001, LNX-AUTH-001, LNX-NATIVE-001, LNX-UPD-001, LNX-CAT-001, LNX-DIFF-001 | Setup, auth, data freshness, alerts/tray, update lifecycle, and current provider diff green |
 | 5 | **Core product workflows** | Pending | LNX-SESS-001, LNX-CHAT-001, LNX-MEM-001, LNX-PROJ-001, LNX-MISSION-001, LNX-INSIGHT-001, LNX-DB-001, LNX-PROVIDER-001, LNX-PRIV-001, LNX-SET-001 | No synthetic state; every primary workspace and privacy workflow completes |
 | 6 | **Browser automation parity** | Pending | LNX-CU-BROWSER-001 | Real actions, approval, panic, audit, restart recovery |
@@ -1358,7 +1389,13 @@ Primary current evidence and implementation references:
 - Release evidence: `docs/linux-port/evidence/mission-002-reanchor/`
 - Current aarch64 installed-session audit summary:
   `docs/linux-port/evidence/parity-audit-2026-07-10/aarch64-installed-session-summary.json`
-- Current clean aarch64 package closure:
+- Current clean aarch64 package closure and smoke:
+  `docs/linux-port/evidence/parity-audit-2026-07-10/aarch64-391fe2847d-architecture-closure.json`
+  and `docs/linux-port/evidence/parity-audit-2026-07-10/aarch64-391fe2847d-architecture-smoke.json`
+- Current architecture-correct x86_64 package closure and smoke:
+  `docs/linux-port/evidence/parity-audit-2026-07-10/x86_64-391fe2847d-architecture-closure.json`
+  and `docs/linux-port/evidence/parity-audit-2026-07-10/x86_64-391fe2847d-architecture-smoke.json`
+- Earlier clean aarch64 remediation closure retained for history:
   `docs/linux-port/evidence/parity-audit-2026-07-10/aarch64-c4e85dbbd0-architecture-closure.json`
 - Existing implementation plan and accepted substitutions:
   `docs/linux-port/FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md`
