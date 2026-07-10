@@ -1,5 +1,12 @@
 const PERCENTILE_KEYS = ['minimum', 'p50', 'p95', 'p99', 'maximum'];
 
+export function dockerHostIdentityArguments(uid, gid) {
+  if (!Number.isSafeInteger(uid) || uid < 0 || !Number.isSafeInteger(gid) || gid < 0) {
+    return [];
+  }
+  return ['--user', `${uid}:${gid}`, '-e', 'HOME=/tmp/openburnbar-home'];
+}
+
 function finiteNumber(value) {
   return typeof value === 'number' && Number.isFinite(value);
 }

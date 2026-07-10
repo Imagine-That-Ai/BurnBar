@@ -4,7 +4,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { compareMatchedPerformance } from './lib/matched-performance.mjs';
+import {
+  compareMatchedPerformance,
+  dockerHostIdentityArguments
+} from './lib/matched-performance.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const packagePath = path.join(root, 'tools/matched-performance');
@@ -118,6 +121,7 @@ function runLinux(configuration, output) {
 set -euo pipefail
 export OPENBURNBAR_DAEMON_LINUX_BOUNDARY_BUILD=1
 export OPENBURNBAR_USE_SYSTEM_SQLCIPHER=1
+mkdir -p "$HOME"
 repo=/tmp/openburnbar-matched-performance-repo
 rm -rf "$repo"
 mkdir -p "$repo/tools" "$repo/Vendor"
@@ -133,8 +137,13 @@ swift run --package-path "$repo/tools/matched-performance" OpenBurnBarStreamPerf
   --samples "$2" --warmups "$3" --output "$7"
 `;
   const timeoutMs = (configuration.soakSeconds + 900) * 1_000;
+  const identityArguments = dockerHostIdentityArguments(
+    process.getuid?.(),
+    process.getgid?.()
+  );
   run('docker', [
     'run', '--rm',
+    ...identityArguments,
     '-v', `${root}:/workspace:ro`,
     '-v', `${outDir}:/evidence`,
     'openburnbar-linux-toolchain:mission-001',

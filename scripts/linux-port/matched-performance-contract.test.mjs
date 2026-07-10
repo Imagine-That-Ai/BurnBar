@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { compareMatchedPerformance } from './lib/matched-performance.mjs';
+import {
+  compareMatchedPerformance,
+  dockerHostIdentityArguments
+} from './lib/matched-performance.mjs';
 
 const ids = [
   'sqlite.range-query',
@@ -54,6 +57,15 @@ function compare(mutator = () => {}) {
   mutator({ macos, linux });
   return compareMatchedPerformance({ macos, linux, budget, profile: 'smoke' });
 }
+
+test('Linux Docker probes retain host ownership of bind-mounted evidence', () => {
+  assert.deepEqual(
+    dockerHostIdentityArguments(1001, 121),
+    ['--user', '1001:121', '-e', 'HOME=/tmp/openburnbar-home']
+  );
+  assert.deepEqual(dockerHostIdentityArguments(undefined, undefined), []);
+  assert.deepEqual(dockerHostIdentityArguments(-1, 121), []);
+});
 
 test('matching reports pass with architecture aliases', () => {
   const result = compare();
