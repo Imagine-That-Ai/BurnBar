@@ -31,7 +31,7 @@ final class EscrowRevocationWatcher {
     /// `noPeer` (that would silently fail open on the teardown lane). We keep the
     /// device unactioned and retry on the next snapshot instead.
     private enum PeerResolution {
-        case resolved(String)
+        case resolved([String])
         case noPeer
         case unresolvable
     }
@@ -131,9 +131,11 @@ final class EscrowRevocationWatcher {
             deviceData: deviceData
         )
         switch resolution {
-        case .resolved(let peerNodeId):
+        case .resolved(let peerNodeIds):
             revokedDeviceIds.insert(deviceId)
-            await onRevoked(deviceId, peerNodeId)
+            for peerNodeId in peerNodeIds {
+                await onRevoked(deviceId, peerNodeId)
+            }
         case .noPeer:
             revokedDeviceIds.insert(deviceId)
             await onRevoked(deviceId, nil)
@@ -156,10 +158,11 @@ final class EscrowRevocationWatcher {
         }
     }
 
-    /// Resolve the revoked device's paired peer node id.
+    /// Resolve all revoked device peer node ids.
     ///
-    /// The escrow device doc may carry `peerNodeId` directly; otherwise we read
-    /// the agent-grant authority mapping keyed by the same device id. A genuine
+    /// The escrow device doc may carry historical `peerNodeIds` plus the legacy
+    /// `peerNodeId` directly; otherwise we read the agent-grant authority
+    /// mapping keyed by the same device id. A genuine
     /// absence (`noPeer`) is safe — the grant path still fails closed without a
     /// peer. A *fetch fault* is reported as `unresolvable` (after a bounded
     /// retry), never as `noPeer`, so the live-session teardown lane can react
@@ -169,15 +172,19 @@ final class EscrowRevocationWatcher {
         deviceId: String,
         deviceData: [String: Any]
     ) async -> PeerResolution {
-        if let direct = deviceData["peerNodeId"] as? String, !direct.isEmpty {
-            return .resolved(direct)
+        let directPeerNodeIds = normalizedPeerNodeIds(
+            primary: deviceData["peerNodeId"],
+            historical: deviceData["peerNodeIds"]
+        )
+        if !directPeerNodeIds.isEmpty {
+            return .resolved(directPeerNodeIds)
         }
 
         var lastError: Error?
         for attempt in 1...peerFetchMaxAttempts {
             do {
                 if let peer = try await authorityPeerNodeIdProvider(uid, deviceId), !peer.isEmpty {
-                    return .resolved(peer)
+                    return .resolved([peer])
                 }
                 // A successful read with no peer is a definitive absence.
                 return .noPeer
@@ -203,6 +210,21 @@ final class EscrowRevocationWatcher {
             )
         }
         return .unresolvable
+    }
+
+    private func normalizedPeerNodeIds(primary: Any?, historical: Any?) -> [String] {
+        var ids: [String] = []
+        func append(_ value: Any?) {
+            guard let raw = value as? String else { return }
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, !ids.contains(trimmed) else { return }
+            ids.append(trimmed)
+        }
+        if let values = historical as? [Any] {
+            for value in values { append(value) }
+        }
+        append(primary)
+        return ids
     }
 }
 #endif
