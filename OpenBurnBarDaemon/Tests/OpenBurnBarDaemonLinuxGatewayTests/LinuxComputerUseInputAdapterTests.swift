@@ -257,17 +257,12 @@ final class LinuxComputerUseServiceSystemInputTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: auditDirectory) }
 
         let recorder = MacInputActionRecorder()
-        let service = ComputerUseService(
+        let service = try await makeService(
             auditBaseDirectory: auditDirectory,
-            bridgeScriptURL: URL(fileURLWithPath: "/tmp/missing-playwright-bridge.js"),
             systemInputDispatcher: { _, action in
                 recorder.record(action)
                 return .object(["posted": .bool(true), "adapter": .string("test-linux")])
-            },
-            systemInputAccessibilityTrusted: { mode in mode == .system },
-            systemInputAccessibilityDeny: { _ in nil },
-            computerUseKillSwitchEnabled: { false },
-            logger: BurnBarDaemonLogger(category: "linux-cu-service-test")
+            }
         )
         let start = try await service.startSession(
             ComputerUseSessionStartRequest(
@@ -332,13 +327,9 @@ final class LinuxComputerUseServiceSystemInputTests: XCTestCase {
             try? FileManager.default.removeItem(at: flagDirectory)
         }
 
-        let service = ComputerUseService(
+        let service = try await makeService(
             auditBaseDirectory: auditDirectory,
-            bridgeScriptURL: URL(fileURLWithPath: "/tmp/missing-playwright-bridge.js"),
             systemInputDispatcher: { _, _ in .object(["posted": .bool(true)]) },
-            systemInputAccessibilityTrusted: { mode in mode == .system },
-            systemInputAccessibilityDeny: { _ in nil },
-            computerUseKillSwitchEnabled: { false },
             privilegedInputKillSwitchActivator: { reason in
                 let flagURL = URL(fileURLWithPath: flagPath)
                 try? FileManager.default.createDirectory(
@@ -346,8 +337,7 @@ final class LinuxComputerUseServiceSystemInputTests: XCTestCase {
                     withIntermediateDirectories: true
                 )
                 try? reason.write(toFile: flagPath, atomically: true, encoding: .utf8)
-            },
-            logger: BurnBarDaemonLogger(category: "linux-cu-service-test")
+            }
         )
         _ = try await service.startSession(
             ComputerUseSessionStartRequest(
@@ -371,17 +361,13 @@ final class LinuxComputerUseServiceSystemInputTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: auditDirectory) }
 
         let recorder = MacInputActionRecorder()
-        let service = ComputerUseService(
+        let service = try await makeService(
             auditBaseDirectory: auditDirectory,
-            bridgeScriptURL: URL(fileURLWithPath: "/tmp/missing-playwright-bridge.js"),
             systemInputDispatcher: { _, action in
                 recorder.record(action)
                 return .object(["posted": .bool(true)])
             },
-            systemInputAccessibilityTrusted: { mode in mode == .system },
-            systemInputAccessibilityDeny: { _ in .secureTextField },
-            computerUseKillSwitchEnabled: { false },
-            logger: BurnBarDaemonLogger(category: "linux-cu-service-test")
+            systemInputAccessibilityDeny: { _ in .secureTextField }
         )
         let start = try await service.startSession(
             ComputerUseSessionStartRequest(
@@ -427,17 +413,13 @@ final class LinuxComputerUseServiceSystemInputTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: auditDirectory) }
 
         let recorder = MacInputActionRecorder()
-        let service = ComputerUseService(
+        let service = try await makeService(
             auditBaseDirectory: auditDirectory,
-            bridgeScriptURL: URL(fileURLWithPath: "/tmp/missing-playwright-bridge.js"),
             systemInputDispatcher: { _, action in
                 recorder.record(action)
                 return .object(["posted": .bool(true)])
             },
-            systemInputAccessibilityTrusted: { mode in mode == .system },
-            systemInputAccessibilityDeny: { _ in .unknown },
-            computerUseKillSwitchEnabled: { false },
-            logger: BurnBarDaemonLogger(category: "linux-cu-service-test")
+            systemInputAccessibilityDeny: { _ in .unknown }
         )
         let start = try await service.startSession(
             ComputerUseSessionStartRequest(
@@ -474,45 +456,29 @@ final class LinuxComputerUseServiceSystemInputTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: auditDirectory) }
 
         let recorder = MacInputActionRecorder()
-        let service = ComputerUseService(
+        let service = try await makeService(
             auditBaseDirectory: auditDirectory,
-            bridgeScriptURL: URL(fileURLWithPath: "/tmp/missing-playwright-bridge.js"),
             systemInputDispatcher: { _, action in
                 recorder.record(action)
                 return .object(["posted": .bool(true)])
             },
-            systemInputAccessibilityTrusted: { mode in mode == .system },
-            systemInputAccessibilityDeny: { _ in nil },
-            computerUseKillSwitchEnabled: { true },
-            logger: BurnBarDaemonLogger(category: "linux-cu-service-test")
+            computerUseKillSwitchEnabled: { true }
         )
-        let start = try await service.startSession(
-            ComputerUseSessionStartRequest(
-                mode: ComputerUseMode.system.rawValue,
-                trustMode: ComputerUseTrustMode.manual.rawValue,
-                clientID: BurnBarClientID(rawValue: "linux-test-client")
-            )
-        )
-
-        let response = try await service.invoke(
-            ComputerUseInvokeRequest(
-                sessionId: start.sessionId,
-                invocation: BurnBarToolInvocation(
-                    callID: "call-linux-kill-switch",
-                    runID: BurnBarRunID(rawValue: "run-linux-kill-switch"),
-                    tool: .macInputClick,
-                    arguments: .object([
-                        "displayX": .number(10),
-                        "displayY": .number(20)
-                    ]),
-                    requestedBy: BurnBarClientID(rawValue: "linux-test-client"),
-                    requestedAt: Date()
+        do {
+            _ = try await service.startSession(
+                ComputerUseSessionStartRequest(
+                    mode: ComputerUseMode.system.rawValue,
+                    trustMode: ComputerUseTrustMode.manual.rawValue,
+                    clientID: BurnBarClientID(rawValue: "linux-test-client")
                 )
             )
-        )
-
-        XCTAssertEqual(response.status, .denied)
-        XCTAssertEqual(response.denyReason, ComputerUseDenyReason.killSwitch.rawValue)
+            XCTFail("an active kill switch must deny the session before dispatch")
+        } catch {
+            XCTAssertEqual(
+                error as? ComputerUseService.ServiceError,
+                .capabilityDenied(ComputerUseDenyReason.killSwitch.rawValue)
+            )
+        }
         XCTAssertNil(recorder.last)
     }
 
@@ -522,24 +488,12 @@ final class LinuxComputerUseServiceSystemInputTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: auditDirectory) }
 
         let recorder = MacInputActionRecorder()
-        let service = ComputerUseService(
+        let service = try await makeService(
             auditBaseDirectory: auditDirectory,
-            bridgeScriptURL: URL(fileURLWithPath: "/tmp/missing-playwright-bridge.js"),
             systemInputDispatcher: { _, action in
                 recorder.record(action)
                 return .object(["posted": .bool(true)])
-            },
-            systemInputAccessibilityTrusted: { mode in mode == .system },
-            systemInputAccessibilityDeny: { _ in nil },
-            computerUseKillSwitchEnabled: { false },
-            logger: BurnBarDaemonLogger(category: "linux-cu-service-test")
-        )
-        let first = try await service.startSession(
-            ComputerUseSessionStartRequest(
-                mode: ComputerUseMode.system.rawValue,
-                trustMode: ComputerUseTrustMode.manual.rawValue,
-                clientID: BurnBarClientID(rawValue: "linux-test-client")
-            )
+            }
         )
         _ = try await service.startSession(
             ComputerUseSessionStartRequest(
@@ -548,26 +502,21 @@ final class LinuxComputerUseServiceSystemInputTests: XCTestCase {
                 clientID: BurnBarClientID(rawValue: "linux-test-client")
             )
         )
-
-        let response = try await service.invoke(
-            ComputerUseInvokeRequest(
-                sessionId: first.sessionId,
-                invocation: BurnBarToolInvocation(
-                    callID: "call-linux-concurrent",
-                    runID: BurnBarRunID(rawValue: "run-linux-concurrent"),
-                    tool: .macInputClick,
-                    arguments: .object([
-                        "displayX": .number(10),
-                        "displayY": .number(20)
-                    ]),
-                    requestedBy: BurnBarClientID(rawValue: "linux-test-client"),
-                    requestedAt: Date()
+        do {
+            _ = try await service.startSession(
+                ComputerUseSessionStartRequest(
+                    mode: ComputerUseMode.system.rawValue,
+                    trustMode: ComputerUseTrustMode.manual.rawValue,
+                    clientID: BurnBarClientID(rawValue: "linux-test-client")
                 )
             )
-        )
-
-        XCTAssertEqual(response.status, .denied)
-        XCTAssertEqual(response.denyReason, ComputerUseDenyReason.concurrentSession.rawValue)
+            XCTFail("a concurrent system session must be denied before dispatch")
+        } catch {
+            XCTAssertEqual(
+                error as? ComputerUseService.ServiceError,
+                .capabilityDenied(ComputerUseDenyReason.concurrentSession.rawValue)
+            )
+        }
         XCTAssertNil(recorder.last)
     }
 
@@ -588,6 +537,78 @@ final class LinuxComputerUseServiceSystemInputTests: XCTestCase {
         }
         XCTFail("timed out waiting for Computer Use approval", file: file, line: line)
         throw NSError(domain: "LinuxComputerUseServiceSystemInputTests", code: 1)
+    }
+
+    private func makeService(
+        auditBaseDirectory: URL,
+        systemInputDispatcher: @escaping ComputerUseRunCoordinator.MacInputDispatcher,
+        systemInputAccessibilityDeny: @escaping @Sendable (MacInputAction) async -> ComputerUseAccessibilityDenyReason? = { _ in nil },
+        computerUseKillSwitchEnabled: @escaping @Sendable () -> Bool = { false },
+        privilegedInputKillSwitchActivator: (@Sendable (String) -> Void)? = nil
+    ) async throws -> ComputerUseService {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let capabilityStateStore = ComputerUseCapabilityStateStore(
+            fileURL: auditBaseDirectory.appendingPathComponent("capability-state.json"),
+            now: { now }
+        )
+        _ = try await capabilityStateStore.update(capabilityState(generatedAt: now))
+        return ComputerUseService(
+            auditBaseDirectory: auditBaseDirectory,
+            bridgeScriptURL: URL(fileURLWithPath: "/tmp/missing-playwright-bridge.js"),
+            capabilityStateStore: capabilityStateStore,
+            leafKillSwitch: { false },
+            playwrightDriverFactory: nil,
+            systemInputDispatcher: systemInputDispatcher,
+            systemInputAccessibilityTrusted: { mode in mode == .system },
+            systemInputAccessibilityDeny: systemInputAccessibilityDeny,
+            computerUseKillSwitchEnabled: computerUseKillSwitchEnabled,
+            privilegedInputKillSwitchActivator: privilegedInputKillSwitchActivator,
+            logger: BurnBarDaemonLogger(category: "linux-cu-service-test")
+        )
+    }
+
+    private func capabilityState(generatedAt: Date) -> ComputerUseCapabilityStateSnapshot {
+        let provenance = ComputerUseAuthorityProvenance(
+            source: .firestoreServer,
+            observedAt: generatedAt,
+            updatedAt: generatedAt
+        )
+        return ComputerUseCapabilityStateSnapshot(
+            publisherInstanceID: "linux-system-input-tests",
+            revision: 1,
+            generatedAt: generatedAt,
+            userID: "linux-test-user",
+            entitlement: ComputerUseEntitlementSnapshot(
+                isActive: true,
+                productId: ComputerUseEntitlementSnapshot.hostedProductID,
+                expireAt: generatedAt.addingTimeInterval(3_600),
+                allowsBrowser: true,
+                allowsSystem: true,
+                allowsPhoneControl: true,
+                allowsTrustedScopes: true,
+                allowsAuditExport: true
+            ),
+            entitlementProvenance: provenance,
+            budgetEnvelope: ComputerUseBudgetEnvelope(
+                level: .normal,
+                projectedMonthEndUSD: 0,
+                monthToDateUSD: 0,
+                activeActionsPerRun: 50,
+                activeActionsPerDay: 200,
+                activeSessionsPerDay: 4,
+                perUserDailySpendCeilingUSD: 5,
+                updatedAt: generatedAt
+            ),
+            budgetProvenance: provenance,
+            quotaUsage: ComputerUseQuotaUsage(
+                dayKey: "2027-01-15",
+                updatedAt: generatedAt
+            ),
+            quotaProvenance: provenance,
+            concurrentSessionActive: false,
+            killSwitch: false,
+            isComplete: true
+        )
     }
 
     private func auditEntries(
