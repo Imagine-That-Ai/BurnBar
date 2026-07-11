@@ -40,10 +40,11 @@ test("removing facade path detection fails", () => {
   assert.equal(verifyLinuxAttestationFacadeCi(input).passed, false);
 });
 
-test("removing either shared broker contract trigger fails", () => {
+test("removing either shared attestation contract trigger group fails", () => {
   for (const trigger of [
-    "tests/fixtures/linux-attestation/broker-v2-golden\\.json",
-    "schemas/linux-attestation-evidence-bundle-header-v1\\.schema\\.json",
+    "functions/src/(index|callables/linuxAppCheck|security/linuxAttestation(IngressTickets|IngressQuota)?)\\.ts",
+    "tests/fixtures/linux-attestation/(broker-v2-golden|ingress-ticket-v1-golden)\\.json",
+    "schemas/linux-attestation-(evidence-bundle-header-v1|ingress-ticket-v1)\\.schema\\.json",
   ]) {
     const input = mutate(valid(), "workflow", trigger);
     assert.equal(verifyLinuxAttestationFacadeCi(input).passed, false, trigger);

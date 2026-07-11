@@ -9,7 +9,7 @@ import { providerFetch } from "../providers/httpClient.js";
 export const LINUX_ATTESTATION_PROTOCOL_VERSION = 1 as const;
 export const LINUX_ATTESTATION_KIND = "tpm2_ima_signed_verdict_v1" as const;
 export const LINUX_ATTESTATION_POLICY_DEFAULT = "openburnbar-linux-tpm2-ima-v1" as const;
-export const LINUX_ATTESTATION_CHALLENGE_TTL_MS = 2 * 60 * 1000;
+export const LINUX_ATTESTATION_CHALLENGE_TTL_MS = 5 * 60 * 1000;
 export const LINUX_ATTESTATION_REPLAY_MARKER_TTL_MS = 24 * 60 * 60 * 1000;
 export const LINUX_APP_CHECK_TOKEN_TTL_MS = 30 * 60 * 1000;
 

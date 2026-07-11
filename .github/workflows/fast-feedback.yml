@@ -768,7 +768,7 @@ jobs:
           else
             echo "rust_changed=false" >> "$GITHUB_OUTPUT"
           fi
-          if grep -Eq '^(services/linux-attestation-facade/|tests/fixtures/linux-attestation/broker-v2-golden\.json$|schemas/linux-attestation-evidence-bundle-header-v1\.schema\.json$|\.github/(workflows/fast-feedback\.yml|dependabot\.yml)$|scripts/ci/(check-npm-audit-fail-closed|verify-linux-attestation-facade-ci)(\.test)?\.mjs$)' /tmp/fast-feedback-changed-paths.txt; then
+          if grep -Eq '^(services/linux-attestation-facade/|functions/src/(index|callables/linuxAppCheck|security/linuxAttestation(IngressTickets|IngressQuota)?)\.ts$|tests/fixtures/linux-attestation/(broker-v2-golden|ingress-ticket-v1-golden)\.json$|schemas/linux-attestation-(evidence-bundle-header-v1|ingress-ticket-v1)\.schema\.json$|\.github/(workflows/fast-feedback\.yml|dependabot\.yml)$|scripts/ci/(check-npm-audit-fail-closed|verify-linux-attestation-facade-ci)(\.test)?\.mjs$)' /tmp/fast-feedback-changed-paths.txt; then
             echo "linux_attestation_facade_changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "linux_attestation_facade_changed=false" >> "$GITHUB_OUTPUT"

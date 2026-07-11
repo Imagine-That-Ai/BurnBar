@@ -1,0 +1,81 @@
+{
+  "constants": {
+    "ticketIdBytes": 16,
+    "ticketSecretBytes": 32,
+    "wirePrefix": "obbat1_",
+    "secretHashDomain": "openburnbar.linux.attestation-ticket-secret.v1\u0000",
+    "claimFingerprintDomain": "openburnbar.linux.attestation-ticket-claim.v1"
+  },
+  "upload": {
+    "ticketId": "AAECAwQFBgcICQoLDA0ODw",
+    "ticketSecret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+    "ticketWire": "obbat1_AAECAwQFBgcICQoLDA0ODw.AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+    "issueRequest": {
+      "challengeId": "challenge-001",
+      "challenge": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "ticketSecretHashSha256": "1f19e5b47fa987a92f2c36048a53c385f87eb0b86762fe68a631ef9e55585f7f",
+      "expectedSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "expectedSize": 1048576
+    },
+    "issueResponse": {
+      "ok": true,
+      "ticketId": "AAECAwQFBgcICQoLDA0ODw",
+      "expiresAtMillis": 1900000300000
+    },
+    "ticketRecord": {
+      "schemaVersion": 1,
+      "protocolVersion": 1,
+      "attestationKind": "tpm2_ima_signed_verdict_v1",
+      "ticketId": "AAECAwQFBgcICQoLDA0ODw",
+      "uploadId": "QEFCQ0RFRkdISUpLTE1OTw",
+      "purpose": "evidence_upload",
+      "ticketSecretHashSha256": "1f19e5b47fa987a92f2c36048a53c385f87eb0b86762fe68a631ef9e55585f7f",
+      "claimFingerprintSha256": "551db36649298dde8eccc7e3f22dda22adfb1bebb184dfeaa6d026feb2473e75",
+      "uid": "linux-user-1",
+      "appId": "1:987654321:web:abcdef0123456789",
+      "deviceId": "ak-sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "challengeId": "challenge-001",
+      "challengeHashSha256": "0f007385b6f9d4b7eeb2748605afe1a984a0a3bfa3f014d09e2a784ce9e5cd1a",
+      "releaseDigestSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "expectedSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "expectedSize": 1048576,
+      "issuedAtMillis": 1900000000000,
+      "expiresAtMillis": 1900000300000,
+      "status": "issued"
+    }
+  },
+  "enrollment": {
+    "ticketId": "EBESExQVFhcYGRobHB0eHw",
+    "ticketSecret": "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8",
+    "ticketWire": "obbat1_EBESExQVFhcYGRobHB0eHw.ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8",
+    "issueRequest": {
+      "deviceId": "ak-sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ticketSecretHashSha256": "9d995115c4e0cfcf253d2a809948686b754015471ea17aa68cde350022a8ae6f",
+      "akTpmSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ekTpmSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "ekCertificateSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "issueResponse": {
+      "ok": true,
+      "ticketId": "EBESExQVFhcYGRobHB0eHw",
+      "expiresAtMillis": 1900000300000
+    },
+    "ticketRecord": {
+      "schemaVersion": 1,
+      "protocolVersion": 1,
+      "attestationKind": "tpm2_ima_signed_verdict_v1",
+      "ticketId": "EBESExQVFhcYGRobHB0eHw",
+      "purpose": "enrollment_begin",
+      "ticketSecretHashSha256": "9d995115c4e0cfcf253d2a809948686b754015471ea17aa68cde350022a8ae6f",
+      "claimFingerprintSha256": "49811949dd8a6ae1022c62fe405e98cc515a58722f3790f66cd2e11f5ebe80c6",
+      "uid": "linux-user-1",
+      "deviceId": "ak-sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "akTpmSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ekTpmSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "ekCertificateSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "issuedAtMillis": 1900000000000,
+      "expiresAtMillis": 1900000300000,
+      "status": "issued"
+    }
+  }
+}

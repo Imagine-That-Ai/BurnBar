@@ -407,12 +407,17 @@ test("account erasure retention records are server-only", async () => {
   }
 });
 
-test("Linux App Check challenge and session records are server-only", async () => {
+test("Linux App Check and attestation ingress records are server-only", async () => {
   const ownerDb = authedDb("linux-app-check-owner");
   const otherDb = authedDb("linux-app-check-attacker");
   const unauthDb = testEnv.unauthenticatedContext().firestore();
   const challengePath = "users/linux-app-check-owner/linux_app_check_challenges/challenge-1";
   const sessionPath = `users/linux-app-check-owner/linux_app_check_sessions/${"a".repeat(64)}`;
+  const ticketPath = "users/linux-app-check-owner/linux_attestation_ingress_tickets/AAECAwQFBgcICQoLDA0ODw";
+  const slotPath = `users/linux-app-check-owner/linux_attestation_enrollment_ticket_slots/${"d".repeat(64)}`;
+  const quotaPath = `linux_attestation_quota/${"e".repeat(64)}`;
+  const uploadPath = "linux_attestation_uploads/AAECAwQFBgcICQoLDA0ODw";
+  const enrollmentPath = `linux_attestation_enrollments/${"f".repeat(64)}`;
   const challenge = {
     protocolVersion: 1,
     challengeHashSha256: "b".repeat(64),
@@ -425,10 +430,45 @@ test("Linux App Check challenge and session records are server-only", async () =
     tokenHashSha256: "c".repeat(64),
     expireAt: Timestamp.fromMillis(Date.now() + 1_800_000),
   };
+  const ticket = {
+    schemaVersion: 1,
+    purpose: "evidence_upload",
+    ticketSecretHashSha256: "f".repeat(64),
+    expireAt: Timestamp.fromMillis(Date.now() + 300_000),
+  };
+  const slot = {
+    schemaVersion: 1,
+    ticketId: "AAECAwQFBgcICQoLDA0ODw",
+    expireAt: Timestamp.fromMillis(Date.now() + 300_000),
+  };
+  const quota = {
+    schemaVersion: 1,
+    action: "upload_uid_24h",
+    count: 1,
+    bytes: 1024,
+    expireAt: Timestamp.fromMillis(Date.now() + 86_400_000),
+  };
+  const upload = {
+    schemaVersion: 1,
+    uid: "linux-app-check-owner",
+    status: "pending",
+    expireAt: Timestamp.fromMillis(Date.now() + 300_000),
+  };
+  const enrollment = {
+    schemaVersion: 1,
+    uid: "linux-app-check-owner",
+    deviceId: "device-1",
+    status: "pending",
+  };
 
   await testEnv.withSecurityRulesDisabled(async (context) => {
     await setDoc(doc(context.firestore(), challengePath), challenge);
     await setDoc(doc(context.firestore(), sessionPath), session);
+    await setDoc(doc(context.firestore(), ticketPath), ticket);
+    await setDoc(doc(context.firestore(), slotPath), slot);
+    await setDoc(doc(context.firestore(), quotaPath), quota);
+    await setDoc(doc(context.firestore(), uploadPath), upload);
+    await setDoc(doc(context.firestore(), enrollmentPath), enrollment);
   });
 
   for (const db of [ownerDb, otherDb, unauthDb]) {
@@ -440,6 +480,20 @@ test("Linux App Check challenge and session records are server-only", async () =
     await assertFails(setDoc(doc(db, sessionPath), session));
     await assertFails(updateDoc(doc(db, sessionPath), { trustClass: "trusted" }));
     await assertFails(deleteDoc(doc(db, sessionPath)));
+    for (const [path, value] of [
+      [ticketPath, ticket],
+      [slotPath, slot],
+      [quotaPath, quota],
+      [uploadPath, upload],
+      [enrollmentPath, enrollment],
+    ]) {
+      await assertFails(getDoc(doc(db, path)));
+      await assertFails(setDoc(doc(db, path), value));
+      await assertFails(updateDoc(doc(db, path), { schemaVersion: 2 }));
+      await assertFails(deleteDoc(doc(db, path)));
+    }
+    await assertFails(getDocs(collection(db, "linux_attestation_uploads")));
+    await assertFails(getDocs(collection(db, "linux_attestation_enrollments")));
   }
 });
 

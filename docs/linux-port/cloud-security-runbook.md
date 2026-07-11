@@ -23,12 +23,20 @@ installed matrix described below are complete.
 
 ## App Check Protocol
 
-The source foundation uses two authenticated callables:
+The source foundation uses four authenticated bootstrap callables:
 
 1. `issueLinuxAppCheckChallenge` binds Firebase UID, app ID, device ID, app
    version, architecture, release SHA-256 digest, policy ID, and attestation
-   kind to a random two-minute challenge.
-2. `mintLinuxAppCheckToken` atomically consumes that challenge, obtains a signed
+   kind to a random five-minute challenge.
+2. `issueLinuxAttestationUploadTicket` runs after the broker has produced the
+   challenge-qualified quote and evidence bundle. It proves possession of the
+   raw challenge, binds the exact bundle SHA-256 and byte count, atomically
+   charges count/byte quotas, and returns one random ingress ticket ID. Only the
+   client-generated ticket secret's domain-separated hash is stored.
+3. `issueLinuxAttestationEnrollmentTicket` binds a registrar bootstrap to the
+   UID, AK-derived device ID, and decoded AK/EK/EK-certificate digests. It has a
+   separate quota and never reuses a quote challenge.
+4. `mintLinuxAppCheckToken` atomically consumes that challenge, obtains a signed
    verdict from the configured verifier, validates the full binding, and mints
    one server-selected 30-minute Firebase App Check token.
 
@@ -37,7 +45,37 @@ The raw challenge is returned once. Firestore stores only its SHA-256 hash under
 replay marker for 24 hours through TTL cleanup. The server stores only the
 minted token's SHA-256 hash and verifier receipt under a challenge-derived
 `users/{uid}/linux_app_check_sessions/{sessionHash}` document. Firestore Rules deny client
-access to both collections.
+access to both collections. Ticket documents live under
+`users/{uid}/linux_attestation_ingress_tickets/{ticketId}`. Functions stores
+only the domain-separated SHA-256 of the client-generated 32-byte ticket secret
+and returns only the server-generated 16-byte ticket ID plus expiry. The daemon
+constructs `obbat1_<ticketId>.<secret>` only for the public ingress header; it
+must never put that value in a URL, log, renderer message, crash report, or
+support bundle.
+
+Upload ticket issuance and quota reservation are one Firestore transaction and
+one challenge can authorize only one ticket. Limits are 6 per ten minutes and
+72 per day per UID/device, 216 per day per UID, and 2 GiB of declared evidence
+per day per UID. Enrollment limits are 2 per hour and 5 per day per UID plus 3
+per day per UID/device. Identical live retries return the same ticket without a
+second charge. Reservations are never refunded, all quota failures are closed,
+and ticket/slot/quota documents are server-only with TTL cleanup.
+
+The callable and ingress both cap evidence at 16 MiB, the Cloud Run HTTP/1
+request-body limit. Supporting larger bundles requires a future direct-to-GCS
+upload path with the object digest and size bound into the ticket. Ingress
+charges one of three upload attempts in a Firestore transaction before reading
+each body, requires the exact declared length, and counts malformed bodies plus
+successful receipt retries. The root `linux_attestation_uploads` collection is
+client-denied and has a five-minute `expireAt` TTL policy.
+
+Enrollment completion claims a fenced activation lease, checks Keylime for an
+already-active exact agent/AK/EK/certificate identity, activates only when the
+agent is absent, renews the fence immediately before PUT, and checks the same
+identity again before local commit. Ambiguous mutation failures retain the
+fence until expiry. A retry can therefore reconcile Keylime or Firestore
+response loss without an overlapping remote mutation; stale lease holders
+cannot activate, release, or terminalize a reclaimed enrollment.
 
 The remote verifier call is exact HTTPS with redirects refused, a sixty-second
 end-to-end authentication/request timeout, bounded evidence and response bodies,
@@ -111,9 +149,12 @@ the verifier's signed application verdict, not the Cloud Run transport token.
 Daemon endpoint overrides are deployment/test controls only:
 
 - `OPENBURNBAR_LINUX_APP_CHECK_CHALLENGE_ENDPOINT`
+- `OPENBURNBAR_LINUX_ATTESTATION_ENROLLMENT_TICKET_ENDPOINT`
+- `OPENBURNBAR_LINUX_ATTESTATION_UPLOAD_TICKET_ENDPOINT`
+- `OPENBURNBAR_LINUX_ATTESTATION_INGRESS_ENDPOINT`
 - `OPENBURNBAR_LINUX_APP_CHECK_MINT_ENDPOINT`
 
-Both overrides must be exact HTTPS URLs. The network client refuses redirects,
+All overrides must be exact HTTPS URLs. The network client refuses redirects,
 non-HTTPS endpoints, oversized responses, an unexpected final URL, malformed
 callable envelopes, and token-bearing requests without a valid account context.
 
@@ -263,23 +304,40 @@ remain blocked.
 ### App Check QA acceptance
 
 1. Issue one challenge and verify its raw nonce is absent from Firestore while
-   the SHA-256 hash, complete binding, two-minute expiry, and 24-hour TTL marker
+   the SHA-256 hash, complete binding, five-minute expiry, and 24-hour TTL marker
    are present.
-2. Race two mint requests from independent instances. Exactly one may consume
+2. After broker evidence production, issue an upload ticket with the raw
+   challenge and exact bundle digest/size. Verify Firestore stores only the
+   secret hash, returns an identical ticket ID for an identical retry, rejects
+   a different retry, and never returns or logs the secret or server upload ID.
+3. Race callers at every upload/enrollment count and byte quota boundary.
+   Exactly the configured number may succeed, failed or unused reservations
+   are not refunded, and the next fixed window uses a distinct quota document.
+4. Send three malformed or abandoned upload bodies, then verify a fourth PUT is
+   rejected before body consumption. Repeat with one successful upload and two
+   identical receipt retries; the fourth attempt must also be rate-limited.
+   Verify exact-length chunked bodies and Firestore TTL/rules for root upload
+   and enrollment records.
+5. Race enrollment completion, force Keylime response loss, reclaim an expired
+   activation lease, and force local commit response loss. One exact remote
+   identity may become active; stale workers and mismatched TPM material must
+   never transition or delete current state.
+6. Race two mint requests from independent instances. Exactly one may consume
    the challenge; the other must fail as replayed.
-3. Mutate every binding field and signed-verdict field individually. Each must
+7. Mutate every binding field and signed-verdict field individually. Each must
    fail before token minting or session recording.
-4. Verify malformed, expired, denied, oversized, redirected, timed-out, unsigned,
+8. Verify malformed, expired, denied, oversized, redirected, timed-out, unsigned,
    wrong-key, wrong-issuer, and wrong-audience verifier responses fail closed.
-5. Verify a valid signed verdict mints one token with a fixed 30-minute expiry,
-   records only the token hash and receipt, and leaves both Firestore collections
-   unreadable and unwritable to clients.
-6. Exercise daemon coalescing, refresh lead time, expiry, cancellation, account
+9. Verify a valid signed verdict mints one token with a fixed 30-minute expiry,
+   records only the token hash and receipt, and leaves every challenge, session,
+   ticket, slot, quota, upload, and enrollment collection unreadable and
+   unwritable to clients.
+10. Exercise daemon coalescing, refresh lead time, expiry, cancellation, account
    switch, session-generation switch, sign-out, locked keyring, offline/retry,
    process restart, and clock skew. Raw token state must disappear on daemon
    restart and must never cross the renderer or RPC status contract.
-7. With `LINUX_APP_CHECK_MINT_ENABLED=false`, verify challenge and mint paths fail
+11. With `LINUX_APP_CHECK_MINT_ENABLED=false`, verify challenge, ticket, and mint paths fail
    closed while local SQLite, local provider, and local sign-out workflows work.
-8. Repeat the production vectors against the exact signed candidate on every
+12. Repeat the production vectors against the exact signed candidate on every
    environment claimed as supported, retaining verifier decision logs and
    package/release measurements bound to the same commit.

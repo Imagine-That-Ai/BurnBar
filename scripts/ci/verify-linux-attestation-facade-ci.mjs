@@ -79,8 +79,9 @@ export function verifyLinuxAttestationFacadeCi({ workflow, dependabot, audit }) 
     for (const marker of [
       "linux_attestation_facade_changed: ${{ steps.changed.outputs.linux_attestation_facade_changed }}",
       "services/linux-attestation-facade/",
-      "tests/fixtures/linux-attestation/broker-v2-golden\\.json",
-      "schemas/linux-attestation-evidence-bundle-header-v1\\.schema\\.json",
+      "functions/src/(index|callables/linuxAppCheck|security/linuxAttestation(IngressTickets|IngressQuota)?)\\.ts",
+      "tests/fixtures/linux-attestation/(broker-v2-golden|ingress-ticket-v1-golden)\\.json",
+      "schemas/linux-attestation-(evidence-bundle-header-v1|ingress-ticket-v1)\\.schema\\.json",
       "dependabot\\.yml",
       "check-npm-audit-fail-closed",
       "verify-linux-attestation-facade-ci",

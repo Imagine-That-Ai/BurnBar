@@ -34,6 +34,11 @@ import {
   type LinuxAttestationVerifier,
   type LinuxVerifierIdentityTokenProvider,
 } from "../security/linuxAttestation.js";
+import {
+  FirestoreLinuxAttestationTicketAuthority,
+  parseLinuxEnrollmentTicketRequest,
+  parseLinuxUploadTicketRequest,
+} from "../security/linuxAttestationIngressTickets.js";
 import { parseCallableInput } from "../validation/callableSchema.js";
 import { checkPublicHttpEndpointRateLimit } from "./publicRateLimit.js";
 
@@ -305,6 +310,7 @@ async function mintLinuxAppCheckTokenCore(params: MintLinuxAppCheckParams): Prom
 
 const defaultCreateToken: AppCheckTokenMinter = (appId, options) => getAppCheck().createToken(appId, options);
 const challengeStore = new FirestoreLinuxAttestationChallengeStore(db);
+const ticketAuthority = new FirestoreLinuxAttestationTicketAuthority(db);
 
 async function recordLinuxAttestationSession(
   decision: LinuxAttestationDecision,
@@ -400,6 +406,52 @@ export const mintLinuxAppCheckToken = onCall(
     });
     return { ok: true, ...result };
   }),
+);
+
+export const issueLinuxAttestationUploadTicket = onCall(
+  { region: FUNCTIONS_REGION, enforceAppCheck: false, maxInstances: 20 },
+  wrapCallableHandler(
+    "issueLinuxAttestationUploadTicket",
+    async (request: CallableRequest<Record<string, unknown>>) => {
+      assertAuth(request);
+      const uid = request.auth!.uid;
+      await checkPublicHttpEndpointRateLimit("issueLinuxAttestationUploadTicket", uid);
+      parseCallableInput("issueLinuxAttestationUploadTicket", {}, request.data);
+      const config = getConfig();
+      const policy = runtimePolicy();
+      assertProductionAppIDAllowlisted(policy, config.allowedAppCheckAppIDs);
+      const result = await ticketAuthority.issueUpload(parseLinuxUploadTicketRequest(request.data, uid));
+      logInfo({
+        event: "callable_info",
+        message: "linux_attestation_upload_ticket_issued",
+        purpose: "evidence_upload",
+      });
+      return { ok: true, ...result };
+    },
+  ),
+);
+
+export const issueLinuxAttestationEnrollmentTicket = onCall(
+  { region: FUNCTIONS_REGION, enforceAppCheck: false, maxInstances: 10 },
+  wrapCallableHandler(
+    "issueLinuxAttestationEnrollmentTicket",
+    async (request: CallableRequest<Record<string, unknown>>) => {
+      assertAuth(request);
+      const uid = request.auth!.uid;
+      await checkPublicHttpEndpointRateLimit("issueLinuxAttestationEnrollmentTicket", uid);
+      parseCallableInput("issueLinuxAttestationEnrollmentTicket", {}, request.data);
+      const config = getConfig();
+      const policy = runtimePolicy();
+      assertProductionAppIDAllowlisted(policy, config.allowedAppCheckAppIDs);
+      const result = await ticketAuthority.issueEnrollment(parseLinuxEnrollmentTicketRequest(request.data, uid));
+      logInfo({
+        event: "callable_info",
+        message: "linux_attestation_enrollment_ticket_issued",
+        purpose: "enrollment_begin",
+      });
+      return { ok: true, ...result };
+    },
+  ),
 );
 
 export const __testing__ = {

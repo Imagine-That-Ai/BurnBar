@@ -102,6 +102,26 @@ export class FirestoreUploadStateStore implements UploadStateStore {
     const data = snapshot.data();
     return snapshot.exists && data !== undefined ? recordFromData(data) : undefined;
   }
+  async claimUploadAttempt(uploadId: string, uid: string, nowMillis: number, maxAttempts: number): Promise<UploadRecord> {
+    return this.firestore.runTransaction(async transaction => {
+      const ref = this.firestore.collection(this.collection).doc(uploadId);
+      const snapshot = await transaction.get(ref);
+      const data = snapshot.data();
+      if (!snapshot.exists || data === undefined) throw new PublicError(404, "not_found", "Upload was not found");
+      const record = recordFromData(data);
+      if (record.uid !== uid) throw new PublicError(403, "forbidden", "Upload does not belong to this user");
+      if (record.expiresAtMillis <= nowMillis) throw new PublicError(409, "conflict", "Upload has expired");
+      if (record.status !== "pending" && !(record.status === "uploaded" && record.generation !== undefined)) {
+        throw new PublicError(409, "conflict", "Upload has already been used");
+      }
+      const attemptCount = record.uploadAttemptCount ?? 0;
+      if (!Number.isSafeInteger(attemptCount) || attemptCount < 0) throw new Error("Upload attempt state is invalid");
+      if (attemptCount >= maxAttempts) throw new PublicError(429, "rate_limited", "Evidence upload retry limit was reached");
+      const updated = { ...record, uploadAttemptCount: attemptCount + 1 };
+      transaction.set(ref, updated);
+      return updated;
+    });
+  }
   async completeUpload(uploadId: string, generation: string): Promise<UploadRecord> {
     return this.firestore.runTransaction(async transaction => {
       const ref = this.firestore.collection(this.collection).doc(uploadId);
@@ -219,15 +239,73 @@ export class FirestoreEnrollmentStore implements EnrollmentStore {
       if (existing !== undefined && !existing.active && existing.agentId === agentId) transaction.delete(ref);
     });
   }
-  async activate(uid: string, deviceId: string, agentId: string): Promise<void> {
+  async claimActivation(uid: string, deviceId: string, nowMillis: number, leaseMillis: number): Promise<
+    | { kind: "acquired"; record: EnrollmentRecord; leaseToken: string }
+    | { kind: "cached" }
+    | { kind: "busy" }
+  > {
+    return this.firestore.runTransaction(async transaction => {
+      const ref = this.firestore.collection(this.collection).doc(documentId(uid, deviceId));
+      const snapshot = await transaction.get(ref);
+      const existing = snapshot.data() as EnrollmentRecord | undefined;
+      if (!snapshot.exists || existing?.uid !== uid || existing.deviceId !== deviceId) {
+        throw new PublicError(409, "conflict", "Enrollment is not pending");
+      }
+      if (existing.active) return { kind: "cached" as const };
+      if (existing.activationBlob === undefined) throw new PublicError(409, "conflict", "Enrollment is not pending");
+      if ((existing.activationLeaseExpiresAtMillis ?? 0) > nowMillis) return { kind: "busy" as const };
+      const leaseToken = randomUUID();
+      const claimed = {
+        ...existing,
+        activationLeaseToken: leaseToken,
+        activationLeaseExpiresAtMillis: nowMillis + leaseMillis,
+      };
+      transaction.set(ref, claimed);
+      return { kind: "acquired" as const, record: claimed, leaseToken };
+    });
+  }
+  async activate(uid: string, deviceId: string, agentId: string, leaseToken: string): Promise<void> {
     await this.firestore.runTransaction(async transaction => {
       const ref = this.firestore.collection(this.collection).doc(documentId(uid, deviceId));
       const snapshot = await transaction.get(ref);
       const data = snapshot.data() as EnrollmentRecord | undefined;
-      if (!snapshot.exists || data?.uid !== uid || data.deviceId !== deviceId || data.agentId !== agentId || data.active || data.activationBlob === undefined) {
+      if (!snapshot.exists || data?.uid !== uid || data.deviceId !== deviceId || data.agentId !== agentId || data.active || data.activationBlob === undefined || data.activationLeaseToken !== leaseToken) {
         throw new PublicError(409, "conflict", "Enrollment state changed");
       }
-      transaction.update(ref, { active: true, activationBlob: FieldValue.delete() });
+      transaction.update(ref, {
+        active: true,
+        activationBlob: FieldValue.delete(),
+        activationLeaseToken: FieldValue.delete(),
+        activationLeaseExpiresAtMillis: FieldValue.delete(),
+      });
+    });
+  }
+  async renewActivation(uid: string, deviceId: string, leaseToken: string, nowMillis: number, leaseMillis: number): Promise<void> {
+    await this.firestore.runTransaction(async transaction => {
+      const ref = this.firestore.collection(this.collection).doc(documentId(uid, deviceId));
+      const snapshot = await transaction.get(ref);
+      const data = snapshot.data() as EnrollmentRecord | undefined;
+      if (!snapshot.exists
+          || data?.uid !== uid
+          || data.deviceId !== deviceId
+          || data.active
+          || data.activationBlob === undefined
+          || data.activationLeaseToken !== leaseToken) {
+        throw new PublicError(409, "conflict", "Enrollment state changed");
+      }
+      transaction.update(ref, { activationLeaseExpiresAtMillis: nowMillis + leaseMillis });
+    });
+  }
+  async releaseActivation(uid: string, deviceId: string, leaseToken: string): Promise<void> {
+    await this.firestore.runTransaction(async transaction => {
+      const ref = this.firestore.collection(this.collection).doc(documentId(uid, deviceId));
+      const snapshot = await transaction.get(ref);
+      const data = snapshot.data() as EnrollmentRecord | undefined;
+      if (!snapshot.exists || data?.active || data?.activationLeaseToken !== leaseToken) return;
+      transaction.update(ref, {
+        activationLeaseToken: FieldValue.delete(),
+        activationLeaseExpiresAtMillis: FieldValue.delete(),
+      });
     });
   }
   async requireActive(uid: string, deviceId: string): Promise<EnrollmentRecord> {

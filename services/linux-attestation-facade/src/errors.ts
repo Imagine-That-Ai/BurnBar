@@ -5,6 +5,7 @@ export type PublicErrorCode =
   | "not_found"
   | "conflict"
   | "payload_too_large"
+  | "rate_limited"
   | "verification_failed"
   | "dependency_unavailable"
   | "internal";

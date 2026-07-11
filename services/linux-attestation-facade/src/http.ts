@@ -4,7 +4,12 @@ import { parseJsonBuffer } from "./validation.js";
 
 export async function readBody(request: IncomingMessage, maxBytes: number): Promise<Buffer> {
   const declared = request.headers["content-length"];
-  if (declared !== undefined && Number(declared) > maxBytes) throw new PublicError(413, "payload_too_large", "Request payload is too large");
+  if (declared !== undefined) {
+    if (!/^(0|[1-9][0-9]*)$/u.test(declared) || !Number.isSafeInteger(Number(declared))) {
+      throw new PublicError(400, "bad_request", "Content-Length is invalid");
+    }
+    if (Number(declared) > maxBytes) throw new PublicError(413, "payload_too_large", "Request payload is too large");
+  }
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const value of request) {
@@ -14,6 +19,21 @@ export async function readBody(request: IncomingMessage, maxBytes: number): Prom
     chunks.push(chunk);
   }
   return Buffer.concat(chunks);
+}
+
+export async function readExactBody(request: IncomingMessage, expectedBytes: number, hardLimit: number): Promise<Buffer> {
+  if (!Number.isSafeInteger(expectedBytes) || expectedBytes <= 0 || expectedBytes > hardLimit) {
+    throw new PublicError(413, "payload_too_large", "Request payload is too large");
+  }
+  const declared = request.headers["content-length"];
+  if (declared !== undefined && Number(declared) !== expectedBytes) {
+    throw new PublicError(400, "bad_request", "Request payload size does not match the upload declaration");
+  }
+  const bytes = await readBody(request, expectedBytes);
+  if (bytes.byteLength !== expectedBytes) {
+    throw new PublicError(400, "bad_request", "Request payload size does not match the upload declaration");
+  }
+  return bytes;
 }
 
 export async function readJson(request: IncomingMessage, maxBytes: number): Promise<unknown> {

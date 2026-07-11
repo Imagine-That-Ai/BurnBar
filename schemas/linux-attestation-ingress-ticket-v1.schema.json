@@ -1,0 +1,214 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openburnbar.dev/schemas/linux-attestation-ingress-ticket-v1.json",
+  "title": "OpenBurnBar Linux attestation ingress ticket v1 immutable issuance projection",
+  "description": "Wire requests, issue responses, and the named JSON issuance projection returned by linuxAttestationTicketIssuanceProjection. That projection contains every immutable ticket field and intentionally strips Firestore issuedAt/expireAt Timestamp metadata. The record definitions cover only status=issued; consumption, retry, lease, terminal, and other lifecycle fields are server-owned state outside this initial issuance schema.",
+  "oneOf": [
+    { "$ref": "#/$defs/uploadIssueRequest" },
+    { "$ref": "#/$defs/enrollmentIssueRequest" },
+    { "$ref": "#/$defs/issueResponse" },
+    { "$ref": "#/$defs/uploadTicketRecord" },
+    { "$ref": "#/$defs/enrollmentTicketRecord" }
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "ticketId": {
+      "type": "string",
+      "minLength": 22,
+      "maxLength": 22,
+      "pattern": "^[A-Za-z0-9_-]{21}[AQgw]$",
+      "description": "Canonical unpadded base64url encoding of exactly 16 random bytes"
+    },
+    "ticketSecret": {
+      "type": "string",
+      "minLength": 43,
+      "maxLength": 43,
+      "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$",
+      "description": "Canonical unpadded base64url encoding of exactly 32 client-generated random bytes; never sent to Functions or stored in Firestore"
+    },
+    "ticketWire": {
+      "type": "string",
+      "pattern": "^obbat1_[A-Za-z0-9_-]{21}[AQgw]\\.[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$"
+    },
+    "uid": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "deviceId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z0-9._:+/-]+$"
+    },
+    "challengeId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "pattern": "^[A-Za-z0-9._:+/-]+$"
+    },
+    "challenge": {
+      "type": "string",
+      "minLength": 43,
+      "maxLength": 43,
+      "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$"
+    },
+    "uploadIssueRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "challengeId",
+        "challenge",
+        "ticketSecretHashSha256",
+        "expectedSha256",
+        "expectedSize"
+      ],
+      "properties": {
+        "challengeId": { "$ref": "#/$defs/challengeId" },
+        "challenge": { "$ref": "#/$defs/challenge" },
+        "ticketSecretHashSha256": { "$ref": "#/$defs/sha256" },
+        "expectedSha256": { "$ref": "#/$defs/sha256" },
+        "expectedSize": { "type": "integer", "minimum": 1, "maximum": 16777216 }
+      }
+    },
+    "enrollmentIssueRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "deviceId",
+        "ticketSecretHashSha256",
+        "akTpmSha256",
+        "ekTpmSha256",
+        "ekCertificateSha256"
+      ],
+      "properties": {
+        "deviceId": { "$ref": "#/$defs/deviceId" },
+        "ticketSecretHashSha256": { "$ref": "#/$defs/sha256" },
+        "akTpmSha256": { "$ref": "#/$defs/sha256" },
+        "ekTpmSha256": { "$ref": "#/$defs/sha256" },
+        "ekCertificateSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "issueResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ok", "ticketId", "expiresAtMillis"],
+      "properties": {
+        "ok": { "const": true },
+        "ticketId": { "$ref": "#/$defs/ticketId" },
+        "expiresAtMillis": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "uploadTicketRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "protocolVersion",
+        "attestationKind",
+        "ticketId",
+        "purpose",
+        "ticketSecretHashSha256",
+        "claimFingerprintSha256",
+        "uid",
+        "appId",
+        "deviceId",
+        "uploadId",
+        "challengeId",
+        "challengeHashSha256",
+        "releaseDigestSha256",
+        "expectedSha256",
+        "expectedSize",
+        "issuedAtMillis",
+        "expiresAtMillis",
+        "status"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "protocolVersion": { "const": 1 },
+        "attestationKind": { "const": "tpm2_ima_signed_verdict_v1" },
+        "ticketId": { "$ref": "#/$defs/ticketId" },
+        "purpose": { "const": "evidence_upload" },
+        "uploadId": { "$ref": "#/$defs/ticketId" },
+        "ticketSecretHashSha256": { "$ref": "#/$defs/sha256" },
+        "claimFingerprintSha256": { "$ref": "#/$defs/sha256" },
+        "uid": { "$ref": "#/$defs/uid" },
+        "appId": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "deviceId": { "$ref": "#/$defs/deviceId" },
+        "challengeId": { "$ref": "#/$defs/challengeId" },
+        "challengeHashSha256": { "$ref": "#/$defs/sha256" },
+        "releaseDigestSha256": { "$ref": "#/$defs/sha256" },
+        "expectedSha256": { "$ref": "#/$defs/sha256" },
+        "expectedSize": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16777216
+        },
+        "issuedAtMillis": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "expiresAtMillis": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "status": { "const": "issued" }
+      }
+    },
+    "enrollmentTicketRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "protocolVersion",
+        "attestationKind",
+        "ticketId",
+        "purpose",
+        "ticketSecretHashSha256",
+        "claimFingerprintSha256",
+        "uid",
+        "deviceId",
+        "akTpmSha256",
+        "ekTpmSha256",
+        "ekCertificateSha256",
+        "issuedAtMillis",
+        "expiresAtMillis",
+        "status"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "protocolVersion": { "const": 1 },
+        "attestationKind": { "const": "tpm2_ima_signed_verdict_v1" },
+        "ticketId": { "$ref": "#/$defs/ticketId" },
+        "purpose": { "const": "enrollment_begin" },
+        "ticketSecretHashSha256": { "$ref": "#/$defs/sha256" },
+        "claimFingerprintSha256": { "$ref": "#/$defs/sha256" },
+        "uid": { "$ref": "#/$defs/uid" },
+        "deviceId": { "$ref": "#/$defs/deviceId" },
+        "akTpmSha256": { "$ref": "#/$defs/sha256" },
+        "ekTpmSha256": { "$ref": "#/$defs/sha256" },
+        "ekCertificateSha256": { "$ref": "#/$defs/sha256" },
+        "issuedAtMillis": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "expiresAtMillis": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "status": { "const": "issued" }
+      }
+    }
+  }
+}
