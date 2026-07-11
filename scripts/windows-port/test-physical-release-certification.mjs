@@ -27,7 +27,11 @@ assert.match(script, /Refusing certification evidence for an artifact without a 
 assert.match(script, /run-ui-automation\.ps1/);
 assert.match(script, /-CertificationProfile', 'all'/);
 assert.match(script, /validate-release-certification-evidence\.mjs/);
-assert.match(script, /overallVerdict = 'NO-GO'/);
+assert.match(
+  script,
+  /\$overallVerdict = if \(\$nonPassingRequiredGates\.Count -eq 0\) \{ 'GO' \} else \{ 'NO-GO' \}/,
+);
+assert.match(script, /overallVerdict = \$overallVerdict/);
 for (const gate of [
   "physical-performance-x64",
   "physical-performance-arm64",

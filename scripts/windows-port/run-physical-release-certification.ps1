@@ -379,12 +379,29 @@ if (-not [string]::IsNullOrWhiteSpace($SupplementalReceiptDirectory)) {
     }
 }
 
+$requiredGateIds = @(
+    'local-automated-checks',
+    'physical-performance-x64',
+    'physical-performance-arm64',
+    'accessibility-display',
+    'staging-cloud',
+    'media-computer-use-safety',
+    'store-update-lifecycle'
+)
+$nonPassingRequiredGates = @($requiredGateIds | Where-Object {
+    $gateId = $_
+    @($receiptEntries | Where-Object {
+        $_.gate -eq $gateId -and $_.status -eq 'PASS'
+    }).Count -ne 1
+})
+$overallVerdict = if ($nonPassingRequiredGates.Count -eq 0) { 'GO' } else { 'NO-GO' }
+
 $manifest = [ordered]@{
     schema = $BundleSchema
     generatedAtUtc = [DateTimeOffset]::UtcNow.ToUniversalTime().ToString('o')
     source = [ordered]@{ commitSha = Get-CommitSha; dirtyTree = Test-DirtyTree }
     runner = [ordered]@{ script = 'scripts/windows-port/run-physical-release-certification.ps1'; platform = $Platform; physicalHardwareAsserted = [bool]$PhysicalHardware }
-    overallVerdict = 'NO-GO'
+    overallVerdict = $overallVerdict
     receipts = @($receiptEntries | ForEach-Object { [ordered]@{ path = $_.path; sha256 = $_.sha256 } })
     gates = @($receiptEntries | ForEach-Object { [ordered]@{ id = $_.gate; status = $_.status; receipts = @($_.path) } })
     notes = @('PASS is reserved for evidence observed on the declared surface.', 'VM, hosted runner, source review, unit tests, and package registration do not satisfy physical certification.')
