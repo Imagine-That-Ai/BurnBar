@@ -42,7 +42,14 @@ public sealed class SendInputInputSynthesizer : IInputSynthesizer
             case MacInputAction.Kind.Type:
                 return TypeText(action.Text);
             case MacInputAction.Kind.Scroll:
-                return Scroll(action.DisplayX, action.DisplayY, action.DeltaX ?? 0, action.DeltaY ?? 0);
+                if (action.DisplayX is not { } scrollX || action.DisplayY is not { } scrollY)
+                {
+                    return new InputSynthesisResult(dispatched: false, detail: "missing_coordinates");
+                }
+
+                var scrollDeltaX = action.DeltaX ?? ((action.DragEndX ?? scrollX) - scrollX);
+                var scrollDeltaY = action.DeltaY ?? ((action.DragEndY ?? (scrollY - 600)) - scrollY);
+                return Scroll(scrollX, scrollY, scrollDeltaX, scrollDeltaY);
             case MacInputAction.Kind.Key:
                 return Key(action.Key);
             case MacInputAction.Kind.Shortcut:
@@ -117,6 +124,11 @@ public sealed class SendInputInputSynthesizer : IInputSynthesizer
             }
 
             inputs.Add(MakeAbsoluteMove(x.Value, y.Value));
+        }
+
+        if (deltaX == 0 && deltaY == 0)
+        {
+            return new InputSynthesisResult(dispatched: false, detail: "empty_scroll");
         }
 
         if (deltaY != 0)

@@ -125,6 +125,37 @@ public sealed class DesktopLoopTests
     }
 
     [Fact]
+    public void RuntimeSession_FailedDispatchIsRecordedAsDenied()
+    {
+        string root = TempRoot();
+        try
+        {
+            var input = new RecordingSynthesizer(
+                routesThroughSignedDriver: true,
+                synthesisResult: new InputSynthesisResult(false, "empty_scroll"));
+            var session = Runtime(root, input, new StaticInspector(password: false), new InMemoryKillSwitchFlag());
+
+            ComputerUseLoopResult result = session.DispatchAlreadyApproved(
+                new MacInputAction(MacInputAction.Kind.Scroll, displayX: 5, displayY: 5, deltaY: 0),
+                AuditApprovedBy.Mac);
+
+            Assert.False(result.Succeeded);
+            Assert.Equal(ComputerUseDenyReason.AuditFailure, result.DenyReason);
+            AuditArchiveResult audit = new ComputerUseAuditArchive(root).Validate(session.SessionId);
+            Assert.True(audit.Success, audit.Message);
+            Assert.Equal(2, audit.EntryCount);
+
+            string chain = File.ReadAllText(Path.Combine(root, session.SessionId, "chain.jsonl"));
+            Assert.Contains("\"approvedBy\":\"denied\"", chain, StringComparison.Ordinal);
+            Assert.Contains("\"denyReason\":\"audit_failure\"", chain, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void RuntimeSession_WatchdogFlagBlocksBeforeInspectionOrSynthesis()
     {
         string root = TempRoot();
@@ -206,7 +237,9 @@ public sealed class DesktopLoopTests
             new KillSwitchStateMachine(flag));
     }
 
-    private sealed class RecordingSynthesizer(bool routesThroughSignedDriver = false) : IInputSynthesizer
+    private sealed class RecordingSynthesizer(
+        bool routesThroughSignedDriver = false,
+        InputSynthesisResult? synthesisResult = null) : IInputSynthesizer
     {
         public int Calls { get; private set; }
 
@@ -218,7 +251,7 @@ public sealed class DesktopLoopTests
         {
             Calls++;
             Last = action;
-            return new InputSynthesisResult(true, "ok");
+            return synthesisResult ?? new InputSynthesisResult(true, "ok");
         }
     }
 

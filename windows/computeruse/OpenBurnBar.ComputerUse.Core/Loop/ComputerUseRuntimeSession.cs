@@ -140,7 +140,25 @@ public sealed class ComputerUseRuntimeSession
                 return RecordDeniedLocked(action, ComputerUseDenyReason.AuditFailure, ex.GetType().Name);
             }
 
-            return _desktopLoop.Dispatch(action);
+            ComputerUseLoopResult result;
+            try
+            {
+                result = _desktopLoop.Dispatch(action);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                return RecordDeniedLocked(action, ComputerUseDenyReason.AuditFailure, ex.GetType().Name);
+            }
+
+            if (!result.Succeeded)
+            {
+                return RecordDeniedLocked(
+                    action,
+                    result.DenyReason ?? ComputerUseDenyReason.AuditFailure,
+                    result.Detail);
+            }
+
+            return result;
         }
     }
 
