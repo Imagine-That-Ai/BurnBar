@@ -3,9 +3,10 @@
 Status: source-level native shell, compact status window, and freedesktop
 notification action primitives implemented; the desktop-session harness now
 captures tray, compact-status, deep-link, and deterministic notification action
-artifacts, and the desktop-matrix harness requires native-shell evidence before
-a row can become ready. Installed desktop matrix breadth, provider OAuth return,
-and cloud agent-reply inline-reply parity remain open.
+and tray-host restart recovery artifacts, and the desktop-matrix harness
+requires native-shell evidence before a row can become ready. Installed desktop
+matrix breadth, provider OAuth return, and cloud agent-reply inline-reply parity
+remain open.
 
 This document records the native shell contract introduced for
 `LNX-NATIVE-001`. It covers process ownership, background launch, typed deep
@@ -86,10 +87,13 @@ read produces unavailable state instead of preserving a false live label.
 
 Left-clicking the tray icon opens the singleton compact status window; the menu
 also exposes "Open quick status" for hosts that do not deliver a normal left
-click. GNOME icon-only behavior, StatusNotifier/AppIndicator host loss,
-keyboard/screen-reader access in installed sessions, and tray crash recovery
-remain installed-product certification rows. The menu does not yet provide
-macOS-equivalent account quick switching.
+click. The installed desktop-session harness now terminates and restarts the
+XFCE/AppIndicator StatusNotifier host, refreshes the app's D-Bus item/menu
+handles, invokes a recovered route action, and fails if duplicate registered
+items or extra app processes remain. GNOME icon-only behavior,
+keyboard/screen-reader access across all supported tray hosts, and broader
+desktop-host crash behavior remain installed-product certification rows. The
+menu does not yet provide macOS-equivalent account quick switching.
 
 ## Compact status window
 
@@ -252,14 +256,18 @@ window, and fresh `chat / open-chat` route sample all pass.
 
 `scripts/linux-port/linux-desktop-session.sh` now emits the tray-host,
 tray-actions, compact-status-window, status-window-a11y, notification-server,
-notification-actions, notification-relaunch-route, deep-link-relaunch, and
-partial login-start artifact inputs from a real installed `.deb` session:
+notification-actions, notification-relaunch-route, deep-link-relaunch,
+tray-host-loss-recovery, and partial login-start artifact inputs from a real
+installed `.deb` session:
 D-Bus menu activation must return successfully, route actions must create fresh
 `route.navigation` samples summarized in `tray-action-route-results.json`,
 quick status must open/close with screenshot and AT-SPI focus evidence,
 notification activation must route through the installed freedesktop action
 path, and secondary `openburnbar://chat` launch must exit via single-instance
-handoff while the original process stays alive. The
+handoff while the original process stays alive. The tray-host-loss proof kills
+the current tray host, observes the watcher loss, restarts the host, refreshes
+the recovered StatusNotifier item and D-Bus menu, invokes a recovered dashboard
+route, and requires one app process plus one registered item before passing. The
 `native-login-start-roundtrip.json` produced by this session intentionally
 remains `passed: false` until a dedicated lifecycle harness proves relogin and
 package-uninstall removal.

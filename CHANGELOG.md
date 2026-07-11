@@ -57,6 +57,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `notify-rust` response handling, and notification-triggered relaunch routing
   through the installed app. This proves the native D-Bus action path without
   claiming rich desktop-server breadth or cloud inline-reply parity.
+- **Linux tray host-loss installed capture** - the packaged desktop-session
+  harness now terminates and restarts the XFCE/AppIndicator StatusNotifier
+  host, refreshes the recovered D-Bus menu handles, invokes a recovered tray
+  route, and fails if duplicate tray registrations or extra app processes
+  remain after recovery.
 - **Linux daemon event subscription authority** - replaces one-shot terminal
   subscription fixtures with bounded daemon-owned start/resume/stop state,
   monotonic cursors, restart recovery, cancellation tombstones, strict scope

@@ -52,6 +52,9 @@ test('packaged session provisions and exercises the Linux accessibility stack', 
     'tray-updates-menu-event.txt',
     'tray-login-start-menu-event.txt',
     'tray-action-route-results.json',
+    'tray-host-loss-recovery.json',
+    'tray-host-loss-recovery-menu-event.txt',
+    'tray-recovered-menu-actions.json',
     'freedesktop-notification-test-server.py',
     'OPENBURNBAR_NATIVE_NOTIFICATION_EVIDENCE',
     'native-notification-capabilities.json',
@@ -66,6 +69,9 @@ test('packaged session provisions and exercises the Linux accessibility stack', 
     'native-status-window-a11y.json',
     'native-deep-link-relaunch.json',
     'native-login-start-roundtrip.json',
+    'capture_tray_host_loss_recovery',
+    'refresh_tray_item_handles',
+    'xfce4-panel-restart.log',
     'CHAT_ID',
     'PROVIDERS_ID',
     'UPDATES_ID',
@@ -101,10 +107,16 @@ test('packaged session captures native shell evidence inputs from real D-Bus act
     'native-status-window-a11y.json',
     'native-deep-link-relaunch.json',
     'native-login-start-roundtrip.json',
+    'tray-host-loss-recovery.json',
+    'tray-host-loss-recovery-menu-event.txt',
+    'recoveredAction',
+    'xfce4-panel-restart.log',
     'packaged-ui-route-after-paint:${route}',
     'openburnbar://chat',
     'secondaryProcessExited'
   ]) assert.ok(session.includes(marker), marker);
+  assert.ok(session.includes('terminate_process_tree "$panel_pid"'));
+  assert.doesNotMatch(session, /pkill .*xfce4-panel/);
 });
 
 test('toolchain and artifact reuse preserve the complete accessibility proof', () => {

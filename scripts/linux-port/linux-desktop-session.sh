@@ -48,6 +48,7 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
 
   openbox >"$out_dir/openbox.log" 2>&1 &
   xfce4-panel --disable-wm-check >"$out_dir/xfce4-panel.log" 2>&1 &
+  panel_pid="$!"
   sleep 2
   {
     echo "== panel processes =="
@@ -542,50 +543,62 @@ ZOOM
   xdotool key --clearmodifiers ctrl+0 || true
   sleep 0.3
 
-  registered_file="$out_dir/tray-registered-items.txt"
-  for _ in $(seq 1 80); do
-    if gdbus call --session \
-      --dest org.kde.StatusNotifierWatcher \
-      --object-path /StatusNotifierWatcher \
-      --method org.freedesktop.DBus.Properties.Get \
-      org.kde.StatusNotifierWatcher RegisteredStatusNotifierItems \
-      >"$registered_file" 2>"$out_dir/tray-registered-items.err"; then
-      if grep -Eq "/(StatusNotifierItem|NotificationItem)/" "$registered_file"; then
-        break
+  refresh_tray_item_handles() {
+    local prefix="$1"
+    local registered_file="$out_dir/${prefix}-registered-items.txt"
+    local registered_err="$out_dir/${prefix}-registered-items.err"
+    local introspection_file="$out_dir/${prefix}-status-notifier-introspection.txt"
+    local menu_property_file="$out_dir/${prefix}-menu-property.txt"
+    local menu_layout_file="$out_dir/${prefix}-menu-layout.txt"
+
+    for _ in $(seq 1 80); do
+      if gdbus call --session \
+        --dest org.kde.StatusNotifierWatcher \
+        --object-path /StatusNotifierWatcher \
+        --method org.freedesktop.DBus.Properties.Get \
+        org.kde.StatusNotifierWatcher RegisteredStatusNotifierItems \
+        >"$registered_file" 2>"$registered_err"; then
+        if grep -Eq "/(StatusNotifierItem|NotificationItem)/" "$registered_file"; then
+          break
+        fi
       fi
+      sleep 0.25
+    done
+    if ! grep -Eq "/(StatusNotifierItem|NotificationItem)/" "$registered_file"; then
+      echo "No StatusNotifier/AppIndicator item registered in the XFCE/AppIndicator session" >&2
+      cat "$registered_file" >&2 || true
+      cat "$registered_err" >&2 || true
+      exit 1
     fi
-    sleep 0.25
-  done
-  if ! grep -Eq "/(StatusNotifierItem|NotificationItem)/" "$registered_file"; then
-    echo "No StatusNotifier/AppIndicator item registered in the XFCE/AppIndicator session" >&2
-    cat "$registered_file" >&2 || true
-    cat "$out_dir/tray-registered-items.err" >&2 || true
-    exit 1
-  fi
 
-  item_spec="$(node -e "const fs=require('fs'); const text=fs.readFileSync(process.argv[1], 'utf8'); const m=text.match(/'(:[^']+\\/(?:org\\/kde\\/StatusNotifierItem|org\\/ayatana\\/NotificationItem)[^']*)'/); if(!m) process.exit(1); console.log(m[1]);" "$registered_file")"
-  item_service="${item_spec%%/*}"
-  item_path="/${item_spec#*/}"
-  if [[ "$item_spec" == "$item_path" ]]; then
-    echo "Could not split StatusNotifierItem spec: $item_spec" >&2
-    exit 1
-  fi
+    refreshed_item_spec="$(node -e "const fs=require('fs'); const text=fs.readFileSync(process.argv[1], 'utf8'); const m=text.match(/'(:[^']+\\/(?:org\\/kde\\/StatusNotifierItem|org\\/ayatana\\/NotificationItem)[^']*)'/); if(!m) process.exit(1); console.log(m[1]);" "$registered_file")"
+    refreshed_item_service="${refreshed_item_spec%%/*}"
+    refreshed_item_path="/${refreshed_item_spec#*/}"
+    if [[ "$refreshed_item_spec" == "$refreshed_item_path" ]]; then
+      echo "Could not split StatusNotifierItem spec: $refreshed_item_spec" >&2
+      exit 1
+    fi
 
-  gdbus introspect --session --dest "$item_service" --object-path "$item_path" >"$out_dir/tray-status-notifier-introspection.txt"
-  gdbus call --session \
-    --dest "$item_service" \
-    --object-path "$item_path" \
-    --method org.freedesktop.DBus.Properties.Get \
-    org.kde.StatusNotifierItem Menu \
-    >"$out_dir/tray-menu-property.txt"
-  menu_path="$(node -e "const fs=require('fs'); const text=fs.readFileSync(process.argv[1], 'utf8'); const m=text.match(/'([^']+)'/); if(!m) process.exit(1); console.log(m[1]);" "$out_dir/tray-menu-property.txt")"
-  gdbus call --session \
-    --dest "$item_service" \
-    --object-path "$menu_path" \
-    --method com.canonical.dbusmenu.GetLayout 0 100 "[]" \
-    >"$out_dir/tray-menu-layout.txt"
+    gdbus introspect --session --dest "$refreshed_item_service" --object-path "$refreshed_item_path" >"$introspection_file"
+    gdbus call --session \
+      --dest "$refreshed_item_service" \
+      --object-path "$refreshed_item_path" \
+      --method org.freedesktop.DBus.Properties.Get \
+      org.kde.StatusNotifierItem Menu \
+      >"$menu_property_file"
+    refreshed_menu_path="$(node -e "const fs=require('fs'); const text=fs.readFileSync(process.argv[1], 'utf8'); const m=text.match(/'([^']+)'/); if(!m) process.exit(1); console.log(m[1]);" "$menu_property_file")"
+    gdbus call --session \
+      --dest "$refreshed_item_service" \
+      --object-path "$refreshed_menu_path" \
+      --method com.canonical.dbusmenu.GetLayout 0 100 "[]" \
+      >"$menu_layout_file"
+  }
 
-  node - "$out_dir/tray-menu-layout.txt" "$out_dir/tray-menu-actions.json" "$work_dir/tray-menu.env" <<'NODE'
+  capture_tray_menu_actions() {
+    local layout_file="$1"
+    local actions_file="$2"
+    local env_file="$3"
+    node - "$layout_file" "$actions_file" "$env_file" <<'NODE'
 const fs = require('fs');
 const layout = fs.readFileSync(process.argv[2], 'utf8');
 const actions = [];
@@ -614,6 +627,14 @@ for (const [key, value] of Object.entries(env)) {
 }
 fs.writeFileSync(process.argv[4], Object.entries(env).map(([key, value]) => `${key}=${value}`).join('\n') + '\n');
 NODE
+  }
+
+  refresh_tray_item_handles tray
+  item_spec="$refreshed_item_spec"
+  item_service="$refreshed_item_service"
+  item_path="$refreshed_item_path"
+  menu_path="$refreshed_menu_path"
+  capture_tray_menu_actions "$out_dir/tray-menu-layout.txt" "$out_dir/tray-menu-actions.json" "$work_dir/tray-menu.env"
   # shellcheck disable=SC1091
   source "$work_dir/tray-menu.env"
 
@@ -1021,6 +1042,184 @@ console.log(JSON.stringify(payload, null, 2));
 if (!payload.passed) process.exit(1);
 DEEPLINK
 
+  capture_tray_host_loss_recovery() {
+    local original_item_spec="$item_spec"
+    local original_menu_path="$menu_path"
+    local host_loss_observed=false
+    local recovery_registered=false
+    local recovered_action=false
+    local recovered_window_count=0
+    local recovered_process_count=0
+    local recovered_registered_count=0
+    local recovery_route_offset
+
+    {
+      echo "== panel processes before host loss =="
+      ps -ef | grep -E 'xfce4-panel|panel/plugins/(libsystray|libsntray)' | grep -v grep || true
+      echo "== dbus names before host loss =="
+      gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus --method org.freedesktop.DBus.ListNames || true
+      echo "== original item =="
+      printf '%s\n' "$original_item_spec"
+      echo "== original menu =="
+      printf '%s\n' "$original_menu_path"
+    } >"$out_dir/tray-host-loss-before.txt" 2>&1
+
+    terminate_process_tree() {
+      local parent_pid="$1"
+      local child_pid
+      while IFS= read -r child_pid; do
+        [[ -n "$child_pid" ]] && terminate_process_tree "$child_pid"
+      done < <(pgrep -P "$parent_pid" 2>/dev/null || true)
+      kill -TERM "$parent_pid" 2>/dev/null || true
+    }
+    terminate_process_tree "$panel_pid"
+    for _ in $(seq 1 80); do
+      if ! gdbus call --session \
+        --dest org.kde.StatusNotifierWatcher \
+        --object-path /StatusNotifierWatcher \
+        --method org.freedesktop.DBus.Properties.Get \
+        org.kde.StatusNotifierWatcher RegisteredStatusNotifierItems \
+        >"$out_dir/tray-host-loss-registered-items.txt" 2>"$out_dir/tray-host-loss-registered-items.err"; then
+        host_loss_observed=true
+        break
+      fi
+      if ! grep -Eq "/(StatusNotifierItem|NotificationItem)/" "$out_dir/tray-host-loss-registered-items.txt"; then
+        host_loss_observed=true
+        break
+      fi
+      sleep 0.1
+    done
+    if [[ "$host_loss_observed" != true ]]; then
+      echo "StatusNotifier watcher stayed registered after tray host termination" >&2
+      cat "$out_dir/tray-host-loss-registered-items.txt" >&2 || true
+      exit 1
+    fi
+
+    {
+      echo "== panel processes during host loss =="
+      ps -ef | grep -E 'xfce4-panel|panel/plugins/(libsystray|libsntray)' | grep -v grep || true
+      echo "== dbus names during host loss =="
+      gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus --method org.freedesktop.DBus.ListNames || true
+    } >"$out_dir/tray-host-loss-during.txt" 2>&1
+
+    xfce4-panel --disable-wm-check >>"$out_dir/xfce4-panel-restart.log" 2>&1 &
+    panel_pid="$!"
+    echo "$panel_pid" >"$out_dir/xfce4-panel-restart.pid"
+    sleep 2
+    refresh_tray_item_handles tray-recovered
+    item_spec="$refreshed_item_spec"
+    item_service="$refreshed_item_service"
+    item_path="$refreshed_item_path"
+    menu_path="$refreshed_menu_path"
+    capture_tray_menu_actions "$out_dir/tray-recovered-menu-layout.txt" "$out_dir/tray-recovered-menu-actions.json" "$work_dir/tray-menu-recovered.env"
+    # shellcheck disable=SC1091
+    source "$work_dir/tray-menu-recovered.env"
+    recovery_registered=true
+
+    recovery_route_offset="$(sample_file_offset)"
+    {
+      echo "== recovered tray action =="
+      send_menu_event "$OPEN_ID"
+    } >"$out_dir/tray-host-loss-recovery-menu-event.txt" 2>&1
+    if wait_for_new_route_sample overview "$recovery_route_offset"; then
+      recovered_action=true
+    fi
+
+    recovered_window_count="$(xdotool search --onlyvisible --name OpenBurnBar 2>/dev/null | wc -l | tr -d ' ')"
+    recovered_process_count="$(list_installed_app_pids | wc -l | tr -d ' ')"
+    recovered_registered_count="$(node -e "const fs=require('fs'); const text=fs.readFileSync(process.argv[1], 'utf8'); const matches=[...text.matchAll(/'(:[^']+\\/(?:org\\/kde\\/StatusNotifierItem|org\\/ayatana\\/NotificationItem)[^']*)'/g)]; console.log(matches.length);" "$out_dir/tray-recovered-registered-items.txt")"
+    {
+      echo "== panel processes after recovery =="
+      ps -ef | grep -E 'xfce4-panel|panel/plugins/(libsystray|libsntray)' | grep -v grep || true
+      echo "== dbus names after recovery =="
+      gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus --method org.freedesktop.DBus.ListNames || true
+      echo "== recovered item =="
+      printf '%s\n' "$item_spec"
+      echo "== recovered menu =="
+      printf '%s\n' "$menu_path"
+    } >"$out_dir/tray-host-loss-after.txt" 2>&1
+
+    node - \
+      "$out_dir/tray-host-loss-recovery.json" \
+      "$original_item_spec" \
+      "$original_menu_path" \
+      "$item_spec" \
+      "$menu_path" \
+      "$host_loss_observed" \
+      "$recovery_registered" \
+      "$recovered_action" \
+      "$recovered_window_count" \
+      "$recovered_process_count" \
+      "$recovered_registered_count" <<'HOSTLOSS'
+const fs = require('fs');
+const [
+  outPath,
+  originalItem,
+  originalMenu,
+  recoveredItem,
+  recoveredMenu,
+  hostLossObservedText,
+  recoveryRegisteredText,
+  recoveredActionText,
+  windowCountText,
+  processCountText,
+  registeredCountText
+] = process.argv.slice(2);
+const windowCount = Number(windowCountText);
+const processCount = Number(processCountText);
+const registeredCount = Number(registeredCountText);
+const hostLossObserved = hostLossObservedText === 'true';
+const recoveryRegistered = recoveryRegisteredText === 'true';
+const recoveredAction = recoveredActionText === 'true';
+const staleActions = registeredCount !== 1 || processCount !== 1;
+const actionAfterRecovery = {
+  passed: recoveredAction,
+  returned: recoveredAction,
+  routeSampleObserved: recoveredAction,
+  route: 'overview',
+  action: 'open-dashboard',
+  eventArtifact: 'tray-host-loss-recovery-menu-event.txt'
+};
+const hostLost = hostLossObserved;
+const recovered = hostLost && recoveryRegistered && actionAfterRecovery.passed;
+const payload = {
+  schemaVersion: 1,
+  generatedAt: new Date().toISOString(),
+  passed: recovered && windowCount >= 1 && !staleActions,
+  hostLost,
+  recovered,
+  staleActions,
+  hostLossObserved,
+  recoveryRegistered,
+  recoveredAction,
+  actionAfterRecovery,
+  originalItem,
+  originalMenu,
+  recoveredItem,
+  recoveredMenu,
+  registeredItemCountAfterRecovery: registeredCount,
+  processCount,
+  windowCount,
+  action: 'open-dashboard',
+  route: 'overview',
+  artifacts: {
+    before: 'tray-host-loss-before.txt',
+    during: 'tray-host-loss-during.txt',
+    after: 'tray-host-loss-after.txt',
+    lostRegisteredItems: 'tray-host-loss-registered-items.txt',
+    recoveredRegisteredItems: 'tray-recovered-registered-items.txt',
+    recoveredMenuActions: 'tray-recovered-menu-actions.json',
+    recoveredMenuEvent: 'tray-host-loss-recovery-menu-event.txt'
+  }
+};
+fs.writeFileSync(outPath, JSON.stringify(payload, null, 2) + '\n');
+console.log(JSON.stringify(payload, null, 2));
+if (!payload.passed) process.exit(1);
+HOSTLOSS
+  }
+
+  capture_tray_host_loss_recovery
+
   quit_start_ms="$(date +%s%3N)"
   send_menu_event "$QUIT_ID" >"$out_dir/tray-quit-menu-event.txt" 2>&1
   for _ in $(seq 1 80); do
@@ -1236,6 +1435,7 @@ const report = {
     nativeNotificationRelaunchRoute: 'native-notification-relaunch-route.json',
     nativeDeepLinkRelaunch: 'native-deep-link-relaunch.json',
     nativeLoginStartRoundtrip: 'native-login-start-roundtrip.json',
+    trayHostLossRecovery: 'tray-host-loss-recovery.json',
     accessibilitySnapshot: 'accessibility-tree-linux-desktop.txt',
     atspiTree: 'atspi-tree-linux-desktop.json',
     atspiFocusSequence: 'atspi-keyboard-focus-sequence.json',
@@ -1319,9 +1519,16 @@ rm -f \
   "$out_dir"/screenshot-linux-desktop-zoom-200-requested.png \
   "$out_dir"/screenshot-route-*.png \
   "$out_dir"/tray-action-route-results.json \
+  "$out_dir"/tray-host-loss-*.err \
+  "$out_dir"/tray-host-loss-*.txt \
+  "$out_dir"/tray-host-loss-recovery.json \
+  "$out_dir"/tray-host-loss-recovery-menu-event.txt \
   "$out_dir"/tray-menu-actions.json \
   "$out_dir"/tray-menu-layout.txt \
   "$out_dir"/tray-menu-property.txt \
+  "$out_dir"/tray-recovered-*.err \
+  "$out_dir"/tray-recovered-*.json \
+  "$out_dir"/tray-recovered-*.txt \
   "$out_dir"/tray-chat-menu-event.txt \
   "$out_dir"/tray-login-start-menu-event.txt \
   "$out_dir"/tray-open-menu-event.txt \
@@ -1337,6 +1544,8 @@ rm -f \
   "$out_dir"/window-initial-xprop.txt \
   "$out_dir"/window-initial-xwininfo.txt \
   "$out_dir"/window-route-*-xwininfo.txt \
+  "$out_dir"/xfce4-panel-restart.log \
+  "$out_dir"/xfce4-panel-restart.pid \
   "$out_dir"/x11-display-info.txt \
   "$out_dir"/xfce4-panel.log \
   "$out_dir"/xvfb.log \
