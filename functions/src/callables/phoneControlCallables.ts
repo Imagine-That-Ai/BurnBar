@@ -190,7 +190,9 @@ export const publishIrohPairingPublicKey = onCallProduction(
   ) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before publishing an iroh pairing key.");
-    await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
+    await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce, {
+      allowLowerTrustDesktop: true,
+    });
     await assertActiveBurnBarCloudProEntitlement(uid);
 
     const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
@@ -246,7 +248,9 @@ export const publishIrohPairingRecord = onCallProduction(
   ) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before publishing an iroh pairing record.");
-    await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
+    await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce, {
+      allowLowerTrustDesktop: true,
+    });
     await assertActiveBurnBarCloudProEntitlement(uid);
 
     const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
@@ -311,7 +315,9 @@ export const revokeIrohPairingRecord = onCallProduction(
   async (request: CallableRequest<{ deviceId?: unknown; connectionId?: unknown; nonce?: unknown }>) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before revoking an iroh pairing record.");
-    await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
+    await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce, {
+      allowLowerTrustDesktop: true,
+    });
 
     const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
     const connectionId = boundedTrimmedString(request.data.connectionId, "connectionId", 160, true);

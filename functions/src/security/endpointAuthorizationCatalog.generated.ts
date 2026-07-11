@@ -1817,7 +1817,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["deviceId", "connectionId", "requestId"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "callables/computerUseSecurity.ts",
+    handlerModule: "callables/phoneControlCallables.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/computerUse.bola.test.ts",
@@ -1838,7 +1838,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["deviceId", "connectionId", "requestId"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "callables/computerUseSecurity.ts",
+    handlerModule: "callables/phoneControlCallables.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/computerUse.bola.test.ts",
@@ -2686,7 +2686,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["deviceId", "connectionId", "requestId"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "callables/computerUseSecurity.ts",
+    handlerModule: "callables/phoneControlCallables.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/computerUse.bola.test.ts",
