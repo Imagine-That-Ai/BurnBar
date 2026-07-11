@@ -62,6 +62,9 @@ const expectedInstallPaths = {
   attestationSystemService: '/usr/lib/systemd/system/openburnbar-attestd.service',
   attestationSystemSocket: '/usr/lib/systemd/system/openburnbar-attestd.socket',
   attestationSocket: '/run/openburnbar/attestd.sock',
+  attestationEkContext: '/var/lib/openburnbar-attestd/ek.ctx',
+  attestationEkPublic: '/var/lib/openburnbar-attestd/ek.pub',
+  attestationEkCertificate: '/var/lib/openburnbar-attestd/ek.cert',
   attestationAkContext: '/var/lib/openburnbar-attestd/ak.ctx',
   attestationInstalledManifest: '/usr/share/openburnbar/attestation/installed-manifest.json',
   attestationInstalledManifestSignature: '/usr/share/openburnbar/attestation/installed-manifest.json.sig',
@@ -77,6 +80,15 @@ if (manifest.rootAttestationBroker?.defaultActivation !== 'disabled-until-enroll
 }
 if (manifest.rootAttestationBroker?.quoteCollector !== '/usr/bin/tpm2_quote') {
   failures.push('root attestation broker must use the packaged tpm2_quote collector');
+}
+if (manifest.rootAttestationBroker?.akLifecycle?.mode !== 'broker-cli-initialize-ak') {
+  failures.push('root attestation broker must own AK initialization through the broker CLI');
+}
+if (manifest.rootAttestationBroker?.akLifecycle?.createak !== '/usr/bin/tpm2_createak') {
+  failures.push('root attestation broker must use the packaged tpm2_createak lifecycle collector');
+}
+if (manifest.rootAttestationBroker?.akLifecycle?.rotation !== 'refuse-existing-unless-explicit-rotate') {
+  failures.push('root attestation broker must refuse accidental AK overwrite without explicit rotation');
 }
 if (manifest.rootAttestationBroker?.akContext !== '/var/lib/openburnbar-attestd/ak.ctx') {
   failures.push('root attestation broker AK context path is fixed by the activation gate');

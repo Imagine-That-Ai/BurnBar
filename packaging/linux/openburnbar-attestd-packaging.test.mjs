@@ -62,6 +62,14 @@ test('release metadata and Tauri keep privileged attestation in native packages 
     release.rootAttestationBroker.defaultActivation,
     'disabled-until-enrolled-and-rollout-enabled'
   );
+  assert.deepEqual(release.rootAttestationBroker.akLifecycle, {
+    mode: 'broker-cli-initialize-ak',
+    createak: '/usr/bin/tpm2_createak',
+    ekContext: '/var/lib/openburnbar-attestd/ek.ctx',
+    ekPublic: '/var/lib/openburnbar-attestd/ek.pub',
+    ekCertificate: '/var/lib/openburnbar-attestd/ek.cert',
+    rotation: 'refuse-existing-unless-explicit-rotate'
+  });
   assert.ok(release.rootAttestationBroker.peerAuthorization.some((entry) =>
     entry.includes('SCM_CREDENTIALS') && entry.includes('SOCK_SEQPACKET')));
   assert.equal(release.rootAttestationBroker.unsupportedPackages.appimage.length > 0, true);
