@@ -38,7 +38,7 @@ public static class JUnitReportWriter
         xml.AppendLine($"""<testsuite name="OpenBurnBar.Windows.UiAutomation" tests="{tests}" failures="{failures}" skipped="0">""");
         foreach (RouteSmokeEvidence route in summary.Routes)
         {
-            WriteCase(xml, $"route.{route.RouteKey}", route.Verdict, route.ElapsedMs / 1000d, route.Message, redactor);
+            WriteCase(xml, $"route.{route.ScenarioKey}.{route.RouteKey}", route.Verdict, route.ElapsedMs / 1000d, route.Message, redactor);
         }
 
         if (summary.SemanticProbe is { } probe)

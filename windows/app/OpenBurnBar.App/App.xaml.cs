@@ -84,6 +84,7 @@ public partial class App : Application
         LiquidGlassEnvironment.Current = new LiquidGlassEnvironment(new RegistryLiquidGlassPreferenceStore());
 
         _state = new AppStatePersistence();
+        automation?.ApplyStateSeed(_state);
         _theme = new ThemeService(_state);
         automation?.WriteLaunchMarker();
 

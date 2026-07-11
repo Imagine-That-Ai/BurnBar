@@ -6,6 +6,8 @@ param(
     [string]$OutputDirectory,
     [int]$TimeoutMilliseconds = 12000,
     [string[]]$Routes = @(),
+    [ValidateSet("baseline", "accessibility", "all")]
+    [string]$CertificationProfile = "baseline",
     [switch]$Direct,
     [switch]$SkipBuild,
     [switch]$SkipSemanticProbe
@@ -65,7 +67,8 @@ $harnessArgs = @(
     "--repo-root", $RepoRoot,
     "--app-exe", $appExe.FullName,
     "--output", $OutputDirectory,
-    "--timeout-ms", $TimeoutMilliseconds.ToString()
+    "--timeout-ms", $TimeoutMilliseconds.ToString(),
+    "--certification-profile", $CertificationProfile
 )
 
 foreach ($route in $Routes) {
@@ -147,7 +150,11 @@ try {
     Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal | Out-Null
     Start-ScheduledTask -TaskName $taskName
 
-    $deadline = (Get-Date).AddMilliseconds(($TimeoutMilliseconds + 5000) * [Math]::Max(1, 13 + $Routes.Count) + 120000)
+    $estimatedRouteCount = 13 + $Routes.Count
+    if ($CertificationProfile -eq "accessibility" -or $CertificationProfile -eq "all") {
+        $estimatedRouteCount = [Math]::Max($estimatedRouteCount, 30)
+    }
+    $deadline = (Get-Date).AddMilliseconds(($TimeoutMilliseconds + 5000) * [Math]::Max(1, $estimatedRouteCount) + 120000)
     while ((Get-Date) -lt $deadline) {
         if (Test-Path -LiteralPath $exitPath) {
             $codeText = (Get-Content -LiteralPath $exitPath -Raw).Trim()
