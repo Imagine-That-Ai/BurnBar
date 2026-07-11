@@ -289,8 +289,6 @@ jobs:
             ( cd "publish/$rid" && 7z a -tzip -bd "../../$zip" . >/dev/null )
             ( cd artifacts && sha256sum "OpenBurnBar-${VERSION}-${rid}.zip" >> "checksums-windows-v${VERSION}.txt" )
           done
-          echo "Checksums:"
-          cat "artifacts/checksums-windows-v${VERSION}.txt"
 
       - name: Build MSIX (MakeAppx — Store + sideload channel)
         # The MSIX is the Store + sideload channel; the portable zip above is the
@@ -308,7 +306,6 @@ jobs:
             pwsh -NoProfile -NonInteractive -File windows/packaging/msix/New-MsixPackage.ps1 \
               -PublishDir "publish/$rid" -Architecture "$arch" -Version "$VERSION" \
               -OutputPath "$output" -MakeAppxPath "$makeappx" -Publisher "$publisher"
-            ( cd artifacts && sha256sum "$(basename "$output")" >> "checksums-windows-v${VERSION}.txt" )
           done
 
       - name: Authenticode sign the MSIX (Azure Artifact Signing)
@@ -357,6 +354,21 @@ jobs:
             }
             Write-Host "MSIX Authenticode valid: $relativePath :: $($signature.SignerCertificate.Subject)"
           }
+
+      - name: Finalize checksums after signing
+        run: |
+          set -euo pipefail
+          checksum_file="checksums-windows-v${VERSION}.txt"
+          : > "artifacts/${checksum_file}"
+          for file in \
+            "OpenBurnBar-${VERSION}-win-x64.zip" \
+            "OpenBurnBar-${VERSION}-win-arm64.zip" \
+            "OpenBurnBar-${VERSION}-x64.msix" \
+            "OpenBurnBar-${VERSION}-arm64.msix"; do
+            ( cd artifacts && sha256sum "$file" >> "$checksum_file" )
+          done
+          echo "Checksums:"
+          cat "artifacts/${checksum_file}"
 
       - name: Sign the update feed (pinned Ed25519, independent of Authenticode)
         if: steps.config.outputs.updatekey == 'true'
