@@ -58,7 +58,7 @@
     "test:integration": "vitest run test/integration"
   },
   "dependencies": {
-    "@amplitude/analytics-browser": "2.44.1",
+    "@amplitude/analytics-browser": "2.44.5",
     "@astrojs/check": "^0.9.9",
     "@astrojs/mdx": "^5.0.5",
     "@chenglou/pretext": "0.0.8",
