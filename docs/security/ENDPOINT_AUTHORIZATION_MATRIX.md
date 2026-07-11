@@ -32,8 +32,8 @@ Firebase `:web:` ID is never promoted by syntax alone.
 | `desktop-trusted-device-step-up` | Linux or Windows may enter only a source-wired handler whose exact `enforceHighRiskOwnerAction` action kind is catalog-validated; the shared helper runtime-tests nonce consumption, trusted-device proof, and fail-closed audit persistence. |
 | `not-applicable` | The endpoint does not require App Check, such as a platform trigger or the authenticated token-mint bootstrap. |
 
-The current Linux surface contains 29 low-risk callables, 14 trusted-device
-step-up callables, two prerequisites, and 73 deny-by-default callables. Change
+The current Linux surface contains 30 low-risk callables, 15 trusted-device
+step-up callables, two prerequisites, and 76 deny-by-default callables. Change
 those sets only through `LOWER_TRUST_DESKTOP_POLICY_OVERRIDES` in the generator;
 the matrix and AST source-wiring tests enforce their cardinality and invariants.
 
