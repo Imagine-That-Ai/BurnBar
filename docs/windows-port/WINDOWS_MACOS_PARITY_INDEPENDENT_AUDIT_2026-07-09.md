@@ -3,7 +3,45 @@
 **Date:** 2026-07-09
 **Reference product:** shipping macOS OpenBurnBar
 **Audit target:** local windows/liquid-glass-kernel-reskin checkout
-**Status:** source, release, CI, and available VM audit; not a Windows release certification
+**Status:** implementation complete; automated certification substantially complete; physical/manual/live-staging release gates remain
+
+## Certification Update - 2026-07-11
+
+The remediation plan in this audit has now been implemented through the F2
+source/product ledger: 46 rows are Real, with zero DeferredApproved, Blocked,
+or Substituted rows. That is implementation parity, not an unconditional public
+release claim.
+
+Current evidence materially supersedes the original source-only findings:
+
+- Native Windows usage runtime, storage recovery, protected configuration,
+  direct-process chat, settings/onboarding, activation, distribution, and the
+  remaining declared parity surfaces are integrated on `main`.
+- [Signed release run 29160512069](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29160512069)
+  succeeded for x64 and ARM64 with unsigned output forbidden. Azure Artifact
+  Signing, Authenticode verification, timestamps, checksums, Ed25519 feed,
+  SBOM, OpenVEX, and Sigstore steps all passed.
+- [Exact-candidate x64 run 29160940577](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29160940577)
+  verified 10,476/10,476 exported blobs with zero mismatches and passed the
+  Windows foundation harness and secret scan.
+- An exact `778e735a69ea9d812db87146630223ac1a3a49d7` candidate was imported into
+  Windows 11 Pro ARM64 under UTM with 10,475/10,475 files verified and zero
+  mismatches. The ARM64 solution build, 180 focused tests, all ten storage
+  failure/recovery cases, chat evidence, and a zero-finding artifact secret scan
+  passed. The evidence archive SHA-256 is
+  `1a276bd023f5d6078fee4501ced80a94da9ba1db0414b774fd184fb4a843c7ad`.
+- The physical iPhone companion built, signed, installed, and launched. Its
+  suite recorded 1,240 passed, 13 failed, and 28 skipped tests, so this is
+  physical compile/install evidence rather than a green-suite claim.
+
+The committed evidence index is
+[`evidence/final-certification-2026-07-11/README.md`](evidence/final-certification-2026-07-11/README.md).
+The remaining blockers to a 100% certification statement are physical Windows
+x64/ARM64 hardware performance and graphics coverage; Narrator, keyboard, DPI,
+and high-contrast manual protocols; live staging OAuth/App Check/CloudVault and
+cross-device flows; physical Computer Use/media/file-safety validation; and the
+public update/rollback/Store release lifecycle. The QA checklist below remains
+unchecked where a row combines any of these unproven requirements.
 
 ## Implementation Update - 2026-07-10
 
@@ -59,7 +97,10 @@ coverage. It does not replace the remaining physical-device Narrator protocol,
 150%/200% DPI sweeps, high-contrast OS theme validation, or manual keyboard
 certification required before a parity release claim.
 
-## Executive Summary
+## Original Executive Summary (Superseded)
+
+The following was the audit-time finding on 2026-07-09. It is retained as the
+remediation baseline and is superseded by the certification update above.
 
 Windows is a substantial code port, but it is not at macOS product parity or
 ready for a parity release. The shell, tray foundation, WinUI navigation,
@@ -83,7 +124,7 @@ The public v1.0.29 release has macOS artifacts but no Windows installer or
 MSIX package. A passing scoped ledger and portable C# tests must not be
 treated as end-to-end product parity evidence.
 
-## Audit Evidence and Limitations
+## Original Audit Evidence and Limitations (Superseded)
 
 - The selected Windows Settings, Shell, and Dashboard suites passed: 233 tests.
 - scripts/ci/verify-windows-parity-ledger.sh passed for its 46 scoped rows; its
@@ -98,7 +139,7 @@ treated as end-to-end product parity evidence.
   daemon lifecycle, update/recovery, chat, notifications, Computer Use, and
   Mercury/media behavior where supported by its distribution channel.
 
-## Detailed Parity Matrix
+## Original Detailed Parity Matrix (Remediation Baseline)
 
 | Area | What differs and why it matters | Recommended fix and implementation notes | Priority | Test steps |
 |---|---|---|---|---|
@@ -188,9 +229,12 @@ and release acceptance fixtures between Swift and C#.
 
 ## Conclusion
 
-The audit now has a concrete Windows foundation implementation covering the
-live data plane, settings/onboarding, activation/updater composition, package
-assets, tray recovery, diagnostics, and exact-candidate host evidence. A parity
-release must still satisfy every applicable QA item with signed artifacts and
-independent Windows-host or physical-device evidence; source composition and a
-single VM run do not lower that bar.
+The audit's implementation plan is complete under the repository's F2 ledger,
+and the signed x64/ARM64 build plus hosted x64 and ARM64 UTM foundation gates
+are proven. The evidence does not yet close every row in the QA checklist.
+
+Accordingly, the accurate current claim is: **100% source/product parity and
+substantially complete automated certification, but not 100% physical release
+certification**. A public parity release remains gated on the explicitly named
+physical Windows, manual accessibility/display, live staging/cross-device,
+advanced safety, and public lifecycle evidence above.
