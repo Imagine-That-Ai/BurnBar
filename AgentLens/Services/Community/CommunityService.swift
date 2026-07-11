@@ -106,14 +106,23 @@ final class CommunityService: ObservableObject {
         }
         do {
             let community = firestore.collection("users").document(uid).collection("community")
-            async let consentData = community.document("consent").getData()
-            async let profileData = community.document("profile").getData()
+            async let consentData = getOptionalDocumentData(community.document("consent"))
+            async let profileData = getOptionalDocumentData(community.document("profile"))
             let (consent, prof) = try await (consentData, profileData)
             remoteConsent = try decodeOptional(FirestoreCommunityConsentDoc.self, from: consent)
             profile = try decodeOptional(FirestoreCommunityProfileDoc.self, from: prof)
             lastError = nil
         } catch {
             lastError = error.localizedDescription
+        }
+    }
+
+    private func getOptionalDocumentData(_ document: CloudSyncDocumentGateway) async throws -> [String: Any]? {
+        do {
+            return try await document.getData()
+        } catch let error as NSError
+            where error.domain == FirestoreErrorDomain && error.code == FirestoreErrorCode.notFound.rawValue {
+            return nil
         }
     }
 
