@@ -32,9 +32,46 @@ systemd credentials, and explicit headless passphrases. Plaintext local files ar
 refused for DB keys, Signal identity keys, CloudVault keys, refresh tokens,
 capability roots, local-auth pins, and audit/export signing keys.
 
-Headless deployments may provide secrets through systemd `CREDENTIALS_DIRECTORY`
-files or documented `OPENBURNBAR_*` environment values. Diagnostics must log only
-trust metadata, backend names, and redacted labels.
+The packaged daemon discovers native tools only at fixed, root-owned system
+paths. Ambient `PATH` entries and user-writable executables are not trusted.
+The primary desktop backend is `secret-tool` plus a working
+`org.freedesktop.secrets` session service. KWallet through `kwallet-query` is the
+KDE fallback. Packages install or depend on the command-line client as follows:
+
+| Package family | Required | Optional desktop backend |
+|---|---|---|
+| Debian/Ubuntu | `libsecret-tools` | `gnome-keyring`, `libkf5wallet-bin`, or `libkf6wallet-bin` |
+| Fedora/RHEL RPM | `libsecret` | the distribution KWallet package |
+| Arch/AUR | `libsecret` | `kwallet` |
+
+Secrets are passed to native tools on standard input, never in arguments or the
+environment. Values are capped at 16 KiB and must be a single line because both
+native command protocols are line-oriented. Leading and trailing spaces are
+preserved. A locked or failed primary keyring fails closed; OpenBurnBar does not
+silently fall back to an environment variable or plaintext file.
+
+Headless deployments should mount secrets through systemd
+`CREDENTIALS_DIRECTORY`. Process-environment secrets require the explicit test or
+development opt-in and are disabled by production factory wiring. Diagnostics
+log only trust metadata, backend names, and redacted labels.
+
+Flatpak metadata grants the exact `org.freedesktop.secrets` bus name, but that
+channel remains unpromoted until `secret-tool` availability and locked/unlocked
+keyring behavior pass inside a real sandbox. Do not describe Flatpak credential
+custody as supported before that evidence exists.
+
+### Credential custody QA
+
+1. Install on a clean GNOME session and verify provider and connector CRUD,
+   restart persistence, sign-out deletion, and absence of secrets in process
+   arguments, environment, logs, support bundles, and renderer memory.
+2. Lock the keyring and verify reads and writes fail with a repairable error and
+   do not fall back. Unlock it and retry without restarting the daemon.
+3. Repeat on KDE with KWallet as the only available native backend.
+4. Remove both native tools and verify the capability reports unavailable rather
+   than accepting a plaintext file.
+5. Run a headless systemd service with a credential file, rotate the credential,
+   restart, and verify the old value is no longer accepted.
 
 ## Auth And Membership
 

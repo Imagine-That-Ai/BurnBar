@@ -16,7 +16,7 @@ also ships on Windows. Only the GPU-bound draw pass is Windows-only.
 | Chart geometry (bar / line / radar / heatmap / sankey / donut / funnel / scatter / KPI-sparkline) | `OpenBurnBar.App.Presentation/Insights/Charts/` | ✅ `dotnet test` — known dataset → exact bar rects / radar points / heatmap buckets / sankey heights / line domains / donut angles |
 | Grid layout (row-major first-fit packing, move/resize clamp, column reflow) | `…/Insights/InsightLayout.cs` | ✅ unit-tested |
 | Formatting + color (currency/tokens/percent ramp, hex + HSB→RGB, series color) | `…/Insights/InsightFormatting.cs` | ✅ unit-tested vs. hand-computed values |
-| Models + 8 built-in templates + `Instantiate()` stamping + sample data | `…/Insights/*.cs` | ✅ unit-tested (template counts, no-overlap placement, determinism) |
+| Models + 8 built-in templates + `Instantiate()` stamping + empty/sample data policy | `…/Insights/*.cs` | ✅ unit-tested (template counts, no-overlap placement, determinism, H0 empty default) |
 | Win2D chart painters + `CanvasControl` host | `OpenBurnBar.App/Insights/InsightChart*.cs` | ⛔ Windows-only (Win2D GPU) — CI/dev-host deferred |
 | Template gallery, canvas panel, widget tile (XAML) | `OpenBurnBar.App/Insights/*.xaml` | ⛔ Windows-only (XamlCompiler) — CI/dev-host deferred |
 
@@ -25,23 +25,32 @@ geometry engines to get rectangles / polygons / arc angles, then issue the match
 fill/stroke/text calls. **No layout math lives in the render layer** — that is exactly what
 keeps the math testable off a GPU.
 
-## Sample data
+## Data honesty (H0)
 
-Each built-in template ships deterministic `InsightSampleData` so the gallery → canvas flow
-renders real, populated charts immediately, before the (later) Insights data engine lane wires
-the live provider/session data source. The canvas shows a **"Sample data preview"** chip while
-this is the case.
+**Production default is empty-honest** — not demo charts.
+
+| Mode | Behavior |
+| --- | --- |
+| Production (`OPENBURNBAR_SAMPLE_MODE` unset/false) | KPI tiles use live SQLCipher/cloud summary when present; otherwise `InsightEmptyData` (`EmptyData` chrome — no `$0` fake zero). Non-KPI widgets stay empty until the Insights engine path. |
+| Sample mode (`OPENBURNBAR_SAMPLE_MODE=1`) | Labeled `InsightSampleData` generators fill widgets **only when there is no live usage summary**. If live data is present, KPIs stay live and unwired kinds stay empty (fail-closed hybrid). **Sample chip** shows only when sample payloads were actually installed (`sample mode && !HasData`) — not on hybrid live sessions. Empty-tile copy under hybrid uses connect/engine wording, not “demo is labeled.” |
+
+Composition root: `InsightsProductionComposition.Install(summary)` sets
+`SampleFallbackEnabled` from `RuntimeDataMode` and installs `CloudSyncInsightSource.Resolve`
+as `RealDataResolver`. **Stamp time re-loads** usage via `DashboardUsageProvider.Load()` so
+the canvas is not frozen from page construction (gallery reload on Back does the same).
+
+Audit: `docs/windows-port/evidence/h0-honesty/sample-path-audit-2026-07-09.md`.
 
 ## Verification ceiling (honest)
 
 - **macOS-verified:** every XAML is `xmllint` well-formed; every C# Roslyn syntax-parses clean;
   `dotnet build OpenBurnBar.App.csproj` reaches the byte-identical Windows-only `XamlCompiler.exe`
   gate with **0 MSBuild/item errors** (all referenced portable libs compile); the portable
-  Insights logic passes a real `dotnet test` suite.
+  Insights logic passes a real `dotnet test` suite (incl. H0 empty/sample guards).
 - **Windows-CI / dev-host deferred:** XAML compile, the Win2D GPU chart render, and the live
   visual pass. See `windows/app/DEV_HOST_RUNBOOK.md`.
 
 ## Shell registration
 
-`insights` is wired as a live NavigationView destination in `Shell/AppShell.xaml.cs`
-(replacing the parity stub for that key); the remaining keys still show the stub.
+`insights` is wired as a live NavigationView destination via `SurfacePageResolver` /
+`SurfaceRouteMap`.

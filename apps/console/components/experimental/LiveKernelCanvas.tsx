@@ -20,7 +20,9 @@ const FROZEN_MS = 2400;
 export function LiveKernelCanvas({
   id,
   gateVisibility = true,
-  dprCap = 1.25,
+  // 1.2 matches BackdropEngine's WebGL2 cap — 1.25 was 8% more pixels for a
+  // difference below perception on these soft procedural fields.
+  dprCap = 1.2,
   className,
   style,
 }: {

@@ -3,6 +3,155 @@ import Foundation
 import XCTest
 
 final class OpenBurnBarLinuxSecurityTests: XCTestCase {
+    func testNativeSecretServiceCRUDKeepsSecretOutOfArguments() throws {
+        let harness = LinuxSecretCommandHarness(kind: .secretService)
+        let backend = LinuxNativeSecretStoreBackend(
+            kind: .secretService,
+            executableURL: URL(fileURLWithPath: "/usr/bin/secret-tool"),
+            nowMillis: { 1_900_000_000_000 },
+            runner: { executableURL, arguments, standardInput in
+                try harness.run(
+                    executableURL: executableURL,
+                    arguments: arguments,
+                    standardInput: standardInput
+                )
+            }
+        )
+        let custodian = LinuxSecretCustodian(backends: [backend])
+
+        let metadata = try custodian.storeHighValueSecret(
+            "provider-secret-value",
+            id: "com.openburnbar.provider:provider.anthropic.apiKey",
+            secretClass: .providerCredential
+        )
+        XCTAssertEqual(metadata.backend, "org.freedesktop.secrets")
+        XCTAssertEqual(metadata.trustLevel, .secretService)
+
+        let restored = try custodian.requireHighValueSecret(
+            id: "com.openburnbar.provider:provider.anthropic.apiKey",
+            secretClass: .providerCredential
+        )
+        XCTAssertEqual(restored.secret, "provider-secret-value")
+        XCTAssertFalse(harness.arguments.flatMap { $0 }.contains("provider-secret-value"))
+        XCTAssertEqual(harness.lastStandardInput, "provider-secret-value\n")
+
+        try custodian.deleteHighValueSecret(
+            id: "com.openburnbar.provider:provider.anthropic.apiKey",
+            secretClass: .providerCredential
+        )
+        XCTAssertThrowsError(
+            try custodian.requireHighValueSecret(
+                id: "com.openburnbar.provider:provider.anthropic.apiKey",
+                secretClass: .providerCredential
+            )
+        ) { error in
+            XCTAssertEqual(error as? LinuxSecretStoreError, .missingSecret("com.openburnbar.provider:provider.anthropic.apiKey"))
+        }
+    }
+
+    func testKWalletCRUDUsesFolderEntryAndStdinContract() throws {
+        let harness = LinuxSecretCommandHarness(kind: .kwallet)
+        let backend = LinuxNativeSecretStoreBackend(
+            kind: .kwallet,
+            executableURL: URL(fileURLWithPath: "/usr/bin/kwallet-query"),
+            walletName: "kdewallet6",
+            folderName: "OpenBurnBar",
+            runner: { executableURL, arguments, standardInput in
+                try harness.run(
+                    executableURL: executableURL,
+                    arguments: arguments,
+                    standardInput: standardInput
+                )
+            }
+        )
+
+        _ = try backend.storeSecret(
+            "connector-secret",
+            id: "connector.home-assistant.credential",
+            secretClass: .connectorCredential
+        )
+        XCTAssertEqual(
+            harness.arguments.last,
+            ["-f", "OpenBurnBar", "-w", "connector.home-assistant.credential", "kdewallet6"]
+        )
+        XCTAssertFalse(harness.arguments.last?.contains("connector-secret") ?? true)
+        XCTAssertEqual(
+            try backend.readSecret(
+                id: "connector.home-assistant.credential",
+                secretClass: .connectorCredential
+            )?.secret,
+            "connector-secret"
+        )
+        try backend.deleteSecret(
+            id: "connector.home-assistant.credential",
+            secretClass: .connectorCredential
+        )
+        XCTAssertNil(
+            try backend.readSecret(
+                id: "connector.home-assistant.credential",
+                secretClass: .connectorCredential
+            )
+        )
+    }
+
+    func testNativeBackendRoundTripsSignificantWhitespaceWithoutPuttingItInArguments() throws {
+        let harness = LinuxSecretCommandHarness(kind: .secretService)
+        let backend = LinuxNativeSecretStoreBackend(
+            kind: .secretService,
+            executableURL: URL(fileURLWithPath: "/usr/bin/secret-tool"),
+            runner: { executableURL, arguments, standardInput in
+                try harness.run(
+                    executableURL: executableURL,
+                    arguments: arguments,
+                    standardInput: standardInput
+                )
+            }
+        )
+        let secret = "  significant leading and trailing whitespace  "
+
+        _ = try backend.storeSecret(secret, id: "whitespace", secretClass: .providerCredential)
+
+        XCTAssertEqual(
+            try backend.readSecret(id: "whitespace", secretClass: .providerCredential)?.secret,
+            secret
+        )
+        XCTAssertEqual(harness.lastStandardInput, secret + "\n")
+        XCTAssertFalse(harness.arguments.flatMap { $0 }.contains(secret))
+    }
+
+    func testNativeBackendRejectsValuesTheLineProtocolCannotRoundTrip() throws {
+        let backend = LinuxNativeSecretStoreBackend(
+            kind: .secretService,
+            executableURL: URL(fileURLWithPath: "/usr/bin/secret-tool"),
+            runner: { _, _, _ in LinuxSecretCommandResult(exitCode: 0) }
+        )
+
+        for invalid in ["line-one\nline-two", "line-one\rline-two", "nul\0value"] {
+            XCTAssertThrowsError(
+                try backend.storeSecret(invalid, id: "invalid", secretClass: .providerCredential)
+            ) { error in
+                guard case LinuxSecretStoreError.invalidSecretValue = error else {
+                    return XCTFail("Expected invalidSecretValue, got \(error)")
+                }
+            }
+        }
+    }
+
+    func testHeadlessEnvironmentSecretsRequireExplicitTestOrDevOptIn() throws {
+        let environment = ["OPENBURNBAR_DATABASE_KEY": "plaintext-process-secret"]
+        let production = LinuxHeadlessSecretStoreBackend(environment: environment)
+        XCTAssertNil(try production.readSecret(id: "database-key", secretClass: .databaseKey))
+
+        let explicit = LinuxHeadlessSecretStoreBackend(
+            environment: environment,
+            allowsEnvironmentSecrets: true
+        )
+        XCTAssertEqual(
+            try explicit.readSecret(id: "database-key", secretClass: .databaseKey)?.secret,
+            "plaintext-process-secret"
+        )
+    }
+
     func testSecretStoreTrustMetadataAndNoPlaintextFallbackForHighValueSecrets() throws {
         let secretService = LinuxInMemorySecretStoreBackend(
             backendName: "org.freedesktop.secrets.test",
@@ -46,7 +195,8 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
 
     func testHeadlessSecretStoreReadsEnvAndSystemdCredentialMetadata() throws {
         let envStore = LinuxHeadlessSecretStoreBackend(
-            environment: ["OPENBURNBAR_FIREBASE_REFRESH_TOKEN": "refresh-token-value"]
+            environment: ["OPENBURNBAR_FIREBASE_REFRESH_TOKEN": "refresh-token-value"],
+            allowsEnvironmentSecrets: true
         )
         let envCustodian = LinuxSecretCustodian(backends: [envStore])
         let envToken = try envCustodian.requireHighValueSecret(
@@ -84,6 +234,81 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
         XCTAssertTrue(rows.allSatisfy { $0.setupUX.isEmpty == false })
     }
 
+    func testDesktopOwnerLocalAuthenticationUsesPolkitAllowUserInteraction() async throws {
+        let polkit = FakePolkitAuthority(
+            result: .success(LinuxPolkitAuthorizationResult(isAuthorized: true, isChallenge: false))
+        )
+        let authenticator = LinuxDesktopOwnerAuthenticator(
+            polkit: polkit,
+            pam: FakePAMAuthenticator(result: .failure(.pamUnavailable("not reached"))),
+            processID: 42,
+            nowMillis: { 1_800_000_000_123 }
+        )
+
+        let proof = try await authenticator.authenticate(
+            reason: "Allow Desktop Computer Use tools for this agent thread."
+        )
+
+        XCTAssertTrue(proof.localAuthenticationSatisfied)
+        XCTAssertEqual(proof.authority, "polkit")
+        XCTAssertEqual(proof.actionID, LinuxDesktopOwnerAuthenticator.computerUseGrantActionID)
+        XCTAssertEqual(proof.authenticatedAtMillis, 1_800_000_000_123)
+        XCTAssertEqual(polkit.calls.count, 1)
+        XCTAssertEqual(polkit.calls[0].actionID, LinuxDesktopOwnerAuthenticator.computerUseGrantActionID)
+        XCTAssertEqual(polkit.calls[0].unixProcessID, 42)
+        XCTAssertTrue(polkit.calls[0].allowUserInteraction)
+    }
+
+    func testDesktopOwnerLocalAuthenticationFallsBackToPAMWhenPolkitUnavailable() async throws {
+        let polkit = FakePolkitAuthority(
+            result: .failure(.polkitUnavailable("system bus unavailable"))
+        )
+        let pam = FakePAMAuthenticator(result: .success(true))
+        let authenticator = LinuxDesktopOwnerAuthenticator(
+            polkit: polkit,
+            pam: pam,
+            processID: 43,
+            nowMillis: { 1_800_000_000_456 }
+        )
+
+        let proof = try await authenticator.authenticate(reason: "Allow trusted Computer Use session.")
+
+        XCTAssertTrue(proof.localAuthenticationSatisfied)
+        XCTAssertEqual(proof.authority, "pam")
+        XCTAssertEqual(polkit.calls.count, 1)
+        XCTAssertEqual(pam.calls.count, 1)
+        XCTAssertEqual(pam.calls[0].serviceName, LinuxDesktopOwnerAuthenticator.defaultPAMServiceName)
+    }
+
+    func testDesktopOwnerLocalAuthenticationFailsClosedForDeniedAndUnavailablePaths() async throws {
+        let deniedPolkit = LinuxDesktopOwnerAuthenticator(
+            polkit: FakePolkitAuthority(
+                result: .success(LinuxPolkitAuthorizationResult(isAuthorized: false, isChallenge: true))
+            ),
+            pam: FakePAMAuthenticator(result: .success(true))
+        )
+        do {
+            _ = try await deniedPolkit.authenticate(reason: "Allow Desktop Computer Use tools.")
+            XCTFail("polkit denial must fail closed")
+        } catch {
+            XCTAssertEqual(error as? LinuxDesktopOwnerAuthenticationError, .polkitDenied)
+        }
+
+        let unavailable = LinuxDesktopOwnerAuthenticator(
+            polkit: FakePolkitAuthority(result: .failure(.polkitUnavailable("system bus unavailable"))),
+            pam: FakePAMAuthenticator(result: .failure(.pamUnavailable("no conversation provider")))
+        )
+        do {
+            _ = try await unavailable.authenticate(reason: "Allow Desktop Computer Use tools.")
+            XCTFail("unavailable polkit + PAM must fail closed")
+        } catch {
+            XCTAssertEqual(
+                error as? LinuxDesktopOwnerAuthenticationError,
+                .localAuthUnavailable("no conversation provider")
+            )
+        }
+    }
+
     func testPKCELoopbackAuthAndTokenCustody() async throws {
         let flow = LinuxPKCELoopbackFlow(
             authBaseURL: URL(string: "https://securetoken.google.com/auth")!,
@@ -106,23 +331,156 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
             XCTAssertEqual(error as? LinuxAuthError, .stateMismatch)
         }
 
-        let custodian = LinuxSecretCustodian(backends: [
-            LinuxInMemorySecretStoreBackend(
-                backendName: "org.freedesktop.secrets.test",
-                trustLevel: .secretService,
-                secrets: ["firebase-refresh-token": "refresh-secret"]
-            )
-        ])
+        let authHarness = LinuxSecretCommandHarness(kind: .secretService)
+        let authBackend = LinuxNativeSecretStoreBackend(
+            kind: .secretService,
+            executableURL: URL(fileURLWithPath: "/usr/bin/secret-tool"),
+            runner: { executableURL, arguments, standardInput in
+                try authHarness.run(
+                    executableURL: executableURL,
+                    arguments: arguments,
+                    standardInput: standardInput
+                )
+            }
+        )
+        let custodian = LinuxSecretCustodian(backends: [authBackend])
         let tokenStore = LinuxAuthTokenStore(custodian: custodian)
+        _ = try tokenStore.storeRefreshToken("refresh-secret")
         XCTAssertEqual(try tokenStore.restoreRefreshToken().trustLevel, .secretService)
 
         let signOut = LinuxAuthSessionController(tokenStore: tokenStore) { metadata in
-            XCTAssertEqual(metadata.backend, "org.freedesktop.secrets.test")
+            XCTAssertEqual(metadata.backend, "org.freedesktop.secrets")
             XCTAssertEqual(metadata.secretClass, .refreshToken)
         }
         let signOutResult = try await signOut.signOut()
         XCTAssertTrue(signOutResult.remoteRevocationAttempted)
         XCTAssertTrue(signOutResult.localSessionCleared)
+        XCTAssertThrowsError(try tokenStore.restoreRefreshToken())
+    }
+
+    func testSecretStoreCommandFailureDoesNotExposeRetrievedSecretOutput() throws {
+        let backend = LinuxNativeSecretStoreBackend(
+            kind: .secretService,
+            executableURL: URL(fileURLWithPath: "/usr/bin/secret-tool"),
+            runner: { _, _, _ in
+                LinuxSecretCommandResult(
+                    exitCode: 2,
+                    stdout: "retrieved-secret-must-not-escape",
+                    stderr: "keyring is locked\nretry after unlock"
+                )
+            }
+        )
+
+        XCTAssertThrowsError(
+            try backend.readSecret(id: "firebase-refresh-token", secretClass: .refreshToken)
+        ) { error in
+            let description = String(describing: error)
+            XCTAssertFalse(description.contains("retrieved-secret-must-not-escape"))
+            XCTAssertTrue(description.contains("keyring is locked retry after unlock"))
+        }
+    }
+
+    func testLockedNativeKeyringFailsClosedWithoutEnvironmentFallback() throws {
+        let native = LinuxNativeSecretStoreBackend(
+            kind: .secretService,
+            executableURL: URL(fileURLWithPath: "/usr/bin/secret-tool"),
+            runner: { _, _, _ in
+                LinuxSecretCommandResult(exitCode: 1, stderr: "keyring is locked")
+            }
+        )
+        let fallback = LinuxHeadlessSecretStoreBackend(
+            environment: ["OPENBURNBAR_FIREBASE_REFRESH_TOKEN": "plaintext-process-secret"],
+            allowsEnvironmentSecrets: true
+        )
+        let custodian = LinuxSecretCustodian(backends: [native, fallback])
+
+        XCTAssertThrowsError(
+            try custodian.requireHighValueSecret(
+                id: "firebase-refresh-token",
+                secretClass: .refreshToken
+            )
+        ) { error in
+            guard case let LinuxSecretStoreError.commandFailed(backend, operation, detail) = error else {
+                return XCTFail("Expected native keyring failure, got \(error)")
+            }
+            XCTAssertEqual(backend, "org.freedesktop.secrets")
+            XCTAssertEqual(operation, "read")
+            XCTAssertEqual(detail, "keyring is locked")
+        }
+    }
+
+    func testDeletingSecretSkipsWritableBackendsWithoutTheItem() throws {
+        let emptyHarness = LinuxSecretCommandHarness(kind: .secretService)
+        let populatedHarness = LinuxSecretCommandHarness(kind: .kwallet)
+        let empty = LinuxNativeSecretStoreBackend(
+            kind: .secretService,
+            executableURL: URL(fileURLWithPath: "/usr/bin/secret-tool"),
+            runner: { executableURL, arguments, standardInput in
+                try emptyHarness.run(
+                    executableURL: executableURL,
+                    arguments: arguments,
+                    standardInput: standardInput
+                )
+            }
+        )
+        let populated = LinuxNativeSecretStoreBackend(
+            kind: .kwallet,
+            executableURL: URL(fileURLWithPath: "/usr/bin/kwallet-query"),
+            runner: { executableURL, arguments, standardInput in
+                try populatedHarness.run(
+                    executableURL: executableURL,
+                    arguments: arguments,
+                    standardInput: standardInput
+                )
+            }
+        )
+        _ = try populated.storeSecret(
+            "stored-in-kwallet",
+            id: "firebase-refresh-token",
+            secretClass: .refreshToken
+        )
+        let custodian = LinuxSecretCustodian(backends: [empty, populated])
+
+        try custodian.deleteHighValueSecret(
+            id: "firebase-refresh-token",
+            secretClass: .refreshToken
+        )
+
+        XCTAssertFalse(emptyHarness.arguments.contains { $0.first == "clear" })
+        XCTAssertTrue(populatedHarness.arguments.contains { $0.contains("-d") })
+        XCTAssertNil(
+            try populated.readSecret(id: "firebase-refresh-token", secretClass: .refreshToken)
+        )
+    }
+
+    func testSignOutClearsLocalTokenWhenRemoteRevocationFails() async throws {
+        struct RevocationFailure: Error {}
+
+        let harness = LinuxSecretCommandHarness(kind: .secretService)
+        let backend = LinuxNativeSecretStoreBackend(
+            kind: .secretService,
+            executableURL: URL(fileURLWithPath: "/usr/bin/secret-tool"),
+            runner: { executableURL, arguments, standardInput in
+                try harness.run(
+                    executableURL: executableURL,
+                    arguments: arguments,
+                    standardInput: standardInput
+                )
+            }
+        )
+        let tokenStore = LinuxAuthTokenStore(custodian: LinuxSecretCustodian(backends: [backend]))
+        _ = try tokenStore.storeRefreshToken("refresh-secret")
+        let controller = LinuxAuthSessionController(tokenStore: tokenStore) { _ in
+            throw RevocationFailure()
+        }
+
+        do {
+            _ = try await controller.signOut()
+            XCTFail("Expected remote revocation to fail")
+        } catch is RevocationFailure {
+            // Expected: local token custody must still be cleared.
+        }
+        XCTAssertThrowsError(try tokenStore.restoreRefreshToken())
     }
 
     func testFirebaseAuthProtocolFixturesAndBrowserLaunchAreRedacted() async throws {
@@ -307,6 +665,130 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
         XCTAssertTrue(rows.contains { $0.step == "retry_backoff_before_commit" && $0.backoffMillis == [100, 250, 500] })
         XCTAssertTrue(rows.contains { $0.step == "conflict_remote_newer_wins" && $0.conflictResolution == "remote_newer_by_update_time" })
         XCTAssertEqual(rows.last?.watermark, 1_800_000_001_000)
+    }
+}
+
+private final class FakePolkitAuthority: LinuxPolkitAuthorizing, @unchecked Sendable {
+    typealias Call = (actionID: String, unixProcessID: Int32, allowUserInteraction: Bool)
+
+    private let queue = DispatchQueue(label: "FakePolkitAuthority")
+    private let result: Result<LinuxPolkitAuthorizationResult, LinuxDesktopOwnerAuthenticationError>
+    private var recordedCalls: [Call] = []
+    var calls: [Call] { queue.sync { recordedCalls } }
+
+    init(result: Result<LinuxPolkitAuthorizationResult, LinuxDesktopOwnerAuthenticationError>) {
+        self.result = result
+    }
+
+    func checkAuthorization(
+        actionID: String,
+        unixProcessID: Int32,
+        allowUserInteraction: Bool
+    ) async throws -> LinuxPolkitAuthorizationResult {
+        queue.sync {
+            recordedCalls.append((actionID, unixProcessID, allowUserInteraction))
+        }
+        switch result {
+        case .success(let value):
+            return value
+        case .failure(let error):
+            throw error
+        }
+    }
+}
+
+private final class FakePAMAuthenticator: LinuxPAMAuthenticating, @unchecked Sendable {
+    typealias Call = (serviceName: String, reason: String)
+
+    private let queue = DispatchQueue(label: "FakePAMAuthenticator")
+    private let result: Result<Bool, LinuxDesktopOwnerAuthenticationError>
+    private var recordedCalls: [Call] = []
+    var calls: [Call] { queue.sync { recordedCalls } }
+
+    init(result: Result<Bool, LinuxDesktopOwnerAuthenticationError>) {
+        self.result = result
+    }
+
+    func authenticate(serviceName: String, reason: String) async throws -> Bool {
+        queue.sync {
+            recordedCalls.append((serviceName, reason))
+        }
+        switch result {
+        case .success(let value):
+            return value
+        case .failure(let error):
+            throw error
+        }
+    }
+}
+
+private final class LinuxSecretCommandHarness: @unchecked Sendable {
+    private let lock = NSLock()
+    private let kind: LinuxNativeSecretStoreKind
+    private var storedSecret: String?
+    private var recordedArguments: [[String]] = []
+    private var recordedStandardInput: String?
+
+    init(kind: LinuxNativeSecretStoreKind) {
+        self.kind = kind
+    }
+
+    var arguments: [[String]] {
+        lock.withLock { recordedArguments }
+    }
+
+    var lastStandardInput: String? {
+        lock.withLock { recordedStandardInput }
+    }
+
+    func run(
+        executableURL _: URL,
+        arguments: [String],
+        standardInput: Data?
+    ) throws -> LinuxSecretCommandResult {
+        lock.withLock {
+            recordedArguments.append(arguments)
+            if let standardInput {
+                recordedStandardInput = String(decoding: standardInput, as: UTF8.self)
+            }
+
+            let operation: String
+            switch kind {
+            case .secretService:
+                operation = arguments.first ?? ""
+            case .kwallet:
+                operation = arguments.contains("-w") ? "store"
+                    : arguments.contains("-r") ? "lookup"
+                    : arguments.contains("-d") ? "clear"
+                    : "health"
+            }
+            switch operation {
+            case "store":
+                if let standardInput {
+                    var value = String(decoding: standardInput, as: UTF8.self)
+                    if value.hasSuffix("\n") {
+                        value.removeLast()
+                        if value.hasSuffix("\r") {
+                            value.removeLast()
+                        }
+                    }
+                    storedSecret = value
+                } else {
+                    storedSecret = nil
+                }
+                return LinuxSecretCommandResult(exitCode: 0)
+            case "lookup":
+                if let storedSecret {
+                    return LinuxSecretCommandResult(exitCode: 0, stdout: storedSecret + "\n")
+                }
+                return LinuxSecretCommandResult(exitCode: 1, stderr: "not found")
+            case "clear":
+                storedSecret = nil
+                return LinuxSecretCommandResult(exitCode: 0)
+            default:
+                return LinuxSecretCommandResult(exitCode: 0)
+            }
+        }
     }
 }
 

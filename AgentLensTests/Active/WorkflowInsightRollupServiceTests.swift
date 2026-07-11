@@ -91,9 +91,11 @@ final class WorkflowInsightRollupServiceTests: XCTestCase {
 
     func test_rollupSnapshot_skipsHealthWrite_whenNothingChanged() async throws {
         let store = try makeRollupInMemoryStore()
-        store.replaceUsages(makeRollupFixtureUsages())
+        let fixture = makeRollupFixtureUsages()
+        store.replaceUsages(fixture)
 
-        let t0 = Date()
+        let latestUsageEnd = try XCTUnwrap(fixture.map(\.endTime).max())
+        let t0 = latestUsageEnd.addingTimeInterval(60)
         _ = await WorkflowInsightRollupService(dataStore: store, nowProvider: { t0 }).snapshotAsync(refreshIfStale: true)
         let firstHealthRows = try await store.fetchRetrievalHealth()
         let firstRow = try XCTUnwrap(firstHealthRows.first(where: { $0.subsystem == .insightRollups }))

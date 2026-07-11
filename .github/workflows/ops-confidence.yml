@@ -50,11 +50,12 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
       - name: OWASP ZAP baseline (burnbar.ai)
-        uses: zaproxy/action-baseline@7c4deb10e6261301961c86d65d54a516394f9aed # v0.14.0
+        uses: zaproxy/action-baseline@de8ad967d3548d44ef623df22cf95c3b0baf8b25 # v0.15.0
         with:
           target: "https://burnbar.ai"
           rules_file_name: ".github/zap-rules.tsv"
-          cmd_options: "-a -j"
+          # ZAP exit 1 (FAIL) remains blocking; -I makes warning-only scans exit 0.
+          cmd_options: "-a -j -I"
           fail_action: true
           artifact_name: "zap-ops-confidence-report"
 

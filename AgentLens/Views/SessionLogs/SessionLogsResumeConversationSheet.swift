@@ -3,12 +3,12 @@ import OpenBurnBarCore
 
 struct SessionResumeRequest: Identifiable {
     let id = UUID()
-    let record: ConversationRecord
+    let record: OpenBurnBarCore.ConversationRecord
     let targetHarness: AgentProvider
 }
 
 struct ResumeConversationSheet: View {
-    let record: ConversationRecord
+    let record: OpenBurnBarCore.ConversationRecord
     let initialTargetHarness: AgentProvider
     var daemonManager: OpenBurnBarDaemonManager
 
@@ -22,7 +22,7 @@ struct ResumeConversationSheet: View {
     @State private var openedPath: String?
 
     init(
-        record: ConversationRecord,
+        record: OpenBurnBarCore.ConversationRecord,
         initialTargetHarness: AgentProvider,
         daemonManager: OpenBurnBarDaemonManager
     ) {

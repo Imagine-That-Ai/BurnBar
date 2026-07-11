@@ -707,7 +707,7 @@ final class SettingsManagerTests: XCTestCase {
 
         XCTAssertEqual(settings.gatewayAuthToken, "launch-agent-token")
         XCTAssertEqual(
-            try? gatewayKeychain.string(for: OpenBurnBarIdentity.gatewayAuthTokenAccount),
+            try? gatewayKeychain.string(for: OpenBurnBar.OpenBurnBarIdentity.gatewayAuthTokenAccount),
             "launch-agent-token"
         )
         XCTAssertNil(defaults.string(forKey: SettingsSecretDefaultsKey.gatewayAuthToken))
@@ -721,7 +721,7 @@ final class SettingsManagerTests: XCTestCase {
             legacyServices: [],
             backend: backend
         )
-        try? gatewayKeychain.set("keychain-token", for: OpenBurnBarIdentity.gatewayAuthTokenAccount)
+        try? gatewayKeychain.set("keychain-token", for: OpenBurnBar.OpenBurnBarIdentity.gatewayAuthTokenAccount)
 
         let settings = makeSettingsManager(
             defaults: defaults,
@@ -731,7 +731,7 @@ final class SettingsManagerTests: XCTestCase {
 
         XCTAssertEqual(settings.gatewayAuthToken, "keychain-token")
         XCTAssertEqual(
-            try? gatewayKeychain.string(for: OpenBurnBarIdentity.gatewayAuthTokenAccount),
+            try? gatewayKeychain.string(for: OpenBurnBar.OpenBurnBarIdentity.gatewayAuthTokenAccount),
             "keychain-token"
         )
     }
@@ -1035,7 +1035,7 @@ final class SettingsManagerTests: XCTestCase {
         settings.piAgentBearerToken = "pi-token-123"
 
         XCTAssertEqual(settings.piAgentBearerToken, "pi-token-123")
-        XCTAssertEqual(try? gatewayKeychain.string(for: OpenBurnBarIdentity.piAgentBearerTokenAccount), "pi-token-123")
+        XCTAssertEqual(try? gatewayKeychain.string(for: OpenBurnBar.OpenBurnBarIdentity.piAgentBearerTokenAccount), "pi-token-123")
         XCTAssertNil(defaults.string(forKey: "piAgentBearerToken"))
     }
 
@@ -1816,11 +1816,11 @@ final class SettingsManagerTests: XCTestCase {
         settings.openClawBearerToken = "test-openclaw-token"
 
         XCTAssertEqual(
-            try? controllerSecrets.string(for: OpenBurnBarIdentity.controllerTelegramBotTokenAccount),
+            try? controllerSecrets.string(for: OpenBurnBar.OpenBurnBarIdentity.controllerTelegramBotTokenAccount),
             "test-telegram-token"
         )
         XCTAssertEqual(
-            try? gatewaySecrets.string(for: OpenBurnBarIdentity.openClawBearerTokenAccount),
+            try? gatewaySecrets.string(for: OpenBurnBar.OpenBurnBarIdentity.openClawBearerTokenAccount),
             "test-openclaw-token"
         )
     }
@@ -1925,7 +1925,7 @@ final class SettingsManagerTests: XCTestCase {
     // MARK: - ChatBackendID Tests
 
     func test_chatBackendID_allCases() {
-        XCTAssertEqual(ChatBackendID.allCases.count, 11)
+        XCTAssertEqual(ChatBackendID.allCases.count, 12)
         XCTAssertTrue(ChatBackendID.allCases.contains(.codex))
         XCTAssertTrue(ChatBackendID.allCases.contains(.claude))
         XCTAssertTrue(ChatBackendID.allCases.contains(.hermes))
@@ -1937,6 +1937,7 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertTrue(ChatBackendID.allCases.contains(.forge))
         XCTAssertTrue(ChatBackendID.allCases.contains(.antigravity))
         XCTAssertTrue(ChatBackendID.allCases.contains(.cursorAgent))
+        XCTAssertTrue(ChatBackendID.allCases.contains(.junie))
     }
 
     func test_chatBackendID_displayNames() {
@@ -1951,6 +1952,7 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertEqual(ChatBackendID.forge.displayName, "Forge")
         XCTAssertEqual(ChatBackendID.antigravity.displayName, "Antigravity")
         XCTAssertEqual(ChatBackendID.cursorAgent.displayName, "Cursor Agent")
+        XCTAssertEqual(ChatBackendID.junie.displayName, "Junie")
     }
 
     func test_chatBackendID_encodeEnabledList() {

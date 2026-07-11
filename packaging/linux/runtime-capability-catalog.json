@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "catalogVersion": "2026-07-10",
+  "capabilities": [
+    { "id": "usage.read", "domain": "product", "route": "overview", "additionalRoutes": ["insights"], "evaluator": "daemon", "unavailableReason": "The local daemon is not reachable.", "substitute": "Open Support to repair the daemon connection." },
+    { "id": "database.read", "domain": "product", "route": "database", "evaluator": "daemon", "unavailableReason": "The encrypted database service is not reachable.", "substitute": "Repair the daemon before inspecting local data." },
+    { "id": "providers.configure", "domain": "product", "route": "providers", "evaluator": "daemon", "unavailableReason": "Provider configuration requires the local daemon.", "substitute": "Repair the daemon and unlock a supported secret store." },
+    { "id": "projects.read", "domain": "product", "route": "projects", "evaluator": "daemon", "unavailableReason": "Project state requires the local daemon.", "substitute": "Repair the daemon connection." },
+    { "id": "missions.manage", "domain": "product", "route": "missions", "evaluator": "daemon", "unavailableReason": "Mission control requires the local daemon.", "substitute": "Repair the daemon connection." },
+    { "id": "sessions.read", "domain": "product", "route": "activity", "evaluator": "daemon", "unavailableReason": "Session ingestion and search require the local daemon.", "substitute": "Repair the daemon connection." },
+    { "id": "chat.gateway", "domain": "product", "route": "chat", "evaluator": "gateway", "unavailableReason": "The daemon HTTP gateway is disabled or unreachable.", "substitute": "Enable a provider and the loopback gateway in Settings." },
+    { "id": "memory.review", "domain": "product", "route": "memory", "evaluator": "daemon", "unavailableReason": "Memory review requires the local daemon.", "substitute": "Repair the daemon connection." },
+    { "id": "computer-use.browser", "domain": "platform", "route": "computer-use", "evaluator": "daemon", "unavailableReason": "Browser Computer Use requires a compatible local daemon.", "substitute": "Use the approval and audit view after repairing the daemon." },
+    { "id": "computer-use.system", "domain": "platform", "evaluator": "unavailable", "unavailableReason": "Linux system Computer Use does not yet have a proven portal, libei, or constrained X11 adapter.", "substitute": "Browser Computer Use remains the supported Linux automation path." },
+    { "id": "media.mercury", "domain": "platform", "route": "mercury", "evaluator": "media", "unavailableReason": "The connected daemon does not expose an available Mercury media runtime.", "substitute": "Pair and control media from a currently supported mobile or macOS client." },
+    { "id": "smarthub.control", "domain": "platform", "route": "smarthub", "evaluator": "trusted-cli", "unavailableReason": "A root-owned packaged openburnbar-cli is not available.", "substitute": "Install the full OpenBurnBar package before controlling devices." },
+    { "id": "settings.read", "domain": "product", "route": "settings", "evaluator": "daemon", "unavailableReason": "Live settings require the local daemon.", "substitute": "Use Support to repair the daemon; no settings changes are accepted offline." },
+    { "id": "account.read", "domain": "product", "route": "account", "evaluator": "daemon", "unavailableReason": "Account and sync status require the local daemon.", "substitute": "Repair the daemon connection." },
+    { "id": "updates.check", "domain": "delivery", "route": "updates", "evaluator": "always", "unavailableReason": "The native signed-feed verifier is unavailable.", "substitute": "Verify release signatures manually before installing." },
+    { "id": "updates.install", "domain": "delivery", "evaluator": "unavailable", "unavailableReason": "Linux package ownership stays with apt, dnf, or the AppImage owner.", "substitute": "Use the native signed-feed result, then install through the owning package channel." },
+    { "id": "support.export", "domain": "product", "route": "support", "evaluator": "always", "unavailableReason": "", "substitute": null },
+    { "id": "onboarding.repair", "domain": "product", "route": "onboarding", "evaluator": "always", "unavailableReason": "", "substitute": null },
+    { "id": "pet.overlay", "domain": "platform", "route": "pet", "evaluator": "x11-overlay", "unavailableReason": "The current compositor does not expose a safe click-through overlay contract.", "substitute": "Use the contained draggable companion window." },
+    { "id": "text-expansion.in-app", "domain": "product", "route": "text-expansion", "evaluator": "always", "unavailableReason": "", "substitute": null },
+    { "id": "text-expansion.system", "domain": "platform", "evaluator": "unavailable", "unavailableReason": "System-wide Linux expansion has no proven IBus or Fcitx adapter.", "substitute": "Use in-app expansion." },
+    { "id": "secrets.secret-service", "domain": "security", "evaluator": "secret-service", "unavailableReason": "secret-tool or the desktop session bus is unavailable.", "substitute": "Install libsecret tools and unlock a Secret Service provider." },
+    { "id": "secrets.kwallet", "domain": "security", "evaluator": "kwallet", "unavailableReason": "kwallet-query or the desktop session bus is unavailable.", "substitute": "Install KWallet or use Secret Service." },
+    { "id": "portal.desktop", "domain": "platform", "evaluator": "portal", "unavailableReason": "No desktop session bus is available for portal negotiation.", "substitute": "Use an X11 session only for workflows with an explicit safe fallback." },
+    { "id": "native.tray", "domain": "platform", "evaluator": "tray", "unavailableReason": "The desktop tray host did not accept the OpenBurnBar status item.", "substitute": "Use the main window." },
+    { "id": "native.notifications", "domain": "platform", "evaluator": "daemon", "unavailableReason": "Notification delivery requires the local daemon.", "substitute": "Use the in-app activity view." },
+    { "id": "native.external-billing", "domain": "security", "evaluator": "always", "unavailableReason": "", "substitute": null }
+  ]
+}

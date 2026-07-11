@@ -232,6 +232,7 @@ extension BurnBarHTTPGatewayServer {
     struct GatewayStreamRelayResult {
         let outcome: GatewayRouteOutcome
         let usage: BurnBarProviderProxyUsage?
+        let headers: [String: String]
         let interrupted: Bool
         let httpStatus: Int
     }

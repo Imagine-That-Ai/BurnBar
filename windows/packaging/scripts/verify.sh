@@ -49,6 +49,41 @@ assert layout["architectures"], "architectures must be non-empty"
 print("OK   portable-layout structural checks")
 PY
 
+echo "== MSIX visual assets =="
+python3 - "$pkg_root" <<'PY' || fail=1
+import pathlib
+import struct
+import sys
+
+root = pathlib.Path(sys.argv[1])
+expected = {
+    "Square44x44Logo.png": (44, 44),
+    "Square150x150Logo.png": (150, 150),
+    "SmallTile.png": (71, 71),
+    "LargeTile.png": (310, 310),
+    "Wide310x150Logo.png": (310, 150),
+    "StoreLogo.png": (50, 50),
+}
+errors = []
+for name, dimensions in expected.items():
+    path = root / "msix" / "Images" / name
+    if not path.is_file():
+        errors.append(f"{name}: missing")
+        continue
+    data = path.read_bytes()
+    if len(data) < 24 or not data.startswith(b"\x89PNG\r\n\x1a\n"):
+        errors.append(f"{name}: not a PNG")
+        continue
+    width, height = struct.unpack(">II", data[16:24])
+    if (width, height) != dimensions:
+        errors.append(f"{name}: expected {dimensions[0]}x{dimensions[1]}, got {width}x{height}")
+if errors:
+    for error in errors:
+        print(f"FAIL msix asset {error}", file=sys.stderr)
+    sys.exit(1)
+print("OK   MSIX manifest PNG assets exist with expected scale-100 dimensions")
+PY
+
 echo "== winget manifests (YAML + structural schema rules) =="
 python3 - "$pkg_root" <<'PY' || fail=1
 import sys, re, glob
@@ -119,7 +154,7 @@ PY
 
 echo "== SOFT: full JSON-Schema validation (jsonschema, if available) =="
 if python3 -c "import jsonschema" 2>/dev/null; then
-  python3 - "$pkg_root" <<'PY'
+  if ! python3 - "$pkg_root" <<'PY'
 import json, sys, urllib.request, glob
 root = sys.argv[1]
 import jsonschema, yaml
@@ -149,14 +184,16 @@ except jsonschema.ValidationError as e:
     print(f"FAIL jsonschema portable-layout: {e.message}", file=sys.stderr); bad=1
 sys.exit(bad)
 PY
-  [ $? -ne 0 ] && fail=1
+  then
+    fail=1
+  fi
 else
   skip "jsonschema not importable (structural rules above already ran as the hard gate)"
 fi
 
 echo "== SOFT: nuspec NuGet-core XSD validation =="
 xsd_tmp="$(mktemp)"
-if curl -sSL --max-time 15 -o "$xsd_tmp" "https://raw.githubusercontent.com/NuGet/NuGet.Client/dev/src/NuGet.Core/NuGet.Packaging/compiler/resources/nuspec.xsd" 2>/dev/null && [ -s "$xsd_tmp" ]; then
+if curl -fsSL --max-time 15 -o "$xsd_tmp" "https://raw.githubusercontent.com/NuGet/NuGet.Client/dev/src/NuGet.Core/NuGet.Packaging/compiler/resources/nuspec.xsd" 2>/dev/null && [ -s "$xsd_tmp" ]; then
   ns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd"
   sed "s|{0}|$ns|g" "$xsd_tmp" > "${xsd_tmp}.ns"
   core_tmp="$(mktemp).nuspec"
@@ -184,7 +221,7 @@ fi
 
 echo "== SOFT: PowerShell parse (pwsh, if available) =="
 if command -v pwsh >/dev/null 2>&1; then
-  for ps in "$pkg_root"/portable/New-PortableZip.ps1 "$pkg_root"/chocolatey/tools/*.ps1; do
+  for ps in "$pkg_root"/portable/New-PortableZip.ps1 "$pkg_root"/msix/New-MsixPackage.ps1 "$pkg_root"/chocolatey/tools/*.ps1; do
     if pwsh -NoProfile -NonInteractive -Command "\$e=\$null;[void][System.Management.Automation.Language.Parser]::ParseFile('$ps',[ref]\$null,[ref]\$e); if(\$e){\$e|%{Write-Error \$_.Message}; exit 1} else { exit 0 }" 2>/tmp/obb_ps.err; then
       ok "pwsh parse $(basename "$ps")"
     else

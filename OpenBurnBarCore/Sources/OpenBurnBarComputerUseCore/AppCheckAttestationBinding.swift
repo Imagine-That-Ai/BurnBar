@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Canonical App Check attestation digest shared by Mac, iOS, and Cloud Functions (WS2/WS4).
 /// Wire field `attestationHashBlake3` carries the **controller app's** SHA-256 hex digest (name is historical).

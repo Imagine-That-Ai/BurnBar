@@ -28,7 +28,7 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
         enableReferenceDateOverride: Bool = true
     ) throws -> ProviderQuotaAdapterContext {
         let resolvedReferenceEpochMs = referenceEpochMs ?? Self.referenceEpochMs
-        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: tempDirectoryURL)
+        let appPaths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: tempDirectoryURL)
         let store = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)
         let session = URLSession(configuration: .ephemeral)
         var environment = [

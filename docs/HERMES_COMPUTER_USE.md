@@ -350,6 +350,39 @@ Default envelopes:
 | `soft_cap` | 25 | 100 | 2 | $2.50 |
 | `hard_cap` | 0 | 0 | 0 | $0.00 |
 
+The app and daemon share `ComputerUseLocalQuotaLedger` as the synchronous
+admission authority. It stores one UTC-day ledger under the shared daemon
+support directory, takes an OS file lock for every mutation, atomically writes
+mode `0600` files inside a mode `0700` directory, and hashes session/action
+idempotency keys before persistence. Sessions and non-phone browser/system
+actions are reserved before dispatch, so an offline client, process restart, or
+replayed call ID cannot reset the cap or execute an accepted action twice. A
+corrupt or unavailable ledger fails closed.
+
+Firestore is the fleet reconciliation and operator-readback plane, not the
+dispatch-time authority. Authenticated macOS clients enqueue immutable,
+privacy-safe session/action headers; Functions transactions idempotently fold
+those documents into server-owned `computer_use_quota_usage` totals. Local
+reconciliation takes the field-by-field monotonic maximum, so a delayed or
+lower cloud snapshot can raise local usage but never erase it. Direct human
+phone-control intents remain counted for operations while being excluded from
+the hosted agent/browser action cap.
+
+The cloud totals are operational telemetry for authenticated, non-compromised
+clients; they are not an authoritative billing or anti-abuse ledger. The source
+headers are owner-created Firestore documents and do not carry daemon-signed
+provenance. A compromised client can fabricate or omit source events even
+though it cannot write the server-owned aggregate. Commercial enforcement must
+remain local/fail-closed until source events are attested by a server-verifiable
+executor identity.
+
+Cloud headers contain identifiers, bounded enum/taxonomy values, counters,
+timestamps, manifest/audit hashes, and app/schema versions only. They never
+contain tool arguments, results, URLs, window titles, approval evidence,
+clipboard data, authorization descriptors, device secrets, or raw error text.
+Unstructured failures are normalized to `dispatch_error` before they cross the
+Firestore boundary.
+
 Soft cap engages at projected month-end ≥ $1500; hard cap at ≥ $2500. Projector is `ComputerUseBudgetProjector.projectMonthEnd(monthToDateUSD:daysElapsed:daysInMonth:)`.
 
 ---

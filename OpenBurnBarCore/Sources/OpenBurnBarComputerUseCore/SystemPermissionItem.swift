@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Phase 14 — Domain status mirror of
 /// `HermesRealtimeRelaySystemPermissionStatusKind`.

@@ -24,6 +24,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\OpenBurnBar.App.Configuration\OpenBurnBar.App.Configuration.csproj" />
     <ProjectReference Include="..\OpenBurnBar.App.Quota.Acquisition\OpenBurnBar.App.Quota.Acquisition.csproj" />
   </ItemGroup>
 

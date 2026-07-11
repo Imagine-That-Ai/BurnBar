@@ -441,7 +441,9 @@ public struct FactoryDroidProviderExecutor: BurnBarProviderExecuting, Sendable {
 
         let message: String
         if let providerError = error as? BurnBarProviderExecutorError,
-           case .upstreamError(let statusCode, let body) = providerError {
+           let statusAndBody = providerError.upstreamStatusAndBody {
+            let statusCode = statusAndBody.statusCode
+            let body = statusAndBody.body
             guard statusCode == 402 else { return false }
             message = body
         } else {

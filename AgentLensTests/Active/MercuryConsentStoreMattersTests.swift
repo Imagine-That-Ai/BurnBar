@@ -187,11 +187,47 @@ final class MercuryConsentStoreMattersTests: XCTestCase {
 
     func test_legacyAlwaysAllowMigratesToRememberOn() {
         defaults.set(true, forKey: "mercuryAlwaysAllowMyIPhoneToMirror")
-        defaults.set(false, forKey: "mercuryRememberAcceptedMirrorPeers")
         let store = MercuryConsentStore(defaults: defaults)
         XCTAssertTrue(store.rememberAcceptedMirrorPeers,
                       "the legacy global consent was broader than device-bound grants; carry intent forward")
+        XCTAssertTrue(defaults.bool(forKey: "mercuryRememberAcceptedMirrorPeers"),
+                      "legacy migration must persist remember-on, not just mutate the launch-time store")
         XCTAssertNil(defaults.object(forKey: "mercuryAlwaysAllowMyIPhoneToMirror"))
+    }
+
+    func test_legacyAlwaysAllowDoesNotOverrideExplicitRememberOptOut() {
+        defaults.set(true, forKey: "mercuryAlwaysAllowMyIPhoneToMirror")
+        defaults.set(false, forKey: "mercuryRememberAcceptedMirrorPeers")
+        let store = MercuryConsentStore(defaults: defaults)
+        XCTAssertFalse(store.rememberAcceptedMirrorPeers,
+                       "an explicit remember opt-out must beat the broader legacy allow bit")
+        XCTAssertFalse(defaults.bool(forKey: "mercuryRememberAcceptedMirrorPeers"),
+                       "legacy migration must not persist remember-on over an explicit opt-out")
+        XCTAssertNil(defaults.object(forKey: "mercuryAlwaysAllowMyIPhoneToMirror"))
+    }
+
+    func test_legacyAlwaysAllowFalseDoesNotOverrideExplicitRememberOptIn() {
+        defaults.set(false, forKey: "mercuryAlwaysAllowMyIPhoneToMirror")
+        defaults.set(true, forKey: "mercuryRememberAcceptedMirrorPeers")
+        let store = MercuryConsentStore(defaults: defaults)
+        XCTAssertTrue(store.rememberAcceptedMirrorPeers,
+                      "an explicit remember opt-in must beat the obsolete legacy opt-out")
+        XCTAssertTrue(defaults.bool(forKey: "mercuryRememberAcceptedMirrorPeers"),
+                      "legacy migration must preserve the explicit remember-on choice")
+        XCTAssertNil(defaults.object(forKey: "mercuryAlwaysAllowMyIPhoneToMirror"))
+    }
+
+    func test_liveStoresObserveRememberOptOutChanges() async {
+        let routerStore = MercuryConsentStore(defaults: defaults)
+        let settingsStore = MercuryConsentStore(defaults: defaults)
+        XCTAssertTrue(routerStore.rememberAcceptedMirrorPeers)
+
+        settingsStore.rememberAcceptedMirrorPeers = false
+        NotificationCenter.default.post(name: UserDefaults.didChangeNotification, object: defaults)
+        await Task.yield()
+
+        XCTAssertFalse(routerStore.rememberAcceptedMirrorPeers,
+                       "the live router store must observe Settings opt-outs without waiting for restart")
     }
 
     func test_autoAcceptSlidesGrantExpiryForward() {
@@ -219,6 +255,13 @@ final class MercuryConsentStoreMattersTests: XCTestCase {
             remotePeerNodeId: "ABC123",
             now: t1
         ))
+        store.renewAutoAcceptGrant(
+            connectionId: "conn-1",
+            viewerDeviceId: "device-1",
+            controlAuthorityPeerNodeId: "abc123",
+            remotePeerNodeId: "ABC123",
+            now: t1
+        )
         let renewedExpiry = store.grants.first?.expiresAt
         XCTAssertNotNil(renewedExpiry)
         XCTAssertGreaterThan(renewedExpiry!, firstExpiry!,

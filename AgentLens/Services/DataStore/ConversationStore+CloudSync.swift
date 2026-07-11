@@ -7,7 +7,7 @@ import OpenBurnBarCore
 extension ConversationStore {
         // MARK: - Sync
 
-        func fetchUnsyncedConversations(limit: Int = 400) async throws -> [ConversationRecord] {
+        func fetchUnsyncedConversations(limit: Int = 400) async throws -> [OpenBurnBarCore.ConversationRecord] {
             try await dbQueue.read { db in
                 // Deliberately includes tombstones: a soft-delete clears
                 // `conversationSyncedAt`, so the row resurfaces here and its
@@ -40,7 +40,7 @@ extension ConversationStore {
             }
         }
 
-        func insertRemoteConversation(_ record: ConversationRecord) async throws {
+        func insertRemoteConversation(_ record: OpenBurnBarCore.ConversationRecord) async throws {
             try await dbQueue.write { db in
                 try db.execute(
                     sql: """
@@ -86,7 +86,7 @@ extension ConversationStore {
             }
         }
 
-        func fetchUnsyncedSessionLogs(limit: Int = 100) async throws -> [ConversationRecord] {
+        func fetchUnsyncedSessionLogs(limit: Int = 100) async throws -> [OpenBurnBarCore.ConversationRecord] {
             try await dbQueue.read { db in
                 let rows = try Row.fetchAll(
                     db,

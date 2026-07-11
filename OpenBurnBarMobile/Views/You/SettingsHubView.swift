@@ -186,12 +186,14 @@ struct SettingsHubView: View {
                     }
                     .tint(MobileTheme.ember)
                     .settingsAnchor(SettingsAnchor.usePremiumSOTAUX)
+                    .accessibilityIdentifier("settings.toggle.premiumSOTAUX")
 
                     Toggle(isOn: $useWebsiteBackground) {
                         SettingsLabel(icon: "sparkles", color: MobileTheme.whimsy, title: "Swarm Background")
                     }
                     .tint(MobileTheme.ember)
                     .settingsAnchor(SettingsAnchor.useWebsiteBackground)
+                    .accessibilityIdentifier("settings.toggle.swarmBackground")
                 } header: { groupHeader("Appearance") }
 
                 Section {

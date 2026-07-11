@@ -3,7 +3,7 @@ import CoreHID
 import Dispatch
 import Foundation
 import IOKit.hid
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarComputerUseCore
 
 /// Virtual HID keyboard + pointing device — lives only in the input-execution leaf (WS1 TCB).

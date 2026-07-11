@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"Main OpenBurnBar Linux desktop shell permissions.","local":true,"windows":["main"],"permissions":["core:default","shell:default"]}}
+{"default":{"identifier":"default","description":"Main OpenBurnBar Linux desktop shell permissions.","local":true,"windows":["main","status"],"permissions":["core:default"]}}

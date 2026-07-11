@@ -22,6 +22,8 @@ public actor BurnBarHTTPGatewayServer {
 
     let proxyRouteLogStore: BurnBarProxyRouteLogStore?
 
+    let quotaSignalStore: BurnBarQuotaSignalStore?
+
     let providerExecutor: BurnBarOpenAICompatibleProviderExecutor
 
     let anthropicExecutor: BurnBarAnthropicProviderExecutor
@@ -62,6 +64,7 @@ public actor BurnBarHTTPGatewayServer {
         configStore: BurnBarConfigStore,
         usageRecorder: BurnBarUsageRecorder? = nil,
         proxyRouteLogStore: BurnBarProxyRouteLogStore? = nil,
+        quotaSignalStore: BurnBarQuotaSignalStore? = nil,
         providerExecutor: BurnBarOpenAICompatibleProviderExecutor = BurnBarOpenAICompatibleProviderExecutor(),
         anthropicExecutor: BurnBarAnthropicProviderExecutor = BurnBarAnthropicProviderExecutor(),
         factoryExecutor: FactoryDroidProviderExecutor = FactoryDroidProviderExecutor(),
@@ -77,6 +80,7 @@ public actor BurnBarHTTPGatewayServer {
         self.configStore = configStore
         self.usageRecorder = usageRecorder
         self.proxyRouteLogStore = proxyRouteLogStore
+        self.quotaSignalStore = quotaSignalStore
         self.providerExecutor = providerExecutor
         self.anthropicExecutor = anthropicExecutor
         self.factoryExecutor = factoryExecutor

@@ -112,6 +112,133 @@ jobs:
       - name: Unit tests (vitest)
         run: npm run test --prefix extensions/openburnbar
 
+  # ── Diff coverage: changed TypeScript lines must be ≥80% covered ──────────
+  # Re-armed diff-coverage gate for the TS surface (functions + extension),
+  # where vitest + @vitest/coverage-v8 already run. It computes REAL per-line
+  # coverage from the v8/istanbul coverage-final.json and intersects it with
+  # the added runtime lines of `git diff origin/main HEAD` — NOT test-file
+  # presence. Presence-based carve-outs are exactly the anti-pattern that let
+  # PR #303 flip a 3.2% red check green (DILIGENCE_REPORT_2026-06-11 §5.1,
+  # finding CG-1); scripts/diff-coverage-ts.sh fails closed on missing per-line
+  # evidence and has no presence fallback.
+  #
+  # The check-run name is "diff-coverage (PR)" to match the parked context in
+  # governance/branch-protection.main.json (_pending_required_status_checks).
+  # This job EMITS that context on every PR; promoting it to a REQUIRED check
+  # is a separate, operator-only branch-protection change (see that file and
+  # governance/README.md § "The diff-coverage (PR) placeholder").
+  #
+  # This is a standalone context — intentionally NOT in the Fast Feedback Gate
+  # aggregate's needs: — so it can be promoted to required independently
+  # without silently gating merges through the already-required aggregate
+  # before the operator flips it on.
+  #
+  # TS changes are detected first so Swift-only / docs-only PRs report a fast
+  # pass (the parked context still resolves on every PR — required-safe — but
+  # pays no vitest cost when no functions/extension TS changed).
+  diff-coverage-ts:
+    name: diff-coverage (PR)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          # Full history so `git diff origin/main HEAD` sees the true merge base
+          # for changed-line detection (a shallow clone truncates it).
+          fetch-depth: 0
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            functions/package-lock.json
+            extensions/openburnbar/package-lock.json
+
+      - name: Resolve diff base (origin/main)
+        run: git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+
+      # Positive control: prove the gate still fails on uncovered changed lines
+      # and rejects stale evidence before trusting its verdict on the real diff.
+      - name: Self-test the diff-coverage gate
+        run: bash scripts/diff-coverage-ts-self-test.sh
+
+      - name: Detect changed TypeScript surfaces
+        id: ts
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only origin/main HEAD -- \
+            'functions/src/**/*.ts' \
+            'extensions/openburnbar/src/**/*.ts' \
+            2>/dev/null || true)"
+          if [ -n "$changed" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Changed TypeScript files:"
+            echo "$changed"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No functions/extension TypeScript changed — diff coverage is vacuously satisfied."
+          fi
+
+      # Only install + run vitest coverage when the surface actually changed.
+      # diff-coverage-ts.sh installs missing package deps itself, but doing it
+      # here keeps the coverage run cached and lets the functions contract build
+      # (prebuild dependency) run once, up front.
+      - name: Install functions dependencies
+        if: steps.ts.outputs.changed == 'true'
+        run: npm ci --prefix functions
+
+      - name: Install extension dependencies
+        if: steps.ts.outputs.changed == 'true'
+        run: npm ci --prefix extensions/openburnbar
+
+      - name: Build Signal envelope contracts
+        if: steps.ts.outputs.changed == 'true'
+        run: bash scripts/build-signal-envelope-contracts.sh
+
+      - name: Build entitlements contracts
+        if: steps.ts.outputs.changed == 'true'
+        run: bash scripts/build-entitlements.sh
+
+      - name: Compute TypeScript diff coverage (≥80% of changed lines)
+        env:
+          COVERAGE_THRESHOLD: "80"
+          DIFF_COVERAGE_OUTPUT: ${{ github.workspace }}/ts-diff-coverage.json
+        run: |
+          set -euo pipefail
+          ./scripts/diff-coverage-ts.sh origin/main
+
+      - name: Post diff-coverage summary
+        if: always()
+        run: |
+          {
+            echo "### TypeScript diff coverage"
+            echo ""
+            if [ "${{ steps.ts.outputs.changed }}" != "true" ]; then
+              echo "No functions/extension TypeScript changed — gate vacuously satisfied."
+            elif [ -f ts-diff-coverage.json ]; then
+              threshold=$(jq -r '.diffCoverage.threshold // 80' ts-diff-coverage.json)
+              percent=$(jq -r '.diffCoverage.percent // 0.0' ts-diff-coverage.json)
+              passed=$(jq -r '.diffCoverage.passed // false' ts-diff-coverage.json)
+              method=$(jq -r '.diffCoverage.method // "n/a"' ts-diff-coverage.json)
+              lines=$(jq -r '.diffCoverage.changedLines // 0' ts-diff-coverage.json)
+              echo "Diff coverage: **${percent}%** (threshold: ${threshold}%, method: ${method})"
+              echo "Changed executable lines gated: ${lines}"
+              if [ "$passed" = "true" ]; then echo "Status: passed"; else echo "Status: failed — new TypeScript below threshold"; fi
+              echo ""
+              echo "| File | Executable | Covered | % |"
+              echo "|------|-----------|---------|---|"
+              jq -r '.details[]? | "| \(.file) | \(.executableLines) | \(.coveredLines) | \(.percent) |"' ts-diff-coverage.json | head -50
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload diff-coverage verdict
+        if: always() && steps.ts.outputs.changed == 'true' && !env.ACT
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: ts-diff-coverage
+          path: ts-diff-coverage.json
+
   # ── Website: typecheck + lint ─────────────────────────────────────────────
   website-fast:
     name: Website (types + lint + format)
@@ -223,7 +350,9 @@ jobs:
   agpl-compliance:
     name: AGPL compliance
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    # 3 minutes started timing out as the tree grew (checkout + verify ran
+    # 2m18s-3m15s in July 2026); job timeout reports as "cancelled" in the UI.
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -308,6 +437,7 @@ jobs:
           bash scripts/ci/inject-firebase-config.test.sh
           bash scripts/ci/verify-apple-release-firebase-config.test.sh
           bash scripts/ci/inject-sentry-config-extension.test.sh
+          bash scripts/ci/verify-windows-release-signing-preflight.test.sh
 
       - name: Install ShellCheck
         env:
@@ -442,7 +572,7 @@ jobs:
             packages/hermes-wire-protocol/gen/HermesWireProtocol.kt \
             packages/hermes-wire-protocol/gen/wire_protocol.rs \
             android/openburnbar-iroh-relay/src/main/java/com/openburnbar/irohrelay/Generated/HermesRealtimeRelayGeneratedTypes.kt \
-            OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/Generated
+            OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Generated
           node packages/hermes-wire-protocol/codegen.mjs
           # codegen.mjs writes ALL generated surfaces (the gen/ references AND the real
           # consumed payload types: Kotlin android Generated/ + Swift SharedModels/Generated/).
@@ -452,7 +582,7 @@ jobs:
             services/hermes-realtime-relay/src/generated/wireProtocol.ts \
             packages/hermes-wire-protocol/gen \
             android/openburnbar-iroh-relay/src/main/java/com/openburnbar/irohrelay/Generated \
-            OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/Generated \
+            OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Generated \
             || { echo "::error::Hermes wire-protocol generated files are stale — run 'node packages/hermes-wire-protocol/codegen.mjs' and commit."; exit 1; }
           node packages/hermes-wire-protocol/parity.mjs
           node --test packages/hermes-wire-protocol/protocol.test.mjs
@@ -602,7 +732,7 @@ jobs:
   fast-feedback-path-filter:
     name: Fast Feedback path filter
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 8
     outputs:
       rust_changed: ${{ steps.changed.outputs.rust_changed }}
     steps:
@@ -610,7 +740,7 @@ jobs:
         with:
           # The PR checkout ref is a synthetic merge commit. Depth 2 includes its
           # base and head parents without fetching the entire repository history,
-          # keeping this path filter inside its two-minute budget.
+          # while leaving enough room for large artifact-purge diffs to checkout.
           fetch-depth: 2
 
       - name: Detect Rust-relevant changes
@@ -858,6 +988,12 @@ jobs:
       - name: Verify ops-plane workflow boundary
         run: node scripts/ci/verify-ops-plane-workflow-boundary.mjs
 
+      - name: Self-test branch-protection drift gate
+        run: node --test scripts/ops/check-branch-protection-drift.test.mjs
+
+      - name: Self-test ops alert-plane drift gate
+        run: node --test scripts/ops/check-ops-alert-plane-drift.test.mjs
+
       - name: Self-test PR harness aggregate gates
         run: node scripts/ci/verify-pr-harness-aggregate-gates.test.mjs
 
@@ -907,7 +1043,7 @@ jobs:
           sparse-checkout: |
             AgentLens/Services/DataStore
             OpenBurnBarMobile/Models
-            OpenBurnBarCore/Sources/OpenBurnBarCore/Budget
+            OpenBurnBarCore/Sources/OpenBurnBarKernel/Budget
             scripts/ci/check-budget-fork-drift.sh
             scripts/ci/budget-fork-baselines
 
@@ -963,6 +1099,31 @@ jobs:
 
       - name: Verify Windows storage architecture (WPD-0005 honesty)
         run: bash scripts/ci/verify-windows-storage-architecture.sh
+
+  # ── Windows parity ledger (Phase 0 anti-false-green gate) ───────────────────
+  # The machine-readable macOS↔Windows ledger rejects non-approved states, Real
+  # rows without tests/evidence, fake production paths, and unmapped primary routes.
+  windows-parity-ledger:
+    name: Windows parity ledger (Phase 0)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PyYAML for ledger scanner
+        run: python3 -m pip install --user 'pyyaml>=6,<7'
+
+      - name: Self-test the Windows parity ledger gate
+        run: bash scripts/ci/verify-windows-parity-ledger.test.sh
+
+      - name: Verify Windows parity ledger honesty
+        run: bash scripts/ci/verify-windows-parity-ledger.sh
 
   # ── Functions critical correctness (money + compliance; merge-blocking) ─────
   # The App Store JWS verifier, billing/tier rollups, tier COGS, cloud-pro
@@ -1030,6 +1191,12 @@ jobs:
         with:
           node-version: 22
 
+      - name: No committed compiler/build artifacts
+        run: ./scripts/ci/check-no-committed-build-artifacts.sh
+
+      - name: No stale failed launch evidence
+        run: ./scripts/ci/check-no-stale-launch-evidence.sh
+
       - name: try? debt budget
         run: ./scripts/debt/check-try-optional-budget.sh
 
@@ -1048,11 +1215,30 @@ jobs:
       - name: Swift file-size debt budget (shrink-only)
         run: ./scripts/debt/check-swift-file-size-budget.sh
 
+      # Structural remediation ratchets (audit 2026-06-30 findings #4/#5).
+      # Core UI purity: no new SwiftUI/AppKit imports in OpenBurnBarCore's main
+      # module; pure sibling targets assert-zero. Mission split-brain: the
+      # GUI-side mission-authority cluster may only shrink as authority moves
+      # to the daemon MissionControl.
+      - name: Core UI-purity budget (shrink-only ratchet)
+        run: ./scripts/debt/check-core-ui-purity-budget.sh
+
+      - name: Mission split-brain budget (shrink-only ratchet)
+        run: ./scripts/debt/check-mission-splitbrain-budget.sh
+
       # Windows per-tree size ratchet (rooted at windows/, partitioned by
       # app/pal/native/tests). Blocking Windows check on every PR — a red
       # Windows budget fails HERE at merge time. Pure bash + python3.
       - name: Windows tree budget (per-tree shrink-only ratchet)
         run: ./scripts/debt/check-windows-tree-budget.sh
+
+      - name: BurnBarRPC IPC canon is current
+        run: node tools/ipc/generate-burnbarrpc-canon.mjs --check
+
+      - name: Migration rollback catalog covers both migrators
+        run: |
+          node --test scripts/ci/verify-migration-rollback-catalog.test.mjs
+          node scripts/ci/verify-migration-rollback-catalog.mjs
 
   # ── Fast summary gate ──────────────────────────────────────────────────────
   fast-feedback-gate:
@@ -1081,6 +1267,7 @@ jobs:
       - no-suppressions
       - twin-basenames
       - windows-storage-architecture
+      - windows-parity-ledger
       - debt-budgets
       - functions-correctness
     runs-on: ubuntu-latest

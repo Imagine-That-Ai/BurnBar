@@ -1,0 +1,9 @@
+[package]
+name = "openburnbar-media"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "openburnbar_media"
+path = "src/lib.rs"

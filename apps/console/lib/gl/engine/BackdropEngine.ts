@@ -81,6 +81,9 @@ export class BackdropEngine {
 
   private visible = true;
   private pageVisible = true;
+  /** Native-host visibility (window occlusion/minimize/app-hide), driven by
+   *  the embedder via {@link setHostVisible}. Browsers never touch this. */
+  private hostVisible = true;
   private reducedMotion = false;
 
   private pointer = { x: 0, y: 0, active: false };
@@ -176,6 +179,28 @@ export class BackdropEngine {
 
   getResolvedKernel(): KernelId {
     return this.activeId;
+  }
+
+  /**
+   * Native embedders (the macOS/iOS WKWebView backdrop) call this when the
+   * hosting window's occlusion state changes. `document.hidden` never fires
+   * for a window that is merely covered by another window or minimized, so
+   * without this hook the rAF loop keeps burning GPU/CPU behind fully
+   * occluded windows. Fully stops the loop (not just early-returns) so an
+   * occluded backdrop costs ~0; restarting is seamless — same pattern as the
+   * reduced-motion toggle.
+   */
+  setHostVisible(hostVisible: boolean): void {
+    if (this.hostVisible === hostVisible) return;
+    this.hostVisible = hostVisible;
+    if (!hostVisible) {
+      if (this.raf !== null) {
+        cancelAnimationFrame(this.raf);
+        this.raf = null;
+      }
+    } else if (this.raf === null && !this.reducedMotion) {
+      this.startLoop();
+    }
   }
 
   /** A foreground glyph was dragged/thrown through the field — forward to the
@@ -302,7 +327,10 @@ export class BackdropEngine {
         depth: false,
         stencil: false,
         premultipliedAlpha: true,
-        powerPreference: "high-performance",
+        // Ambient backdrops don't need dGPU clocks: "low-power" renders the
+        // exact same frames on the efficiency GPU tier and saves real battery
+        // ("high-performance" forces higher clocks / the discrete GPU on Macs).
+        powerPreference: "low-power",
         preserveDrawingBuffer: false,
       });
       if (!ctx) {
@@ -352,7 +380,7 @@ export class BackdropEngine {
     this.lastNow = performance.now();
     const loop = (now: number) => {
       this.raf = requestAnimationFrame(loop);
-      if (!this.visible || !this.pageVisible) {
+      if (!this.visible || !this.pageVisible || !this.hostVisible) {
         this.lastNow = now;
         return;
       }
@@ -476,7 +504,7 @@ export class BackdropEngine {
    */
   private harvestObstacles(force = false): void {
     const now = typeof performance !== "undefined" ? performance.now() : 0;
-    if (!force && now - this.lastHarvest < 150) return;
+    if (!force && now - this.lastHarvest < 300) return;
     this.lastHarvest = now;
     const wantsObstacles = this.slots.some((s) => !s.outgoing && s.kernel.obstacles);
     if (!wantsObstacles) return;

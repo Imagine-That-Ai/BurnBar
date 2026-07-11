@@ -619,6 +619,126 @@ final class SearchIndexStore: Sendable {
         }
     }
 
+    /// Round-4 perf sweep: combined chunk + document fetch via a single JOIN.
+    /// Eliminates one DB round-trip in the SearchService hydration path: the
+    /// old flow fetched missing chunks, then fetched their parent documents in
+    /// a second query. This JOIN returns both in one pass. The caller still
+    /// merges results with the lexical-provided maps; documents that were
+    /// already in `lexicalDocumentMap` are simply overwritten (same content).
+    func fetchChunksWithDocuments(ids: [String]) async throws -> [(chunk: SearchChunkRecord, document: SearchDocumentRecord)] {
+        let uniqueIDs = Array(Set(ids)).sorted()
+        guard uniqueIDs.isEmpty == false else { return [] }
+
+        return try await dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT
+                    c.id AS chunkID,
+                    c.documentID AS chunkDocumentID,
+                    c.sourceKind AS chunkSourceKind,
+                    c.sourceID AS chunkSourceID,
+                    c.sourceVersionID AS chunkSourceVersionID,
+                    c.ordinal AS chunkOrdinal,
+                    c.startOffset AS chunkStartOffset,
+                    c.endOffset AS chunkEndOffset,
+                    c.messageStartOffset AS chunkMessageStartOffset,
+                    c.messageEndOffset AS chunkMessageEndOffset,
+                    c.sectionPath AS chunkSectionPath,
+                    c.text AS chunkText,
+                    c.contentHash AS chunkContentHash,
+                    c.createdAt AS chunkCreatedAt,
+                    c.updatedAt AS chunkUpdatedAt,
+                    d.id AS docID,
+                    d.sourceKind AS docSourceKind,
+                    d.sourceID AS docSourceID,
+                    d.sourceVersionID AS docSourceVersionID,
+                    d.provider AS docProvider,
+                    d.projectName AS docProjectName,
+                    d.title AS docTitle,
+                    d.subtitle AS docSubtitle,
+                    d.bodyPreview AS docBodyPreview,
+                    d.sourceUpdatedAt AS docSourceUpdatedAt,
+                    d.indexedAt AS docIndexedAt,
+                    d.contentHash AS docContentHash,
+                    d.createdAt AS docCreatedAt,
+                    d.updatedAt AS docUpdatedAt
+                FROM search_chunks AS c
+                JOIN search_documents AS d ON d.id = c.documentID
+                WHERE c.id IN (\(OpenBurnBarDatabase.sqlPlaceholders(count: uniqueIDs.count)))
+                ORDER BY c.documentID ASC, c.ordinal ASC
+                """,
+                arguments: StatementArguments(uniqueIDs)
+            )
+            return rows.compactMap(Self.chunkWithDocument(from:))
+        }
+    }
+
+    static func chunkWithDocument(from row: Row) -> (chunk: SearchChunkRecord, document: SearchDocumentRecord)? {
+        guard
+            let chunkID = row["chunkID"] as? String,
+            let chunkDocumentID = row["chunkDocumentID"] as? String,
+            let chunkSourceKindRaw = row["chunkSourceKind"] as? String,
+            let chunkSourceKind = SearchSourceKind(rawValue: chunkSourceKindRaw),
+            let chunkSourceID = row["chunkSourceID"] as? String,
+            let docID = row["docID"] as? String,
+            let docSourceKindRaw = row["docSourceKind"] as? String,
+            let docSourceKind = SearchSourceKind(rawValue: docSourceKindRaw),
+            let docSourceID = row["docSourceID"] as? String,
+            let docTitle = row["docTitle"] as? String
+        else {
+            return nil
+        }
+
+        let chunkOrdinal = (row["chunkOrdinal"] as? Int) ?? Int(row["chunkOrdinal"] as? Int64 ?? 0)
+        let chunkStartOffset = (row["chunkStartOffset"] as? Int) ?? Int(row["chunkStartOffset"] as? Int64 ?? 0)
+        let chunkEndOffset = (row["chunkEndOffset"] as? Int) ?? Int(row["chunkEndOffset"] as? Int64 ?? 0)
+        let chunkMessageStartOffset = (row["chunkMessageStartOffset"] as? Int) ?? Int(row["chunkMessageStartOffset"] as? Int64 ?? -1)
+        let chunkMessageEndOffset = (row["chunkMessageEndOffset"] as? Int) ?? Int(row["chunkMessageEndOffset"] as? Int64 ?? -1)
+        let chunkCreatedAt = OpenBurnBarDatabase.parseDateValue(row["chunkCreatedAt"]) ?? Date.distantPast
+        let chunkUpdatedAt = OpenBurnBarDatabase.parseDateValue(row["chunkUpdatedAt"]) ?? chunkCreatedAt
+
+        let chunk = SearchChunkRecord(
+            id: chunkID,
+            documentID: chunkDocumentID,
+            sourceKind: chunkSourceKind,
+            sourceID: chunkSourceID,
+            sourceVersionID: (row["chunkSourceVersionID"] as? String) ?? "",
+            ordinal: chunkOrdinal,
+            startOffset: chunkStartOffset,
+            endOffset: chunkEndOffset,
+            messageStartOffset: chunkMessageStartOffset >= 0 ? chunkMessageStartOffset : nil,
+            messageEndOffset: chunkMessageEndOffset >= 0 ? chunkMessageEndOffset : nil,
+            sectionPath: row["chunkSectionPath"] as? String,
+            text: (row["chunkText"] as? String) ?? "",
+            contentHash: row["chunkContentHash"] as? String,
+            createdAt: chunkCreatedAt,
+            updatedAt: chunkUpdatedAt
+        )
+
+        let docIndexedAt = OpenBurnBarDatabase.parseDateValue(row["docIndexedAt"]) ?? Date()
+        let docCreatedAt = OpenBurnBarDatabase.parseDateValue(row["docCreatedAt"]) ?? docIndexedAt
+        let docUpdatedAt = OpenBurnBarDatabase.parseDateValue(row["docUpdatedAt"]) ?? docCreatedAt
+        let document = SearchDocumentRecord(
+            id: docID,
+            sourceKind: docSourceKind,
+            sourceID: docSourceID,
+            sourceVersionID: (row["docSourceVersionID"] as? String) ?? "",
+            provider: row["docProvider"] as? String,
+            projectName: row["docProjectName"] as? String,
+            title: docTitle,
+            subtitle: row["docSubtitle"] as? String,
+            bodyPreview: row["docBodyPreview"] as? String,
+            sourceUpdatedAt: OpenBurnBarDatabase.parseDateValue(row["docSourceUpdatedAt"]),
+            indexedAt: docIndexedAt,
+            contentHash: row["docContentHash"] as? String,
+            createdAt: docCreatedAt,
+            updatedAt: docUpdatedAt
+        )
+
+        return (chunk: chunk, document: document)
+    }
+
     func fetchChunks(sourceKind: SearchSourceKind, sourceID: String) async throws -> [SearchChunkRecord] {
         try await dbQueue.read { db in
             let rows = try Row.fetchAll(

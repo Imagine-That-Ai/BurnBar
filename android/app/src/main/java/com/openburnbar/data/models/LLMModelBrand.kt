@@ -124,6 +124,7 @@ val AgentProvider.logoRes: Int
             AgentProvider.FORGE_DEV -> R.drawable.logo_forge
             AgentProvider.AUGMENT -> R.drawable.logo_augment
             AgentProvider.HERMES -> R.drawable.logo_hermes
+            AgentProvider.JUNIE -> R.drawable.logo_junie
             AgentProvider.PI_AGENT -> R.drawable.pi_agent_logo
             AgentProvider.GEMINI_CLI -> R.drawable.logo_gemini_cli
             AgentProvider.GOOSE -> R.drawable.logo_goose

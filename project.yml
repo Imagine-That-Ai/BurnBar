@@ -52,7 +52,10 @@ packages:
     from: "8.0.0"
   AmplitudeSwift:
     url: https://github.com/amplitude/Amplitude-Swift
-    from: "1.17.3"
+    from: "1.18.6"
+  AmplitudeCore:
+    url: https://github.com/amplitude/AmplitudeCore-Swift.git
+    from: "1.4.8"
   GLTFKit2:
     url: https://github.com/warrenm/GLTFKit2
     from: "0.5.15"
@@ -67,6 +70,16 @@ packages:
     from: "1.18.0"
 
 schemes:
+  OpenBurnBarUITests:
+    build:
+      targets:
+        OpenBurnBar: all
+        OpenBurnBarUITests: test
+    test:
+      config: Debug
+      targets:
+        - OpenBurnBarUITests
+
   OpenBurnBarMobileUnitTests:
     build:
       targets:
@@ -431,6 +444,8 @@ targets:
         product: Sentry
       - package: AmplitudeSwift
         product: AmplitudeSwift
+      - package: AmplitudeCore
+        product: AmplitudeCoreFramework
       - package: GLTFKit2
         product: GLTFKit2
       - package: DracoSwift
@@ -534,8 +549,6 @@ targets:
         SKIP_INSTALL: true
     dependencies:
       - target: OpenBurnBarRemoteAccessAgentCore
-      - package: OpenBurnBarCore
-        product: OpenBurnBarComputerUseCore
 
   OpenBurnBarVirtualHIDBridge:
     type: tool
@@ -553,8 +566,6 @@ targets:
         SKIP_INSTALL: true
     dependencies:
       - target: OpenBurnBarRemoteAccessAgentCore
-      - package: OpenBurnBarCore
-        product: OpenBurnBarComputerUseCore
       - sdk: SystemConfiguration.framework
 
   OpenBurnBarPrivilegedInputKillSwitchWatchdog:
@@ -587,7 +598,6 @@ targets:
     dependencies:
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
-        link: false
       - sdk: CoreGraphics.framework
       - sdk: IOKit.framework
       - sdk: Security.framework
@@ -697,6 +707,25 @@ targets:
       - package: SnapshotTesting
         product: SnapshotTesting
 
+  OpenBurnBarUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: OpenBurnBarUITests
+        excludes:
+          - "**/.DS_Store"
+      - path: AgentLens/Support/AccessibilityIdentifiers.swift
+    settings:
+      base:
+        SWIFT_VERSION: "5.10"
+        PRODUCT_NAME: OpenBurnBarUITests
+        PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.uitests
+        TEST_TARGET_NAME: OpenBurnBar
+        SWIFT_ENABLE_EXPLICIT_MODULES: NO
+    dependencies:
+      - target: OpenBurnBar
+
   OpenBurnBarDaemonTests:
     type: bundle.unit-test
     platform: macOS
@@ -718,6 +747,8 @@ targets:
         product: OpenBurnBarCore
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
+      - package: OpenBurnBarCore
+        product: OpenBurnBarLinuxSecurity
 
   OpenBurnBarMobile:
     type: application
@@ -979,6 +1010,8 @@ targets:
         product: OpenBurnBarSignalCore
       - package: AmplitudeSwift
         product: AmplitudeSwift
+      - package: AmplitudeCore
+        product: AmplitudeCoreFramework
       - package: Firebase
         product: FirebaseAuth
       - package: Firebase
@@ -1091,6 +1124,8 @@ targets:
         product: OpenBurnBarAnalytics
       - package: AmplitudeSwift
         product: AmplitudeSwift
+      - package: AmplitudeCore
+        product: AmplitudeCoreFramework
 
   OpenBurnBarKeyboard:
     type: app-extension
@@ -1140,3 +1175,5 @@ targets:
         product: OpenBurnBarAnalytics
       - package: AmplitudeSwift
         product: AmplitudeSwift
+      - package: AmplitudeCore
+        product: AmplitudeCoreFramework

@@ -1,10 +1,51 @@
 import Foundation
 import GRDB
 import XCTest
+import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
 @testable import OpenBurnBar
 
 final class OpenBurnBarDaemonManagerTests: XCTestCase {
+    @MainActor
+    func test_computerUseRuntimeUsesManagerOwnedDependencies() throws {
+        let harness = try makeRuntimePathsHarness(name: "computer-use-dependencies")
+        defer { harness.cleanup() }
+        let defaultsSuite = "OpenBurnBarDaemonManagerTests.computer-use.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsSuite))
+        defer { defaults.removePersistentDomain(forName: defaultsSuite) }
+
+        let budgetStatusStore = ComputerUseBudgetStatusStore(isSignedInProvider: { false })
+        let quotaUsageStore = ComputerUseQuotaUsageStore()
+        let meteringRecorder = ComputerUseCloudMeteringRecorderSpy()
+        defer {
+            budgetStatusStore.stopListening()
+            quotaUsageStore.stopListening()
+        }
+        let manager = OpenBurnBarDaemonManager(
+            paths: harness.paths,
+            dependencies: daemonDependencies(resolveDaemonBinary: { nil }),
+            usageSyncService: OpenBurnBarDaemonUsageSyncService(paths: harness.paths, fileManager: .default),
+            computerUseBudgetStatusStore: budgetStatusStore,
+            computerUseQuotaUsageStore: quotaUsageStore,
+            computerUseCloudMeteringRecorder: meteringRecorder
+        )
+
+        XCTAssertIdentical(manager.computerUseBudgetStatusStore, budgetStatusStore)
+        XCTAssertIdentical(manager.computerUseQuotaUsageStore, quotaUsageStore)
+        XCTAssertIdentical(manager.computerUseCloudMeteringRecorder as AnyObject, meteringRecorder)
+
+        let controller = ComputerUseRuntimeController(
+            accountManager: AccountManager(),
+            settingsManager: SettingsManager(defaults: defaults),
+            daemonManager: manager
+        )
+
+        XCTAssertNotNil(budgetStatusStore.onEnvelopeChanged)
+        XCTAssertNotNil(budgetStatusStore.onAvailabilityChanged)
+        XCTAssertNotNil(quotaUsageStore.onStateChanged)
+        XCTAssertIdentical(controller.coordinator.cloudMeteringRecorder as AnyObject?, meteringRecorder)
+    }
+
     @MainActor
     func test_managerFallsBackToLocalMirrorWhenDaemonUnavailable() async throws {
         let harness = try makeRuntimePathsHarness(name: "fallback")
@@ -1501,6 +1542,31 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
 
         XCTAssertEqual(resolved?.standardizedFileURL, corpusURL.standardizedFileURL)
     }
+}
+
+@MainActor
+private final class ComputerUseCloudMeteringRecorderSpy: ComputerUseCloudMeteringRecording {
+    func recordSessionStart(
+        userID: String,
+        request: ComputerUseSessionStartRequest,
+        response: ComputerUseSessionStartResponse,
+        macAppVersion: String
+    ) async throws {}
+
+    func recordAction(
+        userID: String,
+        invocation: BurnBarToolInvocation,
+        response: ComputerUseInvokeResponse
+    ) async throws {}
+
+    func recordSessionEnd(
+        userID: String,
+        sessionID: String,
+        endedAt: Date,
+        reason: ComputerUseEndReason,
+        state: ComputerUseSessionState?,
+        auditHeadHashHex: String?
+    ) async throws {}
 }
 
     private func makeRuntimePathsHarness(name: String) throws -> RuntimePathsHarness {

@@ -6,14 +6,14 @@ public enum PaletteItemKind
     /// <summary>"Go to" a top-level surface (a <see cref="NavDestination"/>).</summary>
     Section,
 
-    /// <summary>Jump to a tracked session (stub data until the search seam lands).</summary>
+    /// <summary>Jump to a tracked session.</summary>
     Session,
 }
 
 /// <summary>
 /// One row in the Command Palette — the Windows analog of a <c>CommandDeckPalette</c> result
 /// (<c>AgentLens/Views/Dashboard/Components/CommandDeckPalette.swift</c>). Sections navigate the
-/// shell frame; sessions are stubbed until the storage/search read seam (#1198) is consumed.
+/// shell frame; sessions navigate through the encrypted local session-log index.
 /// </summary>
 public sealed class CommandPaletteItem
 {

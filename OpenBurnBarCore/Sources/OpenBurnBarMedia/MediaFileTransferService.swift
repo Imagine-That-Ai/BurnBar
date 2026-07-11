@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarIrohRelay
 
 /// Transport-agnostic Mercury file transfer driver. Sits between the
@@ -136,9 +136,18 @@ public actor MediaFileTransferService {
         ticketText: String,
         manifest: HermesRealtimeRelayAttachmentManifest
     ) async throws -> (destinationURL: URL, stats: BlobTransferStats) {
-        _ = try await bootstrap()
+        try await fetch(ticketText: ticketText, manifest: manifest, destinationURL: inboxURL(for: manifest))
+    }
 
-        let inboxFile = inboxURL(for: manifest)
+    /// Fetch a peer's blob into a caller-selected destination path. Platform
+    /// adapters use this when the final user-visible save location matters.
+    public func fetch(
+        ticketText: String,
+        manifest: HermesRealtimeRelayAttachmentManifest,
+        destinationURL: URL
+    ) async throws -> (destinationURL: URL, stats: BlobTransferStats) {
+        _ = try await bootstrap()
+        try Self.ensureDirectoryExists(destinationURL.deletingLastPathComponent())
 
         do {
             guard manifest.size >= 0 else {
@@ -146,10 +155,10 @@ public actor MediaFileTransferService {
             }
             let stats = try await backend.fetchBlob(
                 ticketText: ticketText,
-                destination: inboxFile.path,
+                destination: destinationURL.path,
                 expectedSizeBytes: UInt64(manifest.size)
             )
-            return (inboxFile, stats)
+            return (destinationURL, stats)
         } catch let blobError as IrohBlobBackendError {
             throw ServiceError.fetchFailed(String(describing: blobError))
         }

@@ -390,7 +390,6 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         try await harness.start()
         addTeardownBlock { await harness.stop() }
-
         let (response, body) = try await sendGatewayRequest(
             port: harness.port,
             method: "GET",
@@ -5096,6 +5095,279 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
 }
 
 extension BurnBarHTTPGatewayServerTests {
+    func testGatewayKeepsCustomAnthropicModelRouteableForSavedOAuthSlotWhenLiveCatalogOmitsIt() async throws {
+        enqueueAnthropicModelCatalog(["claude-opus-4-7"])
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: """
+            {
+              "id": "msg_fable5",
+              "type": "message",
+              "role": "assistant",
+              "model": "claude-fable-5",
+              "content": [{"type": "text", "text": "OK"}],
+              "stop_reason": "end_turn",
+              "usage": {
+                "input_tokens": 4,
+                "output_tokens": 2,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0
+              }
+            }
+            """
+        )
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        let harness = try GatewayHarness(
+            anthropicExecutor: BurnBarAnthropicProviderExecutor(session: session),
+            modelCatalogSession: session
+        )
+        let slotID = "saved-claude-oauth-slot"
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "anthropic",
+                isEnabled: true,
+                baseURL: "https://gateway-upstream.test/anthropic/v1",
+                preferredModelIDs: ["claude-opus-4-8-family"],
+                preferredCredentialSlotID: slotID
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "anthropic",
+            slotID: slotID,
+            label: "Saved Claude OAuth bearer",
+            apiKey: "sk-ant-oat-saved",
+            authMethodID: "anthropic-claude-oauth"
+        )
+        _ = try await harness.configStore.upsertCustomModel(
+            providerID: "anthropic",
+            customModel: BurnBarCustomModel(modelID: "claude-fable-5", displayName: "Claude Fable 5")
+        )
+        try await harness.start()
+        addTeardownBlock { await harness.stop() }
+
+        let (modelsResponse, modelsBody) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "GET",
+            path: "/v1/models"
+        )
+        XCTAssertEqual(modelsResponse.statusCode, 200)
+        let modelsObject = try XCTUnwrap(JSONSerialization.jsonObject(with: modelsBody) as? [String: Any])
+        let modelsData = try XCTUnwrap(modelsObject["data"] as? [[String: Any]])
+        let fable = try XCTUnwrap(modelsData.first {
+            ($0["account_id"] as? String) == slotID
+                && ($0["id"] as? String) == "claude-fable-5"
+        })
+        XCTAssertEqual(fable["provider_id"] as? String, "anthropic")
+        XCTAssertEqual(fable["route_eligible"] as? Bool, true)
+
+        let (messageResponse, messageBody) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/messages",
+            headers: ["Content-Type": "application/json"],
+            body: Data(
+                #"{"model":"claude-fable-5","max_tokens":16,"messages":[{"role":"user","content":"Reply OK"}]}"#.utf8
+            )
+        )
+        XCTAssertEqual(messageResponse.statusCode, 200, String(decoding: messageBody, as: UTF8.self))
+        let upstreamMessage = try XCTUnwrap(
+            GatewayUpstreamURLProtocol.recordedRequests().first { $0.path == "/anthropic/v1/messages" }
+        )
+        XCTAssertTrue(upstreamMessage.body.contains(#""model":"claude-fable-5""#), upstreamMessage.body)
+    }
+
+    func testGatewayExplainsExpiredSavedOAuthSlotInsteadOfSuggestingAnotherProvider() async throws {
+        enqueueAnthropicModelCatalog(["claude-fable-5"], times: 2)
+        let harness = try GatewayHarness()
+        let slotID = "expired-claude-oauth-slot"
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "anthropic",
+                isEnabled: true,
+                baseURL: "https://gateway-upstream.test/anthropic/v1",
+                preferredModelIDs: ["claude-opus-4-8-family"],
+                preferredCredentialSlotID: slotID,
+                credentialSlots: [
+                    BurnBarProviderCredentialSlot(
+                        slotID: slotID,
+                        label: "Claude Code OAuth",
+                        status: .missingSecret,
+                        authMethodID: "anthropic-claude-oauth"
+                    )
+                ]
+            )
+        )
+        _ = try await harness.configStore.upsertCustomModel(
+            providerID: "anthropic",
+            customModel: BurnBarCustomModel(modelID: "claude-fable-5", displayName: "Claude Fable 5")
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "anthropic",
+            slotID: "healthy-claude-oauth-slot",
+            label: "Healthy Claude OAuth",
+            apiKey: "sk-ant-oat-healthy",
+            authMethodID: "anthropic-claude-oauth"
+        )
+        try await harness.start()
+        addTeardownBlock { await harness.stop() }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/messages",
+            headers: ["Content-Type": "application/json"],
+            body: Data(
+                #"{"model":"anthropic/expired-claude-oauth-slot/claude-fable-5","max_tokens":16,"messages":[{"role":"user","content":"Reply OK"}]}"#.utf8
+            )
+        )
+        XCTAssertEqual(response.statusCode, 503)
+        let bodyText = String(decoding: body, as: UTF8.self)
+        XCTAssertTrue(bodyText.contains("credential is missing or expired"), bodyText)
+        XCTAssertTrue(bodyText.contains("claude auth login"), bodyText)
+        XCTAssertFalse(bodyText.contains("Add or enable an advertised OpenBurnBar provider"), bodyText)
+    }
+
+}
+
+extension BurnBarHTTPGatewayServerTests {
+    func testGatewayCapturesRateLimitHeadersAsQuotaSignals() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: #"{"object":"list","data":[{"id":"glm-5-turbo","display_name":"GLM 5 Turbo"}]}"#,
+            path: "/v1/models"
+        )
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: #"{"id":"chatcmpl-quota-signal","object":"chat.completion","model":"glm-5-turbo","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}"#,
+            path: "/v1/chat/completions",
+            headers: [
+                "x-ratelimit-remaining": "17",
+                "x-ratelimit-limit": "20",
+                "x-ratelimit-reset": "2026-07-04T08:00:00Z",
+                "Authorization": "Bearer must-not-persist",
+                "X-Not-Quota": "ignore"
+            ]
+        )
+
+        let harness = try GatewayHarness(
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            modelCatalogSession: session
+        )
+        try await harness.configureZAIProviderForGateway()
+        try await harness.start()
+        addTeardownBlock { await harness.stop() }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"zai/primary/glm-5-turbo","messages":[{"role":"user","content":"hi"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 200, String(decoding: body, as: UTF8.self))
+        let signals = try await harness.quotaSignalStore.recent(limit: 5)
+        let signal = try XCTUnwrap(signals.first)
+        XCTAssertEqual(signal.signalTier, .trafficHeaders)
+        XCTAssertEqual(signal.providerID, "zai")
+        XCTAssertEqual(signal.accountID, "primary")
+        XCTAssertEqual(signal.requestPath, "/v1/chat/completions")
+        XCTAssertEqual(signal.endpoint, "Chat Completions")
+        XCTAssertEqual(signal.remaining, 17)
+        XCTAssertEqual(signal.limit, 20)
+        XCTAssertEqual(signal.resetsAt, ISO8601DateFormatter().date(from: "2026-07-04T08:00:00Z"))
+
+        let headerNames = Set(signal.headers.map(\.name))
+        XCTAssertEqual(headerNames, ["x-ratelimit-limit", "x-ratelimit-remaining", "x-ratelimit-reset"])
+        XCTAssertFalse(headerNames.contains("authorization"))
+        XCTAssertFalse(headerNames.contains("x-not-quota"))
+    }
+
+    func testQuotaSignalParserAvoidsRatelimitLimitFalsePositiveAndParsesDurations() throws {
+        let observedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let route = BurnBarProviderRoute(
+            providerID: "anthropic",
+            providerDisplayName: "Anthropic",
+            credentialSlotID: "primary",
+            credentialSlotLabel: "Primary",
+            baseURL: "https://api.anthropic.com/v1",
+            requestedModel: "claude-opus",
+            resolvedModelID: "claude-opus",
+            apiKey: "sk-test",
+            pricing: .defaultFallback,
+            formatFamily: .anthropic
+        )
+
+        let signal = try XCTUnwrap(BurnBarQuotaSignalStore.signal(
+            from: [
+                "ratelimit-policy": "100;w=60",
+                "x-ratelimit-remaining": "12",
+                "x-ratelimit-reset": "1h",
+                "anthropic-ratelimit-tokens-reset": "10ms"
+            ],
+            route: route,
+            requestPath: "/v1/messages",
+            endpoint: "Messages",
+            httpStatus: 429,
+            streamed: false,
+            observedAt: observedAt
+        ))
+
+        XCTAssertEqual(signal.remaining, 12)
+        XCTAssertNil(signal.limit)
+        XCTAssertEqual(signal.resetsAt, observedAt.addingTimeInterval(0.01))
+    }
+
+    func testGatewayCapturesQuotaHeadersFromUpstreamFailure() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: #"{"object":"list","data":[{"id":"glm-5-turbo","display_name":"GLM 5 Turbo"}]}"#,
+            path: "/v1/models"
+        )
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 429,
+            body: #"{"error":{"message":"rate_limit_error"}}"#,
+            path: "/v1/chat/completions",
+            headers: [
+                "x-ratelimit-remaining": "0",
+                "x-ratelimit-limit": "20",
+                "x-ratelimit-reset": "1h"
+            ]
+        )
+
+        let harness = try GatewayHarness(
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            modelCatalogSession: session
+        )
+        try await harness.configureZAIProviderForGateway()
+        try await harness.start()
+        addTeardownBlock { await harness.stop() }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"zai/primary/glm-5-turbo","messages":[{"role":"user","content":"hi"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 429, String(decoding: body, as: UTF8.self))
+        let recentSignals = try await harness.quotaSignalStore.recent(limit: 5)
+        let signal = try XCTUnwrap(recentSignals.first)
+        XCTAssertEqual(signal.httpStatus, 429)
+        XCTAssertEqual(signal.remaining, 0)
+        XCTAssertEqual(signal.limit, 20)
+        XCTAssertEqual(signal.resetsAt, signal.observedAt.addingTimeInterval(3_600))
+    }
+
     // MARK: - Non-loopback bind warning (F-RR06-003 remediation test)
 
     func testGatewayConfigurationIsLoopbackClassification() {
@@ -5280,7 +5552,7 @@ extension BurnBarHTTPGatewayServerTests {
     }
 }
 
-private final class GatewayHarness: @unchecked Sendable {
+final class GatewayHarness: @unchecked Sendable {
     private static let portLock = NSLock()
     private static var nextCandidatePort = Int.random(in: 49_152...60_999)
 
@@ -5288,6 +5560,7 @@ private final class GatewayHarness: @unchecked Sendable {
     let configStore: BurnBarConfigStore
     let usageRecorder: BurnBarUsageRecorder
     let proxyRouteLogStore: BurnBarProxyRouteLogStore
+    let quotaSignalStore: BurnBarQuotaSignalStore
     private var server: BurnBarHTTPGatewayServer
     private let authToken: String?
     private let rateLimit: BurnBarRateLimitConfiguration?
@@ -5339,6 +5612,10 @@ private final class GatewayHarness: @unchecked Sendable {
             fileURL: tempDirectory.appendingPathComponent("proxy-route-events.jsonl"),
             logger: BurnBarDaemonLogger(category: "gateway-tests")
         )
+        self.quotaSignalStore = BurnBarQuotaSignalStore(
+            fileURL: tempDirectory.appendingPathComponent("quota-signals.jsonl"),
+            logger: BurnBarDaemonLogger(category: "gateway-tests")
+        )
         self.modelHealthStore = BurnBarGatewayModelHealthStore(
             fileURL: tempDirectory.appendingPathComponent("gateway-model-health.json")
         )
@@ -5358,6 +5635,7 @@ private final class GatewayHarness: @unchecked Sendable {
             configStore: configStore,
             usageRecorder: usageRecorder,
             proxyRouteLogStore: proxyRouteLogStore,
+            quotaSignalStore: quotaSignalStore,
             providerExecutor: providerExecutor,
             anthropicExecutor: anthropicExecutor,
             factoryExecutor: factoryExecutor,
@@ -5385,6 +5663,7 @@ private final class GatewayHarness: @unchecked Sendable {
             configStore: configStore,
             usageRecorder: usageRecorder,
             proxyRouteLogStore: proxyRouteLogStore,
+            quotaSignalStore: quotaSignalStore,
             providerExecutor: providerExecutor,
             anthropicExecutor: anthropicExecutor,
             factoryExecutor: factoryExecutor,
@@ -5646,7 +5925,7 @@ struct CapturingDaemonLogger: BurnBarDaemonLogging {
     }
 }
 
-private struct GatewayUpstreamRequest: Hashable {
+struct GatewayUpstreamRequest: Hashable {
     let authorization: String?
     let path: String
     let query: String?
@@ -5660,22 +5939,37 @@ private struct GatewayUpstreamRequest: Hashable {
     let directBrowserAccess: String?
 }
 
-private final class GatewayUpstreamURLProtocol: URLProtocol {
+final class GatewayUpstreamURLProtocol: URLProtocol {
     private struct Response {
         let status: Int
         let body: Data
         let delayNanoseconds: UInt64
         let path: String?
+        let headers: [String: String]
     }
 
     private static let lock = NSLock()
     nonisolated(unsafe) private static var queuedResponses: [Response] = []
     nonisolated(unsafe) private static var requests: [GatewayUpstreamRequest] = []
 
-    static func enqueue(status: Int, body: String, delayNanoseconds: UInt64 = 0, path: String? = nil) {
+    static func enqueue(
+        status: Int,
+        body: String,
+        delayNanoseconds: UInt64 = 0,
+        path: String? = nil,
+        headers: [String: String] = [:]
+    ) {
         lock.lock()
         defer { lock.unlock() }
-        queuedResponses.append(Response(status: status, body: Data(body.utf8), delayNanoseconds: delayNanoseconds, path: path))
+        queuedResponses.append(
+            Response(
+                status: status,
+                body: Data(body.utf8),
+                delayNanoseconds: delayNanoseconds,
+                path: path,
+                headers: headers
+            )
+        )
     }
 
     static func recordedRequests() -> [GatewayUpstreamRequest] {
@@ -5712,7 +6006,8 @@ private final class GatewayUpstreamURLProtocol: URLProtocol {
                 status: 200,
                 body: Data(Self.defaultAnthropicModelCatalogBody.utf8),
                 delayNanoseconds: 0,
-                path: requestPath
+                path: requestPath,
+                headers: [:]
             )
             shouldRecordRequest = false
         } else if let index = Self.queuedResponses.firstIndex(where: { $0.path == nil }) {
@@ -5722,7 +6017,8 @@ private final class GatewayUpstreamURLProtocol: URLProtocol {
                 status: 500,
                 body: Data(#"{"error":"missing fixture"}"#.utf8),
                 delayNanoseconds: 0,
-                path: nil
+                path: nil,
+                headers: [:]
             )
         }
         if shouldRecordRequest {
@@ -5755,11 +6051,15 @@ private final class GatewayUpstreamURLProtocol: URLProtocol {
     }
 
     private func send(_ response: Response) {
+        var headerFields = response.headers
+        if headerFields["Content-Type"] == nil && headerFields["content-type"] == nil {
+            headerFields["Content-Type"] = "application/json"
+        }
         let httpResponse = HTTPURLResponse(
             url: request.url!,
             statusCode: response.status,
             httpVersion: "HTTP/1.1",
-            headerFields: ["Content-Type": "application/json"]
+            headerFields: headerFields
         )!
         client?.urlProtocol(self, didReceive: httpResponse, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: response.body)

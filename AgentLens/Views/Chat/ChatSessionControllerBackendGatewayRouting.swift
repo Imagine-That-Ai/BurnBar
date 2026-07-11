@@ -32,6 +32,7 @@ extension ChatSessionController {
         case .cursorAgent: return chatModelCursorAgent
         case .openClaude: return chatModelOpenClaude
         case .omp: return chatModelOMP
+        case .junie: return chatModelJunie
         }
     }
 
@@ -48,6 +49,7 @@ extension ChatSessionController {
         case .cursorAgent: chatModelCursorAgent = value
         case .openClaude: chatModelOpenClaude = value
         case .omp: chatModelOMP = value
+        case .junie: chatModelJunie = value
         }
     }
 
@@ -90,6 +92,7 @@ extension ChatSessionController {
         case .cursorAgent: return .cursorAgent
         case .openClaude: return .openClaude
         case .omp: return .omp
+        case .junie: return .junie
         }
     }
 
@@ -129,6 +132,8 @@ extension ChatSessionController {
             return chatModelOpenClaude.trimmingCharacters(in: .whitespacesAndNewlines)
         case .omp:
             return chatModelOMP.trimmingCharacters(in: .whitespacesAndNewlines)
+        case .junie:
+            return chatModelJunie.trimmingCharacters(in: .whitespacesAndNewlines)
         }
     }
 
@@ -166,7 +171,7 @@ extension ChatSessionController {
         let attachmentTokens = history.reduce(0) { partial, message in
             partial + message.attachments.reduce(0) { $0 + $1.estimatedTokenCost }
         }
-        return TokenExtractionUtility.estimatedTokenCount(for: contentChars, charsPerToken: 3.5) + attachmentTokens
+        return OpenBurnBarCore.TokenExtractionUtility.estimatedTokenCount(for: contentChars, charsPerToken: 3.5) + attachmentTokens
     }
 
     nonisolated static func promptSystemWrapperTokenReserve(
@@ -178,7 +183,7 @@ extension ChatSessionController {
             return PromptTokenArbiter.estimateProseTokens(HermesSystemPromptBuilder.atomDirective)
         case .piAgent:
             return PromptTokenArbiter.estimateProseTokens(piSystemPromptWrapper(instanceID: piAgentInstanceID))
-        case .openclaw, .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp:
+        case .openclaw, .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie:
             return 0
         }
     }
@@ -191,7 +196,7 @@ extension ChatSessionController {
             return openClawGatewayModels
         case .piAgent:
             return piAgentGatewayModels
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie:
             return []
         }
     }

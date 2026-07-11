@@ -53,6 +53,16 @@ public sealed class UiaInspector : IUiInspector
     public UiElementInfo InspectFrontmost()
     {
         var hwnd = NativeMethods.GetForegroundWindow();
+        return InspectWindow(hwnd);
+    }
+
+    public UiElementInfo InspectWindow(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero)
+        {
+            throw new ArgumentException("Window handle must be non-zero.", nameof(hwnd));
+        }
+
         Marshal.ThrowExceptionForHR(_automation.ElementFromHandle(hwnd, out var element));
         return Describe(element);
     }

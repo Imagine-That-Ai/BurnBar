@@ -158,11 +158,43 @@ public sealed class AppStatePersistenceTests : IDisposable
     [Fact]
     public void DefaultPath_IsUnderLocalAppData_OpenBurnBar()
     {
-        var path = AppStatePersistence.DefaultPath();
-        var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        string root = Path.Combine(_dir, "local-app-data");
+        string? previousAutomation = Environment.GetEnvironmentVariable("OPENBURNBAR_AUTOMATION_PROFILE_ROOT");
+        string? previousLocal = Environment.GetEnvironmentVariable("LOCALAPPDATA");
+        Environment.SetEnvironmentVariable("OPENBURNBAR_AUTOMATION_PROFILE_ROOT", null);
+        Environment.SetEnvironmentVariable("LOCALAPPDATA", root);
 
-        Assert.StartsWith(root, path);
-        Assert.Contains("OpenBurnBar", path);
-        Assert.EndsWith("shell-state.json", path);
+        try
+        {
+            var path = AppStatePersistence.DefaultPath();
+
+            Assert.StartsWith(root, path);
+            Assert.Contains("OpenBurnBar", path);
+            Assert.EndsWith("shell-state.json", path);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("OPENBURNBAR_AUTOMATION_PROFILE_ROOT", previousAutomation);
+            Environment.SetEnvironmentVariable("LOCALAPPDATA", previousLocal);
+        }
+    }
+
+    [Fact]
+    public void DefaultPath_UsesAutomationProfileRoot_WhenPresent()
+    {
+        string root = Path.Combine(_dir, "automation-profile");
+        string? previous = Environment.GetEnvironmentVariable("OPENBURNBAR_AUTOMATION_PROFILE_ROOT");
+        Environment.SetEnvironmentVariable("OPENBURNBAR_AUTOMATION_PROFILE_ROOT", root);
+
+        try
+        {
+            string path = AppStatePersistence.DefaultPath();
+
+            Assert.Equal(Path.Combine(root, "shell-state.json"), path);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("OPENBURNBAR_AUTOMATION_PROFILE_ROOT", previous);
+        }
     }
 }

@@ -107,6 +107,32 @@ for (const file of workflowFiles()) {
     fail(file, "concurrency group must not include workflow_run.head_branch");
   }
   if (
+    !/group:\s*.*github\.event_name.*github\.event\.workflow_run\.id.*github\.run_id/u.test(executableSource) ||
+    !/cancel-in-progress:\s*\$\{\{\s*github\.event_name\s*==\s*'workflow_run'\s*\}\}/u.test(
+      executableSource,
+    )
+  ) {
+    fail(
+      file,
+      "concurrency must isolate scheduled/manual runs and each workflow_run continuation",
+    );
+  }
+  if (
+    executableSource.includes('"deploy-production.yml"') ||
+    executableSource.includes('"deploy-cloud-run.yml"')
+  ) {
+    requireAll(file, executableSource, [
+      [
+        "deploy-production.yml|deploy-cloud-run.yml) branch_args=()",
+        "tag-triggered deploy workflows must not be queried with --branch main",
+      ],
+      [
+        '"${branch_args[@]}"',
+        "workflow run query must apply its per-workflow branch scope",
+      ],
+    ]);
+  }
+  if (
     /^ {2,6}(?:GH_TOKEN|OPENAI_API_KEY|CURSOR_API_KEY|GIT_AUTH_TOKEN):\s*\$\{\{\s*(?:secrets|github\.token)/mu.test(
       executableSource,
     )

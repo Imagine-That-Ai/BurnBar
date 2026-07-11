@@ -541,8 +541,8 @@ struct PrivacyIndexingSettingsView: View {
 
     private func scrubParserConversationCaches() {
         Task.detached(priority: .utility) {
-            let options = LogParseOptions(includeConversationBodies: false)
-            ParserConversationCacheScrubber().scrubKnownParserCaches()
+            let options = OpenBurnBarCore.LogParseOptions(includeConversationBodies: false)
+            OpenBurnBarCore.ParserConversationCacheScrubber().scrubKnownParserCaches()
             _ = try? await CodexParser().parse(options: options)
             _ = try? await ClaudeCodeParser().parse(options: options)
             _ = try? await FactoryDroidParser().parse(options: options)

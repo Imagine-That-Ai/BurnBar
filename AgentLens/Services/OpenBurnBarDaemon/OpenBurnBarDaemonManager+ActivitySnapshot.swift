@@ -116,7 +116,7 @@ extension OpenBurnBarDaemonManager {
         return collapsed.isEmpty ? trimmed.lowercased().replacingOccurrences(of: " ", with: "-") : collapsed
     }
 
-    static func activityDate(for conversation: ConversationRecord) -> Date {
+    static func activityDate(for conversation: OpenBurnBarCore.ConversationRecord) -> Date {
         conversation.endTime ?? conversation.startTime ?? conversation.indexedAt
     }
 }

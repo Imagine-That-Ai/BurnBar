@@ -1,6 +1,7 @@
 {
   "projects": {
-    "default": "burnbar"
+    "default": "burnbar",
+    "staging": "burnbar-staging"
   },
   "targets": {
     "burnbar": {
@@ -10,6 +11,16 @@
         ],
         "console": [
           "burnbar-console"
+        ]
+      }
+    },
+    "burnbar-staging": {
+      "hosting": {
+        "marketing": [
+          "burnbar-staging"
+        ],
+        "console": [
+          "burnbar-staging-console"
         ]
       }
     }

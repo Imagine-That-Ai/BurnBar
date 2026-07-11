@@ -137,6 +137,8 @@ final class AgentIdentityRegistry {
                 availability = runtimeAvailabilityByID["cursoragent"]
                     ?? runtimeAvailabilityByID["cursor-agent"]
                     ?? existing.availability
+            case .junie:
+                availability = runtimeAvailabilityByID["junie"] ?? existing.availability
             case .openClaude:
                 availability = runtimeAvailabilityByID["openclaude"]
                     ?? runtimeAvailabilityByID["open-claude"]

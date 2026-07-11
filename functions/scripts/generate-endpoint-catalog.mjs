@@ -33,6 +33,82 @@ function exportedNames() {
 
 /** Endpoint-specific overrides merged onto scaffold defaults during regeneration. */
 const CATALOG_OVERRIDES = {
+  meterComputerUseAction: {
+    trigger: "firestore-trigger",
+    authMethod: "Firebase Functions event trigger (not client-callable)",
+    appCheck: "not-applicable",
+    tenantSource: "users/{uid}/computer_use_actions/{actionId} trigger path",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "trigger derives uid from the Firestore event path and meters only the immutable source document in that user namespace",
+    handlerModule: "computerUseMetering.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
+        covers: ["meterComputerUseAction"],
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  meterComputerUseSessionStart: {
+    trigger: "firestore-trigger",
+    authMethod: "Firebase Functions event trigger (not client-callable)",
+    appCheck: "not-applicable",
+    tenantSource: "users/{uid}/computer_use_sessions/{sessionId} trigger path",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "trigger derives uid from the Firestore event path and meters only the source session in that user namespace",
+    handlerModule: "computerUseMetering.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
+        covers: ["meterComputerUseSessionStart"],
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  meterComputerUseSessionCompletion: {
+    trigger: "firestore-trigger",
+    authMethod: "Firebase Functions event trigger (not client-callable)",
+    appCheck: "not-applicable",
+    tenantSource: "users/{uid}/computer_use_sessions/{sessionId} trigger path",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "trigger derives uid from the Firestore event path and meters only the source session in that user namespace",
+    handlerModule: "computerUseMetering.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
+        covers: ["meterComputerUseSessionCompletion"],
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  reconcileAccountErasures: {
+    trigger: "scheduled",
+    authMethod: "Cloud Scheduler / Firebase Functions platform trigger",
+    appCheck: "not-applicable",
+    tenantSource: "server-owned account_erasure_audit receipts",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "scheduled job reads nonterminal server-owned receipts and resumes cleanup using the receipt uid; no client input is accepted",
+    handlerModule: "accountDeletionReconciler.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
+        covers: ["reconcileAccountErasures"],
+      },
+    ],
+    highRiskComputerUse: false,
+  },
   mintLinuxAppCheckToken: {
     trigger: "callable",
     authMethod: "Firebase Auth; lower-trust Linux attestation-gated App Check token mint (no App Check on the bootstrap path)",
@@ -89,6 +165,48 @@ const CATALOG_OVERRIDES = {
         expectedCode: "not-found",
       },
     ],
+  },
+  latestRouterRundown: {
+    trigger: "http",
+    authMethod: "public read-only JSON endpoint with product-layer IP rate limit",
+    appCheck: "not-applicable",
+    publicJustification:
+      "Public read-only router rundown JSON for the website; no tenant objects are exposed, and every request is bounded by checkPublicHttpEndpointRateLimit plus cache/maxInstances controls.",
+    tenantSource: "public router_rundowns/{latest|date} document; no tenant scope",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "handler validates the optional date key against a plausible calendar window and reads only public router_rundowns documents",
+    handlerModule: "routerRundown.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/routerRundownEndpoint.test.ts",
+        test: "maps product-layer rate-limit rejection to HTTP 429 before Firestore reads",
+        kind: "not-applicable-public",
+        covers: ["latestRouterRundown"],
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  onKnowledgeRepoPush: {
+    trigger: "provider-webhook",
+    authMethod: "GitHub x-hub-signature-256 HMAC over the raw request body",
+    appCheck: "not-applicable",
+    publicJustification:
+      "Public GitHub webhook ingress is authenticated by provider HMAC before any repo mapping or writes occur.",
+    tenantSource: "GitHub-signed repository full_name plus installation id mapped server-side to knowledge_repos rows",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "handler verifies the GitHub HMAC before reading payload fields, then maps the signed repo and installation id through server-stored match tokens",
+    handlerModule: "callables/knowledgeSync.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/knowledgeRepoMatchToken.test.ts",
+        test: "webhook flags only repos bound to the GitHub installation in the signed payload",
+        kind: "runtime-cross-user",
+        covers: ["onKnowledgeRepoPush"],
+      },
+    ],
+    highRiskComputerUse: false,
   },
   consumeCredentialTransfer: {
     objectIdsFromClient: ["transferId"],

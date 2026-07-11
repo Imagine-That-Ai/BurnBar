@@ -405,8 +405,8 @@ async function main() {
       );
     });
 
-    await step("quota_usage write with the right shape succeeds", async () => {
-      await assertSucceeds(
+    await step("quota_usage is server-owned even with the right shape", async () => {
+      await assertFails(
         setDoc(doc(aliceDB, `users/${aliceUid}/computer_use_quota_usage/2026-05-17`), {
           dayKey: "2026-05-17",
           browserActionsExecuted: 0,
@@ -421,6 +421,31 @@ async function main() {
           visionModelSpendUSD: 0,
           updatedAt: Timestamp.fromMillis(Date.now()),
         })
+      );
+    });
+
+    await step("server metering markers survive an owner session update and cannot be changed", async () => {
+      const path = `users/${aliceUid}/computer_use_sessions/session-metered`;
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        await setDoc(doc(ctx.firestore(), path), {
+          ...validSessionDoc,
+          sessionId: "session-metered",
+          quotaStartMeteredEventId: "event-1",
+          quotaStartMeteredDayKey: "2026-05-17",
+          quotaStartMeteredAt: Timestamp.fromMillis(Date.now()),
+        });
+      });
+      await assertSucceeds(
+        setDoc(doc(aliceDB, path), {
+          actionCount: 1,
+          updatedAt: Timestamp.fromMillis(Date.now()),
+        }, { merge: true })
+      );
+      await assertFails(
+        setDoc(doc(aliceDB, path), { quotaStartMeteredEventId: "attacker" }, { merge: true })
+      );
+      await assertFails(
+        setDoc(doc(aliceDB, path), { actionCount: 0 }, { merge: true })
       );
     });
 

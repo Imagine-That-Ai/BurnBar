@@ -91,7 +91,7 @@ enum BurnBarDaemonDatabaseCipher {
         }
         return String(data: data, encoding: .utf8)
 #else
-        let custodian = LinuxSecretCustodian(backends: [LinuxHeadlessSecretStoreBackend()])
+        let custodian = LinuxSecretStoreFactory.production()
         return try? custodian
             .requireHighValueSecret(id: LinuxHighValueSecretClass.databaseKey.rawValue, secretClass: .databaseKey)
             .secret

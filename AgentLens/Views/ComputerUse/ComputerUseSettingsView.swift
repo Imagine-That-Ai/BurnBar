@@ -223,6 +223,7 @@ struct ComputerUseSettingsView: View {
         }
         .scrollContentBackground(.hidden)
         .background(DesignSystem.Colors.background)
+        .accessibilityIdentifier(OBBAccessibilityID.computerUseSettingsRoot)
         .onAppear {
             configureModels()
             entitlement.start()
@@ -1048,7 +1049,7 @@ struct ComputerUseSettingsView: View {
     }
 
     private func auditSessionDirectory(sessionId: String) -> URL {
-        OpenBurnBarAppPaths.live().supportDirectory
+        OpenBurnBarCore.OpenBurnBarAppPaths.live().supportDirectory
             .appendingPathComponent("computer-use-audit", isDirectory: true)
             .appendingPathComponent(sessionId, isDirectory: true)
     }

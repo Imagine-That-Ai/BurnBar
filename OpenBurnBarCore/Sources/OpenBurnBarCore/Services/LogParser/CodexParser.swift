@@ -43,6 +43,10 @@ public final class CodexParser: LogParser, Sendable {
     }
 
     public func parse(options: LogParseOptions) async throws -> ParseResult {
+        try parseSynchronously(options: options)
+    }
+
+    func parseSynchronously(options: LogParseOptions) throws -> ParseResult {
         let dbPath = homeDirectoryURL
             .appendingPathComponent(".codex", isDirectory: true)
             .appendingPathComponent("state_5.sqlite", isDirectory: false)

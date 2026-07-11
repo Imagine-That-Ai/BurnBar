@@ -597,7 +597,7 @@ private struct FusionModelRow: View {
                     .fill(color)
                     .frame(width: 9, height: 9)
                     .accessibilityHidden(true)
-                Text(TokenExtractionUtility.displayNameForModel(modelID))
+                Text(OpenBurnBarCore.TokenExtractionUtility.displayNameForModel(modelID))
                     .font(DesignSystem.Typography.caption)
                     .fontWeight(.medium)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
@@ -632,7 +632,7 @@ private struct FusionModelRow: View {
         }
         .padding(.vertical, 3)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(TokenExtractionUtility.displayNameForModel(modelID))
+        .accessibilityLabel(OpenBurnBarCore.TokenExtractionUtility.displayNameForModel(modelID))
         .accessibilityValue("\(CurrencyFormatting.usd(cost)), \(percent) percent of fusion spend")
     }
 }

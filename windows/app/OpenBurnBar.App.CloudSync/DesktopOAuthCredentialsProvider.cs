@@ -39,6 +39,7 @@ public sealed class DesktopOAuthCredentialsProvider : ICloudSyncCredentialsProvi
     private readonly FirebaseIdentityClient _identity;
     private readonly DesktopOAuthOptions _options;
     private readonly IClock _clock;
+    private readonly IFirebaseOAuthSessionStore? _sessionStore;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     private FirebaseOAuthSession? _session;
@@ -47,13 +48,16 @@ public sealed class DesktopOAuthCredentialsProvider : ICloudSyncCredentialsProvi
         DesktopOAuthOptions options,
         DesktopOAuthLoopbackFlow flow,
         FirebaseIdentityClient identity,
-        IClock? clock = null)
+        IClock? clock = null,
+        IFirebaseOAuthSessionStore? sessionStore = null)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _options.Validate();
         _flow = flow ?? throw new ArgumentNullException(nameof(flow));
         _identity = identity ?? throw new ArgumentNullException(nameof(identity));
         _clock = clock ?? SystemClock.Instance;
+        _sessionStore = sessionStore;
+        _session = _sessionStore?.Load();
     }
 
     /// <summary>
@@ -64,14 +68,15 @@ public sealed class DesktopOAuthCredentialsProvider : ICloudSyncCredentialsProvi
         DesktopOAuthOptions options,
         HttpClient httpClient,
         IBrowserLauncher? browser = null,
-        IClock? clock = null)
+        IClock? clock = null,
+        IFirebaseOAuthSessionStore? sessionStore = null)
     {
         if (options is null) throw new ArgumentNullException(nameof(options));
         options.Validate();
         IClock resolvedClock = clock ?? SystemClock.Instance;
         var identity = new FirebaseIdentityClient(httpClient, options);
         var flow = new DesktopOAuthLoopbackFlow(options, browser ?? new SystemBrowserLauncher(), identity, resolvedClock);
-        return new DesktopOAuthCredentialsProvider(options, flow, identity, resolvedClock);
+        return new DesktopOAuthCredentialsProvider(options, flow, identity, resolvedClock, sessionStore);
     }
 
     /// <summary>The current signed-in session, if any (exposed for diagnostics / tests).</summary>
@@ -101,7 +106,7 @@ public sealed class DesktopOAuthCredentialsProvider : ICloudSyncCredentialsProvi
         try
         {
             FirebaseOAuthSession session = await _flow.AuthorizeAsync(cancellationToken).ConfigureAwait(false);
-            _session = session;
+            InstallSession(session);
             return session;
         }
         finally
@@ -117,6 +122,7 @@ public sealed class DesktopOAuthCredentialsProvider : ICloudSyncCredentialsProvi
         try
         {
             _session = null;
+            _sessionStore?.Delete();
         }
         finally
         {
@@ -190,7 +196,7 @@ public sealed class DesktopOAuthCredentialsProvider : ICloudSyncCredentialsProvi
                     TtlMillis = refreshed.ExpiresInSeconds * 1000,
                     MintedAtMs = _clock.NowMillis,
                 };
-                _session = next;
+                InstallSession(next);
                 return next;
             }
             catch (DesktopOAuthException)
@@ -204,6 +210,7 @@ public sealed class DesktopOAuthCredentialsProvider : ICloudSyncCredentialsProvi
                 }
                 // Otherwise fail closed: clear the expired session so it is never served.
                 _session = null;
+                _sessionStore?.Delete();
                 throw;
             }
         }
@@ -211,6 +218,12 @@ public sealed class DesktopOAuthCredentialsProvider : ICloudSyncCredentialsProvi
         {
             _gate.Release();
         }
+    }
+
+    private void InstallSession(FirebaseOAuthSession session)
+    {
+        _sessionStore?.Save(session);
+        _session = session;
     }
 
     public void Dispose() => _gate.Dispose();

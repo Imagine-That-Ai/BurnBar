@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-10T01:42:11.550Z",
+  "evidenceClass": "audit-sample-not-release-promotion",
+  "sourceCommit": "9886a6ac0b05c04815eb1f38564ec7d808ffd1f5",
+  "architecture": "aarch64",
+  "version": "0.1.0",
+  "environment": {
+    "profile": "dbus-x11-xvfb-xfce-statusnotifier",
+    "sessionType": "x11",
+    "desktop": "XFCE",
+    "assistiveTechnology": "Orca 46.1"
+  },
+  "artifacts": [
+    {
+      "type": "appimage",
+      "file": "OpenBurnBar_0.1.0_aarch64.AppImage",
+      "size": 146766344,
+      "sha256": "2f7f7a90e3ab6479eb4749ef282dad2be845f8f5faf72936950f77317d16519b"
+    },
+    {
+      "type": "deb",
+      "file": "OpenBurnBar_0.1.0_arm64.deb",
+      "size": 85699372,
+      "sha256": "b1ac897765e269c36e0c21b0b71db5c4ea23e9a567ab3149b55ce9175151e67a"
+    },
+    {
+      "type": "rpm",
+      "file": "OpenBurnBar-0.1.0-1.aarch64.rpm",
+      "size": 85691938,
+      "sha256": "5eb186628e073a634ac07a156ec2cf128455b552207289968df5870e02b04877"
+    },
+    {
+      "type": "daemon",
+      "file": "openburnbar-daemon-0.1.0-linux-aarch64",
+      "size": 98040888,
+      "sha256": "14be1f874b1e08c25ffb68faaf11d5685475e45f5fcfcfc318d0b24bcde35ea3"
+    }
+  ],
+  "packageSmoke": {
+    "steps": 28,
+    "failedCount": 0,
+    "passed": true
+  },
+  "installedLifecycle": {
+    "guiExecutable": "/usr/bin/openburnbar-linux-desktop",
+    "daemonExecutable": "/usr/bin/openburnbar-daemon",
+    "shellVersion": "OpenBurnBar 0.1.0",
+    "daemonVersion": "0.1.0",
+    "protocolVersion": 1,
+    "daemonHealthPassed": true,
+    "uninstallVerified": true,
+    "update": "blocked-no-previous-package",
+    "rollback": "blocked-no-previous-package",
+    "dataPreservation": "blocked-no-previous-package"
+  },
+  "accessibility": {
+    "atspiApplicationNamePresent": true,
+    "atspiNodeCount": 45,
+    "atspiNamedNodeCount": 28,
+    "atspiActionableNodeCount": 19,
+    "atspiFocusableNodeCount": 22,
+    "physicalTabPressCount": 14,
+    "observedTrueFocusEventCount": 10,
+    "distinctNamedFocusedTargets": 10,
+    "keyboardFocusPassed": true,
+    "requestedApproximateZoomPercent": 200,
+    "zoomPassed": true
+  },
+  "installedRoutes": [
+    "overview",
+    "insights",
+    "database",
+    "providers",
+    "projects",
+    "missions",
+    "activity",
+    "chat",
+    "memory",
+    "settings",
+    "account",
+    "updates",
+    "support",
+    "onboarding",
+    "pet",
+    "text-expansion",
+    "computer-use",
+    "mercury",
+    "smarthub"
+  ],
+  "performanceMilliseconds": {
+    "sampleCount": 10,
+    "processStart": {
+      "p50": 321.5,
+      "p95": 349.2,
+      "p99": 350.64
+    },
+    "trayReopen": {
+      "p50": 54.5,
+      "p95": 61.85,
+      "p99": 64.37
+    },
+    "daemonHealthRoundTrip": {
+      "p50": 110,
+      "p95": 112.55,
+      "p99": 112.91
+    },
+    "trayQuit": 106
+  },
+  "sourceEvidenceSha256": {
+    "architecture-closure.json": "4e61cb9dcbb6ee6dce5f7aaa52418a99331275e717bb5c6f1d9c39fe74147881",
+    "architecture-session.json": "aad8fb32eae8c3334f6279f76262fc3c7a7bde4b09dd35752219f95f0983f568",
+    "architecture-smoke.json": "db8e4e84b3b434fc87029ff2814a9cd6e786e64da048a37880817dc270746d3a",
+    "linux-desktop-session-report.json": "9a96db38791f369213cdce5b2865b2b5c64046acc9b1510d335374278d0088d7",
+    "packaged-route-session-transcript.json": "7d0bee9230c7197260ee3c944479ec2b6b3a875755d1896953d2135024954b18",
+    "package-update-rollback.json": "9f08825102da8995f260d122e2e8e80995182c496a91c6a1ed6f088a090cca1c"
+  },
+  "blockers": [
+    "No previous same-architecture Linux package was available for update, rollback, and data-preservation proof.",
+    "No x86_64 installed architecture session was produced.",
+    "GNOME Wayland, KDE Wayland, wlroots, portal, and keyring environment rows remain unproven."
+  ],
+  "passedForPromotion": false,
+  "retentionNote": "This compact summary preserves the audit measurements and source hashes. The large local package shard and raw UI session were intentionally not committed and cannot satisfy a release-promotion row."
+}

@@ -259,7 +259,7 @@ enum ParserContractCorpus {
 
     private static func runParser(fixture: Fixture, artifacts: [Artifact], root: URL) async throws -> ParseResult {
         let fm = FileManager.default
-        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: root.appendingPathComponent("support", isDirectory: true))
+        let appPaths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: root.appendingPathComponent("support", isDirectory: true))
 
         switch fixture.kind {
         case .claudeCode:

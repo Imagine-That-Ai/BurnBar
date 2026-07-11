@@ -1,0 +1,338 @@
+name: Deploy Staging (Firestore + Functions)
+
+# Rehearsal lane for the STAGING pre-prod project (burnbar-staging).
+#
+# Purpose: rehearse Firestore rules / indexes / Storage rules / Cloud Functions
+# changes against a throwaway project BEFORE they hit the single production
+# project (burnbar). This mirrors the production deploy safety pattern
+# (deploy-firestore.yml + deploy-production.yml): WIF/OIDC-only auth, no
+# long-lived keys, predeploy hooks stripped from the CI config, the same
+# "no predeploy in CI config" guard, rules emulator tests before deploy, and a
+# post-deploy drift check — but every credentialed step targets the staging
+# project via the `staging` alias in .firebaserc and is gated behind the
+# `staging` GitHub Environment.
+#
+# SAFE NO-OP UNTIL PROVISIONED: this workflow only runs its deploy jobs when the
+# repository variable STAGING_ENABLED == 'true' AND the staging WIF secrets are
+# present. Until Alberto provisions the staging project and sets those
+# variables/secrets (see docs/ops/STAGING.md), the preflight job exits cleanly
+# and every credentialed job is skipped — the workflow can neither run nor fail
+# a real deploy against a project that does not exist yet.
+#
+# Trigger: manual only (workflow_dispatch). Staging is a deliberate rehearsal;
+# there is intentionally no push trigger so it never fires unexpectedly.
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run rules tests + config checks without deploying (default true for safety)"
+        required: false
+        type: boolean
+        default: true
+      deploy_functions:
+        description: "Also deploy Cloud Functions to staging (requires functions/.env.burnbar-staging)"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  # ── Guard: prove staging is provisioned before any credentialed job runs ──
+  # This is the "safe no-op" gate. It never touches credentials; it only reads
+  # the STAGING_ENABLED variable and reports whether the required secrets exist.
+  # All downstream jobs depend on `preflight.outputs.provisioned == 'true'`.
+  preflight:
+    name: Staging preflight (safe no-op until provisioned)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: staging
+    permissions:
+      contents: read
+    outputs:
+      provisioned: ${{ steps.gate.outputs.provisioned }}
+    env:
+      STAGING_ENABLED: ${{ vars.STAGING_ENABLED }}
+      # Capability booleans only — never the secret values themselves.
+      HAS_WIF_PROVIDER: ${{ secrets.STAGING_GCP_WORKLOAD_IDENTITY_PROVIDER != '' }}
+      HAS_DEPLOY_SA: ${{ secrets.STAGING_GCP_DEPLOY_SERVICE_ACCOUNT != '' }}
+    steps:
+      - name: Evaluate staging provisioning gate
+        id: gate
+        run: |
+          set -euo pipefail
+          provisioned=true
+          reasons=()
+
+          if [[ "${STAGING_ENABLED:-}" != "true" ]]; then
+            provisioned=false
+            reasons+=("repo variable STAGING_ENABLED is not 'true' (got '${STAGING_ENABLED:-<unset>}')")
+          fi
+          if [[ "${HAS_WIF_PROVIDER}" != "true" ]]; then
+            provisioned=false
+            reasons+=("secret STAGING_GCP_WORKLOAD_IDENTITY_PROVIDER is not set")
+          fi
+          if [[ "${HAS_DEPLOY_SA}" != "true" ]]; then
+            provisioned=false
+            reasons+=("secret STAGING_GCP_DEPLOY_SERVICE_ACCOUNT is not set")
+          fi
+
+          echo "provisioned=${provisioned}" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Staging deploy preflight"
+            if [[ "$provisioned" == "true" ]]; then
+              echo "- Result: PROVISIONED — staging deploy jobs will run."
+            else
+              echo "- Result: NOT PROVISIONED — deploy jobs are skipped (safe no-op)."
+              echo "- This is expected until the staging project + secrets exist."
+              echo ""
+              echo "### Missing prerequisites"
+              for reason in "${reasons[@]}"; do
+                echo "- ${reason}"
+              done
+              echo ""
+              echo "See docs/ops/STAGING.md for the exact provisioning steps."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Firestore rules / indexes / Storage rules → staging ───────────────────
+  firestore-staging:
+    name: Deploy Firestore + Storage rules to staging
+    needs: preflight
+    if: ${{ needs.preflight.outputs.provisioned == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      FIREBASE_PROJECT: ${{ vars.STAGING_FIREBASE_PROJECT || 'burnbar-staging' }}
+      SHOULD_DEPLOY: ${{ github.event.inputs.dry_run != 'true' }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.3.0 (node24-native)
+        with:
+          java-version: "21"
+          distribution: temurin
+
+      - name: Install Functions dependencies
+        run: npm ci --prefix functions
+
+      - name: Run Firestore rules emulator tests
+        run: npm --prefix functions run test:firestore-rules
+
+      - name: Prepare Firebase deploy config and CLI before auth
+        run: |
+          node scripts/ci/write-firebase-hosting-ci-config.mjs \
+            --mode firestore \
+            --output "$RUNNER_TEMP/firebase-firestore.ci.json" \
+            --check
+          bash scripts/ci/prepare-firebase-tools.sh
+
+      - name: Authenticate to Google Cloud (staging WIF/OIDC only)
+        if: ${{ env.SHOULD_DEPLOY == 'true' }}
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0 (node24-native)
+        with:
+          workload_identity_provider: ${{ secrets.STAGING_GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.STAGING_GCP_DEPLOY_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_lifetime: 900s
+
+      - name: Set up gcloud
+        if: ${{ env.SHOULD_DEPLOY == 'true' }}
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1 (node24-native)
+
+      - name: Require WIF credentials
+        if: ${{ env.SHOULD_DEPLOY == 'true' }}
+        run: |
+          if [[ -z "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
+            echo "::error::No Google application credentials from WIF/OIDC auth. Staging Firestore deploy requires workload identity federation."
+            exit 1
+          fi
+
+      - name: Deploy Firestore rules, indexes, and Storage rules (staging)
+        if: ${{ env.SHOULD_DEPLOY == 'true' }}
+        env:
+          FIREBASE_FIRESTORE_CI_CONFIG: ${{ runner.temp }}/firebase-firestore.ci.json
+        run: |
+          set -euo pipefail
+          if [[ -z "${FIREBASE_TOOLS_BIN:-}" || ! -x "$FIREBASE_TOOLS_BIN" ]]; then
+            echo "::error::Pinned Firebase CLI path is missing or not executable."
+            exit 1
+          fi
+          if grep -q '"predeploy"' "$FIREBASE_FIRESTORE_CI_CONFIG"; then
+            echo "::error::$FIREBASE_FIRESTORE_CI_CONFIG contains predeploy."
+            exit 1
+          fi
+          "$FIREBASE_TOOLS_BIN" deploy \
+            --only firestore:indexes,storage \
+            --project "$FIREBASE_PROJECT" \
+            --config "$FIREBASE_FIRESTORE_CI_CONFIG" \
+            --non-interactive
+          node scripts/ci/deploy-firebase-rules-releases.mjs "$FIREBASE_PROJECT"
+
+      - name: Drift check deployed Firestore rules and indexes (staging)
+        if: ${{ env.SHOULD_DEPLOY == 'true' }}
+        run: node scripts/ci/check-firestore-deploy-drift.mjs "$FIREBASE_PROJECT"
+
+      # run-09 F-RR09-001 / F-RR09-007: staging must prove the same live TTL
+      # policies as production before a rules/indexes change is promoted.
+      - name: Verify Firestore TTL policies are live (staging)
+        if: ${{ env.SHOULD_DEPLOY == 'true' }}
+        run: node scripts/ci/verify-firestore-ttl-state.mjs "$FIREBASE_PROJECT"
+
+      - name: Staging Firestore summary
+        if: always()
+        run: |
+          {
+            echo "## Staging Firestore deploy"
+            echo "- Project: $FIREBASE_PROJECT"
+            echo "- Dry run: ${{ github.event.inputs.dry_run }}"
+            echo "- Deploy attempted: $SHOULD_DEPLOY"
+            echo "- Scope: firestore.rules, firestore.indexes.json, storage.rules"
+            echo ""
+            echo "Rehearse a rules change here, confirm the emulator tests + drift"
+            echo "check are green, THEN promote the same files to production via"
+            echo "deploy-firestore.yml (push to main)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Cloud Functions → staging (opt-in via deploy_functions input) ─────────
+  functions-staging:
+    name: Deploy Cloud Functions to staging
+    needs: preflight
+    if: ${{ needs.preflight.outputs.provisioned == 'true' && github.event.inputs.deploy_functions == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      FIREBASE_PROJECT: ${{ vars.STAGING_FIREBASE_PROJECT || 'burnbar-staging' }}
+      SHOULD_DEPLOY: ${{ github.event.inputs.dry_run != 'true' }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install and build Functions
+        run: |
+          npm ci --prefix functions
+          npm run build --prefix functions
+          node scripts/ci/write-firebase-hosting-ci-config.mjs \
+            --mode functions \
+            --output "$RUNNER_TEMP/firebase-functions.ci.json" \
+            --check
+          bash scripts/ci/prepare-firebase-tools.sh
+
+      - name: Require staging functions runtime config
+        run: |
+          set -euo pipefail
+          if [[ ! -f functions/.env.burnbar-staging ]]; then
+            echo "::error::Missing functions/.env.burnbar-staging."
+            echo "::error::Copy functions/.env.burnbar-staging.example, fill the staging project's values, commit it, then re-run."
+            exit 1
+          fi
+
+      - name: Authenticate to Google Cloud (staging WIF/OIDC only)
+        if: ${{ env.SHOULD_DEPLOY == 'true' }}
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0 (node24-native)
+        with:
+          workload_identity_provider: ${{ secrets.STAGING_GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.STAGING_GCP_DEPLOY_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_lifetime: 900s
+
+      - name: Deploy Cloud Functions (staging)
+        if: ${{ env.SHOULD_DEPLOY == 'true' }}
+        env:
+          FUNCTION_VERSION: staging-${{ github.sha }}
+          OPENBURNBAR_SOURCE_COMMIT: ${{ github.sha }}
+          FIREBASE_FUNCTIONS_CI_CONFIG: ${{ runner.temp }}/firebase-functions.ci.json
+          # Staging Sentry DSN is optional; unlike production this lane does not
+          # fail closed on a missing DSN so a bare staging project can deploy.
+          SENTRY_DSN: ${{ secrets.STAGING_SENTRY_DSN_FUNCTIONS }}
+        run: |
+          set -euo pipefail
+          ENV_FILE="functions/.env.${FIREBASE_PROJECT}"
+          STAGING_CONFIG="functions/.env.burnbar-staging"
+
+          {
+            cat "$STAGING_CONFIG"
+            echo ""
+            echo "FUNCTION_VERSION=${FUNCTION_VERSION}"
+            echo "OPENBURNBAR_SOURCE_COMMIT=${OPENBURNBAR_SOURCE_COMMIT}"
+            if [[ -n "${SENTRY_DSN:-}" ]]; then
+              echo "SENTRY_DSN=${SENTRY_DSN}"
+              echo "SENTRY_ENVIRONMENT=staging"
+            fi
+          } > "$ENV_FILE"
+
+          if [[ -z "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
+            echo "::error::No Google application credentials from WIF/OIDC auth. Staging deploy requires workload identity federation."
+            exit 1
+          fi
+          if [[ -z "${FIREBASE_TOOLS_BIN:-}" || ! -x "$FIREBASE_TOOLS_BIN" ]]; then
+            echo "::error::Pinned Firebase CLI path is missing or not executable."
+            exit 1
+          fi
+          if grep -q '"predeploy"' "$FIREBASE_FUNCTIONS_CI_CONFIG"; then
+            echo "::error::$FIREBASE_FUNCTIONS_CI_CONFIG contains predeploy."
+            exit 1
+          fi
+
+          "$FIREBASE_TOOLS_BIN" deploy \
+            --only functions \
+            --project "$FIREBASE_PROJECT" \
+            --config "$FIREBASE_FUNCTIONS_CI_CONFIG" \
+            --non-interactive
+
+      - name: Staging Functions summary
+        if: always()
+        run: |
+          {
+            echo "## Staging Functions deploy"
+            echo "- Project: $FIREBASE_PROJECT"
+            echo "- Dry run: ${{ github.event.inputs.dry_run }}"
+            echo "- Deploy attempted: $SHOULD_DEPLOY"
+            echo "- FUNCTION_VERSION: staging-${{ github.sha }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Result summary when preflight reports not-provisioned ─────────────────
+  staging-not-provisioned:
+    name: Staging not provisioned (informational)
+    needs: preflight
+    if: ${{ needs.preflight.outputs.provisioned != 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Explain safe no-op
+        run: |
+          echo "Staging is not provisioned yet, so no deploy ran."
+          echo "This is the intended safe no-op. Follow docs/ops/STAGING.md to"
+          echo "create the staging project, set STAGING_* secrets, and set the"
+          echo "repository variable STAGING_ENABLED=true. Then re-run this workflow."

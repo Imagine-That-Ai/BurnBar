@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Production `IrohRelayTransport` implementation. Owns the secret-key
 /// lifecycle, drives an `IrohEndpointBackend` (the UniFFI-generated handle

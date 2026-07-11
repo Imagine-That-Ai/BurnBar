@@ -93,6 +93,8 @@ public enum AgentProviderLogDiscovery {
             return "~/.openclaude/sessions"
         case .omp:
             return "~/.omp/agent/sessions"
+        case .junie:
+            return "~/.junie/sessions"
         case .ollama:
             return "~/.ollama/logs"
         case .windsurf:
@@ -114,7 +116,7 @@ public enum AgentProviderLogDiscovery {
 
     public static func filePattern(for provider: AgentProvider) -> String {
         switch provider {
-        case .factory, .claudeCode, .copilot, .aider, .zai, .minimax, .forgeDev, .hermes, .piAgent, .cursorAgent, .openClaw, .openClaude, .omp:
+        case .factory, .claudeCode, .copilot, .aider, .zai, .minimax, .forgeDev, .hermes, .piAgent, .cursorAgent, .openClaw, .openClaude, .omp, .junie:
             return "*.jsonl"
         case .cursor:
             return "*.db"
@@ -161,7 +163,11 @@ public enum AgentProviderLogDiscovery {
         let homeDirectory = environment["HOME"]
             .flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty }
             .map { URL(fileURLWithPath: $0, isDirectory: true) }
-        let resolved = OpenBurnBarLinuxPaths.expandTildeInPath(logical, homeDirectory: homeDirectory)
+        let resolved = OpenBurnBarLinuxPaths.expandPath(
+            logical,
+            homeDirectory: homeDirectory,
+            environment: environment
+        )
         let pattern = filePattern(for: provider)
         let identity = sessionIdentityKey(provider: provider, resolvedPath: resolved)
         return ResolvedLogSource(
