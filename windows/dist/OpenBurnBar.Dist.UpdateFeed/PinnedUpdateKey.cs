@@ -3,7 +3,7 @@
 // This is the Windows analog of macOS Sparkle's SUPublicEDKey: the ONE Ed25519 public key the
 // shipped app trusts to authenticate update offers, pinned into the binary and INDEPENDENT of
 // the Authenticode code-signing certificate. Its private half (WINDOWS_UPDATE_SIGNING_KEY) is
-// held only by the release pipeline and never touches the Authenticode / Trusted Signing path.
+// held only by the release pipeline and never touches the Authenticode / Artifact Signing path.
 //
 // The real pinned key bytes are injected at release time (the public half of
 // WINDOWS_UPDATE_SIGNING_KEY). The compiled-in default below is an all-zero PLACEHOLDER that is

@@ -243,6 +243,36 @@ jobs:
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
 
+      - name: Verify portable Authenticode signatures
+        if: steps.config.outputs.codesign == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $expectedPublisher = "Imagine That AI LLC"
+          $expectedFiles = @(
+            "publish/win-x64/OpenBurnBar.App.exe",
+            "publish/win-arm64/OpenBurnBar.App.exe"
+          )
+
+          foreach ($relativePath in $expectedFiles) {
+            $path = Join-Path $env:GITHUB_WORKSPACE $relativePath
+            if (-not (Test-Path -LiteralPath $path)) {
+              throw "Expected signed portable app binary is missing: $relativePath"
+            }
+
+            $signature = Get-AuthenticodeSignature -FilePath $path
+            if ($signature.Status -ne "Valid") {
+              throw "Portable Authenticode signature is $($signature.Status): $relativePath"
+            }
+            if (-not $signature.SignerCertificate -or $signature.SignerCertificate.Subject -notlike "*$expectedPublisher*") {
+              throw "Portable Authenticode signer is not $expectedPublisher: $relativePath :: $($signature.SignerCertificate.Subject)"
+            }
+            if (-not $signature.TimeStamperCertificate) {
+              throw "Portable Authenticode signature is missing an RFC 3161 timestamp: $relativePath"
+            }
+            Write-Host "Portable Authenticode valid: $relativePath :: $($signature.SignerCertificate.Subject)"
+          }
+
       - name: Package zips + checksums
         id: package
         run: |
@@ -265,13 +295,14 @@ jobs:
         run: |
           set -euo pipefail
           makeappx='${{ steps.makeappx.outputs.path }}'
+          publisher="CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US"
           for rid in win-x64 win-arm64; do
             arch="x64"
             [[ "$rid" == "win-arm64" ]] && arch="arm64"
             output="artifacts/OpenBurnBar-${VERSION}-${arch}.msix"
             pwsh -NoProfile -NonInteractive -File windows/packaging/msix/New-MsixPackage.ps1 \
               -PublishDir "publish/$rid" -Architecture "$arch" -Version "$VERSION" \
-              -OutputPath "$output" -MakeAppxPath "$makeappx"
+              -OutputPath "$output" -MakeAppxPath "$makeappx" -Publisher "$publisher"
             ( cd artifacts && sha256sum "$(basename "$output")" >> "checksums-windows-v${VERSION}.txt" )
           done
 
@@ -291,6 +322,36 @@ jobs:
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
+
+      - name: Verify MSIX Authenticode signatures
+        if: steps.config.outputs.codesign == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $expectedPublisher = "Imagine That AI LLC"
+          $expectedPackages = @(
+            "artifacts/OpenBurnBar-${env:VERSION}-x64.msix",
+            "artifacts/OpenBurnBar-${env:VERSION}-arm64.msix"
+          )
+
+          foreach ($relativePath in $expectedPackages) {
+            $path = Join-Path $env:GITHUB_WORKSPACE $relativePath
+            if (-not (Test-Path -LiteralPath $path)) {
+              throw "Expected signed MSIX package is missing: $relativePath"
+            }
+
+            $signature = Get-AuthenticodeSignature -FilePath $path
+            if ($signature.Status -ne "Valid") {
+              throw "MSIX Authenticode signature is $($signature.Status): $relativePath"
+            }
+            if (-not $signature.SignerCertificate -or $signature.SignerCertificate.Subject -notlike "*$expectedPublisher*") {
+              throw "MSIX Authenticode signer is not $expectedPublisher: $relativePath :: $($signature.SignerCertificate.Subject)"
+            }
+            if (-not $signature.TimeStamperCertificate) {
+              throw "MSIX Authenticode signature is missing an RFC 3161 timestamp: $relativePath"
+            }
+            Write-Host "MSIX Authenticode valid: $relativePath :: $($signature.SignerCertificate.Subject)"
+          }
 
       - name: Sign the update feed (pinned Ed25519, independent of Authenticode)
         if: steps.config.outputs.updatekey == 'true'

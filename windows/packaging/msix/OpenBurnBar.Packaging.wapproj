@@ -12,8 +12,8 @@
   BUILD CEILING (honest): the DesktopBridge props/targets, MakeAppx, MakePri, and the
   AppxManifest XSD gate are Windows-only — this project does NOT restore or build on
   macOS. It is authored to the canonical WAP schema and checked for XML well-formedness
-  on macOS (xmllint). Actual pack + Authenticode/Trusted-Signing signature run on the
-  Windows dev host / CI with the W0 cert (see windows/app/DEV_HOST_RUNBOOK.md).
+  on macOS (xmllint). Actual pack + Authenticode/Artifact Signing signature run on the
+  Windows dev host / CI with the Azure Artifact Signing profile (see windows/app/DEV_HOST_RUNBOOK.md).
 
   Self-contained reconciliation: OpenBurnBar.App sets WindowsAppSDKSelfContained=true
   (its unpackaged build carries the WinAppSDK runtime). Under MSIX the framework can be
@@ -47,10 +47,9 @@
     -->
     <EntryPointProjectUniqueName>..\..\app\OpenBurnBar.App\OpenBurnBar.App.csproj</EntryPointProjectUniqueName>
     <!--
-      Signing is deferred to the Windows CI/dev host with the W0 cert. Leave the
+      Signing is deferred to the Windows CI/dev host with Azure Artifact Signing. Leave the
       thumbprint UNSET here so an unsigned dev pack works; CI passes
-      /p:AppxPackageSigningEnabled=true /p:PackageCertificateThumbprint=<W0 cert>
-      (or Azure Trusted Signing) at pack time.
+      the Artifact Signing account/profile to the release workflow after pack time.
     -->
     <AppxPackageSigningEnabled>false</AppxPackageSigningEnabled>
     <GenerateAppInstallerFile>false</GenerateAppInstallerFile>
