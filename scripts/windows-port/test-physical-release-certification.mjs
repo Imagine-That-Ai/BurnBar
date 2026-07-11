@@ -21,6 +21,8 @@ assert.match(
 );
 assert.match(script, /Physical hardware architecture mismatch/);
 assert.match(script, /Get-Tpm/);
+assert.match(script, /\$script:HardwareAttestationSha256 = Get-Sha256 \$attestationPath/);
+assert.doesNotMatch(script, /\$script:HardwareAttestation\.sha256\s*=/);
 assert.match(script, /ArtifactManifestPath/);
 assert.match(script, /signatureResult/);
 assert.match(script, /Refusing certification evidence for an artifact without a verified signature/);
@@ -45,10 +47,20 @@ for (const gate of [
 assert.doesNotMatch(script, /allow_unsigned/i);
 assert.doesNotMatch(script, /\$pid\s*=/i);
 assert.match(script, /Sanitize-Text/);
+assert.match(script, /\[ValidateRange\(1, 7200\)\] \[int\] \$TimeoutSeconds = 1800/);
+assert.match(script, /WaitForExit\(\$TimeoutSeconds \* 1000\)/);
+assert.match(script, /\$process\.Kill\(\$true\)/);
+assert.match(script, /timedOut = \$timedOut/);
 assert.match(script, /SUPPLEMENTAL-LIVE-RECEIPT-MISSING/);
 assert.match(script, /\$supplementalGateIds = @\('accessibility-display'\)/);
 assert.match(script, /\$supplementalGateIds -notcontains/);
+assert.match(script, /\$performanceArchitectureByGate\.ContainsKey\(\$candidateGate\)/);
 assert.match(script, /\$candidate\.artifact\.sha256 -ne \$artifact\.sha256/);
+assert.match(script, /Supplemental evidence hash mismatch/);
+assert.match(
+  script,
+  /Get-Sha256 \$sourcePath[\s\S]*Supplemental evidence hash mismatch[\s\S]*Copy-Item -LiteralPath \$sourcePath/,
+);
 assert.match(localRunner, /isColdNativeSpike \? "180s" : "60s"/);
 assert.match(localRunner, /isColdNativeSpike \? 360000 : 180000/);
 

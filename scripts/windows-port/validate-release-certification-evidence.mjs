@@ -344,7 +344,11 @@ export function validateReleaseCertificationBundle(bundleDir, options = {}) {
     if (receipt.source?.commitSha !== manifest.source?.commitSha) {
       errors.push(`${label}: receipt commit does not match bundle source commit`);
     }
-    if (entry.sha256 && entry.sha256 !== sha256(path)) errors.push(`${label}: receipt sha256 mismatch`);
+    if (!/^[a-f0-9]{64}$/.test(entry.sha256 ?? "")) {
+      errors.push(`${label}: receipt sha256 is required`);
+    } else if (entry.sha256 !== sha256(path)) {
+      errors.push(`${label}: receipt sha256 mismatch`);
+    }
   }
 
   const gates = asArray(manifest.gates);
@@ -384,6 +388,15 @@ export function validateReleaseCertificationBundle(bundleDir, options = {}) {
       errors.push(
         "bundle: overallVerdict GO requires every required gate to be present and PASS",
       );
+    }
+    if (manifest.source?.dirtyTree === true) {
+      errors.push("bundle: overallVerdict GO requires a clean source tree");
+    }
+    const dirtyPassingReceipt = [...receiptByPath.values()].some(
+      (receipt) => receipt.status === "PASS" && receipt.source?.dirtyTree === true,
+    );
+    if (dirtyPassingReceipt) {
+      errors.push("bundle: overallVerdict GO cannot rely on a dirty PASS receipt");
     }
   }
 

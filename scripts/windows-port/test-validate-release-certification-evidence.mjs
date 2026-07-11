@@ -94,6 +94,20 @@ function receipt(gate, status = "PASS") {
   const result = validateReleaseCertificationBundle(bundleDir, { expectedCommit: COMMIT, requireAllGates: false });
   assert.equal(result.ok, true, result.errors.join("\n"));
 
+  const missingReceiptHashManifest = structuredClone(manifest);
+  delete missingReceiptHashManifest.receipts[0].sha256;
+  writeJson(join(bundleDir, "certification-manifest.json"), missingReceiptHashManifest);
+  writeSha256Sums(bundleDir);
+  const missingReceiptHashResult = validateReleaseCertificationBundle(
+    bundleDir,
+    { expectedCommit: COMMIT, requireAllGates: false },
+  );
+  assert.equal(missingReceiptHashResult.ok, false);
+  assert.match(
+    missingReceiptHashResult.errors.join("\n"),
+    /receipt sha256 is required/,
+  );
+
   function validateState(
     receiptValue,
     manifestValue,
@@ -142,6 +156,27 @@ function receipt(gate, status = "PASS") {
   assert.match(
     falseGoResult.errors.join("\n"),
     /GO requires every required gate to be present and PASS/,
+  );
+
+  const dirtyGoManifest = structuredClone(falseGoManifest);
+  dirtyGoManifest.source.dirtyTree = true;
+  const dirtyGoResult = validateState(value, dirtyGoManifest);
+  assert.equal(dirtyGoResult.ok, false);
+  assert.match(
+    dirtyGoResult.errors.join("\n"),
+    /GO requires a clean source tree/,
+  );
+
+  const dirtyGoReceipt = structuredClone(value);
+  dirtyGoReceipt.source.dirtyTree = true;
+  const dirtyReceiptGoResult = validateState(
+    dirtyGoReceipt,
+    structuredClone(falseGoManifest),
+  );
+  assert.equal(dirtyReceiptGoResult.ok, false);
+  assert.match(
+    dirtyReceiptGoResult.errors.join("\n"),
+    /GO cannot rely on a dirty PASS receipt/,
   );
 
   const blockedGoReceipt = structuredClone(value);

@@ -62,26 +62,73 @@ function Sanitize-Text([string] $Text) {
     return $redacted
 }
 
-function Invoke-LoggedProcess([string] $Name, [string] $File, [string[]] $Arguments) {
+function Invoke-LoggedProcess(
+    [string] $Name,
+    [string] $File,
+    [string[]] $Arguments,
+    [ValidateRange(1, 7200)] [int] $TimeoutSeconds = 1800
+) {
     $logPath = Join-Path $OutputDir ("logs\" + $Name + '.log')
     $start = [DateTimeOffset]::UtcNow
     $output = @()
     $exitCode = 1
-    Push-Location $RepoRoot
+    $timedOut = $false
+    $process = $null
     try {
-        $output = @(& $File @Arguments 2>&1 | ForEach-Object { $_.ToString() })
-        $exitCode = if ($null -eq $LASTEXITCODE) { 0 } else { $LASTEXITCODE }
+        $processFile = $File
+        $processArguments = [System.Collections.Generic.List[string]]::new()
+        if ([System.IO.Path]::GetExtension($File) -ieq '.ps1') {
+            $processFile = (Get-Process -Id $PID).Path
+            foreach ($argument in @('-NoProfile', '-NonInteractive', '-File', $File)) {
+                $processArguments.Add($argument)
+            }
+        }
+        foreach ($argument in $Arguments) { $processArguments.Add($argument) }
+
+        $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+        $startInfo.FileName = $processFile
+        $startInfo.WorkingDirectory = $RepoRoot
+        $startInfo.UseShellExecute = $false
+        $startInfo.CreateNoWindow = $true
+        $startInfo.RedirectStandardOutput = $true
+        $startInfo.RedirectStandardError = $true
+        foreach ($argument in $processArguments) { $startInfo.ArgumentList.Add($argument) }
+
+        $process = [System.Diagnostics.Process]::new()
+        $process.StartInfo = $startInfo
+        if (-not $process.Start()) { throw "Failed to start $File." }
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+            $timedOut = $true
+            try {
+                $process.Kill($true)
+            }
+            catch {
+                & (Join-Path $env:SystemRoot 'System32\taskkill.exe') /PID $process.Id /T /F | Out-Null
+            }
+            $process.WaitForExit()
+        }
+        $output = @(
+            $stdoutTask.GetAwaiter().GetResult()
+            $stderrTask.GetAwaiter().GetResult()
+        )
+        $exitCode = if ($timedOut) { 124 } else { $process.ExitCode }
     }
     catch {
         $output += $_.Exception.ToString()
         $exitCode = 1
     }
-    finally { Pop-Location }
+    finally {
+        if ($null -ne $process) { $process.Dispose() }
+    }
     (Sanitize-Text ($output -join "`n")) | Set-Content -LiteralPath $logPath -Encoding UTF8
     return [ordered]@{
         name = $Name
         command = $File + ' ' + ($Arguments -join ' ')
         exitCode = [int]$exitCode
+        timedOut = $timedOut
+        timeoutSeconds = $TimeoutSeconds
         log = ('logs/' + $Name + '.log')
         logSha256 = Get-Sha256 $logPath
         startedAtUtc = $start.ToUniversalTime().ToString('o')
@@ -191,7 +238,7 @@ function Get-DeviceIdentity {
             schema = [string]$script:HardwareAttestation.schema
             operator = [string]$script:HardwareAttestation.operator
             assetTag = [string]$script:HardwareAttestation.assetTag
-            sha256 = [string]$script:HardwareAttestation.sha256
+            sha256 = [string]$script:HardwareAttestationSha256
         }
     }
     return $result
@@ -258,6 +305,7 @@ New-Item -ItemType Directory -Force -Path $OutputDir, (Join-Path $OutputDir 'rec
 if (-not (Test-Path -LiteralPath (Join-Path $RepoRoot 'windows\OpenBurnBar.sln'))) { throw "RepoRoot does not contain windows\OpenBurnBar.sln: $RepoRoot" }
 
 $script:HardwareAttestation = $null
+$script:HardwareAttestationSha256 = $null
 if ($PhysicalHardware) {
     if ([string]::IsNullOrWhiteSpace($HardwareAttestationPath)) {
         throw 'PhysicalHardware requires -HardwareAttestationPath; a switch alone cannot certify physical hardware.'
@@ -271,7 +319,7 @@ if ($PhysicalHardware) {
     if ($script:HardwareAttestation.schema -ne 'openburnbar.windows.physical-hardware-attestation.v1') { throw 'Unsupported physical hardware attestation schema.' }
     if ($script:HardwareAttestation.physicalHardware -ne $true) { throw 'Hardware attestation does not assert physicalHardware=true.' }
     if ($script:HardwareAttestation.architecture -ne $Platform) { throw "Hardware attestation architecture mismatch: expected $Platform" }
-    $script:HardwareAttestation.sha256 = Get-Sha256 $attestationPath
+    $script:HardwareAttestationSha256 = Get-Sha256 $attestationPath
 }
 
 $artifact = Get-ArtifactIdentity
@@ -324,6 +372,10 @@ $gateProtocols = @{
     'media-computer-use-safety' = @('Use harmless fixtures: capture/camera/mic permissions, calls/share/transfer interruption and recovery, snapshot/quarantine/MOTW, UIA/SendInput capability and secure-desktop denial, approval downgrade, panic/watchdog/kill switches, audit tamper, phone auth/replay.')
     'store-update-lifecycle' = @('Use a private flight or controlled Store channel: clean install, upgrade, repair, rollback/recovery, uninstall/reinstall, activation, single-instance, valid/tampered/downgrade/offline feeds, Store/direct-download coexistence, and winget eligibility.')
 }
+$performanceArchitectureByGate = @{
+    'physical-performance-x64' = 'x64'
+    'physical-performance-arm64' = 'ARM64'
+}
 $supplementalGateIds = @('accessibility-display') + @($gateProtocols.Keys)
 foreach ($gate in $gateProtocols.Keys) {
     if ($gate -like 'physical-performance-*' -and $gate -ne ('physical-performance-' + $Platform)) {
@@ -357,7 +409,12 @@ if (-not [string]::IsNullOrWhiteSpace($SupplementalReceiptDirectory)) {
         if ($candidate.source.commitSha -ne (Get-CommitSha) -or $candidate.source.dirtyTree -eq $true) { continue }
         if ($supplementalGateIds -notcontains [string]$candidate.gate) { continue }
         if ($candidate.artifact.availability -ne 'recorded' -or $candidate.artifact.signature.result -ne 'verified') { continue }
-        if ($candidate.artifact.sha256 -ne $artifact.sha256 -or $candidate.artifact.architecture -ne $artifact.architecture) { continue }
+        $candidateGate = [string]$candidate.gate
+        if ($performanceArchitectureByGate.ContainsKey($candidateGate)) {
+            if ($candidate.artifact.architecture -ne $performanceArchitectureByGate[$candidateGate]) { continue }
+        } elseif ($candidate.artifact.sha256 -ne $artifact.sha256 -or $candidate.artifact.architecture -ne $artifact.architecture) {
+            continue
+        }
         $candidateFiles = @()
         foreach ($sourceFile in @($candidate.evidence.files)) {
             $relativeSource = ([string]$sourceFile.path).Replace('/', '\')
@@ -365,6 +422,10 @@ if (-not [string]::IsNullOrWhiteSpace($SupplementalReceiptDirectory)) {
             $sourceRootWithSeparator = $supplementalRoot.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
             if (-not $sourcePath.StartsWith($sourceRootWithSeparator, [System.StringComparison]::OrdinalIgnoreCase)) { throw "Supplemental evidence path escapes its root: $($sourceFile.path)" }
             if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) { throw "Supplemental evidence file missing: $sourcePath" }
+            $expectedSourceSha256 = ([string]$sourceFile.sha256).ToLowerInvariant()
+            if ($expectedSourceSha256 -notmatch '^[a-f0-9]{64}$') { throw "Supplemental evidence hash is invalid: $($sourceFile.path)" }
+            $observedSourceSha256 = Get-Sha256 $sourcePath
+            if ($observedSourceSha256 -ne $expectedSourceSha256) { throw "Supplemental evidence hash mismatch: $($sourceFile.path)" }
             $destinationRelative = ('supplemental/' + [string]$candidate.gate + '/' + ([string]$sourceFile.path).Replace('\', '/'))
             $destinationPath = Join-Path $OutputDir ($destinationRelative.Replace('/', '\'))
             New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destinationPath) | Out-Null
