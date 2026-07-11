@@ -233,7 +233,9 @@ enum CLIArgumentBuilder {
             let dedupedTools = (Array(NSOrderedSet(array: tools)) as? [String] ?? tools)
                 .joined(separator: ",")
             arguments.append(contentsOf: ["--tools", dedupedTools])
-            arguments.append("--auto-approve")
+            if capabilityGrant.trustMode == .trusted {
+                arguments.append("--auto-approve")
+            }
         } else {
             arguments.append("--no-tools")
         }

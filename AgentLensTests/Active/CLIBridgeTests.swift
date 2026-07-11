@@ -358,11 +358,26 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertFalse(args.contains("--auto-approve"))
     }
 
-    func test_cliArgumentBuilder_ompArguments_shellGrantIncludesBashTool() throws {
+    func test_cliArgumentBuilder_ompArguments_manualShellGrantIncludesBashToolWithoutAutoApprove() throws {
         let grant = AgentCapabilityGrant.sessionGrant(
             runtimeID: .omp,
             threadID: "thread-omp",
-            capabilities: [.shell, .workspaceRead]
+            capabilities: [.shell, .workspaceRead],
+            trustMode: .manual
+        )
+        let args = CLIArgumentBuilder.ompArguments(prompt: "run", capabilityGrant: grant)
+        let toolsIndex = try XCTUnwrap(args.firstIndex(of: "--tools"))
+        let tools = args[toolsIndex + 1]
+        XCTAssertTrue(tools.contains("bash"))
+        XCTAssertFalse(args.contains("--auto-approve"))
+    }
+
+    func test_cliArgumentBuilder_ompArguments_trustedShellGrantAutoApprovesTools() throws {
+        let grant = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .omp,
+            threadID: "thread-omp",
+            capabilities: [.shell, .workspaceRead],
+            trustMode: .trusted
         )
         let args = CLIArgumentBuilder.ompArguments(prompt: "run", capabilityGrant: grant)
         let toolsIndex = try XCTUnwrap(args.firstIndex(of: "--tools"))
