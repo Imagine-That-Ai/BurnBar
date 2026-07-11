@@ -148,6 +148,20 @@ jobs:
           }
           Write-Host "Windows solution present."
 
+      - name: Parse physical certification PowerShell
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path "scripts/windows-port/run-physical-release-certification.ps1"),
+            [ref]$tokens,
+            [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            throw "Physical certification PowerShell has parse errors."
+          }
+          Write-Host "Physical certification PowerShell parsed successfully."
+
       - name: Restore Windows solution
         run: dotnet restore windows/OpenBurnBar.sln
 
