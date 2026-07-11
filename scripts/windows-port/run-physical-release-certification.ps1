@@ -104,7 +104,7 @@ function Get-ArtifactIdentity {
     if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw "Artifact manifest not found: $manifestPath" }
     $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
     foreach ($field in @('artifactName', 'architecture', 'workflowRunId', 'workflowRunUrl', 'artifactSha256', 'signatureResult', 'signatureIdentity')) {
-        if ($null -eq $manifest.$field -or [string]::IsNullOrWhiteSpace([string]$manifest.$field)) { throw "Artifact manifest missing $field: $manifestPath" }
+        if ($null -eq $manifest.$field -or [string]::IsNullOrWhiteSpace([string]$manifest.$field)) { throw "Artifact manifest missing ${field}: $manifestPath" }
     }
     if ($manifest.architecture -ne $Platform) { throw "Artifact architecture mismatch: expected $Platform, got $($manifest.architecture)" }
     if ($manifest.signatureResult -ne 'verified') { throw 'Refusing certification evidence for an artifact without a verified signature.' }
