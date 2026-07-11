@@ -497,6 +497,6 @@ export const resolveActiveIrohControllerRoutes = onCallProduction(
         },
       };
     });
-    return { connectionId, resolvedAtMillis: nowMillis, routes: [result.route] };
+    return { uid, connectionId, resolvedAtMillis: nowMillis, routes: [result.route] };
   },
 );

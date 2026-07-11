@@ -272,11 +272,12 @@ describe("verified iroh controller route registry", () => {
       generation: 1,
     });
 
-    const resolution = await invoke<{ routes: Array<Record<string, unknown>> }>(
+    const resolution = await invoke<{ uid: string; routes: Array<Record<string, unknown>> }>(
       resolveActiveIrohControllerRoutes,
       UID,
       { connectionId: CONNECTION_ID },
     );
+    expect(resolution.uid).toBe(UID);
     expect(resolution.routes).toEqual([
       expect.objectContaining({
         connectionId: CONNECTION_ID,
