@@ -1,12 +1,15 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App.js';
 import { ROUTES } from '../routes.js';
 import { fixtureUsageSummary } from '../daemonFixture.js';
 import { DaemonDataSection } from '../surfaces/DaemonDataSection.js';
 import { useOverviewStore } from '../state/overviewStore.js';
 import { useShellStore } from '../state/shellStore.js';
+import type { LinuxShellBridge } from '../tauriBridge.js';
+import { defaultLinuxOnboardingSnapshot } from '../onboardingStore.js';
+import { OnboardingSurface } from '../surfaces/OnboardingSurface.js';
 
 function resetShell(): void {
   localStorage.clear();
@@ -21,6 +24,8 @@ function resetShell(): void {
     skin: 'editorial',
     bridge: null,
     bridgeReady: true,
+    runtimeCapabilities: null,
+    capabilityError: null,
     fixtureMode: false
   });
 }
@@ -138,21 +143,39 @@ describe('App shell', () => {
     expect(screen.getByRole('menuitemradio', { name: 'Aurora' }).getAttribute('aria-checked')).toBe('true');
   });
 
-  it('walks the onboarding wizard with skip and completion persistence', () => {
-    const { container } = render(<App />);
-    act(() => useShellStore.getState().setRoute('onboarding'));
-    expect(screen.getByText('Step 1 of 8')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Skip step' }));
-    expect(screen.getByText('Step 2 of 8')).toBeTruthy();
-    const stored = JSON.parse(localStorage.getItem('openburnbar.linux.onboarding.v1') ?? '{}');
-    expect(stored.skippedSteps).toEqual([0]);
-    for (let i = 0; i < 6; i += 1) {
-      fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
-    }
-    fireEvent.click(screen.getByRole('button', { name: 'Finish setup' }));
-    expect(container.querySelector('.setup-complete')).not.toBeNull();
-    const done = JSON.parse(localStorage.getItem('openburnbar.linux.onboarding.v1') ?? '{}');
-    expect(done.completed).toBe(true);
+  it('requires daemon verification and never offers skip for a required onboarding step', async () => {
+    const initial = defaultLinuxOnboardingSnapshot();
+    const afterDaemon = {
+      ...initial,
+      revision: 1,
+      currentStepID: 'secret_store' as const,
+      updatedAt: '2026-07-10T00:00:00Z',
+      steps: initial.steps.map((step) =>
+        step.id === 'daemon'
+          ? { ...step, state: 'verified' as const, attemptCount: 1, detail: 'daemon verified' }
+          : step
+      )
+    };
+    const onboardingSnapshot = vi.fn().mockResolvedValue(initial);
+    const onboardingAction = vi.fn().mockResolvedValue(afterDaemon);
+    useShellStore.setState({
+      bridge: {
+        onboardingSnapshot,
+        onboardingAction,
+        onboardingReset: vi.fn()
+      } as unknown as LinuxShellBridge,
+      bridgeReady: true
+    });
+
+    render(<OnboardingSurface />);
+    expect(await screen.findByText('Step 1 of 8')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Skip/i })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Verify and continue' }));
+
+    await waitFor(() => {
+      expect(onboardingAction).toHaveBeenCalledWith({ stepID: 'daemon', action: 'verify' });
+    });
+    expect(await screen.findByText('Step 2 of 8')).toBeTruthy();
   });
 
   it('gates text expansion behind consent and supports snippet CRUD', () => {
@@ -195,5 +218,31 @@ describe('App shell', () => {
       window.dispatchEvent(new HashChangeEvent('hashchange'));
     });
     expect(useShellStore.getState().route).toBe('memory');
+  });
+  it('fires daemon-wide Computer Use panic from the emergency hotkey', async () => {
+    const computerUsePanicHalt = vi.fn().mockResolvedValue({
+      sessionId: '*',
+      endedAt: new Date(0).toISOString(),
+      auditHeadHashHex: '',
+      source: 'hotkey'
+    });
+    useShellStore.setState({
+      bridge: { computerUsePanicHalt } as unknown as LinuxShellBridge,
+      bridgeReady: true,
+      fixtureMode: false
+    });
+    render(<App />);
+
+    fireEvent.keyDown(window, {
+      key: '.',
+      code: 'Period',
+      ctrlKey: true,
+      altKey: true,
+      metaKey: true
+    });
+
+    await waitFor(() => {
+      expect(computerUsePanicHalt).toHaveBeenCalledWith({ sessionId: '*', source: 'hotkey' });
+    });
   });
 });

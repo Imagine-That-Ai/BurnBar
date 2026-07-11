@@ -5,18 +5,60 @@
   "linuxDesktopPackage": "apps/linux-desktop",
   "primaryArtifact": "appimage",
   "requiredArtifacts": ["appimage", "deb", "rpm", "daemon"],
+  "supportedArchitectures": ["aarch64", "x86_64"],
+  "releaseTagPrefix": "linux-v",
+  "signing": {
+    "publicKey": "packaging/linux/openburnbar-linux-ed25519.pub.pem",
+    "publicKeySpkiSha256": "0e0fd1f52af308d96c71571ef7e94f3e183218abf531760dfcc8ef8e499e5c37",
+    "cosignIssuer": "https://token.actions.githubusercontent.com",
+    "cosignIdentityTemplate": "https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-release.yml@refs/tags/linux-v{version}"
+  },
   "tailMetadata": {
     "aur": "packaging/linux/aur/PKGBUILD",
     "flatpak": "packaging/linux/flatpak/dev.openburnbar.OpenBurnBar.yml",
     "desktopEntry": "packaging/linux/openburnbar.desktop",
+    "safeModeDesktopEntry": "packaging/linux/openburnbar-safe-mode.desktop",
     "autostartEntry": "packaging/linux/autostart/openburnbar.desktop",
-    "systemdUserService": "packaging/linux/openburnbar-daemon.service"
+    "systemdUserService": "packaging/linux/openburnbar-daemon.service",
+    "daemonLaunchScript": "packaging/linux/openburnbar-daemon-launch.sh",
+    "daemonEnvExample": "packaging/linux/daemon.env.example",
+    "customXdgDropInExample": "packaging/linux/systemd/openburnbar-daemon.service.d/custom-xdg.conf.example"
+  },
+  "installPaths": {
+    "daemonLaunch": "/usr/libexec/openburnbar-daemon-launch",
+    "daemonBinary": "/usr/bin/openburnbar-daemon",
+    "swiftRuntime": "/usr/lib/openburnbar/swift",
+    "nativeRuntime": "/usr/lib/openburnbar/native",
+    "systemdUserService": "/usr/lib/systemd/user/openburnbar-daemon.service",
+    "desktopEntry": "/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop"
+  },
+  "credentialStorage": {
+    "requiredCommand": "secret-tool",
+    "primaryBackend": "org.freedesktop.secrets",
+    "optionalBackend": "kwallet-query",
+    "debian": {
+      "depends": ["libsecret-tools"],
+      "recommends": ["gnome-keyring", "libkf5wallet-bin", "libkf6wallet-bin"]
+    },
+    "rpm": {
+      "depends": ["libsecret"]
+    },
+    "arch": {
+      "depends": ["libsecret"],
+      "optdepends": ["kwallet"]
+    },
+    "flatpak": {
+      "status": "unpromoted",
+      "requiredBusName": "org.freedesktop.secrets",
+      "blocker": "Sandboxed secret-tool and locked/unlocked keyring lifecycle are not yet proven on a real Flatpak runner."
+    }
   },
   "updateMetadata": {
     "draftName": "latest-linux.draft.json",
     "publishedName": "latest-linux.json",
+    "publicUrl": "https://downloads.burnbar.ai/latest-linux.json",
     "publishOnlyAfter": [
-      "required packages exist",
+      "every required package exists for aarch64 and x86_64",
       "install-launch-uninstall smoke passes",
       "checksums verify",
       "Ed25519/minisign-compatible signatures verify",

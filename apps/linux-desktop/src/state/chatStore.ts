@@ -1,11 +1,11 @@
 import { create } from 'zustand';
 import {
   GatewayChatError,
-  probeGatewayHealth,
-  streamGatewayChat,
+  streamGatewayChatNative,
   type GatewayChatStreamEvent
 } from '../chat/gatewayClient.js';
 import { fixtureConfigSnapshot, fixtureSessionList } from '../daemonFixture.js';
+import { markStart } from '../perfMarks.js';
 import type { ConfigSnapshot, SessionEntry, SessionListResult } from '../tauriBridge.js';
 import type { ChatBackendId, ChatWarningBanner, MemoryCitation } from '../surfaces/chat/chatTypes.js';
 import { useShellStore } from './shellStore.js';
@@ -179,14 +179,13 @@ function gatewayBaseURLFromHealth(): string | null {
 
 async function resolveGatewayStatus(
   fixtureMode: boolean
-): Promise<{ status: ChatGatewayStatus; baseURL: string | null; bearerToken?: string }> {
+): Promise<{ status: ChatGatewayStatus; baseURL: string | null }> {
   if (fixtureMode) return { status: 'reachable', baseURL: 'fixture://gateway' };
   const baseURL = gatewayBaseURLFromHealth();
   if (!baseURL) return { status: 'disabled', baseURL: null };
   const bridge = useShellStore.getState().bridge;
-  const bearerToken = (await bridge?.gatewayAuthToken?.().catch(() => null)) ?? undefined;
-  const reachable = await probeGatewayHealth(baseURL, bearerToken);
-  return { status: reachable ? 'reachable' : 'unreachable', baseURL, bearerToken };
+  const reachable = (await bridge?.gatewayProbe().catch(() => false)) ?? false;
+  return { status: reachable ? 'reachable' : 'unreachable', baseURL };
 }
 
 function newId(prefix: string): string {
@@ -459,19 +458,31 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       const model = get().modelLabel.trim() || 'hermes';
       const stream = fixtureMode
         ? fixtureChatStream()
-        : streamGatewayChat({
-            baseURL: gateway.baseURL ?? '',
-            model,
-            messages: [{ role: 'system', content: 'You are Hermes inside OpenBurnBar.' }, ...outboundHistory],
-            bearerToken: gateway.bearerToken,
-            signal: controller.signal
-          });
+        : streamGatewayChatNative(
+            {
+              start: (request, onChunk) => {
+                if (!bridge) return Promise.reject(new Error('Linux native gateway bridge is unavailable.'));
+                return bridge.gatewayChatStream(request, onChunk);
+              },
+              cancel: (requestId) => bridge?.gatewayChatCancel(requestId) ?? Promise.resolve()
+            },
+            {
+              requestId: newId('gateway'),
+              model,
+              messages: [{ role: 'system', content: 'You are Hermes inside OpenBurnBar.' }, ...outboundHistory],
+              signal: controller.signal
+            }
+          );
       let firstText = false;
+      const endFirstToken = markStart(
+        'chat.firstToken.progress',
+        fixtureMode ? 'fixture-chat-first-delta' : 'packaged-gateway-first-delta'
+      );
       set({ streaming: true, streamPhase: 'streaming' });
       for await (const event of stream) {
         if (event.type === 'delta' && !firstText) {
           firstText = true;
-          if (bridge) void bridge.measurePerfOperation('chat.firstToken.progress');
+          endFirstToken();
         }
         set((state) => ({
           messages: applyChatStreamEvent(state.messages, assistantId, event)

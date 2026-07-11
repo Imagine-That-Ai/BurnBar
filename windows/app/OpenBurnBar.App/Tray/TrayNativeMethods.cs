@@ -112,6 +112,9 @@ internal static class TrayNativeMethods
     internal static extern ushort RegisterClassExW(ref WNDCLASSEXW lpwcx);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern uint RegisterWindowMessageW(string lpString);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     internal static extern IntPtr CreateWindowExW(
         uint dwExStyle, string lpClassName, string? lpWindowName, uint dwStyle,
         int x, int y, int nWidth, int nHeight,

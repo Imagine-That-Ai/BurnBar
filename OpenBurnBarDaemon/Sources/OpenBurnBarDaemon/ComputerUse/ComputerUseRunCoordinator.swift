@@ -266,7 +266,7 @@ public actor ComputerUseRunCoordinator {
             sessionIsExpired(active, now: now) ? sessionId : nil
         }
         for sessionId in expired {
-            await endSession(sessionId: sessionId, reason: .timeout)
+            _ = await endSession(sessionId: sessionId, reason: .timeout)
         }
         return expired
     }
@@ -329,6 +329,10 @@ public actor ComputerUseRunCoordinator {
         }
     }
 
+    public func actionDescriptor(invocation: BurnBarToolInvocation) throws -> ComputerUseAction {
+        try decodeAction(invocation: invocation)
+    }
+
     // MARK: Dispatch
 
     public func invoke(
@@ -349,7 +353,7 @@ public actor ComputerUseRunCoordinator {
         }
         let generation = active.generation
         if sessionIsExpired(active, now: Date()) {
-            await endSession(sessionId: sessionId, reason: .timeout)
+            _ = await endSession(sessionId: sessionId, reason: .timeout)
             return endedResponse(
                 sessionId: sessionId,
                 invocation: invocation,
@@ -511,7 +515,7 @@ public actor ComputerUseRunCoordinator {
                             return endedResponse(sessionId: sessionId, invocation: invocation)
                         }
                         if response.decision == .rejectAndHalt {
-                            await panicHalt(sessionId: sessionId, source: .stalled)
+                            _ = await panicHalt(sessionId: sessionId, source: .stalled)
                         }
                         return ComputerUseInvokeResponse(
                             sessionId: sessionId.rawValue,
@@ -666,7 +670,7 @@ public actor ComputerUseRunCoordinator {
             } catch {
                 removeInFlightDispatch(sessionId: sessionId, dispatchId: dispatchId)
                 if quotaReservationInserted {
-                    try? quotaLedger.rollbackAction(
+                    _ = try? quotaLedger.rollbackAction(
                         idempotencyKey: "\(sessionId.rawValue)|\(invocation.callID)",
                         actionClass: actionClass,
                         exemptFromMeteredCap: exemptsMeteredCap

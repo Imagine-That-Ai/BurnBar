@@ -8,17 +8,11 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <!--
-      System-permissions step — Windows peer of OnboardingSystemPermissionsView.swift.
-      macOS grants (Accessibility, Automation, Screen Recording) don't exist on Windows;
-      the parity mapping is the Windows-appropriate consent surface: notifications, launch
-      at sign-in, and background activity. These are informational until the Windows PAL
-      wires the real grant checks; the footer's "Continue (set up later)" honors that.
-    -->
     <Grid RowSpacing="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <StackPanel Grid.Row="0" Spacing="6">
@@ -30,37 +24,13 @@
         </StackPanel>
 
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-            <StackPanel Spacing="10">
-                <Border Style="{StaticResource LiquidGlassSurfaceStyle}" theme:LiquidGlass.Surface="True"
-                        CornerRadius="10"
-                        Padding="14">
-                    <StackPanel Spacing="4">
-                        <TextBlock Text="Notifications" FontSize="13.5" FontWeight="SemiBold" />
-                        <TextBlock Text="Show toast alerts for burn-rate thresholds and finished agent sessions."
-                                   Opacity="0.7" FontSize="12" TextWrapping="Wrap" />
-                    </StackPanel>
-                </Border>
-
-                <Border Style="{StaticResource LiquidGlassSurfaceStyle}" theme:LiquidGlass.Surface="True"
-                        CornerRadius="10"
-                        Padding="14">
-                    <StackPanel Spacing="4">
-                        <TextBlock Text="Launch at sign-in" FontSize="13.5" FontWeight="SemiBold" />
-                        <TextBlock Text="Start OpenBurnBar in the tray when you sign in, so tracking never misses a session."
-                                   Opacity="0.7" FontSize="12" TextWrapping="Wrap" />
-                    </StackPanel>
-                </Border>
-
-                <Border Style="{StaticResource LiquidGlassSurfaceStyle}" theme:LiquidGlass.Surface="True"
-                        CornerRadius="10"
-                        Padding="14">
-                    <StackPanel Spacing="4">
-                        <TextBlock Text="Background activity" FontSize="13.5" FontWeight="SemiBold" />
-                        <TextBlock Text="Let OpenBurnBar watch your local agent logs while it runs in the background."
-                                   Opacity="0.7" FontSize="12" TextWrapping="Wrap" />
-                    </StackPanel>
-                </Border>
-            </StackPanel>
+            <StackPanel x:Name="CapabilityRows" Spacing="10" />
         </ScrollViewer>
+
+        <Button Grid.Row="2"
+                Content="Refresh status"
+                HorizontalAlignment="Left"
+                Click="Refresh_Click"
+                AutomationProperties.Name="Refresh Windows capability status" />
     </Grid>
 </Page>

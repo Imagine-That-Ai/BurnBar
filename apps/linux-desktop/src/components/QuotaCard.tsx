@@ -47,7 +47,14 @@ function WindowRow({
         <span className="quota-window-remaining mono">{bucket.remainingPct}% left</span>
         <PaceBadge pace={bucket.pace} />
       </div>
-      <div className="quota-window-track" role="meter" aria-valuenow={fill} aria-valuemin={0} aria-valuemax={100}>
+      <div
+        className="quota-window-track"
+        role="meter"
+        aria-label={`${label}: ${fill}% remaining`}
+        aria-valuenow={fill}
+        aria-valuemin={0}
+        aria-valuemax={100}
+      >
         <div className="quota-window-fill" style={{ width: `${fill}%` }} data-state={bucket.state} />
       </div>
     </div>

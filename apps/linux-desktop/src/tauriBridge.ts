@@ -1,7 +1,15 @@
-import { invoke } from '@tauri-apps/api/core';
-import { open as openExternal } from '@tauri-apps/plugin-shell';
+import { Channel, invoke } from '@tauri-apps/api/core';
 import type { DaemonHealth } from './daemonClient.js';
+import {
+  decodeRuntimeCapabilityManifest,
+  type RuntimeCapabilityManifest
+} from './runtimeCapabilities.js';
 import { ENTITLEMENT_DOC_IDS, evaluateEntitlement } from '@openburnbar/entitlements';
+import {
+  decodeLinuxOnboardingSnapshot,
+  type LinuxOnboardingActionRequest,
+  type LinuxOnboardingSnapshot
+} from './onboardingStore.js';
 
 // ─────────────────────────── P01: usage summary ───────────────────────────
 
@@ -93,6 +101,7 @@ export type ConfigSnapshot = {
   secretServiceStatus: string;
   telemetryEnabled: boolean;
   privacyOptIn: boolean;
+  cloudSyncEnabled?: boolean;
   providers?: ProviderSettings[];
   routerMode?: string;
 };
@@ -260,8 +269,27 @@ export type MembershipStatus = {
 export type AppVersionInfo = {
   shellVersion: string;
   daemonVersion: string;
-  packageChannel: 'deb' | 'appimage' | 'unknown';
-  updateCheck: string;
+  packageChannel: 'deb' | 'rpm' | 'appimage' | 'unknown';
+  /** Legacy fixture field. Live update truth comes from updateStatus(). */
+  updateCheck?: string;
+};
+export type LinuxUpdateArtifact = {
+  type: 'appimage' | 'deb' | 'rpm' | 'daemon';
+  architecture: 'aarch64' | 'x86_64';
+  url: string;
+  sha256: string;
+  size: number;
+  signatureUrl: string;
+};
+export type LinuxUpdateStatus = {
+  state: 'current' | 'available' | 'unavailable' | 'invalid';
+  currentVersion: string;
+  latestVersion?: string;
+  channel?: 'stable' | 'prerelease' | 'nightly';
+  publishedAt?: string;
+  notes?: string;
+  artifact?: LinuxUpdateArtifact;
+  reason?: string;
 };
 export type DiagnosticsExport = { path: string };
 
@@ -323,6 +351,7 @@ export type SessionEnv = { XDG_SESSION_TYPE?: string; XDG_CURRENT_DESKTOP?: stri
 export type MercuryDevicePlatform = 'ios' | 'android' | 'macos' | 'linux' | 'unknown';
 export type MercurySessionKind = 'screen-share' | 'file' | 'call';
 export type MercurySessionState = 'staged' | 'connecting' | 'active' | 'ended';
+export type MercuryCallPhase = 'idle' | 'ringing' | 'streaming' | 'cooldown' | 'capability-absent';
 export type MercuryPairedDevice = {
   id: string;
   name: string;
@@ -335,11 +364,114 @@ export type MercuryActiveSession = {
   kind: MercurySessionKind;
   state: MercurySessionState;
   peer: string;
+  requestId?: string;
+  startedAt?: string;
 };
 export type MercuryMediaStatus = {
   capabilityAvailable: boolean;
   pairedDevices: MercuryPairedDevice[];
   activeSession?: MercuryActiveSession;
+};
+export type MercuryMediaSessionState = {
+  phase: MercuryCallPhase;
+  requestId?: string;
+  peerName?: string;
+  peerId?: string;
+  kind: MercurySessionKind;
+  startedAt?: string;
+  endedAt?: string;
+  capabilityAvailable: boolean;
+  raw?: RawJsonValue;
+};
+export type MercuryMediaCapability = {
+  available: boolean;
+  renderer: 'media-gst' | 'stub' | 'unknown';
+  canReceiveCalls: boolean;
+  canViewScreenShare: boolean;
+  reason?: string;
+};
+export type MercuryFileTransferDirection = 'inbound' | 'outbound';
+export type MercuryFileTransferPhase =
+  | 'pendingAccept'
+  | 'downloading'
+  | 'sending'
+  | 'offered'
+  | 'completed'
+  | 'declined'
+  | 'failed';
+export type MercuryFileTransferErrorCode =
+  | 'capabilityAbsent'
+  | 'invalidRequest'
+  | 'transferNotFound'
+  | 'localFileMissing'
+  | 'noControlRoute'
+  | 'publishFailed'
+  | 'fetchFailed'
+  | 'ioFailed'
+  | 'peerRejected';
+export type MercuryFileTransferProgress = {
+  bytesTransferred: number;
+  bytesTotal: number;
+  fraction: number;
+};
+export type MercuryFilePeer = {
+  id: string;
+  name: string;
+  isOnline: boolean;
+  lastSeenAt: string;
+  capabilities: string[];
+};
+export type MercuryFileTransfer = {
+  transferID: string;
+  manifestID: string;
+  direction: MercuryFileTransferDirection;
+  phase: MercuryFileTransferPhase;
+  filename: string;
+  mime: string;
+  size: number;
+  peer?: MercuryFilePeer;
+  progress: MercuryFileTransferProgress;
+  localPath?: string;
+  errorCode?: MercuryFileTransferErrorCode;
+  detail?: string;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+};
+export type MercuryFileOfferListResponse = {
+  capabilityAvailable: boolean;
+  downloadDirectory?: string;
+  transfers: MercuryFileTransfer[];
+  detail?: string;
+};
+export type MercuryFileTransferActionRequest = {
+  transferID?: string;
+  manifestID?: string;
+};
+export type MercuryFileTransferSendRequest = {
+  path: string;
+  peerID?: string;
+};
+export type MercuryFileTransferActionResponse = {
+  accepted: boolean;
+  transfer?: MercuryFileTransfer;
+  errorCode?: MercuryFileTransferErrorCode;
+  detail?: string;
+};
+export type ComputerUsePanicSource =
+  | 'hotkey'
+  | 'phone_gesture'
+  | 'mac_lock'
+  | 'remote_config'
+  | 'accessibility_revoked'
+  | 'stalled'
+  | 'revoked';
+export type ComputerUsePanicHaltResult = {
+  sessionId: string;
+  endedAt: string;
+  auditHeadHashHex: string;
+  source: ComputerUsePanicSource;
+  raw?: RawJsonValue;
 };
 // ─────────────────────────── P13: integrations status ─────────────────────
 
@@ -361,17 +493,81 @@ export type IntegrationStatus = {
 };
 export type IntegrationsStatus = { integrations: IntegrationStatus[] };
 
+export type GatewayProxyMessage = {
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string;
+};
+
+export type GatewayProxyRequest = {
+  requestId: string;
+  model: string;
+  messages: GatewayProxyMessage[];
+};
+
+export type DaemonSubscriptionTopic = 'data' | 'health' | 'run';
+export type DaemonSubscriptionStartRequest = {
+  topic: DaemonSubscriptionTopic;
+  run_id?: string;
+  requested_subscription_id?: string;
+  client_id?: string;
+};
+export type DaemonSubscriptionResumeRequest = {
+  subscription_id: string;
+  topic: DaemonSubscriptionTopic;
+  after_seq: number;
+  run_id?: string;
+  client_id?: string;
+};
+export type DaemonSubscriptionStopRequest = {
+  subscription_id: string;
+  client_id?: string;
+};
+export type DaemonSubscriptionEvent = {
+  seq: number;
+  kind: string;
+  snapshot: Record<string, string>;
+  terminal: boolean;
+};
+export type DaemonSubscriptionResponse = {
+  subscriptionId: string;
+  topic: DaemonSubscriptionTopic;
+  seq: number;
+  cursor: string;
+  firstSnapshot: boolean;
+  events: DaemonSubscriptionEvent[];
+  degradedFallback: boolean;
+  degradationReason?: string;
+  backpressure: string;
+  disconnectDetected: boolean;
+  recoveredAfterRestart: boolean;
+  terminalStateDelivered: boolean;
+};
+export type DaemonSubscriptionStopResponse = {
+  subscriptionId: string;
+  stopped: boolean;
+  lastSeq: number;
+};
+
 // ─────────────────────────── Bridge contract ──────────────────────────────
 
 export interface LinuxShellBridge {
   daemonHealth(): Promise<DaemonHealth>;
-  gatewayAuthToken(): Promise<string | null>;
+  runtimeCapabilities(): Promise<RuntimeCapabilityManifest>;
+  gatewayProbe(): Promise<boolean>;
+  gatewayChatStream(request: GatewayProxyRequest, onChunk: (chunk: string) => void): Promise<void>;
+  gatewayChatCancel(requestId: string): Promise<void>;
   openDashboard(): Promise<void>;
   quitApp(): Promise<void>;
   trayDegraded(): Promise<boolean>;
   measurePerfOperation(
     name: string
   ): Promise<{ name: string; ms: number; source: string; ok: boolean; detail?: string }>;
+  onboardingSnapshot(): Promise<LinuxOnboardingSnapshot>;
+  onboardingAction(request: LinuxOnboardingActionRequest): Promise<LinuxOnboardingSnapshot>;
+  onboardingReset(): Promise<LinuxOnboardingSnapshot>;
+  subscriptionStart(request: DaemonSubscriptionStartRequest): Promise<DaemonSubscriptionResponse>;
+  subscriptionResume(request: DaemonSubscriptionResumeRequest): Promise<DaemonSubscriptionResponse>;
+  subscriptionStop(request: DaemonSubscriptionStopRequest): Promise<DaemonSubscriptionStopResponse>;
 
   // P01–P11 lane extensions — each maps the raw daemon `result` JSON to a typed shape.
   usageSummary(): Promise<UsageSummary>;
@@ -395,8 +591,10 @@ export interface LinuxShellBridge {
   membershipStatus?(): Promise<MembershipStatus>;
   membershipCheckoutUrl?(): Promise<string>;
   openExternalUrl?(url: string): Promise<void>;
+  openUpdateUrl?(url: string): Promise<void>;
   membershipRestore?(): Promise<void>;
   appVersionInfo(): Promise<AppVersionInfo>;
+  updateStatus?(): Promise<LinuxUpdateStatus>;
   exportDiagnostics(): Promise<DiagnosticsExport>;
   configUpdate?(snapshot: ConfigSnapshot): Promise<ConfigSnapshot>;
   providerCredentialSlotUpsert?(params: {
@@ -423,8 +621,37 @@ export interface LinuxShellBridge {
   notificationConfigUpdate?(config: NotificationConfig): Promise<NotificationConfig>;
   notificationHealth?(): Promise<NotificationHealth>;
   notificationCommand?(command: string, args?: string[]): Promise<NotificationCommandResult>;
+  toolApprovalRespond?(
+    approvalId: string,
+    decision: 'approve' | 'reject' | 'cancel',
+    note?: string
+  ): Promise<void>;
+  memorySetStatus?(
+    action: 'approve' | 'reject' | 'audit' | 'remember' | 'forget',
+    payload: Record<string, unknown>
+  ): Promise<unknown>;
+  computerUseSessionStart?(params: Record<string, unknown>): Promise<unknown>;
+  computerUseInvoke?(params: Record<string, unknown>): Promise<unknown>;
+  computerUseApprovalPending?(params?: Record<string, unknown>): Promise<unknown>;
+  computerUseApprovalRespond?(params: Record<string, unknown>): Promise<unknown>;
+  computerUseAuditExport?(params?: Record<string, unknown>): Promise<unknown>;
   sessionEnv(): Promise<SessionEnv>;
   mediaStatus(): Promise<MercuryMediaStatus>;
+  mediaSessionState(): Promise<MercuryMediaSessionState>;
+  mediaAcceptCall(requestId: string): Promise<MercuryMediaSessionState>;
+  mediaDeclineCall(requestId: string): Promise<MercuryMediaSessionState>;
+  mediaEndCall(): Promise<MercuryMediaSessionState>;
+  mediaCapabilityGet(): Promise<MercuryMediaCapability>;
+  mediaFileOfferList(): Promise<MercuryFileOfferListResponse>;
+  mediaFileAccept(request: MercuryFileTransferActionRequest): Promise<MercuryFileTransferActionResponse>;
+  mediaFileDecline(
+    request: MercuryFileTransferActionRequest & { reason?: string }
+  ): Promise<MercuryFileTransferActionResponse>;
+  mediaFileSend(request: MercuryFileTransferSendRequest): Promise<MercuryFileTransferActionResponse>;
+  computerUsePanicHalt(params?: {
+    sessionId?: string;
+    source?: ComputerUsePanicSource;
+  }): Promise<ComputerUsePanicHaltResult>;
   integrationsStatus(): Promise<IntegrationsStatus>;
 }
 
@@ -451,6 +678,12 @@ function arr(v: RawJsonValue): RawJsonValue[] {
   return Array.isArray(v) ? v : [];
 }
 
+function obj(v: RawJsonValue): Record<string, RawJsonValue> {
+  return v && typeof v === 'object' && !Array.isArray(v)
+    ? v as Record<string, RawJsonValue>
+    : {};
+}
+
 function pick(v: RawJsonValue, ...keys: string[]): RawJsonValue {
   if (v && typeof v === 'object') {
     const o = v as Record<string, RawJsonValue>;
@@ -459,6 +692,90 @@ function pick(v: RawJsonValue, ...keys: string[]): RawJsonValue {
     }
   }
   return undefined;
+}
+
+function requireObject(v: RawJsonValue, label: string): Record<string, RawJsonValue> {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) {
+    throw new Error(`${label} must be an object.`);
+  }
+  return v as Record<string, RawJsonValue>;
+}
+
+function requireString(v: RawJsonValue, label: string): string {
+  if (typeof v !== 'string' || v.length === 0) {
+    throw new Error(`${label} must be a non-empty string.`);
+  }
+  return v;
+}
+
+function requireBoolean(v: RawJsonValue, label: string): boolean {
+  if (typeof v !== 'boolean') throw new Error(`${label} must be a boolean.`);
+  return v;
+}
+
+function requireSequence(v: RawJsonValue, label: string): number {
+  if (typeof v !== 'number' || !Number.isSafeInteger(v) || v < 0) {
+    throw new Error(`${label} must be a non-negative safe integer.`);
+  }
+  return v;
+}
+
+function decodeSubscriptionTopic(v: RawJsonValue): DaemonSubscriptionTopic {
+  if (v === 'data' || v === 'health' || v === 'run') return v;
+  throw new Error('subscription.topic is unsupported.');
+}
+
+export function decodeDaemonSubscriptionResponse(raw: RawJsonValue): DaemonSubscriptionResponse {
+  const source = requireObject(pick(raw, 'result') ?? raw, 'subscription response');
+  const eventsRaw = source.events;
+  if (!Array.isArray(eventsRaw)) throw new Error('subscription.events must be an array.');
+  const events = eventsRaw.map((rawEvent, index): DaemonSubscriptionEvent => {
+    const event = requireObject(rawEvent, `subscription.events[${index}]`);
+    const rawSnapshot = requireObject(event.snapshot, `subscription.events[${index}].snapshot`);
+    const snapshot: Record<string, string> = {};
+    for (const [key, value] of Object.entries(rawSnapshot)) {
+      snapshot[key] = requireString(value, `subscription.events[${index}].snapshot.${key}`);
+    }
+    return {
+      seq: requireSequence(event.seq, `subscription.events[${index}].seq`),
+      kind: requireString(event.kind, `subscription.events[${index}].kind`),
+      snapshot,
+      terminal: requireBoolean(event.terminal, `subscription.events[${index}].terminal`)
+    };
+  });
+  const degradationReason = source.degradation_reason;
+  if (degradationReason !== undefined && degradationReason !== null && typeof degradationReason !== 'string') {
+    throw new Error('subscription.degradation_reason must be a string when present.');
+  }
+  return {
+    subscriptionId: requireString(source.subscription_id, 'subscription.subscription_id'),
+    topic: decodeSubscriptionTopic(source.topic),
+    seq: requireSequence(source.seq, 'subscription.seq'),
+    cursor: requireString(source.cursor, 'subscription.cursor'),
+    firstSnapshot: requireBoolean(source.first_snapshot, 'subscription.first_snapshot'),
+    events,
+    degradedFallback: requireBoolean(source.degraded_fallback, 'subscription.degraded_fallback'),
+    degradationReason: typeof degradationReason === 'string' ? degradationReason : undefined,
+    backpressure: requireString(source.backpressure, 'subscription.backpressure'),
+    disconnectDetected: requireBoolean(source.disconnect_detected, 'subscription.disconnect_detected'),
+    recoveredAfterRestart: requireBoolean(
+      source.recovered_after_restart,
+      'subscription.recovered_after_restart'
+    ),
+    terminalStateDelivered: requireBoolean(
+      source.terminal_state_delivered,
+      'subscription.terminal_state_delivered'
+    )
+  };
+}
+
+export function decodeDaemonSubscriptionStopResponse(raw: RawJsonValue): DaemonSubscriptionStopResponse {
+  const source = requireObject(pick(raw, 'result') ?? raw, 'subscription stop response');
+  return {
+    subscriptionId: requireString(source.subscription_id, 'subscription stop.subscription_id'),
+    stopped: requireBoolean(source.stopped, 'subscription stop.stopped'),
+    lastSeq: requireSequence(source.last_seq, 'subscription stop.last_seq')
+  };
 }
 
 type UsageEvent = {
@@ -715,6 +1032,7 @@ function mapConfigSnapshot(raw: RawJsonValue): ConfigSnapshot {
     secretServiceStatus: str(pick(snap, 'secretServiceStatus', 'secret_service_status'), 'unknown'),
     telemetryEnabled: Boolean(pick(snap, 'telemetryEnabled', 'telemetry_enabled')),
     privacyOptIn: Boolean(pick(snap, 'privacyOptIn', 'privacy_opt_in')),
+    cloudSyncEnabled: Boolean(pick(snap, 'cloudSyncEnabled', 'cloud_sync_enabled')),
     providers: arr(pick(snap, 'providers')).map(mapProviderSettings),
     routerMode: str(pick(snap, 'routerMode'), 'providerFamilyFailover')
   };
@@ -973,7 +1291,8 @@ function mapAccountStatus(raw: RawJsonValue): AccountStatus {
   const snap = pick(raw, 'snapshot', 'config') ?? raw;
   const cloud = pick(snap, 'cloud', 'sync', 'account');
   const signedIn = Boolean(pick(cloud, 'signedIn', 'signed_in', 'authenticated'));
-  const syncStateRaw = str(pick(cloud, 'syncState', 'sync_state', 'status'), 'local-only');
+  const cloudSyncEnabled = Boolean(pick(snap, 'cloudSyncEnabled', 'cloud_sync_enabled'));
+  const syncStateRaw = str(pick(cloud, 'syncState', 'sync_state', 'status'), cloudSyncEnabled ? 'active' : 'local-only');
   const syncState: AccountStatus['syncState'] = syncStateRaw.includes('active')
     ? 'active'
     : syncStateRaw.includes('pause')
@@ -1062,8 +1381,51 @@ function mapAppVersionInfo(raw: RawJsonValue): AppVersionInfo {
   return {
     shellVersion: str(pick(raw, 'shellVersion', 'shell_version')),
     daemonVersion: str(pick(raw, 'daemonVersion', 'daemon_version')),
-    packageChannel: normalizeChannel(str(pick(raw, 'packageChannel', 'package_channel'), 'unknown')),
-    updateCheck: 'unavailable-in-shell'
+    packageChannel: normalizeChannel(str(pick(raw, 'packageChannel', 'package_channel'), 'unknown'))
+  };
+}
+
+function mapUpdateStatus(raw: RawJsonValue): LinuxUpdateStatus {
+  const state = str(pick(raw, 'state'));
+  if (!['current', 'available', 'unavailable', 'invalid'].includes(state)) {
+    throw new Error('Native update check returned an invalid state.');
+  }
+  const artifactRaw = obj(pick(raw, 'artifact'));
+  const artifactType = str(pick(artifactRaw, 'type'));
+  const architecture = str(pick(artifactRaw, 'architecture'));
+  const artifact = Object.keys(artifactRaw).length === 0
+    ? undefined
+    : {
+        type: artifactType as LinuxUpdateArtifact['type'],
+        architecture: architecture as LinuxUpdateArtifact['architecture'],
+        url: str(pick(artifactRaw, 'url')),
+        sha256: str(pick(artifactRaw, 'sha256')),
+        size: num(pick(artifactRaw, 'size')),
+        signatureUrl: str(pick(artifactRaw, 'signatureUrl', 'signature_url'))
+      };
+  if (
+    artifact &&
+    (!['appimage', 'deb', 'rpm', 'daemon'].includes(artifact.type) ||
+      !['aarch64', 'x86_64'].includes(artifact.architecture) ||
+      !artifact.url ||
+      !/^[a-f0-9]{64}$/.test(artifact.sha256) ||
+      artifact.size <= 0 ||
+      !artifact.signatureUrl)
+  ) {
+    throw new Error('Native update check returned invalid artifact metadata.');
+  }
+  const channel = str(pick(raw, 'channel'));
+  return {
+    state: state as LinuxUpdateStatus['state'],
+    currentVersion: str(pick(raw, 'currentVersion', 'current_version')),
+    latestVersion: str(pick(raw, 'latestVersion', 'latest_version')) || undefined,
+    channel: ['stable', 'prerelease', 'nightly'].includes(channel)
+      ? channel as LinuxUpdateStatus['channel']
+      : undefined,
+    publishedAt: str(pick(raw, 'publishedAt', 'published_at')) || undefined,
+    notes: str(pick(raw, 'notes')) || undefined,
+    artifact,
+    reason: str(pick(raw, 'reason')) || undefined
   };
 }
 
@@ -1202,6 +1564,7 @@ function mapNotificationCommand(raw: RawJsonValue): NotificationCommandResult {
 function normalizeChannel(s: string): AppVersionInfo['packageChannel'] {
   const lower = s.toLowerCase();
   if (lower.includes('deb')) return 'deb';
+  if (lower.includes('rpm')) return 'rpm';
   if (lower.includes('appimage') || lower.includes('app-image')) return 'appimage';
   return 'unknown';
 }
@@ -1230,12 +1593,37 @@ function normalizeMercuryState(raw: string): MercurySessionState {
   return 'staged';
 }
 
+function normalizeMercuryCallPhase(raw: string): MercuryCallPhase {
+  const lower = raw.toLowerCase();
+  if (lower.includes('absent') || lower.includes('unsupported') || lower.includes('unavailable')) return 'capability-absent';
+  if (lower.includes('ring') || lower.includes('incoming')) return 'ringing';
+  if (lower.includes('stream') || lower.includes('active') || lower.includes('accepted') || lower.includes('viewer')) return 'streaming';
+  if (lower.includes('cool') || lower.includes('end') || lower.includes('declin') || lower.includes('stop')) return 'cooldown';
+  return 'idle';
+}
+
+function isCapabilityAbsentError(e: unknown): boolean {
+  const message = e instanceof Error ? e.message : String(e);
+  return /unknown|unsupported|not implemented|no such method/i.test(message);
+}
+
 function mapMercuryMediaStatus(raw: RawJsonValue): MercuryMediaStatus {
   const absent = Boolean(pick(raw, 'capabilityAbsent', 'capability_absent'));
-  const availableRaw = pick(raw, 'capabilityAvailable', 'capability_available', 'available');
-  const pairedDevices = arr(pick(raw, 'pairedDevices', 'paired_devices', 'devices', 'peers')).map(
+  const capability = pick(raw, 'capability');
+  const availableRaw =
+    pick(capability, 'available', 'capabilityAvailable', 'capability_available') ??
+    pick(raw, 'capabilityAvailable', 'capability_available', 'available');
+  const sessionRaw = pick(raw, 'activeSession', 'active_session', 'session');
+  const sessionPeer = pick(sessionRaw, 'peer');
+  const declaredDevices = arr(pick(raw, 'pairedDevices', 'paired_devices', 'devices', 'peers'));
+  const deviceRows = declaredDevices.length > 0
+    ? declaredDevices
+    : sessionPeer && typeof sessionPeer === 'object' && !Array.isArray(sessionPeer)
+      ? [sessionPeer]
+      : [];
+  const pairedDevices = deviceRows.map(
     (d, i): MercuryPairedDevice => ({
-      id: str(pick(d, 'id', 'deviceId', 'device_id', 'connectionID', 'connectionId'), `device-${i}`),
+      id: str(pick(d, 'id', 'deviceID', 'deviceId', 'device_id', 'connectionID', 'connectionId'), `device-${i}`),
       name: str(pick(d, 'name', 'displayName', 'display_name', 'label'), `Device ${i + 1}`),
       platform: normalizeMercuryPlatform(str(pick(d, 'platform', 'kind', 'os'), 'unknown')),
       isOnline: Boolean(pick(d, 'isOnline', 'is_online', 'online')),
@@ -1243,19 +1631,210 @@ function mapMercuryMediaStatus(raw: RawJsonValue): MercuryMediaStatus {
       capabilities: arr(pick(d, 'capabilities', 'features')).map((capability) => str(capability)).filter(Boolean)
     })
   );
-  const sessionRaw = pick(raw, 'activeSession', 'active_session', 'session');
+  const sessionPhase = str(pick(sessionRaw, 'phase', 'state', 'status')).toLowerCase();
   const activeSession =
-    sessionRaw && typeof sessionRaw === 'object'
+    sessionRaw && typeof sessionRaw === 'object' && sessionPhase !== '' && sessionPhase !== 'idle'
       ? {
           kind: normalizeMercuryKind(str(pick(sessionRaw, 'kind', 'type'), 'screen-share')),
           state: normalizeMercuryState(str(pick(sessionRaw, 'state', 'phase', 'status'), 'staged')),
-          peer: str(pick(sessionRaw, 'peer', 'peerName', 'peer_name', 'deviceName'), 'Paired device')
+          peer: str(
+            pick(sessionPeer, 'displayName', 'display_name', 'name') ??
+              pick(sessionRaw, 'peerName', 'peer_name', 'deviceName'),
+            'Paired device'
+          ),
+          requestId: str(pick(sessionRaw, 'requestID', 'requestId', 'request_id')) || undefined,
+          startedAt: str(pick(sessionRaw, 'startedAt', 'started_at')) || undefined
         }
       : undefined;
   return {
-    capabilityAvailable: absent ? false : availableRaw === undefined ? true : Boolean(availableRaw),
+    capabilityAvailable: absent ? false : availableRaw === true,
     pairedDevices,
     activeSession
+  };
+}
+
+function mapMercurySessionState(raw: RawJsonValue): MercuryMediaSessionState {
+  const incomingCall = pick(raw, 'incomingCall', 'incoming_call');
+  const activeSession = pick(raw, 'activeSession', 'active_session', 'session');
+  const source =
+    incomingCall && typeof incomingCall === 'object'
+      ? incomingCall
+      : activeSession && typeof activeSession === 'object'
+        ? activeSession
+        : raw;
+  const peer = pick(source, 'peer');
+  const absent = Boolean(pick(raw, 'capabilityAbsent', 'capability_absent'));
+  const availableRaw = pick(raw, 'capabilityAvailable', 'capability_available', 'available');
+  const phaseRaw = str(
+    pick(raw, 'phase', 'state', 'status') ?? pick(source, 'phase', 'state', 'status'),
+    absent ? 'capability-absent' : 'idle'
+  );
+  const phase = absent ? 'capability-absent' : normalizeMercuryCallPhase(phaseRaw);
+  return {
+    phase,
+    requestId:
+      str(
+        pick(raw, 'requestID', 'requestId', 'request_id') ??
+          pick(source, 'requestID', 'requestId', 'request_id')
+      ) || undefined,
+    peerName:
+      str(
+        pick(raw, 'peerName', 'peer_name', 'deviceName') ??
+          pick(source, 'peerName', 'peer_name', 'deviceName') ??
+          pick(peer, 'displayName', 'display_name', 'name')
+      ) ||
+      undefined,
+    peerId:
+      str(
+        pick(raw, 'peerID', 'peerId', 'peer_id', 'deviceID', 'deviceId') ??
+          pick(source, 'peerID', 'peerId', 'peer_id', 'deviceID', 'deviceId') ??
+          pick(peer, 'connectionID', 'connectionId', 'id')
+      ) || undefined,
+    kind: normalizeMercuryKind(str(pick(raw, 'kind', 'type') ?? pick(source, 'kind', 'type'), 'call')),
+    startedAt: str(pick(raw, 'startedAt', 'started_at') ?? pick(source, 'startedAt', 'started_at')) || undefined,
+    endedAt: str(pick(raw, 'endedAt', 'ended_at') ?? pick(source, 'endedAt', 'ended_at')) || undefined,
+    capabilityAvailable: absent ? false : availableRaw === undefined ? true : Boolean(availableRaw),
+    raw
+  };
+}
+
+function mapMercuryCapability(raw: RawJsonValue): MercuryMediaCapability {
+  const absent = Boolean(pick(raw, 'capabilityAbsent', 'capability_absent'));
+  const availableRaw = pick(raw, 'available', 'capabilityAvailable', 'capability_available');
+  const rendererRaw = str(pick(raw, 'renderer', 'source'), 'unknown');
+  const renderer = rendererRaw === 'media-gst' || /MediaCapture/i.test(rendererRaw)
+    ? 'media-gst'
+    : rendererRaw === 'stub'
+      ? 'stub'
+      : 'unknown';
+  const capabilities = arr(pick(raw, 'capabilities', 'features')).map((capability) => str(capability)).filter(Boolean);
+  const available = absent ? false : availableRaw === true;
+  return {
+    available,
+    renderer,
+    canReceiveCalls:
+      Boolean(pick(raw, 'canReceiveCalls', 'can_receive_calls')) || capabilities.includes('call.receive') || available,
+    canViewScreenShare:
+      Boolean(pick(raw, 'canViewScreenShare', 'can_view_screen_share')) ||
+      capabilities.includes('mirror.viewer') ||
+      (available && Boolean(pick(raw, 'supportsDaemonToShellFrames', 'supports_daemon_to_shell_frames'))),
+    reason: str(pick(raw, 'reason', 'detail', 'error')) || undefined
+  };
+}
+
+function normalizeFileDirection(raw: string): MercuryFileTransferDirection {
+  return raw.toLowerCase().includes('out') ? 'outbound' : 'inbound';
+}
+
+function normalizeFilePhase(raw: string): MercuryFileTransferPhase {
+  const compact = raw.replace(/[_\-\s]/g, '').toLowerCase();
+  if (compact.includes('pending') || compact.includes('offer') && !compact.includes('offered')) return 'pendingAccept';
+  if (compact.includes('download') || compact.includes('fetch')) return 'downloading';
+  if (compact.includes('send') || compact.includes('publish')) return 'sending';
+  if (compact.includes('offered') || compact.includes('advertised')) return 'offered';
+  if (compact.includes('complete') || compact.includes('done') || compact.includes('success')) return 'completed';
+  if (compact.includes('decline') || compact.includes('reject')) return 'declined';
+  if (compact.includes('fail') || compact.includes('error')) return 'failed';
+  return 'pendingAccept';
+}
+
+function normalizeFileErrorCode(raw: RawJsonValue): MercuryFileTransferErrorCode | undefined {
+  const compact = str(raw).replace(/[_\-\s]/g, '').toLowerCase();
+  const codes: MercuryFileTransferErrorCode[] = [
+    'capabilityAbsent',
+    'invalidRequest',
+    'transferNotFound',
+    'localFileMissing',
+    'noControlRoute',
+    'publishFailed',
+    'fetchFailed',
+    'ioFailed',
+    'peerRejected'
+  ];
+  return codes.find((code) => code.toLowerCase() === compact);
+}
+
+function mapMercuryFilePeer(raw: RawJsonValue): MercuryFilePeer | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  return {
+    id: str(pick(raw, 'connectionID', 'connectionId', 'peerID', 'peerId', 'id'), 'peer'),
+    name: str(pick(raw, 'displayName', 'display_name', 'name', 'peerName', 'peer_name'), 'Paired device'),
+    isOnline: Boolean(pick(raw, 'isOnline', 'is_online', 'online')),
+    lastSeenAt: str(pick(raw, 'lastSeenAt', 'last_seen_at', 'updatedAt'), new Date(0).toISOString()),
+    capabilities: arr(pick(raw, 'capabilities', 'features')).map((capability) => str(capability)).filter(Boolean)
+  };
+}
+
+function mapMercuryFileProgress(raw: RawJsonValue, size: number): MercuryFileTransferProgress {
+  const bytesTransferred = num(pick(raw, 'bytesTransferred', 'bytes_transferred'));
+  const bytesTotal = num(pick(raw, 'bytesTotal', 'bytes_total'), size);
+  const fractionRaw = pick(raw, 'fraction');
+  const fallbackFraction = bytesTotal > 0 ? bytesTransferred / bytesTotal : 0;
+  return {
+    bytesTransferred,
+    bytesTotal,
+    fraction: Math.max(0, Math.min(1, num(fractionRaw, fallbackFraction)))
+  };
+}
+
+function mapMercuryFileTransfer(raw: RawJsonValue, index = 0): MercuryFileTransfer {
+  const size = num(pick(raw, 'size', 'byteCount', 'bytesTotal', 'bytes_total'));
+  const progressRaw = pick(raw, 'progress') ?? {};
+  const now = new Date().toISOString();
+  return {
+    transferID: str(pick(raw, 'transferID', 'transferId', 'transfer_id'), `transfer-${index}`),
+    manifestID: str(pick(raw, 'manifestID', 'manifestId', 'manifest_id'), `manifest-${index}`),
+    direction: normalizeFileDirection(str(pick(raw, 'direction'), 'inbound')),
+    phase: normalizeFilePhase(str(pick(raw, 'phase', 'state', 'status'), 'pendingAccept')),
+    filename: str(pick(raw, 'filename', 'fileName', 'name'), 'untitled'),
+    mime: str(pick(raw, 'mime', 'contentType', 'content_type'), 'application/octet-stream'),
+    size,
+    peer: mapMercuryFilePeer(pick(raw, 'peer')),
+    progress: mapMercuryFileProgress(progressRaw, size),
+    localPath: str(pick(raw, 'localPath', 'local_path', 'path')) || undefined,
+    errorCode: normalizeFileErrorCode(pick(raw, 'errorCode', 'error_code')),
+    detail: str(pick(raw, 'detail', 'reason', 'error')) || undefined,
+    createdAt: str(pick(raw, 'createdAt', 'created_at'), now),
+    updatedAt: str(pick(raw, 'updatedAt', 'updated_at'), now),
+    completedAt: str(pick(raw, 'completedAt', 'completed_at')) || undefined
+  };
+}
+
+function mapMercuryFileOfferList(raw: RawJsonValue): MercuryFileOfferListResponse {
+  const source = pick(raw, 'result') ?? raw;
+  const absent = Boolean(pick(source, 'capabilityAbsent', 'capability_absent'));
+  const availableRaw = pick(source, 'capabilityAvailable', 'capability_available', 'available');
+  return {
+    capabilityAvailable: absent ? false : availableRaw === undefined ? true : Boolean(availableRaw),
+    downloadDirectory: str(pick(source, 'downloadDirectory', 'download_directory')) || undefined,
+    transfers: arr(pick(source, 'transfers', 'offers', 'files')).map((transfer, index) =>
+      mapMercuryFileTransfer(transfer, index)
+    ),
+    detail: str(pick(source, 'detail', 'reason', 'error')) || undefined
+  };
+}
+
+function mapMercuryFileAction(raw: RawJsonValue): MercuryFileTransferActionResponse {
+  const source = pick(raw, 'result') ?? raw;
+  const transferRaw = pick(source, 'transfer', 'fileTransfer', 'file_transfer');
+  return {
+    accepted: Boolean(pick(source, 'accepted', 'ok')),
+    transfer: transferRaw && typeof transferRaw === 'object' ? mapMercuryFileTransfer(transferRaw) : undefined,
+    errorCode: normalizeFileErrorCode(pick(source, 'errorCode', 'error_code')),
+    detail: str(pick(source, 'detail', 'reason', 'error')) || undefined
+  };
+}
+
+function mapComputerUsePanicHalt(
+  raw: RawJsonValue,
+  source: ComputerUsePanicSource
+): ComputerUsePanicHaltResult {
+  return {
+    sessionId: str(pick(raw, 'sessionId', 'session_id'), '*'),
+    endedAt: str(pick(raw, 'endedAt', 'ended_at'), new Date().toISOString()),
+    auditHeadHashHex: str(pick(raw, 'auditHeadHashHex', 'audit_head_hash_hex')),
+    source,
+    raw
   };
 }
 
@@ -1267,7 +1846,15 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
   }
   return {
     daemonHealth: () => invoke<DaemonHealth>('daemon_health'),
-    gatewayAuthToken: () => invoke<string | null>('gateway_auth_token'),
+    runtimeCapabilities: async () =>
+      decodeRuntimeCapabilityManifest(await invoke<RawJsonValue>('runtime_capabilities')),
+    gatewayProbe: () => invoke<boolean>('gateway_probe'),
+    gatewayChatStream: (request, onChunk) => {
+      const onEvent = new Channel<string>();
+      onEvent.onmessage = onChunk;
+      return invoke<void>('gateway_chat_stream', { request, onEvent });
+    },
+    gatewayChatCancel: (requestId) => invoke<void>('gateway_chat_cancel', { requestId }),
     openDashboard: () => invoke<void>('open_dashboard'),
     quitApp: () => invoke<void>('quit_app'),
     trayDegraded: () => invoke<boolean>('tray_degraded'),
@@ -1279,6 +1866,26 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
         ok: boolean;
         detail?: string;
       }>('measure_perf_operation', { name }),
+    onboardingSnapshot: async () =>
+      decodeLinuxOnboardingSnapshot(await invoke<RawJsonValue>('onboarding_snapshot')),
+    onboardingAction: async (request) =>
+      decodeLinuxOnboardingSnapshot(
+        await invoke<RawJsonValue>('onboarding_action', { request })
+      ),
+    onboardingReset: async () =>
+      decodeLinuxOnboardingSnapshot(await invoke<RawJsonValue>('onboarding_reset')),
+    subscriptionStart: async (request) =>
+      decodeDaemonSubscriptionResponse(
+        await invoke<RawJsonValue>('subscription_start', { request })
+      ),
+    subscriptionResume: async (request) =>
+      decodeDaemonSubscriptionResponse(
+        await invoke<RawJsonValue>('subscription_resume', { request })
+      ),
+    subscriptionStop: async (request) =>
+      decodeDaemonSubscriptionStopResponse(
+        await invoke<RawJsonValue>('subscription_stop', { request })
+      ),
 
     // P01 — daemon.usage.recent → aggregated summary
     usageSummary: async () => {
@@ -1412,10 +2019,20 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       const raw = await invoke<RawJsonValue>('memory_review_inbox');
       return mapMemoryReviewInbox(raw);
     },
-    // P07 — daemon.memory.forget; daemon has no approve/reject review-row RPC on Linux.
+    // P07 — reject maps to forget. Approval requires the real memory body and
+    // must use memorySetStatus; never invent an approved placeholder here.
     memoryReviewDecision: async (id, decision) => {
       if (decision === 'rejected') {
-        await invoke<RawJsonValue>('memory_forget', { memoryId: id });
+        await invoke<RawJsonValue>('memory_set_status', {
+          action: 'reject',
+          payload: { memoryID: id }
+        });
+        return;
+      }
+      if (decision === 'approved') {
+        throw new Error(
+          'memoryReviewDecision cannot approve without body text; use memorySetStatus({ text }) from the store.'
+        );
       }
     },
     // P07 — daemon.code.index_status + explore + diagnostics + ops_diagnostics
@@ -1448,7 +2065,8 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       const raw = await invoke<RawJsonValue>('membership_checkout_url');
       return mapMembershipCheckoutUrl(raw);
     },
-    openExternalUrl: (url) => openExternal(url),
+    openExternalUrl: (url) => invoke<void>('open_external_url', { url }),
+    openUpdateUrl: (url) => invoke<void>('open_update_url', { url }),
     // P10 — daemon-side restore hook; callers re-fetch status afterwards.
     membershipRestore: async () => {
       await invoke<RawJsonValue>('membership_restore');
@@ -1457,6 +2075,10 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     appVersionInfo: async () => {
       const raw = await invoke<RawJsonValue>('app_version_info');
       return mapAppVersionInfo(raw);
+    },
+    updateStatus: async () => {
+      const raw = await invoke<RawJsonValue>('update_status');
+      return mapUpdateStatus(raw);
     },
     // P09 — redacted diagnostics export → file path
     exportDiagnostics: async () => {
@@ -1477,12 +2099,160 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
         const raw = await invoke<RawJsonValue>('media_status');
         return mapMercuryMediaStatus(raw);
       } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
-        if (/unknown|unsupported|not implemented|no such method/i.test(message)) {
+        if (isCapabilityAbsentError(e)) {
           return { capabilityAvailable: false, pairedDevices: [] };
         }
         throw e;
       }
+    },
+    mediaSessionState: async () => {
+      try {
+        const raw = await invoke<RawJsonValue>('media_session_state');
+        return mapMercurySessionState(raw);
+      } catch (e) {
+        if (isCapabilityAbsentError(e)) {
+          return { phase: 'capability-absent', kind: 'call', capabilityAvailable: false };
+        }
+        throw e;
+      }
+    },
+    mediaAcceptCall: async (requestId) => {
+      try {
+        const raw = await invoke<RawJsonValue>('media_accept_call', { requestId });
+        return mapMercurySessionState(raw);
+      } catch (e) {
+        if (isCapabilityAbsentError(e)) {
+          return { phase: 'capability-absent', requestId, kind: 'call', capabilityAvailable: false };
+        }
+        throw e;
+      }
+    },
+    mediaDeclineCall: async (requestId) => {
+      try {
+        const raw = await invoke<RawJsonValue>('media_decline_call', { requestId });
+        return mapMercurySessionState(raw);
+      } catch (e) {
+        if (isCapabilityAbsentError(e)) {
+          return { phase: 'capability-absent', requestId, kind: 'call', capabilityAvailable: false };
+        }
+        throw e;
+      }
+    },
+    mediaEndCall: async () => {
+      try {
+        const raw = await invoke<RawJsonValue>('media_end_call');
+        return mapMercurySessionState(raw);
+      } catch (e) {
+        if (isCapabilityAbsentError(e)) {
+          return { phase: 'capability-absent', kind: 'call', capabilityAvailable: false };
+        }
+        throw e;
+      }
+    },
+    mediaCapabilityGet: async () => {
+      try {
+        const raw = await invoke<RawJsonValue>('media_capability_get');
+        return mapMercuryCapability(raw);
+      } catch (e) {
+        if (isCapabilityAbsentError(e)) {
+          return {
+            available: false,
+            renderer: 'unknown',
+            canReceiveCalls: false,
+            canViewScreenShare: false,
+            reason: e instanceof Error ? e.message : String(e)
+          };
+        }
+        throw e;
+      }
+    },
+    mediaFileOfferList: async () => {
+      try {
+        const raw = await invoke<RawJsonValue>('media_file_offer_list');
+        return mapMercuryFileOfferList(raw);
+      } catch (e) {
+        if (isCapabilityAbsentError(e)) {
+          return {
+            capabilityAvailable: false,
+            transfers: [],
+            detail: e instanceof Error ? e.message : String(e)
+          };
+        }
+        throw e;
+      }
+    },
+    mediaFileAccept: async ({ transferID, manifestID }) => {
+      try {
+        const raw = await invoke<RawJsonValue>('media_file_accept', { transferId: transferID, manifestId: manifestID });
+        return mapMercuryFileAction(raw);
+      } catch (e) {
+        if (isCapabilityAbsentError(e)) {
+          return {
+            accepted: false,
+            errorCode: 'capabilityAbsent',
+            detail: e instanceof Error ? e.message : String(e)
+          };
+        }
+        throw e;
+      }
+    },
+    mediaFileDecline: async ({ transferID, manifestID, reason }) => {
+      try {
+        const raw = await invoke<RawJsonValue>('media_file_decline', {
+          transferId: transferID,
+          manifestId: manifestID,
+          reason
+        });
+        return mapMercuryFileAction(raw);
+      } catch (e) {
+        if (isCapabilityAbsentError(e)) {
+          return {
+            accepted: false,
+            errorCode: 'capabilityAbsent',
+            detail: e instanceof Error ? e.message : String(e)
+          };
+        }
+        throw e;
+      }
+    },
+    mediaFileSend: async ({ path, peerID }) => {
+      try {
+        const raw = await invoke<RawJsonValue>('media_file_send', { path, peerId: peerID });
+        return mapMercuryFileAction(raw);
+      } catch (e) {
+        if (isCapabilityAbsentError(e)) {
+          return {
+            accepted: false,
+            errorCode: 'capabilityAbsent',
+            detail: e instanceof Error ? e.message : String(e)
+          };
+        }
+        throw e;
+      }
+    },
+    toolApprovalRespond: async (approvalId, decision, note) => {
+      await invoke<RawJsonValue>('tool_approval_respond', {
+        approvalId,
+        decision,
+        note: note ?? null
+      });
+    },
+    memorySetStatus: (action, payload) =>
+      invoke<RawJsonValue>('memory_set_status', { action, payload }),
+    computerUseSessionStart: (params) =>
+      invoke<RawJsonValue>('computer_use_session_start', { params }),
+    computerUseInvoke: (params) => invoke<RawJsonValue>('computer_use_invoke', { params }),
+    computerUseApprovalPending: (params) =>
+      invoke<RawJsonValue>('computer_use_approval_pending', { params: params ?? null }),
+    computerUseApprovalRespond: (params) =>
+      invoke<RawJsonValue>('computer_use_approval_respond', { params }),
+    computerUseAuditExport: (params) =>
+      invoke<RawJsonValue>('computer_use_audit_export', { params: params ?? null }),
+    computerUsePanicHalt: async (params) => {
+      const sessionId = params?.sessionId ?? '*';
+      const source = params?.source ?? 'hotkey';
+      const raw = await invoke<RawJsonValue>('computer_use_panic_halt', { sessionId, source });
+      return mapComputerUsePanicHalt(raw, source);
     },
     // P13 — daemon-reported smart-display/device integration status.
     integrationsStatus: async () => {

@@ -18,8 +18,9 @@ function readStoredStatuses(): Record<string, MemoryReviewStatus> {
 }
 
 function writeStoredStatus(id: string, status: MemoryReviewStatus): void {
-  const next = { ...readStoredStatuses(), [id]: status };
-  localStorage.setItem(REVIEW_STATUS_STORAGE_KEY, JSON.stringify(next));
+  const map = readStoredStatuses();
+  map[id] = status;
+  localStorage.setItem(REVIEW_STATUS_STORAGE_KEY, JSON.stringify(map));
 }
 
 function applyStoredStatuses(inbox: MemoryReviewInbox): MemoryReviewInbox {
@@ -70,7 +71,7 @@ export const useMemoryStore = create<MemoryState>()((set, get) => ({
     set({ loading: true, error: null });
     try {
       const inbox = await bridge.memoryReviewInbox();
-      set({ inbox, loading: false, error: null });
+      set({ inbox: applyStoredStatuses(inbox), loading: false, error: null });
     } catch (e) {
       set({
         inbox: null,
@@ -114,7 +115,80 @@ export const useMemoryStore = create<MemoryState>()((set, get) => ({
       }
     }));
     try {
-      await bridge.memoryReviewDecision(id, status);
+      const item = get().inbox?.items.find((entry) => entry.id === id);
+      if (bridge.memorySetStatus) {
+        if (status === 'rejected') {
+          await bridge.memorySetStatus('reject', { memoryID: id });
+        } else {
+          const alreadyDurable =
+            item?.status === 'approved' ||
+            Boolean(item?.auditHash) ||
+            /recall/i.test(item?.sourceLabel ?? '');
+          if (alreadyDurable) {
+            writeStoredStatus(id, 'approved');
+            set((state) => ({
+              inbox: state.inbox
+                ? {
+                    ...state.inbox,
+                    items: state.inbox.items.map((entry) =>
+                      entry.id === id ? { ...entry, status: 'approved' as const } : entry
+                    )
+                  }
+                : state.inbox,
+              decisionById: {
+                ...state.decisionById,
+                [id]: { pending: false, error: null }
+              }
+            }));
+            return;
+          }
+          const text = item?.body?.trim() ?? '';
+          if (!text) {
+            throw new Error(
+              'Cannot save memory without body text. Re-recall the item or paste the fact to remember.'
+            );
+          }
+          if (text.startsWith('approved:')) {
+            throw new Error('Refusing invented approved:<id> placeholder text.');
+          }
+          const duplicate = get().inbox?.items.some(
+            (entry) =>
+              entry.id !== id && entry.status === 'approved' && entry.body.trim() === text
+          );
+          if (duplicate) {
+            writeStoredStatus(id, 'approved');
+            set((state) => ({
+              inbox: state.inbox
+                ? {
+                    ...state.inbox,
+                    items: state.inbox.items.map((entry) =>
+                      entry.id === id ? { ...entry, status: 'approved' as const } : entry
+                    )
+                  }
+                : state.inbox,
+              decisionById: {
+                ...state.decisionById,
+                [id]: { pending: false, error: null }
+              }
+            }));
+            return;
+          }
+          await bridge.memorySetStatus('approve', {
+            text,
+            kind: item?.kind || 'note',
+            tags: ['linux-shell-save'],
+            confidence: item?.confidence ?? 1
+          });
+        }
+      } else if (bridge.memoryReviewDecision) {
+        if (status === 'approved' && !(item?.body?.trim())) {
+          throw new Error('Cannot approve/save memory without body text (fail-closed).');
+        }
+        await bridge.memoryReviewDecision(id, status);
+      } else {
+        throw new Error('No memory decision bridge method available.');
+      }
+      writeStoredStatus(id, status);
       await get().loadInbox();
       set((state) => ({
         decisionById: {

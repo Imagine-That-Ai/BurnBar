@@ -16,9 +16,7 @@
     mc:Ignorable="d"
     RequestedTheme="Dark">
 
-    <Grid Background="Transparent"
-          RowSpacing="0"
-          AutomationProperties.AutomationId="AppShell.Root">
+    <Grid Background="Transparent" RowSpacing="0">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -49,8 +47,7 @@
                         BorderThickness="0"
                         Padding="4,2"
                         VerticalAlignment="Center"
-                        ToolTipService.ToolTip="OpenBurnBar — Dashboard"
-                        AutomationProperties.AutomationId="Shell.BrandButton">
+                        ToolTipService.ToolTip="OpenBurnBar — Dashboard">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <components:AppLogoView Size="26" VerticalAlignment="Center" />
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="0">
@@ -68,8 +65,7 @@
                         Style="{StaticResource LiquidGlassInteractiveStyle}"
                         theme:LiquidGlass.Interactive="True"
                         VerticalAlignment="Center"
-                        ToolTipService.ToolTip="Switch section"
-                        AutomationProperties.AutomationId="Shell.SectionSwitcher">
+                        ToolTipService.ToolTip="Switch section">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <FontIcon x:Name="SectionGlyph"
                                   FontFamily="Segoe MDL2 Assets"
@@ -97,8 +93,7 @@
                         theme:LiquidGlass.Interactive="True"
                         Click="Palette_Click"
                         VerticalAlignment="Center"
-                        ToolTipService.ToolTip="Command palette (Ctrl+K)"
-                        AutomationProperties.AutomationId="Shell.CommandPaletteButton">
+                        ToolTipService.ToolTip="Command palette (Ctrl+K)">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="12" Glyph="&#xE721;"
                                   Foreground="{StaticResource PensieveColorTextBrightBrush}" />
@@ -125,8 +120,7 @@
                         Style="{StaticResource LiquidGlassCircleButtonStyle}"
                         theme:LiquidGlass.CircleButtonDiameter="30"
                         VerticalAlignment="Center"
-                        ToolTipService.ToolTip="Appearance"
-                        AutomationProperties.AutomationId="Shell.AppearanceButton">
+                        ToolTipService.ToolTip="Appearance">
                     <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="14" Glyph="&#xE771;"
                               Foreground="{StaticResource PensieveColorTextBrightBrush}" />
                     <Button.Flyout>
@@ -141,8 +135,7 @@
                         Style="{StaticResource LiquidGlassCircleButtonStyle}"
                         theme:LiquidGlass.CircleButtonDiameter="30"
                         VerticalAlignment="Center"
-                        ToolTipService.ToolTip="More"
-                        AutomationProperties.AutomationId="Shell.OverflowButton">
+                        ToolTipService.ToolTip="More">
                     <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="14" Glyph="&#xE712;"
                               Foreground="{StaticResource PensieveColorTextBrightBrush}" />
                     <Button.Flyout>
@@ -154,7 +147,6 @@
 
         <Frame x:Name="ContentFrame"
                Grid.Row="1"
-               Background="Transparent"
-               AutomationProperties.AutomationId="Shell.ContentFrame" />
+               Background="Transparent" />
     </Grid>
 </UserControl>

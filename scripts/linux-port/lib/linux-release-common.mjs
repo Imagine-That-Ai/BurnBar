@@ -5,7 +5,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+/** Sealed historical mission-001 release evidence — do not rewrite during local gates. */
 export const releaseEvidenceDir = path.join(repoRoot, 'docs/linux-port/evidence/mission-001-release');
+/** Mutable local/CI evidence. CI sets this to a fresh runner-temporary directory. */
+export const reanchorEvidenceDir = process.env.OPENBURNBAR_LINUX_EVIDENCE_OUT
+  ? path.resolve(repoRoot, process.env.OPENBURNBAR_LINUX_EVIDENCE_OUT)
+  : path.join(repoRoot, 'docs/linux-port/evidence/mission-002-reanchor');
 export const manifestPath = path.join(repoRoot, 'packaging/linux/release-manifest.json');
 export const linuxReleaseWorkflowIdentity = 'https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-release.yml';
 

@@ -113,6 +113,12 @@ public sealed class ClaudeStatuslineHookInstallerTests : IDisposable
         Assert.Contains("WriteAllText($snapshotPath, $payload)", ps1, StringComparison.Ordinal);
         Assert.Contains("originalCommandSpec", ps1, StringComparison.Ordinal);
         Assert.Contains("RedirectStandardInput", ps1, StringComparison.Ordinal);
+        Assert.Contains("$psi.Environment.Clear()", ps1, StringComparison.Ordinal);
+        Assert.Contains("foreach ($name in @(", ps1, StringComparison.Ordinal);
+        Assert.DoesNotContain("SQLCIPHER", ps1, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("TOKEN", ps1, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("SECRET", ps1, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("SIGNING", ps1, StringComparison.OrdinalIgnoreCase);
         // Self-invocation guard (never chain the wrapper into itself).
         Assert.Contains("$spec.executable -ne $wrapper", ps1, StringComparison.Ordinal);
     }

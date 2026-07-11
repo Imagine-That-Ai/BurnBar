@@ -37,6 +37,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Cross-platform proof gates** — added real Android, Windows, and Linux test
   floors; non-vacuous diff coverage and duplication checks; deployment trust
   fixtures; migration rollback contracts; and repair-loop provenance controls.
+- **Linux daemon event subscription authority** - replaces one-shot terminal
+  subscription fixtures with bounded daemon-owned start/resume/stop state,
+  monotonic cursors, restart recovery, cancellation tombstones, strict scope
+  validation, and explicit degraded-pull metadata. The packaged shell now owns
+  one lifecycle-aware data supervisor with offline pause, bounded backoff,
+  foreground/background cadence, shutdown cancellation, and coalesced refresh
+  of the mounted route.
+- **Daemon-owned Linux onboarding authority** - replaces browser-local completion
+  with atomic daemon state and typed snapshot/action/reset RPCs. Required steps
+  cannot be skipped or executed out of order; Linux verifies the daemon,
+  performs an ephemeral Secret Service/KWallet round trip, checks writable XDG
+  storage, persists privacy choices, supports retry/resume/reset, and rejects
+  malformed or forged completion in both Swift and TypeScript decoders.
 - **Round-4 performance sweep** — state-of-the-art throughput, latency,
   memory, and energy improvements across macOS and iOS with no feature or
   visual changes:
@@ -74,6 +87,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **SQL-side credential scan pre-filter** (B3): `INSTR`-based WHERE
     clauses skip conversations without credential indicators before
     loading `fullText` into Swift memory.
+- **Linux Computer Use input and panic lane** — Linux daemon-owned `system`
+  sessions now wire a native input dispatcher, preferring AT-SPI2 for
+  Wayland-accessibility clicks and X11/XTEST via `xdotool` as an explicit
+  degraded fallback, with missing adapters failing closed. Added
+  `openburnbar-cli computer-use panic-halt --session-id '*' --source hotkey`
+  and packaged Linux shell global emergency shortcut registration as
+  daemon-backed panic paths that trip the
+  `$XDG_RUNTIME_DIR/openburnbar/privileged-input-kill` flag before session
+  teardown.
+- **Linux dual-architecture release closure** - builds aarch64 and x86_64
+  AppImage/deb/rpm/daemon shards on native GitHub runners, aggregates only
+  matching clean-commit shards, requires the full eight-artifact matrix, and
+  binds checksums, Ed25519 signatures, source, SBOM, VEX, provenance, parity,
+  Sigstore attestations, and the signed update feed before publication. Every
+  native package now embeds the architecture-matched daemon plus Swift and
+  SQLCipher runtimes and executes that packaged payload during shard smoke.
+- **Linux signed update availability** - adds a native Tauri update verifier
+  with a pinned Ed25519 public key and fingerprint, strict signed-feed schema,
+  semantic-version/channel/architecture checks, bounded HTTPS fetching, and
+  first-party artifact URL validation. The Updates surface now distinguishes
+  current, available, offline, and rejected metadata states while keeping
+  installation and rollback under the owning Linux package manager.
+- **Linux accessibility evidence gate** - audits every desktop route plus
+  degraded capability states with axe, captures live AT-SPI names, roles,
+  states, and actions from the installed package, and requires Orca discovery,
+  keyboard focus traversal, and zoom evidence before accessibility proof can
+  pass.
 - **Linux daemon chat gateway parity** — the Linux HTTP gateway now serves
   `POST /v1/chat/completions` through the shared provider router, relays
   OpenAI-compatible SSE streams, and records gateway usage events with cache

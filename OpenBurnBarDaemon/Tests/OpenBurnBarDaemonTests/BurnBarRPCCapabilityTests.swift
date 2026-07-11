@@ -21,7 +21,13 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .configUpdate), .config)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .providerCredentialSlotUpsert), .config)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .runCreate), .run)
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .subscriptionStart), .run)
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .subscriptionResume), .run)
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .subscriptionStop), .run)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .health), .lifecycle)
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .linuxOnboardingSnapshot), .lifecycle)
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .linuxOnboardingAction), .config)
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .linuxOnboardingReset), .config)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .searchQuery), .search)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .memoryRecall), .memoryRead)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .memoryRemember), .memoryWrite)
@@ -40,6 +46,7 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         let profile = BurnBarPeerCapabilityProfile.readOnly
         // Allowed: read posture.
         XCTAssertTrue(profile.permits(.health))
+        XCTAssertTrue(profile.permits(.linuxOnboardingSnapshot))
         XCTAssertTrue(profile.permits(.usageRecent))
         XCTAssertTrue(profile.permits(.searchQuery))
         XCTAssertTrue(profile.permits(.memoryRecall))
@@ -47,6 +54,8 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertTrue(profile.permits(.codeIndexStatus))
         // Refused: every agency-bearing surface.
         XCTAssertFalse(profile.permits(.configUpdate))
+        XCTAssertFalse(profile.permits(.linuxOnboardingAction))
+        XCTAssertFalse(profile.permits(.linuxOnboardingReset))
         XCTAssertFalse(profile.permits(.providerCredentialSlotUpsert))
         XCTAssertFalse(profile.permits(.runCreate))
         XCTAssertFalse(profile.permits(.computerUseInvoke))
@@ -97,6 +106,9 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         // The CLI must not inherit whole capability groups just because one
         // supported command lives there.
         XCTAssertFalse(profile.permits(.configUpdate))
+        XCTAssertFalse(profile.permits(.linuxOnboardingSnapshot))
+        XCTAssertFalse(profile.permits(.linuxOnboardingAction))
+        XCTAssertFalse(profile.permits(.linuxOnboardingReset))
         XCTAssertFalse(profile.permits(.providerCredentialSlotUpsert))
         XCTAssertFalse(profile.permits(.computerUseSessionStart))
         XCTAssertFalse(profile.permits(.computerUseInvoke))

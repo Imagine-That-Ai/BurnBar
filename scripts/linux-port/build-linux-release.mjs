@@ -1,38 +1,34 @@
 #!/usr/bin/env node
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
   copyArtifact,
   discoverBundleArtifacts,
-  expectedLinuxReleaseIdentity,
   fileSize,
   gitInfo,
   manifestPath,
   packageVersion,
   readJson,
   relative,
-  releaseEvidenceDir,
   repoRoot,
   runStep,
   sha256,
-  verifyEd25519Signature,
   writeJson
 } from './lib/linux-release-common.mjs';
 
 const args = new Set(process.argv.slice(2));
 const versionArgIndex = process.argv.indexOf('--version');
 const outDir = path.resolve(
-  process.env.OPENBURNBAR_LINUX_RELEASE_OUT ?? releaseEvidenceDir
+  process.env.OPENBURNBAR_LINUX_RELEASE_OUT ?? path.join(repoRoot, '.linux-shard')
 );
 const appDir = path.join(repoRoot, 'apps/linux-desktop');
 const manifest = readJson(manifestPath);
-const requestedVersion = versionArgIndex >= 0 ? process.argv[versionArgIndex + 1] : null;
-const version = requestedVersion?.trim() || packageVersion();
-if (version !== packageVersion()) {
-  console.error(`Linux release version ${version} does not match apps/linux-desktop/package.json ${packageVersion()}.`);
+if (!args.has('--architecture-shard')) {
+  console.error('build-linux-release.mjs is architecture-shard only; use assemble-linux-release.mjs after both native shards pass.');
   process.exit(1);
 }
+const requestedVersion = versionArgIndex >= 0 ? process.argv[versionArgIndex + 1] : null;
+const version = requestedVersion?.trim() || packageVersion();
 const rawGit = gitInfo();
 const generatedEvidencePrefix = `${relative(outDir)}/`;
 const dirtyInputEntries = rawGit.dirtyEntries.filter((entry) => !entry.slice(3).startsWith(generatedEvidencePrefix));
@@ -50,54 +46,9 @@ if (git.dirty) {
 }
 const logsDir = path.join(outDir, 'logs');
 const artifactsDir = path.join(outDir, 'artifacts');
-const sidecarDir = path.join(outDir, 'sidecars');
-for (const generatedDir of [logsDir, artifactsDir, sidecarDir, path.join(outDir, 'smoke')]) {
-  fs.rmSync(generatedDir, { recursive: true, force: true });
-}
+const daemonBinary = path.join(repoRoot, 'OpenBurnBarDaemon/.build/release/OpenBurnBarDaemon');
 fs.mkdirSync(logsDir, { recursive: true });
 fs.mkdirSync(artifactsDir, { recursive: true });
-fs.mkdirSync(sidecarDir, { recursive: true });
-
-const releaseEnvironment = {
-  tag: process.env.OPENBURNBAR_RELEASE_TAG?.trim() || '',
-  ref: process.env.OPENBURNBAR_RELEASE_REF?.trim() || '',
-  commit: process.env.OPENBURNBAR_RELEASE_COMMIT?.trim() || '',
-  expectedCosignIdentity: process.env.OPENBURNBAR_EXPECTED_COSIGN_IDENTITY?.trim() || ''
-};
-const hasReleaseEnvironment = Object.values(releaseEnvironment).some(Boolean);
-if (hasReleaseEnvironment && Object.values(releaseEnvironment).some((value) => !value)) {
-  console.error('Linux release binding is incomplete; tag, ref, commit, and expected Cosign identity are all required.');
-  process.exit(1);
-}
-if (hasReleaseEnvironment) {
-  const expectedTag = `linux-v${version}`;
-  const expectedRef = `refs/tags/${expectedTag}`;
-  const resolvedTag = runStep('git', ['rev-list', '-n', '1', `${releaseEnvironment.ref}^{commit}`]);
-  const expectedIdentity = expectedLinuxReleaseIdentity(releaseEnvironment.ref);
-  const bindingFailures = [
-    releaseEnvironment.tag === expectedTag ? null : `tag=${releaseEnvironment.tag}, expected=${expectedTag}`,
-    releaseEnvironment.ref === expectedRef ? null : `ref=${releaseEnvironment.ref}, expected=${expectedRef}`,
-    releaseEnvironment.commit === git.commit ? null : `commit=${releaseEnvironment.commit}, HEAD=${git.commit}`,
-    resolvedTag.exitCode === 0 && resolvedTag.stdout.trim() === releaseEnvironment.commit
-      ? null
-      : `${releaseEnvironment.ref} does not resolve to ${releaseEnvironment.commit}`,
-    releaseEnvironment.expectedCosignIdentity === expectedIdentity
-      ? null
-      : `Cosign identity=${releaseEnvironment.expectedCosignIdentity}, expected=${expectedIdentity}`
-  ].filter(Boolean);
-  if (bindingFailures.length > 0) {
-    console.error(`Linux release binding failed:\n- ${bindingFailures.join('\n- ')}`);
-    process.exit(1);
-  }
-}
-
-const release = {
-  tag: releaseEnvironment.tag || `linux-v${version}`,
-  ref: releaseEnvironment.ref || `refs/tags/linux-v${version}`,
-  commit: releaseEnvironment.commit || git.commit,
-  expectedCosignIdentity: releaseEnvironment.expectedCosignIdentity
-    || expectedLinuxReleaseIdentity(`refs/tags/linux-v${version}`)
-};
 
 const cargoBuildJobs = process.env.OPENBURNBAR_LINUX_CARGO_BUILD_JOBS?.trim() || '4';
 const swiftBuildJobs = process.env.OPENBURNBAR_LINUX_SWIFT_BUILD_JOBS?.trim() || '4';
@@ -125,36 +76,12 @@ function writeLog(name, steps) {
   fs.writeFileSync(path.join(logsDir, name), `${body}\n`, 'utf8');
 }
 
-const buildSteps = [];
-if (!args.has('--skip-tauri')) {
-  buildSteps.push(runStep('npm', ['ci', '--no-audit', '--no-fund'], { cwd: appDir }));
-  buildSteps.push(runStep('npm', ['run', 'build'], { cwd: appDir }));
-  buildSteps.push(runStep('npm', ['run', 'tauri:build', '--', '--bundles', 'deb,rpm,appimage'], {
-    cwd: appDir,
-    env: packageBuildEnv
-  }));
-}
-writeLog('package-build.log', buildSteps);
-
 const blockers = [];
-if (!hasReleaseEnvironment) {
-  blockers.push({
-    kind: 'release-binding',
-    message: 'Tag-bound release environment is absent; local output is evidence-only and cannot be promoted.'
-  });
-}
-for (const step of buildSteps) {
-  if (step.exitCode !== 0) {
-    blockers.push({
-      kind: 'package-build',
-      message: `Command failed: ${step.command}`,
-      log: 'logs/package-build.log'
-    });
-  }
-}
-
 const daemonSteps = [];
 if (!args.has('--skip-daemon')) {
+  // Swift 6.1 Linux libswiftObservation.so references swift::threading::fatal which
+  // is missing from the shared libswiftCore.so (present only in the static archive).
+  // --allow-shlib-undefined lets the link complete; runtime uses matching 6.1 libs.
   daemonSteps.push(runStep('swift', [
     'build',
     '--disable-automatic-resolution',
@@ -165,7 +92,9 @@ if (!args.has('--skip-daemon')) {
     '-c',
     'release',
     '--product',
-    'OpenBurnBarDaemon'
+    'OpenBurnBarDaemon',
+    '-Xlinker',
+    '--allow-shlib-undefined'
   ]));
 }
 writeLog('daemon-build.log', daemonSteps);
@@ -179,36 +108,76 @@ for (const step of daemonSteps) {
   }
 }
 
+const daemonBuildPassed = daemonSteps.every((step) => step.exitCode === 0);
+const daemonReady = daemonBuildPassed && fs.existsSync(daemonBinary);
+if (!daemonReady) {
+  blockers.push({
+    kind: 'missing-daemon-artifact',
+    message: args.has('--skip-daemon')
+      ? 'Required Linux daemon executable is missing at OpenBurnBarDaemon/.build/release/OpenBurnBarDaemon (stage a native binary when using --skip-daemon).'
+      : 'Required native Linux daemon executable was not produced by swift build.',
+    log: 'logs/daemon-build.log'
+  });
+}
+
+const buildSteps = [];
+if (!args.has('--skip-tauri') && daemonReady) {
+  // Never let an artifact from an earlier architecture/version satisfy this shard.
+  fs.rmSync(path.join(appDir, 'src-tauri/target/release/bundle'), { recursive: true, force: true });
+  const packageCommands = [
+    ['npm', ['ci', '--no-audit', '--no-fund'], { cwd: appDir }],
+    ['npm', ['run', 'build'], { cwd: appDir }],
+    ['npm', ['run', 'tauri:build', '--', '--bundles', 'deb,rpm,appimage'], {
+      cwd: appDir,
+      env: packageBuildEnv
+    }],
+    ['node', ['scripts/linux-port/embed-linux-appimage-payload.mjs'], {
+      cwd: repoRoot,
+      env: packageBuildEnv
+    }]
+  ];
+  for (const [command, commandArgs, options] of packageCommands) {
+    const step = runStep(command, commandArgs, options);
+    buildSteps.push(step);
+    if (step.exitCode !== 0) break;
+  }
+}
+writeLog('package-build.log', buildSteps);
+for (const step of buildSteps) {
+  if (step.exitCode !== 0) {
+    blockers.push({
+      kind: 'package-build',
+      message: `Command failed: ${step.command}`,
+      log: 'logs/package-build.log'
+    });
+  }
+}
+
 const copied = discoverBundleArtifacts().map((artifact) => {
   const dest = copyArtifact(artifact.file, artifactsDir);
   return {
     type: artifact.type,
+    architecture: linuxArch(),
     file: relative(dest),
     sourceFile: relative(artifact.file),
     size: fileSize(dest),
     sha256: sha256(dest)
   };
 });
-const daemonBinary = path.join(repoRoot, 'OpenBurnBarDaemon/.build/release/OpenBurnBarDaemon');
-if (!args.has('--skip-daemon')) {
-  if (fs.existsSync(daemonBinary)) {
-    const daemonArtifact = path.join(artifactsDir, `openburnbar-daemon-${version}-linux-${linuxArch()}`);
-    fs.copyFileSync(daemonBinary, daemonArtifact);
-    fs.chmodSync(daemonArtifact, 0o755);
-    copied.push({
-      type: 'daemon',
-      file: relative(daemonArtifact),
-      sourceFile: relative(daemonBinary),
-      size: fileSize(daemonArtifact),
-      sha256: sha256(daemonArtifact)
-    });
-  } else {
-    blockers.push({
-      kind: 'missing-daemon-artifact',
-      message: 'Required Linux daemon executable was not produced by swift build.',
-      log: 'logs/daemon-build.log'
-    });
-  }
+// Always package a prebuilt daemon when present (supports --skip-daemon after a
+// guest/CI binary is staged at OpenBurnBarDaemon/.build/release/OpenBurnBarDaemon).
+if (daemonReady) {
+  const daemonArtifact = path.join(artifactsDir, `openburnbar-daemon-${version}-linux-${linuxArch()}`);
+  fs.copyFileSync(daemonBinary, daemonArtifact);
+  fs.chmodSync(daemonArtifact, 0o755);
+  copied.push({
+    type: 'daemon',
+    architecture: linuxArch(),
+    file: relative(daemonArtifact),
+    sourceFile: relative(daemonBinary),
+    size: fileSize(daemonArtifact),
+    sha256: sha256(daemonArtifact)
+  });
 }
 
 for (const required of manifest.requiredArtifacts) {
@@ -220,208 +189,38 @@ for (const required of manifest.requiredArtifacts) {
   }
 }
 
-const metadataFiles = Object.entries(manifest.tailMetadata).map(([kind, file]) => {
-  const full = path.join(repoRoot, file);
-  return {
-    kind,
-    file,
-    exists: fs.existsSync(full),
-    sha256: fs.existsSync(full) ? sha256(full) : null
-  };
-});
-for (const meta of metadataFiles) {
-  if (!meta.exists) {
-    blockers.push({
-      kind: 'missing-metadata',
-      message: `Linux metadata file is missing: ${meta.file}`
-    });
-  }
-}
-
-const checksums = copied
-  .map((artifact) => `${artifact.sha256}  ${artifact.file}`)
-  .join('\n');
-const checksumFile = path.join(sidecarDir, `OpenBurnBar-${version}-linux-checksums.txt`);
-fs.writeFileSync(checksumFile, `${checksums}\n`, 'utf8');
-
-const sourceSuffix = release.commit === 'unknown' ? 'unknown' : release.commit.slice(0, 12);
-const sourceTar = path.join(sidecarDir, `OpenBurnBar-${version}-source-${sourceSuffix}.tar.gz`);
-const sourceChecksumFile = `${sourceTar}.sha256`;
-const sourceArchive = runStep('bash', [
-  'scripts/ci/build-corresponding-source-archive.sh',
-  '--version',
-  version,
-  '--output',
-  sourceTar
-]);
-const sourceSteps = [sourceArchive];
-if (sourceArchive.exitCode !== 0 || !fs.existsSync(sourceTar) || !fs.existsSync(sourceChecksumFile)) {
-  blockers.push({
-    kind: 'source-archive',
-    message: 'Canonical corresponding-source archive or checksum generation failed.',
-    log: 'logs/source-archive.log'
-  });
-}
-writeLog('source-archive.log', sourceSteps);
-if (!git.gitAvailable) {
-  blockers.push({
-    kind: 'git-metadata',
-    message: 'Git metadata was unavailable in this runner; release commit binding must be regenerated in CI or with OPENBURNBAR_GIT_* env values.'
-  });
-}
-if (git.dirty) {
-  blockers.push({
-    kind: 'dirty-worktree',
-    message: 'Release metadata cannot be promoted from a dirty worktree; source archive only represents HEAD.'
-  });
-}
-
-const sbomFile = path.join(sidecarDir, `OpenBurnBar-${version}-linux.spdx.json`);
-const sbom = runStep('python3', [
-  'scripts/generate-sbom.py',
-  '--version',
-  version,
-  '--repo-root',
-  repoRoot,
-  '--output',
-  sbomFile
-]);
-const vexFile = path.join(sidecarDir, `OpenBurnBar-${version}-linux.openvex.json`);
-const vex = runStep('python3', [
-  'scripts/supply-chain/generate-vex.py',
-  '--sbom',
-  sbomFile,
-  '--output',
-  vexFile,
-  '--product-version',
-  version
-]);
-writeLog('supply-chain-sidecars.log', [sbom, vex]);
-if (sbom.exitCode !== 0 || !fs.existsSync(sbomFile)) {
-  blockers.push({ kind: 'sbom', message: 'SPDX SBOM generation failed.', log: 'logs/supply-chain-sidecars.log' });
-}
-if (vex.exitCode !== 0 || !fs.existsSync(vexFile)) {
-  blockers.push({ kind: 'vex', message: 'OpenVEX sidecar generation failed.', log: 'logs/supply-chain-sidecars.log' });
-}
-
-const privateKeyPem = process.env.OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM;
-const signatureRows = [];
-if (privateKeyPem) {
-  const privateKey = crypto.createPrivateKey(privateKeyPem);
-  const publicKeyPem = fs.readFileSync(
-    path.join(repoRoot, manifest.externalCredentials.ed25519PublicKey)
-  );
+{
+  const architecture = linuxArch();
+  const keys = new Set();
   for (const artifact of copied) {
-    const artifactPath = path.join(repoRoot, artifact.file);
-    const signature = crypto.sign(null, fs.readFileSync(artifactPath), privateKey);
-    const sigPath = path.join(sidecarDir, `${path.basename(artifact.file)}.ed25519.sig`);
-    fs.writeFileSync(sigPath, signature);
-    signatureRows.push({ artifact: artifact.file, signature: relative(sigPath), algorithm: 'Ed25519' });
-    if (!verifyEd25519Signature(fs.readFileSync(artifactPath), signature, publicKeyPem)) {
+    const key = `${artifact.type}:${artifact.architecture}`;
+    if (keys.has(key)) {
       blockers.push({
-        kind: 'signing-key-mismatch',
-        message: `Detached signature for ${artifact.file} does not verify with the checked-in release public key.`
+        kind: 'duplicate-architecture-artifact',
+        message: `Architecture shard produced duplicate ${key} artifacts.`
+      });
+    }
+    keys.add(key);
+    if (artifact.architecture !== architecture) {
+      blockers.push({
+        kind: 'architecture-mismatch',
+        message: `Architecture shard ${architecture} produced ${key}.`
       });
     }
   }
-} else {
-  blockers.push({
-    kind: 'signing-credentials',
-    message: 'OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM is not configured; detached package signatures were not produced.'
-  });
+  const shard = {
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    version,
+    git,
+    architecture,
+    artifacts: copied,
+    blockers
+  };
+  writeJson(path.join(outDir, 'architecture-closure.json'), shard);
+  console.log(JSON.stringify({ outDir: relative(outDir), shard }, null, 2));
+  process.exit(blockers.length === 0 ? 0 : 1);
 }
-
-if (!process.env.SIGSTORE_ID_TOKEN && !process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN) {
-  blockers.push({
-    kind: 'cosign-oidc',
-    message: 'GitHub OIDC request token is unavailable locally; CI must produce and verify cosign bundle with GitHub OIDC.'
-  });
-}
-
-const provenance = {
-  predicateType: 'https://openburnbar.dev/attestations/linux-release-artifact/v1',
-  generatedAt: new Date().toISOString(),
-  expectedCosignIdentity: release.expectedCosignIdentity,
-  release,
-  git,
-  version,
-  artifacts: copied,
-  metadata: metadataFiles,
-  checksums: relative(checksumFile),
-  sbom: fs.existsSync(sbomFile) ? relative(sbomFile) : null,
-  vex: fs.existsSync(vexFile) ? relative(vexFile) : null,
-  sourceArchive: fs.existsSync(sourceTar)
-    ? {
-        file: relative(sourceTar),
-        sha256: sha256(sourceTar),
-        checksumFile: fs.existsSync(sourceChecksumFile) ? relative(sourceChecksumFile) : null,
-        represents: release.commit
-      }
-    : null,
-  signatures: signatureRows,
-  promotionBlocked: blockers.length > 0,
-  blockers
-};
-const provenanceFile = path.join(sidecarDir, `OpenBurnBar-${version}-linux.provenance-predicate.json`);
-writeJson(provenanceFile, provenance);
-
-const primary = copied.find((artifact) => artifact.type === manifest.primaryArtifact);
-const latestDraft = {
-  schemaVersion: 1,
-  product: manifest.product,
-  platform: 'linux',
-  version,
-  commit: git.commit,
-  release,
-  generatedAt: new Date().toISOString(),
-  promotionState: blockers.length === 0 ? 'candidate' : 'blocked',
-  primaryArtifact: primary ?? null,
-  artifacts: copied,
-  sidecars: {
-    checksums: relative(checksumFile),
-    sbom: fs.existsSync(sbomFile) ? relative(sbomFile) : null,
-    vex: fs.existsSync(vexFile) ? relative(vexFile) : null,
-    provenancePredicate: relative(provenanceFile),
-    sourceArchive: fs.existsSync(sourceTar)
-      ? {
-          file: relative(sourceTar),
-          sha256: sha256(sourceTar),
-          checksumFile: fs.existsSync(sourceChecksumFile) ? relative(sourceChecksumFile) : null,
-          represents: release.commit
-        }
-      : null
-  },
-  blockers
-};
-writeJson(path.join(outDir, manifest.updateMetadata.draftName), latestDraft);
-
-writeJson(path.join(outDir, 'package-closure.json'), {
-  generatedAt: new Date().toISOString(),
-  manifest: relative(manifestPath),
-  git,
-  release,
-  version,
-  artifacts: copied,
-  metadata: metadataFiles,
-  sidecars: {
-    checksums: relative(checksumFile),
-    sbom: fs.existsSync(sbomFile) ? relative(sbomFile) : null,
-    vex: fs.existsSync(vexFile) ? relative(vexFile) : null,
-    provenancePredicate: relative(provenanceFile),
-    sourceArchive: fs.existsSync(sourceTar)
-      ? {
-          file: relative(sourceTar),
-          sha256: sha256(sourceTar),
-          checksumFile: fs.existsSync(sourceChecksumFile) ? relative(sourceChecksumFile) : null,
-          represents: release.commit
-        }
-      : null
-  },
-  blockers
-});
-
-console.log(JSON.stringify({ outDir: relative(outDir), artifacts: copied, blockers }, null, 2));
-process.exit(blockers.some((blocker) => blocker.kind === 'package-build') ? 1 : 0);
 
 function linuxArch() {
   switch (process.arch) {

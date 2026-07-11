@@ -101,10 +101,14 @@ export function resolveOpenBurnBarDaemonRuntimePaths(
   );
 
   if (platform === 'linux') {
-    const configRoot = env.XDG_CONFIG_HOME?.trim() || join(homeDir, '.config');
-    const supportDir = supportDirOverride ?? join(configRoot, 'OpenBurnBar');
+    const dataRoot = env.XDG_DATA_HOME?.trim() || join(homeDir, '.local', 'share');
+    const supportDir = supportDirOverride ?? join(dataRoot, 'openburnbar');
+    const runtimeRoot = env.XDG_RUNTIME_DIR?.trim();
+    const defaultSocket = runtimeRoot
+      ? join(runtimeRoot, 'openburnbar', 'daemon.sock')
+      : join(supportDir, 'openburnbar-daemon.sock');
     return {
-      socketPath: socketPathOverride ?? join(supportDir, 'openburnbar-daemon.sock'),
+      socketPath: socketPathOverride ?? defaultSocket,
       authTokenFilePath: authTokenFileOverride ?? join(supportDir, 'daemon-socket-auth-token'),
       supportDir
     };

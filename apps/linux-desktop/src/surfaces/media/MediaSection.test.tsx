@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { bridgeStubDefaults } from '../../testing/bridgeStubs.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useMediaStore } from '../../state/mediaStore.js';
 import { useShellStore } from '../../state/shellStore.js';
-import type { LinuxShellBridge, MercuryMediaStatus } from '../../tauriBridge.js';
+import type { LinuxShellBridge, MercuryFileTransfer, MercuryMediaStatus } from '../../tauriBridge.js';
 import { MediaSection } from './MediaSection.js';
 
 function resetStores(): void {
+  useMediaStore.getState().reset();
   useShellStore.setState({
     fixtureMode: false,
     bridge: null,
@@ -20,11 +21,18 @@ function resetStores(): void {
     status: null,
     loadState: 'idle',
     error: null,
-    stageEvents: []
+    callError: null,
+    callState: { phase: 'idle', kind: 'call', source: 'live' },
+    stageEvents: [],
+    fileTransfers: [],
+    fileCapabilityAvailable: null,
+    fileDownloadDirectory: null,
+    fileError: null,
+    fileBusyTransferID: null
   });
 }
 
-function bridgeWithMedia(result: Promise<MercuryMediaStatus>): LinuxShellBridge {
+function bridgeWithMedia(result: Promise<MercuryMediaStatus>, overrides: Partial<LinuxShellBridge> = {}): LinuxShellBridge {
   return {
     ...bridgeStubDefaults,
     daemonHealth: vi.fn(),
@@ -47,15 +55,37 @@ function bridgeWithMedia(result: Promise<MercuryMediaStatus>): LinuxShellBridge 
     appVersionInfo: vi.fn(),
     exportDiagnostics: vi.fn(),
     sessionEnv: vi.fn(),
-    mediaStatus: vi.fn().mockReturnValue(result)
+    mediaStatus: vi.fn().mockReturnValue(result),
+    ...overrides
   } as LinuxShellBridge;
+}
+
+function fileTransfer(overrides: Partial<MercuryFileTransfer> = {}): MercuryFileTransfer {
+  const now = '2026-07-06T10:00:00.000Z';
+  return {
+    transferID: 'transfer-1',
+    manifestID: 'manifest-1',
+    direction: 'inbound',
+    phase: 'pendingAccept',
+    filename: 'report.pdf',
+    mime: 'application/pdf',
+    size: 100,
+    peer: { id: 'phone', name: 'Live iPhone', isOnline: true, lastSeenAt: now, capabilities: ['file.send'] },
+    progress: { bytesTransferred: 0, bytesTotal: 100, fraction: 0 },
+    createdAt: now,
+    updatedAt: now,
+    ...overrides
+  };
 }
 
 describe('P12 Mercury media section', () => {
   beforeEach(resetStores);
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    useMediaStore.getState().reset();
+  });
 
-  it('renders the primary capability-absent state for current Linux daemons', async () => {
+  it('renders the primary capability-absent state when the daemon media runtime is unavailable', async () => {
     useShellStore.setState({
       bridge: bridgeWithMedia(Promise.resolve({ capabilityAvailable: false, pairedDevices: [] }))
     });
@@ -65,7 +95,7 @@ describe('P12 Mercury media section', () => {
     });
     expect(screen.getByText('Capability absent')).toBeTruthy();
     expect(screen.getByText('daemon capability')).toBeTruthy();
-    expect(screen.getByText(/daemon.media.status/)).toBeTruthy();
+    expect(screen.getByText(/Mercury capability contract/)).toBeTruthy();
   });
 
   it('renders loading while the daemon request is unresolved', () => {
@@ -106,7 +136,7 @@ describe('P12 Mercury media section', () => {
     expect(screen.getByText('socket closed')).toBeTruthy();
   });
 
-  it('renders fixture peers and session timeline without action controls', async () => {
+  it('renders fixture peers, incoming call controls, and scripted accept transition', async () => {
     useShellStore.setState({ fixtureMode: true, bridge: null });
     render(<MediaSection />);
     await act(async () => {
@@ -116,11 +146,14 @@ describe('P12 Mercury media section', () => {
     expect(screen.getByText('fixture transcript')).toBeTruthy();
     expect(screen.getByText('Studio Mac')).toBeTruthy();
     expect(screen.getByText('Phase: Active')).toBeTruthy();
+    expect(screen.getByText('Incoming call')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
+    expect(screen.getByText('Viewer streaming')).toBeTruthy();
     expect(screen.getByText('Staged')).toBeTruthy();
     expect(screen.getByText('Connecting')).toBeTruthy();
     expect(screen.getByText('Active')).toBeTruthy();
     expect(screen.getByText('Ended')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /call|send file|end|forget/i })).toBeNull();
+    expect(screen.getByRole('button', { name: 'End' })).toBeTruthy();
   });
 
   it('renders live daemon peers with provenance when media_status is available', async () => {
@@ -153,5 +186,73 @@ describe('P12 Mercury media section', () => {
     expect(screen.getByText('live daemon')).toBeTruthy();
     expect(screen.getAllByText('Live iPhone').length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText('Phase: Connecting')).toBeTruthy();
+  });
+
+  it('renders incoming file offer actions and completed path rows', async () => {
+    const completed = fileTransfer({
+      phase: 'completed',
+      progress: { bytesTransferred: 100, bytesTotal: 100, fraction: 1 },
+      localPath: '/home/alberto/Downloads/report.pdf',
+      completedAt: '2026-07-06T10:01:00.000Z'
+    });
+    const mediaFileAccept = vi.fn().mockResolvedValue({
+      accepted: true,
+      transfer: fileTransfer({ phase: 'downloading', progress: { bytesTransferred: 50, bytesTotal: 100, fraction: 0.5 } })
+    });
+    const mediaFileOfferList = vi
+      .fn()
+      .mockResolvedValueOnce({
+        capabilityAvailable: true,
+        downloadDirectory: '/home/alberto/Downloads',
+        transfers: [fileTransfer()]
+      })
+      .mockResolvedValueOnce({
+        capabilityAvailable: true,
+        downloadDirectory: '/home/alberto/Downloads',
+        transfers: [fileTransfer()]
+      })
+      .mockResolvedValueOnce({
+        capabilityAvailable: true,
+        downloadDirectory: '/home/alberto/Downloads',
+        transfers: [completed]
+      });
+    useShellStore.setState({
+      bridge: bridgeWithMedia(
+        Promise.resolve({
+          capabilityAvailable: true,
+          pairedDevices: [
+            {
+              id: 'live-iphone',
+              name: 'Live iPhone',
+              platform: 'ios',
+              isOnline: true,
+              lastSeenAt: new Date().toISOString(),
+              capabilities: ['file.send', 'file.receive']
+            }
+          ]
+        }),
+        {
+          mediaSessionState: vi.fn().mockResolvedValue({ phase: 'idle', kind: 'call', capabilityAvailable: true }),
+          mediaFileOfferList,
+          mediaFileAccept
+        }
+      )
+    });
+    render(<MediaSection />);
+    await act(async () => {
+      await useMediaStore.getState().load();
+    });
+
+    expect(screen.getByLabelText('Incoming file offer')).toBeTruthy();
+    expect(screen.getByText('report.pdf')).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Accept file' }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mediaFileAccept).toHaveBeenCalledWith({ transferID: 'transfer-1', manifestID: 'manifest-1' });
+    expect(screen.getByText('/home/alberto/Downloads/report.pdf')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Send file' })).toBeTruthy();
   });
 });

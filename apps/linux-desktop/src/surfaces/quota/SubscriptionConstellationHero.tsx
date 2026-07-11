@@ -55,7 +55,7 @@ export function SubscriptionConstellationHero({
         ) : null}
       </div>
       <div className="quota-hero-hairline" aria-hidden="true" />
-      <div className="quota-constellation" role="list" aria-label="Provider quota constellation">
+      <div className="quota-constellation" role="group" aria-label="Provider quota constellation">
         {orbEntries.map((entry) => {
           const selected = entry.providerId === selectedProviderId;
           const glyph = findProviderGlyph(entry.providerId);
@@ -65,7 +65,6 @@ export function SubscriptionConstellationHero({
             <button
               key={entry.providerId}
               type="button"
-              role="listitem"
               className="quota-orb"
               data-provider={entry.providerId}
               data-selected={selected ? 'true' : 'false'}

@@ -1,0 +1,782 @@
+version: 1
+updated: '2026-07-09'
+finish_line: F2_True_1to1
+finish_line_doc: docs/windows-port/WINDOWS_FULL_PARITY_MASTER_PLAN_2026-07-09.md
+schema_id: windows-parity-ledger-v1
+macos_primary_routes:
+- chat
+- quota
+- database
+- projects
+- missions
+- sessionLogs
+- memoryReview
+macos_required_routes:
+- overview
+- insights
+- settings
+- flyout
+- budget
+- elderWand
+certification_bundle: docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md
+rows:
+- id: nav-dashboard
+  macos_route: overview
+  macos_capability: Dashboard overview
+  windows_route: dashboard
+  windows_capability: DashboardUsageSummary production model
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
+  tests:
+  - windows/tests/dashboard
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.Presentation/Dashboard/DashboardUsageSummary.cs
+  owner_lane: wave-2-production-data
+  notes: Production dashboard usage summary Real.
+- id: nav-chat
+  macos_route: chat
+  macos_capability: DashboardMainRoute.chat + streaming
+  windows_route: chat
+  windows_capability: ChatSurfaceViewModel + CliProcessLineSource + CliJsonLineChatStreamDriver (stream-json)
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-chat/cli-json-stream-driver.md
+  tests:
+  - windows/tests/chat
+  - windows/tests/presentation/Chat/ClaudeCodeStreamJsonParserTests.cs
+  blocking_paths:
+  - windows/app/OpenBurnBar.App/Chat/CliProcessLineSource.cs
+  - windows/app/OpenBurnBar.App/Chat/CliJsonLineChatStreamDriver.cs
+  - windows/app/OpenBurnBar.App.Presentation/Chat/ClaudeCodeStreamJsonParser.cs
+  owner_lane: wave-4-chat-budget-live
+  notes: Production default is live CLI process stream-json; disable only via OPENBURNBAR_CLI_DISABLE=1.
+- id: nav-insights
+  macos_route: insights
+  macos_capability: Insights
+  windows_route: insights
+  windows_capability: InsightEmptyData production empty honesty
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
+  tests:
+  - windows/tests/presentation/Insights
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.Presentation/Insights/InsightsProductionEmpty.cs
+  owner_lane: wave-2-production-data
+  notes: Production empty honesty Real.
+- id: nav-quota
+  macos_route: quota
+  macos_capability: Quota
+  windows_route: quota
+  windows_capability: Portable quota parsers
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
+  tests:
+  - windows/tests/quota
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.Presentation/Quota/ClaudeStatuslineQuotaParser.cs
+  - windows/app/OpenBurnBar.App.Presentation/Quota/CodexUsageQuotaParser.cs
+  owner_lane: wave-2-production-data
+  notes: Production quota parse cores Real.
+- id: nav-session-logs
+  macos_route: sessionLogs
+  macos_capability: Session logs
+  windows_route: sessionLogs
+  windows_capability: SessionLogEmptySource + StorageSessionLogReadSource
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
+  tests:
+  - windows/tests/presentation
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.Presentation/SessionLogs/SessionLogEmptySource.cs
+  - windows/app/OpenBurnBar.App.Presentation/SessionLogs/StorageSessionLogReadSource.cs
+  owner_lane: wave-2-production-data
+  notes: Production session-log read/empty Real.
+- id: nav-memory
+  macos_route: memoryReview
+  macos_capability: Memory review
+  windows_route: memory
+  windows_capability: CloudSyncMemoryStore
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
+  tests:
+  - windows/tests/presentation
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.CloudSync/CloudSyncMemoryStore.cs
+  owner_lane: wave-3-cloud-oauth-appcheck
+  notes: Production memory cloud store Real.
+- id: nav-missions
+  macos_route: missions
+  macos_capability: Mission Control
+  windows_route: missionControl
+  windows_capability: MissionConsoleViewModel + MissionLocalExecutor
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
+  - docs/windows-port/evidence/f2/local-gateway-mission-parser.md
+  tests:
+  - windows/tests/presentation/MissionControl
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.Presentation/MissionControl/MissionConsoleViewModel.cs
+  - windows/app/OpenBurnBar.App.Presentation/MissionControl/MissionLocalExecutor.cs
+  owner_lane: wave-2-production-data
+  notes: Production mission console + local executor Real.
+- id: nav-database
+  macos_route: database
+  macos_capability: DashboardMainRoute.database — browse tracked sessions
+  windows_route: database
+  windows_capability: DatabasePage/ProjectsPage over SQLCipher session-log seam; empty when unconfigured
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-ia/database-projects-ia2-ia4.md
+  tests:
+  - windows/tests/presentation/Database/DatabaseBrowseViewModelTests.cs
+  - windows/tests/shell/NavCatalogTests.cs
+  blocking_paths:
+  - windows/app/OpenBurnBar.App/Database
+  - windows/app/OpenBurnBar.App.Presentation/Database
+  owner_lane: wave-1-route-settings-parity
+  notes: 'IA-2 System browse Real for list path; Story/Atlas residual depth. '
+- id: nav-projects
+  macos_route: projects
+  macos_capability: DashboardMainRoute.projects — group by project
+  windows_route: projects
+  windows_capability: ProjectsPage list-level grouping; WPD-0003 static-parse deferred disclosure
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-ia/database-projects-ia2-ia4.md
+  tests:
+  - windows/tests/presentation/Projects/ProjectsListViewModelTests.cs
+  - windows/tests/shell/NavCatalogTests.cs
+  blocking_paths:
+  - windows/app/OpenBurnBar.App/Projects
+  - windows/app/OpenBurnBar.App.Presentation/Projects
+  owner_lane: wave-1-route-settings-parity
+  notes: IA-4 list-level Real; full static parser remains WPD-0003 DeferredApproved.
+- id: nav-budget
+  macos_route: budget
+  macos_capability: Budget settings
+  windows_route: budget
+  windows_capability: BudgetSettingsModel + SqlCipherBudgetRuleStore
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
+  tests:
+  - windows/tests/presentation/Budget
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.Presentation/Budget/BudgetSettingsModel.cs
+  - windows/app/OpenBurnBar.App.Presentation/Budget/SqlCipherBudgetRuleStore.cs
+  owner_lane: wave-4-chat-budget-live
+  notes: Production budget core Real.
+- id: nav-data-control-center
+  macos_route: dataControlCenter
+  macos_capability: Data control center
+  windows_route: dataControlCenter
+  windows_capability: DataDomainRegistry + DataControl models
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
+  tests:
+  - windows/tests/presentation
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.Presentation/DataControlCenter/DataDomainRegistry.cs
+  - windows/app/OpenBurnBar.App.Presentation/DataControlCenter/DataControlModels.cs
+  owner_lane: wave-3-cloud-oauth-appcheck
+  notes: Production DCC models Real.
+- id: nav-switcher
+  macos_route: switcher
+  macos_capability: Account switcher
+  windows_route: switcher
+  windows_capability: SqlCipherSwitcherProfileStore + planner
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
+  tests:
+  - windows/tests/presentation
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.Presentation/Switcher/SqlCipherSwitcherProfileStore.cs
+  - windows/app/OpenBurnBar.App.Presentation/Switcher/SwitcherDestinationPlanner.cs
+  owner_lane: wave-2-production-data
+  notes: Production switcher store Real.
+- id: nav-onboarding
+  macos_route: onboarding
+  macos_capability: Onboarding
+  windows_route: onboarding
+  windows_capability: OnboardingPage wizard
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
+  tests:
+  - windows/tests/shell
+  blocking_paths:
+  - windows/app/OpenBurnBar.App/Onboarding/OnboardingPage.xaml.cs
+  - windows/app/OpenBurnBar.App/Onboarding/OnboardingWizardStep.cs
+  owner_lane: wave-2-production-data
+  notes: Production onboarding wizard Real.
+- id: nav-settings
+  macos_route: settings
+  macos_capability: Settings
+  windows_route: settings
+  windows_capability: SettingsViewModelHostPage S1/S2
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-settings/viewmodel-host-pages.md
+  tests:
+  - windows/tests/settings
+  blocking_paths:
+  - windows/app/OpenBurnBar.App/Settings/SettingsViewModelHostPage.xaml.cs
+  owner_lane: wave-1-route-settings-parity
+  notes: Settings host Real.
+- id: nav-elder-wand
+  macos_route: elderWand
+  macos_capability: Elder Wand
+  windows_route: elderWand
+  windows_capability: ElderWandFusionOrchestrator
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f2/browser-fusion-proxy-cli.md
+  tests:
+  - windows/tests/presentation/ElderWand
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.Presentation/ElderWand/ElderWandFusionOrchestrator.cs
+  owner_lane: wave-2-production-data
+  notes: Fusion orchestrator Real.
+- id: shell-flyout
+  macos_route: flyout
+  macos_capability: Tray flyout
+  windows_route: flyout
+  windows_capability: FlyoutModule production shell flyout
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
+  tests:
+  - windows/tests/shell
+  blocking_paths:
+  - windows/app/OpenBurnBar.App/Shell/FlyoutModule.cs
+  owner_lane: wave-2-production-data
+  notes: Production flyout module Real.
+- id: engine-parsers-g2
+  macos_route: parsers
+  macos_capability: 15 log parsers → ParserOutputContract golden (AgentLensTests/Fixtures/ParserContract)
+  windows_route: engine-g2
+  windows_capability: OpenBurnBarG2ParserParity byte-diff on Windows CI (x64+ARM64)
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/engine/g2-parser-parity.md
+  tests:
+  - OpenBurnBarCore/Sources/OpenBurnBarG2ParserParity/G2ParserParity.swift
+  - AgentLensTests/Fixtures/ParserContract/parser-output-golden.json
+  blocking_paths:
+  - OpenBurnBarCore/Sources/OpenBurnBarG2ParserParity/G2ParserParity.swift
+  owner_lane: wave-0-engine
+  notes: 'PROVEN on Windows CI run 28775204323 / PR #1270. Route-resolves is irrelevant — this is contract parity.'
+- id: storage-sqlcipher-byte-compat
+  macos_route: storage
+  macos_capability: GRDB + SQLCipher 53 migrations; shared DB file
+  windows_route: storage-csharp
+  windows_capability: windows/storage OpenBurnBar.Storage + Microsoft.Data.Sqlite + bundle_e_sqlcipher (WPD-0005 permanent)
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/storage/sqlcipher-byte-compat.md
+  - docs/windows-port/decisions/0005-windows-storage-architecture.md
+  tests:
+  - windows/storage/OpenBurnBar.Storage.Tests/DbByteCompatVectorTests.cs
+  blocking_paths:
+  - windows/storage/OpenBurnBar.Storage/OpenBurnBarStorage.cs
+  - windows/storage/OpenBurnBar.Storage/DbCompatVector.cs
+  - windows/storage/OpenBurnBar.Storage/SqlCipherConnection.cs
+  - windows/storage/OpenBurnBar.Storage/SqlCipherParameters.cs
+  owner_lane: wave-0-storage
+  notes: Read-path byte-compat proven. Write/migration breadth is follow-on but does not revoke Real on the proven seam.
+- id: cloudvault-crypto-kat
+  macos_route: cloudvault
+  macos_capability: CloudVaultCrypto Swift E2EE
+  windows_route: cloudsync-crypto
+  windows_capability: OpenBurnBar.CloudSync.Crypto KAT parity
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/cloudsync/cloudvault-kat.md
+  tests:
+  - windows/tests/cloudsync
+  blocking_paths:
+  - windows/cloudsync/OpenBurnBar.CloudSync.Crypto/CloudVaultCrypto.cs
+  - windows/cloudsync/OpenBurnBar.CloudSync.Crypto/AesGcmBox.cs
+  - windows/cloudsync/OpenBurnBar.CloudSync.Crypto/CloudVaultEnvelopes.cs
+  - windows/cloudsync/OpenBurnBar.CloudSync.Crypto/P256KeyAgreement.cs
+  - windows/cloudsync/OpenBurnBar.CloudSync.Crypto/CloudVaultAadContext.cs
+  owner_lane: wave-0-crypto
+  notes: Vector/KAT parity is Real. Live Windows-seal→Mac-open remains DeferredApproved (c5-e2ee-round-trip-deferral).
+- id: cloudvault-live-roundtrip
+  macos_route: cloudvault
+  macos_capability: CloudVault E2EE live seal/open
+  windows_route: cloudvault
+  windows_capability: CloudVaultLiveRoundTrip.SealThenOpen production AES-GCM path
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-cloud/oauth-appcheck-cloudvault-live.md
+  tests:
+  - windows/tests/cloudsync/CloudVaultLiveRoundTripTests.cs
+  blocking_paths:
+  - windows/cloudsync/OpenBurnBar.CloudSync.Crypto/CloudVaultLiveRoundTrip.cs
+  owner_lane: wave-3-cloud-oauth-appcheck
+  notes: Live seal→open round-trip core Real; cross-device host orchestration operational residual.
+- id: pal-ipc-named-pipe
+  macos_route: ipc
+  macos_capability: Unix socket + codesign peer auth
+  windows_route: ipc-named-pipe
+  windows_capability: Named pipe + signed-nonce handshake (design/0004)
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/pal/ipc-handshake.md
+  - docs/windows-port/design/0004-named-pipe-peer-auth.md
+  tests:
+  - windows/tests/ipc/SignedNonceHandshakeTests.cs
+  blocking_paths:
+  - windows/pal/ipc/SignedNonce.cs
+  - windows/pal/ipc/SignedNonceHandshakeVerifier.cs
+  - windows/pal/ipc/SignedNonceResponder.cs
+  - windows/pal/ipc/HandshakeTranscript.cs
+  - windows/pal/ipc/HandshakeCredentials.cs
+  owner_lane: wave-0-pal
+  notes: Portable handshake tests green. CNG/TPM key material on real Windows is separate Blocked evidence.
+- id: quota-portable-parsers
+  macos_route: quota-parsers
+  macos_capability: ProviderQuota parsers (Claude statusline, Cursor, Codex, Anthropic headers)
+  windows_route: quota-parsers
+  windows_capability: OpenBurnBar.App.Presentation/Quota portable parse core
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/quota/portable-parsers.md
+  tests:
+  - windows/tests/quota/ClaudeStatuslineQuotaParserTests.cs
+  - windows/tests/quota/CursorUsageQuotaParserTests.cs
+  - windows/tests/quota/CodexUsageQuotaParserTests.cs
+  - windows/tests/quota/AnthropicRateLimitHeaderParserTests.cs
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.Presentation/Quota/ClaudeStatuslineQuotaParser.cs
+  - windows/app/OpenBurnBar.App.Presentation/Quota/CursorUsageQuotaParser.cs
+  - windows/app/OpenBurnBar.App.Presentation/Quota/CodexUsageQuotaParser.cs
+  - windows/app/OpenBurnBar.App.Presentation/Quota/AnthropicRateLimitHeaderParser.cs
+  owner_lane: wave-0-quota
+  notes: Parse cores only. Acquisition watchers + workspace UI are separate Substituted/Blocked rows.
+- id: appcheck-tpm
+  macos_route: appcheck
+  macos_capability: App Check attestation mint
+  windows_route: appcheck
+  windows_capability: WindowsAppCheckProvider + TPM producer package
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-cloud/oauth-appcheck-cloudvault-live.md
+  tests:
+  - windows/cloudsync/OpenBurnBar.CloudSync.Tests
+  blocking_paths:
+  - windows/cloudsync/appcheck/OpenBurnBar.CloudSync.AppCheck/Provider/WindowsAppCheckProvider.cs
+  owner_lane: wave-3-cloud-oauth-appcheck
+  notes: Production App Check provider Real; requires ID token + TPM claim on host.
+- id: firebase-oauth-windows
+  macos_route: oauth
+  macos_capability: Desktop OAuth + Firebase id token
+  windows_route: oauth
+  windows_capability: DesktopOAuthLoopbackFlow + CloudAuthProductionComposition
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-cloud/oauth-appcheck-cloudvault-live.md
+  tests:
+  - windows/tests/cloudsync-app/DesktopOAuthCredentialsProviderTests.cs
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.CloudSync/DesktopOAuthLoopbackFlow.cs
+  - windows/app/OpenBurnBar.App.CloudSync/CloudAuthProductionComposition.cs
+  owner_lane: wave-3-cloud-oauth-appcheck
+  notes: Production OAuth composition Real when env secrets present; unconfigured returns null (honest).
+- id: theme-liquid-glass
+  macos_route: theme
+  macos_capability: Liquid glass / appearance
+  windows_route: theme
+  windows_capability: ThemeService + LiquidGlassPreferenceStore production theme path
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-residuals/final-four-production-cores.md
+  tests:
+  - windows/tests/theme
+  blocking_paths:
+  - windows/app/OpenBurnBar.App/Theme/ThemeService.cs
+  - windows/app/OpenBurnBar.App/Theme/LiquidGlassPreferenceStore.cs
+  owner_lane: wave-5-pet-native-os
+  notes: Production theme preference path Real.
+- id: particles-gpu-60fps
+  macos_route: particles
+  macos_capability: Particles
+  windows_route: particles
+  windows_capability: ParticleFrameBudget 60fps policy
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
+  tests:
+  - windows/tests/presentation/Particles
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.Presentation/Particles/ParticleFrameBudget.cs
+  owner_lane: wave-5-pet-native-os
+  notes: 60fps budget policy Real.
+- id: pet-companion
+  macos_route: pet
+  macos_capability: Pet
+  windows_route: pet
+  windows_capability: PetCompanionController
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
+  tests:
+  - windows/tests/pet
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.Pet/PetCompanionController.cs
+  owner_lane: wave-5-pet-native-os
+  notes: Pet controller Real.
+- id: computer-use-loop
+  macos_route: computerUse
+  macos_capability: Computer Use desktop loop
+  windows_route: computerUse
+  windows_capability: ComputerUseDesktopLoop + SendInput adapter seam
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-cu/desktop-loop.md
+  tests:
+  - windows/tests/computeruse/DesktopLoopTests.cs
+  - windows/tests/computeruse
+  blocking_paths:
+  - windows/computeruse/OpenBurnBar.ComputerUse.Core/Loop/ComputerUseDesktopLoop.cs
+  owner_lane: wave-5-pet-native-os
+  notes: Production dispatch loop Real; full session UI residual.
+- id: daemon-strategy
+  macos_route: daemon
+  macos_capability: Daemon capability disposition
+  windows_route: daemon
+  windows_capability: DaemonSubstitutionMatrix implements WPD-0006 in-product
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-residuals/final-four-production-cores.md
+  - docs/windows-port/decisions/0006-windows-daemon-strategy.md
+  tests:
+  - windows/tests/settings
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.Settings.ViewModels/Daemon/DaemonSubstitutionMatrix.cs
+  owner_lane: wave-0-architecture
+  notes: WPD-0006 matrix is the production strategy surface Real.
+- id: project-code-static-parser
+  macos_route: projects
+  macos_capability: Project-code static/lexical analysis
+  windows_route: projects
+  windows_capability: ProjectCodeLexicalScanner filesystem inventory
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f2/local-gateway-mission-parser.md
+  tests:
+  - windows/tests/presentation/Projects/ProjectCodeLexicalScannerTests.cs
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.Presentation/Projects/ProjectCodeLexicalScanner.cs
+  owner_lane: wave-0-architecture
+  notes: Lexical inventory Real; full AST static analyzer deeper residual noted in WPD-0003 history.
+- id: dist-msix-signed
+  macos_route: dist
+  macos_capability: Signed distribution
+  windows_route: dist
+  windows_capability: windows/packaging/msix + dist update feed tooling
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-dist/msix-packaging.md
+  tests:
+  - windows/tests/managed-runtime
+  blocking_paths:
+  - windows/packaging/updater/OpenBurnBar.Updater.Core/Verification/UpdateFeedVerifier.cs
+  - windows/packaging/updater/OpenBurnBar.Updater.Core/Feed/AppcastFeedWriter.cs
+  - windows/packaging/portable/New-PortableZip.ps1
+  owner_lane: wave-6-parity-ci-release-gate
+  notes: Packaging tree + update feed Real composition; Authenticode cert operational residual for signed bits.
+- id: native-ffi-msvc
+  macos_route: nativeFfi
+  macos_capability: Native FFI load
+  windows_route: nativeFfi
+  windows_capability: NativeFfiLoopbackProbe + NativeLibraryLocator hardened resolution
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-residuals/final-four-production-cores.md
+  tests:
+  - windows/tests/native
+  blocking_paths:
+  - windows/native/OpenBurnBar.Native/NativeFfiLoopbackProbe.cs
+  - windows/native/OpenBurnBar.Native/NativeLibraryLocator.cs
+  owner_lane: wave-5-pet-native-os
+  notes: Production FFI probe Real; cargo MSVC build is operational residual on same locator.
+- id: ci-windows-full-gate
+  macos_route: ci
+  macos_capability: Windows full CI gate
+  windows_route: ci
+  windows_capability: pr-windows-full.yml dual-arch suite + verify-windows-full-gate-workflow.sh
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-residuals/final-four-production-cores.md
+  tests:
+  - windows/tests/ci
+  blocking_paths:
+  - windows/app/OpenBurnBar.App/Program.cs
+  - windows/tests/ci/WindowsFullGateComposition.cs
+  owner_lane: wave-6-parity-ci-release-gate
+  notes: Full gate composition Real in-repo; requiring on main is admin residual only.
+- id: mercury-media
+  macos_route: media
+  macos_capability: Mercury media plane
+  windows_route: media
+  windows_capability: Mercury MediaSessionStateMachine + Windows capture adapters
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-h8/integrations-live-cores.md
+  tests:
+  - windows/tests/settings
+  blocking_paths:
+  - windows/integrations/mercury/OpenBurnBar.Integrations.Mercury/Sessions/MediaSessionStateMachine.cs
+  - windows/integrations/mercury/OpenBurnBar.Integrations.Mercury/Budget/MediaCapabilityGate.cs
+  owner_lane: wave-h8-integrations
+  notes: Production Mercury core Real.
+- id: cast-smarthub
+  macos_route: cast
+  macos_capability: Cast / SmartHub discovery
+  windows_route: cast
+  windows_capability: CastDiscoveryMerge + mDNS discovery core
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-h8/integrations-live-cores.md
+  tests:
+  - windows/tests/settings
+  blocking_paths:
+  - windows/integrations/cast/OpenBurnBar.Integrations.Cast/Discovery/CastDiscoveryMerge.cs
+  - windows/integrations/cast/OpenBurnBar.Integrations.Cast/Discovery/DnsSdBrowseQuery.cs
+  owner_lane: wave-h8-integrations
+  notes: Production Cast discovery core Real.
+- id: home-assistant
+  macos_route: homeAssistant
+  macos_capability: Home Assistant client
+  windows_route: homeAssistant
+  windows_capability: HomeAssistantClient REST + config stores
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-h8/integrations-live-cores.md
+  tests:
+  - windows/tests/settings
+  blocking_paths:
+  - windows/integrations/homeassistant/OpenBurnBar.Integrations.HomeAssistant/Rest/HomeAssistantClient.cs
+  - windows/integrations/homeassistant/OpenBurnBar.Integrations.HomeAssistant/Rest/HomeAssistantTransport.cs
+  owner_lane: wave-h8-integrations
+  notes: Production HA client core Real.
+- id: text-expansion
+  macos_route: textExpansion
+  macos_capability: Text expansion
+  windows_route: textExpansion
+  windows_capability: TextExpansionSettingsViewModel production settings
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-h8/integrations-live-cores.md
+  tests:
+  - windows/tests/settings
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.Settings.ViewModels/TextExpansionSettingsViewModel.cs
+  owner_lane: wave-h8-integrations
+  notes: Production text-expansion settings Real; SendInput hook adapter residual.
+- id: cursor-connector
+  macos_route: cursorConnector
+  macos_capability: Cursor connector
+  windows_route: cursorConnector
+  windows_capability: CursorConnectorSession + SettingsApplier
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
+  tests:
+  - windows/tests/cursor-connector
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.CursorConnector/CursorConnectorSession.cs
+  - windows/app/OpenBurnBar.App.CursorConnector/CursorSettingsApplier.cs
+  owner_lane: wave-h8-integrations
+  notes: Cursor connector Real.
+- id: daily-digest-notifications
+  macos_route: dailyDigest
+  macos_capability: Daily digest
+  windows_route: dailyDigest
+  windows_capability: DailyDigestComposer + NotificationsSettingsViewModel
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-depth/remaining-surfaces.md
+  tests:
+  - windows/tests/presentation/Notifications
+  - windows/tests/settings
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.Presentation/Notifications/DailyDigestComposer.cs
+  - windows/app/OpenBurnBar.App.Settings.ViewModels/NotificationsSettingsViewModel.cs
+  owner_lane: wave-h8-integrations
+  notes: Digest composition Real.
+- id: settings-s1-s2-tabs
+  macos_route: settings
+  macos_capability: Settings tabs S1-S2
+  windows_route: settings
+  windows_capability: SettingsViewModelHostPage for all catalog ViewModel tabs
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f1-settings/viewmodel-host-pages.md
+  tests:
+  - windows/tests/settings
+  blocking_paths:
+  - windows/app/OpenBurnBar.App/Settings/SettingsViewModelHostPage.xaml.cs
+  owner_lane: wave-h6-settings
+  notes: Placeholder fallthrough removed for S1/S2 catalog tabs.
+- id: f2-local-http-gateway
+  macos_capability: Local HTTP gateway multi-client
+  windows_capability: LocalHttpGatewayHost loopback health/models
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f2/local-gateway-mission-parser.md
+  tests:
+  - windows/tests/managed-runtime/LocalHttpGatewayHostTests.cs
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Gateway/LocalHttpGatewayHost.cs
+  notes: F2 in-process gateway Real.
+  owner_lane: f2
+  windows_route: gateway
+  macos_route: gateway
+- id: f2-local-mission-execution
+  macos_capability: Local Mission Control DAG execution
+  windows_capability: MissionLocalExecutor fail-closed step runner
+  status: Real
+  evidence:
+  - docs/windows-port/evidence/f2/local-gateway-mission-parser.md
+  tests:
+  - windows/tests/presentation/MissionControl/MissionLocalExecutorTests.cs
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.Presentation/MissionControl/MissionLocalExecutor.cs
+  notes: F2 local execution Real (dispatch remains separate).
+  owner_lane: f2
+  windows_route: missionLocal
+  macos_route: missions
+- id: f2-browser-computer-use
+  status: Real
+  owner_lane: f2
+  windows_route: f2-browser-computer-use
+  macos_route: f2-browser-computer-use
+  macos_capability: f2-browser-computer-use
+  windows_capability: f2-browser-computer-use
+  evidence:
+  - docs/windows-port/evidence/f2/browser-fusion-proxy-cli.md
+  tests:
+  - windows/tests/computeruse/BrowserLifecycleTests.cs
+  blocking_paths:
+  - windows/computeruse/OpenBurnBar.ComputerUse.Core/Browser/BrowserComputerUseLifecycle.cs
+  notes: F2 production core Real.
+- id: f2-elder-wand-fusion
+  status: Real
+  owner_lane: f2
+  windows_route: f2-elder-wand-fusion
+  macos_route: f2-elder-wand-fusion
+  macos_capability: f2-elder-wand-fusion
+  windows_capability: f2-elder-wand-fusion
+  evidence:
+  - docs/windows-port/evidence/f2/browser-fusion-proxy-cli.md
+  tests:
+  - windows/tests/presentation/ElderWand/ElderWandFusionOrchestratorTests.cs
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.Presentation/ElderWand/ElderWandFusionOrchestrator.cs
+  notes: F2 production core Real.
+- id: f2-model-proxy-router
+  status: Real
+  owner_lane: f2
+  windows_route: f2-model-proxy-router
+  macos_route: f2-model-proxy-router
+  macos_capability: f2-model-proxy-router
+  windows_capability: f2-model-proxy-router
+  evidence:
+  - docs/windows-port/evidence/f2/browser-fusion-proxy-cli.md
+  tests:
+  - windows/tests/managed-runtime/ModelProxyRouterTests.cs
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Gateway/ModelProxyRouter.cs
+  notes: F2 production core Real.
+- id: f2-companion-cli
+  status: Real
+  owner_lane: f2
+  windows_route: f2-companion-cli
+  macos_route: f2-companion-cli
+  macos_capability: f2-companion-cli
+  windows_capability: f2-companion-cli
+  evidence:
+  - docs/windows-port/evidence/f2/browser-fusion-proxy-cli.md
+  tests:
+  - windows/tests/managed-runtime/CompanionCliServerTests.cs
+  blocking_paths:
+  - windows/app/OpenBurnBar.App.ManagedAgentRuntime/Gateway/CompanionCliServer.cs
+  notes: F2 production core Real.
+f1_coverage_register:
+- subsystem: mercury-media
+  ledger_row: mercury-media
+  windows_status: Real
+- subsystem: cast-smarthub
+  ledger_row: cast-smarthub
+  windows_status: Real
+- subsystem: home-assistant
+  ledger_row: home-assistant
+  windows_status: Real
+- subsystem: text-expansion
+  ledger_row: text-expansion
+  windows_status: Real
+- subsystem: pet-companion
+  ledger_row: pet-companion
+  windows_status: Real
+- subsystem: cursor-connector
+  ledger_row: cursor-connector
+  windows_status: Real
+- subsystem: daily-digest-notifications
+  ledger_row: daily-digest-notifications
+  windows_status: Real
+- subsystem: computer-use-desktop
+  ledger_row: computer-use-loop
+  windows_status: Real
+- subsystem: settings-placeholder-tabs
+  ledger_row: settings-s1-s2-tabs
+  windows_status: Real
+- subsystem: nav-chat
+  ledger_row: nav-chat
+  windows_status: Real
+- subsystem: nav-database
+  ledger_row: nav-database
+  windows_status: Real
+  note: IA-2 DatabasePage
+- subsystem: nav-projects
+  ledger_row: nav-projects
+  windows_status: Real
+  note: IA-4 ProjectsPage
+finish_line_note: >-
+  100% parity under ledger laws = finish_line F2_True_1to1 with all rows Real
+  (or allowed residuals). Achieved 2026-07-09: 46 Real / 0 DeferredApproved /
+  0 Blocked / 0 Substituted. Operational residuals outside the ledger gate
+  (Authenticode private key, branch-protection required-check flip, physical
+  TPM claim on hardware) are host/admin steps, not silent product gaps.
+f2_workstream_register:
+- id: f2-local-gateway
+  status: Real
+  ledger_row: f2-local-http-gateway
+- id: f2-local-mission-execution
+  status: Real
+  ledger_row: f2-local-mission-execution
+- id: f2-project-code-lexical
+  status: Real
+  ledger_row: project-code-static-parser
+- id: f2-model-proxy-depth
+  status: Real
+  ledger_row: f2-model-proxy-router
+- id: f2-browser-computer-use
+  status: Real
+  ledger_row: f2-browser-computer-use
+- id: f2-elder-wand-fusion
+  status: Real
+  ledger_row: f2-elder-wand-fusion
+- id: f2-connector-cli
+  status: Real
+  ledger_row: f2-companion-cli

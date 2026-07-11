@@ -97,6 +97,8 @@ echo "== linux-desktop-libs =="
 pkg-config --modversion webkit2gtk-4.1
 pkg-config --modversion ayatana-appindicator3-0.1
 pkg-config --modversion libsecret-1
+dpkg-query -W -f='libpam0g-dev=${Version}\n' libpam0g-dev
+test -f "$(cc -print-file-name=libpam.so)"
 pkg-config --modversion libpipewire-0.3
 pkg-config --modversion dbus-1
 dpkg-query -W -f='xdg-desktop-portal=${Version}\n' xdg-desktop-portal
@@ -121,6 +123,9 @@ command -v xfce4-panel
 command -v xdotool
 command -v scrot
 command -v gdbus
+command -v orca
+orca --version
+python3 -c 'import pyatspi; print("python3-pyatspi=import-ok")'
 dpkg-query -W -f='xfce4-sntray-plugin=${Version}\n' xfce4-sntray-plugin
 dpkg-query -W -f='ayatana-indicator-application=${Version}\n' ayatana-indicator-application
 dpkg-query -W -f='libkf5wallet-dev=${Version}\n' libkf5wallet-dev
@@ -152,6 +157,8 @@ dpkg-query -W -f='${binary:Package}=${Version}\n' \
   x11-utils \
   scrot \
   at-spi2-core \
+  orca \
+  python3-pyatspi \
   curl \
   tcl \
   sqlite3 \
@@ -159,6 +166,7 @@ dpkg-query -W -f='${binary:Package}=${Version}\n' \
   libwebkit2gtk-4.1-dev \
   libayatana-appindicator3-dev \
   libsecret-1-dev \
+  libpam0g-dev \
   libkf5wallet-dev \
   dbus \
   dbus-x11 \

@@ -24,8 +24,12 @@ public enum BurnBarDaemonPaths {
     }
 
     public static var defaultSocketURL: URL {
+        #if os(Linux)
+        return OpenBurnBarLinuxPaths.defaultDaemonSocketURL()
+        #else
         supportDirectoryURL
             .appendingPathComponent("openburnbar-daemon.sock", isDirectory: false)
+        #endif
     }
 
     public static var defaultSocketPath: String {
@@ -107,6 +111,10 @@ public enum BurnBarDaemonPaths {
         supportDirectoryURL
             .appendingPathComponent("computer-use", isDirectory: true)
             .appendingPathComponent("capability-state.json", isDirectory: false)
+    }
+
+    public static var defaultLinuxOnboardingStateURL: URL {
+        supportDirectoryURL.appendingPathComponent("linux-onboarding-state.json", isDirectory: false)
     }
 }
 

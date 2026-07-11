@@ -72,13 +72,24 @@ extension BurnBarDaemonServer {
             )
             return encode(response)
         case .computerUseApprovalPending:
-            let typedRequest = try decoder.decode(
+            // Params are optional for this poll: Linux peer probes and some clients
+            // omit `params` entirely. Missing params ⇒ empty filter (all pending).
+            let requestId: String
+            let params: ComputerUseApprovalPendingRequest
+            if let typedRequest = try? decoder.decode(
                 BurnBarRPCRequestEnvelopeWithParams<ComputerUseApprovalPendingRequest>.self,
                 from: requestData
-            )
-            let result: ComputerUseApprovalPendingResponse = await computerUseService.pendingApprovals(typedRequest.params)
+            ) {
+                requestId = typedRequest.id
+                params = typedRequest.params
+            } else {
+                let bare = try decoder.decode(BurnBarRPCRequestEnvelope.self, from: requestData)
+                requestId = bare.id
+                params = ComputerUseApprovalPendingRequest()
+            }
+            let result: ComputerUseApprovalPendingResponse = await computerUseService.pendingApprovals(params)
             let response = BurnBarRPCResponseEnvelope(
-                id: typedRequest.id,
+                id: requestId,
                 protocolVersion: BurnBarProtocolVersion.current,
                 result: result
             )

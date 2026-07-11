@@ -13,6 +13,9 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case authBootstrap = "auth.bootstrap"
     case health = "daemon.health"
     case catalog = "daemon.catalog"
+    case linuxOnboardingSnapshot = "daemon.onboarding.snapshot"
+    case linuxOnboardingAction = "daemon.onboarding.action"
+    case linuxOnboardingReset = "daemon.onboarding.reset"
     case configGet = "daemon.config.get"
     case configUpdate = "daemon.config.update"
     case providerCredentialSlotUpsert = "daemon.provider.credential_slot.upsert"
@@ -51,6 +54,16 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     /// T-DMN-04: provision the daemon's pinned phone-control verifying key for a
     /// source device. First-party Mac app only; mutates daemon keychain trust state.
     case phoneControlPinProvision = "daemon.phone_control.pin.provision"
+    case daemonMediaSessionState = "daemon.media.session.state"
+    case daemonMediaCallAccept = "daemon.media.call.accept"
+    case daemonMediaCallDecline = "daemon.media.call.decline"
+    case daemonMediaCallEnd = "daemon.media.call.end"
+    case daemonMediaCapabilityGet = "daemon.media.capability.get"
+    case daemonMediaStatus = "daemon.media.status"
+    case daemonMediaFileOfferList = "daemon.media.file.offer.list"
+    case daemonMediaFileAccept = "daemon.media.file.accept"
+    case daemonMediaFileDecline = "daemon.media.file.decline"
+    case daemonMediaFileSend = "daemon.media.file.send"
     case controllerSummary = "daemon.controller.summary"
     /// Aggregated controller runtime (summary + questions + followups +
     /// missions + notification health + simulator runs) in one round trip.
@@ -101,6 +114,7 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case approvalRespond = "approval.respond"
     case subscriptionStart = "subscription.start"
     case subscriptionResume = "subscription.resume"
+    case subscriptionStop = "subscription.stop"
     case clientAttach = "client.attach"
     case clientClaimControl = "client.claimControl"
     case clientDetach = "client.detach"
@@ -364,6 +378,347 @@ public struct BurnBarMembershipRestoreResponse: Codable, Hashable, Sendable {
     }
 }
 
+public enum DaemonMediaSessionPhase: String, Codable, Hashable, Sendable {
+    case idle
+    case ringing
+    case streaming
+    case cooldown
+}
+
+public enum DaemonMediaSessionKind: String, Codable, Hashable, Sendable {
+    case mirror
+    case call
+}
+
+public struct DaemonMediaPeerSnapshot: Codable, Hashable, Sendable {
+    public let connectionID: String
+    public let displayName: String
+    public let isOnline: Bool
+    public let lastSeenAt: Date
+    public let capabilities: [String]
+
+    public init(
+        connectionID: String,
+        displayName: String,
+        isOnline: Bool,
+        lastSeenAt: Date,
+        capabilities: [String]
+    ) {
+        self.connectionID = connectionID
+        self.displayName = displayName
+        self.isOnline = isOnline
+        self.lastSeenAt = lastSeenAt
+        self.capabilities = capabilities
+    }
+}
+
+public struct DaemonMediaSessionSnapshot: Codable, Hashable, Sendable {
+    public let phase: DaemonMediaSessionPhase
+    public let kind: DaemonMediaSessionKind?
+    public let sessionID: String?
+    public let requestID: String?
+    public let streamClass: String?
+    public let peer: DaemonMediaPeerSnapshot?
+    public let startedAt: Date?
+    public let updatedAt: Date
+    public let cooldownUntil: Date?
+    public let shellConnected: Bool
+    public let queuedFrameCount: Int
+    public let droppedFrameCount: Int
+
+    public init(
+        phase: DaemonMediaSessionPhase,
+        kind: DaemonMediaSessionKind? = nil,
+        sessionID: String? = nil,
+        requestID: String? = nil,
+        streamClass: String? = nil,
+        peer: DaemonMediaPeerSnapshot? = nil,
+        startedAt: Date? = nil,
+        updatedAt: Date,
+        cooldownUntil: Date? = nil,
+        shellConnected: Bool = false,
+        queuedFrameCount: Int = 0,
+        droppedFrameCount: Int = 0
+    ) {
+        self.phase = phase
+        self.kind = kind
+        self.sessionID = sessionID
+        self.requestID = requestID
+        self.streamClass = streamClass
+        self.peer = peer
+        self.startedAt = startedAt
+        self.updatedAt = updatedAt
+        self.cooldownUntil = cooldownUntil
+        self.shellConnected = shellConnected
+        self.queuedFrameCount = queuedFrameCount
+        self.droppedFrameCount = droppedFrameCount
+    }
+}
+
+public struct DaemonMediaCapabilityResponse: Codable, Hashable, Sendable {
+    public let platform: String
+    public let available: Bool
+    public let mediaSocketPath: String?
+    public let supportsDaemonToShellFrames: Bool
+    public let supportsShellToDaemonControl: Bool
+    public let codecsKnown: Bool
+    public let codecs: [String: Bool]
+    public let source: String
+    public let detail: String?
+
+    public init(
+        platform: String,
+        available: Bool,
+        mediaSocketPath: String?,
+        supportsDaemonToShellFrames: Bool,
+        supportsShellToDaemonControl: Bool,
+        codecsKnown: Bool,
+        codecs: [String: Bool],
+        source: String,
+        detail: String? = nil
+    ) {
+        self.platform = platform
+        self.available = available
+        self.mediaSocketPath = mediaSocketPath
+        self.supportsDaemonToShellFrames = supportsDaemonToShellFrames
+        self.supportsShellToDaemonControl = supportsShellToDaemonControl
+        self.codecsKnown = codecsKnown
+        self.codecs = codecs
+        self.source = source
+        self.detail = detail
+    }
+}
+
+public struct DaemonMediaStatusResponse: Codable, Hashable, Sendable {
+    public let capability: DaemonMediaCapabilityResponse
+    public let session: DaemonMediaSessionSnapshot
+
+    public init(
+        capability: DaemonMediaCapabilityResponse,
+        session: DaemonMediaSessionSnapshot
+    ) {
+        self.capability = capability
+        self.session = session
+    }
+}
+
+public struct DaemonMediaSessionStateResponse: Codable, Hashable, Sendable {
+    public let session: DaemonMediaSessionSnapshot
+
+    public init(session: DaemonMediaSessionSnapshot) {
+        self.session = session
+    }
+}
+
+public struct DaemonMediaCallAcceptRequest: Codable, Hashable, Sendable {
+    public let requestID: String?
+    public let sessionID: String?
+
+    public init(requestID: String? = nil, sessionID: String? = nil) {
+        self.requestID = requestID
+        self.sessionID = sessionID
+    }
+}
+
+public struct DaemonMediaCallDeclineRequest: Codable, Hashable, Sendable {
+    public let requestID: String?
+    public let reason: String?
+
+    public init(requestID: String? = nil, reason: String? = nil) {
+        self.requestID = requestID
+        self.reason = reason
+    }
+}
+
+public struct DaemonMediaCallEndRequest: Codable, Hashable, Sendable {
+    public let sessionID: String?
+    public let reason: String?
+
+    public init(sessionID: String? = nil, reason: String? = nil) {
+        self.sessionID = sessionID
+        self.reason = reason
+    }
+}
+
+public struct DaemonMediaCallActionResponse: Codable, Hashable, Sendable {
+    public let accepted: Bool
+    public let session: DaemonMediaSessionSnapshot
+    public let detail: String?
+
+    public init(
+        accepted: Bool,
+        session: DaemonMediaSessionSnapshot,
+        detail: String? = nil
+    ) {
+        self.accepted = accepted
+        self.session = session
+        self.detail = detail
+    }
+}
+
+public enum DaemonMediaFileTransferDirection: String, Codable, Hashable, Sendable {
+    case inbound
+    case outbound
+}
+
+public enum DaemonMediaFileTransferPhase: String, Codable, Hashable, Sendable {
+    case pendingAccept
+    case downloading
+    case sending
+    case offered
+    case completed
+    case declined
+    case failed
+}
+
+public enum DaemonMediaFileTransferErrorCode: String, Codable, Hashable, Sendable {
+    case capabilityAbsent
+    case invalidRequest
+    case transferNotFound
+    case localFileMissing
+    case noControlRoute
+    case publishFailed
+    case fetchFailed
+    case ioFailed
+    case peerRejected
+}
+
+public struct DaemonMediaFileTransferProgress: Codable, Hashable, Sendable {
+    public let bytesTransferred: Int64
+    public let bytesTotal: Int64
+    public let fraction: Double
+
+    public init(bytesTransferred: Int64, bytesTotal: Int64) {
+        self.bytesTransferred = max(0, bytesTransferred)
+        self.bytesTotal = max(0, bytesTotal)
+        self.fraction = bytesTotal > 0
+            ? min(1.0, max(0.0, Double(max(0, bytesTransferred)) / Double(bytesTotal)))
+            : 0
+    }
+}
+
+public struct DaemonMediaFileTransferSnapshot: Codable, Hashable, Sendable {
+    public let transferID: String
+    public let manifestID: String
+    public let direction: DaemonMediaFileTransferDirection
+    public let phase: DaemonMediaFileTransferPhase
+    public let filename: String
+    public let mime: String
+    public let size: Int64
+    public let peer: DaemonMediaPeerSnapshot?
+    public let progress: DaemonMediaFileTransferProgress
+    public let localPath: String?
+    public let errorCode: DaemonMediaFileTransferErrorCode?
+    public let detail: String?
+    public let createdAt: Date
+    public let updatedAt: Date
+    public let completedAt: Date?
+
+    public init(
+        transferID: String,
+        manifestID: String,
+        direction: DaemonMediaFileTransferDirection,
+        phase: DaemonMediaFileTransferPhase,
+        filename: String,
+        mime: String,
+        size: Int64,
+        peer: DaemonMediaPeerSnapshot? = nil,
+        progress: DaemonMediaFileTransferProgress,
+        localPath: String? = nil,
+        errorCode: DaemonMediaFileTransferErrorCode? = nil,
+        detail: String? = nil,
+        createdAt: Date,
+        updatedAt: Date,
+        completedAt: Date? = nil
+    ) {
+        self.transferID = transferID
+        self.manifestID = manifestID
+        self.direction = direction
+        self.phase = phase
+        self.filename = filename
+        self.mime = mime
+        self.size = size
+        self.peer = peer
+        self.progress = progress
+        self.localPath = localPath
+        self.errorCode = errorCode
+        self.detail = detail
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.completedAt = completedAt
+    }
+}
+
+public struct DaemonMediaFileOfferListResponse: Codable, Hashable, Sendable {
+    public let capabilityAvailable: Bool
+    public let downloadDirectory: String?
+    public let transfers: [DaemonMediaFileTransferSnapshot]
+    public let detail: String?
+
+    public init(
+        capabilityAvailable: Bool,
+        downloadDirectory: String? = nil,
+        transfers: [DaemonMediaFileTransferSnapshot],
+        detail: String? = nil
+    ) {
+        self.capabilityAvailable = capabilityAvailable
+        self.downloadDirectory = downloadDirectory
+        self.transfers = transfers
+        self.detail = detail
+    }
+}
+
+public struct DaemonMediaFileAcceptRequest: Codable, Hashable, Sendable {
+    public let transferID: String?
+    public let manifestID: String?
+
+    public init(transferID: String? = nil, manifestID: String? = nil) {
+        self.transferID = transferID
+        self.manifestID = manifestID
+    }
+}
+
+public struct DaemonMediaFileDeclineRequest: Codable, Hashable, Sendable {
+    public let transferID: String?
+    public let manifestID: String?
+    public let reason: String?
+
+    public init(transferID: String? = nil, manifestID: String? = nil, reason: String? = nil) {
+        self.transferID = transferID
+        self.manifestID = manifestID
+        self.reason = reason
+    }
+}
+
+public struct DaemonMediaFileSendRequest: Codable, Hashable, Sendable {
+    public let path: String
+    public let peerID: String?
+
+    public init(path: String, peerID: String? = nil) {
+        self.path = path
+        self.peerID = peerID
+    }
+}
+
+public struct DaemonMediaFileActionResponse: Codable, Hashable, Sendable {
+    public let accepted: Bool
+    public let transfer: DaemonMediaFileTransferSnapshot?
+    public let errorCode: DaemonMediaFileTransferErrorCode?
+    public let detail: String?
+
+    public init(
+        accepted: Bool,
+        transfer: DaemonMediaFileTransferSnapshot? = nil,
+        errorCode: DaemonMediaFileTransferErrorCode? = nil,
+        detail: String? = nil
+    ) {
+        self.accepted = accepted
+        self.transfer = transfer
+        self.errorCode = errorCode
+        self.detail = detail
+    }
+}
+
 public enum BurnBarResumeMode: String, Codable, Sendable, Hashable {
     case print
     case copy
@@ -504,6 +859,21 @@ public struct BurnBarSubscriptionResumeRequest: Codable, Sendable, Hashable {
     }
 }
 
+public struct BurnBarSubscriptionStopRequest: Codable, Sendable, Hashable {
+    public let subscriptionID: String
+    public let clientID: String?
+
+    enum CodingKeys: String, CodingKey {
+        case subscriptionID = "subscription_id"
+        case clientID = "client_id"
+    }
+
+    public init(subscriptionID: String, clientID: String? = nil) {
+        self.subscriptionID = subscriptionID
+        self.clientID = clientID
+    }
+}
+
 public struct BurnBarSubscriptionEvent: Codable, Sendable, Hashable {
     public let seq: Int
     public let kind: String
@@ -573,6 +943,24 @@ public struct BurnBarSubscriptionResponse: Codable, Sendable, Hashable {
         self.disconnectDetected = disconnectDetected
         self.recoveredAfterRestart = recoveredAfterRestart
         self.terminalStateDelivered = terminalStateDelivered
+    }
+}
+
+public struct BurnBarSubscriptionStopResponse: Codable, Sendable, Hashable {
+    public let subscriptionID: String
+    public let stopped: Bool
+    public let lastSeq: Int
+
+    enum CodingKeys: String, CodingKey {
+        case subscriptionID = "subscription_id"
+        case stopped
+        case lastSeq = "last_seq"
+    }
+
+    public init(subscriptionID: String, stopped: Bool, lastSeq: Int) {
+        self.subscriptionID = subscriptionID
+        self.stopped = stopped
+        self.lastSeq = lastSeq
     }
 }
 

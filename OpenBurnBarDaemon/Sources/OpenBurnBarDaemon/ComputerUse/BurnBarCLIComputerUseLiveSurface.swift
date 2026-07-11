@@ -3,6 +3,7 @@ import Foundation
 enum BurnBarCLIComputerUseLiveSurface {
     private static let usageText = """
     Usage:
+      openburnbar-cli computer-use panic-halt --session-id ID|* [--source hotkey|phone_gesture|mac_lock|remote_config|accessibility_revoked|stalled|revoked] [--json]
       openburnbar-cli computer-use live-surface-proof --panic-url URL --media-url URL [--audit-head HASH] [--json]
     """
 

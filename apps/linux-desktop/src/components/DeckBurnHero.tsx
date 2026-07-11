@@ -64,7 +64,12 @@ export function DeckBurnHero({ summary, loading }: Props) {
 
   if (loading || !summary) {
     return (
-      <div className="burn-hero burn-hero--skeleton" aria-busy="true" aria-label="Loading telemetry" />
+      <div
+        className="burn-hero burn-hero--skeleton"
+        role="status"
+        aria-busy="true"
+        aria-label="Loading telemetry"
+      />
     );
   }
 

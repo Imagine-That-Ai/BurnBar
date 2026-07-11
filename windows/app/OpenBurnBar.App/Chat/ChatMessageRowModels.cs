@@ -99,6 +99,28 @@ public sealed class ChatMessageViewModel : INotifyPropertyChanged
     /// User bubbles render plain content; assistant bubbles render <see cref="Rows"/>.
     public string UserText => _record.Content;
 
+    public bool HasAttachments => _record.Attachments.Count > 0;
+
+    public string AttachmentSummary
+    {
+        get
+        {
+            if (_record.Attachments.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            var labels = new List<string>();
+            foreach (ChatAttachmentRecord attachment in _record.Attachments)
+            {
+                string suffix = attachment.IsMissing ? " missing" : string.Empty;
+                labels.Add(attachment.DisplayName + suffix);
+            }
+
+            return string.Join(", ", labels);
+        }
+    }
+
     public ObservableCollection<ChatMessageRow> Rows { get; }
 
     /// True while an assistant turn is live but nothing has rendered yet — the

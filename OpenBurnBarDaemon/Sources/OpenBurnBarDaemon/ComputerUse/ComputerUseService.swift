@@ -6,9 +6,10 @@ import OpenBurnBarComputerUseCore
 ///
 /// The Mac app still owns interactive approval UI and Mac-wide CGEvent
 /// dispatch. This service makes the wire contracts reachable, owns
-/// browser-session Playwright drivers, and rejects app-owned modes
-/// (`agent_watch` and `system`) at session start so callers cannot create
-/// a daemon session that appears valid but can never dispatch Path A/C.
+/// browser-session Playwright drivers, and rejects app-owned modes at session
+/// start on macOS so callers cannot create a daemon session that appears valid
+/// but can never dispatch Path A/C. On Linux, the daemon owns system input via
+/// Linux-native adapters because there is no AppKit host process to inject it.
 public actor ComputerUseService {
     public enum ServiceError: Error, Sendable, Equatable {
         case invalidMode(String)
@@ -35,6 +36,10 @@ public actor ComputerUseService {
     private let quotaLedger: ComputerUseLocalQuotaLedger
     private let leafKillSwitch: @Sendable () -> Bool
     private let playwrightDriverFactory: (@Sendable (ComputerUseSessionManifest) async throws -> OpenBurnBarPlaywrightDriver?)?
+    private let systemInputAccessibilityTrusted: @Sendable (ComputerUseMode) -> Bool
+    private let systemInputAccessibilityDeny: @Sendable (MacInputAction) async -> ComputerUseAccessibilityDenyReason?
+    private let computerUseKillSwitchEnabled: @Sendable () -> Bool
+    private let privilegedInputKillSwitchActivator: @Sendable (String) -> Void
     private var manifests: [ComputerUseSessionID: ComputerUseSessionManifest] = [:]
     private var pendingEndedSessions: [ComputerUseSessionEndRecord] = []
     private var sessionStartReserved = false
@@ -49,6 +54,12 @@ public actor ComputerUseService {
         quotaLedger: ComputerUseLocalQuotaLedger = ComputerUseLocalQuotaLedger(
             directory: ComputerUseLocalQuotaLedger.defaultDirectory()
         ),
+        systemInputDispatcher: ComputerUseRunCoordinator.MacInputDispatcher? = nil,
+        systemInspectDispatcher: ComputerUseRunCoordinator.MacInspectDispatcher? = nil,
+        systemInputAccessibilityTrusted: (@Sendable (ComputerUseMode) -> Bool)? = nil,
+        systemInputAccessibilityDeny: (@Sendable (MacInputAction) async -> ComputerUseAccessibilityDenyReason?)? = nil,
+        computerUseKillSwitchEnabled: (@Sendable () -> Bool)? = nil,
+        privilegedInputKillSwitchActivator: (@Sendable (String) -> Void)? = nil,
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "computer-use-service")
     ) {
         self.init(
@@ -67,6 +78,12 @@ public actor ComputerUseService {
                 #endif
             },
             playwrightDriverFactory: nil,
+            systemInputDispatcher: systemInputDispatcher,
+            systemInspectDispatcher: systemInspectDispatcher,
+            systemInputAccessibilityTrusted: systemInputAccessibilityTrusted,
+            systemInputAccessibilityDeny: systemInputAccessibilityDeny,
+            computerUseKillSwitchEnabled: computerUseKillSwitchEnabled,
+            privilegedInputKillSwitchActivator: privilegedInputKillSwitchActivator,
             logger: logger
         )
     }
@@ -82,6 +99,12 @@ public actor ComputerUseService {
         capabilityStateStore: ComputerUseCapabilityStateStore,
         leafKillSwitch: @escaping @Sendable () -> Bool,
         playwrightDriverFactory: (@Sendable (ComputerUseSessionManifest) async throws -> OpenBurnBarPlaywrightDriver?)?,
+        systemInputDispatcher: ComputerUseRunCoordinator.MacInputDispatcher? = nil,
+        systemInspectDispatcher: ComputerUseRunCoordinator.MacInspectDispatcher? = nil,
+        systemInputAccessibilityTrusted: (@Sendable (ComputerUseMode) -> Bool)? = nil,
+        systemInputAccessibilityDeny: (@Sendable (MacInputAction) async -> ComputerUseAccessibilityDenyReason?)? = nil,
+        computerUseKillSwitchEnabled: (@Sendable () -> Bool)? = nil,
+        privilegedInputKillSwitchActivator: (@Sendable (String) -> Void)? = nil,
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "computer-use-service")
     ) {
         let approvalBridge = ComputerUseApprovalBridge()
@@ -101,10 +124,57 @@ public actor ComputerUseService {
         self.capabilityStateStore = capabilityStateStore
         self.leafKillSwitch = leafKillSwitch
         self.playwrightDriverFactory = playwrightDriverFactory
+        let defaultSystemInputDispatcher: ComputerUseRunCoordinator.MacInputDispatcher?
+        let defaultSystemInspectDispatcher: ComputerUseRunCoordinator.MacInspectDispatcher?
+        let defaultSystemAccessibilityTrusted: @Sendable (ComputerUseMode) -> Bool
+        let defaultSystemAccessibilityDeny: @Sendable (MacInputAction) async -> ComputerUseAccessibilityDenyReason?
+        let defaultComputerUseKillSwitchEnabled: @Sendable () -> Bool
+        let defaultPrivilegedInputKillSwitchActivator: @Sendable (String) -> Void
+        #if os(Linux)
+        let linuxInputAdapter = LinuxComputerUseInputAdapter()
+        defaultSystemInputDispatcher = { _, action in
+            try await linuxInputAdapter.dispatch(action)
+        }
+        defaultSystemInspectDispatcher = { _, action in
+            try await linuxInputAdapter.inspectAccessibility(action)
+        }
+        defaultSystemAccessibilityTrusted = { mode in
+            mode == .system && linuxInputAdapter.isAvailableForSystemInput()
+        }
+        defaultSystemAccessibilityDeny = { action in
+            linuxInputAdapter.accessibilityDenyReason(for: action)
+        }
+        defaultComputerUseKillSwitchEnabled = {
+            LinuxPrivilegedInputKillFlag.isActive()
+                || LinuxPrivilegedInputKillFlag.environmentKillSwitchActive()
+        }
+        defaultPrivilegedInputKillSwitchActivator = { reason in
+            LinuxPrivilegedInputKillFlag.activate(reason: reason)
+        }
+        #else
+        defaultSystemInputDispatcher = nil
+        defaultSystemInspectDispatcher = nil
+        defaultSystemAccessibilityTrusted = { _ in false }
+        defaultSystemAccessibilityDeny = { _ in nil }
+        defaultComputerUseKillSwitchEnabled = {
+            PrivilegedInputKillSwitch.isActive
+                || Self.environmentComputerUseKillSwitchEnabled()
+                || leafKillSwitch()
+        }
+        defaultPrivilegedInputKillSwitchActivator = { reason in
+            PrivilegedInputKillSwitch.activate(reason: reason)
+        }
+        #endif
+        self.systemInputAccessibilityTrusted = systemInputAccessibilityTrusted ?? defaultSystemAccessibilityTrusted
+        self.systemInputAccessibilityDeny = systemInputAccessibilityDeny ?? defaultSystemAccessibilityDeny
+        self.computerUseKillSwitchEnabled = computerUseKillSwitchEnabled ?? defaultComputerUseKillSwitchEnabled
+        self.privilegedInputKillSwitchActivator = privilegedInputKillSwitchActivator ?? defaultPrivilegedInputKillSwitchActivator
         self.coordinator = ComputerUseRunCoordinator(
             approvalIssuer: { request in
                 try await approvalBridge.issue(request)
             },
+            macInputDispatcher: systemInputDispatcher ?? defaultSystemInputDispatcher,
+            macInspectDispatcher: systemInspectDispatcher ?? defaultSystemInspectDispatcher,
             macAppVersion: macAppVersion,
             auditBaseDirectory: auditBaseDirectory,
             quotaLedger: resolvedQuotaLedger,
@@ -119,13 +189,11 @@ public actor ComputerUseService {
         guard let trustMode = ComputerUseTrustMode(rawValue: request.trustMode) else {
             throw ServiceError.invalidTrustMode(request.trustMode)
         }
-        guard mode == .browser else {
-            // Path A and Path C are app-owned because they depend on the
-            // Mac app's live relay session, approval UI, AX trust state,
-            // and CGEvent dispatcher. The daemon owns only Path B browser
-            // Playwright sessions; fail early instead of starting a session
-            // that would later deny every System-mode action through a fake
-            // `accessibilityTrusted: false` capability.
+        guard Self.supportsDaemonMode(mode) else {
+            // Path A and Path C are app-owned on macOS because they depend on
+            // the Mac app's live relay session, approval UI, AX trust state,
+            // and CGEvent dispatcher. Linux allows `.system` because the
+            // daemon wires Linux-native input adapters directly.
             throw ServiceError.unsupportedDaemonMode(mode.rawValue)
         }
 
@@ -194,7 +262,7 @@ public actor ComputerUseService {
             }
         } catch {
             if didStartCoordinatorSession {
-                await coordinator.endSession(sessionId: sessionId, reason: .error)
+                _ = await coordinator.endSession(sessionId: sessionId, reason: .error)
             } else {
                 await driver?.stop()
             }
@@ -239,27 +307,29 @@ public actor ComputerUseService {
             await terminateAllSessions(reason: .error)
             return deniedResponse(request, reason: "capability_state_unavailable")
         }
-        if capabilityState.killSwitch || leafKillSwitch() {
+        if effectiveKillSwitchEnabled(capabilityState) {
             await terminateAllSessions(source: .remoteConfig)
             return deniedResponse(request, reason: ComputerUseDenyReason.killSwitch.rawValue)
         }
         if capabilityState.authorizationRevoked ||
             !Self.entitlementIsActive(capabilityState.entitlement) ||
             capabilityState.entitlement.productId != Self.computerUseProductId ||
-            !capabilityState.entitlement.allowsBrowser {
+            !Self.entitlementAllowsMode(capabilityState.entitlement, mode: manifest.mode) {
             await terminateAllSessions(source: .revoked)
             return deniedResponse(request, reason: ComputerUseDenyReason.entitlement.rawValue)
         }
 
         let anotherDaemonSession = await coordinator.hasActiveSession(excluding: sessionId)
+        let action = try? await coordinator.actionDescriptor(invocation: request.invocation)
+        let accessibilityDeny = await accessibilityDenyReason(for: action, mode: manifest.mode)
         let capability = ComputerUseCapabilityContext(
             entitlement: capabilityState.entitlement,
             envelope: capabilityState.budgetEnvelope,
             usage: capabilityState.quotaUsage,
             session: state,
             concurrentSessionActive: capabilityState.concurrentSessionActive || anotherDaemonSession,
-            killSwitch: capabilityState.killSwitch || leafKillSwitch(),
-            accessibilityTrusted: false
+            killSwitch: effectiveKillSwitchEnabled(capabilityState),
+            accessibilityTrusted: systemInputAccessibilityTrusted(manifest.mode)
         )
 
         // CU-021 fix: resolve scope rules against the browser action URL.
@@ -281,7 +351,7 @@ public actor ComputerUseService {
             invocation: request.invocation,
             scopeContext: scopeContext,
             scopeOutcome: scopeOutcome,
-            accessibilityDeny: nil,
+            accessibilityDeny: accessibilityDeny,
             capability: capability
         )
     }
@@ -310,11 +380,31 @@ public actor ComputerUseService {
     }
 
     public func panicHalt(_ request: ComputerUsePanicHaltRequest) async throws -> ComputerUsePanicHaltResponse {
-        let sessionId = ComputerUseSessionID(request.sessionId)
-        guard let source = ComputerUsePanicSource(rawValue: request.source),
-              let state = await coordinator.session(sessionId) else {
+        guard let source = ComputerUsePanicSource(rawValue: request.source) else {
             throw ServiceError.invalidSession(request.sessionId)
         }
+        if request.sessionId == "*" {
+            privilegedInputKillSwitchActivator(source.rawValue)
+            let endedAt = Date()
+            let haltedSessions = await coordinator.panicHaltAllWithRecords(source: source)
+            for record in haltedSessions {
+                let sessionId = ComputerUseSessionID(record.sessionId)
+                let sessionDirectory = auditBaseDirectory.appendingPathComponent(record.sessionId, isDirectory: true)
+                finalizeAuditHeadIfPossible(sessionDirectory: sessionDirectory, closedAt: endedAt)
+                manifests.removeValue(forKey: sessionId)
+            }
+            return ComputerUsePanicHaltResponse(
+                sessionId: request.sessionId,
+                endedAt: endedAt,
+                auditHeadHashHex: ""
+            )
+        }
+
+        let sessionId = ComputerUseSessionID(request.sessionId)
+        guard let state = await coordinator.session(sessionId) else {
+            throw ServiceError.invalidSession(request.sessionId)
+        }
+        privilegedInputKillSwitchActivator(source.rawValue)
         let sessionDirectory = auditBaseDirectory.appendingPathComponent(sessionId.rawValue, isDirectory: true)
         let ended = await coordinator.panicHalt(sessionId: sessionId, source: source)
         let endedAt = ended?.endedAt ?? Date()
@@ -401,7 +491,11 @@ public actor ComputerUseService {
 
     private func finalizeAuditHeadIfPossible(sessionDirectory: URL, closedAt: Date = Date()) {
         guard let signer = try? deviceAuditExportSigner() else { return }
-        try? ComputerUseAuditHeadFinalizer.finalizeSessionDirectory(sessionDirectory, closedAt: closedAt, signer: signer)
+        _ = try? ComputerUseAuditHeadFinalizer.finalizeSessionDirectory(
+            sessionDirectory,
+            closedAt: closedAt,
+            signer: signer
+        )
     }
 
     private func makePlaywrightDriverIfNeeded(
@@ -447,13 +541,13 @@ public actor ComputerUseService {
         _ state: ComputerUseCapabilityStateSnapshot,
         mode: ComputerUseMode
     ) async throws {
-        if state.killSwitch || leafKillSwitch() {
+        if effectiveKillSwitchEnabled(state) {
             throw ServiceError.capabilityDenied(ComputerUseDenyReason.killSwitch.rawValue)
         }
         guard !state.authorizationRevoked,
               Self.entitlementIsActive(state.entitlement),
               state.entitlement.productId == Self.computerUseProductId,
-              mode != .browser || state.entitlement.allowsBrowser else {
+              Self.entitlementAllowsMode(state.entitlement, mode: mode) else {
             throw ServiceError.capabilityDenied(ComputerUseDenyReason.entitlement.rawValue)
         }
         let daemonSessionActive = await coordinator.hasActiveSession()
@@ -482,12 +576,12 @@ public actor ComputerUseService {
     ) async {
         if !state.isComplete {
             await terminateAllSessions(reason: .error)
-        } else if state.killSwitch || leafKillSwitch() {
+        } else if effectiveKillSwitchEnabled(state) {
             await terminateAllSessions(source: .remoteConfig)
         } else if state.authorizationRevoked ||
                     !Self.entitlementIsActive(state.entitlement) ||
                     state.entitlement.productId != Self.computerUseProductId ||
-                    !state.entitlement.allowsBrowser {
+                    !manifests.values.allSatisfy({ Self.entitlementAllowsMode(state.entitlement, mode: $0.mode) }) {
             await terminateAllSessions(source: .revoked)
         } else if state.budgetEnvelope.level == .hardCap ||
                     state.quotaUsage.totalMeteredActionsExecuted >= state.budgetEnvelope.activeActionsPerDay ||
@@ -533,6 +627,59 @@ public actor ComputerUseService {
         now: Date = Date()
     ) -> Bool {
         entitlement.isActive && (entitlement.expireAt.map { $0 > now } ?? true)
+    }
+
+    private static func entitlementAllowsMode(
+        _ entitlement: ComputerUseEntitlementSnapshot,
+        mode: ComputerUseMode
+    ) -> Bool {
+        switch mode {
+        case .browser:
+            return entitlement.allowsBrowser
+        case .system:
+            return entitlement.allowsSystem
+        case .agentWatch:
+            return false
+        }
+    }
+
+    private func effectiveKillSwitchEnabled(_ state: ComputerUseCapabilityStateSnapshot) -> Bool {
+        state.killSwitch || leafKillSwitch() || computerUseKillSwitchEnabled()
+    }
+
+    private static func supportsDaemonMode(_ mode: ComputerUseMode) -> Bool {
+        #if os(Linux)
+        return mode == .browser || mode == .system
+        #else
+        return mode == .browser
+        #endif
+    }
+
+    private func accessibilityDenyReason(
+        for action: ComputerUseAction?,
+        mode: ComputerUseMode
+    ) async -> ComputerUseAccessibilityDenyReason? {
+        guard mode == .system,
+              case .macInput(let inputAction) = action else {
+            return nil
+        }
+        return await systemInputAccessibilityDeny(inputAction)
+    }
+
+    private static func environmentComputerUseKillSwitchEnabled() -> Bool {
+        [
+            "OPENBURNBAR_COMPUTER_USE_KILL_SWITCH",
+            "COMPUTER_USE_KILL_SWITCH",
+            "computer_use_kill_switch"
+        ].contains { name in
+            guard let value = ProcessInfo.processInfo.environment[name]?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased(),
+                !value.isEmpty else {
+                return false
+            }
+            return ["1", "true", "yes", "on"].contains(value)
+        }
     }
 
     /// Extracts a scope context from a tool invocation for browser-mode scope

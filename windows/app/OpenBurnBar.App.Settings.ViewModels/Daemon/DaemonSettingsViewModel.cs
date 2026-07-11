@@ -61,6 +61,17 @@ public sealed class DaemonSettingsViewModel : ObservableSettingsViewModel
         "capability is substituted in-process, scheduled to build, deferred to v1.1, " +
         "or not applicable — the full disposition is below.";
 
+    /// <summary>
+    /// Default finish line for the Windows port (H0). Never say "100% parity" without naming F1 or F2.
+    /// </summary>
+    public string FinishLineDefault => WindowsFinishLineScope.DefaultLabel;
+
+    /// <summary>One-line scope explainer for the Engine Room header.</summary>
+    public string FinishLineExplainer => WindowsFinishLineScope.Explainer;
+
+    /// <summary>F1 vs F2 capability rows for the Engine Room scope table.</summary>
+    public IReadOnlyList<WindowsFinishLineScopeRow> FinishLineScope => WindowsFinishLineScope.Rows;
+
     /// <summary>The disposition tallies (matches the doc's summary table).</summary>
     public DaemonSubstitutionSummary Summary { get; }
 

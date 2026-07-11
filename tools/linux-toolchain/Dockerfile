@@ -31,8 +31,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         libei-dev \
         libgtk-3-dev \
         libkf5wallet-dev \
+        libpam0g-dev \
         libpipewire-0.3-dev \
         libsecret-1-dev \
+        libsecret-tools \
         libglib2.0-bin \
         libreadline-dev \
         librsvg2-dev \
@@ -46,10 +48,12 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         nodejs \
         npm \
         openbox \
+        orca \
         patchelf \
         pipewire \
         pkg-config \
         procps \
+        python3-pyatspi \
         rpm \
         scrot \
         squashfs-tools \

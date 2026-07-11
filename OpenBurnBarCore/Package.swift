@@ -455,9 +455,14 @@ let legacyLinuxTestSources: [String]? = ["LinuxEmptyTests.swift"]
 #if os(Linux)
 let openBurnBarCoreOffAppleTestSources: [String]? = ["LLMSafeWrapVectorTests.swift"]
 let openBurnBarCorePlaceholderExcludes = ["LinuxEmptyTests.swift"]
+let computerUseCoreOffAppleTestSources: [String]? = [
+    "LinuxSecretStorageTests.swift",
+    "LinuxRemoteUnlockCapabilitySigningKeyStoreTests.swift"
+]
 #else
 let openBurnBarCoreOffAppleTestSources: [String]? = ["LinuxEmptyTests.swift", "LLMSafeWrapVectorTests.swift"]
 let openBurnBarCorePlaceholderExcludes: [String] = []
+let computerUseCoreOffAppleTestSources: [String]? = ["LinuxEmptyTests.swift"]
 #endif
 func legacyLinuxTestExcludes(targetPath: String) -> [String] {
     let targetURL = packageRoot.appendingPathComponent(targetPath, isDirectory: true)
@@ -473,7 +478,12 @@ func legacyLinuxTestExcludes(targetPath: String) -> [String] {
             return nil
         }
         let relativePath = String(url.path.dropFirst(targetURL.path.count + 1))
-        return ["LinuxEmptyTests.swift", "LLMSafeWrapVectorTests.swift"].contains(relativePath)
+        return [
+            "LinuxEmptyTests.swift",
+            "LLMSafeWrapVectorTests.swift",
+            "LinuxSecretStorageTests.swift",
+            "LinuxRemoteUnlockCapabilitySigningKeyStoreTests.swift"
+        ].contains(relativePath)
             ? nil
             : relativePath
     }.sorted()
@@ -514,11 +524,44 @@ let computerUseCoreTestExcludes: [String] = []
 let legacyLinuxTestSources: [String]? = nil
 let openBurnBarCoreOffAppleTestSources: [String]? = nil
 let openBurnBarCorePlaceholderExcludes: [String] = []
+let computerUseCoreOffAppleTestSources: [String]? = nil
 func legacyLinuxTestExcludes(targetPath _: String) -> [String] { [] }
 // On Apple the reader links the system `SQLite3` module, so no vendored C target
 // and no Core dependency edge — the amalgamation is not compiled on Apple builds.
 let vendoredSQLiteTargets: [Target] = []
 let coreSQLiteDependencies: [Target.Dependency] = []
+#endif
+
+#if os(Linux)
+let libsecretCFlags = [
+    "-I/usr/include/libsecret-1",
+    "-I/usr/include/glib-2.0",
+    "-I/usr/lib/aarch64-linux-gnu/glib-2.0/include",
+    "-I/usr/lib/x86_64-linux-gnu/glib-2.0/include",
+    "-I/usr/include/libmount",
+    "-I/usr/include/blkid",
+    "-I/usr/include/gio-unix-2.0"
+]
+let linuxSecretServiceTargets: [Target] = [
+    .target(
+        name: "COpenBurnBarSecretService",
+        path: "Sources/COpenBurnBarSecretService",
+        publicHeadersPath: ".",
+        cSettings: [
+            .unsafeFlags(libsecretCFlags)
+        ],
+        linkerSettings: [
+            .linkedLibrary("secret-1"),
+            .linkedLibrary("gio-2.0"),
+            .linkedLibrary("gobject-2.0"),
+            .linkedLibrary("glib-2.0")
+        ]
+    )
+]
+let linuxSecretServiceDependencies: [Target.Dependency] = ["COpenBurnBarSecretService"]
+#else
+let linuxSecretServiceTargets: [Target] = []
+let linuxSecretServiceDependencies: [Target.Dependency] = []
 #endif
 
 let firstPartyTargetsBase: [Target] = [
@@ -602,6 +645,7 @@ let firstPartyTargetsBase: [Target] = [
         .target(
             name: "OpenBurnBarComputerUseCore",
             dependencies: ["OpenBurnBarKernel", "OpenBurnBarMedia", swiftCryptoDependency]
+                + linuxSecretServiceDependencies
                 + (buildOnWindows ? [] : ["Czlib"]),
             exclude: computerUseCoreExcludes,
             linkerSettings: [
@@ -621,7 +665,10 @@ let firstPartyTargetsBase: [Target] = [
         ),
         .target(
             name: "OpenBurnBarLinuxSecurity",
-            dependencies: [swiftCryptoDependency]
+            dependencies: [swiftCryptoDependency],
+            linkerSettings: [
+                .linkedLibrary("pam", .when(platforms: [.linux]))
+            ]
         ),
         .target(
             name: "OpenBurnBarSignalCore",
@@ -720,7 +767,9 @@ let firstPartyTargetsBase: [Target] = [
             name: "OpenBurnBarCoreTests",
             dependencies: [
                 "OpenBurnBarCore",
-                "OpenBurnBarFirestoreModels"
+                "OpenBurnBarFirestoreModels",
+                "OpenBurnBarLinuxSecurity",
+                swiftTestingDependency
             ] + swiftTestingAppleDependencies,
             exclude: openBurnBarCoreTestExcludes
                 + openBurnBarCorePlaceholderExcludes
@@ -790,7 +839,7 @@ let firstPartyTargetsBase: [Target] = [
                 swiftTestingDependency
             ],
             exclude: computerUseCoreTestExcludes + legacyLinuxTestExcludes(targetPath: "Tests/OpenBurnBarComputerUseCoreTests"),
-            sources: legacyLinuxTestSources,
+            sources: computerUseCoreOffAppleTestSources,
             resources: [
                 .process("Fixtures")
             ],
@@ -843,7 +892,6 @@ let linuxPlaceholderTestTargetNames: Set<String> = [
     "OpenBurnBarIrohRelayTests",
     "OpenBurnBarMediaTests",
     "BurnBarRemoteEngineTests",
-    "OpenBurnBarComputerUseCoreTests",
     "OpenBurnBarSignalCoreTests",
     "OpenBurnBarSignalSessionTransportTests"
 ]
@@ -877,7 +925,10 @@ let firstPartyTargets: [Target] = platformFirstPartyTargetsBase + (buildForLinux
 let linuxSecurityOnlyTargets: [Target] = [
     .target(
         name: "OpenBurnBarLinuxSecurity",
-        dependencies: [swiftCryptoDependency]
+        dependencies: [swiftCryptoDependency],
+        linkerSettings: [
+            .linkedLibrary("pam", .when(platforms: [.linux]))
+        ]
     ),
     .testTarget(
         name: "OpenBurnBarLinuxSecurityTests",
@@ -891,7 +942,7 @@ let linuxSecurityOnlyTargets: [Target] = [
 
 let allTargets: [Target] = buildLinuxSecurityOnly
     ? linuxSecurityOnlyTargets
-    : irohBinaryTargets + burnBarRemoteBinaryTargets + signalBinaryTargets + firstPartyTargets + vendoredSQLiteTargets
+    : irohBinaryTargets + burnBarRemoteBinaryTargets + signalBinaryTargets + linuxSecretServiceTargets + firstPartyTargets + vendoredSQLiteTargets
 
 let package = Package(
     name: "OpenBurnBarCore",

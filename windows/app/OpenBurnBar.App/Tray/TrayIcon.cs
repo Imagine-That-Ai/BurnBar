@@ -21,6 +21,7 @@ internal sealed class TrayIcon : IDisposable
     private readonly Action _onPrimaryClick;
     private readonly Action _onOpenMainWindow;
     private readonly Action _onExit;
+    private readonly uint _taskbarCreatedMessage;
 
     // The delegate MUST be held so the GC never collects the marshaled thunk under Win32.
     private readonly WndProc _wndProcDelegate;
@@ -38,6 +39,7 @@ internal sealed class TrayIcon : IDisposable
         _onOpenMainWindow = onOpenMainWindow;
         _onExit = onExit;
         _wndProcDelegate = WindowProc;
+        _taskbarCreatedMessage = RegisterWindowMessageW("TaskbarCreated");
         _className = "OpenBurnBar.TrayHost." + Environment.ProcessId;
     }
 
@@ -45,12 +47,7 @@ internal sealed class TrayIcon : IDisposable
     public void Show()
     {
         EnsureHostWindow();
-        AddOrModifyIcon(NIM_ADD);
-
-        // Opt into v4 behavior (rich callback packing, reliable NIN_* events).
-        var data = BuildIconData();
-        data.uVersion = NOTIFYICON_VERSION_4;
-        Shell_NotifyIconW(NIM_SETVERSION, ref data);
+        AddOrRefreshIcon();
     }
 
     private void EnsureHostWindow()
@@ -70,11 +67,12 @@ internal sealed class TrayIcon : IDisposable
         };
         RegisterClassExW(ref wndClass);
 
-        // Message-only window (HWND_MESSAGE): no UI, just a pump target for the callback.
+        // Hidden top-level window: it remains invisible, receives tray callbacks, and also
+        // receives Explorer's TaskbarCreated broadcast after shell restarts.
         _hwnd = CreateWindowExW(
             0, _className, "OpenBurnBar Tray Host", 0,
             0, 0, 0, 0,
-            HWND_MESSAGE, IntPtr.Zero, hInstance, IntPtr.Zero);
+            IntPtr.Zero, IntPtr.Zero, hInstance, IntPtr.Zero);
     }
 
     private NOTIFYICONDATAW BuildIconData()
@@ -131,8 +129,25 @@ internal sealed class TrayIcon : IDisposable
         }
     }
 
+    private void AddOrRefreshIcon()
+    {
+        AddOrModifyIcon(NIM_ADD);
+
+        // Opt into v4 behavior (rich callback packing, reliable NIN_* events). Explorer
+        // drops notify icons on restart, so this runs both at launch and TaskbarCreated.
+        var data = BuildIconData();
+        data.uVersion = NOTIFYICON_VERSION_4;
+        Shell_NotifyIconW(NIM_SETVERSION, ref data);
+    }
+
     private IntPtr WindowProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
     {
+        if (_taskbarCreatedMessage != 0 && msg == _taskbarCreatedMessage)
+        {
+            AddOrRefreshIcon();
+            return IntPtr.Zero;
+        }
+
         if (msg == CallbackMessage)
         {
             // v4 packing: LOWORD(lParam) is the mouse/keyboard event; WPARAM holds the

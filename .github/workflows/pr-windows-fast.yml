@@ -1,8 +1,9 @@
 name: PR Windows Fast Gate
 
-# Path-filtered Windows x64 PR gate. The ARM64 leg remains in
-# pr-windows-full.yml; this lane provides the minimum real compile, test, and
-# transitive dependency-security floor for every Windows-surface change.
+# Path-filtered Windows PR gate. The ARM64 leg remains in pr-windows-full.yml;
+# this lane provides the minimum real x64 compile, test, transitive
+# dependency-security, and parity-ledger honesty floor for every Windows-surface
+# change.
 
 on:
   pull_request:
@@ -21,7 +22,7 @@ concurrency:
 
 jobs:
   # ── Cheap detector: did this PR touch the Windows tree or its CI/budget wiring? ──
-  # Runs on ubuntu so the windows-latest lane only spins up when a PR
+  # Runs on ubuntu so the windows-latest lanes only spin up when a PR
   # actually changes windows/ (or its wiring). For merge_group (and any non-PR
   # trigger) the gate always runs.
   detect-windows-changes:
@@ -71,13 +72,51 @@ jobs:
           echo "${changed}"
 
           if echo "${changed}" | grep -Eq \
-            '^(windows/|\.github/workflows/pr-windows-fast\.yml|budgets/windows-tree-baseline\.json|scripts/debt/check-windows-tree-budget\.sh)'; then
+            '^(windows/|\.github/workflows/pr-windows-fast\.yml|budgets/windows-tree-baseline\.json|scripts/debt/check-windows-tree-budget\.sh|docs/windows-port/|scripts/ci/verify-windows-parity-ledger)'; then
             echo "windows=true" >> "$GITHUB_OUTPUT"
-            echo "Windows surface changed: running the x64 restore/build/test lane."
+            echo "Windows surface changed: running the skeleton, x64, and parity ledger lanes."
           else
             echo "windows=false" >> "$GITHUB_OUTPUT"
             echo "No Windows surface changed: skipping the windows-latest lane (aggregate still passes)."
           fi
+
+  # ── PR-GATED (skeleton): tree-shape tripwire ───────────────────────────────
+  # Cheap legacy tripwire kept alongside the real x64 lane while the Windows
+  # surface is still expanding quickly.
+  windows-skeleton:
+    name: Windows skeleton (build + lint + test)
+    needs: detect-windows-changes
+    if: needs.detect-windows-changes.outputs.windows == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Verify Windows source tree + aggregating solution
+        run: |
+          set -euo pipefail
+          test -f windows/OpenBurnBar.sln
+          test -f windows/README.md
+          for area in app pal native tests; do
+            test -d "windows/${area}"
+          done
+          echo "Windows tree + OpenBurnBar.sln present (app / pal / native / tests)."
+
+      - name: Build (skeleton — real msbuild/dotnet lands in CI-003)
+        run: |
+          echo "SKELETON build: WinUI app + PAL + native shim compile once WINUI-016 adds projects to windows/OpenBurnBar.sln."
+
+      - name: Lint (skeleton — real analyzers land in CI-003)
+        run: |
+          echo "SKELETON lint: dotnet format / Roslyn analyzers over windows/ once projects exist."
+
+      - name: Unit tests (skeleton — real test run lands in CI-003)
+        run: |
+          echo "SKELETON unit tests: run the windows/tests projects once they exist."
 
   # ── PR-GATED: windows-latest restore + security + build + unit ──────────────
   windows-x64:
@@ -137,15 +176,45 @@ jobs:
           path: TestResults-x64/
           if-no-files-found: error
 
+  # ── Phase 0 parity ledger (ubuntu; runs whenever the Windows surface changes) ─
+  # Anti-false-green gate: Authored is illegal; Real rows need tests+evidence and
+  # clean production paths. Also covered by fast-feedback.yml on every PR.
+  windows-parity-ledger:
+    name: Windows parity ledger
+    needs: detect-windows-changes
+    if: needs.detect-windows-changes.outputs.windows == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PyYAML for ledger scanner
+        run: python3 -m pip install --user 'pyyaml>=6,<7'
+
+      - name: Self-test the Windows parity ledger gate
+        run: bash scripts/ci/verify-windows-parity-ledger.test.sh
+
+      - name: Verify Windows parity ledger honesty
+        run: bash scripts/ci/verify-windows-parity-ledger.sh
+
   # ── Aggregate gate ─────────────────────────────────────────────────────────
-  # Single required status. Passes when the x64 lane succeeds OR when it was
-  # skipped because the PR touched no Windows surface. Fails if it failed or was
-  # cancelled. Mirrors pr-native-gate semantics.
+  # Single required status. Passes when every applicable Windows lane succeeds,
+  # or when all are skipped because the PR touched no Windows surface. Fails if
+  # any applicable lane failed or was cancelled. Mirrors pr-native-gate semantics.
   pr-windows-gate:
     name: PR Windows Gate
     needs:
       - detect-windows-changes
+      - windows-skeleton
       - windows-x64
+      - windows-parity-ledger
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -153,12 +222,16 @@ jobs:
         env:
           WINDOWS_CHANGED: ${{ needs.detect-windows-changes.outputs.windows }}
           DETECT_RESULT: ${{ needs.detect-windows-changes.result }}
+          SKELETON_RESULT: ${{ needs.windows-skeleton.result }}
           WINDOWS_RESULT: ${{ needs.windows-x64.result }}
+          LEDGER_RESULT: ${{ needs.windows-parity-ledger.result }}
         run: |
           set -euo pipefail
           echo "detect-windows-changes: ${DETECT_RESULT}"
           echo "windows-changed: ${WINDOWS_CHANGED}"
+          echo "windows-skeleton: ${SKELETON_RESULT}"
           echo "windows-x64: ${WINDOWS_RESULT}"
+          echo "windows-parity-ledger: ${LEDGER_RESULT}"
 
           # The detector itself must have succeeded; a 'skipped' here would mean
           # the path filter never ran, so the downstream skip cannot be trusted.
@@ -168,15 +241,26 @@ jobs:
           fi
 
           if [[ "${WINDOWS_CHANGED}" == "true" ]]; then
+            if [[ "${SKELETON_RESULT}" != "success" ]]; then
+              echo "::error::The Windows skeleton lane did not succeed (result=${SKELETON_RESULT})."
+              exit 1
+            fi
             if [[ "${WINDOWS_RESULT}" != "success" ]]; then
               echo "::error::The Windows x64 lane did not succeed (result=${WINDOWS_RESULT})."
               exit 1
             fi
+            if [[ "${LEDGER_RESULT}" != "success" ]]; then
+              echo "::error::The Windows parity ledger gate did not succeed (result=${LEDGER_RESULT})."
+              exit 1
+            fi
           else
-            if [[ "${WINDOWS_CHANGED}" != "false" || "${WINDOWS_RESULT}" != "skipped" ]]; then
-              echo "::error::The Windows x64 lane skipped without a trusted no-change decision."
+            if [[ "${WINDOWS_CHANGED}" != "false" ||
+                  "${SKELETON_RESULT}" != "skipped" ||
+                  "${WINDOWS_RESULT}" != "skipped" ||
+                  "${LEDGER_RESULT}" != "skipped" ]]; then
+              echo "::error::Windows lanes skipped without a trusted no-change decision."
               exit 1
             fi
           fi
 
-          echo "### PR Windows Gate: security/build/test checks passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "### PR Windows Gate: skeleton + x64 + parity ledger checks passed" >> "$GITHUB_STEP_SUMMARY"
