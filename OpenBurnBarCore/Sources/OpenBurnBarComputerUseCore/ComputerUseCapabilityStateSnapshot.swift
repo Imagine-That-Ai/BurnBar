@@ -117,16 +117,61 @@ public struct ComputerUseCapabilityStateUpdateResponse: Codable, Hashable, Senda
     public let publisherInstanceID: String
     public let revision: UInt64
     public let expiresAt: Date
+    public let endedSessions: [ComputerUseSessionEndRecord]
+
+    private enum CodingKeys: String, CodingKey {
+        case accepted
+        case publisherInstanceID
+        case revision
+        case expiresAt
+        case endedSessions
+    }
 
     public init(
         accepted: Bool,
         publisherInstanceID: String,
         revision: UInt64,
-        expiresAt: Date
+        expiresAt: Date,
+        endedSessions: [ComputerUseSessionEndRecord] = []
     ) {
         self.accepted = accepted
         self.publisherInstanceID = publisherInstanceID
         self.revision = revision
         self.expiresAt = expiresAt
+        self.endedSessions = endedSessions
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.accepted = try container.decode(Bool.self, forKey: .accepted)
+        self.publisherInstanceID = try container.decode(String.self, forKey: .publisherInstanceID)
+        self.revision = try container.decode(UInt64.self, forKey: .revision)
+        self.expiresAt = try container.decode(Date.self, forKey: .expiresAt)
+        self.endedSessions = try container.decodeIfPresent(
+            [ComputerUseSessionEndRecord].self,
+            forKey: .endedSessions
+        ) ?? []
+    }
+}
+
+/// Durable receipt for a daemon-owned session that ended outside the direct
+/// panic RPC. The app forwards this to cloud metering on the next capability
+/// publish so revocation and budget teardown cannot leave an open session.
+public struct ComputerUseSessionEndRecord: Codable, Hashable, Sendable {
+    public let sessionId: String
+    public let endedAt: Date
+    public let reason: ComputerUseEndReason
+    public let auditHeadHashHex: String?
+
+    public init(
+        sessionId: String,
+        endedAt: Date,
+        reason: ComputerUseEndReason,
+        auditHeadHashHex: String? = nil
+    ) {
+        self.sessionId = sessionId
+        self.endedAt = endedAt
+        self.reason = reason
+        self.auditHeadHashHex = auditHeadHashHex
     }
 }

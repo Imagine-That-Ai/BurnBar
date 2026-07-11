@@ -161,11 +161,11 @@ public actor ComputerUseRunCoordinator {
     public func endSession(
         sessionId: ComputerUseSessionID,
         reason: ComputerUseEndReason
-    ) async {
+    ) async -> ComputerUseSessionEndRecord? {
         // Revoke authority before yielding to driver shutdown. Any invocation
         // already suspended in approval or dispatch will fail its generation
         // check when it resumes and cannot restore this session.
-        guard var active = sessions.removeValue(forKey: sessionId) else { return }
+        guard var active = sessions.removeValue(forKey: sessionId) else { return nil }
         let dispatches = inFlightDispatches.removeValue(forKey: sessionId).map {
             Array($0.values)
         } ?? []
@@ -188,13 +188,19 @@ public actor ComputerUseRunCoordinator {
                 "error": String(describing: error)
             ])
         }
+        return ComputerUseSessionEndRecord(
+            sessionId: sessionId.rawValue,
+            endedAt: endedAt,
+            reason: reason,
+            auditHeadHashHex: active.logger.headHashHex
+        )
     }
 
     public func panicHalt(
         sessionId: ComputerUseSessionID,
         source: ComputerUsePanicSource
-    ) async {
-        guard sessions[sessionId] != nil else { return }
+    ) async -> ComputerUseSessionEndRecord? {
+        guard sessions[sessionId] != nil else { return nil }
         let endReason: ComputerUseEndReason
         switch source {
         case .hotkey: endReason = .panicHotkey
@@ -223,16 +229,26 @@ public actor ComputerUseRunCoordinator {
                 ])
             }
         }
-        await endSession(sessionId: sessionId, reason: endReason)
+        return await endSession(sessionId: sessionId, reason: endReason)
     }
 
     @discardableResult
     public func panicHaltAll(source: ComputerUsePanicSource) async -> [ComputerUseSessionID] {
+        let records = await panicHaltAllWithRecords(source: source)
+        return records.map { ComputerUseSessionID(rawValue: $0.sessionId) }
+    }
+
+    public func panicHaltAllWithRecords(
+        source: ComputerUsePanicSource
+    ) async -> [ComputerUseSessionEndRecord] {
         let activeSessionIds = Array(sessions.keys)
+        var records: [ComputerUseSessionEndRecord] = []
         for sessionId in activeSessionIds {
-            await panicHalt(sessionId: sessionId, source: source)
+            if let record = await panicHalt(sessionId: sessionId, source: source) {
+                records.append(record)
+            }
         }
-        return activeSessionIds
+        return records
     }
 
     public func session(_ id: ComputerUseSessionID) -> ComputerUseSessionState? {
@@ -257,16 +273,25 @@ public actor ComputerUseRunCoordinator {
 
     @discardableResult
     public func endAll(reason: ComputerUseEndReason) async -> [ComputerUseSessionID] {
+        let records = await endAllWithRecords(reason: reason)
+        return records.map { ComputerUseSessionID(rawValue: $0.sessionId) }
+    }
+
+    public func endAllWithRecords(reason: ComputerUseEndReason) async -> [ComputerUseSessionEndRecord] {
         let activeSessionIds = Array(sessions.keys)
+        var records: [ComputerUseSessionEndRecord] = []
         for sessionId in activeSessionIds {
-            await endSession(sessionId: sessionId, reason: reason)
+            if let record = await endSession(sessionId: sessionId, reason: reason) {
+                records.append(record)
+            }
         }
-        return activeSessionIds
+        return records
     }
 
     private func sessionIsExpired(_ active: ActiveSession, now: Date) -> Bool {
-        now.timeIntervalSince(active.state.manifest.startedAt)
-            >= TimeInterval(active.state.manifest.sessionTimeoutSeconds)
+        active.state.manifest.sessionTimeoutSeconds > 0
+            && now.timeIntervalSince(active.state.manifest.startedAt)
+                >= TimeInterval(active.state.manifest.sessionTimeoutSeconds)
     }
 
     private func isCurrent(sessionId: ComputerUseSessionID, generation: UUID) -> Bool {
@@ -553,11 +578,19 @@ public actor ComputerUseRunCoordinator {
             case .macInput, .macInspect, .phoneIntent, .remoteClipboard:
                 actionClass = .system
             }
+            let exemptsMeteredCap = effectiveCapability.originatedFromPhone && {
+                switch action {
+                case .macInput, .phoneIntent, .remoteClipboard: return true
+                case .browser, .macInspect: return false
+                }
+            }()
+            var quotaReservationInserted = false
             do {
                 let quotaReservation = try quotaLedger.reserveAction(
                     idempotencyKey: "\(sessionId.rawValue)|\(invocation.callID)",
                     actionClass: actionClass,
                     originatedFromPhone: effectiveCapability.originatedFromPhone,
+                    exemptFromMeteredCap: exemptsMeteredCap,
                     authoritativeUsage: effectiveUsage,
                     maximumMeteredActions: effectiveCapability.envelope.activeActionsPerDay
                 )
@@ -584,6 +617,7 @@ public actor ComputerUseRunCoordinator {
                         meteringHeader: entry.map { ComputerUseActionMeteringHeader(auditEntry: $0) }
                     )
                 }
+                quotaReservationInserted = true
             } catch {
                 let reason: ComputerUseDenyReason = error as? ComputerUseLocalQuotaLedger.LedgerError == .quotaExceeded
                     ? .dailyLimit
@@ -631,6 +665,13 @@ public actor ComputerUseRunCoordinator {
                 removeInFlightDispatch(sessionId: sessionId, dispatchId: dispatchId)
             } catch {
                 removeInFlightDispatch(sessionId: sessionId, dispatchId: dispatchId)
+                if quotaReservationInserted {
+                    try? quotaLedger.rollbackAction(
+                        idempotencyKey: "\(sessionId.rawValue)|\(invocation.callID)",
+                        actionClass: actionClass,
+                        exemptFromMeteredCap: exemptsMeteredCap
+                    )
+                }
                 guard isCurrent(sessionId: sessionId, generation: generation) else {
                     return endedResponse(sessionId: sessionId, invocation: invocation)
                 }

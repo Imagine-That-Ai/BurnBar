@@ -36,6 +36,7 @@ public actor ComputerUseService {
     private let leafKillSwitch: @Sendable () -> Bool
     private let playwrightDriverFactory: (@Sendable (ComputerUseSessionManifest) async throws -> OpenBurnBarPlaywrightDriver?)?
     private var manifests: [ComputerUseSessionID: ComputerUseSessionManifest] = [:]
+    private var pendingEndedSessions: [ComputerUseSessionEndRecord] = []
     private var sessionStartReserved = false
 
     public init(
@@ -138,7 +139,7 @@ public actor ComputerUseService {
 
         let sessionId = ComputerUseSessionID.newRandom()
         let effectiveActionCap = min(request.actionCap, capabilityState.budgetEnvelope.activeActionsPerRun)
-        let manifest = ComputerUseSessionManifest(
+        var manifest = ComputerUseSessionManifest(
             sessionId: sessionId,
             mode: mode,
             trustMode: trustMode,
@@ -161,6 +162,25 @@ public actor ComputerUseService {
             // landed while construction was suspended wins the race.
             let refreshedCapabilityState = try await currentCapabilityState()
             try await enforceSessionAdmission(refreshedCapabilityState, mode: mode)
+            let refreshedActionCap = min(
+                request.actionCap,
+                refreshedCapabilityState.budgetEnvelope.activeActionsPerRun
+            )
+            if refreshedActionCap != manifest.actionCap {
+                manifest = ComputerUseSessionManifest(
+                    sessionId: manifest.sessionId,
+                    mode: manifest.mode,
+                    trustMode: manifest.trustMode,
+                    startedAt: manifest.startedAt,
+                    userId: manifest.userId,
+                    macHostNodeId: manifest.macHostNodeId,
+                    phoneViewerNodeId: manifest.phoneViewerNodeId,
+                    scopeRuleIds: manifest.scopeRuleIds,
+                    entitlementProductId: manifest.entitlementProductId,
+                    actionCap: refreshedActionCap,
+                    sessionTimeoutSeconds: manifest.sessionTimeoutSeconds
+                )
+            }
             head = try await coordinator.startSession(manifest: manifest, playwrightDriver: driver)
             didStartCoordinatorSession = true
             let quotaReservation = try quotaLedger.reserveSession(
@@ -186,7 +206,7 @@ public actor ComputerUseService {
             manifestHashHex: head,
             startedAt: manifest.startedAt,
             entitlementProductId: Self.computerUseProductId,
-            actionCap: effectiveActionCap
+            actionCap: manifest.actionCap
         )
     }
 
@@ -195,7 +215,15 @@ public actor ComputerUseService {
     ) async throws -> ComputerUseCapabilityStateUpdateResponse {
         let response = try await capabilityStateStore.update(request.state)
         await terminateSessionsIfAuthorityRevoked(request.state)
-        return response
+        let endedSessions = pendingEndedSessions
+        pendingEndedSessions.removeAll()
+        return ComputerUseCapabilityStateUpdateResponse(
+            accepted: response.accepted,
+            publisherInstanceID: response.publisherInstanceID,
+            revision: response.revision,
+            expiresAt: response.expiresAt,
+            endedSessions: endedSessions
+        )
     }
 
     public func invoke(_ request: ComputerUseInvokeRequest) async throws -> ComputerUseInvokeResponse {
@@ -287,15 +315,15 @@ public actor ComputerUseService {
               let state = await coordinator.session(sessionId) else {
             throw ServiceError.invalidSession(request.sessionId)
         }
-        let lastHead = state.auditChainHeadHashHex ?? ""
         let sessionDirectory = auditBaseDirectory.appendingPathComponent(sessionId.rawValue, isDirectory: true)
-        await coordinator.panicHalt(sessionId: sessionId, source: source)
-        finalizeAuditHeadIfPossible(sessionDirectory: sessionDirectory, closedAt: Date())
+        let ended = await coordinator.panicHalt(sessionId: sessionId, source: source)
+        let endedAt = ended?.endedAt ?? Date()
+        finalizeAuditHeadIfPossible(sessionDirectory: sessionDirectory, closedAt: endedAt)
         manifests.removeValue(forKey: sessionId)
         return ComputerUsePanicHaltResponse(
             sessionId: sessionId.rawValue,
-            endedAt: Date(),
-            auditHeadHashHex: lastHead
+            endedAt: endedAt,
+            auditHeadHashHex: ended?.auditHeadHashHex ?? state.auditChainHeadHashHex ?? ""
         )
     }
 
@@ -472,17 +500,20 @@ public actor ComputerUseService {
     }
 
     private func terminateAllSessions(source: ComputerUsePanicSource) async {
-        let terminated = await coordinator.panicHaltAll(source: source)
-        for sessionId in terminated {
-            manifests.removeValue(forKey: sessionId)
-        }
+        let terminated = await coordinator.panicHaltAllWithRecords(source: source)
+        recordEndedSessions(terminated)
     }
 
     private func terminateAllSessions(reason: ComputerUseEndReason) async {
-        let terminated = await coordinator.endAll(reason: reason)
-        for sessionId in terminated {
-            manifests.removeValue(forKey: sessionId)
+        let terminated = await coordinator.endAllWithRecords(reason: reason)
+        recordEndedSessions(terminated)
+    }
+
+    private func recordEndedSessions(_ ended: [ComputerUseSessionEndRecord]) {
+        for record in ended {
+            manifests.removeValue(forKey: ComputerUseSessionID(record.sessionId))
         }
+        pendingEndedSessions.append(contentsOf: ended)
     }
 
     private func deniedResponse(

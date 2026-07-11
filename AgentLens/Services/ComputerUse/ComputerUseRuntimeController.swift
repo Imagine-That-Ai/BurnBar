@@ -416,6 +416,7 @@ final class ComputerUseRuntimeController: ObservableObject {
         return ComputerUseSessionCoordinator(
             configuration: ComputerUseSessionCoordinator.Configuration(
                 userId: accountManager.userID ?? "local-\(accountManager.deviceId)",
+                userIdProvider: { [weak accountManager] in accountManager?.userID },
                 macHostNodeId: accountManager.deviceId,
                 entitlement: ComputerUseEntitlementSnapshot(
                     isActive: false,

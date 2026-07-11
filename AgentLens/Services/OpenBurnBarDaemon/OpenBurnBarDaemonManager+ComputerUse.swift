@@ -115,12 +115,14 @@ extension OpenBurnBarDaemonManager {
             isComplete: complete
         )
         let socketURL = paths.socketURL
-        return try await daemonRPC {
+        let response = try await daemonRPC {
             try OpenBurnBarDaemonSocketClient.updateComputerUseCapabilityState(
                 ComputerUseCapabilityStateUpdateRequest(state: state),
                 at: socketURL
             )
         }
+        enqueueComputerUseSessionEndMetering(response: response)
+        return response
     }
 
     private static func computerUseTodayKey(now: Date = Date()) -> String {
@@ -278,6 +280,31 @@ extension OpenBurnBarDaemonManager {
                     "computer_use_daemon_session_end_cloud_metering_failed",
                     metadata: ["error": error.localizedDescription]
                 )
+            }
+        }
+    }
+
+    private func enqueueComputerUseSessionEndMetering(
+        response: ComputerUseCapabilityStateUpdateResponse
+    ) {
+        guard let userID = Auth.auth().currentUser?.uid else { return }
+        for endedSession in response.endedSessions {
+            Task { @MainActor in
+                do {
+                    try await self.computerUseCloudMeteringRecorder.recordSessionEnd(
+                        userID: userID,
+                        sessionID: endedSession.sessionId,
+                        endedAt: endedSession.endedAt,
+                        reason: endedSession.reason,
+                        state: nil,
+                        auditHeadHashHex: endedSession.auditHeadHashHex
+                    )
+                } catch {
+                    AppLogger.daemon.error(
+                        "computer_use_daemon_terminated_session_cloud_metering_failed",
+                        metadata: ["error": error.localizedDescription]
+                    )
+                }
             }
         }
     }

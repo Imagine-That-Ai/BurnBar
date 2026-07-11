@@ -131,7 +131,7 @@ extension ComputerUseSessionCoordinator {
         reason: ComputerUseEndReason
     ) {
         guard let cloudMeteringRecorder else { return }
-        let userID = configuration.userId
+        let userID = configuration.currentUserId
         let currentState = state
         Task { @MainActor in
             do {
@@ -168,7 +168,9 @@ extension ComputerUseSessionCoordinator {
     }
 
     func haltForBudgetHardCap() {
-        guard activeSessionId != nil else { return }
+        guard let sessionId = activeSessionId else { return }
+        let startedAt = state?.manifest.startedAt
+        let endedAt = Date()
         PrivilegedInputKillSwitch.activate(reason: ComputerUseDenyReason.hardCap.rawValue)
         cancelPendingApprovals(decision: .rejectAndHalt, note: "budget hard cap")
         if let logger = auditLogger {
@@ -189,6 +191,10 @@ extension ComputerUseSessionCoordinator {
                 Self.log.error("computer_use_hardcap_audit_entry_failed reason=\(String(describing: error), privacy: .public)")
             }
         }
+        state?.endReason = .budgetHardCap
+        state?.endedAt = endedAt
+        completeLocalQuotaSession(sessionId: sessionId, startedAt: startedAt, endedAt: endedAt)
+        enqueueCloudSessionEnd(sessionId: sessionId, endedAt: endedAt, reason: .budgetHardCap)
         activeSessionId = nil
         phoneReceiver = nil
         focusFollowController?.stop()
@@ -199,8 +205,6 @@ extension ComputerUseSessionCoordinator {
         pendingApprovalScreenshotPNG = nil
         approvalContexts.removeAll()
         lastDeniedReason = .hardCap
-        state?.endReason = .budgetHardCap
-        state?.endedAt = Date()
         appendTimeline(
             kind: "budget.hard_cap",
             summary: "Budget hard cap reached",
@@ -526,11 +530,19 @@ extension ComputerUseSessionCoordinator {
             case .macInput, .macInspect, .phoneIntent, .remoteClipboard:
                 actionClass = .system
             }
+            let exemptsMeteredCap = originatedFromPhone && {
+                switch action {
+                case .macInput, .phoneIntent, .remoteClipboard: return true
+                case .browser, .macInspect: return false
+                }
+            }()
+            var quotaReservationInserted = false
             do {
                 let quotaReservation = try quotaLedger.reserveAction(
                     idempotencyKey: "\(sessionId.rawValue)|\(invocation.callID)",
                     actionClass: actionClass,
                     originatedFromPhone: originatedFromPhone,
+                    exemptFromMeteredCap: exemptsMeteredCap,
                     authoritativeUsage: effectiveUsage,
                     maximumMeteredActions: configuration.budgetEnvelope.activeActionsPerDay
                 )
@@ -561,6 +573,7 @@ extension ComputerUseSessionCoordinator {
                     appendTimeline(for: action, invocation: invocation, response: response, auditEntry: entry)
                     return response
                 }
+                quotaReservationInserted = true
                 configuration.quotaUsage = quotaReservation.usage
             } catch {
                 let reason: ComputerUseDenyReason = error as? ComputerUseLocalQuotaLedger.LedgerError == .quotaExceeded
@@ -628,6 +641,13 @@ extension ComputerUseSessionCoordinator {
                 appendTimeline(for: action, invocation: invocation, response: response, auditEntry: entry)
                 return response
             } catch {
+                if quotaReservationInserted {
+                    try? quotaLedger.rollbackAction(
+                        idempotencyKey: "\(sessionId.rawValue)|\(invocation.callID)",
+                        actionClass: actionClass,
+                        exemptFromMeteredCap: exemptsMeteredCap
+                    )
+                }
                 let afterCapture = captureEvidence(
                     label: "error-\(action.auditKind)",
                     sessionId: sessionId,

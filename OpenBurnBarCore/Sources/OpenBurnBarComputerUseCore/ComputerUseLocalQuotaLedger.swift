@@ -148,12 +148,14 @@ public final class ComputerUseLocalQuotaLedger: @unchecked Sendable {
         idempotencyKey: String,
         actionClass: ActionClass,
         originatedFromPhone: Bool,
+        exemptFromMeteredCap: Bool? = nil,
         authoritativeUsage: ComputerUseQuotaUsage? = nil,
         maximumMeteredActions: Int? = nil,
         recordedAt: Date = Date()
     ) throws -> Reservation {
         let dayKey = Self.dayKeyUTC(for: recordedAt)
         let actionID = ComputerUseAuditHasher.current.hash(data: Data(idempotencyKey.utf8))
+        let shouldExemptFromMeteredCap = exemptFromMeteredCap ?? originatedFromPhone
         return try withExclusiveLock {
             var ledger = try load(dayKey: dayKey)
             let priorUsage = ledger.usage
@@ -163,7 +165,7 @@ public final class ComputerUseLocalQuotaLedger: @unchecked Sendable {
             if ledger.acceptedActionIDs.contains(actionID) {
                 return Reservation(inserted: false, usage: ledger.usage)
             }
-            if !originatedFromPhone,
+            if !shouldExemptFromMeteredCap,
                let maximumMeteredActions,
                ledger.usage.totalMeteredActionsExecuted >= max(0, maximumMeteredActions) {
                 if ledger.usage != priorUsage { try persist(ledger) }
@@ -176,8 +178,39 @@ public final class ComputerUseLocalQuotaLedger: @unchecked Sendable {
             case .system:
                 ledger.usage.systemActionsExecuted += 1
             }
-            if originatedFromPhone {
+            if shouldExemptFromMeteredCap {
                 ledger.usage.phoneControlIntentsExecuted += 1
+            }
+            ledger.usage.updatedAt = recordedAt
+            try persist(ledger)
+            return Reservation(inserted: true, usage: ledger.usage)
+        }
+    }
+
+    /// Rolls back a reservation that never reached dispatch. This is bounded
+    /// to the exact idempotency key and is safe to retry after a crash.
+    @discardableResult
+    public func rollbackAction(
+        idempotencyKey: String,
+        actionClass: ActionClass,
+        exemptFromMeteredCap: Bool = false,
+        recordedAt: Date = Date()
+    ) throws -> Reservation {
+        let dayKey = Self.dayKeyUTC(for: recordedAt)
+        let actionID = ComputerUseAuditHasher.current.hash(data: Data(idempotencyKey.utf8))
+        return try withExclusiveLock {
+            var ledger = try load(dayKey: dayKey)
+            guard ledger.acceptedActionIDs.remove(actionID) != nil else {
+                return Reservation(inserted: false, usage: ledger.usage)
+            }
+            switch actionClass {
+            case .browser:
+                ledger.usage.browserActionsExecuted = max(0, ledger.usage.browserActionsExecuted - 1)
+            case .system:
+                ledger.usage.systemActionsExecuted = max(0, ledger.usage.systemActionsExecuted - 1)
+            }
+            if exemptFromMeteredCap {
+                ledger.usage.phoneControlIntentsExecuted = max(0, ledger.usage.phoneControlIntentsExecuted - 1)
             }
             ledger.usage.updatedAt = recordedAt
             try persist(ledger)

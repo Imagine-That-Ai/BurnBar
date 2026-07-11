@@ -27,6 +27,10 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
 
     public struct Configuration: Sendable {
         public var userId: String
+        /// Resolves the signed-in identity at enqueue time. The coordinator is
+        /// created before Firebase login can complete, so a launch-time
+        /// fallback must not become the permanent metering UID.
+        public var userIdProvider: (@MainActor @Sendable () -> String?)?
         public var macHostNodeId: String?
         public var entitlement: ComputerUseEntitlementSnapshot
         public var budgetEnvelope: ComputerUseBudgetEnvelope
@@ -49,6 +53,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
 
         public init(
             userId: String,
+            userIdProvider: (@MainActor @Sendable () -> String?)? = nil,
             macHostNodeId: String? = nil,
             entitlement: ComputerUseEntitlementSnapshot,
             budgetEnvelope: ComputerUseBudgetEnvelope = .initialNormal,
@@ -61,6 +66,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
             clipboardConsentGranted: Bool = false
         ) {
             self.userId = userId
+            self.userIdProvider = userIdProvider
             self.macHostNodeId = macHostNodeId
             self.entitlement = entitlement
             self.budgetEnvelope = budgetEnvelope
@@ -71,6 +77,10 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
             self.phoneControlAttestationRequired = phoneControlAttestationRequired
             self.phoneControlRespectsDenyRegions = phoneControlRespectsDenyRegions
             self.clipboardConsentGranted = clipboardConsentGranted
+        }
+
+        var currentUserId: String {
+            userIdProvider?() ?? userId
         }
     }
 
@@ -652,7 +662,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
         response: ComputerUseSessionStartResponse
     ) {
         guard let cloudMeteringRecorder else { return }
-        let userID = configuration.userId
+        let userID = configuration.currentUserId
         let macAppVersion = configuration.macAppVersion
         Task { @MainActor in
             do {
