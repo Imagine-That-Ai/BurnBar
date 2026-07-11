@@ -25,6 +25,8 @@ type PublicHttpEndpointName =
   | "healthReady"
   | "latestRouterRundown"
   | "issueLinuxAppCheckChallenge"
+  | "issueLinuxAttestationEnrollmentTicket"
+  | "issueLinuxAttestationUploadTicket"
   | "mintLinuxAppCheckToken"
   | "mintWindowsAppCheckToken"
   | "pollCliLink"
@@ -60,6 +62,8 @@ const PUBLIC_HTTP_ENDPOINT_LIMITS: Record<PublicHttpEndpointName, { windowSecond
   healthReady: { windowSeconds: 60, maxAttempts: 30 },
   latestRouterRundown: { windowSeconds: 60, maxAttempts: 60 },
   issueLinuxAppCheckChallenge: { windowSeconds: 3600, maxAttempts: 40 },
+  issueLinuxAttestationEnrollmentTicket: { windowSeconds: 3600, maxAttempts: 10 },
+  issueLinuxAttestationUploadTicket: { windowSeconds: 3600, maxAttempts: 40 },
   // Device-attestation token mint: Linux/Windows AppCheck bootstrap. 20/hour
   // per authenticated UID; each mint produces a short-lived token.
   mintLinuxAppCheckToken: { windowSeconds: 3600, maxAttempts: 20 },
@@ -243,6 +247,8 @@ export const RATE_LIMITED_PUBLIC_HTTP_ENDPOINTS: ReadonlyArray<PublicHttpEndpoin
   "healthReady",
   "latestRouterRundown",
   "issueLinuxAppCheckChallenge",
+  "issueLinuxAttestationEnrollmentTicket",
+  "issueLinuxAttestationUploadTicket",
   "mintLinuxAppCheckToken",
   "mintWindowsAppCheckToken",
   "pollCliLink",

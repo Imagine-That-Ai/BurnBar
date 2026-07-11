@@ -1,6 +1,6 @@
 import { request as httpsRequest, type RequestOptions } from "node:https";
 import { PublicError } from "./errors.js";
-import type { AttestationPolicy, KeylimeEvidenceInput, KeylimeResult, KeylimeVerifier, RegistrarClient } from "./ports.js";
+import type { AttestationPolicy, KeylimeEvidenceInput, KeylimeResult, KeylimeVerifier, RegistrarClient, RegistrarIdentity } from "./ports.js";
 import { exactKeys, object, sha256 } from "./validation.js";
 
 export interface MtlsCredentials { ca: Buffer; cert: Buffer; key: Buffer }
@@ -32,6 +32,23 @@ export interface KeylimeTpmVerifyRequest {
 
 export function buildKeylimeRegistrarRequest(ekCertificateBase64: string, ekTpmBase64: string, akTpmBase64: string): Record<string, string> {
   return { ekcert: ekCertificateBase64, ek_tpm: ekTpmBase64, aik_tpm: akTpmBase64 };
+}
+
+export function parseKeylimeRegistrarIdentityResponse(response: unknown): RegistrarIdentity {
+  const envelope = object(response, "Keylime response");
+  if (envelope.code !== 200 || envelope.status !== "Success") throw new Error("Keylime operation failed");
+  const result = object(envelope.results, "Keylime registrar result");
+  for (const field of ["agent_id", "aik_tpm", "ek_tpm", "ekcert"] as const) {
+    if (typeof result[field] !== "string" || result[field].length === 0 || result[field].length > 1_000_000) {
+      throw new Error("Invalid Keylime registrar identity");
+    }
+  }
+  return {
+    agentId: result.agent_id as string,
+    akTpmBase64: result.aik_tpm as string,
+    ekTpmBase64: result.ek_tpm as string,
+    ekCertificateBase64: result.ekcert as string,
+  };
 }
 
 function canonicalJson(value: unknown): string {
@@ -105,6 +122,7 @@ export class KeylimeClient implements KeylimeVerifier, RegistrarClient {
 
   async begin(agentId: string, ekCertificateBase64: string, ekTpmBase64: string, akTpmBase64: string): Promise<{ activationBlob: string }> {
     const response = await this.call("POST", `/v2.5/agents/${encodeURIComponent(agentId)}`, buildKeylimeRegistrarRequest(ekCertificateBase64, ekTpmBase64, akTpmBase64));
+    if (response === undefined) throw new Error("Keylime registrar response was missing");
     const envelope = this.resultEnvelope(response);
     exactKeys(envelope, ["blob"], "Keylime registrar result");
     if (typeof envelope.blob !== "string" || envelope.blob.length === 0 || envelope.blob.length > 1_000_000) throw new Error("Invalid Keylime activation blob");
@@ -115,9 +133,16 @@ export class KeylimeClient implements KeylimeVerifier, RegistrarClient {
     await this.call("PUT", `/v2.5/agents/${encodeURIComponent(agentId)}/activate`, { auth_tag: activationProof });
   }
 
+  async getActiveIdentity(agentId: string): Promise<RegistrarIdentity | undefined> {
+    const response = await this.call("GET", `/v2.5/agents/${encodeURIComponent(agentId)}`, undefined, true);
+    return response === undefined ? undefined : parseKeylimeRegistrarIdentityResponse(response);
+  }
+
   async verify(evidence: KeylimeEvidenceInput, policy: AttestationPolicy): Promise<KeylimeResult> {
     const submitted = buildKeylimeTpmVerifyRequest(evidence, policy);
-    return parseKeylimeTpmVerifyResponse(await this.call("POST", "/v2.5/verify/evidence", submitted), submitted);
+    const response = await this.call("POST", "/v2.5/verify/evidence", submitted);
+    if (response === undefined) throw new Error("Keylime verifier response was missing");
+    return parseKeylimeTpmVerifyResponse(response, submitted);
   }
 
   private resultEnvelope(response: unknown): Record<string, unknown> {
@@ -127,9 +152,9 @@ export class KeylimeClient implements KeylimeVerifier, RegistrarClient {
     return object(envelope.results, "Keylime results");
   }
 
-  private async call(method: "POST" | "PUT", path: string, body: unknown): Promise<unknown> {
-    const bytes = Buffer.from(JSON.stringify(body), "utf8");
-    const responseLimit = keylimeResponseLimitForRequest(bytes.byteLength, this.options.maxResponseBytes);
+  private async call(method: "GET" | "POST" | "PUT", path: string, body?: unknown, allowNotFound = false): Promise<unknown> {
+    const bytes = body === undefined ? Buffer.alloc(0) : Buffer.from(JSON.stringify(body), "utf8");
+    const responseLimit = keylimeResponseLimitForRequest(Math.max(1, bytes.byteLength), this.options.maxResponseBytes);
     const url = new URL(path, this.options.baseUrl);
     const requestOptions: RequestOptions = {
       protocol: "https:",
@@ -142,7 +167,9 @@ export class KeylimeClient implements KeylimeVerifier, RegistrarClient {
       key: this.options.credentials.key,
       rejectUnauthorized: true,
       servername: this.options.baseUrl.hostname,
-      headers: { "content-type": "application/json", "content-length": String(bytes.byteLength), "accept": "application/json" },
+      headers: method === "GET"
+        ? { "accept": "application/json" }
+        : { "content-type": "application/json", "content-length": String(bytes.byteLength), "accept": "application/json" },
     };
     return new Promise((resolve, reject) => {
       const request = httpsRequest(requestOptions, response => {
@@ -155,6 +182,7 @@ export class KeylimeClient implements KeylimeVerifier, RegistrarClient {
         });
         response.on("error", reject);
         response.on("end", () => {
+          if (allowNotFound && response.statusCode === 404) return resolve(undefined);
           if (response.statusCode !== 200) {
             return reject(response.statusCode !== undefined && response.statusCode >= 400 && response.statusCode < 500
               ? new PublicError(400, "bad_request", "Keylime rejected the enrollment request")
@@ -166,7 +194,7 @@ export class KeylimeClient implements KeylimeVerifier, RegistrarClient {
       });
       request.setTimeout(this.options.timeoutMillis, () => request.destroy(new Error("Keylime timeout")));
       request.on("error", () => reject(new PublicError(503, "dependency_unavailable", "Attestation verifier is temporarily unavailable", true)));
-      request.end(bytes);
+      request.end(bytes.byteLength === 0 ? undefined : bytes);
     });
   }
 }

@@ -43,21 +43,57 @@ Linux is a distinct, permanently lower-assurance principal:
   website/console Firebase app ID and must remain disjoint from current and
   retired Linux/Windows IDs. Rotation or allow-list removal therefore cannot
   promote a desktop token into the standard Web trust class.
-- Acquisition is a two-step protocol. `issueLinuxAppCheckChallenge` creates a
-  cryptographically random, two-minute challenge. `mintLinuxAppCheckToken`
-  consumes the challenge and accepts only a verifier decision with the exact
-  challenge and identity binding.
+- Acquisition uses separate freshness and storage capabilities.
+  `issueLinuxAppCheckChallenge` creates a cryptographically random, five-minute
+  challenge. After the privileged broker returns the challenge-qualified quote
+  and complete evidence-bundle digest, `issueLinuxAttestationUploadTicket`
+  proves possession of the raw challenge and atomically creates one
+  digest/size-bound ingress ticket. `mintLinuxAppCheckToken` consumes the
+  challenge only after the generation-pinned upload receipt is appraised and
+  accepts only a verifier decision with the exact challenge and identity
+  binding. A separate `issueLinuxAttestationEnrollmentTicket` authorizes the
+  pre-App-Check registrar bootstrap without reusing the quote challenge.
 - Challenges live under
   `users/{uid}/linux_app_check_challenges/{challengeId}`. Firestore stores only
   the challenge SHA-256 hash, performs atomic single-use consumption, and keeps
   the consumed marker for 24 hours through TTL cleanup. Client access to these
   documents is denied by Firestore Rules.
+- Ingress tickets live under
+  `users/{uid}/linux_attestation_ingress_tickets/{ticketId}` and are also
+  Admin-SDK-only. The client generates a canonical 32-byte secret and sends
+  Functions only its domain-separated SHA-256 hash; Functions generates a
+  separate canonical 16-byte ticket ID and returns only that ID plus expiry.
+  The public ingress requires the combined `obbat1_<ticketId>.<secret>` header.
+  Upload tickets bind UID, app, device, challenge hash, release, evidence digest
+  and size, and a server-selected upload ID. Enrollment tickets bind UID,
+  AK-derived device ID, and exact decoded AK/EK/certificate digests. Raw ticket
+  secrets are never stored, logged, or placed in URLs.
+- Evidence uploads are capped at 16 MiB because the ingress is a Cloud Run
+  HTTP/1 service. Larger bundles require a future direct-to-GCS flow whose
+  object size and digest are bound into the ticket before upload. The ingress
+  transactionally charges one of three permitted PUT attempts before reading
+  any body and then enforces the exact declared byte count. Successful receipt
+  retries also consume an attempt, preventing an uploaded reservation from
+  becoming an unbounded request-body sink.
+- Enrollment activation is fenced by a separate Firestore lease. The ingress
+  reconciles the exact Keylime agent ID, AK, EK, and certificate before and
+  after activation, renews the fence before PUT, and retains it through an
+  ambiguous mutation outcome. Concurrent callers, remote response loss, and
+  local commit ambiguity therefore cannot activate or delete a different
+  enrollment or issue a second proof while the first mutation may still run.
+- Ticket creation and quota reservation share one Firestore transaction.
+  Upload reservations enforce 6 per ten minutes and 72 per day per UID/device,
+  216 per day per UID, and 2 GiB of declared evidence per day per UID.
+  Enrollment reservations enforce 2 per hour and 5 per day per UID plus 3 per
+  day per UID/device. An identical live retry returns the same ticket without a
+  second charge; reservations are never refunded. Ticket, slot, and quota
+  documents have TTL policies and direct client access is denied.
 - The binding covers Firebase UID, Linux app ID, device ID, app version,
   architecture, release SHA-256 digest, policy ID, and attestation kind. A
   mismatch, expiry, replay, unknown kind, or unavailable verifier fails closed.
 - Production evidence is delegated to an exact HTTPS verifier endpoint. The
   Functions boundary refuses redirects, limits request and response size,
-  applies a ten-second timeout, pins an Ed25519 public key and key ID, and checks
+  applies a sixty-second end-to-end authentication/request timeout, pins an Ed25519 public key and key ID, and checks
   the signed verdict's issuer, audience, decision, timestamps, challenge hash,
   receipt hash, trust class, and complete identity binding.
 - Minted tokens have a server-selected, fixed 30-minute TTL and return
@@ -66,7 +102,8 @@ Linux is a distinct, permanently lower-assurance principal:
   only a SHA-256 token hash and verifier receipt in a challenge-derived
   `users/{uid}/linux_app_check_sessions/{sessionHash}` document; it never stores the raw
   App Check token. Client access to session documents is denied.
-- The Linux daemon performs challenge, evidence, and mint calls. It bounds the
+- The Linux daemon performs enrollment-ticket, challenge, broker-evidence,
+  upload-ticket, evidence-upload, and mint calls. It bounds the
   encoded request and streamed response before allocation can exceed policy,
   coalesces concurrent acquisition, binds cached state to the account UID and session
   generation, refreshes before expiry, and keeps the App Check token in memory
@@ -198,8 +235,14 @@ Source acceptance requires:
   and unavailable-verifier cases to fail with the expected typed result;
 - atomic replay rejection across independent Functions instances;
 - a valid signed verdict to mint exactly one 30-minute token;
-- Firestore Rules to deny challenge/session document access and TTL policy to
-  cover both collections;
+- Firestore Rules to deny challenge/session/ticket/slot/quota document access
+  and TTL policy to cover every ephemeral collection;
+- concurrent quota-boundary tests with one winner, exact ticket retry without a
+  second charge, wrong-secret/purpose/UID/binding/expiry rejection, and proof
+  that neither raw challenge nor raw ticket secret is persisted or logged;
+- three-attempt upload-body enforcement before body consumption, exact-length
+  streaming, stale-ticket recovery for only the same TPM identity, activation
+  lease fencing, and Keylime/Firestore response-loss reconciliation;
 - daemon tests for concurrent acquisition, refresh, expiry, network failure,
   account switch, session-generation switch, redirect refusal, endpoint
   validation, response bounds, and memory-only token handling;

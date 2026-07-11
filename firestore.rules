@@ -4858,6 +4858,26 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    match /users/{userId}/linux_attestation_ingress_tickets/{ticketId} {
+      allow read, write: if false;
+    }
+
+    match /users/{userId}/linux_attestation_enrollment_ticket_slots/{slotId} {
+      allow read, write: if false;
+    }
+
+    match /linux_attestation_quota/{quotaId} {
+      allow read, write: if false;
+    }
+
+    match /linux_attestation_uploads/{uploadId} {
+      allow read, write: if false;
+    }
+
+    match /linux_attestation_enrollments/{enrollmentId} {
+      allow read, write: if false;
+    }
+
     // --- Public HTTP / approval rate limits (server-only) ---
     match /public_rate_limits/{limitId} {
       allow read, write: if false;

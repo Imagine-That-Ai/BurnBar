@@ -5,6 +5,7 @@ import { ingressConfig } from "./config.js";
 import { FirebaseUserAuthenticator, FirestoreEnrollmentStore, FirestoreUploadStateStore, GcsEvidenceObjectStore, readMtlsFiles } from "./googleAdapters.js";
 import { createIngressServer } from "./ingressServer.js";
 import { IngressService } from "./ingressService.js";
+import { FirestoreIngressTicketStore } from "./firestoreIngressTicketStore.js";
 import { KeylimeClient } from "./keylimeClient.js";
 import { runServer } from "./runServer.js";
 
@@ -22,11 +23,14 @@ async function main(): Promise<void> {
     new FirestoreUploadStateStore(firestore),
     new GcsEvidenceObjectStore(config.evidenceBucket),
     new FirestoreEnrollmentStore(firestore),
+    new FirestoreIngressTicketStore(firestore),
     keylime,
     {
       maxEvidenceBytes: config.evidenceMaxBytes,
-      uploadTtlMillis: config.uploadTtlMillis,
+      uploadMaxAttempts: config.uploadMaxAttempts,
       enrollmentLeaseMillis: config.enrollmentLeaseMillis,
+      activationLeaseMillis: config.activationLeaseMillis,
+      enrollmentMaxAttempts: config.enrollmentMaxAttempts,
     },
   );
   await runServer(createIngressServer(service, new FirebaseUserAuthenticator(getAuth(app)), {

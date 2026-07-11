@@ -1429,7 +1429,58 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     ],
     highRiskComputerUse: false,
     publicJustification:
-      "Bootstrap precedes the first App Check token. Firebase Auth, UID rate limiting, production mint kill switch, server-owned bindings, and a durable two-minute challenge gate it.",
+      "Bootstrap precedes the first App Check token. Firebase Auth, UID rate limiting, production mint kill switch, server-owned bindings, and a durable five-minute challenge gate it.",
+    lowerTrustDesktopPolicy: "not-applicable",
+  },
+  {
+    exportedName: "issueLinuxAttestationEnrollmentTicket",
+    trigger: "callable",
+    authMethod: "Firebase Auth; issues a UID/device/material-bound Linux registrar ticket before App Check bootstrap",
+    appCheck: "not-required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "handler derives uid from request.auth.uid and binds the ticket to the AK-derived device id plus exact decoded AK, EK, and EK-certificate SHA-256 digests",
+    handlerModule: "callables/linuxAppCheck.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: ["issueLinuxAttestationEnrollmentTicket"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+    publicJustification:
+      "TPM enrollment precedes the first App Check token. Firebase Auth, exact material digests, per-user quotas, a five-minute hash-only ticket, and the production mint kill switch gate it.",
+    lowerTrustDesktopPolicy: "not-applicable",
+  },
+  {
+    exportedName: "issueLinuxAttestationUploadTicket",
+    trigger: "callable",
+    authMethod:
+      "Firebase Auth plus possession of the durable raw Linux attestation challenge (no App Check on bootstrap)",
+    appCheck: "not-required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "handler derives uid from request.auth.uid, loads only that user's challenge path, proves possession against its stored hash, and derives app/device/release bindings from the challenge document",
+    handlerModule: "callables/linuxAppCheck.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: ["issueLinuxAttestationUploadTicket"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+    publicJustification:
+      "The evidence upload precedes token minting. A live single-use challenge, exact evidence digest/size binding, atomic count/byte quotas, and a hash-only ingress ticket gate it.",
     lowerTrustDesktopPolicy: "not-applicable",
   },
   {

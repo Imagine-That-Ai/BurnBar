@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { buildKeylimeRegistrarRequest, buildKeylimeTpmVerifyRequest, keylimeResponseLimitForRequest, parseKeylimeTpmVerifyResponse } from "../src/keylimeClient.js";
+import { buildKeylimeRegistrarRequest, buildKeylimeTpmVerifyRequest, keylimeResponseLimitForRequest, parseKeylimeRegistrarIdentityResponse, parseKeylimeTpmVerifyResponse } from "../src/keylimeClient.js";
 import { keylimeVerifierResponseHardLimit } from "../src/config.js";
 import { PublicError } from "../src/errors.js";
 import { policy } from "./helpers.js";
@@ -47,6 +47,28 @@ describe("Keylime 7.14.3 v2.5 compatibility", () => {
     assert.equal(parseKeylimeTpmVerifyResponse(response, submitted).valid, true);
     response.results.claims.nonce = "wrong";
     assert.throws(() => parseKeylimeTpmVerifyResponse(response, submitted), /claims/);
+  });
+
+  it("parses the pinned registrar identity used to reconcile activation", () => {
+    assert.deepEqual(parseKeylimeRegistrarIdentityResponse({
+      code: 200,
+      status: "Success",
+      results: {
+        agent_id: evidence.agentId,
+        aik_tpm: "YWs=",
+        ek_tpm: "ZWs=",
+        ekcert: "Y2VydA==",
+        regcount: 1,
+        ip: "127.0.0.1",
+        port: 8891,
+      },
+    }), {
+      agentId: evidence.agentId,
+      akTpmBase64: "YWs=",
+      ekTpmBase64: "ZWs=",
+      ekCertificateBase64: "Y2VydA==",
+    });
+    assert.throws(() => parseKeylimeRegistrarIdentityResponse({ code: 200, status: "Success", results: { agent_id: evidence.agentId } }), /identity/);
   });
 
   it("maps invalid appraisal to a sanitized result and validates exact UTF-8 IMA text", () => {

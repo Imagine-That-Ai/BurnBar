@@ -1,4 +1,5 @@
 import type { AttestationChallenge, EvidenceReceipt, SignedVerdictEnvelope } from "./contracts.js";
+import type { IngressTicketCredential } from "./ingressTicket.js";
 
 export interface UserIdentity {
   uid: string;
@@ -27,6 +28,7 @@ export interface UploadRecord extends UploadBinding {
   objectName: string;
   expiresAtMillis: number;
   status: "pending" | "uploaded" | "verifying" | "verified" | "rejected";
+  uploadAttemptCount?: number;
   generation?: string;
   result?: SignedVerdictEnvelope;
   verificationFingerprint?: string;
@@ -35,8 +37,8 @@ export interface UploadRecord extends UploadBinding {
 }
 
 export interface UploadStateStore {
-  create(record: UploadRecord): Promise<void>;
   get(uploadId: string): Promise<UploadRecord | undefined>;
+  claimUploadAttempt(uploadId: string, uid: string, nowMillis: number, maxAttempts: number): Promise<UploadRecord>;
   completeUpload(uploadId: string, generation: string): Promise<UploadRecord>;
   claimVerification(uploadId: string, fingerprint: string, nowMillis: number, leaseMillis: number): Promise<
     | { kind: "acquired"; record: UploadRecord; leaseToken: string }
@@ -64,26 +66,75 @@ export interface EnrollmentRecord {
   activationBlob?: string;
   registrationLeaseToken?: string;
   registrationLeaseExpiresAtMillis?: number;
+  beginTicketId?: string;
+  activationLeaseToken?: string;
+  activationLeaseExpiresAtMillis?: number;
   active: boolean;
 }
 
-export interface EnrollmentStore {
-  get(uid: string, deviceId: string): Promise<EnrollmentRecord | undefined>;
-  claimRegistration(record: EnrollmentRecord, nowMillis: number, leaseMillis: number): Promise<
+export interface EnrollmentCandidate extends EnrollmentRecord {
+  activationBlob?: never;
+  registrationLeaseToken?: never;
+  registrationLeaseExpiresAtMillis?: never;
+  beginTicketId?: never;
+  activationLeaseToken?: never;
+  activationLeaseExpiresAtMillis?: never;
+  active: false;
+}
+
+export interface IngressTicketStore {
+  claimUpload(
+    credential: IngressTicketCredential,
+    binding: UploadBinding,
+    nowMillis: number,
+  ): Promise<UploadRecord>;
+  claimEnrollmentBegin(
+    credential: IngressTicketCredential,
+    candidate: EnrollmentCandidate,
+    nowMillis: number,
+    leaseMillis: number,
+    maxAttempts: number,
+  ): Promise<
     | { kind: "acquired"; leaseToken: string }
     | { kind: "cached"; record: EnrollmentRecord }
     | { kind: "busy" }
   >;
-  completeRegistration(uid: string, deviceId: string, leaseToken: string, activationBlob: string): Promise<EnrollmentRecord>;
-  releaseRegistration(uid: string, deviceId: string, leaseToken: string): Promise<void>;
-  deletePending(uid: string, deviceId: string, agentId: string): Promise<void>;
-  activate(uid: string, deviceId: string, agentId: string): Promise<void>;
+  completeEnrollmentBegin(
+    uid: string,
+    deviceId: string,
+    ticketId: string,
+    leaseToken: string,
+    activationBlob: string,
+  ): Promise<EnrollmentRecord>;
+  releaseEnrollmentBegin(uid: string, deviceId: string, ticketId: string, leaseToken: string): Promise<void>;
+  terminalizeEnrollmentBegin(uid: string, deviceId: string, ticketId: string, leaseToken: string): Promise<void>;
+  terminalizePendingEnrollment(uid: string, deviceId: string, agentId: string, activationLeaseToken: string): Promise<void>;
+}
+
+export interface EnrollmentStore {
+  get(uid: string, deviceId: string): Promise<EnrollmentRecord | undefined>;
+  claimActivation(uid: string, deviceId: string, nowMillis: number, leaseMillis: number): Promise<
+    | { kind: "acquired"; record: EnrollmentRecord; leaseToken: string }
+    | { kind: "cached" }
+    | { kind: "busy" }
+  >;
+  renewActivation(uid: string, deviceId: string, leaseToken: string, nowMillis: number, leaseMillis: number): Promise<void>;
+  activate(uid: string, deviceId: string, agentId: string, leaseToken: string): Promise<void>;
+  releaseActivation(uid: string, deviceId: string, leaseToken: string): Promise<void>;
   requireActive(uid: string, deviceId: string): Promise<EnrollmentRecord>;
 }
 
 export interface RegistrarClient {
   begin(agentId: string, ekCertificateBase64: string, ekTpmBase64: string, akTpmBase64: string): Promise<{ activationBlob: string }>;
   activate(agentId: string, activationProof: string): Promise<void>;
+  getActiveIdentity(agentId: string): Promise<RegistrarIdentity | undefined>;
+}
+
+export interface RegistrarIdentity {
+  agentId: string;
+  akTpmBase64: string;
+  ekTpmBase64: string;
+  ekCertificateBase64: string;
 }
 
 export interface AttestationPolicy {

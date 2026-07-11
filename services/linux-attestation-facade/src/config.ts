@@ -36,16 +36,26 @@ export function commonConfig() {
 export function ingressConfig() {
   const common = commonConfig();
   const enrollmentLeaseMillis = positive("ENROLLMENT_LEASE_MILLIS", 75_000, 110_000);
+  const activationLeaseMillis = positive(
+    "ACTIVATION_LEASE_MILLIS",
+    common.keylimeTimeoutMillis * 2 + 15_000,
+    150_000,
+  );
   if (enrollmentLeaseMillis <= common.keylimeTimeoutMillis) {
     throw new Error("ENROLLMENT_LEASE_MILLIS must exceed KEYLIME_TIMEOUT_MILLIS");
+  }
+  if (activationLeaseMillis <= common.keylimeTimeoutMillis * 2) {
+    throw new Error("ACTIVATION_LEASE_MILLIS must exceed twice KEYLIME_TIMEOUT_MILLIS");
   }
   return {
     ...common,
     keylimeRegistrarUrl: fixedHttpsOrigin("KEYLIME_REGISTRAR_URL"),
     evidenceBucket: required("EVIDENCE_BUCKET"),
-    evidenceMaxBytes: positive("EVIDENCE_MAX_BYTES", 16 * 1024 * 1024, 64 * 1024 * 1024),
-    uploadTtlMillis: positive("UPLOAD_TTL_MILLIS", 2 * 60 * 1000, 10 * 60 * 1000),
+    evidenceMaxBytes: positive("EVIDENCE_MAX_BYTES", 16 * 1024 * 1024, 16 * 1024 * 1024),
+    uploadMaxAttempts: positive("UPLOAD_MAX_ATTEMPTS", 3, 3),
     enrollmentLeaseMillis,
+    activationLeaseMillis,
+    enrollmentMaxAttempts: positive("ENROLLMENT_MAX_ATTEMPTS", 3, 3),
   };
 }
 
