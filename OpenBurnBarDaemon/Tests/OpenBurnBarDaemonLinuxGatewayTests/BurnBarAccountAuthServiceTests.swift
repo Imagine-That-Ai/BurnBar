@@ -331,6 +331,26 @@ final class BurnBarAccountAuthServiceTests: XCTestCase {
         XCTAssertEqual(refreshAPIKey, defaultAPIKey)
     }
 
+    func testStartAuthorizationRestoresPersistedSessionBeforeReplacingIt() async throws {
+        let backend = RecordingSecretBackend(initialSecret: "persisted-refresh")
+        let deviceClient = DeviceAuthClientStub()
+        let fixedDate = self.fixedDate
+        let service = BurnBarAccountAuthService(
+            deviceAuthClient: deviceClient,
+            identityClient: IdentityClientStub(baseDate: fixedDate),
+            tokenStore: LinuxAuthTokenStore(custodian: LinuxSecretCustodian(backends: [backend])),
+            configuredFirebaseAPIKey: BurnBarAccountAuthService.productionFirebaseAPIKey,
+            now: { fixedDate }
+        )
+
+        let restored = try await service.startDeviceAuthorization()
+        XCTAssertEqual(restored.account.state, .signedIn)
+        XCTAssertEqual(restored.account.uid, "firebase-user-1")
+        let startRequest = await deviceClient.recordedStartRequest()
+        XCTAssertNil(startRequest)
+        XCTAssertEqual(backend.secret(), "refresh-token-rotated")
+    }
+
     func testConcurrentStatusCallsJoinOnePersistedSessionRestore() async throws {
         let backend = RecordingSecretBackend(initialSecret: "persisted-refresh")
         let identityClient = IdentityClientStub(

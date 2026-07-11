@@ -675,7 +675,6 @@ public struct LinuxAuthTokenStore: Sendable {
 
     private func authoritativeBackend() throws -> (any LinuxSecretStoreBackend)? {
         var declaredBackend: String?
-        var firstReadError: Error?
         for backend in custodian.backends where backend.supportsMutations {
             guard backend.trustLevel.approvedForHighValueSecrets else { continue }
             let record: LinuxSecretRecord?
@@ -685,7 +684,6 @@ public struct LinuxAuthTokenStore: Sendable {
                     secretClass: .refreshToken
                 )
             } catch {
-                if firstReadError == nil { firstReadError = error }
                 continue
             }
             guard let record else { continue }
@@ -709,7 +707,6 @@ public struct LinuxAuthTokenStore: Sendable {
             declaredBackend = value
         }
         guard let declaredBackend else {
-            if let firstReadError { throw firstReadError }
             return nil
         }
         return mutableApprovedBackend(named: declaredBackend)

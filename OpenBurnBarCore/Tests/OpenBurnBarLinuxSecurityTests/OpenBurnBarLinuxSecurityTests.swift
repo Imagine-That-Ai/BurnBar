@@ -796,6 +796,20 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
         XCTAssertEqual(restored.metadata.backend, "backend-b")
     }
 
+    func testAuthTokenStoreIgnoresUnreadableMarkerBeforeAuthorityExists() throws {
+        let unavailable = AuthAffinitySecretBackend(name: "backend-a")
+        unavailable.readError = .backendUnavailable("backend-a marker read is locked")
+        unavailable.healthError = .backendUnavailable("backend-a is locked")
+        let fallback = AuthAffinitySecretBackend(name: "backend-b")
+        let store = LinuxAuthTokenStore(
+            custodian: LinuxSecretCustodian(backends: [unavailable, fallback])
+        )
+
+        XCTAssertEqual(try store.requireWritableBackend(), "backend-b")
+        let metadata = try store.storeRefreshToken("fallback-refresh-token")
+        XCTAssertEqual(metadata.backend, "backend-b")
+    }
+
     func testAuthTokenStoreLegacyDeleteEstablishesAuthorityBeforeDeleting() throws {
         let primary = AuthAffinitySecretBackend(
             name: "backend-a",

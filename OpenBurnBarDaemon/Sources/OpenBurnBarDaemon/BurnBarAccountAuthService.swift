@@ -216,6 +216,9 @@ actor BurnBarAccountAuthService: BurnBarAccountServing, BurnBarAccountTokenProvi
     }
 
     func startDeviceAuthorization() async throws -> BurnBarAccountStatusResponse {
+        if cachedTokens == nil, didAttemptRestore == false || restoreTask != nil {
+            _ = await status()
+        }
         guard cachedTokens == nil else { return response() }
 
         sessionGeneration &+= 1
