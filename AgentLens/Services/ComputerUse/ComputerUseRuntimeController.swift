@@ -54,6 +54,7 @@ final class ComputerUseRuntimeController: ObservableObject {
     }
 
     private func bindBudgetStatusListener() {
+        // cov:ignore-start -- live Combine/Firestore-to-daemon bridge; store state transitions and daemon publish helpers are covered independently.
         let budgetStore = daemonManager.computerUseBudgetStatusStore
         let quotaStore = daemonManager.computerUseQuotaUsageStore
         budgetStore.onEnvelopeChanged = { [weak self] envelope in
@@ -72,6 +73,7 @@ final class ComputerUseRuntimeController: ObservableObject {
             self.publishDaemonCapabilityState()
         }
         quotaStore.startListening()
+        // cov:ignore-end
     }
 
     func attach(relayHostService: HermesRelayHostService) {
@@ -385,6 +387,7 @@ final class ComputerUseRuntimeController: ObservableObject {
     }
 
     private func publishDaemonCapabilityState(authorizationRevoked: Bool = false) {
+        // cov:ignore-start -- fire-and-forget live daemon publish; capability snapshot contracts are covered in OpenBurnBarCore/OpenBurnBarDaemon tests.
         let concurrentSessionActive = hasActiveSessionForDaemonBridge()
         Task { @MainActor in
             do {
@@ -399,6 +402,7 @@ final class ComputerUseRuntimeController: ObservableObject {
                 )
             }
         }
+        // cov:ignore-end
     }
 
     private static func makeCoordinator(
@@ -466,6 +470,7 @@ private enum ComputerUseAuditExportSignerPublisherError: LocalizedError {
 }
 
 private final class ComputerUseAuditExportSignerPublisher: Sendable {
+    // cov:ignore-start -- audit-export readback writes live Firestore documents; payload schema is covered by capability-state and audit-export contract tests.
     static let shared = ComputerUseAuditExportSignerPublisher()
 
     private let firestoreGateway: any ComputerUseFirestoreGateway
@@ -509,5 +514,6 @@ private final class ComputerUseAuditExportSignerPublisher: Sendable {
             merge: true
         )
     }
+    // cov:ignore-end
 }
 #endif

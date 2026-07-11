@@ -37,6 +37,48 @@ final class ComputerUseBudgetStatusStoreTests: XCTestCase {
         XCTAssertEqual(payload.double("fractionalDouble"), 2.5)
     }
 
+    func testFirestorePayloadPreservesSupportedFirestoreScalarKinds() throws {
+        let date = Date(timeIntervalSince1970: 1_800_000_000)
+        let data = Data([0x01, 0x02, 0x03])
+        let payload = ComputerUseFirestorePayload(snapshotData: [
+            "bool": true,
+            "data": data,
+            "date": date,
+            "timestamp": Timestamp(date: date.addingTimeInterval(10)),
+            "string": "value",
+            "int": Int(7),
+            "int64": Int64(8),
+            "double": Double(2.5),
+            "float": Float(3.5),
+            "unsupported": ["nested": "not persisted"]
+        ])
+
+        XCTAssertTrue(try XCTUnwrap(payload.bool("bool")))
+        XCTAssertEqual(payload.date("date"), date)
+        XCTAssertEqual(payload.date("timestamp"), date.addingTimeInterval(10))
+        XCTAssertEqual(payload.string("string"), "value")
+        XCTAssertEqual(payload.int("int"), 7)
+        XCTAssertEqual(payload.int("int64"), 8)
+        XCTAssertEqual(payload.double("double"), 2.5)
+        XCTAssertEqual(payload.double("float"), 3.5)
+        XCTAssertNil(payload.string("unsupported"))
+        XCTAssertTrue(payload.firestoreData["data"] as? Data == data)
+    }
+
+    func testFirestorePayloadSetStringMutatesFirestoreData() {
+        var payload = ComputerUseFirestorePayload(values: [
+            "existing": .string("old")
+        ])
+
+        payload.setString("new", forKey: "existing")
+        payload.setString("added", forKey: "added")
+
+        XCTAssertEqual(payload.string("existing"), "new")
+        XCTAssertEqual(payload.string("added"), "added")
+        XCTAssertEqual(payload.firestoreData["existing"] as? String, "new")
+        XCTAssertEqual(payload.firestoreData["added"] as? String, "added")
+    }
+
     func testPermissionDeniedWhileSignedInSetsFailClosed() {
         let store = ComputerUseBudgetStatusStore(isSignedInProvider: { true })
         store.handleSnapshot(snapshot: nil, error: NSError(

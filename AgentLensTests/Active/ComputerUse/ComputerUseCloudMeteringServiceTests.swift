@@ -178,6 +178,82 @@ final class ComputerUseCloudMeteringServiceTests: XCTestCase {
         XCTAssertFalse(first.payload.contains("result"))
     }
 
+    func testActionPayloadBoundsScopedDenialMetadata() throws {
+        let header = ComputerUseActionMeteringHeader(
+            entryIndex: 7,
+            actionKind: String(repeating: "a", count: 200),
+            approvedBy: ComputerUseAuditEntry.ApprovedBy.trustedScope.rawValue,
+            scopeRuleId: String(repeating: "s", count: 240),
+            denyReason: String(repeating: "d", count: 240),
+            parentEntryHashHex: String(repeating: "b", count: 64),
+            recordedAt: Date(timeIntervalSince1970: 1_788_000_150)
+        )
+        let invocation = BurnBarToolInvocation(
+            callID: "call-denied",
+            runID: BurnBarRunID(rawValue: "run-1"),
+            tool: .browserClick,
+            arguments: .object([:]),
+            requestedBy: BurnBarClientID(rawValue: "client-1"),
+            requestedAt: Date()
+        )
+        let response = ComputerUseInvokeResponse(
+            sessionId: "session-1",
+            callID: "call-denied",
+            status: .denied,
+            denyReason: "not exported",
+            auditEntryIndex: 7,
+            auditHeadHashHex: String(repeating: "c", count: 64),
+            meteringHeader: header
+        )
+
+        let record = try XCTUnwrap(ComputerUseCloudMeteringService.actionRecord(invocation: invocation, response: response))
+
+        XCTAssertEqual(record.payload.string("scopeRuleId"), String(repeating: "s", count: 200))
+        XCTAssertEqual(record.payload.string("denyReason"), String(repeating: "d", count: 200))
+        XCTAssertEqual(record.payload.string("actionKind"), String(repeating: "a", count: 120))
+    }
+
+    func testRecordSessionStartRejectsMissingAndLocalUsers() async throws {
+        let service = ComputerUseCloudMeteringService(firestoreGateway: ComputerUseFirestoreGatewaySpy())
+        let request = ComputerUseSessionStartRequest(
+            mode: ComputerUseMode.browser.rawValue,
+            trustMode: ComputerUseTrustMode.manual.rawValue,
+            scopeRuleIds: [],
+            clientID: BurnBarClientID(rawValue: "client-1")
+        )
+        let response = ComputerUseSessionStartResponse(
+            sessionId: "session-1",
+            manifestHashHex: String(repeating: "a", count: 64),
+            startedAt: Date(timeIntervalSince1970: 1_788_000_000),
+            entitlementProductId: "hosted_computer_use_sync",
+            actionCap: 50
+        )
+
+        do {
+            try await service.recordSessionStart(
+                userID: " local-device ",
+                request: request,
+                response: response,
+                macAppVersion: "1.0"
+            )
+            XCTFail("Expected local Computer Use user IDs to be rejected.")
+        } catch {
+            XCTAssertNotNil(error)
+        }
+
+        do {
+            try await service.recordSessionStart(
+                userID: "   ",
+                request: request,
+                response: response,
+                macAppVersion: "1.0"
+            )
+            XCTFail("Expected blank user IDs to be rejected.")
+        } catch {
+            XCTAssertNotNil(error)
+        }
+    }
+
     func testDaemonSessionEndPayloadDoesNotRegressUnknownCounters() {
         let payload = ComputerUseCloudMeteringService.sessionEndPayload(
             endedAt: Date(timeIntervalSince1970: 1_788_000_200),
@@ -190,6 +266,40 @@ final class ComputerUseCloudMeteringServiceTests: XCTestCase {
         XCTAssertFalse(payload.contains("rejectionCount"))
         XCTAssertEqual(payload.int("panicHaltCount"), 0)
         XCTAssertEqual(payload.string("auditHeadHashHex"), String(repeating: "d", count: 64))
+    }
+
+    func testDaemonSessionEndPayloadIncludesStateCountersAndPanicClassification() {
+        let sessionID = ComputerUseSessionID(rawValue: "session-1")
+        let manifest = ComputerUseSessionManifest(
+            sessionId: sessionID,
+            mode: .system,
+            trustMode: .manual,
+            startedAt: Date(timeIntervalSince1970: 1_788_000_000),
+            userId: "user-1",
+            entitlementProductId: "hosted_computer_use_sync",
+            actionCap: 50,
+            sessionTimeoutSeconds: 1800
+        )
+        let state = ComputerUseSessionState(
+            sessionId: sessionID,
+            manifest: manifest,
+            liveTrustMode: .manual,
+            actionsExecuted: 3,
+            actionsRejected: 2,
+            auditChainHeadHashHex: String(repeating: "e", count: 64)
+        )
+
+        let payload = ComputerUseCloudMeteringService.sessionEndPayload(
+            endedAt: Date(timeIntervalSince1970: 1_788_000_240),
+            reason: .panicAccessibilityRevoked,
+            state: state,
+            auditHeadHashHex: nil
+        )
+
+        XCTAssertEqual(payload.int("actionCount"), 5)
+        XCTAssertEqual(payload.int("rejectionCount"), 2)
+        XCTAssertEqual(payload.int("panicHaltCount"), 1)
+        XCTAssertEqual(payload.string("auditHeadHashHex"), String(repeating: "e", count: 64))
     }
 }
 

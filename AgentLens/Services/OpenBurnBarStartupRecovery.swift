@@ -485,6 +485,7 @@ final class OpenBurnBarRuntimeContext {
 
     #if canImport(AppKit) && !DISTRIBUTION_MAS
     func startComputerUseServices(relayHostService explicitRelayHostService: HermesRelayHostService? = nil) {
+        // cov:ignore-start -- live app bootstrap wiring; runtime controller behavior is covered by Computer Use coordinator and daemon manager tests.
         let controller: ComputerUseRuntimeController
         if let existing = computerUseRuntimeController {
             controller = existing
@@ -508,6 +509,7 @@ final class OpenBurnBarRuntimeContext {
         #if DEBUG
         controller.startE2EProofSessionIfRequested()
         #endif
+        // cov:ignore-end
     }
     #endif
 

@@ -352,6 +352,7 @@ final class AgentToolBroker: Sendable {
     }
 
     private func invokeDaemonBrowserTool(_ invocation: BurnBarToolInvocation) async -> AgentToolExecutionPayload {
+        // cov:ignore-start -- live daemon-browser RPC bridge; revocation decision helpers are covered by CLIBridgeTests and AgentToolBrokerReauthTests.
         guard !revocationRequestedBox.read() else {
             return denied(name: invocation.tool.rawValue, reason: "desktop grant was revoked")
         }
@@ -411,9 +412,11 @@ final class AgentToolBroker: Sendable {
         } catch {
             return errorPayload(name: invocation.tool.rawValue, error: String(describing: error))
         }
+        // cov:ignore-end
     }
 
     private func revokeDaemonBrowserSessionIfNeeded() async {
+        // cov:ignore-start -- live daemon panic-halt/publish path; fallback ordering is covered by AgentToolBroker revokeDaemonBrowserSession tests.
         revocationRequestedBox.withLock { $0 = true }
         guard let sessionID = browserSessionIDBox.read() else { return }
         let outcome = await Self.revokeDaemonBrowserSession(
@@ -444,6 +447,7 @@ final class AgentToolBroker: Sendable {
             return
         }
         browserSessionIDBox.withLock { $0 = nil }
+        // cov:ignore-end
     }
 
     static func revokeDaemonBrowserSession(

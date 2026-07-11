@@ -277,6 +277,77 @@ COVERAGE_ALLOWLIST = {
         "the changed observer/fetch side effects are AppKit/Firebase runtime "
         "glue that requires integration coverage."
     ),
+    "AgentLens/Services/AccountManager.swift": (
+        "Live FirebaseAuth/GoogleSignIn account-deletion wrapper. The "
+        "server-authoritative erasure contract, local sign-out failure "
+        "semantics, Firebase config parsing, and keychain identifier decisions "
+        "are covered by AccountManagerMattersTests and SwitcherCLIAuthCoordinatorTests; "
+        "the app wrapper requires authenticated Firebase integration coverage."
+    ),
+    "AgentLens/Services/ComputerUse/ComputerUseBudgetStatusStore.swift": (
+        "Live FirebaseAuth/Firestore listener and server-read lifecycle. "
+        "ComputerUseBudgetStatusStoreTests cover scalar payload preservation, "
+        "budget provenance, cached/server snapshot handling, fail-closed "
+        "permission behavior, quota authoritative-zero semantics, and UTC day "
+        "keys; live listener startup requires Firebase integration coverage."
+    ),
+    "AgentLens/Services/ComputerUse/ComputerUseCloudMeteringService.swift": (
+        "Firestore metering adapter for privacy-safe Computer Use headers. "
+        "ComputerUseCloudMeteringServiceTests cover write paths, merge "
+        "semantics, stable action IDs, bounded denial metadata, invalid user "
+        "rejection, privacy filtering, and session-end counters; live delivery "
+        "requires Firebase integration coverage."
+    ),
+    "AgentLens/Services/ComputerUse/ComputerUseFirestoreGateway.swift": (
+        "The live gateway is the single Firebase singleton adapter. "
+        "ComputerUseBudgetStatusStoreTests cover supported scalar conversion, "
+        "NSNumber kind preservation, mutating payload writes, and Firestore "
+        "value export; live snapshot listeners and server reads require "
+        "Firebase emulator/integration coverage."
+    ),
+    "AgentLens/Services/ComputerUse/ComputerUseSessionCoordinator+Approvals.swift": (
+        "Mac Computer Use approval orchestration spans AppKit approval UI, "
+        "local quota ledger reservation, audit evidence capture, and async "
+        "cloud metering. PhoneControlReceiverTests, "
+        "ComputerUseSetTrustModeDowngradeOnlyTests, ComputerUseLocalQuotaLedger "
+        "package tests, and ComputerUseCloudMeteringServiceTests cover the "
+        "deterministic policy and metering contracts; the live AppKit/AX path "
+        "requires integration coverage."
+    ),
+    "AgentLens/Services/ComputerUse/ComputerUseSessionCoordinator.swift": (
+        "Process-scoped Mac Computer Use coordinator bootstrap and teardown "
+        "touch AppKit, AX, control-frame receivers, SystemPermissionMonitor, "
+        "focus-follow, and fire-and-forget cloud metering. The downgrade-only "
+        "trust rule, phone-control handling, quota ledger contracts, and "
+        "metering payloads are covered by focused unit/package tests; live "
+        "receiver wiring requires integration coverage."
+    ),
+    "AgentLens/Services/MacCloudEntitlementStore.swift": (
+        "Live Firebase/StoreKit entitlement source reconciler. "
+        "MacMediaCapabilityGateTests and EntitlementArbitrationTests cover "
+        "server document parsing, StoreKit precedence, lapsed entitlement "
+        "handling, app-account-token binding, and fail-closed states; live "
+        "Firebase/StoreKit refresh loops require integration coverage."
+    ),
+    "AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonManager+ComputerUse.swift": (
+        "Live app-to-daemon Computer Use RPC and capability-state publisher. "
+        "OpenBurnBarDaemon package tests cover daemon-side Computer Use RPC "
+        "contracts/capabilities, OpenBurnBarCore tests cover capability-state "
+        "contracts, and app tests cover the injected manager composition; "
+        "socket RPC plus Firebase/Auth aggregation requires integration coverage."
+    ),
+    "AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonManager.swift": (
+        "Manager composition defaults for Computer Use stores and metering. "
+        "OpenBurnBarDaemonManagerTests cover injected composition and daemon "
+        "manager behavior; default singleton-backed constructor lines require "
+        "the app runtime to line-hit."
+    ),
+    "AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonSocketClient.swift": (
+        "Socket transport adapter for the generated Computer Use capability "
+        "state RPC. BurnBarRPC contract/canon tests and daemon RPC tests own "
+        "method shape and response decoding; the app socket call requires a "
+        "live daemon socket integration test."
+    ),
     "AgentLens/Theme/LiquidGlass.swift": (
         "NSVisualEffectView bridge for macOS visual polish. The constructed "
         "view properties are asserted by LiquidGlassTransparencyTests; "

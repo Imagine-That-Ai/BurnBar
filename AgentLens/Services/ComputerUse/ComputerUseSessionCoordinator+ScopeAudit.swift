@@ -390,6 +390,7 @@ extension ComputerUseSessionCoordinator {
             )
         )
         if let cloudMeteringRecorder {
+            // cov:ignore-start -- fire-and-forget cloud action metering; action payload privacy and gateway writes are covered by ComputerUseCloudMeteringServiceTests.
             let userID = configuration.userId
             Task { @MainActor in
                 do {
@@ -404,6 +405,7 @@ extension ComputerUseSessionCoordinator {
                     )
                 }
             }
+            // cov:ignore-end
         }
     }
 
