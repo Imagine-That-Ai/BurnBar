@@ -767,6 +767,82 @@ enum ComputerUseSecurityCallableClient {
         }
     }
 
+    static func resolveActiveIrohControllerRoutes(
+        uid: String,
+        connectionId: String
+    ) async throws -> [IrohControllerRouteBinding] {
+        let user = try requireSignedInUser()
+        guard user.uid == uid else {
+            throw ClientError.invalidResponse("The active account changed before controller-route resolution.")
+        }
+        let result = try await functions.httpsCallable("resolveActiveIrohControllerRoutes").call([
+            "connectionId": connectionId
+        ])
+        guard try requireSignedInUser().uid == uid else {
+            throw ClientError.invalidResponse("The active account changed during controller-route resolution.")
+        }
+        return try parseActiveIrohControllerRoutes(
+            result.data,
+            expectedUID: uid,
+            expectedConnectionId: connectionId
+        )
+    }
+
+    static func parseActiveIrohControllerRoutes(
+        _ raw: Any,
+        expectedUID: String,
+        expectedConnectionId: String,
+        nowMillis: Int64 = Int64(Date().timeIntervalSince1970 * 1_000)
+    ) throws -> [IrohControllerRouteBinding] {
+        guard let response = raw as? [String: Any],
+              response["uid"] as? String == expectedUID,
+              response["connectionId"] as? String == expectedConnectionId,
+              let resolvedAtMillis = int64Value(response["resolvedAtMillis"]),
+              resolvedAtMillis >= nowMillis - 60_000,
+              resolvedAtMillis <= nowMillis + 30_000,
+              let routes = response["routes"] as? [[String: Any]],
+              routes.count == 1,
+              let route = routes.first,
+              route["connectionId"] as? String == expectedConnectionId,
+              let sourceDeviceId = route["sourceDeviceId"] as? String,
+              let transportNodeId = route["transportNodeId"] as? String,
+              let authorityPeerNodeId = route["authorityPeerNodeId"] as? String,
+              let generationValue = int64Value(route["generation"]),
+              generationValue > 0,
+              let generation = UInt64(exactly: generationValue),
+              let registeredAtMillis = int64Value(route["registeredAtMillis"]),
+              let expiresAtMillis = int64Value(route["expiresAtMillis"]),
+              registeredAtMillis <= resolvedAtMillis,
+              expiresAtMillis > resolvedAtMillis,
+              expiresAtMillis > nowMillis,
+              let binding = IrohControllerRouteBinding(
+                  sourceDeviceId: sourceDeviceId,
+                  transportNodeId: transportNodeId,
+                  authorityPeerNodeId: authorityPeerNodeId,
+                  generation: generation,
+                  registeredAtMillis: registeredAtMillis,
+                  expiresAtMillis: expiresAtMillis
+              ) else {
+            throw ClientError.invalidResponse("Active iroh controller-route resolution was malformed or stale.")
+        }
+        return [binding]
+    }
+
+    private static func int64Value(_ raw: Any?) -> Int64? {
+        if let value = raw as? Int64 { return value }
+        if let value = raw as? Int, let exact = Int64(exactly: value) { return exact }
+        if let value = raw as? NSNumber {
+            guard CFGetTypeID(value) != CFBooleanGetTypeID() else { return nil }
+            let double = value.doubleValue
+            guard double.isFinite,
+                  double.rounded(.towardZero) == double,
+                  double >= Double(Int64.min),
+                  double <= Double(Int64.max) else { return nil }
+            return value.int64Value
+        }
+        return nil
+    }
+
     static func loadOrCreateLocalDeviceId(defaults: UserDefaults = .standard) -> String {
         OpenBurnBarCore.OpenBurnBarMigration.migrateUserDefaults()
         if let stored = defaults.string(forKey: OpenBurnBarCore.OpenBurnBarIdentity.deviceIDKey), !stored.isEmpty {
