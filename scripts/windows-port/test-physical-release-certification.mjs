@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const script = readFileSync(join(root, "run-physical-release-certification.ps1"), "utf8");
+const localRunner = readFileSync(join(root, "run-local-certification-checks.mjs"), "utf8");
 
 assert.match(script, /\$PhysicalHardware/);
 assert.match(script, /-HardwareAttestationPath/);
@@ -44,5 +45,7 @@ assert.match(script, /SUPPLEMENTAL-LIVE-RECEIPT-MISSING/);
 assert.match(script, /\$supplementalGateIds = @\('accessibility-display'\)/);
 assert.match(script, /\$supplementalGateIds -notcontains/);
 assert.match(script, /\$candidate\.artifact\.sha256 -ne \$artifact\.sha256/);
+assert.match(localRunner, /isColdNativeSpike \? "180s" : "60s"/);
+assert.match(localRunner, /isColdNativeSpike \? 360000 : 180000/);
 
 console.log("PASS: physical release-certification runner structural checks");

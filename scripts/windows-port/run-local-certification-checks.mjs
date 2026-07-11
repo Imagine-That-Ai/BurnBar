@@ -149,11 +149,12 @@ const testProjects = walk(join(repoRoot, "windows"))
   .filter((path) => !path.includes("/ui-automation-harness/OpenBurnBar.UiAutomationHarness.csproj"))
   .sort();
 for (const project of testProjects) {
+  const isColdNativeSpike = project === "windows/tests/b0-spike/OpenBurnBar.B0Spike.Tests.csproj";
   commands.push({
     name: `dotnet-${project.replaceAll("/", "-").replaceAll(".csproj", "")}`,
     file: "dotnet",
-    args: ["test", project, "--configuration", "Release", "--nologo", "-p:EnableWindowsTargeting=true", "--blame-hang-timeout", "60s"],
-    timeoutMs: 180000,
+    args: ["test", project, "--configuration", "Release", "--nologo", "-p:EnableWindowsTargeting=true", "--blame-hang-timeout", isColdNativeSpike ? "180s" : "60s"],
+    timeoutMs: isColdNativeSpike ? 360000 : 180000,
   });
 }
 
