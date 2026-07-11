@@ -134,10 +134,15 @@ Linux is a distinct, permanently lower-assurance principal:
   installed manifest, and manifest signature. The verifier and Functions mint
   path now re-read the root-owned enrollment record and reject inactive,
   revoked, or identity-mutated devices before signing a verdict or consuming a
-  challenge. The production factory composes this bridge, but production remains
-  blocked until real enrollment activation, deployed verifier/revocation
-  operations, physical TPM/IMA vectors, and installed-candidate matrix evidence
-  exist.
+  challenge. A high-risk owner callable now creates the enrollment tombstone
+  even before facade materialization, durably revokes the deterministic ticket
+  slot, terminalizes its verified ticket, and commits the transition with its
+  tamper-evident completion audit event in one Firestore transaction. Ticket
+  issuance and stale facade workers reject the durable markers. The
+  production factory composes this bridge, but production remains blocked until
+  real enrollment activation, deployed verifier/revocation operations,
+  production audit evidence, physical TPM/IMA vectors, and installed-candidate
+  matrix evidence exist.
 - `LINUX_APP_CHECK_MINT_ENABLED` defaults to false. Mock attestation remains
   limited to existing test/emulator policy and is forced off in production.
 
@@ -208,10 +213,11 @@ an equivalent credential-aware cap so unauthenticated idle local connections
 cannot exhaust all broker workers before per-UID request limiting runs.
 
 The next implementation stage adds remote Keylime enrollment-state activation,
-revocation administration/audit, package/release verification, hardened launch
-provenance, hardware quote vectors, and verifier-side UEFI measured-boot plus
-IMA PCR 10 policy evaluation. A remote verifier must evaluate that evidence and
-return the signed decision consumed by Functions. Complete logs must use the
+deployed revocation execution and production audit evidence, package/release
+verification, hardened launch provenance, hardware quote vectors, and
+verifier-side UEFI measured-boot plus IMA PCR 10 policy evaluation. A remote
+verifier must evaluate that evidence and return the signed decision consumed by
+Functions. Complete logs must use the
 digest-bound ingress receipt and stay within the current 16 MiB upload contract;
 logs must never be truncated. A larger limit requires a separately designed
 direct-to-object-storage protocol.
@@ -244,10 +250,11 @@ It does not establish production host integrity. The broker transport,
 release-signed installed manifest, native package lifecycle, and local
 AK lifecycle initializer, enrollment-state binding, TPM quote collector, and
 sealed evidence descriptor are implemented, and source verifier/mint paths now
-reject revoked or mutated enrollment records, but a real Firebase Web app ID,
-hardware enrollment activation, verifier deployment, revocation administration
-and audit evidence, physical TPM/IMA vectors, and installed matrix proof are
-still required.
+reject revoked or mutated enrollment records while the owner callable atomically
+persists a revocation tombstone and audit completion event. A real Firebase Web
+app ID, hardware enrollment activation, verifier deployment, deployed
+revocation execution and production audit evidence, physical TPM/IMA vectors,
+and installed matrix proof are still required.
 Until those exist, protected cloud operations remain unavailable and Linux stays
 `linux_lower_trust`.
 

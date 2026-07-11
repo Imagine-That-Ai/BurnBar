@@ -24,7 +24,14 @@ const { writes, runTransaction, failingRunTransaction, dbMock } = vi.hoisted(() 
     // A fresh chain: the tail query returns no docs (seq starts at 0).
     const tx = {
       get: async () => ({ docs: [] }),
+      create: (ref: { path: string }, data: Record<string, unknown>) => {
+        writes.push({ path: ref.path, data });
+      },
+      delete: () => undefined,
       set: (ref: { path: string }, data: Record<string, unknown>) => {
+        writes.push({ path: ref.path, data });
+      },
+      update: (ref: { path: string }, data: Record<string, unknown>) => {
         writes.push({ path: ref.path, data });
       },
     };
@@ -53,7 +60,11 @@ vi.mock("../adminRuntime.js", () => ({
   auth: {},
 }));
 
-import { appendAuditEvent, appendAuditEventRequired } from "../callables/auditLog.js";
+import {
+  appendAuditEvent,
+  appendAuditEventRequired,
+  runAuditedMutationRequired,
+} from "../callables/auditLog.js";
 
 describe("appendAuditEvent — transactional head advance", () => {
   it("writes the event AND advances audit_meta/head in the same transaction", async () => {
@@ -81,5 +92,48 @@ describe("appendAuditEventRequired — fail-closed", () => {
     } finally {
       dbMock.runTransaction = runTransaction;
     }
+  });
+
+  it("does not append an audit event when an idempotent transaction reports no state transition", async () => {
+    writes.length = 0;
+    const result = await runAuditedMutationRequired(
+      "u1",
+      { actor: "user", action: "linux_attestation.revoke", domain: "linux_attestation:device" },
+      async () => ({ value: "already_revoked" }),
+    );
+
+    expect(result).toEqual({ value: "already_revoked" });
+    expect(writes).toEqual([]);
+  });
+
+  it("separates read-only decisions from audited domain writes", async () => {
+    writes.length = 0;
+    const domainRef = { path: "users/u1/domain/item" };
+    let readerExposedWrites = false;
+    let writerExposedReads = false;
+
+    const result = await runAuditedMutationRequired(
+      "u1",
+      { actor: "user", action: "linux_attestation.revoke", domain: "linux_attestation:device" },
+      async (reader) => {
+        readerExposedWrites = Reflect.has(reader, "set");
+        return {
+          value: "revoked",
+          apply: (writer, auditEvent) => {
+            writerExposedReads = Reflect.has(writer, "get");
+            writer.set(domainRef as FirebaseFirestore.DocumentReference, { auditSeq: auditEvent.seq });
+          },
+        };
+      },
+    );
+
+    expect(result.value).toBe("revoked");
+    expect(readerExposedWrites).toBe(false);
+    expect(writerExposedReads).toBe(false);
+    expect(writes.map((write) => write.path)).toEqual(expect.arrayContaining([
+      domainRef.path,
+      expect.stringContaining("unified_audit_log"),
+      expect.stringContaining("audit_meta/head"),
+    ]));
   });
 });

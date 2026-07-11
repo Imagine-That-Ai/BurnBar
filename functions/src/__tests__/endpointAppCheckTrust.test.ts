@@ -41,10 +41,10 @@ describe("endpoint App Check trust policy", () => {
     }
   });
 
-  it("allows Linux only on the 29 low-risk and 16 prerequisite or step-up callables", () => {
+  it("allows Linux only on the 29 low-risk and 17 prerequisite or step-up callables", () => {
     const allowed = requiredCallables.filter((entry) => entry.lowerTrustDesktopPolicy !== "deny");
     const denied = requiredCallables.filter((entry) => entry.lowerTrustDesktopPolicy === "deny");
-    expect(allowed).toHaveLength(45);
+    expect(allowed).toHaveLength(46);
     expect(denied).toHaveLength(73);
 
     for (const entry of allowed) {

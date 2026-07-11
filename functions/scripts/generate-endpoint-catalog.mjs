@@ -75,6 +75,7 @@ const LOWER_TRUST_DESKTOP_POLICY_OVERRIDES = {
   deleteUserCloudData: "desktop-trusted-device-step-up",
   exportUserData: "desktop-trusted-device-step-up",
   revokeAllAccess: "desktop-trusted-device-step-up",
+  revokeLinuxAttestationEnrollment: "desktop-trusted-device-step-up",
   revokeRemoteMcpClient: "desktop-trusted-device-step-up",
   updateProviderAccount: "desktop-trusted-device-step-up",
 };
@@ -94,6 +95,7 @@ const LOWER_TRUST_HANDLER_MODULE_OVERRIDES = {
   deleteUserCloudData: "callables/providerAccounts.ts",
   exportUserData: "callables/dataExport.ts",
   revokeAllAccess: "callables/panic.ts",
+  revokeLinuxAttestationEnrollment: "callables/linuxAttestationAdmin.ts",
   revokeRemoteMcpClient: "callables/remoteMcp.ts",
   updateProviderAccount: "callables/providerAccounts.ts",
 };
@@ -194,6 +196,33 @@ const CATALOG_OVERRIDES = {
       },
     ],
     highRiskComputerUse: false,
+  },
+  revokeLinuxAttestationEnrollment: {
+    trigger: "callable",
+    authMethod: "Firebase Auth, App Check, fresh high-risk nonce, and trusted-device action proof",
+    appCheck: "required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: ["deviceId"],
+    ownershipCheck:
+      "handler scopes the AK-derived deviceId to request.auth.uid, validates the deterministic slot and ticket binding, and atomically preserves durable enrollment/slot tombstones with the audit-chain completion event",
+    handlerModule: "callables/linuxAttestationAdmin.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/linuxAttestation.bola.test.ts",
+        test: "revokeLinuxAttestationEnrollment rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["revokeLinuxAttestationEnrollment"],
+        expectedOutcome: "no-side-effect",
+      },
+      {
+        file: "functions/src/__tests__/highRiskOwnerActionCallableGuards.test.ts",
+        test: "revokeLinuxAttestationEnrollment calls enforceHighRiskOwnerAction with actionKind",
+        kind: "static-high-risk-wiring",
+        covers: ["revokeLinuxAttestationEnrollment"],
+      },
+    ],
+    highRiskComputerUse: true,
+    actionKind: "linux_attestation_enrollment_revoke",
   },
   mintWindowsAppCheckToken: {
     trigger: "callable",

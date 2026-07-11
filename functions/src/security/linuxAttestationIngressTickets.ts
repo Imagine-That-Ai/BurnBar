@@ -103,7 +103,13 @@ export interface StoredLinuxEnrollmentTicket extends TicketBase {
   ekCertificateSha256: string;
 }
 
-type StoredLinuxAttestationTicket = StoredLinuxUploadTicket | StoredLinuxEnrollmentTicket;
+export type StoredLinuxAttestationTicket = StoredLinuxUploadTicket | StoredLinuxEnrollmentTicket;
+
+export interface StoredLinuxAttestationEnrollmentTicketSlot {
+  schemaVersion: 1; purpose: "enrollment_begin"; deviceId: string;
+  ticketId?: string; claimFingerprintSha256?: string; expiresAtMillis?: number;
+  revokedAtMillis?: number; revokedReason?: string;
+}
 
 const SHA256_HEX = /^[a-f0-9]{64}$/u;
 const CANONICAL_CHALLENGE = /^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/u;
@@ -210,6 +216,36 @@ function fingerprint(fields: readonly (string | number)[]): string {
   return sha256Hex(fields.map(String).join("\0"));
 }
 
+export const linuxAttestationEnrollmentTicketSlotId = (deviceId: string): string =>
+  fingerprint(["openburnbar.linux.attestation-enrollment-ticket-slot.v1", deviceId]);
+
+export function parseStoredLinuxAttestationEnrollmentTicketSlot(
+  raw: FirebaseFirestore.DocumentData | undefined,
+): StoredLinuxAttestationEnrollmentTicketSlot | undefined {
+  if (
+    !raw
+    || raw.schemaVersion !== 1
+    || raw.purpose !== "enrollment_begin"
+    || typeof raw.deviceId !== "string"
+  ) {
+    return undefined;
+  }
+  if (typeof raw.revokedAtMillis === "number" && Number.isFinite(raw.revokedAtMillis)) {
+    if (raw.ticketId !== undefined && !isCanonicalTicketId(raw.ticketId)) return undefined;
+    return raw as StoredLinuxAttestationEnrollmentTicketSlot;
+  }
+  if (
+    !isCanonicalTicketId(raw.ticketId)
+    || typeof raw.claimFingerprintSha256 !== "string"
+    || !SHA256_HEX.test(raw.claimFingerprintSha256)
+    || typeof raw.expiresAtMillis !== "number"
+    || !Number.isFinite(raw.expiresAtMillis)
+  ) {
+    return undefined;
+  }
+  return raw as StoredLinuxAttestationEnrollmentTicketSlot;
+}
+
 export function linuxUploadTicketClaimFingerprint(input: {
   uid: string;
   appId: string;
@@ -285,7 +321,9 @@ function parseStoredChallenge(raw: FirebaseFirestore.DocumentData | undefined): 
   };
 }
 
-function parseStoredTicket(raw: FirebaseFirestore.DocumentData | undefined): StoredLinuxAttestationTicket | undefined {
+export function parseStoredTicket(
+  raw: FirebaseFirestore.DocumentData | undefined,
+): StoredLinuxAttestationTicket | undefined {
   if (
     !raw ||
     raw.schemaVersion !== LINUX_ATTESTATION_TICKET_SCHEMA_VERSION ||
@@ -304,6 +342,12 @@ function parseStoredTicket(raw: FirebaseFirestore.DocumentData | undefined): Sto
   }
   if (raw.purpose === "evidence_upload" && !isCanonicalTicketId(raw.uploadId)) return undefined;
   if (raw.purpose !== "evidence_upload" && raw.purpose !== "enrollment_begin") return undefined;
+  if (
+    raw.purpose === "enrollment_begin"
+    && (!SHA256_HEX.test(raw.akTpmSha256)
+      || !SHA256_HEX.test(raw.ekTpmSha256)
+      || !SHA256_HEX.test(raw.ekCertificateSha256))
+  ) return undefined;
   return raw as StoredLinuxAttestationTicket;
 }
 
@@ -515,12 +559,15 @@ export class FirestoreLinuxAttestationTicketAuthority {
     const candidateTicketId = this.ticketId();
     if (!isCanonicalTicketId(candidateTicketId))
       throw new HttpsError("internal", "Ticket id generator returned invalid data.");
-    const slotId = fingerprint(["openburnbar.linux.attestation-enrollment-ticket-slot.v1", input.deviceId]);
+    const slotId = linuxAttestationEnrollmentTicketSlotId(input.deviceId);
     const slotRef = this.firestore.doc(`users/${input.uid}/linux_attestation_enrollment_ticket_slots/${slotId}`);
     const claimFingerprintSha256 = linuxEnrollmentTicketClaimFingerprint(input);
     return this.firestore.runTransaction(async (transaction) => {
       const slotSnapshot = await transaction.get(slotRef);
       const slot = slotSnapshot.data();
+      if (slotSnapshot.exists && typeof slot?.revokedAtMillis === "number") {
+        throw new HttpsError("failed-precondition", "Linux attestation enrollment is revoked for this device.");
+      }
       if (
         slotSnapshot.exists &&
         typeof slot?.ticketId === "string" &&
