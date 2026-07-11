@@ -127,7 +127,7 @@
     "scope": "packaging-script and real-MakeAppx preflight only; not installation certification"
   },
   "remainingBoundary": [
-    "Authenticode and RFC 3161 timestamping require the Azure Trusted Signing identity and certificate profile",
+    "Authenticode and RFC 3161 timestamping require the Azure Artifact Signing account and certificate profile",
     "the production Ed25519 update feed was intentionally not emitted by the unsigned rehearsal",
     "clean install, update, rollback, uninstall, and reinstall remain unproven on physical x64 and ARM64 devices",
     "Microsoft Store, winget, and Chocolatey publishing remain external release operations",

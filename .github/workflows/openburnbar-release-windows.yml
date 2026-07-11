@@ -4,7 +4,7 @@ name: OpenBurnBar Windows Release
 # the macOS release (.github/workflows/release.yml) — build → sign → package → sign the update
 # feed → SBOM + OpenVEX + Sigstore provenance — adapted to Windows:
 #
-#   • CODE SIGNING is Authenticode via Azure Trusted Signing (the mac notarize/staple analog).
+#   • CODE SIGNING is Authenticode via Azure Artifact Signing (the mac notarize/staple analog).
 #     IMPORTANT: Authenticode has NO staple analog. macOS staples a notarization ticket onto the
 #     artifact after the fact; Authenticode instead embeds an RFC-3161 countersignature at SIGN
 #     time (so the signature stays valid after the cert expires) — there is nothing to staple
@@ -17,11 +17,11 @@ name: OpenBurnBar Windows Release
 #     (cosign attest-blob) provenance over every Windows artifact.
 #
 # CEILING (honest): the real MSIX/EXE build + Authenticode signing + Store/winget submission need
-# a Windows runner AND the W0 Trusted-Signing tenant + code-signing cert (procurement — Alberto).
-# Those steps are gated on the WINDOWS_CODESIGN_* / WINDOWS_UPDATE_SIGNING_KEY secrets and emit a
-# clear "deferred" warning when unset, so the pipeline is a faithful, actionlint-clean production
-# workflow that no-ops the cert-dependent steps until W0 lands. The portable security kernel is
-# proven on every run by the `portable-verify` job (real `dotnet test` + a signer round-trip).
+# a Windows runner AND the Azure Artifact Signing profile + update-feed key. These are gated on
+# the WINDOWS_CODESIGN_* / WINDOWS_UPDATE_SIGNING_KEY secrets and fail closed for real release
+# tags. Manual unsigned dry-runs can still stop at the signing boundary. The portable security
+# kernel is proven on every run by the `portable-verify` job (real `dotnet test` + a signer
+# round-trip).
 #
 # TRIGGER: a `windows-v*` tag (the manifest version must be bumped first — the portable-verify job
 # enforces version consistency at tag time) or a manual dispatch.
@@ -215,34 +215,74 @@ jobs:
       - name: Publish WinUI app (win-x64 + win-arm64)
         # Real build. Unproven until WINUI-017 lands the full WinUI toolchain build; this only
         # runs on a windows-v* tag, which is not cut until the app builds green.
+        env:
+          WINDOWS_UPDATE_PUBLIC_KEY: ${{ vars.WINDOWS_UPDATE_PUBLIC_KEY }}
         run: |
           set -euo pipefail
           app="windows/app/OpenBurnBar.App/OpenBurnBar.App.csproj"
+          pin="windows/packaging/updater/feed/pinned-update-key.pub"
+          printf '%s\n' "$WINDOWS_UPDATE_PUBLIC_KEY" > "$pin"
           for rid in win-x64 win-arm64; do
             plat="x64"
             [[ "$rid" == "win-arm64" ]] && plat="ARM64"
             dotnet publish "$app" -c Release -r "$rid" --self-contained true \
               -p:Platform="$plat" -p:WindowsPackageType=None \
+              -p:Version="$VERSION" -p:AssemblyVersion="${VERSION}.0" \
+              -p:FileVersion="${VERSION}.0" -p:InformationalVersion="$VERSION" \
               -o "publish/$rid"
           done
 
-      - name: Authenticode sign (Azure Trusted Signing — no staple analog)
+      - name: Authenticode sign (Azure Artifact Signing — no staple analog)
         if: steps.config.outputs.codesign == 'true'
-        uses: azure/trusted-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
         with:
           endpoint: ${{ secrets.WINDOWS_CODESIGN_ENDPOINT }}
-          trusted-signing-account-name: ${{ secrets.WINDOWS_CODESIGN_ACCOUNT_NAME }}
+          signing-account-name: ${{ secrets.WINDOWS_CODESIGN_ACCOUNT_NAME }}
           certificate-profile-name: ${{ secrets.WINDOWS_CODESIGN_CERT_PROFILE_NAME }}
+          azure-tenant-id: ${{ secrets.WINDOWS_CODESIGN_AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.WINDOWS_CODESIGN_AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.WINDOWS_CODESIGN_AZURE_CLIENT_SECRET }}
           files-folder: ${{ github.workspace }}/publish
-          files-folder-filter: exe,dll
+          files-folder-filter: OpenBurnBar*.exe,OpenBurnBar*.dll
           files-folder-recurse: true
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
-        env:
-          AZURE_TENANT_ID: ${{ secrets.WINDOWS_CODESIGN_AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.WINDOWS_CODESIGN_AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.WINDOWS_CODESIGN_AZURE_CLIENT_SECRET }}
+
+      - name: Verify portable Authenticode signatures
+        if: steps.config.outputs.codesign == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $expectedPublisher = "CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US"
+          $signedFiles = @()
+          foreach ($rid in @("win-x64", "win-arm64")) {
+            $publishRoot = Join-Path $env:GITHUB_WORKSPACE "publish/$rid"
+            if (-not (Test-Path -LiteralPath $publishRoot)) {
+              throw "Publish root is missing: publish/$rid"
+            }
+            $signedFiles += Get-ChildItem -Path $publishRoot -Recurse -File |
+              Where-Object { $_.Name -like "OpenBurnBar*.exe" -or $_.Name -like "OpenBurnBar*.dll" }
+          }
+
+          if ($signedFiles.Count -lt 2) {
+            throw "Expected OpenBurnBar-owned portable binaries to verify; found $($signedFiles.Count)."
+          }
+
+          foreach ($file in $signedFiles) {
+            $relativePath = [System.IO.Path]::GetRelativePath($env:GITHUB_WORKSPACE, $file.FullName)
+            $signature = Get-AuthenticodeSignature -FilePath $file.FullName
+            if ($signature.Status -ne "Valid") {
+              throw "Portable Authenticode signature is $($signature.Status): $relativePath"
+            }
+            if (-not $signature.SignerCertificate -or $signature.SignerCertificate.Subject -cne $expectedPublisher) {
+              throw "Portable Authenticode signer is not ${expectedPublisher}: $relativePath :: $($signature.SignerCertificate.Subject)"
+            }
+            if (-not $signature.TimeStamperCertificate) {
+              throw "Portable Authenticode signature is missing an RFC 3161 timestamp: $relativePath"
+            }
+            Write-Host "Portable Authenticode valid: $relativePath :: $($signature.SignerCertificate.Subject)"
+          }
 
       - name: Package zips + checksums
         id: package
@@ -255,8 +295,6 @@ jobs:
             ( cd "publish/$rid" && 7z a -tzip -bd "../../$zip" . >/dev/null )
             ( cd artifacts && sha256sum "OpenBurnBar-${VERSION}-${rid}.zip" >> "checksums-windows-v${VERSION}.txt" )
           done
-          echo "Checksums:"
-          cat "artifacts/checksums-windows-v${VERSION}.txt"
 
       - name: Build MSIX (MakeAppx — Store + sideload channel)
         # The MSIX is the Store + sideload channel; the portable zip above is the
@@ -266,33 +304,77 @@ jobs:
         run: |
           set -euo pipefail
           makeappx='${{ steps.makeappx.outputs.path }}'
+          publisher="CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US"
           for rid in win-x64 win-arm64; do
             arch="x64"
             [[ "$rid" == "win-arm64" ]] && arch="arm64"
             output="artifacts/OpenBurnBar-${VERSION}-${arch}.msix"
             pwsh -NoProfile -NonInteractive -File windows/packaging/msix/New-MsixPackage.ps1 \
               -PublishDir "publish/$rid" -Architecture "$arch" -Version "$VERSION" \
-              -OutputPath "$output" -MakeAppxPath "$makeappx"
-            ( cd artifacts && sha256sum "$(basename "$output")" >> "checksums-windows-v${VERSION}.txt" )
+              -OutputPath "$output" -MakeAppxPath "$makeappx" -Publisher "$publisher"
           done
 
-      - name: Authenticode sign the MSIX (Azure Trusted Signing)
+      - name: Authenticode sign the MSIX (Azure Artifact Signing)
         if: steps.config.outputs.codesign == 'true'
-        uses: azure/trusted-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
         with:
           endpoint: ${{ secrets.WINDOWS_CODESIGN_ENDPOINT }}
-          trusted-signing-account-name: ${{ secrets.WINDOWS_CODESIGN_ACCOUNT_NAME }}
+          signing-account-name: ${{ secrets.WINDOWS_CODESIGN_ACCOUNT_NAME }}
           certificate-profile-name: ${{ secrets.WINDOWS_CODESIGN_CERT_PROFILE_NAME }}
+          azure-tenant-id: ${{ secrets.WINDOWS_CODESIGN_AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.WINDOWS_CODESIGN_AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.WINDOWS_CODESIGN_AZURE_CLIENT_SECRET }}
           files-folder: ${{ github.workspace }}/artifacts
           files-folder-filter: msix
           files-folder-recurse: false
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
-        env:
-          AZURE_TENANT_ID: ${{ secrets.WINDOWS_CODESIGN_AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.WINDOWS_CODESIGN_AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.WINDOWS_CODESIGN_AZURE_CLIENT_SECRET }}
+
+      - name: Verify MSIX Authenticode signatures
+        if: steps.config.outputs.codesign == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $expectedPublisher = "CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US"
+          $expectedPackages = @(
+            "artifacts/OpenBurnBar-${env:VERSION}-x64.msix",
+            "artifacts/OpenBurnBar-${env:VERSION}-arm64.msix"
+          )
+
+          foreach ($relativePath in $expectedPackages) {
+            $path = Join-Path $env:GITHUB_WORKSPACE $relativePath
+            if (-not (Test-Path -LiteralPath $path)) {
+              throw "Expected signed MSIX package is missing: $relativePath"
+            }
+
+            $signature = Get-AuthenticodeSignature -FilePath $path
+            if ($signature.Status -ne "Valid") {
+              throw "MSIX Authenticode signature is $($signature.Status): $relativePath"
+            }
+            if (-not $signature.SignerCertificate -or $signature.SignerCertificate.Subject -cne $expectedPublisher) {
+              throw "MSIX Authenticode signer is not ${expectedPublisher}: $relativePath :: $($signature.SignerCertificate.Subject)"
+            }
+            if (-not $signature.TimeStamperCertificate) {
+              throw "MSIX Authenticode signature is missing an RFC 3161 timestamp: $relativePath"
+            }
+            Write-Host "MSIX Authenticode valid: $relativePath :: $($signature.SignerCertificate.Subject)"
+          }
+
+      - name: Finalize checksums after signing
+        run: |
+          set -euo pipefail
+          checksum_file="checksums-windows-v${VERSION}.txt"
+          : > "artifacts/${checksum_file}"
+          for file in \
+            "OpenBurnBar-${VERSION}-win-x64.zip" \
+            "OpenBurnBar-${VERSION}-win-arm64.zip" \
+            "OpenBurnBar-${VERSION}-x64.msix" \
+            "OpenBurnBar-${VERSION}-arm64.msix"; do
+            ( cd artifacts && sha256sum "$file" >> "$checksum_file" )
+          done
+          echo "Checksums:"
+          cat "artifacts/${checksum_file}"
 
       - name: Sign the update feed (pinned Ed25519, independent of Authenticode)
         if: steps.config.outputs.updatekey == 'true'
@@ -326,6 +408,24 @@ jobs:
           # Self-verify the feed under the pinned key — the SAME code path the shipped app runs.
           dotnet run --project "$tool" -c Release -- verify-feed \
             --feed "artifacts/windows-update-feed-v${VERSION}.json" --pinned-public-base64 "$pub"
+
+          appcast_generator="windows/packaging/updater/OpenBurnBar.Updater.Generator/OpenBurnBar.Updater.Generator.csproj"
+          dotnet run --project "$appcast_generator" -c Release -- \
+            --version "${VERSION}" \
+            --build "${VERSION}" \
+            --bundle-id com.openburnbar.app \
+            --artifact "artifacts/OpenBurnBar-${VERSION}-x64.msix" \
+            --download-url "https://dl.openburnbar.app/windows/OpenBurnBar-${VERSION}-x64.msix" \
+            --appcast-url "https://dl.openburnbar.app/windows/appcast-windows.xml" \
+            --ed-seed-base64-env WINDOWS_UPDATE_SIGNING_KEY \
+            --appcast-out artifacts/appcast-windows.xml \
+            --json-out artifacts/latest-windows.json \
+            --release-notes-url "https://dl.openburnbar.app/windows/release-metadata.json" \
+            --commit "${GITHUB_SHA}" \
+            --created-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --pub-date "$(date -u '+%a, %d %b %Y %H:%M:%S GMT')"
+
+          dotnet test windows/tests/updater/OpenBurnBar.Updater.Tests.csproj -c Release
 
       - name: Upload Windows release artifacts
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)

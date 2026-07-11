@@ -61,7 +61,7 @@ fi
 
 if [[ "$allow_unsigned" == true ]]; then
   if is_windows_release_tag; then
-    emit_error "Unsigned dry-run is not allowed for windows-v* tag releases. Complete Azure Trusted Signing first."
+    emit_error "Unsigned dry-run is not allowed for windows-v* tag releases. Complete Azure Artifact Signing first."
   else
     emit_warning "Unsigned Windows release dry-run requested; Authenticode signing and update-feed signing will stop at the signing boundary."
     exit 0
@@ -70,13 +70,13 @@ fi
 
 if [[ "${#missing_codesign[@]}" -eq 0 ]]; then
   write_output codesign true
-  printf 'Windows Authenticode preflight: Azure Trusted Signing configuration is complete.\n'
+  printf 'Windows Authenticode preflight: Azure Artifact Signing configuration is complete.\n'
 else
   if [[ "${#present_codesign[@]}" -eq 0 ]]; then
     emit_error "Windows Authenticode signing is not configured. Set WINDOWS_CODESIGN_* secrets before cutting a signed Windows release."
   elif [[ "${#missing_codesign[@]}" -eq 1 && "${missing_codesign[0]}" == "WINDOWS_CODESIGN_CERT_PROFILE_NAME" ]]; then
-    emit_error "Azure Trusted Signing identity validation pending: WINDOWS_CODESIGN_CERT_PROFILE_NAME is missing."
-    emit_error "Wait for the Azure Artifact Signing identity validation to reach Accepted, create certificate profile openburnbarwin202607-public, then set repo secret WINDOWS_CODESIGN_CERT_PROFILE_NAME."
+    emit_error "Azure Artifact Signing certificate profile is not configured: WINDOWS_CODESIGN_CERT_PROFILE_NAME is missing."
+    emit_error "Create or verify certificate profile openburnbarwin202607-public, then set repo secret WINDOWS_CODESIGN_CERT_PROFILE_NAME."
   else
     emit_error "Windows Authenticode signing configuration is partial. Missing: ${missing_codesign[*]}"
   fi
