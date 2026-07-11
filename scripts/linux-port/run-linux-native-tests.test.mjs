@@ -30,14 +30,15 @@ printf 'Executed 1 test\n'
   fs.chmodSync(fakeXCTest, 0o755);
 
   try {
-    const result = spawnSync('bash', [
+    const scriptDirectory = path.join(repoRoot, 'scripts/linux-port');
+    const fakeXCTestArgument = path.relative(scriptDirectory, fakeXCTest);
+    const result = spawnSync('/bin/bash', [
       '-c',
-      'source "$1"; run_xctest_case "$2" OpenBurnBarTests/FakeRetryTest',
-      '_',
-      path.join(repoRoot, 'scripts/linux-port/run-linux-native-tests.sh'),
-      fakeXCTest
+      'source ./run-linux-native-tests.sh; run_xctest_case "$1" OpenBurnBarTests/FakeRetryTest',
+      'openburnbar-linux-native-test',
+      fakeXCTestArgument
     ], {
-      cwd: repoRoot,
+      cwd: scriptDirectory,
       encoding: 'utf8',
       env: {
         ...process.env,
