@@ -91,6 +91,29 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     actionKind: "hermes_gateway_device_grant_approve",
   },
   {
+    exportedName: "approveLinuxAppCheckDevice",
+    trigger: "callable",
+    authMethod:
+      "Firebase Auth, native App Check, high-risk nonce, trusted native manager, and signed device action proof",
+    appCheck: "required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: ["deviceId", "approverDeviceId"],
+    ownershipCheck:
+      "handler scopes target and approver below request.auth.uid, verifies a nonce-bound native device action signature, and transactionally promotes only a pending key-derived identity",
+    handlerModule: "callables/linuxAppCheckDevices.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/linuxAppCheckDevices.test.ts",
+        test: "requires explicit trusted-native approval and an action proof",
+        kind: "runtime-cross-user",
+        covers: ["approveLinuxAppCheckDevice"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+    highRiskComputerUse: true,
+  },
+  {
     exportedName: "appStoreServerNotificationsV2",
     trigger: "provider-webhook",
     authMethod: "provider signature / signed notification verifier",
@@ -1361,6 +1384,30 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     highRiskComputerUse: false,
   },
   {
+    exportedName: "issueLinuxAppCheckChallenge",
+    trigger: "callable",
+    authMethod: "Firebase Auth plus an approved same-account Linux install key",
+    appCheck: "not-required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: ["deviceId"],
+    ownershipCheck:
+      "handler resolves the approved install only below request.auth.uid and persists a short-lived random challenge in that same namespace",
+    handlerModule: "callables/linuxAppCheckDevices.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/linuxAppCheckDevices.test.ts",
+        test: "issues an opaque challenge only to approved keys and atomically consumes a valid signature once",
+        kind: "runtime-cross-user",
+        covers: ["issueLinuxAppCheckChallenge"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+    highRiskComputerUse: false,
+    publicJustification:
+      "Pre-App-Check challenge bootstrap is restricted to an already native-approved install key below the authenticated user's namespace.",
+  },
+  {
     exportedName: "issueRemoteMcpGrant",
     trigger: "callable",
     authMethod: "Firebase Auth with callable-level ownership checks",
@@ -1478,6 +1525,28 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
         covers: ["listKnowledgeRepos"],
         expectedOutcome: "throws",
         expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  {
+    exportedName: "listLinuxAppCheckDevices",
+    trigger: "callable",
+    authMethod: "Firebase Auth, native App Check, and a trusted phone/tablet escrow manager",
+    appCheck: "required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: ["approverDeviceId"],
+    ownershipCheck:
+      "handler proves the manager is a trusted native escrow device below request.auth.uid and lists only public enrollment review material from that same user namespace",
+    handlerModule: "callables/linuxAppCheckDevices.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/linuxAppCheckDevices.test.ts",
+        test: "lists public review material and revokes without ever returning private material",
+        kind: "runtime-cross-user",
+        covers: ["listLinuxAppCheckDevices"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
       },
     ],
     highRiskComputerUse: false,
@@ -1624,12 +1693,12 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     exportedName: "mintLinuxAppCheckToken",
     trigger: "callable",
     authMethod:
-      "Firebase Auth; lower-trust Linux attestation-gated App Check token mint (no App Check on the bootstrap path)",
+      "Firebase Auth; approved per-install Ed25519 key and a durable single-use challenge (no App Check on the bootstrap path)",
     appCheck: "not-required",
     tenantSource: "request.auth.uid",
-    objectIdsFromClient: [],
+    objectIdsFromClient: ["attestation.deviceId", "attestation.challengeId"],
     ownershipCheck:
-      "handler derives uid from request.auth.uid only; the minted Linux App Check app id comes from the server config allowlist, never client-supplied tenant object ids",
+      "handler scopes the approved key and challenge below request.auth.uid, verifies the exact configured Linux app id and Ed25519 signature, and atomically consumes the same-user challenge before minting",
     handlerModule: "callables/shared.ts",
     bolaCoverage: [
       {
@@ -1643,7 +1712,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     ],
     highRiskComputerUse: false,
     publicJustification:
-      "Bootstrap that MINTS a lower-trust Linux App Check token, so it cannot itself require one (chicken-and-egg). Gated by a Linux platform attestation verifier instead; under production config no mock verifier is registered so only a real Linux verifier can mint.",
+      "Bootstrap that mints a lower-trust Linux App Check token, so it cannot itself require one. Production accepts only an account-scoped install key explicitly approved by an already trusted native device plus a durable single-use signed challenge; mock claims remain disabled.",
   },
   {
     exportedName: "mintWindowsAppCheckToken",
@@ -2347,6 +2416,30 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     lowerTrustDesktopPolicy: "deny",
   },
   {
+    exportedName: "registerLinuxAppCheckDevice",
+    trigger: "callable",
+    authMethod: "Firebase Auth plus fresh Ed25519 enrollment proof of possession",
+    appCheck: "not-required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: ["deviceId"],
+    ownershipCheck:
+      "handler derives the tenant from request.auth.uid and binds that uid into the signed enrollment bytes; deviceId is recomputed from the submitted Ed25519 public key",
+    handlerModule: "callables/linuxAppCheckDevices.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/linuxAppCheckDevices.test.ts",
+        test: "registers only a fresh self-signed key-derived pending identity without granting escrow trust",
+        kind: "runtime-cross-user",
+        covers: ["registerLinuxAppCheckDevice"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+    publicJustification:
+      "Pre-App-Check bootstrap creates only a pending, non-escrow-trusted install record; a trusted native device must approve it before challenge issuance or token minting.",
+  },
+  {
     exportedName: "registerPasskey",
     trigger: "callable",
     authMethod: "Firebase Auth with callable-level ownership checks",
@@ -2698,6 +2791,29 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+  },
+  {
+    exportedName: "revokeLinuxAppCheckDevice",
+    trigger: "callable",
+    authMethod:
+      "Firebase Auth, native App Check, high-risk nonce, trusted native manager, and signed device action proof",
+    appCheck: "required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: ["deviceId", "approverDeviceId"],
+    ownershipCheck:
+      "handler scopes target and approver below request.auth.uid, verifies a nonce-bound native device action signature, and transactionally makes revocation irreversible",
+    handlerModule: "callables/linuxAppCheckDevices.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/linuxAppCheckDevices.test.ts",
+        test: "lists public review material and revokes without ever returning private material",
+        kind: "runtime-cross-user",
+        covers: ["revokeLinuxAppCheckDevice"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+    highRiskComputerUse: true,
   },
   {
     exportedName: "revokePiAgentConnection",

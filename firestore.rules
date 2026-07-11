@@ -4163,6 +4163,17 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Linux App Check enrollment state and single-use challenges are managed
+    // exclusively by callable handlers. Even the owner must not bypass native
+    // approval, signature verification, or atomic challenge consumption.
+    match /users/{userId}/linux_app_check_devices/{deviceId} {
+      allow read, write: if false;
+    }
+
+    match /users/{userId}/linux_app_check_challenges/{challengeId} {
+      allow read, write: if false;
+    }
+
     // Cloud-Pro monthly allowance meters (fusion/relay/hosted-action). The
     // owner reads their own meter for the console dashboard ("The Wand" card);
     // all writes are server-only (admin SDK, which bypasses rules).

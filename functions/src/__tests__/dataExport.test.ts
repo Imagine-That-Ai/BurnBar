@@ -57,6 +57,12 @@ describe("DATA_DOMAIN_PATHS ⇄ data-domain registry (no drift)", () => {
       expect(actual, `${domain.id} storage prefixes`).toEqual(expected);
     }
   });
+
+  it("exports Linux approval records but never single-use App Check challenges", () => {
+    const collections = DATA_DOMAIN_PATHS.device_trust_keys.firestoreCollections;
+    expect(collections).toContain("linux_app_check_devices");
+    expect(collections).not.toContain("linux_app_check_challenges");
+  });
 });
 
 describe("deleteDomainData deletability gate", () => {
