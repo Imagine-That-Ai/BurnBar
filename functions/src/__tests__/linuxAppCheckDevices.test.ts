@@ -1,0 +1,371 @@
+import { generateKeyPairSync, sign } from "node:crypto";
+
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { store, highRisk, actionProof, trustedDevice } = vi.hoisted(() => ({
+  store: new Map<string, Record<string, unknown>>(),
+  highRisk: vi.fn(async () => ({ nonceConsumed: true })),
+  actionProof: vi.fn(async () => undefined),
+  trustedDevice: vi.fn(async (_uid: string, deviceId: string) => ({ deviceId, platform: "iPadOS" })),
+}));
+
+type Ref = { path: string };
+
+function snapshot(path: string) {
+  const data = store.get(path);
+  return {
+    exists: data !== undefined,
+    get: (field: string) => data?.[field],
+    data: () => data,
+    ref: { path },
+  };
+}
+
+function write(path: string, data: Record<string, unknown>, merge = false): void {
+  store.set(path, merge ? { ...(store.get(path) ?? {}), ...data } : { ...data });
+}
+
+vi.mock("../adminRuntime.js", () => ({
+  db: {
+    doc(path: string) {
+      return {
+        path,
+        get: async () => snapshot(path),
+        set: async (data: Record<string, unknown>, options?: { merge?: boolean }) => write(path, data, options?.merge),
+      };
+    },
+    collection(path: string) {
+      return {
+        limit() {
+          return {
+            get: async () => ({
+              docs: [...store]
+                .filter(([candidate]) => candidate.startsWith(`${path}/`))
+                .map(([candidate]) => snapshot(candidate)),
+            }),
+          };
+        },
+      };
+    },
+    runTransaction: async (handler: (transaction: unknown) => Promise<unknown>) =>
+      handler({
+        get: async (ref: Ref) => snapshot(ref.path),
+        create: (ref: Ref, data: Record<string, unknown>) => {
+          if (store.has(ref.path)) throw new Error("already exists");
+          write(ref.path, data);
+        },
+        set: (ref: Ref, data: Record<string, unknown>, options?: { merge?: boolean }) =>
+          write(ref.path, data, options?.merge),
+        update: (ref: Ref, data: Record<string, unknown>) => write(ref.path, data, true),
+      }),
+  },
+}));
+
+vi.mock("firebase-admin/firestore", () => ({
+  FieldValue: { serverTimestamp: () => ({ __serverTimestamp: true }) },
+  Timestamp: { fromMillis: (millis: number) => ({ toMillis: () => millis }) },
+}));
+
+const APP_ID = "1:123:linux:production";
+
+vi.mock("../config.js", () => ({
+  getConfig: () => ({ enforceAppCheck: true, linuxAppCheckAppID: "1:123:linux:production" }),
+}));
+vi.mock("../logging.js", () => ({
+  logInfo: vi.fn(),
+  onCallProduction: (_name: string, _options: unknown, handler: (request: unknown) => Promise<unknown>) => ({
+    run: handler,
+  }),
+}));
+vi.mock("../auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
+vi.mock("../appCheckAttestation.js", () => ({
+  appCheckTrustClassForAppId: (appId: string | undefined) =>
+    appId?.includes(":ios:") ? "apple_attested" : appId?.includes(":android:") ? "android_play_integrity" : "unknown",
+  enforceHighRiskComputerUseCallableWithNonce: highRisk,
+  readAppIdFromCallableRequest: (request: { app?: { appId?: string } }) => request.app?.appId,
+}));
+vi.mock("../callables/computerUseSecurityFirestore.js", () => ({
+  requireTrustedDeviceActionProof: actionProof,
+  requireTrustedEscrowDevice: trustedDevice,
+}));
+vi.mock("../callables/publicRateLimit.js", () => ({ checkPublicHttpEndpointRateLimit: vi.fn(async () => undefined) }));
+
+import {
+  approveLinuxAppCheckDevice,
+  consumeLinuxAppCheckChallenge,
+  issueLinuxAppCheckChallenge,
+  listLinuxAppCheckDevices,
+  registerLinuxAppCheckDevice,
+  requireApprovedLinuxAppCheckIrohHost,
+  revokeLinuxAppCheckDevice,
+} from "../callables/linuxAppCheckDevices.js";
+import {
+  LINUX_APP_CHECK_ENROLLMENT_DOMAIN,
+  deriveLinuxAppCheckDeviceId,
+  linuxAppCheckEnrollmentPayload,
+} from "../callables/linuxAppCheckDeviceCrypto.js";
+
+const UID = "linux-owner";
+const APPROVER_ID = "trusted-ipad";
+
+function rawPublicKey(key: ReturnType<typeof generateKeyPairSync>["publicKey"]): Buffer {
+  return key.export({ format: "der", type: "spki" }).subarray(-32);
+}
+
+function request(data: Record<string, unknown>, appId = "1:123:ios:native") {
+  return { auth: { uid: UID, token: {} }, app: { appId }, data, rawRequest: { headers: {} } };
+}
+
+function invoke<T>(callable: unknown, data: Record<string, unknown>, appId?: string): Promise<T> {
+  const run = Reflect.get(callable as object, "run") as (request: unknown) => Promise<T>;
+  return run(request(data, appId));
+}
+
+function enrollment(deviceName = "Workstation") {
+  const key = generateKeyPairSync("ed25519");
+  const publicKeyBase64 = rawPublicKey(key.publicKey).toString("base64");
+  const deviceId = deriveLinuxAppCheckDeviceId(Buffer.from(publicKeyBase64, "base64"));
+  const issuedAtMillis = Date.now();
+  const payload = linuxAppCheckEnrollmentPayload({
+    appId: APP_ID,
+    deviceId,
+    publicKeyBase64,
+    issuedAtMillis,
+    uid: UID,
+  });
+  return {
+    key,
+    data: {
+      appId: APP_ID,
+      deviceId,
+      deviceName,
+      issuedAtMillis,
+      publicKeyBase64,
+      signatureBase64: sign(null, payload, key.privateKey).toString("base64"),
+    },
+  };
+}
+
+describe("Linux App Check approved-device lifecycle", () => {
+  beforeEach(() => {
+    store.clear();
+    highRisk.mockClear();
+    actionProof.mockClear();
+    trustedDevice.mockClear();
+  });
+
+  it("uses the exact daemon-owned enrollment wire format", () => {
+    const bytes = linuxAppCheckEnrollmentPayload({
+      uid: "u",
+      deviceId: "linux_key",
+      appId: APP_ID,
+      publicKeyBase64: "base64-key",
+      issuedAtMillis: 123,
+    });
+    expect(bytes.toString("utf8")).toBe(
+      `${LINUX_APP_CHECK_ENROLLMENT_DOMAIN}\nu\nlinux_key\n${APP_ID}\nbase64-key\n123`,
+    );
+    expect(bytes.at(-1)).not.toBe(0x0a);
+  });
+
+  it("registers only a fresh self-signed key-derived pending identity without granting escrow trust", async () => {
+    const fixture = enrollment();
+    await expect(invoke(registerLinuxAppCheckDevice, fixture.data, undefined)).resolves.toMatchObject({
+      ok: true,
+      deviceId: fixture.data.deviceId,
+      trustState: "pending",
+    });
+    expect(store.get(`users/${UID}/linux_app_check_devices/${fixture.data.deviceId}`)).toMatchObject({
+      appId: APP_ID,
+      deviceId: fixture.data.deviceId,
+      deviceName: "Workstation",
+      platform: "Linux",
+      publicKeyBase64: fixture.data.publicKeyBase64,
+      trustState: "pending",
+    });
+    expect([...store.keys()].some((path) => path.includes("/escrow_devices/"))).toBe(false);
+
+    await expect(
+      invoke(registerLinuxAppCheckDevice, { ...fixture.data, signatureBase64: Buffer.alloc(64).toString("base64") }),
+    ).rejects.toMatchObject({ code: "unauthenticated" });
+    await expect(
+      invoke(registerLinuxAppCheckDevice, { ...fixture.data, deviceId: "linux_attacker" }),
+    ).rejects.toMatchObject({ code: "invalid-argument" });
+    await expect(
+      invoke(registerLinuxAppCheckDevice, { ...fixture.data, issuedAtMillis: Date.now() - 6 * 60 * 1000 }),
+    ).rejects.toMatchObject({ code: "failed-precondition" });
+  });
+
+  it("requires explicit trusted-native approval and an action proof", async () => {
+    const fixture = enrollment();
+    await invoke(registerLinuxAppCheckDevice, fixture.data);
+    await expect(
+      invoke(approveLinuxAppCheckDevice, {
+        deviceId: fixture.data.deviceId,
+        approverDeviceId: APPROVER_ID,
+        nonce: "n".repeat(32),
+        actionProof: { signed: true },
+      }),
+    ).resolves.toMatchObject({ ok: true, trustState: "approved", alreadyInState: false });
+    expect(highRisk).toHaveBeenCalledOnce();
+    expect(trustedDevice).toHaveBeenCalledWith(UID, APPROVER_ID, expect.any(Set));
+    expect(actionProof).toHaveBeenCalledWith(
+      expect.objectContaining({
+        uid: UID,
+        deviceId: APPROVER_ID,
+        actionKind: "linux_app_check_device_approve",
+        subjectId: fixture.data.deviceId,
+        approve: true,
+      }),
+    );
+    expect(store.get(`users/${UID}/linux_app_check_devices/${fixture.data.deviceId}`)).toMatchObject({
+      trustState: "approved",
+      approvedByDeviceId: APPROVER_ID,
+    });
+  });
+
+  it("issues an opaque challenge only to approved keys and atomically consumes a valid signature once", async () => {
+    const fixture = enrollment();
+    await invoke(registerLinuxAppCheckDevice, fixture.data);
+    await expect(
+      invoke(issueLinuxAppCheckChallenge, { appId: APP_ID, deviceId: fixture.data.deviceId }, undefined),
+    ).rejects.toMatchObject({ code: "permission-denied" });
+    write(`users/${UID}/linux_app_check_devices/${fixture.data.deviceId}`, { trustState: "approved" }, true);
+    const challenge = await invoke<{
+      challengeId: string;
+      canonicalPayloadBase64: string;
+      expiresAtMillis: number;
+    }>(issueLinuxAppCheckChallenge, { appId: APP_ID, deviceId: fixture.data.deviceId }, undefined);
+    const signatureBase64 = sign(
+      null,
+      Buffer.from(challenge.canonicalPayloadBase64, "base64"),
+      fixture.key.privateKey,
+    ).toString("base64");
+    await expect(
+      consumeLinuxAppCheckChallenge({
+        appId: APP_ID,
+        challengeId: challenge.challengeId,
+        deviceId: fixture.data.deviceId,
+        signatureBase64,
+        uid: UID,
+      }),
+    ).resolves.toBeUndefined();
+    expect(store.get(`users/${UID}/linux_app_check_challenges/${challenge.challengeId}`)?.status).toBe("consumed");
+    await expect(
+      consumeLinuxAppCheckChallenge({
+        appId: APP_ID,
+        challengeId: challenge.challengeId,
+        deviceId: fixture.data.deviceId,
+        signatureBase64,
+        uid: UID,
+      }),
+    ).rejects.toMatchObject({ code: "unauthenticated" });
+  });
+
+  it("rejects forged, expired, revoked, cross-device, and tampered challenge consumption", async () => {
+    const fixture = enrollment();
+    await invoke(registerLinuxAppCheckDevice, fixture.data);
+    const devicePath = `users/${UID}/linux_app_check_devices/${fixture.data.deviceId}`;
+    write(devicePath, { trustState: "approved" }, true);
+    const challenge = await invoke<{ challengeId: string; canonicalPayloadBase64: string }>(
+      issueLinuxAppCheckChallenge,
+      { appId: APP_ID, deviceId: fixture.data.deviceId },
+      undefined,
+    );
+    const challengePath = `users/${UID}/linux_app_check_challenges/${challenge.challengeId}`;
+    const validSignature = sign(
+      null,
+      Buffer.from(challenge.canonicalPayloadBase64, "base64"),
+      fixture.key.privateKey,
+    ).toString("base64");
+    await expect(
+      consumeLinuxAppCheckChallenge({
+        appId: APP_ID,
+        challengeId: challenge.challengeId,
+        deviceId: fixture.data.deviceId,
+        signatureBase64: Buffer.alloc(64).toString("base64"),
+        uid: UID,
+      }),
+    ).rejects.toMatchObject({ code: "unauthenticated" });
+    write(challengePath, { canonicalPayloadBase64: "dGFtcGVyZWQ=" }, true);
+    await expect(
+      consumeLinuxAppCheckChallenge({
+        appId: APP_ID,
+        challengeId: challenge.challengeId,
+        deviceId: fixture.data.deviceId,
+        signatureBase64: validSignature,
+        uid: UID,
+      }),
+    ).rejects.toMatchObject({ code: "failed-precondition" });
+    write(challengePath, { canonicalPayloadBase64: challenge.canonicalPayloadBase64, expiresAtMillis: 1 }, true);
+    await expect(
+      consumeLinuxAppCheckChallenge({
+        appId: APP_ID,
+        challengeId: challenge.challengeId,
+        deviceId: fixture.data.deviceId,
+        signatureBase64: validSignature,
+        uid: UID,
+      }),
+    ).rejects.toMatchObject({ code: "unauthenticated" });
+    write(challengePath, { expiresAtMillis: Date.now() + 60_000 }, true);
+    write(devicePath, { trustState: "revoked" }, true);
+    await expect(
+      consumeLinuxAppCheckChallenge({
+        appId: APP_ID,
+        challengeId: challenge.challengeId,
+        deviceId: fixture.data.deviceId,
+        signatureBase64: validSignature,
+        uid: UID,
+      }),
+    ).rejects.toMatchObject({ code: "permission-denied" });
+  });
+
+  it("lists public review material and revokes without ever returning private material", async () => {
+    const fixture = enrollment("Linux Desktop");
+    await invoke(registerLinuxAppCheckDevice, fixture.data);
+    const listed = await invoke<{ devices: Array<Record<string, unknown>> }>(listLinuxAppCheckDevices, {
+      approverDeviceId: APPROVER_ID,
+    });
+    expect(listed.devices).toEqual([
+      expect.objectContaining({
+        deviceId: fixture.data.deviceId,
+        deviceName: "Linux Desktop",
+        publicKeyBase64: fixture.data.publicKeyBase64,
+        safetyFingerprint: expect.any(String),
+        trustState: "pending",
+      }),
+    ]);
+    expect(JSON.stringify(listed)).not.toContain("private");
+    await expect(
+      invoke(revokeLinuxAppCheckDevice, {
+        deviceId: fixture.data.deviceId,
+        approverDeviceId: APPROVER_ID,
+        nonce: "r".repeat(32),
+        actionProof: { signed: true },
+      }),
+    ).resolves.toMatchObject({ trustState: "revoked", alreadyInState: false });
+    await expect(
+      invoke(approveLinuxAppCheckDevice, {
+        deviceId: fixture.data.deviceId,
+        approverDeviceId: APPROVER_ID,
+        nonce: "a".repeat(32),
+        actionProof: { signed: true },
+      }),
+    ).rejects.toMatchObject({ code: "failed-precondition" });
+  });
+
+  it("admits only approved exact-app Linux records to the iroh host root", async () => {
+    const fixture = enrollment();
+    await invoke(registerLinuxAppCheckDevice, fixture.data);
+    await expect(
+      requireApprovedLinuxAppCheckIrohHost(request({}, APP_ID), UID, fixture.data.deviceId),
+    ).rejects.toMatchObject({ code: "permission-denied" });
+    write(`users/${UID}/linux_app_check_devices/${fixture.data.deviceId}`, { trustState: "approved" }, true);
+    await expect(
+      requireApprovedLinuxAppCheckIrohHost(request({}, APP_ID), UID, fixture.data.deviceId),
+    ).resolves.toEqual({ deviceId: fixture.data.deviceId, platform: "Linux" });
+    await expect(
+      requireApprovedLinuxAppCheckIrohHost(request({}, "1:123:linux:evil"), UID, fixture.data.deviceId),
+    ).rejects.toMatchObject({ code: "permission-denied" });
+  });
+});

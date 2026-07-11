@@ -1,11 +1,10 @@
 /**
  * @fileoverview mintLinuxAppCheckToken — lower-trust Linux desktop App Check bootstrap.
  *
- * Linux cannot use Apple App Attest or Android Play Integrity. The bootstrap
- * path therefore exchanges a platform attestation for a Firebase App Check token
- * minted by Admin SDK. The only verifier implemented here is a non-production
- * fixture verifier; production registers no mock verifier and therefore fails
- * closed until a real distro/package/hardware attestation verifier is configured.
+ * Production uses an account-scoped, trusted-native-device-approved Ed25519 key
+ * plus a single-use Firestore challenge. Mock MAC claims remain available only
+ * in non-production test/dev configuration and are impossible to register in
+ * production.
  */
 
 import { createHash, timingSafeEqual } from "node:crypto";
@@ -21,6 +20,9 @@ import { logInfo, wrapCallableHandler } from "../logging.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import { checkPublicHttpEndpointRateLimit } from "./publicRateLimit.js";
 import { parseCallableInput } from "../validation/callableSchema.js";
+import { boundedTrimmedString } from "./shared.js";
+import { consumeLinuxAppCheckChallenge } from "./linuxAppCheckDevices.js";
+import { LINUX_APP_CHECK_ATTESTATION_KIND } from "./linuxAppCheckDeviceCrypto.js";
 
 const MOCK_ATTESTATION_KIND = "mock" as const;
 const MOCK_ATTESTATION_DOMAIN = "openburnbar.appcheck.linux.mock.v1";
@@ -41,12 +43,7 @@ export interface LinuxAttestationClaim {
   mac: string;
 }
 
-type AttestationRejectReason =
-  | "malformed"
-  | "app_id_not_expected"
-  | "stale"
-  | "forged"
-  | "replayed";
+type AttestationRejectReason = "malformed" | "app_id_not_expected" | "stale" | "forged" | "replayed";
 
 type VerifyResult = { ok: true; appId: string } | { ok: false; reason: AttestationRejectReason };
 
@@ -55,12 +52,7 @@ export interface LinuxAttestationVerifier {
   verify(claim: LinuxAttestationClaim, nowMillis: number): VerifyResult;
 }
 
-function signMockAttestation(input: {
-  appId: string;
-  nonce: string;
-  issuedAtMs: number;
-  secret?: string;
-}): string {
+function signMockAttestation(input: { appId: string; nonce: string; issuedAtMs: number; secret?: string }): string {
   const secret = input.secret ?? MOCK_ATTESTATION_SHARED_SECRET;
   const payload = `${MOCK_ATTESTATION_DOMAIN}|${input.appId}|${input.nonce}|${input.issuedAtMs}|${secret}`;
   return createHash("sha256").update(payload).digest("hex");
@@ -158,6 +150,13 @@ function clampTtl(raw: unknown): number {
   return Math.min(MAX_MINT_TTL_MS, Math.max(MIN_MINT_TTL_MS, Math.floor(raw)));
 }
 
+// Revocation cannot invalidate an already-minted App Check JWT. Keep the
+// production device-key token at Firebase's minimum supported TTL so revoking a
+// Linux key bounds residual access to 30 minutes.
+function clampProductionDeviceKeyTtl(raw: unknown): number {
+  return Math.min(DEFAULT_MINT_TTL_MS, clampTtl(raw));
+}
+
 export type AppCheckTokenMinter = (appId: string, options?: AppCheckTokenOptions) => Promise<AppCheckToken>;
 
 interface MintLinuxAppCheckParams {
@@ -175,11 +174,37 @@ interface MintLinuxAppCheckResult {
   appId: string;
 }
 
+interface LinuxDeviceKeyAttestation {
+  kind: typeof LINUX_APP_CHECK_ATTESTATION_KIND;
+  appId: string;
+  challengeId: string;
+  deviceId: string;
+  signatureBase64: string;
+}
+
+function parseLinuxDeviceKeyAttestation(raw: unknown): LinuxDeviceKeyAttestation {
+  if (!isRecord(raw)) throw new HttpsError("invalid-argument", "A Linux device-key attestation is required.");
+  const kind = boundedTrimmedString(raw.kind, "attestation.kind", 80, true);
+  if (kind !== LINUX_APP_CHECK_ATTESTATION_KIND) {
+    throw new HttpsError("permission-denied", "Unsupported Linux App Check attestation kind.");
+  }
+  return {
+    kind,
+    appId: boundedTrimmedString(raw.appId, "attestation.appId", 160, true),
+    challengeId: boundedTrimmedString(raw.challengeId, "attestation.challengeId", 64, true),
+    deviceId: boundedTrimmedString(raw.deviceId, "attestation.deviceId", 160, true),
+    signatureBase64: boundedTrimmedString(raw.signatureBase64, "attestation.signatureBase64", 256, true),
+  };
+}
+
 async function mintLinuxAppCheckTokenCore(params: MintLinuxAppCheckParams): Promise<MintLinuxAppCheckResult> {
   const claim = parseAttestationClaim(params.claim);
   const verifier = params.verifiers.get(claim.kind);
   if (!verifier) {
-    throw new HttpsError("permission-denied", "No registered Linux App Check attestation verifier accepted this claim.");
+    throw new HttpsError(
+      "permission-denied",
+      "No registered Linux App Check attestation verifier accepted this claim.",
+    );
   }
 
   const result = verifier.verify(claim, params.nowMillis);
@@ -202,6 +227,7 @@ export const __testing__ = {
   MOCK_ATTESTATION_MAX_AGE_MS,
   DEFAULT_MINT_TTL_MS,
   makeReplayStore: (): Set<string> => new Set<string>(),
+  parseLinuxDeviceKeyAttestation,
 };
 
 const moduleReplayStore = new Set<string>();
@@ -221,26 +247,56 @@ export const mintLinuxAppCheckToken = onCall(
       assertAuth(request);
       await checkPublicHttpEndpointRateLimit("mintLinuxAppCheckToken", uid);
 
-      const input = parseCallableInput("mintLinuxAppCheckToken", {
-        ttlMillis: { optional: true, parse: (v: unknown): number | undefined => typeof v === "number" ? v : undefined },
-      }, request.data);
+      const input = parseCallableInput(
+        "mintLinuxAppCheckToken",
+        {
+          ttlMillis: {
+            optional: true,
+            parse: (v: unknown): number | undefined => (typeof v === "number" ? v : undefined),
+          },
+        },
+        request.data,
+      );
       if (request.data?.attestation === undefined) {
         throw new HttpsError("invalid-argument", "mintLinuxAppCheckToken: attestation is required.");
       }
 
       const config = getConfig();
-      const result = await mintLinuxAppCheckTokenCore({
-        claim: request.data?.attestation,
-        verifiers: buildLinuxAttestationVerifiers({
-          allowMock: config.allowMockAppCheckAttestation,
-          expectedAppId: config.linuxAppCheckAppID,
-          replayStore: moduleReplayStore,
-        }),
-        allowedAppIDs: config.allowedAppCheckAppIDs,
-        createToken: defaultCreateToken,
-        nowMillis: Date.now(),
-        ttlMillis: typeof input.ttlMillis === "number" ? input.ttlMillis : undefined,
-      });
+      const rawAttestation = request.data?.attestation;
+      const rawKind = isRecord(rawAttestation) ? rawAttestation.kind : undefined;
+      let result: MintLinuxAppCheckResult;
+      if (rawKind === LINUX_APP_CHECK_ATTESTATION_KIND) {
+        const attestation = parseLinuxDeviceKeyAttestation(rawAttestation);
+        if (
+          attestation.appId !== config.linuxAppCheckAppID ||
+          !isAppCheckAppIdAllowed(attestation.appId, { allowedAppCheckAppIDs: config.allowedAppCheckAppIDs })
+        ) {
+          throw new HttpsError("permission-denied", "Linux App Check app id is not allowlisted.");
+        }
+        await consumeLinuxAppCheckChallenge({
+          appId: attestation.appId,
+          challengeId: attestation.challengeId,
+          deviceId: attestation.deviceId,
+          signatureBase64: attestation.signatureBase64,
+          uid,
+        });
+        const ttlMillis = clampProductionDeviceKeyTtl(input.ttlMillis);
+        const token = await defaultCreateToken(attestation.appId, { ttlMillis });
+        result = { appCheckToken: token.token, ttlMillis: token.ttlMillis, appId: attestation.appId };
+      } else {
+        result = await mintLinuxAppCheckTokenCore({
+          claim: rawAttestation,
+          verifiers: buildLinuxAttestationVerifiers({
+            allowMock: config.allowMockAppCheckAttestation,
+            expectedAppId: config.linuxAppCheckAppID,
+            replayStore: moduleReplayStore,
+          }),
+          allowedAppIDs: config.allowedAppCheckAppIDs,
+          createToken: defaultCreateToken,
+          nowMillis: Date.now(),
+          ttlMillis: typeof input.ttlMillis === "number" ? input.ttlMillis : undefined,
+        });
+      }
 
       logInfo({
         event: "callable_info",

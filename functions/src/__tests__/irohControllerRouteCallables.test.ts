@@ -52,9 +52,12 @@ vi.mock("firebase-admin/firestore", () => ({
   Timestamp: { fromMillis: (millis: number) => ({ toMillis: () => millis }) },
 }));
 
-vi.mock("../config.js", () => ({ getConfig: () => ({ enforceAppCheck: true }) }));
+vi.mock("../config.js", () => ({
+  getConfig: () => ({ enforceAppCheck: true, linuxAppCheckAppID: "1:123:linux:route-test" }),
+}));
 vi.mock("../appCheckAttestation.js", () => ({
   enforceHighRiskComputerUseCallableWithNonce: vi.fn(async () => ({ nonceConsumed: true })),
+  readAppIdFromCallableRequest: (request: { app?: { appId?: string } }) => request.app?.appId,
 }));
 vi.mock("../callables/shared.js", async () => {
   const actual = await vi.importActual<typeof import("../callables/shared.js")>("../callables/shared.js");
@@ -127,6 +130,10 @@ function callableRunner(callable: unknown): (request: unknown) => Promise<unknow
 
 function invoke<T>(callable: unknown, uid: string, data: Record<string, unknown>): Promise<T> {
   return callableRunner(callable)(callableRequest(uid, data)) as Promise<T>;
+}
+
+function invokeForApp<T>(callable: unknown, uid: string, appId: string, data: Record<string, unknown>): Promise<T> {
+  return callableRunner(callable)({ ...callableRequest(uid, data), app: { appId } }) as Promise<T>;
 }
 
 function snapshotTenantPaths(uid: string): Map<string, Record<string, unknown>> {
@@ -250,6 +257,26 @@ describe("verified iroh controller route registry", () => {
       }),
     ).resolves.toEqual({ ok: true, connectionId: CONNECTION_ID });
     expect(store.get(`users/${UID}/iroh_pairing/${CONNECTION_ID}`)?.publishedByDeviceId).toBe(HOST_DEVICE_ID);
+  });
+
+  it("admits an approved Linux App Check host without granting CloudVault escrow trust", async () => {
+    const host = generateKeyPairSync("ed25519");
+    const linuxAppId = "1:123:linux:route-test";
+    store.set(`users/${UID}/linux_app_check_devices/${HOST_DEVICE_ID}`, {
+      appId: linuxAppId,
+      deviceId: HOST_DEVICE_ID,
+      platform: "Linux",
+      trustState: "approved",
+    });
+    expect(store.has(`users/${UID}/escrow_devices/${HOST_DEVICE_ID}`)).toBe(false);
+    await expect(
+      invokeForApp(publishIrohPairingPublicKey, UID, linuxAppId, {
+        deviceId: HOST_DEVICE_ID,
+        roleId: "host",
+        publicKeyBase64: rawEd25519PublicKey(host.publicKey).toString("base64"),
+        nonce: "approved-linux-host-nonce",
+      }),
+    ).resolves.toEqual({ ok: true, roleId: "host" });
   });
 
   it("normalizes legacy base32 NodeIds to current lowercase-hex iroh identity", () => {

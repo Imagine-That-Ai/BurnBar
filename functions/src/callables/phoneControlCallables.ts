@@ -17,6 +17,7 @@ import {
   enforceHighRiskComputerUseCallableWithNonce,
   isAppCheckAttestationClaimFresh,
   readAppCheckAttestationClaim,
+  readAppIdFromCallableRequest,
 } from "../appCheckAttestation.js";
 import { db } from "../adminRuntime.js";
 import { logInfo, onCallProduction } from "../logging.js";
@@ -40,10 +41,23 @@ import {
 } from "./computerUseSecurityCodecs.js";
 import { requireTrustedDeviceActionProof, requireTrustedEscrowDevice } from "./computerUseSecurityFirestore.js";
 import { revokeIrohPairingAndControllerRoutes } from "./irohControllerRouteFirestore.js";
+import { requireApprovedLinuxAppCheckIrohHost } from "./linuxAppCheckDevices.js";
 
 const RELAY_SENDER_KEY_PUBLISH_ACTION_KIND = "relay_sender_key_publish";
 const RELAY_SENDER_PROOF_PROTOCOL_VERSION = "3";
 const TRUSTED_DEVICE_PEER_NODE_ID_LIMIT = 16;
+
+async function requireApprovedIrohHostMutationDevice(
+  request: CallableRequest,
+  uid: string,
+  deviceId: string,
+): Promise<void> {
+  if (readAppIdFromCallableRequest(request) === getConfig().linuxAppCheckAppID) {
+    await requireApprovedLinuxAppCheckIrohHost(request, uid, deviceId);
+    return;
+  }
+  await requireTrustedEscrowDevice(uid, deviceId, IROH_HOST_ESCROW_PLATFORMS);
+}
 
 function boundAppCheckAttestationDigest(request: CallableRequest): string | undefined {
   const claim = readAppCheckAttestationClaim(recordOrUndefined(request.auth?.token));
@@ -210,7 +224,7 @@ export const publishIrohPairingPublicKey = onCallProduction(
     if (roleId !== "host") {
       throw new HttpsError("invalid-argument", "Only the host iroh pairing key role is client-publishable.");
     }
-    await requireTrustedEscrowDevice(uid, deviceId, IROH_HOST_ESCROW_PLATFORMS);
+    await requireApprovedIrohHostMutationDevice(request, uid, deviceId);
     const publicKeyBase64 = requireBase64Like(request.data.publicKeyBase64, "publicKeyBase64", 32, 128);
 
     await db.doc(`users/${uid}/iroh_pairing_keys/${roleId}`).set(
@@ -264,7 +278,7 @@ export const publishIrohPairingRecord = onCallProduction(
     await assertActiveBurnBarCloudProEntitlement(uid);
 
     const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
-    await requireTrustedEscrowDevice(uid, deviceId, IROH_HOST_ESCROW_PLATFORMS);
+    await requireApprovedIrohHostMutationDevice(request, uid, deviceId);
     const connectionId = boundedTrimmedString(request.data.connectionId, "connectionId", 160, true);
     const nodeId = boundedTrimmedString(request.data.nodeId, "nodeId", 128, true);
     const relayURLRaw =
@@ -331,7 +345,7 @@ export const revokeIrohPairingRecord = onCallProduction(
 
     const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
     const connectionId = boundedTrimmedString(request.data.connectionId, "connectionId", 160, true);
-    await requireTrustedEscrowDevice(uid, deviceId, IROH_HOST_ESCROW_PLATFORMS);
+    await requireApprovedIrohHostMutationDevice(request, uid, deviceId);
     await revokeIrohPairingAndControllerRoutes(uid, connectionId);
 
     logInfo({
