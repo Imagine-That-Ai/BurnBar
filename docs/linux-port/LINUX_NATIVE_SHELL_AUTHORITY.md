@@ -3,16 +3,17 @@
 Status: source-level native shell, compact status window, and freedesktop
 notification action primitives implemented; the desktop-session harness now
 captures tray, compact-status, deep-link, and deterministic notification action
-and tray-host restart recovery artifacts, and the desktop-matrix harness
+and tray-host restart recovery artifacts plus a global panic chord dispatched
+while another X11 window has focus, and the desktop-matrix harness
 requires native-shell evidence before a row can become ready. Installed desktop
-matrix breadth, provider OAuth return, and cloud agent-reply inline-reply parity
-remain open.
+matrix breadth, provider external-login parity, and cloud agent-reply quick-reply
+parity remain open.
 
 This document records the native shell contract introduced for
 `LNX-NATIVE-001`. It covers process ownership, background launch, typed deep
 links, the live tray, the compact status window, source-level freedesktop
 notifications, and user-scoped XDG login start. It does not claim that the
-cloud agent-reply listener/inline reply path, an OAuth provider-return matrix,
+cloud agent-reply listener/quick-reply path, a provider external-login matrix,
 or every Linux tray host is complete. The matrix gate now prevents those source
 capabilities from being promoted without installed desktop evidence.
 
@@ -67,8 +68,11 @@ scheme, and no user info, password, port, query, fragment, or control character.
 | `openburnbar://membership/cancel` | `account / membership-cancel` |
 
 Provider/account OAuth callbacks with state or authorization material are not
-accepted by this generic route. That flow remains owned by `LNX-AUTH-001` and
-must use a dedicated native validator before it can be added.
+accepted by this generic route. Account sign-in uses the daemon-owned device
+approval flow. Codex and Claude provider OAuth remain owned by their provider
+CLIs, matching macOS; Linux still needs a typed native start/status/cancel
+workflow that launches and monitors those trusted CLI flows without exposing
+tokens, callback URLs, auth files, or terminal output to the renderer.
 
 ## Live tray
 
@@ -137,7 +141,7 @@ instead of claiming delivery. Inline text reply is not implemented here because
 the macOS path depends on Firebase `agent_notification_events`,
 `agent_notification_replies`, CloudVault sealing, and App Check. Linux still
 needs a cloud event listener and reply sealer before agent-reply inline reply
-can be claimed.
+can be delivered through a Linux-native quick-reply composer.
 
 The installed desktop-session harness starts a deterministic
 `org.freedesktop.Notifications` D-Bus test server, enables
@@ -146,6 +150,22 @@ response, and route artifacts from the installed app's `notify-rust` path. That
 proves protocol-level delivery and route activation without treating one test
 server as certification for every rich, icon-only, or action-limited desktop
 notification host.
+
+## Global panic shortcut
+
+Tauri registers `Ctrl+Alt+Super+Period` and the Linux fallback
+`Ctrl+Alt+Shift+Period` with the native global-shortcut plugin. Either chord
+calls `daemon.computer_use.panic_halt` with `sessionId: "*"` and source
+`hotkey`; the renderer is not in the safety path.
+
+When `OPENBURNBAR_EVIDENCE_OUT` is set, the native handler atomically records
+only the daemon acceptance shape in
+`native-global-panic-shortcut-response.json`. The installed desktop-session
+harness gives an `xmessage` probe focus, dispatches the fallback chord, and
+records `native-global-panic-shortcut.json`. The verifier requires the probe,
+not the OpenBurnBar window, to own focus and requires the daemon-wide response.
+A direct RPC call, an app-focused shortcut, or a missing/invalid daemon response
+cannot satisfy the gate.
 
 ## Login start
 
@@ -193,7 +213,8 @@ node scripts/linux-port/validate-linux-release-config.mjs
 Coverage includes hostile URL rejection, typed route/action correlation,
 listener-before-drain ordering, refresh coalescing, freshness projection,
 compact status decoding/rendering/actions, freedesktop notification payload
-bounds/action routing, XDG path rejection, exact autostart round-trip and
+bounds/action routing, global panic daemon-acceptance rejection, XDG path
+rejection, exact autostart round-trip and
 permissions, Settings mutation, and packaging-copy equality.
 
 An ARM64 Ubuntu 24.04 GNOME X11 runtime pass also exercised the
@@ -232,6 +253,7 @@ a `checks` array:
 | `notification-actions` | Notification actions deliver only allowlisted native route/action pairs. |
 | `notification-relaunch-route` | Notification activation relaunches or focuses the installed app and routes correctly. |
 | `deep-link-relaunch` | Secondary `openburnbar://` launches reuse the existing instance and route correctly. |
+| `global-panic-shortcut` | The installed global panic chord reaches the daemon-wide kill path while another app has focus. |
 | `login-start` | XDG login-start enable, relogin, disable, stale-file, and uninstall paths are proven. |
 | `tray-host-loss-recovery` | Tray host loss, crash, or restart recovers without stale status or orphaned actions. |
 
@@ -254,6 +276,7 @@ The producer reads these installed-session artifacts:
 | `notification-actions` | `native-notification-action-result.json` |
 | `notification-relaunch-route` | `native-notification-relaunch-route.json` |
 | `deep-link-relaunch` | `native-deep-link-relaunch.json` |
+| `global-panic-shortcut` | `native-global-panic-shortcut-response.json`, `native-global-panic-shortcut.json` |
 | `login-start` | `native-login-start-roundtrip.json` |
 | `tray-host-loss-recovery` | `tray-host-loss-recovery.json` |
 
@@ -265,14 +288,16 @@ window, and fresh `chat / open-chat` route sample all pass.
 `scripts/linux-port/linux-desktop-session.sh` now emits the tray-host,
 tray-actions, compact-status-window, status-window-a11y, notification-server,
 notification-actions, notification-relaunch-route, deep-link-relaunch,
-tray-host-loss-recovery, and login-start lifecycle artifact inputs from a real
-installed `.deb` session:
+global-panic-shortcut, tray-host-loss-recovery, and login-start lifecycle
+artifact inputs from a real installed `.deb` session:
 D-Bus menu activation must return successfully, route actions must create fresh
 `route.navigation` samples summarized in `tray-action-route-results.json`,
 quick status must open/close with screenshot and AT-SPI focus evidence,
 notification activation must route through the installed freedesktop action
 path, and secondary `openburnbar://chat` launch must exit via single-instance
-handoff while the original process stays alive. The tray-host-loss proof kills
+handoff while the original process stays alive. The panic proof keeps a separate
+X11 probe window focused while the native global chord reaches the daemon-wide
+kill path. The tray-host-loss proof kills
 the current tray host, observes the watcher loss, restarts the host, refreshes
 the recovered StatusNotifier item and D-Bus menu, invokes a recovered dashboard
 route, and requires one app process plus one registered item before passing.
@@ -299,12 +324,12 @@ installed candidate passes:
 5. freedesktop actionable notification delivery in rich and action-limited
    hosts, visual presentation, denial, daemon-offline behavior, and
    notification-server absence;
-6. portal/global shortcut and existing daemon-backed panic latency without the
-   tray becoming a sole safety path.
+6. portal/global-shortcut behavior and daemon-backed panic latency on the real
+   GNOME/KDE/wlroots matrix without the tray becoming a sole safety path;
 7. cloud agent-reply notification listener, App Check, CloudVault reply sealing,
-   and inline reply send/open parity with macOS.
+   and accessible quick-reply send/open parity with macOS.
 
 The source foundation is complete only for the capabilities described above.
-Installed notification breadth, provider OAuth return, cloud inline reply, and
-the final desktop matrix must remain visibly blocked until their product
-evidence exists.
+Installed notification breadth, provider external login, cloud quick reply, and
+the final desktop matrix must remain visibly blocked until their product evidence
+exists.

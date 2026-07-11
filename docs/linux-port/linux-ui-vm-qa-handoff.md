@@ -131,7 +131,9 @@ The desktop-session run should produce `tray-chat-menu-event.txt`,
 `native-notification-response-result.json`,
 `native-notification-relaunch-route.json`,
 `native-notification-server-events.jsonl`, and
-`native-deep-link-relaunch.json`, `native-login-start-relogin.json`,
+`native-deep-link-relaunch.json`,
+`native-global-panic-shortcut-response.json`,
+`native-global-panic-shortcut.json`, `native-login-start-relogin.json`,
 `native-login-start-autostart-exec.txt`, `tray-host-loss-recovery.json`,
 `tray-host-loss-recovery-menu-event.txt`, and `tray-recovered-menu-actions.json`.
 Treat a missing artifact as a failed native shell capture, not as a manual QA
