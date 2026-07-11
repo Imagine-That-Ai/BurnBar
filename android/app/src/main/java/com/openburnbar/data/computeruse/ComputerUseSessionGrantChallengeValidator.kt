@@ -77,6 +77,8 @@ object ComputerUseSessionGrantChallengeValidator {
             challenge.sessionTimeoutSeconds !in 1..(24 * 60 * 60) ||
             challenge.scopeRuleIds.size > 256 ||
             !challenge.scopeRuleIds.all(::isBoundedIdentifier) ||
+            challenge.phoneViewerNodeId?.let(::isBoundedIdentifier) == false ||
+            challenge.macHostNodeId?.let(::isBoundedIdentifier) == false ||
             challenge.runId?.let(::isBoundedIdentifier) == false ||
             challenge.runCallId?.let(::isBoundedIdentifier) == false
         ) {

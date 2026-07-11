@@ -369,6 +369,8 @@ public struct ComputerUsePhoneControlSigner: Sendable {
               challenge.sessionTimeoutSeconds <= 24 * 60 * 60,
               challenge.scopeRuleIds.count <= 256,
               challenge.scopeRuleIds.allSatisfy(isBoundedIdentifier),
+              challenge.phoneViewerNodeId.map(isBoundedIdentifier) ?? true,
+              challenge.macHostNodeId.map(isBoundedIdentifier) ?? true,
               challenge.runId.map(isBoundedIdentifier) ?? true,
               challenge.runCallId.map(isBoundedIdentifier) ?? true else {
             throw SessionGrantChallengeValidationError.malformedSession

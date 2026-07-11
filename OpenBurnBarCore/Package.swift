@@ -64,6 +64,27 @@ let hasBurnBarRemoteXCFramework = FileManager.default.fileExists(
 )
 #endif
 
+#if os(Linux)
+let linuxIrohNativeLibraryDirectory: String? = {
+    guard let configured = ProcessInfo.processInfo.environment["OPENBURNBAR_LINUX_IROH_LIBRARY_DIR"]?
+        .trimmingCharacters(in: .whitespacesAndNewlines),
+        configured.isEmpty == false
+    else {
+        return nil
+    }
+    let directory = URL(fileURLWithPath: configured).standardizedFileURL
+    let library = directory.appendingPathComponent("libopenburnbar_iroh.so")
+    guard FileManager.default.fileExists(atPath: library.path) else {
+        fatalError("OPENBURNBAR_LINUX_IROH_LIBRARY_DIR is missing libopenburnbar_iroh.so: \(directory.path)")
+    }
+    return directory.path
+}()
+#else
+let linuxIrohNativeLibraryDirectory: String? = nil
+#endif
+let hasLinuxIrohNativeLibrary = linuxIrohNativeLibraryDirectory != nil
+let hasIrohFFIBindings = hasIrohXCFramework || hasLinuxIrohNativeLibrary
+
 let packageProductsBase: [Product] = [
     .library(
         name: "OpenBurnBarCore",
@@ -152,7 +173,7 @@ let packageProductsBase: [Product] = [
         name: "OpenBurnBarData",
         targets: ["OpenBurnBarData"]
     )
-]) + (hasIrohXCFramework ? [
+]) + (hasIrohFFIBindings ? [
     .library(
         name: "OpenBurnBarIrohFFI",
         targets: ["OpenBurnBarIrohFFI"]
@@ -177,30 +198,58 @@ let packageProducts: [Product] = buildLinuxSecurityOnly ? [
 // the UI-free OpenBurnBarKernel, NOT the SwiftUI/AppKit-carrying OpenBurnBarCore
 // target. This is where audit finding #4's link-surface win lands: the most
 // security-sensitive binaries stop transitively linking the UI monolith.
-let irohRelayDependencies: [Target.Dependency] = hasIrohXCFramework
+let irohRelayDependencies: [Target.Dependency] = hasIrohFFIBindings
     ? ["OpenBurnBarKernel", "OpenBurnBarIrohFFI"]
     : ["OpenBurnBarKernel"]
 
-let irohBinaryTargets: [Target] = hasIrohXCFramework ? [
-    .binaryTarget(
-        name: "OpenBurnBarIroh",
-        path: "../Vendor/OpenBurnBarIroh.xcframework"
-    ),
-    .target(
-        name: "OpenBurnBarIrohFFI",
-        dependencies: ["OpenBurnBarIroh"],
-        path: "Sources/OpenBurnBarIroh/Generated",
-        exclude: [
-            "openburnbar_iroh.modulemap",
-            "openburnbar_irohFFI.h"
-        ],
-        // Generated UniFFI bindings (never hand-edited; AAR parity) target Swift 5.
-        swiftSettings: [.swiftLanguageMode(.v5)],
-        linkerSettings: [
-            .linkedFramework("SystemConfiguration", .when(platforms: [.macOS, .iOS]))
+let irohFFITargets: [Target] = {
+    if hasIrohXCFramework {
+        return [
+            .binaryTarget(
+                name: "OpenBurnBarIroh",
+                path: "../Vendor/OpenBurnBarIroh.xcframework"
+            ),
+            .target(
+                name: "OpenBurnBarIrohFFI",
+                dependencies: ["OpenBurnBarIroh"],
+                path: "Sources/OpenBurnBarIroh/Generated",
+                exclude: [
+                    "openburnbar_iroh.modulemap",
+                    "openburnbar_irohFFI.h"
+                ],
+                // Generated UniFFI bindings (never hand-edited; AAR parity) target Swift 5.
+                swiftSettings: [.swiftLanguageMode(.v5)],
+                linkerSettings: [
+                    .linkedFramework("SystemConfiguration", .when(platforms: [.macOS, .iOS]))
+                ]
+            )
         ]
-    )
-] : []
+    }
+    guard let libraryDirectory = linuxIrohNativeLibraryDirectory else {
+        return []
+    }
+    return [
+        .target(
+            name: "openburnbar_irohFFI",
+            path: "Sources/openburnbar_irohFFI",
+            publicHeadersPath: "include",
+            linkerSettings: [
+                .unsafeFlags(["-L", libraryDirectory]),
+                .linkedLibrary("openburnbar_iroh")
+            ]
+        ),
+        .target(
+            name: "OpenBurnBarIrohFFI",
+            dependencies: ["openburnbar_irohFFI"],
+            path: "Sources/OpenBurnBarIroh/Generated",
+            exclude: [
+                "openburnbar_iroh.modulemap",
+                "openburnbar_irohFFI.h"
+            ],
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        )
+    ]
+}()
 
 let burnBarRemoteBinaryTargets: [Target] = hasBurnBarRemoteXCFramework ? [
     .binaryTarget(
@@ -898,7 +947,7 @@ let linuxSecurityOnlyTargets: [Target] = [
 
 let allTargets: [Target] = buildLinuxSecurityOnly
     ? linuxSecurityOnlyTargets
-    : irohBinaryTargets + burnBarRemoteBinaryTargets + signalBinaryTargets + linuxSecretServiceTargets + firstPartyTargets + vendoredSQLiteTargets
+    : irohFFITargets + burnBarRemoteBinaryTargets + signalBinaryTargets + linuxSecretServiceTargets + firstPartyTargets + vendoredSQLiteTargets
 
 let package = Package(
     name: "OpenBurnBarCore",

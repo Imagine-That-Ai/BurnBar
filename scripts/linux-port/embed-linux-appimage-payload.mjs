@@ -11,6 +11,7 @@ export const requiredPayloadPaths = [
   'openburnbar-daemon',
   'swift',
   'native/libsqlcipher.so.0',
+  'native/libopenburnbar_iroh.so',
   'playwright/openburnbar-playwright-bridge.js',
   'playwright/openburnbar-browser-runtime-probe',
   'playwright/browser-runtime-requirements.json'
@@ -39,6 +40,11 @@ export function validatePayload(payloadRoot) {
   for (const entry of requiredPayloadPaths) {
     requirePath(path.join(root, entry), `AppImage payload ${entry}`, entry === 'swift' ? 'directory' : 'file');
   }
+  requireRegularResource(
+    path.join(root, 'native/libopenburnbar_iroh.so'),
+    'AppImage iroh native runtime',
+    0o644
+  );
   requireRegularResource(
     path.join(root, 'playwright/openburnbar-playwright-bridge.js'),
     'AppImage Playwright bridge',
@@ -98,11 +104,17 @@ function assertEmbeddedPayload(appDir) {
     'usr/libexec/openburnbar-daemon-launch',
     'usr/lib/openburnbar/swift',
     'usr/lib/openburnbar/native/libsqlcipher.so.0',
+    'usr/lib/openburnbar/native/libopenburnbar_iroh.so',
     'usr/lib/openburnbar/playwright/openburnbar-playwright-bridge.js',
     'usr/lib/openburnbar/playwright/openburnbar-browser-runtime-probe',
     'usr/lib/openburnbar/playwright/browser-runtime-requirements.json'
   ];
   for (const entry of required) requirePath(path.join(appDir, entry), `embedded AppImage path ${entry}`, entry.endsWith('/swift') ? 'directory' : 'file');
+  requireRegularResource(
+    path.join(appDir, 'usr/lib/openburnbar/native/libopenburnbar_iroh.so'),
+    'embedded AppImage iroh native runtime',
+    0o644
+  );
   requireRegularResource(
     path.join(appDir, 'usr/lib/openburnbar/playwright/openburnbar-playwright-bridge.js'),
     'embedded AppImage Playwright bridge',

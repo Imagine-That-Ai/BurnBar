@@ -118,6 +118,12 @@ for (const artifact of closure.artifacts ?? []) {
       'usr/lib/openburnbar/native/libsqlcipher.so.0',
       'deb package missing SQLCipher runtime at /usr/lib/openburnbar/native'
     );
+    assertContains(
+      'assert deb contains iroh runtime under usr/lib/openburnbar/native',
+      contents.stdout,
+      'usr/lib/openburnbar/native/libopenburnbar_iroh.so',
+      'deb package missing iroh runtime at /usr/lib/openburnbar/native'
+    );
     assertAttestationPackagePayload('deb', contents.stdout);
     // Prefer sudo when non-root (guest packaging smoke).
     const dpkgInstall = runStep('sudo', ['dpkg', '-i', full]);
@@ -190,6 +196,12 @@ for (const artifact of closure.artifacts ?? []) {
       '/usr/lib/openburnbar/native/libsqlcipher.so.0',
       'rpm package missing SQLCipher runtime at /usr/lib/openburnbar/native'
     );
+    assertContains(
+      'assert rpm contains iroh runtime under /usr/lib/openburnbar/native',
+      listing.stdout,
+      '/usr/lib/openburnbar/native/libopenburnbar_iroh.so',
+      'rpm package missing iroh runtime at /usr/lib/openburnbar/native'
+    );
     assertAttestationPackagePayload('rpm', listing.stdout);
     // Construction smoke runs in the Debian-based toolchain container, so RPM
     // dependencies are asserted above and the payload is installed with
@@ -248,6 +260,7 @@ for (const artifact of closure.artifacts ?? []) {
         'usr/libexec/openburnbar-daemon-launch',
         'usr/lib/openburnbar/swift',
         'usr/lib/openburnbar/native/libsqlcipher.so.0',
+        'usr/lib/openburnbar/native/libopenburnbar_iroh.so',
         'usr/share/openburnbar/autostart/openburnbar.desktop'
       ]) {
         const present = fs.existsSync(path.join(appDir, requiredPath));

@@ -5,6 +5,8 @@ import android.util.Base64
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Source
+import com.openburnbar.data.computeruse.ComputerUseSessionGrantChallengeDelivery
+import com.openburnbar.data.computeruse.ComputerUseSessionGrantRoute
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRelayChunkKind as RelayChunkKind
@@ -27,6 +29,8 @@ import com.openburnbar.irohrelay.LoopbackIrohRelayRendezvous
 import com.openburnbar.irohrelay.LoopbackIrohRelayTransport
 import com.openburnbar.irohrelay.NoopIrohTransportAuditLogging
 import com.openburnbar.irohrelay.OpenBurnBarIrohFfiBackend
+import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -87,6 +91,7 @@ class HermesIrohRelayTransport(
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
     private val connectTimeoutMillis: Long = DEFAULT_CONNECT_TIMEOUT_MILLIS,
     private val nowMillis: () -> Long = { System.currentTimeMillis() },
+    private val sessionGrantChallengeHandler: (ComputerUseSessionGrantChallengeDelivery) -> Unit = {},
 ) : HermesRelayTransporting {
     private val stateLock = Mutex()
     private var endpoint: IrohRelayTransport? = null
@@ -218,6 +223,12 @@ class HermesIrohRelayTransport(
 
         val dialTimeout = minOf(connectTimeoutMillis, timeoutMillis)
         val stream = connectVerifiedStream(verifiedTarget, uid, payload.connectionID, dialTimeout)
+        val authenticatedRemoteNodeId = stream.authenticatedRemoteNodeId()?.trim()
+        if (authenticatedRemoteNodeId.isNullOrEmpty() || authenticatedRemoteNodeId != verifiedTarget.nodeId) {
+            stream.runCatching { close() }
+            throw IrohRelayTransportError.StreamRejected("The request stream remote identity did not match its verified pairing target.")
+        }
+        val routeLive = AtomicBoolean(true)
         auditLogger.record(
             event = IrohTransportAuditEvent.STREAM_OPENED,
             uid = uid,
@@ -241,9 +252,13 @@ class HermesIrohRelayTransport(
                     symmetricKey = frames.symmetricKey,
                     requestId = frames.requestId,
                     onChunk = onChunk,
+                    authenticatedRemoteNodeId = authenticatedRemoteNodeId,
+                    routeToken = UUID.randomUUID().toString(),
+                    routeLive = routeLive,
                 ),
             )
         } finally {
+            routeLive.set(false)
             try {
                 stream.close()
             } catch (_: Throwable) {
@@ -259,6 +274,9 @@ class HermesIrohRelayTransport(
         val symmetricKey: ByteArray,
         val requestId: String,
         val onChunk: suspend (StreamingChunk) -> Unit,
+        val authenticatedRemoteNodeId: String,
+        val routeToken: String,
+        val routeLive: AtomicBoolean,
     )
 
     private suspend fun exchangeRelayRequest(request: RelayExchangeRequest) {
@@ -268,9 +286,30 @@ class HermesIrohRelayTransport(
             val frame =
                 withTimeoutOrNull(remaining) { request.stream.receive() }
                     ?: relayExchangeTimeout()
+            val isBoundToConnection =
+                frame.uid == request.uid && frame.connectionId == request.payload.connectionID
+            if (isBoundToConnection && frame.type == HermesRealtimeRelayFrameType.CONTROL_SESSION_GRANT_CHALLENGE) {
+                frame.control?.sessionGrantChallenge?.let { challenge ->
+                    sessionGrantChallengeHandler(
+                        ComputerUseSessionGrantChallengeDelivery(
+                            challenge = challenge,
+                            route =
+                            ComputerUseSessionGrantRoute(
+                                uid = request.uid,
+                                connectionId = request.payload.connectionID,
+                                authenticatedRemoteNodeId = request.authenticatedRemoteNodeId,
+                                streamToken = request.routeToken,
+                                nowMillis = nowMillis,
+                                live = { request.routeLive.get() },
+                                frameSink = { outbound -> request.stream.send(outbound) },
+                            ),
+                        ),
+                    )
+                }
+                continue
+            }
             val isMatchingFrame =
-                frame.uid == request.uid &&
-                    frame.connectionId == request.payload.connectionID &&
+                isBoundToConnection &&
                     frame.requestId == request.requestId
             if (isMatchingFrame) {
                 when (

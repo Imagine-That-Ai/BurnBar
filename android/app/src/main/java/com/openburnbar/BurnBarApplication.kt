@@ -114,6 +114,9 @@ class BurnBarApplication : Application() {
 
         @Volatile var agentCapabilityGrantController:
             com.openburnbar.data.computeruse.AgentCapabilityGrantController? = null
+
+        @Volatile internal var sessionGrantChallengeReceiver:
+            com.openburnbar.data.computeruse.ComputerUseSessionGrantChallengeReceiver? = null
     }
 
     private var pairingListener: ListenerRegistration? = null
@@ -159,6 +162,7 @@ class BurnBarApplication : Application() {
         runCatching { SentryPrivacyInit.install(applicationContext) }
             .onFailure { Log.w("BurnBar", "Sentry privacy scrubber install failed: ${it.message}") }
         FirebaseApp.initializeApp(this)
+        installComputerUseSessionGrantReceiver()
         installAppCheckProvider()
         // F2/F7/F10: land remote kill-switch values so the default-ON
         // protection flags can be remotely disabled (the flags default ON via
@@ -222,6 +226,38 @@ class BurnBarApplication : Application() {
         AgentReplyNotificationState.installLifecycleTracking(this)
         com.openburnbar.data.cloud.CloudVaultRotationPickupLifecycle.install(this)
         registerFcmToken()
+    }
+
+    private fun installComputerUseSessionGrantReceiver() {
+        com.openburnbar.data.computeruse.ForegroundFragmentActivityTracker.install(this)
+        val controller = com.openburnbar.data.computeruse.AgentCapabilityGrantController(this)
+        val notificationCenter =
+            com.openburnbar.data.computeruse.ComputerUseSessionGrantNotificationCenter(this)
+        agentCapabilityGrantController = controller
+        sessionGrantChallengeReceiver =
+            com.openburnbar.data.computeruse.ComputerUseSessionGrantChallengeReceiver(
+                scope = applicationScope,
+                foregroundActivityProvider = { challengeId, expiresAtMillis ->
+                    com.openburnbar.data.computeruse.ForegroundFragmentActivityTracker.current()
+                        ?: run {
+                            notificationCenter.showPendingChallenge(challengeId, expiresAtMillis)
+                            try {
+                                com.openburnbar.data.computeruse.ForegroundFragmentActivityTracker.awaitResumedUntil(expiresAtMillis)
+                            } finally {
+                                notificationCenter.dismissPendingChallenge(challengeId)
+                            }
+                        }
+                },
+                grantHandler = { activity, delivery ->
+                    controller.grant(activity = activity, delivery = delivery)
+                },
+                failureHandler = { challenge, error ->
+                    Log.w(
+                        "BurnBar",
+                        "Session grant challenge failed id=${challenge.challengeId.take(32)}: ${error.message}",
+                    )
+                },
+            )
     }
 
     private fun installFileTransferService() {
@@ -387,11 +423,8 @@ class BurnBarApplication : Application() {
     }
 
     /**
-     * Default control-stream dialer. The production iroh transport is
-     * provided through `HermesIrohRelayTransport.defaultTransport(...)`
-     * once the AAR is on the classpath; without the AAR we fall back to
-     * the in-process loopback transport so the wiring still completes
-     * for tests and CI screenshots.
+     * Default control-stream dialer. Production requires the native iroh backend and fails closed
+     * during transport-pool construction when the AAR/native library is unavailable.
      */
     internal suspend fun dialControlStream(target: IrohDialTarget): IrohRelayStream {
         Log.i(

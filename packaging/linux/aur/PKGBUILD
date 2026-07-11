@@ -36,8 +36,17 @@ sha256sums=(
 )
 
 package() {
+  chmod 755 "${srcdir}/OpenBurnBar-${pkgver}.AppImage"
+  rm -rf "${srcdir}/squashfs-root"
+  (
+    cd "${srcdir}"
+    "./OpenBurnBar-${pkgver}.AppImage" \
+      --appimage-extract usr/lib/openburnbar/native/libopenburnbar_iroh.so >/dev/null
+  )
+  test -f "${srcdir}/squashfs-root/usr/lib/openburnbar/native/libopenburnbar_iroh.so"
   install -Dm755 "${srcdir}/OpenBurnBar-${pkgver}.AppImage" "${pkgdir}/usr/bin/openburnbar-linux-desktop"
   install -Dm755 "${srcdir}/openburnbar-daemon-${pkgver}-${CARCH}" "${pkgdir}/usr/bin/openburnbar-daemon"
+  install -Dm644 "${srcdir}/squashfs-root/usr/lib/openburnbar/native/libopenburnbar_iroh.so" "${pkgdir}/usr/lib/openburnbar/native/libopenburnbar_iroh.so"
   install -Dm755 "${srcdir}/openburnbar-daemon-launch" "${pkgdir}/usr/libexec/openburnbar-daemon-launch"
   install -Dm644 "${srcdir}/openburnbar.desktop" "${pkgdir}/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop"
   install -Dm644 "${srcdir}/openburnbar-autostart.desktop" "${pkgdir}/usr/share/openburnbar/autostart/openburnbar.desktop"
@@ -47,4 +56,5 @@ package() {
   install -Dm644 "${srcdir}/openburnbar-playwright-bridge.js" "${pkgdir}/usr/lib/openburnbar/playwright/openburnbar-playwright-bridge.js"
   install -Dm755 "${srcdir}/openburnbar-browser-runtime-probe" "${pkgdir}/usr/lib/openburnbar/playwright/openburnbar-browser-runtime-probe"
   install -Dm644 "${srcdir}/browser-runtime-requirements.json" "${pkgdir}/usr/lib/openburnbar/playwright/browser-runtime-requirements.json"
+  rm -rf "${srcdir}/squashfs-root"
 }

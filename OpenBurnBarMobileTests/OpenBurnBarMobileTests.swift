@@ -3359,8 +3359,16 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(responseFrame.connectionId, connectionID)
         XCTAssertEqual(responseFrame.control?.streamClass, MediaStreamClass.controlApproval.rawValue)
         XCTAssertEqual(responseFrame.control?.sessionId, approval.sessionId)
-        XCTAssertEqual(responseFrame.control?.approvalResponse?.approvalId, approval.approvalId)
-        XCTAssertEqual(responseFrame.control?.approvalResponse?.decision, .approve)
+        let approvalResponse = try XCTUnwrap(responseFrame.control?.approvalResponse)
+        let approvalAuthority = try XCTUnwrap(approvalResponse.authority)
+        XCTAssertEqual(approvalResponse.approvalId, approval.approvalId)
+        XCTAssertEqual(approvalResponse.decision, .approve)
+        XCTAssertEqual(approvalResponse.respondedBy, approvalAuthority.peerNodeId)
+        XCTAssertEqual(approvalResponse.respondedBy, publishedAuthorities.first?.peerNodeId)
+        XCTAssertEqual(
+            approvalAuthority.intentHashBlake3,
+            try ComputerUsePhoneControlSigner().canonicalApprovalResponseHashHex(response: approvalResponse)
+        )
         XCTAssertNil(coordinator.state.pendingApproval)
     }
 
@@ -3544,22 +3552,31 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let key = Curve25519SigningKey(privateKey: Curve25519.Signing.PrivateKey())
         let firstFrameGate = MobileAsyncGate()
         let recorder = PhoneControlFrameOrderRecorder()
-        let sender = PhoneControlSender(
+        let frameSink: PhoneControlSender.FrameSink = { frame in
+            guard let counter = frame.control?.inputIntent?.authority.counter else {
+                return
+            }
+            await recorder.recordStarted(counter)
+            if counter == 1 {
+                await firstFrameGate.wait()
+            }
+            await recorder.recordFinished(counter)
+        }
+        let firstSender = PhoneControlSender(
             peerNodeId: "ios-phone-glass-trackpad-test",
             uid: "user-glass-trackpad-test",
             connectionId: "relay-glass-trackpad-test",
             signingKeyProvider: { key },
             userDefaults: defaults,
-            frameSink: { frame in
-                guard let counter = frame.control?.inputIntent?.authority.counter else {
-                    return
-                }
-                await recorder.recordStarted(counter)
-                if counter == 1 {
-                    await firstFrameGate.wait()
-                }
-                await recorder.recordFinished(counter)
-            }
+            frameSink: frameSink
+        )
+        let secondSender = PhoneControlSender(
+            peerNodeId: "ios-phone-glass-trackpad-test",
+            uid: "user-glass-trackpad-test",
+            connectionId: "relay-glass-trackpad-test",
+            signingKeyProvider: { key },
+            userDefaults: defaults,
+            frameSink: frameSink
         )
         let placeholder = HermesRealtimeRelayAuthorityEnvelope(
             peerNodeId: "",
@@ -3575,10 +3592,10 @@ final class OpenBurnBarMobileTests: XCTestCase {
             authority: placeholder
         )
 
-        let firstSend = Task { try await sender.send(intent: intent) }
+        let firstSend = Task { try await firstSender.send(intent: intent) }
         await recorder.waitForStarted(counter: 1)
 
-        let secondSend = Task { try await sender.send(intent: intent) }
+        let secondSend = Task { try await secondSender.send(intent: intent) }
         try await Task.sleep(nanoseconds: 50_000_000)
         let finishedBeforeGateOpen = await recorder.finishedCounters()
         XCTAssertEqual(
@@ -3595,6 +3612,101 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(secondAuthority.counter, 2)
         let finishedAfterGateOpen = await recorder.finishedCounters()
         XCTAssertEqual(finishedAfterGateOpen, [1, 2])
+    }
+
+    func testRemoteUnlockSigningHoldsPeerSequenceThroughExactFrameWrite() async throws {
+        let suiteName = "PhoneControlRemoteUnlockSequence-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let peerNodeId = "ios-phone-remote-unlock-sequence-test"
+        let key = Curve25519SigningKey(privateKey: Curve25519.Signing.PrivateKey())
+        let firstFrameGate = MobileAsyncGate()
+        let recorder = PhoneControlFrameOrderRecorder()
+        let recordFrame: @Sendable (HermesRealtimeRelayFrame) async -> Void = { frame in
+            let counter = frame.control?.inputIntent?.authority.counter
+                ?? frame.media?.mirrorRequest?.remoteUnlockSession?.authority.counter
+            guard let counter else { return }
+            await recorder.recordStarted(counter)
+            if counter == 1 {
+                await firstFrameGate.wait()
+            }
+            await recorder.recordFinished(counter)
+        }
+        let remoteUnlockSender = PhoneControlSender(
+            peerNodeId: peerNodeId,
+            uid: "user-remote-unlock-sequence-test",
+            connectionId: "relay-remote-unlock-sequence-test",
+            signingKeyProvider: { key },
+            userDefaults: defaults,
+            frameSink: { _ in }
+        )
+        let normalSender = PhoneControlSender(
+            peerNodeId: peerNodeId,
+            uid: "user-remote-unlock-sequence-test",
+            connectionId: "relay-remote-unlock-sequence-test",
+            signingKeyProvider: { key },
+            userDefaults: defaults,
+            frameSink: { frame in await recordFrame(frame) }
+        )
+        let unsignedSession = HermesRealtimeRelayRemoteUnlockSession(
+            requestId: "remote-unlock-request",
+            sessionId: "remote-unlock-session",
+            intent: .request,
+            requesterDisplayName: "Test iPhone",
+            viewerDeviceId: "ios-device-1",
+            requestedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            expiresAt: Date(timeIntervalSince1970: 1_700_000_030),
+            localAuthenticationSatisfied: true,
+            requestedBackend: .openBurnBarVirtualHID,
+            authority: Self.phoneControlPlaceholderAuthority()
+        )
+        let intent = HermesRealtimeRelayInputIntent(
+            kind: .pointerMove,
+            normalizedX2: 1,
+            normalizedY2: 1,
+            authority: Self.phoneControlPlaceholderAuthority()
+        )
+
+        let remoteUnlockSend = Task {
+            try await remoteUnlockSender.send(
+                remoteUnlockSession: unsignedSession,
+                frameBuilder: { signedSession in
+                    HermesRealtimeRelayFrame(
+                        type: .mediaMirrorRequest,
+                        uid: "user-remote-unlock-sequence-test",
+                        connectionId: "relay-remote-unlock-sequence-test",
+                        media: HermesRealtimeRelayMediaPayload(
+                            mirrorRequest: HermesRealtimeRelayMirrorRequest(
+                                requestId: "mirror-request",
+                                requestedAt: Date(timeIntervalSince1970: 1_700_000_000),
+                                requesterDisplayName: "Test iPhone",
+                                streamClass: MediaStreamClass.screenVideo.rawValue,
+                                remoteUnlockSession: signedSession
+                            )
+                        )
+                    )
+                },
+                frameSink: { frame in await recordFrame(frame) }
+            )
+        }
+        await recorder.waitForStarted(counter: 1)
+
+        let normalSend = Task { try await normalSender.send(intent: intent) }
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let startedBeforeRelease = await recorder.startedCounterValues()
+        let finishedBeforeRelease = await recorder.finishedCounters()
+        XCTAssertEqual(startedBeforeRelease, [1])
+        XCTAssertEqual(finishedBeforeRelease, [])
+
+        await firstFrameGate.open()
+        let signedSession = try await remoteUnlockSend.value
+        let normalAuthority = try await normalSend.value
+
+        XCTAssertEqual(signedSession.authority.counter, 1)
+        XCTAssertEqual(normalAuthority.counter, 2)
+        let finishedAfterRelease = await recorder.finishedCounters()
+        XCTAssertEqual(finishedAfterRelease, [1, 2])
     }
 
     func testPhoneControlSenderCancelsQueuedIntentBeforeItWritesAFrame() async throws {
@@ -3716,6 +3828,22 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(queueWrites, 1)
     }
 
+    func testLowPresetSessionGrantStillRequiresDeviceOwnerAuthentication() async throws {
+        var authenticationReasons: [String] = []
+        let controller = MobileAgentPermissionGrantController(
+            deviceOwnerAuthenticator: { reason in
+                authenticationReasons.append(reason)
+                return true
+            }
+        )
+
+        let authenticated = try await controller.authenticateSessionGrant(for: .low)
+
+        XCTAssertTrue(authenticated)
+        XCTAssertEqual(authenticationReasons.count, 1)
+        XCTAssertTrue(authenticationReasons[0].contains(AgentPermissionPreset.low.title))
+    }
+
     private func agentGrantRequest(deliveryMode: AgentGrantDeliveryMode) -> AgentCapabilityGrantRequest {
         AgentCapabilityGrantRequest(
             runtimeID: .claude,
@@ -3733,7 +3861,8 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let delivered = expectation(description: "session grant challenge delivered")
         let challengeReceiver = MobileComputerUseSessionGrantChallengeReceiver(
             now: { now },
-            grantHandler: { received in
+            grantHandler: { received, authenticationWillBegin in
+                authenticationWillBegin()
                 deliveredChallenges.append(received)
                 delivered.fulfill()
             }
@@ -3766,7 +3895,10 @@ final class OpenBurnBarMobileTests: XCTestCase {
         var deliveryCount = 0
         let challengeReceiver = MobileComputerUseSessionGrantChallengeReceiver(
             now: { now },
-            grantHandler: { _ in deliveryCount += 1 }
+            grantHandler: { _, authenticationWillBegin in
+                authenticationWillBegin()
+                deliveryCount += 1
+            }
         )
         let receiver = AgentWatchReceiver(
             uid: "user",
@@ -3785,6 +3917,100 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(deliveryCount, 0)
     }
 
+    func testSessionGrantChallengeDenialIsTerminalAfterAuthenticationBegins() async throws {
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_100)
+        let challenge = try sessionGrantChallenge(now: now)
+        let expectedError = NSError(domain: "SessionGrantChallengeTests", code: 1)
+        var attempts = 0
+        let receiver = MobileComputerUseSessionGrantChallengeReceiver(
+            now: { now },
+            grantHandler: { _, authenticationWillBegin in
+                attempts += 1
+                authenticationWillBegin()
+                throw expectedError
+            }
+        )
+
+        receiver.ingest(challenge)
+        await receiver.waitUntilIdleForTesting()
+        receiver.ingest(challenge)
+        await receiver.waitUntilIdleForTesting()
+
+        XCTAssertEqual(attempts, 1)
+        XCTAssertTrue(receiver.hasCompletedChallengeForTesting(challenge.challengeId))
+    }
+
+    func testSessionGrantChallengeFailureBeforeAuthenticationRemainsRetryable() async throws {
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_100)
+        let challenge = try sessionGrantChallenge(now: now)
+        let expectedError = NSError(domain: "SessionGrantChallengeTests", code: 2)
+        var attempts = 0
+        let receiver = MobileComputerUseSessionGrantChallengeReceiver(
+            now: { now },
+            grantHandler: { _, authenticationWillBegin in
+                attempts += 1
+                if attempts == 1 {
+                    throw expectedError
+                }
+                authenticationWillBegin()
+            }
+        )
+
+        receiver.ingest(challenge)
+        await receiver.waitUntilIdleForTesting()
+        receiver.ingest(challenge)
+        await receiver.waitUntilIdleForTesting()
+
+        XCTAssertEqual(attempts, 2)
+        XCTAssertTrue(receiver.hasCompletedChallengeForTesting(challenge.challengeId))
+    }
+
+    func testSessionGrantChallengeReceiverAllowsOnlyOneActiveUserInteraction() async throws {
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_100)
+        let gate = MobileAsyncGate()
+        let started = expectation(description: "first session challenge started")
+        var handledChallengeIds: [String] = []
+        let receiver = MobileComputerUseSessionGrantChallengeReceiver(
+            now: { now },
+            grantHandler: { challenge, authenticationWillBegin in
+                handledChallengeIds.append(challenge.challengeId)
+                authenticationWillBegin()
+                started.fulfill()
+                await gate.wait()
+            }
+        )
+
+        let first = try sessionGrantChallenge(now: now, challengeId: "challenge-flood-0")
+        receiver.ingest(first)
+        await fulfillment(of: [started], timeout: 1)
+        for index in 1..<50 {
+            receiver.ingest(try sessionGrantChallenge(now: now, challengeId: "challenge-flood-\(index)"))
+        }
+
+        XCTAssertEqual(handledChallengeIds, [first.challengeId])
+        await gate.open()
+        await receiver.waitUntilIdleForTesting()
+    }
+
+    func testSessionGrantChallengeReceiverBoundsCompletedReplayRetention() async throws {
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_100)
+        let receiver = MobileComputerUseSessionGrantChallengeReceiver(
+            now: { now },
+            completedRetentionLimit: 2,
+            grantHandler: { _, authenticationWillBegin in authenticationWillBegin() }
+        )
+
+        for index in 0..<3 {
+            receiver.ingest(try sessionGrantChallenge(now: now, challengeId: "challenge-retention-\(index)"))
+            await receiver.waitUntilIdleForTesting()
+        }
+
+        XCTAssertEqual(receiver.completedChallengeCountForTesting, 2)
+        XCTAssertFalse(receiver.hasCompletedChallengeForTesting("challenge-retention-0"))
+        XCTAssertTrue(receiver.hasCompletedChallengeForTesting("challenge-retention-1"))
+        XCTAssertTrue(receiver.hasCompletedChallengeForTesting("challenge-retention-2"))
+    }
+
     func testIrohRequestStreamRoutesSessionGrantChallengeToDedicatedReceiver() {
         XCTAssertTrue(
             HermesIrohRelayTransport.routesRequestStreamFrameToSessionGrantChallengeReceiverForTesting(
@@ -3797,12 +4023,13 @@ final class OpenBurnBarMobileTests: XCTestCase {
     }
 
     private func sessionGrantChallenge(
-        now: Date
+        now: Date,
+        challengeId: String = "challenge-mobile-1"
     ) throws -> HermesRealtimeRelayComputerUseSessionGrantChallenge {
         let signer = ComputerUsePhoneControlSigner()
         var challenge = HermesRealtimeRelayComputerUseSessionGrantChallenge(
             version: 1,
-            challengeId: "challenge-mobile-1",
+            challengeId: challengeId,
             nonce: "0123456789abcdef0123456789abcdef",
             issuedAt: now.addingTimeInterval(-10),
             expiresAt: now.addingTimeInterval(290),

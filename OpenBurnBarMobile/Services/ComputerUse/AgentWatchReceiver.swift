@@ -9,54 +9,102 @@ import OpenBurnBarMedia
 @MainActor
 public final class MobileComputerUseSessionGrantChallengeReceiver {
     typealias Validator = (_ challenge: HermesRealtimeRelayComputerUseSessionGrantChallenge, _ now: Date) throws -> Void
-    typealias GrantHandler = (_ challenge: HermesRealtimeRelayComputerUseSessionGrantChallenge) async throws -> Void
+    typealias AuthenticationWillBegin = @MainActor @Sendable () -> Void
+    typealias GrantHandler = (
+        _ challenge: HermesRealtimeRelayComputerUseSessionGrantChallenge,
+        _ authenticationWillBegin: @escaping AuthenticationWillBegin
+    ) async throws -> Void
 
     public static let shared = MobileComputerUseSessionGrantChallengeReceiver()
 
     private let now: () -> Date
     private let validator: Validator
     private let grantHandler: GrantHandler
-    private var inFlight: [String: Task<Void, Never>] = [:]
+    private let completedRetentionLimit: Int
+    private var activeChallengeId: String?
+    private var activeTask: Task<Void, Never>?
     private var completedExpirations: [String: Date] = [:]
+    private var completedOrder: [String] = []
 
     init(
         now: @escaping () -> Date = Date.init,
         validator: Validator? = nil,
+        completedRetentionLimit: Int = 128,
         grantHandler: GrantHandler? = nil
     ) {
         let signer = ComputerUsePhoneControlSigner()
         self.now = now
+        self.completedRetentionLimit = max(1, completedRetentionLimit)
         self.validator = validator ?? { challenge, validationDate in
             try signer.validateSessionGrantChallenge(challenge, now: validationDate)
         }
-        self.grantHandler = grantHandler ?? { challenge in
-            _ = try await MobileAgentPermissionGrantController.shared.grant(sessionChallenge: challenge)
+        self.grantHandler = grantHandler ?? { challenge, authenticationWillBegin in
+            _ = try await MobileAgentPermissionGrantController.shared.grant(
+                sessionChallenge: challenge,
+                authenticationWillBegin: authenticationWillBegin
+            )
         }
     }
 
     func ingest(_ challenge: HermesRealtimeRelayComputerUseSessionGrantChallenge) {
         let validationDate = now()
-        completedExpirations = completedExpirations.filter { $0.value > validationDate }
+        pruneCompleted(at: validationDate)
         do {
             try validator(challenge, validationDate)
         } catch {
             return
         }
-        guard inFlight[challenge.challengeId] == nil,
+        guard activeChallengeId == nil,
               completedExpirations[challenge.challengeId] == nil else {
             return
         }
 
-        inFlight[challenge.challengeId] = Task { @MainActor [weak self] in
+        activeChallengeId = challenge.challengeId
+        activeTask = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                try await grantHandler(challenge)
-                completedExpirations[challenge.challengeId] = challenge.expiresAt
+                try await grantHandler(challenge) { [weak self] in
+                    self?.markCompleted(challenge)
+                }
+                // A handler that completes before an authentication boundary
+                // still consumed the challenge successfully and is terminal.
+                markCompleted(challenge)
             } catch {
-                // A live-only failure remains retryable while the challenge is valid.
+                // Failures before the authentication boundary remain retryable.
+                // Once the callback has fired, denial/cancellation is terminal.
             }
-            inFlight[challenge.challengeId] = nil
+            if activeChallengeId == challenge.challengeId {
+                activeChallengeId = nil
+                activeTask = nil
+            }
         }
+    }
+
+    func waitUntilIdleForTesting() async {
+        let task = activeTask
+        await task?.value
+    }
+
+    var completedChallengeCountForTesting: Int {
+        completedExpirations.count
+    }
+
+    func hasCompletedChallengeForTesting(_ challengeId: String) -> Bool {
+        completedExpirations[challengeId] != nil
+    }
+
+    private func markCompleted(_ challenge: HermesRealtimeRelayComputerUseSessionGrantChallenge) {
+        guard completedExpirations[challenge.challengeId] == nil else { return }
+        completedExpirations[challenge.challengeId] = challenge.expiresAt
+        completedOrder.append(challenge.challengeId)
+        while completedOrder.count > completedRetentionLimit {
+            completedExpirations[completedOrder.removeFirst()] = nil
+        }
+    }
+
+    private func pruneCompleted(at validationDate: Date) {
+        completedExpirations = completedExpirations.filter { $0.value > validationDate }
+        completedOrder.removeAll { completedExpirations[$0] == nil }
     }
 }
 

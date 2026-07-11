@@ -71,6 +71,9 @@ private suspend fun BurnBarApplication.rebuildMediaControlCoordinator(
                     .peerNodeId()
             }.getOrNull()
         },
+        sessionGrantChallengeHandler = { delivery ->
+            BurnBarApplication.sessionGrantChallengeReceiver?.ingest(delivery)
+        },
         // F7: every mirror request negotiates the per-frame media seal —
         // default-off behind computer_use_media_frame_aead_enabled AND the
         // Mac advertising media_frame_aead_v1 in its heartbeat reply.

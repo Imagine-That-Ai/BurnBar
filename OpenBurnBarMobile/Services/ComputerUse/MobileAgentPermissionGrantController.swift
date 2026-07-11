@@ -37,6 +37,7 @@ final class MobileAgentPermissionGrantController {
 
     typealias LiveGrantDelivery = (AgentCapabilityGrantRequest) async throws -> Bool
     typealias QueuedGrantDelivery = (AgentCapabilityGrantRequest) async throws -> Void
+    typealias DeviceOwnerAuthenticator = (_ reason: String) async throws -> Bool
 
     private let signer = ComputerUsePhoneControlSigner()
     private let keyStore: PhoneControlSigningKeyStore
@@ -44,6 +45,7 @@ final class MobileAgentPermissionGrantController {
     private let firestoreProvider: @Sendable () -> Firestore
     private let liveGrantDelivery: LiveGrantDelivery
     private let queuedGrantDelivery: QueuedGrantDelivery?
+    private let deviceOwnerAuthenticator: DeviceOwnerAuthenticator
     private var optimisticReceipts: [String: AgentCapabilityGrantReceipt] = [:]
 
     init(
@@ -51,7 +53,8 @@ final class MobileAgentPermissionGrantController {
         userDefaults: UserDefaults = .standard,
         firestoreProvider: @escaping @Sendable () -> Firestore = { Firestore.firestore() },
         liveGrantDelivery: LiveGrantDelivery? = nil,
-        queuedGrantDelivery: QueuedGrantDelivery? = nil
+        queuedGrantDelivery: QueuedGrantDelivery? = nil,
+        deviceOwnerAuthenticator: DeviceOwnerAuthenticator? = nil
     ) {
         self.keyStore = keyStore
         self.userDefaults = userDefaults
@@ -64,6 +67,7 @@ final class MobileAgentPermissionGrantController {
             return true
         }
         self.queuedGrantDelivery = queuedGrantDelivery
+        self.deviceOwnerAuthenticator = deviceOwnerAuthenticator ?? Self.evaluateDeviceOwnerAuthentication(reason:)
     }
 
     private var currentUID: String? {
@@ -97,7 +101,8 @@ final class MobileAgentPermissionGrantController {
     /// completed before device-owner authentication, and the generic grant API
     /// remains available for non-challenge permission changes.
     func grant(
-        sessionChallenge: HermesRealtimeRelayComputerUseSessionGrantChallenge
+        sessionChallenge: HermesRealtimeRelayComputerUseSessionGrantChallenge,
+        authenticationWillBegin: @MainActor @Sendable () -> Void = {}
     ) async throws -> AgentCapabilityGrantReceipt {
         guard let uid = currentUID else { throw GrantError.notSignedIn }
         let deviceID = MobileDeviceIdentity.loadOrCreateDeviceId()
@@ -109,7 +114,8 @@ final class MobileAgentPermissionGrantController {
             signer: signer
         )
         try await ensureTrustedDevice(uid: uid, sourceDeviceID: deviceID)
-        request.localAuthenticationSatisfied = try await authenticateIfNeeded(for: request.preset)
+        authenticationWillBegin()
+        request.localAuthenticationSatisfied = try await authenticateSessionGrant(for: request.preset)
         return try await deliver(uid: uid, request: request)
     }
 
@@ -167,12 +173,27 @@ final class MobileAgentPermissionGrantController {
 
     private func authenticateIfNeeded(for preset: AgentPermissionPreset) async throws -> Bool {
         guard preset.requiresLocalAuthentication else { return false }
+        return try await authenticateDeviceOwner(
+            reason: "Allow \(preset.title) desktop permissions for this agent thread."
+        )
+    }
+
+    func authenticateSessionGrant(for preset: AgentPermissionPreset) async throws -> Bool {
+        try await authenticateDeviceOwner(
+            reason: "Approve this \(preset.title) Computer Use session."
+        )
+    }
+
+    private func authenticateDeviceOwner(reason: String) async throws -> Bool {
+        try await deviceOwnerAuthenticator(reason)
+    }
+
+    private static func evaluateDeviceOwnerAuthentication(reason: String) async throws -> Bool {
         let context = LAContext()
         var error: NSError?
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
             throw GrantError.localAuthenticationFailed
         }
-        let reason = "Allow \(preset.title) desktop permissions for this agent thread."
         return try await withCheckedThrowingContinuation { continuation in
             context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { success, _ in
                 if success {
@@ -225,14 +246,30 @@ final class MobileAgentPermissionGrantController {
     }
 
     private func queue(_ request: AgentCapabilityGrantRequest) async throws {
-        let signedWire = try signedWireRequest(for: request)
-        try await publishAuthority(sourceDeviceID: request.sourceDeviceID)
-        try await ComputerUseSecurityCallableClient.queueAgentCapabilityGrantRequest(try jsonObject(from: signedWire))
-    }
-
-    private func publishAuthority(sourceDeviceID: String) async throws {
         let identity = try keyStore.signingIdentity()
         let peerNodeId = keyStore.peerNodeId(for: identity)
+        try await PhoneControlSendSequencer.shared.enqueue(peerNodeId: peerNodeId) { [self] in
+            let signedWire = try await signedWireRequest(
+                for: request,
+                identity: identity,
+                peerNodeId: peerNodeId
+            )
+            try await publishAuthority(
+                sourceDeviceID: request.sourceDeviceID,
+                identity: identity,
+                peerNodeId: peerNodeId
+            )
+            try await ComputerUseSecurityCallableClient.queueAgentCapabilityGrantRequest(
+                try jsonObject(from: signedWire)
+            )
+        }
+    }
+
+    private func publishAuthority(
+        sourceDeviceID: String,
+        identity: PhoneControlAuthoritySigningKey,
+        peerNodeId: String
+    ) async throws {
         try await ComputerUseSecurityCallableClient.publishAgentGrantAuthority(
             deviceId: sourceDeviceID,
             peerNodeId: peerNodeId,
@@ -242,10 +279,10 @@ final class MobileAgentPermissionGrantController {
     }
 
     private func signedWireRequest(
-        for request: AgentCapabilityGrantRequest
+        for request: AgentCapabilityGrantRequest,
+        identity: PhoneControlAuthoritySigningKey,
+        peerNodeId: String
     ) throws -> HermesRealtimeRelayAgentGrantRequest {
-        let identity = try keyStore.signingIdentity()
-        let peerNodeId = keyStore.peerNodeId(for: identity)
         let placeholder = HermesRealtimeRelayAuthorityEnvelope(
             peerNodeId: "",
             counter: 0,

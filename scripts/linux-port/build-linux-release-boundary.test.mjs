@@ -54,6 +54,11 @@ test('build orchestration cannot invoke native signing or inherit the ambient en
   assert.ok(source.includes("['npm', ['ci', '--no-audit', '--no-fund'], { cwd: appDir, env: packageBuildEnv }]"));
   assert.ok(source.includes("['npm', ['run', 'build'], { cwd: appDir, env: packageBuildEnv }]"));
   assert.match(source, /OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM: _excludedSigningKey/u);
+  const irohBuild = source.indexOf("'--manifest-path',\n    irohManifest");
+  const swiftBuild = source.indexOf("runStep('swift'");
+  assert.ok(irohBuild >= 0 && swiftBuild > irohBuild);
+  assert.match(source, /OPENBURNBAR_LINUX_IROH_LIBRARY_DIR: irohNativeLibraryDirectory/u);
+  assert.match(source, /OPENBURNBAR_LINUX_IROH_BUILD_JOBS\?\.trim\(\) \|\| '1'/u);
 });
 
 test('finalization is bound to the successful preparation receipt', () => {
@@ -64,6 +69,7 @@ test('finalization is bound to the successful preparation receipt', () => {
     'complete: blockers.length === 0',
     'gitCommit: git.commit',
     'daemonSha256',
+    'irohNativeSha256',
     'attestdSha256',
     'appImageSha256',
     'signerInputsRootSha256',

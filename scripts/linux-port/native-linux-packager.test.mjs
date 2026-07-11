@@ -40,6 +40,7 @@ function fixture() {
   fs.mkdirSync(playwright);
   fs.writeFileSync(path.join(swift, 'libswiftCore.so'), 'swift', { mode: 0o644 });
   fs.writeFileSync(path.join(native, 'libsqlcipher.so.0'), 'sqlcipher', { mode: 0o644 });
+  fs.writeFileSync(path.join(native, 'libopenburnbar_iroh.so'), 'iroh', { mode: 0o644 });
   fs.writeFileSync(path.join(playwright, 'openburnbar-playwright-bridge.js'), 'bridge', { mode: 0o644 });
   fs.writeFileSync(path.join(playwright, 'openburnbar-browser-runtime-probe'), 'probe', { mode: 0o755 });
   fs.writeFileSync(path.join(playwright, 'browser-runtime-requirements.json'), '{}', { mode: 0o644 });
@@ -227,6 +228,8 @@ test('native package root contains broker assets and a self-excluding measuremen
   assert.equal(manifest.brokerProtocolVersion, 2);
   assert.match(manifest.firebaseAppId, /^1:[0-9]+:web:[A-Za-z0-9]+$/u);
   assert.equal(manifest.installedFilesRootSha256.length, 64);
+  assert.ok(manifest.files.some((file) =>
+    file.path === '/usr/lib/openburnbar/native/libopenburnbar_iroh.so'));
   assert.equal(staged.releaseDigestSha256.length, 64);
   assert.ok(manifest.files.some((file) => file.path === '/usr/libexec/openburnbar-attestd'));
   assert.ok(manifest.files.some((file) => file.path === '/usr/libexec/openburnbar-attestd-activation-ready'));

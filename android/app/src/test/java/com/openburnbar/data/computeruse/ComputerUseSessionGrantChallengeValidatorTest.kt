@@ -132,6 +132,22 @@ class ComputerUseSessionGrantChallengeValidatorTest {
         assertNotEquals(withRequirement, withoutRequirement)
     }
 
+    @Test
+    fun malformedDeviceIdentifiersAreRejectedBeforeIntentComparison() {
+        assertThrows(ComputerUseSessionGrantChallengeValidator.ValidationError.MalformedSession::class.java) {
+            ComputerUseSessionGrantChallengeValidator.validate(
+                challenge().copy(phoneViewerNodeId = ""),
+                nowMillis = unixMillis(800_000_100.0),
+            )
+        }
+        assertThrows(ComputerUseSessionGrantChallengeValidator.ValidationError.MalformedSession::class.java) {
+            ComputerUseSessionGrantChallengeValidator.validate(
+                challenge().copy(macHostNodeId = "h".repeat(513)),
+                nowMillis = unixMillis(800_000_100.0),
+            )
+        }
+    }
+
     private fun challenge() = HermesRealtimeRelayComputerUseSessionGrantChallenge(
         version = 1,
         challengeId = "challenge-00000001",

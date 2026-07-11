@@ -74,7 +74,15 @@ test('AUR package staging installs canonical Browser Computer Use resources with
   for (const asset of localAssets) {
     fs.copyFileSync(path.join(repoRoot, 'packaging/linux/aur', asset), path.join(srcdir, asset));
   }
-  fs.writeFileSync(path.join(srcdir, 'OpenBurnBar-0.1.0.AppImage'), 'appimage\n');
+  fs.writeFileSync(path.join(srcdir, 'OpenBurnBar-0.1.0.AppImage'), [
+    '#!/bin/bash',
+    'set -euo pipefail',
+    'test "$1" = --appimage-extract',
+    'test "$2" = usr/lib/openburnbar/native/libopenburnbar_iroh.so',
+    'mkdir -p squashfs-root/usr/lib/openburnbar/native',
+    'printf iroh >squashfs-root/usr/lib/openburnbar/native/libopenburnbar_iroh.so'
+  ].join('\n'));
+  fs.chmodSync(path.join(srcdir, 'OpenBurnBar-0.1.0.AppImage'), 0o755);
   fs.writeFileSync(path.join(srcdir, 'openburnbar-daemon-0.1.0-x86_64'), 'daemon\n');
   fs.copyFileSync(
     path.join(repoRoot, 'packaging/linux/com.openburnbar.computer-use.policy'),
@@ -111,6 +119,9 @@ test('AUR package staging installs canonical Browser Computer Use resources with
       assert.deepEqual(fs.readFileSync(output), fs.readFileSync(path.join(srcdir, alias)));
       assert.equal(fs.statSync(output).mode & 0o777, mode);
     }
+    const iroh = path.join(pkgdir, 'usr/lib/openburnbar/native/libopenburnbar_iroh.so');
+    assert.equal(fs.readFileSync(iroh, 'utf8'), 'iroh');
+    assert.equal(fs.statSync(iroh).mode & 0o777, 0o644);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -123,4 +134,9 @@ test('AUR PKGBUILD remains valid Bash and does not bypass source verification', 
   const pkgbuild = fs.readFileSync(pkgbuildPath, 'utf8');
   assert.doesNotMatch(pkgbuild, /SKIP/);
   assert.doesNotMatch(pkgbuild, /noextract/);
+  assert.match(
+    pkgbuild,
+    /--appimage-extract usr\/lib\/openburnbar\/native\/libopenburnbar_iroh\.so/u
+  );
+  assert.doesNotMatch(pkgbuild, /libopenburnbar_iroh\.so::https?:/u);
 });

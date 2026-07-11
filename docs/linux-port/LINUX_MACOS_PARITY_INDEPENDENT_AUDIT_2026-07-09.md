@@ -58,14 +58,19 @@ runs, renders exact-session approval context, and retires only the exact
 selected session after authoritative terminal state without mistaking a
 transport failure for termination. The source now also has a daemon-owned
 session-grant broker, versioned mobile challenge validation/signing on iOS and
-Android, live-only iOS challenge reception,
+Android, live iOS reception, and Android reception bound to the exact
+authenticated iroh route with expiry-bounded foreground recovery,
 native-only Tauri challenge custody, and a fresh peer-bound polkit desktop-owner
 gate. The renderer can neither submit nor receive proof, signature, challenge,
 key, password, or forged authorization fields. This remains source safety
-closure, not an available release workflow: the shipping daemon does not yet
-supply the paired-relay publisher, readiness provider, and daemon-owned pairing
-metadata resolver to that broker; Android challenge reception and the signed
-per-action response transport are still absent.
+closure, not an available release workflow. The Linux release graph now builds
+the Rust iroh shared library before Swift, compiles the generated UniFFI bridge,
+stages the exact ELF in AppImage/deb/rpm/AUR payloads, and fails closed when it
+is absent. A real aarch64 VM build, factory activation, ALPN loopback, dynamic
+link, payload stage, and daemon launch pass. The shipping daemon still does not
+compose that backend with a server-verified paired-controller route registry,
+paired-relay publisher, readiness provider, or daemon-owned pairing metadata
+resolver; signed per-action response transport is also absent.
 Those production seams fail closed. Real installed phone authority, browser
 actions, restart certification, Agent Watch, Linux system capture/input, and
 the supported-desktop matrix remain open.
@@ -426,7 +431,7 @@ required gates and were not made green by the Ed25519 result.
 | P-04 | Architecture reach | Published build covers the declared macOS architecture support contract | Native aarch64/x86_64 shard workflow exists and architecture-correct local construction/smoke is green for both; a native hosted x86_64 run, signed aggregate, and installed x86_64 evidence are not yet produced | Partial | Critical |
 | P-05 | Credential custody | Keychain-backed provider, connector, auth, and sync secrets | Secret Service, KWallet, and encrypted headless custodians are wired; live keyring/recovery matrix remains incomplete | Partial | Critical |
 | P-06 | Gateway credential boundary | Native process owns bearer credentials | Rust owns the bearer and proxies bounded authenticated HTTP/SSE; renderer receives typed data, not the token | Near parity | Critical |
-| P-07 | Computer Use | Browser, Agent Watch, Mac System, approval, audit, and three panic paths | Source now provides exact run/call/generation binding and signed intent, daemon-owned paired-phone challenge brokerage, live-only iOS challenge reception plus iOS/Android exact-challenge signing, native-only Tauri challenge custody, typed daemon readiness gating, fresh peer-bound polkit owner authorization, non-reusable startup reservation with definite-failure retry and ambiguous-outcome consumption, atomic device/peer pinning, waiting-run selection, shared scope/panic/Playwright/audit routing, exact-session terminal polling, retryably durable restart normalization, pre-dispatch checkpointing, fail-safe terminal revocation, durable replay counters, and Linux verification of signed phone responses. The broker separately binds the observed QUIC transport peer and signing-key authority peer rather than assuming those independent identities are equal. Native packages install a fresh non-cached polkit policy, own the canonical bridge, and ship a non-installing Node/Playwright/Chromium readiness probe. Packaged execution discards ambient process and Node injection and accepts Playwright, playwright-core, and Chromium only from recursively root-owned, non-group/world-writable canonical trees, but the packages do not bundle those trees. The shipping Linux iroh backend, paired-controller registry and identity mapping, publisher/metadata/readiness providers, Android challenge receiver, and signed action-response transport are not wired, so release Browser CU reports unavailable and fails closed; installed phone/browser/restart proof, Agent Watch, and Linux system capture/input remain missing | Partial | Critical |
+| P-07 | Computer Use | Browser, Agent Watch, Mac System, approval, audit, and three panic paths | Source now provides exact run/call/generation binding and signed intent, daemon-owned paired-phone challenge brokerage, serialized and replay-bounded iOS/Android device-owner authorization, Android exact-authenticated-route reception with signed-expiry notification/foreground recovery, process-wide authority counter-to-write sequencing, iOS/Android exact-challenge signing, native-only Tauri challenge custody, typed daemon readiness gating, fresh peer-bound polkit owner authorization, non-reusable startup reservation with definite-failure retry and ambiguous-outcome consumption, atomic device/peer pinning, waiting-run selection, shared scope/panic/Playwright/audit routing, exact-session terminal polling, retryably durable restart normalization, pre-dispatch checkpointing, fail-safe terminal revocation, durable replay counters, and Linux verification of signed phone responses. The broker separately binds the observed QUIC transport peer and signing-key authority peer rather than assuming those independent identities are equal. Linux release builds now compile and package the production iroh UniFFI ELF and fail closed if it is absent; real aarch64 build/link/factory/ALPN/payload-launch proof passes. Native packages install a fresh non-cached polkit policy, own the canonical bridge, and ship a non-installing Node/Playwright/Chromium readiness probe. Packaged execution discards ambient process and Node injection and accepts Playwright, playwright-core, and Chromium only from recursively root-owned, non-group/world-writable canonical trees, but the packages do not bundle those trees. The daemon still lacks the authoritative paired-controller registry and identity mapping plus publisher/metadata/readiness composition, and signed action-response transport is not wired, so release Browser CU reports unavailable and fails closed; installed phone/browser/restart proof, Agent Watch, and Linux system capture/input remain missing | Partial | Critical |
 | P-08 | Mercury media | File transfer, calls, screen share, mirroring, presence, consent | Daemon-owned transport, calls, files, sealed capture, portal consent, HUD, and live capability probing are implemented; real cross-device and compositor proof remains open | Partial | Critical |
 | P-09 | Navigation and shell | Dashboard, insights, deep provider/model routes, multi-window flows | All 19 installed routes activate through AT-SPI; validated single-instance dashboard/search/chat/insights/membership deep links now route through typed native events; provider/model depth and native multi-window behavior remain thinner | Near parity | Medium |
 | P-10 | Dashboard layouts | Six dense layouts with real live content and persisted state | All six layouts, persistence, loading/error/offline/populated states, tokens, and tests exist; the packaged six-layout visual matrix remains incomplete | Near parity | Medium |
@@ -644,7 +649,8 @@ therefore not closed.
 
 **Implementation update (2026-07-11): unsupported-mode honesty, source routing,
 phone-challenge brokerage, renderer isolation, and package ownership improved;
-shipping paired transport and installed capability remain open.**
+authoritative paired-route resolution, daemon runtime composition, and installed
+capability proof remain open.**
 The typed runtime manifest now marks Linux system Computer Use unavailable and
 prevents the route from offering a guaranteed-failure action. Browser is the
 only exposed source mode, but the release workflow is not yet operational.
@@ -670,11 +676,18 @@ pin alias is provisioned as one atomic set on both the Linux file store and the
 macOS Keychain. Backings without atomic multi-alias support fail before writing.
 
 Session-start authority now has a versioned challenge bound to the canonical
-session intent, exact trust, and capability subset. iOS validates and routes the
-challenge from both persistent control and request-stream side channels to a
-live-only grant controller with duplicate suppression and retryable live
-failures; Android has validation/signing but not the corresponding inbound
-receiver. A bounded daemon actor publishes only to an authenticated paired
+session intent, exact trust, and capability subset. Both phone clients bound
+device identifiers before intent comparison, admit at most one user-facing
+challenge at a time, retain a bounded replay set, and mark a challenge terminal
+when device-owner authentication begins; only pre-authentication setup or route
+failures remain retryable. iOS validates and routes the challenge from both
+persistent control and request-stream side channels. Android preserves the receiving stream's uid, connection, signed
+pairing target, authenticated QUIC peer, liveness, and response sink as one
+immutable route; route rotation cannot redirect a response. Background delivery
+posts a private high-priority Computer Use notification, waits only through the
+signed expiry for a resumed activity, gives the OS the same expiry timeout,
+clears orphaned tagged notifications after process restart, then revalidates before biometric signing
+and an expiry-capped frame write on that exact stream. A bounded daemon actor publishes only to an authenticated paired
 transport peer, separately binds the signing-key authority peer, prevalidates
 the pinned-phone proof without consuming it, and reserves it only after fresh
 peer-bound polkit owner authorization and exact run revalidation. Concurrent
@@ -691,12 +704,18 @@ a guaranteed-failure Start action. Native deb/rpm/AUR packages install the
 root-owned polkit action with fresh `auth_self`; the Computer Use path has no PAM fallback, and
 standalone AppImage/Flatpak sessions fail closed when the policy is absent.
 
-The remaining product blocker is the shipping authority transport: production
-does not ship a Linux iroh backend or trusted paired-controller registry that
-maps the observed QUIC transport peer to the independent signing-key authority
-peer. It therefore cannot safely provide the broker's paired-relay publisher or
-daemon-owned metadata/readiness providers. Android challenge reception and
-signed action-response acquisition are not connected. Full installed real-phone
+The Linux release graph now builds the Rust iroh cdylib before Swift, enables the
+generated UniFFI bridge only when that exact library exists, stages it as a
+regular `0644` package resource, binds its digest into release preparation, and
+requires it in installed manifests and package smoke. A real aarch64 VM proves
+the ALPN loopback, Swift factory activation, daemon ELF dependency, `ldd`
+resolution, staged payload probe, and staged daemon launch. The remaining
+product blocker is runtime composition: production does not yet have a
+server-verified trusted paired-controller registry that maps the observed QUIC
+transport peer to the independent signing-key authority peer, nor does the
+daemon instantiate the iroh endpoint, accept loop, broker publisher,
+metadata resolver, and readiness provider. Signed action-response acquisition
+is also not connected. Full installed real-phone
 browser action/result/restart E2E and a real portal/PipeWire/AT-SPI/libei or
 constrained X11 system adapter are still required. AppImage, deb, and rpm payloads now stage
 the canonical bridge under `/usr/lib/openburnbar/playwright`; deb/rpm signed
@@ -1481,7 +1500,7 @@ coverage.
 | LNX-AUTH-001 family | Source foundation implemented; deployment and product depth open | Purpose-bound sealed device auth, daemon refresh/keyring custody, redacted state, local sign-out, and the App Check challenge/verifier/daemon-client/ingress bridge boundary | Deploy account auth; complete the App Check verifier, rollout, and installed proof; then membership, sync, and trusted devices |
 | LNX-APPCHECK-001 | Source daemon bridge, root-broker, and revocation administration implemented; production blocked | Five-minute Firestore challenge, atomic replay consumption, exact signed-verdict binding, fixed 30-minute token TTL, kill switch default off, account-bound daemon memory cache, hash-only upload-ticket reservation, exact ingress claim, streamed evidence PUT, receipt-native mint evidence, root `openburnbar-attestd`, signed installed manifest, exact peer authorization, broker-owned `tpm2_createak` AK lifecycle initialization/rotation guard, private root-owned AK-bound enrollment-state binding, private `ak.ctx` activation, `tpm2_quote` collection, sealed IMA/measured-boot/manifest descriptor, verifier-side active-enrollment recheck before verdict signing, Functions-side revocation gate before challenge consumption/token minting, high-risk owner revocation with atomic tombstone/audit persistence, stale-worker tombstone preservation, systemd socket activation, native deb/rpm lifecycle, AppImage exclusion, and the 16 MiB descriptor ceiling | Real Firebase Web app ID, remote enrollment activation, physical-TPM quote vectors, complete IMA verification, deployed remote verifier/revocation operation and production audit evidence, ingress/verifier deployment, negative vectors, and exact-candidate GNOME/KDE/headless installed matrix |
 | LNX-NATIVE-001 | Partially implemented | Single-instance launch, typed deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, deterministic installed notification action capture, installed X11 global-panic capture, deterministic login-start lifecycle capture, deterministic tray-host-loss/restart capture, XDG login start, daemon-owned typed provider external login, native-shell evidence requirements in the matrix harness, and verifier-produced native-shell evidence JSON | Cloud quick reply, installed provider-login and rich notification-host breadth, durable provider multi-account profiles, display-manager/package-manager breadth, and full installed desktop matrix evidence |
-| LNX-CU-BROWSER-001 | Source safety/routing implemented; product authority acquisition blocked | Exact run/call/generation signed intent; separate transport/signing authority identity binding; live-only iOS challenge receiver; typed fail-closed readiness; atomic source-device/peer alias pinning; fresh peer-bound polkit desktop-owner authorization; shared coordinator dispatch; signed approval and durable replay validation; exact-session lifecycle polling; waiting-requirement restore; pre-dispatch checkpointing for later bound actions; retryably durable outcome-unknown failure for interrupted actions; root-owned packaged browser-runtime trust; extension phase/error support; exhaustive native selector manifest | Shipping Linux iroh backend and paired-controller registry, trusted transport-to-authority mapping, Android challenge reception, paired-controller grant/action-response acquisition, real installed browser actions, phone/restart/panic/audit certification |
+| LNX-CU-BROWSER-001 | Source safety/routing and native transport packaging implemented; product authority acquisition blocked | Exact run/call/generation signed intent; separate transport/signing authority identity binding; serialized, bounded, terminal-on-auth iOS/Android challenge receivers; Android authenticated exact-route receiver with signed-expiry notification/foreground recovery; process-wide per-authority counter allocation-through-write sequencing; typed fail-closed readiness; atomic source-device/peer alias pinning; fresh peer-bound polkit desktop-owner authorization; shared coordinator dispatch; signed approval/session-grant and durable replay validation; exact-session lifecycle polling; waiting-requirement restore; pre-dispatch checkpointing for later bound actions; retryably durable outcome-unknown failure for interrupted actions; root-owned packaged browser-runtime trust; production iroh ELF build/stage/link/launch proof; extension phase/error support; exhaustive native selector manifest | Authoritative paired-controller registry, trusted transport-to-authority resolution, daemon iroh accept/publisher/metadata/readiness composition, paired-controller action-response acquisition, real installed browser actions, phone/restart/panic/audit certification |
 | LNX-CAT-001, LNX-DIFF-001 | Open | Existing provider/path contracts retained | Shared catalog plus same-commit macOS/Linux differential proof |
 | Phase 2 core workflows | Open/partial | Existing routes and bounded mutations retained | Complete product outcomes and daemon-authoritative state |
 | Phase 3 native features | In progress | Mercury core, Linux CU input, panic, and outbound capture foundations are implemented; unsupported outcomes remain capability-gated | Cross-device Mercury proof, system CU capture, SmartHub, IBus/Fcitx, pet adapters |
@@ -1590,7 +1609,7 @@ accepted together.
 
 | Task | Depends on | Engineering work | Acceptance criteria |
 |---|---|---|---|
-| LNX-CU-BROWSER-001 | LNX-CAP-001, LNX-IPC-001, LNX-SESS-001, LNX-NATIVE-001, LNX-EVT-001 | Implemented in source: exact waiting-run picker; signed run/call/generation intent; separate observed transport/signing authority identities; live-only iOS challenge reception; typed fail-closed readiness; atomic device/peer aliases; fresh peer-bound polkit owner authorization; verified-session leases; shared coordinator routing; result identity validation; exact signed pending-approval verifier; durable replay counters; authoritative exact-session polling; exact-generation cancellation/terminal revocation; pre-dispatch checkpointing for later bound actions; retryably durable outcome-unknown restart normalization; and root-owned packaged runtime verification. Remaining: shipping Linux iroh/pairing registry, Android challenge receiver, real phone proof/action-response acquisition, and installed/restart lifecycle | Release build completes navigate/type/click/screenshot with real paired authority; unsigned/forged/replayed/stale/wrong-session/wrong-request responses and swapped transport/authority identities fail; deny/panic/timeout/cancel/journal failure revoke only the exact generation; restart never redispatches an in-flight action, requires fresh session authority, and retains replay high-water marks; audit/tamper proof passes |
+| LNX-CU-BROWSER-001 | LNX-CAP-001, LNX-IPC-001, LNX-SESS-001, LNX-NATIVE-001, LNX-EVT-001 | Implemented in source: exact waiting-run picker; signed run/call/generation intent; separate observed transport/signing authority identities; serialized, bounded, terminal-on-auth iOS/Android challenge reception; Android exact-route reception with signed-expiry notification/foreground recovery; process-wide per-authority counter allocation-through-write sequencing; typed fail-closed readiness; atomic device/peer aliases; fresh peer-bound polkit owner authorization; verified-session leases; shared coordinator routing; result identity validation; exact signed pending-approval and session-grant verifiers; shared durable replay high-water marks; authoritative exact-session polling; exact-generation cancellation/terminal revocation; pre-dispatch checkpointing for later bound actions; retryably durable outcome-unknown restart normalization; root-owned packaged runtime verification; and production iroh ELF build/stage/link/launch proof. Remaining: authoritative pairing registry and route resolution, daemon iroh/broker publisher/metadata/readiness composition, real phone action-response acquisition, and installed/restart lifecycle | Release build completes navigate/type/click/screenshot with real paired authority; unsigned/forged/replayed/stale/wrong-session/wrong-request responses and swapped transport/authority identities fail; deny/panic/timeout/cancel/journal failure revoke only the exact generation; restart never redispatches an in-flight action, requires fresh session authority, and retains replay high-water marks; audit/tamper proof passes |
 | LNX-CU-SYSTEM-001 | LNX-CU-BROWSER-001, LNX-CAP-001, LNX-NATIVE-001 | Portal/PipeWire/AT-SPI/libei plus constrained X11/uinput adapters | Safety and compositor matrix green; unsupported modes hidden |
 | LNX-MEDIA-001 | LNX-CAP-001, LNX-IPC-001, LNX-SEC-001, LNX-AUTH-DEPLOY-001, LNX-APPCHECK-001, LNX-NATIVE-001, LNX-EVT-001 | Mercury transport, secure pairing, files, calls, share, codecs, consent, notification/lifecycle | Real two-device matrix green on supported desktops |
 | LNX-IOT-001 | LNX-IPC-001 | Typed SmartHub discovery/action APIs | Real device and hostile-input tests green |
@@ -1618,7 +1637,7 @@ accepted together.
 | 3 | **Mainstream install** | Package construction and apt/RPM repository source foundation complete; signing identity, public mirrors, installed lifecycle, and AUR/Flatpak decisions remain | LNX-PKG-001, LNX-CHANNEL-001 | Both architectures and every declared package/repository channel install locally |
 | 4 | **Daily-use native foundation** | In progress; onboarding, bounded event refresh, single-instance/deep-link, live-tray, compact status, source-level notifications, installed X11 global-panic capture, XDG login-start, account-auth foundations, Linux App Check challenge/verifier/daemon-client/ingress boundaries, root broker/native deb-rpm lifecycle, source owner revocation administration with atomic audit persistence, and typed provider external login implemented; production TPM/IMA evidence, deployed remote verification/revocation and audit proof, membership/cloud/device depth, cloud quick reply, provider-login installed certification/multi-account profiles, and installed matrix remain | LNX-EVT-001, LNX-ONB-001, LNX-AUTH-DEPLOY-001, LNX-APPCHECK-001, LNX-MEMBERSHIP-001, LNX-SYNC-001, LNX-DEVICE-001, LNX-NATIVE-001, LNX-UPD-001, LNX-CAT-001, LNX-DIFF-001 | Setup, deployed auth, production attestation, data freshness, alerts/tray, update lifecycle, and current provider diff green |
 | 5 | **Core product workflows** | Open/partial | LNX-SESS-001, LNX-CHAT-001, LNX-MEM-001, LNX-PROJ-001, LNX-MISSION-001, LNX-INSIGHT-001, LNX-DB-001, LNX-PROVIDER-001, LNX-PRIV-001, LNX-SET-001 | No synthetic state; every primary workspace and privacy workflow completes |
-| 6 | **Browser automation parity** | In progress; source routing, waiting-run picker, durable replay, signed-response verifier, versioned mobile challenge, daemon broker, Tauri isolation, polkit owner gate, and package/runtime ownership implemented; shipping paired transport and installed evidence open | LNX-CU-BROWSER-001 | Phone-backed session start/action approval, real actions, panic, audit, and restart recovery |
+| 6 | **Browser automation parity** | In progress; source routing, waiting-run picker, shared durable replay, signed response/grant verifiers, exact-route mobile challenge reception, daemon broker, Tauri isolation, polkit owner gate, production iroh ELF packaging, and package/runtime ownership implemented; authoritative route registry, daemon composition, and installed evidence open | LNX-CU-BROWSER-001 | Compose the verified controller route and iroh runtime, then prove phone-backed session start/action approval, real actions, panic, audit, and restart recovery |
 | 7 | **Media and system integration** | In progress; Mercury code complete | LNX-CU-SYSTEM-001, LNX-MEDIA-001 | Supported compositor safety and two-device media proof |
 | 8 | **Extended features** | Pending | LNX-IOT-001, LNX-TEXT-001, LNX-PET-001 | SmartHub, input-method, and companion outcomes proven or honestly substituted |
 | 9 | **Candidate and certification** | Blocked on milestones 3-8 | LNX-REL-CANDIDATE-001, LNX-A11Y-CERT-001, LNX-PERF-CERT-001, LNX-QA-001, LNX-DOC-001 | Exact signed candidate, assistive-tech, performance, architecture, desktop matrix, and docs green |
@@ -1817,9 +1836,11 @@ Keep one integration owner at a time for `routes.ts`, `tauriBridge.ts`, the Taur
   binding and use the same scope, approval, panic, Playwright, and audit
   authority as explicit Computer Use actions, with no direct-dispatch fallback.
 - [x] Source session authority defines exact challenge-bound iOS/Android signing
-  primitives and live-only iOS inbound challenge routing (Android reception remains open),
-  daemon-only proof custody, single-use consumption after polkit and run
-  revalidation, and no renderer proof/password/key fields.
+  primitives, serialized and replay-bounded device-owner interaction, live iOS
+  inbound routing, Android exact-authenticated-route reception with signed-expiry
+  notification and foreground recovery, daemon-only proof custody,
+  single-use consumption after polkit and run revalidation, and no renderer
+  proof/password/key fields.
 - [ ] A paired phone supplies the exact signed session grant and action response;
   unsigned, forged, replayed, stale, wrong-session, and wrong-request vectors fail.
 - [ ] Browser actions, approvals, deny, panic, audit, tamper detection, restart,

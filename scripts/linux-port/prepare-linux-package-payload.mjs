@@ -2,6 +2,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  resolveIrohNativeLibrary,
   resolveSqlcipherLibDir,
   resolveSwiftRuntimeDir,
   stageLinuxPackagePayload
@@ -33,7 +34,8 @@ try {
     browserRuntimeRequirements,
     payloadRoot,
     swiftRuntimeDir: resolveSwiftRuntimeDir(),
-    sqlcipherLibDir: resolveSqlcipherLibDir()
+    sqlcipherLibDir: resolveSqlcipherLibDir(),
+    irohNativeLibrary: resolveIrohNativeLibrary()
   });
   console.log(JSON.stringify(report, null, 2));
 } catch (error) {
