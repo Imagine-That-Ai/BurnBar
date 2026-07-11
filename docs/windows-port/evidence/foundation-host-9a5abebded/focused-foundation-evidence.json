@@ -1,0 +1,8 @@
+{
+    "name":  "focused-foundation-evidence",
+    "command":  "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\\candidate-current\\scripts\\windows-port\\run-candidate-evidence.ps1 -RepoRoot C:\\candidate-current -ManifestPath C:\\Users\\Public\\candidate-9a5abebded05-run\\openburnbar-candidate-9a5abebded05.manifest.json -OutputDir C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation -Platform ARM64",
+    "exitCode":  0,
+    "log":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation-evidence.log",
+    "startedAtUtc":  "2026-07-10T18:16:43.5966652+00:00",
+    "completedAtUtc":  "2026-07-10T18:20:44.9005072Z"
+}

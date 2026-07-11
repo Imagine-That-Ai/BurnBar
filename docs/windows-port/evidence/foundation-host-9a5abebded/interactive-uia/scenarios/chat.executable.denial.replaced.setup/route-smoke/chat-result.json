@@ -1,0 +1,16 @@
+{
+  "RouteKey": "chat",
+  "ExitCode": 0,
+  "ScreenshotPath": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.replaced.setup\\route-smoke\\chat.png",
+  "Width": 1024,
+  "Height": 711,
+  "MeanLuma": 29.501235003887093,
+  "LumaStdDev": 49.64194298427871,
+  "NearUniform": false,
+  "ElapsedMs": 9632.4226,
+  "ActualWidth": 1024,
+  "ActualHeight": 711,
+  "Theme": "Dark",
+  "ExceptionType": null,
+  "Message": null
+}

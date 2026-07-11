@@ -1,0 +1,970 @@
+{
+    "capturedAtUtc":  "2026-07-10T18:22:46.3037938Z",
+    "processId":  7152,
+    "focus":  {
+                  "name":  "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+                  "automationId":  "",
+                  "className":  "TermControl",
+                  "controlType":  "ControlType.Text",
+                  "localizedControlType":  "terminal",
+                  "isEnabled":  true,
+                  "hasKeyboardFocus":  true,
+                  "isKeyboardFocusable":  true,
+                  "value":  null,
+                  "patterns":  "text",
+                  "boundingRectangle":  {
+                                            "x":  52,
+                                            "y":  93,
+                                            "width":  1113,
+                                            "height":  586
+                                        },
+                  "children":  [
+
+                               ]
+              },
+    "tree":  {
+                 "name":  "OpenBurnBar",
+                 "automationId":  "",
+                 "className":  "WinUIDesktopWin32WindowClass",
+                 "controlType":  "ControlType.Window",
+                 "localizedControlType":  "window",
+                 "isEnabled":  true,
+                 "hasKeyboardFocus":  false,
+                 "isKeyboardFocusable":  true,
+                 "value":  null,
+                 "patterns":  {
+
+                              },
+                 "boundingRectangle":  {
+                                           "x":  104,
+                                           "y":  104,
+                                           "width":  1040,
+                                           "height":  720
+                                       },
+                 "children":  [
+                                  {
+                                      "name":  "Non Client Input Sink Window",
+                                      "automationId":  "",
+                                      "className":  "InputNonClientPointerSource",
+                                      "controlType":  "ControlType.Pane",
+                                      "localizedControlType":  "pane",
+                                      "isEnabled":  true,
+                                      "hasKeyboardFocus":  false,
+                                      "isKeyboardFocusable":  false,
+                                      "value":  null,
+                                      "patterns":  {
+
+                                                   },
+                                      "boundingRectangle":  {
+                                                                "x":  112,
+                                                                "y":  104,
+                                                                "width":  1024,
+                                                                "height":  43
+                                                            },
+                                      "children":  [
+
+                                                   ]
+                                  },
+                                  {
+                                      "name":  "AppWindow Custom Title Bar",
+                                      "automationId":  "",
+                                      "className":  "ReunionWindowingCaptionControls",
+                                      "controlType":  "ControlType.Pane",
+                                      "localizedControlType":  "pane",
+                                      "isEnabled":  true,
+                                      "hasKeyboardFocus":  false,
+                                      "isKeyboardFocusable":  false,
+                                      "value":  null,
+                                      "patterns":  {
+
+                                                   },
+                                      "boundingRectangle":  {
+                                                                "x":  998,
+                                                                "y":  104,
+                                                                "width":  138,
+                                                                "height":  32
+                                                            },
+                                      "children":  [
+                                                       {
+                                                           "name":  "Minimize",
+                                                           "automationId":  "Minimize",
+                                                           "className":  "",
+                                                           "controlType":  "ControlType.Button",
+                                                           "localizedControlType":  "button",
+                                                           "isEnabled":  true,
+                                                           "hasKeyboardFocus":  false,
+                                                           "isKeyboardFocusable":  false,
+                                                           "value":  null,
+                                                           "patterns":  "invoke",
+                                                           "boundingRectangle":  {
+                                                                                     "x":  998,
+                                                                                     "y":  104,
+                                                                                     "width":  46,
+                                                                                     "height":  32
+                                                                                 },
+                                                           "children":  [
+
+                                                                        ]
+                                                       },
+                                                       {
+                                                           "name":  "Maximize",
+                                                           "automationId":  "Maximize",
+                                                           "className":  "",
+                                                           "controlType":  "ControlType.Button",
+                                                           "localizedControlType":  "button",
+                                                           "isEnabled":  true,
+                                                           "hasKeyboardFocus":  false,
+                                                           "isKeyboardFocusable":  false,
+                                                           "value":  null,
+                                                           "patterns":  "invoke",
+                                                           "boundingRectangle":  {
+                                                                                     "x":  1044,
+                                                                                     "y":  104,
+                                                                                     "width":  46,
+                                                                                     "height":  32
+                                                                                 },
+                                                           "children":  [
+
+                                                                        ]
+                                                       },
+                                                       {
+                                                           "name":  "Close",
+                                                           "automationId":  "Close",
+                                                           "className":  "",
+                                                           "controlType":  "ControlType.Button",
+                                                           "localizedControlType":  "button",
+                                                           "isEnabled":  true,
+                                                           "hasKeyboardFocus":  false,
+                                                           "isKeyboardFocusable":  false,
+                                                           "value":  null,
+                                                           "patterns":  "invoke",
+                                                           "boundingRectangle":  {
+                                                                                     "x":  1090,
+                                                                                     "y":  104,
+                                                                                     "width":  46,
+                                                                                     "height":  32
+                                                                                 },
+                                                           "children":  [
+
+                                                                        ]
+                                                       }
+                                                   ]
+                                  },
+                                  {
+                                      "name":  "",
+                                      "automationId":  "",
+                                      "className":  "Microsoft.UI.Content.DesktopChildSiteBridge",
+                                      "controlType":  "ControlType.Pane",
+                                      "localizedControlType":  "pane",
+                                      "isEnabled":  true,
+                                      "hasKeyboardFocus":  false,
+                                      "isKeyboardFocusable":  false,
+                                      "value":  null,
+                                      "patterns":  {
+
+                                                   },
+                                      "boundingRectangle":  {
+                                                                "x":  112,
+                                                                "y":  105,
+                                                                "width":  1024,
+                                                                "height":  711
+                                                            },
+                                      "children":  [
+                                                       {
+                                                           "name":  "",
+                                                           "automationId":  "",
+                                                           "className":  "InputSiteWindowClass",
+                                                           "controlType":  "ControlType.Pane",
+                                                           "localizedControlType":  "pane",
+                                                           "isEnabled":  true,
+                                                           "hasKeyboardFocus":  false,
+                                                           "isKeyboardFocusable":  false,
+                                                           "value":  null,
+                                                           "patterns":  {
+
+                                                                        },
+                                                           "boundingRectangle":  {
+                                                                                     "x":  112,
+                                                                                     "y":  105,
+                                                                                     "width":  1024,
+                                                                                     "height":  711
+                                                                                 },
+                                                           "children":  [
+                                                                            {
+                                                                                "name":  "",
+                                                                                "automationId":  "TitleBar",
+                                                                                "className":  "",
+                                                                                "controlType":  "ControlType.TitleBar",
+                                                                                "localizedControlType":  "title bar",
+                                                                                "isEnabled":  true,
+                                                                                "hasKeyboardFocus":  false,
+                                                                                "isKeyboardFocusable":  false,
+                                                                                "value":  null,
+                                                                                "patterns":  {
+
+                                                                                             },
+                                                                                "boundingRectangle":  {
+                                                                                                          "x":  Infinity,
+                                                                                                          "y":  Infinity,
+                                                                                                          "width":  -Infinity,
+                                                                                                          "height":  -Infinity
+                                                                                                      },
+                                                                                "children":  [
+
+                                                                                             ]
+                                                                            },
+                                                                            {
+                                                                                "name":  "OpenBurnBar",
+                                                                                "automationId":  "",
+                                                                                "className":  "NamedContainerAutomationPeer",
+                                                                                "controlType":  "ControlType.Group",
+                                                                                "localizedControlType":  "group",
+                                                                                "isEnabled":  true,
+                                                                                "hasKeyboardFocus":  false,
+                                                                                "isKeyboardFocusable":  false,
+                                                                                "value":  null,
+                                                                                "patterns":  {
+
+                                                                                             },
+                                                                                "boundingRectangle":  {
+                                                                                                          "x":  131,
+                                                                                                          "y":  123,
+                                                                                                          "width":  18,
+                                                                                                          "height":  18
+                                                                                                      },
+                                                                                "children":  [
+                                                                                                 {
+                                                                                                     "name":  "",
+                                                                                                     "automationId":  "LogoImage",
+                                                                                                     "className":  "Image",
+                                                                                                     "controlType":  "ControlType.Image",
+                                                                                                     "localizedControlType":  "image",
+                                                                                                     "isEnabled":  true,
+                                                                                                     "hasKeyboardFocus":  false,
+                                                                                                     "isKeyboardFocusable":  false,
+                                                                                                     "value":  null,
+                                                                                                     "patterns":  {
+
+                                                                                                                  },
+                                                                                                     "boundingRectangle":  {
+                                                                                                                               "x":  131,
+                                                                                                                               "y":  123,
+                                                                                                                               "width":  18,
+                                                                                                                               "height":  18
+                                                                                                                           },
+                                                                                                     "children":  [
+
+                                                                                                                  ]
+                                                                                                 }
+                                                                                             ]
+                                                                            },
+                                                                            {
+                                                                                "name":  "OpenBurnBar",
+                                                                                "automationId":  "",
+                                                                                "className":  "TextBlock",
+                                                                                "controlType":  "ControlType.Text",
+                                                                                "localizedControlType":  "text",
+                                                                                "isEnabled":  true,
+                                                                                "hasKeyboardFocus":  false,
+                                                                                "isKeyboardFocusable":  false,
+                                                                                "value":  null,
+                                                                                "patterns":  "text",
+                                                                                "boundingRectangle":  {
+                                                                                                          "x":  159,
+                                                                                                          "y":  123,
+                                                                                                          "width":  958,
+                                                                                                          "height":  19
+                                                                                                      },
+                                                                                "children":  [
+
+                                                                                             ]
+                                                                            },
+                                                                            {
+                                                                                "name":  "",
+                                                                                "automationId":  "",
+                                                                                "className":  "Button",
+                                                                                "controlType":  "ControlType.Button",
+                                                                                "localizedControlType":  "button",
+                                                                                "isEnabled":  true,
+                                                                                "hasKeyboardFocus":  true,
+                                                                                "isKeyboardFocusable":  true,
+                                                                                "value":  null,
+                                                                                "patterns":  "invoke",
+                                                                                "boundingRectangle":  {
+                                                                                                          "x":  141,
+                                                                                                          "y":  181,
+                                                                                                          "width":  123,
+                                                                                                          "height":  30
+                                                                                                      },
+                                                                                "children":  [
+                                                                                                 {
+                                                                                                     "name":  "OpenBurnBar",
+                                                                                                     "automationId":  "",
+                                                                                                     "className":  "NamedContainerAutomationPeer",
+                                                                                                     "controlType":  "ControlType.Group",
+                                                                                                     "localizedControlType":  "group",
+                                                                                                     "isEnabled":  true,
+                                                                                                     "hasKeyboardFocus":  false,
+                                                                                                     "isKeyboardFocusable":  false,
+                                                                                                     "value":  null,
+                                                                                                     "patterns":  {
+
+                                                                                                                  },
+                                                                                                     "boundingRectangle":  {
+                                                                                                                               "x":  145,
+                                                                                                                               "y":  183,
+                                                                                                                               "width":  26,
+                                                                                                                               "height":  26
+                                                                                                                           },
+                                                                                                     "children":  [
+                                                                                                                      {
+                                                                                                                          "name":  "",
+                                                                                                                          "automationId":  "LogoImage",
+                                                                                                                          "className":  "Image",
+                                                                                                                          "controlType":  "ControlType.Image",
+                                                                                                                          "localizedControlType":  "image",
+                                                                                                                          "isEnabled":  true,
+                                                                                                                          "hasKeyboardFocus":  false,
+                                                                                                                          "isKeyboardFocusable":  false,
+                                                                                                                          "value":  null,
+                                                                                                                          "patterns":  {
+
+                                                                                                                                       },
+                                                                                                                          "boundingRectangle":  {
+                                                                                                                                                    "x":  145,
+                                                                                                                                                    "y":  183,
+                                                                                                                                                    "width":  26,
+                                                                                                                                                    "height":  26
+                                                                                                                                                },
+                                                                                                                          "children":  [
+
+                                                                                                                                       ]
+                                                                                                                      }
+                                                                                                                  ]
+                                                                                                 },
+                                                                                                 {
+                                                                                                     "name":  "Open",
+                                                                                                     "automationId":  "",
+                                                                                                     "className":  "TextBlock",
+                                                                                                     "controlType":  "ControlType.Text",
+                                                                                                     "localizedControlType":  "text",
+                                                                                                     "isEnabled":  true,
+                                                                                                     "hasKeyboardFocus":  false,
+                                                                                                     "isKeyboardFocusable":  false,
+                                                                                                     "value":  null,
+                                                                                                     "patterns":  "text",
+                                                                                                     "boundingRectangle":  {
+                                                                                                                               "x":  179,
+                                                                                                                               "y":  187,
+                                                                                                                               "width":  33,
+                                                                                                                               "height":  18
+                                                                                                                           },
+                                                                                                     "children":  [
+
+                                                                                                                  ]
+                                                                                                 },
+                                                                                                 {
+                                                                                                     "name":  "BurnBar",
+                                                                                                     "automationId":  "",
+                                                                                                     "className":  "TextBlock",
+                                                                                                     "controlType":  "ControlType.Text",
+                                                                                                     "localizedControlType":  "text",
+                                                                                                     "isEnabled":  true,
+                                                                                                     "hasKeyboardFocus":  false,
+                                                                                                     "isKeyboardFocusable":  false,
+                                                                                                     "value":  null,
+                                                                                                     "patterns":  "text",
+                                                                                                     "boundingRectangle":  {
+                                                                                                                               "x":  212,
+                                                                                                                               "y":  187,
+                                                                                                                               "width":  48,
+                                                                                                                               "height":  18
+                                                                                                                           },
+                                                                                                     "children":  [
+
+                                                                                                                  ]
+                                                                                                 }
+                                                                                             ]
+                                                                            },
+                                                                            {
+                                                                                "name":  "",
+                                                                                "automationId":  "SectionSwitcher",
+                                                                                "className":  "Button",
+                                                                                "controlType":  "ControlType.Button",
+                                                                                "localizedControlType":  "button",
+                                                                                "isEnabled":  true,
+                                                                                "hasKeyboardFocus":  false,
+                                                                                "isKeyboardFocusable":  true,
+                                                                                "value":  null,
+                                                                                "patterns":  "invoke",
+                                                                                "boundingRectangle":  {
+                                                                                                          "x":  272,
+                                                                                                          "y":  181,
+                                                                                                          "width":  90,
+                                                                                                          "height":  30
+                                                                                                      },
+                                                                                "children":  [
+                                                                                                 {
+                                                                                                     "name":  "Chat",
+                                                                                                     "automationId":  "SectionTitle",
+                                                                                                     "className":  "TextBlock",
+                                                                                                     "controlType":  "ControlType.Text",
+                                                                                                     "localizedControlType":  "text",
+                                                                                                     "isEnabled":  true,
+                                                                                                     "hasKeyboardFocus":  false,
+                                                                                                     "isKeyboardFocusable":  false,
+                                                                                                     "value":  null,
+                                                                                                     "patterns":  "text",
+                                                                                                     "boundingRectangle":  {
+                                                                                                                               "x":  304,
+                                                                                                                               "y":  187,
+                                                                                                                               "width":  28,
+                                                                                                                               "height":  18
+                                                                                                                           },
+                                                                                                     "children":  [
+
+                                                                                                                  ]
+                                                                                                 }
+                                                                                             ]
+                                                                            },
+                                                                            {
+                                                                                "name":  "",
+                                                                                "automationId":  "",
+                                                                                "className":  "Button",
+                                                                                "controlType":  "ControlType.Button",
+                                                                                "localizedControlType":  "button",
+                                                                                "isEnabled":  true,
+                                                                                "hasKeyboardFocus":  false,
+                                                                                "isKeyboardFocusable":  true,
+                                                                                "value":  null,
+                                                                                "patterns":  "invoke",
+                                                                                "boundingRectangle":  {
+                                                                                                          "x":  370,
+                                                                                                          "y":  183,
+                                                                                                          "width":  70,
+                                                                                                          "height":  27
+                                                                                                      },
+                                                                                "children":  [
+                                                                                                 {
+                                                                                                     "name":  "Ctrl K",
+                                                                                                     "automationId":  "",
+                                                                                                     "className":  "TextBlock",
+                                                                                                     "controlType":  "ControlType.Text",
+                                                                                                     "localizedControlType":  "text",
+                                                                                                     "isEnabled":  true,
+                                                                                                     "hasKeyboardFocus":  false,
+                                                                                                     "isKeyboardFocusable":  false,
+                                                                                                     "value":  null,
+                                                                                                     "patterns":  "text",
+                                                                                                     "boundingRectangle":  {
+                                                                                                                               "x":  400,
+                                                                                                                               "y":  189,
+                                                                                                                               "width":  28,
+                                                                                                                               "height":  15
+                                                                                                                           },
+                                                                                                     "children":  [
+
+                                                                                                                  ]
+                                                                                                 }
+                                                                                             ]
+                                                                            },
+                                                                            {
+                                                                                "name":  "",
+                                                                                "automationId":  "Trigger",
+                                                                                "className":  "Button",
+                                                                                "controlType":  "ControlType.Button",
+                                                                                "localizedControlType":  "button",
+                                                                                "isEnabled":  true,
+                                                                                "hasKeyboardFocus":  false,
+                                                                                "isKeyboardFocusable":  true,
+                                                                                "value":  null,
+                                                                                "patterns":  "invoke",
+                                                                                "boundingRectangle":  {
+                                                                                                          "x":  746,
+                                                                                                          "y":  182,
+                                                                                                          "width":  119,
+                                                                                                          "height":  28
+                                                                                                      },
+                                                                                "children":  [
+                                                                                                 {
+                                                                                                     "name":  "Volumetric",
+                                                                                                     "automationId":  "ActiveLabel",
+                                                                                                     "className":  "TextBlock",
+                                                                                                     "controlType":  "ControlType.Text",
+                                                                                                     "localizedControlType":  "text",
+                                                                                                     "isEnabled":  true,
+                                                                                                     "hasKeyboardFocus":  false,
+                                                                                                     "isKeyboardFocusable":  false,
+                                                                                                     "value":  null,
+                                                                                                     "patterns":  "text",
+                                                                                                     "boundingRectangle":  {
+                                                                                                                               "x":  776,
+                                                                                                                               "y":  188,
+                                                                                                                               "width":  61,
+                                                                                                                               "height":  16
+                                                                                                                           },
+                                                                                                     "children":  [
+
+                                                                                                                  ]
+                                                                                                 }
+                                                                                             ]
+                                                                            },
+                                                                            {
+                                                                                "name":  "BURN",
+                                                                                "automationId":  "",
+                                                                                "className":  "TextBlock",
+                                                                                "controlType":  "ControlType.Text",
+                                                                                "localizedControlType":  "text",
+                                                                                "isEnabled":  true,
+                                                                                "hasKeyboardFocus":  false,
+                                                                                "isKeyboardFocusable":  false,
+                                                                                "value":  null,
+                                                                                "patterns":  "text",
+                                                                                "boundingRectangle":  {
+                                                                                                          "x":  907,
+                                                                                                          "y":  181,
+                                                                                                          "width":  29,
+                                                                                                          "height":  12
+                                                                                                      },
+                                                                                "children":  [
+
+                                                                                             ]
+                                                                            },
+                                                                            {
+                                                                                "name":  "—",
+                                                                                "automationId":  "ValueText",
+                                                                                "className":  "TextBlock",
+                                                                                "controlType":  "ControlType.Text",
+                                                                                "localizedControlType":  "text",
+                                                                                "isEnabled":  true,
+                                                                                "hasKeyboardFocus":  false,
+                                                                                "isKeyboardFocusable":  false,
+                                                                                "value":  null,
+                                                                                "patterns":  "text",
+                                                                                "boundingRectangle":  {
+                                                                                                          "x":  907,
+                                                                                                          "y":  193,
+                                                                                                          "width":  29,
+                                                                                                          "height":  18
+                                                                                                      },
+                                                                                "children":  [
+
+                                                                                             ]
+                                                                            },
+                                                                            {
+                                                                                "name":  "",
+                                                                                "automationId":  "",
+                                                                                "className":  "Button",
+                                                                                "controlType":  "ControlType.Button",
+                                                                                "localizedControlType":  "button",
+                                                                                "isEnabled":  true,
+                                                                                "hasKeyboardFocus":  false,
+                                                                                "isKeyboardFocusable":  true,
+                                                                                "value":  null,
+                                                                                "patterns":  "invoke",
+                                                                                "boundingRectangle":  {
+                                                                                                          "x":  1031,
+                                                                                                          "y":  181,
+                                                                                                          "width":  30,
+                                                                                                          "height":  30
+                                                                                                      },
+                                                                                "children":  [
+
+                                                                                             ]
+                                                                            },
+                                                                            {
+                                                                                "name":  "",
+                                                                                "automationId":  "",
+                                                                                "className":  "Button",
+                                                                                "controlType":  "ControlType.Button",
+                                                                                "localizedControlType":  "button",
+                                                                                "isEnabled":  true,
+                                                                                "hasKeyboardFocus":  false,
+                                                                                "isKeyboardFocusable":  true,
+                                                                                "value":  null,
+                                                                                "patterns":  "invoke",
+                                                                                "boundingRectangle":  {
+                                                                                                          "x":  1069,
+                                                                                                          "y":  181,
+                                                                                                          "width":  30,
+                                                                                                          "height":  30
+                                                                                                      },
+                                                                                "children":  [
+
+                                                                                             ]
+                                                                            },
+                                                                            {
+                                                                                "name":  "Chat",
+                                                                                "automationId":  "chat.surface",
+                                                                                "className":  "NamedContainerAutomationPeer",
+                                                                                "controlType":  "ControlType.Group",
+                                                                                "localizedControlType":  "group",
+                                                                                "isEnabled":  true,
+                                                                                "hasKeyboardFocus":  false,
+                                                                                "isKeyboardFocusable":  false,
+                                                                                "value":  null,
+                                                                                "patterns":  {
+
+                                                                                             },
+                                                                                "boundingRectangle":  {
+                                                                                                          "x":  112,
+                                                                                                          "y":  334,
+                                                                                                          "width":  1024,
+                                                                                                          "height":  481
+                                                                                                      },
+                                                                                "children":  [
+                                                                                                 {
+                                                                                                     "name":  "Chat",
+                                                                                                     "automationId":  "",
+                                                                                                     "className":  "TextBlock",
+                                                                                                     "controlType":  "ControlType.Text",
+                                                                                                     "localizedControlType":  "text",
+                                                                                                     "isEnabled":  true,
+                                                                                                     "hasKeyboardFocus":  false,
+                                                                                                     "isKeyboardFocusable":  false,
+                                                                                                     "value":  null,
+                                                                                                     "patterns":  "text",
+                                                                                                     "boundingRectangle":  {
+                                                                                                                               "x":  160,
+                                                                                                                               "y":  295,
+                                                                                                                               "width":  47,
+                                                                                                                               "height":  30
+                                                                                                                           },
+                                                                                                     "children":  [
+
+                                                                                                                  ]
+                                                                                                 },
+                                                                                                 {
+                                                                                                     "name":  "Chat is ready for a configured backend",
+                                                                                                     "automationId":  "",
+                                                                                                     "className":  "TextBlock",
+                                                                                                     "controlType":  "ControlType.Text",
+                                                                                                     "localizedControlType":  "text",
+                                                                                                     "isEnabled":  true,
+                                                                                                     "hasKeyboardFocus":  false,
+                                                                                                     "isKeyboardFocusable":  false,
+                                                                                                     "value":  null,
+                                                                                                     "patterns":  "text",
+                                                                                                     "boundingRectangle":  {
+                                                                                                                               "x":  483,
+                                                                                                                               "y":  499,
+                                                                                                                               "width":  282,
+                                                                                                                               "height":  22
+                                                                                                                           },
+                                                                                                     "children":  [
+
+                                                                                                                  ]
+                                                                                                 },
+                                                                                                 {
+                                                                                                     "name":  "Connect the Hermes/CLI bridge in Settings → Data Sources, or enable OPENBURNBAR_SAMPLE_MODE=1 for a labeled scripted demo.",
+                                                                                                     "automationId":  "",
+                                                                                                     "className":  "TextBlock",
+                                                                                                     "controlType":  "ControlType.Text",
+                                                                                                     "localizedControlType":  "text",
+                                                                                                     "isEnabled":  true,
+                                                                                                     "hasKeyboardFocus":  false,
+                                                                                                     "isKeyboardFocusable":  false,
+                                                                                                     "value":  null,
+                                                                                                     "patterns":  "text",
+                                                                                                     "boundingRectangle":  {
+                                                                                                                               "x":  409,
+                                                                                                                               "y":  529,
+                                                                                                                               "width":  430,
+                                                                                                                               "height":  38
+                                                                                                                           },
+                                                                                                     "children":  [
+
+                                                                                                                  ]
+                                                                                                 },
+                                                                                                 {
+                                                                                                     "name":  "Chat CLI setup required.",
+                                                                                                     "automationId":  "chat.executable.setup",
+                                                                                                     "className":  "TextBlock",
+                                                                                                     "controlType":  "ControlType.Text",
+                                                                                                     "localizedControlType":  "text",
+                                                                                                     "isEnabled":  true,
+                                                                                                     "hasKeyboardFocus":  false,
+                                                                                                     "isKeyboardFocusable":  false,
+                                                                                                     "value":  null,
+                                                                                                     "patterns":  "text",
+                                                                                                     "boundingRectangle":  {
+                                                                                                                               "x":  143,
+                                                                                                                               "y":  687,
+                                                                                                                               "width":  962,
+                                                                                                                               "height":  19
+                                                                                                                           },
+                                                                                                     "children":  [
+
+                                                                                                                  ]
+                                                                                                 },
+                                                                                                 {
+                                                                                                     "name":  "Approve a CLI executable before starting a chat turn.",
+                                                                                                     "automationId":  "chat.executable.setupMessage",
+                                                                                                     "className":  "TextBlock",
+                                                                                                     "controlType":  "ControlType.Text",
+                                                                                                     "localizedControlType":  "text",
+                                                                                                     "isEnabled":  true,
+                                                                                                     "hasKeyboardFocus":  false,
+                                                                                                     "isKeyboardFocusable":  false,
+                                                                                                     "value":  null,
+                                                                                                     "patterns":  "text",
+                                                                                                     "boundingRectangle":  {
+                                                                                                                               "x":  143,
+                                                                                                                               "y":  714,
+                                                                                                                               "width":  962,
+                                                                                                                               "height":  19
+                                                                                                                           },
+                                                                                                     "children":  [
+
+                                                                                                                  ]
+                                                                                                 },
+                                                                                                 {
+                                                                                                     "name":  "Chat executable path",
+                                                                                                     "automationId":  "chat.executable.path",
+                                                                                                     "className":  "TextBox",
+                                                                                                     "controlType":  "ControlType.Edit",
+                                                                                                     "localizedControlType":  "edit",
+                                                                                                     "isEnabled":  true,
+                                                                                                     "hasKeyboardFocus":  false,
+                                                                                                     "isKeyboardFocusable":  true,
+                                                                                                     "value":  "",
+                                                                                                     "patterns":  [
+                                                                                                                      "value",
+                                                                                                                      "text"
+                                                                                                                  ],
+                                                                                                     "boundingRectangle":  {
+                                                                                                                               "x":  143,
+                                                                                                                               "y":  741,
+                                                                                                                               "width":  861,
+                                                                                                                               "height":  32
+                                                                                                                           },
+                                                                                                     "children":  [
+
+                                                                                                                  ]
+                                                                                                 },
+                                                                                                 {
+                                                                                                     "name":  "Approve chat executable",
+                                                                                                     "automationId":  "chat.executable.approve",
+                                                                                                     "className":  "Button",
+                                                                                                     "controlType":  "ControlType.Button",
+                                                                                                     "localizedControlType":  "button",
+                                                                                                     "isEnabled":  true,
+                                                                                                     "hasKeyboardFocus":  false,
+                                                                                                     "isKeyboardFocusable":  true,
+                                                                                                     "value":  null,
+                                                                                                     "patterns":  "invoke",
+                                                                                                     "boundingRectangle":  {
+                                                                                                                               "x":  1012,
+                                                                                                                               "y":  741,
+                                                                                                                               "width":  77,
+                                                                                                                               "height":  32
+                                                                                                                           },
+                                                                                                     "children":  [
+
+                                                                                                                  ]
+                                                                                                 },
+                                                                                                 {
+                                                                                                     "name":  "Message OpenBurnBar",
+                                                                                                     "automationId":  "chat.input",
+                                                                                                     "className":  "TextBox",
+                                                                                                     "controlType":  "ControlType.Edit",
+                                                                                                     "localizedControlType":  "edit",
+                                                                                                     "isEnabled":  true,
+                                                                                                     "hasKeyboardFocus":  false,
+                                                                                                     "isKeyboardFocusable":  true,
+                                                                                                     "value":  "",
+                                                                                                     "patterns":  [
+                                                                                                                      "value",
+                                                                                                                      "text"
+                                                                                                                  ],
+                                                                                                     "boundingRectangle":  {
+                                                                                                                               "x":  132,
+                                                                                                                               "y":  790,
+                                                                                                                               "width":  892,
+                                                                                                                               "height":  25
+                                                                                                                           },
+                                                                                                     "children":  [
+
+                                                                                                                  ]
+                                                                                                 },
+                                                                                                 {
+                                                                                                     "name":  "Regenerate last response",
+                                                                                                     "automationId":  "chat.regenerate",
+                                                                                                     "className":  "Button",
+                                                                                                     "controlType":  "ControlType.Button",
+                                                                                                     "localizedControlType":  "button",
+                                                                                                     "isEnabled":  false,
+                                                                                                     "hasKeyboardFocus":  false,
+                                                                                                     "isKeyboardFocusable":  false,
+                                                                                                     "value":  null,
+                                                                                                     "patterns":  "invoke",
+                                                                                                     "boundingRectangle":  {
+                                                                                                                               "x":  1032,
+                                                                                                                               "y":  793,
+                                                                                                                               "width":  38,
+                                                                                                                               "height":  22
+                                                                                                                           },
+                                                                                                     "children":  [
+
+                                                                                                                  ]
+                                                                                                 },
+                                                                                                 {
+                                                                                                     "name":  "Send message",
+                                                                                                     "automationId":  "chat.send",
+                                                                                                     "className":  "Button",
+                                                                                                     "controlType":  "ControlType.Button",
+                                                                                                     "localizedControlType":  "button",
+                                                                                                     "isEnabled":  false,
+                                                                                                     "hasKeyboardFocus":  false,
+                                                                                                     "isKeyboardFocusable":  false,
+                                                                                                     "value":  null,
+                                                                                                     "patterns":  "invoke",
+                                                                                                     "boundingRectangle":  {
+                                                                                                                               "x":  1078,
+                                                                                                                               "y":  793,
+                                                                                                                               "width":  38,
+                                                                                                                               "height":  22
+                                                                                                                           },
+                                                                                                     "children":  [
+
+                                                                                                                  ]
+                                                                                                 }
+                                                                                             ]
+                                                                            }
+                                                                        ]
+                                                       }
+                                                   ]
+                                  },
+                                  {
+                                      "name":  "OpenBurnBar",
+                                      "automationId":  "TitleBar",
+                                      "className":  "",
+                                      "controlType":  "ControlType.TitleBar",
+                                      "localizedControlType":  "title bar",
+                                      "isEnabled":  true,
+                                      "hasKeyboardFocus":  false,
+                                      "isKeyboardFocusable":  false,
+                                      "value":  null,
+                                      "patterns":  {
+
+                                                   },
+                                      "boundingRectangle":  {
+                                                                "x":  112,
+                                                                "y":  112,
+                                                                "width":  1024,
+                                                                "height":  23
+                                                            },
+                                      "children":  [
+                                                       {
+                                                           "name":  "System Menu Bar",
+                                                           "automationId":  "SystemMenuBar",
+                                                           "className":  "",
+                                                           "controlType":  "ControlType.MenuBar",
+                                                           "localizedControlType":  "menu bar",
+                                                           "isEnabled":  true,
+                                                           "hasKeyboardFocus":  false,
+                                                           "isKeyboardFocusable":  true,
+                                                           "value":  null,
+                                                           "patterns":  {
+
+                                                                        },
+                                                           "boundingRectangle":  {
+                                                                                     "x":  112,
+                                                                                     "y":  112,
+                                                                                     "width":  22,
+                                                                                     "height":  22
+                                                                                 },
+                                                           "children":  [
+                                                                            {
+                                                                                "name":  "System",
+                                                                                "automationId":  "Item 1",
+                                                                                "className":  "",
+                                                                                "controlType":  "ControlType.MenuItem",
+                                                                                "localizedControlType":  "menu item",
+                                                                                "isEnabled":  true,
+                                                                                "hasKeyboardFocus":  false,
+                                                                                "isKeyboardFocusable":  true,
+                                                                                "value":  null,
+                                                                                "patterns":  {
+
+                                                                                             },
+                                                                                "boundingRectangle":  {
+                                                                                                          "x":  112,
+                                                                                                          "y":  112,
+                                                                                                          "width":  22,
+                                                                                                          "height":  22
+                                                                                                      },
+                                                                                "children":  [
+
+                                                                                             ]
+                                                                            }
+                                                                        ]
+                                                       },
+                                                       {
+                                                           "name":  "Minimize",
+                                                           "automationId":  "Minimize",
+                                                           "className":  "",
+                                                           "controlType":  "ControlType.Button",
+                                                           "localizedControlType":  "button",
+                                                           "isEnabled":  true,
+                                                           "hasKeyboardFocus":  false,
+                                                           "isKeyboardFocusable":  false,
+                                                           "value":  null,
+                                                           "patterns":  "invoke",
+                                                           "boundingRectangle":  {
+                                                                                     "x":  Infinity,
+                                                                                     "y":  Infinity,
+                                                                                     "width":  -Infinity,
+                                                                                     "height":  -Infinity
+                                                                                 },
+                                                           "children":  [
+
+                                                                        ]
+                                                       },
+                                                       {
+                                                           "name":  "Maximize",
+                                                           "automationId":  "Maximize",
+                                                           "className":  "",
+                                                           "controlType":  "ControlType.Button",
+                                                           "localizedControlType":  "button",
+                                                           "isEnabled":  true,
+                                                           "hasKeyboardFocus":  false,
+                                                           "isKeyboardFocusable":  false,
+                                                           "value":  null,
+                                                           "patterns":  "invoke",
+                                                           "boundingRectangle":  {
+                                                                                     "x":  Infinity,
+                                                                                     "y":  Infinity,
+                                                                                     "width":  -Infinity,
+                                                                                     "height":  -Infinity
+                                                                                 },
+                                                           "children":  [
+
+                                                                        ]
+                                                       },
+                                                       {
+                                                           "name":  "Close",
+                                                           "automationId":  "Close",
+                                                           "className":  "",
+                                                           "controlType":  "ControlType.Button",
+                                                           "localizedControlType":  "button",
+                                                           "isEnabled":  true,
+                                                           "hasKeyboardFocus":  false,
+                                                           "isKeyboardFocusable":  false,
+                                                           "value":  null,
+                                                           "patterns":  "invoke",
+                                                           "boundingRectangle":  {
+                                                                                     "x":  Infinity,
+                                                                                     "y":  Infinity,
+                                                                                     "width":  -Infinity,
+                                                                                     "height":  -Infinity
+                                                                                 },
+                                                           "children":  [
+
+                                                                        ]
+                                                       }
+                                                   ]
+                                  }
+                              ]
+             }
+}

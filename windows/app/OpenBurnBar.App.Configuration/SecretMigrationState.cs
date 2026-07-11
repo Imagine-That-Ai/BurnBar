@@ -6,6 +6,7 @@ public enum AppConfigurationSecurityStatus
 {
     Clean,
     MigratedLegacySecrets,
+    ProtectedStorageUnavailable,
     MigrationFailed,
 }
 

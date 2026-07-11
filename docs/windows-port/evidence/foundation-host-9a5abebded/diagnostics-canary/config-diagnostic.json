@@ -1,0 +1,11 @@
+{
+    "schema":  "openburnbar.windows.foundation-diagnostic-canary.v1",
+    "channel":  "config",
+    "apiKey":  "[REDACTED]",
+    "passphrase":  "[REDACTED]",
+    "canarySha256":  [
+                         "819faea99b72a37f6ef5392bbbffa67360ffd9f4ac4c19ee5782930bfa52c98f",
+                         "7f16051d3b05582b92b576dbf59c4d56bc35fecb035f8517038dbc7a3d75862c",
+                         "0b19fbb485cdda433bc1a0ad9f4f74d98f3ec13a066f1a7fe47e1f01da01b0f3"
+                     ]
+}

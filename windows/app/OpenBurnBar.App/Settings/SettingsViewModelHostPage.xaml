@@ -32,17 +32,11 @@
                        TextWrapping="Wrap"
                        FontSize="13"
                        Foreground="{StaticResource PensieveColorTextBrightBrush}" />
-            <ItemsControl x:Name="DetailList">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <TextBlock Text="{Binding}"
-                                   TextWrapping="Wrap"
-                                   Margin="0,4,0,0"
-                                   FontSize="12"
-                                   Foreground="{StaticResource PensieveColorTextMuteBrush}" />
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
+            <InfoBar x:Name="SaveStatus"
+                     IsOpen="False"
+                     IsClosable="True"
+                     Severity="Error" />
+            <StackPanel x:Name="DynamicControls" Spacing="8" />
         </StackPanel>
     </ScrollViewer>
 </Page>

@@ -5,6 +5,40 @@
 **Audit target:** local windows/liquid-glass-kernel-reskin checkout
 **Status:** source, release, CI, and available VM audit; not a Windows release certification
 
+## Implementation Update - 2026-07-10
+
+The foundation remediation branch implements the audit's highest-value daily-use
+and distribution gaps without changing the release-certification boundary:
+
+- A composed Windows usage runtime now discovers supported local logs, parses
+  usage records, persists encrypted snapshots, and supplies flyout, dashboard,
+  Atelier, command-palette, and onboarding scan surfaces from app startup.
+- Settings and Updates routes now use typed controls and durable Windows
+  persistence, with explicit unavailable reasons and Windows-native startup and
+  update status. Onboarding performs real dependency, storage, notification,
+  UI Automation, and chat-executable probes instead of placeholder readiness.
+- Single-instance warm/cold activation routes URI, file, toast, startup, and
+  command actions through one typed router. The WinSparkle host, bundled feed
+  metadata, package images, and startup-task integration are composed into the
+  app rather than remaining declaration-only assets.
+- Chat executable management remains reachable after approval, durable chat and
+  retrieval state use the encrypted store, Explorer restart re-registers the
+  tray icon, and diagnostics can create bounded redacted support bundles.
+- The foundation host harness verifies an exact exported Git candidate before
+  running focused tests, process-containment checks, secret scans, route smokes,
+  and interactive WinUI UI Automation in the signed-in user session.
+- The corrected candidate `9a5abebded057f59729fff1bd731e94d97fd6c27`
+  passed import and independent tree verification for `10,372 / 10,372` files,
+  all four host-runner stages, all `53 / 53` required scenarios, and all
+  `14 / 14` interactive UIA scenarios in desktop session `1`. The final
+  artifact scan reported zero secret findings. The reviewable receipt is in
+  `docs/windows-port/evidence/foundation-host-9a5abebded/`.
+
+This update is not a 1:1 parity or release claim. Signed publishing, hosted x64
+evidence, physical x64/ARM64 hardware certification, production account/cloud
+lifecycle, and the deeper daemon, Computer Use, and Mercury workflows retain
+their independent release gates.
+
 ## Executive Summary
 
 Windows is a substantial code port, but it is not at macOS product parity or
@@ -18,10 +52,12 @@ capabilities are uncomposed or explicitly deferred.
 
 This audit reviewed current source, current release assets, the 46-row Windows
 ledger, selected Windows unit suites, and the Windows full-suite CI result.
-The local Windows VM was running, but was locked and its guest-exec channel
-was unavailable. Installed-app behavior, visual polish, performance,
-notifications, activation, and accessibility are therefore source-audited,
-not runtime-certified.
+The initial audit found the local Windows VM locked with an unavailable
+guest-exec channel. The 2026-07-10 foundation rerun resolved that limitation
+for its exact ARM64 candidate and captured real-session UIA. Visual polish,
+performance, notifications, accessibility, physical-device behavior, and
+capabilities outside the foundation scenario set retain their independent
+certification gates.
 
 The public v1.0.29 release has macOS artifacts but no Windows installer or
 MSIX package. A passing scoped ledger and portable C# tests must not be
@@ -34,6 +70,10 @@ treated as end-to-end product parity evidence.
   result validates declared blocking paths, not a clean-install product flow.
 - The current PR Windows Full Suite run passed x64 and ARM64 .NET build/test
   jobs: https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29027436509.
+- Exact candidate `9a5abebded` passed the Windows 11 ARM64 foundation harness:
+  `10,372 / 10,372` imported files, `53 / 53` required scenarios, `14 / 14`
+  interactive UIA scenarios, and zero secret-scan findings. See
+  [the bound evidence receipt](evidence/foundation-host-9a5abebded/README.md).
 - The current checkout was windows/liquid-glass-kernel-reskin, ahead 23 and
   behind 28 commits of its upstream at audit time. Treat branch CI, release
   assets, and local source as separate facts.
@@ -132,6 +172,11 @@ and release acceptance fixtures between Swift and C#.
 
 ## Conclusion
 
-No source code was modified for this audit. The next implementation should
-start with the P0 security and live-data-plane work; no parity release should
-claim completion before the QA checklist has real Windows-host evidence.
+The audit now has a concrete Windows foundation implementation covering the
+live data plane, settings/onboarding, activation/updater composition, package
+assets, tray recovery, diagnostics, and exact-candidate host evidence. A parity
+release must still satisfy every applicable QA item with signed artifacts and
+independent Windows-host or physical-device evidence; source composition and a
+single VM run do not lower that bar. The foundation receipt is independently
+replayable and candidate-bound, but it does not relabel untested audit rows as
+complete.

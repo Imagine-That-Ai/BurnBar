@@ -1,0 +1,2408 @@
+{
+  "schema": "openburnbar.windows.foundation-host-evidence-manifest.v1",
+  "status": "passed",
+  "startedAtUtc": "2026-07-10T18:15:55.8452715Z",
+  "completedAtUtc": "2026-07-10T18:25:40.7981636Z",
+  "vmIdentitySha256": "1b0a8fa086ef0afceec7c0d6fc45f692176bce8fbedc45d7fc49f3fa9881c26d",
+  "repoRoot": "C:\\candidate-current",
+  "outputDir": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05",
+  "candidate": {
+    "branch": "codex/windows-parity-foundation-exact-final",
+    "commit": "9a5abebded057f59729fff1bd731e94d97fd6c27",
+    "commitDate": "2026-07-10T13:10:07-05:00",
+    "parentCommits": [
+      "587d32296e8affcbd6445e9731158d3354fd5c0b"
+    ],
+    "ref": "HEAD",
+    "tree": "ecdc551805003ebf55b7ee7b1ff2009942475005"
+  },
+  "candidateManifest": {
+    "path": "C:\\Users\\Public\\candidate-9a5abebded05-run\\openburnbar-candidate-9a5abebded05.manifest.json",
+    "sha256": "707c969f504c3bc58dddf844eb7def513cd769e9689b45f228f6fef39b190aa9",
+    "payloadSha256": "d09a0f7cb42f0885480ceab160832b29b1c146c3591b35dd75459ce42b1a536a"
+  },
+  "command": {
+    "script": "C:\\candidate-current\\scripts\\windows-port\\run-foundation-host-evidence.ps1",
+    "boundParameters": {
+      "RepoRoot": "C:\\candidate-current",
+      "ManifestPath": "C:\\Users\\Public\\candidate-9a5abebded05-run\\openburnbar-candidate-9a5abebded05.manifest.json",
+      "OutputDir": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05",
+      "ExpectedCandidate": "9a5abebded057f59729fff1bd731e94d97fd6c27",
+      "VmUuid": "%VM_UUID%",
+      "Platform": "ARM64"
+    }
+  },
+  "host": {
+    "schema": "openburnbar.windows.foundation-host-identity.v1",
+    "capturedAtUtc": "2026-07-10T18:16:42.9371971Z",
+    "vmIdentitySha256": "1b0a8fa086ef0afceec7c0d6fc45f692176bce8fbedc45d7fc49f3fa9881c26d",
+    "computerIdentitySha256": "76bb389608f724477ed282a87c3b67fc2f75b2dba3312b6812a39cd162122e32",
+    "osCaption": "Microsoft Windows 11 Pro",
+    "osVersion": "10.0.26200",
+    "osArchitecture": "ARM 64-bit Processor",
+    "manufacturer": "QEMU",
+    "model": "QEMU Virtual Machine",
+    "currentIdentitySha256": "08c7070d6ab952a7b4ba1cc4a19de45b839518586f290098c71a868e42006c80",
+    "currentSessionId": 0,
+    "activeConsoleSessionId": 1,
+    "processorArchitecture": "AMD64",
+    "processArchitecture": "X64",
+    "platform": "ARM64",
+    "dotnet": "10.0.301",
+    "candidate": {
+      "branch": "codex/windows-parity-foundation-exact-final",
+      "commit": "9a5abebded057f59729fff1bd731e94d97fd6c27",
+      "commitDate": "2026-07-10T13:10:07-05:00",
+      "parentCommits": [
+        "587d32296e8affcbd6445e9731158d3354fd5c0b"
+      ],
+      "ref": "HEAD",
+      "tree": "ecdc551805003ebf55b7ee7b1ff2009942475005"
+    }
+  },
+  "steps": [
+    {
+      "name": "focused-foundation-evidence",
+      "command": "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\\candidate-current\\scripts\\windows-port\\run-candidate-evidence.ps1 -RepoRoot C:\\candidate-current -ManifestPath C:\\Users\\Public\\candidate-9a5abebded05-run\\openburnbar-candidate-9a5abebded05.manifest.json -OutputDir C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation -Platform ARM64",
+      "exitCode": 0,
+      "log": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation-evidence.log",
+      "startedAtUtc": "2026-07-10T18:16:43.5966652+00:00",
+      "completedAtUtc": "2026-07-10T18:20:44.9005072Z"
+    },
+    {
+      "name": "foundation-process-tool-build",
+      "command": "dotnet build windows\\tools\\OpenBurnBar.FoundationHostEvidence\\OpenBurnBar.FoundationHostEvidence.csproj --configuration Debug",
+      "exitCode": 0,
+      "log": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\foundation-process-tool-build.log",
+      "startedAtUtc": "2026-07-10T18:20:44.9180264+00:00",
+      "completedAtUtc": "2026-07-10T18:20:46.9137332Z"
+    },
+    {
+      "name": "foundation-process-evidence",
+      "command": "C:\\candidate-current\\windows\\tools\\OpenBurnBar.FoundationHostEvidence\\bin\\Debug\\net8.0\\OpenBurnBar.FoundationHostEvidence.exe --output C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\process-traces --expected-candidate 9a5abebded057f59729fff1bd731e94d97fd6c27",
+      "exitCode": 0,
+      "log": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\foundation-process-evidence.log",
+      "startedAtUtc": "2026-07-10T18:20:46.9419443+00:00",
+      "completedAtUtc": "2026-07-10T18:21:07.5016101Z"
+    },
+    {
+      "name": "interactive-uia-collector",
+      "command": "CreateProcessAsUser C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "exitCode": 0,
+      "launch": {
+        "method": "WTSQueryUserToken/CreateProcessAsUser",
+        "activeConsoleSessionId": 1,
+        "processId": 9724,
+        "powershell": "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+      },
+      "completedAtUtc": "2026-07-10T18:25:35.4626462Z"
+    }
+  ],
+  "requiredScenarioIds": [
+    "chat.executable.setup",
+    "chat.executable.approve",
+    "chat.executable.rotate",
+    "chat.executable.remove",
+    "chat.executable.denial.missing",
+    "chat.executable.denial.replaced",
+    "chat.executable.denial.unapproved",
+    "chat.history.unavailable",
+    "chat.history.corrupt",
+    "chat.history.locked",
+    "chat.history.retry",
+    "chat.restart.process",
+    "chat.restart.durable-rehydrate",
+    "chat.attachment.file",
+    "chat.attachment.paste",
+    "chat.attachment.drop",
+    "chat.attachment.missing",
+    "chat.retrieval.degraded",
+    "storage.fresh-install",
+    "storage.restart-idempotency",
+    "storage.generated-db-write-seams",
+    "storage.wrong-key",
+    "storage.corrupt-database",
+    "storage.locked-file",
+    "storage.interrupted-migration",
+    "storage.unsupported-schema",
+    "storage.full-disk",
+    "storage.access-denied",
+    "storage.archive-reset",
+    "storage.retry",
+    "storage.reveal-redacted-log",
+    "process.environment.chat-scrubbed",
+    "process.metacharacters",
+    "process.quotes",
+    "process.unicode",
+    "process.newlines",
+    "process.long-input",
+    "process.blocked-stderr",
+    "process.infinite-output",
+    "process.grandchildren",
+    "process.cancellation",
+    "process.timeout",
+    "process.malformed-output",
+    "process.nonzero-exit",
+    "process.unapproved-denial",
+    "process.replaced-denial",
+    "process.missing-denial",
+    "process.unavailable-backend",
+    "diagnostics.config",
+    "diagnostics.log",
+    "diagnostics.support-bundle",
+    "diagnostics.screenshot",
+    "diagnostics.secret-scan"
+  ],
+  "missingScenarioIds": [],
+  "scenarios": [
+    {
+      "id": "chat.attachment.drop",
+      "status": "captured",
+      "source": "focused-foundation-evidence",
+      "artifacts": [
+        {
+          "scenario": "chat.attachment.drop",
+          "kind": "focused-foundation-artifact",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\chat-evidence\\chat-storage.json",
+          "relativePath": "focused-foundation/chat-evidence/chat-storage.json",
+          "sha256": "39516f403d25a7869f6a30dacec9cd5eae3abd84140e6168cd6231844c557389",
+          "size": 403,
+          "lastWriteTimeUtc": "2026-07-10T18:20:42.0466517Z"
+        }
+      ]
+    },
+    {
+      "id": "chat.attachment.file",
+      "status": "captured",
+      "source": "focused-foundation-evidence",
+      "artifacts": [
+        {
+          "scenario": "chat.attachment.file",
+          "kind": "focused-foundation-artifact",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\chat-evidence\\chat-storage.json",
+          "relativePath": "focused-foundation/chat-evidence/chat-storage.json",
+          "sha256": "39516f403d25a7869f6a30dacec9cd5eae3abd84140e6168cd6231844c557389",
+          "size": 403,
+          "lastWriteTimeUtc": "2026-07-10T18:20:42.0466517Z"
+        }
+      ]
+    },
+    {
+      "id": "chat.attachment.missing",
+      "status": "captured",
+      "source": "focused-foundation-evidence",
+      "artifacts": [
+        {
+          "scenario": "chat.attachment.missing",
+          "kind": "focused-foundation-artifact",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\chat-evidence\\chat-storage.json",
+          "relativePath": "focused-foundation/chat-evidence/chat-storage.json",
+          "sha256": "39516f403d25a7869f6a30dacec9cd5eae3abd84140e6168cd6231844c557389",
+          "size": 403,
+          "lastWriteTimeUtc": "2026-07-10T18:20:42.0466517Z"
+        }
+      ]
+    },
+    {
+      "id": "chat.attachment.paste",
+      "status": "captured",
+      "source": "interactive-uia",
+      "actor": {
+        "identitySha256": "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+        "sessionId": 1
+      },
+      "artifacts": [
+        {
+          "scenario": "chat.attachment.paste",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.attachment.paste\\uia-before.json",
+          "relativePath": "interactive-uia/scenarios/chat.attachment.paste/uia-before.json",
+          "sha256": "d3337358902b5e94fdc04eadc430c2217f520ccf280494447bb088586322a4ab",
+          "size": 96259,
+          "lastWriteTimeUtc": "2026-07-10T18:25:25.9046252Z"
+        },
+        {
+          "scenario": "chat.attachment.paste",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.attachment.paste\\screenshot-before.png",
+          "relativePath": "interactive-uia/scenarios/chat.attachment.paste/screenshot-before.png",
+          "sha256": "e56c0dbcfb2eec435148f63dfa2390760e62342825ef3e7a225952e784ea7034",
+          "size": 56702,
+          "lastWriteTimeUtc": "2026-07-10T18:25:26.0133919Z"
+        },
+        {
+          "scenario": "chat.attachment.paste",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.attachment.paste\\uia-after.json",
+          "relativePath": "interactive-uia/scenarios/chat.attachment.paste/uia-after.json",
+          "sha256": "5f8816d9b85c984e085ad4aa308232a3a54868587318a707df672e46e0f8bbca",
+          "size": 137894,
+          "lastWriteTimeUtc": "2026-07-10T18:25:29.3779952Z"
+        },
+        {
+          "scenario": "chat.attachment.paste",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.attachment.paste\\screenshot-after.png",
+          "relativePath": "interactive-uia/scenarios/chat.attachment.paste/screenshot-after.png",
+          "sha256": "76dd084e2ba82e194de1379e139a88ca9a4885fdd4b73081cbd3307557b1b5d8",
+          "size": 62971,
+          "lastWriteTimeUtc": "2026-07-10T18:25:29.4315729Z"
+        },
+        {
+          "scenario": "chat.attachment.paste",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.attachment.paste\\route-smoke\\chat-result.json",
+          "relativePath": "interactive-uia/scenarios/chat.attachment.paste/route-smoke/chat-result.json",
+          "sha256": "7a1b1065594f4e3250db2ce2e959c50dace7d8d773e728303da8c26dc4e9c88f",
+          "size": 478,
+          "lastWriteTimeUtc": "2026-07-10T18:25:34.2515618Z"
+        },
+        {
+          "scenario": "chat.attachment.paste",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.attachment.paste\\route-smoke\\chat.png",
+          "relativePath": "interactive-uia/scenarios/chat.attachment.paste/route-smoke/chat.png",
+          "sha256": "284556fe01dc8b38e3aa3699f5c9b7f2ddd69a381e68b18a876404b11d67d1c6",
+          "size": 34176,
+          "lastWriteTimeUtc": "2026-07-10T18:25:34.2182046Z"
+        }
+      ]
+    },
+    {
+      "id": "chat.executable.approve",
+      "status": "captured",
+      "source": "interactive-uia",
+      "actor": {
+        "identitySha256": "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+        "sessionId": 1
+      },
+      "artifacts": [
+        {
+          "scenario": "chat.executable.approve",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.approve\\uia-before.json",
+          "relativePath": "interactive-uia/scenarios/chat.executable.approve/uia-before.json",
+          "sha256": "76806325e73c09267ef1513fa6b1f5fc10578b9609f299a07b60c2cd1e6ce6a8",
+          "size": 96259,
+          "lastWriteTimeUtc": "2026-07-10T18:21:28.6849367Z"
+        },
+        {
+          "scenario": "chat.executable.approve",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.approve\\screenshot-before.png",
+          "relativePath": "interactive-uia/scenarios/chat.executable.approve/screenshot-before.png",
+          "sha256": "e56c0dbcfb2eec435148f63dfa2390760e62342825ef3e7a225952e784ea7034",
+          "size": 56702,
+          "lastWriteTimeUtc": "2026-07-10T18:21:28.9586984Z"
+        },
+        {
+          "scenario": "chat.executable.approve",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.approve\\uia-after.json",
+          "relativePath": "interactive-uia/scenarios/chat.executable.approve/uia-after.json",
+          "sha256": "dcf0a50b2c279e3a27aeeba7ae744d96c033f70240d976414284cd36dc576be8",
+          "size": 104273,
+          "lastWriteTimeUtc": "2026-07-10T18:21:30.6780237Z"
+        },
+        {
+          "scenario": "chat.executable.approve",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.approve\\screenshot-after.png",
+          "relativePath": "interactive-uia/scenarios/chat.executable.approve/screenshot-after.png",
+          "sha256": "a9221353f9bc605f6d7a3ec2c18fa5a95f325c21e9952fa5bca7d24b109251e1",
+          "size": 56809,
+          "lastWriteTimeUtc": "2026-07-10T18:21:30.9626861Z"
+        },
+        {
+          "scenario": "chat.executable.approve",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.approve\\route-smoke\\chat-result.json",
+          "relativePath": "interactive-uia/scenarios/chat.executable.approve/route-smoke/chat-result.json",
+          "sha256": "7a297efe1c59b0e8af43c7d69e68e672145e7d8d1d462dd34de9beb940bf4135",
+          "size": 482,
+          "lastWriteTimeUtc": "2026-07-10T18:21:37.7977898Z"
+        },
+        {
+          "scenario": "chat.executable.approve",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.approve\\route-smoke\\chat.png",
+          "relativePath": "interactive-uia/scenarios/chat.executable.approve/route-smoke/chat.png",
+          "sha256": "f515b5e8f167d76bc0c9f8a893dd5f81be7bf550a8b58eafa293eb3962b11809",
+          "size": 67266,
+          "lastWriteTimeUtc": "2026-07-10T18:21:37.7864176Z"
+        }
+      ]
+    },
+    {
+      "id": "chat.executable.denial.missing",
+      "status": "captured",
+      "source": "interactive-uia",
+      "actor": {
+        "identitySha256": "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+        "sessionId": 1
+      },
+      "artifacts": [
+        {
+          "scenario": "chat.executable.denial.missing",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.missing\\uia-before.json",
+          "relativePath": "interactive-uia/scenarios/chat.executable.denial.missing/uia-before.json",
+          "sha256": "8a9e06632f57e974897270881bb5db52399f125e9fec7e4b5befd277578f296b",
+          "size": 104189,
+          "lastWriteTimeUtc": "2026-07-10T18:22:33.6822817Z"
+        },
+        {
+          "scenario": "chat.executable.denial.missing",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.missing\\screenshot-before.png",
+          "relativePath": "interactive-uia/scenarios/chat.executable.denial.missing/screenshot-before.png",
+          "sha256": "0f624bd6d3f23a35721740e71cb4539639ea275823236aca978597f80589b12d",
+          "size": 59739,
+          "lastWriteTimeUtc": "2026-07-10T18:22:33.7481226Z"
+        },
+        {
+          "scenario": "chat.executable.denial.missing",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.missing\\route-smoke\\chat-result.json",
+          "relativePath": "interactive-uia/scenarios/chat.executable.denial.missing/route-smoke/chat-result.json",
+          "sha256": "96f383dc71ea3b88be83304292b4d90122d9919159198a2e4642db69006e7cb0",
+          "size": 487,
+          "lastWriteTimeUtc": "2026-07-10T18:22:42.8592818Z"
+        },
+        {
+          "scenario": "chat.executable.denial.missing",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.missing\\route-smoke\\chat.png",
+          "relativePath": "interactive-uia/scenarios/chat.executable.denial.missing/route-smoke/chat.png",
+          "sha256": "525aa04f09fac92ef5abf86d7a7b94e037c707795627b4de51e8a1ea79ea44db",
+          "size": 64448,
+          "lastWriteTimeUtc": "2026-07-10T18:22:42.8495902Z"
+        }
+      ]
+    },
+    {
+      "id": "chat.executable.denial.replaced",
+      "status": "captured",
+      "source": "interactive-uia",
+      "actor": {
+        "identitySha256": "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+        "sessionId": 1
+      },
+      "artifacts": [
+        {
+          "scenario": "chat.executable.denial.replaced",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.replaced\\uia-before.json",
+          "relativePath": "interactive-uia/scenarios/chat.executable.denial.replaced/uia-before.json",
+          "sha256": "3434da01b2fb8a16773cd7fe1b98f5c630ef1c2aba1b91b3be64f3367b6ddbab",
+          "size": 104193,
+          "lastWriteTimeUtc": "2026-07-10T18:22:59.5867424Z"
+        },
+        {
+          "scenario": "chat.executable.denial.replaced",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.replaced\\screenshot-before.png",
+          "relativePath": "interactive-uia/scenarios/chat.executable.denial.replaced/screenshot-before.png",
+          "sha256": "5fcbdb4511116af9d39ca5c23fafcf973c5a810857dfe239da1235848fb531b7",
+          "size": 57781,
+          "lastWriteTimeUtc": "2026-07-10T18:22:59.7054073Z"
+        },
+        {
+          "scenario": "chat.executable.denial.replaced",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.replaced\\route-smoke\\chat-result.json",
+          "relativePath": "interactive-uia/scenarios/chat.executable.denial.replaced/route-smoke/chat-result.json",
+          "sha256": "c8c89de1a336db396d06349f26492a503e0c8c89ef8c13a3d7aca1bb79a65d86",
+          "size": 488,
+          "lastWriteTimeUtc": "2026-07-10T18:23:08.7966602Z"
+        },
+        {
+          "scenario": "chat.executable.denial.replaced",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.replaced\\route-smoke\\chat.png",
+          "relativePath": "interactive-uia/scenarios/chat.executable.denial.replaced/route-smoke/chat.png",
+          "sha256": "d3078e57aadf7ce316f36da88e9639bb3d413d450979e81b634a9148f1e2efad",
+          "size": 65100,
+          "lastWriteTimeUtc": "2026-07-10T18:23:08.7829436Z"
+        }
+      ]
+    },
+    {
+      "id": "chat.executable.denial.unapproved",
+      "status": "captured",
+      "source": "interactive-uia",
+      "actor": {
+        "identitySha256": "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+        "sessionId": 1
+      },
+      "artifacts": [
+        {
+          "scenario": "chat.executable.denial.unapproved",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.unapproved\\uia-before.json",
+          "relativePath": "interactive-uia/scenarios/chat.executable.denial.unapproved/uia-before.json",
+          "sha256": "3498ebf3da4cda96c30283ac140f05a9c3d174e792e4af1bfb79b1583a5b66ff",
+          "size": 96218,
+          "lastWriteTimeUtc": "2026-07-10T18:22:07.7792394Z"
+        },
+        {
+          "scenario": "chat.executable.denial.unapproved",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.unapproved\\screenshot-before.png",
+          "relativePath": "interactive-uia/scenarios/chat.executable.denial.unapproved/screenshot-before.png",
+          "sha256": "8542620f35a33d85c7f6f8b9aceed923de53706b30067be761e6b8ac125c77bb",
+          "size": 56972,
+          "lastWriteTimeUtc": "2026-07-10T18:22:07.9261187Z"
+        },
+        {
+          "scenario": "chat.executable.denial.unapproved",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.unapproved\\route-smoke\\chat-result.json",
+          "relativePath": "interactive-uia/scenarios/chat.executable.denial.unapproved/route-smoke/chat-result.json",
+          "sha256": "832aacc59a47a5a31fddb6164511bdcddccce07399708dd126debbad795a8fb6",
+          "size": 492,
+          "lastWriteTimeUtc": "2026-07-10T18:22:16.9907429Z"
+        },
+        {
+          "scenario": "chat.executable.denial.unapproved",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.unapproved\\route-smoke\\chat.png",
+          "relativePath": "interactive-uia/scenarios/chat.executable.denial.unapproved/route-smoke/chat.png",
+          "sha256": "1c0bc1dfc61b1314e531767f555829d512d9359f82476418afc77e0fff3741d6",
+          "size": 52284,
+          "lastWriteTimeUtc": "2026-07-10T18:22:16.9842322Z"
+        }
+      ]
+    },
+    {
+      "id": "chat.executable.remove",
+      "status": "captured",
+      "source": "interactive-uia",
+      "actor": {
+        "identitySha256": "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+        "sessionId": 1
+      },
+      "artifacts": [
+        {
+          "scenario": "chat.executable.remove",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.remove\\uia-before.json",
+          "relativePath": "interactive-uia/scenarios/chat.executable.remove/uia-before.json",
+          "sha256": "339ff878ac3cfee91de4ce782c565a2fb4f287b53864cb5d255e0adde8118800",
+          "size": 96259,
+          "lastWriteTimeUtc": "2026-07-10T18:21:55.1580084Z"
+        },
+        {
+          "scenario": "chat.executable.remove",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.remove\\screenshot-before.png",
+          "relativePath": "interactive-uia/scenarios/chat.executable.remove/screenshot-before.png",
+          "sha256": "b52d05e6b6d0c9ad578f8acbc232a6a27d007a9eb585fe85cf6148af5ca8fcdb",
+          "size": 55229,
+          "lastWriteTimeUtc": "2026-07-10T18:21:55.2871683Z"
+        },
+        {
+          "scenario": "chat.executable.remove",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.remove\\uia-after.json",
+          "relativePath": "interactive-uia/scenarios/chat.executable.remove/uia-after.json",
+          "sha256": "4fbf7f1dc1f6ac3c2204df3555690a3d81b27faf4ce9206bb233aa44da986166",
+          "size": 96457,
+          "lastWriteTimeUtc": "2026-07-10T18:21:57.4173895Z"
+        },
+        {
+          "scenario": "chat.executable.remove",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.remove\\screenshot-after.png",
+          "relativePath": "interactive-uia/scenarios/chat.executable.remove/screenshot-after.png",
+          "sha256": "ba76c26d2507bf22a288a5db906cc06a0cf393cf7cfc17311af3c2833adef4b6",
+          "size": 55339,
+          "lastWriteTimeUtc": "2026-07-10T18:21:57.7022972Z"
+        },
+        {
+          "scenario": "chat.executable.remove",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.remove\\route-smoke\\chat-result.json",
+          "relativePath": "interactive-uia/scenarios/chat.executable.remove/route-smoke/chat-result.json",
+          "sha256": "1411209823fb7794178eb8b96589aabbd6b9296e0056306d7760642ccc5c32ef",
+          "size": 480,
+          "lastWriteTimeUtc": "2026-07-10T18:22:04.1931205Z"
+        },
+        {
+          "scenario": "chat.executable.remove",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.remove\\route-smoke\\chat.png",
+          "relativePath": "interactive-uia/scenarios/chat.executable.remove/route-smoke/chat.png",
+          "sha256": "34ce96947c3edcec82a1ec4b75cde15ad6478f5285267a26bbff5f49293a7d23",
+          "size": 55311,
+          "lastWriteTimeUtc": "2026-07-10T18:22:04.1827042Z"
+        }
+      ]
+    },
+    {
+      "id": "chat.executable.rotate",
+      "status": "captured",
+      "source": "interactive-uia",
+      "actor": {
+        "identitySha256": "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+        "sessionId": 1
+      },
+      "artifacts": [
+        {
+          "scenario": "chat.executable.rotate",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.rotate\\uia-before.json",
+          "relativePath": "interactive-uia/scenarios/chat.executable.rotate/uia-before.json",
+          "sha256": "1a44a024d7f70c7232736bad0a8778d6d3fd6a6f34469612a939da43cf19e8a4",
+          "size": 96222,
+          "lastWriteTimeUtc": "2026-07-10T18:21:41.8933373Z"
+        },
+        {
+          "scenario": "chat.executable.rotate",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.rotate\\screenshot-before.png",
+          "relativePath": "interactive-uia/scenarios/chat.executable.rotate/screenshot-before.png",
+          "sha256": "43a965ee13911b17ce0c306d22017a89f93ecc6d257fcd823652e3ed2c6ec12b",
+          "size": 40785,
+          "lastWriteTimeUtc": "2026-07-10T18:21:42.0300491Z"
+        },
+        {
+          "scenario": "chat.executable.rotate",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.rotate\\uia-after.json",
+          "relativePath": "interactive-uia/scenarios/chat.executable.rotate/uia-after.json",
+          "sha256": "0b9ab207e439ca303f19fe3f303a383d20de12a0a313562ea734425745751e1e",
+          "size": 104253,
+          "lastWriteTimeUtc": "2026-07-10T18:21:44.1662433Z"
+        },
+        {
+          "scenario": "chat.executable.rotate",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.rotate\\screenshot-after.png",
+          "relativePath": "interactive-uia/scenarios/chat.executable.rotate/screenshot-after.png",
+          "sha256": "a7aba7f79bd8f797a763bf1c733bd69358ec72c4a8fc109e3cd432995da104e3",
+          "size": 40794,
+          "lastWriteTimeUtc": "2026-07-10T18:21:44.4616006Z"
+        },
+        {
+          "scenario": "chat.executable.rotate",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.rotate\\route-smoke\\chat-result.json",
+          "relativePath": "interactive-uia/scenarios/chat.executable.rotate/route-smoke/chat-result.json",
+          "sha256": "4c2a03aa9b07581e8cc5516080e15688adbe7243c9da981a1575a35fedcd72fb",
+          "size": 480,
+          "lastWriteTimeUtc": "2026-07-10T18:21:51.0452736Z"
+        },
+        {
+          "scenario": "chat.executable.rotate",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.rotate\\route-smoke\\chat.png",
+          "relativePath": "interactive-uia/scenarios/chat.executable.rotate/route-smoke/chat.png",
+          "sha256": "e9b2a508485cdaea251bb4a2940aafdc8dc62231e070fd8d63e0e2f3cd2e15d2",
+          "size": 67392,
+          "lastWriteTimeUtc": "2026-07-10T18:21:51.0330245Z"
+        }
+      ]
+    },
+    {
+      "id": "chat.executable.setup",
+      "status": "captured",
+      "source": "interactive-uia",
+      "actor": {
+        "identitySha256": "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+        "sessionId": 1
+      },
+      "artifacts": [
+        {
+          "scenario": "chat.executable.setup",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.setup\\uia-before.json",
+          "relativePath": "interactive-uia/scenarios/chat.executable.setup/uia-before.json",
+          "sha256": "6613ea7e11b8f8f41a2f317146d1665fc1e0e49ba5499362432d94efeb001717",
+          "size": 96234,
+          "lastWriteTimeUtc": "2026-07-10T18:21:16.0006152Z"
+        },
+        {
+          "scenario": "chat.executable.setup",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.setup\\screenshot-before.png",
+          "relativePath": "interactive-uia/scenarios/chat.executable.setup/screenshot-before.png",
+          "sha256": "8282fc4c18ed1204d0213e5032631b456a8dcd40c8898be37f0a389c97ab2b88",
+          "size": 38635,
+          "lastWriteTimeUtc": "2026-07-10T18:21:16.1653000Z"
+        },
+        {
+          "scenario": "chat.executable.setup",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.setup\\route-smoke\\chat-result.json",
+          "relativePath": "interactive-uia/scenarios/chat.executable.setup/route-smoke/chat-result.json",
+          "sha256": "6fc8ef1d1b1f04eefd42937cec47fcbf2aca892734ca4179c70b13d83eb0ea8f",
+          "size": 480,
+          "lastWriteTimeUtc": "2026-07-10T18:21:24.6612980Z"
+        },
+        {
+          "scenario": "chat.executable.setup",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.setup\\route-smoke\\chat.png",
+          "relativePath": "interactive-uia/scenarios/chat.executable.setup/route-smoke/chat.png",
+          "sha256": "1c0bc1dfc61b1314e531767f555829d512d9359f82476418afc77e0fff3741d6",
+          "size": 52284,
+          "lastWriteTimeUtc": "2026-07-10T18:21:24.6539571Z"
+        }
+      ]
+    },
+    {
+      "id": "chat.history.corrupt",
+      "status": "captured",
+      "source": "interactive-uia",
+      "actor": {
+        "identitySha256": "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+        "sessionId": 1
+      },
+      "artifacts": [
+        {
+          "scenario": "chat.history.corrupt",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.corrupt\\uia-before.json",
+          "relativePath": "interactive-uia/scenarios/chat.history.corrupt/uia-before.json",
+          "sha256": "745b39d35cdeb7f0a1a75d95e195add6eb87c1274754f0f67b3400bcceb9feb9",
+          "size": 101387,
+          "lastWriteTimeUtc": "2026-07-10T18:23:48.5098412Z"
+        },
+        {
+          "scenario": "chat.history.corrupt",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.corrupt\\screenshot-before.png",
+          "relativePath": "interactive-uia/scenarios/chat.history.corrupt/screenshot-before.png",
+          "sha256": "b52d05e6b6d0c9ad578f8acbc232a6a27d007a9eb585fe85cf6148af5ca8fcdb",
+          "size": 55229,
+          "lastWriteTimeUtc": "2026-07-10T18:23:48.6447846Z"
+        },
+        {
+          "scenario": "chat.history.corrupt",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.corrupt\\route-smoke\\chat-result.json",
+          "relativePath": "interactive-uia/scenarios/chat.history.corrupt/route-smoke/chat-result.json",
+          "sha256": "1f876dda579b4b46c9a4af65cda528ffe29a81834b222b174841f6adf900879a",
+          "size": 478,
+          "lastWriteTimeUtc": "2026-07-10T18:23:57.6684594Z"
+        },
+        {
+          "scenario": "chat.history.corrupt",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.corrupt\\route-smoke\\chat.png",
+          "relativePath": "interactive-uia/scenarios/chat.history.corrupt/route-smoke/chat.png",
+          "sha256": "55ceb23b217d31ce2249284f8dc65a76a24c453f2945dc44a32d7fd51e35d08d",
+          "size": 49347,
+          "lastWriteTimeUtc": "2026-07-10T18:23:57.6586248Z"
+        }
+      ]
+    },
+    {
+      "id": "chat.history.locked",
+      "status": "captured",
+      "source": "interactive-uia",
+      "actor": {
+        "identitySha256": "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+        "sessionId": 1
+      },
+      "artifacts": [
+        {
+          "scenario": "chat.history.locked",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.locked\\uia-before.json",
+          "relativePath": "interactive-uia/scenarios/chat.history.locked/uia-before.json",
+          "sha256": "8dfe2b80254b5631edd566e9d7f41dd139bb8fc9e04ab3f89636d4eea90d106b",
+          "size": 101372,
+          "lastWriteTimeUtc": "2026-07-10T18:24:16.0252381Z"
+        },
+        {
+          "scenario": "chat.history.locked",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.locked\\screenshot-before.png",
+          "relativePath": "interactive-uia/scenarios/chat.history.locked/screenshot-before.png",
+          "sha256": "10187edf4b11881aa12991d91394945a028e3e2a3dec643674c2fb5c043fc249",
+          "size": 46761,
+          "lastWriteTimeUtc": "2026-07-10T18:24:16.2492975Z"
+        },
+        {
+          "scenario": "chat.history.locked",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.locked\\route-smoke\\chat-result.json",
+          "relativePath": "interactive-uia/scenarios/chat.history.locked/route-smoke/chat-result.json",
+          "sha256": "5fbdf4b958395b161603bd0574e8629360c874891be8eadca8eb9135f3c85757",
+          "size": 477,
+          "lastWriteTimeUtc": "2026-07-10T18:24:24.8661691Z"
+        },
+        {
+          "scenario": "chat.history.locked",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.locked\\route-smoke\\chat.png",
+          "relativePath": "interactive-uia/scenarios/chat.history.locked/route-smoke/chat.png",
+          "sha256": "57eca7d3b48ae1f14aaa006b230da2703474cbd33b4bc93eb4c0370a018e89d7",
+          "size": 48898,
+          "lastWriteTimeUtc": "2026-07-10T18:24:24.8533253Z"
+        }
+      ]
+    },
+    {
+      "id": "chat.history.retry",
+      "status": "captured",
+      "source": "interactive-uia",
+      "actor": {
+        "identitySha256": "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+        "sessionId": 1
+      },
+      "artifacts": [
+        {
+          "scenario": "chat.history.retry",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.retry\\uia-before.json",
+          "relativePath": "interactive-uia/scenarios/chat.history.retry/uia-before.json",
+          "sha256": "b3e364ea039a36598d3a77c3a31deb2f1601597ee2435b1ee6b8284bb95503ff",
+          "size": 101385,
+          "lastWriteTimeUtc": "2026-07-10T18:24:40.7846933Z"
+        },
+        {
+          "scenario": "chat.history.retry",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.retry\\screenshot-before.png",
+          "relativePath": "interactive-uia/scenarios/chat.history.retry/screenshot-before.png",
+          "sha256": "734a3a9c4b6557fd87c8a071bc35cccf9749beb31b345ecbd0d4bc67f51f1275",
+          "size": 38839,
+          "lastWriteTimeUtc": "2026-07-10T18:24:40.8548226Z"
+        },
+        {
+          "scenario": "chat.history.retry",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.retry\\uia-after.json",
+          "relativePath": "interactive-uia/scenarios/chat.history.retry/uia-after.json",
+          "sha256": "e6ca08e554c5b91f5e34010b229576edad5c20afcbbde4b689ebb2c821514fe3",
+          "size": 101352,
+          "lastWriteTimeUtc": "2026-07-10T18:24:42.3882174Z"
+        },
+        {
+          "scenario": "chat.history.retry",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.retry\\screenshot-after.png",
+          "relativePath": "interactive-uia/scenarios/chat.history.retry/screenshot-after.png",
+          "sha256": "e41476b52846ba654a69375420be4eed28441b8799d07d370a7d15940b2af33b",
+          "size": 38893,
+          "lastWriteTimeUtc": "2026-07-10T18:24:42.6822012Z"
+        },
+        {
+          "scenario": "chat.history.retry",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.retry\\route-smoke\\chat-result.json",
+          "relativePath": "interactive-uia/scenarios/chat.history.retry/route-smoke/chat-result.json",
+          "sha256": "95f1e05f3b70dc7740d51f9f47b2ca15e4b23bc6a29622bd2e84a51249775f3e",
+          "size": 477,
+          "lastWriteTimeUtc": "2026-07-10T18:24:49.6211702Z"
+        },
+        {
+          "scenario": "chat.history.retry",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.retry\\route-smoke\\chat.png",
+          "relativePath": "interactive-uia/scenarios/chat.history.retry/route-smoke/chat.png",
+          "sha256": "e81ea3932200fbbfbd51b7bc2932eccbe76da7206994a13eb1254c16a7fc312e",
+          "size": 49477,
+          "lastWriteTimeUtc": "2026-07-10T18:24:49.6091522Z"
+        }
+      ]
+    },
+    {
+      "id": "chat.history.unavailable",
+      "status": "captured",
+      "source": "interactive-uia",
+      "actor": {
+        "identitySha256": "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+        "sessionId": 1
+      },
+      "artifacts": [
+        {
+          "scenario": "chat.history.unavailable",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.unavailable\\uia-before.json",
+          "relativePath": "interactive-uia/scenarios/chat.history.unavailable/uia-before.json",
+          "sha256": "89bc9595e0dca90c752b53d3e9d8225b79a1c8210e83883a72e6bbbd60afe14e",
+          "size": 101381,
+          "lastWriteTimeUtc": "2026-07-10T18:23:23.2239380Z"
+        },
+        {
+          "scenario": "chat.history.unavailable",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.unavailable\\screenshot-before.png",
+          "relativePath": "interactive-uia/scenarios/chat.history.unavailable/screenshot-before.png",
+          "sha256": "e56c0dbcfb2eec435148f63dfa2390760e62342825ef3e7a225952e784ea7034",
+          "size": 56702,
+          "lastWriteTimeUtc": "2026-07-10T18:23:23.3693651Z"
+        },
+        {
+          "scenario": "chat.history.unavailable",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.unavailable\\route-smoke\\chat-result.json",
+          "relativePath": "interactive-uia/scenarios/chat.history.unavailable/route-smoke/chat-result.json",
+          "sha256": "8f1fc7e5d11d48398c5d5ebb4ce94eaaa25dbeb45d0b7f4de3988c6b611b6025",
+          "size": 482,
+          "lastWriteTimeUtc": "2026-07-10T18:23:32.3011772Z"
+        },
+        {
+          "scenario": "chat.history.unavailable",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.unavailable\\route-smoke\\chat.png",
+          "relativePath": "interactive-uia/scenarios/chat.history.unavailable/route-smoke/chat.png",
+          "sha256": "f9ec1313a7e57cfe6482869b16fe936cbb6e1a51c496c2183e1864cc827fbc16",
+          "size": 49022,
+          "lastWriteTimeUtc": "2026-07-10T18:23:32.2810852Z"
+        }
+      ]
+    },
+    {
+      "id": "chat.restart.durable-rehydrate",
+      "status": "captured",
+      "source": "interactive-uia",
+      "actor": {
+        "identitySha256": "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+        "sessionId": 1
+      },
+      "artifacts": [
+        {
+          "scenario": "chat.restart.durable-rehydrate",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.restart.durable-rehydrate\\uia-before.json",
+          "relativePath": "interactive-uia/scenarios/chat.restart.durable-rehydrate/uia-before.json",
+          "sha256": "b0739cd71b5414508c7a49da646b42c76c31145e98afa4d8d53e3c8bac2e8ed3",
+          "size": 119338,
+          "lastWriteTimeUtc": "2026-07-10T18:25:11.9803872Z"
+        },
+        {
+          "scenario": "chat.restart.durable-rehydrate",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.restart.durable-rehydrate\\screenshot-before.png",
+          "relativePath": "interactive-uia/scenarios/chat.restart.durable-rehydrate/screenshot-before.png",
+          "sha256": "8282fc4c18ed1204d0213e5032631b456a8dcd40c8898be37f0a389c97ab2b88",
+          "size": 38635,
+          "lastWriteTimeUtc": "2026-07-10T18:25:12.1013294Z"
+        },
+        {
+          "scenario": "chat.restart.durable-rehydrate",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.restart.durable-rehydrate\\route-smoke\\chat-result.json",
+          "relativePath": "interactive-uia/scenarios/chat.restart.durable-rehydrate/route-smoke/chat-result.json",
+          "sha256": "9513ebd9f8175076f8b87bc0b029b26fd2f9633aaa15ad9c74286e09481ae88c",
+          "size": 489,
+          "lastWriteTimeUtc": "2026-07-10T18:25:20.9931463Z"
+        },
+        {
+          "scenario": "chat.restart.durable-rehydrate",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.restart.durable-rehydrate\\route-smoke\\chat.png",
+          "relativePath": "interactive-uia/scenarios/chat.restart.durable-rehydrate/route-smoke/chat.png",
+          "sha256": "366a3507a798f8286acdc2eb6c9ffad41e9aed472e237ce65e75ae57cea74610",
+          "size": 66552,
+          "lastWriteTimeUtc": "2026-07-10T18:25:20.9881270Z"
+        }
+      ]
+    },
+    {
+      "id": "chat.restart.process",
+      "status": "captured",
+      "source": "interactive-uia",
+      "actor": {
+        "identitySha256": "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+        "sessionId": 1
+      },
+      "artifacts": [
+        {
+          "scenario": "chat.restart.process",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.restart.process\\uia-before.json",
+          "relativePath": "interactive-uia/scenarios/chat.restart.process/uia-before.json",
+          "sha256": "1ce108d66da2b729daf9f6e21c9c84d257eb12a7d913154ff1f73c941b82ee8a",
+          "size": 96260,
+          "lastWriteTimeUtc": "2026-07-10T18:24:56.3748557Z"
+        },
+        {
+          "scenario": "chat.restart.process",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.restart.process\\screenshot-before.png",
+          "relativePath": "interactive-uia/scenarios/chat.restart.process/screenshot-before.png",
+          "sha256": "5fcbdb4511116af9d39ca5c23fafcf973c5a810857dfe239da1235848fb531b7",
+          "size": 57781,
+          "lastWriteTimeUtc": "2026-07-10T18:24:56.6709545Z"
+        },
+        {
+          "scenario": "chat.restart.process",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.restart.process\\uia-after.json",
+          "relativePath": "interactive-uia/scenarios/chat.restart.process/uia-after.json",
+          "sha256": "e4f390289af6a4e860cc4eb2dd0afcf193980cbe9b1d4e3898a03321f35452ab",
+          "size": 135322,
+          "lastWriteTimeUtc": "2026-07-10T18:25:01.5382964Z"
+        },
+        {
+          "scenario": "chat.restart.process",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.restart.process\\screenshot-after.png",
+          "relativePath": "interactive-uia/scenarios/chat.restart.process/screenshot-after.png",
+          "sha256": "ee1746f0fdc17b6c5b73ff30525e4f451e733558bd577b23aa9f3dc52048f0b2",
+          "size": 58063,
+          "lastWriteTimeUtc": "2026-07-10T18:25:01.6700609Z"
+        },
+        {
+          "scenario": "chat.restart.process",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.restart.process\\route-smoke\\chat-result.json",
+          "relativePath": "interactive-uia/scenarios/chat.restart.process/route-smoke/chat-result.json",
+          "sha256": "c51170c464f47ab0b9c57be2df3bf3466a15aab3e1b96403aa4a42d82714348f",
+          "size": 477,
+          "lastWriteTimeUtc": "2026-07-10T18:25:04.4251625Z"
+        },
+        {
+          "scenario": "chat.restart.process",
+          "kind": "uia-or-screenshot",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.restart.process\\route-smoke\\chat.png",
+          "relativePath": "interactive-uia/scenarios/chat.restart.process/route-smoke/chat.png",
+          "sha256": "d52e9c45b5306a2c30440514916229eedcb135739a5aaf481e1142bb1e969728",
+          "size": 81954,
+          "lastWriteTimeUtc": "2026-07-10T18:25:04.4116120Z"
+        }
+      ]
+    },
+    {
+      "id": "chat.retrieval.degraded",
+      "status": "captured",
+      "source": "focused-foundation-evidence",
+      "artifacts": [
+        {
+          "scenario": "chat.retrieval.degraded",
+          "kind": "focused-foundation-artifact",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\chat-evidence\\chat-storage.json",
+          "relativePath": "focused-foundation/chat-evidence/chat-storage.json",
+          "sha256": "39516f403d25a7869f6a30dacec9cd5eae3abd84140e6168cd6231844c557389",
+          "size": 403,
+          "lastWriteTimeUtc": "2026-07-10T18:20:42.0466517Z"
+        }
+      ]
+    },
+    {
+      "id": "diagnostics.config",
+      "status": "captured",
+      "source": "diagnostic-canary",
+      "artifacts": [
+        {
+          "scenario": "diagnostics.config",
+          "kind": "diagnostic-redacted-canary",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\diagnostics-canary\\config-diagnostic.json",
+          "relativePath": "diagnostics-canary/config-diagnostic.json",
+          "sha256": "9785fb6130d24de5b27af0566dbdfd42b686721e0ee689aa078cbc9e4df20e57",
+          "size": 500,
+          "lastWriteTimeUtc": "2026-07-10T18:25:37.6165795Z"
+        }
+      ]
+    },
+    {
+      "id": "diagnostics.log",
+      "status": "captured",
+      "source": "diagnostic-canary",
+      "artifacts": [
+        {
+          "scenario": "diagnostics.log",
+          "kind": "diagnostic-redacted-canary",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\diagnostics-canary\\application.log",
+          "relativePath": "diagnostics-canary/application.log",
+          "sha256": "44c99145029ffed7d6eb2a438e56d6b3fab3f4d9f182b3839ce62d9f254d171c",
+          "size": 82,
+          "lastWriteTimeUtc": "2026-07-10T18:25:37.6304449Z"
+        }
+      ]
+    },
+    {
+      "id": "diagnostics.screenshot",
+      "status": "captured",
+      "source": "diagnostic-canary",
+      "artifacts": [
+        {
+          "scenario": "diagnostics.screenshot",
+          "kind": "diagnostic-redacted-canary",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\diagnostics-canary\\screenshot-ocr.txt",
+          "relativePath": "diagnostics-canary/screenshot-ocr.txt",
+          "sha256": "a25dff2ca9431a0ef6fa4ae14998f7872b0bf67e0be63263d7e0911cb4e16f0a",
+          "size": 46,
+          "lastWriteTimeUtc": "2026-07-10T18:25:37.6421119Z"
+        }
+      ]
+    },
+    {
+      "id": "diagnostics.secret-scan",
+      "status": "captured",
+      "source": "artifact-secret-scan",
+      "artifacts": [
+        {
+          "scenario": "diagnostics.secret-scan",
+          "kind": "secret-scan",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\artifact-secret-scan.json",
+          "relativePath": "artifact-secret-scan.json",
+          "sha256": "72e125406495616d64ca3c280b49406cafc46a3d4821d80d256f049a334753fa",
+          "size": 301,
+          "lastWriteTimeUtc": "2026-07-10T18:25:40.7509382Z"
+        }
+      ]
+    },
+    {
+      "id": "diagnostics.support-bundle",
+      "status": "captured",
+      "source": "diagnostic-canary",
+      "artifacts": [
+        {
+          "scenario": "diagnostics.support-bundle",
+          "kind": "diagnostic-redacted-canary",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\diagnostics-canary\\support-bundle.txt",
+          "relativePath": "diagnostics-canary/support-bundle.txt",
+          "sha256": "19af78ccf37ce98a606f134e5424a571a9907430af3f62ba375880e7546f2ad7",
+          "size": 58,
+          "lastWriteTimeUtc": "2026-07-10T18:25:37.6400991Z"
+        }
+      ]
+    },
+    {
+      "id": "process.blocked-stderr",
+      "status": "captured",
+      "source": "foundation-process-tool",
+      "artifacts": [
+        {
+          "scenario": "process.blocked-stderr",
+          "kind": "process-evidence",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\process-traces\\process-evidence.json",
+          "relativePath": "process-traces/process-evidence.json",
+          "sha256": "9630cf4666061d910b9aabb8bf2a21d2c058bfd3b38399c1dbe89dbd7b996b07",
+          "size": 914998,
+          "lastWriteTimeUtc": "2026-07-10T18:21:07.4978826Z"
+        }
+      ]
+    },
+    {
+      "id": "process.cancellation",
+      "status": "captured",
+      "source": "foundation-process-tool",
+      "artifacts": [
+        {
+          "scenario": "process.cancellation",
+          "kind": "process-evidence",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\process-traces\\process-evidence.json",
+          "relativePath": "process-traces/process-evidence.json",
+          "sha256": "9630cf4666061d910b9aabb8bf2a21d2c058bfd3b38399c1dbe89dbd7b996b07",
+          "size": 914998,
+          "lastWriteTimeUtc": "2026-07-10T18:21:07.4978826Z"
+        }
+      ]
+    },
+    {
+      "id": "process.environment.chat-scrubbed",
+      "status": "captured",
+      "source": "foundation-process-tool",
+      "artifacts": [
+        {
+          "scenario": "process.environment.chat-scrubbed",
+          "kind": "process-evidence",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\process-traces\\process-evidence.json",
+          "relativePath": "process-traces/process-evidence.json",
+          "sha256": "9630cf4666061d910b9aabb8bf2a21d2c058bfd3b38399c1dbe89dbd7b996b07",
+          "size": 914998,
+          "lastWriteTimeUtc": "2026-07-10T18:21:07.4978826Z"
+        }
+      ]
+    },
+    {
+      "id": "process.grandchildren",
+      "status": "captured",
+      "source": "foundation-process-tool",
+      "artifacts": [
+        {
+          "scenario": "process.grandchildren",
+          "kind": "process-evidence",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\process-traces\\process-evidence.json",
+          "relativePath": "process-traces/process-evidence.json",
+          "sha256": "9630cf4666061d910b9aabb8bf2a21d2c058bfd3b38399c1dbe89dbd7b996b07",
+          "size": 914998,
+          "lastWriteTimeUtc": "2026-07-10T18:21:07.4978826Z"
+        }
+      ]
+    },
+    {
+      "id": "process.infinite-output",
+      "status": "captured",
+      "source": "foundation-process-tool",
+      "artifacts": [
+        {
+          "scenario": "process.infinite-output",
+          "kind": "process-evidence",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\process-traces\\process-evidence.json",
+          "relativePath": "process-traces/process-evidence.json",
+          "sha256": "9630cf4666061d910b9aabb8bf2a21d2c058bfd3b38399c1dbe89dbd7b996b07",
+          "size": 914998,
+          "lastWriteTimeUtc": "2026-07-10T18:21:07.4978826Z"
+        }
+      ]
+    },
+    {
+      "id": "process.long-input",
+      "status": "captured",
+      "source": "foundation-process-tool",
+      "artifacts": [
+        {
+          "scenario": "process.long-input",
+          "kind": "process-evidence",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\process-traces\\process-evidence.json",
+          "relativePath": "process-traces/process-evidence.json",
+          "sha256": "9630cf4666061d910b9aabb8bf2a21d2c058bfd3b38399c1dbe89dbd7b996b07",
+          "size": 914998,
+          "lastWriteTimeUtc": "2026-07-10T18:21:07.4978826Z"
+        }
+      ]
+    },
+    {
+      "id": "process.malformed-output",
+      "status": "captured",
+      "source": "foundation-process-tool",
+      "artifacts": [
+        {
+          "scenario": "process.malformed-output",
+          "kind": "process-evidence",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\process-traces\\process-evidence.json",
+          "relativePath": "process-traces/process-evidence.json",
+          "sha256": "9630cf4666061d910b9aabb8bf2a21d2c058bfd3b38399c1dbe89dbd7b996b07",
+          "size": 914998,
+          "lastWriteTimeUtc": "2026-07-10T18:21:07.4978826Z"
+        }
+      ]
+    },
+    {
+      "id": "process.metacharacters",
+      "status": "captured",
+      "source": "foundation-process-tool",
+      "artifacts": [
+        {
+          "scenario": "process.metacharacters",
+          "kind": "process-evidence",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\process-traces\\process-evidence.json",
+          "relativePath": "process-traces/process-evidence.json",
+          "sha256": "9630cf4666061d910b9aabb8bf2a21d2c058bfd3b38399c1dbe89dbd7b996b07",
+          "size": 914998,
+          "lastWriteTimeUtc": "2026-07-10T18:21:07.4978826Z"
+        }
+      ]
+    },
+    {
+      "id": "process.missing-denial",
+      "status": "captured",
+      "source": "foundation-process-tool",
+      "artifacts": [
+        {
+          "scenario": "process.missing-denial",
+          "kind": "process-evidence",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\process-traces\\process-evidence.json",
+          "relativePath": "process-traces/process-evidence.json",
+          "sha256": "9630cf4666061d910b9aabb8bf2a21d2c058bfd3b38399c1dbe89dbd7b996b07",
+          "size": 914998,
+          "lastWriteTimeUtc": "2026-07-10T18:21:07.4978826Z"
+        }
+      ]
+    },
+    {
+      "id": "process.newlines",
+      "status": "captured",
+      "source": "foundation-process-tool",
+      "artifacts": [
+        {
+          "scenario": "process.newlines",
+          "kind": "process-evidence",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\process-traces\\process-evidence.json",
+          "relativePath": "process-traces/process-evidence.json",
+          "sha256": "9630cf4666061d910b9aabb8bf2a21d2c058bfd3b38399c1dbe89dbd7b996b07",
+          "size": 914998,
+          "lastWriteTimeUtc": "2026-07-10T18:21:07.4978826Z"
+        }
+      ]
+    },
+    {
+      "id": "process.nonzero-exit",
+      "status": "captured",
+      "source": "foundation-process-tool",
+      "artifacts": [
+        {
+          "scenario": "process.nonzero-exit",
+          "kind": "process-evidence",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\process-traces\\process-evidence.json",
+          "relativePath": "process-traces/process-evidence.json",
+          "sha256": "9630cf4666061d910b9aabb8bf2a21d2c058bfd3b38399c1dbe89dbd7b996b07",
+          "size": 914998,
+          "lastWriteTimeUtc": "2026-07-10T18:21:07.4978826Z"
+        }
+      ]
+    },
+    {
+      "id": "process.quotes",
+      "status": "captured",
+      "source": "foundation-process-tool",
+      "artifacts": [
+        {
+          "scenario": "process.quotes",
+          "kind": "process-evidence",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\process-traces\\process-evidence.json",
+          "relativePath": "process-traces/process-evidence.json",
+          "sha256": "9630cf4666061d910b9aabb8bf2a21d2c058bfd3b38399c1dbe89dbd7b996b07",
+          "size": 914998,
+          "lastWriteTimeUtc": "2026-07-10T18:21:07.4978826Z"
+        }
+      ]
+    },
+    {
+      "id": "process.replaced-denial",
+      "status": "captured",
+      "source": "foundation-process-tool",
+      "artifacts": [
+        {
+          "scenario": "process.replaced-denial",
+          "kind": "process-evidence",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\process-traces\\process-evidence.json",
+          "relativePath": "process-traces/process-evidence.json",
+          "sha256": "9630cf4666061d910b9aabb8bf2a21d2c058bfd3b38399c1dbe89dbd7b996b07",
+          "size": 914998,
+          "lastWriteTimeUtc": "2026-07-10T18:21:07.4978826Z"
+        }
+      ]
+    },
+    {
+      "id": "process.timeout",
+      "status": "captured",
+      "source": "foundation-process-tool",
+      "artifacts": [
+        {
+          "scenario": "process.timeout",
+          "kind": "process-evidence",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\process-traces\\process-evidence.json",
+          "relativePath": "process-traces/process-evidence.json",
+          "sha256": "9630cf4666061d910b9aabb8bf2a21d2c058bfd3b38399c1dbe89dbd7b996b07",
+          "size": 914998,
+          "lastWriteTimeUtc": "2026-07-10T18:21:07.4978826Z"
+        }
+      ]
+    },
+    {
+      "id": "process.unapproved-denial",
+      "status": "captured",
+      "source": "foundation-process-tool",
+      "artifacts": [
+        {
+          "scenario": "process.unapproved-denial",
+          "kind": "process-evidence",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\process-traces\\process-evidence.json",
+          "relativePath": "process-traces/process-evidence.json",
+          "sha256": "9630cf4666061d910b9aabb8bf2a21d2c058bfd3b38399c1dbe89dbd7b996b07",
+          "size": 914998,
+          "lastWriteTimeUtc": "2026-07-10T18:21:07.4978826Z"
+        }
+      ]
+    },
+    {
+      "id": "process.unavailable-backend",
+      "status": "captured",
+      "source": "foundation-process-tool",
+      "artifacts": [
+        {
+          "scenario": "process.unavailable-backend",
+          "kind": "process-evidence",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\process-traces\\process-evidence.json",
+          "relativePath": "process-traces/process-evidence.json",
+          "sha256": "9630cf4666061d910b9aabb8bf2a21d2c058bfd3b38399c1dbe89dbd7b996b07",
+          "size": 914998,
+          "lastWriteTimeUtc": "2026-07-10T18:21:07.4978826Z"
+        }
+      ]
+    },
+    {
+      "id": "process.unicode",
+      "status": "captured",
+      "source": "foundation-process-tool",
+      "artifacts": [
+        {
+          "scenario": "process.unicode",
+          "kind": "process-evidence",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\process-traces\\process-evidence.json",
+          "relativePath": "process-traces/process-evidence.json",
+          "sha256": "9630cf4666061d910b9aabb8bf2a21d2c058bfd3b38399c1dbe89dbd7b996b07",
+          "size": 914998,
+          "lastWriteTimeUtc": "2026-07-10T18:21:07.4978826Z"
+        }
+      ]
+    },
+    {
+      "id": "storage.access-denied",
+      "status": "captured",
+      "source": "focused-foundation-evidence",
+      "artifacts": [
+        {
+          "scenario": "storage.access-denied",
+          "kind": "focused-foundation-artifact",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence\\fault-AccessDenied\\evidence.json",
+          "relativePath": "focused-foundation/storage-evidence/fault-AccessDenied/evidence.json",
+          "sha256": "5876f4826d5e48c663c94668d80f2119413e60335a87602129c49072af624624",
+          "size": 896,
+          "lastWriteTimeUtc": "2026-07-10T18:19:50.1164098Z"
+        }
+      ]
+    },
+    {
+      "id": "storage.archive-reset",
+      "status": "captured",
+      "source": "focused-foundation-evidence",
+      "artifacts": [
+        {
+          "scenario": "storage.archive-reset",
+          "kind": "focused-foundation-artifact",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence\\corrupt-archive-reset\\evidence.json",
+          "relativePath": "focused-foundation/storage-evidence/corrupt-archive-reset/evidence.json",
+          "sha256": "3b54848a60d78cea2e214fa43555d9b301b6958f9b4ad575526fd65d711f4abf",
+          "size": 1756,
+          "lastWriteTimeUtc": "2026-07-10T18:19:49.2051026Z"
+        }
+      ]
+    },
+    {
+      "id": "storage.corrupt-database",
+      "status": "captured",
+      "source": "focused-foundation-evidence",
+      "artifacts": [
+        {
+          "scenario": "storage.corrupt-database",
+          "kind": "focused-foundation-artifact",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence\\corrupt-archive-reset\\evidence.json",
+          "relativePath": "focused-foundation/storage-evidence/corrupt-archive-reset/evidence.json",
+          "sha256": "3b54848a60d78cea2e214fa43555d9b301b6958f9b4ad575526fd65d711f4abf",
+          "size": 1756,
+          "lastWriteTimeUtc": "2026-07-10T18:19:49.2051026Z"
+        }
+      ]
+    },
+    {
+      "id": "storage.fresh-install",
+      "status": "captured",
+      "source": "focused-foundation-evidence",
+      "artifacts": [
+        {
+          "scenario": "storage.fresh-install",
+          "kind": "focused-foundation-artifact",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence\\fresh-install\\evidence.json",
+          "relativePath": "focused-foundation/storage-evidence/fresh-install/evidence.json",
+          "sha256": "9fc156f78fc9cba95768ea5e9676e5a7b037e6dee4a94fe83e43ac9ff5c03900",
+          "size": 1104,
+          "lastWriteTimeUtc": "2026-07-10T18:19:52.6891883Z"
+        }
+      ]
+    },
+    {
+      "id": "storage.full-disk",
+      "status": "captured",
+      "source": "focused-foundation-evidence",
+      "artifacts": [
+        {
+          "scenario": "storage.full-disk",
+          "kind": "focused-foundation-artifact",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence\\fault-FullDisk\\evidence.json",
+          "relativePath": "focused-foundation/storage-evidence/fault-FullDisk/evidence.json",
+          "sha256": "42e0fd9fe1e56c2df2b0cf7d161baa85b2d8b403b4d8b46c0ceb110b236ef2f5",
+          "size": 926,
+          "lastWriteTimeUtc": "2026-07-10T18:19:50.1496650Z"
+        }
+      ]
+    },
+    {
+      "id": "storage.generated-db-write-seams",
+      "status": "captured",
+      "source": "focused-foundation-evidence",
+      "artifacts": [
+        {
+          "scenario": "storage.generated-db-write-seams",
+          "kind": "focused-foundation-artifact",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence\\generated-db-write-seams\\evidence.json",
+          "relativePath": "focused-foundation/storage-evidence/generated-db-write-seams/evidence.json",
+          "sha256": "8835447eb7bb3826dc47c45b505a241bf1d98af48ec5706db65d9eab75c25c3a",
+          "size": 1116,
+          "lastWriteTimeUtc": "2026-07-10T18:19:55.0291331Z"
+        }
+      ]
+    },
+    {
+      "id": "storage.interrupted-migration",
+      "status": "captured",
+      "source": "focused-foundation-evidence",
+      "artifacts": [
+        {
+          "scenario": "storage.interrupted-migration",
+          "kind": "focused-foundation-artifact",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence\\interrupted-retry\\evidence.json",
+          "relativePath": "focused-foundation/storage-evidence/interrupted-retry/evidence.json",
+          "sha256": "9228cb7bd11caa7d3d5247f9b308f1d52d9a1ec4a66a882f5e736f02f0a41923",
+          "size": 1761,
+          "lastWriteTimeUtc": "2026-07-10T18:19:55.8561128Z"
+        }
+      ]
+    },
+    {
+      "id": "storage.locked-file",
+      "status": "captured",
+      "source": "focused-foundation-evidence",
+      "artifacts": [
+        {
+          "scenario": "storage.locked-file",
+          "kind": "focused-foundation-artifact",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence\\fault-LockedFile\\evidence.json",
+          "relativePath": "focused-foundation/storage-evidence/fault-LockedFile/evidence.json",
+          "sha256": "30bd69ab6077cf35f853d6318fa76681e9cda65fcafe7e40fe43724cec72c950",
+          "size": 926,
+          "lastWriteTimeUtc": "2026-07-10T18:19:50.1338830Z"
+        }
+      ]
+    },
+    {
+      "id": "storage.restart-idempotency",
+      "status": "captured",
+      "source": "focused-foundation-evidence",
+      "artifacts": [
+        {
+          "scenario": "storage.restart-idempotency",
+          "kind": "focused-foundation-artifact",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence\\restart-idempotency\\evidence.json",
+          "relativePath": "focused-foundation/storage-evidence/restart-idempotency/evidence.json",
+          "sha256": "5b74d1e94ce2aafe207554e103b337a673104225fd9b0876c1c5a254933e287f",
+          "size": 1113,
+          "lastWriteTimeUtc": "2026-07-10T18:19:50.0984622Z"
+        }
+      ]
+    },
+    {
+      "id": "storage.retry",
+      "status": "captured",
+      "source": "focused-foundation-evidence",
+      "artifacts": [
+        {
+          "scenario": "storage.retry",
+          "kind": "focused-foundation-artifact",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence\\interrupted-retry\\evidence.json",
+          "relativePath": "focused-foundation/storage-evidence/interrupted-retry/evidence.json",
+          "sha256": "9228cb7bd11caa7d3d5247f9b308f1d52d9a1ec4a66a882f5e736f02f0a41923",
+          "size": 1761,
+          "lastWriteTimeUtc": "2026-07-10T18:19:55.8561128Z"
+        }
+      ]
+    },
+    {
+      "id": "storage.reveal-redacted-log",
+      "status": "captured",
+      "source": "focused-foundation-evidence",
+      "artifacts": [
+        {
+          "scenario": "storage.reveal-redacted-log",
+          "kind": "focused-foundation-artifact",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence\\wrong-key-recovery\\openburnbar.sqlite.recovery.log",
+          "relativePath": "focused-foundation/storage-evidence/wrong-key-recovery/openburnbar.sqlite.recovery.log",
+          "sha256": "a4191d9aa2df96d58c84cb211ddd2c0b8e0817ead409669b8ba381e4b3a75c42",
+          "size": 775,
+          "lastWriteTimeUtc": "2026-07-10T18:19:51.0217297Z"
+        }
+      ]
+    },
+    {
+      "id": "storage.unsupported-schema",
+      "status": "captured",
+      "source": "focused-foundation-evidence",
+      "artifacts": [
+        {
+          "scenario": "storage.unsupported-schema",
+          "kind": "focused-foundation-artifact",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence\\unsupported-schema-recovery\\evidence.json",
+          "relativePath": "focused-foundation/storage-evidence/unsupported-schema-recovery/evidence.json",
+          "sha256": "8f7eece7256ac2e82026ea8e85e98dfac9b6ce5ec3df36122d0444dfe6a34cee",
+          "size": 940,
+          "lastWriteTimeUtc": "2026-07-10T18:19:57.6946215Z"
+        }
+      ]
+    },
+    {
+      "id": "storage.wrong-key",
+      "status": "captured",
+      "source": "focused-foundation-evidence",
+      "artifacts": [
+        {
+          "scenario": "storage.wrong-key",
+          "kind": "focused-foundation-artifact",
+          "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence\\wrong-key-recovery\\evidence.json",
+          "relativePath": "focused-foundation/storage-evidence/wrong-key-recovery/evidence.json",
+          "sha256": "6983ee366f87dba6cbfa881ed54ad14637d2756e5b98ba2336fae919af2f9276",
+          "size": 954,
+          "lastWriteTimeUtc": "2026-07-10T18:19:51.0217297Z"
+        }
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "scenario": "candidate.verify",
+      "kind": "candidate-import-verification",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\candidate-tree-verification.json",
+      "relativePath": "candidate-tree-verification.json",
+      "sha256": "5802811488e5fa6c2ee5450dd04ee9ef776f6185e245a9bfbfa49e0b8c196a82",
+      "size": 1231,
+      "lastWriteTimeUtc": "2026-07-10T18:16:42.4867515Z"
+    },
+    {
+      "scenario": "host.identity",
+      "kind": "host-identity",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\host-identity.json",
+      "relativePath": "host-identity.json",
+      "sha256": "9b143c4136769cc256d9abc3e7123fdb1f84a2e7a680f1bafb028c1a498cd8e6",
+      "size": 1342,
+      "lastWriteTimeUtc": "2026-07-10T18:16:43.5689653Z"
+    },
+    {
+      "scenario": "process.all",
+      "kind": "process-evidence",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\process-traces\\process-evidence.json",
+      "relativePath": "process-traces/process-evidence.json",
+      "sha256": "c695d76f0733112a2640c2ef4c47af56a1ac4dbc27ecc674fcd203c41eb1b354",
+      "size": 887258,
+      "lastWriteTimeUtc": "2026-07-10T18:21:07.4978826Z"
+    },
+    {
+      "scenario": "uia.all",
+      "kind": "interactive-uia-summary",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\interactive-result.json",
+      "relativePath": "interactive-uia/interactive-result.json",
+      "sha256": "0c0fcbb39bf6e6aa6928939eb29da24d5557575e00d4eccee8938fc00c20865c",
+      "size": 73390,
+      "lastWriteTimeUtc": "2026-07-10T18:25:34.5030530Z"
+    },
+    {
+      "scenario": "chat.executable.setup",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.setup\\uia-before.json",
+      "relativePath": "interactive-uia/scenarios/chat.executable.setup/uia-before.json",
+      "sha256": "2e5d0ac6afbf1b32711c9eb63c3234c5bc8207f467cd7fe9446d0d447f24deb5",
+      "size": 95261,
+      "lastWriteTimeUtc": "2026-07-10T18:21:16.0006152Z"
+    },
+    {
+      "scenario": "chat.executable.setup",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.setup\\screenshot-before.png",
+      "relativePath": "interactive-uia/scenarios/chat.executable.setup/screenshot-before.png",
+      "sha256": "8282fc4c18ed1204d0213e5032631b456a8dcd40c8898be37f0a389c97ab2b88",
+      "size": 38635,
+      "lastWriteTimeUtc": "2026-07-10T18:21:16.1653000Z"
+    },
+    {
+      "scenario": "chat.executable.setup",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.setup\\route-smoke\\chat-result.json",
+      "relativePath": "interactive-uia/scenarios/chat.executable.setup/route-smoke/chat-result.json",
+      "sha256": "3420a3596721ac2023a64476038bfcae6637b3f3440f41df0985f45ee3196bc8",
+      "size": 465,
+      "lastWriteTimeUtc": "2026-07-10T18:21:24.6612980Z"
+    },
+    {
+      "scenario": "chat.executable.setup",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.setup\\route-smoke\\chat.png",
+      "relativePath": "interactive-uia/scenarios/chat.executable.setup/route-smoke/chat.png",
+      "sha256": "1c0bc1dfc61b1314e531767f555829d512d9359f82476418afc77e0fff3741d6",
+      "size": 52284,
+      "lastWriteTimeUtc": "2026-07-10T18:21:24.6539571Z"
+    },
+    {
+      "scenario": "chat.executable.approve",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.approve\\uia-before.json",
+      "relativePath": "interactive-uia/scenarios/chat.executable.approve/uia-before.json",
+      "sha256": "6d8295e9ee28573996a18d0e1b6f66572ba1f19d88356705ea4c868b76f47ec9",
+      "size": 95286,
+      "lastWriteTimeUtc": "2026-07-10T18:21:28.6849367Z"
+    },
+    {
+      "scenario": "chat.executable.approve",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.approve\\screenshot-before.png",
+      "relativePath": "interactive-uia/scenarios/chat.executable.approve/screenshot-before.png",
+      "sha256": "e56c0dbcfb2eec435148f63dfa2390760e62342825ef3e7a225952e784ea7034",
+      "size": 56702,
+      "lastWriteTimeUtc": "2026-07-10T18:21:28.9586984Z"
+    },
+    {
+      "scenario": "chat.executable.approve",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.approve\\uia-after.json",
+      "relativePath": "interactive-uia/scenarios/chat.executable.approve/uia-after.json",
+      "sha256": "5878565d7f4e37f027cdbdacda489abd787b6f0310c8406f0ab3bca7f9b8a6f9",
+      "size": 103237,
+      "lastWriteTimeUtc": "2026-07-10T18:21:30.6780237Z"
+    },
+    {
+      "scenario": "chat.executable.approve",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.approve\\screenshot-after.png",
+      "relativePath": "interactive-uia/scenarios/chat.executable.approve/screenshot-after.png",
+      "sha256": "a9221353f9bc605f6d7a3ec2c18fa5a95f325c21e9952fa5bca7d24b109251e1",
+      "size": 56809,
+      "lastWriteTimeUtc": "2026-07-10T18:21:30.9626861Z"
+    },
+    {
+      "scenario": "chat.executable.approve",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.approve\\route-smoke\\chat-result.json",
+      "relativePath": "interactive-uia/scenarios/chat.executable.approve/route-smoke/chat-result.json",
+      "sha256": "b6aadba75213db6e916038c3fc7eccd3e7cf4d069b2416f3c009a3b44d7b0ffd",
+      "size": 467,
+      "lastWriteTimeUtc": "2026-07-10T18:21:37.7977898Z"
+    },
+    {
+      "scenario": "chat.executable.approve",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.approve\\route-smoke\\chat.png",
+      "relativePath": "interactive-uia/scenarios/chat.executable.approve/route-smoke/chat.png",
+      "sha256": "f515b5e8f167d76bc0c9f8a893dd5f81be7bf550a8b58eafa293eb3962b11809",
+      "size": 67266,
+      "lastWriteTimeUtc": "2026-07-10T18:21:37.7864176Z"
+    },
+    {
+      "scenario": "chat.executable.rotate",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.rotate\\uia-before.json",
+      "relativePath": "interactive-uia/scenarios/chat.executable.rotate/uia-before.json",
+      "sha256": "6ad90c8dec1158641e7244490c9a662e3ce431a230c96840bfe402b8ddb6b67d",
+      "size": 95249,
+      "lastWriteTimeUtc": "2026-07-10T18:21:41.8933373Z"
+    },
+    {
+      "scenario": "chat.executable.rotate",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.rotate\\screenshot-before.png",
+      "relativePath": "interactive-uia/scenarios/chat.executable.rotate/screenshot-before.png",
+      "sha256": "43a965ee13911b17ce0c306d22017a89f93ecc6d257fcd823652e3ed2c6ec12b",
+      "size": 40785,
+      "lastWriteTimeUtc": "2026-07-10T18:21:42.0300491Z"
+    },
+    {
+      "scenario": "chat.executable.rotate",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.rotate\\uia-after.json",
+      "relativePath": "interactive-uia/scenarios/chat.executable.rotate/uia-after.json",
+      "sha256": "c13ce384b8e933943b6923111b70d31600362a5c8836df800ae243b5e34fff60",
+      "size": 103217,
+      "lastWriteTimeUtc": "2026-07-10T18:21:44.1662433Z"
+    },
+    {
+      "scenario": "chat.executable.rotate",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.rotate\\screenshot-after.png",
+      "relativePath": "interactive-uia/scenarios/chat.executable.rotate/screenshot-after.png",
+      "sha256": "a7aba7f79bd8f797a763bf1c733bd69358ec72c4a8fc109e3cd432995da104e3",
+      "size": 40794,
+      "lastWriteTimeUtc": "2026-07-10T18:21:44.4616006Z"
+    },
+    {
+      "scenario": "chat.executable.rotate",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.rotate\\route-smoke\\chat-result.json",
+      "relativePath": "interactive-uia/scenarios/chat.executable.rotate/route-smoke/chat-result.json",
+      "sha256": "440b5d79d9511f94bf3ed0e2ee8082ed846d514c0196a54379a7621a62f2a8a0",
+      "size": 465,
+      "lastWriteTimeUtc": "2026-07-10T18:21:51.0452736Z"
+    },
+    {
+      "scenario": "chat.executable.rotate",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.rotate\\route-smoke\\chat.png",
+      "relativePath": "interactive-uia/scenarios/chat.executable.rotate/route-smoke/chat.png",
+      "sha256": "e9b2a508485cdaea251bb4a2940aafdc8dc62231e070fd8d63e0e2f3cd2e15d2",
+      "size": 67392,
+      "lastWriteTimeUtc": "2026-07-10T18:21:51.0330245Z"
+    },
+    {
+      "scenario": "chat.executable.remove",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.remove\\uia-before.json",
+      "relativePath": "interactive-uia/scenarios/chat.executable.remove/uia-before.json",
+      "sha256": "69fbedb8e0c6bffe5c531edb74bd3d5fcb7854dcafa2cef67e3cdc31af53f4aa",
+      "size": 95286,
+      "lastWriteTimeUtc": "2026-07-10T18:21:55.1580084Z"
+    },
+    {
+      "scenario": "chat.executable.remove",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.remove\\screenshot-before.png",
+      "relativePath": "interactive-uia/scenarios/chat.executable.remove/screenshot-before.png",
+      "sha256": "b52d05e6b6d0c9ad578f8acbc232a6a27d007a9eb585fe85cf6148af5ca8fcdb",
+      "size": 55229,
+      "lastWriteTimeUtc": "2026-07-10T18:21:55.2871683Z"
+    },
+    {
+      "scenario": "chat.executable.remove",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.remove\\uia-after.json",
+      "relativePath": "interactive-uia/scenarios/chat.executable.remove/uia-after.json",
+      "sha256": "d0bfdc848a5b9950f16313fae8c5d8644971e57904bb8492e959db4850ac9149",
+      "size": 95481,
+      "lastWriteTimeUtc": "2026-07-10T18:21:57.4173895Z"
+    },
+    {
+      "scenario": "chat.executable.remove",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.remove\\screenshot-after.png",
+      "relativePath": "interactive-uia/scenarios/chat.executable.remove/screenshot-after.png",
+      "sha256": "ba76c26d2507bf22a288a5db906cc06a0cf393cf7cfc17311af3c2833adef4b6",
+      "size": 55339,
+      "lastWriteTimeUtc": "2026-07-10T18:21:57.7022972Z"
+    },
+    {
+      "scenario": "chat.executable.remove",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.remove\\route-smoke\\chat-result.json",
+      "relativePath": "interactive-uia/scenarios/chat.executable.remove/route-smoke/chat-result.json",
+      "sha256": "66fe6e2bf58d4581e4a9dac4b2d4cec95e47534664a491679e3e524241b205c3",
+      "size": 465,
+      "lastWriteTimeUtc": "2026-07-10T18:22:04.1931205Z"
+    },
+    {
+      "scenario": "chat.executable.remove",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.remove\\route-smoke\\chat.png",
+      "relativePath": "interactive-uia/scenarios/chat.executable.remove/route-smoke/chat.png",
+      "sha256": "34ce96947c3edcec82a1ec4b75cde15ad6478f5285267a26bbff5f49293a7d23",
+      "size": 55311,
+      "lastWriteTimeUtc": "2026-07-10T18:22:04.1827042Z"
+    },
+    {
+      "scenario": "chat.executable.denial.unapproved",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.unapproved\\uia-before.json",
+      "relativePath": "interactive-uia/scenarios/chat.executable.denial.unapproved/uia-before.json",
+      "sha256": "6b8dc65f41b7e04061a8c6d3e11bbd596b40f31955a6bd6b9b90e195077755af",
+      "size": 95245,
+      "lastWriteTimeUtc": "2026-07-10T18:22:07.7792394Z"
+    },
+    {
+      "scenario": "chat.executable.denial.unapproved",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.unapproved\\screenshot-before.png",
+      "relativePath": "interactive-uia/scenarios/chat.executable.denial.unapproved/screenshot-before.png",
+      "sha256": "8542620f35a33d85c7f6f8b9aceed923de53706b30067be761e6b8ac125c77bb",
+      "size": 56972,
+      "lastWriteTimeUtc": "2026-07-10T18:22:07.9261187Z"
+    },
+    {
+      "scenario": "chat.executable.denial.unapproved",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.unapproved\\route-smoke\\chat-result.json",
+      "relativePath": "interactive-uia/scenarios/chat.executable.denial.unapproved/route-smoke/chat-result.json",
+      "sha256": "d1e556afe97cdda107f811e4e2f184a990928aff0f543a5a864e199bbf485bf2",
+      "size": 477,
+      "lastWriteTimeUtc": "2026-07-10T18:22:16.9907429Z"
+    },
+    {
+      "scenario": "chat.executable.denial.unapproved",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.unapproved\\route-smoke\\chat.png",
+      "relativePath": "interactive-uia/scenarios/chat.executable.denial.unapproved/route-smoke/chat.png",
+      "sha256": "1c0bc1dfc61b1314e531767f555829d512d9359f82476418afc77e0fff3741d6",
+      "size": 52284,
+      "lastWriteTimeUtc": "2026-07-10T18:22:16.9842322Z"
+    },
+    {
+      "scenario": "chat.executable.denial.missing",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.missing\\uia-before.json",
+      "relativePath": "interactive-uia/scenarios/chat.executable.denial.missing/uia-before.json",
+      "sha256": "34e3038deb47360fbdbe35a744afa1c07c6e25e1172eb1fb87e6e6ece6b42ed5",
+      "size": 103153,
+      "lastWriteTimeUtc": "2026-07-10T18:22:33.6822817Z"
+    },
+    {
+      "scenario": "chat.executable.denial.missing",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.missing\\screenshot-before.png",
+      "relativePath": "interactive-uia/scenarios/chat.executable.denial.missing/screenshot-before.png",
+      "sha256": "0f624bd6d3f23a35721740e71cb4539639ea275823236aca978597f80589b12d",
+      "size": 59739,
+      "lastWriteTimeUtc": "2026-07-10T18:22:33.7481226Z"
+    },
+    {
+      "scenario": "chat.executable.denial.missing",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.missing\\route-smoke\\chat-result.json",
+      "relativePath": "interactive-uia/scenarios/chat.executable.denial.missing/route-smoke/chat-result.json",
+      "sha256": "3dbd06df212d606cb853d2d0b578e6e0aab2a58c991f86e4fbeab5609535d2b5",
+      "size": 472,
+      "lastWriteTimeUtc": "2026-07-10T18:22:42.8592818Z"
+    },
+    {
+      "scenario": "chat.executable.denial.missing",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.missing\\route-smoke\\chat.png",
+      "relativePath": "interactive-uia/scenarios/chat.executable.denial.missing/route-smoke/chat.png",
+      "sha256": "525aa04f09fac92ef5abf86d7a7b94e037c707795627b4de51e8a1ea79ea44db",
+      "size": 64448,
+      "lastWriteTimeUtc": "2026-07-10T18:22:42.8495902Z"
+    },
+    {
+      "scenario": "chat.executable.denial.replaced",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.replaced\\uia-before.json",
+      "relativePath": "interactive-uia/scenarios/chat.executable.denial.replaced/uia-before.json",
+      "sha256": "453e708de009144eeed1db488f2b5272dd76e2357f0d8800f9fa0e969d05aaf7",
+      "size": 103157,
+      "lastWriteTimeUtc": "2026-07-10T18:22:59.5867424Z"
+    },
+    {
+      "scenario": "chat.executable.denial.replaced",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.replaced\\screenshot-before.png",
+      "relativePath": "interactive-uia/scenarios/chat.executable.denial.replaced/screenshot-before.png",
+      "sha256": "5fcbdb4511116af9d39ca5c23fafcf973c5a810857dfe239da1235848fb531b7",
+      "size": 57781,
+      "lastWriteTimeUtc": "2026-07-10T18:22:59.7054073Z"
+    },
+    {
+      "scenario": "chat.executable.denial.replaced",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.replaced\\route-smoke\\chat-result.json",
+      "relativePath": "interactive-uia/scenarios/chat.executable.denial.replaced/route-smoke/chat-result.json",
+      "sha256": "c339259b361571d43efb993da02feeb7fe7a6925111adbfcfa4e54694f61b784",
+      "size": 473,
+      "lastWriteTimeUtc": "2026-07-10T18:23:08.7966602Z"
+    },
+    {
+      "scenario": "chat.executable.denial.replaced",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.replaced\\route-smoke\\chat.png",
+      "relativePath": "interactive-uia/scenarios/chat.executable.denial.replaced/route-smoke/chat.png",
+      "sha256": "d3078e57aadf7ce316f36da88e9639bb3d413d450979e81b634a9148f1e2efad",
+      "size": 65100,
+      "lastWriteTimeUtc": "2026-07-10T18:23:08.7829436Z"
+    },
+    {
+      "scenario": "chat.history.unavailable",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.unavailable\\uia-before.json",
+      "relativePath": "interactive-uia/scenarios/chat.history.unavailable/uia-before.json",
+      "sha256": "ccdc002925e21b14263e2b38a42d6c42df4b9ed93842d85a2e271d530af3faa8",
+      "size": 100366,
+      "lastWriteTimeUtc": "2026-07-10T18:23:23.2239380Z"
+    },
+    {
+      "scenario": "chat.history.unavailable",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.unavailable\\screenshot-before.png",
+      "relativePath": "interactive-uia/scenarios/chat.history.unavailable/screenshot-before.png",
+      "sha256": "e56c0dbcfb2eec435148f63dfa2390760e62342825ef3e7a225952e784ea7034",
+      "size": 56702,
+      "lastWriteTimeUtc": "2026-07-10T18:23:23.3693651Z"
+    },
+    {
+      "scenario": "chat.history.unavailable",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.unavailable\\route-smoke\\chat-result.json",
+      "relativePath": "interactive-uia/scenarios/chat.history.unavailable/route-smoke/chat-result.json",
+      "sha256": "341a22854e17a3d8d385ef9779fd26f100c8a528d8e280ddfb44c11028509d98",
+      "size": 467,
+      "lastWriteTimeUtc": "2026-07-10T18:23:32.3011772Z"
+    },
+    {
+      "scenario": "chat.history.unavailable",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.unavailable\\route-smoke\\chat.png",
+      "relativePath": "interactive-uia/scenarios/chat.history.unavailable/route-smoke/chat.png",
+      "sha256": "f9ec1313a7e57cfe6482869b16fe936cbb6e1a51c496c2183e1864cc827fbc16",
+      "size": 49022,
+      "lastWriteTimeUtc": "2026-07-10T18:23:32.2810852Z"
+    },
+    {
+      "scenario": "chat.history.corrupt",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.corrupt\\uia-before.json",
+      "relativePath": "interactive-uia/scenarios/chat.history.corrupt/uia-before.json",
+      "sha256": "feb699cf01930710abd56c3f2fa31a96d023c5dfeb9bf4028725977e0f492e50",
+      "size": 100372,
+      "lastWriteTimeUtc": "2026-07-10T18:23:48.5098412Z"
+    },
+    {
+      "scenario": "chat.history.corrupt",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.corrupt\\screenshot-before.png",
+      "relativePath": "interactive-uia/scenarios/chat.history.corrupt/screenshot-before.png",
+      "sha256": "b52d05e6b6d0c9ad578f8acbc232a6a27d007a9eb585fe85cf6148af5ca8fcdb",
+      "size": 55229,
+      "lastWriteTimeUtc": "2026-07-10T18:23:48.6447846Z"
+    },
+    {
+      "scenario": "chat.history.corrupt",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.corrupt\\route-smoke\\chat-result.json",
+      "relativePath": "interactive-uia/scenarios/chat.history.corrupt/route-smoke/chat-result.json",
+      "sha256": "6a267711590a39b29a9e02ee5b3fb398df26f50442ddaab66653fb14c920ca0a",
+      "size": 463,
+      "lastWriteTimeUtc": "2026-07-10T18:23:57.6684594Z"
+    },
+    {
+      "scenario": "chat.history.corrupt",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.corrupt\\route-smoke\\chat.png",
+      "relativePath": "interactive-uia/scenarios/chat.history.corrupt/route-smoke/chat.png",
+      "sha256": "55ceb23b217d31ce2249284f8dc65a76a24c453f2945dc44a32d7fd51e35d08d",
+      "size": 49347,
+      "lastWriteTimeUtc": "2026-07-10T18:23:57.6586248Z"
+    },
+    {
+      "scenario": "chat.history.locked",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.locked\\uia-before.json",
+      "relativePath": "interactive-uia/scenarios/chat.history.locked/uia-before.json",
+      "sha256": "5f97a87a5caab1939e418325262b7b0ba7f37546f889155ddbe75167914f2ce0",
+      "size": 100357,
+      "lastWriteTimeUtc": "2026-07-10T18:24:16.0252381Z"
+    },
+    {
+      "scenario": "chat.history.locked",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.locked\\screenshot-before.png",
+      "relativePath": "interactive-uia/scenarios/chat.history.locked/screenshot-before.png",
+      "sha256": "10187edf4b11881aa12991d91394945a028e3e2a3dec643674c2fb5c043fc249",
+      "size": 46761,
+      "lastWriteTimeUtc": "2026-07-10T18:24:16.2492975Z"
+    },
+    {
+      "scenario": "chat.history.locked",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.locked\\route-smoke\\chat-result.json",
+      "relativePath": "interactive-uia/scenarios/chat.history.locked/route-smoke/chat-result.json",
+      "sha256": "31ce79879955bfe457ba4861929b83319dde25633562a99910e18a0b5d5dc0ab",
+      "size": 462,
+      "lastWriteTimeUtc": "2026-07-10T18:24:24.8661691Z"
+    },
+    {
+      "scenario": "chat.history.locked",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.locked\\route-smoke\\chat.png",
+      "relativePath": "interactive-uia/scenarios/chat.history.locked/route-smoke/chat.png",
+      "sha256": "57eca7d3b48ae1f14aaa006b230da2703474cbd33b4bc93eb4c0370a018e89d7",
+      "size": 48898,
+      "lastWriteTimeUtc": "2026-07-10T18:24:24.8533253Z"
+    },
+    {
+      "scenario": "chat.history.retry",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.retry\\uia-before.json",
+      "relativePath": "interactive-uia/scenarios/chat.history.retry/uia-before.json",
+      "sha256": "3485d2467d9ae05f408f3ae55fe4ddc9736760302f6754e59e640bcc62a938fb",
+      "size": 100370,
+      "lastWriteTimeUtc": "2026-07-10T18:24:40.7846933Z"
+    },
+    {
+      "scenario": "chat.history.retry",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.retry\\screenshot-before.png",
+      "relativePath": "interactive-uia/scenarios/chat.history.retry/screenshot-before.png",
+      "sha256": "734a3a9c4b6557fd87c8a071bc35cccf9749beb31b345ecbd0d4bc67f51f1275",
+      "size": 38839,
+      "lastWriteTimeUtc": "2026-07-10T18:24:40.8548226Z"
+    },
+    {
+      "scenario": "chat.history.retry",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.retry\\uia-after.json",
+      "relativePath": "interactive-uia/scenarios/chat.history.retry/uia-after.json",
+      "sha256": "bc2a72d36c65422c56159971f6ece1283abbfea50a82894288ab957fba9e589d",
+      "size": 100337,
+      "lastWriteTimeUtc": "2026-07-10T18:24:42.3882174Z"
+    },
+    {
+      "scenario": "chat.history.retry",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.retry\\screenshot-after.png",
+      "relativePath": "interactive-uia/scenarios/chat.history.retry/screenshot-after.png",
+      "sha256": "e41476b52846ba654a69375420be4eed28441b8799d07d370a7d15940b2af33b",
+      "size": 38893,
+      "lastWriteTimeUtc": "2026-07-10T18:24:42.6822012Z"
+    },
+    {
+      "scenario": "chat.history.retry",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.retry\\route-smoke\\chat-result.json",
+      "relativePath": "interactive-uia/scenarios/chat.history.retry/route-smoke/chat-result.json",
+      "sha256": "1499e08435fbe795c57dabfbc6e4fb9d29bce5981a18e325d4a5f7a731579d50",
+      "size": 462,
+      "lastWriteTimeUtc": "2026-07-10T18:24:49.6211702Z"
+    },
+    {
+      "scenario": "chat.history.retry",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.retry\\route-smoke\\chat.png",
+      "relativePath": "interactive-uia/scenarios/chat.history.retry/route-smoke/chat.png",
+      "sha256": "e81ea3932200fbbfbd51b7bc2932eccbe76da7206994a13eb1254c16a7fc312e",
+      "size": 49477,
+      "lastWriteTimeUtc": "2026-07-10T18:24:49.6091522Z"
+    },
+    {
+      "scenario": "chat.restart.process",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.restart.process\\uia-before.json",
+      "relativePath": "interactive-uia/scenarios/chat.restart.process/uia-before.json",
+      "sha256": "0d8bcea0dba5b9396f8206ffd86bba24bae05b96469f9af648cea598691557cd",
+      "size": 95287,
+      "lastWriteTimeUtc": "2026-07-10T18:24:56.3748557Z"
+    },
+    {
+      "scenario": "chat.restart.process",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.restart.process\\screenshot-before.png",
+      "relativePath": "interactive-uia/scenarios/chat.restart.process/screenshot-before.png",
+      "sha256": "5fcbdb4511116af9d39ca5c23fafcf973c5a810857dfe239da1235848fb531b7",
+      "size": 57781,
+      "lastWriteTimeUtc": "2026-07-10T18:24:56.6709545Z"
+    },
+    {
+      "scenario": "chat.restart.process",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.restart.process\\uia-after.json",
+      "relativePath": "interactive-uia/scenarios/chat.restart.process/uia-after.json",
+      "sha256": "2fb56ccaf39088f1ef9e50000e7d287d3d9c40fef8413f0b0a0c256f34e2cef2",
+      "size": 134029,
+      "lastWriteTimeUtc": "2026-07-10T18:25:01.5382964Z"
+    },
+    {
+      "scenario": "chat.restart.process",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.restart.process\\screenshot-after.png",
+      "relativePath": "interactive-uia/scenarios/chat.restart.process/screenshot-after.png",
+      "sha256": "ee1746f0fdc17b6c5b73ff30525e4f451e733558bd577b23aa9f3dc52048f0b2",
+      "size": 58063,
+      "lastWriteTimeUtc": "2026-07-10T18:25:01.6700609Z"
+    },
+    {
+      "scenario": "chat.restart.process",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.restart.process\\route-smoke\\chat-result.json",
+      "relativePath": "interactive-uia/scenarios/chat.restart.process/route-smoke/chat-result.json",
+      "sha256": "7c4d0d0ea795aa1f737ed82a037e5cc345a515e40221660dd5b67889e7687889",
+      "size": 462,
+      "lastWriteTimeUtc": "2026-07-10T18:25:04.4251625Z"
+    },
+    {
+      "scenario": "chat.restart.process",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.restart.process\\route-smoke\\chat.png",
+      "relativePath": "interactive-uia/scenarios/chat.restart.process/route-smoke/chat.png",
+      "sha256": "d52e9c45b5306a2c30440514916229eedcb135739a5aaf481e1142bb1e969728",
+      "size": 81954,
+      "lastWriteTimeUtc": "2026-07-10T18:25:04.4116120Z"
+    },
+    {
+      "scenario": "chat.restart.durable-rehydrate",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.restart.durable-rehydrate\\uia-before.json",
+      "relativePath": "interactive-uia/scenarios/chat.restart.durable-rehydrate/uia-before.json",
+      "sha256": "426031c23324e3e7ddb63ac7193e0956d28bb59a9b0d2ac0d03103a2d310f096",
+      "size": 118198,
+      "lastWriteTimeUtc": "2026-07-10T18:25:11.9803872Z"
+    },
+    {
+      "scenario": "chat.restart.durable-rehydrate",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.restart.durable-rehydrate\\screenshot-before.png",
+      "relativePath": "interactive-uia/scenarios/chat.restart.durable-rehydrate/screenshot-before.png",
+      "sha256": "8282fc4c18ed1204d0213e5032631b456a8dcd40c8898be37f0a389c97ab2b88",
+      "size": 38635,
+      "lastWriteTimeUtc": "2026-07-10T18:25:12.1013294Z"
+    },
+    {
+      "scenario": "chat.restart.durable-rehydrate",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.restart.durable-rehydrate\\route-smoke\\chat-result.json",
+      "relativePath": "interactive-uia/scenarios/chat.restart.durable-rehydrate/route-smoke/chat-result.json",
+      "sha256": "633ea08332534692af394776d443828ec84d94bc2b213a26990d5b975fcfe99f",
+      "size": 474,
+      "lastWriteTimeUtc": "2026-07-10T18:25:20.9931463Z"
+    },
+    {
+      "scenario": "chat.restart.durable-rehydrate",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.restart.durable-rehydrate\\route-smoke\\chat.png",
+      "relativePath": "interactive-uia/scenarios/chat.restart.durable-rehydrate/route-smoke/chat.png",
+      "sha256": "366a3507a798f8286acdc2eb6c9ffad41e9aed472e237ce65e75ae57cea74610",
+      "size": 66552,
+      "lastWriteTimeUtc": "2026-07-10T18:25:20.9881270Z"
+    },
+    {
+      "scenario": "chat.attachment.paste",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.attachment.paste\\uia-before.json",
+      "relativePath": "interactive-uia/scenarios/chat.attachment.paste/uia-before.json",
+      "sha256": "093895116413aebd0bb10b02ef36d1ea6f576d74969b15f0c76b5baad6c870f8",
+      "size": 95286,
+      "lastWriteTimeUtc": "2026-07-10T18:25:25.9046252Z"
+    },
+    {
+      "scenario": "chat.attachment.paste",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.attachment.paste\\screenshot-before.png",
+      "relativePath": "interactive-uia/scenarios/chat.attachment.paste/screenshot-before.png",
+      "sha256": "e56c0dbcfb2eec435148f63dfa2390760e62342825ef3e7a225952e784ea7034",
+      "size": 56702,
+      "lastWriteTimeUtc": "2026-07-10T18:25:26.0133919Z"
+    },
+    {
+      "scenario": "chat.attachment.paste",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.attachment.paste\\uia-after.json",
+      "relativePath": "interactive-uia/scenarios/chat.attachment.paste/uia-after.json",
+      "sha256": "8febde7693c65eb036016b2530886af936960c47aa0b27fbbaf2ce0e0f9dfcd4",
+      "size": 136897,
+      "lastWriteTimeUtc": "2026-07-10T18:25:29.3779952Z"
+    },
+    {
+      "scenario": "chat.attachment.paste",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.attachment.paste\\screenshot-after.png",
+      "relativePath": "interactive-uia/scenarios/chat.attachment.paste/screenshot-after.png",
+      "sha256": "76dd084e2ba82e194de1379e139a88ca9a4885fdd4b73081cbd3307557b1b5d8",
+      "size": 62971,
+      "lastWriteTimeUtc": "2026-07-10T18:25:29.4315729Z"
+    },
+    {
+      "scenario": "chat.attachment.paste",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.attachment.paste\\route-smoke\\chat-result.json",
+      "relativePath": "interactive-uia/scenarios/chat.attachment.paste/route-smoke/chat-result.json",
+      "sha256": "ba9e68eeced59a156beba4a847a3472c7fd109f852cf93a9b9202304b18b59a7",
+      "size": 463,
+      "lastWriteTimeUtc": "2026-07-10T18:25:34.2515618Z"
+    },
+    {
+      "scenario": "chat.attachment.paste",
+      "kind": "uia-or-screenshot",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.attachment.paste\\route-smoke\\chat.png",
+      "relativePath": "interactive-uia/scenarios/chat.attachment.paste/route-smoke/chat.png",
+      "sha256": "284556fe01dc8b38e3aa3699f5c9b7f2ddd69a381e68b18a876404b11d67d1c6",
+      "size": 34176,
+      "lastWriteTimeUtc": "2026-07-10T18:25:34.2182046Z"
+    },
+    {
+      "scenario": "storage.fresh-install",
+      "kind": "focused-foundation-artifact",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence\\fresh-install\\evidence.json",
+      "relativePath": "focused-foundation/storage-evidence/fresh-install/evidence.json",
+      "sha256": "a6bd6fd940c83be4a4e25f188bead5cd4b846963399d869fd294f6d70c9a2d78",
+      "size": 1081,
+      "lastWriteTimeUtc": "2026-07-10T18:19:52.6891883Z"
+    },
+    {
+      "scenario": "storage.unsupported-schema",
+      "kind": "focused-foundation-artifact",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence\\unsupported-schema-recovery\\evidence.json",
+      "relativePath": "focused-foundation/storage-evidence/unsupported-schema-recovery/evidence.json",
+      "sha256": "85b2ec1205147e68c2e92371a929eaa5baee2f4abef7935bb1c4b03d7256733d",
+      "size": 919,
+      "lastWriteTimeUtc": "2026-07-10T18:19:57.6946215Z"
+    },
+    {
+      "scenario": "storage.interrupted-migration",
+      "kind": "focused-foundation-artifact",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence\\interrupted-retry\\evidence.json",
+      "relativePath": "focused-foundation/storage-evidence/interrupted-retry/evidence.json",
+      "sha256": "c81070edc0a7a3362efb75cbd8cd23645a28c359db43f52b4dbd51f85d69ade8",
+      "size": 1725,
+      "lastWriteTimeUtc": "2026-07-10T18:19:55.8561128Z"
+    },
+    {
+      "scenario": "storage.locked-file",
+      "kind": "focused-foundation-artifact",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence\\fault-LockedFile\\evidence.json",
+      "relativePath": "focused-foundation/storage-evidence/fault-LockedFile/evidence.json",
+      "sha256": "83812df13b73a398c9a3f67aa63791151a6eefbfcd7c2b2f71fb80f6f7748328",
+      "size": 906,
+      "lastWriteTimeUtc": "2026-07-10T18:19:50.1338830Z"
+    },
+    {
+      "scenario": "storage.generated-db-write-seams",
+      "kind": "focused-foundation-artifact",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence\\generated-db-write-seams\\evidence.json",
+      "relativePath": "focused-foundation/storage-evidence/generated-db-write-seams/evidence.json",
+      "sha256": "1e073f15b2779f2c71a472b186bf7ac10996984caeb4a342dd4cd3d6e1611840",
+      "size": 1093,
+      "lastWriteTimeUtc": "2026-07-10T18:19:55.0291331Z"
+    },
+    {
+      "scenario": "storage.reveal-redacted-log",
+      "kind": "focused-foundation-artifact",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence\\wrong-key-recovery\\openburnbar.sqlite.recovery.log",
+      "relativePath": "focused-foundation/storage-evidence/wrong-key-recovery/openburnbar.sqlite.recovery.log",
+      "sha256": "b89e6a21ac13052fceaeb07e49a22b3e93b9ac28cd7ca9689d0798ab3a53a3c2",
+      "size": 769,
+      "lastWriteTimeUtc": "2026-07-10T18:19:51.0217297Z"
+    },
+    {
+      "scenario": "storage.wrong-key",
+      "kind": "focused-foundation-artifact",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence\\wrong-key-recovery\\evidence.json",
+      "relativePath": "focused-foundation/storage-evidence/wrong-key-recovery/evidence.json",
+      "sha256": "547022a6a4dfb2cdb9b120ae41e26b3ab77fcc656393238a1677458c6d183ab3",
+      "size": 932,
+      "lastWriteTimeUtc": "2026-07-10T18:19:51.0217297Z"
+    },
+    {
+      "scenario": "storage.archive-reset",
+      "kind": "focused-foundation-artifact",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence\\corrupt-archive-reset\\evidence.json",
+      "relativePath": "focused-foundation/storage-evidence/corrupt-archive-reset/evidence.json",
+      "sha256": "39a33118024b25a166f3778f96246c7b60928e31b32e08178d077febeb51fcf0",
+      "size": 1720,
+      "lastWriteTimeUtc": "2026-07-10T18:19:49.2051026Z"
+    },
+    {
+      "scenario": "storage.retry",
+      "kind": "focused-foundation-artifact",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence\\interrupted-retry\\evidence.json",
+      "relativePath": "focused-foundation/storage-evidence/interrupted-retry/evidence.json",
+      "sha256": "c81070edc0a7a3362efb75cbd8cd23645a28c359db43f52b4dbd51f85d69ade8",
+      "size": 1725,
+      "lastWriteTimeUtc": "2026-07-10T18:19:55.8561128Z"
+    },
+    {
+      "scenario": "storage.full-disk",
+      "kind": "focused-foundation-artifact",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence\\fault-FullDisk\\evidence.json",
+      "relativePath": "focused-foundation/storage-evidence/fault-FullDisk/evidence.json",
+      "sha256": "ef92e72de45686b004dc6d33fdd55cd71814b56e71760ae737394eedc6b60a61",
+      "size": 906,
+      "lastWriteTimeUtc": "2026-07-10T18:19:50.1496650Z"
+    },
+    {
+      "scenario": "chat.attachment.file",
+      "kind": "focused-foundation-artifact",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\chat-evidence\\chat-storage.json",
+      "relativePath": "focused-foundation/chat-evidence/chat-storage.json",
+      "sha256": "9c3294a345395fa55f7c40f26fe894d9e88394867685cfafa69a42572782c91f",
+      "size": 393,
+      "lastWriteTimeUtc": "2026-07-10T18:20:42.0466517Z"
+    },
+    {
+      "scenario": "storage.corrupt-database",
+      "kind": "focused-foundation-artifact",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence\\corrupt-archive-reset\\evidence.json",
+      "relativePath": "focused-foundation/storage-evidence/corrupt-archive-reset/evidence.json",
+      "sha256": "39a33118024b25a166f3778f96246c7b60928e31b32e08178d077febeb51fcf0",
+      "size": 1720,
+      "lastWriteTimeUtc": "2026-07-10T18:19:49.2051026Z"
+    },
+    {
+      "scenario": "storage.restart-idempotency",
+      "kind": "focused-foundation-artifact",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence\\restart-idempotency\\evidence.json",
+      "relativePath": "focused-foundation/storage-evidence/restart-idempotency/evidence.json",
+      "sha256": "00a3a873a7b2d8bf8bbc9aff3afa1f91aaa759cb892485fb8ece37d8b35b8e3c",
+      "size": 1090,
+      "lastWriteTimeUtc": "2026-07-10T18:19:50.0984622Z"
+    },
+    {
+      "scenario": "storage.access-denied",
+      "kind": "focused-foundation-artifact",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence\\fault-AccessDenied\\evidence.json",
+      "relativePath": "focused-foundation/storage-evidence/fault-AccessDenied/evidence.json",
+      "sha256": "9e7431abbc7bbac42a18cfa937fbe3ec974509b3ab3a7740fa456db48c2280ba",
+      "size": 876,
+      "lastWriteTimeUtc": "2026-07-10T18:19:50.1164098Z"
+    },
+    {
+      "scenario": "chat.attachment.missing",
+      "kind": "focused-foundation-artifact",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\chat-evidence\\chat-storage.json",
+      "relativePath": "focused-foundation/chat-evidence/chat-storage.json",
+      "sha256": "9c3294a345395fa55f7c40f26fe894d9e88394867685cfafa69a42572782c91f",
+      "size": 393,
+      "lastWriteTimeUtc": "2026-07-10T18:20:42.0466517Z"
+    },
+    {
+      "scenario": "chat.attachment.drop",
+      "kind": "focused-foundation-artifact",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\chat-evidence\\chat-storage.json",
+      "relativePath": "focused-foundation/chat-evidence/chat-storage.json",
+      "sha256": "9c3294a345395fa55f7c40f26fe894d9e88394867685cfafa69a42572782c91f",
+      "size": 393,
+      "lastWriteTimeUtc": "2026-07-10T18:20:42.0466517Z"
+    },
+    {
+      "scenario": "chat.retrieval.degraded",
+      "kind": "focused-foundation-artifact",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\chat-evidence\\chat-storage.json",
+      "relativePath": "focused-foundation/chat-evidence/chat-storage.json",
+      "sha256": "9c3294a345395fa55f7c40f26fe894d9e88394867685cfafa69a42572782c91f",
+      "size": 393,
+      "lastWriteTimeUtc": "2026-07-10T18:20:42.0466517Z"
+    },
+    {
+      "scenario": "diagnostics.support-bundle",
+      "kind": "diagnostic-redacted-canary",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\diagnostics-canary\\support-bundle.txt",
+      "relativePath": "diagnostics-canary/support-bundle.txt",
+      "sha256": "1d5dd7fd8f5149cdafc5b51e5a2d0129f658c8dbf0254ba348ab9a0da715c6cd",
+      "size": 54,
+      "lastWriteTimeUtc": "2026-07-10T18:25:37.6400991Z"
+    },
+    {
+      "scenario": "diagnostics.config",
+      "kind": "diagnostic-redacted-canary",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\diagnostics-canary\\config-diagnostic.json",
+      "relativePath": "diagnostics-canary/config-diagnostic.json",
+      "sha256": "8791ecf2cef6e4c0d0f5ad3aa10ceca3039acbabb8e0c72dea90ad4b076fe17a",
+      "size": 486,
+      "lastWriteTimeUtc": "2026-07-10T18:25:37.6165795Z"
+    },
+    {
+      "scenario": "diagnostics.screenshot",
+      "kind": "diagnostic-redacted-canary",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\diagnostics-canary\\screenshot-ocr.txt",
+      "relativePath": "diagnostics-canary/screenshot-ocr.txt",
+      "sha256": "b9d8587422747068f3e74e558fbef276322b90e234888402727eefbe91ac56a5",
+      "size": 42,
+      "lastWriteTimeUtc": "2026-07-10T18:25:37.6421119Z"
+    },
+    {
+      "scenario": "diagnostics.log",
+      "kind": "diagnostic-redacted-canary",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\diagnostics-canary\\application.log",
+      "relativePath": "diagnostics-canary/application.log",
+      "sha256": "a52087a24a8ca0d776ba24e4ea049f7711a0d2f9af032009c2ef3a7a741e7b37",
+      "size": 78,
+      "lastWriteTimeUtc": "2026-07-10T18:25:37.6304449Z"
+    },
+    {
+      "scenario": "diagnostics.secret-scan",
+      "kind": "secret-scan",
+      "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\artifact-secret-scan.json",
+      "relativePath": "artifact-secret-scan.json",
+      "sha256": "98d3db561e628c467c27b6b7b64263748cffe2f4e1c64b19340bb56ed919acfb",
+      "size": 288,
+      "lastWriteTimeUtc": "2026-07-10T18:25:40.7509382Z"
+    }
+  ],
+  "secretScan": {
+    "path": "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\artifact-secret-scan.json",
+    "findings": 0
+  },
+  "failClosedChecks": {
+    "missingRows": 0,
+    "failedCommands": 0,
+    "secretFindings": 0,
+    "session0Ui": false,
+    "staleCandidate": false
+  }
+}

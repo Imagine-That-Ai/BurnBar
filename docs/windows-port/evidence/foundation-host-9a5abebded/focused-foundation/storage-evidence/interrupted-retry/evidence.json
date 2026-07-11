@@ -1,0 +1,36 @@
+{
+  "name": "interrupted-retry",
+  "databasePath": "C:\\WINDOWS\\SystemTemp\\obb-storage-9bb8aa49e22141a2bd7d33fcb0dc31a6\\openburnbar.sqlite",
+  "databaseExists": true,
+  "encryptedHeader": true,
+  "walExists": false,
+  "shmExists": false,
+  "report": {
+    "DatabasePath": "C:\\WINDOWS\\SystemTemp\\obb-storage-9bb8aa49e22141a2bd7d33fcb0dc31a6\\openburnbar.sqlite",
+    "JournalPath": "C:\\WINDOWS\\SystemTemp\\obb-storage-9bb8aa49e22141a2bd7d33fcb0dc31a6\\openburnbar.sqlite.windows-migration-journal.json",
+    "RedactedLogPath": "C:\\WINDOWS\\SystemTemp\\obb-storage-9bb8aa49e22141a2bd7d33fcb0dc31a6\\openburnbar.sqlite.recovery.log",
+    "KeyProvenance": "protected-generated:openburnbar.windows.sqlcipher.passphrase",
+    "PathOwner": "WORKGROUP\\%COMPUTERNAME%$",
+    "CipherVersion": "4.5.2 community",
+    "SchemaEndpoint": "v54_provider_quota_snapshots",
+    "MigrationCount": 55,
+    "UserVersion": 0,
+    "SchemaHash": "79bc8290e924d1cb395bba3c93574cfbe5637187655879c63d82032e9f42a2b0",
+    "Created": false,
+    "RetriedInterruptedMigration": true
+  },
+  "recovery": {
+    "Kind": 3,
+    "Title": "Storage migration was interrupted before completion.",
+    "Message": "Retry will continue the transactional Windows migration journal from the recorded boundary.",
+    "Actions": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "DatabasePath": "C:\\WINDOWS\\SystemTemp\\obb-storage-9bb8aa49e22141a2bd7d33fcb0dc31a6\\openburnbar.sqlite",
+    "JournalPath": "C:\\WINDOWS\\SystemTemp\\obb-storage-9bb8aa49e22141a2bd7d33fcb0dc31a6\\openburnbar.sqlite.windows-migration-journal.json",
+    "RedactedLogPath": "C:\\WINDOWS\\SystemTemp\\obb-storage-9bb8aa49e22141a2bd7d33fcb0dc31a6\\openburnbar.sqlite.recovery.log"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "schema": "openburnbar.windows.candidate-import-verification.v1",
+  "verifiedAt": "2026-07-10T18:14:35.1701353Z",
+  "destinationRoot": "C:\\candidate-current",
+  "manifestPath": "C:\\Users\\Public\\candidate-9a5abebded05-run\\openburnbar-candidate-9a5abebded05.manifest.json",
+  "manifestSha256": "707c969f504c3bc58dddf844eb7def513cd769e9689b45f228f6fef39b190aa9",
+  "archivePath": "C:\\Users\\Public\\candidate-9a5abebded05-run\\openburnbar-candidate-9a5abebded05.tar.gz",
+  "archiveSha256": "0dc01f1b6fbd3436e98060541a47b890191b90df3028d4d3a59ea33c016647b0",
+  "source": {
+    "branch": "codex/windows-parity-foundation-exact-final",
+    "commit": "9a5abebded057f59729fff1bd731e94d97fd6c27",
+    "commitDate": "2026-07-10T13:10:07-05:00",
+    "parentCommits": [
+      "587d32296e8affcbd6445e9731158d3354fd5c0b"
+    ],
+    "ref": "HEAD",
+    "tree": "ecdc551805003ebf55b7ee7b1ff2009942475005"
+  },
+  "checkedFiles": 10372,
+  "expectedFiles": 10372,
+  "mismatches": [],
+  "status": "passed"
+}

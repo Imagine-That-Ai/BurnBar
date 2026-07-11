@@ -112,8 +112,10 @@
       render of that same logic.
     -->
     <ProjectReference Include="../OpenBurnBar.App.Presentation/OpenBurnBar.App.Presentation.csproj" />
+    <ProjectReference Include="../OpenBurnBar.App.UsageRuntime/OpenBurnBar.App.UsageRuntime.csproj" />
     <ProjectReference Include="../OpenBurnBar.App.Configuration/OpenBurnBar.App.Configuration.csproj" />
     <ProjectReference Include="../OpenBurnBar.App.CloudSync/OpenBurnBar.App.CloudSync.csproj" />
+    <ProjectReference Include="../../packaging/updater/OpenBurnBar.Updater.Windows/OpenBurnBar.Updater.Windows.csproj" />
     <ProjectReference Include="../../storage/OpenBurnBar.Storage/OpenBurnBar.Storage.csproj" />
     <!--
       Quota ACQUISITION layer (Wave 1 item 5): the portable sources + coordinator
@@ -164,6 +166,24 @@
     <ProjectReference Include="../../dist/OpenBurnBar.Dist.Hardening/OpenBurnBar.Dist.Hardening.csproj" />
   </ItemGroup>
 
+  <!-- Release builds inject the production feed pin from WINDOWS_UPDATE_PUBLIC_KEY. -->
+  <PropertyGroup>
+    <WindowsUpdatePublicKey Condition="'$(WindowsUpdatePublicKey)' == ''">$(WINDOWS_UPDATE_PUBLIC_KEY)</WindowsUpdatePublicKey>
+  </PropertyGroup>
+  <Target Name="InjectProductionUpdatePin" BeforeTargets="BeforeBuild" Condition="'$(WindowsUpdatePublicKey)' != ''">
+    <MakeDir Directories="$(TargetDir)Resources\Updates" />
+    <WriteLinesToFile
+      File="$(TargetDir)Resources\Updates\pinned-update-key.pub"
+      Lines="$(WindowsUpdatePublicKey)"
+      Overwrite="true"
+      Encoding="UTF-8" />
+    <WriteLinesToFile
+      File="$(TargetDir)Resources\Updates\pin-channel.txt"
+      Lines="production"
+      Overwrite="true"
+      Encoding="UTF-8" />
+  </Target>
+
   <!--
     Shared WebGL2 kernel backdrop field (AgentLens/Resources/KernelBackdrop/).
     Copied beside the exe so KernelBackdropHost can map a virtual host to the folder
@@ -185,6 +205,12 @@
     <Content Include="Assets\AppLogo-64.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\AppLogo.ico" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\ProviderLogos\*.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\packaging\updater\feed\latest-windows.json"
+             Link="Resources\Updates\latest-windows.json"
+             CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\packaging\updater\feed\pinned-update-key.pub"
+             Link="Resources\Updates\pinned-update-key.pub"
+             CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!--

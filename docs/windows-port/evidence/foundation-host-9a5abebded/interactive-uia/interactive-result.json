@@ -1,0 +1,944 @@
+{
+    "schema":  "openburnbar.windows.foundation-interactive-uia.v1",
+    "startedAtUtc":  "2026-07-10T18:21:09.4390757Z",
+    "completedAtUtc":  "2026-07-10T18:25:34.4380524Z",
+    "repoRoot":  "C:\\candidate-current",
+    "appExe":  "C:\\candidate-current\\windows\\app\\OpenBurnBar.App\\bin\\ARM64\\Debug\\net8.0-windows10.0.19041.0\\OpenBurnBar.App.exe",
+    "actor":  {
+                  "identitySha256":  "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+                  "sessionId":  1,
+                  "isSession0":  false
+              },
+    "scenarios":  [
+                      {
+                          "id":  "chat.executable.setup",
+                          "route":  "chat",
+                          "status":  "captured",
+                          "processId":  9888,
+                          "exitCode":  0,
+                          "actor":  {
+                                        "identitySha256":  "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+                                        "sessionId":  1
+                                    },
+                          "localAppData":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\profiles\\chat.executable.setup\\LocalAppData",
+                          "actions":  [
+                                          {
+                                              "action":  "findWindow",
+                                              "status":  "captured",
+                                              "processId":  9888
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.surface",
+                                                              "name":  "Chat",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Group",
+                                                              "value":  null
+                                                          }
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.executable.setup",
+                                                              "name":  "Chat CLI setup required.",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Text",
+                                                              "value":  null
+                                                          }
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.executable.path",
+                                                              "name":  "Chat executable path",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Edit",
+                                                              "value":  ""
+                                                          }
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.executable.approve",
+                                                              "name":  "Approve chat executable",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Button",
+                                                              "value":  null
+                                                          }
+                                          }
+                                      ],
+                          "artifacts":  [
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.setup\\uia-before.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.setup\\screenshot-before.png",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.setup\\route-smoke\\chat-result.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.setup\\route-smoke\\chat.png"
+                                        ]
+                      },
+                      {
+                          "id":  "chat.executable.approve",
+                          "route":  "chat",
+                          "status":  "captured",
+                          "processId":  4748,
+                          "exitCode":  0,
+                          "actor":  {
+                                        "identitySha256":  "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+                                        "sessionId":  1
+                                    },
+                          "localAppData":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\profiles\\chat.executable.approve\\LocalAppData",
+                          "actions":  [
+                                          {
+                                              "action":  "findWindow",
+                                              "status":  "captured",
+                                              "processId":  4748
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.surface",
+                                                              "name":  "Chat",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Group",
+                                                              "value":  null
+                                                          }
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.executable.path",
+                                                              "name":  "Chat executable path",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Edit",
+                                                              "value":  ""
+                                                          }
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.executable.approve",
+                                                              "name":  "Approve chat executable",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Button",
+                                                              "value":  null
+                                                          }
+                                          },
+                                          {
+                                              "action":  "scenarioAction",
+                                              "status":  "captured",
+                                              "result":  {
+                                                             "approvedPath":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.approve\\claude.exe",
+                                                             "observed":  {
+                                                                              "automationId":  "chat.executable.summary",
+                                                                              "name":  "claude -\u003e C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.approve\\claude.exe",
+                                                                              "isEnabled":  true,
+                                                                              "controlType":  "ControlType.Text",
+                                                                              "value":  null
+                                                                          }
+                                                         }
+                                          }
+                                      ],
+                          "artifacts":  [
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.approve\\uia-before.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.approve\\screenshot-before.png",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.approve\\uia-after.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.approve\\screenshot-after.png",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.approve\\route-smoke\\chat-result.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.approve\\route-smoke\\chat.png"
+                                        ]
+                      },
+                      {
+                          "id":  "chat.executable.rotate",
+                          "route":  "chat",
+                          "status":  "captured",
+                          "processId":  2896,
+                          "exitCode":  0,
+                          "actor":  {
+                                        "identitySha256":  "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+                                        "sessionId":  1
+                                    },
+                          "localAppData":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\profiles\\chat.executable.rotate\\LocalAppData",
+                          "actions":  [
+                                          {
+                                              "action":  "findWindow",
+                                              "status":  "captured",
+                                              "processId":  2896
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.surface",
+                                                              "name":  "Chat",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Group",
+                                                              "value":  null
+                                                          }
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.executable.path",
+                                                              "name":  "Chat executable path",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Edit",
+                                                              "value":  ""
+                                                          }
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.executable.approve",
+                                                              "name":  "Approve chat executable",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Button",
+                                                              "value":  null
+                                                          }
+                                          },
+                                          {
+                                              "action":  "scenarioAction",
+                                              "status":  "captured",
+                                              "result":  {
+                                                             "first":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.rotate\\claude.exe",
+                                                             "rotated":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.rotate\\claude-rotated.exe",
+                                                             "observed":  {
+                                                                              "automationId":  "chat.executable.summary",
+                                                                              "name":  "claude -\u003e C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.rotate\\claude-rotated.exe",
+                                                                              "isEnabled":  true,
+                                                                              "controlType":  "ControlType.Text",
+                                                                              "value":  null
+                                                                          }
+                                                         }
+                                          }
+                                      ],
+                          "artifacts":  [
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.rotate\\uia-before.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.rotate\\screenshot-before.png",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.rotate\\uia-after.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.rotate\\screenshot-after.png",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.rotate\\route-smoke\\chat-result.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.rotate\\route-smoke\\chat.png"
+                                        ]
+                      },
+                      {
+                          "id":  "chat.executable.remove",
+                          "route":  "chat",
+                          "status":  "captured",
+                          "processId":  8256,
+                          "exitCode":  0,
+                          "actor":  {
+                                        "identitySha256":  "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+                                        "sessionId":  1
+                                    },
+                          "localAppData":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\profiles\\chat.executable.remove\\LocalAppData",
+                          "actions":  [
+                                          {
+                                              "action":  "findWindow",
+                                              "status":  "captured",
+                                              "processId":  8256
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.surface",
+                                                              "name":  "Chat",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Group",
+                                                              "value":  null
+                                                          }
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.executable.path",
+                                                              "name":  "Chat executable path",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Edit",
+                                                              "value":  ""
+                                                          }
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.executable.approve",
+                                                              "name":  "Approve chat executable",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Button",
+                                                              "value":  null
+                                                          }
+                                          },
+                                          {
+                                              "action":  "scenarioAction",
+                                              "status":  "captured",
+                                              "result":  {
+                                                             "removedPath":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.remove\\claude.exe",
+                                                             "observed":  {
+                                                                              "automationId":  "chat.executable.setup",
+                                                                              "name":  "Chat CLI setup required.",
+                                                                              "isEnabled":  true,
+                                                                              "controlType":  "ControlType.Text",
+                                                                              "value":  null
+                                                                          }
+                                                         }
+                                          }
+                                      ],
+                          "artifacts":  [
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.remove\\uia-before.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.remove\\screenshot-before.png",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.remove\\uia-after.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.remove\\screenshot-after.png",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.remove\\route-smoke\\chat-result.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.remove\\route-smoke\\chat.png"
+                                        ]
+                      },
+                      {
+                          "id":  "chat.executable.denial.unapproved",
+                          "route":  "chat",
+                          "status":  "captured",
+                          "processId":  996,
+                          "exitCode":  0,
+                          "actor":  {
+                                        "identitySha256":  "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+                                        "sessionId":  1
+                                    },
+                          "localAppData":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\profiles\\chat.executable.denial.unapproved\\LocalAppData",
+                          "actions":  [
+                                          {
+                                              "action":  "findWindow",
+                                              "status":  "captured",
+                                              "processId":  996
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.surface",
+                                                              "name":  "Chat",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Group",
+                                                              "value":  null
+                                                          }
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.executable.setup",
+                                                              "name":  "Chat CLI setup required.",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Text",
+                                                              "value":  null
+                                                          }
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.executable.setupMessage",
+                                                              "name":  "Approve a CLI executable before starting a chat turn.",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Text",
+                                                              "value":  null
+                                                          }
+                                          }
+                                      ],
+                          "artifacts":  [
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.unapproved\\uia-before.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.unapproved\\screenshot-before.png",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.unapproved\\route-smoke\\chat-result.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.unapproved\\route-smoke\\chat.png"
+                                        ]
+                      },
+                      {
+                          "id":  "chat.executable.denial.missing",
+                          "route":  "chat",
+                          "status":  "captured",
+                          "processId":  8772,
+                          "exitCode":  0,
+                          "actor":  {
+                                        "identitySha256":  "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+                                        "sessionId":  1
+                                    },
+                          "localAppData":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\profiles\\chat.executable.denial.missing\\LocalAppData",
+                          "actions":  [
+                                          {
+                                              "action":  "findWindow",
+                                              "status":  "captured",
+                                              "processId":  8772
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.surface",
+                                                              "name":  "Chat",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Group",
+                                                              "value":  null
+                                                          }
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.executable.setup",
+                                                              "name":  "Approved chat executable is missing.",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Text",
+                                                              "value":  null
+                                                          }
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.executable.setupMessage",
+                                                              "name":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.missing.setup\\claude.exe",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Text",
+                                                              "value":  null
+                                                          }
+                                          }
+                                      ],
+                          "artifacts":  [
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.missing\\uia-before.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.missing\\screenshot-before.png",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.missing\\route-smoke\\chat-result.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.missing\\route-smoke\\chat.png"
+                                        ]
+                      },
+                      {
+                          "id":  "chat.executable.denial.replaced",
+                          "route":  "chat",
+                          "status":  "captured",
+                          "processId":  10164,
+                          "exitCode":  0,
+                          "actor":  {
+                                        "identitySha256":  "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+                                        "sessionId":  1
+                                    },
+                          "localAppData":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\profiles\\chat.executable.denial.replaced\\LocalAppData",
+                          "actions":  [
+                                          {
+                                              "action":  "findWindow",
+                                              "status":  "captured",
+                                              "processId":  10164
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.surface",
+                                                              "name":  "Chat",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Group",
+                                                              "value":  null
+                                                          }
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.executable.setup",
+                                                              "name":  "Approved chat executable was replaced.",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Text",
+                                                              "value":  null
+                                                          }
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.executable.setupMessage",
+                                                              "name":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.replaced.setup\\claude.exe",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Text",
+                                                              "value":  null
+                                                          }
+                                          }
+                                      ],
+                          "artifacts":  [
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.replaced\\uia-before.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.replaced\\screenshot-before.png",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.replaced\\route-smoke\\chat-result.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.executable.denial.replaced\\route-smoke\\chat.png"
+                                        ]
+                      },
+                      {
+                          "id":  "chat.history.unavailable",
+                          "route":  "chat",
+                          "status":  "captured",
+                          "processId":  2612,
+                          "exitCode":  0,
+                          "actor":  {
+                                        "identitySha256":  "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+                                        "sessionId":  1
+                                    },
+                          "localAppData":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\profiles\\chat.history.unavailable\\LocalAppData",
+                          "actions":  [
+                                          {
+                                              "action":  "findWindow",
+                                              "status":  "captured",
+                                              "processId":  2612
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.surface",
+                                                              "name":  "Chat",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Group",
+                                                              "value":  null
+                                                          }
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.history.degraded",
+                                                              "name":  "Chat history is unavailable.",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Text",
+                                                              "value":  null
+                                                          }
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.history.message",
+                                                              "name":  "Configuration field SqlCipherPassphraseRef references a missing protected secret.",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Text",
+                                                              "value":  null
+                                                          }
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.history.retry",
+                                                              "name":  "Retry chat history",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Button",
+                                                              "value":  null
+                                                          }
+                                          }
+                                      ],
+                          "artifacts":  [
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.unavailable\\uia-before.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.unavailable\\screenshot-before.png",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.unavailable\\route-smoke\\chat-result.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.unavailable\\route-smoke\\chat.png"
+                                        ]
+                      },
+                      {
+                          "id":  "chat.history.corrupt",
+                          "route":  "chat",
+                          "status":  "captured",
+                          "processId":  6964,
+                          "exitCode":  0,
+                          "actor":  {
+                                        "identitySha256":  "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+                                        "sessionId":  1
+                                    },
+                          "localAppData":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\profiles\\chat.history.corrupt\\LocalAppData",
+                          "actions":  [
+                                          {
+                                              "action":  "findWindow",
+                                              "status":  "captured",
+                                              "processId":  6964
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.surface",
+                                                              "name":  "Chat",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Group",
+                                                              "value":  null
+                                                          }
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.history.degraded",
+                                                              "name":  "Chat history needs recovery.",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Text",
+                                                              "value":  null
+                                                          }
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.history.message",
+                                                              "name":  "Retry, archive the damaged file for support, or reset only after explicit confirmation.",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Text",
+                                                              "value":  null
+                                                          }
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.history.retry",
+                                                              "name":  "Retry chat history",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Button",
+                                                              "value":  null
+                                                          }
+                                          }
+                                      ],
+                          "artifacts":  [
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.corrupt\\uia-before.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.corrupt\\screenshot-before.png",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.corrupt\\route-smoke\\chat-result.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.corrupt\\route-smoke\\chat.png"
+                                        ]
+                      },
+                      {
+                          "id":  "chat.history.locked",
+                          "route":  "chat",
+                          "status":  "captured",
+                          "processId":  8556,
+                          "exitCode":  0,
+                          "actor":  {
+                                        "identitySha256":  "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+                                        "sessionId":  1
+                                    },
+                          "localAppData":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\profiles\\chat.history.locked\\LocalAppData",
+                          "actions":  [
+                                          {
+                                              "action":  "findWindow",
+                                              "status":  "captured",
+                                              "processId":  8556
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.surface",
+                                                              "name":  "Chat",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Group",
+                                                              "value":  null
+                                                          }
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.history.degraded",
+                                                              "name":  "Chat history access was denied.",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Text",
+                                                              "value":  null
+                                                          }
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.history.message",
+                                                              "name":  "Fix folder permissions or choose a writable profile path, then retry.",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Text",
+                                                              "value":  null
+                                                          }
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.history.retry",
+                                                              "name":  "Retry chat history",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Button",
+                                                              "value":  null
+                                                          }
+                                          }
+                                      ],
+                          "artifacts":  [
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.locked\\uia-before.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.locked\\screenshot-before.png",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.locked\\route-smoke\\chat-result.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.locked\\route-smoke\\chat.png"
+                                        ]
+                      },
+                      {
+                          "id":  "chat.history.retry",
+                          "route":  "chat",
+                          "status":  "captured",
+                          "processId":  3508,
+                          "exitCode":  0,
+                          "actor":  {
+                                        "identitySha256":  "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+                                        "sessionId":  1
+                                    },
+                          "localAppData":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\profiles\\chat.history.retry\\LocalAppData",
+                          "actions":  [
+                                          {
+                                              "action":  "findWindow",
+                                              "status":  "captured",
+                                              "processId":  3508
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.surface",
+                                                              "name":  "Chat",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Group",
+                                                              "value":  null
+                                                          }
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.history.degraded",
+                                                              "name":  "Chat history needs recovery.",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Text",
+                                                              "value":  null
+                                                          }
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.history.retry",
+                                                              "name":  "Retry chat history",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Button",
+                                                              "value":  null
+                                                          }
+                                          },
+                                          {
+                                              "action":  "scenarioAction",
+                                              "status":  "captured",
+                                              "result":  {
+                                                             "invoked":  "chat.history.retry",
+                                                             "observed":  {
+                                                                              "automationId":  "chat.history.degraded",
+                                                                              "name":  "Chat history needs recovery.",
+                                                                              "isEnabled":  true,
+                                                                              "controlType":  "ControlType.Text",
+                                                                              "value":  null
+                                                                          }
+                                                         }
+                                          }
+                                      ],
+                          "artifacts":  [
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.retry\\uia-before.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.retry\\screenshot-before.png",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.retry\\uia-after.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.retry\\screenshot-after.png",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.retry\\route-smoke\\chat-result.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.history.retry\\route-smoke\\chat.png"
+                                        ]
+                      },
+                      {
+                          "id":  "chat.restart.process",
+                          "route":  "chat",
+                          "status":  "captured",
+                          "processId":  812,
+                          "exitCode":  0,
+                          "actor":  {
+                                        "identitySha256":  "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+                                        "sessionId":  1
+                                    },
+                          "localAppData":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\profiles\\chat.restart\\LocalAppData",
+                          "actions":  [
+                                          {
+                                              "action":  "findWindow",
+                                              "status":  "captured",
+                                              "processId":  812
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.surface",
+                                                              "name":  "Chat",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Group",
+                                                              "value":  null
+                                                          }
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.executable.path",
+                                                              "name":  "Chat executable path",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Edit",
+                                                              "value":  ""
+                                                          }
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.input",
+                                                              "name":  "Message OpenBurnBar",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Edit",
+                                                              "value":  ""
+                                                          }
+                                          },
+                                          {
+                                              "action":  "scenarioAction",
+                                              "status":  "captured",
+                                              "result":  {
+                                                             "submitted":  "durable restart marker",
+                                                             "observed":  {
+                                                                              "automationId":  "chat.messages",
+                                                                              "name":  "Chat messages",
+                                                                              "isEnabled":  true,
+                                                                              "controlType":  "ControlType.Pane",
+                                                                              "value":  null
+                                                                          }
+                                                         }
+                                          }
+                                      ],
+                          "artifacts":  [
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.restart.process\\uia-before.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.restart.process\\screenshot-before.png",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.restart.process\\uia-after.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.restart.process\\screenshot-after.png",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.restart.process\\route-smoke\\chat-result.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.restart.process\\route-smoke\\chat.png"
+                                        ]
+                      },
+                      {
+                          "id":  "chat.restart.durable-rehydrate",
+                          "route":  "chat",
+                          "status":  "captured",
+                          "processId":  4644,
+                          "exitCode":  0,
+                          "actor":  {
+                                        "identitySha256":  "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+                                        "sessionId":  1
+                                    },
+                          "localAppData":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\profiles\\chat.restart\\LocalAppData",
+                          "actions":  [
+                                          {
+                                              "action":  "findWindow",
+                                              "status":  "captured",
+                                              "processId":  4644
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.surface",
+                                                              "name":  "Chat",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Group",
+                                                              "value":  null
+                                                          }
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.messages",
+                                                              "name":  "Chat messages",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Pane",
+                                                              "value":  null
+                                                          }
+                                          }
+                                      ],
+                          "artifacts":  [
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.restart.durable-rehydrate\\uia-before.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.restart.durable-rehydrate\\screenshot-before.png",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.restart.durable-rehydrate\\route-smoke\\chat-result.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.restart.durable-rehydrate\\route-smoke\\chat.png"
+                                        ]
+                      },
+                      {
+                          "id":  "chat.attachment.paste",
+                          "route":  "chat",
+                          "status":  "captured",
+                          "processId":  8000,
+                          "exitCode":  0,
+                          "actor":  {
+                                        "identitySha256":  "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+                                        "sessionId":  1
+                                    },
+                          "localAppData":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\profiles\\chat.attachment.paste\\LocalAppData",
+                          "actions":  [
+                                          {
+                                              "action":  "findWindow",
+                                              "status":  "captured",
+                                              "processId":  8000
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.surface",
+                                                              "name":  "Chat",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Group",
+                                                              "value":  null
+                                                          }
+                                          },
+                                          {
+                                              "action":  "requireAutomationId",
+                                              "status":  "captured",
+                                              "element":  {
+                                                              "automationId":  "chat.input",
+                                                              "name":  "Message OpenBurnBar",
+                                                              "isEnabled":  true,
+                                                              "controlType":  "ControlType.Edit",
+                                                              "value":  ""
+                                                          }
+                                          },
+                                          {
+                                              "action":  "scenarioAction",
+                                              "status":  "captured",
+                                              "result":  {
+                                                             "observed":  {
+                                                                              "automationId":  "chat.attachments.pending",
+                                                                              "name":  "pasted-text.txt",
+                                                                              "isEnabled":  true,
+                                                                              "controlType":  "ControlType.Text",
+                                                                              "value":  null
+                                                                          }
+                                                         }
+                                          }
+                                      ],
+                          "artifacts":  [
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.attachment.paste\\uia-before.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.attachment.paste\\screenshot-before.png",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.attachment.paste\\uia-after.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.attachment.paste\\screenshot-after.png",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.attachment.paste\\route-smoke\\chat-result.json",
+                                            "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\interactive-uia\\scenarios\\chat.attachment.paste\\route-smoke\\chat.png"
+                                        ]
+                      }
+                  ]
+}

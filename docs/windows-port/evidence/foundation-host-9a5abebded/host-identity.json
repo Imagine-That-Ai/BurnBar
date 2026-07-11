@@ -1,0 +1,28 @@
+{
+    "schema":  "openburnbar.windows.foundation-host-identity.v1",
+    "capturedAtUtc":  "2026-07-10T18:16:42.9371971Z",
+    "vmIdentitySha256":  "1b0a8fa086ef0afceec7c0d6fc45f692176bce8fbedc45d7fc49f3fa9881c26d",
+    "computerIdentitySha256":  "76bb389608f724477ed282a87c3b67fc2f75b2dba3312b6812a39cd162122e32",
+    "osCaption":  "Microsoft Windows 11 Pro",
+    "osVersion":  "10.0.26200",
+    "osArchitecture":  "ARM 64-bit Processor",
+    "manufacturer":  "QEMU",
+    "model":  "QEMU Virtual Machine",
+    "currentIdentitySha256":  "08c7070d6ab952a7b4ba1cc4a19de45b839518586f290098c71a868e42006c80",
+    "currentSessionId":  0,
+    "activeConsoleSessionId":  1,
+    "processorArchitecture":  "AMD64",
+    "processArchitecture":  "X64",
+    "platform":  "ARM64",
+    "dotnet":  "10.0.301",
+    "candidate":  {
+                      "branch":  "codex/windows-parity-foundation-exact-final",
+                      "commit":  "9a5abebded057f59729fff1bd731e94d97fd6c27",
+                      "commitDate":  "2026-07-10T13:10:07-05:00",
+                      "parentCommits":  [
+                                            "587d32296e8affcbd6445e9731158d3354fd5c0b"
+                                        ],
+                      "ref":  "HEAD",
+                      "tree":  "ecdc551805003ebf55b7ee7b1ff2009942475005"
+                  }
+}

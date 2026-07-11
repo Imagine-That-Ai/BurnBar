@@ -323,19 +323,28 @@ public sealed class AppConfiguration
 
     private void RegisterReferencedSecretsForRedaction(AppConfigurationModel model)
     {
-        foreach (string? reference in new[]
+        foreach ((string? Reference, bool IsStorageKey) item in new[]
         {
-            model.SqlCipherPassphraseRef,
-            model.FirebaseIdTokenRef,
-            model.AppCheckTokenRef,
-            model.VaultKeyB64Ref,
+            (model.SqlCipherPassphraseRef, true),
+            (model.FirebaseIdTokenRef, false),
+            (model.AppCheckTokenRef, false),
+            (model.VaultKeyB64Ref, false),
         })
         {
+            string? reference = item.Reference;
             if (!string.IsNullOrWhiteSpace(reference))
             {
                 string? secret = _secretStore.Read(reference);
                 if (secret is null)
                 {
+                    if (item.IsStorageKey)
+                    {
+                        _securityState = new(
+                            AppConfigurationSecurityStatus.ProtectedStorageUnavailable,
+                            "The SQLCipher key reference is missing from protected storage.");
+                        continue;
+                    }
+
                     throw new SecretStoreException(
                         SecretStoreFailureKind.SecretMissing,
                         "Configuration references a missing protected secret.",

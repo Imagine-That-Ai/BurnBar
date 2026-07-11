@@ -1,0 +1,7 @@
+{
+    "name":  "app-storage-provisioning-recovery",
+    "command":  "dotnet test windows\\tests\\storage\\OpenBurnBar.App.Storage.Tests.csproj --logger trx;LogFileName=app-storage.trx",
+    "exitCode":  0,
+    "log":  "C:\\Users\\Public\\openburnbar-foundation-evidence-9a5abebded05\\focused-foundation\\storage-evidence\\app-storage-provisioning-recovery.log",
+    "completedAt":  "2026-07-10T18:20:04.6982373Z"
+}
