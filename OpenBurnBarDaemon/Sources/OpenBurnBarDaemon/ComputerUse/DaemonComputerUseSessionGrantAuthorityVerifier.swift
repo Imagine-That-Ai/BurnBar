@@ -145,6 +145,10 @@ public actor DaemonComputerUseSessionGrantAuthorityVerifier {
         }
     }
 
+    public func isOperational() -> Bool {
+        replayStoreHealthy
+    }
+
     private func reject(
         _ failure: VerificationFailure,
         request: HermesRealtimeRelayAgentGrantRequest

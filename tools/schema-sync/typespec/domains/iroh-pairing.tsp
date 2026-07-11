@@ -38,7 +38,9 @@ model IrohControllerRouteChallengeDoc {
   sourceDeviceId: string;
   transportNodeId: string;
   authorityPeerNodeId: string;
+  proofKind: string;
   expectedPriorGeneration: int64;
+  expectedRegisteredAtMillis?: int64;
   registrationGeneration: int64;
   canonicalPayloadBase64: string;
   issuedAtMillis: int64;

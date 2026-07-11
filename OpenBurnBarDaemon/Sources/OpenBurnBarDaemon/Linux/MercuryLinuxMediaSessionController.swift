@@ -74,6 +74,7 @@ public actor MercuryLinuxMediaSessionController {
     private var outboundFrameIndex: UInt32 = 0
     private var captureFrameQueue: MercuryLinuxCaptureFrameQueue?
     private var captureFrameConsumerTask: Task<Void, Never>?
+    private var fileTransferTasks: [String: Task<Void, Never>] = [:]
 
     public init(
         channel: MercuryLinuxMediaChannel? = nil,
@@ -104,6 +105,8 @@ public actor MercuryLinuxMediaSessionController {
     }
 
     public func stop() {
+        fileTransferTasks.values.forEach { $0.cancel() }
+        fileTransferTasks.removeAll()
         stopCaptureFramePump()
         captureAdapter.stopOutboundCapture()
         captureEngine.stop()
@@ -119,6 +122,46 @@ public actor MercuryLinuxMediaSessionController {
         outboundGOPID = 0
         outboundFrameIndex = 0
         updatedAt = Date()
+    }
+
+    public func routeEnded(
+        uid: String,
+        connectionID: String,
+        remotePeerNodeID: String,
+        reason: String
+    ) {
+        let matches: (MercuryControlRoute?) -> Bool = { route in
+            route?.uid == uid
+                && route?.connectionID == connectionID
+                && route?.remotePeerNodeID?.lowercased() == remotePeerNodeID.lowercased()
+        }
+        let pendingMatches = pending.map {
+            $0.uid == uid && $0.connectionID == connectionID
+                && $0.remotePeerNodeID?.lowercased() == remotePeerNodeID.lowercased()
+        } ?? false
+        let activeMatches = active.map {
+            $0.uid == uid && $0.connectionID == connectionID
+                && $0.remotePeerNodeID?.lowercased() == remotePeerNodeID.lowercased()
+        } ?? false
+        if pendingMatches || activeMatches {
+            transitionToCooldown(reason: reason)
+        }
+        if matches(lastControlRoute) { lastControlRoute = nil }
+        let endedAt = Date()
+        for (transferID, var record) in fileTransfers where matches(record.route) {
+            fileTransferTasks.removeValue(forKey: transferID)?.cancel()
+            record.route = nil
+            if record.phase == .pendingAccept || record.phase == .downloading
+                || record.phase == .sending || record.phase == .offered {
+                record.phase = .failed
+                record.errorCode = .noControlRoute
+                record.detail = "Controller route ended."
+                record.updatedAt = endedAt
+                record.completedAt = endedAt
+            }
+            fileTransfers[transferID] = record
+        }
+        updatedAt = endedAt
     }
 
     public func setMediaFrameSealKey(_ key: PlatformSymmetricKey?) {
@@ -535,9 +578,10 @@ public actor MercuryLinuxMediaSessionController {
         record.progress = Self.progress(bytesTransferred: 0, bytesTotal: record.size)
         fileTransfers[transferID] = record
 
-        Task { [transferID, destinationURL] in
+        let task = Task { [transferID, destinationURL] in
             await self.performAcceptedFileDownload(transferID: transferID, destinationURL: destinationURL)
         }
+        fileTransferTasks[transferID] = task
 
         return DaemonMediaFileActionResponse(accepted: true, transfer: snapshot(for: record))
     }
@@ -642,7 +686,7 @@ public actor MercuryLinuxMediaSessionController {
         fileTransfers[transferID] = record
         transferIDsByManifestID[manifest.manifestId] = transferID
 
-        Task { [service, transferID, fileURL, peerDeviceID = request.peerID, route] in
+        let task = Task { [service, transferID, fileURL, peerDeviceID = request.peerID, route] in
             await self.performOutboundFileSend(
                 transferID: transferID,
                 fileURL: fileURL,
@@ -651,6 +695,7 @@ public actor MercuryLinuxMediaSessionController {
                 service: service
             )
         }
+        fileTransferTasks[transferID] = task
 
         return DaemonMediaFileActionResponse(accepted: true, transfer: snapshot(for: record))
     }
@@ -758,6 +803,7 @@ public actor MercuryLinuxMediaSessionController {
     }
 
     private func performAcceptedFileDownload(transferID: String, destinationURL: URL) async {
+        defer { fileTransferTasks.removeValue(forKey: transferID) }
         guard let service = fileTransferService,
               let record = fileTransfers[transferID],
               let ticket = record.ticketText else {
@@ -781,6 +827,7 @@ public actor MercuryLinuxMediaSessionController {
                 manifest: manifest,
                 destinationURL: destinationURL
             )
+            try Task.checkCancellation()
             let completedBytes = Int64(max(
                 result.stats.bytesTotal,
                 UInt64(max(0, Self.fileSize(at: result.destinationURL)))
@@ -798,6 +845,7 @@ public actor MercuryLinuxMediaSessionController {
             await sendFileAck(route: route, manifest: manifest, status: .received, reason: nil)
         } catch {
             try? FileManager.default.removeItem(at: destinationURL)
+            guard Task.isCancelled == false else { return }
             var failed = fileTransfers[transferID] ?? record
             let now = Date()
             failed.phase = .failed
@@ -817,8 +865,10 @@ public actor MercuryLinuxMediaSessionController {
         route: MercuryControlRoute,
         service: MediaFileTransferService
     ) async {
+        defer { fileTransferTasks.removeValue(forKey: transferID) }
         do {
             let publish = try await service.publish(localFile: fileURL, peerDeviceID: peerDeviceID)
+            try Task.checkCancellation()
             let frame = HermesRealtimeRelayFrame(
                 type: .mediaBlobAdvertise,
                 uid: route.uid,
@@ -858,11 +908,16 @@ public actor MercuryLinuxMediaSessionController {
             if let record {
                 fileTransfers[transferID] = record
             }
+        } catch is CancellationError {
+            return
         } catch let error as MediaFileTransferService.ServiceError {
+            guard Task.isCancelled == false else { return }
             markOutboundTransferFailed(transferID: transferID, errorCode: Self.errorCode(for: error))
         } catch FileTransferRuntimeError.noControlRoute {
+            guard Task.isCancelled == false else { return }
             markOutboundTransferFailed(transferID: transferID, errorCode: .noControlRoute)
         } catch {
+            guard Task.isCancelled == false else { return }
             markOutboundTransferFailed(transferID: transferID, errorCode: .publishFailed)
         }
     }
@@ -1154,6 +1209,7 @@ public actor MercuryLinuxMediaSessionController {
         errorCode: DaemonMediaFileTransferErrorCode
     ) {
         guard var record = fileTransfers[transferID] else { return }
+        guard record.phase != .failed || record.errorCode == nil else { return }
         let now = Date()
         record.phase = .failed
         record.errorCode = errorCode

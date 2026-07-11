@@ -801,8 +801,11 @@ enum ComputerUseSecurityCallableClient {
               resolvedAtMillis >= nowMillis - 60_000,
               resolvedAtMillis <= nowMillis + 30_000,
               let routes = response["routes"] as? [[String: Any]],
-              routes.count == 1,
-              let route = routes.first,
+              routes.count <= 1 else {
+            throw ClientError.invalidResponse("Active iroh controller-route resolution was malformed or stale.")
+        }
+        guard let route = routes.first else { return [] }
+        guard
               route["connectionId"] as? String == expectedConnectionId,
               let sourceDeviceId = route["sourceDeviceId"] as? String,
               let transportNodeId = route["transportNodeId"] as? String,

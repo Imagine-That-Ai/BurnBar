@@ -47,6 +47,88 @@ final class HermesIrohRelayHostClientMattersTests: XCTestCase {
     }
 
     @MainActor
+    func test_stopDuringSuspendedStartCannotResurrectRuntime() async throws {
+        let directory = InMemoryIrohPairingDirectory()
+        let transport = ControlledStartIrohRelayTransport(nodeId: "node-suspended")
+        let client = makeClient(
+            directory: directory,
+            transportFactory: { _ in transport }
+        )
+
+        let startTask = Task { await client.start(uid: uid, connectionID: connectionID) }
+        try await waitUntil { await transport.hasEnteredStart }
+        client.stop()
+        await transport.releaseStart()
+
+        let didStart = await startTask.value
+        XCTAssertFalse(didStart)
+        try await waitUntil { await transport.shutdownCount > 0 }
+        XCTAssertFalse(client.isReady)
+        let pairingRecord = try await directory.fetch(uid: uid, connectionId: connectionID)
+        XCTAssertNil(pairingRecord)
+    }
+
+    @MainActor
+    func test_stopDuringSuspendedRefreshCannotRepublishPairingRecord() async throws {
+        let directory = InMemoryIrohPairingDirectory()
+        let publicKeyPublisher = ControlledIrohPairingPublicKeyPublisher(suspendOnCallIndex: 1)
+        let client = makeClient(
+            directory: directory,
+            publicKeyPublisher: publicKeyPublisher
+        )
+        let didStart = await client.start(uid: uid, connectionID: connectionID)
+        XCTAssertTrue(didStart)
+        let pairingRecord = try await directory.fetch(uid: uid, connectionId: connectionID)
+        XCTAssertNotNil(pairingRecord)
+
+        let refreshTask = Task { await client.start(uid: uid, connectionID: connectionID) }
+        try await waitUntil { await publicKeyPublisher.callCount == 2 }
+        client.stop()
+        await publicKeyPublisher.releaseSuspendedPublish()
+
+        let didRefresh = await refreshTask.value
+        XCTAssertFalse(didRefresh)
+        try await waitUntil {
+            try await directory.fetch(uid: self.uid, connectionId: self.connectionID) == nil
+        }
+        XCTAssertFalse(client.isReady)
+    }
+
+    @MainActor
+    func test_ambiguousRefreshPublicationFailsClosedAndRevokesRuntime() async throws {
+        let nodeId = String(repeating: "7", count: 64)
+        let nowMillis = Int64(Date().timeIntervalSince1970 * 1_000)
+        let policy = IrohInboundPeerPolicy(routeBindings: [try makeBinding(
+            nodeId: nodeId,
+            generation: 4,
+            registeredAtMillis: nowMillis - 1_000,
+            expiresAtMillis: nowMillis + 60_000
+        )])
+        let directory = ApplyThenThrowPairingDirectory(failOnPublishCallIndex: 1)
+        let stream = BlockingHostTestStream(remotePeerNodeId: nodeId)
+        let transport = SingleInboundStreamTransport(stream: stream)
+        let client = makeClient(
+            directory: directory,
+            inboundPeerPolicyLoader: { _, _ in .authoritative(policy) },
+            transportFactory: { _ in transport }
+        )
+        let didStart = await client.start(uid: uid, connectionID: connectionID)
+        XCTAssertTrue(didStart)
+        try await waitUntil { client.activeAuthorizedStreamCount == 1 }
+
+        let didRefresh = await client.start(uid: uid, connectionID: connectionID)
+        XCTAssertFalse(didRefresh)
+
+        try await waitUntil { await stream.isClosed }
+        XCTAssertFalse(client.isReady)
+        XCTAssertEqual(client.activeAuthorizedStreamCount, 0)
+        let pairingRecord = try await directory.fetch(uid: uid, connectionId: connectionID)
+        XCTAssertNil(pairingRecord)
+        let revokeAttemptCount = await directory.revokeAttemptCount
+        XCTAssertGreaterThanOrEqual(revokeAttemptCount, 1)
+    }
+
+    @MainActor
     func test_allowlistMissRefreshesOnceAndAdmitsNewServerRoute() async throws {
         let nodeId = String(repeating: "a", count: 64)
         let nowMillis = Int64(Date().timeIntervalSince1970 * 1_000)
@@ -234,6 +316,93 @@ final class HermesIrohRelayHostClientMattersTests: XCTestCase {
         XCTAssertTrue(didApplyReplacement)
         try await waitUntil { await stream.isClosed }
         XCTAssertTrue(client.isInboundPeerAllowed(remotePeerNodeId: nodeId))
+        client.stop()
+    }
+
+    @MainActor
+    func test_sameGenerationLeaseExtensionKeepsStreamUntilExtendedExpiry() async throws {
+        let nodeId = String(repeating: "e", count: 64)
+        let nowMillis = Int64(Date().timeIntervalSince1970 * 1_000)
+        let initialExpiry = nowMillis + 60_000
+        let extendedExpiry = nowMillis + 120_000
+        let initialPolicy = IrohInboundPeerPolicy(routeBindings: [try makeBinding(
+            nodeId: nodeId,
+            generation: 7,
+            registeredAtMillis: nowMillis - 1_000,
+            expiresAtMillis: initialExpiry
+        )])
+        let extendedPolicy = IrohInboundPeerPolicy(routeBindings: [try makeBinding(
+            nodeId: nodeId,
+            generation: 7,
+            registeredAtMillis: nowMillis - 1_000,
+            expiresAtMillis: extendedExpiry
+        )])
+        let loader = ControlledInboundPolicyLoader(immediate: [
+            0: .authoritative(initialPolicy),
+            1: .authoritative(extendedPolicy)
+        ])
+        let stream = BlockingHostTestStream(remotePeerNodeId: nodeId)
+        let transport = SingleInboundStreamTransport(stream: stream)
+        let client = makeClient(
+            directory: InMemoryIrohPairingDirectory(),
+            inboundPeerPolicyLoader: { uid, connectionID in
+                await loader.load(uid: uid, connectionID: connectionID)
+            },
+            transportFactory: { _ in transport }
+        )
+        let didStart = await client.start(uid: uid, connectionID: connectionID)
+        XCTAssertTrue(didStart)
+        try await waitUntil { client.activeAuthorizedStreamCount == 1 }
+
+        let didRefresh = await client.refreshInboundPeerPolicy(uid: uid, connectionID: connectionID)
+        XCTAssertTrue(didRefresh)
+        await client.enforceInboundPeerExpiry(atMillis: initialExpiry)
+        let streamClosedAtInitialExpiry = await stream.isClosed
+        XCTAssertFalse(streamClosedAtInitialExpiry)
+        XCTAssertEqual(client.activeAuthorizedStreamCount, 1)
+
+        await client.enforceInboundPeerExpiry(atMillis: extendedExpiry)
+        try await waitUntil { await stream.isClosed }
+        client.stop()
+    }
+
+    @MainActor
+    func test_sameGenerationRegisteredAtMutationClosesAuthorizedStream() async throws {
+        let nodeId = String(repeating: "f", count: 64)
+        let nowMillis = Int64(Date().timeIntervalSince1970 * 1_000)
+        let initialPolicy = IrohInboundPeerPolicy(routeBindings: [try makeBinding(
+            nodeId: nodeId,
+            generation: 7,
+            registeredAtMillis: nowMillis - 1_000,
+            expiresAtMillis: nowMillis + 60_000
+        )])
+        let mutatedPolicy = IrohInboundPeerPolicy(routeBindings: [try makeBinding(
+            nodeId: nodeId,
+            generation: 7,
+            registeredAtMillis: nowMillis,
+            expiresAtMillis: nowMillis + 120_000
+        )])
+        let loader = ControlledInboundPolicyLoader(immediate: [
+            0: .authoritative(initialPolicy),
+            1: .authoritative(mutatedPolicy)
+        ])
+        let stream = BlockingHostTestStream(remotePeerNodeId: nodeId)
+        let transport = SingleInboundStreamTransport(stream: stream)
+        let client = makeClient(
+            directory: InMemoryIrohPairingDirectory(),
+            inboundPeerPolicyLoader: { uid, connectionID in
+                await loader.load(uid: uid, connectionID: connectionID)
+            },
+            transportFactory: { _ in transport }
+        )
+        let didStart = await client.start(uid: uid, connectionID: connectionID)
+        XCTAssertTrue(didStart)
+        try await waitUntil { client.activeAuthorizedStreamCount == 1 }
+
+        let didRefresh = await client.refreshInboundPeerPolicy(uid: uid, connectionID: connectionID)
+        XCTAssertTrue(didRefresh)
+        try await waitUntil { await stream.isClosed }
+        XCTAssertEqual(client.activeAuthorizedStreamCount, 0)
         client.stop()
     }
 
@@ -453,6 +622,7 @@ final class HermesIrohRelayHostClientMattersTests: XCTestCase {
     @MainActor
     private func makeClient(
         directory: any IrohPairingDirectory,
+        publicKeyPublisher: IrohPairingPublicKeyPublishing = NoopIrohPairingPublicKeyPublisher(),
         inboundPeerPolicyLoader: @escaping @Sendable (String, String) async -> IrohInboundPeerPolicyLoadResult = { _, _ in
             .authoritative(IrohInboundPeerPolicy(allowedPeerNodeIds: []))
         },
@@ -474,7 +644,7 @@ final class HermesIrohRelayHostClientMattersTests: XCTestCase {
                 account: "host"
             ),
             directory: directory,
-            publicKeyPublisher: NoopIrohPairingPublicKeyPublisher(),
+            publicKeyPublisher: publicKeyPublisher,
             auditLogger: NoopIrohTransportAuditLogger(),
             inboundPeerPolicyLoader: inboundPeerPolicyLoader,
             pairingPublishInterval: 3_600,
@@ -692,6 +862,41 @@ private actor FlakyRevokeDirectory: IrohPairingDirectory {
     enum RevokeFault: Error { case transient }
 }
 
+private actor ApplyThenThrowPairingDirectory: IrohPairingDirectory {
+    private var store: [String: IrohPairingRecord] = [:]
+    private let failOnPublishCallIndex: Int
+    private var publishCallCount = 0
+    private(set) var revokeAttemptCount = 0
+
+    init(failOnPublishCallIndex: Int) {
+        self.failOnPublishCallIndex = failOnPublishCallIndex
+    }
+
+    func publish(_ record: IrohPairingRecord, for uid: String) async throws {
+        let callIndex = publishCallCount
+        publishCallCount += 1
+        store[key(uid: uid, connectionId: record.connectionId)] = record
+        if callIndex == failOnPublishCallIndex {
+            throw PublishFault.appliedThenFailed
+        }
+    }
+
+    func fetch(uid: String, connectionId: String) async throws -> IrohPairingRecord? {
+        store[key(uid: uid, connectionId: connectionId)]
+    }
+
+    func revoke(uid: String, connectionId: String) async throws {
+        revokeAttemptCount += 1
+        store.removeValue(forKey: key(uid: uid, connectionId: connectionId))
+    }
+
+    private func key(uid: String, connectionId: String) -> String {
+        "\(uid)::\(connectionId)"
+    }
+
+    enum PublishFault: Error { case appliedThenFailed }
+}
+
 /// Directory that always rejects writes/revokes as unsupported — models the
 /// iOS read-only reader being wired into a host path by mistake.
 private actor ReaderOnlyDirectory: IrohPairingDirectory {
@@ -765,8 +970,68 @@ private final class StubIrohRelayTransport: IrohRelayTransport, @unchecked Senda
     func shutdown() async {}
 }
 
+private actor ControlledStartIrohRelayTransport: IrohRelayTransport {
+    private let identity: IrohEndpointIdentity
+    private var startContinuation: CheckedContinuation<IrohEndpointIdentity, Never>?
+    private(set) var hasEnteredStart = false
+    private(set) var shutdownCount = 0
+
+    init(nodeId: String) {
+        identity = IrohEndpointIdentity(
+            nodeId: nodeId,
+            rawPublicKey: Data(repeating: 0xCD, count: 32),
+            relayURL: "https://relay.example/",
+            directAddresses: ["127.0.0.1:4321"]
+        )
+    }
+
+    func start() async throws -> IrohEndpointIdentity {
+        hasEnteredStart = true
+        return await withCheckedContinuation { startContinuation = $0 }
+    }
+
+    func releaseStart() {
+        startContinuation?.resume(returning: identity)
+        startContinuation = nil
+    }
+
+    func connect(to target: IrohDialTarget, timeout: TimeInterval) async throws -> any IrohRelayStream {
+        throw IrohRelayTransportError.endpointNotReady
+    }
+
+    func accept(timeout: TimeInterval) async throws -> any IrohRelayStream {
+        throw IrohRelayTransportError.shutdown
+    }
+
+    func shutdown() async {
+        shutdownCount += 1
+    }
+}
+
 private actor NoopIrohPairingPublicKeyPublisher: IrohPairingPublicKeyPublishing {
     func publish(uid: String, deviceId: String, publicKeyBase64: String) async throws {}
+}
+
+private actor ControlledIrohPairingPublicKeyPublisher: IrohPairingPublicKeyPublishing {
+    private let suspendOnCallIndex: Int
+    private var suspendedContinuation: CheckedContinuation<Void, Never>?
+    private(set) var callCount = 0
+
+    init(suspendOnCallIndex: Int) {
+        self.suspendOnCallIndex = suspendOnCallIndex
+    }
+
+    func publish(uid _: String, deviceId _: String, publicKeyBase64 _: String) async throws {
+        let callIndex = callCount
+        callCount += 1
+        guard callIndex == suspendOnCallIndex else { return }
+        await withCheckedContinuation { suspendedContinuation = $0 }
+    }
+
+    func releaseSuspendedPublish() {
+        suspendedContinuation?.resume()
+        suspendedContinuation = nil
+    }
 }
 
 private actor NoopIrohTransportAuditLogger: IrohTransportAuditLogging {

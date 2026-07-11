@@ -34,7 +34,97 @@ private actor PlaywrightFactoryLatch {
     }
 }
 
+private actor EndedSessionRecorder {
+    private var sessionIDs: [String] = []
+
+    func append(_ sessionID: String) {
+        sessionIDs.append(sessionID)
+    }
+
+    var recordedSessionIDs: [String] {
+        sessionIDs
+    }
+}
+
+private actor ControlledApprovalPublisher {
+    private var entered = false
+    private var finished = false
+    private var enteredWaiters: [CheckedContinuation<Void, Never>] = []
+    private var finishedWaiters: [CheckedContinuation<Void, Never>] = []
+    private var releaseContinuation: CheckedContinuation<Void, Never>?
+    private var publishedApprovalIDs: [String] = []
+
+    func publish(_ request: HermesRealtimeRelayApprovalRequest) async throws {
+        entered = true
+        enteredWaiters.forEach { $0.resume() }
+        enteredWaiters.removeAll()
+        await withCheckedContinuation { releaseContinuation = $0 }
+        defer {
+            finished = true
+            finishedWaiters.forEach { $0.resume() }
+            finishedWaiters.removeAll()
+        }
+        try Task.checkCancellation()
+        publishedApprovalIDs.append(request.approvalId)
+    }
+
+    func waitUntilEntered() async {
+        if entered { return }
+        await withCheckedContinuation { enteredWaiters.append($0) }
+    }
+
+    func release() {
+        releaseContinuation?.resume()
+        releaseContinuation = nil
+    }
+
+    func waitUntilFinished() async {
+        if finished { return }
+        await withCheckedContinuation { finishedWaiters.append($0) }
+    }
+
+    var approvalIDs: [String] {
+        publishedApprovalIDs
+    }
+}
+
 final class ComputerUseServiceRunBindingTests: XCTestCase {
+    func testApprovalCancellationStopsSuspendedPhonePublication() async throws {
+        let bridge = ComputerUseApprovalBridge()
+        let publisher = ControlledApprovalPublisher()
+        let request = HermesRealtimeRelayApprovalRequest(
+            approvalId: "linux-approval-cancelled-before-publish",
+            runId: "linux-run-cancelled-before-publish",
+            sessionId: "linux-session-cancelled-before-publish",
+            toolKind: BurnBarToolKind.browserGoto.rawValue,
+            title: "Open page",
+            message: "Open example.com",
+            actionSummary: "Go to https://example.com",
+            requestedAt: Date(timeIntervalSince1970: 1_000)
+        )
+        let issued = Task {
+            try await bridge.issue(request) { request in
+                try await publisher.publish(request)
+            }
+        }
+
+        await publisher.waitUntilEntered()
+        issued.cancel()
+        do {
+            _ = try await issued.value
+            XCTFail("Cancelled approval unexpectedly resolved")
+        } catch is CancellationError {
+            // Expected: cancelling the approval owns publication cancellation.
+        }
+        await publisher.release()
+        await publisher.waitUntilFinished()
+
+        let pending = await bridge.pendingApprovals(sessionId: request.sessionId)
+        let publishedApprovalIDs = await publisher.approvalIDs
+        XCTAssertTrue(pending.isEmpty)
+        XCTAssertTrue(publishedApprovalIDs.isEmpty)
+    }
+
     func testNonBrowserSessionCannotReserveAgentRunBinding() async throws {
         let service = ComputerUseService(
             privilegedInputKillSwitchActivator: { _ in },
@@ -111,6 +201,83 @@ final class ComputerUseServiceRunBindingTests: XCTestCase {
             sessionId: started.sessionId,
             source: ComputerUsePanicSource.hotkey.rawValue
         ))
+    }
+
+    func testGlobalPanicNotifiesSessionEndObserverForManifestedSession() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-cu-global-panic-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let endedSessions = EndedSessionRecorder()
+        let now = Date()
+        let capabilityStateStore = ComputerUseCapabilityStateStore(
+            fileURL: root.appendingPathComponent("capability-state.json"),
+            now: { now }
+        )
+        let provenance = ComputerUseAuthorityProvenance(
+            source: .firestoreServer,
+            observedAt: now,
+            updatedAt: now
+        )
+        _ = try await capabilityStateStore.update(ComputerUseCapabilityStateSnapshot(
+            publisherInstanceID: "global-panic-observer-test",
+            revision: 1,
+            generatedAt: now,
+            userID: "linux-test-user",
+            entitlement: ComputerUseEntitlementSnapshot(
+                isActive: true,
+                productId: ComputerUseEntitlementSnapshot.hostedProductID,
+                expireAt: now.addingTimeInterval(3_600),
+                allowsBrowser: true,
+                allowsSystem: true,
+                allowsPhoneControl: true,
+                allowsTrustedScopes: true,
+                allowsAuditExport: true
+            ),
+            entitlementProvenance: provenance,
+            budgetEnvelope: ComputerUseBudgetEnvelope(
+                level: .normal,
+                projectedMonthEndUSD: 0,
+                monthToDateUSD: 0,
+                activeActionsPerRun: 50,
+                activeActionsPerDay: 200,
+                activeSessionsPerDay: 4,
+                perUserDailySpendCeilingUSD: 5,
+                updatedAt: now
+            ),
+            budgetProvenance: provenance,
+            quotaUsage: ComputerUseQuotaUsage(
+                dayKey: String(ISO8601DateFormatter().string(from: now).prefix(10)),
+                updatedAt: now
+            ),
+            quotaProvenance: provenance,
+            concurrentSessionActive: false,
+            killSwitch: false,
+            isComplete: true
+        ))
+        let service = ComputerUseService(
+            auditBaseDirectory: root,
+            capabilityStateStore: capabilityStateStore,
+            leafKillSwitch: { false },
+            playwrightDriverFactory: { _ in nil },
+            privilegedInputKillSwitchActivator: { _ in },
+            sessionEndedObserver: { sessionID in
+                await endedSessions.append(sessionID)
+            }
+        )
+        let first = try await service.startSession(ComputerUseSessionStartRequest(
+            mode: ComputerUseMode.browser.rawValue,
+            trustMode: ComputerUseTrustMode.manual.rawValue,
+            clientID: BurnBarClientID(rawValue: "linux-shell"),
+            runID: BurnBarRunID(rawValue: "global-panic-run-1")
+        ))
+
+        _ = try await service.panicHalt(ComputerUsePanicHaltRequest(
+            sessionId: "*",
+            source: ComputerUsePanicSource.hotkey.rawValue
+        ))
+
+        let observedSessionIDs = await endedSessions.recordedSessionIDs
+        XCTAssertEqual(observedSessionIDs, [first.sessionId])
     }
 
     func testExpiredSessionReleasesRunBindingBeforeRestart() async throws {

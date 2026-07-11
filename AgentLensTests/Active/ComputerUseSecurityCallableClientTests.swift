@@ -1,4 +1,5 @@
 import CryptoKit
+import FirebaseFunctions
 import XCTest
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
@@ -6,6 +7,38 @@ import OpenBurnBarSignalCore
 @testable import OpenBurnBar
 
 final class ComputerUseSecurityCallableClientTests: XCTestCase {
+    func testControllerRouteDirectoryRetainsPolicyOnlyForTransportFailures() {
+        XCTAssertTrue(CallableIrohControllerRouteDirectory.isTransientTransportFailure(
+            URLError(.notConnectedToInternet)
+        ))
+        XCTAssertTrue(CallableIrohControllerRouteDirectory.isTransientTransportFailure(
+            NSError(domain: FunctionsErrorDomain, code: FunctionsErrorCode.unavailable.rawValue)
+        ))
+        XCTAssertFalse(CallableIrohControllerRouteDirectory.isTransientTransportFailure(
+            NSError(domain: FunctionsErrorDomain, code: FunctionsErrorCode.permissionDenied.rawValue)
+        ))
+        XCTAssertFalse(CallableIrohControllerRouteDirectory.isTransientTransportFailure(
+            NSError(domain: "OpenBurnBar.InvalidResponse", code: 1)
+        ))
+    }
+
+    func testParsesFreshAuthoritativeEmptyIrohControllerRouteResponse() throws {
+        let now: Int64 = 1_700_000_000_000
+        let routes = try ComputerUseSecurityCallableClient.parseActiveIrohControllerRoutes(
+            [
+                "uid": "user-1",
+                "connectionId": "connection-1",
+                "resolvedAtMillis": NSNumber(value: now),
+                "routes": []
+            ],
+            expectedUID: "user-1",
+            expectedConnectionId: "connection-1",
+            nowMillis: now
+        )
+
+        XCTAssertTrue(routes.isEmpty)
+    }
+
     func testParsesOneFreshActiveIrohControllerRoute() throws {
         let now: Int64 = 1_700_000_000_000
         let hexNodeId = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"

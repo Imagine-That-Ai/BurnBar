@@ -43,9 +43,16 @@ extension BurnBarDaemonServer {
                         reason: .ready
                     )
                 } else {
+                    let runtimeStatus = await linuxIrohControllerStatus()
+                    let reason: ComputerUseSessionGrantReadinessReason = switch runtimeStatus?.reason {
+                    case .some(.nativeTransportUnavailable), .some(.transportUnavailable):
+                        .transportUnavailable
+                    default:
+                        .pairingUnavailable
+                    }
                     result = ComputerUseSessionGrantReadinessResponse(
                         available: false,
-                        reason: .pairingUnavailable
+                        reason: reason
                     )
                 }
             } else {
@@ -360,6 +367,24 @@ extension BurnBarDaemonServer {
                     ))
                     return denial
                 }
+                if let linuxIrohControllerRuntime {
+                    do {
+                        try await linuxIrohControllerRuntime.bindSession(
+                            result.sessionId,
+                            metadata: reservation.metadata
+                        )
+                    } catch {
+                        _ = try? await computerUseService.panicHalt(ComputerUsePanicHaltRequest(
+                            sessionId: result.sessionId,
+                            source: ComputerUsePanicSource.revoked.rawValue
+                        ))
+                        return encodeErrorResponse(
+                            id: typedRequest.id,
+                            code: BurnBarRPCErrorCode.unauthorized,
+                            message: "Browser Computer Use controller routing changed during session creation."
+                        )
+                    }
+                }
             }
             #endif
             let authorizationExpiry = [
@@ -469,23 +494,20 @@ extension BurnBarDaemonServer {
                 from: requestData
             )
             if let verifier = computerUseApprovalAuthorityVerifier {
-                let pending = await computerUseService.pendingApprovals(
-                    ComputerUseApprovalPendingRequest(sessionId: typedRequest.params.sessionId)
-                ).requests.first { request in
-                    request.approvalId == typedRequest.params.response.approvalId
-                }
-                guard let pending else {
+                guard let sessionID = typedRequest.params.sessionId,
+                      sessionID.isEmpty == false else {
                     return encodeErrorResponse(
                         id: typedRequest.id,
                         code: BurnBarRPCErrorCode.unauthorized,
-                        message: "Computer Use approval response does not match a pending request in this session."
+                        message: "Computer Use approval response requires an exact session binding."
                     )
                 }
                 do {
-                    try await verifier.verify(
-                        response: typedRequest.params.response,
-                        pendingRequest: pending,
-                        sessionID: typedRequest.params.sessionId
+                    _ = verifier
+                    try await ingestComputerUseApprovalResponse(
+                        typedRequest.params.response,
+                        sessionID: sessionID,
+                        provenance: .authenticatedLocalRPC
                     )
                 } catch {
                     return encodeErrorResponse(
@@ -494,6 +516,11 @@ extension BurnBarDaemonServer {
                         message: "Computer Use approval response requires fresh signed authority from the pinned phone."
                     )
                 }
+                return encode(BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: ComputerUseApprovalRespondResponse(accepted: true)
+                ))
             }
             let result: ComputerUseApprovalRespondResponse = await computerUseService.respondToApproval(typedRequest.params)
             let response = BurnBarRPCResponseEnvelope(

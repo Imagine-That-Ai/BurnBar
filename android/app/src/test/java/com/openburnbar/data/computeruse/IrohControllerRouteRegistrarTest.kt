@@ -49,7 +49,7 @@ class IrohControllerRouteRegistrarTest {
             callables.lastCanonicalPayload,
         )
         Ed25519Verify(authorityIdentity.publicKeyRepresentation).verify(
-            Base64.getDecoder().decode(callables.lastAuthoritySignatureBase64),
+            Base64.getDecoder().decode(requireNotNull(callables.lastAuthoritySignatureBase64)),
             callables.lastCanonicalPayload,
         )
     }
@@ -120,7 +120,8 @@ class IrohControllerRouteRegistrarTest {
         runCurrent()
 
         assertEquals(2, callables.issueCalls)
-        assertEquals(2L, callables.lastRegistration?.generation)
+        assertEquals(1L, callables.lastRegistration?.generation)
+        assertEquals(listOf(true, false), callables.authoritySignaturePresence)
     }
 
     @Test
@@ -348,15 +349,16 @@ class IrohControllerRouteRegistrarTest {
         assertTrue(
             PhoneControlP256.verifySignature(
                 p256.publicKey,
-                Base64.getDecoder().decode(callables.lastAuthoritySignatureBase64),
+                Base64.getDecoder().decode(requireNotNull(callables.lastAuthoritySignatureBase64)),
                 callables.lastCanonicalPayload,
             ),
         )
     }
 
     @Test
-    fun `p256 authority never renews autonomously and refreshes on the next explicit dial`() = runTest {
+    fun `p256 authority renews autonomously with transport proof only`() = runTest {
         var now = 45_000L
+        var promptAvailabilityChecks = 0
         val generator = KeyPairGenerator.getInstance("EC")
         generator.initialize(ECGenParameterSpec("secp256r1"))
         val keyPair = generator.generateKeyPair()
@@ -369,7 +371,10 @@ class IrohControllerRouteRegistrarTest {
             callables = callables,
             nowMillis = { now },
             authorityIdentity = p256,
-            promptBoundP256SigningAvailableProvider = { true },
+            promptBoundP256SigningAvailableProvider = {
+                promptAvailabilityChecks += 1
+                true
+            },
             renewalScope = backgroundScope,
         )
         registrar.ensureRegistered("uid-1", "connection-1", endpointIdentity)
@@ -377,10 +382,51 @@ class IrohControllerRouteRegistrarTest {
         now += 480_000L
         advanceTimeBy(480_000L)
         runCurrent()
-        assertEquals(1, callables.issueCalls)
-
-        registrar.ensureRegistered("uid-1", "connection-1", endpointIdentity)
         assertEquals(2, callables.issueCalls)
+        assertEquals(2, callables.registerCalls)
+        assertEquals(listOf(true, false), callables.authoritySignaturePresence)
+        assertEquals(1, promptAvailabilityChecks)
+        assertEquals(1L, callables.lastRegistration?.generation)
+        Ed25519Verify(transportPublicKey).verify(
+            Base64.getDecoder().decode(callables.lastTransportSignatureBase64),
+            callables.lastCanonicalPayload,
+        )
+    }
+
+    @Test
+    fun `background renewal rejects an unexpected bootstrap before signing or registration`() = runTest {
+        var now = 46_000L
+        var promptAvailabilityChecks = 0
+        val generator = KeyPairGenerator.getInstance("EC")
+        generator.initialize(ECGenParameterSpec("secp256r1"))
+        val keyPair = generator.generateKeyPair()
+        val p256 = PhoneControlSigningIdentity.SecureEnclaveP256(
+            privateKey = keyPair.private,
+            publicKey = keyPair.public as ECPublicKey,
+        )
+        val callables = FakeCallables(nowMillis = { now })
+        val registrar = registrar(
+            callables = callables,
+            nowMillis = { now },
+            authorityIdentity = p256,
+            promptBoundP256SigningAvailableProvider = {
+                promptAvailabilityChecks += 1
+                true
+            },
+            renewalScope = backgroundScope,
+        )
+        registrar.ensureRegistered("uid-1", "connection-1", endpointIdentity)
+        callables.invalidateServerRoute()
+
+        advanceTimeBy(479_999L)
+        now += 480_000L
+        advanceTimeBy(1L)
+        runCurrent()
+
+        assertEquals(2, callables.issueCalls)
+        assertEquals(1, callables.registerCalls)
+        assertEquals(listOf(true), callables.authoritySignaturePresence)
+        assertEquals(1, promptAvailabilityChecks)
     }
 
     @Test
@@ -406,7 +452,8 @@ class IrohControllerRouteRegistrarTest {
 
         assertTrue(error is IrohControllerRouteRegistrar.PromptBoundP256SigningUnavailableException)
         assertTrue(error?.message?.contains("BiometricPrompt CryptoObject") == true)
-        assertTrue(callables.events.isEmpty())
+        assertEquals(listOf("publish", "issue"), callables.events)
+        assertEquals(0, callables.registerCalls)
     }
 
     @Test
@@ -473,15 +520,25 @@ class IrohControllerRouteRegistrarTest {
         val events = mutableListOf<String>()
         var publishedAuthority: PhoneControlAuthorityDoc? = null
         var issueCalls = 0
+        var registerCalls = 0
         var lastCanonicalPayload = ByteArray(0)
         var lastCanonicalPayloadBase64 = ""
         var lastTransportSignatureBase64 = ""
-        var lastAuthoritySignatureBase64 = ""
+        var lastAuthoritySignatureBase64: String? = null
         var lastRegistration: IrohControllerRouteRegistration? = null
+        val authoritySignaturePresence = mutableListOf<Boolean>()
         val issuedTransportNodeIds = mutableListOf<String>()
         val revokedRoutes = mutableListOf<Pair<String, String>>()
         var failIssue = false
+        private var serverRouteActive = false
+        private var serverGeneration = 0L
+        private var serverConnectionId = ""
+        private var serverSourceDeviceId = ""
+        private var serverTransportNodeId = ""
+        private var serverAuthorityPeerNodeId = ""
         private var lastChallengeId = ""
+        private var lastChallengeGeneration = 0L
+        private var lastChallengeProofKind = IrohControllerRouteProofKind.BOOTSTRAP
         private var lastConnectionId = ""
         private var lastSourceDeviceId = ""
         private var lastTransportNodeId = ""
@@ -509,14 +566,27 @@ class IrohControllerRouteRegistrarTest {
             val issuedAt = nowMillis()
             val expiresAt = issuedAt + 60_000L
             val challengeId = "challenge-$issueCalls"
-            val generation = issueCalls.toLong()
+            val isSameActiveRoute = serverRouteActive &&
+                serverConnectionId == connectionId &&
+                serverSourceDeviceId == sourceDeviceId &&
+                serverTransportNodeId == transportNodeId &&
+                serverAuthorityPeerNodeId == authorityPeerNodeId
+            val proofKind = if (isSameActiveRoute) {
+                IrohControllerRouteProofKind.TRANSPORT_RENEWAL
+            } else {
+                IrohControllerRouteProofKind.BOOTSTRAP
+            }
+            val generation = if (isSameActiveRoute) serverGeneration else serverGeneration + 1L
             lastChallengeId = challengeId
+            lastChallengeGeneration = generation
+            lastChallengeProofKind = proofKind
             lastConnectionId = connectionId
             lastSourceDeviceId = sourceDeviceId
             lastTransportNodeId = transportNodeId
             lastAuthorityPeerNodeId = authorityPeerNodeId
             lastCanonicalPayload = canonicalPayload(
                 challengeId = challengeId,
+                proofKind = proofKind,
                 uid = "uid-1",
                 connectionId = connectionId,
                 sourceDeviceId = sourceDeviceId,
@@ -531,6 +601,8 @@ class IrohControllerRouteRegistrarTest {
                 challengeId = challengeId,
                 canonicalPayloadBase64 = lastCanonicalPayloadBase64,
                 signatureAlgorithm = "ed25519",
+                proofKind = proofKind,
+                requiresAuthorityProof = proofKind == IrohControllerRouteProofKind.BOOTSTRAP,
                 registrationGeneration = generation,
                 issuedAtMillis = issuedAt,
                 expiresAtMillis = expiresAt,
@@ -541,19 +613,31 @@ class IrohControllerRouteRegistrarTest {
             expectedUid: String,
             challengeId: String,
             transportSignatureBase64: String,
-            authoritySignatureBase64: String,
+            authoritySignatureBase64: String?,
         ): IrohControllerRouteRegistration {
             assertEquals("uid-1", expectedUid)
             events += "register"
+            registerCalls += 1
             assertEquals(lastChallengeId, challengeId)
+            assertEquals(
+                lastChallengeProofKind == IrohControllerRouteProofKind.BOOTSTRAP,
+                authoritySignatureBase64 != null,
+            )
             lastTransportSignatureBase64 = transportSignatureBase64
             lastAuthoritySignatureBase64 = authoritySignatureBase64
+            authoritySignaturePresence += authoritySignatureBase64 != null
+            serverRouteActive = true
+            serverGeneration = lastChallengeGeneration
+            serverConnectionId = lastConnectionId
+            serverSourceDeviceId = lastSourceDeviceId
+            serverTransportNodeId = lastTransportNodeId
+            serverAuthorityPeerNodeId = lastAuthorityPeerNodeId
             val registration = IrohControllerRouteRegistration(
                 connectionId = lastConnectionId,
                 sourceDeviceId = lastSourceDeviceId,
                 transportNodeId = lastTransportNodeId,
                 authorityPeerNodeId = lastAuthorityPeerNodeId,
-                generation = issueCalls.toLong(),
+                generation = lastChallengeGeneration,
                 expiresAtMillis = nowMillis() + registrationLeaseMillis,
             )
             lastRegistration = registration
@@ -564,17 +648,24 @@ class IrohControllerRouteRegistrarTest {
             assertEquals("uid-1", expectedUid)
             events += "revoke"
             revokedRoutes += connectionId to sourceDeviceId
+            serverRouteActive = false
+            serverGeneration += 1L
             revokeStarted?.complete(Unit)
             revokeGate?.await()
             return IrohControllerRouteRevocation(
                 connectionId = connectionId,
                 sourceDeviceId = sourceDeviceId,
-                generation = issueCalls.toLong() + 1L,
+                generation = serverGeneration,
             )
+        }
+
+        fun invalidateServerRoute() {
+            serverRouteActive = false
         }
 
         private fun canonicalPayload(
             challengeId: String,
+            proofKind: IrohControllerRouteProofKind,
             uid: String,
             connectionId: String,
             sourceDeviceId: String,
@@ -585,9 +676,10 @@ class IrohControllerRouteRegistrarTest {
             expiresAtMillis: Long,
         ): ByteArray {
             val segments = listOf(
-                "version", "1",
+                "version", "2",
                 "challengeId", challengeId,
                 "challengeNonce", "server-nonce-$challengeId",
+                "proofKind", proofKind.wireValue,
                 "uid", uid,
                 "connectionId", connectionId,
                 "sourceDeviceId", sourceDeviceId,
@@ -598,7 +690,7 @@ class IrohControllerRouteRegistrarTest {
                 "expiresAtMillis", expiresAtMillis.toString(),
             )
             return buildString {
-                append("OpenBurnBar-IrohControllerRoute-v1\n")
+                append("OpenBurnBar-IrohControllerRoute-v2\n")
                 segments.forEach { segment ->
                     append(segment.toByteArray(Charsets.UTF_8).size)
                     append(':')

@@ -45,6 +45,9 @@ public actor ComputerUseSessionGrantBroker {
         public let threadID: String
         public let preset: AgentPermissionPreset
         public let capabilities: Set<AgentDesktopCapability>
+        public let routeGeneration: Int64
+        public let routeExpiresAt: Date
+        public let accountGeneration: UInt64
 
         public init(
             uid: String,
@@ -55,7 +58,10 @@ public actor ComputerUseSessionGrantBroker {
             runtimeID: AssistantRuntimeID,
             threadID: String,
             preset: AgentPermissionPreset,
-            capabilities: Set<AgentDesktopCapability>
+            capabilities: Set<AgentDesktopCapability>,
+            routeGeneration: Int64 = 0,
+            routeExpiresAt: Date = .distantFuture,
+            accountGeneration: UInt64 = 0
         ) {
             self.uid = uid
             self.connectionID = connectionID
@@ -66,6 +72,9 @@ public actor ComputerUseSessionGrantBroker {
             self.threadID = threadID
             self.preset = preset
             self.capabilities = capabilities
+            self.routeGeneration = routeGeneration
+            self.routeExpiresAt = routeExpiresAt
+            self.accountGeneration = accountGeneration
         }
     }
 
@@ -90,6 +99,7 @@ public actor ComputerUseSessionGrantBroker {
         fileprivate let reservationID: String
         fileprivate let challengeID: String
         let request: ComputerUseSessionStartRequest
+        let metadata: AcquisitionMetadata
     }
 
     public typealias OutboundPublisher = @Sendable (
@@ -100,9 +110,10 @@ public actor ComputerUseSessionGrantBroker {
         _ request: HermesRealtimeRelayAgentGrantRequest,
         _ authorityPeerNodeID: String,
         _ now: Date
-    ) throws -> Void
+    ) async throws -> Void
     public typealias RandomBytes = @Sendable (_ count: Int) throws -> Data
     public typealias ChallengeIDGenerator = @Sendable () -> String
+    public typealias Clock = @Sendable () -> Date
 
     public static let maximumChallengeLifetime: TimeInterval = 5 * 60
     public static let defaultMaximumRecords = 256
@@ -117,6 +128,7 @@ public actor ComputerUseSessionGrantBroker {
 
     private struct Record: Sendable {
         let challenge: HermesRealtimeRelayComputerUseSessionGrantChallenge
+        let metadata: AcquisitionMetadata
         let transportPeerNodeID: String
         let authorityPeerNodeID: String
         let sourceDeviceID: String
@@ -132,6 +144,7 @@ public actor ComputerUseSessionGrantBroker {
     public nonisolated let readinessReason: ComputerUseSessionGrantReadinessReason
     private let randomBytes: RandomBytes
     private let challengeIDGenerator: ChallengeIDGenerator
+    private let clock: Clock
     private let challengeLifetime: TimeInterval
     private let terminalRetention: TimeInterval
     private let maximumRecords: Int
@@ -146,6 +159,7 @@ public actor ComputerUseSessionGrantBroker {
             return Data((0..<count).map { _ in UInt8.random(in: .min ... .max, using: &generator) })
         },
         challengeIDGenerator: @escaping ChallengeIDGenerator = { UUID().uuidString.lowercased() },
+        clock: @escaping Clock = Date.init,
         challengeLifetime: TimeInterval = maximumChallengeLifetime,
         terminalRetention: TimeInterval = maximumChallengeLifetime,
         maximumRecords: Int = defaultMaximumRecords,
@@ -162,6 +176,7 @@ public actor ComputerUseSessionGrantBroker {
         }
         self.randomBytes = randomBytes
         self.challengeIDGenerator = challengeIDGenerator
+        self.clock = clock
         self.challengeLifetime = min(max(challengeLifetime, 1), Self.maximumChallengeLifetime)
         self.terminalRetention = min(max(terminalRetention, 0), Self.maximumChallengeLifetime)
         self.maximumRecords = min(max(maximumRecords, 1), Self.maximumRecordLimit)
@@ -239,6 +254,7 @@ public actor ComputerUseSessionGrantBroker {
 
         records[challengeID] = Record(
             challenge: challenge,
+            metadata: metadata,
             transportPeerNodeID: metadata.transportPeerNodeID,
             authorityPeerNodeID: metadata.authorityPeerNodeID,
             sourceDeviceID: metadata.sourceDeviceID,
@@ -279,9 +295,9 @@ public actor ComputerUseSessionGrantBroker {
         _ wireRequest: HermesRealtimeRelayAgentGrantRequest,
         authenticatedTransportPeerNodeID: String,
         now: Date = Date()
-    ) throws {
+    ) async throws {
         prune(now: now)
-        guard var record = records[wireRequest.requestId] else {
+        guard let record = records[wireRequest.requestId] else {
             throw BrokerError.challengeNotFound
         }
         guard record.challenge.expiresAt > now, record.state != .expired else {
@@ -299,10 +315,28 @@ public actor ComputerUseSessionGrantBroker {
             throw BrokerError.proofValidatorUnavailable
         }
         do {
-            try prevalidatePinnedPhoneGrant(wireRequest, record.authorityPeerNodeID, now)
+            try await prevalidatePinnedPhoneGrant(wireRequest, record.authorityPeerNodeID, now)
         } catch {
             throw BrokerError.proofRejected
         }
+
+        let validatedAt = clock()
+        prune(now: validatedAt)
+        guard var currentRecord = records[wireRequest.requestId] else {
+            throw BrokerError.challengeNotFound
+        }
+        guard currentRecord.challenge.expiresAt > validatedAt,
+              currentRecord.state != .expired else {
+            throw BrokerError.challengeExpired
+        }
+        guard currentRecord.state == .awaitingPhone else {
+            throw currentRecord.state == .consumed ? BrokerError.alreadyConsumed : BrokerError.grantNotReady
+        }
+        guard authenticatedTransportPeerNodeID == currentRecord.transportPeerNodeID,
+              wireRequest.authority.peerNodeId == currentRecord.authorityPeerNodeID else {
+            throw BrokerError.wrongAuthenticatedPeer
+        }
+        try exactMatch(wireRequest, record: currentRecord)
 
         let binding = ComputerUseLocalAuthGrantBinding(
             requestId: wireRequest.requestId,
@@ -319,15 +353,15 @@ public actor ComputerUseSessionGrantBroker {
             clientIntentId: wireRequest.clientIntentId,
             localAuthenticationSatisfied: wireRequest.localAuthenticationSatisfied
         )
-        record.verifiedGrant = VerifiedGrant(
+        currentRecord.verifiedGrant = VerifiedGrant(
             proof: wireRequest.localAuthProof,
             sourceDeviceID: wireRequest.sourceDeviceId,
             intentHashHex: wireRequest.authority.intentHashBlake3,
             binding: binding
         )
-        record.state = .ready
-        record.startReservationID = nil
-        records[wireRequest.requestId] = record
+        currentRecord.state = .ready
+        currentRecord.startReservationID = nil
+        records[wireRequest.requestId] = currentRecord
     }
 
     public func status(challengeID: String, now: Date = Date()) -> NonSecretStatus? {
@@ -399,7 +433,8 @@ public actor ComputerUseSessionGrantBroker {
         return StartReservation(
             reservationID: reservationID,
             challengeID: challengeID,
-            request: prepared.request
+            request: prepared.request,
+            metadata: record.metadata
         )
     }
 
@@ -537,8 +572,8 @@ public actor ComputerUseSessionGrantBroker {
     private func prune(now: Date) {
         for challengeID in Array(records.keys) {
             guard var record = records[challengeID] else { continue }
-            if (record.state == .awaitingPhone || record.state == .ready),
-               record.challenge.expiresAt <= now {
+            let isAwaitingExpiry = record.state == .awaitingPhone || record.state == .ready
+            if isAwaitingExpiry, record.challenge.expiresAt <= now {
                 record.state = .expired
                 record.verifiedGrant = nil
                 record.startReservationID = nil

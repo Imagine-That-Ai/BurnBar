@@ -778,6 +778,53 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
         XCTAssertTrue(remaining.isEmpty)
     }
 
+    func testApprovalBridgeCancellationStopsSuspendedPhonePublication() async throws {
+        let bridge = ComputerUseApprovalBridge()
+        let publicationBarrier = SuspensionBarrier()
+        let publicationFinished = AsyncTestEvent()
+        let published = ApprovalPublicationRecorder()
+        let request = HermesRealtimeRelayApprovalRequest(
+            approvalId: "approval-cancelled-before-publish",
+            runId: "run-cancelled-before-publish",
+            sessionId: "session-cancelled-before-publish",
+            toolKind: BurnBarToolKind.browserGoto.rawValue,
+            title: "Open page",
+            message: "Open example.com",
+            actionSummary: "Go to https://example.com",
+            requestedAt: Date(timeIntervalSince1970: 1_000)
+        )
+
+        let issued = Task {
+            try await bridge.issue(request) { request in
+                await publicationBarrier.suspend()
+                do {
+                    try Task.checkCancellation()
+                    await published.append(request.approvalId)
+                    await publicationFinished.signal()
+                } catch {
+                    await publicationFinished.signal()
+                    throw error
+                }
+            }
+        }
+
+        await publicationBarrier.waitUntilSuspended()
+        issued.cancel()
+        do {
+            _ = try await issued.value
+            XCTFail("Cancelled approval unexpectedly resolved")
+        } catch is CancellationError {
+            // Expected: cancelling the approval owns and cancels publication.
+        }
+        await publicationBarrier.release()
+        await publicationFinished.wait()
+
+        let pending = await bridge.pendingApprovals(sessionId: request.sessionId)
+        XCTAssertTrue(pending.isEmpty)
+        let publishedApprovalIDs = await published.approvalIDs
+        XCTAssertTrue(publishedApprovalIDs.isEmpty)
+    }
+
     func testPanicHaltAllEndsEveryActiveSession() async throws {
         let coordinator = makeCoordinator()
         let first = ComputerUseSessionID.newRandom()
@@ -1548,5 +1595,33 @@ private actor SuspensionBarrier {
         for waiter in waiters {
             waiter.resume()
         }
+    }
+}
+
+private actor AsyncTestEvent {
+    private var isSignalled = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func signal() {
+        guard isSignalled == false else { return }
+        isSignalled = true
+        let pending = waiters
+        waiters.removeAll()
+        pending.forEach { $0.resume() }
+    }
+
+    func wait() async {
+        if isSignalled { return }
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+}
+
+private actor ApprovalPublicationRecorder {
+    private(set) var approvalIDs: [String] = []
+
+    func append(_ approvalID: String) {
+        approvalIDs.append(approvalID)
     }
 }

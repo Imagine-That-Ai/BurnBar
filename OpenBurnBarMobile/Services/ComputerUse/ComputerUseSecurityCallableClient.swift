@@ -385,6 +385,8 @@ enum ComputerUseSecurityCallableClient {
               let challengeId = requiredNonemptyString(dict, key: "challengeId"),
               let canonicalPayloadBase64 = requiredNonemptyString(dict, key: "canonicalPayloadBase64"),
               let signatureAlgorithm = requiredNonemptyString(dict, key: "signatureAlgorithm"),
+              let proofKindRaw = requiredNonemptyString(dict, key: "proofKind"),
+              let proofKind = IrohControllerRouteProofKind(rawValue: proofKindRaw),
               let registrationGeneration = positiveInt64(dict, key: "registrationGeneration"),
               let issuedAtMillis = positiveInt64(dict, key: "issuedAtMillis"),
               let expiresAtMillis = positiveInt64(dict, key: "expiresAtMillis"),
@@ -395,6 +397,7 @@ enum ComputerUseSecurityCallableClient {
             challengeId: challengeId,
             canonicalPayloadBase64: canonicalPayloadBase64,
             signatureAlgorithm: signatureAlgorithm,
+            proofKind: proofKind,
             registrationGeneration: registrationGeneration,
             issuedAtMillis: issuedAtMillis,
             expiresAtMillis: expiresAtMillis
@@ -405,15 +408,18 @@ enum ComputerUseSecurityCallableClient {
         expectedUID: String,
         challengeId: String,
         transportSignatureBase64: String,
-        authoritySignatureBase64: String
+        authoritySignatureBase64: String?
     ) async throws -> IrohControllerRouteRegistration {
         _ = try requireSignedInUser(expectedUID: expectedUID)
-        let result = try await functions.httpsCallable("registerIrohControllerRoute").call([
+        var payload: [String: Any] = [
             "challengeId": challengeId,
             "transportSignatureBase64": transportSignatureBase64,
-            "authoritySignatureBase64": authoritySignatureBase64,
             "expectedUid": expectedUID
-        ])
+        ]
+        if let authoritySignatureBase64 {
+            payload["authoritySignatureBase64"] = authoritySignatureBase64
+        }
+        let result = try await functions.httpsCallable("registerIrohControllerRoute").call(payload)
         _ = try requireSignedInUser(expectedUID: expectedUID)
         guard let dict = result.data as? [String: Any],
               dict["ok"] as? Bool == true,

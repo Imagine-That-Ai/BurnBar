@@ -282,6 +282,13 @@ class ComputerUseSecurityCallableClient(
             challengeId = data.requiredString("challengeId", "Controller-route challenge issuance failed."),
             canonicalPayloadBase64 = data.requiredString("canonicalPayloadBase64", "Controller-route challenge issuance failed."),
             signatureAlgorithm = data.requiredString("signatureAlgorithm", "Controller-route challenge issuance failed."),
+            proofKind = IrohControllerRouteProofKind.fromWireValue(
+                data.requiredString("proofKind", "Controller-route challenge issuance failed."),
+            ),
+            requiresAuthorityProof = data.requiredBoolean(
+                "requiresAuthorityProof",
+                "Controller-route challenge issuance failed.",
+            ),
             registrationGeneration = data.requiredLong("registrationGeneration", "Controller-route challenge issuance failed."),
             issuedAtMillis = data.requiredLong("issuedAtMillis", "Controller-route challenge issuance failed."),
             expiresAtMillis = data.requiredLong("expiresAtMillis", "Controller-route challenge issuance failed."),
@@ -292,18 +299,18 @@ class ComputerUseSecurityCallableClient(
         expectedUid: String,
         challengeId: String,
         transportSignatureBase64: String,
-        authoritySignatureBase64: String,
+        authoritySignatureBase64: String?,
     ): IrohControllerRouteRegistration {
         requireAuthenticatedUser(expectedUid)
         val result = callBoundToExpectedUid(expectedUid, { requireAuthenticatedUser() }) {
             functions.getHttpsCallable("registerIrohControllerRoute")
                 .call(
-                    mapOf(
-                        "expectedUid" to expectedUid,
-                        "challengeId" to challengeId,
-                        "transportSignatureBase64" to transportSignatureBase64,
-                        "authoritySignatureBase64" to authoritySignatureBase64,
-                    ),
+                    buildMap {
+                        put("expectedUid", expectedUid)
+                        put("challengeId", challengeId)
+                        put("transportSignatureBase64", transportSignatureBase64)
+                        authoritySignatureBase64?.let { put("authoritySignatureBase64", it) }
+                    },
                 )
                 .await()
         }
@@ -594,6 +601,8 @@ class ComputerUseSecurityCallableClient(
 
     private fun Map<*, *>.requiredString(key: String, failureMessage: String): String =
         (this[key] as? String)?.takeIf { it.isNotBlank() } ?: error(failureMessage)
+
+    private fun Map<*, *>.requiredBoolean(key: String, failureMessage: String): Boolean = this[key] as? Boolean ?: error(failureMessage)
 
     private fun Map<*, *>.requiredLong(key: String, failureMessage: String): Long {
         val value = this[key] as? Number ?: error(failureMessage)

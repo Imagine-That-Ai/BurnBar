@@ -19,9 +19,16 @@ const IROH_NODE_ID_BASE32_LENGTH = 52;
 const IROH_NODE_ID_HEX_LENGTH = 64;
 const IROH_NODE_ID_BYTE_LENGTH = 32;
 const PAIRING_CLOCK_SKEW_MS = 30 * 1000;
-const ROUTE_PROOF_DOMAIN = "OpenBurnBar-IrohControllerRoute-v1";
+const ROUTE_PROOF_DOMAIN = "OpenBurnBar-IrohControllerRoute-v2";
 export const IROH_CONTROLLER_ROUTE_CHALLENGE_TTL_MS = 60 * 1000;
 export const IROH_CONTROLLER_ROUTE_TTL_MS = 10 * 60 * 1000;
+
+export function requireIrohControllerRouteProofKind(raw: unknown): "bootstrap" | "transport-renewal" {
+  if (raw !== "bootstrap" && raw !== "transport-renewal") {
+    throw new HttpsError("failed-precondition", "Controller-route challenge proof kind is invalid.");
+  }
+  return raw;
+}
 
 export function requireIrohTransportNodeId(raw: unknown): {
   nodeId: string;
@@ -70,6 +77,7 @@ function framed(value: string): string {
 export function irohControllerRouteProofPayload(args: {
   challengeId: string;
   challengeNonce: string;
+  proofKind: "bootstrap" | "transport-renewal";
   uid: string;
   connectionId: string;
   sourceDeviceId: string;
@@ -81,11 +89,13 @@ export function irohControllerRouteProofPayload(args: {
 }): Buffer {
   const fields = [
     "version",
-    "1",
+    "2",
     "challengeId",
     args.challengeId,
     "challengeNonce",
     args.challengeNonce,
+    "proofKind",
+    args.proofKind,
     "uid",
     args.uid,
     "connectionId",
@@ -158,6 +168,54 @@ export function verifyIrohControllerAuthorityProof(
   const payload = Buffer.from(canonicalPayloadBase64, "base64");
   if (payload.toString("base64") !== canonicalPayloadBase64) return false;
   return verifyPhoneControlAuthoritySignature(authorityPublicKey, authorityKeyKind, payload, signatureBase64);
+}
+
+export function requireEligibleIrohControllerTransportRenewal(args: {
+  route: { exists: boolean; get(field: string): unknown };
+  connectionId: string;
+  sourceDeviceId: string;
+  transportNodeId: string;
+  authorityPeerNodeId: string;
+  authorityPublicKeySHA256: string;
+  currentGeneration: number;
+  registrationGeneration: number;
+  expectedRegisteredAtMillis: unknown;
+  nowMillis: number;
+}): { registeredAtMillis: number; expiresAtMillis: number } {
+  const currentExpiresAtMillis = args.route.exists
+    ? (boundedInteger(args.route.get("expiresAtMillis"), "route.expiresAtMillis", 1, Number.MAX_SAFE_INTEGER, true) ??
+      0)
+    : 0;
+  const currentRegisteredAtMillis = args.route.exists
+    ? (boundedInteger(
+        args.route.get("registeredAtMillis"),
+        "route.registeredAtMillis",
+        1,
+        Number.MAX_SAFE_INTEGER,
+        true,
+      ) ?? 0)
+    : 0;
+  const expectedRegisteredAtMillis =
+    boundedInteger(args.expectedRegisteredAtMillis, "expectedRegisteredAtMillis", 1, Number.MAX_SAFE_INTEGER, true) ??
+    0;
+  const remainsEligible =
+    args.route.exists &&
+    args.route.get("status") === "active" &&
+    args.registrationGeneration === args.currentGeneration &&
+    args.route.get("connectionId") === args.connectionId &&
+    args.route.get("sourceDeviceId") === args.sourceDeviceId &&
+    args.route.get("transportNodeId") === args.transportNodeId &&
+    args.route.get("authorityPeerNodeId") === args.authorityPeerNodeId &&
+    args.route.get("authorityPublicKeySHA256") === args.authorityPublicKeySHA256 &&
+    currentRegisteredAtMillis === expectedRegisteredAtMillis &&
+    currentExpiresAtMillis > args.nowMillis;
+  if (!remainsEligible) {
+    throw new HttpsError("aborted", "Controller route is no longer eligible for transport renewal.");
+  }
+  return {
+    registeredAtMillis: currentRegisteredAtMillis,
+    expiresAtMillis: Math.max(currentExpiresAtMillis, args.nowMillis + IROH_CONTROLLER_ROUTE_TTL_MS),
+  };
 }
 
 export function requireActiveIrohPairing(args: {

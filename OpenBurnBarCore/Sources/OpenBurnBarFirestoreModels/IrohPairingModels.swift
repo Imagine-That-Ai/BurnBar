@@ -33,7 +33,9 @@ public struct FirestoreIrohControllerRouteChallengeDoc: Codable, Sendable, Equat
     public var sourceDeviceId: String
     public var transportNodeId: String
     public var authorityPeerNodeId: String
+    public var proofKind: String
     public var expectedPriorGeneration: Int64
+    public var expectedRegisteredAtMillis: Int64?
     public var registrationGeneration: Int64
     public var canonicalPayloadBase64: String
     public var issuedAtMillis: Int64

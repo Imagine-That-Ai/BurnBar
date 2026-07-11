@@ -32,7 +32,9 @@ export interface IrohControllerRouteChallengeDoc {
   sourceDeviceId: string;
   transportNodeId: string;
   authorityPeerNodeId: string;
+  proofKind: string;
   expectedPriorGeneration: number;
+  expectedRegisteredAtMillis?: number;
   registrationGeneration: number;
   canonicalPayloadBase64: string;
   issuedAtMillis: number;

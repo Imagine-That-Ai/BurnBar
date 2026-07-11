@@ -1,4 +1,5 @@
 import Foundation
+import FirebaseFunctions
 import OpenBurnBarIrohRelay
 
 enum IrohInboundPeerPolicyLoadResult: Sendable, Equatable {
@@ -27,7 +28,33 @@ enum CallableIrohControllerRouteDirectory {
                 "iroh_inbound_controller_route_resolution_failed",
                 metadata: AppLogger.publicErrorMetadata(error)
             )
-            return .transientFailure
+            return isTransientTransportFailure(error)
+                ? .transientFailure
+                : .authoritative(IrohInboundPeerPolicy(routeBindings: []))
         }
+    }
+
+    static func isTransientTransportFailure(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain {
+            let transientCodes: Set<Int> = [
+                NSURLErrorTimedOut,
+                NSURLErrorCannotFindHost,
+                NSURLErrorCannotConnectToHost,
+                NSURLErrorNetworkConnectionLost,
+                NSURLErrorDNSLookupFailed,
+                NSURLErrorNotConnectedToInternet,
+                NSURLErrorInternationalRoamingOff,
+                NSURLErrorCallIsActive,
+                NSURLErrorDataNotAllowed,
+                NSURLErrorSecureConnectionFailed
+            ]
+            return transientCodes.contains(nsError.code)
+        }
+        guard nsError.domain == FunctionsErrorDomain,
+              let code = FunctionsErrorCode(rawValue: nsError.code) else {
+            return false
+        }
+        return code == .cancelled || code == .deadlineExceeded || code == .unavailable
     }
 }

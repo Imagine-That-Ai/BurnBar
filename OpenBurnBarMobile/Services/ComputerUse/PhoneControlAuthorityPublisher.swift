@@ -77,10 +77,16 @@ final class PhoneControlAuthorityPublisher: PhoneControlAuthorityPublishing, Sen
     }
 }
 
+enum IrohControllerRouteProofKind: String, Sendable, Equatable {
+    case bootstrap
+    case transportRenewal = "transport-renewal"
+}
+
 struct IrohControllerRouteChallenge: Sendable, Equatable {
     let challengeId: String
     let canonicalPayloadBase64: String
     let signatureAlgorithm: String
+    let proofKind: IrohControllerRouteProofKind
     let registrationGeneration: Int64
     let issuedAtMillis: Int64
     let expiresAtMillis: Int64
@@ -108,7 +114,7 @@ protocol IrohControllerRouteCallableGateway: Sendable {
         expectedUID: String,
         challengeId: String,
         transportSignatureBase64: String,
-        authoritySignatureBase64: String
+        authoritySignatureBase64: String?
     ) async throws -> IrohControllerRouteRegistration
 
     func revoke(
@@ -139,7 +145,7 @@ struct LiveIrohControllerRouteCallableGateway: IrohControllerRouteCallableGatewa
         expectedUID: String,
         challengeId: String,
         transportSignatureBase64: String,
-        authoritySignatureBase64: String
+        authoritySignatureBase64: String?
     ) async throws -> IrohControllerRouteRegistration {
         try await ComputerUseSecurityCallableClient.registerIrohControllerRoute(
             expectedUID: expectedUID,
@@ -189,6 +195,7 @@ enum IrohControllerRouteRegistrarError: LocalizedError, Equatable {
     case unsupportedSignatureAlgorithm(String)
     case invalidCanonicalPayload
     case invalidRegistrationResponse
+    case backgroundRenewalRequiresBootstrap
     case routeSuperseded
 
     var errorDescription: String? {
@@ -203,6 +210,8 @@ enum IrohControllerRouteRegistrarError: LocalizedError, Equatable {
             return "The controller-route challenge payload is not canonical base64."
         case .invalidRegistrationResponse:
             return "The controller-route registration response did not match the requested route."
+        case .backgroundRenewalRequiresBootstrap:
+            return "A background controller-route renewal unexpectedly required an authority bootstrap proof."
         case .routeSuperseded:
             return "The iroh endpoint identity changed while its controller route was registering."
         }
@@ -210,12 +219,13 @@ enum IrohControllerRouteRegistrarError: LocalizedError, Equatable {
 }
 
 enum IrohControllerRouteProofParser {
-    private static let domain = Data("OpenBurnBar-IrohControllerRoute-v1\n".utf8)
+    private static let domain = Data("OpenBurnBar-IrohControllerRoute-v2\n".utf8)
     private static let maximumPayloadBytes = 16 * 1_024
     private static let orderedFieldNames = [
         "version",
         "challengeId",
         "challengeNonce",
+        "proofKind",
         "uid",
         "connectionId",
         "sourceDeviceId",
@@ -223,7 +233,7 @@ enum IrohControllerRouteProofParser {
         "authorityPeerNodeId",
         "registrationGeneration",
         "issuedAtMillis",
-        "expiresAtMillis",
+        "expiresAtMillis"
     ]
 
     static func validate(
@@ -250,9 +260,10 @@ enum IrohControllerRouteProofParser {
         }
         guard cursor == payload.count,
               fields.count == orderedFieldNames.count,
-              fields["version"] == "1",
+              fields["version"] == "2",
               fields["challengeId"] == challenge.challengeId,
               isCanonicalNonce(fields["challengeNonce"]),
+              fields["proofKind"] == challenge.proofKind.rawValue,
               fields["uid"] == uid,
               fields["connectionId"] == connectionId,
               fields["sourceDeviceId"] == sourceDeviceId,
@@ -477,6 +488,22 @@ actor IrohControllerRouteRegistrar: IrohControllerRouteRegistering {
         sourceDeviceId: String,
         transportIdentity: IrohEndpointIdentity
     ) async throws -> IrohControllerRouteRegistration {
+        try await registerIfNeeded(
+            uid: uid,
+            connectionId: connectionId,
+            sourceDeviceId: sourceDeviceId,
+            transportIdentity: transportIdentity,
+            allowsAuthorityBootstrap: true
+        )
+    }
+
+    private func registerIfNeeded(
+        uid: String,
+        connectionId: String,
+        sourceDeviceId: String,
+        transportIdentity: IrohEndpointIdentity,
+        allowsAuthorityBootstrap: Bool
+    ) async throws -> IrohControllerRouteRegistration {
         guard invalidationDepth == 0, authenticatedUIDProvider() == uid else {
             throw IrohControllerRouteRegistrarError.routeSuperseded
         }
@@ -519,7 +546,8 @@ actor IrohControllerRouteRegistrar: IrohControllerRouteRegistering {
                 key: key,
                 scope: scope,
                 transportIdentity: transportIdentity,
-                authorityIdentity: authorityIdentity
+                authorityIdentity: authorityIdentity,
+                allowsAuthorityBootstrap: allowsAuthorityBootstrap
             )
         }
         let tailID = UUID()
@@ -537,22 +565,17 @@ actor IrohControllerRouteRegistrar: IrohControllerRouteRegistering {
                 throw IrohControllerRouteRegistrarError.routeSuperseded
             }
             cached[key] = CachedRegistration(registration: registration)
-            // Secure Enclave signatures can present biometric UI. Only renew
-            // those leases from an explicit connect/dial, where authentication
-            // is expected; a background timer must never prompt the user.
-            if authorityIdentity.kind == .ed25519 {
-                scheduleRenewal(
-                    key: key,
-                    scope: scope,
-                    context: RenewalContext(
-                        uid: uid,
-                        connectionId: connectionId,
-                        sourceDeviceId: sourceDeviceId,
-                        transportIdentity: transportIdentity
-                    ),
-                    registration: registration
-                )
-            }
+            scheduleRenewal(
+                key: key,
+                scope: scope,
+                context: RenewalContext(
+                    uid: uid,
+                    connectionId: connectionId,
+                    sourceDeviceId: sourceDeviceId,
+                    transportIdentity: transportIdentity
+                ),
+                registration: registration
+            )
             return registration
         } catch {
             inFlight[key] = nil
@@ -685,7 +708,8 @@ actor IrohControllerRouteRegistrar: IrohControllerRouteRegistering {
                 uid: context.uid,
                 connectionId: context.connectionId,
                 sourceDeviceId: context.sourceDeviceId,
-                transportIdentity: context.transportIdentity
+                transportIdentity: context.transportIdentity,
+                allowsAuthorityBootstrap: false
             )
         } catch {
             guard activeKeyByScope[scope] == key else { return }
@@ -707,7 +731,8 @@ actor IrohControllerRouteRegistrar: IrohControllerRouteRegistering {
         key: RouteKey,
         scope: RouteScope,
         transportIdentity: IrohEndpointIdentity,
-        authorityIdentity: PhoneControlAuthoritySigningKey
+        authorityIdentity: PhoneControlAuthoritySigningKey,
+        allowsAuthorityBootstrap: Bool
     ) async throws -> IrohControllerRouteRegistration {
         try requireActiveOwnership(key: key, scope: scope)
         let secret = try transportSecretProvider()
@@ -761,7 +786,16 @@ actor IrohControllerRouteRegistrar: IrohControllerRouteRegistering {
         }
         try requireActiveOwnership(key: key, scope: scope)
         let transportSignature = try signingKey.signature(for: payload).base64EncodedString()
-        let authoritySignature = try authorityIdentity.signatureBase64(for: payload)
+        let authoritySignature: String?
+        switch challenge.proofKind {
+        case .bootstrap:
+            guard allowsAuthorityBootstrap else {
+                throw IrohControllerRouteRegistrarError.backgroundRenewalRequiresBootstrap
+            }
+            authoritySignature = try authorityIdentity.signatureBase64(for: payload)
+        case .transportRenewal:
+            authoritySignature = nil
+        }
         try requireActiveOwnership(key: key, scope: scope)
         let registration = try await gateway.register(
             expectedUID: key.uid,

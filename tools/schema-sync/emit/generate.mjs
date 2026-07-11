@@ -1118,7 +1118,9 @@ data class FirestoreIrohControllerRouteDoc(
   sourceDeviceId: string;
   transportNodeId: string;
   authorityPeerNodeId: string;
+  proofKind: string;
   expectedPriorGeneration: number;
+  expectedRegisteredAtMillis?: number;
   registrationGeneration: number;
   canonicalPayloadBase64: string;
   issuedAtMillis: number;
@@ -1135,7 +1137,9 @@ data class FirestoreIrohControllerRouteDoc(
     public var sourceDeviceId: String
     public var transportNodeId: String
     public var authorityPeerNodeId: String
+    public var proofKind: String
     public var expectedPriorGeneration: Int64
+    public var expectedRegisteredAtMillis: Int64?
     public var registrationGeneration: Int64
     public var canonicalPayloadBase64: String
     public var issuedAtMillis: Int64
@@ -1154,7 +1158,9 @@ data class FirestoreIrohControllerRouteChallengeDoc(
     val sourceDeviceId: String = "",
     val transportNodeId: String = "",
     val authorityPeerNodeId: String = "",
+    val proofKind: String = "",
     val expectedPriorGeneration: Long = 0,
+    val expectedRegisteredAtMillis: Long? = null,
     val registrationGeneration: Long = 0,
     val canonicalPayloadBase64: String = "",
     val issuedAtMillis: Long = 0,

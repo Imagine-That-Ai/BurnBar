@@ -5043,6 +5043,12 @@ final class ScreenShareViewportStateTests: XCTestCase {
 }
 
 final class IrohControllerRouteRegistrarTests: XCTestCase {
+    func testProofKindWireValuesAreClosedAndExact() {
+        XCTAssertEqual(IrohControllerRouteProofKind(rawValue: "bootstrap"), .bootstrap)
+        XCTAssertEqual(IrohControllerRouteProofKind(rawValue: "transport-renewal"), .transportRenewal)
+        XCTAssertNil(IrohControllerRouteProofKind(rawValue: "authority-renewal"))
+    }
+
     func testStrictPositiveInt64DecoderRejectsBooleanFractionAndOverflow() {
         XCTAssertNil(ComputerUseSecurityCallableClient.positiveInt64(["value": true], key: "value"))
         XCTAssertNil(ComputerUseSecurityCallableClient.positiveInt64(["value": 1.5], key: "value"))
@@ -5063,7 +5069,8 @@ final class IrohControllerRouteRegistrarTests: XCTestCase {
             ("invalid UTF-8", IrohRouteProofMutation.invalidUTF8),
             ("extra field", IrohRouteProofMutation.extraField),
             ("missing field", IrohRouteProofMutation.missingField),
-            ("wrong bound field", IrohRouteProofMutation.wrongUID),
+            ("wrong proof kind", IrohRouteProofMutation.wrongProofKind),
+            ("wrong bound field", IrohRouteProofMutation.wrongUID)
         ]
 
         for (name, mutation) in mutations {
@@ -5210,7 +5217,8 @@ final class IrohControllerRouteRegistrarTests: XCTestCase {
         let signatures = await gateway.recordedSignatures()
         let signaturePair = try XCTUnwrap(signatures.first)
         let transportSignature = try XCTUnwrap(Data(base64Encoded: signaturePair.transportSignatureBase64))
-        let authoritySignature = try XCTUnwrap(Data(base64Encoded: signaturePair.authoritySignatureBase64))
+        let authoritySignatureBase64 = try XCTUnwrap(signaturePair.authoritySignatureBase64)
+        let authoritySignature = try XCTUnwrap(Data(base64Encoded: authoritySignatureBase64))
         XCTAssertTrue(transportKey.publicKey.isValidSignature(transportSignature, for: canonicalBytes))
         XCTAssertTrue(authorityKey.publicKey.isValidSignature(authoritySignature, for: canonicalBytes))
         let recordedEvents = await events.values()
@@ -5256,7 +5264,7 @@ final class IrohControllerRouteRegistrarTests: XCTestCase {
         XCTAssertEqual(publishCalls, 0)
     }
 
-    func testP256AuthorityRenewsOnlyOnExplicitReconnectWithoutSchedulingSleeper() async throws {
+    func testP256AuthorityRenewsAutonomouslyWithTransportProofOnly() async throws {
         let clock = IrohRouteLockedClock(10_000)
         let sleeper = IrohRouteTestSleeper()
         let transportKey = Curve25519.Signing.PrivateKey()
@@ -5284,29 +5292,89 @@ final class IrohControllerRouteRegistrarTests: XCTestCase {
             transportIdentity: identity(for: transportKey)
         )
 
-        let issuedCanonicalPayloads = await gateway.issuedCanonicalPayloads()
-        let canonicalBytes = try XCTUnwrap(issuedCanonicalPayloads.first)
-        let signatures = await gateway.recordedSignatures()
-        let signaturePair = try XCTUnwrap(signatures.first)
-        let authoritySignature = try XCTUnwrap(Data(base64Encoded: signaturePair.authoritySignatureBase64))
+        let bootstrapPayloads = await gateway.issuedCanonicalPayloads()
+        let bootstrapBytes = try XCTUnwrap(bootstrapPayloads.first)
+        let bootstrapSignatures = await gateway.recordedSignatures()
+        let bootstrapPair = try XCTUnwrap(bootstrapSignatures.first)
+        let authoritySignatureBase64 = try XCTUnwrap(bootstrapPair.authoritySignatureBase64)
+        let authoritySignature = try XCTUnwrap(Data(base64Encoded: authoritySignatureBase64))
         XCTAssertEqual(authoritySignature.count, 64)
-        XCTAssertTrue(authorityIdentity.verifyingKey.isValidSignature(authoritySignature, for: canonicalBytes))
+        XCTAssertTrue(authorityIdentity.verifyingKey.isValidSignature(authoritySignature, for: bootstrapBytes))
 
-        await Task.yield()
+        await sleeper.waitForSleepCount(1)
         let initialDelays = await sleeper.recordedDelays()
-        XCTAssertEqual(initialDelays, [])
+        XCTAssertEqual(initialDelays, [800])
         clock.set(10_800)
+        await sleeper.resumeNext()
+        await gateway.waitForRegisterCallCount(2)
+
+        let payloads = await gateway.issuedCanonicalPayloads()
+        let renewalBytes = try XCTUnwrap(payloads.last)
+        let signatures = await gateway.recordedSignatures()
+        let renewalPair = try XCTUnwrap(signatures.last)
+        let renewalTransportSignature = try XCTUnwrap(
+            Data(base64Encoded: renewalPair.transportSignatureBase64)
+        )
+        XCTAssertTrue(transportKey.publicKey.isValidSignature(renewalTransportSignature, for: renewalBytes))
+        XCTAssertNil(renewalPair.authoritySignatureBase64)
+        let renewedIssueCalls = await gateway.issueCallCount()
+        XCTAssertEqual(renewedIssueCalls, 2)
         let renewed = try await registrar.registerIfNeeded(
             uid: "user-1",
             connectionId: "connection-1",
             sourceDeviceId: "device-1",
             transportIdentity: identity(for: transportKey)
         )
-        XCTAssertEqual(renewed.generation, 2)
-        let renewedIssueCalls = await gateway.issueCallCount()
-        let finalDelays = await sleeper.recordedDelays()
-        XCTAssertEqual(renewedIssueCalls, 2)
-        XCTAssertEqual(finalDelays, [])
+        XCTAssertEqual(renewed.generation, 1)
+        XCTAssertEqual(renewed.expiresAtMillis, 21_000)
+
+        await registrar.invalidateAll()
+        await sleeper.resumeAll()
+    }
+
+    func testBackgroundP256RenewalFailsClosedWhenServerRequestsBootstrap() async throws {
+        let sleeper = IrohRouteTestSleeper()
+        let transportKey = Curve25519.Signing.PrivateKey()
+        let authorityIdentity = PhoneControlAuthoritySigningKey.secureEnclaveP256(
+            P256.Signing.PrivateKey()
+        )
+        let gateway = IrohRouteFakeGateway(
+            registrationExpiries: [20_000],
+            proofKindsByIssue: [.bootstrap, .bootstrap]
+        )
+        let registrar = IrohControllerRouteRegistrar(
+            gateway: gateway,
+            authorityPublisher: IrohRouteFakeAuthorityPublisher(),
+            transportSecretProvider: { transportKey.rawRepresentation },
+            authorityIdentityProvider: { authorityIdentity },
+            authorityPeerNodeIdProvider: { _ in "authority-p256" },
+            authenticatedUIDProvider: { "user-1" },
+            nowMillis: { 10_000 },
+            sleepMillis: { milliseconds in await sleeper.sleep(milliseconds) },
+            renewalLeadMillis: 200
+        )
+
+        _ = try await registrar.registerIfNeeded(
+            uid: "user-1",
+            connectionId: "connection-1",
+            sourceDeviceId: "device-1",
+            transportIdentity: identity(for: transportKey)
+        )
+        await sleeper.waitForSleepCount(1)
+        await sleeper.resumeNext()
+        await gateway.waitForIssueCallCount(2)
+        await sleeper.waitForSleepCount(2)
+
+        let issueCalls = await gateway.issueCallCount()
+        let registerCalls = await gateway.registerCallCount()
+        let signatures = await gateway.recordedSignatures()
+        XCTAssertEqual(issueCalls, 2)
+        XCTAssertEqual(registerCalls, 1)
+        XCTAssertEqual(signatures.count, 1)
+        XCTAssertNotNil(signatures.first?.authoritySignatureBase64)
+
+        await registrar.invalidateAll()
+        await sleeper.resumeAll()
     }
 
     func testRejectsMismatchedRegistrationResponseAndDoesNotCacheIt() async throws {
@@ -5438,7 +5506,7 @@ final class IrohControllerRouteRegistrarTests: XCTestCase {
         )
         let renewedIssueCalls = await gateway.issueCallCount()
         XCTAssertEqual(renewedIssueCalls, 2)
-        XCTAssertEqual(renewed.generation, 2)
+        XCTAssertEqual(renewed.generation, 1)
         XCTAssertEqual(renewed.expiresAtMillis, 21_000)
     }
 
@@ -5513,7 +5581,7 @@ final class IrohControllerRouteRegistrarTests: XCTestCase {
             sourceDeviceId: "device-1",
             transportIdentity: identity
         )
-        XCTAssertEqual(retried.generation, 2)
+        XCTAssertEqual(retried.generation, 1)
         let retriedIssueCalls = await gateway.issueCallCount()
         let retriedRegisterCalls = await gateway.registerCallCount()
         XCTAssertEqual(retriedIssueCalls, 2)
@@ -5914,7 +5982,7 @@ private actor IrohRouteFakeAuthorityPublisher: PhoneControlAuthorityPublishing {
 private actor IrohRouteFakeGateway: IrohControllerRouteCallableGateway {
     struct RecordedSignatures: Sendable {
         let transportSignatureBase64: String
-        let authoritySignatureBase64: String
+        let authoritySignatureBase64: String?
     }
 
     private struct Request: Sendable {
@@ -5923,6 +5991,7 @@ private actor IrohRouteFakeGateway: IrohControllerRouteCallableGateway {
         let authorityPeerNodeId: String
         let transportNodeId: String
         let generation: Int64
+        let proofKind: IrohControllerRouteProofKind
     }
 
     private let expectedUID: String
@@ -5930,6 +5999,7 @@ private actor IrohRouteFakeGateway: IrohControllerRouteCallableGateway {
     private let registrationExpiries: [Int64]
     private let challengeIssuedAtMillis: Int64
     private let challengeExpiresAtMillis: Int64
+    private let proofKindsByIssue: [IrohControllerRouteProofKind]?
     private let issueGate: MobileAsyncGate?
     private let issueGatesByTransportNodeId: [String: MobileAsyncGate]
     private let registerGatesByTransportNodeId: [String: MobileAsyncGate]
@@ -5939,6 +6009,7 @@ private actor IrohRouteFakeGateway: IrohControllerRouteCallableGateway {
     private var issueCalls = 0
     private var registerCalls = 0
     private var requestsByChallengeId: [String: Request] = [:]
+    private var registeredRequest: Request?
     private var signatures: [RecordedSignatures] = []
     private var canonicalPayloads: [Data] = []
     private var revocations: [(sourceDeviceId: String, connectionId: String)] = []
@@ -5950,6 +6021,7 @@ private actor IrohRouteFakeGateway: IrohControllerRouteCallableGateway {
         registrationExpiries: [Int64],
         challengeIssuedAtMillis: Int64 = 9_000,
         challengeExpiresAtMillis: Int64 = 19_000,
+        proofKindsByIssue: [IrohControllerRouteProofKind]? = nil,
         canonicalPayloadTransform: @escaping @Sendable (Data) -> Data = { $0 },
         issueGate: MobileAsyncGate? = nil,
         issueGatesByTransportNodeId: [String: MobileAsyncGate] = [:],
@@ -5963,6 +6035,7 @@ private actor IrohRouteFakeGateway: IrohControllerRouteCallableGateway {
         self.registrationExpiries = registrationExpiries
         self.challengeIssuedAtMillis = challengeIssuedAtMillis
         self.challengeExpiresAtMillis = challengeExpiresAtMillis
+        self.proofKindsByIssue = proofKindsByIssue
         self.issueGate = issueGate
         self.issueGatesByTransportNodeId = issueGatesByTransportNodeId
         self.registerGatesByTransportNodeId = registerGatesByTransportNodeId
@@ -5980,7 +6053,7 @@ private actor IrohRouteFakeGateway: IrohControllerRouteCallableGateway {
     ) async throws -> IrohControllerRouteChallenge {
         guard expectedUID == self.expectedUID else { throw IrohRouteFakeError.injectedFailure }
         issueCalls += 1
-        let generation = Int64(issueCalls)
+        let issueNumber = issueCalls
         resumeIssueCallWaiters()
         await events?.append("issue")
         if remainingIssueFailures > 0 {
@@ -5992,7 +6065,24 @@ private actor IrohRouteFakeGateway: IrohControllerRouteCallableGateway {
         } else {
             await issueGate?.wait()
         }
-        let challengeId = "challenge-\(generation)"
+        let tupleMatchesRegistered = registeredRequest.map {
+            $0.sourceDeviceId == sourceDeviceId
+                && $0.connectionId == connectionId
+                && $0.authorityPeerNodeId == authorityPeerNodeId
+                && $0.transportNodeId == transportNodeId
+        } ?? false
+        let defaultProofKind: IrohControllerRouteProofKind = tupleMatchesRegistered
+            ? .transportRenewal
+            : .bootstrap
+        let proofKind = proofKindsByIssue.flatMap { proofKinds in
+            guard !proofKinds.isEmpty else { return nil }
+            return proofKinds[min(issueNumber - 1, proofKinds.count - 1)]
+        } ?? defaultProofKind
+        let priorGeneration = registeredRequest?.generation ?? 0
+        let generation = proofKind == .transportRenewal && tupleMatchesRegistered
+            ? priorGeneration
+            : priorGeneration + 1
+        let challengeId = "challenge-\(issueNumber)"
         let issuedAtMillis = challengeIssuedAtMillis
         let expiresAtMillis = challengeExpiresAtMillis
         requestsByChallengeId[challengeId] = Request(
@@ -6000,11 +6090,13 @@ private actor IrohRouteFakeGateway: IrohControllerRouteCallableGateway {
             connectionId: connectionId,
             authorityPeerNodeId: authorityPeerNodeId,
             transportNodeId: transportNodeId,
-            generation: generation
+            generation: generation,
+            proofKind: proofKind
         )
         let canonicalPayload = canonicalPayloadTransform(irohRouteProofPayload(
             challengeId: challengeId,
-            challengeNonce: "test-nonce-\(generation)",
+            challengeNonce: "test-nonce-\(issueNumber)",
+            proofKind: proofKind,
             uid: expectedUID,
             connectionId: connectionId,
             sourceDeviceId: sourceDeviceId,
@@ -6019,6 +6111,7 @@ private actor IrohRouteFakeGateway: IrohControllerRouteCallableGateway {
             challengeId: challengeId,
             canonicalPayloadBase64: canonicalPayload.base64EncodedString(),
             signatureAlgorithm: "ed25519",
+            proofKind: proofKind,
             registrationGeneration: generation,
             issuedAtMillis: issuedAtMillis,
             expiresAtMillis: expiresAtMillis
@@ -6029,7 +6122,7 @@ private actor IrohRouteFakeGateway: IrohControllerRouteCallableGateway {
         expectedUID: String,
         challengeId: String,
         transportSignatureBase64: String,
-        authoritySignatureBase64: String
+        authoritySignatureBase64: String?
     ) async throws -> IrohControllerRouteRegistration {
         guard expectedUID == self.expectedUID else { throw IrohRouteFakeError.injectedFailure }
         registerCalls += 1
@@ -6042,11 +6135,18 @@ private actor IrohRouteFakeGateway: IrohControllerRouteCallableGateway {
         guard let request = requestsByChallengeId[challengeId] else {
             throw IrohRouteFakeError.injectedFailure
         }
+        switch request.proofKind {
+        case .bootstrap:
+            guard authoritySignatureBase64 != nil else { throw IrohRouteFakeError.injectedFailure }
+        case .transportRenewal:
+            guard authoritySignatureBase64 == nil else { throw IrohRouteFakeError.injectedFailure }
+        }
         if let gate = registerGatesByTransportNodeId[request.transportNodeId] {
             await gate.wait()
         }
         let expiryIndex = min(max(0, registerCalls - 1), max(0, registrationExpiries.count - 1))
         guard !registrationExpiries.isEmpty else { throw IrohRouteFakeError.injectedFailure }
+        registeredRequest = request
         return IrohControllerRouteRegistration(
             connectionId: request.connectionId,
             sourceDeviceId: request.sourceDeviceId,
@@ -6060,6 +6160,10 @@ private actor IrohRouteFakeGateway: IrohControllerRouteCallableGateway {
     func revoke(expectedUID: String, sourceDeviceId: String, connectionId: String) async throws {
         guard expectedUID == self.expectedUID else { throw IrohRouteFakeError.injectedFailure }
         revocations.append((sourceDeviceId, connectionId))
+        if registeredRequest?.sourceDeviceId == sourceDeviceId,
+           registeredRequest?.connectionId == connectionId {
+            registeredRequest = nil
+        }
     }
 
     func issueCallCount() -> Int {
@@ -6112,6 +6216,7 @@ private actor IrohRouteFakeGateway: IrohControllerRouteCallableGateway {
 private func irohRouteProofPayload(
     challengeId: String,
     challengeNonce: String,
+    proofKind: IrohControllerRouteProofKind,
     uid: String,
     connectionId: String,
     sourceDeviceId: String,
@@ -6125,9 +6230,10 @@ private func irohRouteProofPayload(
         "\(value.lengthOfBytes(using: .utf8)):\(value)\n"
     }
     let fields = [
-        "version", "1",
+        "version", "2",
         "challengeId", challengeId,
         "challengeNonce", challengeNonce,
+        "proofKind", proofKind.rawValue,
         "uid", uid,
         "connectionId", connectionId,
         "sourceDeviceId", sourceDeviceId,
@@ -6135,13 +6241,13 @@ private func irohRouteProofPayload(
         "authorityPeerNodeId", authorityPeerNodeId,
         "registrationGeneration", String(registrationGeneration),
         "issuedAtMillis", String(issuedAtMillis),
-        "expiresAtMillis", String(expiresAtMillis),
+        "expiresAtMillis", String(expiresAtMillis)
     ]
-    return Data(("OpenBurnBar-IrohControllerRoute-v1\n" + fields.map(framed).joined()).utf8)
+    return Data(("OpenBurnBar-IrohControllerRoute-v2\n" + fields.map(framed).joined()).utf8)
 }
 
 private enum IrohRouteProofMutation {
-    private static let domain = Data("OpenBurnBar-IrohControllerRoute-v1\n".utf8)
+    private static let domain = Data("OpenBurnBar-IrohControllerRoute-v2\n".utf8)
 
     static let malformedFraming: @Sendable (Data) -> Data = { payload in
         var result = payload
@@ -6171,6 +6277,14 @@ private enum IrohRouteProofMutation {
         var result = payload
         if let range = result.range(of: Data("user-1".utf8)) {
             result.replaceSubrange(range, with: Data("user-2".utf8))
+        }
+        return result
+    }
+
+    static let wrongProofKind: @Sendable (Data) -> Data = { payload in
+        var result = payload
+        if let range = result.range(of: Data("bootstrap".utf8)) {
+            result.replaceSubrange(range, with: Data("forgedxxx".utf8))
         }
         return result
     }

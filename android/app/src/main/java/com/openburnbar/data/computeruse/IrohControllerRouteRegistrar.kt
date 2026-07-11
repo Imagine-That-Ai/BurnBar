@@ -28,10 +28,23 @@ data class IrohControllerRouteChallenge(
     val challengeId: String,
     val canonicalPayloadBase64: String,
     val signatureAlgorithm: String,
+    val proofKind: IrohControllerRouteProofKind,
+    val requiresAuthorityProof: Boolean,
     val registrationGeneration: Long,
     val issuedAtMillis: Long,
     val expiresAtMillis: Long,
 )
+
+enum class IrohControllerRouteProofKind(val wireValue: String) {
+    BOOTSTRAP("bootstrap"),
+    TRANSPORT_RENEWAL("transport-renewal"),
+    ;
+
+    companion object {
+        fun fromWireValue(raw: String): IrohControllerRouteProofKind = entries.firstOrNull { it.wireValue == raw }
+            ?: throw IllegalArgumentException("Controller-route challenge has an unsupported proof kind.")
+    }
+}
 
 data class IrohControllerRouteRegistration(
     val connectionId: String,
@@ -63,7 +76,7 @@ interface IrohControllerRouteCallables {
         expectedUid: String,
         challengeId: String,
         transportSignatureBase64: String,
-        authoritySignatureBase64: String,
+        authoritySignatureBase64: String?,
     ): IrohControllerRouteRegistration
 
     suspend fun revokeIrohControllerRoute(expectedUid: String, sourceDeviceId: String, connectionId: String): IrohControllerRouteRevocation
@@ -105,7 +118,20 @@ class IrohControllerRouteRegistrar(
     private var isInvalidating = false
     private var authTransitionDepth = 0
 
-    override suspend fun ensureRegistered(uid: String, connectionId: String, endpointIdentity: IrohEndpointIdentity): IrohControllerRouteRegistration {
+    override suspend fun ensureRegistered(uid: String, connectionId: String, endpointIdentity: IrohEndpointIdentity): IrohControllerRouteRegistration =
+        ensureRegistered(
+            uid = uid,
+            connectionId = connectionId,
+            endpointIdentity = endpointIdentity,
+            allowAuthorityProof = true,
+        )
+
+    private suspend fun ensureRegistered(
+        uid: String,
+        connectionId: String,
+        endpointIdentity: IrohEndpointIdentity,
+        allowAuthorityProof: Boolean,
+    ): IrohControllerRouteRegistration {
         val normalizedUid = uid.trim().also { require(it.isNotEmpty()) { "uid is required to register an iroh controller route" } }
         val normalizedConnectionId = connectionId.trim().also {
             require(it.isNotEmpty()) { "connectionId is required to register an iroh controller route" }
@@ -118,12 +144,6 @@ class IrohControllerRouteRegistrar(
             require(it.isNotEmpty()) { "The trusted escrow device identity is required to register an iroh controller route." }
         }
         val authorityIdentity = authorityIdentityProvider()
-        if (
-            authorityIdentity is PhoneControlSigningIdentity.SecureEnclaveP256 &&
-            !promptBoundP256SigningAvailableProvider()
-        ) {
-            throw PromptBoundP256SigningUnavailableException()
-        }
         val authorityPeerNodeId = PhoneControlAuthorityDocumentFactory.peerNodeId(authorityIdentity)
         val key = RouteKey(
             uid = normalizedUid,
@@ -173,7 +193,14 @@ class IrohControllerRouteRegistrar(
         val owner = ownership.result
         return try {
             val registration = ownership.registrationLock.mutex.withLock {
-                register(routeScope, key, transportSeed, authorityIdentity, ownership.lifecycleEpoch)
+                register(
+                    routeScope,
+                    key,
+                    transportSeed,
+                    authorityIdentity,
+                    ownership.lifecycleEpoch,
+                    allowAuthorityProof,
+                )
             }
             val stillActive = lock.withLock {
                 if (inFlight[key] === owner) inFlight.remove(key)
@@ -192,9 +219,7 @@ class IrohControllerRouteRegistrar(
             if (!stillActive) throw RouteSupersededException()
             requireActive(routeScope, key, ownership.lifecycleEpoch)
             owner.complete(registration)
-            if (authorityIdentity is PhoneControlSigningIdentity.Ed25519) {
-                scheduleProactiveRenewal(routeScope, key, endpointIdentity, ownership.lifecycleEpoch)
-            }
+            scheduleProactiveRenewal(routeScope, key, endpointIdentity, ownership.lifecycleEpoch)
             registration
         } catch (error: Throwable) {
             lock.withLock {
@@ -306,6 +331,7 @@ class IrohControllerRouteRegistrar(
                                     uid = key.uid,
                                     connectionId = key.connectionId,
                                     endpointIdentity = endpointIdentity,
+                                    allowAuthorityProof = false,
                                 )
                             }
                             if (
@@ -350,6 +376,7 @@ class IrohControllerRouteRegistrar(
         transportSeed: ByteArray,
         authorityIdentity: PhoneControlSigningIdentity,
         expectedLifecycleEpoch: Long,
+        allowAuthorityProof: Boolean,
     ): IrohControllerRouteRegistration {
         requireActive(routeScope, key, expectedLifecycleEpoch)
         val authority = PhoneControlAuthorityDocumentFactory.document(
@@ -373,6 +400,9 @@ class IrohControllerRouteRegistrar(
         require(challenge.signatureAlgorithm == SIGNATURE_ALGORITHM) {
             "Controller-route challenge requires an unsupported signature algorithm."
         }
+        require(challenge.requiresAuthorityProof == (challenge.proofKind == IrohControllerRouteProofKind.BOOTSTRAP)) {
+            "Controller-route challenge authority-proof policy is inconsistent."
+        }
         require(challenge.registrationGeneration > 0L) { "Controller-route challenge has an invalid generation." }
         require(challenge.expiresAtMillis > nowMillis()) { "Controller-route challenge expired before it could be signed." }
         val canonicalPayload = decodeCanonicalPayload(challenge.canonicalPayloadBase64)
@@ -381,8 +411,20 @@ class IrohControllerRouteRegistrar(
             expected = key,
             challenge = challenge,
         )
+        val authoritySignatureBase64 = when (challenge.proofKind) {
+            IrohControllerRouteProofKind.TRANSPORT_RENEWAL -> null
+            IrohControllerRouteProofKind.BOOTSTRAP -> {
+                if (!allowAuthorityProof) throw AuthorityProofRequiredException()
+                if (
+                    authorityIdentity is PhoneControlSigningIdentity.SecureEnclaveP256 &&
+                    !promptBoundP256SigningAvailableProvider()
+                ) {
+                    throw PromptBoundP256SigningUnavailableException()
+                }
+                authorityIdentity.signatureBase64(canonicalPayload)
+            }
+        }
         val transportSignature = Ed25519Sign(transportSeed).sign(canonicalPayload)
-        val authoritySignatureBase64 = authorityIdentity.signatureBase64(canonicalPayload)
         requireActive(routeScope, key, expectedLifecycleEpoch)
         val registration = callables.registerIrohControllerRoute(
             expectedUid = key.uid,
@@ -507,6 +549,10 @@ class IrohControllerRouteRegistrar(
         "StrongBox/TEE controller-route signing requires a BiometricPrompt CryptoObject and is not enabled.",
     )
 
+    internal class AuthorityProofRequiredException : IllegalStateException(
+        "Background controller-route renewal cannot satisfy a bootstrap authority proof.",
+    )
+
     companion object {
         internal const val DEFAULT_RENEWAL_WINDOW_MILLIS = 2 * 60 * 1000L
         internal const val DEFAULT_RENEWAL_RETRY_MILLIS = 15 * 1000L
@@ -587,7 +633,7 @@ private object IrohTransportNodeId {
 }
 
 private object IrohControllerRouteProofPayload {
-    private val prefix = "OpenBurnBar-IrohControllerRoute-v1\n".toByteArray(Charsets.UTF_8)
+    private val prefix = "OpenBurnBar-IrohControllerRoute-v2\n".toByteArray(Charsets.UTF_8)
 
     fun requireMatches(payload: ByteArray, expected: IrohControllerRouteRegistrar.RouteKey, challenge: IrohControllerRouteChallenge) {
         require(payload.size > prefix.size && payload.copyOfRange(0, prefix.size).contentEquals(prefix)) {
@@ -595,9 +641,10 @@ private object IrohControllerRouteProofPayload {
         }
         val segments = parseSegments(payload, prefix.size)
         val expectedSegments = listOf(
-            "version", "1",
+            "version", "2",
             "challengeId", challenge.challengeId,
             "challengeNonce", segments.getOrNull(5).orEmpty(),
+            "proofKind", challenge.proofKind.wireValue,
             "uid", expected.uid,
             "connectionId", expected.connectionId,
             "sourceDeviceId", expected.sourceDeviceId,

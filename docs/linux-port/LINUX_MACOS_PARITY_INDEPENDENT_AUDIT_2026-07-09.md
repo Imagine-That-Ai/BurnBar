@@ -2,11 +2,11 @@
 
 | Audit field | Value |
 |---|---|
-| Date | Baseline audit: 2026-07-09; remediation evidence: 2026-07-10 UTC |
+| Date | Baseline audit: 2026-07-09; remediation evidence through 2026-07-11 UTC |
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | `codex/linux-parity-final`; clean aarch64 and architecture-correct x86_64 release shards at `391fe2847d` |
+| Remediation evidence | `codex/linux-parity-final`; clean aarch64 and architecture-correct x86_64 release shards at `391fe2847d`; controller-route v2/runtime source packet on `codex/linux-parity-browser-cu-main-recut` |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -44,19 +44,29 @@ session-grant broker, versioned mobile challenge validation/signing on iOS and
 Android, live iOS reception, and Android reception bound to the exact
 authenticated iroh route with expiry-bounded foreground recovery,
 native-only Tauri challenge custody, and a fresh peer-bound polkit desktop-owner
-gate. The renderer can neither submit nor receive proof, signature, challenge,
-key, password, or forged authorization fields. This remains source safety
-closure, not an available release workflow. The Linux release graph now builds
-the Rust iroh shared library before Swift, compiles the generated UniFFI bridge,
-stages the exact ELF in AppImage/deb/rpm/AUR payloads, and fails closed when it
-is absent. A real aarch64 VM build, factory activation, ALPN loopback, dynamic
-link, payload stage, and daemon launch pass. The shipping daemon still does not
-compose that backend with a server-verified paired-controller route registry,
-paired-relay publisher, readiness provider, or daemon-owned pairing metadata
-resolver; signed per-action response transport is also absent.
-Those production seams fail closed. Real installed phone authority, browser
-actions, restart certification, Agent Watch, Linux system capture/input, and
-the supported-desktop matrix remain open.
+gate. A server-verified controller-route v2 registry now separates authority
+bootstrap from renewable transport proof: bootstrap verifies the transport and
+authority keys and advances generation, while an exact active tuple can renew
+the lease with transport proof alone without changing generation. Authoritative
+absence, expiry, revocation, and generation replacement close routes rather than
+preserving stale access. iOS and Android publish and renew that protocol, and
+the macOS host applies exact tuple, lease-extension, generation-replacement, and
+lifecycle ownership policy. The Linux daemon now has the corresponding route
+directory client and native iroh runtime composition for grant, approval, panic,
+media, route teardown, metadata, and readiness. The renderer can neither submit
+nor receive proof, signature, challenge, key, password, or forged authorization
+fields.
+
+This is still source closure, not an available release workflow. The Linux
+release graph builds the Rust iroh shared library before Swift, compiles the
+generated UniFFI bridge, stages the exact ELF in AppImage/deb/rpm/AUR payloads,
+and fails closed when it is absent. A real aarch64 VM build, factory activation,
+ALPN loopback, dynamic link, payload stage, and daemon launch pass. However, the
+shipping daemon entry point does not inject a production Linux Firebase ID-token
+and App Check credential provider into the runtime. The installed runtime
+therefore remains unavailable by design. Real installed iPad authority, browser
+actions, panic/audit/restart certification, Agent Watch, Linux system
+capture/input, and the supported-desktop matrix remain open.
 
 Mercury is no longer a missing code path: Linux now has daemon-owned iroh session
 control, inbound and outbound file transfer, call/mirror state, sealed media
@@ -96,13 +106,20 @@ commit `9886a6ac0b`:
 The current integration branch adds measured source and package evidence beyond
 that historical installed baseline:
 
-- **95** focused Swift Core/daemon tests passed across XDG paths, provider
+- **100** focused Swift Core/security/daemon tests passed across XDG paths, provider
   discovery, gateway, switcher, Pensieve/inotify, Computer Use, and Mercury;
-- **59 files / 394 tests** passed in the Linux desktop suite, including every
+- **61 files / 411 tests** passed in the Linux desktop suite, including every
   route under axe, six-layout state, provider-path parity, durable memory, and
   real Mercury RPC decoding;
-- **17/17** Tauri Rust tests, **3/3** media-crate tests, **40/40** extension
+- **19/19** Tauri Rust tests, **3/3** media-crate tests, **213/213** extension
   daemon-client tests, and **78/78** release/workflow contract tests passed;
+- the controller-route v2 packet passed **20/20** focused Functions tests,
+  **18/18** focused Android tests, **17/17** tests on a physical iPad, and
+  **17/17** tests on an iPad Air simulator. The focused Linux daemon suite passed
+  **32/32** tests: **13** grant broker, **3** panic authority, **4** directory,
+  **8** runtime, **2** Mercury teardown, and **2** service lifecycle tests. The
+  final macOS focused host aggregate passed **34/34** tests: **16** callable-security
+  and **18** host lifecycle/policy tests;
 - clean aarch64 and architecture-correct x86_64 shards at `391fe2847d` each
   produced AppImage, deb, rpm, and daemon artifacts with SHA-256 closure, zero
   blockers, and **28/28** package-smoke steps passed;
@@ -139,7 +156,7 @@ The correct release posture is therefore:
 | Updates | Native signed-feed verification implemented; invalid endpoint fails honestly | Serve valid signed feed and prove package-manager update/rollback/data preservation |
 | Packaging | aarch64 and x86_64 AppImage/deb/rpm/daemon construction and smoke passed; aarch64 installed `.deb` session passed | Produce installed x86_64 session, signed aggregate, rpm/AppImage lifecycle, and prior-version proof |
 | Core product workflows | Six dashboard layouts, XDG/provider paths, and daemon-authoritative memory decisions are implemented; several routes remain partial/read-only | Complete onboarding, chat, sessions, account/cloud, and workspace depth |
-| Advanced platform features | Mercury implementation and guarded Linux input/panic paths exist; Computer Use source routing, exact-generation authority, durable replay protection, and signed-response verification are implemented, while unavailable release controls and unsupported outcomes fail closed | Implement phone-backed start-grant and action-approval acquisition; then certify installed Browser CU actions/restart, system CU capture, Mercury, SmartHub devices, IBus/Fcitx, and companion overlay |
+| Advanced platform features | Mercury implementation and guarded Linux input/panic paths exist; Computer Use source routing, controller-route v2 registry and renewal, macOS route policy, Linux native runtime composition, exact-generation authority, durable replay protection, and signed-response verification are implemented, while the credential-less shipping runtime and unsupported outcomes fail closed | Inject production Linux Firebase ID-token and App Check credentials, then certify installed iPad-backed Browser CU actions/restart; continue with system CU capture, Mercury, SmartHub devices, IBus/Fcitx, and companion overlay |
 
 ### What "full parity" means
 
@@ -185,6 +202,12 @@ live product state were independently reproducible.
 - macOS Computer Use compatibility selector: **1/1 passed**, executing an
   approved `browser.goto` through the direct Playwright driver while proving no
   Linux managed-run binding was acquired.
+- Controller-route v2 focused suites: Functions **20/20**, Android **18/18**,
+  physical iPad **17/17**, iPad Air simulator **17/17**, and Linux daemon
+  **32/32** passed. The Linux total comprises **13** grant broker, **3** panic
+  authority, **4** directory, **8** runtime, **2** Mercury teardown, and **2**
+  service lifecycle tests. The final macOS focused host aggregate passed
+  **34/34** tests: **16** callable-security and **18** host lifecycle/policy tests.
 - Linux release/config/packaging/matrix contract suites: **78/78 passed**.
 - Current source comparison of macOS routes, settings, chat, parser registry,
   daemon lifecycle, cloud/account, Computer Use, Mercury, SmartHub, text
@@ -276,7 +299,7 @@ required gates and were not made green by the Ed25519 result.
 | P-04 | Architecture reach | Published build covers the declared macOS architecture support contract | Native aarch64/x86_64 shard workflow exists and architecture-correct local construction/smoke is green for both; a native hosted x86_64 run, signed aggregate, and installed x86_64 evidence are not yet produced | Partial | Critical |
 | P-05 | Credential custody | Keychain-backed provider, connector, auth, and sync secrets | Secret Service, KWallet, and encrypted headless custodians are wired; live keyring/recovery matrix remains incomplete | Partial | Critical |
 | P-06 | Gateway credential boundary | Native process owns bearer credentials | Rust owns the bearer and proxies bounded authenticated HTTP/SSE; renderer receives typed data, not the token | Near parity | Critical |
-| P-07 | Computer Use | Browser, Agent Watch, Mac System, approval, audit, and three panic paths | Source now provides exact run/call/generation binding and signed intent, daemon-owned paired-phone challenge brokerage, serialized and replay-bounded iOS/Android device-owner authorization, Android exact-authenticated-route reception with signed-expiry notification/foreground recovery, process-wide authority counter-to-write sequencing, iOS/Android exact-challenge signing, native-only Tauri challenge custody, typed daemon readiness gating, fresh peer-bound polkit owner authorization, non-reusable startup reservation with definite-failure retry and ambiguous-outcome consumption, atomic device/peer pinning, waiting-run selection, shared scope/panic/Playwright/audit routing, exact-session terminal polling, retryably durable restart normalization, pre-dispatch checkpointing, fail-safe terminal revocation, durable replay counters, and Linux verification of signed phone responses. The broker separately binds the observed QUIC transport peer and signing-key authority peer rather than assuming those independent identities are equal. Linux release builds now compile and package the production iroh UniFFI ELF and fail closed if it is absent; real aarch64 build/link/factory/ALPN/payload-launch proof passes. Native packages install a fresh non-cached polkit policy, own the canonical bridge, and ship a non-installing Node/Playwright/Chromium readiness probe. Packaged execution discards ambient process and Node injection and accepts Playwright, playwright-core, and Chromium only from recursively root-owned, non-group/world-writable canonical trees, but the packages do not bundle those trees. The daemon still lacks the authoritative paired-controller registry and identity mapping plus publisher/metadata/readiness composition, and signed action-response transport is not wired, so release Browser CU reports unavailable and fails closed; installed phone/browser/restart proof, Agent Watch, and Linux system capture/input remain missing | Partial | Critical |
+| P-07 | Computer Use | Browser, Agent Watch, Mac System, approval, audit, and three panic paths | Source now provides exact run/call/generation authority, signed session/action responses, replay protection, waiting-run selection, shared scope/panic/Playwright/audit routing, and fail-safe restart/terminal behavior. Controller-route v2 adds a server-verified registry with dual-signature bootstrap, same-generation transport-only lease renewal for the exact active tuple, authoritative absence/revocation, and generated cross-platform schemas. iOS and Android publish and renew routes; the macOS host enforces exact principal/generation/lease policy and lifecycle ownership; the Linux daemon composes the directory client, native iroh endpoint/accept loop, publisher, metadata/readiness, grant, approval, panic, media, and route-teardown handlers. The observed QUIC transport peer remains distinct from the signing authority peer. Packages compile and stage the production iroh UniFFI ELF, polkit policy, and root-owned Playwright readiness boundary. The shipping daemon entry point still injects no production Linux Firebase ID-token and App Check credential provider, so this source-complete runtime stays unavailable/fail-closed; installed iPad/browser/panic/audit/restart proof, Agent Watch, and Linux system capture/input remain missing | Partial | Critical |
 | P-08 | Mercury media | File transfer, calls, screen share, mirroring, presence, consent | Daemon-owned transport, calls, files, sealed capture, portal consent, HUD, and live capability probing are implemented; real cross-device and compositor proof remains open | Partial | Critical |
 | P-09 | Navigation and shell | Dashboard, insights, deep provider/model routes, multi-window flows | All 19 installed routes activate through AT-SPI; deep links and native multi-window behavior remain thinner | Near parity | Medium |
 | P-10 | Dashboard layouts | Six dense layouts with real live content and persisted state | All six layouts, persistence, loading/error/offline/populated states, tokens, and tests exist; the packaged six-layout visual matrix remains incomplete | Near parity | Medium |
@@ -492,9 +515,9 @@ therefore not closed.
 
 ### GAP-005 - Complete Computer Use rather than exposing unsupported modes
 
-**Implementation update (2026-07-11): unsupported-mode honesty, source routing,
-phone-challenge brokerage, renderer isolation, and package ownership improved;
-authoritative paired-route resolution, daemon runtime composition, and installed
+**Implementation update (2026-07-11): controller-route v2, cross-platform mobile
+renewal, macOS host policy, and Linux native runtime composition are implemented
+in source. Production Linux Firebase ID-token/App Check injection and installed
 capability proof remain open.**
 The typed runtime manifest now marks Linux system Computer Use unavailable and
 prevents the route from offering a guaranteed-failure action. Browser is the
@@ -520,6 +543,22 @@ signature. Corrupt replay state fails closed, and the source-device/peer-node
 pin alias is provisioned as one atomic set on both the Linux file store and the
 macOS Keychain. Backings without atomic multi-alias support fail before writing.
 
+The callable-backed controller directory now implements the canonical
+`OpenBurnBar-IrohControllerRoute-v2` protocol. A bootstrap challenge requires
+both transport and authority signatures and advances route generation. Once
+that exact source-device, connection, transport, authority, and registration
+tuple is active, a transport-only renewal extends its lease without changing
+generation or `registeredAt`. The resolver returns authoritative empty routes
+for known absent, expired, or revoked state. iOS and Android renew autonomously
+with the same protocol and refuse a background renewal if the server unexpectedly
+requires an authority bootstrap proof. Generated TypeSpec, TypeScript, Swift,
+and Kotlin models carry the same proof-kind and route contract.
+
+The macOS host treats authoritative absence as revocation, preserves an admitted
+stream across a same-generation lease extension, and closes it when the principal
+or generation changes. Lifecycle epochs and serialized teardown prevent an old
+start or policy refresh from resurrecting a stopped or replaced host runtime.
+
 Session-start authority now has a versioned challenge bound to the canonical
 session intent, exact trust, and capability subset. Both phone clients bound
 device identifiers before intent comparison, admit at most one user-facing
@@ -544,9 +583,9 @@ panic-halts the new session. Tauri retains the opaque challenge and original pro
 request outside the renderer. Its idle state calls a typed daemon readiness RPC
 and advertises availability only when the operational broker, validator,
 metadata resolver, readiness provider, and trusted pairing path all confirm;
-the shipping unwired daemon therefore reports unavailable rather than offering
-a guaranteed-failure Start action. Native deb/rpm/AUR packages install the
-root-owned polkit action with fresh `auth_self`; the Computer Use path has no PAM fallback, and
+the shipping credential-less daemon therefore reports unavailable rather than
+offering a guaranteed-failure Start action. Native deb/rpm/AUR packages install
+the root-owned polkit action with fresh `auth_self`; the Computer Use path has no PAM fallback, and
 standalone AppImage/Flatpak sessions fail closed when the policy is absent.
 
 The Linux release graph now builds the Rust iroh cdylib before Swift, enables the
@@ -554,14 +593,22 @@ generated UniFFI bridge only when that exact library exists, stages it as a
 regular `0644` package resource, binds its digest into release preparation, and
 requires it in installed manifests and package smoke. A real aarch64 VM proves
 the ALPN loopback, Swift factory activation, daemon ELF dependency, `ldd`
-resolution, staged payload probe, and staged daemon launch. The remaining
-product blocker is runtime composition: production does not yet have a
-server-verified trusted paired-controller registry that maps the observed QUIC
-transport peer to the independent signing-key authority peer, nor does the
-daemon instantiate the iroh endpoint, accept loop, broker publisher,
-metadata resolver, and readiness provider. Signed action-response acquisition
-is also not connected. Full installed real-phone
-browser action/result/restart E2E and a real portal/PipeWire/AT-SPI/libei or
+resolution, staged payload probe, and staged daemon launch. The Linux daemon now
+has a production composition seam that publishes a signed host identity, resolves
+the server-verified controller route, accepts only the exact transport peer, and
+routes grant, approval, panic, Mercury, route teardown, metadata, and readiness
+through the native iroh runtime. Account-generation changes, route expiry,
+authoritative absence, identity replacement, and higher-generation replacement
+invalidate the affected route and sessions. Same-generation renewal is accepted
+only when the principal and original registration epoch are unchanged and the
+lease does not shorten. Stale overlapping refreshes and stop-during-start cannot
+resurrect a route.
+
+The shipping daemon entry point still does not inject the required production
+Linux Firebase ID token and App Check token provider. The composition therefore
+stays dormant and reports `credentials_unavailable`; source wiring cannot stand
+in for installed behavior. Full installed iPad-backed browser
+action/result/panic/audit/restart E2E and a real portal/PipeWire/AT-SPI/libei or
 constrained X11 system adapter are still required. AppImage, deb, and rpm payloads now stage
 the canonical bridge under `/usr/lib/openburnbar/playwright`; deb/rpm signed
 installed manifests hash it, and the daemon launcher selects the package path
@@ -583,24 +630,31 @@ Browser Computer Use parity.
   workflow, and no Linux capture/input adapter existed.
 - **Why it matters:** this is a safety-sensitive feature. Offering guaranteed-
   failure modes and unproven panic behavior is both misleading and dangerous.
-- **Recommended solution:** connect the daemon-owned broker to the shipping
-  authenticated paired-relay stream and pairing registry; acquire the exact
-  signed action response through the same pinned-controller boundary; certify
-  polkit-agent availability without adding a PAM fallback; preserve restart-
-  safe authority state; complete browser actions over the real Playwright
-  bridge; then build portal/PipeWire
+- **Recommended solution:** inject a production Linux credential provider that
+  supplies fresh Firebase ID tokens, App Check tokens, uid, device ID, and account
+  generation to the daemon-owned runtime; keep account changes terminal for the
+  active route. Then exercise exact signed grants, approvals, and panic frames
+  over the installed iroh path; certify polkit-agent availability without adding
+  a PAM fallback; preserve restart-safe authority state; complete browser actions
+  over the real Playwright bridge; then build portal/PipeWire
   capture, AT-SPI inspection, libei input, constrained X11/XTest, and explicitly
   consented uinput fallback.
 - **Priority:** **Critical**.
-- **Implementation notes:** preserve approval as ground truth; trust elevation
+- **Implementation notes:** keep credential acquisition native and out of the
+  renderer; refresh both Firebase ID token and App Check state before directory
+  operations; treat unavailable or changed credentials as terminal for the
+  active route; preserve approval as ground truth; trust elevation
   remains Mac/desktop local; the Linux-native daemon-wide global panic path and
   deterministic installed X11 chord proof now exist, while lock/sleep/
   permission-revocation kill paths and real-desktop latency certification remain;
   never redispatch an action whose pre-dispatch checkpoint may have crossed the
   external boundary; audit every action and terminal entry; capability-gate per
   compositor and session type.
-- **QA verification:** navigate/click/type/screenshot against real browser
-  targets; exercise manual/step/trusted policy, approval races, denial, audit
+- **QA verification:** first prove credential unavailable, expiry, refresh,
+  account switch, App Check rejection, authoritative empty route, renewal, and
+  generation replacement behavior in an installed package. Then navigate/click/
+  type/screenshot against real browser targets with the physical iPad; exercise
+  manual/step/trusted policy, approval races, denial, audit
   tampering, lock/sleep, portal revocation, daemon crash before and after a later
   bound action dispatch, explicit retry, and panic latency on GNOME/KDE/Sway
   Wayland and X11.
@@ -671,9 +725,9 @@ Secret Service/KWallet write-read-delete cycle on Linux, verify writable XDG
 support storage, and persist explicit telemetry/cloud-sync choices. Failed probes
 remain blocked with bounded diagnostics and can retry after restart; the WebView
 cache is non-authoritative and strict decoding rejects forged completion,
-reordered requirements, and prerequisite jumps. The full native Linux manifest
-passes 98 Swift XCTest selectors and 18 Rust tests; the desktop suite passes all
-400 TypeScript/React tests plus its production bundle verifier.
+reordered requirements, and prerequisite jumps. The current full native Linux
+manifest passes 100 Swift XCTest selectors and 19 Rust tests; the desktop suite
+passes all 411 TypeScript/React tests plus its production bundle verifier.
 
 This does **not** close GAP-008 or P-13. Provider account connection and real log
 scan, cloud authentication, portal permission readback, tray host verification,
@@ -1225,7 +1279,7 @@ coverage.
 | LNX-PKG-001 | Implemented in workflow; construction proven | Four-artifact aarch64 and architecture-correct x86_64 shards green with 28/28 smoke checks each; native dual-architecture aggregation is fail closed | Native hosted x86_64 run, installed x86_64 session, signed aggregate, and channel lifecycle |
 | LNX-UPD-001 | Partially implemented | Native signed-feed availability verifier rejects invalid public metadata | Valid feed plus deb/rpm/AppImage update, rollback, and data preservation |
 | LNX-CHANNEL-001 through LNX-DIFF-001 | Open/partial | Existing package/channel/product foundations retained | Daily-use platform foundation and current macOS/Linux differential proof |
-| LNX-CU-BROWSER-001 | Source routing, authority acquisition, and native transport packaging implemented; production route authority and installed proof blocked | Exact run/call/generation signed intent; separate transport/signing authority identity binding; serialized bounded mobile challenge receivers; process-wide per-authority counter sequencing; typed fail-closed readiness; atomic source-device/peer alias pinning; fresh peer-bound polkit desktop-owner authorization; shared coordinator dispatch; signed approval/session-grant and durable replay validation; exact-session lifecycle polling; waiting-requirement restore; root-owned packaged browser runtime; production iroh ELF build/stage/link/launch proof; extension phase/error support; exhaustive native selector manifest | Production Linux credential/App Check provider, authoritative paired-controller registry and route resolution, daemon iroh composition, installed real browser actions, iPad/restart/panic/audit certification |
+| LNX-CU-BROWSER-001 | Controller-route v2 and Linux native runtime implemented in source; production credential injection and installed proof blocked | Exact run/call/generation signed intent; distinct transport/signing authority identities; dual-signature bootstrap and exact-tuple same-generation transport renewal; authoritative route resolution; iOS/Android renewal; macOS route lifecycle policy; Linux directory, host identity, endpoint/accept loop, publisher, broker, metadata/readiness, grant/approval/panic/media/teardown composition; durable replay; polkit owner gate; root-owned packaged browser runtime; production iroh ELF proof. Focused packet evidence: Functions 20/20, Android 18/18, physical iPad 17/17, iPad Air simulator 17/17, Linux daemon 32/32 (13 grant broker, 3 panic authority, 4 directory, 8 runtime, 2 Mercury teardown, 2 service lifecycle), and macOS host 34/34 (16 callable-security, 18 host lifecycle/policy) | Inject a production Linux Firebase ID-token and App Check credential provider in the shipping daemon entry point; then prove installed real browser actions, physical-iPad grant/approval/panic, audit, and restart behavior |
 | Phase 2 core workflows | Open/partial | Existing routes and bounded mutations retained | Complete product outcomes and daemon-authoritative state |
 | Phase 3 native features | In progress | Mercury core, Linux CU input, panic, and outbound capture foundations are implemented; unsupported outcomes remain capability-gated | Cross-device Mercury proof, system CU capture, SmartHub, IBus/Fcitx, pet adapters |
 | Phase 4 certification/promotion | Blocked by design | No false stable promotion is possible | All product work plus exact-candidate environment matrix |
@@ -1316,7 +1370,8 @@ truth-sync, not the first time behavior is documented.
 
 | Task | Depends on | Engineering work | Acceptance criteria |
 |---|---|---|---|
-| LNX-CU-BROWSER-001 | LNX-CAP-001, LNX-IPC-001, LNX-SESS-001, LNX-NATIVE-001, LNX-EVT-001 | Implemented in source: exact waiting-run picker; signed run/call/generation intent; separate observed transport/signing authority identities; serialized, bounded, terminal-on-auth iOS/Android challenge reception; Android exact-route reception with signed-expiry notification/foreground recovery; process-wide per-authority counter allocation-through-write sequencing; typed fail-closed readiness; atomic device/peer aliases; fresh peer-bound polkit owner authorization; verified-session leases; shared coordinator routing; result identity validation; exact signed pending-approval and session-grant verifiers; shared durable replay high-water marks; authoritative exact-session polling; exact-generation cancellation/terminal revocation; pre-dispatch checkpointing for later bound actions; retryably durable outcome-unknown restart normalization; root-owned packaged runtime verification; and production iroh ELF build/stage/link/launch proof. Remaining: authoritative pairing registry and route resolution, daemon iroh/broker publisher/metadata/readiness composition, real phone action-response acquisition, and installed/restart lifecycle | Release build completes navigate/type/click/screenshot with real paired authority; unsigned/forged/replayed/stale/wrong-session/wrong-request responses and swapped transport/authority identities fail; deny/panic/timeout/cancel/journal failure revoke only the exact generation; restart never redispatches an in-flight action, requires fresh session authority, and retains replay high-water marks; audit/tamper proof passes |
+| LNX-CU-CREDENTIALS-001 | LNX-AUTH-001, LNX-SEC-001, LNX-IPC-001, LNX-NATIVE-001 | Inject a daemon-owned production Firebase credential provider that supplies fresh UID-bound ID tokens, App Check tokens, device identity, and account generation to the controller directory client; keep all tokens outside renderer and local RPC payloads | Fresh-token resolve succeeds; expiry, refresh failure, App Check rejection, sign-out, account switch, and generation change revoke the route and bound sessions fail closed; logs, crash reports, UI, and RPC traces contain no token material |
+| LNX-CU-BROWSER-001 | LNX-CU-CREDENTIALS-001, LNX-CAP-001, LNX-IPC-001, LNX-SESS-001, LNX-NATIVE-001, LNX-EVT-001 | Implemented in source: exact waiting-run picker; signed run/call/generation intent; distinct observed transport/signing authority identities; serialized iOS/Android challenge reception; controller-route v2 dual-proof bootstrap and exact-tuple same-generation transport renewal; authoritative route resolution; macOS lifecycle/lease policy; Linux directory, identity, endpoint/accept loop, publisher, broker, metadata/readiness, grant/approval/panic/media/teardown composition; durable replay; polkit owner gate; checkpoint/restart handling; root-owned packaged runtime; and production iroh ELF proof. Remaining after the credential subtask: installed physical-iPad/browser/restart certification | Release build completes navigate/type/click/screenshot with real paired authority; unsigned/forged/replayed/stale/wrong-session/wrong-request responses and swapped transport/authority identities fail; credential expiry/account switch/App Check rejection and route absence/replacement terminate the exact route; deny/panic/timeout/cancel/journal failure revoke only the exact generation; restart never redispatches an in-flight action, requires fresh session authority, and retains replay high-water marks; audit/tamper proof passes |
 | LNX-CU-SYSTEM-001 | LNX-CU-BROWSER-001, LNX-CAP-001, LNX-NATIVE-001 | Portal/PipeWire/AT-SPI/libei plus constrained X11/uinput adapters | Safety and compositor matrix green; unsupported modes hidden |
 | LNX-MEDIA-001 | LNX-CAP-001, LNX-IPC-001, LNX-SEC-001, LNX-AUTH-001, LNX-NATIVE-001, LNX-EVT-001 | Mercury transport, secure pairing, files, calls, share, codecs, consent, notification/lifecycle | Real two-device matrix green on supported desktops |
 | LNX-IOT-001 | LNX-IPC-001 | Typed SmartHub discovery/action APIs | Real device and hostile-input tests green |
@@ -1344,7 +1399,7 @@ truth-sync, not the first time behavior is documented.
 | 3 | **Mainstream install** | Package construction complete; installed/channel proof in progress | LNX-PKG-001, LNX-CHANNEL-001 | Both architectures and every declared package/repository channel install locally |
 | 4 | **Daily-use native foundation** | In progress; onboarding and bounded event-refresh foundations implemented, installed matrix pending | LNX-EVT-001, LNX-ONB-001, LNX-AUTH-001, LNX-NATIVE-001, LNX-UPD-001, LNX-CAT-001, LNX-DIFF-001 | Setup, auth, data freshness, alerts/tray, update lifecycle, and current provider diff green |
 | 5 | **Core product workflows** | Pending | LNX-SESS-001, LNX-CHAT-001, LNX-MEM-001, LNX-PROJ-001, LNX-MISSION-001, LNX-INSIGHT-001, LNX-DB-001, LNX-PROVIDER-001, LNX-PRIV-001, LNX-SET-001 | No synthetic state; every primary workspace and privacy workflow completes |
-| 6 | **Browser automation parity** | In progress; source routing, waiting-run picker, durable replay, signed response/grant verifiers, exact-route mobile challenge reception, daemon broker, Tauri isolation, polkit owner gate, production iroh ELF packaging, and package/runtime ownership implemented; production credentials, authoritative route registry, daemon composition, and installed evidence open | LNX-CU-BROWSER-001 | Compose the verified controller route and iroh runtime, then prove iPad-backed session start/action approval, real actions, panic, audit, and restart recovery |
+| 6 | **Browser automation parity** | In progress; controller-route v2 registry/renewal, mobile publishers, macOS host policy, Linux route directory and native iroh runtime composition, source authority/replay/restart safety, polkit owner gate, Tauri isolation, and production iroh ELF packaging are implemented; production credential injection and installed evidence remain open | LNX-CU-BROWSER-001 | Inject production Linux Firebase ID-token/App Check credentials, then prove physical-iPad-backed session start/action approval, real actions, panic, audit, and restart recovery |
 | 7 | **Media and system integration** | In progress; Mercury code complete | LNX-CU-SYSTEM-001, LNX-MEDIA-001 | Supported compositor safety and two-device media proof |
 | 8 | **Extended features** | Pending | LNX-IOT-001, LNX-TEXT-001, LNX-PET-001 | SmartHub, input-method, and companion outcomes proven or honestly substituted |
 | 9 | **Candidate and certification** | Blocked on milestones 3-8 | LNX-REL-CANDIDATE-001, LNX-A11Y-CERT-001, LNX-PERF-CERT-001, LNX-QA-001, LNX-DOC-001 | Exact signed candidate, assistive-tech, performance, architecture, desktop matrix, and docs green |
@@ -1465,7 +1520,15 @@ Keep one integration owner at a time for `routes.ts`, `tauriBridge.ts`, the Taur
   notification and foreground recovery, daemon-only proof custody,
   single-use consumption after polkit and run revalidation, and no renderer
   proof/password/key fields.
-- [ ] A paired phone supplies the exact signed session grant and action response;
+- [x] Source controller routing uses v2 dual-signature bootstrap, exact-tuple
+  same-generation transport-only renewal, authoritative empty-route revocation,
+  autonomous iOS/Android renewal, macOS lifecycle/lease enforcement, and Linux
+  native directory/endpoint/broker/readiness/action-response composition.
+- [ ] The shipping daemon injects fresh native Firebase ID-token and App Check
+  credentials, and expiry, refresh, rejection, account switch, and credential
+  generation changes fail closed without exposing tokens to the renderer.
+- [ ] A paired physical iPad supplies the exact signed session grant and action
+  response;
   unsigned, forged, replayed, stale, wrong-session, and wrong-request vectors fail.
 - [ ] Browser actions, approvals, deny, panic, audit, tamper detection, restart,
   and permission revocation pass against a real browser.
@@ -1543,12 +1606,25 @@ Primary current evidence and implementation references:
 - Linux chat controls/state: `apps/linux-desktop/src/surfaces/chat/` and
   `apps/linux-desktop/src/state/chatStore.ts`
 - Linux Tauri capability/commands: `apps/linux-desktop/src-tauri/src/lib.rs`
+- Controller-route v2 registry and clients:
+  `functions/src/callables/irohControllerRouteCallables.ts`,
+  `functions/src/callables/irohControllerRouteSecurity.ts`,
+  `OpenBurnBarMobile/Services/ComputerUse/PhoneControlAuthorityPublisher.swift`,
+  `android/app/src/main/java/com/openburnbar/data/computeruse/IrohControllerRouteRegistrar.kt`,
+  `AgentLens/Services/IrohRelay/FirestoreIrohInboundPeerAllowlist.swift`, and
+  `AgentLens/Services/IrohRelay/HermesIrohRelayHostClient.swift`
 - Linux Browser Computer Use authority and lifecycle:
   `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/ComputerUseAuthorizationRegistry.swift`,
   `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/ComputerUseSessionGrantBroker.swift`,
   `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/LinuxComputerUseOwnerAuthorizationCoordinator.swift`,
   `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/DaemonComputerUseApprovalAuthorityVerifier.swift`,
+  `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/DaemonComputerUsePanicAuthorityVerifier.swift`,
   `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/DaemonComputerUseApprovalReplayCounterStore.swift`,
+  `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/LinuxIrohControllerCredentials.swift`,
+  `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/LinuxIrohControllerDirectoryClient.swift`,
+  `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/LinuxIrohControllerRuntime.swift`,
+  `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/LinuxIrohHostIdentityStore.swift`,
+  `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift`,
   `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/DaemonPhoneKeyPinStore.swift`,
   `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarRunService+ToolDispatch.swift`,
   `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarRunService+Lifecycle.swift`,
@@ -1557,6 +1633,8 @@ Primary current evidence and implementation references:
   `android/app/src/main/java/com/openburnbar/data/computeruse/ComputerUseSessionGrantChallengeValidator.kt`,
   `apps/linux-desktop/src-tauri/src/lib.rs`, and
   `apps/linux-desktop/src/surfaces/computerUse/ComputerUseSurface.tsx`
+- Shipping Linux credential-injection blocker:
+  `OpenBurnBarDaemon/Sources/OpenBurnBarDaemonExecutable/OpenBurnBarDaemonMain.swift`
 - Linux Browser Computer Use native contract gate:
   `scripts/linux-port/run-linux-native-tests.sh` and
   `scripts/linux-port/run-linux-native-tests.test.mjs`

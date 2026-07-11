@@ -189,6 +189,8 @@ async function issueChallenge(authorityPeerNodeId: string, transportNodeId: stri
   return invoke<{
     challengeId: string;
     canonicalPayloadBase64: string;
+    proofKind: "bootstrap" | "transport-renewal";
+    requiresAuthorityProof: boolean;
     registrationGeneration: number;
   }>(issueIrohControllerRouteChallenge, UID, {
     sourceDeviceId: SOURCE_DEVICE_ID,
@@ -203,13 +205,15 @@ async function issueChallenge(authorityPeerNodeId: string, transportNodeId: stri
 async function registerChallenge(
   challenge: { challengeId: string; canonicalPayloadBase64: string },
   transportPrivateKey: ReturnType<typeof generateKeyPairSync>["privateKey"],
-  authorityPrivateKey: ReturnType<typeof generateKeyPairSync>["privateKey"],
+  authorityPrivateKey?: ReturnType<typeof generateKeyPairSync>["privateKey"],
 ) {
   const payload = Buffer.from(challenge.canonicalPayloadBase64, "base64");
   return invoke<Record<string, unknown>>(registerIrohControllerRoute, UID, {
     challengeId: challenge.challengeId,
     transportSignatureBase64: sign(null, payload, transportPrivateKey).toString("base64"),
-    authoritySignatureBase64: sign(null, payload, authorityPrivateKey).toString("base64"),
+    ...(authorityPrivateKey
+      ? { authoritySignatureBase64: sign(null, payload, authorityPrivateKey).toString("base64") }
+      : {}),
     expectedUid: UID,
   });
 }
@@ -261,6 +265,16 @@ describe("verified iroh controller route registry", () => {
   it("registers and resolves distinct transport, authority, and device identities", async () => {
     const fixture = seedTrustGraph();
     const challenge = await issueChallenge(fixture.authorityPeerNodeId, fixture.transportNodeId);
+    expect(challenge).toMatchObject({
+      proofKind: "bootstrap",
+      requiresAuthorityProof: true,
+      registrationGeneration: 1,
+    });
+    const canonicalPayload = Buffer.from(challenge.canonicalPayloadBase64, "base64").toString("utf8");
+    expect(canonicalPayload).toContain("OpenBurnBar-IrohControllerRoute-v2\n");
+    expect(canonicalPayload.indexOf("challengeNonce")).toBeLessThan(canonicalPayload.indexOf("proofKind"));
+    expect(canonicalPayload.indexOf("proofKind")).toBeLessThan(canonicalPayload.indexOf("uid"));
+    expect(canonicalPayload).toContain("9:bootstrap\n");
     const registration = await registerChallenge(challenge, fixture.transport.privateKey, fixture.authority.privateKey);
     expect(registration).toMatchObject({
       ok: true,
@@ -286,7 +300,86 @@ describe("verified iroh controller route registry", () => {
       }),
     ]);
     expect(JSON.stringify(resolution)).not.toContain("publicKeyBase64");
-    expect(JSON.stringify(resolution)).not.toContain("signature");
+  });
+
+  it("renews an exact active tuple with transport proof only while preserving route identity", async () => {
+    const fixture = seedTrustGraph();
+    const bootstrap = await issueChallenge(fixture.authorityPeerNodeId, fixture.transportNodeId);
+    await registerChallenge(bootstrap, fixture.transport.privateKey, fixture.authority.privateKey);
+    const routePath = `users/${UID}/iroh_pairing/${CONNECTION_ID}/controller_routes/${SOURCE_DEVICE_ID}`;
+    const bootstrapRoute = store.get(routePath);
+    const registeredAtMillis = bootstrapRoute?.registeredAtMillis;
+    const shortenedExpiry = Date.now() + 1_000;
+    store.set(routePath, { ...bootstrapRoute, expiresAtMillis: shortenedExpiry });
+
+    const renewal = await issueChallenge(fixture.authorityPeerNodeId, fixture.transportNodeId);
+    expect(renewal).toMatchObject({
+      proofKind: "transport-renewal",
+      requiresAuthorityProof: false,
+      registrationGeneration: 1,
+    });
+    expect(Buffer.from(renewal.canonicalPayloadBase64, "base64").toString("utf8")).toContain("17:transport-renewal\n");
+    await expect(registerChallenge(renewal, fixture.transport.privateKey)).resolves.toMatchObject({
+      ok: true,
+      generation: 1,
+    });
+
+    expect(store.get(routePath)).toMatchObject({
+      status: "active",
+      generation: 1,
+      registeredAtMillis,
+      transportNodeId: fixture.transportNodeId,
+      authorityPeerNodeId: fixture.authorityPeerNodeId,
+    });
+    expect(store.get(routePath)?.expiresAtMillis).toEqual(expect.any(Number));
+    expect(store.get(routePath)?.expiresAtMillis as number).toBeGreaterThan(shortenedExpiry);
+  });
+
+  it("requires a new bootstrap proof and generation when the transport tuple changes", async () => {
+    const fixture = seedTrustGraph();
+    const bootstrap = await issueChallenge(fixture.authorityPeerNodeId, fixture.transportNodeId);
+    await registerChallenge(bootstrap, fixture.transport.privateKey, fixture.authority.privateKey);
+    const replacementTransport = generateKeyPairSync("ed25519");
+    const replacementTransportNodeId = rawEd25519PublicKey(replacementTransport.publicKey).toString("hex");
+
+    const rotation = await issueChallenge(fixture.authorityPeerNodeId, replacementTransportNodeId);
+    expect(rotation).toMatchObject({
+      proofKind: "bootstrap",
+      requiresAuthorityProof: true,
+      registrationGeneration: 2,
+    });
+    await expect(registerChallenge(rotation, replacementTransport.privateKey)).rejects.toMatchObject({
+      code: "invalid-argument",
+    });
+    await expect(
+      registerChallenge(rotation, replacementTransport.privateKey, fixture.authority.privateKey),
+    ).resolves.toMatchObject({ ok: true, generation: 2, transportNodeId: replacementTransportNodeId });
+  });
+
+  it("cannot consume a renewal after revocation changes its eligibility", async () => {
+    const fixture = seedTrustGraph();
+    const bootstrap = await issueChallenge(fixture.authorityPeerNodeId, fixture.transportNodeId);
+    await registerChallenge(bootstrap, fixture.transport.privateKey, fixture.authority.privateKey);
+    const renewal = await issueChallenge(fixture.authorityPeerNodeId, fixture.transportNodeId);
+    const routePath = `users/${UID}/iroh_pairing/${CONNECTION_ID}/controller_routes/${SOURCE_DEVICE_ID}`;
+    const eligibleRoute = store.get(routePath);
+    store.set(routePath, { ...eligibleRoute, registeredAtMillis: (eligibleRoute?.registeredAtMillis as number) + 1 });
+    await expect(registerChallenge(renewal, fixture.transport.privateKey)).rejects.toMatchObject({ code: "aborted" });
+    store.set(routePath, eligibleRoute ?? {});
+    await invoke(revokeIrohControllerRoute, UID, {
+      sourceDeviceId: SOURCE_DEVICE_ID,
+      connectionId: CONNECTION_ID,
+      expectedUid: UID,
+      nonce: "renewal-race-revoke-nonce",
+    });
+
+    await expect(registerChallenge(renewal, fixture.transport.privateKey)).rejects.toMatchObject({ code: "aborted" });
+    const replacement = await issueChallenge(fixture.authorityPeerNodeId, fixture.transportNodeId);
+    expect(replacement).toMatchObject({
+      proofKind: "bootstrap",
+      requiresAuthorityProof: true,
+      registrationGeneration: 3,
+    });
   });
 
   it("rejects a forged transport proof without consuming the challenge", async () => {
@@ -362,16 +455,18 @@ describe("verified iroh controller route registry", () => {
     await registerChallenge(challenge, registered.transport.privateKey, registered.authority.privateKey);
     const sourceDevicePath = `users/${UID}/escrow_devices/${SOURCE_DEVICE_ID}`;
     store.set(sourceDevicePath, { ...store.get(sourceDevicePath), peerNodeId: "ios-phone-rotated" });
-    await expect(invoke(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID })).rejects.toMatchObject(
-      { code: "permission-denied" },
-    );
+    await expect(
+      invoke(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID }),
+    ).resolves.toMatchObject({ routes: [] });
     store.set(sourceDevicePath, {
       ...store.get(sourceDevicePath),
       peerNodeId: registered.authorityPeerNodeId,
     });
     const controllerPath = `users/${UID}/iroh_pairing/${CONNECTION_ID}/controllers/${registered.authorityPeerNodeId}`;
     store.set(controllerPath, { ...store.get(controllerPath), publicKeyBase64: randomBytes(32).toString("base64") });
-    await expect(invoke(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID })).rejects.toBeTruthy();
+    await expect(
+      invoke(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID }),
+    ).resolves.toMatchObject({ routes: [] });
 
     store.clear();
     const expired = seedTrustGraph();
@@ -379,8 +474,40 @@ describe("verified iroh controller route registry", () => {
     await registerChallenge(expiryChallenge, expired.transport.privateKey, expired.authority.privateKey);
     const routePath = `users/${UID}/iroh_pairing/${CONNECTION_ID}/controller_routes/${SOURCE_DEVICE_ID}`;
     store.set(routePath, { ...store.get(routePath), expiresAtMillis: Date.now() - 1 });
+    await expect(
+      invoke(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID }),
+    ).resolves.toMatchObject({ routes: [] });
+  });
+
+  it("returns empty for negative trust state but still rejects malformed active routes", async () => {
+    await expect(
+      invoke(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID }),
+    ).resolves.toMatchObject({ uid: UID, connectionId: CONNECTION_ID, routes: [] });
+
+    const fixture = seedTrustGraph();
+    const challenge = await issueChallenge(fixture.authorityPeerNodeId, fixture.transportNodeId);
+    await registerChallenge(challenge, fixture.transport.privateKey, fixture.authority.privateKey);
+    const pairingPath = `users/${UID}/iroh_pairing/${CONNECTION_ID}`;
+    store.set(pairingPath, {
+      ...store.get(pairingPath),
+      authorizedControllerDeviceIds: [SOURCE_DEVICE_ID, "other-phone"],
+    });
+    await expect(
+      invoke(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID }),
+    ).resolves.toMatchObject({ routes: [] });
+
+    store.set(pairingPath, {
+      ...store.get(pairingPath),
+      authorizedControllerDeviceIds: [SOURCE_DEVICE_ID],
+      publishedAtMillis: Date.now() - 4 * 60 * 1000,
+    });
+    await expect(
+      invoke(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID }),
+    ).resolves.toMatchObject({ routes: [] });
+    const routePath = `users/${UID}/iroh_pairing/${CONNECTION_ID}/controller_routes/${SOURCE_DEVICE_ID}`;
+    store.set(routePath, { ...store.get(routePath), transportNodeId: "malformed-node-id" });
     await expect(invoke(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID })).rejects.toMatchObject(
-      { code: "failed-precondition" },
+      { code: "invalid-argument" },
     );
   });
 
@@ -396,9 +523,9 @@ describe("verified iroh controller route registry", () => {
         nonce: "revoke-nonce",
       }),
     ).resolves.toMatchObject({ ok: true, generation: 2 });
-    await expect(invoke(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID })).rejects.toMatchObject(
-      { code: "failed-precondition" },
-    );
+    await expect(
+      invoke(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID }),
+    ).resolves.toMatchObject({ routes: [] });
   });
 
   it("tombstones an absent route so an outstanding first-generation challenge cannot register", async () => {
@@ -439,9 +566,9 @@ describe("verified iroh controller route registry", () => {
     expect(store.get(`users/${UID}/iroh_pairing/${CONNECTION_ID}/controller_routes/${SOURCE_DEVICE_ID}`)).toMatchObject(
       { status: "revoked", generation: 2 },
     );
-    await expect(invoke(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID })).rejects.toMatchObject(
-      { code: "failed-precondition" },
-    );
+    await expect(
+      invoke(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID }),
+    ).resolves.toMatchObject({ routes: [] });
   });
 
   it("issue challenge scopes every lookup to request.auth.uid", async () => {
@@ -488,7 +615,7 @@ describe("verified iroh controller route registry", () => {
     const before = snapshotTenantPaths(UID);
     await expect(
       invoke(resolveActiveIrohControllerRoutes, BOB_UID, { connectionId: CONNECTION_ID }),
-    ).rejects.toMatchObject({ code: "failed-precondition" });
+    ).resolves.toMatchObject({ uid: BOB_UID, connectionId: CONNECTION_ID, routes: [] });
     expect(snapshotTenantPaths(UID)).toEqual(before);
   });
 

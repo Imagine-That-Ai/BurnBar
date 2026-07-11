@@ -11,6 +11,8 @@ import OpenBurnBarComputerUseCore
 /// but can never dispatch Path A/C. On Linux, the daemon owns system input via
 /// Linux-native adapters because there is no AppKit host process to inject it.
 public actor ComputerUseService {
+    public typealias ApprovalPublisher = @Sendable (HermesRealtimeRelayApprovalRequest) async throws -> Void
+    public typealias SessionEndedObserver = @Sendable (String) async -> Void
     public enum ServiceError: Error, LocalizedError, Sendable, Equatable {
         case invalidMode(String)
         case invalidTrustMode(String)
@@ -87,6 +89,8 @@ public actor ComputerUseService {
     private let computerUseKillSwitchEnabled: @Sendable () -> Bool
     private let privilegedInputKillSwitchActivator: @Sendable (String) -> Void
     private let requiresManagedBrowserRunAuthority: Bool
+    private let approvalPublisher: ApprovalPublisher?
+    private let sessionEndedObserver: SessionEndedObserver?
     private var manifests: [ComputerUseSessionID: ComputerUseSessionManifest] = [:]
     private var pendingEndedSessions: [ComputerUseSessionEndRecord] = []
     private var sessionStartReserved = false
@@ -113,6 +117,8 @@ public actor ComputerUseService {
         authorizationRegistry: ComputerUseAuthorizationRegistry? = nil,
         preDispatchAuthorizer: ComputerUseRunCoordinator.PreDispatchAuthorizer? = nil,
         requiresManagedBrowserRunAuthority: Bool? = nil,
+        approvalPublisher: ApprovalPublisher? = nil,
+        sessionEndedObserver: SessionEndedObserver? = nil,
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "computer-use-service")
     ) {
         self.init(
@@ -140,6 +146,8 @@ public actor ComputerUseService {
             authorizationRegistry: authorizationRegistry,
             preDispatchAuthorizer: preDispatchAuthorizer,
             requiresManagedBrowserRunAuthority: requiresManagedBrowserRunAuthority,
+            approvalPublisher: approvalPublisher,
+            sessionEndedObserver: sessionEndedObserver,
             logger: logger
         )
     }
@@ -164,6 +172,8 @@ public actor ComputerUseService {
         authorizationRegistry: ComputerUseAuthorizationRegistry? = nil,
         preDispatchAuthorizer: ComputerUseRunCoordinator.PreDispatchAuthorizer? = nil,
         requiresManagedBrowserRunAuthority: Bool? = nil,
+        approvalPublisher: ApprovalPublisher? = nil,
+        sessionEndedObserver: SessionEndedObserver? = nil,
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "computer-use-service")
     ) {
         let approvalBridge = ComputerUseApprovalBridge()
@@ -237,9 +247,11 @@ public actor ComputerUseService {
         let resolvedRequiresManagedBrowserRunAuthority = requiresManagedBrowserRunAuthority
             ?? Self.platformRequiresManagedBrowserRunAuthority
         self.requiresManagedBrowserRunAuthority = resolvedRequiresManagedBrowserRunAuthority
+        self.approvalPublisher = approvalPublisher
+        self.sessionEndedObserver = sessionEndedObserver
         self.coordinator = ComputerUseRunCoordinator(
             approvalIssuer: { request in
-                try await approvalBridge.issue(request)
+                try await approvalBridge.issue(request, publisher: approvalPublisher)
             },
             macInputDispatcher: systemInputDispatcher ?? defaultSystemInputDispatcher,
             macInspectDispatcher: systemInspectDispatcher ?? defaultSystemInspectDispatcher,
@@ -508,6 +520,9 @@ public actor ComputerUseService {
         // Revoke authority before any cleanup await. Late approvals and
         // concurrent invokes must fail closed while the driver is stopping.
         await authorizationRegistry.revoke(sessionID: sessionID)
+        if let sessionEndedObserver {
+            await sessionEndedObserver(sessionID.rawValue)
+        }
         await approvalBridge.cancel(sessionId: sessionID.rawValue)
         let ended = await coordinator.panicHalt(sessionId: sessionID, source: source)
         let directory = auditBaseDirectory.appendingPathComponent(sessionID.rawValue, isDirectory: true)
@@ -698,12 +713,7 @@ public actor ComputerUseService {
         if request.sessionId == "*" {
             privilegedInputKillSwitchActivator(source.rawValue)
             let endedAt = Date()
-            timeoutTasks.values.forEach { $0.cancel() }
-            timeoutTasks.removeAll()
-            let manifestedSessionIDs = Set(manifests.keys)
-            revokingSessionIDs.formUnion(manifestedSessionIDs)
-            await authorizationRegistry.revokeAll()
-            await approvalBridge.cancelAll()
+            let manifestedSessionIDs = await revokeAllSessionAuthority()
             let haltedSessions = await coordinator.panicHaltAllWithRecords(source: source)
             let haltedSessionIDs = Set(haltedSessions.map { ComputerUseSessionID($0.sessionId) })
             let recordsBySessionID = Dictionary(
@@ -934,6 +944,11 @@ public actor ComputerUseService {
         let manifestedSessionIDs = Set(manifests.keys)
         revokingSessionIDs.formUnion(manifestedSessionIDs)
         await authorizationRegistry.revokeAll()
+        if let sessionEndedObserver {
+            for sessionID in manifestedSessionIDs {
+                await sessionEndedObserver(sessionID.rawValue)
+            }
+        }
         await approvalBridge.cancelAll()
         return manifestedSessionIDs
     }
@@ -1102,22 +1117,49 @@ public actor ComputerUseService {
 
 actor ComputerUseApprovalBridge {
     private struct PendingApproval {
+        var publicationID: UUID
         var request: HermesRealtimeRelayApprovalRequest
         var continuation: CheckedContinuation<HermesRealtimeRelayApprovalResponse, Error>
+        var publicationTask: Task<Void, Never>?
     }
 
     private var pendingByApprovalId: [String: PendingApproval] = [:]
 
-    func issue(_ request: HermesRealtimeRelayApprovalRequest) async throws -> HermesRealtimeRelayApprovalResponse {
-        try await withTaskCancellationHandler {
+    func issue(
+        _ request: HermesRealtimeRelayApprovalRequest,
+        publisher: ComputerUseService.ApprovalPublisher? = nil
+    ) async throws -> HermesRealtimeRelayApprovalResponse {
+        let publicationID = UUID()
+        return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
+                if let replaced = pendingByApprovalId.removeValue(forKey: request.approvalId) {
+                    replaced.publicationTask?.cancel()
+                    replaced.continuation.resume(throwing: CancellationError())
+                }
                 pendingByApprovalId[request.approvalId] = PendingApproval(
+                    publicationID: publicationID,
                     request: request,
-                    continuation: continuation
+                    continuation: continuation,
+                    publicationTask: nil
                 )
+                if let publisher {
+                    let publicationTask = Task {
+                        await self.publish(
+                            request,
+                            publicationID: publicationID,
+                            using: publisher
+                        )
+                    }
+                    pendingByApprovalId[request.approvalId]?.publicationTask = publicationTask
+                }
             }
         } onCancel: {
-            Task { await self.cancel(approvalId: request.approvalId) }
+            Task {
+                await self.cancel(
+                    approvalId: request.approvalId,
+                    publicationID: publicationID
+                )
+            }
         }
     }
 
@@ -1138,6 +1180,7 @@ actor ComputerUseApprovalBridge {
         guard let pending = pendingByApprovalId[response.approvalId] else { return false }
         if let sessionId, pending.request.sessionId != sessionId { return false }
         pendingByApprovalId.removeValue(forKey: response.approvalId)
+        pending.publicationTask?.cancel()
         pending.continuation.resume(returning: response)
         return true
     }
@@ -1155,12 +1198,47 @@ actor ComputerUseApprovalBridge {
         let pending = pendingByApprovalId
         pendingByApprovalId.removeAll()
         for (_, approval) in pending {
+            approval.publicationTask?.cancel()
             approval.continuation.resume(throwing: CancellationError())
         }
     }
 
     private func cancel(approvalId: String) {
         guard let pending = pendingByApprovalId.removeValue(forKey: approvalId) else { return }
+        pending.publicationTask?.cancel()
         pending.continuation.resume(throwing: CancellationError())
+    }
+
+    private func cancel(approvalId: String, publicationID: UUID) {
+        guard pendingByApprovalId[approvalId]?.publicationID == publicationID else { return }
+        cancel(approvalId: approvalId)
+    }
+
+    private func publish(
+        _ request: HermesRealtimeRelayApprovalRequest,
+        publicationID: UUID,
+        using publisher: ComputerUseService.ApprovalPublisher
+    ) async {
+        guard pendingByApprovalId[request.approvalId]?.publicationID == publicationID else { return }
+        do {
+            try Task.checkCancellation()
+            try await publisher(request)
+            if pendingByApprovalId[request.approvalId]?.publicationID == publicationID {
+                pendingByApprovalId[request.approvalId]?.publicationTask = nil
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            fail(approvalId: request.approvalId, publicationID: publicationID, error: error)
+        }
+    }
+
+    private func fail(approvalId: String, publicationID: UUID, error: Error) {
+        guard let pending = pendingByApprovalId[approvalId],
+              pending.publicationID == publicationID else {
+            return
+        }
+        pendingByApprovalId.removeValue(forKey: approvalId)
+        pending.continuation.resume(throwing: error)
     }
 }

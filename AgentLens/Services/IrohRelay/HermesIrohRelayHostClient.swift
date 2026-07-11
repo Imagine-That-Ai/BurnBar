@@ -8,6 +8,27 @@ import OpenBurnBarCore
 import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
 
+private actor IrohRelayLifecycleGate {
+    private var isLocked = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func acquire() async {
+        guard isLocked else {
+            isLocked = true
+            return
+        }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func release() {
+        guard !waiters.isEmpty else {
+            isLocked = false
+            return
+        }
+        waiters.removeFirst().resume()
+    }
+}
+
 /// Mac-side host that serves Hermes Realtime Relay requests over the iroh
 /// peer-to-peer transport. Drop-in replacement for
 /// `HermesRealtimeRelayHostClient` (WSS-based) — same public surface,
@@ -42,6 +63,15 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     private var acceptTask: Task<Void, Never>?
     private var heartbeatTask: Task<Void, Never>?
     private var recoveryTask: Task<Void, Never>?
+    private struct RuntimeOwner: Sendable, Equatable {
+        let epoch: UInt64
+        let uid: String
+        let connectionID: String
+    }
+    private let lifecycleGate = IrohRelayLifecycleGate()
+    private var runtimeEpoch: UInt64 = 0
+    private var desiredRuntimeOwner: RuntimeOwner?
+    private var teardownTask: Task<Void, Never>?
     private var authStateListenerHandle: AuthStateDidChangeListenerHandle?
     private var acceptLoopHealthy = false
     private var heartbeatHealthy = false
@@ -93,8 +123,11 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     private var missRefreshTask: Task<Void, Never>?
     private var lastAllowlistMissRefreshAt: Date?
     private struct ServeAuthorization: Sendable, Equatable {
+        let sourceDeviceId: String
         let remotePeerNodeId: String
+        let authorityPeerNodeId: String
         let generation: UInt64
+        let registeredAtMillis: Int64
         let expiresAtMillis: Int64
     }
     private var serveAuthorizations: [UUID: ServeAuthorization] = [:]
@@ -268,7 +301,10 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
 
     @discardableResult
     func start(uid: String, connectionID: String) async -> Bool {
-        if transport != nil, readyUID == uid, readyConnectionID == connectionID {
+        if let owner = desiredRuntimeOwner,
+           transport != nil,
+           readyUID == uid,
+           readyConnectionID == connectionID {
             guard relayRuntimeHealthy else {
                 AppLogger.network.info(
                     "hermes_iroh_relay_rebuild_stale_runtime connectionID=\(connectionID)"
@@ -276,31 +312,55 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                 stop()
                 return await start(uid: uid, connectionID: connectionID)
             }
-            await refreshPairingRecord(uid: uid, connectionID: connectionID)
-            return true
+            return await refreshPairingRecord(uid: uid, connectionID: connectionID, owner: owner)
         }
         stop()
+        let pendingTeardown = teardownTask
+        runtimeEpoch &+= 1
+        let owner = RuntimeOwner(epoch: runtimeEpoch, uid: uid, connectionID: connectionID)
+        desiredRuntimeOwner = owner
         #if DEBUG
         let forceIrohTransport = ProcessInfo.processInfo.environment["OPENBURNBAR_ENABLE_IROH_TRANSPORT"] == "1"
         #else
         let forceIrohTransport = false
         #endif
-        guard settingsManager.hermesIrohTransportEnabled || forceIrohTransport else { return false }
+        guard settingsManager.hermesIrohTransportEnabled || forceIrohTransport else {
+            desiredRuntimeOwner = nil
+            return false
+        }
 
+        await pendingTeardown?.value
+        guard isCurrentRuntimeOwner(owner) else { return false }
+        await lifecycleGate.acquire()
+        guard isCurrentRuntimeOwner(owner) else {
+            await lifecycleGate.release()
+            return false
+        }
+
+        var newTransport: (any IrohRelayTransport)?
+        var pairingPublicationAttempted = false
         await HermesIrohHostedRelayConfig.refreshRemoteConfigIfAvailable()
-        let newTransport = transportFactory(self)
+        guard isCurrentRuntimeOwner(owner) else {
+            await lifecycleGate.release()
+            return false
+        }
+        let prospectiveTransport = transportFactory(self)
+        newTransport = prospectiveTransport
         #if DEBUG
         if ProcessInfo.processInfo.environment["OPENBURNBAR_ALLOW_IROH_LOOPBACK"] != "1",
-           newTransport is LoopbackIrohRelayTransport {
+           prospectiveTransport is LoopbackIrohRelayTransport {
             assertionFailure(
                 "Hermes iroh host resolved LoopbackIrohRelayTransport. Build/link Vendor/OpenBurnBarIroh.xcframework so QA/dev devices use IrohXcframeworkTransport."
             )
         }
         #endif
         do {
-            let identity = try await newTransport.start()
-            transport = newTransport
-            publishedIdentity = identity
+            let identity = try await prospectiveTransport.start()
+            guard isCurrentRuntimeOwner(owner) else {
+                await prospectiveTransport.shutdown()
+                await lifecycleGate.release()
+                return false
+            }
 
             let pairingKeypair = try pairingKeyStore.keypair()
             // Publish the verifier key BEFORE the pairing record so iOS
@@ -311,7 +371,13 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                 deviceId: accountManager.deviceId,
                 publicKeyBase64: pairingKeypair.publicKeyBase64
             )
+            guard isCurrentRuntimeOwner(owner) else {
+                await prospectiveTransport.shutdown()
+                await lifecycleGate.release()
+                return false
+            }
             let publisher = IrohPairingPublisher(directory: directory)
+            pairingPublicationAttempted = true
             _ = try await publisher.publish(
                 uid: uid,
                 connectionId: connectionID,
@@ -320,6 +386,18 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                 directAddresses: identity.directAddresses,
                 with: pairingKeypair
             )
+            guard isCurrentRuntimeOwner(owner) else {
+                await prospectiveTransport.shutdown()
+                await Self.revokePairingRecord(
+                    directory: directory,
+                    uid: uid,
+                    connectionID: connectionID,
+                    attempts: revokeRetryAttempts,
+                    sleep: revokeRetrySleep
+                )
+                await lifecycleGate.release()
+                return false
+            }
             await auditLogger.record(
                 event: .pairingPublished,
                 uid: uid,
@@ -332,40 +410,103 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                     "directAddressCount": "\(identity.directAddresses.count)"
                 ]
             )
+            guard isCurrentRuntimeOwner(owner) else {
+                await prospectiveTransport.shutdown()
+                await Self.revokePairingRecord(
+                    directory: directory,
+                    uid: uid,
+                    connectionID: connectionID,
+                    attempts: revokeRetryAttempts,
+                    sleep: revokeRetrySleep
+                )
+                await lifecycleGate.release()
+                return false
+            }
 
+            let initialPolicyResult = await inboundPeerPolicyLoader(uid, connectionID)
+            guard isCurrentRuntimeOwner(owner) else {
+                await prospectiveTransport.shutdown()
+                await Self.revokePairingRecord(
+                    directory: directory,
+                    uid: uid,
+                    connectionID: connectionID,
+                    attempts: revokeRetryAttempts,
+                    sleep: revokeRetrySleep
+                )
+                await lifecycleGate.release()
+                return false
+            }
+
+            transport = prospectiveTransport
+            publishedIdentity = identity
             readyUID = uid
             readyConnectionID = connectionID
+            policyLoadRequestEpoch &+= 1
+            switch initialPolicyResult {
+            case .authoritative(let policy):
+                inboundPeerPolicy = policy
+                lastAuthoritativePolicyLoadAt = now()
+            case .transientFailure:
+                inboundPeerPolicy = IrohInboundPeerPolicy(routeBindings: [])
+                lastAuthoritativePolicyLoadAt = nil
+            }
             installAuthStateListener()
-            await refreshInboundPeerPolicy(uid: uid, connectionID: connectionID)
             lastAllowlistMissRefreshAt = nil
             acceptLoopHealthy = true
             heartbeatHealthy = true
 
             acceptTask = Task { [weak self] in
-                await self?.acceptLoop(transport: newTransport, uid: uid, connectionID: connectionID)
+                await self?.acceptLoop(
+                    transport: prospectiveTransport,
+                    uid: uid,
+                    connectionID: connectionID,
+                    owner: owner
+                )
             }
             heartbeatTask = Task { [weak self, pairingPublishInterval] in
                 while !Task.isCancelled {
                     try? await Task.sleep(nanoseconds: UInt64(pairingPublishInterval * 1_000_000_000)) // try?-ok(cancellation only)
-                    await self?.refreshPairingRecord(uid: uid, connectionID: connectionID)
-                    if let self {
-                        await self.refreshInboundPeerPolicy(uid: uid, connectionID: connectionID)
-                    }
+                    guard let self, self.isCurrentRuntimeOwner(owner) else { return }
+                    let refreshed = await self.refreshPairingRecord(
+                        uid: uid,
+                        connectionID: connectionID,
+                        owner: owner
+                    )
+                    guard refreshed, self.isCurrentRuntimeOwner(owner) else { return }
+                    await self.refreshInboundPeerPolicy(uid: uid, connectionID: connectionID)
                 }
             }
 
             AppLogger.network.info(
                 "hermes_iroh_relay_started connectionID=\(connectionID) nodeID=\(identity.nodeId) directAddressCount=\(identity.directAddresses.count)"
             )
-            return true
+            await lifecycleGate.release()
+            return isCurrentRuntimeOwner(owner) && relayRuntimeHealthy
         } catch {
             AppLogger.network.silentFailure("hermes_iroh_relay_start_failed", error: error)
-            transport = nil
+            if let newTransport {
+                await newTransport.shutdown()
+            }
+            if pairingPublicationAttempted {
+                await Self.revokePairingRecord(
+                    directory: directory,
+                    uid: uid,
+                    connectionID: connectionID,
+                    attempts: revokeRetryAttempts,
+                    sleep: revokeRetrySleep
+                )
+            }
+            if isCurrentRuntimeOwner(owner) {
+                desiredRuntimeOwner = nil
+            }
+            await lifecycleGate.release()
             return false
         }
     }
 
     func stop() {
+        runtimeEpoch &+= 1
+        desiredRuntimeOwner = nil
         if let authStateListenerHandle {
             Auth.auth().removeStateDidChangeListener(authStateListenerHandle)
             self.authStateListenerHandle = nil
@@ -406,7 +547,9 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
 
         let revokeAttempts = revokeRetryAttempts
         let revokeSleep = revokeRetrySleep
-        Task { [directory, auditLogger, serveTaskTeardownRegistry] in
+        let lifecycleGate = lifecycleGate
+        let cleanup = Task { [directory, auditLogger, serveTaskTeardownRegistry] in
+            await lifecycleGate.acquire()
             // RR-18 — drain the per-peer teardown index through the same
             // cancel-all path `stop()` already runs over `serveTasks`.
             await serveTaskTeardownRegistry.cancelAll()
@@ -437,7 +580,9 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                     detail: revokedNodeId.map { ["nodeId": $0] } ?? [:]
                 )
             }
+            await lifecycleGate.release()
         }
+        teardownTask = cleanup
     }
 
     private func installAuthStateListener() {
@@ -459,12 +604,17 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     private func acceptLoop(
         transport: any IrohRelayTransport,
         uid: String,
-        connectionID: String
+        connectionID: String,
+        owner: RuntimeOwner
     ) async {
         var consecutiveAcceptFailures = 0
-        while !Task.isCancelled {
+        while !Task.isCancelled, isCurrentRuntimeOwner(owner) {
             do {
                 let stream = try await transport.accept(timeout: 30)
+                guard isCurrentRuntimeOwner(owner), isCurrentTransport(transport) else {
+                    await stream.close()
+                    return
+                }
                 var admissionMillis = currentTimeMillis
                 var admittedBinding = inboundPeerPolicy.binding(
                     for: stream.remotePeerNodeId,
@@ -489,6 +639,10 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                         remotePeerNodeId: stream.remotePeerNodeId,
                         atMillis: admissionMillis
                     )
+                }
+                guard isCurrentRuntimeOwner(owner), isCurrentTransport(transport) else {
+                    await stream.close()
+                    return
                 }
                 if !isAdmitted {
                     // remediation(handshake-before-allowlist DoS amplifier): close
@@ -581,8 +735,11 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                 serveStreams[serveID] = stream
                 if let admittedBinding {
                     serveAuthorizations[serveID] = ServeAuthorization(
+                        sourceDeviceId: admittedBinding.sourceDeviceId,
                         remotePeerNodeId: admittedBinding.transportNodeId,
+                        authorityPeerNodeId: admittedBinding.authorityPeerNodeId,
                         generation: admittedBinding.generation,
+                        registeredAtMillis: admittedBinding.registeredAtMillis,
                         expiresAtMillis: admittedBinding.expiresAtMillis
                     )
                     scheduleNextRouteExpiry()
@@ -603,6 +760,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                     transport: transport,
                     uid: uid,
                     connectionID: connectionID,
+                    owner: owner,
                     reason: "shutdown",
                     shouldRestart: !Task.isCancelled
                 )
@@ -625,6 +783,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                         transport: transport,
                         uid: uid,
                         connectionID: connectionID,
+                        owner: owner,
                         reason: Self.publicErrorClass(error),
                         shouldRestart: true
                     )
@@ -637,6 +796,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
             transport: transport,
             uid: uid,
             connectionID: connectionID,
+            owner: owner,
             reason: "cancelled",
             shouldRestart: false
         )
@@ -737,16 +897,34 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         switch result {
         case .authoritative(let policy):
             let atMillis = currentTimeMillis
-            let invalidatedServeIDs = Set(serveAuthorizations.compactMap { serveID, authorization in
+            var invalidatedServeIDs: Set<UUID> = []
+            var extendedAuthorizations: [UUID: ServeAuthorization] = [:]
+            for (serveID, authorization) in serveAuthorizations {
                 guard let currentBinding = policy.binding(
                     for: authorization.remotePeerNodeId,
                     atMillis: atMillis
-                ), currentBinding.generation == authorization.generation,
-                   currentBinding.expiresAtMillis == authorization.expiresAtMillis else {
-                    return serveID
+                ), currentBinding.sourceDeviceId == authorization.sourceDeviceId,
+                   currentBinding.authorityPeerNodeId == authorization.authorityPeerNodeId,
+                   currentBinding.generation == authorization.generation,
+                   currentBinding.registeredAtMillis == authorization.registeredAtMillis,
+                   currentBinding.expiresAtMillis >= authorization.expiresAtMillis else {
+                    invalidatedServeIDs.insert(serveID)
+                    continue
                 }
-                return nil
-            })
+                if currentBinding.expiresAtMillis > authorization.expiresAtMillis {
+                    extendedAuthorizations[serveID] = ServeAuthorization(
+                        sourceDeviceId: authorization.sourceDeviceId,
+                        remotePeerNodeId: authorization.remotePeerNodeId,
+                        authorityPeerNodeId: authorization.authorityPeerNodeId,
+                        generation: authorization.generation,
+                        registeredAtMillis: authorization.registeredAtMillis,
+                        expiresAtMillis: currentBinding.expiresAtMillis
+                    )
+                }
+            }
+            for (serveID, authorization) in extendedAuthorizations {
+                serveAuthorizations[serveID] = authorization
+            }
             inboundPeerPolicy = policy
             lastAuthoritativePolicyLoadAt = now()
             let invalidatedPeers = await closeServeTasks(ids: invalidatedServeIDs)
@@ -881,8 +1059,25 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         scheduleNextRouteExpiry()
     }
 
-    private func refreshPairingRecord(uid: String, connectionID: String) async {
-        guard relayRuntimeHealthy, let identity = publishedIdentity else { return }
+    private func refreshPairingRecord(
+        uid: String,
+        connectionID: String,
+        owner: RuntimeOwner
+    ) async -> Bool {
+        guard isCurrentRuntimeOwner(owner),
+              owner.uid == uid,
+              owner.connectionID == connectionID,
+              relayRuntimeHealthy,
+              let identity = publishedIdentity else { return false }
+        await lifecycleGate.acquire()
+        guard isCurrentRuntimeOwner(owner),
+              relayRuntimeHealthy,
+              publishedIdentity == identity else {
+            await lifecycleGate.release()
+            return false
+        }
+
+        var pairingPublicationAttempted = false
         do {
             let pairingKeypair = try pairingKeyStore.keypair()
             try await publicKeyPublisher.publish(
@@ -890,7 +1085,21 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                 deviceId: accountManager.deviceId,
                 publicKeyBase64: pairingKeypair.publicKeyBase64
             )
+            guard isCurrentRuntimeOwner(owner),
+                  relayRuntimeHealthy,
+                  publishedIdentity == identity else {
+                await Self.revokePairingRecord(
+                    directory: directory,
+                    uid: uid,
+                    connectionID: connectionID,
+                    attempts: revokeRetryAttempts,
+                    sleep: revokeRetrySleep
+                )
+                await lifecycleGate.release()
+                return false
+            }
             let publisher = IrohPairingPublisher(directory: directory)
+            pairingPublicationAttempted = true
             _ = try await publisher.publish(
                 uid: uid,
                 connectionId: connectionID,
@@ -899,9 +1108,40 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                 directAddresses: identity.directAddresses,
                 with: pairingKeypair
             )
+            guard isCurrentRuntimeOwner(owner),
+                  relayRuntimeHealthy,
+                  publishedIdentity == identity else {
+                await Self.revokePairingRecord(
+                    directory: directory,
+                    uid: uid,
+                    connectionID: connectionID,
+                    attempts: revokeRetryAttempts,
+                    sleep: revokeRetrySleep
+                )
+                await lifecycleGate.release()
+                return false
+            }
         } catch {
+            if pairingPublicationAttempted {
+                await Self.revokePairingRecord(
+                    directory: directory,
+                    uid: uid,
+                    connectionID: connectionID,
+                    attempts: revokeRetryAttempts,
+                    sleep: revokeRetrySleep
+                )
+            }
             AppLogger.network.silentFailure("hermes_iroh_relay_pairing_refresh_failed", error: error)
+            let mustFailClosed = pairingPublicationAttempted && isCurrentRuntimeOwner(owner)
+            await lifecycleGate.release()
+            if mustFailClosed {
+                stop()
+                return false
+            }
+            return isCurrentRuntimeOwner(owner) && relayRuntimeHealthy
         }
+        await lifecycleGate.release()
+        return isCurrentRuntimeOwner(owner) && relayRuntimeHealthy
     }
 
     private var relayRuntimeHealthy: Bool {
@@ -918,14 +1158,23 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         return transport === candidate
     }
 
+    private func isCurrentRuntimeOwner(_ owner: RuntimeOwner) -> Bool {
+        desiredRuntimeOwner == owner
+    }
+
     private func handleAcceptLoopTerminated(
         transport failedTransport: any IrohRelayTransport,
         uid: String,
         connectionID: String,
+        owner: RuntimeOwner,
         reason: String,
         shouldRestart: Bool
     ) async {
-        guard isCurrentTransport(failedTransport) else { return }
+        await lifecycleGate.acquire()
+        guard isCurrentRuntimeOwner(owner), isCurrentTransport(failedTransport) else {
+            await lifecycleGate.release()
+            return
+        }
 
         let transportToStop = transport
         let revokedNodeId = publishedIdentity?.nodeId
@@ -988,12 +1237,19 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
             ]
         )
 
-        guard shouldRestart else { return }
+        guard shouldRestart, isCurrentRuntimeOwner(owner) else {
+            desiredRuntimeOwner = nil
+            await lifecycleGate.release()
+            return
+        }
+        await lifecycleGate.release()
         recoveryTask?.cancel()
         recoveryTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 750_000_000) // try?-ok(cancellation only)
-            guard !Task.isCancelled else { return }
-            _ = await self?.start(uid: uid, connectionID: connectionID)
+            guard !Task.isCancelled,
+                  let self,
+                  self.isCurrentRuntimeOwner(owner) else { return }
+            _ = await self.start(uid: uid, connectionID: connectionID)
         }
     }
 

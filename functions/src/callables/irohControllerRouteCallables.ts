@@ -21,6 +21,8 @@ import {
   IROH_CONTROLLER_ROUTE_TTL_MS,
   irohControllerRouteProofPayload,
   requireActiveIrohPairing,
+  requireEligibleIrohControllerTransportRenewal,
+  requireIrohControllerRouteProofKind,
   requireIrohTransportNodeId,
   requireVerifiedControllerAuthority,
   verifyIrohControllerAuthorityProof,
@@ -28,7 +30,7 @@ import {
 } from "./irohControllerRouteSecurity.js";
 import { assertActiveBurnBarCloudProEntitlement } from "./shared.js";
 
-const ROUTE_SCHEMA_VERSION = 1;
+const ROUTE_SCHEMA_VERSION = 2;
 const MAX_GENERATION = Number.MAX_SAFE_INTEGER - 1;
 
 function requireExpectedAuthenticatedUID(expectedUID: unknown, authenticatedUID: string): void {
@@ -186,15 +188,59 @@ export const issueIrohControllerRouteChallenge = onCallProduction(
 
     const result = await db.runTransaction(async (transaction) => {
       const join = await readRouteJoin(transaction, uid, connectionId, sourceDeviceId, authorityPeerNodeId);
-      verifyRouteJoin({ uid, connectionId, sourceDeviceId, authorityPeerNodeId, join, nowMillis: issuedAtMillis });
+      const verified = verifyRouteJoin({
+        uid,
+        connectionId,
+        sourceDeviceId,
+        authorityPeerNodeId,
+        join,
+        nowMillis: issuedAtMillis,
+      });
       const existingRoute = await transaction.get(routeRef);
       const expectedPriorGeneration = existingRoute.exists
         ? (boundedInteger(existingRoute.get("generation"), "route.generation", 1, MAX_GENERATION, true) ?? 0)
         : 0;
-      const registrationGeneration = expectedPriorGeneration + 1;
+      const existingStatus = existingRoute.exists ? existingRoute.get("status") : undefined;
+      if (existingRoute.exists && existingStatus !== "active" && existingStatus !== "revoked") {
+        throw new HttpsError("failed-precondition", "Existing controller route has an invalid status.");
+      }
+      let expectedRegisteredAtMillis: number | null = null;
+      let proofKind: "bootstrap" | "transport-renewal" = "bootstrap";
+      if (existingStatus === "active") {
+        const existingExpiresAtMillis =
+          boundedInteger(
+            existingRoute.get("expiresAtMillis"),
+            "route.expiresAtMillis",
+            1,
+            Number.MAX_SAFE_INTEGER,
+            true,
+          ) ?? 0;
+        const existingRegisteredAtMillis =
+          boundedInteger(
+            existingRoute.get("registeredAtMillis"),
+            "route.registeredAtMillis",
+            1,
+            Number.MAX_SAFE_INTEGER,
+            true,
+          ) ?? 0;
+        const exactActiveTuple =
+          existingRoute.get("connectionId") === connectionId &&
+          existingRoute.get("sourceDeviceId") === sourceDeviceId &&
+          existingRoute.get("transportNodeId") === transportNodeId &&
+          existingRoute.get("authorityPeerNodeId") === authorityPeerNodeId &&
+          existingRoute.get("authorityPublicKeySHA256") === verified.authorityPublicKeySHA256 &&
+          existingExpiresAtMillis > issuedAtMillis;
+        if (exactActiveTuple) {
+          proofKind = "transport-renewal";
+          expectedRegisteredAtMillis = existingRegisteredAtMillis;
+        }
+      }
+      const registrationGeneration =
+        proofKind === "transport-renewal" ? expectedPriorGeneration : expectedPriorGeneration + 1;
       const canonicalPayload = irohControllerRouteProofPayload({
         challengeId,
         challengeNonce,
+        proofKind,
         uid,
         connectionId,
         sourceDeviceId,
@@ -212,7 +258,9 @@ export const issueIrohControllerRouteChallenge = onCallProduction(
         sourceDeviceId,
         transportNodeId,
         authorityPeerNodeId,
+        proofKind,
         expectedPriorGeneration,
+        expectedRegisteredAtMillis,
         registrationGeneration,
         canonicalPayloadBase64,
         issuedAtMillis,
@@ -222,7 +270,7 @@ export const issueIrohControllerRouteChallenge = onCallProduction(
         expireAt: Timestamp.fromMillis(expiresAtMillis),
         createdAt: FieldValue.serverTimestamp(),
       });
-      return { canonicalPayloadBase64, registrationGeneration };
+      return { canonicalPayloadBase64, proofKind, registrationGeneration };
     });
 
     logInfo({
@@ -230,12 +278,13 @@ export const issueIrohControllerRouteChallenge = onCallProduction(
       message: "iroh_controller_route_challenge_issued",
       connection_id: connectionId,
       source_device_id: sourceDeviceId,
-      generation: result.registrationGeneration,
     });
     return {
       challengeId,
       canonicalPayloadBase64: result.canonicalPayloadBase64,
       signatureAlgorithm: "ed25519",
+      proofKind: result.proofKind,
+      requiresAuthorityProof: result.proofKind === "bootstrap",
       registrationGeneration: result.registrationGeneration,
       issuedAtMillis,
       expiresAtMillis,
@@ -269,12 +318,6 @@ export const registerIrohControllerRoute = onCallProduction(
       80,
       128,
     );
-    const authoritySignatureBase64 = requireBase64Like(
-      request.data.authoritySignatureBase64,
-      "authoritySignatureBase64",
-      80,
-      128,
-    );
     const challengeRef = db.doc(`users/${uid}/iroh_controller_route_challenges/${challengeId}`);
     const nowMillis = Date.now();
 
@@ -292,12 +335,14 @@ export const registerIrohControllerRoute = onCallProduction(
       const sourceDeviceId = boundedFirestoreDocumentId(challenge.sourceDeviceId, "sourceDeviceId", 160);
       const connectionId = boundedFirestoreDocumentId(challenge.connectionId, "connectionId", 160);
       const authorityPeerNodeId = boundedFirestoreDocumentId(challenge.authorityPeerNodeId, "authorityPeerNodeId", 160);
+      const proofKind = requireIrohControllerRouteProofKind(challenge.proofKind);
       const { nodeId: transportNodeId, publicKey: transportPublicKey } = requireIrohTransportNodeId(
         challenge.transportNodeId,
       );
       const canonicalPayload = irohControllerRouteProofPayload({
         challengeId,
         challengeNonce: boundedFirestoreDocumentId(challenge.challengeNonce, "challengeNonce", 64),
+        proofKind,
         uid,
         connectionId,
         sourceDeviceId,
@@ -325,16 +370,6 @@ export const registerIrohControllerRoute = onCallProduction(
         join,
         nowMillis,
       });
-      if (
-        !verifyIrohControllerAuthorityProof(
-          verified.authorityPublicKey,
-          verified.authorityKeyKind,
-          canonicalPayload,
-          authoritySignatureBase64,
-        )
-      ) {
-        throw new HttpsError("permission-denied", "Controller route does not prove possession of authorityPeerNodeId.");
-      }
       const routeRef = db.doc(`users/${uid}/iroh_pairing/${connectionId}/controller_routes/${sourceDeviceId}`);
       const existingRoute = await transaction.get(routeRef);
       const currentGeneration = existingRoute.exists
@@ -344,10 +379,50 @@ export const registerIrohControllerRoute = onCallProduction(
         boundedInteger(challenge.expectedPriorGeneration, "expectedPriorGeneration", 0, MAX_GENERATION, true) ?? 0;
       const registrationGeneration =
         boundedInteger(challenge.registrationGeneration, "registrationGeneration", 1, MAX_GENERATION, true) ?? 1;
-      if (currentGeneration !== expectedPriorGeneration || registrationGeneration !== currentGeneration + 1) {
+      if (currentGeneration !== expectedPriorGeneration) {
         throw new HttpsError("aborted", "Controller route changed after this challenge was issued.");
       }
-      const routeExpiresAtMillis = nowMillis + IROH_CONTROLLER_ROUTE_TTL_MS;
+      let registeredAtMillis: number;
+      let routeExpiresAtMillis: number;
+      if (proofKind === "transport-renewal") {
+        ({ registeredAtMillis, expiresAtMillis: routeExpiresAtMillis } = requireEligibleIrohControllerTransportRenewal({
+          route: existingRoute,
+          connectionId,
+          sourceDeviceId,
+          transportNodeId,
+          authorityPeerNodeId,
+          authorityPublicKeySHA256: verified.authorityPublicKeySHA256,
+          currentGeneration,
+          registrationGeneration,
+          expectedRegisteredAtMillis: challenge.expectedRegisteredAtMillis,
+          nowMillis,
+        }));
+      } else {
+        if (registrationGeneration !== currentGeneration + 1) {
+          throw new HttpsError("aborted", "Controller route changed after this challenge was issued.");
+        }
+        const authoritySignatureBase64 = requireBase64Like(
+          request.data.authoritySignatureBase64,
+          "authoritySignatureBase64",
+          80,
+          128,
+        );
+        if (
+          !verifyIrohControllerAuthorityProof(
+            verified.authorityPublicKey,
+            verified.authorityKeyKind,
+            canonicalPayload,
+            authoritySignatureBase64,
+          )
+        ) {
+          throw new HttpsError(
+            "permission-denied",
+            "Controller route does not prove possession of authorityPeerNodeId.",
+          );
+        }
+        registeredAtMillis = nowMillis;
+        routeExpiresAtMillis = nowMillis + IROH_CONTROLLER_ROUTE_TTL_MS;
+      }
       transaction.set(routeRef, {
         connectionId,
         sourceDeviceId,
@@ -356,7 +431,7 @@ export const registerIrohControllerRoute = onCallProduction(
         authorityPublicKeySHA256: verified.authorityPublicKeySHA256,
         status: "active",
         generation: registrationGeneration,
-        registeredAtMillis: nowMillis,
+        registeredAtMillis,
         expiresAtMillis: routeExpiresAtMillis,
         schemaVersion: ROUTE_SCHEMA_VERSION,
         updatedAt: FieldValue.serverTimestamp(),
@@ -470,54 +545,74 @@ export const resolveActiveIrohControllerRoutes = onCallProduction(
     const nowMillis = Date.now();
     const result = await db.runTransaction(async (transaction) => {
       const pairingSnapshot = await transaction.get(db.doc(`users/${uid}/iroh_pairing/${connectionId}`));
-      const pairing = requireRecord(pairingSnapshot, "Active iroh pairing not found.");
+      if (!pairingSnapshot.exists) return null;
+      const pairing = pairingSnapshot.data();
+      if (!pairing) {
+        throw new HttpsError("failed-precondition", "Iroh pairing record is malformed.");
+      }
       const allowlist = normalizedControllerDeviceAllowlist(pairing.authorizedControllerDeviceIds);
       if (allowlist.length !== 1) {
-        throw new HttpsError("failed-precondition", "Iroh pairing has no unambiguous active controller.");
+        return null;
       }
       const sourceDeviceId = allowlist[0];
       const routeSnapshot = await transaction.get(
         db.doc(`users/${uid}/iroh_pairing/${connectionId}/controller_routes/${sourceDeviceId}`),
       );
-      const route = requireRecord(routeSnapshot, "Verified iroh controller route not found.");
+      if (!routeSnapshot.exists) return null;
+      const route = routeSnapshot.data();
+      if (!route) {
+        throw new HttpsError("failed-precondition", "Verified iroh controller route is malformed.");
+      }
+      if (route.status === "revoked") return null;
+      if (route.status !== "active") {
+        throw new HttpsError("failed-precondition", "Verified iroh controller route has an invalid status.");
+      }
+      if (route.connectionId !== connectionId || route.sourceDeviceId !== sourceDeviceId) {
+        throw new HttpsError("permission-denied", "Verified iroh controller route ownership is inconsistent.");
+      }
       const authorityPeerNodeId = boundedFirestoreDocumentId(route.authorityPeerNodeId, "authorityPeerNodeId", 160);
       const transportNodeId = requireIrohTransportNodeId(route.transportNodeId).nodeId;
       const generation = boundedInteger(route.generation, "route.generation", 1, MAX_GENERATION, true) ?? 0;
+      const registeredAtMillis =
+        boundedInteger(route.registeredAtMillis, "route.registeredAtMillis", 1, Number.MAX_SAFE_INTEGER, true) ?? 0;
       const expiresAtMillis =
         boundedInteger(route.expiresAtMillis, "route.expiresAtMillis", 1, Number.MAX_SAFE_INTEGER, true) ?? 0;
-      if (
-        route.status !== "active" ||
-        route.connectionId !== connectionId ||
-        route.sourceDeviceId !== sourceDeviceId ||
-        expiresAtMillis <= nowMillis
-      ) {
-        throw new HttpsError("failed-precondition", "Verified iroh controller route is stale or revoked.");
-      }
-      const join = await readRouteJoin(transaction, uid, connectionId, sourceDeviceId, authorityPeerNodeId);
-      const verified = verifyRouteJoin({
-        uid,
-        connectionId,
-        sourceDeviceId,
-        authorityPeerNodeId,
-        join,
-        nowMillis,
-      });
-      if (route.authorityPublicKeySHA256 !== verified.authorityPublicKeySHA256) {
-        throw new HttpsError("permission-denied", "Controller authority rotated after route registration.");
-      }
-      return {
-        pairingPublishedAtMillis: verified.pairingPublishedAtMillis,
-        route: {
+      if (expiresAtMillis <= nowMillis) return null;
+      let verified: ReturnType<typeof verifyRouteJoin>;
+      try {
+        const join = await readRouteJoin(transaction, uid, connectionId, sourceDeviceId, authorityPeerNodeId);
+        verified = verifyRouteJoin({
+          uid,
           connectionId,
           sourceDeviceId,
-          transportNodeId,
           authorityPeerNodeId,
-          generation,
-          registeredAtMillis: route.registeredAtMillis,
-          expiresAtMillis,
-        },
+          join,
+          nowMillis,
+        });
+      } catch (error) {
+        if (
+          error instanceof HttpsError &&
+          (error.code === "permission-denied" ||
+            error.code === "failed-precondition" ||
+            error.code === "invalid-argument")
+        ) {
+          return null;
+        }
+        throw error;
+      }
+      if (route.authorityPublicKeySHA256 !== verified.authorityPublicKeySHA256) {
+        return null;
+      }
+      return {
+        connectionId,
+        sourceDeviceId,
+        transportNodeId,
+        authorityPeerNodeId,
+        generation,
+        registeredAtMillis,
+        expiresAtMillis,
       };
     });
-    return { uid, connectionId, resolvedAtMillis: nowMillis, routes: [result.route] };
+    return { uid, connectionId, resolvedAtMillis: nowMillis, routes: result ? [result] : [] };
   },
 );

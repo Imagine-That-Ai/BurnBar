@@ -24,6 +24,15 @@ public typealias ComputerUseSessionGrantMetadataResolver = @Sendable (
 /// before the desktop advertises the Browser Computer Use flow as available.
 public typealias ComputerUseSessionGrantReadinessProvider = @Sendable () async -> Bool
 
+enum ComputerUseTransportIngressError: Error, Equatable, Sendable {
+    case rejected
+}
+
+enum ComputerUseIngressProvenance: Equatable, Sendable {
+    case authenticatedIrohTransport(peerNodeID: String, routeGeneration: Int64)
+    case authenticatedLocalRPC
+}
+
 public actor BurnBarDaemonServer {
     private static let maxRequestBytes = 64 * 1024
 
@@ -61,11 +70,14 @@ public actor BurnBarDaemonServer {
     /// the daemon can verify local-auth proofs independently of the app.
     let phoneControlPinStore: DaemonPhoneKeyPinStore?
     let computerUseApprovalAuthorityVerifier: DaemonComputerUseApprovalAuthorityVerifier?
+    let computerUsePanicAuthorityVerifier: DaemonComputerUsePanicAuthorityVerifier?
     let computerUseSessionGrantBroker: ComputerUseSessionGrantBroker?
     let computerUseSessionGrantMetadataResolver: ComputerUseSessionGrantMetadataResolver?
     let computerUseSessionGrantReadinessProvider: ComputerUseSessionGrantReadinessProvider?
     #if os(Linux)
     let linuxComputerUseOwnerAuthorizer: LinuxComputerUseOwnerAuthorizer
+    let linuxIrohControllerRuntime: LinuxIrohControllerRuntime?
+    let linuxIrohControllerUnavailableStatus: LinuxIrohControllerRuntime.RuntimeStatus?
     #endif
     let linuxOnboardingService: BurnBarLinuxOnboardingService
     let subscriptionService: BurnBarSubscriptionService
@@ -116,6 +128,7 @@ public actor BurnBarDaemonServer {
         computerUseSessionGrantBroker: ComputerUseSessionGrantBroker? = nil,
         computerUseSessionGrantMetadataResolver: ComputerUseSessionGrantMetadataResolver? = nil,
         computerUseSessionGrantReadinessProvider: ComputerUseSessionGrantReadinessProvider? = nil,
+        linuxIrohControllerCredentialProvider: LinuxIrohControllerCredentialProvider? = nil,
         linuxComputerUseOwnerAuthorizer: LinuxComputerUseOwnerAuthorizer? = nil,
         linuxOnboardingService: BurnBarLinuxOnboardingService? = nil,
         subscriptionService: BurnBarSubscriptionService? = nil
@@ -127,9 +140,6 @@ public actor BurnBarDaemonServer {
         self.capabilityProfile = capabilityProfile
         self.localAuthProofVerifier = localAuthProofVerifier
         self.phoneControlPinStore = phoneControlPinStore
-        self.computerUseSessionGrantBroker = computerUseSessionGrantBroker
-        self.computerUseSessionGrantMetadataResolver = computerUseSessionGrantMetadataResolver
-        self.computerUseSessionGrantReadinessProvider = computerUseSessionGrantReadinessProvider
         #if os(Linux)
         if let linuxComputerUseOwnerAuthorizer {
             self.linuxComputerUseOwnerAuthorizer = linuxComputerUseOwnerAuthorizer
@@ -143,23 +153,12 @@ public actor BurnBarDaemonServer {
                 )
             }
         }
-        if localAuthProofVerifier != nil {
-            self.computerUseApprovalAuthorityVerifier = computerUseApprovalAuthorityVerifier
-                ?? DaemonComputerUseApprovalAuthorityVerifier(
-                    resolvePinnedKey: { peerNodeID in
-                        guard let phoneControlPinStore else { return nil }
-                        if case .pinned(let key) = phoneControlPinStore.pinnedKey(deviceId: peerNodeID) {
-                            return key
-                        }
-                        return nil
-                    },
-                    replayCounterStore: .production()
-                )
-        } else {
-            self.computerUseApprovalAuthorityVerifier = nil
-        }
         #else
         self.computerUseApprovalAuthorityVerifier = nil
+        self.computerUsePanicAuthorityVerifier = nil
+        self.computerUseSessionGrantBroker = computerUseSessionGrantBroker
+        self.computerUseSessionGrantMetadataResolver = computerUseSessionGrantMetadataResolver
+        self.computerUseSessionGrantReadinessProvider = computerUseSessionGrantReadinessProvider
         #endif
         self.subscriptionService = subscriptionService ?? BurnBarSubscriptionService(
             daemonVersion: configuration.daemonVersion
@@ -186,9 +185,139 @@ public actor BurnBarDaemonServer {
         )
         let resolvedComputerUseAuthorizationRegistry = computerUseAuthorizationRegistry
             ?? ComputerUseAuthorizationRegistry(enforcementEnabled: localAuthProofVerifier != nil)
+        #if os(Linux)
+        let resolvePinnedKey: @Sendable (String) -> PhoneControlVerifyingKey? = { identifier in
+            guard let phoneControlPinStore,
+                  case .pinned(let key) = phoneControlPinStore.pinnedKey(deviceId: identifier) else {
+                return nil
+            }
+            return key
+        }
+        let resolvedApprovalVerifier: DaemonComputerUseApprovalAuthorityVerifier?
+        let resolvedPanicVerifier: DaemonComputerUsePanicAuthorityVerifier?
+        let resolvedGrantVerifier: DaemonComputerUseSessionGrantAuthorityVerifier?
+        if let localAuthProofVerifier {
+            resolvedApprovalVerifier = computerUseApprovalAuthorityVerifier
+                ?? DaemonComputerUseApprovalAuthorityVerifier(
+                    resolvePinnedKey: resolvePinnedKey,
+                    replayCounterStore: .production()
+                )
+            resolvedPanicVerifier = DaemonComputerUsePanicAuthorityVerifier(
+                resolvePinnedKey: resolvePinnedKey,
+                replayCounterStore: .production()
+            )
+            resolvedGrantVerifier = DaemonComputerUseSessionGrantAuthorityVerifier(
+                resolvePinnedKey: resolvePinnedKey,
+                localAuthProofVerifier: localAuthProofVerifier,
+                replayCounterStore: .production()
+            )
+        } else {
+            resolvedApprovalVerifier = nil
+            resolvedPanicVerifier = nil
+            resolvedGrantVerifier = nil
+        }
+        self.computerUseApprovalAuthorityVerifier = resolvedApprovalVerifier
+        self.computerUsePanicAuthorityVerifier = resolvedPanicVerifier
+
+        let ownsProductionControllerStack = localAuthProofVerifier != nil
+            && phoneControlPinStore != nil
+            && computerUseService == nil
+            && computerUseSessionGrantBroker == nil
+            && computerUseSessionGrantMetadataResolver == nil
+            && computerUseSessionGrantReadinessProvider == nil
+        let resolvedIrohRuntime: LinuxIrohControllerRuntime?
+        if ownsProductionControllerStack,
+           let linuxIrohControllerCredentialProvider,
+           let resolvedGrantVerifier,
+           let resolvedApprovalVerifier,
+           let resolvedPanicVerifier,
+           let phoneControlPinStore {
+            resolvedIrohRuntime = LinuxIrohControllerRuntime.production(
+                credentialProvider: linuxIrohControllerCredentialProvider,
+                phoneControlPinStore: phoneControlPinStore,
+                authorityHealth: {
+                    let grantHealthy = await resolvedGrantVerifier.isOperational()
+                    let approvalHealthy = await resolvedApprovalVerifier.isOperational()
+                    let panicHealthy = await resolvedPanicVerifier.isOperational()
+                    return grantHealthy && approvalHealthy && panicHealthy
+                }
+            )
+        } else {
+            resolvedIrohRuntime = nil
+        }
+        self.linuxIrohControllerRuntime = resolvedIrohRuntime
+        if ownsProductionControllerStack && resolvedIrohRuntime == nil {
+            self.linuxIrohControllerUnavailableStatus = LinuxIrohControllerRuntime.RuntimeStatus(
+                phase: .stopped,
+                reason: linuxIrohControllerCredentialProvider == nil
+                    ? .credentialsUnavailable
+                    : .nativeTransportUnavailable,
+                changedAt: Date(),
+                retryAt: nil
+            )
+        } else {
+            self.linuxIrohControllerUnavailableStatus = nil
+        }
+
+        let resolvedGrantBroker: ComputerUseSessionGrantBroker?
+        if let computerUseSessionGrantBroker {
+            resolvedGrantBroker = computerUseSessionGrantBroker
+        } else if let resolvedIrohRuntime, let resolvedGrantVerifier {
+            resolvedGrantBroker = ComputerUseSessionGrantBroker(
+                publisher: { peerNodeID, frame in
+                    try await resolvedIrohRuntime.publish(to: peerNodeID, frame: frame)
+                },
+                prevalidatePinnedPhoneGrant: { request, authorityPeerNodeID, now in
+                    try await resolvedGrantVerifier.verify(
+                        request,
+                        expectedAuthorityPeerNodeID: authorityPeerNodeID,
+                        now: now
+                    )
+                }
+            )
+        } else {
+            resolvedGrantBroker = nil
+        }
+        self.computerUseSessionGrantBroker = resolvedGrantBroker
+        let resolvedMetadataResolver: ComputerUseSessionGrantMetadataResolver?
+        if let computerUseSessionGrantMetadataResolver {
+            resolvedMetadataResolver = computerUseSessionGrantMetadataResolver
+        } else if let runtime = resolvedIrohRuntime {
+            resolvedMetadataResolver = { requirement, request in
+                try await runtime.acquisitionMetadata(requirement: requirement, request: request)
+            }
+        } else {
+            resolvedMetadataResolver = nil
+        }
+        self.computerUseSessionGrantMetadataResolver = resolvedMetadataResolver
+        let resolvedReadinessProvider: ComputerUseSessionGrantReadinessProvider?
+        if let computerUseSessionGrantReadinessProvider {
+            resolvedReadinessProvider = computerUseSessionGrantReadinessProvider
+        } else if let runtime = resolvedIrohRuntime {
+            resolvedReadinessProvider = { await runtime.isReady() }
+        } else {
+            resolvedReadinessProvider = nil
+        }
+        self.computerUseSessionGrantReadinessProvider = resolvedReadinessProvider
+        let approvalPublisher: ComputerUseService.ApprovalPublisher?
+        let sessionEndedObserver: ComputerUseService.SessionEndedObserver?
+        if let runtime = resolvedIrohRuntime {
+            approvalPublisher = { request in try await runtime.publishApproval(request) }
+            sessionEndedObserver = { sessionID in await runtime.unbindSession(sessionID) }
+        } else {
+            approvalPublisher = nil
+            sessionEndedObserver = nil
+        }
+        let resolvedComputerUseService = computerUseService ?? ComputerUseService(
+            authorizationRegistry: resolvedComputerUseAuthorizationRegistry,
+            approvalPublisher: approvalPublisher,
+            sessionEndedObserver: sessionEndedObserver
+        )
+        #else
         let resolvedComputerUseService = computerUseService ?? ComputerUseService(
             authorizationRegistry: resolvedComputerUseAuthorizationRegistry
         )
+        #endif
         let computerUseBrowserDispatcher: BurnBarComputerUseBrowserDispatcher?
         let computerUseRunBindingChecker: BurnBarComputerUseRunBindingChecker?
         let computerUseRunRevoker: BurnBarComputerUseRunRevoker?
@@ -432,6 +561,72 @@ public actor BurnBarDaemonServer {
         )
     }
 
+    func ingestComputerUseApprovalResponse(
+        _ response: HermesRealtimeRelayApprovalResponse,
+        sessionID: String,
+        provenance: ComputerUseIngressProvenance
+    ) async throws {
+        guard let verifier = computerUseApprovalAuthorityVerifier else {
+            throw ComputerUseTransportIngressError.rejected
+        }
+        #if os(Linux)
+        if let linuxIrohControllerRuntime {
+            guard case .authenticatedIrohTransport(let transportPeerNodeID, let routeGeneration) = provenance,
+                  let authorityPeerNodeID = response.authority?.peerNodeId,
+                  response.respondedBy == authorityPeerNodeID,
+                  await linuxIrohControllerRuntime.authorizesSessionAuthority(
+                    sessionID: sessionID,
+                    authorityPeerNodeID: authorityPeerNodeID,
+                    transportPeerNodeID: transportPeerNodeID,
+                    routeGeneration: routeGeneration
+                  ) else {
+                throw ComputerUseTransportIngressError.rejected
+            }
+        }
+        #endif
+        let pending = await computerUseService.pendingApprovals(
+            ComputerUseApprovalPendingRequest(sessionId: sessionID)
+        ).requests.first { $0.approvalId == response.approvalId }
+        guard let pending else { throw ComputerUseTransportIngressError.rejected }
+        try await verifier.verify(response: response, pendingRequest: pending, sessionID: sessionID)
+        guard await computerUseService.respondToApproval(
+            ComputerUseApprovalRespondRequest(sessionId: sessionID, response: response)
+        ).accepted else {
+            throw ComputerUseTransportIngressError.rejected
+        }
+    }
+
+    #if os(Linux)
+    func linuxIrohControllerStatus() async -> LinuxIrohControllerRuntime.RuntimeStatus? {
+        if let linuxIrohControllerRuntime { return await linuxIrohControllerRuntime.status() }
+        return linuxIrohControllerUnavailableStatus
+    }
+    #endif
+
+    func ingestComputerUsePanic(
+        _ intent: HermesRealtimeRelayInputIntent,
+        sessionIDs: [String],
+        authenticatedTransportPeerNodeID: String,
+        authorityPeerNodeID: String
+    ) async throws {
+        guard authenticatedTransportPeerNodeID.isEmpty == false,
+              let verifier = computerUsePanicAuthorityVerifier else {
+            throw ComputerUseTransportIngressError.rejected
+        }
+        try await verifier.verify(
+            intent: intent,
+            expectedAuthorityPeerNodeID: authorityPeerNodeID
+        )
+        for sessionID in sessionIDs {
+            _ = try? await computerUseService.panicHalt(
+                ComputerUsePanicHaltRequest(
+                    sessionId: sessionID,
+                    source: ComputerUsePanicSource.phoneGesture.rawValue
+                )
+            )
+        }
+    }
+
     public func start() async throws {
         try configuration.validate()
 
@@ -532,6 +727,73 @@ public actor BurnBarDaemonServer {
                 "media_channel_start_failed",
                 metadata: ["error": "\(error)"]
             )
+        }
+        if let linuxIrohControllerRuntime {
+            await linuxIrohControllerRuntime.installHandlers(
+                grant: { [weak self] request, transportPeerNodeID in
+                    guard let self else { throw LinuxIrohControllerRuntime.RuntimeError.handlersUnavailable }
+                    try await self.ingestComputerUseSessionGrant(
+                        request,
+                        authenticatedTransportPeerNodeID: transportPeerNodeID
+                    )
+                },
+                approval: { [weak self] sessionID, response, transportPeerNodeID, routeGeneration in
+                    guard let self else { throw LinuxIrohControllerRuntime.RuntimeError.handlersUnavailable }
+                    try await self.ingestComputerUseApprovalResponse(
+                        response,
+                        sessionID: sessionID,
+                        provenance: .authenticatedIrohTransport(
+                            peerNodeID: transportPeerNodeID,
+                            routeGeneration: routeGeneration
+                        )
+                    )
+                },
+                panic: { [weak self] sessionIDs, intent, transportPeerNodeID, authorityPeerNodeID in
+                    guard let self else { throw LinuxIrohControllerRuntime.RuntimeError.handlersUnavailable }
+                    try await self.ingestComputerUsePanic(
+                        intent,
+                        sessionIDs: sessionIDs,
+                        authenticatedTransportPeerNodeID: transportPeerNodeID,
+                        authorityPeerNodeID: authorityPeerNodeID
+                    )
+                },
+                revokeSessions: { [weak self] sessionIDs, _ in
+                    guard let self else { return }
+                    for sessionID in sessionIDs {
+                        _ = try? await self.computerUseService.panicHalt(
+                            ComputerUsePanicHaltRequest(
+                                sessionId: sessionID,
+                                source: ComputerUsePanicSource.revoked.rawValue
+                            )
+                        )
+                    }
+                },
+                routeEnded: { [weak self] route, reason in
+                    guard let self else { return }
+                    await self.mediaService.routeEnded(
+                        uid: route.uid,
+                        connectionID: route.connectionID,
+                        remotePeerNodeID: route.transportNodeID,
+                        reason: reason
+                    )
+                },
+                media: { [weak self] frame, remotePeerNodeID, replySender in
+                    guard let self else { return }
+                    await self.mediaService.ingestMercuryFrame(
+                        frame,
+                        remotePeerNodeID: remotePeerNodeID,
+                        replySender: replySender
+                    )
+                }
+            )
+            do {
+                try await linuxIrohControllerRuntime.start()
+            } catch {
+                logger.warning(
+                    "linux_iroh_controller_start_failed",
+                    metadata: ["reason": "unavailable"]
+                )
+            }
         }
         #endif
         if configuration.startsMissionControlBackgroundLoops {
@@ -646,6 +908,7 @@ public actor BurnBarDaemonServer {
         ownership?.release()
         await missionControlService.stopBackgroundLoops()
         #if os(Linux)
+        await linuxIrohControllerRuntime?.stop()
         await mediaService.stop()
         #endif
 

@@ -139,6 +139,52 @@ final class ComputerUseSessionGrantBrokerTests: XCTestCase {
         )
     }
 
+    func testSuspendedPrevalidationCannotResurrectExpiredChallenge() async throws {
+        let published = PublishedFrames()
+        let validationGate = SuspendedGrantPrevalidator()
+        let clock = SynchronousBox(now)
+        let broker = ComputerUseSessionGrantBroker(
+            publisher: { peer, frame in await published.append(peerNodeID: peer, frame: frame) },
+            prevalidatePinnedPhoneGrant: { _, _, _ in await validationGate.validate() },
+            randomBytes: { count in Data(repeating: 8, count: count) },
+            challengeIDGenerator: { "challenge-suspended-validation" },
+            clock: { clock.value },
+            challengeLifetime: 1,
+            terminalRetention: 0
+        )
+        let acquired = try await broker.acquire(metadata: metadata(), request: sessionRequest(), now: now)
+        let firstPublication = await published.first()
+        let publication = try XCTUnwrap(firstPublication)
+        let challenge = try XCTUnwrap(publication.frame.control?.sessionGrantChallenge)
+        let wire = try signedGrant(challenge: challenge)
+        let ingestTask = Task {
+            try await broker.ingest(
+                wire,
+                authenticatedTransportPeerNodeID: "phone-transport-1",
+                now: self.now
+            )
+        }
+        for _ in 0..<100 where await validationGate.hasRequest() == false {
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+        let validationStarted = await validationGate.hasRequest()
+        XCTAssertTrue(validationStarted)
+
+        let expiredNow = now.addingTimeInterval(2)
+        clock.withValue { $0 = expiredNow }
+        let removed = await broker.status(challengeID: acquired.challengeID, now: expiredNow)
+        XCTAssertNil(removed)
+        await validationGate.release()
+        do {
+            try await ingestTask.value
+            XCTFail("Expired challenge must not be restored after suspended validation")
+        } catch {
+            XCTAssertEqual(error as? ComputerUseSessionGrantBroker.BrokerError, .challengeNotFound)
+        }
+        let status = await broker.status(challengeID: acquired.challengeID, now: expiredNow)
+        XCTAssertNil(status)
+    }
+
     func testReplayIsRejectedBeforeAndAfterConsume() async throws {
         let published = PublishedFrames()
         let broker = makeBroker(published: published)
@@ -367,6 +413,7 @@ final class ComputerUseSessionGrantBrokerTests: XCTestCase {
             prevalidatePinnedPhoneGrant: { _, _, _ in },
             randomBytes: { count in Data(repeating: 4, count: count) },
             challengeIDGenerator: { "challenge-starting-expiry" },
+            clock: { self.now },
             terminalRetention: 10
         )
         let acquired = try await broker.acquire(metadata: metadata(), request: sessionRequest(), now: now)
@@ -414,7 +461,8 @@ final class ComputerUseSessionGrantBrokerTests: XCTestCase {
             publisher: { peer, frame in await published.append(peerNodeID: peer, frame: frame) },
             prevalidatePinnedPhoneGrant: prevalidate,
             randomBytes: { count in Data((0..<count).map { UInt8($0) }) },
-            challengeIDGenerator: { "challenge-broker-0001" }
+            challengeIDGenerator: { "challenge-broker-0001" },
+            clock: { self.now }
         )
     }
 
@@ -510,6 +558,23 @@ final class ComputerUseSessionGrantBrokerTests: XCTestCase {
 
 private enum TestFailure: Error {
     case forged
+}
+
+private actor SuspendedGrantPrevalidator {
+    private var requested = false
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    func validate() async {
+        requested = true
+        await withCheckedContinuation { continuation = $0 }
+    }
+
+    func hasRequest() -> Bool { requested }
+
+    func release() {
+        continuation?.resume()
+        continuation = nil
+    }
 }
 
 private actor PublishedFrames {

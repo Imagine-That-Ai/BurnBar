@@ -157,6 +157,10 @@ public actor DaemonComputerUseApprovalAuthorityVerifier {
         }
     }
 
+    public func isOperational() -> Bool {
+        replayStoreHealthy
+    }
+
     private func reject(
         _ failure: VerificationFailure,
         response: HermesRealtimeRelayApprovalResponse
