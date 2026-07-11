@@ -119,6 +119,10 @@ run_swift_suite() {
         echo "Unable to locate the XCTest binary under $scratch_path." >&2
         return 1
     fi
+    if readelf -d "$binary" | grep -Fq 'libswiftObservation'; then
+        echo "Linux native test binary unexpectedly links the broken Swift Observation runtime: $binary" >&2
+        return 65
+    fi
     assert_xctest_suite_coverage "$binary" "$test_module" "${tests[@]}"
 
     # Swift 6.0 XCTest on Linux can deadlock while advancing between cases in a

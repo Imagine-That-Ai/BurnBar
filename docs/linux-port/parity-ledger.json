@@ -1,6 +1,7 @@
 {
   "schemaVersion": 2,
   "requirementsManifest": "docs/linux-port/product-parity-requirements.json",
+  "evidencePolicyManifest": "docs/linux-port/product-parity-evidence-policies.json",
   "historyLedger": "docs/linux-port/parity-ledger-history.json",
   "semantics": {
     "kind": "product-parity",

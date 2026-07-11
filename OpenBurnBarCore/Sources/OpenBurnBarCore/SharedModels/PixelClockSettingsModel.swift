@@ -129,7 +129,9 @@ public final class InMemoryPixelClockOperations: PixelClockOperations {
 /// not by any persistence store — the store remains the source of truth
 /// for the persisted config and is reflected back via `apply(config:)`.
 @MainActor
+#if !os(Linux)
 @Observable
+#endif
 public final class PixelClockSettingsModel {
 
     /// User-edited config. Starts mirroring the persisted config and is

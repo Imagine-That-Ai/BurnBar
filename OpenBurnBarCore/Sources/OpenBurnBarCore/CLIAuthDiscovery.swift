@@ -756,7 +756,10 @@ public enum CLIAuthDiscovery {
         }
         let usesDedicatedProcessGroup = true
         process.executableURL = URL(fileURLWithPath: linuxProcessGroupExecutablePath)
-        process.arguments = [executablePath] + arguments
+        // Foundation launches Process children as process-group leaders on Linux.
+        // `setsid` therefore has to fork; keep its parent alive as a supervisor so
+        // Process does not report success while the actual CLI is still running.
+        process.arguments = ["--fork", "--wait", executablePath] + arguments
         #else
         _ = linuxProcessGroupExecutablePath
         let usesDedicatedProcessGroup = false
@@ -796,11 +799,31 @@ public enum CLIAuthDiscovery {
             drains.leave()
         }
 
+        #if os(Linux)
+        let dedicatedProcessGroup = linuxSupervisedProcessGroupID(
+            supervisorProcessID: process.processIdentifier
+        )
+        #else
+        let dedicatedProcessGroup: Int32? = nil
+        #endif
+
         if semaphore.wait(timeout: .now() + timeout) == .timedOut {
+            #if os(Linux)
+            guard let dedicatedProcessGroup else {
+                forceKill(process.processIdentifier, processGroup: false)
+                _ = semaphore.wait(timeout: .now() + 1.0)
+                return nil
+            }
+            terminateProcessGroup(dedicatedProcessGroup)
+            #else
             terminate(process, processGroup: usesDedicatedProcessGroup)
+            #endif
             _ = semaphore.wait(timeout: .now() + 0.25)
             #if os(Linux)
-            forceKillProcessGroup(process.processIdentifier)
+            forceKillProcessGroup(dedicatedProcessGroup)
+            if process.isRunning {
+                forceKill(process.processIdentifier, processGroup: false)
+            }
             #else
             if process.isRunning {
                 forceKill(process.processIdentifier, processGroup: false)
@@ -818,10 +841,11 @@ public enum CLIAuthDiscovery {
 
         if drains.wait(timeout: .now() + 0.5) == .timedOut {
             #if os(Linux)
+            if let dedicatedProcessGroup {
+                forceKillProcessGroup(dedicatedProcessGroup)
+            }
             if process.isRunning {
-                forceKill(process.processIdentifier, processGroup: usesDedicatedProcessGroup)
-            } else if usesDedicatedProcessGroup {
-                forceKillProcessGroup(process.processIdentifier)
+                forceKill(process.processIdentifier, processGroup: false)
             }
             #else
             if process.isRunning {
@@ -860,6 +884,56 @@ public enum CLIAuthDiscovery {
         _ = processGroup
         #endif
     }
+
+    #if os(Linux)
+    private static func linuxSupervisedProcessGroupID(supervisorProcessID: Int32) -> Int32? {
+        let childrenPath = "/proc/\(supervisorProcessID)/task/\(supervisorProcessID)/children"
+        let deadline = Date().addingTimeInterval(0.25)
+
+        repeat {
+            if let rawChildren = try? String(contentsOfFile: childrenPath, encoding: .utf8) {
+                let children = rawChildren.split(whereSeparator: { $0.isWhitespace })
+                if children.count == 1,
+                   let childProcessID = Int32(children[0]),
+                   childProcessID > 1,
+                   linuxProcessIsSessionLeader(childProcessID) {
+                    return childProcessID
+                }
+            }
+            if !FileManager.default.fileExists(
+                atPath: "/proc/\(supervisorProcessID)"
+            ) {
+                return nil
+            }
+            usleep(1_000)
+        } while Date() < deadline
+
+        return nil
+    }
+
+    private static func linuxProcessIsSessionLeader(_ processID: Int32) -> Bool {
+        guard let stat = try? String(
+            contentsOfFile: "/proc/\(processID)/stat",
+            encoding: .utf8
+        ),
+        let commandEnd = stat.lastIndex(of: ")") else {
+            return false
+        }
+
+        let fields = stat[stat.index(after: commandEnd)...]
+            .split(whereSeparator: { $0.isWhitespace })
+        guard fields.count > 3,
+              let processGroupID = Int32(fields[2]),
+              let sessionID = Int32(fields[3]) else {
+            return false
+        }
+        return processGroupID == processID && sessionID == processID
+    }
+
+    private static func terminateProcessGroup(_ processGroupID: Int32) {
+        _ = Glibc.kill(-processGroupID, SIGTERM)
+    }
+    #endif
 
     private static func forceKill(_ processID: Int32, processGroup: Bool) {
         #if os(Linux)

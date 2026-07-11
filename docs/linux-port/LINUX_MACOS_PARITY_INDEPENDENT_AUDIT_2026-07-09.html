@@ -279,11 +279,13 @@ official-key feed verification with artifact binding, rollback feed rebinding,
 and Sigstore-attested publication receipts. Stable remains the legacy root-feed
 alias while prerelease and nightly use channel-qualified public routes.
 First-cutover compensation restores the applicable legacy direct-R2 paths;
-later unrecoverable rollback fails closed behind an inactive tombstone. This is
-source closure,
-not live promotion evidence: production DNS, credentials, OpenPGP identity,
-published bytes, installed lifecycle, and scheduled metadata refresh remain
-unproven.</p>
+later unrecoverable rollback fails closed behind an inactive tombstone. A
+scheduled metadata-only refresh transaction now preserves immutable package
+bytes, chains a new signed closure to the verified parent, rebinds the retained
+feed, verifies public bytes, compensates post-activation failures, and uploads
+Sigstore-verified immutable evidence. This is source closure, not live promotion
+evidence: production DNS, credentials, OpenPGP identity, published bytes,
+installed lifecycle, and a real scheduled refresh execution remain unproven.</p>
 <p>Mercury is no longer a missing code path: Linux now has daemon-owned iroh session
 control, inbound and outbound file transfer, call/mirror state, sealed media
 frames, portal/PipeWire capture, codec probing, consent/revocation, a call HUD,
@@ -352,7 +354,11 @@ start/status/cancel RPCs, a bounded private terminal launcher, local CLI auth
 verification, restart recovery, and a renderer contract that excludes tokens,
 callback URLs, paths, arguments, and terminal output. This closes the missing
 source workflow in <code>P-27</code>; installed provider-login certification and isolated
-multi-account profile switching remain open.
+multi-account profile switching remain open. Linux CLI verification now runs
+under a supervised <code>setsid --fork --wait</code> session, validates the actual child
+session leader through <code>/proc</code>, and terminates the complete process group on
+timeout. The native integration test proves that both the launcher and a
+<code>SIGTERM</code>-ignoring descendant are gone before the verifier returns.
 The largest certification gaps are an x86_64 installed session, a prior-version
 update/rollback baseline, a valid public signed feed, public apt/RPM mirrors,
 and real GNOME Wayland/KDE/wlroots proof. Package construction is now green for
@@ -361,10 +367,46 @@ in source, but that does not substitute for public-mirror verification or live
 installed-product outcomes. AUR and Flatpak remain explicitly unpromoted.</p>
 <p>The old parity claim is now disabled. The generated product ledger contains all
 40 audited requirements, reports <strong>0 ready / 40 blocked</strong>, and cannot promote a
-stale or incomplete claim. Release verification now checks artifact bytes,
+stale or incomplete claim. Every row now invokes one canonical, repository-
+confined requirement attester backed by a complete requirement-specific policy
+manifest. Receipt schema 2 binds the exact release closure, schema-validated
+signed installed-file manifest, candidate package artifact, pre/post runtime
+manifests captured from the installed desktop shell, and dispatcher-generated
+live environment/install evidence,
+registered validator command/source tree, and clean current HEAD. The live probe
+must match the matrix OS, architecture, desktop, session, display/session bus,
+logind identity, package-manager version, installed package architecture, exact
+package-owned path set, root-owned trust files, Ed25519 signature, and every
+signed file hash/size/mode/owner/symlink target. The installation, package,
+runtime, and session probes repeat after requirement execution; installed bytes
+and identity must remain unchanged, while both valid runtime snapshots are
+retained so legitimate capability-state transitions remain auditable. Every receipt also
+requires a detached GitHub Artifact
+Attestation from the pinned product-parity workflow; the verifier pins repository,
+workflow, source ref/commit, and exact receipt bytes without trusting caller-
+controlled predicate fields. The attester discovers the exact required
+validator/environment matrix, re-hashes its artifact union, removes stale output
+on failure, and writes only the canonical row evidence path atomically. Missing,
+substituted, symlinked, unprovenanced, or noncanonical inputs fail closed.
+The producer workflow accepts only the immutable <code>linux-release-evidence</code>
+artifact from one successful canonical Linux release workflow run at the exact
+target SHA; arbitrary artifact names, forks, workflow identities, reruns, failed
+runs, stale commits, expired artifacts, and mutable name-based selection fail
+closed. The current release artifact does not yet emit the new product-proof
+closure shape. Requirement-owned <code>P-XX</code> validator modules and the release-
+workflow aggregation stage are also not implemented yet, so every registered
+runner currently stops before
+emitting <code>passed</code>; this repairs the admission contract without fabricating semantic
+parity. Release verification now checks artifact bytes,
 detached signatures, provenance, source/SBOM/VEX inputs, architecture sessions,
-and signed-feed closure. This fixes the audit mechanism; it does not turn blocked
+and signed-feed closure. This fixes the evidence-admission mechanism; it does not turn blocked
 product rows into parity.</p>
+<p>Linux native validation also no longer links Swift&#39;s broken Linux Observation
+runtime. Shared Swift UI models keep <code>@Observable</code> on Apple platforms and
+compile as ordinary state classes for the Tauri-owned Linux product; the native
+test runner inspects the resulting ELF and fails if <code>libswiftObservation</code>
+reappears. This removes the upstream Swift 6.1 link/runtime hazard without a
+linker suppression.</p>
 <p>The strongest installed-product baseline remains an aarch64 <code>.deb</code> session from
 commit <code>9886a6ac0b</code>:</p>
 <ul>
@@ -2085,9 +2127,9 @@ queueing, locked keyring, and redaction.</li>
 </thead>
 <tbody><tr>
 <td>LNX-GATE-001, LNX-REL-VERIFY-001, LNX-CI-001</td>
-<td>Implemented</td>
-<td>Complete blocked inventory, crypto/closure mutations, strict workflow wiring</td>
-<td>Exact signed candidate and all required rows green</td>
+<td>Admission contract implemented; semantic producers blocked</td>
+<td>Complete blocked inventory, canonical policy-driven requirement attester, exact installed-subject binding, GitHub Artifact Attestation verification, crypto/closure mutations, strict workflow wiring</td>
+<td>Implement all 40 requirement-owned validators, run the seven-environment exact-candidate producer matrix, aggregate its signed receipts after candidate assembly, and make all required rows green</td>
 </tr>
 <tr>
 <td>LNX-SEC-001, LNX-IPC-001, LNX-CAP-001</td>
@@ -2127,9 +2169,9 @@ queueing, locked keyring, and redaction.</li>
 </tr>
 <tr>
 <td>LNX-CHANNEL-001</td>
-<td>Role-isolated atomic publication source implemented; live deployment, refresh, and lifecycle blocked</td>
-<td>Fail-closed apt/RPM builder and verifier; checksum-addressed indices; seven-day apt expiry; pinned signing-subkey policy; immutable RPM identity proof; closure-addressed R2 snapshots; separate upload/control/serving/feed Workers with least-privilege routes and distinct control credentials; create-only upload with bounded legacy-byte adoption and mandatory large-object digest metadata; no-pointer preview lifecycle; snapshot/generation/ETag repository CAS and per-channel feed CAS/history; write-ahead activation intent; official-key Ed25519 feed verification plus signed-artifact R2 binding; channel-isolated retained feed descriptor rebinding after rollback; channel-qualified snapshot/bootstrap/feed routing; exact public header/byte proof; legacy direct-R2 first-cutover restoration or later fail-closed deactivation; draft-aware, repeated-absence GitHub cleanup; Sigstore-attested operational receipts; explicit AUR/Flatpak non-promotion</td>
-<td>Provision the production OpenPGP identity and CI key, Cloudflare credentials/DNS and distinct upload/activation secrets; deploy and exercise all four Workers; implement scheduled metadata-only pre-expiry refresh with signed closure chaining; prove an installed keyring overlap/rotation lifecycle; publish the exact candidate; fault-inject upload/activation/feed/rollback/deactivation and ambiguous responses; prove clean install, update, rollback, and uninstall on both architectures; resolve AUR/Flatpak promotion decisions</td>
+<td>Role-isolated atomic publication and scheduled-refresh source implemented; live deployment, refresh execution, and lifecycle blocked</td>
+<td>Fail-closed apt/RPM builder and verifier; checksum-addressed indices; seven-day apt expiry; pinned signing-subkey policy; immutable RPM identity proof; closure-addressed R2 snapshots; separate upload/control/serving/feed Workers with least-privilege routes and distinct control credentials; create-only upload with bounded legacy-byte adoption and mandatory large-object digest metadata; no-pointer preview lifecycle; snapshot/generation/ETag repository CAS and per-channel feed CAS/history; write-ahead activation intent; official-key Ed25519 feed verification plus signed-artifact R2 binding; channel-isolated retained feed descriptor rebinding after rollback; channel-qualified snapshot/bootstrap/feed routing; exact public header/byte proof; legacy direct-R2 first-cutover restoration or later fail-closed deactivation; scheduled metadata-only refresh with signed parent chaining, immutable package-byte proof, retained feed rebind, public verification, compensation, and Sigstore-verified durable receipts; draft-aware, repeated-absence GitHub cleanup; explicit AUR/Flatpak non-promotion</td>
+<td>Provision the production OpenPGP identity and CI key, Cloudflare credentials/DNS and distinct upload/activation secrets; deploy and exercise all four Workers; exercise the scheduled refresh against production; prove an installed keyring overlap/rotation lifecycle; publish the exact candidate; fault-inject upload/activation/feed/rollback/deactivation and ambiguous responses; prove clean install, update, rollback, and uninstall on both architectures; resolve AUR/Flatpak promotion decisions</td>
 </tr>
 <tr>
 <td>LNX-EVT-001</td>
@@ -2241,8 +2283,14 @@ evidence, environment, artifact hash, and target commit.</li>
 <tbody><tr>
 <td>LNX-GATE-001</td>
 <td>None</td>
-<td>Replace the partial parity ledger with a complete product inventory; bind all Tier A/B evidence to target HEAD; generate Markdown from JSON</td>
-<td>Current-head drift, missing row, blocked required row, and contradictory docs fail CI</td>
+<td>Replace the partial parity ledger with a complete product inventory; bind all Tier A/B evidence to target HEAD, a trusted immutable release-workflow artifact, the signed package subject, exact live package ownership and file inventory, pre/post installed-shell runtime captures, and a logind-anchored environment through a registered-validator, GitHub-provenance-verified attester; generate Markdown from JSON</td>
+<td>Current-head or requirements-manifest drift, missing row/policy/validator, substituted producer, wrong release subject, package-owned-path or installed-byte drift, opaque runtime capture, mislabeled logind session, untrusted evidence run/artifact, hand-authored receipt, wrong GitHub repository/workflow/ref, blocked required row, and contradictory docs fail CI</td>
+</tr>
+<tr>
+<td>LNX-PROOF-001</td>
+<td>LNX-GATE-001, LNX-PKG-001, all product tasks</td>
+<td>Implement each deterministic <code>product-validators/P-XX.mjs</code>; run it on the exact seven-environment installed matrix; upload the receipt and Sigstore bundle; after signed candidate assembly, download one complete matrix, verify every bundle, invoke all 40 attesters, then run strict ledger validation</td>
+<td>No validator accepts caller pass state; all 280 check/environment receipts bind one release closure and the environment-installed package/runtime; any missing job, bundle, subject digest, producer identity, or matrix pair blocks promotion</td>
 </tr>
 <tr>
 <td>LNX-REL-VERIFY-001</td>
@@ -2315,7 +2363,7 @@ truth-sync, not the first time behavior is documented.</p>
 <tr>
 <td>LNX-CHANNEL-001</td>
 <td>LNX-PKG-001, LNX-REL-VERIFY-001</td>
-<td>Fail-closed apt/RPM construction, bounded freshness, signing identity proof, immutable release URLs, release-root binding, create-only authenticated uploads, closure-addressed snapshots, shared immutable leaves, role-isolated upload/control/serving/feed Workers, snapshot/generation/ETag repository CAS, independent per-channel feed CAS with retained-descriptor rebinding, pre-activation snapshot lifecycle, channel-qualified bootstrap/feed routing, exact public-byte/header proof, write-ahead intent and ambiguous-result reconciliation, official-key feed/artifact validation, rollback/deactivation compensation, draft-aware GitHub cleanup with repeated dual-source absence proof, and attested publication receipts are source-implemented; provision and deploy the production identities/infrastructure, add scheduled signed metadata-only refresh, prove installed keyring overlap/rotation, publish and verify exact-candidate mirrors, correct and certify AUR, and retain Flatpak as unpromoted until its portal/keyring contract passes</td>
+<td>Fail-closed apt/RPM construction, bounded freshness, signing identity proof, immutable release URLs, release-root binding, create-only authenticated uploads, closure-addressed snapshots, shared immutable leaves, role-isolated upload/control/serving/feed Workers, snapshot/generation/ETag repository CAS, independent per-channel feed CAS with retained-descriptor rebinding, pre-activation snapshot lifecycle, channel-qualified bootstrap/feed routing, exact public-byte/header proof, write-ahead intent and ambiguous-result reconciliation, official-key feed/artifact validation, rollback/deactivation compensation, draft-aware GitHub cleanup with repeated dual-source absence proof, scheduled signed metadata-only refresh, and attested publication receipts are source-implemented; provision and deploy the production identities/infrastructure, exercise refresh against production, prove installed keyring overlap/rotation, publish and verify exact-candidate mirrors, correct and certify AUR, and retain Flatpak as unpromoted until its portal/keyring contract passes</td>
 <td>Each declared channel installs the correct architecture and verifies repository/package metadata; failed, interrupted, ambiguous, drifted, ABA-raced, concurrent, or downstream publication cannot mutate immutable bytes or leave an unverified candidate active; stale CAS and malformed/missing targets fail closed; rollback selects a retained unexpired generation and restores its same-channel signed feed without consuming another channel&#39;s history; first activation restores applicable legacy direct-R2 behavior when deactivated; unavailable rollback disables mutable routes; metadata refresh completes before expiry without changing package/RPM bytes; public bytes match the signed closure; unpromoted channels remain absent from install copy</td>
 </tr>
 <tr>
@@ -2695,6 +2743,15 @@ signature and committed/published public-key fingerprint.</li>
 source archive, or feed fails promotion.</li>
 <li><input disabled="" type="checkbox"> Ledger evidence and artifact provenance target the exact release commit.</li>
 <li><input disabled="" type="checkbox"> A missing, blocked, stale, duplicated, or contradictory product row fails.</li>
+<li><input disabled="" type="checkbox"> Every product row uses the exact canonical attester command and evidence
+path; the attester and requirement-specific policy exist, are repository-
+confined, and cannot be replaced through a symlink or alternate command.</li>
+<li><input disabled="" type="checkbox"> Every ready row has the exact registered validator/environment matrix;
+each schema-2 receipt binds release/package subjects, exact live installed
+ownership/inventory, pre/post installed-shell runtime captures, and the live
+logind environment manifest plus a
+GitHub Artifact Attestation from the pinned repository, workflow, source ref,
+source commit, and exact receipt digest.</li>
 <li><input disabled="" type="checkbox"> Linux Swift, Cargo, frontend, and installed-shell behavior tests run rather
 than compile-only substitutes.</li>
 <li><input disabled="" type="checkbox"> Manual-dispatch and tag-triggered release paths derive the same validated

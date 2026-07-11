@@ -101,6 +101,9 @@ test('manifest schema and both runtime boundaries remain fail closed', () => {
   for (const marker of [
     'include_str!("../../../../packaging/linux/runtime-capability-catalog.json")',
     'fn runtime_capabilities()',
+    '"--runtime-capabilities"',
+    'TRAY_INIT_FAILED.store(true, Ordering::Relaxed)',
+    'serialize_runtime_capabilities(&manifest)',
     'runtime_capability_unknown_evaluator',
     'runtime_capability_schema_unsupported'
   ]) assert.ok(rustSource.includes(marker), marker);

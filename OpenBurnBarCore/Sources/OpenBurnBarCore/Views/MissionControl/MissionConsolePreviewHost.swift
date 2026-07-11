@@ -1,5 +1,7 @@
 import Foundation
+#if !os(Linux)
 import Observation
+#endif
 import SwiftUI
 
 #if DEBUG
@@ -10,7 +12,9 @@ import SwiftUI
 // previews like a real running system. Not shipped — wrapped in `#if DEBUG`.
 
 @MainActor
+#if !os(Linux)
 @Observable
+#endif
 public final class MissionConsolePreviewHost: MissionConsoleHost {
     public var snapshot: MissionConsoleSnapshot
     public var lastDispatchedMissionID: String?

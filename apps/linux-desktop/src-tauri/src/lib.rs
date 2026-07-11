@@ -933,6 +933,11 @@ fn evaluate_runtime_capabilities() -> Result<RuntimeCapabilityManifest, String> 
     })
 }
 
+fn serialize_runtime_capabilities(manifest: &RuntimeCapabilityManifest) -> Result<String, String> {
+    serde_json::to_string(manifest)
+        .map_err(|error| format!("runtime_capability_serialization_failed:{error}"))
+}
+
 #[tauri::command]
 async fn runtime_capabilities() -> Result<RuntimeCapabilityManifest, String> {
     tauri::async_runtime::spawn_blocking(evaluate_runtime_capabilities)
@@ -2722,9 +2727,27 @@ pub fn run() {
                 );
                 std::process::exit(if health.ok { 0 } else { 1 });
             }
+            "--runtime-capabilities" => {
+                // A fast-exit probe never initializes Tauri's tray. Mark it
+                // unavailable so the captured manifest cannot claim a tray
+                // capability that this process did not observe.
+                TRAY_INIT_FAILED.store(true, Ordering::Relaxed);
+                match evaluate_runtime_capabilities()
+                    .and_then(|manifest| serialize_runtime_capabilities(&manifest))
+                {
+                    Ok(manifest) => {
+                        println!("{manifest}");
+                        std::process::exit(0);
+                    }
+                    Err(error) => {
+                        eprintln!("{error}");
+                        std::process::exit(1);
+                    }
+                }
+            }
             "--help" | "-h" => {
                 println!(
-                    "OpenBurnBar Linux desktop shell\n\nUsage: openburnbar-linux-desktop [--version] [--daemon-health] [--help]"
+                    "OpenBurnBar Linux desktop shell\n\nUsage: openburnbar-linux-desktop [--version] [--daemon-health] [--runtime-capabilities] [--help]"
                 );
                 std::process::exit(0);
             }
@@ -3323,5 +3346,29 @@ mod tests {
             .unwrap();
             assert_eq!(blocked.state, "blocked");
         }
+    }
+
+    #[test]
+    fn runtime_capability_cli_serialization_uses_the_manifest_wire_contract() {
+        let manifest = RuntimeCapabilityManifest {
+            schema_version: 1,
+            catalog_version: "test-catalog".to_string(),
+            shell_version: "1.2.3".to_string(),
+            daemon_version: Some("1.2.3".to_string()),
+            daemon_protocol_version: Some(2),
+            session_type: Some("wayland".to_string()),
+            desktop: Some("GNOME".to_string()),
+            capabilities: vec![],
+        };
+        let encoded: serde_json::Value = serde_json::from_str(
+            &serialize_runtime_capabilities(&manifest).expect("manifest should serialize"),
+        )
+        .expect("serialized manifest should be JSON");
+        assert_eq!(encoded["schemaVersion"], 1);
+        assert_eq!(encoded["catalogVersion"], "test-catalog");
+        assert_eq!(encoded["shellVersion"], "1.2.3");
+        assert_eq!(encoded["daemonProtocolVersion"], 2);
+        assert_eq!(encoded["sessionType"], "wayland");
+        assert_eq!(encoded["desktop"], "GNOME");
     }
 }

@@ -10,6 +10,34 @@ not current release closure. Release promotion always requires a fresh rerun
 at the exact workflow `HEAD` plus the package, update,
 signature/provenance, nightly, and clean-commit evidence below.
 
+Product parity receipts are not hand-authored test reports. For each `P-01`
+through `P-40` requirement, the registered dispatcher runs the deterministic
+`scripts/linux-port/product-validators/P-XX.mjs` implementation on every support
+environment, binds the installed release/package plus live runtime subjects, and emits the
+canonical schema-2 receipt. `.github/workflows/linux-product-parity.yml` signs
+the exact receipt with GitHub Artifact Attestations and preserves the adjacent
+`.sigstore.jsonl` bundle. `attest-product-requirement.mjs` independently verifies
+repository, signer workflow, source ref/commit, receipt digest, subject digests,
+and the complete environment matrix before a row can become ready. Missing
+requirement-owned validators currently leave all 40 rows blocked by design; the
+release workflow must not promote until the signed matrix is aggregated after
+exact-candidate assembly.
+
+The producer accepts only `release_run_id`. It resolves the fixed
+`linux-release-evidence` artifact from the canonical successful Linux release
+workflow, verifies repository/workflow/run/head/attempt/artifact identity through
+GitHub's API, and downloads by immutable artifact ID. The dispatcher then
+requires the downloaded signed manifest bytes to equal the live root-owned
+manifest, verifies its Ed25519 signature and complete file inventory, compares
+the package manager's exact owned-path set, anchors the desktop through logind,
+and captures capability JSON directly from the installed desktop binary before
+and after requirement execution. It repeats installation/session checks before
+emitting a receipt; package identity must remain stable, while both valid runtime
+states are retained. The current release artifact
+does not yet emit the required product-proof closure, so promotion remains
+blocked until `LNX-PROOF-001` changes the assembly order and aggregates the
+complete signed matrix.
+
 ## Artifacts
 
 Required release inputs and channel metadata:

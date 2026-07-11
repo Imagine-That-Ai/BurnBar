@@ -1,13 +1,16 @@
 #!/usr/bin/env node
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { reanchorEvidenceDir, repoRoot, runStep, writeJson } from './lib/linux-release-common.mjs';
+import { resolveRepositoryFile } from './lib/product-requirement-attestation.mjs';
 import { validateParityLedger } from './lib/parity-ledger-validate.mjs';
 
 const args = new Set(process.argv.slice(2));
 const allowBlocked = args.has('--allow-blocked');
 const ledgerPath = path.join(repoRoot, 'docs/linux-port/parity-ledger.json');
 const defaultRequirementsPath = 'docs/linux-port/product-parity-requirements.json';
+const defaultEvidencePolicyPath = 'docs/linux-port/product-parity-evidence-policies.json';
 
 const git = {
   commit: runStep('git', ['rev-parse', 'HEAD']).stdout.trim(),
@@ -26,17 +29,31 @@ let result = {
 let semantics = null;
 let productParityClaim = false;
 let requirementsManifest = null;
+let requirementsDigest = null;
+let evidencePolicyManifest = null;
 
-if (!fs.existsSync(ledgerPath)) {
-  result.structuralFailures.push({ message: 'docs/linux-port/parity-ledger.json is missing.', row: null });
-} else {
-  const ledger = JSON.parse(fs.readFileSync(ledgerPath, 'utf8'));
-  const requirementsRel = ledger.requirementsManifest ?? defaultRequirementsPath;
-  const requirementsPath = path.join(repoRoot, requirementsRel);
-  if (!fs.existsSync(requirementsPath)) {
-    result.structuralFailures.push({ message: `product parity requirements manifest is missing: ${requirementsRel}`, row: null });
-  } else {
-    requirementsManifest = JSON.parse(fs.readFileSync(requirementsPath, 'utf8'));
+let ledger = null;
+try {
+  const resolved = resolveRepositoryFile(repoRoot, 'docs/linux-port/parity-ledger.json', 'product parity ledger');
+  ledger = JSON.parse(fs.readFileSync(resolved.absolute, 'utf8'));
+} catch (error) {
+  result.structuralFailures.push({ message: `cannot read canonical product parity ledger: ${error.message}`, row: null });
+}
+
+if (ledger !== null) {
+  try {
+    const resolved = resolveRepositoryFile(repoRoot, defaultRequirementsPath, 'product parity requirements manifest');
+    const requirementsBytes = fs.readFileSync(resolved.absolute);
+    requirementsDigest = crypto.createHash('sha256').update(requirementsBytes).digest('hex');
+    requirementsManifest = JSON.parse(requirementsBytes.toString('utf8'));
+  } catch (error) {
+    result.structuralFailures.push({ message: `cannot read canonical product parity requirements manifest: ${error.message}`, row: null });
+  }
+  try {
+    const resolved = resolveRepositoryFile(repoRoot, defaultEvidencePolicyPath, 'product parity evidence policy manifest');
+    evidencePolicyManifest = JSON.parse(fs.readFileSync(resolved.absolute, 'utf8'));
+  } catch (error) {
+    result.structuralFailures.push({ message: `cannot read canonical product parity evidence policy manifest: ${error.message}`, row: null });
   }
   semantics = ledger.semantics ?? null;
   productParityClaim = ledger.semantics?.productParityClaim === true;
@@ -45,7 +62,9 @@ if (!fs.existsSync(ledgerPath)) {
     currentHead: git.commit,
     repoRoot,
     ledgerPath: path.relative(repoRoot, ledgerPath),
-    requirements: requirementsManifest
+    requirements: requirementsManifest,
+    requirementsDigest,
+    evidencePolicies: evidencePolicyManifest
   });
   result = {
     ...validation,
@@ -66,6 +85,7 @@ const report = {
   semantics,
   productParityClaim,
   requirementsManifest: requirementsManifest?.id ?? null,
+  evidencePolicyManifest: evidencePolicyManifest?.id ?? null,
   passed: result.passed,
   structuralPassed: result.structuralPassed,
   promotionPassed: result.promotionPassed,

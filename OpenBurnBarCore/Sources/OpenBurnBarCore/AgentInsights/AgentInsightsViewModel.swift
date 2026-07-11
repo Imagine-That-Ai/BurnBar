@@ -1,5 +1,7 @@
 import Foundation
+#if !os(Linux)
 import Observation
+#endif
 
 /// Source of `AgentInsightsBundle`s for a particular platform.
 ///
@@ -19,7 +21,9 @@ public protocol AgentInsightsBundleProducer: AnyObject, Sendable {
 /// when a parent owns the lifetime (e.g. iPad split view where the
 /// sidebar selection mutates the scope without re-creating the model).
 @MainActor
+#if !os(Linux)
 @Observable
+#endif
 public final class AgentInsightsViewModel {
     public private(set) var scope: AgentInsightsScope
     public private(set) var bundle: AgentInsightsBundle?

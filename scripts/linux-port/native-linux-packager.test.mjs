@@ -30,18 +30,22 @@ function fixture() {
     'schema', 'icon', 'purge-helper', 'activation-ready', 'restart-user-daemons'
   ]) {
     files[name] = path.join(root, name);
-    fs.writeFileSync(files[name], `${name}\n`);
+    fs.writeFileSync(files[name], `${name}\n`, { mode: 0o644 });
   }
   const swift = path.join(root, 'swift');
   const native = path.join(root, 'native');
   fs.mkdirSync(swift);
   fs.mkdirSync(native);
-  fs.writeFileSync(path.join(swift, 'libswiftCore.so'), 'swift');
-  fs.writeFileSync(path.join(native, 'libsqlcipher.so.0'), 'sqlcipher');
+  fs.writeFileSync(path.join(swift, 'libswiftCore.so'), 'swift', { mode: 0o644 });
+  fs.writeFileSync(path.join(native, 'libsqlcipher.so.0'), 'sqlcipher', { mode: 0o644 });
   const { privateKey, publicKey } = crypto.generateKeyPairSync('ed25519');
   const privateKeyPem = privateKey.export({ type: 'pkcs8', format: 'pem' });
   files['public-key'] = path.join(root, 'public-key.pem');
-  fs.writeFileSync(files['public-key'], publicKey.export({ type: 'spki', format: 'pem' }));
+  fs.writeFileSync(
+    files['public-key'],
+    publicKey.export({ type: 'spki', format: 'pem' }),
+    { mode: 0o644 }
+  );
   return { root, files, swift, native, privateKeyPem };
 }
 

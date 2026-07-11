@@ -190,7 +190,9 @@ public enum SmartHubDisplayOperationState: Equatable, Sendable {
 // MARK: - Settings Model
 
 @MainActor
+#if !os(Linux)
 @Observable
+#endif
 public final class SmartHubDisplaySettingsModel {
 
     /// Whether the user has the bridge enabled. Reflects

@@ -6,6 +6,11 @@ import { verifyLinuxWorkflowWiring } from './verify-linux-workflow-wiring.mjs';
 function valid() {
   const refresh = fs.readFileSync(new URL('../../.github/workflows/linux-repository-refresh.yml', import.meta.url), 'utf8');
   return {
+    prYaml: fs.readFileSync(new URL('../../.github/workflows/linux-pr-gate.yml', import.meta.url), 'utf8'),
+    productParityWorkflow: fs.readFileSync(
+      new URL('../../.github/workflows/linux-product-parity.yml', import.meta.url),
+      'utf8'
+    ),
     releaseYaml: fs.readFileSync(new URL('../../.github/workflows/linux-release.yml', import.meta.url), 'utf8'),
     refresh,
     refreshYaml: refresh,
@@ -46,6 +51,8 @@ function valid() {
       'wrangler deploy',
       '--dry-run',
       'render-parity-ledger.mjs --check',
+      'attest-product-requirement.test.mjs',
+      'live-installed-product-evidence.test.mjs',
       'npm ci --prefix scripts/linux-port --ignore-scripts',
       'macos-matched-performance',
       'run-matched-performance.mjs',
@@ -196,7 +203,10 @@ function valid() {
       '/usr/bin/openburnbar-cli',
       'runtime_capabilities',
       'RUNTIME_CAPABILITY_CATALOG',
-      'runtime_capability_unknown_evaluator'
+      'runtime_capability_unknown_evaluator',
+      '"--runtime-capabilities"',
+      'TRAY_INIT_FAILED.store(true, Ordering::Relaxed)',
+      'serialize_runtime_capabilities(&manifest)'
     ].join('\n'),
     updateFeed: [
       'PINNED_PUBLIC_KEY_SPKI_SHA256',
@@ -229,6 +239,63 @@ function valid() {
 
 test('complete fail-closed workflow wiring passes', () => {
   assert.deepEqual(verifyLinuxWorkflowWiring(valid()), { passed: true, failures: [] });
+});
+
+test('product requirement attester mutation suite is mandatory in the PR gate', () => {
+  const input = valid();
+  input.prYaml = input.prYaml.replace('attest-product-requirement.test.mjs', 'removed-attester-tests');
+  const result = verifyLinuxWorkflowWiring(input);
+  assert.equal(result.passed, false);
+  assert.match(result.failures.join('\n'), /product evidence suite/u);
+});
+
+test('live installed product trust-boundary suite is mandatory in the PR gate', () => {
+  const input = valid();
+  input.prYaml = input.prYaml.replace(
+    'live-installed-product-evidence.test.mjs',
+    'removed-live-install-tests'
+  );
+  const result = verifyLinuxWorkflowWiring(input);
+  assert.equal(result.passed, false);
+  assert.match(result.failures.join('\n'), /product evidence suite/u);
+});
+
+test('a comment mentioning the attester suite cannot satisfy PR execution wiring', () => {
+  const input = valid();
+  input.prYaml = input.prYaml
+    .replace('scripts/linux-port/attest-product-requirement.test.mjs', 'scripts/linux-port/removed-attester-tests.mjs')
+    .concat('\n# node --test scripts/linux-port/attest-product-requirement.test.mjs\n');
+  const result = verifyLinuxWorkflowWiring(input);
+  assert.equal(result.passed, false);
+  assert.match(result.failures.join('\n'), /product evidence suite/u);
+});
+
+test('product receipt provenance generation is structurally mandatory', () => {
+  const input = valid();
+  input.productParityWorkflow = input.productParityWorkflow.replace(
+    'actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26',
+    'actions/attest@removed'
+  );
+  const result = verifyLinuxWorkflowWiring(input);
+  assert.equal(result.passed, false);
+  assert.match(result.failures.join('\n'), /pinned actions\/attest/u);
+});
+
+test('product evidence must resolve the trusted release run before immutable-id download', () => {
+  const mutations = [
+    ['resolve-product-evidence-run.mjs', 'removed-evidence-resolver.mjs'],
+    ['artifact-ids: ${{ steps.evidence.outputs.artifact_id }}', 'name: caller-selected-artifact'],
+    ['repository: Imagine-That-Ai/BurnBar', 'repository: attacker/fork'],
+    ['run-id: ${{ inputs.release_run_id }}', 'run-id: ${{ inputs.other_run_id }}'],
+    ['release_run_id:', 'evidence_artifact:']
+  ];
+  for (const [from, to] of mutations) {
+    const input = valid();
+    input.productParityWorkflow = input.productParityWorkflow.replace(from, to);
+    const result = verifyLinuxWorkflowWiring(input);
+    assert.equal(result.passed, false, from);
+    assert.match(result.failures.join('\n'), /product parity workflow/u);
+  }
 });
 
 test('repository refresh schedule, serialization, and manual channel contract are structural', () => {
@@ -604,7 +671,8 @@ test('generic shell, renderer network, and production fixture activation drift f
 
 test('runtime capability catalog, evaluator, bridge, route, and boundary drift fail', () => {
   for (const [field, marker] of [
-    ['rustBridge', 'runtime_capabilities'],
+    ['rustBridge', 'runtime_capability_unknown_evaluator'],
+    ['rustBridge', '"--runtime-capabilities"'],
     ['rendererBridge', 'decodeRuntimeCapabilityManifest'],
     ['routes', 'requiredCapability'],
     ['surfaceBoundary', 'capabilityBlocksSurface'],

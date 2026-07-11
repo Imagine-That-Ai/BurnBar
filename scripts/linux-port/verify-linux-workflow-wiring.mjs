@@ -264,8 +264,93 @@ function verifyRefreshTransactionStructure(source, failures) {
   }
 }
 
+function verifyProductAttesterTestStep(source, failures) {
+  let workflow;
+  try {
+    workflow = parseYaml(source);
+  } catch (error) {
+    failures.push(`PR workflow YAML is invalid: ${error.message}`);
+    return;
+  }
+  const steps = Object.values(workflow?.jobs ?? {}).flatMap((job) => Array.isArray(job?.steps) ? job.steps : []);
+  const nodeTestCommands = steps
+    .map((step) => String(step?.run ?? ''))
+    .filter((command) => /(?:^|\s)node\s+--test(?:\s|$)/u.test(command));
+  for (const suite of [
+    'attest-product-requirement.test.mjs',
+    'github-artifact-provenance.test.mjs',
+    'live-installed-product-evidence.test.mjs',
+    'run-product-requirement-validator.test.mjs',
+    'resolve-product-evidence-run.test.mjs'
+  ]) {
+    if (!nodeTestCommands.some((command) => command.includes(`scripts/linux-port/${suite}`))) {
+      failures.push(`PR product evidence suite is not executed by a node --test step: ${suite}`);
+    }
+  }
+}
+
+function verifyProductParityWorkflowStructure(source, failures) {
+  let workflow;
+  try {
+    workflow = parseYaml(source);
+  } catch (error) {
+    failures.push(`product parity workflow YAML is invalid: ${error.message}`);
+    return;
+  }
+  const permissions = workflow?.permissions ?? {};
+  for (const [name, value] of Object.entries({
+    contents: 'read',
+    actions: 'read',
+    'id-token': 'write',
+    attestations: 'write',
+    'artifact-metadata': 'write'
+  })) {
+    if (permissions[name] !== value) failures.push(`product parity workflow permission ${name} must be ${value}.`);
+  }
+  const job = workflow?.jobs?.validate;
+  const labels = job?.['runs-on'];
+  if (!Array.isArray(labels) || !labels.includes('self-hosted') || !labels.includes('linux')) {
+    failures.push('product parity workflow must use the declared self-hosted Linux environment runner.');
+  }
+  const steps = Array.isArray(job?.steps) ? job.steps : [];
+  const commands = steps.map((step) => String(step?.run ?? '')).join('\n');
+  const inputs = workflow?.on?.workflow_dispatch?.inputs ?? {};
+  if (!inputs.release_run_id || inputs.evidence_artifact || inputs.evidence_run_id) {
+    failures.push('product parity workflow must accept only the canonical release_run_id evidence selector.');
+  }
+  const resolverIndex = steps.findIndex((step) => String(step?.run ?? '').includes('resolve-product-evidence-run.mjs'));
+  const downloadIndex = steps.findIndex((step) => step?.uses === 'actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53');
+  if (resolverIndex < 0 || downloadIndex <= resolverIndex) {
+    failures.push('product parity workflow must resolve trusted evidence before the pinned artifact download.');
+  } else {
+    const download = steps[downloadIndex];
+    if (download.with?.repository !== 'Imagine-That-Ai/BurnBar'
+        || !String(download.with?.['artifact-ids'] ?? '').includes('steps.evidence.outputs.artifact_id')
+        || !String(download.with?.['run-id'] ?? '').includes('inputs.release_run_id')
+        || Object.hasOwn(download.with ?? {}, 'name')) {
+      failures.push('product parity workflow must download the exact resolved artifact id from the trusted repository and run.');
+    }
+  }
+  if (!commands.includes('npm ci --prefix scripts/linux-port --ignore-scripts')) {
+    failures.push('product parity workflow must install the pinned evidence-contract dependencies.');
+  }
+  if (!commands.includes('run-product-requirement-validator.mjs')
+      || !commands.includes('.sigstore.jsonl')) {
+    failures.push('product parity workflow must run the registered validator and preserve its detached provenance bundle.');
+  }
+  if (!steps.some((step) => step?.uses === 'actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26')) {
+    failures.push('product parity workflow must attest receipts with the pinned actions/attest v4.1.0 action.');
+  }
+  if (!steps.some((step) => String(step?.uses ?? '').startsWith('actions/upload-artifact@')
+      && String(step?.with?.path ?? '').includes('.sigstore.jsonl'))) {
+    failures.push('product parity workflow must upload each receipt with its detached provenance bundle.');
+  }
+}
+
 export function verifyLinuxWorkflowWiring(input) {
   const failures = [];
+  verifyProductAttesterTestStep(input.prYaml ?? input.pr, failures);
+  verifyProductParityWorkflowStructure(input.productParityWorkflow ?? '', failures);
   verifyReleaseTransactionStructure(input.releaseYaml ?? input.release, failures);
   verifyRefreshTransactionStructure(input.refreshYaml ?? input.refresh, failures);
   const requireText = (body, needle, label) => {
@@ -478,7 +563,10 @@ export function verifyLinuxWorkflowWiring(input) {
   for (const command of [
     'runtime_capabilities',
     'RUNTIME_CAPABILITY_CATALOG',
-    'runtime_capability_unknown_evaluator'
+    'runtime_capability_unknown_evaluator',
+    '"--runtime-capabilities"',
+    'TRAY_INIT_FAILED.store(true, Ordering::Relaxed)',
+    'serialize_runtime_capabilities(&manifest)'
   ]) requireText(input.rustBridge, command, 'native runtime capability contract');
   for (const command of [
     'PINNED_PUBLIC_KEY_SPKI_SHA256',
@@ -624,8 +712,11 @@ function main() {
   const read = (rel) => fs.readFileSync(path.join(repoRoot, rel), 'utf8');
   const release = read('.github/workflows/linux-release.yml');
   const refresh = read('.github/workflows/linux-repository-refresh.yml');
+  const pr = read('.github/workflows/linux-pr-gate.yml');
   const result = verifyLinuxWorkflowWiring({
-    pr: read('.github/workflows/linux-pr-gate.yml'),
+    pr,
+    prYaml: pr,
+    productParityWorkflow: read('.github/workflows/linux-product-parity.yml'),
     nightly: read('.github/workflows/linux-nightly.yml'),
     release,
     releaseYaml: release,

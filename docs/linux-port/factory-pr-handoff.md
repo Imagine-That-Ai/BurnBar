@@ -27,15 +27,19 @@ exist.
    - `scripts/linux-port/build-linux-release.mjs`
    - `scripts/linux-port/smoke-linux-packages.mjs`
    - `scripts/linux-port/verify-linux-release.mjs`
+   - `scripts/linux-port/run-product-requirement-validator.mjs`
+   - `scripts/linux-port/attest-product-requirement.mjs`
    - `scripts/linux-port/validate-parity-ledger.mjs`
    - `scripts/linux-port/check-linux-docs.mjs`
 3. CI workflows:
    - `.github/workflows/linux-pr-gate.yml`
    - `.github/workflows/linux-nightly.yml`
+   - `.github/workflows/linux-product-parity.yml`
 4. Documentation and parity:
    - `docs/linux-port/README.md`
    - `docs/linux-port/release-runbook.md`
    - `docs/linux-port/parity-ledger.json`
+   - `docs/linux-port/product-parity-evidence-policies.json`
    - `docs/linux-port/parity-ledger.md`
    - `docs/linux-port/evidence/mission-001-release/active-checkout-v23-v24-evidence.json`
    - `docs/RELEASE_MACOS.md`
@@ -55,6 +59,11 @@ exist.
 
 ## Named blockers
 
+- `LNX-PROOF-001`: no requirement-owned `product-validators/P-XX.mjs`
+  implementations exist, the canonical release artifact does not emit the
+  product-proof closure, and no post-assembly job has aggregated the required
+  40 requirements across seven environments (280 signed receipts). The ledger
+  therefore remains honestly at 0 ready / 40 blocked.
 - `VAL-RELEASE-001`: no AppImage/RPM release artifacts or install/update smoke
   proof exist yet; the current `.deb` is shell-surface proof only.
 - `VAL-RELEASE-002`: no promotable `latest-linux.json` candidate exists, and
