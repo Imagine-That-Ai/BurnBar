@@ -8,11 +8,9 @@ import Foundation
 /// request. The old global "always allow" bit is retired on startup because it
 /// did not bind consent to a device.
 ///
-/// Remembering is ON by default: the first accepted request from a device
-/// creates a device-bound grant, and each auto-accepted session renews the
-/// grant's expiry (sliding window), so an actively-used phone only ever needs
-/// its first Accept at the Mac. Grants for devices that go dormant past the
-/// TTL expire, and the ledger is revocable from Media permissions.
+/// Remembering is opt-in: once the user enables remembered peers, accepted
+/// mirror requests create short-lived device-bound grants. Grants expire on a
+/// fixed TTL and remain revocable from Media permissions.
 @MainActor
 final class MercuryConsentStore: ObservableObject {
     struct MirrorAutoAcceptGrant: Codable, Equatable, Identifiable {
@@ -30,7 +28,7 @@ final class MercuryConsentStore: ObservableObject {
     private static let legacyAlwaysAllowKey = "mercuryAlwaysAllowMyIPhoneToMirror"
     private static let rememberAcceptedPeersKey = "mercuryRememberAcceptedMirrorPeers"
     private static let grantsKey = "mercuryMirrorAutoAcceptGrants.v2"
-    private static let grantTTL: TimeInterval = 365 * 24 * 60 * 60
+    private static let grantTTL: TimeInterval = 30 * 24 * 60 * 60
 
     @Published var rememberAcceptedMirrorPeers: Bool {
         didSet {
@@ -49,21 +47,22 @@ final class MercuryConsentStore: ObservableObject {
     ) {
         self.defaults = defaults
         self.encodeGrants = encodeGrants
-        // Default ON: an unset key means the user never chose, and the grant
-        // model is device-bound + revocable, so remember-by-default is safe and
-        // spares the round-trip to the Mac for every session after the first.
-        // An explicit user choice (either way) is always respected.
         if defaults.object(forKey: Self.rememberAcceptedPeersKey) == nil {
-            self.rememberAcceptedMirrorPeers = true
+            self.rememberAcceptedMirrorPeers = false
         } else {
             self.rememberAcceptedMirrorPeers = defaults.bool(forKey: Self.rememberAcceptedPeersKey)
         }
         self.grants = Self.decodeGrants(defaults.data(forKey: Self.grantsKey))
         if defaults.object(forKey: Self.legacyAlwaysAllowKey) != nil {
+            let legacyAlwaysAllow = defaults.bool(forKey: Self.legacyAlwaysAllowKey)
             defaults.removeObject(forKey: Self.legacyAlwaysAllowKey)
-            // The legacy bit was a *broader* consent than the device-bound
-            // grants replacing it — carry the intent forward as ON.
-            self.rememberAcceptedMirrorPeers = true
+            // Only migrate an affirmative legacy choice when the new setting
+            // has not already been explicitly chosen. The old key's mere
+            // presence is not consent.
+            if defaults.object(forKey: Self.rememberAcceptedPeersKey) == nil {
+                self.rememberAcceptedMirrorPeers = legacyAlwaysAllow
+                defaults.set(legacyAlwaysAllow, forKey: Self.rememberAcceptedPeersKey)
+            }
         }
         pruneExpired()
     }
@@ -99,9 +98,6 @@ final class MercuryConsentStore: ObservableObject {
             return false
         }
         grants[index].lastUsedAt = now
-        // Sliding window: every auto-accepted session renews the grant, so an
-        // actively-used device never re-rings the Mac; only dormancy expires it.
-        grants[index].expiresAt = now.addingTimeInterval(Self.grantTTL)
         persist()
         return true
     }

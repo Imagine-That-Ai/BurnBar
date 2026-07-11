@@ -171,12 +171,12 @@ final class MercuryConsentStoreMattersTests: XCTestCase {
         cancellable.cancel()
     }
 
-    // MARK: - Remember-by-default + sliding renewal (2026-07-03)
+    // MARK: - Explicit remembered-peer consent (2026-07-03)
 
-    func test_rememberAcceptedMirrorPeersDefaultsOnWhenUnset() {
+    func test_rememberAcceptedMirrorPeersDefaultsOffWhenUnset() {
         let store = MercuryConsentStore(defaults: defaults)
-        XCTAssertTrue(store.rememberAcceptedMirrorPeers,
-                      "an unset key must default to remembering, so users only Accept once")
+        XCTAssertFalse(store.rememberAcceptedMirrorPeers,
+                       "an unset key must not silently turn one normal Accept into a remembered grant")
     }
 
     func test_explicitUserOptOutIsRespected() {
@@ -185,16 +185,47 @@ final class MercuryConsentStoreMattersTests: XCTestCase {
         XCTAssertFalse(store.rememberAcceptedMirrorPeers)
     }
 
-    func test_legacyAlwaysAllowMigratesToRememberOn() {
+    func test_normalAcceptDoesNotCreateGrantWhenRememberPreferenceUnset() {
+        let store = MercuryConsentStore(defaults: defaults)
+        store.rememberAcceptedPeer(
+            connectionId: "conn-1",
+            viewerDeviceId: "device-1",
+            controlAuthorityPeerNodeId: "abc123",
+            remotePeerNodeId: "ABC123",
+            requesterName: "iPhone"
+        )
+        XCTAssertEqual(store.grants.count, 0,
+                       "the default Mac-side Accept must not silently create a remembered grant")
+    }
+
+    func test_legacyAlwaysAllowTrueMigratesToRememberOnWhenNewPreferenceIsUnset() {
         defaults.set(true, forKey: "mercuryAlwaysAllowMyIPhoneToMirror")
-        defaults.set(false, forKey: "mercuryRememberAcceptedMirrorPeers")
         let store = MercuryConsentStore(defaults: defaults)
         XCTAssertTrue(store.rememberAcceptedMirrorPeers,
-                      "the legacy global consent was broader than device-bound grants; carry intent forward")
+                      "an affirmative legacy choice may migrate only when the user has not chosen the new setting")
+        XCTAssertTrue(defaults.bool(forKey: "mercuryRememberAcceptedMirrorPeers"))
         XCTAssertNil(defaults.object(forKey: "mercuryAlwaysAllowMyIPhoneToMirror"))
     }
 
-    func test_autoAcceptSlidesGrantExpiryForward() {
+    func test_legacyAlwaysAllowPresenceDoesNotOverrideExplicitNewOptOut() {
+        defaults.set(true, forKey: "mercuryAlwaysAllowMyIPhoneToMirror")
+        defaults.set(false, forKey: "mercuryRememberAcceptedMirrorPeers")
+        let store = MercuryConsentStore(defaults: defaults)
+        XCTAssertFalse(store.rememberAcceptedMirrorPeers,
+                       "an explicit new opt-out must beat the legacy key")
+        XCTAssertNil(defaults.object(forKey: "mercuryAlwaysAllowMyIPhoneToMirror"))
+    }
+
+    func test_legacyAlwaysAllowFalseDoesNotMigrateToRememberOn() {
+        defaults.set(false, forKey: "mercuryAlwaysAllowMyIPhoneToMirror")
+        let store = MercuryConsentStore(defaults: defaults)
+        XCTAssertFalse(store.rememberAcceptedMirrorPeers,
+                       "legacy key presence alone is not consent")
+        XCTAssertFalse(defaults.bool(forKey: "mercuryRememberAcceptedMirrorPeers"))
+        XCTAssertNil(defaults.object(forKey: "mercuryAlwaysAllowMyIPhoneToMirror"))
+    }
+
+    func test_autoAcceptDoesNotSlideGrantExpiryForward() {
         let store = MercuryConsentStore(defaults: defaults)
         store.rememberAcceptedMirrorPeers = true
         let t0 = Date(timeIntervalSince1970: 1_700_000_000)
@@ -209,9 +240,9 @@ final class MercuryConsentStoreMattersTests: XCTestCase {
         let firstExpiry = store.grants.first?.expiresAt
         XCTAssertNotNil(firstExpiry)
 
-        // Auto-accept 200 days later: still inside the window, and the grant
-        // must renew so an actively-used device never re-rings the Mac.
-        let t1 = t0.addingTimeInterval(200 * 24 * 60 * 60)
+        // Auto-accept inside the 30-day window: the grant is usable, but
+        // usage must not renew it into an indefinite authorization.
+        let t1 = t0.addingTimeInterval(10 * 24 * 60 * 60)
         XCTAssertTrue(store.canAutoAccept(
             connectionId: "conn-1",
             viewerDeviceId: "device-1",
@@ -221,11 +252,11 @@ final class MercuryConsentStoreMattersTests: XCTestCase {
         ))
         let renewedExpiry = store.grants.first?.expiresAt
         XCTAssertNotNil(renewedExpiry)
-        XCTAssertGreaterThan(renewedExpiry!, firstExpiry!,
-                             "each auto-accepted session must extend the grant (sliding window)")
+        XCTAssertEqual(renewedExpiry!, firstExpiry!,
+                       "auto-accepted sessions must not extend the grant")
 
         // A device dormant past the TTL expires and must ring again.
-        let t2 = t1.addingTimeInterval(400 * 24 * 60 * 60)
+        let t2 = t0.addingTimeInterval(31 * 24 * 60 * 60)
         XCTAssertFalse(store.canAutoAccept(
             connectionId: "conn-1",
             viewerDeviceId: "device-1",
