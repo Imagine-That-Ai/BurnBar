@@ -11,6 +11,7 @@ import com.openburnbar.data.media.MediaStreamClass
 import com.openburnbar.irohrelay.HermesRealtimeRelayAuthorityEnvelope
 import com.openburnbar.irohrelay.HermesRealtimeRelayControlPayload
 import com.openburnbar.irohrelay.HermesRealtimeRelayControlSealKeyEnvelope
+import com.openburnbar.irohrelay.HermesRealtimeRelayComputerUseSessionGrantChallenge
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRealtimeRelaySystemPermissionRequest
@@ -67,8 +68,33 @@ class AgentCapabilityGrantController(
                 localAuthenticationSatisfied = authenticated,
             )
 
-        if (deliveryMode != AgentGrantDeliveryMode.QUEUED) {
-            sendLive(uid = uid, sourceDeviceId = sourceDeviceId, request = request, deliveryMode = deliveryMode)
+        return deliver(uid = uid, sourceDeviceId = sourceDeviceId, request = request)
+    }
+
+    /** Issues a grant bound to one exact, validated Linux session challenge. */
+    suspend fun grant(
+        activity: FragmentActivity,
+        sessionChallenge: HermesRealtimeRelayComputerUseSessionGrantChallenge,
+    ): AgentCapabilityGrantReceipt {
+        val uid = auth.currentUser?.uid ?: throw GrantError.NotSignedIn
+        ComputerUseSessionGrantChallengeValidator.validate(sessionChallenge)
+        val sourceDeviceId = trustedSourceDeviceId(uid)
+        var request =
+            AgentCapabilityGrantRequest.fromValidatedSessionChallenge(
+                challenge = sessionChallenge,
+                sourceDeviceId = sourceDeviceId,
+            )
+        request = request.copy(localAuthenticationSatisfied = authenticateIfNeeded(activity, request.preset))
+        return deliver(uid = uid, sourceDeviceId = sourceDeviceId, request = request)
+    }
+
+    private suspend fun deliver(
+        uid: String,
+        sourceDeviceId: String,
+        request: AgentCapabilityGrantRequest,
+    ): AgentCapabilityGrantReceipt {
+        if (request.deliveryMode != AgentGrantDeliveryMode.QUEUED) {
+            sendLive(uid = uid, sourceDeviceId = sourceDeviceId, request = request, deliveryMode = request.deliveryMode)
                 ?.let { return it }
         }
 

@@ -73,7 +73,9 @@ Primary files:
 - [`factory-pr-handoff.md`](factory-pr-handoff.md) - review map and known
   blockers for the factory PR loop.
 - [`runtime-capabilities.md`](runtime-capabilities.md) - canonical native
-  capability probes, fail-closed route gating, change procedure, and QA steps.
+  capability probes, including the fail-closed packaged Browser Computer Use
+  bridge and external runtime boundary, route gating, change procedure, and QA
+  steps.
 - [`accessibility-validation.md`](accessibility-validation.md) - axe route
   matrix, installed-app AT-SPI/Orca harness, evidence contract, and remaining
   manual GNOME/KDE certification.

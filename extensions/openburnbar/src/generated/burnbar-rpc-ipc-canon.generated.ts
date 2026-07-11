@@ -322,6 +322,36 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.computer_use.session_grant.acquire",
+    "caseName": "computerUseSessionGrantAcquire",
+    "domain": "computer_use",
+    "capability": "computer_use",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.computer_use.session_grant.acquire",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.computer_use.session_grant.readiness",
+    "caseName": "computerUseSessionGrantReadiness",
+    "domain": "computer_use",
+    "capability": "computer_use",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.computer_use.session_grant.readiness",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.computer_use.session_grant.status",
+    "caseName": "computerUseSessionGrantStatus",
+    "domain": "computer_use",
+    "capability": "computer_use",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.computer_use.session_grant.status",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.computer_use.session.start",
     "caseName": "computerUseSessionStart",
     "domain": "computer_use",

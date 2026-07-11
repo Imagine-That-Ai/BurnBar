@@ -6,24 +6,169 @@ extension BurnBarDaemonServer {
     func handleComputerUseRPC(
         method: BurnBarRPCMethod,
         decoder: JSONDecoder,
-        requestData: Data
+        requestData: Data,
+        peerPID: Int32? = nil
     ) async throws -> Data {
         switch method {
+        case .computerUseSessionGrantReadiness:
+            let typedRequest = try decoder.decode(BurnBarRPCRequestEnvelope.self, from: requestData)
+            #if os(Linux)
+            let result: ComputerUseSessionGrantReadinessResponse
+            if let broker = computerUseSessionGrantBroker {
+                if broker.readinessReason != .ready {
+                    result = ComputerUseSessionGrantReadinessResponse(
+                        available: false,
+                        reason: broker.readinessReason
+                    )
+                } else if computerUseSessionGrantMetadataResolver == nil
+                    || computerUseSessionGrantReadinessProvider == nil {
+                    result = ComputerUseSessionGrantReadinessResponse(
+                        available: false,
+                        reason: .pairingUnavailable
+                    )
+                } else if await computerUseSessionGrantReadinessProvider?() == true {
+                    result = ComputerUseSessionGrantReadinessResponse(
+                        available: true,
+                        reason: .ready
+                    )
+                } else {
+                    result = ComputerUseSessionGrantReadinessResponse(
+                        available: false,
+                        reason: .pairingUnavailable
+                    )
+                }
+            } else {
+                result = ComputerUseSessionGrantReadinessResponse(
+                    available: false,
+                    reason: .brokerUnavailable
+                )
+            }
+            #else
+            let result = ComputerUseSessionGrantReadinessResponse(
+                available: false,
+                reason: .brokerUnavailable
+            )
+            #endif
+            return encode(BurnBarRPCResponseEnvelope(
+                id: typedRequest.id,
+                protocolVersion: BurnBarProtocolVersion.current,
+                result: result
+            ))
+        case .computerUseSessionGrantAcquire:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<ComputerUseSessionGrantAcquireRequest>.self,
+                from: requestData
+            )
+            #if os(Linux)
+            let sessionRequest = typedRequest.params.sessionRequest
+            guard sessionRequest.mode == ComputerUseMode.browser.rawValue,
+                  sessionRequest.grantChallengeId == nil,
+                  sessionRequest.desktopOwnerAuthorizationRequest?.method == .linuxDesktopOwner,
+                  let runID = sessionRequest.runID,
+                  let requirement = await runService.computerUseRequirement(for: runID),
+                  requirement.clientID == sessionRequest.clientID
+                    || requirement.clientID == BurnBarRunService.controllerRuntimeClientID,
+                  sessionRequest.runCallID == requirement.invocation.callID,
+                  sessionRequest.runGeneration == requirement.generation else {
+                return encodeErrorResponse(
+                    id: typedRequest.id,
+                    code: BurnBarRPCErrorCode.invalidParams,
+                    message: "Computer Use authority requires an exact owned run waiting for a browser session."
+                )
+            }
+            guard let broker = computerUseSessionGrantBroker,
+                  let metadataResolver = computerUseSessionGrantMetadataResolver else {
+                return encodeErrorResponse(
+                    id: typedRequest.id,
+                    code: BurnBarRPCErrorCode.internalError,
+                    message: "Paired-phone Computer Use authority is unavailable."
+                )
+            }
+            do {
+                let metadata = try await metadataResolver(requirement, sessionRequest)
+                let status = try await broker.acquire(metadata: metadata, request: sessionRequest)
+                let result = ComputerUseSessionGrantStatusResponse(
+                    challengeId: status.challengeID,
+                    sessionIntentId: status.sessionIntentID,
+                    state: Self.brokerState(status.state),
+                    issuedAt: status.issuedAt,
+                    expiresAt: status.expiresAt
+                )
+                return encode(BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: result
+                ))
+            } catch {
+                logger.warning(
+                    "computer_use_session_grant_acquire_rejected",
+                    metadata: ["request_id": typedRequest.id, "error": "\(error)"]
+                )
+                return encodeErrorResponse(
+                    id: typedRequest.id,
+                    code: BurnBarRPCErrorCode.unauthorized,
+                    message: "Paired-phone Computer Use authority could not be acquired."
+                )
+            }
+            #else
+            return encodeErrorResponse(
+                id: typedRequest.id,
+                code: BurnBarRPCErrorCode.internalError,
+                message: "The paired-phone Linux authority broker is unavailable on this platform."
+            )
+            #endif
+        case .computerUseSessionGrantStatus:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<ComputerUseSessionGrantStatusRequest>.self,
+                from: requestData
+            )
+            #if os(Linux)
+            guard let broker = computerUseSessionGrantBroker,
+                  let status = await broker.status(challengeID: typedRequest.params.challengeId) else {
+                return encodeErrorResponse(
+                    id: typedRequest.id,
+                    code: BurnBarRPCErrorCode.invalidParams,
+                    message: "Computer Use authority challenge is unavailable or no longer retained."
+                )
+            }
+            let result = ComputerUseSessionGrantStatusResponse(
+                challengeId: status.challengeID,
+                sessionIntentId: status.sessionIntentID,
+                state: Self.brokerState(status.state),
+                issuedAt: status.issuedAt,
+                expiresAt: status.expiresAt
+            )
+            return encode(BurnBarRPCResponseEnvelope(
+                id: typedRequest.id,
+                protocolVersion: BurnBarProtocolVersion.current,
+                result: result
+            ))
+            #else
+            return encodeErrorResponse(
+                id: typedRequest.id,
+                code: BurnBarRPCErrorCode.internalError,
+                message: "The paired-phone Linux authority broker is unavailable on this platform."
+            )
+            #endif
         case .computerUseSessionStart:
             let typedRequest = try decoder.decode(
                 BurnBarRPCRequestEnvelopeWithParams<ComputerUseSessionStartRequest>.self,
                 from: requestData
             )
+            var sessionRequest = typedRequest.params
             let boundClientID: BurnBarClientID?
             let runRequirement: BurnBarComputerUseRunRequirement?
             #if os(Linux)
-            if typedRequest.params.mode == ComputerUseMode.browser.rawValue {
-                guard let runID = typedRequest.params.runID,
+            var deferredStartReservation: ComputerUseSessionGrantBroker.StartReservation?
+            #endif
+            #if os(Linux)
+            if sessionRequest.mode == ComputerUseMode.browser.rawValue {
+                guard let runID = sessionRequest.runID,
                       let requirement = await runService.computerUseRequirement(for: runID),
-                      requirement.clientID == typedRequest.params.clientID
+                      requirement.clientID == sessionRequest.clientID
                         || requirement.clientID == BurnBarRunService.controllerRuntimeClientID,
-                      typedRequest.params.runCallID == requirement.invocation.callID,
-                      typedRequest.params.runGeneration == requirement.generation else {
+                      sessionRequest.runCallID == requirement.invocation.callID,
+                      sessionRequest.runGeneration == requirement.generation else {
                     return encodeErrorResponse(
                         id: typedRequest.id,
                         code: BurnBarRPCErrorCode.invalidParams,
@@ -45,32 +190,177 @@ extension BurnBarDaemonServer {
             // Validate the non-secret run selection first so a stale picker row
             // cannot consume a single-use phone proof. Proof verification stays
             // immediately adjacent to session reservation/start.
-            if let denial = enforceLocalAuthProof(
+            #if os(Linux)
+            if sessionRequest.mode == ComputerUseMode.browser.rawValue,
+               localAuthProofVerifier != nil {
+                guard sessionRequest.desktopOwnerAuthorizationRequest?.method == .linuxDesktopOwner,
+                      let peerPID,
+                      let runRequirement,
+                      let challengeID = sessionRequest.grantChallengeId,
+                      let broker = computerUseSessionGrantBroker else {
+                    return encodeErrorResponse(
+                        id: typedRequest.id,
+                        code: BurnBarRPCErrorCode.unauthorized,
+                        message: "Browser Computer Use requires fresh paired-phone and Linux desktop-owner authorization."
+                    )
+                }
+                let preparedRequest: ComputerUseSessionStartRequest
+                do {
+                    preparedRequest = try await broker.prepare(
+                        challengeID: challengeID,
+                        request: sessionRequest
+                    ).request
+                } catch {
+                    return encodeErrorResponse(
+                        id: typedRequest.id,
+                        code: BurnBarRPCErrorCode.unauthorized,
+                        message: "Browser Computer Use paired-phone authority is not ready or no longer valid."
+                    )
+                }
+                if let denial = enforceLocalAuthProof(
+                    requestId: typedRequest.id,
+                    method: method,
+                    proof: preparedRequest.localAuthProof,
+                    sourceDeviceId: preparedRequest.sourceDeviceId,
+                    intentHashHex: preparedRequest.intentHashHex,
+                    grantBinding: preparedRequest.localAuthGrantBinding,
+                    sessionRequest: preparedRequest,
+                    consumeProof: false
+                ) {
+                    return denial
+                }
+                guard let operationID = preparedRequest.localAuthGrantBinding?.clientIntentId else {
+                    return encodeErrorResponse(
+                        id: typedRequest.id,
+                        code: BurnBarRPCErrorCode.unauthorized,
+                        message: "Browser Computer Use authority is incomplete."
+                    )
+                }
+                do {
+                    try await linuxComputerUseOwnerAuthorizer(
+                        peerPID,
+                        operationID,
+                        "Authorize Browser Computer Use for run \(runRequirement.runID.rawValue)"
+                    )
+                } catch {
+                    logger.warning(
+                        "computer_use_linux_owner_authorization_rejected",
+                        metadata: [
+                            "request_id": typedRequest.id,
+                            "run_id": runRequirement.runID.rawValue,
+                            "error": "\(error)"
+                        ]
+                    )
+                    return encodeErrorResponse(
+                        id: typedRequest.id,
+                        code: BurnBarRPCErrorCode.unauthorized,
+                        message: "Browser Computer Use Linux desktop-owner authorization was not completed."
+                    )
+                }
+                guard await runService.computerUseRequirement(for: runRequirement.runID) == runRequirement else {
+                    return encodeErrorResponse(
+                        id: typedRequest.id,
+                        code: BurnBarRPCErrorCode.invalidParams,
+                        message: "The selected Computer Use run changed during authorization. Choose it again."
+                    )
+                }
+                do {
+                    let reservation = try await broker.reserveForStart(
+                        challengeID: challengeID,
+                        request: sessionRequest
+                    )
+                    deferredStartReservation = reservation
+                    sessionRequest = reservation.request
+                } catch {
+                    return encodeErrorResponse(
+                        id: typedRequest.id,
+                        code: BurnBarRPCErrorCode.unauthorized,
+                        message: "Browser Computer Use authority expired or changed during desktop-owner authorization."
+                    )
+                }
+            }
+            #endif
+            #if os(Linux)
+            let defersProofConsumptionUntilSessionStart = deferredStartReservation != nil
+            #else
+            let defersProofConsumptionUntilSessionStart = false
+            #endif
+            if defersProofConsumptionUntilSessionStart == false,
+               let denial = enforceLocalAuthProof(
                 requestId: typedRequest.id,
                 method: method,
-                proof: typedRequest.params.localAuthProof,
-                sourceDeviceId: typedRequest.params.sourceDeviceId,
-                intentHashHex: typedRequest.params.intentHashHex,
-                grantBinding: typedRequest.params.localAuthGrantBinding,
-                sessionRequest: typedRequest.params
+                proof: sessionRequest.localAuthProof,
+                sourceDeviceId: sessionRequest.sourceDeviceId,
+                intentHashHex: sessionRequest.intentHashHex,
+                grantBinding: sessionRequest.localAuthGrantBinding,
+                sessionRequest: sessionRequest
             ) {
                 return denial
             }
-            let result: ComputerUseSessionStartResponse = try await computerUseService.startSession(
-                typedRequest.params,
-                boundClientID: boundClientID,
-                runGeneration: runRequirement?.generation
-            )
+            let result: ComputerUseSessionStartResponse
+            do {
+                result = try await computerUseService.startSession(
+                    sessionRequest,
+                    boundClientID: boundClientID,
+                    runGeneration: runRequirement?.generation
+                )
+            } catch {
+                #if os(Linux)
+                if let reservation = deferredStartReservation,
+                   let broker = computerUseSessionGrantBroker {
+                    if error is CancellationError || Task.isCancelled {
+                        _ = await broker.consumeAfterAmbiguousStart(reservation)
+                    } else if await broker.restoreAfterDefiniteStartFailure(reservation) == false {
+                        _ = await broker.consumeAfterAmbiguousStart(reservation)
+                    }
+                }
+                #endif
+                throw error
+            }
+            #if os(Linux)
+            if let reservation = deferredStartReservation,
+               let broker = computerUseSessionGrantBroker {
+                do {
+                    try await broker.commitStartedSession(reservation)
+                } catch {
+                    _ = await broker.consumeAfterAmbiguousStart(reservation)
+                    _ = try? await computerUseService.panicHalt(ComputerUsePanicHaltRequest(
+                        sessionId: result.sessionId,
+                        source: ComputerUsePanicSource.revoked.rawValue
+                    ))
+                    return encodeErrorResponse(
+                        id: typedRequest.id,
+                        code: BurnBarRPCErrorCode.unauthorized,
+                        message: "Browser Computer Use authority could not be committed after session creation."
+                    )
+                }
+                if let denial = enforceLocalAuthProof(
+                    requestId: typedRequest.id,
+                    method: method,
+                    proof: sessionRequest.localAuthProof,
+                    sourceDeviceId: sessionRequest.sourceDeviceId,
+                    intentHashHex: sessionRequest.intentHashHex,
+                    grantBinding: sessionRequest.localAuthGrantBinding,
+                    sessionRequest: sessionRequest
+                ) {
+                    _ = try? await computerUseService.panicHalt(ComputerUsePanicHaltRequest(
+                        sessionId: result.sessionId,
+                        source: ComputerUsePanicSource.revoked.rawValue
+                    ))
+                    return denial
+                }
+            }
+            #endif
             let authorizationExpiry = [
-                typedRequest.params.localAuthProof?.expiresAt,
-                typedRequest.params.localAuthGrantBinding?.expiresAt,
-                typedRequest.params.localAuthGrantBinding.map {
+                sessionRequest.localAuthProof?.expiresAt,
+                sessionRequest.localAuthGrantBinding?.expiresAt,
+                sessionRequest.localAuthGrantBinding.map {
                     $0.requestedAt.addingTimeInterval($0.grantDurationSeconds)
                 }
             ].compactMap { $0 }.min()
             await rememberLocalAuthVerifiedSession(
                 sessionId: result.sessionId,
-                requestedTimeoutSeconds: typedRequest.params.sessionTimeoutSeconds,
+                requestedTimeoutSeconds: sessionRequest.sessionTimeoutSeconds,
                 absoluteExpiry: authorizationExpiry
             )
             if localAuthProofVerifier != nil, let authorizationExpiry {
@@ -458,6 +748,7 @@ extension BurnBarDaemonServer {
         intentHashHex: String?,
         grantBinding: ComputerUseLocalAuthGrantBinding?,
         sessionRequest: ComputerUseSessionStartRequest,
+        consumeProof: Bool = true,
         now: Date = Date()
     ) -> Data? {
         guard let verifier = localAuthProofVerifier else {
@@ -605,14 +896,25 @@ extension BurnBarDaemonServer {
         }
 
         do {
-            _ = try verifier.verify(
-                proof: proof,
-                expectedDeviceId: sourceDeviceId,
-                expectedIntentHashHex: expectedIntentHashHex,
-                now: now
-            )
+            if consumeProof {
+                _ = try verifier.verify(
+                    proof: proof,
+                    expectedDeviceId: sourceDeviceId,
+                    expectedIntentHashHex: expectedIntentHashHex,
+                    now: now
+                )
+            } else {
+                _ = try verifier.validate(
+                    proof: proof,
+                    expectedDeviceId: sourceDeviceId,
+                    expectedIntentHashHex: expectedIntentHashHex,
+                    now: now
+                )
+            }
             logger.notice(
-                "computer_use_local_auth_proof_verified",
+                consumeProof
+                    ? "computer_use_local_auth_proof_verified"
+                    : "computer_use_local_auth_proof_prevalidated",
                 metadata: [
                     "request_id": requestId,
                     "method": method.rawValue,
@@ -650,6 +952,18 @@ extension BurnBarDaemonServer {
                 code: BurnBarRPCErrorCode.unauthorized,
                 message: "OpenBurnBar RPC method '\(method.rawValue)' local-authentication proof could not be verified."
             )
+        }
+    }
+
+    private static func brokerState(
+        _ state: ComputerUseSessionGrantBroker.State
+    ) -> ComputerUseSessionGrantBrokerState {
+        switch state {
+        case .awaitingPhone: .awaitingPhone
+        case .ready: .ready
+        case .starting: .consumed
+        case .expired: .expired
+        case .consumed: .consumed
         }
     }
 }

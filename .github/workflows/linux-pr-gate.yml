@@ -121,6 +121,9 @@ jobs:
           scripts/linux-port/assemble-linux-release.test.mjs
           scripts/linux-port/build-linux-release-boundary.test.mjs
           scripts/linux-port/build-native-linux-packages-boundary.test.mjs
+          scripts/linux-port/browser-runtime-packaging.test.mjs
+          scripts/linux-port/aur-browser-runtime-packaging.test.mjs
+          scripts/linux-port/embed-linux-appimage-payload.test.mjs
           scripts/linux-port/linux-package-session.test.mjs
           scripts/linux-port/linux-native-signing-receipt.test.mjs
           scripts/linux-port/prepare-linux-package-payload.test.mjs

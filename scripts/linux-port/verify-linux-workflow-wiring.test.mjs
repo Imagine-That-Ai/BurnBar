@@ -30,6 +30,9 @@ function valid() {
       'build-native-linux-packages-boundary.test.mjs',
       'linux-package-session.test.mjs',
       'linux-native-signing-receipt.test.mjs',
+      'scripts/linux-port/browser-runtime-packaging.test.mjs',
+      'scripts/linux-port/aur-browser-runtime-packaging.test.mjs',
+      'scripts/linux-port/embed-linux-appimage-payload.test.mjs',
       'workers/linux-repository-router/**',
       'workers/linux-repository-router/package-lock.json',
       'workers/linux-repository-router/wrangler-upload.jsonc',
@@ -186,7 +189,9 @@ function valid() {
       'Executed 1 test',
       'cargo test --manifest-path apps/linux-desktop/src-tauri/Cargo.toml --locked',
       'RUSTUP_TOOLCHAIN=1.94.0',
-      'cargo test --manifest-path crates/openburnbar-attestd/Cargo.toml --locked',
+      'build_attestd_test_harness',
+      'cargo test --manifest-path "${manifest}" --locked --lib --no-run',
+      'run_attestd_tests',
       'cargo clippy --manifest-path crates/openburnbar-attestd/Cargo.toml'
     ].join('\n'),
     rustBridge: [
@@ -581,6 +586,18 @@ test('native signing phase-boundary and receipt suites cannot be removed', () =>
     'build-linux-release-boundary.test.mjs',
     'build-native-linux-packages-boundary.test.mjs',
     'linux-native-signing-receipt.test.mjs'
+  ]) {
+    const input = valid();
+    input.pr = input.pr.replace(marker, '');
+    assert.equal(verifyLinuxWorkflowWiring(input).passed, false, marker);
+  }
+});
+
+test('each Browser Computer Use package-family suite is independently required', () => {
+  for (const marker of [
+    'scripts/linux-port/browser-runtime-packaging.test.mjs',
+    'scripts/linux-port/aur-browser-runtime-packaging.test.mjs',
+    'scripts/linux-port/embed-linux-appimage-payload.test.mjs'
   ]) {
     const input = valid();
     input.pr = input.pr.replace(marker, '');

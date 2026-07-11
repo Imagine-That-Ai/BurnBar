@@ -13,6 +13,45 @@ public enum AgentCapabilityGrantWireError: Error, Equatable, Sendable {
 }
 
 public extension AgentCapabilityGrantRequest {
+    /// Builds the existing signed grant shape from an exact, validated Linux
+    /// session challenge. Generic grant initializers remain unchanged.
+    init(
+        validatedSessionChallenge challenge: HermesRealtimeRelayComputerUseSessionGrantChallenge,
+        sourceDeviceID: String,
+        deliveryMode: AgentGrantDeliveryMode = .live,
+        localAuthenticationSatisfied: Bool = false,
+        now: Date = Date(),
+        signer: ComputerUsePhoneControlSigner = ComputerUsePhoneControlSigner()
+    ) throws {
+        let sessionIntentID = try signer.validateSessionGrantChallenge(challenge, now: now)
+        guard let runtime = AssistantRuntimeID(rawValue: challenge.runtime) else {
+            throw ComputerUsePhoneControlSigner.SessionGrantChallengeValidationError.unsupportedRuntime(challenge.runtime)
+        }
+        guard let preset = AgentPermissionPreset(rawValue: challenge.preset) else {
+            throw ComputerUsePhoneControlSigner.SessionGrantChallengeValidationError.unsupportedPreset(challenge.preset)
+        }
+        self.init(
+            requestID: challenge.challengeId,
+            runtimeID: runtime,
+            threadID: challenge.threadId,
+            preset: preset,
+            capabilities: Set(challenge.capabilities.compactMap(AgentDesktopCapability.init(rawValue:))),
+            trustMode: ComputerUseTrustMode(rawValue: challenge.trustMode),
+            deliveryMode: deliveryMode,
+            requestedAt: challenge.issuedAt,
+            expiresAt: challenge.expiresAt,
+            grantDurationSeconds: min(
+                AgentCapabilityGrantRequest.defaultGrantDuration,
+                TimeInterval(challenge.sessionTimeoutSeconds)
+            ),
+            sourceDeviceID: sourceDeviceID,
+            clientIntentID: sessionIntentID,
+            localAuthenticationSatisfied: localAuthenticationSatisfied
+        )
+    }
+}
+
+public extension AgentCapabilityGrantRequest {
     init(wire request: HermesRealtimeRelayAgentGrantRequest) throws {
         guard let runtime = AssistantRuntimeID(rawValue: request.runtime) else {
             throw AgentCapabilityGrantWireError.unsupportedRuntime(request.runtime)

@@ -143,12 +143,13 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
     private nonisolated static let minimumControlPlaneRequestTimeout: TimeInterval = 90
     private nonisolated static let responseCompleteGraceTimeout: TimeInterval = 15
 
-    private enum RequestStreamFrameRoute {
+    private enum RequestStreamFrameRoute: Equatable {
         case responseChunk
         case responseComplete
         case responseError
         case ignore
         case mediaDispatcher
+        case sessionGrantChallenge
     }
 
     private let directory: any IrohPairingDirectory
@@ -612,11 +613,14 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                 throw HermesServiceError.relayUnavailable("Iroh stream closed before completion.")
             }
             guard frame.uid == uid,
-                  frame.connectionId == payload.connectionID,
-                  frame.requestId == requestID else {
+                  frame.connectionId == payload.connectionID else {
                 continue
             }
-            switch Self.requestStreamRoute(for: frame.type) {
+            let route = Self.requestStreamRoute(for: frame.type)
+            if route != .sessionGrantChallenge, frame.requestId != requestID {
+                continue
+            }
+            switch route {
             case .responseChunk:
                 guard let chunk = try chunkRecord(from: frame, keyData: keyData, uid: uid, connectionID: payload.connectionID, requestID: requestID) else { continue }
                 receivedChunkCount += 1
@@ -695,6 +699,10 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                 }
                 await dispatcher(frame, ackSender)
                 continue
+            case .sessionGrantChallenge:
+                guard let challenge = frame.control?.sessionGrantChallenge else { continue }
+                MobileComputerUseSessionGrantChallengeReceiver.shared.ingest(challenge)
+                continue
             }
         }
         throw HermesServiceError.relayTimeout
@@ -710,6 +718,8 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             return .responseComplete
         case .responseError:
             return .responseError
+        case .controlSessionGrantChallenge:
+            return .sessionGrantChallenge
         case .mediaClassify,
              .mediaBlobAdvertise,
              .mediaBlobAck,
@@ -780,6 +790,12 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         _ type: HermesRealtimeRelayFrameType
     ) -> Bool {
         requestStreamRoute(for: type) == .ignore
+    }
+
+    nonisolated static func routesRequestStreamFrameToSessionGrantChallengeReceiverForTesting(
+        _ type: HermesRealtimeRelayFrameType
+    ) -> Bool {
+        requestStreamRoute(for: type) == .sessionGrantChallenge
     }
     #endif
 

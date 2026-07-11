@@ -2,6 +2,7 @@ package com.openburnbar.data.computeruse
 
 import com.google.crypto.tink.subtle.Ed25519Sign.KeyPair
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantRequest
+import com.openburnbar.irohrelay.HermesRealtimeRelayComputerUseSessionGrantChallenge
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockCredentialEnvelope
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockSession
 import java.security.SecureRandom
@@ -31,6 +32,9 @@ object PhoneControlSigner {
     fun canonicalIntentHashHex(intent: PhoneControlIntent): String = PhoneControlSignerCanonical.intentHashHex(intent)
 
     fun canonicalAgentGrantRequestHashHex(request: HermesRealtimeRelayAgentGrantRequest): String = PhoneControlSignerCanonical.agentGrantRequestHashHex(request)
+
+    fun canonicalComputerUseSessionIntentId(challenge: HermesRealtimeRelayComputerUseSessionGrantChallenge): String =
+        PhoneControlSignerCanonical.computerUseSessionIntentId(challenge)
 
     fun canonicalClipboardRequestHashHex(request: PhoneControlClipboardRequest): String = PhoneControlSignerCanonical.clipboardRequestHashHex(request)
 

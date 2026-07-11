@@ -108,6 +108,9 @@ function runRuntimeProbe(daemon, swiftDir, nativeDir, env) {
 
 export function stageLinuxPackagePayload({
   daemonBinary,
+  playwrightBridge,
+  browserRuntimeProbe,
+  browserRuntimeRequirements,
   payloadRoot,
   swiftRuntimeDir,
   sqlcipherLibDir,
@@ -115,12 +118,19 @@ export function stageLinuxPackagePayload({
   probe = true
 }) {
   const daemonSource = requireFile(daemonBinary, 'OpenBurnBar daemon');
+  const bridgeSource = requireFile(playwrightBridge, 'Playwright bridge');
+  const browserRuntimeProbeSource = requireFile(browserRuntimeProbe, 'browser runtime probe');
+  const browserRuntimeRequirementsSource = requireFile(
+    browserRuntimeRequirements,
+    'browser runtime requirements'
+  );
   const swiftSource = requireDirectory(swiftRuntimeDir, 'Swift runtime');
   const sqlcipherSource = requireDirectory(sqlcipherLibDir, 'SQLCipher runtime');
   const root = path.resolve(payloadRoot);
   const daemonDestination = path.join(root, 'openburnbar-daemon');
   const swiftDestination = path.join(root, 'swift');
   const nativeDestination = path.join(root, 'native');
+  const playwrightDestination = path.join(root, 'playwright');
 
   fs.rmSync(root, { recursive: true, force: true });
   fs.mkdirSync(root, { recursive: true });
@@ -132,6 +142,25 @@ export function stageLinuxPackagePayload({
     preserveTimestamps: true
   });
   const sqlcipherFiles = copySqlcipherRuntime(sqlcipherSource, nativeDestination);
+  fs.mkdirSync(playwrightDestination, { recursive: true });
+  const bridgeDestination = path.join(
+    playwrightDestination,
+    'openburnbar-playwright-bridge.js'
+  );
+  const browserRuntimeProbeDestination = path.join(
+    playwrightDestination,
+    'openburnbar-browser-runtime-probe'
+  );
+  const browserRuntimeRequirementsDestination = path.join(
+    playwrightDestination,
+    'browser-runtime-requirements.json'
+  );
+  fs.copyFileSync(bridgeSource, bridgeDestination);
+  fs.chmodSync(bridgeDestination, 0o644);
+  fs.copyFileSync(browserRuntimeProbeSource, browserRuntimeProbeDestination);
+  fs.chmodSync(browserRuntimeProbeDestination, 0o755);
+  fs.copyFileSync(browserRuntimeRequirementsSource, browserRuntimeRequirementsDestination);
+  fs.chmodSync(browserRuntimeRequirementsDestination, 0o644);
   const runtimeProbe = probe
     ? runRuntimeProbe(daemonDestination, swiftDestination, nativeDestination, env)
     : null;
@@ -142,6 +171,10 @@ export function stageLinuxPackagePayload({
     daemon: daemonDestination,
     swiftRuntime: swiftDestination,
     nativeRuntime: nativeDestination,
+    playwrightRuntime: playwrightDestination,
+    playwrightBridge: bridgeDestination,
+    browserRuntimeProbe: browserRuntimeProbeDestination,
+    browserRuntimeRequirements: browserRuntimeRequirementsDestination,
     sqlcipherFiles,
     runtimeProbe
   };

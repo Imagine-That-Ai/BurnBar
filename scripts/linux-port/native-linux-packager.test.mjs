@@ -26,7 +26,7 @@ function fixture() {
   const files = {};
   for (const name of [
     'gui', 'daemon', 'attestd', 'daemon-launch', 'daemon.service', 'attestd.service',
-    'attestd.socket', 'desktop', 'safe-desktop', 'autostart', 'daemon-env', 'xdg',
+    'attestd.socket', 'desktop', 'safe-desktop', 'autostart', 'daemon-env', 'xdg', 'polkit-policy',
     'schema', 'icon', 'purge-helper', 'activation-ready', 'restart-user-daemons'
   ]) {
     files[name] = path.join(root, name);
@@ -34,10 +34,15 @@ function fixture() {
   }
   const swift = path.join(root, 'swift');
   const native = path.join(root, 'native');
+  const playwright = path.join(root, 'playwright');
   fs.mkdirSync(swift);
   fs.mkdirSync(native);
+  fs.mkdirSync(playwright);
   fs.writeFileSync(path.join(swift, 'libswiftCore.so'), 'swift', { mode: 0o644 });
   fs.writeFileSync(path.join(native, 'libsqlcipher.so.0'), 'sqlcipher', { mode: 0o644 });
+  fs.writeFileSync(path.join(playwright, 'openburnbar-playwright-bridge.js'), 'bridge', { mode: 0o644 });
+  fs.writeFileSync(path.join(playwright, 'openburnbar-browser-runtime-probe'), 'probe', { mode: 0o755 });
+  fs.writeFileSync(path.join(playwright, 'browser-runtime-requirements.json'), '{}', { mode: 0o644 });
   const { privateKey, publicKey } = crypto.generateKeyPairSync('ed25519');
   const privateKeyPem = privateKey.export({ type: 'pkcs8', format: 'pem' });
   files['public-key'] = path.join(root, 'public-key.pem');
@@ -46,7 +51,7 @@ function fixture() {
     publicKey.export({ type: 'spki', format: 'pem' }),
     { mode: 0o644 }
   );
-  return { root, files, swift, native, privateKeyPem };
+  return { root, files, swift, native, playwright, privateKeyPem };
 }
 
 function stageOptions(f, packageType = 'deb') {
@@ -57,6 +62,7 @@ function stageOptions(f, packageType = 'deb') {
     attestdBinary: f.files.attestd,
     swiftRuntimeDir: f.swift,
     nativeRuntimeDir: f.native,
+    playwrightRuntimeDir: f.playwright,
     version: '1.2.3',
     gitCommit: 'a'.repeat(40),
     architecture: 'x86_64',
@@ -66,6 +72,7 @@ function stageOptions(f, packageType = 'deb') {
     assets: {
       daemonLaunch: f.files['daemon-launch'],
       daemonUserService: f.files['daemon.service'],
+      computerUsePolkitPolicy: f.files['polkit-policy'],
       attestdService: f.files['attestd.service'],
       attestdSocket: f.files['attestd.socket'],
       attestdPurgeHelper: f.files['purge-helper'],
@@ -181,6 +188,31 @@ test('Linux toolchain and native test runner require final RPM extraction tools'
   assert.match(nativeRunner, /RUSTUP_TOOLCHAIN=1\.94\.0/u);
 });
 
+test('Computer Use owner authorization is fresh and installed only by trusted system packages', () => {
+  const policy = fs.readFileSync(
+    path.join(repoRoot, 'packaging/linux/com.openburnbar.computer-use.policy'),
+    'utf8'
+  );
+  const aur = fs.readFileSync(path.join(repoRoot, 'packaging/linux/aur/PKGBUILD'), 'utf8');
+  const appImageEmbedder = fs.readFileSync(
+    path.join(repoRoot, 'scripts/linux-port/embed-linux-appimage-payload.mjs'),
+    'utf8'
+  );
+  const flatpak = fs.readFileSync(
+    path.join(repoRoot, 'packaging/linux/flatpak/dev.openburnbar.OpenBurnBar.yml'),
+    'utf8'
+  );
+
+  assert.match(policy, /<allow_active>auth_self<\/allow_active>/u);
+  assert.doesNotMatch(policy, /auth_self_keep/u);
+  assert.match(
+    aur,
+    /install -Dm644 .*com\.openburnbar\.computer-use\.policy.*\/usr\/share\/polkit-1\/actions\/com\.openburnbar\.computer-use\.policy/u
+  );
+  assert.doesNotMatch(appImageEmbedder, /polkit-1\/actions/u);
+  assert.doesNotMatch(flatpak, /polkit-1\/actions/u);
+});
+
 test('native package root contains broker assets and a self-excluding measurement manifest', () => {
   const f = fixture();
   const staged = stageNativeLinuxPackageRoot(stageOptions(f));
@@ -200,6 +232,18 @@ test('native package root contains broker assets and a self-excluding measuremen
   assert.ok(manifest.files.some((file) => file.path === '/usr/libexec/openburnbar-attestd-activation-ready'));
   assert.ok(manifest.files.some((file) => file.path === '/usr/libexec/openburnbar-restart-active-user-daemons'));
   assert.ok(manifest.files.some((file) => file.path === '/usr/bin/openburnbar-daemon'));
+  const polkitPolicyPath = '/usr/share/polkit-1/actions/com.openburnbar.computer-use.policy';
+  assert.ok(manifest.files.some((file) => file.path === polkitPolicyPath));
+  assert.equal(
+    fs.statSync(path.join(staged.root, polkitPolicyPath.slice(1))).mode & 0o777,
+    0o644
+  );
+  const bridge = manifest.files.find((file) =>
+    file.path === '/usr/lib/openburnbar/playwright/openburnbar-playwright-bridge.js');
+  assert.ok(bridge);
+  assert.equal(bridge.mode, '0644');
+  assert.ok(manifest.files.some((file) =>
+    file.path === '/usr/lib/openburnbar/playwright/openburnbar-browser-runtime-probe'));
   assert.equal(manifest.authorizedClients[0].sha256,
     manifest.files.find((file) => file.path === '/usr/bin/openburnbar-daemon').sha256);
   assert.ok(manifest.files.every((file) => file.path !== `/${path.relative(staged.root, manifestPath)}`));
@@ -369,6 +413,8 @@ test('Debian assembly writes control metadata and lifecycle scripts before invok
   assert.match(control, /Depends: .*libwebkit2gtk-4\.1-0/);
   assert.match(control, /Depends: .*libayatana-appindicator3-1/);
   assert.match(control, /Depends: .*tpm2-tools/);
+  assert.match(control, /Depends: .*nodejs \(>= 18\).*npm/);
+  assert.match(control, /Depends: .*policykit-1/);
   assert.equal(fs.statSync(path.join(staged.root, 'DEBIAN/postinst')).mode & 0o777, 0o755);
   fs.rmSync(f.root, { recursive: true, force: true });
 });
@@ -408,6 +454,8 @@ test('RPM assembly emits a bounded spec with lifecycle sections and copies one r
   assert.match(spec, /Requires: .*webkit2gtk4\.1/);
   assert.match(spec, /Requires: .*libayatana-appindicator-gtk3/);
   assert.match(spec, /Requires: .*tpm2-tools/);
+  assert.match(spec, /Requires: .*nodejs >= 18.*npm/);
+  assert.match(spec, /Requires: .*polkit/);
   assert.match(spec, /Requires\(post\): systemd/);
   assert.match(spec, /%post\nset -eu/);
   assert.match(spec, /%files -f %\{SOURCE1\}/);

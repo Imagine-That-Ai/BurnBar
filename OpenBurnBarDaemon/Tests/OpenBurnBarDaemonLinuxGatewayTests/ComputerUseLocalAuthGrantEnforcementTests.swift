@@ -148,6 +148,7 @@ final class ComputerUseLocalAuthGrantEnforcementTests: XCTestCase {
         }
     }
 
+    #if os(Linux)
     func testLinuxFilePinBackingCommitsAliasesTogetherAndRejectsPartialConflict() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-linux-pin-aliases-\(UUID().uuidString)", isDirectory: true)
@@ -183,6 +184,7 @@ final class ComputerUseLocalAuthGrantEnforcementTests: XCTestCase {
             XCTAssertEqual(key.publicKeyRepresentation, originalKey.publicKey.rawRepresentation)
         }
     }
+    #endif
 
     private func makeServer() throws -> BurnBarDaemonServer {
         let pinnedKey = try PlatformCrypto.ed25519PrivateKey(

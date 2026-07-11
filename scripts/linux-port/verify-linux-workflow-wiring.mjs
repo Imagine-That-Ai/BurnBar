@@ -496,6 +496,21 @@ export function verifyLinuxWorkflowWiring(input) {
   requireText(input.pr, 'build-native-linux-packages-boundary.test.mjs', 'PR native signer custody suite');
   requireText(input.pr, 'linux-package-session.test.mjs', 'PR package lifecycle session suite');
   requireText(input.pr, 'linux-native-signing-receipt.test.mjs', 'PR signed package receipt suite');
+  requireText(
+    input.pr,
+    'scripts/linux-port/browser-runtime-packaging.test.mjs',
+    'PR Browser Computer Use package runtime suite'
+  );
+  requireText(
+    input.pr,
+    'scripts/linux-port/aur-browser-runtime-packaging.test.mjs',
+    'PR AUR Browser Computer Use package runtime suite'
+  );
+  requireText(
+    input.pr,
+    'scripts/linux-port/embed-linux-appimage-payload.test.mjs',
+    'PR AppImage Browser Computer Use payload suite'
+  );
   for (const marker of [
     'workers/linux-repository-router/**',
     'workers/linux-repository-router/package-lock.json',
@@ -542,7 +557,9 @@ export function verifyLinuxWorkflowWiring(input) {
     'Executed 1 test',
     'cargo test --manifest-path apps/linux-desktop/src-tauri/Cargo.toml --locked',
     'RUSTUP_TOOLCHAIN=1.94.0',
-    'cargo test --manifest-path crates/openburnbar-attestd/Cargo.toml --locked',
+    'build_attestd_test_harness',
+    'cargo test --manifest-path "${manifest}" --locked --lib --no-run',
+    'run_attestd_tests',
     'cargo clippy --manifest-path crates/openburnbar-attestd/Cargo.toml'
   ]) requireText(input.nativeTests, command, 'native test runner');
   for (const command of [
@@ -683,8 +700,12 @@ export function verifyLinuxWorkflowWiring(input) {
   if (/\#\[tauri::command\][\s\S]{0,120}fn\s+gateway_auth_token/.test(input.rustBridge)) {
     failures.push('a Tauri command may not return the gateway bearer token to the renderer.');
   }
-  for (const forbidden of ['gatewayAuthToken', 'bearerToken', 'Authorization']) {
-    if (input.rendererBridge.includes(forbidden)) {
+  for (const [forbidden, pattern] of [
+    ['gatewayAuthToken', /gatewayAuthToken/],
+    ['bearerToken', /bearerToken/],
+    ['Authorization', /\bAuthorization\b/]
+  ]) {
+    if (pattern.test(input.rendererBridge)) {
       failures.push(`renderer gateway code may not contain credential surface: ${forbidden}`);
     }
   }

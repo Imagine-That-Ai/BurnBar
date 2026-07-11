@@ -67,6 +67,8 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertFalse(profile.permits(.providerExternalAuthCancel))
         XCTAssertFalse(profile.permits(.runCreate))
         XCTAssertFalse(profile.permits(.computerUseInvoke))
+        XCTAssertFalse(profile.permits(.computerUseSessionGrantAcquire))
+        XCTAssertFalse(profile.permits(.computerUseSessionGrantStatus))
         XCTAssertFalse(profile.permits(.computerUseSessionStart))
         XCTAssertFalse(profile.permits(.browserAction))
         XCTAssertFalse(profile.permits(.memoryRemember))

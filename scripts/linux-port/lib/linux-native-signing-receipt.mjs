@@ -7,6 +7,7 @@ export const NATIVE_GENERATED_PACKAGE_INPUT_PATHS = Object.freeze({
   daemonBinary: 'apps/linux-desktop/src-tauri/target/openburnbar-package-payload/openburnbar-daemon',
   swiftRuntimeDir: 'apps/linux-desktop/src-tauri/target/openburnbar-package-payload/swift',
   nativeRuntimeDir: 'apps/linux-desktop/src-tauri/target/openburnbar-package-payload/native',
+  playwrightRuntimeDir: 'apps/linux-desktop/src-tauri/target/openburnbar-package-payload/playwright',
   attestdBinary: 'crates/openburnbar-attestd/target/release/openburnbar-attestd'
 });
 
@@ -14,6 +15,7 @@ export const NATIVE_PACKAGE_ASSET_PATHS = Object.freeze({
   releaseManifest: 'packaging/linux/release-manifest.json',
   daemonLaunch: 'packaging/linux/openburnbar-daemon-launch.sh',
   daemonUserService: 'packaging/linux/openburnbar-daemon.service',
+  computerUsePolkitPolicy: 'packaging/linux/com.openburnbar.computer-use.policy',
   attestdService: 'packaging/linux/openburnbar-attestd.service',
   attestdSocket: 'packaging/linux/openburnbar-attestd.socket',
   attestdPurgeHelper: 'packaging/linux/openburnbar-attestd-purge-state',

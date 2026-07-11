@@ -2,6 +2,8 @@ import type {
   DatabaseIndexActionResult,
   DatabaseWorkspaceStatus,
   ComputerUsePanicHaltResult,
+  ComputerUseSessionAuthorityStatus,
+  ComputerUseSessionStartRequest,
   IntegrationsStatus,
   MercuryMediaCapability,
   MercuryFileOfferListResponse,
@@ -89,6 +91,13 @@ export const emptyToolApprovalRespond = async (): Promise<void> => {};
 export const emptyComputerUse = async (
   _params?: Record<string, unknown>
 ): Promise<unknown> => ({ ok: false, reason: 'stub' });
+
+export const emptyComputerUseSessionAuthorityStatus = (
+): Promise<ComputerUseSessionAuthorityStatus> => Promise.resolve({ state: 'available' });
+
+export const emptyComputerUseSessionStart = async (
+  _params: ComputerUseSessionStartRequest
+): Promise<ComputerUseSessionAuthorityStatus> => ({ state: 'unavailable' });
 
 export const emptyDatabaseWorkspaceStatus = (): Promise<DatabaseWorkspaceStatus> =>
   Promise.resolve({
@@ -307,7 +316,8 @@ export const bridgeStubDefaults = {
   memoryReviewDecision: emptyMemoryReviewDecision,
   memorySetStatus: emptyMemorySetStatus,
   toolApprovalRespond: emptyToolApprovalRespond,
-  computerUseSessionStart: emptyComputerUse,
+  computerUseSessionAuthorityStatus: emptyComputerUseSessionAuthorityStatus,
+  computerUseSessionStart: emptyComputerUseSessionStart,
   computerUseInvoke: emptyComputerUse,
   computerUseApprovalPending: emptyComputerUse,
   computerUseApprovalRespond: emptyComputerUse,

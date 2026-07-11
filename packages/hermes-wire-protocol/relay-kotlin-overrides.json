@@ -171,6 +171,12 @@
           "serialName": null,
           "encodeDefault": false
         },
+        "sessionGrantChallenge": {
+          "ktType": "HermesRealtimeRelayComputerUseSessionGrantChallenge?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
         "agentGrantRequest": {
           "ktType": "HermesRealtimeRelayAgentGrantRequest?",
           "default": "null",
@@ -281,6 +287,7 @@
         "inputIntent",
         "approvalRequest",
         "approvalResponse",
+        "sessionGrantChallenge",
         "agentGrantRequest",
         "agentGrantReceipt",
         "clipboardRequest",
@@ -626,6 +633,40 @@
         "authenticatedAt",
         "expiresAt",
         "signatureEd25519"
+      ]
+    },
+    "HermesRealtimeRelayComputerUseSessionGrantChallenge": {
+      "kind": "data class",
+      "fields": {
+        "version": { "ktType": "Int", "serialName": null, "encodeDefault": false },
+        "challengeId": { "ktType": "String", "serialName": null, "encodeDefault": false },
+        "nonce": { "ktType": "String", "serialName": null, "encodeDefault": false },
+        "issuedAt": { "ktType": "Double", "serialName": null, "encodeDefault": false },
+        "expiresAt": { "ktType": "Double", "serialName": null, "encodeDefault": false },
+        "sessionIntentId": { "ktType": "String", "serialName": null, "encodeDefault": false },
+        "runtime": { "ktType": "String", "serialName": null, "encodeDefault": false },
+        "threadId": { "ktType": "String", "serialName": null, "encodeDefault": false },
+        "preset": { "ktType": "String", "serialName": null, "encodeDefault": false },
+        "capabilities": { "ktType": "List<String>", "serialName": null, "encodeDefault": false },
+        "mode": { "ktType": "String", "serialName": null, "encodeDefault": false },
+        "trustMode": { "ktType": "String", "serialName": null, "encodeDefault": false },
+        "scopeRuleIds": { "ktType": "List<String>", "serialName": null, "encodeDefault": false },
+        "phoneViewerNodeId": { "ktType": "String?", "default": "null", "serialName": null, "encodeDefault": false },
+        "macHostNodeId": { "ktType": "String?", "default": "null", "serialName": null, "encodeDefault": false },
+        "actionCap": { "ktType": "Int", "serialName": null, "encodeDefault": false },
+        "sessionTimeoutSeconds": { "ktType": "Int", "serialName": null, "encodeDefault": false },
+        "clientId": { "ktType": "String", "serialName": null, "encodeDefault": false },
+        "runId": { "ktType": "String?", "default": "null", "serialName": null, "encodeDefault": false },
+        "runCallId": { "ktType": "String?", "default": "null", "serialName": null, "encodeDefault": false },
+        "runGeneration": { "ktType": "Long?", "default": "null", "serialName": null, "encodeDefault": false },
+        "desktopOwnerAuthorizationMethod": { "ktType": "String?", "default": "null", "serialName": null, "encodeDefault": false }
+      },
+      "fieldOrder": [
+        "version", "challengeId", "nonce", "issuedAt", "expiresAt", "sessionIntentId",
+        "runtime", "threadId", "preset", "capabilities", "mode", "trustMode",
+        "scopeRuleIds", "phoneViewerNodeId", "macHostNodeId", "actionCap",
+        "sessionTimeoutSeconds", "clientId", "runId", "runCallId", "runGeneration",
+        "desktopOwnerAuthorizationMethod"
       ]
     },
     "HermesRealtimeRelayAgentGrantRequest": {

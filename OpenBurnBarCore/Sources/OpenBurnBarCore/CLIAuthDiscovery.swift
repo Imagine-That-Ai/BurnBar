@@ -716,11 +716,12 @@ public enum CLIAuthDiscovery {
         overrides: [String: String],
         ambient: [String: String] = ProcessInfo.processInfo.environment
     ) -> [String: String] {
-        let home = ambient["HOME"] ?? FileManager.default.homeDirectoryForCurrentUser.path
         #if os(macOS) || os(Linux)
+        let home = ambient["HOME"] ?? FileManager.default.homeDirectoryForCurrentUser.path
         let trustedExecutablePath = CLILaunchAdapter.trustedExecutableEnvironmentPath(homeDirectory: home)
         #else
         // Local CLI execution is unavailable on mobile and Windows builds.
+        let home = ambient["HOME"] ?? "/"
         let trustedExecutablePath = ""
         #endif
         var environment: [String: String] = [
@@ -867,6 +868,7 @@ public enum CLIAuthDiscovery {
         #endif
     }
 
+    #if os(macOS) || os(Linux)
     private static func terminate(_ process: Process, processGroup: Bool) {
         #if os(Linux)
         if processGroup {
@@ -879,11 +881,9 @@ public enum CLIAuthDiscovery {
         #elseif os(macOS)
         _ = processGroup
         process.terminate()
-        #else
-        _ = process
-        _ = processGroup
         #endif
     }
+    #endif
 
     #if os(Linux)
     private static func linuxSupervisedProcessGroupID(supervisorProcessID: Int32) -> Int32? {

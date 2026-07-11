@@ -9,17 +9,24 @@ import {
   squashfsCandidateOffsets
 } from './lib/appimage-filesystem.mjs';
 
-test('AppImage payload validator requires daemon, Swift, and SQLCipher runtime', () => {
+test('AppImage payload validator requires daemon, runtimes, and Browser CU resources', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-appimage-payload-'));
   fs.writeFileSync(path.join(root, 'openburnbar-daemon'), 'daemon');
   fs.mkdirSync(path.join(root, 'swift'));
   fs.mkdirSync(path.join(root, 'native'));
   fs.writeFileSync(path.join(root, 'native/libsqlcipher.so.0'), 'sqlcipher');
+  fs.mkdirSync(path.join(root, 'playwright'));
+  fs.writeFileSync(path.join(root, 'playwright/openburnbar-playwright-bridge.js'), 'bridge');
+  fs.writeFileSync(path.join(root, 'playwright/openburnbar-browser-runtime-probe'), 'probe', { mode: 0o755 });
+  fs.writeFileSync(path.join(root, 'playwright/browser-runtime-requirements.json'), '{}');
 
   assert.deepEqual(requiredPayloadPaths, [
     'openburnbar-daemon',
     'swift',
-    'native/libsqlcipher.so.0'
+    'native/libsqlcipher.so.0',
+    'playwright/openburnbar-playwright-bridge.js',
+    'playwright/openburnbar-browser-runtime-probe',
+    'playwright/browser-runtime-requirements.json'
   ]);
   assert.equal(validatePayload(root), root);
   fs.rmSync(root, { recursive: true, force: true });
@@ -31,6 +38,36 @@ test('AppImage payload validator fails closed when a runtime is absent', () => {
   fs.mkdirSync(path.join(root, 'swift'));
 
   assert.throws(() => validatePayload(root), /native\/libsqlcipher\.so\.0/);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('AppImage payload validator fails closed when the packaged bridge is absent', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-appimage-bridge-missing-'));
+  fs.writeFileSync(path.join(root, 'openburnbar-daemon'), 'daemon');
+  fs.mkdirSync(path.join(root, 'swift'));
+  fs.mkdirSync(path.join(root, 'native'));
+  fs.writeFileSync(path.join(root, 'native/libsqlcipher.so.0'), 'sqlcipher');
+  fs.mkdirSync(path.join(root, 'playwright'));
+  fs.writeFileSync(path.join(root, 'playwright/openburnbar-browser-runtime-probe'), 'probe', { mode: 0o755 });
+  fs.writeFileSync(path.join(root, 'playwright/browser-runtime-requirements.json'), '{}');
+
+  assert.throws(() => validatePayload(root), /openburnbar-playwright-bridge\.js/);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('AppImage payload validator rejects a symlinked bridge', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-appimage-bridge-symlink-'));
+  fs.writeFileSync(path.join(root, 'openburnbar-daemon'), 'daemon');
+  fs.mkdirSync(path.join(root, 'swift'));
+  fs.mkdirSync(path.join(root, 'native'));
+  fs.writeFileSync(path.join(root, 'native/libsqlcipher.so.0'), 'sqlcipher');
+  fs.mkdirSync(path.join(root, 'playwright'));
+  fs.writeFileSync(path.join(root, 'bridge-target'), 'bridge');
+  fs.symlinkSync('../bridge-target', path.join(root, 'playwright/openburnbar-playwright-bridge.js'));
+  fs.writeFileSync(path.join(root, 'playwright/openburnbar-browser-runtime-probe'), 'probe', { mode: 0o755 });
+  fs.writeFileSync(path.join(root, 'playwright/browser-runtime-requirements.json'), '{}');
+
+  assert.throws(() => validatePayload(root), /not a regular file/);
   fs.rmSync(root, { recursive: true, force: true });
 });
 

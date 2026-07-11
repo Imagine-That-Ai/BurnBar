@@ -117,7 +117,8 @@ test('every generated native package input class is bound by the preparation roo
     'target/release/openburnbar-linux-desktop',
     'target/payload/openburnbar-daemon',
     'target/payload/swift',
-    'target/payload/native'
+    'target/payload/native',
+    'target/payload/playwright'
   ];
   for (const input of inputs) {
     const absolute = path.join(root, input);

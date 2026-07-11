@@ -248,6 +248,7 @@ export function stageNativeLinuxPackageRoot({
   attestdBinary,
   swiftRuntimeDir,
   nativeRuntimeDir,
+  playwrightRuntimeDir,
   assets,
   version,
   gitCommit,
@@ -266,10 +267,15 @@ export function stageNativeLinuxPackageRoot({
   copyFile(attestdBinary, destinationRoot, '/usr/libexec/openburnbar-attestd', 0o755);
   copyTree(swiftRuntimeDir, destinationRoot, '/usr/lib/openburnbar/swift');
   copyTree(nativeRuntimeDir, destinationRoot, '/usr/lib/openburnbar/native');
+  copyTree(playwrightRuntimeDir, destinationRoot, '/usr/lib/openburnbar/playwright');
 
   const requiredAssets = {
     daemonLaunch: ['/usr/libexec/openburnbar-daemon-launch', 0o755],
     daemonUserService: ['/usr/lib/systemd/user/openburnbar-daemon.service', 0o644],
+    computerUsePolkitPolicy: [
+      '/usr/share/polkit-1/actions/com.openburnbar.computer-use.policy',
+      0o644
+    ],
     attestdService: ['/usr/lib/systemd/system/openburnbar-attestd.service', 0o644],
     attestdSocket: ['/usr/lib/systemd/system/openburnbar-attestd.socket', 0o644],
     attestdPurgeHelper: ['/usr/libexec/openburnbar-attestd-purge-state', 0o755],
@@ -519,7 +525,7 @@ export function buildDebPackage({
     'Maintainer: OpenBurnBar Release Engineering <release@openburnbar.dev>',
     'Priority: optional',
     'Section: utils',
-    'Depends: libayatana-appindicator3-1, libwebkit2gtk-4.1-0, libgtk-3-0, libsecret-tools, tpm2-tools',
+    'Depends: libayatana-appindicator3-1, libwebkit2gtk-4.1-0, libgtk-3-0, libsecret-tools, policykit-1, tpm2-tools, nodejs (>= 18), npm',
     'Recommends: gnome-keyring | libkf5wallet-bin | libkf6wallet-bin',
     'Description: Local-first AI agent cost and control dashboard',
     ' OpenBurnBar desktop, local daemon, and fail-closed Linux attestation broker.',
@@ -586,7 +592,7 @@ export function buildRpmPackage({
     `BuildArch: ${architecture}`,
     'Source0: openburnbar-rootfs.tar.gz',
     'Source1: openburnbar-files.list',
-    'Requires: gtk3, libsecret, webkit2gtk4.1, libayatana-appindicator-gtk3, tpm2-tools',
+    'Requires: gtk3, libsecret, webkit2gtk4.1, libayatana-appindicator-gtk3, polkit, tpm2-tools, nodejs >= 18, npm',
     'Requires(post): systemd',
     'Requires(preun): systemd',
     'Requires(postun): systemd',

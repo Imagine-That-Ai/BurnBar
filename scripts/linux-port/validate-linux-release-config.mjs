@@ -138,6 +138,7 @@ const expectedInstallPaths = {
   daemonBinary: '/usr/bin/openburnbar-daemon',
   swiftRuntime: '/usr/lib/openburnbar/swift',
   nativeRuntime: '/usr/lib/openburnbar/native',
+  computerUsePolkitPolicy: '/usr/share/polkit-1/actions/com.openburnbar.computer-use.policy',
   attestationBroker: '/usr/libexec/openburnbar-attestd',
   attestationActivationReady: '/usr/libexec/openburnbar-attestd-activation-ready',
   restartActiveUserDaemons: '/usr/libexec/openburnbar-restart-active-user-daemons',
@@ -156,6 +157,9 @@ for (const [key, expected] of Object.entries(expectedInstallPaths)) {
   if (manifest.installPaths?.[key] !== expected) {
     failures.push(`manifest.installPaths.${key} must be ${expected}`);
   }
+}
+if (manifest.tailMetadata?.computerUsePolkitPolicy !== 'packaging/linux/com.openburnbar.computer-use.policy') {
+  failures.push('manifest.tailMetadata.computerUsePolkitPolicy must name the canonical privileged policy source');
 }
 if (manifest.rootAttestationBroker?.defaultActivation !== 'disabled-until-enrolled-and-rollout-enabled') {
   failures.push('root attestation broker must remain disabled until enrollment and rollout gates pass');
