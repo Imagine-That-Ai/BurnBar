@@ -411,6 +411,7 @@ impl SeqpacketConnection {
         let mut control = [0_usize; 8];
         // SAFETY: zero is a valid initial state for msghdr; live buffers are
         // assigned before sendmsg observes any pointer-bearing fields.
+        // reason: zero initialization is the valid starting state for the platform msghdr.
         #[allow(
             unsafe_code,
             reason = "sendmsg requires a zero-initialized platform msghdr"
@@ -423,6 +424,7 @@ impl SeqpacketConnection {
             message.msg_controllen = std::mem::size_of_val(&control);
             // SAFETY: control is aligned usize storage and large enough for one
             // SCM_RIGHTS int. CMSG_FIRSTHDR/CMSG_DATA remain within that buffer.
+            // reason: libc CMSG accessors are required to construct the single SCM_RIGHTS header.
             #[allow(
                 unsafe_code,
                 reason = "SCM_RIGHTS headers are constructed through libc CMSG accessors"
@@ -442,6 +444,7 @@ impl SeqpacketConnection {
         }
         // SAFETY: message points to live packet and optional control storage;
         // self owns the connected SOCK_SEQPACKET fd. One sendmsg is one record.
+        // reason: sendmsg keeps response bytes and the evidence descriptor in one record.
         #[allow(
             unsafe_code,
             reason = "response bytes and SCM_RIGHTS must be sent as one atomic record"
@@ -467,6 +470,7 @@ pub fn validate_evidence_bundle_fd(
     }
     // SAFETY: F_GETFD and F_GET_SEALS inspect the live descriptor without
     // changing ownership or dereferencing application memory.
+    // reason: fcntl inspects descriptor flags, seals, and offset without changing ownership.
     #[allow(
         unsafe_code,
         reason = "descriptor flags and memfd seals are available only through fcntl"
@@ -489,6 +493,7 @@ pub fn validate_evidence_bundle_fd(
         return Err(invalid_evidence_fd());
     }
     // SAFETY: stat points to initialized writable storage for fstat and fd is live.
+    // reason: fstat validates the anonymous evidence descriptor type and size.
     #[allow(
         unsafe_code,
         reason = "fstat is required to validate the anonymous evidence file type and size"
@@ -535,6 +540,7 @@ pub fn validate_evidence_bundle_fd(
 pub(crate) fn create_sealed_memfd(bytes: &[u8]) -> Result<OwnedFd, BrokerError> {
     // SAFETY: the name is a static NUL-terminated string and successful
     // memfd_create returns one new descriptor owned by the caller.
+    // reason: Linux memfd_create is required to build sealed evidence fixtures.
     #[allow(
         unsafe_code,
         reason = "sealed anonymous evidence fixtures require Linux memfd_create"
@@ -553,6 +559,7 @@ pub(crate) fn create_sealed_memfd(bytes: &[u8]) -> Result<OwnedFd, BrokerError> 
         ));
     }
     // SAFETY: raw_fd was returned as a new descriptor and is converted once.
+    // reason: the successful memfd_create result transfers exactly one owned descriptor.
     #[allow(unsafe_code, reason = "memfd_create transfers one owned descriptor")]
     let owned = unsafe { OwnedFd::from_raw_fd(raw_fd) };
     let mut file = File::from(owned);
@@ -572,6 +579,7 @@ pub(crate) fn create_sealed_memfd(bytes: &[u8]) -> Result<OwnedFd, BrokerError> 
     })?;
     let seals = libc::F_SEAL_SEAL | libc::F_SEAL_SHRINK | libc::F_SEAL_GROW | libc::F_SEAL_WRITE;
     // SAFETY: F_ADD_SEALS changes kernel metadata on the live memfd only.
+    // reason: fcntl F_ADD_SEALS makes the evidence memfd immutable.
     #[allow(
         unsafe_code,
         reason = "memfd immutability is established through fcntl F_ADD_SEALS"
@@ -607,6 +615,7 @@ fn collect_request_ancillary(message: &libc::msghdr) -> RequestAncillary {
     // SAFETY: message was populated by a successful recvmsg call and its control
     // buffer remains live. Every received SCM_RIGHTS fd is immediately converted
     // to OwnedFd so all later success and error paths close it by RAII.
+    // reason: libc CMSG traversal is required to validate and own received ancillary descriptors.
     #[allow(
         unsafe_code,
         reason = "parsing and owning Unix ancillary data requires libc CMSG traversal"
@@ -1532,6 +1541,7 @@ mod tests {
         let mut descriptors = [-1_i32; 2];
         // SAFETY: storage has room for exactly two descriptors and successful
         // socketpair initializes both as new owned descriptors.
+        // reason: the SCM_RIGHTS transport test requires a real SOCK_SEQPACKET pair.
         #[allow(
             unsafe_code,
             reason = "SCM_RIGHTS transport tests require a real SOCK_SEQPACKET pair"
@@ -1548,9 +1558,11 @@ mod tests {
             return Err(std::io::Error::last_os_error());
         }
         // SAFETY: socketpair returned each descriptor as newly owned.
+        // reason: the first successful socketpair result transfers one owned descriptor.
         #[allow(unsafe_code, reason = "socketpair transfers two owned descriptors")]
         let sender = unsafe { OwnedFd::from_raw_fd(descriptors[0]) };
         // SAFETY: the second descriptor is distinct and converted once.
+        // reason: the second successful socketpair result transfers one distinct owned descriptor.
         #[allow(unsafe_code, reason = "socketpair transfers two owned descriptors")]
         let receiver = unsafe { OwnedFd::from_raw_fd(descriptors[1]) };
         Ok((SeqpacketConnection { fd: sender }, receiver))
@@ -1573,6 +1585,7 @@ mod tests {
             0
         } else {
             // SAFETY: CMSG_SPACE is a pure size calculation for the payload length.
+            // reason: libc CMSG_SPACE sizes the SCM_RIGHTS test control storage.
             #[allow(
                 unsafe_code,
                 reason = "SCM_RIGHTS test control storage uses libc CMSG sizing"
@@ -1586,6 +1599,7 @@ mod tests {
         let control_words = control_bytes.div_ceil(std::mem::size_of::<usize>());
         let mut control = vec![0_usize; control_words];
         // SAFETY: zero is a valid initial state for msghdr and live buffers follow.
+        // reason: zero initialization is the valid starting state for the send msghdr.
         #[allow(unsafe_code, reason = "sendmsg requires a zeroed platform msghdr")]
         let mut message: libc::msghdr = unsafe { std::mem::zeroed() };
         message.msg_iov = std::ptr::addr_of_mut!(iov);
@@ -1594,6 +1608,7 @@ mod tests {
             message.msg_control = control.as_mut_ptr().cast();
             message.msg_controllen = control_bytes;
             // SAFETY: aligned control storage was sized for the complete fd slice.
+            // reason: libc CMSG accessors construct the SCM_RIGHTS test header.
             #[allow(
                 unsafe_code,
                 reason = "SCM_RIGHTS test messages require constructing one CMSG header"
@@ -1617,6 +1632,7 @@ mod tests {
         }
         // SAFETY: message points to live packet/control buffers and the connected
         // socket remains owned for the duration of the call.
+        // reason: sendmsg exercises request ancillary-data transport.
         #[allow(
             unsafe_code,
             reason = "request ancillary regression tests require sendmsg"
@@ -1638,6 +1654,7 @@ mod tests {
             iov_len: bytes.len(),
         };
         // SAFETY: zero initializes all unused msghdr fields; live buffers follow.
+        // reason: zero initialization is the valid starting state for the receive msghdr.
         #[allow(unsafe_code, reason = "recvmsg requires a zeroed platform msghdr")]
         let mut message: libc::msghdr = unsafe { std::mem::zeroed() };
         message.msg_iov = std::ptr::addr_of_mut!(iov);
@@ -1645,6 +1662,7 @@ mod tests {
         message.msg_control = control.as_mut_ptr().cast();
         message.msg_controllen = std::mem::size_of_val(&control);
         // SAFETY: message owns valid writable buffers and socket is connected.
+        // reason: recvmsg receives the SCM_RIGHTS ancillary descriptor.
         #[allow(
             unsafe_code,
             reason = "receiving SCM_RIGHTS requires recvmsg ancillary data"
@@ -1661,6 +1679,7 @@ mod tests {
         }
         // SAFETY: recvmsg populated a live control buffer. This test expects one
         // SCM_RIGHTS int and converts that received descriptor exactly once.
+        // reason: libc CMSG accessors read and transfer ownership of the received descriptor.
         #[allow(
             unsafe_code,
             reason = "the received SCM_RIGHTS descriptor must be read from CMSG_DATA"
@@ -1755,6 +1774,7 @@ mod tests {
         sender.send_response(packet, Some(&evidence))?;
         drop(evidence);
         // SAFETY: F_GETFD only queries whether the old descriptor number remains open.
+        // reason: fcntl F_GETFD proves the dropped descriptor is closed.
         #[allow(
             unsafe_code,
             reason = "fd leak regression checks the dropped descriptor"
