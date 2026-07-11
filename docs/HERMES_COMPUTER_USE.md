@@ -108,8 +108,12 @@ Publication goes through App-Check/high-risk-nonce callables:
 |---|---|
 | `publishIrohPairingPublicKey` | `users/{uid}/iroh_pairing_keys/host` |
 | `publishIrohPairingRecord` | `users/{uid}/iroh_pairing/{connectionId}` |
-| `revokeIrohPairingRecord` | server tombstone/removal for `users/{uid}/iroh_pairing/{connectionId}` |
+| `revokeIrohPairingRecord` | route-generation tombstone plus removal of `users/{uid}/iroh_pairing/{connectionId}` |
 | `publishPhoneControlAuthority` | `users/{uid}/iroh_pairing/{connectionId}/controllers/{peerNodeId}` |
+| `issueIrohControllerRouteChallenge` | one-minute server-only `users/{uid}/iroh_controller_route_challenges/{challengeId}` |
+| `registerIrohControllerRoute` | verified `users/{uid}/iroh_pairing/{connectionId}/controller_routes/{sourceDeviceId}` |
+| `revokeIrohControllerRoute` | generation-advancing tombstone for the controller route |
+| `resolveActiveIrohControllerRoutes` | read-only, bounded active-route resolution for the authenticated owner |
 | `publishRelaySenderKey` | `users/{uid}/relay_sender_keys/{senderDeviceId}` |
 | `publishAgentGrantAuthority` | `users/{uid}/agent_grant_authorities/{deviceId}` |
 | `queueAgentCapabilityGrantRequest` | `users/{uid}/agent_capability_grant_requests/{requestId}` |
@@ -119,6 +123,42 @@ trusted native escrow-device state, key shape, peer-node/key-id derivation,
 fresh publication time, Signal identity readback where applicable, and
 proof-of-possession before writing. Firestore rules keep owner read access but
 reject direct client writes to these live roots.
+
+### 2.4.1 Verified iroh controller routes
+
+Computer Use keeps three controller identities distinct:
+
+| Identity | Meaning | Verification |
+|---|---|---|
+| `transportNodeId` | canonical 64-character lowercase-hex iroh QUIC NodeId (legacy 52-character base32 is normalized) | Ed25519 signature by the endpoint private key over a server challenge |
+| `authorityPeerNodeId` | `ios-phone-*`, `ios-se-*`, `android-phone-*`, or `android-se-*` app-layer signing authority | deterministically derived from `controllers/{peerNodeId}.publicKeyBase64` and `signingKeyKind` |
+| `sourceDeviceId` | trusted iOS/iPadOS/Android escrow device | same-user server-owned `escrow_devices/{deviceId}` with `trustState == trusted` |
+
+The server never trusts `devices/{deviceId}.irohPeerNodeId`. A controller first
+calls `issueIrohControllerRouteChallenge` with all three identities and a fresh
+high-risk nonce. In one transaction, the callable verifies the current signed
+host pairing, its trusted macOS/Linux host device, the pairing's single controller-device
+binding, the trusted mobile escrow device, and the key-derived controller
+authority. It returns `canonicalPayloadBase64`, which is the exact byte string
+the iroh endpoint key must sign with Ed25519. Clients must decode that base64,
+sign the bytes without hashing or JSON re-encoding, and submit the canonical
+base64 Ed25519 signature to `registerIrohControllerRoute`.
+
+The payload domain is `OpenBurnBar-IrohControllerRoute-v1`. Every following
+key/value segment is UTF-8 framed as `<byteLength>:<value>\n`, in this order:
+`version`, `challengeId`, `challengeNonce`, `uid`, `connectionId`,
+`sourceDeviceId`, `transportNodeId`, `authorityPeerNodeId`,
+`registrationGeneration`, `issuedAtMillis`, `expiresAtMillis`. The challenge
+expires after 60 seconds and is consumed only after a valid proof. Concurrent
+registrations use compare-and-advance generations, so only one wins.
+
+`resolveActiveIrohControllerRoutes` returns at most one route and no public or
+private key material. Resolution fails closed on stale or invalid host pairing
+signatures, a revoked host or controller device, zero or multiple controller
+bindings, controller-key rotation, route expiry, or a revoked generation. The
+route is capped at ten minutes, and the signed host pairing's three-minute
+freshness remains an independent shorter liveness bound. Device-trust
+revocation advances the same route generation and tombstones the route.
 
 ### 2.5 `MediaFrame.Flags.hasCursorMetadata`
 
@@ -234,7 +274,7 @@ explicitly opts in for that session.
 Phase 12. Wire shape (`PhoneControlAuthority`):
 
 ```
-peerNodeId       (base32 iroh NodeId)
+peerNodeId       (app-layer id derived from the authority public key; not the iroh QUIC NodeId)
 counter          (u64, monotonic per peer, persisted in UserDefaults)
 timestamp        (ms-since-epoch, ± 5 s freshness window)
 intentHashBlake3 (hex SHA-256 of canonical-JSON intent)

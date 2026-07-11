@@ -9,3 +9,36 @@ export interface IrohPairingDoc {
   expiresAt: string;
   platform?: string;
 }
+
+export interface IrohControllerRouteDoc {
+  connectionId: string;
+  sourceDeviceId: string;
+  transportNodeId: string;
+  authorityPeerNodeId: string;
+  authorityPublicKeySHA256: string;
+  status: string;
+  generation: number;
+  registeredAtMillis: number;
+  expiresAtMillis: number;
+  revokedAtMillis?: number;
+  schemaVersion: number;
+  updatedAt: string;
+}
+
+export interface IrohControllerRouteChallengeDoc {
+  challengeId: string;
+  challengeNonce: string;
+  connectionId: string;
+  sourceDeviceId: string;
+  transportNodeId: string;
+  authorityPeerNodeId: string;
+  expectedPriorGeneration: number;
+  registrationGeneration: number;
+  canonicalPayloadBase64: string;
+  issuedAtMillis: number;
+  expiresAtMillis: number;
+  status: string;
+  consumedAtMillis?: number;
+  schemaVersion: number;
+  expireAt: string;
+}

@@ -1363,6 +1363,48 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
       },
     },
   ],
+  issueIrohControllerRouteChallenge: [
+    {
+      path: "users/__BOB_UID__/iroh_pairing/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/sourceDeviceId/bob-sourceDeviceId",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/authorityPeerNodeId/bob-authorityPeerNodeId",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/transportNodeId/bob-transportNodeId",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
   pollCliLink: [
     {
       path: "cli_link_sessions/bob-device-code",
@@ -1826,6 +1868,42 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
       },
     },
   ],
+  registerIrohControllerRoute: [
+    {
+      path: "users/__BOB_UID__/iroh_pairing/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/challengeId/bob-challengeId",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
+  resolveActiveIrohControllerRoutes: [
+    {
+      path: "users/__BOB_UID__/iroh_pairing/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
   respondHermesGatewayApproval: [
     {
       path: "users/__BOB_UID__/hermes_gateway_clients/bob-client",
@@ -1995,6 +2073,32 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
     },
     {
       path: "users/__BOB_UID__/bola_victim/attachmentId/bob-att",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
+  revokeIrohControllerRoute: [
+    {
+      path: "users/__BOB_UID__/iroh_pairing/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/sourceDeviceId/bob-sourceDeviceId",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
       data: {
         ownerUid: "__BOB_UID__",
         status: "active",

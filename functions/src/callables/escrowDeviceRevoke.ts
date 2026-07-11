@@ -9,7 +9,13 @@
 
 import { randomBytes } from "node:crypto";
 
-import { FieldValue, Timestamp, type DocumentData, type QueryDocumentSnapshot, type WriteBatch } from "firebase-admin/firestore";
+import {
+  FieldValue,
+  Timestamp,
+  type DocumentData,
+  type QueryDocumentSnapshot,
+  type WriteBatch,
+} from "firebase-admin/firestore";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
 
 import { getConfig } from "../config.js";
@@ -108,6 +114,24 @@ async function clearRevokedControllerPairings(args: {
       batch.delete(controller.ref);
       const peer = controller.get("peerNodeId");
       if (typeof peer === "string" && peer.length > 0) revokedControllerPeerNodeIds.push(peer);
+    }
+    const routeRef = db.doc(`${pairing.ref.path}/controller_routes/${deviceId}`);
+    const route = await routeRef.get();
+    if (route.exists) {
+      const priorGeneration = route.get("generation");
+      const nextGeneration = typeof priorGeneration === "number" && priorGeneration >= 1 ? priorGeneration + 1 : 1;
+      const revokedAtMillis = Date.now();
+      batch.set(
+        routeRef,
+        {
+          status: "revoked",
+          generation: nextGeneration,
+          expiresAtMillis: revokedAtMillis,
+          revokedAtMillis,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
     }
   }
   return revokedControllerPeerNodeIds;
