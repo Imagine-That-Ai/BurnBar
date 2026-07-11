@@ -222,6 +222,12 @@ fn read_gateway_auth_token() -> Option<String> {
 const GATEWAY_MAX_MESSAGES: usize = 256;
 const GATEWAY_MAX_CONTENT_BYTES: usize = 1_048_576;
 const GATEWAY_MAX_RESPONSE_BYTES: usize = 16_777_216;
+const DAEMON_ONBOARDING_SNAPSHOT_METHOD: &str = "daemon.onboarding.snapshot";
+const DAEMON_ONBOARDING_ACTION_METHOD: &str = "daemon.onboarding.action";
+const DAEMON_ONBOARDING_RESET_METHOD: &str = "daemon.onboarding.reset";
+const DAEMON_SUBSCRIPTION_START_METHOD: &str = "subscription.start";
+const DAEMON_SUBSCRIPTION_RESUME_METHOD: &str = "subscription.resume";
+const DAEMON_SUBSCRIPTION_STOP_METHOD: &str = "subscription.stop";
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1358,6 +1364,36 @@ fn config_snapshot() -> Result<serde_json::Value, String> {
 }
 
 #[tauri::command]
+fn onboarding_snapshot() -> Result<serde_json::Value, String> {
+    call_daemon_method(DAEMON_ONBOARDING_SNAPSHOT_METHOD, None)
+}
+
+#[tauri::command]
+fn onboarding_action(request: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method(DAEMON_ONBOARDING_ACTION_METHOD, Some(request))
+}
+
+#[tauri::command]
+fn onboarding_reset() -> Result<serde_json::Value, String> {
+    call_daemon_method(DAEMON_ONBOARDING_RESET_METHOD, None)
+}
+
+#[tauri::command]
+fn subscription_start(request: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method(DAEMON_SUBSCRIPTION_START_METHOD, Some(request))
+}
+
+#[tauri::command]
+fn subscription_resume(request: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method(DAEMON_SUBSCRIPTION_RESUME_METHOD, Some(request))
+}
+
+#[tauri::command]
+fn subscription_stop(request: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method(DAEMON_SUBSCRIPTION_STOP_METHOD, Some(request))
+}
+
+#[tauri::command]
 fn config_update(snapshot: serde_json::Value) -> Result<serde_json::Value, String> {
     call_daemon_method(
         "daemon.config.update",
@@ -2483,6 +2519,12 @@ pub fn run() {
             tray_degraded,
             record_perf_sample,
             measure_perf_operation,
+            onboarding_snapshot,
+            onboarding_action,
+            onboarding_reset,
+            subscription_start,
+            subscription_resume,
+            subscription_stop,
             usage_summary,
             provider_catalog,
             session_list,
@@ -2691,6 +2733,23 @@ mod tests {
         assert!(tauri_plugin_global_shortcut::Builder::<tauri::Wry>::new()
             .with_shortcuts(COMPUTER_USE_PANIC_SHORTCUTS)
             .is_ok());
+    }
+
+    #[test]
+    fn onboarding_rpc_wire_names_match_the_swift_contract() {
+        assert_eq!(
+            DAEMON_ONBOARDING_SNAPSHOT_METHOD,
+            "daemon.onboarding.snapshot"
+        );
+        assert_eq!(DAEMON_ONBOARDING_ACTION_METHOD, "daemon.onboarding.action");
+        assert_eq!(DAEMON_ONBOARDING_RESET_METHOD, "daemon.onboarding.reset");
+    }
+
+    #[test]
+    fn subscription_rpc_wire_names_match_the_swift_contract() {
+        assert_eq!(DAEMON_SUBSCRIPTION_START_METHOD, "subscription.start");
+        assert_eq!(DAEMON_SUBSCRIPTION_RESUME_METHOD, "subscription.resume");
+        assert_eq!(DAEMON_SUBSCRIPTION_STOP_METHOD, "subscription.stop");
     }
 
     #[test]

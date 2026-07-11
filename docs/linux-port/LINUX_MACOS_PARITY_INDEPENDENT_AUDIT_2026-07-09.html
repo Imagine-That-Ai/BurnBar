@@ -275,8 +275,8 @@ frames, portal/PipeWire capture, codec probing, consent/revocation, a call HUD,
 and a runtime probe that exposes the route only when the daemon can support it.
 It is still <strong>unproven as a parity outcome</strong> until a real Linux-to-macOS/mobile
 two-device matrix passes. The largest remaining functional gaps are complete
-system Computer Use capture/execution, transactional onboarding, account/cloud/
-device workflows, chat and session depth, global text expansion, and richer
+system Computer Use capture/execution, provider/auth/portal completion inside
+transactional onboarding, account/cloud/device workflows, chat and session depth, global text expansion, and richer
 Linux-native shell integrations. The largest certification gaps are an x86_64
 installed session, a prior-version update/rollback baseline, a valid public
 signed feed, and real GNOME Wayland/KDE/wlroots proof. Package construction is
@@ -452,13 +452,13 @@ oracle. Generated evidence was accepted only when the underlying mechanism and
 live product state were independently reproducible.</p>
 <h3>Verification performed</h3>
 <ul>
-<li><code>npm test --prefix apps/linux-desktop -- --maxWorkers=2</code>: <strong>59 files, 394 tests passed</strong>.</li>
+<li><code>npm test --prefix apps/linux-desktop -- --maxWorkers=2</code>: <strong>61 files, 411 tests passed</strong>.</li>
 <li><code>npm run build --prefix apps/linux-desktop</code>: <strong>passed</strong>; the main JavaScript
-chunk is <strong>641.12 kB</strong> minified and Vite reports a chunk-size warning.</li>
+chunk is <strong>655.47 kB</strong> minified and Vite reports a chunk-size warning.</li>
 <li><code>cargo test --manifest-path apps/linux-desktop/src-tauri/Cargo.toml</code>:
-<strong>17/17 passed</strong>, including capability-catalog, Mercury-probe, update-feed,
+<strong>19/19 passed</strong>, including capability-catalog, Mercury-probe, update-feed,
 URL, gateway, panic-shortcut, and wire-contract coverage.</li>
-<li>Focused OpenBurnBar Core/daemon Linux suites: <strong>95/95 passed</strong>.</li>
+<li>Fail-closed OpenBurnBar Core/security/daemon Linux manifest: <strong>100/100 passed</strong>.</li>
 <li>Linux media crate capability/capture/decode suite: <strong>3/3 passed</strong>.</li>
 <li>Extension daemon-client suite: <strong>40/40 passed</strong>.</li>
 <li>Linux release/config/packaging/matrix contract suites: <strong>78/78 passed</strong>.</li>
@@ -729,7 +729,7 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-13</td>
 <td>Onboarding</td>
 <td>Provider connection, scan, permissions, chat engine, recovery, completion gates</td>
-<td>Capability-aware repair surface exists, but provider/auth/permission steps are still not a complete transactional setup</td>
+<td>Daemon-owned state, required-step gates, restart recovery, Secret Service readback, XDG write verification, privacy persistence, and strict native/WebView RPC decoding are implemented; provider connection/scan, auth, portal, tray, update, and first-data readback remain incomplete</td>
 <td>Partial</td>
 <td>High</td>
 </tr>
@@ -889,7 +889,7 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-33</td>
 <td>Reliability</td>
 <td>Backoff, supervisor, recovery, subscriptions, migrations, long-idle stability</td>
-<td>Single-flight backoff supervisor and soak contracts exist; suspend/portal/keyring/matrix recovery certification remains</td>
+<td>Daemon-owned bounded start/resume/stop subscriptions, monotonic restart recovery, offline-aware single-flight cadence, cancellation, coalesced route refresh, and soak contracts exist; native push and installed suspend/portal/keyring/matrix certification remain</td>
 <td>Partial</td>
 <td>High</td>
 </tr>
@@ -1300,6 +1300,27 @@ macOS and Linux; every declared provider has path, parser, empty, error, and
 migration tests.</li>
 </ul>
 <h3>GAP-008 - Replace informational onboarding with transactional setup</h3>
+<p><strong>Implementation update (2026-07-10): authority foundation complete; end-to-end
+setup remains partial.</strong> Linux onboarding no longer trusts browser completion.
+The daemon owns a schema-versioned atomic state file with <code>0600</code> permissions in
+a daemon-enforced <code>0700</code> support directory,
+derives completion from fixed required/optional invariants, rejects future-step
+mutation and required-step skips, and exposes capability-scoped
+<code>snapshot</code>/<code>action</code>/<code>reset</code> RPCs through narrow Tauri commands. Required probes
+now prove authenticated daemon reachability, perform an ephemeral approved
+Secret Service/KWallet write-read-delete cycle on Linux, verify writable XDG
+support storage, and persist explicit telemetry/cloud-sync choices. Failed probes
+remain blocked with bounded diagnostics and can retry after restart; the WebView
+cache is non-authoritative and strict decoding rejects forged completion,
+reordered requirements, and prerequisite jumps. The full native Linux manifest
+passes 98 Swift XCTest selectors and 18 Rust tests; the desktop suite passes all
+400 TypeScript/React tests plus its production bundle verifier.</p>
+<p>This does <strong>not</strong> close GAP-008 or P-13. Provider account connection and real log
+scan, cloud authentication, portal permission readback, tray host verification,
+update-channel verification, chat-engine selection, and first-data confirmation
+are still explicit optional acknowledgements or separate workflows. Installed
+Ubuntu/Fedora keyboard, screen-reader, restart, denial, and repair evidence also
+remains required.</p>
 <ul>
 <li><strong>Difference:</strong> macOS onboarding connects providers, scans, requests system
 permissions, configures chat, and gates completion. Linux advances local state
@@ -1613,28 +1634,34 @@ visible focus, no focus trap, 200% zoom/reflow, Orca names/roles/states/actions,
 live regions, GNOME High Contrast, reduced motion, and no color-only meaning.</li>
 </ul>
 <h3>GAP-020 - Add real reliability, performance, and installed-shell gates</h3>
-<p><strong>Implementation update (2026-07-09): closed in the implementation branch.</strong>
+<p><strong>Implementation update (2026-07-10): foundation implemented; certification remains open.</strong>
 Linux now records repeated packaged process-start, tray-open, daemon-reconnect,
 and post-paint route percentiles. A production-linked Swift harness runs the
 same deterministic SQLite, FTS, JSONL, and Hermes stream-parser workloads on
 macOS and Linux and compares correctness, p95/p99, RSS, CPU, and soak duration.
 PR and nightly workflows fail closed on missing or malformed evidence; nightly
-uses 100,000 rows and a 30-minute soak. The renderer now has a single-flight,
-lifecycle-aware daemon supervisor with bounded exponential backoff. See
-<code>performance-reliability-validation.md</code>.</p>
+uses 100,000 rows and a 30-minute soak. The daemon now owns bounded
+start/resume/stop subscription state with monotonic cursors, restart recovery,
+cancellation tombstones, and explicit degraded-pull metadata. The renderer has
+one offline-aware, lifecycle-aware data supervisor with bounded exponential
+backoff and coalesced mounted-route reloads. See
+<code>performance-reliability-validation.md</code> and
+<code>LINUX_EVENT_SUBSCRIPTION_AUTHORITY.md</code>.</p>
 <ul>
-<li><strong>Difference:</strong> Linux now has a bounded supervisor, packaged startup/reopen/
-reconnect percentiles, a matched Swift workload harness, 17 Rust tests, and a
-30-minute soak contract. The built main chunk is 641.12 kB minified and still
-triggers the Vite size warning. Exact-candidate suspend/portal/keyring recovery,
-comparable-hardware macOS/Linux p95/p99, and the full desktop matrix remain
-unproven.</li>
+<li><strong>Difference:</strong> Linux now has daemon-owned bounded pull subscriptions, a
+single-flight data supervisor, packaged startup/reopen/reconnect percentiles,
+a matched Swift workload harness, Rust boundary tests, and a 30-minute soak
+contract. It still lacks a native push stream. The built main chunk is 655.47
+kB minified and still triggers the Vite size warning. Exact-candidate
+suspend/portal/keyring recovery, comparable-hardware macOS/Linux p95/p99, and
+the full desktop matrix remain unproven.</li>
 <li><strong>Why it matters:</strong> UI stalls, stale data, daemon death, suspend/resume, leaks,
 and renderer failures will escape the current unit suite.</li>
-<li><strong>Recommended solution:</strong> add daemon event subscriptions, lifecycle-aware
-cadence, cancellable async IPC, bounded backoff, startup recovery, route code
-splitting, and comparable real-workload budgets. Gate on packaged-shell E2E
-and Linux Swift behavior tests.</li>
+<li><strong>Recommended solution:</strong> certify the implemented cursor/cancellation contract
+in installed packages, add native push delivery without weakening bounded
+backpressure or degraded-state truth, split route code, and enforce comparable
+real-workload budgets. Gate on packaged-shell E2E and Linux Swift behavior
+tests.</li>
 <li><strong>Priority:</strong> <strong>High</strong>.</li>
 <li><strong>Implementation notes:</strong> remove diagnostic probes from the critical boot path
 or run them asynchronously with cache/timeouts; measure cold/warm startup,
@@ -2030,14 +2057,14 @@ truth-sync, not the first time behavior is documented.</p>
 <tr>
 <td>LNX-EVT-001</td>
 <td>LNX-CAP-001</td>
-<td>Daemon subscriptions, cadence, cancellable IPC, supervisor, recovery, migrations</td>
+<td>Bounded pull subscription authority, cadence, cancellation, restart/offline recovery, and coalesced route refresh are implemented; add native push and exact-candidate installed certification</td>
 <td>Kill/stall/suspend/offline tests recover without stale or frozen UI</td>
 </tr>
 <tr>
 <td>LNX-ONB-001</td>
 <td>LNX-SEC-001, LNX-RUN-001, LNX-CAP-001</td>
-<td>Transactional onboarding with readback and repair</td>
-<td>A clean user cannot finish required setup while prerequisites are missing</td>
+<td>Daemon-owned transactional state/readback foundation is implemented; add provider/auth/portal/tray/update/chat/first-data probes</td>
+<td>A clean user cannot finish required setup while any declared required prerequisite is missing</td>
 </tr>
 <tr>
 <td>LNX-AUTH-001</td>
@@ -2277,7 +2304,7 @@ truth-sync, not the first time behavior is documented.</p>
 <tr>
 <td>4</td>
 <td><strong>Daily-use native foundation</strong></td>
-<td>Next</td>
+<td>In progress; onboarding and bounded event-refresh foundations implemented, installed matrix pending</td>
 <td>LNX-EVT-001, LNX-ONB-001, LNX-AUTH-001, LNX-NATIVE-001, LNX-UPD-001, LNX-CAT-001, LNX-DIFF-001</td>
 <td>Setup, auth, data freshness, alerts/tray, update lifecycle, and current provider diff green</td>
 </tr>

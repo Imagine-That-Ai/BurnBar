@@ -16,6 +16,9 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .authBootstrap: "auth.bootstrap",
         .health: "daemon.health",
         .catalog: "daemon.catalog",
+        .linuxOnboardingSnapshot: "daemon.onboarding.snapshot",
+        .linuxOnboardingAction: "daemon.onboarding.action",
+        .linuxOnboardingReset: "daemon.onboarding.reset",
         .configGet: "daemon.config.get",
         .configUpdate: "daemon.config.update",
         .providerCredentialSlotUpsert: "daemon.provider.credential_slot.upsert",
@@ -127,6 +130,7 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .membershipRestore: "daemon.membership.restore",
         .subscriptionStart: "subscription.start",
         .subscriptionResume: "subscription.resume",
+        .subscriptionStop: "subscription.stop",
         .perfMeasure: "perf.measure"
     ]
 

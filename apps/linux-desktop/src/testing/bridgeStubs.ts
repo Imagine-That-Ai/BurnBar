@@ -14,10 +14,22 @@ import type {
   MissionCreateInput,
   MissionListResult
 } from '../tauriBridge.js';
+import type {
+  DaemonSubscriptionResponse,
+  DaemonSubscriptionResumeRequest,
+  DaemonSubscriptionStartRequest,
+  DaemonSubscriptionStopRequest,
+  DaemonSubscriptionStopResponse
+} from '../tauriBridge.js';
 import {
   RUNTIME_CAPABILITY_IDS,
   type RuntimeCapabilityManifest
 } from '../runtimeCapabilities.js';
+import {
+  defaultLinuxOnboardingSnapshot,
+  type LinuxOnboardingActionRequest,
+  type LinuxOnboardingSnapshot
+} from '../onboardingStore.js';
 
 // Shared honest-empty defaults for full-shape LinuxShellBridge test mocks.
 // Each lane that extends the bridge contract adds its members here once,
@@ -110,6 +122,58 @@ export const emptyComputerUsePanicHalt = (): Promise<ComputerUsePanicHaltResult>
     source: 'hotkey'
   });
 
+export const emptyOnboardingSnapshot = (): Promise<LinuxOnboardingSnapshot> =>
+  Promise.resolve(defaultLinuxOnboardingSnapshot());
+
+export const emptyOnboardingAction = (
+  _request: LinuxOnboardingActionRequest
+): Promise<LinuxOnboardingSnapshot> => Promise.resolve(defaultLinuxOnboardingSnapshot());
+
+export const emptyOnboardingReset = (): Promise<LinuxOnboardingSnapshot> =>
+  Promise.resolve(defaultLinuxOnboardingSnapshot());
+
+export const emptySubscriptionStart = (
+  request: DaemonSubscriptionStartRequest
+): Promise<DaemonSubscriptionResponse> => Promise.resolve({
+  subscriptionId: request.requested_subscription_id ?? 'test-subscription',
+  topic: request.topic,
+  seq: 1,
+  cursor: '1',
+  firstSnapshot: true,
+  events: [],
+  degradedFallback: true,
+  degradationReason: 'test-stub',
+  backpressure: 'coalesce_latest_per_topic',
+  disconnectDetected: false,
+  recoveredAfterRestart: false,
+  terminalStateDelivered: false
+});
+
+export const emptySubscriptionResume = (
+  request: DaemonSubscriptionResumeRequest
+): Promise<DaemonSubscriptionResponse> => Promise.resolve({
+  subscriptionId: request.subscription_id,
+  topic: request.topic,
+  seq: request.after_seq + 1,
+  cursor: String(request.after_seq + 1),
+  firstSnapshot: false,
+  events: [],
+  degradedFallback: true,
+  degradationReason: 'test-stub',
+  backpressure: 'coalesce_latest_per_topic',
+  disconnectDetected: false,
+  recoveredAfterRestart: false,
+  terminalStateDelivered: false
+});
+
+export const emptySubscriptionStop = (
+  request: DaemonSubscriptionStopRequest
+): Promise<DaemonSubscriptionStopResponse> => Promise.resolve({
+  subscriptionId: request.subscription_id,
+  stopped: true,
+  lastSeq: 0
+});
+
 export const makeAvailableRuntimeCapabilityManifest = (): RuntimeCapabilityManifest => ({
     schemaVersion: 1,
     catalogVersion: 'test',
@@ -146,6 +210,12 @@ export const availableRuntimeCapabilities = (): Promise<RuntimeCapabilityManifes
   Promise.resolve(makeAvailableRuntimeCapabilityManifest());
 
 export const bridgeStubDefaults = {
+  onboardingSnapshot: emptyOnboardingSnapshot,
+  onboardingAction: emptyOnboardingAction,
+  onboardingReset: emptyOnboardingReset,
+  subscriptionStart: emptySubscriptionStart,
+  subscriptionResume: emptySubscriptionResume,
+  subscriptionStop: emptySubscriptionStop,
   runtimeCapabilities: availableRuntimeCapabilities,
   gatewayProbe: emptyGatewayProbe,
   gatewayChatStream: emptyGatewayChatStream,

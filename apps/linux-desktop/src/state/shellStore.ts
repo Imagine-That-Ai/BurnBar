@@ -10,9 +10,14 @@ import { buildDaemonStatusCopy, type DaemonStatusCopy } from '../daemonStatusCop
 import { markAfterPaint, markStart } from '../perfMarks.js';
 import { routeFromHash, type ShellRoute } from '../routes.js';
 import { displayLinuxSocketPath } from '../shellPaths.js';
-import { loadShellBridge, type LinuxShellBridge } from '../tauriBridge.js';
+import {
+  loadShellBridge,
+  type DaemonSubscriptionResponse,
+  type LinuxShellBridge
+} from '../tauriBridge.js';
 import type { DaemonHealth } from '../daemonClient.js';
 import type { RuntimeCapabilityManifest } from '../runtimeCapabilities.js';
+import type { DaemonSubscriptionStatus } from './daemonSubscriptionSupervisor.js';
 
 export type ShellSkin = 'editorial' | 'aurora';
 
@@ -35,6 +40,11 @@ export type ShellState = {
   skin: ShellSkin;
   bridge: LinuxShellBridge | null;
   bridgeReady: boolean;
+  dataRevision: number;
+  lastDaemonEventAt: string | null;
+  subscriptionRecoveredAfterRestart: boolean;
+  subscriptionState: DaemonSubscriptionStatus['state'];
+  subscriptionError: string | null;
   runtimeCapabilities: RuntimeCapabilityManifest | null;
   capabilityError: string | null;
   fixtureMode: boolean;
@@ -43,6 +53,8 @@ export type ShellState = {
   refreshHealth(): Promise<void>;
   toggleSkin(): void;
   setFixtureMode(enabled: boolean): void;
+  recordDaemonSubscription(response: DaemonSubscriptionResponse): void;
+  recordDaemonSubscriptionStatus(status: DaemonSubscriptionStatus): void;
   boot(): Promise<void>;
 };
 
@@ -55,6 +67,11 @@ export const useShellStore = create<ShellState>()((set, get) => ({
   skin: readPersistedSkin(),
   bridge: null,
   bridgeReady: false,
+  dataRevision: 0,
+  lastDaemonEventAt: null,
+  subscriptionRecoveredAfterRestart: false,
+  subscriptionState: 'stopped',
+  subscriptionError: null,
   runtimeCapabilities: null,
   capabilityError: null,
   fixtureMode: false,
@@ -121,6 +138,21 @@ export const useShellStore = create<ShellState>()((set, get) => ({
     setDaemonFixtureMode(next);
     set({ fixtureMode: next });
     void get().refreshHealth();
+  },
+
+  recordDaemonSubscription(response) {
+    set((state) => ({
+      dataRevision: state.dataRevision + 1,
+      lastDaemonEventAt: new Date().toISOString(),
+      subscriptionRecoveredAfterRestart: response.recoveredAfterRestart
+    }));
+  },
+
+  recordDaemonSubscriptionStatus(status) {
+    set({
+      subscriptionState: status.state,
+      subscriptionError: status.error ?? null
+    });
   },
 
   async boot() {

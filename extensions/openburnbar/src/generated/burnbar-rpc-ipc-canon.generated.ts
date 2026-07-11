@@ -742,6 +742,36 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.onboarding.action",
+    "caseName": "linuxOnboardingAction",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.onboarding.action",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.onboarding.reset",
+    "caseName": "linuxOnboardingReset",
+    "domain": "config",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.onboarding.reset",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.onboarding.snapshot",
+    "caseName": "linuxOnboardingSnapshot",
+    "domain": "lifecycle",
+    "capability": "lifecycle",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.onboarding.snapshot",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.phone_control.pin.provision",
     "caseName": "phoneControlPinProvision",
     "domain": "computer_use",
@@ -1099,6 +1129,16 @@ export const burnBarRpcIpcCanon = [
     "owner": "OpenBurnBarDaemon",
     "params": "BurnBarSubscriptionStartRequest",
     "result": "BurnBarSubscriptionResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "subscription.stop",
+    "caseName": "subscriptionStop",
+    "domain": "run_workspace_approval",
+    "capability": "run",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarSubscriptionStopRequest",
+    "result": "BurnBarSubscriptionStopResponse",
     "error": "BurnBarRPCError"
   },
   {

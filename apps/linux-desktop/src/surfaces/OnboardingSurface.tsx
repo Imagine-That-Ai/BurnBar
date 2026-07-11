@@ -1,44 +1,148 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Banner } from '../components/Banner.js';
 import { ONBOARDING_STEPS } from '../onboardingSteps.js';
-import { readOnboarding, writeOnboarding } from '../onboardingStore.js';
-import { selectDaemonStatusCopy, useShellStore } from '../state/shellStore.js';
+import {
+  cacheOnboarding,
+  readOnboarding,
+  type LinuxOnboardingActionRequest,
+  type LinuxOnboardingPrivacyChoices,
+  type LinuxOnboardingSnapshot
+} from '../onboardingStore.js';
+import { useShellStore } from '../state/shellStore.js';
 import './onboarding.css';
 
 const OPENBURNBAR_LOGO = '/provider-logos/openburnbar.png';
 
-/**
- * Linux first-run wizard. State lives in localStorage
- * (`openburnbar.linux.onboarding.v1`) so skip/retry/resume survive restart.
- *
- * Visual language mirrors the macOS Hermes/onboarding liquid-glass plate:
- * specular glass card over the kernel backdrop, capsule step rail, and
- * interactive glass actions — never a second nested glass layer inside.
- */
-export function OnboardingSurface() {
-  const [ob, setOb] = useState(readOnboarding);
-  const [retryMessage, setRetryMessage] = useState<string | null>(null);
-  const refreshHealth = useShellStore((s) => s.refreshHealth);
-  const setRoute = useShellStore((s) => s.setRoute);
+function isTerminal(state: LinuxOnboardingSnapshot['steps'][number]['state']): boolean {
+  return state === 'verified' || state === 'acknowledged' || state === 'skipped';
+}
 
-  if (ob.completed) {
+/** Daemon-authoritative Linux first-run and repair workflow. */
+export function OnboardingSurface() {
+  const [snapshot, setSnapshot] = useState(readOnboarding);
+  const [authorityReady, setAuthorityReady] = useState(false);
+  const [authorityAttempt, setAuthorityAttempt] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [privacyChoices, setPrivacyChoices] = useState<LinuxOnboardingPrivacyChoices>(() =>
+    snapshot.privacyChoices ?? { telemetryEnabled: false, cloudSyncEnabled: false }
+  );
+  const bridge = useShellStore((state) => state.bridge);
+  const bridgeReady = useShellStore((state) => state.bridgeReady);
+  const setRoute = useShellStore((state) => state.setRoute);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!bridge) {
+      setAuthorityReady(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+    setBusy(true);
+    setError(null);
+    void bridge.onboardingSnapshot()
+      .then((next) => {
+        if (cancelled) return;
+        cacheOnboarding(next);
+        setSnapshot(next);
+        setPrivacyChoices(next.privacyChoices ?? { telemetryEnabled: false, cloudSyncEnabled: false });
+        setAuthorityReady(true);
+      })
+      .catch((loadError: unknown) => {
+        if (cancelled) return;
+        setError(loadError instanceof Error ? loadError.message : String(loadError));
+        setAuthorityReady(false);
+      })
+      .finally(() => {
+        if (!cancelled) setBusy(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [bridge, authorityAttempt]);
+
+  const commit = (next: LinuxOnboardingSnapshot) => {
+    cacheOnboarding(next);
+    setSnapshot(next);
+    if (next.privacyChoices) setPrivacyChoices(next.privacyChoices);
+    setAuthorityReady(true);
+    setError(null);
+  };
+
+  const perform = async (request: LinuxOnboardingActionRequest) => {
+    if (!bridge) return;
+    setBusy(true);
+    setError(null);
+    try {
+      commit(await bridge.onboardingAction(request));
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : String(actionError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reset = async () => {
+    if (!bridge) return;
+    setBusy(true);
+    setError(null);
+    try {
+      commit(await bridge.onboardingReset());
+    } catch (resetError) {
+      setError(resetError instanceof Error ? resetError.message : String(resetError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!bridgeReady || (bridge && !authorityReady && !error)) {
+    return (
+      <div className="onboarding-stage">
+        <section className="onboarding-wizard" role="status" aria-label="Checking setup authority">
+          <p className="onboarding-wizard-kicker">First-run setup</p>
+          <h3>Checking daemon-owned setup</h3>
+          <p className="onboarding-step-body">Reading verified Linux prerequisites from the local daemon.</p>
+        </section>
+      </div>
+    );
+  }
+
+  if (!bridge || !authorityReady) {
+    return (
+      <div className="onboarding-stage">
+        <section className="onboarding-wizard" role="alert" aria-labelledby="onboarding-unavailable-title">
+          <p className="onboarding-wizard-kicker">First-run setup</p>
+          <h3 id="onboarding-unavailable-title">Daemon setup authority is unavailable</h3>
+          <p className="onboarding-step-body">
+            Required setup cannot be completed from browser or fixture state. Start the packaged Linux app and its local daemon, then retry.
+          </p>
+          {error ? <Banner tone="degraded">{error}</Banner> : null}
+          {bridge ? (
+            <button type="button" className="onboarding-btn-primary" disabled={busy} onClick={() => setAuthorityAttempt((value) => value + 1)}>
+              Retry daemon authority
+            </button>
+          ) : null}
+        </section>
+      </div>
+    );
+  }
+
+  if (snapshot.completed) {
     return (
       <div className="onboarding-stage">
         <div className="onboarding-wizard setup-complete" role="status">
-          <div className="setup-complete-mark" aria-hidden="true">
-            ✓
-          </div>
-          <h3>Setup checklist complete</h3>
-          <p>
-            Linux onboarding is acknowledged. Dashboard routes remain local-only until the daemon is
-            reachable.
-          </p>
+          <div className="setup-complete-mark" aria-hidden="true">✓</div>
+          <h3>Setup verified</h3>
+          <p>Every required prerequisite was verified by the daemon. Optional Linux integrations were acknowledged or deferred explicitly.</p>
+          {error ? <Banner tone="degraded">{error}</Banner> : null}
           <div className="actions onboarding-actions">
-            <button
-              type="button"
-              className="onboarding-btn-primary"
-              onClick={() => setRoute('overview')}
-            >
+            <div className="onboarding-actions-secondary">
+              <button type="button" className="onboarding-btn-ghost" disabled={busy} onClick={() => void reset()}>
+                Run setup again
+              </button>
+            </div>
+            <button type="button" className="onboarding-btn-primary" onClick={() => setRoute('overview')}>
               <span>Open dashboard</span>
             </button>
           </div>
@@ -47,35 +151,32 @@ export function OnboardingSurface() {
     );
   }
 
-  const stepIndex = Math.min(ob.step, ONBOARDING_STEPS.length - 1);
+  const stepIndex = Math.max(0, ONBOARDING_STEPS.findIndex((step) => step.id === snapshot.currentStepID));
   const step = ONBOARDING_STEPS[stepIndex] ?? ONBOARDING_STEPS[0];
-  const isLastStep = stepIndex === ONBOARDING_STEPS.length - 1;
+  const stepSnapshot = snapshot.steps.find((candidate) => candidate.id === step.id) ?? snapshot.steps[0];
   const canGoBack = stepIndex > 0;
   const progressFraction = (stepIndex + 1) / ONBOARDING_STEPS.length;
+  const isPrivacy = step.id === 'privacy';
+  const primaryLabel = isPrivacy
+    ? 'Save choices'
+    : step.requirement === 'required'
+      ? stepSnapshot.state === 'blocked' ? 'Retry verification' : 'Verify and continue'
+      : 'Acknowledge and continue';
 
-  const advance = (skipped: boolean) => {
-    const n = Math.min(stepIndex + 1, ONBOARDING_STEPS.length - 1);
-    const next = writeOnboarding({
-      ...(skipped ? { skippedSteps: [...new Set([...ob.skippedSteps, stepIndex])] } : {}),
-      step: n,
-      completed: isLastStep
+  const advance = () => {
+    if (isPrivacy) {
+      void perform({
+        stepID: step.id,
+        action: 'save_privacy_choices',
+        telemetryEnabled: privacyChoices.telemetryEnabled,
+        cloudSyncEnabled: privacyChoices.cloudSyncEnabled
+      });
+      return;
+    }
+    void perform({
+      stepID: step.id,
+      action: step.requirement === 'required' ? 'verify' : 'acknowledge'
     });
-    setOb(next);
-    setRetryMessage(null);
-  };
-
-  const goBack = () => {
-    if (!canGoBack) return;
-    const next = writeOnboarding({ step: stepIndex - 1, completed: false });
-    setOb(next);
-    setRetryMessage(null);
-  };
-
-  const retry = async () => {
-    await refreshHealth();
-    const state = useShellStore.getState();
-    const status = selectDaemonStatusCopy(state);
-    setRetryMessage(state.health?.ok ? 'Daemon check passed.' : `${status.label}: ${status.detail}`);
   };
 
   return (
@@ -99,56 +200,85 @@ export function OnboardingSurface() {
           aria-valuenow={stepIndex + 1}
           aria-label="Onboarding progress"
         >
-          <div
-            className="onboarding-progress-fill"
-            style={{ width: `${Math.round(progressFraction * 100)}%` }}
-          />
+          <div className="onboarding-progress-fill" style={{ width: `${Math.round(progressFraction * 100)}%` }} />
         </div>
 
         <div className="step-rail" aria-hidden="true">
-          {ONBOARDING_STEPS.map((_, i) => (
-            <span
-              key={i}
-              className={`step-dot${i === stepIndex ? ' active' : ''}${i < stepIndex ? ' done' : ''}${
-                ob.skippedSteps.includes(i) ? ' skipped' : ''
-              }`}
-            />
-          ))}
+          {ONBOARDING_STEPS.map((candidate, index) => {
+            const state = snapshot.steps.find((value) => value.id === candidate.id)?.state ?? 'pending';
+            return (
+              <span
+                key={candidate.id}
+                className={`step-dot${index === stepIndex ? ' active' : ''}${isTerminal(state) ? ' done' : ''}${state === 'skipped' ? ' skipped' : ''}`}
+              />
+            );
+          })}
         </div>
 
-        <div className="onboarding-step" key={stepIndex}>
+        <div className="onboarding-step" key={step.id}>
           <div className="onboarding-step-meta">
-            <span className="onboarding-step-glyph" aria-hidden="true">
-              {step.glyph}
-            </span>
+            <span className="onboarding-step-glyph" aria-hidden="true">{step.glyph}</span>
             <p className="onboarding-step-index">{step.kicker}</p>
           </div>
           <h3 id="onboarding-step-title">{step.title}</h3>
           <p className="onboarding-step-body">{step.body}</p>
+          {isPrivacy ? (
+            <fieldset className="onboarding-privacy-choices">
+              <legend>Privacy choices</legend>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={privacyChoices.telemetryEnabled}
+                  onChange={(event) => setPrivacyChoices((value) => ({ ...value, telemetryEnabled: event.target.checked }))}
+                />
+                Share redacted reliability telemetry
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={privacyChoices.cloudSyncEnabled}
+                  onChange={(event) => setPrivacyChoices((value) => ({ ...value, cloudSyncEnabled: event.target.checked }))}
+                />
+                Allow encrypted cloud sync after sign-in
+              </label>
+            </fieldset>
+          ) : null}
         </div>
 
-        {retryMessage ? (
-          <Banner tone="degraded" role="status">
-            <span className="retry-feedback">{retryMessage}</span>
+        {stepSnapshot.detail || error ? (
+          <Banner
+            tone={stepSnapshot.state === 'blocked' || error ? 'degraded' : 'ok'}
+            role={stepSnapshot.state === 'blocked' || error ? 'alert' : 'status'}
+          >
+            <span className="retry-feedback">{error ?? stepSnapshot.detail}</span>
           </Banner>
         ) : null}
 
         <div className="actions onboarding-actions">
           <div className="onboarding-actions-secondary">
             {canGoBack ? (
-              <button type="button" className="onboarding-btn-ghost" onClick={goBack}>
+              <button
+                type="button"
+                className="onboarding-btn-ghost"
+                disabled={busy}
+                onClick={() => void perform({ stepID: ONBOARDING_STEPS[stepIndex - 1].id, action: 'navigate' })}
+              >
                 Back
               </button>
             ) : null}
-            <button type="button" className="onboarding-btn-ghost" onClick={() => void retry()}>
-              Retry check
-            </button>
-            <button type="button" className="onboarding-btn-ghost" onClick={() => advance(true)}>
-              Skip step
-            </button>
+            {step.requirement === 'optional' ? (
+              <button
+                type="button"
+                className="onboarding-btn-ghost"
+                disabled={busy}
+                onClick={() => void perform({ stepID: step.id, action: 'skip' })}
+              >
+                Skip for now
+              </button>
+            ) : null}
           </div>
-          <button type="button" className="onboarding-btn-primary" onClick={() => advance(false)}>
-            <span>{isLastStep ? 'Finish setup' : 'Continue'}</span>
+          <button type="button" className="onboarding-btn-primary" disabled={busy} onClick={advance}>
+            <span>{busy ? 'Checking…' : primaryLabel}</span>
           </button>
         </div>
       </section>

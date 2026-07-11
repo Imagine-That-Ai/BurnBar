@@ -13,6 +13,9 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case authBootstrap = "auth.bootstrap"
     case health = "daemon.health"
     case catalog = "daemon.catalog"
+    case linuxOnboardingSnapshot = "daemon.onboarding.snapshot"
+    case linuxOnboardingAction = "daemon.onboarding.action"
+    case linuxOnboardingReset = "daemon.onboarding.reset"
     case configGet = "daemon.config.get"
     case configUpdate = "daemon.config.update"
     case providerCredentialSlotUpsert = "daemon.provider.credential_slot.upsert"
@@ -110,6 +113,7 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case approvalRespond = "approval.respond"
     case subscriptionStart = "subscription.start"
     case subscriptionResume = "subscription.resume"
+    case subscriptionStop = "subscription.stop"
     case clientAttach = "client.attach"
     case clientClaimControl = "client.claimControl"
     case clientDetach = "client.detach"
@@ -854,6 +858,21 @@ public struct BurnBarSubscriptionResumeRequest: Codable, Sendable, Hashable {
     }
 }
 
+public struct BurnBarSubscriptionStopRequest: Codable, Sendable, Hashable {
+    public let subscriptionID: String
+    public let clientID: String?
+
+    enum CodingKeys: String, CodingKey {
+        case subscriptionID = "subscription_id"
+        case clientID = "client_id"
+    }
+
+    public init(subscriptionID: String, clientID: String? = nil) {
+        self.subscriptionID = subscriptionID
+        self.clientID = clientID
+    }
+}
+
 public struct BurnBarSubscriptionEvent: Codable, Sendable, Hashable {
     public let seq: Int
     public let kind: String
@@ -923,6 +942,24 @@ public struct BurnBarSubscriptionResponse: Codable, Sendable, Hashable {
         self.disconnectDetected = disconnectDetected
         self.recoveredAfterRestart = recoveredAfterRestart
         self.terminalStateDelivered = terminalStateDelivered
+    }
+}
+
+public struct BurnBarSubscriptionStopResponse: Codable, Sendable, Hashable {
+    public let subscriptionID: String
+    public let stopped: Bool
+    public let lastSeq: Int
+
+    enum CodingKeys: String, CodingKey {
+        case subscriptionID = "subscription_id"
+        case stopped
+        case lastSeq = "last_seq"
+    }
+
+    public init(subscriptionID: String, stopped: Bool, lastSeq: Int) {
+        self.subscriptionID = subscriptionID
+        self.stopped = stopped
+        self.lastSeq = lastSeq
     }
 }
 

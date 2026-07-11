@@ -7,12 +7,15 @@ enum BurnBarDaemonSocketRPCCoverage {
     static let lifecycle: Set<BurnBarRPCMethod> = [
         .health,
         .catalog,
-        .authBootstrap
+        .authBootstrap,
+        .linuxOnboardingSnapshot
     ]
 
     static let config: Set<BurnBarRPCMethod> = [
         .configGet,
         .configUpdate,
+        .linuxOnboardingAction,
+        .linuxOnboardingReset,
         .providerCredentialSlotUpsert,
         .providerCredentialSlotRemove,
         .providerModelVariantUpsert,
@@ -126,6 +129,7 @@ enum BurnBarDaemonSocketRPCCoverage {
         .runResume,
         .subscriptionStart,
         .subscriptionResume,
+        .subscriptionStop,
         .workspaceExecuteTool,
         .workspaceToolResult,
         .approvalRespond

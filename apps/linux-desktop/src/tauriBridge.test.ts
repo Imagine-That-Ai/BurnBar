@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { bridgeStubDefaults } from './testing/bridgeStubs';
-import { computeCacheHitRatePct } from './tauriBridge';
+import {
+  computeCacheHitRatePct,
+  decodeDaemonSubscriptionResponse,
+  decodeDaemonSubscriptionStopResponse
+} from './tauriBridge';
 
 describe('computeCacheHitRatePct', () => {
   it('matches the macOS CacheEfficiency formula (prompt-side basis)', () => {
@@ -46,5 +50,58 @@ describe('bridgeStubDefaults media wiring', () => {
     await expect(bridgeStubDefaults.mediaDeclineCall('req')).resolves.toMatchObject({ phase: 'capability-absent' });
     await expect(bridgeStubDefaults.mediaEndCall()).resolves.toMatchObject({ phase: 'capability-absent' });
     await expect(bridgeStubDefaults.mediaCapabilityGet()).resolves.toMatchObject({ available: false });
+  });
+});
+
+describe('daemon subscription wire decoding', () => {
+  it('strictly decodes the snake-case Swift response', () => {
+    expect(decodeDaemonSubscriptionResponse({
+      subscription_id: 'sub-data',
+      topic: 'data',
+      seq: 2,
+      cursor: '2',
+      first_snapshot: false,
+      events: [{
+        seq: 2,
+        kind: 'data.tick',
+        snapshot: { daemon_session_id: 'daemon-a' },
+        terminal: false
+      }],
+      degraded_fallback: true,
+      degradation_reason: 'bounded_pull_over_burnbarrpc_envelope',
+      backpressure: 'coalesce_latest_per_topic',
+      disconnect_detected: true,
+      recovered_after_restart: true,
+      terminal_state_delivered: false
+    })).toMatchObject({
+      subscriptionId: 'sub-data',
+      seq: 2,
+      recoveredAfterRestart: true,
+      terminalStateDelivered: false
+    });
+  });
+
+  it('rejects malformed cursor and terminal-state fields', () => {
+    expect(() => decodeDaemonSubscriptionResponse({
+      subscription_id: 'sub-data',
+      topic: 'data',
+      seq: -1,
+      cursor: 'bad',
+      first_snapshot: true,
+      events: [],
+      degraded_fallback: true,
+      backpressure: 'coalesce_latest_per_topic',
+      disconnect_detected: false,
+      recovered_after_restart: false,
+      terminal_state_delivered: 'false'
+    })).toThrow('subscription.seq');
+  });
+
+  it('strictly decodes stop acknowledgement fields', () => {
+    expect(decodeDaemonSubscriptionStopResponse({
+      subscription_id: 'sub-data',
+      stopped: true,
+      last_seq: 8
+    })).toEqual({ subscriptionId: 'sub-data', stopped: true, lastSeq: 8 });
   });
 });
