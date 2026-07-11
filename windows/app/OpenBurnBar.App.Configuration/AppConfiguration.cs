@@ -145,7 +145,8 @@ public sealed class AppConfiguration
                 Directory.CreateDirectory(dir);
             }
 
-            string json = JsonSerializer.Serialize(_model, JsonOptions);
+            AppConfigurationModel persisted = PrepareForPersistence(_model);
+            string json = JsonSerializer.Serialize(persisted, JsonOptions);
             File.WriteAllText(_filePath, json);
         }
         catch
@@ -164,7 +165,10 @@ public sealed class AppConfiguration
             }
 
             string json = File.ReadAllText(path);
-            return JsonSerializer.Deserialize<AppConfigurationModel>(json, JsonOptions) ?? new AppConfigurationModel();
+            AppConfigurationModel model = JsonSerializer.Deserialize<AppConfigurationModel>(json, JsonOptions) ?? new AppConfigurationModel();
+            PopulateSecretsFromProtectedFields(model);
+            PopulateLegacyPlaintextSecrets(model, json);
+            return model;
         }
         catch
         {
@@ -176,12 +180,50 @@ public sealed class AppConfiguration
     {
         SqlCipherDbPath = source.SqlCipherDbPath,
         SqlCipherPassphrase = source.SqlCipherPassphrase,
+        SqlCipherPassphraseProtected = source.SqlCipherPassphraseProtected,
         FirebaseProjectId = source.FirebaseProjectId,
         FirebaseUid = source.FirebaseUid,
         FirebaseIdToken = source.FirebaseIdToken,
+        FirebaseIdTokenProtected = source.FirebaseIdTokenProtected,
         AppCheckToken = source.AppCheckToken,
+        AppCheckTokenProtected = source.AppCheckTokenProtected,
         VaultKeyB64 = source.VaultKeyB64,
+        VaultKeyB64Protected = source.VaultKeyB64Protected,
     };
+
+    private static AppConfigurationModel PrepareForPersistence(AppConfigurationModel source) => new()
+    {
+        SqlCipherDbPath = source.SqlCipherDbPath,
+        SqlCipherPassphraseProtected = AppConfigurationSecretProtector.Protect(source.SqlCipherPassphrase),
+        FirebaseProjectId = source.FirebaseProjectId,
+        FirebaseUid = source.FirebaseUid,
+        FirebaseIdTokenProtected = AppConfigurationSecretProtector.Protect(source.FirebaseIdToken),
+        AppCheckTokenProtected = AppConfigurationSecretProtector.Protect(source.AppCheckToken),
+        VaultKeyB64Protected = AppConfigurationSecretProtector.Protect(source.VaultKeyB64),
+    };
+
+    private static void PopulateSecretsFromProtectedFields(AppConfigurationModel model)
+    {
+        model.SqlCipherPassphrase = AppConfigurationSecretProtector.Unprotect(model.SqlCipherPassphraseProtected);
+        model.FirebaseIdToken = AppConfigurationSecretProtector.Unprotect(model.FirebaseIdTokenProtected);
+        model.AppCheckToken = AppConfigurationSecretProtector.Unprotect(model.AppCheckTokenProtected);
+        model.VaultKeyB64 = AppConfigurationSecretProtector.Unprotect(model.VaultKeyB64Protected);
+    }
+
+    private static void PopulateLegacyPlaintextSecrets(AppConfigurationModel model, string json)
+    {
+        using JsonDocument document = JsonDocument.Parse(json);
+        JsonElement root = document.RootElement;
+        model.SqlCipherPassphrase ??= LegacyString(root, "sqlCipherPassphrase");
+        model.FirebaseIdToken ??= LegacyString(root, "firebaseIdToken");
+        model.AppCheckToken ??= LegacyString(root, "appCheckToken");
+        model.VaultKeyB64 ??= LegacyString(root, "vaultKeyB64");
+    }
+
+    private static string? LegacyString(JsonElement root, string propertyName) =>
+        root.TryGetProperty(propertyName, out JsonElement value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
 
     private static string? FirstNonEmpty(string? env, string? file) =>
         !string.IsNullOrWhiteSpace(env) ? env.Trim() : string.IsNullOrWhiteSpace(file) ? null : file.Trim();

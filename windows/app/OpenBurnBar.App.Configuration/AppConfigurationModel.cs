@@ -8,8 +8,11 @@ public sealed class AppConfigurationModel
     [JsonPropertyName("sqlCipherDbPath")]
     public string? SqlCipherDbPath { get; set; }
 
-    [JsonPropertyName("sqlCipherPassphrase")]
+    [JsonIgnore]
     public string? SqlCipherPassphrase { get; set; }
+
+    [JsonPropertyName("sqlCipherPassphraseProtected")]
+    public string? SqlCipherPassphraseProtected { get; set; }
 
     [JsonPropertyName("firebaseProjectId")]
     public string? FirebaseProjectId { get; set; }
@@ -17,12 +20,21 @@ public sealed class AppConfigurationModel
     [JsonPropertyName("firebaseUid")]
     public string? FirebaseUid { get; set; }
 
-    [JsonPropertyName("firebaseIdToken")]
+    [JsonIgnore]
     public string? FirebaseIdToken { get; set; }
 
-    [JsonPropertyName("appCheckToken")]
+    [JsonPropertyName("firebaseIdTokenProtected")]
+    public string? FirebaseIdTokenProtected { get; set; }
+
+    [JsonIgnore]
     public string? AppCheckToken { get; set; }
 
-    [JsonPropertyName("vaultKeyB64")]
+    [JsonPropertyName("appCheckTokenProtected")]
+    public string? AppCheckTokenProtected { get; set; }
+
+    [JsonIgnore]
     public string? VaultKeyB64 { get; set; }
+
+    [JsonPropertyName("vaultKeyB64Protected")]
+    public string? VaultKeyB64Protected { get; set; }
 }
