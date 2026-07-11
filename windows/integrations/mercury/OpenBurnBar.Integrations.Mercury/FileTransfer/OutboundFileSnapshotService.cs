@@ -212,22 +212,8 @@ public sealed class OutboundFileSnapshotService
             }
 
             string safeName = FileTransferFileName.Sanitize(originalFileName);
-            string finalPath = Path.Combine(root, hash + "-" + safeName);
-            if (File.Exists(finalPath))
-            {
-                if (!Matches(finalPath, copied, hash))
-                {
-                    throw new OutboundSnapshotException(
-                        OutboundSnapshotError.SnapshotCollision,
-                        "A content-addressed snapshot collision was detected.");
-                }
-
-                File.Delete(temporary);
-            }
-            else
-            {
-                File.Move(temporary, finalPath, overwrite: false);
-            }
+            string finalPath = Path.Combine(root, hash + "-" + Guid.NewGuid().ToString("N") + "-" + safeName);
+            File.Move(temporary, finalPath, overwrite: false);
 
             File.SetAttributes(finalPath, File.GetAttributes(finalPath) | FileAttributes.ReadOnly);
             return new OutboundFileSnapshot(finalPath, safeName, copied, hash, _now());

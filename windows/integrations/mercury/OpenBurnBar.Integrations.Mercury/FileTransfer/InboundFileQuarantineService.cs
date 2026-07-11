@@ -26,6 +26,8 @@ public interface IInboundFileOriginMarker
         string filePath,
         string sourcePeerHash,
         CancellationToken cancellationToken = default);
+
+    bool HasInternetOrigin(string filePath);
 }
 
 public enum FileThreatScanStatus
@@ -192,8 +194,9 @@ public sealed class InboundFileQuarantineService
 
             string displayName = FileTransferFileName.Sanitize(manifest.FileName);
             string quarantineName = $"{manifest.TransferId:x8}-{actualHash[..12]}-{displayName}.quarantine";
-            quarantinePath = Path.Combine(quarantineDirectory, quarantineName);
-            File.Move(temporary, quarantinePath, overwrite: false);
+            string candidateQuarantinePath = Path.Combine(quarantineDirectory, quarantineName);
+            File.Move(temporary, candidateQuarantinePath, overwrite: false);
+            quarantinePath = candidateQuarantinePath;
 
             string peerHash = HashPeer(sourcePeerId);
             FileOriginMarkResult origin = await _originMarker
@@ -257,6 +260,12 @@ public sealed class InboundFileQuarantineService
         }
 
         VerifyQuarantinedFile(file);
+        if (!_originMarker.HasInternetOrigin(file.QuarantinePath))
+        {
+            throw new InboundQuarantineException(
+                InboundQuarantineError.QuarantineFileChanged,
+                "Quarantined file lost its Internet origin marker before promotion.");
+        }
         string destination = UniqueDestination(file.DestinationDirectory, file.DisplayName);
         File.SetAttributes(file.QuarantinePath, FileAttributes.Normal);
         try
