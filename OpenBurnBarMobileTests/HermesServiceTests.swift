@@ -44,10 +44,12 @@ final class HermesServiceTests: XCTestCase {
         )
 
         let factory = RecordingIrohRelayTransportFactory()
+        let routeRegistrar = HermesServiceRecordingIrohControllerRouteRegistrar()
         let transport = HermesIrohRelayTransport(
             directory: directory,
             pairingPublicKeyProvider: StaticIrohPairingPublicKeyProvider(publicKey: macKeypair.publicKeyRaw),
             auditLogger: NoopIrohTransportAuditLogger(),
+            controllerRouteRegistrar: routeRegistrar,
             transportFactory: { relayURL in
                 factory.make(relayURL: relayURL)
             },
@@ -64,12 +66,173 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertEqual(factory.requestedRelayURLs, [publishedRelayURL])
         let endpoint = try XCTUnwrap(factory.transports.first)
         XCTAssertEqual(endpoint.startCount, 1)
+        let routeRegistrations = await routeRegistrar.recordedCalls()
+        XCTAssertEqual(routeRegistrations.count, 1)
+        XCTAssertEqual(routeRegistrations.first?.uid, uid)
+        XCTAssertEqual(routeRegistrations.first?.connectionId, connectionID)
+        XCTAssertEqual(routeRegistrations.first?.transportNodeId, endpoint.identity.nodeId)
         XCTAssertEqual(endpoint.connectAttempts.count, 1)
         XCTAssertEqual(endpoint.connectAttempts.first?.target.relayURL, publishedRelayURL)
         XCTAssertEqual(endpoint.connectAttempts.first?.target.directAddresses, ["10.0.0.2:1234"])
         XCTAssertEqual(
             endpoint.connectAttempts.first?.timeout,
             HermesIrohRelayTransport.defaultMediaControlConnectTimeout
+        )
+    }
+
+    func testAuthTransitionTeardownStopsPersistentCoordinatorAndActiveEndpoint() async throws {
+        let directory = InMemoryIrohPairingDirectory()
+        let publisher = IrohPairingPublisher(directory: directory)
+        let macKeypair = IrohPairingKeypair()
+        let uid = "uid-before-signout"
+        let connectionID = "relay-before-signout"
+        let now = Date(timeIntervalSince1970: 1_715_000_000)
+        _ = try await publisher.publish(
+            uid: uid,
+            connectionId: connectionID,
+            nodeId: "mac-node",
+            relayURL: "https://relay.mac.example/",
+            directAddresses: [],
+            publishedAt: now,
+            with: macKeypair
+        )
+
+        let factory = RecordingIrohRelayTransportFactory()
+        let transport = HermesIrohRelayTransport(
+            directory: directory,
+            pairingPublicKeyProvider: StaticIrohPairingPublicKeyProvider(publicKey: macKeypair.publicKeyRaw),
+            auditLogger: NoopIrohTransportAuditLogger(),
+            controllerRouteRegistrar: HermesServiceRecordingIrohControllerRouteRegistrar(),
+            authenticatedUIDProvider: { uid },
+            transportFactory: { relayURL in factory.make(relayURL: relayURL) },
+            now: { now.addingTimeInterval(30) }
+        )
+        transport.installMediaControlStream(
+            into: iOSFileTransferService(service: nil, settingsProvider: { true })
+        )
+        _ = try await transport.openMediaControlStream(
+            uid: uid,
+            connectionID: connectionID,
+            relayPublicKey: macKeypair.publicKeyRaw
+        )
+        try await transport.ensureMediaControlStream(connectionID: connectionID)
+        let coordinator = try XCTUnwrap(transport.currentMediaControlCoordinator)
+        let endpoint = try XCTUnwrap(factory.transports.first)
+
+        await transport.tearDownForAuthTransition()
+
+        XCTAssertEqual(coordinator.phase, .stopped)
+        XCTAssertNil(transport.currentMediaControlCoordinator)
+        XCTAssertEqual(endpoint.shutdownCount, 1)
+    }
+
+    func testSignOutStopsLiveControlStreamBeforeClearingAuthentication() async throws {
+        let live = try await makeLiveAuthTransitionTransport(
+            uid: "uid-before-signout",
+            connectionID: "relay-before-signout"
+        )
+        let authLifecycle = IrohControllerRouteAuthLifecycleCoordinator(
+            routeLifecycle: live.routeRegistrar,
+            endpointTeardown: {
+                await live.transport.tearDownForAuthTransition()
+            }
+        )
+        let gateway = AuthBoundaryGateway(
+            identity: MobileAuthIdentity(
+                uid: "uid-before-signout",
+                email: "before-signout@openburnbar.app",
+                displayName: "Before Sign Out"
+            ),
+            transportIsStopped: {
+                live.coordinator.phase == .stopped
+                    && live.endpoint.shutdownCount == 1
+            }
+        )
+        let store = AuthStore(
+            gateway: gateway,
+            trustGateway: AuthBoundaryDeviceTrustGateway(),
+            controllerRouteLifecycle: authLifecycle
+        )
+
+        await store.signOut()
+
+        XCTAssertEqual(store.state, .signedOut)
+        XCTAssertTrue(gateway.wasTransportStoppedAtSignOut)
+        let lifecycleEvents = await live.routeRegistrar.recordedLifecycleEvents()
+        XCTAssertEqual(lifecycleEvents, ["revoke"])
+    }
+
+    func testAccountReplacementStopsLiveControlStreamAndInvalidatesOldRoute() async throws {
+        let live = try await makeLiveAuthTransitionTransport(
+            uid: "user-a",
+            connectionID: "relay-user-a"
+        )
+        let authLifecycle = IrohControllerRouteAuthLifecycleCoordinator(
+            routeLifecycle: live.routeRegistrar,
+            endpointTeardown: {
+                await live.transport.tearDownForAuthTransition()
+            }
+        )
+
+        await authLifecycle.handleAuthenticatedUIDChanged(to: "user-a")
+        await authLifecycle.handleAuthenticatedUIDChanged(to: "user-b")
+
+        XCTAssertEqual(live.coordinator.phase, .stopped)
+        XCTAssertNil(live.transport.currentMediaControlCoordinator)
+        XCTAssertEqual(live.endpoint.shutdownCount, 1)
+        let lifecycleEvents = await live.routeRegistrar.recordedLifecycleEvents()
+        XCTAssertEqual(lifecycleEvents, ["invalidate"])
+    }
+
+    private func makeLiveAuthTransitionTransport(
+        uid: String,
+        connectionID: String
+    ) async throws -> (
+        transport: HermesIrohRelayTransport,
+        coordinator: MediaControlStreamCoordinator,
+        endpoint: RecordingIrohRelayTransport,
+        routeRegistrar: HermesServiceRecordingIrohControllerRouteRegistrar
+    ) {
+        let directory = InMemoryIrohPairingDirectory()
+        let publisher = IrohPairingPublisher(directory: directory)
+        let macKeypair = IrohPairingKeypair()
+        let now = Date(timeIntervalSince1970: 1_715_000_000)
+        _ = try await publisher.publish(
+            uid: uid,
+            connectionId: connectionID,
+            nodeId: "mac-node",
+            relayURL: "https://relay.mac.example/",
+            directAddresses: [],
+            publishedAt: now,
+            with: macKeypair
+        )
+
+        let factory = RecordingIrohRelayTransportFactory()
+        let routeRegistrar = HermesServiceRecordingIrohControllerRouteRegistrar()
+        let transport = HermesIrohRelayTransport(
+            directory: directory,
+            pairingPublicKeyProvider: StaticIrohPairingPublicKeyProvider(publicKey: macKeypair.publicKeyRaw),
+            auditLogger: NoopIrohTransportAuditLogger(),
+            controllerRouteRegistrar: routeRegistrar,
+            authenticatedUIDProvider: { uid },
+            transportFactory: { relayURL in factory.make(relayURL: relayURL) },
+            now: { now.addingTimeInterval(30) }
+        )
+        transport.installMediaControlStream(
+            into: iOSFileTransferService(service: nil, settingsProvider: { true })
+        )
+        _ = try await transport.openMediaControlStream(
+            uid: uid,
+            connectionID: connectionID,
+            relayPublicKey: macKeypair.publicKeyRaw
+        )
+        try await transport.ensureMediaControlStream(connectionID: connectionID)
+
+        return (
+            transport,
+            try XCTUnwrap(transport.currentMediaControlCoordinator),
+            try XCTUnwrap(factory.transports.first),
+            routeRegistrar
         )
     }
 
@@ -3230,6 +3393,92 @@ final class HermesServiceTests: XCTestCase {
     }
 }
 
+private actor HermesServiceRecordingIrohControllerRouteRegistrar: IrohControllerRouteRegistering {
+    struct Call: Sendable {
+        let uid: String
+        let connectionId: String
+        let transportNodeId: String
+    }
+
+    private var calls: [Call] = []
+    private var lifecycleEvents: [String] = []
+
+    func registerIfNeeded(
+        uid: String,
+        connectionId: String,
+        sourceDeviceId: String,
+        transportIdentity: IrohEndpointIdentity
+    ) async throws -> IrohControllerRouteRegistration {
+        calls.append(Call(
+            uid: uid,
+            connectionId: connectionId,
+            transportNodeId: transportIdentity.nodeId
+        ))
+        return IrohControllerRouteRegistration(
+            connectionId: connectionId,
+            sourceDeviceId: sourceDeviceId,
+            transportNodeId: transportIdentity.nodeId,
+            authorityPeerNodeId: "test-authority",
+            generation: 1,
+            expiresAtMillis: Int64.max
+        )
+    }
+
+    func recordedCalls() -> [Call] {
+        calls
+    }
+
+    func invalidateAndRevoke() async {
+        lifecycleEvents.append("revoke")
+    }
+
+    func invalidateForAccountChange() async {
+        lifecycleEvents.append("invalidate")
+    }
+
+    func recordedLifecycleEvents() -> [String] {
+        lifecycleEvents
+    }
+}
+
+@MainActor
+private final class AuthBoundaryGateway: AuthGateway {
+    var availableProviders: [MobileAuthProviderID] = [.email]
+    var isFirebaseAvailable = true
+    var currentIdentity: MobileAuthIdentity?
+    private(set) var wasTransportStoppedAtSignOut = false
+    private let transportIsStopped: @MainActor () -> Bool
+
+    init(
+        identity: MobileAuthIdentity,
+        transportIsStopped: @escaping @MainActor () -> Bool
+    ) {
+        currentIdentity = identity
+        self.transportIsStopped = transportIsStopped
+    }
+
+    func observe(onChange: @escaping @MainActor (MobileAuthIdentity?) -> Void) {
+        onChange(currentIdentity)
+    }
+
+    func signIn(provider: MobileAuthProviderID) async throws {}
+    func createEmailAccount(email: String, password: String) async throws {}
+    func signInWithEmail(email: String, password: String) async throws {}
+    func deleteAccount() async throws {}
+
+    func signOut() throws {
+        wasTransportStoppedAtSignOut = transportIsStopped()
+        currentIdentity = nil
+    }
+}
+
+@MainActor
+private final class AuthBoundaryDeviceTrustGateway: DeviceTrustGateway {
+    func bootstrapApproveSelf() async throws {}
+    func renameSelf(_ newName: String) async throws {}
+    func revoke(deviceID: String) async throws {}
+}
+
 private final class RequestCapture: @unchecked Sendable {
     nonisolated(unsafe) var authorization: String?
 }
@@ -3273,21 +3522,23 @@ private final class RecordingIrohRelayTransport: IrohRelayTransport, @unchecked 
     }
 
     let relayURL: String?
+    let identity: IrohEndpointIdentity
     private(set) var startCount = 0
     private(set) var shutdownCount = 0
     private(set) var connectAttempts: [ConnectAttempt] = []
 
     init(relayURL: String?) {
         self.relayURL = relayURL
-    }
-
-    func start() async throws -> IrohEndpointIdentity {
-        startCount += 1
-        return IrohEndpointIdentity(
+        self.identity = IrohEndpointIdentity(
             nodeId: "ios-node",
             rawPublicKey: Data(repeating: 0x11, count: 32),
             relayURL: relayURL
         )
+    }
+
+    func start() async throws -> IrohEndpointIdentity {
+        startCount += 1
+        return identity
     }
 
     func connect(to target: IrohDialTarget, timeout: TimeInterval) async throws -> any IrohRelayStream {
