@@ -28,10 +28,7 @@ object ComputerUseSessionGrantChallengeValidator {
         object SessionIntentMismatch : ValidationError("Session intent identifier does not match challenge fields")
     }
 
-    fun validate(
-        challenge: HermesRealtimeRelayComputerUseSessionGrantChallenge,
-        nowMillis: Long = System.currentTimeMillis(),
-    ): String {
+    fun validate(challenge: HermesRealtimeRelayComputerUseSessionGrantChallenge, nowMillis: Long = System.currentTimeMillis()): String {
         if (challenge.version != VERSION) throw ValidationError.UnsupportedVersion(challenge.version)
         if (!isBoundedIdentifier(challenge.challengeId)) throw ValidationError.MalformedIdentifier("challengeId")
         if (challenge.nonce.length !in 16..128 || !challenge.nonce.all { it.code <= 0x7f && !it.isWhitespace() }) {
