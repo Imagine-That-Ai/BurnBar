@@ -16,6 +16,9 @@ import Foundation
 /// the daemon can independently verify local-auth proofs.
 public struct DaemonPhoneControlPinProvisionRequest: Codable, Hashable, Sendable {
     public let deviceId: String
+    /// Stable transport peer identity used by signed action-authority envelopes.
+    /// This can differ from the platform source-device document id.
+    public let peerNodeId: String?
     /// Base64 of the canonical published public-key bytes (32-byte raw for
     /// Ed25519, 65-byte X9.63 for SE-P256).
     public let publicKeyBase64: String
@@ -23,10 +26,12 @@ public struct DaemonPhoneControlPinProvisionRequest: Codable, Hashable, Sendable
 
     public init(
         deviceId: String,
+        peerNodeId: String? = nil,
         publicKeyBase64: String,
         keyKind: PhoneControlSigningKeyKind = .ed25519
     ) {
         self.deviceId = deviceId
+        self.peerNodeId = peerNodeId
         self.publicKeyBase64 = publicKeyBase64
         self.keyKind = keyKind
     }
@@ -102,6 +107,10 @@ public struct ComputerUseSessionStartRequest: Codable, Hashable, Sendable {
     public let sessionTimeoutSeconds: Int
     public let clientID: BurnBarClientID
     public let runID: BurnBarRunID?
+    /// Exact managed-run call selected by the Linux session handshake.
+    public let runCallID: String?
+    /// Exact managed-run generation selected by the Linux session handshake.
+    public let runGeneration: UInt64?
 
     /// T-DMN-04 — the single-use, op-hash-bound Ed25519 local-auth proof that
     /// authorizes starting a high-risk computer-use session. The Mac app already
@@ -134,6 +143,8 @@ public struct ComputerUseSessionStartRequest: Codable, Hashable, Sendable {
         sessionTimeoutSeconds: Int = 1800,
         clientID: BurnBarClientID,
         runID: BurnBarRunID? = nil,
+        runCallID: String? = nil,
+        runGeneration: UInt64? = nil,
         localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof? = nil,
         sourceDeviceId: String? = nil,
         intentHashHex: String? = nil,
@@ -148,6 +159,8 @@ public struct ComputerUseSessionStartRequest: Codable, Hashable, Sendable {
         self.sessionTimeoutSeconds = sessionTimeoutSeconds
         self.clientID = clientID
         self.runID = runID
+        self.runCallID = runCallID
+        self.runGeneration = runGeneration
         self.localAuthProof = localAuthProof
         self.sourceDeviceId = sourceDeviceId
         self.intentHashHex = intentHashHex
@@ -303,11 +316,47 @@ public struct ComputerUseApprovalPendingRequest: Codable, Hashable, Sendable {
     }
 }
 
+public struct ComputerUseRunRequirementSummary: Codable, Equatable, Sendable {
+    public let runID: BurnBarRunID
+    public let callID: String
+    public let clientID: BurnBarClientID
+    public let toolKind: BurnBarToolKind
+    public let generation: UInt64
+    public let requestedAt: Date
+
+    public init(
+        runID: BurnBarRunID,
+        callID: String,
+        clientID: BurnBarClientID,
+        toolKind: BurnBarToolKind,
+        generation: UInt64,
+        requestedAt: Date
+    ) {
+        self.runID = runID
+        self.callID = callID
+        self.clientID = clientID
+        self.toolKind = toolKind
+        self.generation = generation
+        self.requestedAt = requestedAt
+    }
+}
+
 public struct ComputerUseApprovalPendingResponse: Codable, Equatable, Sendable {
     public let requests: [HermesRealtimeRelayApprovalRequest]
+    public let runRequirements: [ComputerUseRunRequirementSummary]?
+    /// Authoritative lifecycle state for an exact filtered session poll.
+    /// `nil` preserves unfiltered polling semantics; filtered polls always
+    /// return a concrete value so clients can retire daemon-ended sessions.
+    public let sessionActive: Bool?
 
-    public init(requests: [HermesRealtimeRelayApprovalRequest]) {
+    public init(
+        requests: [HermesRealtimeRelayApprovalRequest],
+        runRequirements: [ComputerUseRunRequirementSummary]? = nil,
+        sessionActive: Bool? = nil
+    ) {
         self.requests = requests
+        self.runRequirements = runRequirements
+        self.sessionActive = sessionActive
     }
 }
 

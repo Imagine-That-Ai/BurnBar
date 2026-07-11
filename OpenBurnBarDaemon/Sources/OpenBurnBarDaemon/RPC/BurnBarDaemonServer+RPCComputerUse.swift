@@ -25,23 +25,97 @@ extension BurnBarDaemonServer {
                 BurnBarRPCRequestEnvelopeWithParams<ComputerUseSessionStartRequest>.self,
                 from: requestData
             )
-            // T-DMN-04: fail closed unless a fresh, op-hash-bound, pinned-key
-            // local-auth proof authorizes starting this high-risk session.
+            let boundClientID: BurnBarClientID?
+            let runRequirement: BurnBarComputerUseRunRequirement?
+            #if os(Linux)
+            if typedRequest.params.mode == ComputerUseMode.browser.rawValue {
+                guard let runID = typedRequest.params.runID,
+                      let requirement = await runService.computerUseRequirement(for: runID),
+                      requirement.clientID == typedRequest.params.clientID
+                        || requirement.clientID == BurnBarRunService.controllerRuntimeClientID,
+                      typedRequest.params.runCallID == requirement.invocation.callID,
+                      typedRequest.params.runGeneration == requirement.generation else {
+                    return encodeErrorResponse(
+                        id: typedRequest.id,
+                        code: BurnBarRPCErrorCode.invalidParams,
+                        message: "Browser Computer Use requires an owned agent run waiting for a Computer Use session."
+                    )
+                }
+                boundClientID = requirement.clientID
+                runRequirement = requirement
+            } else {
+                boundClientID = nil
+                runRequirement = nil
+            }
+            #else
+            // The macOS gold-standard Agent Tool Broker owns its Browser CU
+            // lifecycle directly; Linux alone uses the managed-run handshake.
+            boundClientID = nil
+            runRequirement = nil
+            #endif
+            // Validate the non-secret run selection first so a stale picker row
+            // cannot consume a single-use phone proof. Proof verification stays
+            // immediately adjacent to session reservation/start.
             if let denial = enforceLocalAuthProof(
                 requestId: typedRequest.id,
                 method: method,
                 proof: typedRequest.params.localAuthProof,
                 sourceDeviceId: typedRequest.params.sourceDeviceId,
                 intentHashHex: typedRequest.params.intentHashHex,
-                grantBinding: typedRequest.params.localAuthGrantBinding
+                grantBinding: typedRequest.params.localAuthGrantBinding,
+                sessionRequest: typedRequest.params
             ) {
                 return denial
             }
-            let result: ComputerUseSessionStartResponse = try await computerUseService.startSession(typedRequest.params)
-            rememberLocalAuthVerifiedSession(
-                sessionId: result.sessionId,
-                requestedTimeoutSeconds: typedRequest.params.sessionTimeoutSeconds
+            let result: ComputerUseSessionStartResponse = try await computerUseService.startSession(
+                typedRequest.params,
+                boundClientID: boundClientID,
+                runGeneration: runRequirement?.generation
             )
+            let authorizationExpiry = [
+                typedRequest.params.localAuthProof?.expiresAt,
+                typedRequest.params.localAuthGrantBinding?.expiresAt,
+                typedRequest.params.localAuthGrantBinding.map {
+                    $0.requestedAt.addingTimeInterval($0.grantDurationSeconds)
+                }
+            ].compactMap { $0 }.min()
+            await rememberLocalAuthVerifiedSession(
+                sessionId: result.sessionId,
+                requestedTimeoutSeconds: typedRequest.params.sessionTimeoutSeconds,
+                absoluteExpiry: authorizationExpiry
+            )
+            if localAuthProofVerifier != nil, let authorizationExpiry {
+                await computerUseService.constrainSessionExpiry(
+                    sessionID: ComputerUseSessionID(result.sessionId),
+                    expiresAt: authorizationExpiry
+                )
+            }
+            if let runRequirement {
+                Task {
+                    do {
+                        let resumed = try await self.runService.resumeComputerUseRun(
+                            runRequirement.runID,
+                            expectedCallID: runRequirement.invocation.callID,
+                            expectedGeneration: runRequirement.generation
+                        )
+                        if resumed == false {
+                            _ = try? await self.computerUseService.panicHalt(
+                                ComputerUsePanicHaltRequest(
+                                    sessionId: result.sessionId,
+                                    source: ComputerUsePanicSource.revoked.rawValue
+                                )
+                            )
+                        }
+                    } catch {
+                        _ = try? await self.computerUseService.panicHalt(
+                            ComputerUsePanicHaltRequest(
+                                sessionId: result.sessionId,
+                                source: ComputerUsePanicSource.revoked.rawValue
+                            )
+                        )
+                    }
+                }
+            }
             let response = BurnBarRPCResponseEnvelope(
                 id: typedRequest.id,
                 protocolVersion: BurnBarProtocolVersion.current,
@@ -57,7 +131,7 @@ extension BurnBarDaemonServer {
             // op-hash-bound, pinned-key local-auth proof. The proof is single-use;
             // per-action replay would correctly fail, so invokes bind to the
             // daemon session established by the verified start request.
-            if let denial = enforceLocalAuthVerifiedSession(
+            if let denial = await enforceLocalAuthVerifiedSession(
                 requestId: typedRequest.id,
                 method: method,
                 sessionId: typedRequest.params.sessionId
@@ -87,7 +161,12 @@ extension BurnBarDaemonServer {
                 requestId = bare.id
                 params = ComputerUseApprovalPendingRequest()
             }
-            let result: ComputerUseApprovalPendingResponse = await computerUseService.pendingApprovals(params)
+            let pending = await computerUseService.pendingApprovals(params)
+            let result = ComputerUseApprovalPendingResponse(
+                requests: pending.requests,
+                runRequirements: await runService.listComputerUseRequirements(),
+                sessionActive: pending.sessionActive
+            )
             let response = BurnBarRPCResponseEnvelope(
                 id: requestId,
                 protocolVersion: BurnBarProtocolVersion.current,
@@ -99,6 +178,33 @@ extension BurnBarDaemonServer {
                 BurnBarRPCRequestEnvelopeWithParams<ComputerUseApprovalRespondRequest>.self,
                 from: requestData
             )
+            if let verifier = computerUseApprovalAuthorityVerifier {
+                let pending = await computerUseService.pendingApprovals(
+                    ComputerUseApprovalPendingRequest(sessionId: typedRequest.params.sessionId)
+                ).requests.first { request in
+                    request.approvalId == typedRequest.params.response.approvalId
+                }
+                guard let pending else {
+                    return encodeErrorResponse(
+                        id: typedRequest.id,
+                        code: BurnBarRPCErrorCode.unauthorized,
+                        message: "Computer Use approval response does not match a pending request in this session."
+                    )
+                }
+                do {
+                    try await verifier.verify(
+                        response: typedRequest.params.response,
+                        pendingRequest: pending,
+                        sessionID: typedRequest.params.sessionId
+                    )
+                } catch {
+                    return encodeErrorResponse(
+                        id: typedRequest.id,
+                        code: BurnBarRPCErrorCode.unauthorized,
+                        message: "Computer Use approval response requires fresh signed authority from the pinned phone."
+                    )
+                }
+            }
             let result: ComputerUseApprovalRespondResponse = await computerUseService.respondToApproval(typedRequest.params)
             let response = BurnBarRPCResponseEnvelope(
                 id: typedRequest.id,
@@ -189,16 +295,38 @@ extension BurnBarDaemonServer {
                 message: "Malformed publicKeyBase64 or keyKind for device \(request.deviceId)."
             )
         }
-        switch pinStore.pin(deviceId: request.deviceId, key: verifyingKey) {
-        case .pinned:
+        let normalizedDeviceId = request.deviceId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedDeviceId.isEmpty == false else {
+            throw PhoneControlPinProvisionFailure(
+                code: BurnBarRPCErrorCode.invalidParams,
+                message: "Phone-control pin provisioning requires a device identity."
+            )
+        }
+        let pinIdentifiers = [normalizedDeviceId, request.peerNodeId]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.isEmpty == false }
+            .reduce(into: [String]()) { identifiers, candidate in
+                if identifiers.contains(candidate) == false { identifiers.append(candidate) }
+            }
+        guard pinIdentifiers.isEmpty == false else {
+            throw PhoneControlPinProvisionFailure(
+                code: BurnBarRPCErrorCode.invalidParams,
+                message: "Phone-control pin provisioning requires a device identity."
+            )
+        }
+        let result = pinStore.pinAliases(deviceIds: pinIdentifiers, key: verifyingKey)
+        if case .pinned = result {
             logger.notice(
                 "phone_control_pin_provisioned",
                 metadata: [
                     "device_id": request.deviceId,
+                    "peer_node_id": request.peerNodeId ?? request.deviceId,
                     "key_kind": request.keyKind.rawValue
                 ]
             )
             return DaemonPhoneControlPinProvisionResponse(pinned: true, deviceId: request.deviceId)
+        }
+        switch result {
         case .malformed:
             throw PhoneControlPinProvisionFailure(
                 code: BurnBarRPCErrorCode.invalidParams,
@@ -233,6 +361,11 @@ extension BurnBarDaemonServer {
                 code: BurnBarRPCErrorCode.internalError,
                 message: "Could not persist phone-control pin for device \(request.deviceId)."
             )
+        case .pinned:
+            throw PhoneControlPinProvisionFailure(
+                code: BurnBarRPCErrorCode.internalError,
+                message: "Could not persist every phone-control identity alias."
+            )
         }
     }
 
@@ -243,15 +376,37 @@ extension BurnBarDaemonServer {
     func rememberLocalAuthVerifiedSession(
         sessionId: String,
         requestedTimeoutSeconds: Int,
+        absoluteExpiry: Date? = nil,
         now: Date = Date()
-    ) {
+    ) async {
         guard localAuthProofVerifier != nil else { return }
+        let typedSessionID = ComputerUseSessionID(sessionId)
+        await computerUseAuthorizationRegistry.authorizeVerifiedSession(
+            sessionID: typedSessionID,
+            requestedTimeoutSeconds: requestedTimeoutSeconds,
+            maximumLifetime: Self.maxLocalAuthVerifiedSessionLifetime,
+            absoluteExpiry: absoluteExpiry,
+            now: now
+        )
+        if let binding = await computerUseAuthorizationRegistry.binding(sessionID: typedSessionID) {
+            await computerUseAuthorizationRegistry.authorize(
+                sessionID: typedSessionID,
+                runID: binding.runID,
+                clientID: binding.clientID,
+                requestedTimeoutSeconds: requestedTimeoutSeconds,
+                maximumLifetime: Self.maxLocalAuthVerifiedSessionLifetime,
+                absoluteExpiry: absoluteExpiry,
+                now: now
+            )
+        }
         let requestedLifetime = requestedTimeoutSeconds > 0
             ? TimeInterval(requestedTimeoutSeconds)
             : Self.maxLocalAuthVerifiedSessionLifetime
-        let lifetime = min(requestedLifetime, Self.maxLocalAuthVerifiedSessionLifetime)
-        localAuthVerifiedComputerUseSessions = localAuthVerifiedComputerUseSessions.filter { $0.value > now }
-        localAuthVerifiedComputerUseSessions[sessionId] = now.addingTimeInterval(lifetime)
+        let sessionExpiry = now.addingTimeInterval(
+            min(requestedLifetime, Self.maxLocalAuthVerifiedSessionLifetime)
+        )
+        let expiry = absoluteExpiry.map { min($0, sessionExpiry) } ?? sessionExpiry
+        let lifetime = max(0, expiry.timeIntervalSince(now))
         logger.notice(
             "computer_use_local_auth_session_authorized",
             metadata: [
@@ -266,14 +421,16 @@ extension BurnBarDaemonServer {
         method: BurnBarRPCMethod,
         sessionId: String,
         now: Date = Date()
-    ) -> Data? {
+    ) async -> Data? {
         guard localAuthProofVerifier != nil else {
             // Proof enforcement is not wired for this daemon instance (dev/test).
             return nil
         }
 
-        localAuthVerifiedComputerUseSessions = localAuthVerifiedComputerUseSessions.filter { $0.value > now }
-        if let expiresAt = localAuthVerifiedComputerUseSessions[sessionId], expiresAt > now {
+        if await computerUseAuthorizationRegistry.contains(
+            sessionID: ComputerUseSessionID(sessionId),
+            now: now
+        ) {
             return nil
         }
 
@@ -310,7 +467,9 @@ extension BurnBarDaemonServer {
         proof: HermesRealtimeRelayAgentGrantLocalAuthProof?,
         sourceDeviceId: String?,
         intentHashHex: String?,
-        grantBinding: ComputerUseLocalAuthGrantBinding?
+        grantBinding: ComputerUseLocalAuthGrantBinding?,
+        sessionRequest: ComputerUseSessionStartRequest,
+        now: Date = Date()
     ) -> Data? {
         guard let verifier = localAuthProofVerifier else {
             // Proof enforcement is not wired for this daemon instance (dev/test).
@@ -357,10 +516,53 @@ extension BurnBarDaemonServer {
             )
         }
 
+        let requiredCapability: AgentDesktopCapability?
+        switch ComputerUseMode(rawValue: sessionRequest.mode) {
+        case .browser:
+            requiredCapability = .desktopBrowser
+        case .system:
+            requiredCapability = .desktopSystemInput
+        case .agentWatch:
+            requiredCapability = .accessibilityInspect
+        case nil:
+              requiredCapability = nil
+        }
+        let grantedCapabilities = Set(grantBinding.capabilities)
+        guard let requiredCapability,
+              grantedCapabilities.contains(requiredCapability.rawValue),
+              grantBinding.trustMode == sessionRequest.trustMode,
+              grantBinding.grantDurationSeconds.isFinite,
+              grantBinding.grantDurationSeconds > 0,
+              grantBinding.grantDurationSeconds <= AgentCapabilityGrantRequest.defaultGrantDuration,
+              grantBinding.requestedAt <= now.addingTimeInterval(DaemonLocalAuthProofVerifier.maxClockSkew),
+              grantBinding.expiresAt > now,
+              grantBinding.expiresAt > grantBinding.requestedAt,
+              grantBinding.expiresAt <= grantBinding.requestedAt.addingTimeInterval(
+                grantBinding.grantDurationSeconds
+              ) else {
+            BurnBarDaemonMetricsCounters.recordRPCError()
+            logger.warning(
+                "computer_use_local_auth_scope_rejected",
+                metadata: [
+                    "request_id": requestId,
+                    "method": method.rawValue,
+                    "mode": sessionRequest.mode,
+                    "trust_mode": sessionRequest.trustMode
+                ]
+            )
+            return encodeErrorResponse(
+                id: requestId,
+                code: BurnBarRPCErrorCode.unauthorized,
+                message: "OpenBurnBar RPC method '\(method.rawValue)' local-authentication grant scope was rejected."
+            )
+        }
+
         let expectedIntentHashHex: String
+        let expectedSessionIntentID: String
         do {
-            expectedIntentHashHex = try ComputerUsePhoneControlSigner()
-                .canonicalAgentGrantRequestHashHex(binding: grantBinding)
+            let signer = ComputerUsePhoneControlSigner()
+            expectedIntentHashHex = try signer.canonicalAgentGrantRequestHashHex(binding: grantBinding)
+            expectedSessionIntentID = try signer.canonicalComputerUseSessionIntentID(request: sessionRequest)
         } catch {
             BurnBarDaemonMetricsCounters.recordRPCError()
             logger.error(
@@ -377,6 +579,24 @@ extension BurnBarDaemonServer {
                 message: "OpenBurnBar RPC method '\(method.rawValue)' local-authentication proof could not be verified."
             )
         }
+
+        #if os(Linux)
+        guard grantBinding.clientIntentId == expectedSessionIntentID else {
+            BurnBarDaemonMetricsCounters.recordRPCError()
+            logger.warning(
+                "computer_use_local_auth_session_intent_rejected",
+                metadata: [
+                    "request_id": requestId,
+                    "method": method.rawValue
+                ]
+            )
+            return encodeErrorResponse(
+                id: requestId,
+                code: BurnBarRPCErrorCode.unauthorized,
+                message: "OpenBurnBar RPC method '\(method.rawValue)' local-authentication proof is not bound to the requested session."
+            )
+        }
+        #endif
 
         if let intentHashHex, intentHashHex.isEmpty == false,
            intentHashHex.lowercased() != expectedIntentHashHex.lowercased() {
@@ -399,7 +619,8 @@ extension BurnBarDaemonServer {
             _ = try verifier.verify(
                 proof: proof,
                 expectedDeviceId: sourceDeviceId,
-                expectedIntentHashHex: expectedIntentHashHex
+                expectedIntentHashHex: expectedIntentHashHex,
+                now: now
             )
             logger.notice(
                 "computer_use_local_auth_proof_verified",

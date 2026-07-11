@@ -90,16 +90,26 @@ describe('VAL-RPC-002 bridge behavior', () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
-  it('computerUseSessionStart maps contract fields (mode/trustMode/clientID)', async () => {
+  it('computerUseSessionStart maps contract fields including the bound agent run', async () => {
     invoke.mockResolvedValueOnce({ sessionId: 's1' });
     const b = await bridge();
     await b.computerUseSessionStart?.({
       mode: 'browser',
       trustMode: 'step',
-      clientId: 'linux-shell'
+      clientId: 'linux-shell',
+      runId: 'run-1',
+      runCallId: 'call-1',
+      runGeneration: 7
     });
     expect(invoke).toHaveBeenCalledWith('computer_use_session_start', {
-      params: { mode: 'browser', trustMode: 'step', clientId: 'linux-shell' }
+      params: {
+        mode: 'browser',
+        trustMode: 'step',
+        clientId: 'linux-shell',
+        runId: 'run-1',
+        runCallId: 'call-1',
+        runGeneration: 7
+      }
     });
   });
 

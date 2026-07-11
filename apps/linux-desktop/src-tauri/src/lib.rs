@@ -1,6 +1,7 @@
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use sha2::{Digest, Sha256};
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::UnixStream;
@@ -2113,6 +2114,9 @@ fn memory_set_status(
 
 const CU_MAX_ARGS_BYTES: usize = 64 * 1024;
 const CU_CLIENT_ID: &str = "linux-shell";
+const CU_LOCAL_AUTH_MAX_PROOF_LIFETIME_SECONDS: f64 = 5.0 * 60.0;
+const CU_LOCAL_AUTH_MAX_CLOCK_SKEW_SECONDS: f64 = 30.0;
+const CU_LOCAL_AUTH_MAX_GRANT_DURATION_SECONDS: f64 = 30.0 * 60.0;
 
 fn detect_linux_package_channel() -> String {
     if let Ok(channel) = std::env::var("OPENBURNBAR_PACKAGE_CHANNEL") {
@@ -2143,7 +2147,44 @@ fn detect_linux_package_channel() -> String {
     "appimage".to_string()
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ComputerUseLocalAuthProof {
+    proof_id: String,
+    device_id: String,
+    signed_intent_hash: String,
+    authenticated_at: f64,
+    expires_at: f64,
+    signature_ed25519: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ComputerUseLocalAuthGrantBinding {
+    request_id: String,
+    runtime: String,
+    thread_id: String,
+    preset: String,
+    capabilities: Vec<String>,
+    trust_mode: String,
+    delivery_mode: String,
+    requested_at: f64,
+    expires_at: f64,
+    grant_duration_seconds: f64,
+    source_device_id: String,
+    client_intent_id: String,
+    local_authentication_satisfied: bool,
+}
+
+#[derive(Clone, Debug)]
+struct ValidatedComputerUseLocalAuthTransport {
+    proof: ComputerUseLocalAuthProof,
+    source_device_id: String,
+    intent_hash_hex: String,
+    binding: ComputerUseLocalAuthGrantBinding,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ComputerUseSessionStartParams {
     /// ComputerUseMode raw: agent_watch | browser | system
@@ -2159,21 +2200,27 @@ struct ComputerUseSessionStartParams {
     /// BurnBarClientID; defaults to linux-shell
     client_id: Option<String>,
     run_id: Option<String>,
-    local_auth_proof: Option<serde_json::Value>,
+    run_call_id: Option<String>,
+    run_generation: Option<u64>,
+    local_auth_proof: Option<ComputerUseLocalAuthProof>,
     source_device_id: Option<String>,
     intent_hash_hex: Option<String>,
-    local_auth_grant_binding: Option<serde_json::Value>,
+    local_auth_grant_binding: Option<ComputerUseLocalAuthGrantBinding>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ComputerUseInvokeParams {
     session_id: String,
     /// BurnBarToolInvocation — required nested object (not flat tool/args).
     invocation: ComputerUseInvocationParams,
+    local_auth_proof: Option<ComputerUseLocalAuthProof>,
+    source_device_id: Option<String>,
+    intent_hash_hex: Option<String>,
+    local_auth_grant_binding: Option<ComputerUseLocalAuthGrantBinding>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ComputerUseInvocationParams {
     call_id: String,
@@ -2200,7 +2247,22 @@ struct ComputerUseApprovalRespondParams {
     approval_id: String,
     decision: String,
     responded_by: Option<String>,
+    responded_at: Option<f64>,
     note: Option<String>,
+    request_hash_blake3: Option<String>,
+    authority: Option<ComputerUseApprovalAuthority>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ComputerUseApprovalAuthority {
+    peer_node_id: String,
+    counter: u64,
+    timestamp: f64,
+    intent_hash_blake3: String,
+    signature_ed25519: String,
+    attestation_hash_blake3: Option<String>,
+    key_kind: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2264,70 +2326,441 @@ fn cap_json_value_size(value: &serde_json::Value, label: &str) -> Result<(), Str
     Ok(())
 }
 
+fn release_computer_use_local_auth_required() -> bool {
+    !cfg!(debug_assertions)
+}
+
+fn is_sha256_hex(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn canonical_local_auth_json_number(value: f64) -> Result<serde_json::Value, String> {
+    if !value.is_finite() {
+        return Err("computer use local-auth canonical number is not finite".into());
+    }
+    if value.fract() == 0.0 && value >= i64::MIN as f64 && value <= i64::MAX as f64 {
+        return Ok(serde_json::json!(value as i64));
+    }
+    serde_json::Number::from_f64(value)
+        .map(serde_json::Value::Number)
+        .ok_or_else(|| "computer use local-auth canonical number is invalid".to_string())
+}
+
+fn canonical_local_auth_binding_hash_hex(
+    binding: &ComputerUseLocalAuthGrantBinding,
+) -> Result<String, String> {
+    if !binding.requested_at.is_finite()
+        || !binding.expires_at.is_finite()
+        || !binding.grant_duration_seconds.is_finite()
+    {
+        return Err("computer use local-auth grant binding contains a non-finite number".into());
+    }
+
+    let mut capabilities = binding.capabilities.clone();
+    capabilities.sort();
+    let mut canonical = BTreeMap::<String, serde_json::Value>::new();
+    canonical.insert("capabilities".into(), serde_json::json!(capabilities));
+    canonical.insert(
+        "clientIntentId".into(),
+        serde_json::json!(binding.client_intent_id),
+    );
+    canonical.insert(
+        "deliveryMode".into(),
+        serde_json::json!(binding.delivery_mode),
+    );
+    canonical.insert(
+        "expiresAt".into(),
+        canonical_local_auth_json_number(binding.expires_at)?,
+    );
+    canonical.insert(
+        "grantDurationSeconds".into(),
+        canonical_local_auth_json_number(binding.grant_duration_seconds)?,
+    );
+    canonical.insert(
+        "localAuthenticationSatisfied".into(),
+        serde_json::json!(binding.local_authentication_satisfied),
+    );
+    canonical.insert("preset".into(), serde_json::json!(binding.preset));
+    canonical.insert("requestId".into(), serde_json::json!(binding.request_id));
+    canonical.insert(
+        "requestedAt".into(),
+        canonical_local_auth_json_number(binding.requested_at)?,
+    );
+    canonical.insert("runtime".into(), serde_json::json!(binding.runtime));
+    canonical.insert(
+        "sourceDeviceId".into(),
+        serde_json::json!(binding.source_device_id),
+    );
+    canonical.insert("threadId".into(), serde_json::json!(binding.thread_id));
+    canonical.insert("trustMode".into(), serde_json::json!(binding.trust_mode));
+
+    let bytes = serde_json::to_vec(&canonical)
+        .map_err(|error| format!("computer use local-auth canonicalization failed: {error}"))?;
+    let digest = Sha256::digest(bytes);
+    Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
+fn canonical_computer_use_session_intent_id(
+    params: &ComputerUseSessionStartParams,
+) -> Result<String, String> {
+    let mut scope_rule_ids = params.scope_rule_ids.clone();
+    scope_rule_ids.sort();
+    let mut canonical = BTreeMap::<String, serde_json::Value>::new();
+    canonical.insert(
+        "actionCap".into(),
+        serde_json::json!(params.action_cap.unwrap_or(50)),
+    );
+    canonical.insert(
+        "clientId".into(),
+        serde_json::json!(params.client_id.as_deref().unwrap_or(CU_CLIENT_ID)),
+    );
+    if let Some(value) = params.mac_host_node_id.as_ref() {
+        canonical.insert("macHostNodeId".into(), serde_json::json!(value));
+    }
+    canonical.insert("mode".into(), serde_json::json!(params.mode));
+    if let Some(value) = params.phone_viewer_node_id.as_ref() {
+        canonical.insert("phoneViewerNodeId".into(), serde_json::json!(value));
+    }
+    if let Some(value) = params.run_id.as_ref() {
+        canonical.insert("runId".into(), serde_json::json!(value));
+    }
+    if let Some(value) = params.run_call_id.as_ref() {
+        canonical.insert("runCallId".into(), serde_json::json!(value));
+    }
+    if let Some(value) = params.run_generation {
+        canonical.insert("runGeneration".into(), serde_json::json!(value));
+    }
+    canonical.insert("scopeRuleIds".into(), serde_json::json!(scope_rule_ids));
+    canonical.insert(
+        "sessionTimeoutSeconds".into(),
+        serde_json::json!(params.session_timeout_seconds.unwrap_or(1800)),
+    );
+    canonical.insert("trustMode".into(), serde_json::json!(params.trust_mode));
+    canonical.insert("version".into(), serde_json::json!(2));
+    let bytes = serde_json::to_vec(&canonical)
+        .map_err(|error| format!("computer use session intent canonicalization failed: {error}"))?;
+    let digest = Sha256::digest(bytes);
+    Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
+fn acquire_computer_use_local_auth_transport(
+    proof: Option<ComputerUseLocalAuthProof>,
+    source_device_id: Option<String>,
+    intent_hash_hex: Option<String>,
+    binding: Option<ComputerUseLocalAuthGrantBinding>,
+    required: bool,
+    now: f64,
+) -> Result<Option<ValidatedComputerUseLocalAuthTransport>, String> {
+    let has_any_field = proof.is_some()
+        || source_device_id.is_some()
+        || intent_hash_hex.is_some()
+        || binding.is_some();
+    if !has_any_field {
+        return if required {
+            Err(
+                "computer use requires a fresh phone-signed local-auth proof in release builds"
+                    .into(),
+            )
+        } else {
+            Ok(None)
+        };
+    }
+
+    let proof = proof.ok_or_else(|| {
+        "computer use local-auth transport is incomplete: localAuthProof is missing".to_string()
+    })?;
+    let source_device_id = source_device_id
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| {
+            "computer use local-auth transport is incomplete: sourceDeviceId is missing".to_string()
+        })?;
+    let binding = binding.ok_or_else(|| {
+        "computer use local-auth transport is incomplete: localAuthGrantBinding is missing"
+            .to_string()
+    })?;
+    cap_json_value_size(
+        &serde_json::to_value(&proof).map_err(|error| error.to_string())?,
+        "localAuthProof",
+    )?;
+    cap_json_value_size(
+        &serde_json::to_value(&binding).map_err(|error| error.to_string())?,
+        "localAuthGrantBinding",
+    )?;
+
+    if !now.is_finite()
+        || !proof.authenticated_at.is_finite()
+        || !proof.expires_at.is_finite()
+        || !binding.requested_at.is_finite()
+        || !binding.expires_at.is_finite()
+        || !binding.grant_duration_seconds.is_finite()
+    {
+        return Err("computer use local-auth proof contains a non-finite timestamp".into());
+    }
+    if proof.proof_id.trim().is_empty()
+        || proof.device_id.trim().is_empty()
+        || proof.signature_ed25519.trim().is_empty()
+    {
+        return Err("computer use local-auth proof contains an empty required field".into());
+    }
+    if !is_sha256_hex(&proof.signed_intent_hash) {
+        return Err(
+            "computer use local-auth proof signedIntentHash must be 64 hex characters".into(),
+        );
+    }
+    if proof.device_id != source_device_id || binding.source_device_id != source_device_id {
+        return Err("computer use local-auth source device binding does not match".into());
+    }
+    if !binding.local_authentication_satisfied {
+        return Err("computer use local-auth grant does not record user authentication".into());
+    }
+    if proof.authenticated_at > now + CU_LOCAL_AUTH_MAX_CLOCK_SKEW_SECONDS {
+        return Err("computer use local-auth proof is dated in the future".into());
+    }
+    if proof.expires_at <= now {
+        return Err("computer use local-auth proof has expired".into());
+    }
+    if proof.expires_at <= proof.authenticated_at
+        || proof.expires_at - proof.authenticated_at > CU_LOCAL_AUTH_MAX_PROOF_LIFETIME_SECONDS
+        || now - proof.authenticated_at > CU_LOCAL_AUTH_MAX_PROOF_LIFETIME_SECONDS
+    {
+        return Err("computer use local-auth proof lifetime is invalid".into());
+    }
+    if binding.requested_at > now + CU_LOCAL_AUTH_MAX_CLOCK_SKEW_SECONDS
+        || binding.expires_at <= now
+        || binding.expires_at <= binding.requested_at
+        || binding.grant_duration_seconds <= 0.0
+        || binding.grant_duration_seconds > CU_LOCAL_AUTH_MAX_GRANT_DURATION_SECONDS
+        || binding.expires_at > binding.requested_at + binding.grant_duration_seconds
+    {
+        return Err("computer use local-auth grant lifetime is invalid".into());
+    }
+
+    let expected_hash = canonical_local_auth_binding_hash_hex(&binding)?;
+    if !proof
+        .signed_intent_hash
+        .eq_ignore_ascii_case(&expected_hash)
+    {
+        return Err("computer use local-auth proof is bound to a different grant".into());
+    }
+    if let Some(intent_hash_hex) = intent_hash_hex {
+        if !is_sha256_hex(&intent_hash_hex) || !intent_hash_hex.eq_ignore_ascii_case(&expected_hash)
+        {
+            return Err("computer use local-auth intent hash hint does not match the grant".into());
+        }
+    }
+
+    Ok(Some(ValidatedComputerUseLocalAuthTransport {
+        proof,
+        source_device_id,
+        intent_hash_hex: expected_hash,
+        binding,
+    }))
+}
+
+fn append_computer_use_local_auth_fields(
+    object: &mut serde_json::Map<String, serde_json::Value>,
+    transport: Option<ValidatedComputerUseLocalAuthTransport>,
+) -> Result<(), String> {
+    let Some(transport) = transport else {
+        return Ok(());
+    };
+    object.insert(
+        "localAuthProof".into(),
+        serde_json::to_value(transport.proof).map_err(|error| error.to_string())?,
+    );
+    object.insert(
+        "sourceDeviceId".into(),
+        serde_json::json!(transport.source_device_id),
+    );
+    object.insert(
+        "intentHashHex".into(),
+        serde_json::json!(transport.intent_hash_hex),
+    );
+    object.insert(
+        "localAuthGrantBinding".into(),
+        serde_json::to_value(transport.binding).map_err(|error| error.to_string())?,
+    );
+    Ok(())
+}
+
+fn require_computer_use_grant_capability(
+    transport: &ValidatedComputerUseLocalAuthTransport,
+    capability: &str,
+) -> Result<(), String> {
+    if transport
+        .binding
+        .capabilities
+        .iter()
+        .any(|candidate| candidate == capability)
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            "computer use local-auth grant does not authorize {capability}"
+        ))
+    }
+}
+
+fn validate_computer_use_start_grant(
+    transport: &ValidatedComputerUseLocalAuthTransport,
+    mode: &str,
+    trust_mode: &str,
+    expected_session_intent_id: &str,
+) -> Result<(), String> {
+    if transport.binding.trust_mode != trust_mode {
+        return Err("computer use local-auth grant trust mode does not match the session".into());
+    }
+    match mode {
+        "browser" => require_computer_use_grant_capability(transport, "desktop_browser"),
+        "system" => require_computer_use_grant_capability(transport, "desktop_system_input"),
+        "agent_watch" => require_computer_use_grant_capability(transport, "accessibility_inspect"),
+        _ => Err("computer use local-auth grant received an unsupported mode".into()),
+    }?;
+    if transport.binding.client_intent_id != expected_session_intent_id {
+        return Err("computer use local-auth grant is bound to a different session intent".into());
+    }
+    Ok(())
+}
+
+fn validate_computer_use_invoke_grant(
+    transport: &ValidatedComputerUseLocalAuthTransport,
+    tool: &str,
+) -> Result<(), String> {
+    if tool.starts_with("browser_") {
+        require_computer_use_grant_capability(transport, "desktop_browser")
+    } else if tool.starts_with("mac_input_") {
+        require_computer_use_grant_capability(transport, "desktop_system_input")
+    } else if tool == "mac_inspect_accessibility" {
+        require_computer_use_grant_capability(transport, "accessibility_inspect")
+    } else {
+        Err("computer use invoke received a non-Computer-Use tool".into())
+    }
+}
+
+fn computer_use_session_start_wire(
+    params: ComputerUseSessionStartParams,
+    require_local_auth: bool,
+    now: f64,
+) -> Result<serde_json::Value, String> {
+    validate_cu_mode(&params.mode)?;
+    validate_cu_trust_mode(&params.trust_mode)?;
+    let expected_session_intent_id = canonical_computer_use_session_intent_id(&params)?;
+    let local_auth = acquire_computer_use_local_auth_transport(
+        params.local_auth_proof,
+        params.source_device_id,
+        params.intent_hash_hex,
+        params.local_auth_grant_binding,
+        require_local_auth,
+        now,
+    )?;
+    if let Some(local_auth) = local_auth.as_ref() {
+        validate_computer_use_start_grant(
+            local_auth,
+            &params.mode,
+            &params.trust_mode,
+            &expected_session_intent_id,
+        )?;
+    }
+    let client_id = params
+        .client_id
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| CU_CLIENT_ID.to_string());
+    let mut payload = serde_json::json!({
+        "mode": params.mode,
+        "trustMode": params.trust_mode,
+        "scopeRuleIds": params.scope_rule_ids,
+        "phoneViewerNodeId": params.phone_viewer_node_id,
+        "macHostNodeId": params.mac_host_node_id,
+        "actionCap": params.action_cap.unwrap_or(50),
+        "sessionTimeoutSeconds": params.session_timeout_seconds.unwrap_or(1800),
+        "clientID": client_id,
+        "runID": params.run_id,
+        "runCallID": params.run_call_id,
+        "runGeneration": params.run_generation
+    });
+    append_computer_use_local_auth_fields(
+        payload
+            .as_object_mut()
+            .ok_or_else(|| "computer use session payload must be an object".to_string())?,
+        local_auth,
+    )?;
+    Ok(payload)
+}
+
+fn computer_use_invoke_wire(
+    params: ComputerUseInvokeParams,
+    require_local_auth: bool,
+    now: f64,
+) -> Result<serde_json::Value, String> {
+    if params.session_id.trim().is_empty() {
+        return Err("computer_use_invoke requires sessionId".into());
+    }
+    let invocation = params.invocation;
+    if invocation.call_id.trim().is_empty()
+        || invocation.run_id.trim().is_empty()
+        || invocation.tool.trim().is_empty()
+    {
+        return Err("computer_use_invoke.invocation requires callID, runID, and tool".into());
+    }
+    cap_json_value_size(&invocation.arguments, "invocation.arguments")?;
+    let local_auth = acquire_computer_use_local_auth_transport(
+        params.local_auth_proof,
+        params.source_device_id,
+        params.intent_hash_hex,
+        params.local_auth_grant_binding,
+        require_local_auth,
+        now,
+    )?;
+    if let Some(local_auth) = local_auth.as_ref() {
+        validate_computer_use_invoke_grant(local_auth, &invocation.tool)?;
+    }
+    let requested_by = invocation
+        .requested_by
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| CU_CLIENT_ID.to_string());
+    let requested_at = invocation
+        .requested_at
+        .unwrap_or_else(foundation_reference_date_seconds);
+    let mut payload = serde_json::json!({
+        "sessionId": params.session_id,
+        "invocation": {
+            "callID": invocation.call_id,
+            "runID": invocation.run_id,
+            "tool": invocation.tool,
+            "arguments": invocation.arguments,
+            "requestedBy": requested_by,
+            "requestedAt": requested_at
+        }
+    });
+    append_computer_use_local_auth_fields(
+        payload
+            .as_object_mut()
+            .ok_or_else(|| "computer use invoke payload must be an object".to_string())?,
+        local_auth,
+    )?;
+    Ok(payload)
+}
+
 #[tauri::command]
 fn computer_use_session_start(
     params: ComputerUseSessionStartParams,
 ) -> Result<serde_json::Value, String> {
-    validate_cu_mode(&params.mode)?;
-    validate_cu_trust_mode(&params.trust_mode)?;
-    let client_id = params
-        .client_id
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| CU_CLIENT_ID.to_string());
-    // ComputerUseSessionStartRequest — required: mode, trustMode, clientID (+ defaults).
-    call_daemon_method(
-        "daemon.computer_use.session.start",
-        Some(serde_json::json!({
-            "mode": params.mode,
-            "trustMode": params.trust_mode,
-            "scopeRuleIds": params.scope_rule_ids,
-            "phoneViewerNodeId": params.phone_viewer_node_id,
-            "macHostNodeId": params.mac_host_node_id,
-            "actionCap": params.action_cap.unwrap_or(50),
-            "sessionTimeoutSeconds": params.session_timeout_seconds.unwrap_or(1800),
-            "clientID": client_id,
-            "runID": params.run_id,
-            "localAuthProof": params.local_auth_proof,
-            "sourceDeviceId": params.source_device_id,
-            "intentHashHex": params.intent_hash_hex,
-            "localAuthGrantBinding": params.local_auth_grant_binding
-        })),
-    )
+    let payload = computer_use_session_start_wire(
+        params,
+        release_computer_use_local_auth_required(),
+        foundation_reference_date_seconds(),
+    )?;
+    call_daemon_method("daemon.computer_use.session.start", Some(payload))
 }
 
 #[tauri::command]
 fn computer_use_invoke(params: ComputerUseInvokeParams) -> Result<serde_json::Value, String> {
-    if params.session_id.trim().is_empty() {
-        return Err("computer_use_invoke requires sessionId".into());
-    }
-    let inv = &params.invocation;
-    if inv.call_id.trim().is_empty() || inv.run_id.trim().is_empty() || inv.tool.trim().is_empty() {
-        return Err("computer_use_invoke.invocation requires callID, runID, and tool".into());
-    }
-    cap_json_value_size(&inv.arguments, "invocation.arguments")?;
-    let requested_by = inv
-        .requested_by
-        .clone()
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| CU_CLIENT_ID.to_string());
-    let requested_at = inv
-        .requested_at
-        .unwrap_or_else(foundation_reference_date_seconds);
-    // ComputerUseInvokeRequest { sessionId, invocation: BurnBarToolInvocation }
-    call_daemon_method(
-        "daemon.computer_use.invoke",
-        Some(serde_json::json!({
-            "sessionId": params.session_id,
-            "invocation": {
-                "callID": inv.call_id,
-                "runID": inv.run_id,
-                "tool": inv.tool,
-                "arguments": inv.arguments,
-                "requestedBy": requested_by,
-                "requestedAt": requested_at
-            }
-        })),
-    )
+    let payload = computer_use_invoke_wire(
+        params,
+        release_computer_use_local_auth_required(),
+        foundation_reference_date_seconds(),
+    )?;
+    call_daemon_method("daemon.computer_use.invoke", Some(payload))
 }
 
 #[tauri::command]
@@ -2335,39 +2768,126 @@ fn computer_use_approval_pending(
     params: Option<ComputerUseApprovalPendingParams>,
 ) -> Result<serde_json::Value, String> {
     // ComputerUseApprovalPendingRequest { sessionId? } — no limit field.
-    let session_id = params.and_then(|p| p.session_id);
-    call_daemon_method(
+    let session_id = params
+        .and_then(|params| params.session_id)
+        .filter(|value| !value.trim().is_empty());
+    let filtered = session_id.is_some();
+    let response = call_daemon_method(
         "daemon.computer_use.approval.pending",
         Some(serde_json::json!({ "sessionId": session_id })),
-    )
+    )?;
+    validate_computer_use_approval_pending_response(response, filtered)
+}
+
+fn validate_computer_use_approval_pending_response(
+    response: serde_json::Value,
+    filtered: bool,
+) -> Result<serde_json::Value, String> {
+    if filtered
+        && response
+            .get("sessionActive")
+            .and_then(serde_json::Value::as_bool)
+            .is_none()
+    {
+        return Err(
+            "filtered Computer Use approval poll is missing authoritative sessionActive"
+                .to_string(),
+        );
+    }
+    Ok(response)
 }
 
 #[tauri::command]
 fn computer_use_approval_respond(
     params: ComputerUseApprovalRespondParams,
 ) -> Result<serde_json::Value, String> {
+    let payload = computer_use_approval_respond_wire(
+        params,
+        release_computer_use_local_auth_required(),
+        foundation_reference_date_seconds(),
+    )?;
+    call_daemon_method("daemon.computer_use.approval.respond", Some(payload))
+}
+
+fn computer_use_approval_respond_wire(
+    params: ComputerUseApprovalRespondParams,
+    signed_authority_required: bool,
+    now: f64,
+) -> Result<serde_json::Value, String> {
     validate_cu_approval_decision(&params.decision)?;
     if params.approval_id.trim().is_empty() {
         return Err("computer_use_approval_respond requires approvalId".into());
     }
+    let session_id = params.session_id.filter(|value| !value.trim().is_empty());
     let responded_by = params
         .responded_by
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| CU_CLIENT_ID.to_string());
-    // ComputerUseApprovalRespondRequest { sessionId?, response: HermesRealtimeRelayApprovalResponse }
-    call_daemon_method(
-        "daemon.computer_use.approval.respond",
-        Some(serde_json::json!({
-            "sessionId": params.session_id,
-            "response": {
-                "approvalId": params.approval_id,
-                "decision": params.decision,
-                "respondedBy": responded_by,
-                "respondedAt": foundation_reference_date_seconds(),
-                "note": params.note
+    let responded_at = params.responded_at.unwrap_or(now);
+    if !responded_at.is_finite() {
+        return Err("computer use approval respondedAt must be finite".into());
+    }
+
+    let has_signed_field = params.request_hash_blake3.is_some() || params.authority.is_some();
+    if signed_authority_required || has_signed_field {
+        if session_id.is_none() {
+            return Err("computer use approval requires an exact sessionId".into());
+        }
+        let request_hash = params.request_hash_blake3.as_deref().ok_or_else(|| {
+            "computer use approval requires requestHashBlake3 from the pending request".to_string()
+        })?;
+        if !is_sha256_hex(request_hash) {
+            return Err("computer use approval requestHashBlake3 must be 64 hex characters".into());
+        }
+        let authority = params.authority.as_ref().ok_or_else(|| {
+            "computer use approval requires fresh signed phone authority".to_string()
+        })?;
+        if authority.peer_node_id.trim().is_empty()
+            || authority.signature_ed25519.trim().is_empty()
+            || authority.peer_node_id != responded_by
+        {
+            return Err("computer use approval authority identity is invalid".into());
+        }
+        if authority.counter == 0 {
+            return Err("computer use approval authority counter must be positive".into());
+        }
+        if authority.counter > 9_007_199_254_740_991 {
+            return Err(
+                "computer use approval authority counter exceeds the JavaScript safe integer range"
+                    .into(),
+            );
+        }
+        if !authority.timestamp.is_finite()
+            || (now - authority.timestamp).abs() > CU_LOCAL_AUTH_MAX_CLOCK_SKEW_SECONDS
+            || (responded_at - authority.timestamp).abs() > CU_LOCAL_AUTH_MAX_CLOCK_SKEW_SECONDS
+        {
+            return Err("computer use approval authority timestamp is stale".into());
+        }
+        if !is_sha256_hex(&authority.intent_hash_blake3) {
+            return Err(
+                "computer use approval authority intentHashBlake3 must be 64 hex characters".into(),
+            );
+        }
+        if let Some(key_kind) = authority.key_kind.as_deref() {
+            if key_kind != "ed25519" && key_kind != "se-p256" {
+                return Err("computer use approval authority keyKind is invalid".into());
             }
-        })),
-    )
+        }
+    }
+
+    // ComputerUseApprovalRespondRequest { sessionId?, response: HermesRealtimeRelayApprovalResponse }
+    Ok(serde_json::json!({
+        "sessionId": session_id,
+        "response": {
+            "approvalId": params.approval_id,
+            "decision": params.decision,
+            "respondedBy": responded_by,
+            "respondedAt": responded_at,
+            "note": params.note,
+            "requestHashBlake3": params.request_hash_blake3,
+            "authority": params.authority
+        }
+    }))
 }
 
 #[tauri::command]
@@ -2735,6 +3255,253 @@ mod tests {
             .is_ok());
     }
 
+    fn computer_use_local_auth_fixture() -> (
+        ComputerUseLocalAuthProof,
+        ComputerUseLocalAuthGrantBinding,
+        f64,
+    ) {
+        let binding = ComputerUseLocalAuthGrantBinding {
+            request_id: "request-1".into(),
+            runtime: "hermes".into(),
+            thread_id: "thread-1".into(),
+            preset: "desktop".into(),
+            capabilities: vec![
+                "workspace_read".into(),
+                "desktop_file_export".into(),
+                "desktop_browser".into(),
+            ],
+            trust_mode: "manual".into(),
+            delivery_mode: "live_then_queued".into(),
+            requested_at: 800_000_000.123,
+            expires_at: 800_000_300.123,
+            grant_duration_seconds: 1800.0,
+            source_device_id: "android-device-1".into(),
+            client_intent_id: "intent-1".into(),
+            local_authentication_satisfied: true,
+        };
+        let intent_hash = canonical_local_auth_binding_hash_hex(&binding).unwrap();
+        let proof = ComputerUseLocalAuthProof {
+            proof_id: "proof-1".into(),
+            device_id: "android-device-1".into(),
+            signed_intent_hash: intent_hash,
+            authenticated_at: 800_000_000.123,
+            expires_at: 800_000_300.123,
+            signature_ed25519: "AA==".into(),
+        };
+        (proof, binding, 800_000_050.123)
+    }
+
+    fn computer_use_session_start_fixture() -> (ComputerUseSessionStartParams, f64) {
+        let (proof, binding, now) = computer_use_local_auth_fixture();
+        let mut params = ComputerUseSessionStartParams {
+            mode: "browser".into(),
+            trust_mode: "manual".into(),
+            scope_rule_ids: vec!["https://example.com/*".into()],
+            phone_viewer_node_id: Some("android-device-1".into()),
+            mac_host_node_id: None,
+            action_cap: Some(50),
+            session_timeout_seconds: Some(1800),
+            client_id: Some("linux-shell".into()),
+            run_id: Some("run-1".into()),
+            run_call_id: Some("call-1".into()),
+            run_generation: Some(7),
+            local_auth_proof: Some(proof),
+            source_device_id: Some("android-device-1".into()),
+            intent_hash_hex: None,
+            local_auth_grant_binding: Some(binding),
+        };
+        let session_intent_id = canonical_computer_use_session_intent_id(&params).unwrap();
+        let binding = params.local_auth_grant_binding.as_mut().unwrap();
+        binding.client_intent_id = session_intent_id;
+        let intent_hash = canonical_local_auth_binding_hash_hex(binding).unwrap();
+        params.local_auth_proof.as_mut().unwrap().signed_intent_hash = intent_hash;
+        (params, now)
+    }
+
+    fn computer_use_invoke_fixture() -> (ComputerUseInvokeParams, f64) {
+        let (proof, binding, now) = computer_use_local_auth_fixture();
+        (
+            ComputerUseInvokeParams {
+                session_id: "session-1".into(),
+                invocation: ComputerUseInvocationParams {
+                    call_id: "call-1".into(),
+                    run_id: "run-1".into(),
+                    tool: "browser_click".into(),
+                    arguments: serde_json::json!({ "selector": "button[type=submit]" }),
+                    requested_by: Some("linux-shell".into()),
+                    requested_at: Some(800_000_050.123),
+                },
+                local_auth_proof: Some(proof),
+                source_device_id: Some("android-device-1".into()),
+                intent_hash_hex: None,
+                local_auth_grant_binding: Some(binding),
+            },
+            now,
+        )
+    }
+
+    #[test]
+    fn computer_use_local_auth_canonical_hash_matches_android_and_swift_golden() {
+        let (_, mut binding, _) = computer_use_local_auth_fixture();
+        binding.capabilities = vec!["workspace_read".into(), "desktop_file_export".into()];
+        assert_eq!(
+            canonical_local_auth_binding_hash_hex(&binding).unwrap(),
+            "9a394d7c9670840210f85747d42ef54eb5025fe38c9e4d9528837b4c875c922e"
+        );
+        let (params, _) = computer_use_session_start_fixture();
+        assert_eq!(
+            canonical_computer_use_session_intent_id(&params).unwrap(),
+            "76a01cfd3b2795d2dc664612b76758b5c5c46943f9e2927a5449190764dd0c1e"
+        );
+    }
+
+    #[test]
+    fn computer_use_start_emits_complete_phone_signed_local_auth_wire_fields() {
+        let (params, now) = computer_use_session_start_fixture();
+        let payload = computer_use_session_start_wire(params, true, now).unwrap();
+        let expected_hash = payload["localAuthProof"]["signedIntentHash"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        assert_eq!(payload["runID"], "run-1");
+        assert_eq!(payload["runCallID"], "call-1");
+        assert_eq!(payload["runGeneration"], 7);
+        assert_eq!(payload["sourceDeviceId"], "android-device-1");
+        assert_eq!(payload["localAuthProof"]["proofId"], "proof-1");
+        assert_eq!(payload["intentHashHex"], expected_hash);
+        assert_eq!(
+            payload["localAuthGrantBinding"]["capabilities"],
+            serde_json::json!(["workspace_read", "desktop_file_export", "desktop_browser"])
+        );
+        assert_eq!(
+            payload["localAuthGrantBinding"]["localAuthenticationSatisfied"],
+            true
+        );
+        assert!(payload.get("local_auth_proof").is_none());
+    }
+
+    #[test]
+    fn computer_use_invoke_emits_the_verified_session_grant_transport() {
+        let (params, now) = computer_use_invoke_fixture();
+        let payload = computer_use_invoke_wire(params, true, now).unwrap();
+
+        assert_eq!(payload["sessionId"], "session-1");
+        assert_eq!(payload["invocation"]["callID"], "call-1");
+        assert_eq!(payload["localAuthProof"]["deviceId"], "android-device-1");
+        assert_eq!(payload["sourceDeviceId"], "android-device-1");
+        assert_eq!(payload["localAuthGrantBinding"]["requestId"], "request-1");
+    }
+
+    #[test]
+    fn computer_use_release_transport_fails_closed_without_a_proof() {
+        let (mut start, now) = computer_use_session_start_fixture();
+        start.local_auth_proof = None;
+        start.source_device_id = None;
+        start.local_auth_grant_binding = None;
+        assert!(computer_use_session_start_wire(start, true, now)
+            .unwrap_err()
+            .contains("requires a fresh phone-signed local-auth proof"));
+
+        let (mut invoke, now) = computer_use_invoke_fixture();
+        invoke.local_auth_proof = None;
+        invoke.source_device_id = None;
+        invoke.local_auth_grant_binding = None;
+        assert!(computer_use_invoke_wire(invoke, true, now)
+            .unwrap_err()
+            .contains("requires a fresh phone-signed local-auth proof"));
+    }
+
+    #[test]
+    fn computer_use_filtered_pending_response_requires_authoritative_session_state() {
+        let active = serde_json::json!({ "requests": [], "sessionActive": true });
+        let inactive = serde_json::json!({ "requests": [], "sessionActive": false });
+        let legacy = serde_json::json!({ "requests": [] });
+
+        assert_eq!(
+            validate_computer_use_approval_pending_response(active.clone(), true).unwrap(),
+            active
+        );
+        assert_eq!(
+            validate_computer_use_approval_pending_response(inactive.clone(), true).unwrap(),
+            inactive
+        );
+        assert!(
+            validate_computer_use_approval_pending_response(legacy.clone(), true)
+                .unwrap_err()
+                .contains("missing authoritative sessionActive")
+        );
+        assert_eq!(
+            validate_computer_use_approval_pending_response(legacy.clone(), false).unwrap(),
+            legacy
+        );
+    }
+
+    #[test]
+    fn computer_use_local_auth_transport_rejects_partial_mismatched_and_expired_proofs() {
+        let (mut partial, now) = computer_use_session_start_fixture();
+        partial.local_auth_proof = None;
+        assert!(computer_use_session_start_wire(partial, true, now)
+            .unwrap_err()
+            .contains("localAuthProof is missing"));
+
+        let (mut mismatched, now) = computer_use_session_start_fixture();
+        mismatched
+            .local_auth_grant_binding
+            .as_mut()
+            .unwrap()
+            .runtime = "different-runtime".into();
+        assert!(computer_use_session_start_wire(mismatched, true, now)
+            .unwrap_err()
+            .contains("bound to a different grant"));
+
+        let (expired, _) = computer_use_session_start_fixture();
+        assert!(
+            computer_use_session_start_wire(expired, true, 800_000_301.0)
+                .unwrap_err()
+                .contains("has expired")
+        );
+
+        let (mut under_scoped, now) = computer_use_session_start_fixture();
+        let under_scoped_hash = {
+            let binding = under_scoped.local_auth_grant_binding.as_mut().unwrap();
+            binding.capabilities = vec!["workspace_read".into()];
+            canonical_local_auth_binding_hash_hex(binding).unwrap()
+        };
+        under_scoped
+            .local_auth_proof
+            .as_mut()
+            .unwrap()
+            .signed_intent_hash = under_scoped_hash;
+        assert!(computer_use_session_start_wire(under_scoped, true, now)
+            .unwrap_err()
+            .contains("does not authorize desktop_browser"));
+
+        let (mut trust_escalation, now) = computer_use_session_start_fixture();
+        trust_escalation.trust_mode = "trusted".into();
+        assert!(computer_use_session_start_wire(trust_escalation, true, now)
+            .unwrap_err()
+            .contains("trust mode does not match"));
+
+        let (mut retargeted, now) = computer_use_session_start_fixture();
+        retargeted.run_id = Some("run-2".into());
+        assert!(computer_use_session_start_wire(retargeted, true, now)
+            .unwrap_err()
+            .contains("bound to a different session intent"));
+
+        let (mut stale_generation, now) = computer_use_session_start_fixture();
+        stale_generation.run_generation = Some(8);
+        assert!(computer_use_session_start_wire(stale_generation, true, now)
+            .unwrap_err()
+            .contains("bound to a different session intent"));
+
+        let (mut stale_call, now) = computer_use_session_start_fixture();
+        stale_call.run_call_id = Some("replacement-call".into());
+        assert!(computer_use_session_start_wire(stale_call, true, now)
+            .unwrap_err()
+            .contains("bound to a different session intent"));
+    }
+
     #[test]
     fn onboarding_rpc_wire_names_match_the_swift_contract() {
         assert_eq!(
@@ -2870,5 +3637,60 @@ mod tests {
         .unwrap();
         assert_eq!(missing.state, "unavailable");
         assert_eq!(missing.reason, "Mercury is unavailable.");
+    }
+    #[test]
+    fn computer_use_approval_release_wire_requires_signed_phone_authority() {
+        let result = computer_use_approval_respond_wire(
+            ComputerUseApprovalRespondParams {
+                session_id: Some("session-1".into()),
+                approval_id: "approval-1".into(),
+                decision: "approve".into(),
+                responded_by: Some("linux-shell".into()),
+                responded_at: None,
+                note: None,
+                request_hash_blake3: None,
+                authority: None,
+            },
+            true,
+            800_000_000.0,
+        );
+        assert!(result.unwrap_err().contains("requestHashBlake3"));
+    }
+
+    #[test]
+    fn computer_use_approval_wire_preserves_signed_authority_fields() {
+        let hash = "a".repeat(64);
+        let payload = computer_use_approval_respond_wire(
+            ComputerUseApprovalRespondParams {
+                session_id: Some("session-1".into()),
+                approval_id: "approval-1".into(),
+                decision: "approve".into(),
+                responded_by: Some("android-phone-1".into()),
+                responded_at: Some(800_000_000.0),
+                note: Some("approved".into()),
+                request_hash_blake3: Some(hash.clone()),
+                authority: Some(ComputerUseApprovalAuthority {
+                    peer_node_id: "android-phone-1".into(),
+                    counter: 42,
+                    timestamp: 800_000_000.0,
+                    intent_hash_blake3: hash.clone(),
+                    signature_ed25519: "AA==".into(),
+                    attestation_hash_blake3: None,
+                    key_kind: Some("ed25519".into()),
+                }),
+            },
+            true,
+            800_000_000.0,
+        )
+        .unwrap();
+
+        assert_eq!(payload["sessionId"], "session-1");
+        assert_eq!(payload["response"]["requestHashBlake3"], hash);
+        assert_eq!(payload["response"]["authority"]["counter"], 42);
+        assert_eq!(
+            payload["response"]["authority"]["peerNodeId"],
+            "android-phone-1"
+        );
+        assert_eq!(payload["response"]["respondedAt"], 800_000_000.0);
     }
 }

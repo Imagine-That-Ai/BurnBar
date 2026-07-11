@@ -1,8 +1,13 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useShellStore } from '../../state/shellStore.js';
-import { ComputerUseSurface } from './ComputerUseSurface.js';
+import {
+  buildComputerUseSessionStartParams,
+  clearSessionIfCurrent,
+  ComputerUseSurface,
+  isAuthoritativeInvalidSessionError
+} from './ComputerUseSurface.js';
 
 afterEach(() => {
   cleanup();
@@ -10,6 +15,20 @@ afterEach(() => {
 });
 
 describe('ComputerUseSurface', () => {
+  it('builds an exact session start payload from the selected run requirement', () => {
+    expect(buildComputerUseSessionStartParams(' run-1 ', 'step', [
+      { runID: 'run-other', callID: 'call-other', generation: 99 },
+      { runID: 'run-1', callID: 'call-1', generation: 7 }
+    ])).toEqual({
+      mode: 'browser',
+      trustMode: 'step',
+      clientId: 'linux-shell',
+      runId: 'run-1',
+      runCallId: 'call-1',
+      runGeneration: 7
+    });
+  });
+
   it('starts a fixture session and shows pending approvals', async () => {
     useShellStore.setState({ fixtureMode: true, bridge: null });
     render(<ComputerUseSurface />);
@@ -23,7 +42,195 @@ describe('ComputerUseSurface', () => {
     });
   });
 
-  it('calls bridge panic halt with session id', async () => {
+  it('calls the real bridge panic halt for the exact selected session', async () => {
+    const computerUsePanicHalt = vi.fn(async () => ({
+      sessionId: 'fixture-session',
+      endedAt: new Date(0).toISOString(),
+      auditHeadHashHex: '',
+      source: 'hotkey' as const
+    }));
+    useShellStore.setState({ fixtureMode: true, bridge: null });
+    render(<ComputerUseSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /Start session/i }));
+    await screen.findByText(/Session · fixture-ses/i);
+
+    act(() => {
+      useShellStore.setState({
+        fixtureMode: false,
+        bridge: {
+          computerUsePanicHalt,
+          computerUseApprovalPending: vi.fn(async () => ({ requests: [] }))
+        } as never
+      });
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Panic halt/i }));
+
+    await waitFor(() => {
+      expect(computerUsePanicHalt).toHaveBeenCalledWith({
+        sessionId: 'fixture-session',
+        source: 'hotkey'
+      });
+      expect(screen.queryByText(/Session · fixture-ses/i)).toBeNull();
+    });
+  });
+
+  it('keeps a selected session when panic succeeds without a terminal response', async () => {
+    const computerUsePanicHalt = vi.fn(async () => ({ ok: true }));
+    useShellStore.setState({ fixtureMode: true, bridge: null });
+    render(<ComputerUseSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /Start session/i }));
+    await screen.findByText(/Session · fixture-ses/i);
+
+    act(() => {
+      useShellStore.setState({
+        fixtureMode: false,
+        bridge: {
+          computerUsePanicHalt,
+          computerUseApprovalPending: vi.fn(async () => ({ requests: [] }))
+        } as never
+      });
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Panic halt/i }));
+
+    await waitFor(() => expect(computerUsePanicHalt).toHaveBeenCalledOnce());
+    expect(screen.getByText(/Session · fixture-ses/i)).toBeTruthy();
+  });
+
+  it('clears an invalid session reported by panic halt', async () => {
+    const computerUsePanicHalt = vi.fn(async () => {
+      throw new Error('Computer Use session is not active: fixture-session.');
+    });
+    useShellStore.setState({ fixtureMode: true, bridge: null });
+    render(<ComputerUseSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /Start session/i }));
+    await screen.findByText(/Session · fixture-ses/i);
+
+    act(() => {
+      useShellStore.setState({
+        fixtureMode: false,
+        bridge: {
+          computerUsePanicHalt,
+          computerUseApprovalPending: vi.fn(async () => ({ requests: [] }))
+        } as never
+      });
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Panic halt/i }));
+
+    await waitFor(() => expect(screen.queryByText(/Session · fixture-ses/i)).toBeNull());
+    expect(computerUsePanicHalt).toHaveBeenCalledWith({
+      sessionId: 'fixture-session',
+      source: 'hotkey'
+    });
+  });
+
+  it('clears an invalid session reported by audit export', async () => {
+    const computerUseApprovalPending = vi.fn(async () => ({ requests: [] }));
+    const computerUseAuditExport = vi.fn(async () => {
+      throw new Error('Computer Use session is not active: fixture-session.');
+    });
+    useShellStore.setState({ fixtureMode: true, bridge: null });
+    render(<ComputerUseSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /Start session/i }));
+    await screen.findByText(/Session · fixture-ses/i);
+
+    act(() => {
+      useShellStore.setState({
+        fixtureMode: false,
+        bridge: {
+          computerUseApprovalPending,
+          computerUseAuditExport
+        } as never
+      });
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Export audit/i }));
+
+    await waitFor(() => expect(screen.queryByText(/Session · fixture-ses/i)).toBeNull());
+    expect(computerUseAuditExport).toHaveBeenCalledWith({
+      sessionId: 'fixture-session',
+      includeScreenshots: true,
+      anchorOpenTimestamps: false
+    });
+    expect(computerUseApprovalPending).toHaveBeenCalledWith({ sessionId: 'fixture-session' });
+  });
+
+  it('clears an unknown session reported by pending refresh', async () => {
+    const computerUseApprovalPending = vi.fn(async () => {
+      throw new Error('Unknown Computer Use session: fixture-session.');
+    });
+    useShellStore.setState({ fixtureMode: true, bridge: null });
+    render(<ComputerUseSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /Start session/i }));
+    await screen.findByText(/Session · fixture-ses/i);
+
+    act(() => {
+      useShellStore.setState({
+        fixtureMode: false,
+        bridge: {
+          computerUseApprovalPending
+        } as never
+      });
+    });
+
+    await waitFor(() => expect(screen.queryByText(/Session · fixture-ses/i)).toBeNull());
+    expect(computerUseApprovalPending).toHaveBeenCalledWith({ sessionId: 'fixture-session' });
+  });
+
+  it('retires the exact session when filtered polling reports it inactive', async () => {
+    const computerUseApprovalPending = vi.fn(async () => ({
+      requests: [],
+      sessionActive: false
+    }));
+    useShellStore.setState({ fixtureMode: true, bridge: null });
+    render(<ComputerUseSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /Start session/i }));
+    await screen.findByText(/Session · fixture-ses/i);
+
+    act(() => {
+      useShellStore.setState({
+        fixtureMode: false,
+        bridge: { computerUseApprovalPending } as never
+      });
+    });
+
+    await waitFor(() => expect(screen.queryByText(/Session · fixture-ses/i)).toBeNull());
+    expect(computerUseApprovalPending).toHaveBeenCalledWith({ sessionId: 'fixture-session' });
+  });
+
+  it('retains the selected session when filtered polling has a transport failure', async () => {
+    const computerUseApprovalPending = vi.fn(async () => {
+      throw new Error('daemon down');
+    });
+    useShellStore.setState({ fixtureMode: true, bridge: null });
+    render(<ComputerUseSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /Start session/i }));
+    await screen.findByText(/Session · fixture-ses/i);
+
+    act(() => {
+      useShellStore.setState({
+        fixtureMode: false,
+        bridge: { computerUseApprovalPending } as never
+      });
+    });
+
+    await waitFor(() => expect(computerUseApprovalPending).toHaveBeenCalledWith({
+      sessionId: 'fixture-session'
+    }));
+    expect(screen.getByText(/Session · fixture-ses/i)).toBeTruthy();
+  });
+
+  it('does not ABA-clear a replacement session', () => {
+    expect(clearSessionIfCurrent('replacement-session', 'stale-session')).toBe('replacement-session');
+    expect(clearSessionIfCurrent('stale-session', 'stale-session')).toBeNull();
+  });
+
+  it('distinguishes authoritative invalid-session errors from transport failures', () => {
+    expect(isAuthoritativeInvalidSessionError(
+      new Error('Computer Use session is not active: session-1.')
+    )).toBe(true);
+    expect(isAuthoritativeInvalidSessionError(new Error('daemon down'))).toBe(false);
+  });
+
+  it('lists waiting runs but keeps release session controls disabled without signed authority', async () => {
     const computerUsePanicHalt = vi.fn(async () => ({ ok: true }));
     const computerUseSessionStart = vi.fn(async () => ({ sessionId: 'sess-1' }));
     useShellStore.setState({
@@ -31,15 +238,70 @@ describe('ComputerUseSurface', () => {
       bridge: {
         computerUseSessionStart,
         computerUsePanicHalt,
-        computerUseApprovalPending: vi.fn(async () => ({ requests: [] }))
+        computerUseApprovalPending: vi.fn(async () => ({
+          requests: [],
+          runRequirements: [{ runID: 'run-1', callID: 'call-1', toolKind: 'browser_goto', generation: 1 }]
+        }))
       } as never
     });
     render(<ComputerUseSurface />);
-    fireEvent.click(screen.getByRole('button', { name: /Start session/i }));
-    await waitFor(() => expect(computerUseSessionStart).toHaveBeenCalled());
-    fireEvent.click(screen.getByRole('button', { name: /Panic halt/i }));
-    await waitFor(() => {
-      expect(computerUsePanicHalt).toHaveBeenCalledWith({ sessionId: 'sess-1', source: 'hotkey' });
+    const runPicker = await screen.findByRole('combobox', { name: /Agent run/i });
+    fireEvent.change(runPicker, {
+      target: { value: 'run-1' }
     });
+    expect(screen.getByText(/Paired phone approval is unavailable/i)).toBeTruthy();
+    expect((screen.getByRole('button', { name: /Start session/i }) as HTMLButtonElement).disabled).toBe(true);
+    expect(computerUseSessionStart).not.toHaveBeenCalled();
+    expect(computerUsePanicHalt).not.toHaveBeenCalled();
+  });
+
+  it('fails closed before dispatch when signed phone authority is unavailable', async () => {
+    const computerUseSessionStart = vi.fn(async () => ({ sessionId: 'should-not-start' }));
+    useShellStore.setState({
+      fixtureMode: false,
+      bridge: {
+        computerUseSessionStart,
+        computerUseApprovalPending: vi.fn(async () => ({ requests: [] }))
+      } as never
+    });
+
+    render(<ComputerUseSurface />);
+    expect((await screen.findByRole('status')).textContent).toMatch(/Paired phone approval is unavailable/i);
+    expect((screen.getByRole('button', { name: /Start session/i }) as HTMLButtonElement).disabled).toBe(true);
+    expect(computerUseSessionStart).not.toHaveBeenCalled();
+  });
+
+  it('renders the action context instead of only an opaque approval id', async () => {
+    const computerUseApprovalRespond = vi.fn(async () => ({ accepted: true }));
+    useShellStore.setState({
+      fixtureMode: false,
+      bridge: {
+        computerUseApprovalPending: vi.fn(async () => ({
+          requests: [{
+            approvalId: 'approval-1',
+            title: 'Submit the visible form',
+            message: 'Send the form after reviewing its contents.',
+            toolKind: 'browser_click',
+            trustMode: 'manual',
+            runId: 'run-context',
+            sessionId: 'session-context',
+            beforeScreenshotPNGBase64: 'aGVsbG8=',
+            beforeScreenshotMimeType: 'image/png'
+          }]
+        })),
+        computerUseApprovalRespond
+      } as never
+    });
+
+    render(<ComputerUseSurface />);
+
+    expect(await screen.findByText('Submit the visible form')).toBeTruthy();
+    expect(screen.getByText('Send the form after reviewing its contents.')).toBeTruthy();
+    expect(screen.getByText(/run run-context/)).toBeTruthy();
+    expect(screen.getByAltText(/Pre-action browser state/i)).toBeTruthy();
+    const approve = screen.getByRole('button', { name: /Approve Submit the visible form/i }) as HTMLButtonElement;
+    expect(approve.disabled).toBe(true);
+    expect(computerUseApprovalRespond).not.toHaveBeenCalled();
+    expect(screen.queryByRole('option', { name: /System/i })).toBeNull();
   });
 });

@@ -158,6 +158,7 @@ final class AgentCapabilityGrantQueueListener {
         try await daemonPinProvisioner(
             DaemonPhoneControlPinProvisionRequest(
                 deviceId: wireRequest.sourceDeviceId,
+                peerNodeId: authority.peerNodeId,
                 publicKeyBase64: authority.publicKey.publicKeyRepresentation.base64EncodedString(),
                 keyKind: authority.publicKey.kind
             )

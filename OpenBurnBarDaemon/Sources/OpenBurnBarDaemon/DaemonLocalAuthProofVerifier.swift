@@ -94,7 +94,7 @@ public struct DaemonLocalAuthProofVerifier: Sendable {
     public static func production(
         enforced: Bool,
         pinStore: DaemonPhoneKeyPinStore = DaemonPhoneKeyPinStore(),
-        ledger: DaemonConsumedLocalAuthProofLedger = DaemonConsumedLocalAuthProofLedger(),
+        ledger: DaemonConsumedLocalAuthProofLedger = .production(),
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "local-auth-proof")
     ) -> (verifier: DaemonLocalAuthProofVerifier?, pinStore: DaemonPhoneKeyPinStore) {
         guard enforced else { return (nil, pinStore) }
@@ -224,27 +224,93 @@ public struct DaemonLocalAuthProofVerifier: Sendable {
 /// persisted store (as the app does via `PhoneControlConsumedProofStore`) without
 /// changing the verifier contract.
 public final class DaemonConsumedLocalAuthProofLedger: Sendable {
-    // `Locked` box (OpenBurnBarCore) instead of a hand-rolled `NSLock` + `var`,
-    // so the class is genuinely `Sendable` (compiler-verified) rather than
-    // `@unchecked`. State is a `Sendable` `[String: Date]`; all access is under
-    // the lock. Behaviour is identical: prune-then-check-and-insert on `consume`.
-    private let consumed = Locked<[String: Date]>([:])
+    private struct Snapshot: Codable {
+        let version: Int
+        let proofs: [String: Date]
+    }
 
-    public init() {}
+    private struct State: Sendable {
+        var proofs: [String: Date]
+        var storageHealthy: Bool
+    }
+
+    private let fileURL: URL?
+    private let state: Locked<State>
+
+    public init(fileURL: URL? = nil, now: Date = Date()) {
+        self.fileURL = fileURL
+        guard let fileURL else {
+            self.state = Locked(State(proofs: [:], storageHealthy: true))
+            return
+        }
+        do {
+            let proofs = try Self.readSnapshot(fileURL: fileURL)
+                .filter { $0.value > now }
+            self.state = Locked(State(proofs: proofs, storageHealthy: true))
+        } catch {
+            self.state = Locked(State(proofs: [:], storageHealthy: false))
+        }
+    }
+
+    public static func production() -> DaemonConsumedLocalAuthProofLedger {
+        DaemonConsumedLocalAuthProofLedger(
+            fileURL: BurnBarDaemonPaths.supportDirectoryURL
+                .appendingPathComponent("security", isDirectory: true)
+                .appendingPathComponent("consumed-local-auth-proofs.json", isDirectory: false)
+        )
+    }
 
     /// Returns `true` when `proofId` was newly recorded (NOT a replay).
     public func consume(proofId: String, expiresAt: Date, now: Date = Date()) -> Bool {
-        consumed.withLock { state in
-            state = state.filter { $0.value > now }
-            if state[proofId] != nil {
+        guard proofId.isEmpty == false, expiresAt > now else { return false }
+        return state.withLock { state in
+            guard state.storageHealthy else { return false }
+            var active = state.proofs.filter { $0.value > now }
+            if active[proofId] != nil {
                 return false
             }
-            state[proofId] = expiresAt
+            active[proofId] = expiresAt
+            if let fileURL {
+                do {
+                    try Self.writeSnapshot(active, fileURL: fileURL)
+                } catch {
+                    state.storageHealthy = false
+                    return false
+                }
+            }
+            state.proofs = active
             return true
         }
     }
 
     public func isConsumed(proofId: String) -> Bool {
-        consumed.withLock { $0[proofId] != nil }
+        state.withLock { $0.proofs[proofId] != nil }
+    }
+
+    private static func readSnapshot(fileURL: URL) throws -> [String: Date] {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return [:] }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let snapshot = try decoder.decode(Snapshot.self, from: Data(contentsOf: fileURL))
+        guard snapshot.version == 1 else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        return snapshot.proofs.filter { $0.key.isEmpty == false }
+    }
+
+    private static func writeSnapshot(_ proofs: [String: Date], fileURL: URL) throws {
+        try FileManager.default.createDirectory(
+            at: fileURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(Snapshot(version: 1, proofs: proofs))
+        try data.write(to: fileURL, options: [.atomic])
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o600],
+            ofItemAtPath: fileURL.path
+        )
     }
 }

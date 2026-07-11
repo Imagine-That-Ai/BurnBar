@@ -11,21 +11,67 @@ import OpenBurnBarComputerUseCore
 /// but can never dispatch Path A/C. On Linux, the daemon owns system input via
 /// Linux-native adapters because there is no AppKit host process to inject it.
 public actor ComputerUseService {
-    public enum ServiceError: Error, Sendable, Equatable {
+    public enum ServiceError: Error, LocalizedError, Sendable, Equatable {
         case invalidMode(String)
         case invalidTrustMode(String)
         case invalidSession(String)
+        case browserRunRequired
+        case runBindingUnsupportedMode(String)
+        case runAlreadyBound(String)
+        case runNotBound(String)
+        case runIdentityMismatch(expected: String, actual: String)
+        case clientIdentityMismatch(expected: String, actual: String)
+        case authorizationExpired(String)
+        case managedRunDispatchRequired
         case bridgeScriptMissing
         case unsupportedDaemonMode(String)
         case unsupportedDaemonApprovalPath
         case capabilityStateUnavailable(String)
         case capabilityDenied(String)
+
+        public var errorDescription: String? {
+            switch self {
+            case .invalidMode(let mode):
+                return "Unknown Computer Use mode: \(mode)."
+            case .invalidTrustMode(let mode):
+                return "Unknown Computer Use trust mode: \(mode)."
+            case .invalidSession(let sessionID):
+                return "Computer Use session is not active: \(sessionID)."
+            case .browserRunRequired:
+                return "Browser Computer Use must be bound to an active agent run."
+            case .runBindingUnsupportedMode(let mode):
+                return "Agent run binding is not supported for Computer Use mode: \(mode)."
+            case .runAlreadyBound(let runID):
+                return "Agent run already has an active Computer Use session: \(runID)."
+            case .runNotBound(let runID):
+                return "Start Browser Computer Use for agent run \(runID) before allowing browser actions."
+            case .runIdentityMismatch(let expected, let actual):
+                return "Computer Use session is bound to run \(expected), not \(actual)."
+            case .clientIdentityMismatch(let expected, let actual):
+                return "Computer Use session is bound to client \(expected), not \(actual)."
+            case .authorizationExpired(let runID):
+                return "Computer Use authorization expired for agent run \(runID); authenticate and start a new session."
+            case .managedRunDispatchRequired:
+                return "Browser Computer Use actions must be dispatched by the bound agent run."
+            case .bridgeScriptMissing:
+                return "The installed Playwright bridge is missing."
+            case .unsupportedDaemonMode(let mode):
+                return "Computer Use mode is not available through this daemon: \(mode)."
+            case .unsupportedDaemonApprovalPath:
+                return "The Computer Use approval path is unavailable."
+            case .capabilityStateUnavailable(let reason):
+                return "Computer Use capability state is unavailable: \(reason)."
+            case .capabilityDenied(let reason):
+                return "Computer Use capability denied the request: \(reason)."
+            }
+        }
     }
 
     private static let computerUseProductId = ComputerUseEntitlementSnapshot.hostedProductID
 
     private let coordinator: ComputerUseRunCoordinator
     private let approvalBridge: ComputerUseApprovalBridge
+    private let authorizationRegistry: ComputerUseAuthorizationRegistry
     private let auditBaseDirectory: URL
     private let macAppVersion: String
     private let locateExecutable: BurnBarExecutableLocator
@@ -40,9 +86,12 @@ public actor ComputerUseService {
     private let systemInputAccessibilityDeny: @Sendable (MacInputAction) async -> ComputerUseAccessibilityDenyReason?
     private let computerUseKillSwitchEnabled: @Sendable () -> Bool
     private let privilegedInputKillSwitchActivator: @Sendable (String) -> Void
+    private let requiresManagedBrowserRunAuthority: Bool
     private var manifests: [ComputerUseSessionID: ComputerUseSessionManifest] = [:]
     private var pendingEndedSessions: [ComputerUseSessionEndRecord] = []
     private var sessionStartReserved = false
+    private var timeoutTasks: [ComputerUseSessionID: Task<Void, Never>] = [:]
+    private var revokingSessionIDs: Set<ComputerUseSessionID> = []
 
     public init(
         auditBaseDirectory: URL = BurnBarDaemonPaths.supportDirectoryURL
@@ -60,6 +109,10 @@ public actor ComputerUseService {
         systemInputAccessibilityDeny: (@Sendable (MacInputAction) async -> ComputerUseAccessibilityDenyReason?)? = nil,
         computerUseKillSwitchEnabled: (@Sendable () -> Bool)? = nil,
         privilegedInputKillSwitchActivator: (@Sendable (String) -> Void)? = nil,
+        playwrightDriverFactory: (@Sendable (ComputerUseSessionManifest) async throws -> OpenBurnBarPlaywrightDriver?)? = nil,
+        authorizationRegistry: ComputerUseAuthorizationRegistry? = nil,
+        preDispatchAuthorizer: ComputerUseRunCoordinator.PreDispatchAuthorizer? = nil,
+        requiresManagedBrowserRunAuthority: Bool? = nil,
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "computer-use-service")
     ) {
         self.init(
@@ -77,13 +130,16 @@ public actor ComputerUseService {
                 false
                 #endif
             },
-            playwrightDriverFactory: nil,
+            playwrightDriverFactory: playwrightDriverFactory,
             systemInputDispatcher: systemInputDispatcher,
             systemInspectDispatcher: systemInspectDispatcher,
             systemInputAccessibilityTrusted: systemInputAccessibilityTrusted,
             systemInputAccessibilityDeny: systemInputAccessibilityDeny,
             computerUseKillSwitchEnabled: computerUseKillSwitchEnabled,
             privilegedInputKillSwitchActivator: privilegedInputKillSwitchActivator,
+            authorizationRegistry: authorizationRegistry,
+            preDispatchAuthorizer: preDispatchAuthorizer,
+            requiresManagedBrowserRunAuthority: requiresManagedBrowserRunAuthority,
             logger: logger
         )
     }
@@ -98,17 +154,24 @@ public actor ComputerUseService {
         quotaLedger: ComputerUseLocalQuotaLedger? = nil,
         capabilityStateStore: ComputerUseCapabilityStateStore,
         leafKillSwitch: @escaping @Sendable () -> Bool,
-        playwrightDriverFactory: (@Sendable (ComputerUseSessionManifest) async throws -> OpenBurnBarPlaywrightDriver?)?,
+        playwrightDriverFactory: (@Sendable (ComputerUseSessionManifest) async throws -> OpenBurnBarPlaywrightDriver?)? = nil,
         systemInputDispatcher: ComputerUseRunCoordinator.MacInputDispatcher? = nil,
         systemInspectDispatcher: ComputerUseRunCoordinator.MacInspectDispatcher? = nil,
         systemInputAccessibilityTrusted: (@Sendable (ComputerUseMode) -> Bool)? = nil,
         systemInputAccessibilityDeny: (@Sendable (MacInputAction) async -> ComputerUseAccessibilityDenyReason?)? = nil,
         computerUseKillSwitchEnabled: (@Sendable () -> Bool)? = nil,
         privilegedInputKillSwitchActivator: (@Sendable (String) -> Void)? = nil,
+        authorizationRegistry: ComputerUseAuthorizationRegistry? = nil,
+        preDispatchAuthorizer: ComputerUseRunCoordinator.PreDispatchAuthorizer? = nil,
+        requiresManagedBrowserRunAuthority: Bool? = nil,
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "computer-use-service")
     ) {
         let approvalBridge = ComputerUseApprovalBridge()
+        let authorizationRegistry = authorizationRegistry ?? ComputerUseAuthorizationRegistry(
+            enforcementEnabled: false
+        )
         self.approvalBridge = approvalBridge
+        self.authorizationRegistry = authorizationRegistry
         self.auditBaseDirectory = auditBaseDirectory
         self.macAppVersion = macAppVersion
         self.locateExecutable = locateExecutable ?? Self.defaultExecutableLocator
@@ -165,16 +228,27 @@ public actor ComputerUseService {
             PrivilegedInputKillSwitch.activate(reason: reason)
         }
         #endif
+        let resolvedComputerUseKillSwitchEnabled = computerUseKillSwitchEnabled
+            ?? defaultComputerUseKillSwitchEnabled
         self.systemInputAccessibilityTrusted = systemInputAccessibilityTrusted ?? defaultSystemAccessibilityTrusted
         self.systemInputAccessibilityDeny = systemInputAccessibilityDeny ?? defaultSystemAccessibilityDeny
-        self.computerUseKillSwitchEnabled = computerUseKillSwitchEnabled ?? defaultComputerUseKillSwitchEnabled
+        self.computerUseKillSwitchEnabled = resolvedComputerUseKillSwitchEnabled
         self.privilegedInputKillSwitchActivator = privilegedInputKillSwitchActivator ?? defaultPrivilegedInputKillSwitchActivator
+        let resolvedRequiresManagedBrowserRunAuthority = requiresManagedBrowserRunAuthority
+            ?? Self.platformRequiresManagedBrowserRunAuthority
+        self.requiresManagedBrowserRunAuthority = resolvedRequiresManagedBrowserRunAuthority
         self.coordinator = ComputerUseRunCoordinator(
             approvalIssuer: { request in
                 try await approvalBridge.issue(request)
             },
             macInputDispatcher: systemInputDispatcher ?? defaultSystemInputDispatcher,
             macInspectDispatcher: systemInspectDispatcher ?? defaultSystemInspectDispatcher,
+            preDispatchAuthorizer: preDispatchAuthorizer ?? { sessionID, invocation in
+                guard resolvedComputerUseKillSwitchEnabled() == false else { return false }
+                guard invocation.tool.isBrowserComputerUse else { return true }
+                guard resolvedRequiresManagedBrowserRunAuthority else { return true }
+                return await authorizationRegistry.permits(sessionID: sessionID, invocation: invocation)
+            },
             macAppVersion: macAppVersion,
             auditBaseDirectory: auditBaseDirectory,
             quotaLedger: resolvedQuotaLedger,
@@ -182,7 +256,11 @@ public actor ComputerUseService {
         )
     }
 
-    public func startSession(_ request: ComputerUseSessionStartRequest) async throws -> ComputerUseSessionStartResponse {
+    public func startSession(
+        _ request: ComputerUseSessionStartRequest,
+        boundClientID: BurnBarClientID? = nil,
+        runGeneration: UInt64? = nil
+    ) async throws -> ComputerUseSessionStartResponse {
         guard let mode = ComputerUseMode(rawValue: request.mode) else {
             throw ServiceError.invalidMode(request.mode)
         }
@@ -196,6 +274,12 @@ public actor ComputerUseService {
             // daemon wires Linux-native input adapters directly.
             throw ServiceError.unsupportedDaemonMode(mode.rawValue)
         }
+        if mode != .browser, request.runID != nil {
+            throw ServiceError.runBindingUnsupportedMode(mode.rawValue)
+        }
+        if mode == .browser, requiresManagedBrowserRunAuthority, request.runID == nil {
+            throw ServiceError.browserRunRequired
+        }
 
         let capabilityState = try await currentCapabilityState()
         try await enforceSessionAdmission(capabilityState, mode: mode)
@@ -205,14 +289,28 @@ public actor ComputerUseService {
         sessionStartReserved = true
         defer { sessionStartReserved = false }
 
+        let reservedRunID = requiresManagedBrowserRunAuthority ? request.runID : nil
+        if let runID = reservedRunID {
+            if let existing = await authorizationRegistry.binding(runID: runID),
+               let expiresAt = existing.expiresAt,
+               expiresAt <= Date() {
+                _ = await haltSession(existing.sessionID, source: .stalled)
+            }
+            guard await authorizationRegistry.reserve(runID: runID) else {
+                throw ServiceError.runAlreadyBound(runID.rawValue)
+            }
+        }
+
         let sessionId = ComputerUseSessionID.newRandom()
+        let ownerClientID = boundClientID ?? request.clientID
         let effectiveActionCap = min(request.actionCap, capabilityState.budgetEnvelope.activeActionsPerRun)
         var manifest = ComputerUseSessionManifest(
             sessionId: sessionId,
             mode: mode,
             trustMode: trustMode,
             startedAt: Date(),
-            userId: request.clientID.rawValue,
+            userId: ownerClientID.rawValue,
+            runId: request.runID?.rawValue,
             macHostNodeId: request.macHostNodeId,
             phoneViewerNodeId: request.phoneViewerNodeId,
             scopeRuleIds: request.scopeRuleIds,
@@ -221,10 +319,12 @@ public actor ComputerUseService {
             sessionTimeoutSeconds: request.sessionTimeoutSeconds
         )
 
-        let driver = try await makePlaywrightDriverIfNeeded(for: manifest)
+        var driver: OpenBurnBarPlaywrightDriver?
         let head: String
         var didStartCoordinatorSession = false
+        var didBindRun = false
         do {
+            driver = try await makePlaywrightDriverIfNeeded(for: manifest)
             // Driver construction is an actor reentrancy point. Re-read the
             // authoritative state before starting it so a kill/revoke that
             // landed while construction was suspended wins the race.
@@ -241,9 +341,11 @@ public actor ComputerUseService {
                     trustMode: manifest.trustMode,
                     startedAt: manifest.startedAt,
                     userId: manifest.userId,
+                    runId: manifest.runId,
                     macHostNodeId: manifest.macHostNodeId,
                     phoneViewerNodeId: manifest.phoneViewerNodeId,
                     scopeRuleIds: manifest.scopeRuleIds,
+                    scopeRules: manifest.scopeRules,
                     entitlementProductId: manifest.entitlementProductId,
                     actionCap: refreshedActionCap,
                     sessionTimeoutSeconds: manifest.sessionTimeoutSeconds
@@ -251,6 +353,21 @@ public actor ComputerUseService {
             }
             head = try await coordinator.startSession(manifest: manifest, playwrightDriver: driver)
             didStartCoordinatorSession = true
+            guard await coordinator.session(sessionId) != nil else {
+                throw ServiceError.invalidSession(sessionId.rawValue)
+            }
+            if requiresManagedBrowserRunAuthority,
+               let runID = request.runID {
+                guard await authorizationRegistry.bind(
+                    sessionID: sessionId,
+                    runID: runID,
+                    clientID: ownerClientID,
+                    generation: runGeneration
+                ) else {
+                    throw ServiceError.runAlreadyBound(runID.rawValue)
+                }
+                didBindRun = true
+            }
             let quotaReservation = try quotaLedger.reserveSession(
                 idempotencyKey: sessionId.rawValue,
                 authoritativeUsage: refreshedCapabilityState.quotaUsage,
@@ -261,14 +378,21 @@ public actor ComputerUseService {
                 throw ServiceError.capabilityDenied(ComputerUseDenyReason.counterReplay.rawValue)
             }
         } catch {
+            if didBindRun {
+                await authorizationRegistry.revoke(sessionID: sessionId)
+            }
             if didStartCoordinatorSession {
                 _ = await coordinator.endSession(sessionId: sessionId, reason: .error)
             } else {
                 await driver?.stop()
             }
+            if let reservedRunID {
+                await authorizationRegistry.releaseReservation(runID: reservedRunID)
+            }
             throw error
         }
         manifests[sessionId] = manifest
+        scheduleTimeout(for: manifest)
         return ComputerUseSessionStartResponse(
             sessionId: sessionId.rawValue,
             manifestHashHex: head,
@@ -294,12 +418,149 @@ public actor ComputerUseService {
         )
     }
 
+    /// Routes daemon-managed agent browser tools through the same session,
+    /// approval, scope, panic, and audit authority used by explicit CU RPCs.
+    public func invokeForRun(_ invocation: BurnBarToolInvocation) async throws -> ComputerUseInvokeResponse {
+        guard let sessionID = await liveSessionID(for: invocation.runID) else {
+            throw ServiceError.runNotBound(invocation.runID.rawValue)
+        }
+        return try await invoke(ComputerUseInvokeRequest(
+            sessionId: sessionID.rawValue,
+            invocation: invocation
+        ), allowManagedRunDispatch: true)
+    }
+
+    public func sessionID(for runID: BurnBarRunID) async -> ComputerUseSessionID? {
+        await liveSessionID(for: runID)
+    }
+
+    private func liveSessionID(for runID: BurnBarRunID) async -> ComputerUseSessionID? {
+        guard let authorization = await authorizationRegistry.binding(runID: runID) else {
+            return nil
+        }
+        let sessionID = authorization.sessionID
+        guard revokingSessionIDs.contains(sessionID) == false else { return nil }
+        if let expiresAt = authorization.expiresAt, expiresAt <= Date() {
+            await haltSession(sessionID, source: .stalled)
+            return nil
+        }
+        guard let manifest = manifests[sessionID],
+              await coordinator.session(sessionID) != nil else {
+            if manifests.removeValue(forKey: sessionID) != nil {
+                let directory = auditBaseDirectory.appendingPathComponent(sessionID.rawValue, isDirectory: true)
+                finalizeAuditHeadIfPossible(sessionDirectory: directory)
+            }
+            timeoutTasks.removeValue(forKey: sessionID)?.cancel()
+            await authorizationRegistry.revoke(sessionID: sessionID)
+            return nil
+        }
+        if manifest.sessionTimeoutSeconds > 0,
+           Date().timeIntervalSince(manifest.startedAt) >= Double(manifest.sessionTimeoutSeconds) {
+            await haltSession(sessionID, source: .stalled)
+            return nil
+        }
+        return sessionID
+    }
+
+    private func scheduleTimeout(for manifest: ComputerUseSessionManifest) {
+        guard manifest.sessionTimeoutSeconds > 0 else { return }
+        let sessionID = manifest.sessionId
+        timeoutTasks.removeValue(forKey: sessionID)?.cancel()
+        timeoutTasks[sessionID] = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(manifest.sessionTimeoutSeconds))
+            guard Task.isCancelled == false else { return }
+            await self?.expireSessionIfCurrent(sessionID)
+        }
+    }
+
+    func constrainSessionExpiry(
+        sessionID: ComputerUseSessionID,
+        expiresAt: Date,
+        now: Date = Date()
+    ) {
+        guard let manifest = manifests[sessionID] else { return }
+        let manifestExpiry = manifest.sessionTimeoutSeconds > 0
+            ? manifest.startedAt.addingTimeInterval(TimeInterval(manifest.sessionTimeoutSeconds))
+            : .distantFuture
+        let effectiveExpiry = min(expiresAt, manifestExpiry)
+        let delay = max(0, effectiveExpiry.timeIntervalSince(now))
+        timeoutTasks.removeValue(forKey: sessionID)?.cancel()
+        timeoutTasks[sessionID] = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard Task.isCancelled == false else { return }
+            await self?.expireSessionIfCurrent(sessionID)
+        }
+    }
+
+    private func expireSessionIfCurrent(_ sessionID: ComputerUseSessionID) async {
+        guard manifests[sessionID] != nil else { return }
+        await haltSession(sessionID, source: .stalled)
+    }
+
+    @discardableResult
+    private func haltSession(
+        _ sessionID: ComputerUseSessionID,
+        source: ComputerUsePanicSource,
+        closedAt: Date = Date()
+    ) async -> ComputerUseSessionEndRecord? {
+        timeoutTasks.removeValue(forKey: sessionID)?.cancel()
+        revokingSessionIDs.insert(sessionID)
+        // Revoke authority before any cleanup await. Late approvals and
+        // concurrent invokes must fail closed while the driver is stopping.
+        await authorizationRegistry.revoke(sessionID: sessionID)
+        await approvalBridge.cancel(sessionId: sessionID.rawValue)
+        let ended = await coordinator.panicHalt(sessionId: sessionID, source: source)
+        let directory = auditBaseDirectory.appendingPathComponent(sessionID.rawValue, isDirectory: true)
+        finalizeAuditHeadIfPossible(sessionDirectory: directory, closedAt: ended?.endedAt ?? closedAt)
+        manifests.removeValue(forKey: sessionID)
+        revokingSessionIDs.remove(sessionID)
+        return ended
+    }
+
     public func invoke(_ request: ComputerUseInvokeRequest) async throws -> ComputerUseInvokeResponse {
+        try await invoke(request, allowManagedRunDispatch: false)
+    }
+
+    private func invoke(
+        _ request: ComputerUseInvokeRequest,
+        allowManagedRunDispatch: Bool
+    ) async throws -> ComputerUseInvokeResponse {
         let sessionId = ComputerUseSessionID(request.sessionId)
+        guard revokingSessionIDs.contains(sessionId) == false else {
+            throw ServiceError.invalidSession(request.sessionId)
+        }
         guard let manifest = manifests[sessionId],
               let state = await coordinator.session(sessionId) else {
             throw ServiceError.invalidSession(request.sessionId)
         }
+        if manifest.mode == .browser, requiresManagedBrowserRunAuthority {
+            guard allowManagedRunDispatch else {
+                throw ServiceError.managedRunDispatchRequired
+            }
+            guard let expectedRunID = manifest.runId else {
+                throw ServiceError.browserRunRequired
+            }
+            guard expectedRunID == request.invocation.runID.rawValue else {
+                throw ServiceError.runIdentityMismatch(
+                    expected: expectedRunID,
+                    actual: request.invocation.runID.rawValue
+                )
+            }
+            guard manifest.userId == request.invocation.requestedBy.rawValue else {
+                throw ServiceError.clientIdentityMismatch(
+                    expected: manifest.userId,
+                    actual: request.invocation.requestedBy.rawValue
+                )
+            }
+            guard await authorizationRegistry.permits(
+                sessionID: sessionId,
+                invocation: request.invocation
+            ) else {
+                await haltSession(sessionId, source: .revoked)
+                throw ServiceError.authorizationExpired(request.invocation.runID.rawValue)
+            }
+        }
+
         let capabilityState: ComputerUseCapabilityStateSnapshot
         do {
             capabilityState = try await currentCapabilityState()
@@ -360,12 +621,54 @@ public actor ComputerUseService {
         await coordinator.hasActiveSession()
     }
 
+    private static var platformRequiresManagedBrowserRunAuthority: Bool {
+        #if os(Linux)
+        true
+        #else
+        false
+        #endif
+    }
+
     public func pendingApprovals(
         _ request: ComputerUseApprovalPendingRequest
     ) async -> ComputerUseApprovalPendingResponse {
-        ComputerUseApprovalPendingResponse(
-            requests: await approvalBridge.pendingApprovals(sessionId: request.sessionId)
+        let normalizedSessionID = request.sessionId?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let filteredSessionID = normalizedSessionID?.isEmpty == false
+            ? normalizedSessionID
+            : nil
+        let sessionActive: Bool?
+        if let filteredSessionID {
+            sessionActive = await isSessionActiveForPolling(
+                ComputerUseSessionID(filteredSessionID)
+            )
+        } else {
+            sessionActive = nil
+        }
+        return ComputerUseApprovalPendingResponse(
+            requests: await approvalBridge.pendingApprovals(sessionId: filteredSessionID),
+            sessionActive: sessionActive
         )
+    }
+
+    private func isSessionActiveForPolling(_ sessionID: ComputerUseSessionID) async -> Bool {
+        guard revokingSessionIDs.contains(sessionID) == false,
+              let manifest = manifests[sessionID] else {
+            return false
+        }
+        if manifest.sessionTimeoutSeconds > 0,
+           Date().timeIntervalSince(manifest.startedAt) >= Double(manifest.sessionTimeoutSeconds) {
+            await haltSession(sessionID, source: .stalled)
+            return false
+        }
+        guard await coordinator.session(sessionID) != nil else {
+            await haltSession(sessionID, source: .stalled)
+            return false
+        }
+        // The coordinator lookup crosses actors. Recheck service-owned state
+        // after that suspension so a concurrent halt cannot yield a stale true.
+        return revokingSessionIDs.contains(sessionID) == false
+            && manifests[sessionID] != nil
     }
 
     public func respondToApproval(
@@ -379,6 +682,15 @@ public actor ComputerUseService {
         )
     }
 
+    /// Internal composition seam used by daemon-owned presenters and gateway
+    /// integration tests. The request remains pending until the exact approval
+    /// RPC response resolves it through the same bridge used by the coordinator.
+    func awaitApprovalResponse(
+        _ request: HermesRealtimeRelayApprovalRequest
+    ) async throws -> HermesRealtimeRelayApprovalResponse {
+        try await approvalBridge.issue(request)
+    }
+
     public func panicHalt(_ request: ComputerUsePanicHaltRequest) async throws -> ComputerUsePanicHaltResponse {
         guard let source = ComputerUsePanicSource(rawValue: request.source) else {
             throw ServiceError.invalidSession(request.sessionId)
@@ -386,12 +698,25 @@ public actor ComputerUseService {
         if request.sessionId == "*" {
             privilegedInputKillSwitchActivator(source.rawValue)
             let endedAt = Date()
+            timeoutTasks.values.forEach { $0.cancel() }
+            timeoutTasks.removeAll()
+            let manifestedSessionIDs = Set(manifests.keys)
+            revokingSessionIDs.formUnion(manifestedSessionIDs)
+            await authorizationRegistry.revokeAll()
+            await approvalBridge.cancelAll()
             let haltedSessions = await coordinator.panicHaltAllWithRecords(source: source)
-            for record in haltedSessions {
-                let sessionId = ComputerUseSessionID(record.sessionId)
-                let sessionDirectory = auditBaseDirectory.appendingPathComponent(record.sessionId, isDirectory: true)
-                finalizeAuditHeadIfPossible(sessionDirectory: sessionDirectory, closedAt: endedAt)
+            let haltedSessionIDs = Set(haltedSessions.map { ComputerUseSessionID($0.sessionId) })
+            let recordsBySessionID = Dictionary(
+                uniqueKeysWithValues: haltedSessions.map { (ComputerUseSessionID($0.sessionId), $0) }
+            )
+            for sessionId in manifestedSessionIDs.union(haltedSessionIDs) {
+                let sessionDirectory = auditBaseDirectory.appendingPathComponent(sessionId.rawValue, isDirectory: true)
+                finalizeAuditHeadIfPossible(
+                    sessionDirectory: sessionDirectory,
+                    closedAt: recordsBySessionID[sessionId]?.endedAt ?? endedAt
+                )
                 manifests.removeValue(forKey: sessionId)
+                revokingSessionIDs.remove(sessionId)
             }
             return ComputerUsePanicHaltResponse(
                 sessionId: request.sessionId,
@@ -401,15 +726,13 @@ public actor ComputerUseService {
         }
 
         let sessionId = ComputerUseSessionID(request.sessionId)
-        guard let state = await coordinator.session(sessionId) else {
+        guard manifests[sessionId] != nil,
+              let state = await coordinator.session(sessionId) else {
             throw ServiceError.invalidSession(request.sessionId)
         }
         privilegedInputKillSwitchActivator(source.rawValue)
-        let sessionDirectory = auditBaseDirectory.appendingPathComponent(sessionId.rawValue, isDirectory: true)
-        let ended = await coordinator.panicHalt(sessionId: sessionId, source: source)
+        let ended = await haltSession(sessionId, source: source)
         let endedAt = ended?.endedAt ?? Date()
-        finalizeAuditHeadIfPossible(sessionDirectory: sessionDirectory, closedAt: endedAt)
-        manifests.removeValue(forKey: sessionId)
         return ComputerUsePanicHaltResponse(
             sessionId: sessionId.rawValue,
             endedAt: endedAt,
@@ -594,18 +917,43 @@ public actor ComputerUseService {
     }
 
     private func terminateAllSessions(source: ComputerUsePanicSource) async {
+        let manifestedSessionIDs = await revokeAllSessionAuthority()
         let terminated = await coordinator.panicHaltAllWithRecords(source: source)
-        recordEndedSessions(terminated)
+        recordEndedSessions(terminated, including: manifestedSessionIDs)
     }
 
     private func terminateAllSessions(reason: ComputerUseEndReason) async {
+        let manifestedSessionIDs = await revokeAllSessionAuthority()
         let terminated = await coordinator.endAllWithRecords(reason: reason)
-        recordEndedSessions(terminated)
+        recordEndedSessions(terminated, including: manifestedSessionIDs)
     }
 
-    private func recordEndedSessions(_ ended: [ComputerUseSessionEndRecord]) {
-        for record in ended {
-            manifests.removeValue(forKey: ComputerUseSessionID(record.sessionId))
+    private func revokeAllSessionAuthority() async -> Set<ComputerUseSessionID> {
+        timeoutTasks.values.forEach { $0.cancel() }
+        timeoutTasks.removeAll()
+        let manifestedSessionIDs = Set(manifests.keys)
+        revokingSessionIDs.formUnion(manifestedSessionIDs)
+        await authorizationRegistry.revokeAll()
+        await approvalBridge.cancelAll()
+        return manifestedSessionIDs
+    }
+
+    private func recordEndedSessions(
+        _ ended: [ComputerUseSessionEndRecord],
+        including manifestedSessionIDs: Set<ComputerUseSessionID>
+    ) {
+        let recordsBySessionID = Dictionary(
+            uniqueKeysWithValues: ended.map { (ComputerUseSessionID($0.sessionId), $0) }
+        )
+        let endedSessionIDs = Set(recordsBySessionID.keys)
+        for sessionID in manifestedSessionIDs.union(endedSessionIDs) {
+            let sessionDirectory = auditBaseDirectory.appendingPathComponent(sessionID.rawValue, isDirectory: true)
+            finalizeAuditHeadIfPossible(
+                sessionDirectory: sessionDirectory,
+                closedAt: recordsBySessionID[sessionID]?.endedAt ?? Date()
+            )
+            manifests.removeValue(forKey: sessionID)
+            revokingSessionIDs.remove(sessionID)
         }
         pendingEndedSessions.append(contentsOf: ended)
     }
@@ -806,6 +1154,23 @@ actor ComputerUseApprovalBridge {
         pendingByApprovalId.removeValue(forKey: response.approvalId)
         pending.continuation.resume(returning: response)
         return true
+    }
+
+    func cancel(sessionId: String) {
+        let approvalIds = pendingByApprovalId.values
+            .filter { $0.request.sessionId == sessionId }
+            .map { $0.request.approvalId }
+        for approvalId in approvalIds {
+            cancel(approvalId: approvalId)
+        }
+    }
+
+    func cancelAll() {
+        let pending = pendingByApprovalId
+        pendingByApprovalId.removeAll()
+        for (_, approval) in pending {
+            approval.continuation.resume(throwing: CancellationError())
+        }
     }
 
     private func cancel(approvalId: String) {

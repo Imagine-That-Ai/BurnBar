@@ -839,6 +839,103 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
         }
     }
 
+    #if !os(Linux)
+    func testMacDaemonBrowserSessionPreservesDirectAgentToolBrokerLifecycle() async throws {
+        let node = try XCTUnwrap(nodeExecutablePath())
+        let bridge = try makeEchoBridge(expectedRequestCount: 2)
+        let service = ComputerUseService(
+            auditBaseDirectory: testAuditBaseDirectory(),
+            privilegedInputKillSwitchActivator: { _ in },
+            playwrightDriverFactory: { manifest in
+                OpenBurnBarPlaywrightDriver(
+                    configuration: OpenBurnBarPlaywrightDriver.Configuration(
+                        nodeExecutablePath: node,
+                        bridgeScriptPath: bridge,
+                        headless: true,
+                        perActionTimeoutMillis: 1_000
+                    ),
+                    sessionId: manifest.sessionId,
+                    logger: BurnBarDaemonLogger(category: "mac-agent-tool-broker-tests")
+                )
+            }
+        )
+
+        let started = try await service.startSession(
+            ComputerUseSessionStartRequest(
+                mode: ComputerUseMode.browser.rawValue,
+                trustMode: ComputerUseTrustMode.manual.rawValue,
+                clientID: BurnBarClientID(rawValue: "mac-agent-tool-broker")
+            )
+        )
+
+        XCTAssertFalse(started.sessionId.isEmpty)
+        let invocation = BurnBarToolInvocation(
+            callID: "mac-direct-browser-call",
+            runID: BurnBarRunID(rawValue: "mac-agent-tool-broker-run"),
+            tool: .browserGoto,
+            arguments: .object([
+                "url": .string("https://example.com/dashboard"),
+                "timeoutMillis": .number(1_000)
+            ]),
+            requestedBy: BurnBarClientID(rawValue: "mac-agent-tool-broker"),
+            requestedAt: Date()
+        )
+        let invocationTask = Task {
+            try await service.invoke(
+                ComputerUseInvokeRequest(
+                    sessionId: started.sessionId,
+                    invocation: invocation
+                )
+            )
+        }
+
+        try await waitForCondition {
+            let pending = await service.pendingApprovals(
+                ComputerUseApprovalPendingRequest(sessionId: started.sessionId)
+            )
+            return pending.requests.count == 1
+        }
+        let pending = await service.pendingApprovals(
+            ComputerUseApprovalPendingRequest(sessionId: started.sessionId)
+        )
+        let approval = try XCTUnwrap(pending.requests.first)
+        let approvalResponse = await service.respondToApproval(
+            ComputerUseApprovalRespondRequest(
+                sessionId: started.sessionId,
+                response: HermesRealtimeRelayApprovalResponse(
+                    approvalId: approval.approvalId,
+                    decision: .approve,
+                    respondedBy: "mac",
+                    respondedAt: Date()
+                )
+            )
+        )
+
+        XCTAssertTrue(approvalResponse.accepted)
+        let invoked = try await invocationTask.value
+        XCTAssertEqual(invoked.status, .executed)
+        XCTAssertEqual(invoked.callID, invocation.callID)
+        XCTAssertEqual(invoked.result?.runID, invocation.runID)
+        XCTAssertEqual(invoked.result?.callID, invocation.callID)
+        guard case .object(let output)? = invoked.result?.output else {
+            return XCTFail("Expected the direct Playwright driver response")
+        }
+        XCTAssertEqual(output["method"], .string("goto"))
+        let managedSessionID = await service.sessionID(for: invocation.runID)
+        XCTAssertNil(
+            managedSessionID,
+            "macOS Browser CU must not acquire the Linux managed-run binding"
+        )
+
+        _ = try await service.panicHalt(
+            ComputerUsePanicHaltRequest(
+                sessionId: started.sessionId,
+                source: ComputerUsePanicSource.revoked.rawValue
+            )
+        )
+    }
+    #endif
+
     // MARK: - Audit-before-action (fail-closed reservation)
 
     func testAuditReservationFailureDoesNotDispatch() async throws {
