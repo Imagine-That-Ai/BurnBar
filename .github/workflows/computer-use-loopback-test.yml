@@ -44,7 +44,7 @@ jobs:
         with:
           submodules: recursive
       - name: Install Rust toolchain for libsignal Swift FFI
-        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # stable
         with:
           toolchain: stable
       - name: Install protobuf for libsignal Swift FFI

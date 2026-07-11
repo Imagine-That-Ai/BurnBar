@@ -368,7 +368,7 @@ jobs:
             ${{ runner.os }}-spm-
 
       - name: Install Rust toolchain for libsignal Swift FFI
-        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # stable
         with:
           toolchain: stable
 
@@ -415,7 +415,7 @@ jobs:
             ${{ runner.os }}-spm-
 
       - name: Install Rust toolchain for libsignal Swift FFI
-        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # stable
         with:
           toolchain: stable
 
@@ -565,7 +565,7 @@ jobs:
             ${{ runner.os }}-spm-
 
       - name: Install Rust toolchain for libsignal Swift FFI
-        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # stable
         with:
           toolchain: stable
 
@@ -630,7 +630,7 @@ jobs:
             ${{ runner.os }}-spm-
 
       - name: Install Rust toolchain for libsignal Swift FFI
-        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # stable
         with:
           toolchain: stable
 
@@ -828,7 +828,7 @@ jobs:
       - name: Hermes relay unit tests (Functions)
         run: npm ci --prefix functions && npm --prefix functions run test:hermes
       - name: Install Rust toolchain for libsignal Swift FFI
-        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # stable
         with:
           toolchain: stable
       - name: Install protobuf for libsignal Swift FFI
@@ -895,7 +895,7 @@ jobs:
         with:
           node-version: "20"
       - name: Install Rust toolchain for libsignal Swift FFI
-        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # stable
         with:
           toolchain: stable
       - name: Install protobuf for libsignal Swift FFI
@@ -963,7 +963,7 @@ jobs:
           cd android
           ./gradlew :app:testDebugUnitTest --tests "com.openburnbar.ui.media.*" --tests "com.openburnbar.data.media.*" --no-daemon
       - name: Install Rust toolchain for libsignal Swift FFI
-        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # stable
         with:
           toolchain: stable
       - name: Install protobuf for libsignal Swift FFI

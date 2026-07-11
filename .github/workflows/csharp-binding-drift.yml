@@ -50,7 +50,7 @@ jobs:
       # 1.96.0); rustup auto-installs the right one when cargo runs inside the
       # crate directory, so a single explicit install is enough to seed rustup.
       - name: Install rust toolchain
-        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1, pinned via toolchain below
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # v1, pinned via toolchain below
         with:
           toolchain: "1.96.0"
 
