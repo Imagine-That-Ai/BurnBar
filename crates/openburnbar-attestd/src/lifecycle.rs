@@ -20,6 +20,9 @@ const MAX_AK_TPM_BYTES: usize = 64 * 1024;
 const MAX_EK_TPM_BYTES: usize = 64 * 1024;
 const MAX_EK_CERTIFICATE_BYTES: usize = 128 * 1024;
 const TPM_CREATEAK_TIMEOUT: Duration = Duration::from_secs(30);
+const TPM_EVICTCONTROL_TIMEOUT: Duration = Duration::from_secs(30);
+const AK_PERSISTENT_HANDLE: &str = "0x81010002";
+const STATE_LOCK_FILE: &str = ".initialize-ak.lock";
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -50,6 +53,7 @@ struct EnrollmentStateDocument<'a> {
 struct AkCreatePaths {
     work_dir: PathBuf,
     ak_context: PathBuf,
+    ak_handle: PathBuf,
     ak_public: PathBuf,
     ak_name: PathBuf,
     ak_qualified_name: PathBuf,
@@ -89,6 +93,7 @@ fn initialize_tpm_ak_at(
     let ek_certificate =
         read_required_private_file(&config.ek_certificate, MAX_EK_CERTIFICATE_BYTES)?;
     let create_paths = AkCreatePaths::new(&config.state_dir)?;
+    let mut persisted = false;
     let result = (|| {
         run_tpm2_createak(config, &create_paths)?;
         normalize_generated_files(&create_paths)?;
@@ -113,8 +118,22 @@ fn initialize_tpm_ak_at(
         let mut enrollment_bytes =
             serde_json::to_vec(&enrollment).map_err(|_| lifecycle_failed())?;
         enrollment_bytes.push(b'\n');
-        install_private_file(&create_paths.ak_context, &ak_context_path)?;
-        write_private_file_atomic(&config.state_dir, &enrollment_state_path, &enrollment_bytes)?;
+        if config.rotate && path_exists_no_follow(&ak_context_path)? {
+            run_tpm2_evictcontrol(config, &ak_context_path, None)?;
+        }
+        run_tpm2_evictcontrol(
+            config,
+            &create_paths.ak_context,
+            Some(&create_paths.ak_handle),
+        )?;
+        persisted = true;
+        install_private_file(&create_paths.ak_handle, &ak_context_path, config.rotate)?;
+        write_private_file_atomic(
+            &config.state_dir,
+            &enrollment_state_path,
+            &enrollment_bytes,
+            config.rotate,
+        )?;
         Ok(AkLifecycleReceipt {
             schema_version: 1,
             device_id,
@@ -127,6 +146,14 @@ fn initialize_tpm_ak_at(
             rotated: config.rotate,
         })
     })();
+    if result.is_err() && persisted {
+        let cleanup_context = if path_exists_no_follow(&create_paths.ak_handle).unwrap_or(false) {
+            &create_paths.ak_handle
+        } else {
+            &ak_context_path
+        };
+        let _evict = run_tpm2_evictcontrol(config, cleanup_context, None);
+    }
     let _cleanup = fs::remove_dir_all(&create_paths.work_dir);
     result
 }
@@ -143,6 +170,7 @@ impl AkCreatePaths {
             .map_err(|_| lifecycle_failed())?;
         Ok(Self {
             ak_context: work_dir.join("ak.ctx"),
+            ak_handle: work_dir.join("ak.handle"),
             ak_public: work_dir.join("ak.pub"),
             ak_name: work_dir.join("ak.name"),
             ak_qualified_name: work_dir.join("ak.qname"),
@@ -201,6 +229,43 @@ fn run_tpm2_createak(
     }
 }
 
+fn run_tpm2_evictcontrol(
+    config: &InitializeAkConfig,
+    object_context: &Path,
+    output: Option<&Path>,
+) -> Result<(), BrokerError> {
+    let mut command = Command::new(&config.tpm2_evictcontrol);
+    command
+        .arg("-Q")
+        .arg("-C")
+        .arg("o")
+        .arg("-c")
+        .arg(object_context);
+    if let Some(output) = output {
+        command.arg("-o").arg(output).arg(AK_PERSISTENT_HANDLE);
+    }
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|_| lifecycle_failed())?;
+    let deadline = Instant::now() + TPM_EVICTCONTROL_TIMEOUT;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) if status.success() => return Ok(()),
+            Ok(Some(_status)) => return Err(lifecycle_failed()),
+            Ok(None) if Instant::now() >= deadline => {
+                let _kill_result = child.kill();
+                let _wait_result = child.wait();
+                return Err(lifecycle_failed());
+            }
+            Ok(None) => std::thread::sleep(Duration::from_millis(10)),
+            Err(_) => return Err(lifecycle_failed()),
+        }
+    }
+}
+
 fn normalize_generated_files(paths: &AkCreatePaths) -> Result<(), BrokerError> {
     for path in [
         &paths.ak_context,
@@ -218,20 +283,28 @@ fn ensure_private_state_dir(path: &Path) -> Result<(), BrokerError> {
     if !path.is_absolute() {
         return Err(lifecycle_failed());
     }
-    let created = !path_exists_no_follow(path)?;
-    if created {
+    let existed = path_exists_no_follow(path)?;
+    if !existed {
         fs::create_dir_all(path).map_err(|_| lifecycle_failed())?;
         fs::set_permissions(path, fs::Permissions::from_mode(0o700))
             .map_err(|_| lifecycle_failed())?;
     }
-    let metadata = fs::symlink_metadata(path).map_err(|_| lifecycle_failed())?;
+    let mut metadata = fs::symlink_metadata(path).map_err(|_| lifecycle_failed())?;
     if !metadata.file_type().is_dir()
         || metadata.file_type().is_symlink()
         || metadata.uid() != 0
         || metadata.gid() != 0
-        || metadata.mode() & 0o7777 != 0o700
+        || (existed && metadata.mode() & 0o7777 != 0o700)
     {
         return Err(lifecycle_failed());
+    }
+    if !existed {
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700))
+            .map_err(|_| lifecycle_failed())?;
+        metadata = fs::symlink_metadata(path).map_err(|_| lifecycle_failed())?;
+        if metadata.mode() & 0o7777 != 0o700 {
+            return Err(lifecycle_failed());
+        }
     }
     Ok(())
 }
@@ -241,7 +314,7 @@ fn ensure_private_state_dir(path: &Path) -> Result<(), BrokerError> {
     reason = "POSIX flock has no safe std wrapper and is required for cross-process AK serialization"
 )]
 fn acquire_state_lock(state_dir: &Path) -> Result<File, BrokerError> {
-    let path = state_dir.join(".initialize-ak.lock");
+    let path = state_dir.join(STATE_LOCK_FILE);
     let file = OpenOptions::new()
         .read(true)
         .write(true)
@@ -317,11 +390,20 @@ fn open_no_follow(path: &Path) -> std::io::Result<File> {
         .open(path)
 }
 
-fn install_private_file(source: &Path, destination: &Path) -> Result<(), BrokerError> {
+fn install_private_file(
+    source: &Path,
+    destination: &Path,
+    replace_existing: bool,
+) -> Result<(), BrokerError> {
     fs::set_permissions(source, fs::Permissions::from_mode(0o600))
         .map_err(|_| lifecycle_failed())?;
     validate_private_input_file(source, MAX_AK_CONTEXT_BYTES)?;
-    fs::rename(source, destination).map_err(|_| lifecycle_failed())?;
+    if replace_existing {
+        fs::rename(source, destination).map_err(|_| lifecycle_failed())?;
+    } else {
+        fs::hard_link(source, destination).map_err(|_| lifecycle_failed())?;
+        fs::remove_file(source).map_err(|_| lifecycle_failed())?;
+    }
     validate_private_input_file(destination, MAX_AK_CONTEXT_BYTES)
 }
 
@@ -329,6 +411,7 @@ fn write_private_file_atomic(
     state_dir: &Path,
     destination: &Path,
     bytes: &[u8],
+    replace_existing: bool,
 ) -> Result<(), BrokerError> {
     if bytes.is_empty() || bytes.len() > MAX_AK_CONTEXT_BYTES {
         return Err(lifecycle_failed());
@@ -341,7 +424,7 @@ fn write_private_file_atomic(
             .unwrap_or("openburnbar-state"),
         monotonic_suffix()
     ));
-    {
+    let result = (|| {
         let mut file = OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -351,10 +434,19 @@ fn write_private_file_atomic(
             .map_err(|_| lifecycle_failed())?;
         file.write_all(bytes).map_err(|_| lifecycle_failed())?;
         file.sync_all().map_err(|_| lifecycle_failed())?;
+        validate_private_input_file(&temporary, MAX_AK_CONTEXT_BYTES)?;
+        if replace_existing {
+            fs::rename(&temporary, destination).map_err(|_| lifecycle_failed())?;
+        } else {
+            fs::hard_link(&temporary, destination).map_err(|_| lifecycle_failed())?;
+            fs::remove_file(&temporary).map_err(|_| lifecycle_failed())?;
+        }
+        validate_private_input_file(destination, MAX_AK_CONTEXT_BYTES)
+    })();
+    if result.is_err() {
+        let _cleanup = fs::remove_file(&temporary);
     }
-    validate_private_input_file(&temporary, MAX_AK_CONTEXT_BYTES)?;
-    fs::rename(&temporary, destination).map_err(|_| lifecycle_failed())?;
-    validate_private_input_file(destination, MAX_AK_CONTEXT_BYTES)
+    result
 }
 
 fn encode_base64(bytes: &[u8]) -> Result<String, BrokerError> {
@@ -431,6 +523,24 @@ printf '%s' ak-qualified-name > "$qname"
 "#,
         )?;
         fs::set_permissions(&fake_createak, fs::Permissions::from_mode(0o755))?;
+        let fake_evictcontrol = root.join("tpm2_evictcontrol");
+        fs::write(
+            &fake_evictcontrol,
+            r#"#!/bin/sh
+set -eu
+output=
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o) output=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+if [ -n "${output:-}" ]; then
+  printf '%s' persistent-handle > "$output"
+fi
+"#,
+        )?;
+        fs::set_permissions(&fake_evictcontrol, fs::Permissions::from_mode(0o755))?;
         let config = InitializeAkConfig {
             state_dir: root.clone(),
             ek_context,
@@ -438,6 +548,7 @@ printf '%s' ak-qualified-name > "$qname"
             ek_certificate,
             agent_id: "01234567-89ab-cdef-0123-456789abcdef".to_owned(),
             tpm2_createak: fake_createak,
+            tpm2_evictcontrol: fake_evictcontrol,
             rotate: false,
         };
         let receipt = initialize_tpm_ak_at(&config, 1_900_000_000_000)?;
@@ -447,7 +558,7 @@ printf '%s' ak-qualified-name > "$qname"
         );
         let ak_context_path = root.join(AK_CONTEXT_FILE);
         let enrollment_path = root.join(ENROLLMENT_STATE_FILE);
-        assert_eq!(fs::read(&ak_context_path)?, b"ak-context");
+        assert_eq!(fs::read(&ak_context_path)?, b"persistent-handle");
         assert_eq!(
             fs::metadata(&ak_context_path)?.permissions().mode() & 0o777,
             0o600
@@ -482,6 +593,10 @@ printf '%s' ak-qualified-name > "$qname"
     }
 
     #[test]
+    #[allow(
+        unsafe_code,
+        reason = "test-only root privilege check for POSIX state-lock coverage"
+    )]
     fn state_lock_rejects_concurrent_initialization() -> Result<(), Box<dyn std::error::Error>> {
         // SAFETY: geteuid has no preconditions.
         if unsafe { libc::geteuid() } != 0 {

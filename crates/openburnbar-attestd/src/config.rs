@@ -19,6 +19,7 @@ pub struct InitializeAkConfig {
     pub ek_certificate: PathBuf,
     pub agent_id: String,
     pub tpm2_createak: PathBuf,
+    pub tpm2_evictcontrol: PathBuf,
     pub rotate: bool,
 }
 
@@ -88,6 +89,7 @@ impl InitializeAkConfig {
         let mut ek_certificate = None;
         let mut agent_id = None;
         let mut tpm2_createak = None;
+        let mut tpm2_evictcontrol = None;
         let mut rotate = false;
         let mut args = args.into_iter().peekable();
         while let Some(flag) = args.next() {
@@ -107,6 +109,9 @@ impl InitializeAkConfig {
                 "--tpm2-createak" if tpm2_createak.is_none() => {
                     tpm2_createak = Some(PathBuf::from(value));
                 }
+                "--tpm2-evictcontrol" if tpm2_evictcontrol.is_none() => {
+                    tpm2_evictcontrol = Some(PathBuf::from(value));
+                }
                 _ => return Err(invalid_cli()),
             }
         }
@@ -117,6 +122,8 @@ impl InitializeAkConfig {
             ek_certificate: ek_certificate.ok_or_else(invalid_cli)?,
             agent_id: agent_id.ok_or_else(invalid_cli)?,
             tpm2_createak: tpm2_createak.unwrap_or_else(|| PathBuf::from("/usr/bin/tpm2_createak")),
+            tpm2_evictcontrol: tpm2_evictcontrol
+                .unwrap_or_else(|| PathBuf::from("/usr/bin/tpm2_evictcontrol")),
             rotate,
         };
         if !config.state_dir.is_absolute()
@@ -124,6 +131,7 @@ impl InitializeAkConfig {
             || !config.ek_public.is_absolute()
             || !config.ek_certificate.is_absolute()
             || !config.tpm2_createak.is_absolute()
+            || !config.tpm2_evictcontrol.is_absolute()
             || !valid_uuid(&config.agent_id)
         {
             return Err(invalid_cli());

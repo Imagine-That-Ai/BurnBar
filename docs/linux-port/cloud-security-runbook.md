@@ -130,11 +130,12 @@ installed-file manifest before accepting the bounded request. Package install,
 upgrade, normal removal, explicit state purge, and active user-daemon upgrade
 recovery own the lifecycle. Fresh installs keep the root socket disabled and
 stopped; activation requires private root-owned enrollment state, a private
-root-owned `ak.ctx` quote context, and an exact root-owned rollout marker. The
+root-owned serialized `ak.ctx` handle, and an exact root-owned rollout marker. The
 broker now has an explicit `initialize-ak` mode that uses
-`/usr/bin/tpm2_createak` to generate the private AK context from root-owned EK
-material, writes canonical enrollment state, and refuses accidental overwrite
-without `--rotate`. The serve path parses that private state, verifies the
+`/usr/bin/tpm2_createak` followed by `/usr/bin/tpm2_evictcontrol` to persist the
+AK and save its serialized handle from root-owned EK material, writes canonical
+enrollment state, and refuses accidental overwrite without `--rotate`. The
+serve path parses that private state, verifies the
 AK-bound `ak-sha256:*` device ID, returns the installed release/device binding
 only when the state file is root-owned, root-group, non-symlinked, and mode
 `0400` or `0600`, invokes the packaged `/usr/bin/tpm2_quote` collector with the
@@ -150,7 +151,7 @@ hashes; finalization verifies that receipt and current inputs. RPM construction
 also extracts the final artifact and checks every signed payload record, which
 prevents rpmbuild post-processing from invalidating daemon authorization. This
 is still source-level broker evidence only. Missing enrollment, missing
-`ak.ctx`, missing `tpm2-tools`, unavailable TPM devices, unavailable IMA or
+serialized `ak.ctx`, missing `tpm2-tools`, unavailable TPM devices, unavailable IMA or
 measured-boot logs, manifest digest mismatch, and invalid quote output all fail
 closed before upload or mint, and no installed or production parity is claimed.
 

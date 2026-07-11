@@ -125,10 +125,11 @@ Linux is a distinct, permanently lower-assurance principal:
   state. Account changes invalidate acquisition and cached state. The renderer
   may receive redacted availability and expiry status, never token material.
   The broker now owns an explicit `initialize-ak` lifecycle mode that creates
-  a private `ak.ctx` through `/usr/bin/tpm2_createak`, refuses accidental
+  a private serialized persistent-AK handle in `ak.ctx` through
+  `/usr/bin/tpm2_createak` and `/usr/bin/tpm2_evictcontrol`, refuses accidental
   overwrite unless `--rotate` is supplied, and writes the canonical private
   enrollment state from the AK/EK material. The serve path then loads that
-  private root-owned state, validates the private `ak.ctx` quote context,
+  private root-owned state, validates the serialized persistent handle,
   invokes `/usr/bin/tpm2_quote` with the broker-derived qualifying data, and
   returns a sealed descriptor containing IMA measurements, measured-boot log,
   installed manifest, and manifest signature. The production factory composes
@@ -144,7 +145,7 @@ broker foundation now ships in source for native deb/rpm packages:
 - `openburnbar-attestd.socket` owns `/run/openburnbar/attestd.sock` when the
   attestation rollout is eligible. Fresh installs keep the socket disabled and
   stopped; package hooks activate it only when private root-owned TPM enrollment
-  state, the private root-owned `ak.ctx` quote context, and the explicit
+  state, the private root-owned serialized `ak.ctx` handle, and the explicit
   root-owned rollout marker all pass. The root service is network denied and
   systemd sandboxed without hiding the peer PID information needed for
   authorization.
@@ -178,10 +179,12 @@ broker foundation now ships in source for native deb/rpm packages:
   `ekCertificateBase64`, and `enrolledAtMillis`; the broker recomputes
   `ak-sha256:<sha256(decoded akTpmBase64)>` before returning a binding. The
   `initialize-ak` mode creates that state from root-owned EK context/public/
-  certificate inputs and a broker-managed `tpm2_createak` invocation. Existing
+  certificate inputs and broker-managed `tpm2_createak` plus
+  `tpm2_evictcontrol` invocations. Existing
   state is not overwritten unless the operator supplies `--rotate`, making
   accidental identity replacement a local hard failure. The attest operation
-  requires `/var/lib/openburnbar-attestd/ak.ctx`, runs
+  requires `/var/lib/openburnbar-attestd/ak.ctx` containing a serialized
+  persistent handle, runs
   `tpm2_quote -Q -c ak.ctx -l sha256:0,2,4,7,10 -q <qualifying-data> -m ... -s ... -f tss -F serialized -g sha256 -o ...`,
   collects quote artifacts through anonymous memfds, and returns one sealed
   evidence descriptor. It has no mock or software fallback; unsupported or

@@ -269,15 +269,21 @@ pub fn systemd_listener(socket_fd: i32) -> Result<SeqpacketListener, BrokerError
     // to this process when LISTEN_PID matches and LISTEN_FDS is exactly one. The
     // descriptor is converted once and OwnedFd becomes its sole owner.
     // reason: Unsafe libc boundary is justified by the adjacent SAFETY invariant.
-    #[allow(
-        unsafe_code,
-        reason = "systemd socket activation requires adopting inherited fd 3"
-    )]
     // systemd hands the listener to us without guaranteeing close-on-exec.
     // Seal that boundary before any helper process can be spawned.
     set_descriptor_cloexec(SYSTEMD_LISTEN_FD, true)?;
-    let fd = unsafe { OwnedFd::from_raw_fd(SYSTEMD_LISTEN_FD) };
+    let fd = adopt_systemd_listener_fd();
     Ok(SeqpacketListener { fd })
+}
+
+#[allow(
+    unsafe_code,
+    reason = "systemd socket activation requires adopting inherited fd 3"
+)]
+fn adopt_systemd_listener_fd() -> OwnedFd {
+    // SAFETY: systemd's socket activation ABI transfers ownership of descriptor 3
+    // to this process when LISTEN_PID matches and LISTEN_FDS is exactly one.
+    unsafe { OwnedFd::from_raw_fd(SYSTEMD_LISTEN_FD) }
 }
 
 impl SeqpacketListener {
