@@ -253,7 +253,10 @@ export class FirestoreIngressTicketStore implements IngressTicketStore {
       const attemptCount = ticket.attemptCount ?? 0;
       if (attemptCount >= maxAttempts) {
         transaction.update(ticketRef, { status: "terminal", terminalAt: Timestamp.fromMillis(nowMillis) });
-        if (existing !== undefined && !existing.active && existing.beginTicketId === ticket.ticketId) transaction.delete(enrollmentRef);
+        if (existing !== undefined
+            && !existing.active
+            && !enrollmentRevoked(existing)
+            && existing.beginTicketId === ticket.ticketId) transaction.delete(enrollmentRef);
         return { kind: "attempts_exhausted" as const };
       }
       if (existing !== undefined) {
