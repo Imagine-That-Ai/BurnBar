@@ -26,6 +26,7 @@ if (!['stable', 'prerelease', 'nightly'].includes(channel)) {
 }
 
 const packageClosurePath = path.join(releaseOut, 'package-closure.json');
+const realRepoRoot = fs.realpathSync(repoRoot);
 const packageClosure = readJson(packageClosurePath);
 if (packageClosure.schemaVersion !== 3 || packageClosure.version !== version || packageClosure.git?.commit == null) {
   throw new Error('package closure is missing or does not match repository finalization');
@@ -119,5 +120,5 @@ function confinedFile(relativePath) {
   if (lexical !== repoRoot && !lexical.startsWith(`${repoRoot}${path.sep}`)) return null;
   if (!fs.existsSync(lexical)) return null;
   const real = fs.realpathSync(lexical);
-  return (real === repoRoot || real.startsWith(`${repoRoot}${path.sep}`)) ? real : null;
+  return (real === realRepoRoot || real.startsWith(`${realRepoRoot}${path.sep}`)) ? real : null;
 }

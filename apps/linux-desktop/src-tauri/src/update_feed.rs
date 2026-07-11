@@ -266,7 +266,9 @@ fn validate_feed(feed: &LinuxUpdateFeed) -> Result<(), String> {
     }
     let signature_url = reqwest::Url::parse(&feed.signature.url)
         .map_err(|_| "Update feed signature URL is invalid.".to_string())?;
-    if validate_update_artifact_url(signature_url.as_str()).is_err() {
+    if validate_update_artifact_url_for_version(signature_url.as_str(), Some(&feed.version))
+        .is_err()
+    {
         return Err("Update feed signature URL is not an allowed release path.".into());
     }
     if feed.artifacts.is_empty() {
@@ -291,7 +293,7 @@ fn validate_feed(feed: &LinuxUpdateFeed) -> Result<(), String> {
             return Err("Update feed contains duplicate artifact metadata.".into());
         }
         for raw_url in [&artifact.url, &artifact.signature_url] {
-            if validate_update_artifact_url(raw_url).is_err() {
+            if validate_update_artifact_url_for_version(raw_url, Some(&feed.version)).is_err() {
                 return Err("Update artifact URL is not an allowed release path.".into());
             }
         }
@@ -367,6 +369,13 @@ fn allowed_feed_url(url: &reqwest::Url) -> bool {
 }
 
 pub fn validate_update_artifact_url(raw_url: &str) -> Result<String, String> {
+    validate_update_artifact_url_for_version(raw_url, None)
+}
+
+fn validate_update_artifact_url_for_version(
+    raw_url: &str,
+    expected_version: Option<&str>,
+) -> Result<String, String> {
     if raw_url.len() > 2_048 {
         return Err("update_url_too_long".into());
     }
@@ -376,10 +385,16 @@ pub fn validate_update_artifact_url(raw_url: &str) -> Result<String, String> {
     }
     let allowed_path = match url.host_str() {
         Some("burnbar.ai" | "www.burnbar.ai") => url.path().starts_with("/downloads/"),
-        Some("downloads.burnbar.ai") => allowed_r2_release_artifact_path(url.path()),
-        Some("github.com") => url
-            .path()
-            .starts_with("/Imagine-That-Ai/BurnBar/releases/download/"),
+        Some("downloads.burnbar.ai") => {
+            allowed_r2_release_artifact_path(url.path(), expected_version)
+        }
+        Some("github.com") => {
+            url.path()
+                .starts_with("/Imagine-That-Ai/BurnBar/releases/download/")
+                && expected_release_version(url.path()).is_some_and(|version| {
+                    expected_version.map_or(true, |expected| version == expected)
+                })
+        }
         _ => false,
     };
     if !allowed_path {
@@ -388,7 +403,7 @@ pub fn validate_update_artifact_url(raw_url: &str) -> Result<String, String> {
     Ok(url.to_string())
 }
 
-fn allowed_r2_release_artifact_path(path: &str) -> bool {
+fn allowed_r2_release_artifact_path(path: &str, expected_version: Option<&str>) -> bool {
     let parts = path.split('/').collect::<Vec<_>>();
     if parts.len() != 5 || parts[0] != "" || parts[1] != "linux" || parts[2] != "releases" {
         return false;
@@ -398,12 +413,22 @@ fn allowed_r2_release_artifact_path(path: &str) -> bool {
     };
     let filename = parts[4];
     compare_semver(version, "0.0.0").is_some()
+        && expected_version.map_or(true, |expected| version == expected)
         && !filename.is_empty()
         && filename != "."
         && filename != ".."
         && filename
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+}
+
+fn expected_release_version(path: &str) -> Option<&str> {
+    let parts = path.split('/').collect::<Vec<_>>();
+    parts.windows(2).find_map(|window| {
+        window[0]
+            .strip_prefix("linux-v")
+            .filter(|version| !version.is_empty())
+    })
 }
 
 fn allowed_download_url(url: &reqwest::Url) -> bool {
@@ -583,6 +608,16 @@ mod tests {
         ] {
             assert!(validate_update_artifact_url(refused).is_err(), "{refused}");
         }
+    }
+
+    #[test]
+    fn feed_artifact_version_must_match_feed_version() {
+        let mut mismatched = feed();
+        mismatched.artifacts[0].url =
+            "https://downloads.burnbar.ai/linux/releases/linux-v9.9.9/OpenBurnBar.AppImage".into();
+        assert!(validate_feed(&mismatched)
+            .unwrap_err()
+            .contains("allowed release path"));
     }
 
     #[test]
