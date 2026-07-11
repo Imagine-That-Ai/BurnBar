@@ -15,13 +15,16 @@ use tauri::{AppHandle, Emitter, Manager, RunEvent, WindowEvent};
 use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
 use tauri_plugin_shell::ShellExt;
 
+mod desktop_notifications;
 mod media;
 mod native_shell;
 mod update_feed;
 
+use desktop_notifications::{native_notification_capabilities, native_notification_show};
 use native_shell::{
     build_tray, handle_secondary_launch, native_shell_ready, native_shell_set_login_start,
-    native_shell_snapshot, native_tray_update, LaunchIntent, NativeShellState,
+    native_shell_snapshot, native_status_close, native_status_route, native_status_show,
+    native_status_snapshot, native_tray_update, LaunchIntent, NativeShellState,
 };
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -750,6 +753,11 @@ fn evaluate_runtime_capability(
             ),
             None => unavailable(),
         },
+        "notifications" if has_session_bus && native_notification_capabilities().available => available(
+            "The desktop notification server accepted the native capability probe.",
+            "native-notification-probe",
+        ),
+        "notifications" => unavailable(),
         "trusted-cli" if trusted_openburnbar_cli().is_ok() => {
             available("A trusted packaged CLI is installed.", "root-owned-package-path")
         }
@@ -2554,6 +2562,12 @@ pub fn run() {
             native_shell_ready,
             native_shell_snapshot,
             native_shell_set_login_start,
+            native_status_snapshot,
+            native_status_show,
+            native_status_close,
+            native_status_route,
+            native_notification_capabilities,
+            native_notification_show,
             native_tray_update,
             usage_summary,
             provider_catalog,
@@ -2644,6 +2658,13 @@ pub fn run() {
                     if let WindowEvent::CloseRequested { api, .. } = event {
                         api.prevent_close();
                         if let Some(window) = app_handle.get_webview_window("main") {
+                            let _ = window.hide();
+                        }
+                    }
+                } else if label == "status" {
+                    if let WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        if let Some(window) = app_handle.get_webview_window("status") {
                             let _ = window.hide();
                         }
                     }

@@ -11,8 +11,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::menu::{
     CheckMenuItem, CheckMenuItemBuilder, MenuBuilder, MenuItem, MenuItemBuilder, PredefinedMenuItem,
 };
-use tauri::tray::TrayIconBuilder;
-use tauri::{AppHandle, Emitter, Manager, Wry};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder, Wry};
 use url::Url;
 
 const AUTOSTART_ENTRY: &str =
@@ -109,7 +109,7 @@ pub struct NativeShellSnapshot {
     pub degraded_reason: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NativeTraySnapshot {
     pub today_cost_usd: f64,
@@ -119,13 +119,32 @@ pub struct NativeTraySnapshot {
     pub freshness: NativeTrayFreshness,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum NativeTrayFreshness {
     Live,
     Stale,
     Offline,
     Unavailable,
+}
+
+impl Default for NativeTraySnapshot {
+    fn default() -> Self {
+        Self {
+            today_cost_usd: 0.0,
+            today_tokens: 0,
+            connected_providers: 0,
+            quota_floor_remaining_percent: None,
+            freshness: NativeTrayFreshness::Unavailable,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeStatusSnapshot {
+    pub shell: NativeShellSnapshot,
+    pub tray: NativeTraySnapshot,
 }
 
 struct TrayHandles {
@@ -142,6 +161,7 @@ pub struct NativeShellState {
     background_launch: bool,
     rejected_deep_links: usize,
     tray_handles: Mutex<Option<TrayHandles>>,
+    last_tray_snapshot: Mutex<NativeTraySnapshot>,
 }
 
 impl NativeShellState {
@@ -152,6 +172,7 @@ impl NativeShellState {
             background_launch: intent.background,
             rejected_deep_links: intent.rejected_deep_links,
             tray_handles: Mutex::new(None),
+            last_tray_snapshot: Mutex::new(NativeTraySnapshot::default()),
         }
     }
 
@@ -201,6 +222,26 @@ impl NativeShellState {
                 degraded_reason: Some(error),
             },
         }
+    }
+
+    fn status_snapshot(&self) -> NativeStatusSnapshot {
+        NativeStatusSnapshot {
+            shell: self.snapshot(),
+            tray: self
+                .last_tray_snapshot
+                .lock()
+                .map(|snapshot| *snapshot)
+                .unwrap_or_default(),
+        }
+    }
+
+    fn store_tray_snapshot(&self, snapshot: NativeTraySnapshot) -> Result<(), String> {
+        let mut last = self
+            .last_tray_snapshot
+            .lock()
+            .map_err(|_| "native_status_snapshot_unavailable".to_string())?;
+        *last = snapshot;
+        Ok(())
     }
 
     fn install_tray_handles(&self, handles: TrayHandles) {
@@ -296,7 +337,25 @@ fn show_main_window(app: &AppHandle) {
     }
 }
 
-fn route_from_tray(app: &AppHandle, route: &str, action: &str) {
+pub fn route_action_allowed(route: &str, action: &str) -> bool {
+    matches!(
+        (route, action),
+        ("overview", "open-dashboard")
+            | ("activity", "open-search")
+            | ("chat", "open-chat")
+            | ("insights", "open-insights")
+            | ("providers", "open-providers")
+            | ("updates", "open-updates")
+            | ("support", "reconnect-daemon")
+            | ("account", "membership-success")
+            | ("account", "membership-cancel")
+    )
+}
+
+pub fn deliver_route_action(app: &AppHandle, route: &str, action: &str) -> Result<(), String> {
+    if !route_action_allowed(route, action) {
+        return Err("native_route_action_invalid".to_string());
+    }
     show_main_window(app);
     app.state::<NativeShellState>().deliver(
         app,
@@ -305,6 +364,96 @@ fn route_from_tray(app: &AppHandle, route: &str, action: &str) {
             action: action.to_string(),
         },
     );
+    Ok(())
+}
+
+fn route_from_tray(app: &AppHandle, route: &str, action: &str) {
+    let _ = deliver_route_action(app, route, action);
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct StatusWindowGeometry {
+    x: f64,
+    y: f64,
+}
+
+fn clamp_status_window_position(
+    anchor_x: f64,
+    anchor_y: f64,
+    monitor_x: f64,
+    monitor_y: f64,
+    monitor_width: f64,
+    monitor_height: f64,
+) -> StatusWindowGeometry {
+    let width = 420.0;
+    let height = 540.0;
+    let margin = 12.0;
+    let min_x = monitor_x + margin;
+    let min_y = monitor_y + margin;
+    let max_x = monitor_x + monitor_width - width - margin;
+    let max_y = monitor_y + monitor_height - height - margin;
+    StatusWindowGeometry {
+        x: (anchor_x - width + margin).clamp(min_x, max_x.max(min_x)),
+        y: (anchor_y + margin).clamp(min_y, max_y.max(min_y)),
+    }
+}
+
+fn status_anchor_position(
+    app: &AppHandle,
+    physical_x: f64,
+    physical_y: f64,
+) -> StatusWindowGeometry {
+    let monitor = app
+        .monitor_from_point(physical_x, physical_y)
+        .ok()
+        .flatten()
+        .or_else(|| app.primary_monitor().ok().flatten());
+    if let Some(monitor) = monitor {
+        let scale = monitor.scale_factor();
+        let position = monitor.position();
+        let size = monitor.size();
+        return clamp_status_window_position(
+            physical_x / scale,
+            physical_y / scale,
+            f64::from(position.x) / scale,
+            f64::from(position.y) / scale,
+            f64::from(size.width) / scale,
+            f64::from(size.height) / scale,
+        );
+    }
+    clamp_status_window_position(physical_x, physical_y, 0.0, 0.0, 1_920.0, 1_080.0)
+}
+
+fn show_status_window_at(app: &AppHandle, anchor: Option<(f64, f64)>) -> Result<(), String> {
+    let window = if let Some(window) = app.get_webview_window("status") {
+        window
+    } else {
+        WebviewWindowBuilder::new(
+            app,
+            "status",
+            WebviewUrl::App("index.html?surface=status".into()),
+        )
+        .title("OpenBurnBar Status")
+        .inner_size(420.0, 540.0)
+        .min_inner_size(360.0, 420.0)
+        .max_inner_size(520.0, 680.0)
+        .resizable(false)
+        .skip_taskbar(true)
+        .visible(false)
+        .build()
+        .map_err(|error| format!("native_status_window_create_failed:{error}"))?
+    };
+    if let Some((x, y)) = anchor {
+        let position = status_anchor_position(app, x, y);
+        let _ = window.set_position(tauri::Position::Logical(tauri::LogicalPosition {
+            x: position.x,
+            y: position.y,
+        }));
+    }
+    let _ = window.show();
+    let _ = window.unminimize();
+    let _ = window.set_focus();
+    Ok(())
 }
 
 pub fn handle_secondary_launch(app: &AppHandle, args: Vec<String>) {
@@ -323,6 +472,7 @@ pub fn handle_secondary_launch(app: &AppHandle, args: Vec<String>) {
 }
 
 pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
+    let quick_status = MenuItemBuilder::with_id("quick_status", "Open quick status").build(app)?;
     let open = MenuItemBuilder::with_id("open", "Open dashboard").build(app)?;
     let chat = MenuItemBuilder::with_id("chat", "Open chat").build(app)?;
     let providers_route =
@@ -351,21 +501,24 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let separator_1 = PredefinedMenuItem::separator(app)?;
     let separator_2 = PredefinedMenuItem::separator(app)?;
     let separator_3 = PredefinedMenuItem::separator(app)?;
+    let separator_4 = PredefinedMenuItem::separator(app)?;
     let menu = MenuBuilder::new(app)
         .items(&[
+            &quick_status,
+            &separator_1,
             &open,
             &chat,
             &providers_route,
             &updates,
-            &separator_1,
+            &separator_2,
             &status,
             &cost,
             &quota,
             &providers,
-            &separator_2,
+            &separator_3,
             &login_start,
             &reconnect,
-            &separator_3,
+            &separator_4,
             &quit,
         ])
         .build()?;
@@ -378,7 +531,21 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         .icon(icon)
         .menu(&menu)
         .tooltip("OpenBurnBar - connecting")
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                position,
+                ..
+            } = event
+            {
+                let _ = show_status_window_at(tray.app_handle(), Some((position.x, position.y)));
+            }
+        })
         .on_menu_event(|app, event| match event.id.as_ref() {
+            "quick_status" => {
+                let _ = show_status_window_at(app, None);
+            }
             "open" => route_from_tray(app, "overview", "open-dashboard"),
             "chat" => route_from_tray(app, "chat", "open-chat"),
             "providers_route" => route_from_tray(app, "providers", "open-providers"),
@@ -411,7 +578,7 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             _ => {}
         })
         .build(app)?;
-    let _ = tray.set_show_menu_on_left_click(true);
+    let _ = tray.set_show_menu_on_left_click(false);
     app.state::<NativeShellState>()
         .install_tray_handles(TrayHandles {
             status,
@@ -449,6 +616,38 @@ pub fn native_shell_set_login_start(
 }
 
 #[tauri::command]
+pub fn native_status_snapshot(state: tauri::State<'_, NativeShellState>) -> NativeStatusSnapshot {
+    state.status_snapshot()
+}
+
+#[tauri::command]
+pub fn native_status_show(
+    app: AppHandle,
+    state: tauri::State<'_, NativeShellState>,
+) -> Result<NativeStatusSnapshot, String> {
+    show_status_window_at(&app, None)?;
+    Ok(state.status_snapshot())
+}
+
+#[tauri::command]
+pub fn native_status_close(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("status") {
+        window
+            .hide()
+            .map_err(|error| format!("native_status_window_close_failed:{error}"))?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn native_status_route(app: AppHandle, route: String, action: String) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("status") {
+        let _ = window.hide();
+    }
+    deliver_route_action(&app, &route, &action)
+}
+
+#[tauri::command]
 pub fn native_tray_update(
     app: AppHandle,
     snapshot: NativeTraySnapshot,
@@ -458,9 +657,14 @@ pub fn native_tray_update(
         || snapshot.today_cost_usd < 0.0
         || snapshot.today_cost_usd > 1_000_000_000.0
         || snapshot.connected_providers > 1_024
+        || snapshot
+            .quota_floor_remaining_percent
+            .is_some_and(|value| !(0..=100).contains(&value))
     {
         return Err("native_tray_snapshot_invalid".to_string());
     }
+    state.store_tray_snapshot(snapshot)?;
+    let _ = app.emit("native-status-snapshot", state.status_snapshot());
     let handles = state
         .tray_handles
         .lock()
@@ -568,6 +772,29 @@ mod tests {
         assert!(intent.background);
         assert_eq!(intent.deep_links.len(), 1);
         assert_eq!(intent.rejected_deep_links, 1);
+    }
+
+    #[test]
+    fn native_route_actions_are_locked_to_known_pairs() {
+        assert!(route_action_allowed("providers", "open-providers"));
+        assert!(route_action_allowed("support", "reconnect-daemon"));
+        assert!(!route_action_allowed("providers", "open-chat"));
+        assert!(!route_action_allowed("unknown", "open-dashboard"));
+    }
+
+    #[test]
+    fn status_window_position_clamps_to_monitor_bounds() {
+        assert_eq!(
+            clamp_status_window_position(1_910.0, 20.0, 0.0, 0.0, 1_920.0, 1_080.0),
+            StatusWindowGeometry {
+                x: 1_488.0,
+                y: 32.0
+            }
+        );
+        assert_eq!(
+            clamp_status_window_position(10.0, 1_070.0, 0.0, 0.0, 1_920.0, 1_080.0),
+            StatusWindowGeometry { x: 12.0, y: 528.0 }
+        );
     }
 
     #[test]

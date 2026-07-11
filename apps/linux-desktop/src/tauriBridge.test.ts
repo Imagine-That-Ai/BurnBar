@@ -6,7 +6,11 @@ import {
   decodeDaemonSubscriptionResponse,
   decodeDaemonSubscriptionStopResponse,
   decodeNativeDeepLink,
-  decodeNativeShellSnapshot
+  decodeNativeNotificationCapabilities,
+  decodeNativeNotificationResult,
+  decodeNativeShellSnapshot,
+  decodeNativeStatusSnapshot,
+  decodeNativeTraySnapshot
 } from './tauriBridge';
 
 const ACCOUNT_UPDATED_AT = '2026-07-10T12:00:00Z';
@@ -252,5 +256,62 @@ describe('native shell wire decoding', () => {
       backgroundLaunch: false,
       rejectedDeepLinks: 0
     })).toThrow('loginStartEnabled');
+  });
+
+  it('strictly decodes the compact status snapshot and tray bounds', () => {
+    expect(decodeNativeStatusSnapshot({
+      shell: {
+        loginStartEnabled: false,
+        loginStartPath: '/home/alice/.config/autostart/dev.openburnbar.OpenBurnBar.desktop',
+        backgroundLaunch: true,
+        rejectedDeepLinks: 1
+      },
+      tray: {
+        todayCostUsd: 7.5,
+        todayTokens: 4096,
+        connectedProviders: 2,
+        quotaFloorRemainingPercent: 33,
+        freshness: 'live'
+      }
+    })).toMatchObject({
+      tray: { todayCostUsd: 7.5, freshness: 'live' },
+      shell: { backgroundLaunch: true }
+    });
+    expect(() => decodeNativeTraySnapshot({
+      todayCostUsd: 1,
+      todayTokens: 1,
+      connectedProviders: 2_000,
+      freshness: 'live'
+    })).toThrow('connectedProviders');
+  });
+
+  it('decodes notification capabilities and delivery result without accepting malformed fields', () => {
+    expect(decodeNativeNotificationCapabilities({
+      available: true,
+      actions: true,
+      persistence: false,
+      body: true,
+      bodyMarkup: false,
+      serverCapabilities: ['actions', 'body']
+    })).toMatchObject({ available: true, actions: true });
+    expect(decodeNativeNotificationResult({
+      notificationId: 'agent-reply-1',
+      delivered: true,
+      actionsAttached: true,
+      degradedReason: null
+    })).toEqual({
+      notificationId: 'agent-reply-1',
+      delivered: true,
+      actionsAttached: true,
+      degradedReason: undefined
+    });
+    expect(() => decodeNativeNotificationCapabilities({
+      available: true,
+      actions: true,
+      persistence: false,
+      body: true,
+      bodyMarkup: false,
+      serverCapabilities: [42]
+    })).toThrow('serverCapabilities');
   });
 });

@@ -21,7 +21,14 @@ import type {
   DaemonSubscriptionStopRequest,
   DaemonSubscriptionStopResponse
 } from '../tauriBridge.js';
-import type { NativeDeepLink, NativeShellSnapshot } from '../tauriBridge.js';
+import type {
+  NativeDeepLink,
+  NativeNotificationCapabilities,
+  NativeNotificationRequest,
+  NativeNotificationResult,
+  NativeShellSnapshot,
+  NativeStatusSnapshot
+} from '../tauriBridge.js';
 import {
   RUNTIME_CAPABILITY_IDS,
   type RuntimeCapabilityManifest
@@ -183,9 +190,47 @@ export const emptyNativeShellSnapshot = (): Promise<NativeShellSnapshot> =>
     rejectedDeepLinks: 0
   });
 
+export const emptyNativeStatusSnapshot = (): Promise<NativeStatusSnapshot> =>
+  Promise.resolve({
+    shell: {
+      loginStartEnabled: false,
+      loginStartPath: '/tmp/openburnbar-test-autostart.desktop',
+      backgroundLaunch: false,
+      rejectedDeepLinks: 0
+    },
+    tray: {
+      todayCostUsd: 0,
+      todayTokens: 0,
+      connectedProviders: 0,
+      freshness: 'unavailable'
+    }
+  });
+
+export const emptyNativeNotificationCapabilities = (): Promise<NativeNotificationCapabilities> =>
+  Promise.resolve({
+    available: false,
+    actions: false,
+    persistence: false,
+    body: false,
+    bodyMarkup: false,
+    serverCapabilities: [],
+    degradedReason: 'test-stub'
+  });
+
+export const emptyNativeNotificationShow = (
+  request: NativeNotificationRequest
+): Promise<NativeNotificationResult> =>
+  Promise.resolve({
+    notificationId: request.id ?? 'test-notification',
+    delivered: false,
+    actionsAttached: false,
+    degradedReason: 'test-stub'
+  });
+
 export const emptyNativeDeepLinks = (): Promise<NativeDeepLink[]> => Promise.resolve([]);
 export const emptyNativeTrayUpdate = (): Promise<void> => Promise.resolve();
 export const emptyNativeListener = async (): Promise<() => void> => () => {};
+export const emptyNativeVoid = (): Promise<void> => Promise.resolve();
 
 export const makeAvailableRuntimeCapabilityManifest = (): RuntimeCapabilityManifest => ({
     schemaVersion: 1,
@@ -232,9 +277,16 @@ export const bridgeStubDefaults = {
   nativeShellReady: emptyNativeDeepLinks,
   nativeShellSnapshot: emptyNativeShellSnapshot,
   nativeShellSetLoginStart: emptyNativeShellSnapshot,
+  nativeStatusSnapshot: emptyNativeStatusSnapshot,
+  nativeStatusShow: emptyNativeStatusSnapshot,
+  nativeStatusClose: emptyNativeVoid,
+  nativeStatusRoute: emptyNativeVoid,
+  nativeNotificationCapabilities: emptyNativeNotificationCapabilities,
+  nativeNotificationShow: emptyNativeNotificationShow,
   nativeTrayUpdate: emptyNativeTrayUpdate,
   onNativeDeepLink: emptyNativeListener,
   onNativeShellState: emptyNativeListener,
+  onNativeStatusSnapshot: emptyNativeListener,
   runtimeCapabilities: availableRuntimeCapabilities,
   gatewayProbe: emptyGatewayProbe,
   gatewayChatStream: emptyGatewayChatStream,

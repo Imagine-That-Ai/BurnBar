@@ -1,13 +1,18 @@
 # Linux native shell authority
 
-Status: implemented foundation; freedesktop notifications and installed desktop
-matrix certification remain open.
+Status: source-level native shell, compact status window, and freedesktop
+notification action primitives implemented; the desktop-matrix harness now
+requires native-shell evidence before a row can become ready. Installed desktop
+matrix proof, provider OAuth return, and cloud agent-reply inline-reply parity
+remain open.
 
 This document records the native shell contract introduced for
 `LNX-NATIVE-001`. It covers process ownership, background launch, typed deep
-links, the live tray, and user-scoped XDG login start. It does not claim that
-freedesktop notifications, an OAuth provider-return matrix, a compact status
-window, or every Linux tray host is complete.
+links, the live tray, the compact status window, source-level freedesktop
+notifications, and user-scoped XDG login start. It does not claim that the
+cloud agent-reply listener/inline reply path, an OAuth provider-return matrix,
+or every Linux tray host is complete. The matrix gate now prevents those source
+capabilities from being promoted without installed desktop evidence.
 
 ## Authority boundary
 
@@ -18,10 +23,14 @@ only typed data:
 - `NativeDeepLink { route, action }`
 - `NativeShellSnapshot`
 - `NativeTraySnapshot`
+- `NativeStatusSnapshot { shell, tray }`
+- `NativeNotificationCapabilities`
+- `NativeNotificationResult`
 
 Raw URLs and filesystem write paths do not cross into renderer-owned logic.
 The TypeScript bridge independently validates each route, action, route/action
-pair, boolean, counter, freshness state, and optional degradation reason.
+pair, boolean, counter, freshness state, notification capability, delivery
+result, and optional degradation reason.
 
 ## Launch and single-instance behavior
 
@@ -74,10 +83,56 @@ and health stores as the mounted app. Refreshes are single-flight and coalesced,
 and daemon health/subscription events wake the tray supervisor. A failed data
 read produces unavailable state instead of preserving a false live label.
 
-The menu does not yet provide macOS-equivalent account quick switching or the
-compact rich status window. GNOME icon-only behavior, StatusNotifier/AppIndicator
-host loss, multi-monitor placement, keyboard/screen-reader access, and tray
-crash recovery remain installed-product certification rows.
+Left-clicking the tray icon opens the singleton compact status window; the menu
+also exposes "Open quick status" for hosts that do not deliver a normal left
+click. GNOME icon-only behavior, StatusNotifier/AppIndicator host loss,
+keyboard/screen-reader access in installed sessions, and tray crash recovery
+remain installed-product certification rows. The menu does not yet provide
+macOS-equivalent account quick switching.
+
+## Compact status window
+
+Rust lazily creates one `status` webview at `index.html?surface=status`, sized
+for a compact native utility window and hidden instead of destroyed on close.
+The window boots a lightweight React surface rather than the full dashboard
+shell. It reads `native_status_snapshot`, listens for `native-status-snapshot`
+events emitted after accepted tray updates, and uses `native_status_route` for
+all quick actions. That Rust command reuses the same route/action allowlist as
+tray and notification actions before showing the main window.
+
+The status window shows:
+
+- today's cost and token count;
+- connected provider count;
+- quota-floor percentage or an honest none state;
+- live, stale, offline, or unavailable freshness;
+- notification capability/degradation state;
+- dashboard, chat, provider, update, and reconnect actions.
+
+It has a semantic `main`, a heading, status text, named buttons, an accessible
+close control, an Escape close path, stable dimensions, and responsive wrapping
+for narrow/high-scale text.
+
+## Freedesktop notifications
+
+Linux notification delivery is exposed as typed native commands:
+
+- `native_notification_capabilities`
+- `native_notification_show`
+
+The implementation uses `notify-rust` and the freedesktop
+`org.freedesktop.Notifications` D-Bus server on Linux. Payloads are bounded and
+accept only known route/action pairs. The D-Bus response listener runs off the
+blocking wait path, then marshals open/default actions back to Tauri's main
+thread before showing the main window and delivering the typed deep link.
+
+When a notification server is absent, when the host is not Linux, or when action
+buttons are not supported, the command returns an explicit degraded result
+instead of claiming delivery. Inline text reply is not implemented here because
+the macOS path depends on Firebase `agent_notification_events`,
+`agent_notification_replies`, CloudVault sealing, and App Check. Linux still
+needs a cloud event listener and reply sealer before agent-reply inline reply
+can be claimed.
 
 ## Login start
 
@@ -115,9 +170,10 @@ node scripts/linux-port/validate-linux-release-config.mjs
 ```
 
 Coverage includes hostile URL rejection, typed route/action correlation,
-listener-before-drain ordering, refresh coalescing, freshness projection, XDG
-path rejection, exact autostart round-trip and permissions, Settings mutation,
-and packaging-copy equality.
+listener-before-drain ordering, refresh coalescing, freshness projection,
+compact status decoding/rendering/actions, freedesktop notification payload
+bounds/action routing, XDG path rejection, exact autostart round-trip and
+permissions, Settings mutation, and packaging-copy equality.
 
 An ARM64 Ubuntu 24.04 GNOME X11 runtime pass also exercised the
 production-protocol executable with SHA-256
@@ -129,6 +185,37 @@ mode `0600`, user-owned, and byte-identical to the canonical packaging entry.
 See `evidence/mission-003-native-shell/runtime-transcript.txt` and the adjacent
 GNOME X11 screenshots. This is direct executable evidence, not installed
 package or desktop-matrix certification.
+
+## Desktop matrix evidence contract
+
+`scripts/linux-port/run-linux-matrix-harness.mjs` requires three external
+evidence files before a requested support row can become `ready`:
+
+- `OPENBURNBAR_LINUX_INSTALLED_EVIDENCE`
+- `OPENBURNBAR_LINUX_ACCESSIBILITY_EVIDENCE`
+- `OPENBURNBAR_LINUX_NATIVE_SHELL_EVIDENCE`
+
+The native-shell evidence must be valid JSON with `passed: true`, the exact
+current git commit under `git.commit` or `commit`, and, when `--environment` is
+used, an `environmentId` matching the requested support row. It must also prove
+all of these checks either as booleans on `nativeShell` or as passed entries in
+a `checks` array:
+
+| Check id | Required proof |
+|---|---|
+| `tray-host` | StatusNotifier/AppIndicator host renders the installed tray affordance. |
+| `tray-actions` | Tray dashboard/chat/provider/update/reconnect/login-start/quit actions route correctly. |
+| `compact-status-window` | Compact native status window opens, refreshes, and closes without mounting the full shell. |
+| `status-window-a11y` | Compact status window is keyboard and assistive-technology reachable. |
+| `notification-server` | Freedesktop notification server capability is detected honestly. |
+| `notification-actions` | Notification actions deliver only allowlisted native route/action pairs. |
+| `notification-relaunch-route` | Notification activation relaunches or focuses the installed app and routes correctly. |
+| `deep-link-relaunch` | Secondary `openburnbar://` launches reuse the existing instance and route correctly. |
+| `login-start` | XDG login-start enable, relogin, disable, stale-file, and uninstall paths are proven. |
+| `tray-host-loss-recovery` | Tray host loss, crash, or restart recovers without stale status or orphaned actions. |
+
+Missing, stale, wrong-environment, or partially passed native-shell evidence
+blocks the row even when package and accessibility evidence are present.
 
 ## Remaining certification
 
@@ -142,11 +229,15 @@ installed candidate passes:
 3. launch-before-renderer, repeated secondary launch, hostile URL, membership
    return, focus, workspace, and multi-monitor cases;
 4. keyboard, screen-reader, reduced-motion, high-contrast, and 200% text rows;
-5. freedesktop actionable notification delivery, relaunch routing, denial,
-   daemon-offline behavior, and notification-server absence;
+5. freedesktop actionable notification delivery in rich and action-limited
+   hosts, relaunch routing, denial, daemon-offline behavior, and
+   notification-server absence;
 6. portal/global shortcut and existing daemon-backed panic latency without the
    tray becoming a sole safety path.
+7. cloud agent-reply notification listener, App Check, CloudVault reply sealing,
+   and inline reply send/open parity with macOS.
 
 The source foundation is complete only for the capabilities described above.
-Notification delivery and the final desktop matrix must remain visibly blocked
-until their product evidence exists.
+Installed notification behavior, provider OAuth return, cloud inline reply, and
+the final desktop matrix must remain visibly blocked until their product
+evidence exists.

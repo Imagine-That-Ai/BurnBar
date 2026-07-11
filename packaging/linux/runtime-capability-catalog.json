@@ -27,7 +27,7 @@
     { "id": "secrets.kwallet", "domain": "security", "evaluator": "kwallet", "unavailableReason": "kwallet-query or the desktop session bus is unavailable.", "substitute": "Install KWallet or use Secret Service." },
     { "id": "portal.desktop", "domain": "platform", "evaluator": "portal", "unavailableReason": "No desktop session bus is available for portal negotiation.", "substitute": "Use an X11 session only for workflows with an explicit safe fallback." },
     { "id": "native.tray", "domain": "platform", "evaluator": "tray", "unavailableReason": "The desktop tray host did not accept the OpenBurnBar status item.", "substitute": "Use the main window." },
-    { "id": "native.notifications", "domain": "platform", "evaluator": "daemon", "unavailableReason": "Notification delivery requires the local daemon.", "substitute": "Use the in-app activity view." },
+    { "id": "native.notifications", "domain": "platform", "evaluator": "notifications", "unavailableReason": "The desktop notification server is unavailable.", "substitute": "Use the in-app activity view." },
     { "id": "native.external-billing", "domain": "security", "evaluator": "always", "unavailableReason": "", "substitute": null }
   ]
 }
