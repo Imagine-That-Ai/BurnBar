@@ -66,7 +66,7 @@ function fixture() {
     architectureSessions,
     packageSmoke
   };
-  const provenancePredicate = write('out/provenance.json', Buffer.from(`${JSON.stringify(provenance)}\n`));
+  let provenancePredicate = write('out/provenance.json', Buffer.from(`${JSON.stringify(provenance)}\n`));
   const manifest = {
     requiredArtifacts: artifactTypes,
     supportedArchitectures: architectures,
@@ -125,7 +125,83 @@ function fixture() {
   );
   closure.sidecars.updateFeed = updateFeed;
   closure.sidecars.updateFeedSignature = updateFeedSignature;
-  const input = { repoRoot, manifest, closure, provenance, latest, smokeSummary, publicKeyPem, expectedHead: HEAD, expectedVersion: VERSION };
+  const repositoryFingerprint = 'A'.repeat(40);
+  const repositorySigningFingerprint = 'B'.repeat(40);
+  const repositoryPackageSetRootSha256 = digest(Buffer.from('repository-package-set'));
+  const repositoryClosure = {
+    schemaVersion: 1,
+    product: 'OpenBurnBar',
+    version: VERSION,
+    channel: 'stable',
+    gitCommit: HEAD,
+    packageSetRootSha256: repositoryPackageSetRootSha256,
+    signing: { fingerprint: repositoryFingerprint, signingFingerprint: repositorySigningFingerprint },
+    lifecycleRequired: {
+      architectures: ['aarch64', 'x86_64'],
+      operations: ['install', 'remove'],
+      packageManagers: ['apt', 'dnf']
+    }
+  };
+  const repositoryClosureRecord = write(
+    'out/repositories/repository-closure.json',
+    Buffer.from(`${JSON.stringify(repositoryClosure)}\n`)
+  );
+  const repositoryClosureSignature = write(
+    'out/repositories/repository-closure.json.asc',
+    Buffer.from('repository-signature')
+  );
+  const repositoryLifecycle = {
+    schemaVersion: 1,
+    version: VERSION,
+    channel: 'stable',
+    repositoryClosureSha256: repositoryClosureRecord.sha256,
+    architectures: ['aarch64', 'x86_64'],
+    operations: ['install', 'remove'],
+    apt: [
+      { passed: true, architecture: 'amd64', platform: 'linux/amd64' },
+      { passed: true, architecture: 'arm64', platform: 'linux/arm64' }
+    ],
+    rpm: [
+      { passed: true, architecture: 'x86_64', platform: 'linux/amd64' },
+      { passed: true, architecture: 'aarch64', platform: 'linux/arm64' }
+    ],
+    passed: true
+  };
+  const repositoryLifecycleRecord = write(
+    'out/repositories/repository-lifecycle.json',
+    Buffer.from(`${JSON.stringify(repositoryLifecycle)}\n`)
+  );
+  closure.repositoryPackageSetRootSha256 = repositoryPackageSetRootSha256;
+  closure.sidecars.repositoryClosure = repositoryClosureRecord;
+  closure.sidecars.repositoryClosureSignature = repositoryClosureSignature;
+  closure.sidecars.repositoryLifecycle = repositoryLifecycleRecord;
+  provenance.repositories = {
+    packageSetRootSha256: repositoryPackageSetRootSha256,
+    signingFingerprint: repositoryFingerprint,
+    signingSubkeyFingerprint: repositorySigningFingerprint,
+    repositoryClosure: repositoryClosureRecord,
+    repositoryClosureSignature,
+    repositoryLifecycle: repositoryLifecycleRecord
+  };
+  provenancePredicate = write('out/provenance.json', Buffer.from(`${JSON.stringify(provenance)}\n`));
+  closure.sidecars.provenancePredicate = provenancePredicate;
+  const distributionConfig = {
+    signing: { fingerprint: repositoryFingerprint, signingFingerprint: repositorySigningFingerprint }
+  };
+  const input = {
+    repoRoot,
+    manifest,
+    closure,
+    provenance,
+    latest,
+    smokeSummary,
+    distributionConfig,
+    repositoryClosure,
+    repositoryLifecycle,
+    publicKeyPem,
+    expectedHead: HEAD,
+    expectedVersion: VERSION
+  };
   return {
     input,
     artifactPath: path.join(repoRoot, artifacts[0].file),
@@ -220,13 +296,43 @@ test('sidecar mutation fails closure binding', () => {
     'sourceArchive',
     'parityAttestation',
     'updateFeed',
-    'updateFeedSignature'
+    'updateFeedSignature',
+    'repositoryClosure',
+    'repositoryClosureSignature',
+    'repositoryLifecycle'
   ]) {
     const value = fixture();
     fs.appendFileSync(path.join(value.input.repoRoot, value.input.closure.sidecars[kind].file), 'x');
     const result = verifyLinuxReleaseCandidate(value.input);
     assert.ok(result.failures.some((failure) => failure.message === `${kind} sidecar checksum drifted.`), kind);
   }
+});
+
+test('repository fingerprint, package root, and lifecycle receipt fail closed on disagreement', () => {
+  const fingerprint = fixture();
+  fingerprint.input.distributionConfig.signing.fingerprint = 'B'.repeat(40);
+  assert.ok(verifyLinuxReleaseCandidate(fingerprint.input).failures.some(
+    (failure) => /repository signing fingerprint/u.test(failure.message)
+  ));
+
+  const packageRoot = fixture();
+  packageRoot.input.closure.repositoryPackageSetRootSha256 = 'f'.repeat(64);
+  assert.ok(verifyLinuxReleaseCandidate(packageRoot.input).failures.some(
+    (failure) => /package-set root/u.test(failure.message)
+  ));
+
+  const lifecycle = fixture();
+  lifecycle.input.repositoryLifecycle.repositoryClosureSha256 = '0'.repeat(64);
+  assert.ok(verifyLinuxReleaseCandidate(lifecycle.input).failures.some(
+    (failure) => /lifecycle evidence/u.test(failure.message)
+  ));
+});
+
+test('repository channel must match the signed update feed channel', () => {
+  const value = fixture();
+  value.input.repositoryClosure.channel = 'prerelease';
+  const result = verifyLinuxReleaseCandidate(value.input);
+  assert.ok(result.failures.some((failure) => /channel does not match the signed update feed/u.test(failure.message)));
 });
 
 test('missing or extra checksum targets fail', () => {

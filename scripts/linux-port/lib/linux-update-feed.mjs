@@ -31,6 +31,22 @@ function validHttpsUrl(value) {
   }
 }
 
+function validReleaseUrl(value, version) {
+  if (!validHttpsUrl(value)) return false;
+  const url = new URL(value);
+  if (url.search || url.hash) return false;
+  const filename = url.pathname.split('/').at(-1);
+  if (!filename || !/^[A-Za-z0-9._-]+$/u.test(filename)) return false;
+  if (url.hostname === 'downloads.burnbar.ai') {
+    return url.pathname === `/linux/releases/linux-v${version}/${filename}`;
+  }
+  if (url.hostname === 'github.com') {
+    return url.pathname === `/Imagine-That-Ai/BurnBar/releases/download/linux-v${version}/${filename}`;
+  }
+  return ['burnbar.ai', 'www.burnbar.ai'].includes(url.hostname)
+    && url.pathname === `/downloads/${filename}`;
+}
+
 export function validateFeedDocument(document, options = {}) {
   const failures = [];
   if (document?.schemaVersion !== 1) failures.push('feed schemaVersion must be 1.');
@@ -52,8 +68,8 @@ export function validateFeedDocument(document, options = {}) {
       keys.add(key);
       if (!TYPES.has(artifact?.type)) failures.push(`feed artifact type is invalid: ${artifact?.type ?? '<missing>'}.`);
       if (!ARCHITECTURES.has(artifact?.architecture)) failures.push(`feed artifact architecture is invalid: ${artifact?.architecture ?? '<missing>'}.`);
-      if (!validHttpsUrl(artifact?.url)) failures.push(`feed artifact URL is not allowlisted HTTPS: ${artifact?.url ?? '<missing>'}.`);
-      if (!validHttpsUrl(artifact?.signatureUrl)) failures.push(`feed signature URL is not allowlisted HTTPS: ${artifact?.signatureUrl ?? '<missing>'}.`);
+      if (!validReleaseUrl(artifact?.url, document?.version)) failures.push(`feed artifact URL is not an allowed release path: ${artifact?.url ?? '<missing>'}.`);
+      if (!validReleaseUrl(artifact?.signatureUrl, document?.version)) failures.push(`feed signature URL is not an allowed release path: ${artifact?.signatureUrl ?? '<missing>'}.`);
       if (!SHA256.test(artifact?.sha256 ?? '')) failures.push(`feed artifact SHA-256 is invalid: ${key}.`);
       if (!Number.isSafeInteger(artifact?.size) || artifact.size <= 0) failures.push(`feed artifact size is invalid: ${key}.`);
     }
@@ -63,7 +79,7 @@ export function validateFeedDocument(document, options = {}) {
   }
   if (document?.signature?.algorithm !== 'Ed25519') failures.push('feed signature algorithm must be Ed25519.');
   if (!SHA256.test(document?.signature?.publicKeySpkiSha256 ?? '')) failures.push('feed public-key fingerprint is invalid.');
-  if (!validHttpsUrl(document?.signature?.url)) failures.push('feed detached signature URL is not allowlisted HTTPS.');
+  if (!validReleaseUrl(document?.signature?.url, document?.version)) failures.push('feed detached signature URL is not an allowed release path.');
   return failures;
 }
 

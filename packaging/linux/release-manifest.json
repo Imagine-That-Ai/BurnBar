@@ -18,9 +18,32 @@
     "cosignIssuer": "https://token.actions.githubusercontent.com",
     "cosignIdentityTemplate": "https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-release.yml@refs/tags/linux-v{version}"
   },
+  "distributionRepositories": {
+    "config": "packaging/linux/distribution-channels.json",
+    "outputDirectory": "repositories",
+    "closure": "repositories/repository-closure.json",
+    "closureSignature": "repositories/repository-closure.json.asc",
+    "lifecycleReceipt": "repositories/repository-lifecycle.json",
+    "channels": ["stable", "prerelease", "nightly"],
+    "aptBuilder": "dpkg-scanpackages",
+    "aptReleaseBuilder": "apt-ftparchive",
+    "rpmPackageSigner": "rpmsign",
+    "rpmBuilder": "createrepo_c",
+    "aptValidForHours": 168,
+    "signingKeyMinimumRemainingDays": 30,
+    "artifactOrigin": "https://downloads.burnbar.ai/linux/releases/linux-v<version>",
+    "activationModel": "metadata-last-fail-closed-pending-atomic-rpm-pointer",
+    "lifecycleVerifier": "scripts/linux-port/verify-linux-repository-lifecycle.sh",
+    "signingSecret": "OPENBURNBAR_LINUX_REPOSITORY_GPG_PRIVATE_KEY",
+    "publicIdentitySource": "distribution-channels.signing",
+    "promotionStatus": "blocked-until-production-key-public-mirror-and-lifecycle-proof"
+  },
   "tailMetadata": {
     "aur": "packaging/linux/aur/PKGBUILD",
     "flatpak": "packaging/linux/flatpak/dev.openburnbar.OpenBurnBar.yml",
+    "distributionChannels": "packaging/linux/distribution-channels.json",
+    "aptSourcesTemplate": "packaging/linux/debian/openburnbar.sources.template",
+    "rpmRepoTemplate": "packaging/linux/rpm/openburnbar.repo.template",
     "desktopEntry": "packaging/linux/openburnbar.desktop",
     "safeModeDesktopEntry": "packaging/linux/openburnbar-safe-mode.desktop",
     "autostartEntry": "packaging/linux/autostart/openburnbar.desktop",
@@ -126,12 +149,19 @@
       "Sigstore/cosign provenance bundle verifies",
       "SPDX SBOM and VEX exist",
       "source archive hash matches release metadata",
+      "production repository OpenPGP primary and signing-subkey fingerprints are pinned",
+      "signed repository closure and lifecycle receipt verify",
+      "public apt and RPM bytes match the repository closure",
+      "public apt and dnf install-update-rollback-uninstall lifecycle passes on both architectures",
+      "interrupted repository publication preserves the previous snapshot through one-switch activation",
+      "apt metadata refresh completes before signed expiry",
       "parity ledger has no blocked Tier A/B rows",
       "release commit is clean and matches source archive"
     ]
   },
   "externalCredentials": {
     "ed25519PrivateKeyEnv": "OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM",
+    "repositoryGpgPrivateKeyEnv": "OPENBURNBAR_LINUX_REPOSITORY_GPG_PRIVATE_KEY",
     "cosignOidc": "GitHub Actions id-token: write",
     "packageRegistryTokens": {
       "aur": "operator SSH/Git push credentials",

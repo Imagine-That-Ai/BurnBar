@@ -14,6 +14,7 @@ import {
   NATIVE_PACKAGE_LIFECYCLE_PATHS,
   NATIVE_SIGNER_INPUT_PATHS
 } from './lib/linux-native-signing-receipt.mjs';
+import { validateDistributionChannels } from './lib/linux-repository.mjs';
 
 const manifest = readJson(manifestPath);
 const failures = [];
@@ -29,8 +30,53 @@ if (JSON.stringify(manifest.supportedArchitectures) !== JSON.stringify(['aarch64
 if (manifest.updateMetadata?.publicUrl !== 'https://downloads.burnbar.ai/latest-linux.json') {
   failures.push('manifest updateMetadata.publicUrl must be the branded signed-feed URL');
 }
+for (const gate of [
+  'production repository OpenPGP primary and signing-subkey fingerprints are pinned',
+  'signed repository closure and lifecycle receipt verify',
+  'public apt and RPM bytes match the repository closure',
+  'public apt and dnf install-update-rollback-uninstall lifecycle passes on both architectures',
+  'interrupted repository publication preserves the previous snapshot through one-switch activation',
+  'apt metadata refresh completes before signed expiry'
+]) {
+  if (!manifest.updateMetadata?.publishOnlyAfter?.includes(gate)) {
+    failures.push(`manifest updateMetadata.publishOnlyAfter is missing repository gate: ${gate}`);
+  }
+}
 for (const [kind, relPath] of Object.entries(manifest.tailMetadata ?? {})) {
   if (!fs.existsSync(path.join(repoRoot, relPath))) failures.push(`${kind} metadata missing at ${relPath}`);
+}
+if (manifest.distributionRepositories?.config !== manifest.tailMetadata?.distributionChannels) {
+  failures.push('distribution repository config must be present in canonical tail metadata');
+}
+const distributionConfigPath = path.join(repoRoot, manifest.distributionRepositories?.config ?? '');
+if (!fs.existsSync(distributionConfigPath)) {
+  failures.push('distribution repository config is missing');
+} else {
+  failures.push(...validateDistributionChannels(readJson(distributionConfigPath)));
+}
+for (const [key, expected] of Object.entries({
+  outputDirectory: 'repositories',
+  closure: 'repositories/repository-closure.json',
+  closureSignature: 'repositories/repository-closure.json.asc',
+  lifecycleReceipt: 'repositories/repository-lifecycle.json',
+  aptBuilder: 'dpkg-scanpackages',
+  aptReleaseBuilder: 'apt-ftparchive',
+  rpmPackageSigner: 'rpmsign',
+  rpmBuilder: 'createrepo_c',
+  lifecycleVerifier: 'scripts/linux-port/verify-linux-repository-lifecycle.sh',
+  signingSecret: 'OPENBURNBAR_LINUX_REPOSITORY_GPG_PRIVATE_KEY'
+})) {
+  if (manifest.distributionRepositories?.[key] !== expected) {
+    failures.push(`manifest.distributionRepositories.${key} must be ${expected}`);
+  }
+}
+for (const relativePath of [
+  'scripts/linux-port/build-linux-repositories.mjs',
+  'scripts/linux-port/verify-linux-repositories.mjs',
+  'scripts/linux-port/verify-linux-repository-lifecycle.sh',
+  'scripts/linux-port/finalize-linux-repositories.mjs'
+]) {
+  if (!fs.existsSync(path.join(repoRoot, relativePath))) failures.push(`distribution repository command is missing: ${relativePath}`);
 }
 // Unit ExecStart requires the launch script to ship with packages (203/EXEC).
 const launchRel = manifest.tailMetadata?.daemonLaunchScript;

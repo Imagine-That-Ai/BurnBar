@@ -122,6 +122,15 @@ jobs:
           scripts/linux-port/verify-linux-release.test.mjs
           scripts/linux-port/resolve-linux-release-version.test.mjs
 
+      - name: Linux repository channel contract tests
+        run: |
+          bash -n scripts/linux-port/verify-linux-repository-lifecycle.sh
+          bash -n scripts/upload-linux-downloads-r2.sh
+          node --test \
+            scripts/linux-port/linux-repository.test.mjs \
+            scripts/linux-port/finalize-linux-repositories.test.mjs \
+            scripts/linux-port/upload-linux-downloads-r2.test.mjs
+
       - name: Verify Linux workflow wiring
         run: |
           node scripts/linux-port/verify-linux-workflow-wiring.mjs

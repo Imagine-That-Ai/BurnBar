@@ -13,10 +13,12 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 update \
     && apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 install -y --no-install-recommends \
         apt-transport-https \
+        apt-utils \
         ayatana-indicator-application \
         build-essential \
         ca-certificates \
         cpio \
+        createrepo-c \
         curl \
         dbus \
         dbus-x11 \

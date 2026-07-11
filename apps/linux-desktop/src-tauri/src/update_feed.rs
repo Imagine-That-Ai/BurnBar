@@ -266,8 +266,8 @@ fn validate_feed(feed: &LinuxUpdateFeed) -> Result<(), String> {
     }
     let signature_url = reqwest::Url::parse(&feed.signature.url)
         .map_err(|_| "Update feed signature URL is invalid.".to_string())?;
-    if !allowed_download_url(&signature_url) {
-        return Err("Update feed signature URL is not allowlisted HTTPS.".into());
+    if validate_update_artifact_url(signature_url.as_str()).is_err() {
+        return Err("Update feed signature URL is not an allowed release path.".into());
     }
     if feed.artifacts.is_empty() {
         return Err("Update feed has no artifacts.".into());
@@ -291,10 +291,8 @@ fn validate_feed(feed: &LinuxUpdateFeed) -> Result<(), String> {
             return Err("Update feed contains duplicate artifact metadata.".into());
         }
         for raw_url in [&artifact.url, &artifact.signature_url] {
-            let url = reqwest::Url::parse(raw_url)
-                .map_err(|_| "Update artifact URL is invalid.".to_string())?;
-            if !allowed_download_url(&url) {
-                return Err("Update artifact URL is not allowlisted HTTPS.".into());
+            if validate_update_artifact_url(raw_url).is_err() {
+                return Err("Update artifact URL is not an allowed release path.".into());
             }
         }
     }
@@ -378,6 +376,7 @@ pub fn validate_update_artifact_url(raw_url: &str) -> Result<String, String> {
     }
     let allowed_path = match url.host_str() {
         Some("burnbar.ai" | "www.burnbar.ai") => url.path().starts_with("/downloads/"),
+        Some("downloads.burnbar.ai") => allowed_r2_release_artifact_path(url.path()),
         Some("github.com") => url
             .path()
             .starts_with("/Imagine-That-Ai/BurnBar/releases/download/"),
@@ -387,6 +386,24 @@ pub fn validate_update_artifact_url(raw_url: &str) -> Result<String, String> {
         return Err("update_url_path_refused".into());
     }
     Ok(url.to_string())
+}
+
+fn allowed_r2_release_artifact_path(path: &str) -> bool {
+    let parts = path.split('/').collect::<Vec<_>>();
+    if parts.len() != 5 || parts[0] != "" || parts[1] != "linux" || parts[2] != "releases" {
+        return false;
+    }
+    let Some(version) = parts[3].strip_prefix("linux-v") else {
+        return false;
+    };
+    let filename = parts[4];
+    compare_semver(version, "0.0.0").is_some()
+        && !filename.is_empty()
+        && filename != "."
+        && filename != ".."
+        && filename
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
 }
 
 fn allowed_download_url(url: &reqwest::Url) -> bool {
@@ -498,7 +515,9 @@ mod tests {
     fn rejects_untrusted_urls_and_signing_identity() {
         let mut bad = feed();
         bad.artifacts[0].url = "http://localhost/update".into();
-        assert!(validate_feed(&bad).unwrap_err().contains("allowlisted"));
+        assert!(validate_feed(&bad)
+            .unwrap_err()
+            .contains("allowed release path"));
         let mut bad = feed();
         bad.signature.public_key_spki_sha256 = "c".repeat(64);
         assert!(validate_feed(&bad).unwrap_err().contains("pinned"));
@@ -544,11 +563,22 @@ mod tests {
             "https://burnbar.ai/downloads/OpenBurnBar_1.2.3_aarch64.AppImage"
         )
         .is_ok());
+        assert!(validate_update_artifact_url(
+            "https://downloads.burnbar.ai/linux/releases/linux-v1.2.3/OpenBurnBar_1.2.3_aarch64.AppImage"
+        )
+        .is_ok());
+        assert!(validate_update_artifact_url(
+            "https://downloads.burnbar.ai/linux/releases/linux-v1.2.3/OpenBurnBar_1.2.3_aarch64.AppImage.ed25519.sig"
+        )
+        .is_ok());
         for refused in [
             "https://github.com/another/repo/releases/download/v1/app",
             "https://github.com/Imagine-That-Ai/BurnBar/issues/1",
             "https://burnbar.ai/",
             "https://objects.githubusercontent.com/arbitrary",
+            "https://downloads.burnbar.ai/linux/releases/latest/app",
+            "https://downloads.burnbar.ai/linux/releases/linux-v1.2.3/nested/app",
+            "https://downloads.burnbar.ai/linux/releases/linux-v1.2.3/%2e%2e",
             "http://burnbar.ai/downloads/app",
         ] {
             assert!(validate_update_artifact_url(refused).is_err(), "{refused}");
