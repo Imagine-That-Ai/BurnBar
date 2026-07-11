@@ -18,7 +18,7 @@ internal sealed class WindowsMercuryRuntimeHost : IMediaRuntimeStatusProvider
     private WindowsMercuryRuntimeHost(WindowsMercuryFileTransferRuntime runtime)
     {
         _runtime = runtime;
-        _originMarkerReady = ProbeOriginMarker(runtime.SnapshotDirectory);
+        _originMarkerReady = ProbeOriginMarker(runtime.DownloadDirectory);
     }
 
     public static WindowsMercuryRuntimeHost Current

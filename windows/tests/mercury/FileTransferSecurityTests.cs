@@ -27,7 +27,8 @@ public sealed class FileTransferSecurityTests
 
         Assert.Equal(original, File.ReadAllBytes(snapshot.SnapshotPath));
         Assert.Equal(Sha256(original), snapshot.Sha256Hex);
-        Assert.StartsWith(snapshot.Sha256Hex + "-draft.txt", Path.GetFileName(snapshot.SnapshotPath), StringComparison.Ordinal);
+        Assert.StartsWith(snapshot.Sha256Hex + "-", Path.GetFileName(snapshot.SnapshotPath), StringComparison.Ordinal);
+        Assert.EndsWith("-draft.txt", Path.GetFileName(snapshot.SnapshotPath), StringComparison.Ordinal);
         Assert.True(File.GetAttributes(snapshot.SnapshotPath).HasFlag(FileAttributes.ReadOnly));
         Assert.Empty(Directory.EnumerateFiles(snapshots, ".snapshot-*.tmp"));
     }
@@ -67,6 +68,21 @@ public sealed class FileTransferSecurityTests
         OutboundSnapshotException error = Assert.Throws<OutboundSnapshotException>(() => service.Release(forged, root));
         Assert.Equal(OutboundSnapshotError.SnapshotOutsideDirectory, error.Error);
         Assert.True(File.Exists(outside));
+    }
+
+    [Fact]
+    public void OutboundSnapshot_RepeatedContentUsesIndependentLifetimes()
+    {
+        using var sandbox = new Sandbox();
+        string root = sandbox.PathFor("snapshots");
+        var service = new OutboundFileSnapshotService();
+        OutboundFileSnapshot first = service.Create("shared"u8, "payload.txt", root);
+        OutboundFileSnapshot second = service.Create("shared"u8, "payload.txt", root);
+
+        Assert.NotEqual(first.SnapshotPath, second.SnapshotPath);
+        Assert.True(service.Release(first, root));
+        Assert.True(File.Exists(second.SnapshotPath));
+        Assert.Equal("shared", File.ReadAllText(second.SnapshotPath));
     }
 
     [Fact]
@@ -129,6 +145,46 @@ public sealed class FileTransferSecurityTests
         Assert.EndsWith("report (1).txt", promoted.PromotedPath, StringComparison.Ordinal);
         Assert.Equal(original, File.ReadAllBytes(promoted.PromotedPath!));
         Assert.Equal("existing", File.ReadAllText(Path.Combine(downloads, "report.txt")));
+    }
+
+    [Fact]
+    public async Task MissingOriginMarkAtApprovalFailsClosed()
+    {
+        using var sandbox = new Sandbox();
+        FileTransferPlan plan = FileTransferChunker.Chunk("verified inbound"u8.ToArray(), 70, fileName: "report.txt");
+        var marker = new FakeMarker(FileOriginMarkStatus.Marked);
+        var service = new InboundFileQuarantineService(marker, new FakeScanner(FileThreatScanStatus.Clean));
+        QuarantinedInboundFile quarantined = await service.QuarantineAsync(
+            plan.Manifest,
+            plan.Chunks,
+            sandbox.PathFor("downloads"),
+            "peer-node-1");
+        marker.IsMarked = false;
+
+        InboundQuarantineException error = Assert.Throws<InboundQuarantineException>(
+            () => service.ApproveAndPromote(quarantined));
+
+        Assert.Equal(InboundQuarantineError.QuarantineFileChanged, error.Error);
+        Assert.True(File.Exists(quarantined.QuarantinePath));
+    }
+
+    [Fact]
+    public async Task QuarantineCollisionPreservesExistingFile()
+    {
+        using var sandbox = new Sandbox();
+        byte[] payload = "same transfer"u8.ToArray();
+        FileTransferPlan plan = FileTransferChunker.Chunk(payload, 71, fileName: "report.txt");
+        var service = new InboundFileQuarantineService(
+            new FakeMarker(FileOriginMarkStatus.Marked),
+            new FakeScanner(FileThreatScanStatus.Clean));
+        string downloads = sandbox.PathFor("downloads");
+        QuarantinedInboundFile first = await service.QuarantineAsync(plan.Manifest, plan.Chunks, downloads, "peer");
+
+        await Assert.ThrowsAsync<IOException>(() =>
+            service.QuarantineAsync(plan.Manifest, plan.Chunks, downloads, "peer"));
+
+        Assert.True(File.Exists(first.QuarantinePath));
+        Assert.Equal(payload, File.ReadAllBytes(first.QuarantinePath));
     }
 
     [Fact]
@@ -271,6 +327,8 @@ public sealed class FileTransferSecurityTests
     {
         public bool Called { get; private set; }
 
+        public bool IsMarked { get; set; } = status == FileOriginMarkStatus.Marked;
+
         public ValueTask<FileOriginMarkResult> MarkInternetOriginAsync(
             string filePath,
             string sourcePeerHash,
@@ -279,6 +337,8 @@ public sealed class FileTransferSecurityTests
             Called = true;
             return ValueTask.FromResult(new FileOriginMarkResult(status, "fake-marker", status.ToString()));
         }
+
+        public bool HasInternetOrigin(string filePath) => IsMarked;
     }
 
     private sealed class FakeScanner(FileThreatScanStatus status, bool isAvailable = true) : IInboundFileThreatScanner

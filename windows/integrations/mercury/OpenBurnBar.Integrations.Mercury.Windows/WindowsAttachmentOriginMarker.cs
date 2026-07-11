@@ -72,6 +72,8 @@ public sealed class WindowsAttachmentOriginMarker : IInboundFileOriginMarker
         }
     }
 
+    public bool HasInternetOrigin(string filePath) => HasInternetZone(filePath);
+
     private static string NormalizeHash(string value)
     {
         if (value is null || value.Length != 64)
