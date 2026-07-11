@@ -528,7 +528,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
     // Official Signal libsignal at-rest HPKE identity seal (v0.94.4 pin).
-    implementation("org.signal:libsignal-android:0.94.4")
+    implementation("org.signal:libsignal-android:0.97.1")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
     // Glance for Widget
@@ -554,7 +554,7 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
     testImplementation("io.mockk:mockk:1.13.13")
-    testImplementation("org.signal:libsignal-client:0.94.4")
+    testImplementation("org.signal:libsignal-client:0.97.1")
     // Real org.json on the JVM test classpath so parsers can run without an
     // emulator (Android's bundled JSONObject is stubbed in unit tests).
     testImplementation("org.json:json:20240303")
