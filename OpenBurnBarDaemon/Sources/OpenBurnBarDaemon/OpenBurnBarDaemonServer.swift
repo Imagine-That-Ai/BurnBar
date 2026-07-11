@@ -97,7 +97,6 @@ public actor BurnBarDaemonServer {
         self.capabilityProfile = capabilityProfile
         self.localAuthProofVerifier = localAuthProofVerifier
         self.phoneControlPinStore = phoneControlPinStore
-        self.linuxOnboardingService = linuxOnboardingService ?? BurnBarLinuxOnboardingService()
         self.subscriptionService = subscriptionService ?? BurnBarSubscriptionService(
             daemonVersion: configuration.daemonVersion
         )
@@ -105,6 +104,9 @@ public actor BurnBarDaemonServer {
         let resolvedConfigStore = configStore ?? BurnBarConfigStore(
             catalog: configuration.catalog,
             logger: BurnBarDaemonLogger(category: "config-store")
+        )
+        self.linuxOnboardingService = linuxOnboardingService ?? BurnBarLinuxOnboardingService(
+            configStore: resolvedConfigStore
         )
         let resolvedUsageRecorder = usageRecorder ?? BurnBarUsageRecorder(
             logger: BurnBarDaemonLogger(category: "usage-recorder")

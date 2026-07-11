@@ -21,6 +21,7 @@ function isTerminal(state: LinuxOnboardingSnapshot['steps'][number]['state']): b
 export function OnboardingSurface() {
   const [snapshot, setSnapshot] = useState(readOnboarding);
   const [authorityReady, setAuthorityReady] = useState(false);
+  const [authorityAttempt, setAuthorityAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [privacyChoices, setPrivacyChoices] = useState<LinuxOnboardingPrivacyChoices>(() =>
@@ -59,7 +60,7 @@ export function OnboardingSurface() {
     return () => {
       cancelled = true;
     };
-  }, [bridge]);
+  }, [bridge, authorityAttempt]);
 
   const commit = (next: LinuxOnboardingSnapshot) => {
     cacheOnboarding(next);
@@ -117,6 +118,11 @@ export function OnboardingSurface() {
             Required setup cannot be completed from browser or fixture state. Start the packaged Linux app and its local daemon, then retry.
           </p>
           {error ? <Banner tone="degraded">{error}</Banner> : null}
+          {bridge ? (
+            <button type="button" className="onboarding-btn-primary" disabled={busy} onClick={() => setAuthorityAttempt((value) => value + 1)}>
+              Retry daemon authority
+            </button>
+          ) : null}
         </section>
       </div>
     );

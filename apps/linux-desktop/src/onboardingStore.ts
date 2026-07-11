@@ -226,5 +226,9 @@ export function readOnboarding(): LinuxOnboardingSnapshot {
 }
 
 export function cacheOnboarding(snapshot: LinuxOnboardingSnapshot): void {
-  localStorage.setItem(CACHE_KEY, JSON.stringify(decodeLinuxOnboardingSnapshot(snapshot)));
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(decodeLinuxOnboardingSnapshot(snapshot)));
+  } catch {
+    // Browser cache is advisory; daemon-owned state remains authoritative.
+  }
 }

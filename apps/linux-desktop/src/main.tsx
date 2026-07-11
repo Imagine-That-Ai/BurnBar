@@ -18,11 +18,12 @@ import { useShellStore } from './state/shellStore.js';
 async function boot(): Promise<void> {
   const end = markStart('app.start');
   applyReducedMotionClass();
-  const hadDeepLink = Boolean(location.hash);
+  const requestedHash = location.hash;
+  const hadDeepLink = Boolean(requestedHash && requestedHash !== '#/onboarding');
 
   // First run lands on the onboarding wizard unless a deep link is present.
   const ob = readOnboarding();
-  if (!ob.completed && !location.hash) {
+  if ((!ob.completed && !location.hash) || hadDeepLink) {
     location.hash = '#/onboarding';
     useShellStore.getState().syncRouteFromHash();
   }
@@ -43,7 +44,10 @@ async function boot(): Promise<void> {
       cacheOnboarding(authoritative);
       if (shouldRouteToOnboarding(authoritative)) {
         useShellStore.getState().setRoute('onboarding');
-      } else if (!hadDeepLink) {
+      } else if (hadDeepLink) {
+        location.hash = requestedHash;
+        useShellStore.getState().syncRouteFromHash();
+      } else {
         useShellStore.getState().setRoute('overview');
       }
     } catch (error) {

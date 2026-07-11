@@ -1047,7 +1047,10 @@ public actor BurnBarConfigStore {
 
         return BurnBarProviderConfigurationSnapshot(
             providers: providers,
-            routerMode: snapshot.routerMode
+            routerMode: snapshot.routerMode,
+            telemetryEnabled: snapshot.telemetryEnabled,
+            privacyOptIn: snapshot.privacyOptIn,
+            cloudSyncEnabled: snapshot.cloudSyncEnabled
         )
     }
 

@@ -51,6 +51,7 @@ public actor BurnBarLinuxOnboardingService {
     private let daemonProbe: Probe
     private let secretStoreProbe: Probe
     private let providerPathsProbe: Probe
+    private let configStore: BurnBarConfigStore?
 
     public init(
         stateURL: URL = BurnBarDaemonPaths.defaultLinuxOnboardingStateURL,
@@ -60,13 +61,15 @@ public actor BurnBarLinuxOnboardingService {
             "The daemon accepted and verified this authenticated onboarding RPC."
         },
         secretStoreProbe: @escaping Probe = BurnBarLinuxOnboardingService.verifyProductionSecretStore,
-        providerPathsProbe: Probe? = nil
+        providerPathsProbe: Probe? = nil,
+        configStore: BurnBarConfigStore? = nil
     ) {
         self.stateURL = stateURL
         self.fileManager = fileManager
         self.now = now
         self.daemonProbe = daemonProbe
         self.secretStoreProbe = secretStoreProbe
+        self.configStore = configStore
         self.providerPathsProbe = providerPathsProbe ?? {
             try BurnBarLinuxOnboardingService.verifyWritableDirectory(
                 stateURL.deletingLastPathComponent(),
@@ -81,7 +84,7 @@ public actor BurnBarLinuxOnboardingService {
 
     public func perform(
         _ request: BurnBarLinuxOnboardingActionRequest
-    ) throws -> BurnBarLinuxOnboardingSnapshot {
+    ) async throws -> BurnBarLinuxOnboardingSnapshot {
         var snapshot = try loadSnapshot()
         guard let index = snapshot.steps.firstIndex(where: { $0.id == request.stepID }) else {
             throw BurnBarLinuxOnboardingError.invalidPersistedState("missing step \(request.stepID.rawValue)")
@@ -165,6 +168,13 @@ public actor BurnBarLinuxOnboardingService {
                 telemetryEnabled: telemetryEnabled,
                 cloudSyncEnabled: cloudSyncEnabled
             )
+            if let configStore {
+                var config = try await configStore.snapshot()
+                config.telemetryEnabled = telemetryEnabled
+                config.privacyOptIn = telemetryEnabled
+                config.cloudSyncEnabled = cloudSyncEnabled
+                _ = try await configStore.replaceSnapshot(config)
+            }
             updatedStep = terminalStep(
                 from: step,
                 state: .verified,
@@ -261,6 +271,12 @@ public actor BurnBarLinuxOnboardingService {
            currentIndex > firstUnresolvedIndex {
             throw BurnBarLinuxOnboardingError.invalidPersistedState(
                 "current step is ahead of an unresolved prerequisite"
+            )
+        }
+        if let firstUnresolvedIndex = snapshot.steps.firstIndex(where: { !Self.isTerminal($0) }),
+           snapshot.steps[(firstUnresolvedIndex + 1)...].contains(where: { Self.isTerminal($0) }) {
+            throw BurnBarLinuxOnboardingError.invalidPersistedState(
+                "terminal step exists beyond an unresolved prerequisite"
             )
         }
         guard snapshot.completed == Self.isComplete(snapshot.steps) else {

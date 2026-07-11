@@ -101,6 +101,7 @@ export type ConfigSnapshot = {
   secretServiceStatus: string;
   telemetryEnabled: boolean;
   privacyOptIn: boolean;
+  cloudSyncEnabled?: boolean;
   providers?: ProviderSettings[];
   routerMode?: string;
 };
@@ -1031,6 +1032,7 @@ function mapConfigSnapshot(raw: RawJsonValue): ConfigSnapshot {
     secretServiceStatus: str(pick(snap, 'secretServiceStatus', 'secret_service_status'), 'unknown'),
     telemetryEnabled: Boolean(pick(snap, 'telemetryEnabled', 'telemetry_enabled')),
     privacyOptIn: Boolean(pick(snap, 'privacyOptIn', 'privacy_opt_in')),
+    cloudSyncEnabled: Boolean(pick(snap, 'cloudSyncEnabled', 'cloud_sync_enabled')),
     providers: arr(pick(snap, 'providers')).map(mapProviderSettings),
     routerMode: str(pick(snap, 'routerMode'), 'providerFamilyFailover')
   };
@@ -1289,7 +1291,8 @@ function mapAccountStatus(raw: RawJsonValue): AccountStatus {
   const snap = pick(raw, 'snapshot', 'config') ?? raw;
   const cloud = pick(snap, 'cloud', 'sync', 'account');
   const signedIn = Boolean(pick(cloud, 'signedIn', 'signed_in', 'authenticated'));
-  const syncStateRaw = str(pick(cloud, 'syncState', 'sync_state', 'status'), 'local-only');
+  const cloudSyncEnabled = Boolean(pick(snap, 'cloudSyncEnabled', 'cloud_sync_enabled'));
+  const syncStateRaw = str(pick(cloud, 'syncState', 'sync_state', 'status'), cloudSyncEnabled ? 'active' : 'local-only');
   const syncState: AccountStatus['syncState'] = syncStateRaw.includes('active')
     ? 'active'
     : syncStateRaw.includes('pause')
