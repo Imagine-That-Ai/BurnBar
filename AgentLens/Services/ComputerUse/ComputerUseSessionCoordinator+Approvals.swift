@@ -642,11 +642,17 @@ extension ComputerUseSessionCoordinator {
                 return response
             } catch {
                 if quotaReservationInserted {
-                    try? quotaLedger.rollbackAction(
-                        idempotencyKey: "\(sessionId.rawValue)|\(invocation.callID)",
-                        actionClass: actionClass,
-                        exemptFromMeteredCap: exemptsMeteredCap
-                    )
+                    do {
+                        try quotaLedger.rollbackAction(
+                            idempotencyKey: "\(sessionId.rawValue)|\(invocation.callID)",
+                            actionClass: actionClass,
+                            exemptFromMeteredCap: exemptsMeteredCap
+                        )
+                    } catch let rollbackError {
+                        Self.log.error(
+                            "computer_use_quota_reservation_rollback_failed reason=\(String(describing: rollbackError), privacy: .public)"
+                        )
+                    }
                 }
                 let afterCapture = captureEvidence(
                     label: "error-\(action.auditKind)",

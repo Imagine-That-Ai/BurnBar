@@ -17,7 +17,7 @@ import OpenBurnBarMedia
 /// `OpenBurnBarComputerUseCore`.
 @MainActor
 public final class ComputerUseSessionCoordinator: ObservableObject {
-    static let log = Logger(subsystem: "com.openburnbar.app", category: "ComputerUse")
+    nonisolated static let log = Logger(subsystem: "com.openburnbar.app", category: "ComputerUse")
 
     static let phoneControlActionCap = 10_000
 
@@ -79,7 +79,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
             self.clipboardConsentGranted = clipboardConsentGranted
         }
 
-        var currentUserId: String {
+        @MainActor var currentUserId: String {
             userIdProvider?() ?? userId
         }
     }
