@@ -206,6 +206,23 @@ function verifyRefreshTransactionStructure(source, failures) {
   if (!String(build?.env?.OPENBURNBAR_LINUX_REPOSITORY_GPG_PRIVATE_KEY ?? '').includes('secrets.')) {
     failures.push('repository refresh signer does not load its protected key in the signer step.');
   }
+  if (job?.env?.OPENBURNBAR_LINUX_TOOLCHAIN_IMAGE !== 'openburnbar-linux-toolchain:repository-refresh') {
+    failures.push('repository refresh lifecycle checks must use the toolchain image built by the workflow.');
+  }
+  const buildRun = String(build?.run ?? '');
+  if (!buildRun.includes('sudo chown -R "$(id -u):$(id -g)" \\\n  "$OPENBURNBAR_LINUX_REPOSITORY_OUT" \\\n  "$OPENBURNBAR_LINUX_EVIDENCE_OUT"')) {
+    failures.push('repository refresh signer output ownership must include the evidence root.');
+  }
+  for (const lifecycleName of [
+    'Verify local clean apt and dnf lifecycle',
+    'Verify exact preview apt and dnf lifecycle',
+    'Verify clean public apt and dnf lifecycle'
+  ]) {
+    const lifecycle = steps.find((step) => step?.name === lifecycleName);
+    if (!String(lifecycle?.env?.OPENBURNBAR_LINUX_EVIDENCE_OUT ?? '').includes('runner.temp')) {
+      failures.push(`repository refresh lifecycle transcripts must stay outside immutable evidence: ${lifecycleName}`);
+    }
+  }
   const parentRun = String(byId.get('parent_identity')?.run ?? '');
   const parentVerificationRun = String(byId.get('verify_parent_snapshot')?.run ?? '');
   if (!parentRun.includes('freshness.current?.snapshotId !== snapshotId')

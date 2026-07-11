@@ -282,6 +282,21 @@ test('repository refresh reauthenticates the exact fetched parent before signing
   }
 });
 
+test('repository refresh isolates lifecycle transcripts and reclaims signer evidence', () => {
+  for (const marker of [
+    'OPENBURNBAR_LINUX_TOOLCHAIN_IMAGE: openburnbar-linux-toolchain:repository-refresh',
+    '            "$OPENBURNBAR_LINUX_EVIDENCE_OUT"',
+    '${{ runner.temp }}/linux-repository-lifecycle/${{ matrix.channel }}/local',
+    '${{ runner.temp }}/linux-repository-lifecycle/${{ matrix.channel }}/preview',
+    '${{ runner.temp }}/linux-repository-lifecycle/${{ matrix.channel }}/public'
+  ]) {
+    const input = valid();
+    input.refresh = input.refresh.replace(marker, 'removed-refresh-lifecycle-isolation');
+    input.refreshYaml = input.refresh;
+    assert.equal(verifyLinuxWorkflowWiring(input).passed, false, marker);
+  }
+});
+
 test('every repository refresh post-activation step remains compensated', () => {
   for (const id of [
     'activate_refresh',

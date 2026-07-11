@@ -63,11 +63,13 @@ function createEvidence() {
     }
   });
   const receipts = [
+    path.join(evidenceRoot, 'latest-linux-feed-check.json'),
     path.join(evidenceRoot, 'repository-freshness.json'),
     path.join(evidenceRoot, 'repository-refresh-feed-verification.json')
   ];
-  writeJson(receipts[0], { schemaVersion: 1, passed: true, status: 'active' });
-  writeJson(receipts[1], { schemaVersion: 1, passed: true, feedGeneration: 3 });
+  writeJson(receipts[0], { schemaVersion: 1, passed: true, feedGeneration: 3 });
+  writeJson(receipts[1], { schemaVersion: 1, passed: true, status: 'active' });
+  writeJson(receipts[2], { schemaVersion: 1, passed: true, feedGeneration: 3 });
   const transactionPath = path.join(evidenceRoot, 'repository-refresh-transaction.json');
   writeJson(transactionPath, {
     schemaVersion: 1,
@@ -178,7 +180,7 @@ test('uploads the exact attested transaction closure under its snapshot and acti
   const prefix = `linux/repository-refresh-evidence/stable/${value.snapshotId}/7`;
   assert.equal(receipt.prefix, prefix);
   assert.equal(receipt.activationGeneration, 7);
-  assert.equal(receipt.objectCount, 9);
+  assert.equal(receipt.objectCount, 10);
   assert.equal(receipt.operations.at(-1).key, `${prefix}/repository-refresh-evidence-closure.json`);
   assert.ok(receipt.operations.every((row) => row.key.startsWith(`${prefix}/`)));
   assert.ok(receipt.operations.every((row) => !row.key.endsWith('repository-refresh-evidence-upload.json')));
@@ -189,7 +191,7 @@ test('uploads the exact attested transaction closure under its snapshot and acti
   assert.equal(closure.activationGeneration, 7);
   assert.equal(closure.attestation.identity,
     'https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-repository-refresh.yml@refs/heads/main');
-  assert.equal(closure.files.length, 8);
+  assert.equal(closure.files.length, 9);
   assert.deepEqual(new Set(closure.files.map((row) => row.role)), new Set([
     'evidence', 'activation-receipt', 'repository-closure', 'repository-closure-signature'
   ]));

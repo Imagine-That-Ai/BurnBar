@@ -75,6 +75,7 @@ jobs:
       OPENBURNBAR_LINUX_REPOSITORY_SOURCE: ${{ github.workspace }}/.linux-refresh-source/${{ matrix.channel }}
       OPENBURNBAR_LINUX_REPOSITORY_OUT: ${{ github.workspace }}/.linux-refresh-output/${{ matrix.channel }}/repositories
       OPENBURNBAR_LINUX_EVIDENCE_OUT: ${{ github.workspace }}/.linux-refresh-evidence/${{ matrix.channel }}
+      OPENBURNBAR_LINUX_TOOLCHAIN_IMAGE: openburnbar-linux-toolchain:repository-refresh
       OPENBURNBAR_R2_PUBLIC_BASE_URL: https://downloads.burnbar.ai
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -203,7 +204,9 @@ jobs:
               --refresh-epoch "$refresh_epoch" \
               --receipt /refresh-evidence/repository-refresh-build.json
           unset repository_signing_key
-          sudo chown -R "$(id -u):$(id -g)" "$OPENBURNBAR_LINUX_REPOSITORY_OUT"
+          sudo chown -R "$(id -u):$(id -g)" \
+            "$OPENBURNBAR_LINUX_REPOSITORY_OUT" \
+            "$OPENBURNBAR_LINUX_EVIDENCE_OUT"
 
       - name: Resolve refreshed repository identity
         id: refresh_identity
@@ -242,6 +245,7 @@ jobs:
         env:
           OPENBURNBAR_LINUX_REPOSITORY_VERSION: ${{ steps.refresh_identity.outputs.version }}
           OPENBURNBAR_LINUX_REPOSITORY_CHANNEL: ${{ matrix.channel }}
+          OPENBURNBAR_LINUX_EVIDENCE_OUT: ${{ runner.temp }}/linux-repository-lifecycle/${{ matrix.channel }}/local
         run: bash scripts/linux-port/verify-linux-repository-lifecycle.sh
 
       - name: Upload immutable refreshed repository snapshot
@@ -262,7 +266,8 @@ jobs:
           OPENBURNBAR_LINUX_REPOSITORY_VERSION: ${{ steps.refresh_identity.outputs.version }}
           OPENBURNBAR_LINUX_REPOSITORY_CHANNEL: ${{ matrix.channel }}
           OPENBURNBAR_LINUX_REPOSITORY_PREVIEW_SNAPSHOT: ${{ steps.refresh_identity.outputs.snapshot }}
-          OPENBURNBAR_LINUX_REPOSITORY_LIFECYCLE_RECEIPT: ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/repository-refresh-preview-lifecycle.json
+          OPENBURNBAR_LINUX_REPOSITORY_LIFECYCLE_RECEIPT: ${{ github.workspace }}/.linux-refresh-evidence/${{ matrix.channel }}/repository-refresh-preview-lifecycle.json
+          OPENBURNBAR_LINUX_EVIDENCE_OUT: ${{ runner.temp }}/linux-repository-lifecycle/${{ matrix.channel }}/preview
         run: bash scripts/linux-port/verify-linux-repository-lifecycle.sh
 
       - name: Atomically activate refreshed repository metadata
@@ -371,7 +376,8 @@ jobs:
           OPENBURNBAR_LINUX_REPOSITORY_VERSION: ${{ steps.refresh_identity.outputs.version }}
           OPENBURNBAR_LINUX_REPOSITORY_CHANNEL: ${{ matrix.channel }}
           OPENBURNBAR_LINUX_REPOSITORY_PUBLIC_BASE_URL: https://downloads.burnbar.ai
-          OPENBURNBAR_LINUX_REPOSITORY_LIFECYCLE_RECEIPT: ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/repository-refresh-public-lifecycle.json
+          OPENBURNBAR_LINUX_REPOSITORY_LIFECYCLE_RECEIPT: ${{ github.workspace }}/.linux-refresh-evidence/${{ matrix.channel }}/repository-refresh-public-lifecycle.json
+          OPENBURNBAR_LINUX_EVIDENCE_OUT: ${{ runner.temp }}/linux-repository-lifecycle/${{ matrix.channel }}/public
         run: bash scripts/linux-port/verify-linux-repository-lifecycle.sh
 
       - name: Preserve and attest refresh transaction evidence

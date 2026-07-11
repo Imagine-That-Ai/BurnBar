@@ -19,6 +19,7 @@ const attestationType = 'https://openburnbar.dev/attestations/linux-repository-r
 const attestationIssuer = 'https://token.actions.githubusercontent.com';
 const attestationIdentity = 'https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-repository-refresh.yml@refs/heads/main';
 const allowedEvidenceFiles = new Set([
+  'latest-linux-feed-check.json',
   'repository-freshness.json',
   'repository-refresh-build.json',
   'repository-refresh-feed-rebind.json',
