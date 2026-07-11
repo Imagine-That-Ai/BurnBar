@@ -288,6 +288,10 @@ public sealed partial class WindowsSqlCipherProvisioner
     {
         if (!TableExists(connection, "grdb_migrations"))
         {
+            if (HasApplicationTables(connection))
+            {
+                throw Recovery(databasePath, WindowsStorageFailureKind.UnsupportedSchema, null);
+            }
             return;
         }
 
@@ -303,6 +307,19 @@ public sealed partial class WindowsSqlCipherProvisioner
         {
             throw Recovery(databasePath, WindowsStorageFailureKind.UnsupportedSchema, null);
         }
+    }
+
+    private static bool HasApplicationTables(SqliteConnection connection)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT 1
+            FROM sqlite_master
+            WHERE name NOT LIKE 'sqlite_%'
+              AND type IN ('table', 'index', 'view', 'trigger')
+            LIMIT 1
+            """;
+        return command.ExecuteScalar() is not null;
     }
 
     private static bool TableExists(SqliteConnection connection, string name)

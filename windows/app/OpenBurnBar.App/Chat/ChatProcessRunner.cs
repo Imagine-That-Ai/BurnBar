@@ -247,16 +247,15 @@ public static class ChatProcessRunner
         try
         {
             Task waitTask = process.WaitForExitAsync(linkedCts.Token);
-            Task first = await Task.WhenAny(waitTask, stdoutTask, stderrTask).ConfigureAwait(false);
-            if ((first == stdoutTask || first == stderrTask) && first.IsFaulted)
+            Task drainsTask = Task.WhenAll(stdoutTask, stderrTask);
+            Task first = await Task.WhenAny(waitTask, drainsTask).ConfigureAwait(false);
+            if (first == drainsTask)
             {
-                await linkedCts.CancelAsync().ConfigureAwait(false);
-                TryKillProcessTree(process);
-                throw first.Exception!.GetBaseException();
+                await drainsTask.ConfigureAwait(false);
             }
 
             await waitTask.ConfigureAwait(false);
-            await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
+            await drainsTask.ConfigureAwait(false);
             if (process.ExitCode != 0)
             {
                 string message = "CLI exited " + process.ExitCode + StderrSuffix(stderr);
