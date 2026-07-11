@@ -30,6 +30,7 @@ function receiptOptions() {
     version: '1.2.3',
     architecture: 'x86_64',
     gitCommit: '01'.repeat(20),
+    firebaseAppId: '1:123456789:web:linuxabcdef012345',
     preparationDigestSha256: '02'.repeat(32),
     signerInputsRootSha256: '03'.repeat(32),
     packages: [
@@ -175,6 +176,47 @@ test('signed package receipt is canonical and detects package or receipt substit
     () => verifyNativePackageSigningReceipt(bytes, wrongSignature, publicKey),
     /signature verification failed/
   );
+
+  const substitutedIdentity = Buffer.from(bytes);
+  substitutedIdentity[substitutedIdentity.indexOf(Buffer.from('linuxabcdef012345'))] ^= 1;
+  assert.throws(
+    () => verifyNativePackageSigningReceipt(substitutedIdentity, signature, publicKey),
+    /signature verification failed/
+  );
+});
+
+test('signed package receipt requires a valid non-placeholder Firebase web app identity', () => {
+  const { privateKey, publicKey } = crypto.generateKeyPairSync('ed25519');
+  for (const firebaseAppId of [
+    undefined,
+    '',
+    '1:123:linux:not-web',
+    '1:0:web:linuxabcdef012345',
+    '1:123:web:placeholder',
+    `1:123:web:${'a'.repeat(161)}`
+  ]) {
+    assert.throws(
+      () => createNativePackageSigningReceipt({ ...receiptOptions(), firebaseAppId }),
+      /receipt fields are invalid/
+    );
+    const invalidReceipt = {
+      schemaVersion: 1,
+      ...receiptOptions(),
+      firebaseAppId
+    };
+    const bytes = Buffer.from(canonicalJson(invalidReceipt), 'utf8');
+    const signature = crypto.sign(null, bytes, privateKey);
+    assert.throws(
+      () => verifyNativePackageSigningReceipt(bytes, signature, publicKey),
+      /receipt fields are invalid/
+    );
+  }
+});
+
+test('architecture closure identity is sourced from the verified signing receipt', () => {
+  const releaseSource = fs.readFileSync(new URL('./build-linux-release.mjs', import.meta.url), 'utf8');
+  assert.match(releaseSource, /firebaseAppId: signingReceipt\?\.firebaseAppId \?\? null/u);
+  assert.doesNotMatch(releaseSource, /firebaseAppId:\s*process\.env/u);
 });
 
 test('final package validation rejects stale, substituted, or extra native artifacts', () => {

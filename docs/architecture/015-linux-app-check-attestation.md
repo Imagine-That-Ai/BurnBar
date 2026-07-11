@@ -111,6 +111,22 @@ broker foundation now ships in source for native deb/rpm packages:
   `attestation_unsupported`. It has no mock or software fallback, and the
   daemon production factory remains unavailable.
 
+Executable hashing is not yet sufficient production client authentication.
+`SCM_CREDENTIALS` fixes the sender PID for a packet, but a process can queue a
+packet and then `exec` the signed daemon before `/proc/<pid>/exe` is inspected;
+same-user loader or process injection also cannot be excluded by an inode hash.
+This is non-exploitable while the socket is disabled and the unsupported
+backend is hard-wired, but it is a High activation blocker. A production backend
+must first add root-controlled daemon launch provenance in a non-user-overridable
+cgroup, sanitized loader state and disabled dumpability, pidfd/cgroup/executable
+revalidation, and a broker-issued per-connection nonce before accepting the
+second request packet. The verifier policy must also cover executable and mmap
+measurements. Activation tests must reject queue-then-exec, PID reuse,
+`LD_PRELOAD`, ptrace/injection, cgroup escape, and inherited-descriptor attempts.
+Connection admission must also move ahead of the bounded worker queue or apply
+an equivalent credential-aware cap so unauthenticated idle local connections
+cannot exhaust all broker workers before per-UID request limiting runs.
+
 The next implementation stage enrolls a TPM 2.0 attestation key, obtains a
 nonce-qualified quote, verifies the package/release identity, and supplies UEFI
 measured-boot evidence plus IMA PCR 10. A remote verifier must evaluate that
@@ -190,8 +206,9 @@ Source acceptance requires:
 - renderer/RPC/log/support-bundle scans to contain no App Check token, raw
   challenge evidence, verifier response, or credential-shaped material.
 
-Production acceptance additionally requires broker and verifier deployment,
-hardware-root enrollment and revocation, TPM quote and IMA-log test vectors,
-signed-candidate release binding, offline and clock-skew behavior, and installed
-GNOME/KDE/headless runs for each supported architecture and package path. The
-audit remains NO-GO until that evidence is bound to one release head.
+Production acceptance additionally requires the hardened two-packet broker
+authentication and launch-containment tests above, broker and verifier
+deployment, hardware-root enrollment and revocation, TPM quote and IMA-log test
+vectors, signed-candidate release binding, offline and clock-skew behavior, and
+installed GNOME/KDE/headless runs for each supported architecture and package
+path. The audit remains NO-GO until that evidence is bound to one release head.

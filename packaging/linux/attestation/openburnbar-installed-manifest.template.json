@@ -2,13 +2,14 @@
   "schemaVersion": 1,
   "product": "OpenBurnBar",
   "appId": "dev.openburnbar.OpenBurnBar",
+  "firebaseAppId": "@FIREBASE_APP_ID@",
   "packageVersion": "@PACKAGE_VERSION@",
   "gitCommit": "@GIT_COMMIT@",
   "packageArchitecture": "@PACKAGE_ARCHITECTURE@",
   "packageFormat": "@PACKAGE_FORMAT@",
   "packageName": "open-burn-bar",
   "policyId": "openburnbar-linux-tpm2-ima-v1",
-  "brokerProtocolVersion": 1,
+  "brokerProtocolVersion": 2,
   "installedFilesRootSha256": "@INSTALLED_FILES_ROOT_SHA256@",
   "authorizedClients": [
     {

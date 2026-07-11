@@ -8,6 +8,7 @@ description = "Root-owned Linux attestation broker for OpenBurnBar"
 publish = false
 
 [dependencies]
+base64ct = "=1.8.3"
 ed25519-dalek = { version = "=2.2.0", features = ["pem", "pkcs8"] }
 libc = "=0.2.180"
 serde = { version = "=1.0.228", features = ["derive"] }

@@ -38,7 +38,7 @@ test('installed manifest schema is strict and binds the only authorized client',
   const schema = JSON.parse(read('packaging/linux/attestation/openburnbar-installed-manifest.schema.json'));
   const required = new Set(schema.required);
   for (const key of [
-    'schemaVersion', 'product', 'appId', 'packageVersion', 'gitCommit',
+    'schemaVersion', 'product', 'appId', 'firebaseAppId', 'packageVersion', 'gitCommit',
     'packageArchitecture', 'packageFormat', 'packageName', 'policyId',
     'brokerProtocolVersion', 'installedFilesRootSha256', 'authorizedClients', 'files'
   ]) {
@@ -50,6 +50,7 @@ test('installed manifest schema is strict and binds the only authorized client',
   assert.equal(schema.$defs.authorizedClient.properties.mode.const, 493);
   assert.equal(schema.$defs.regularFile.additionalProperties, false);
   assert.equal(schema.$defs.symlink.additionalProperties, false);
+  assert.equal(schema.properties.brokerProtocolVersion.const, 2);
 });
 
 test('release metadata and Tauri keep privileged attestation in native packages only', () => {

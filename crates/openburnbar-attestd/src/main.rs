@@ -9,15 +9,19 @@ where
     B: openburnbar_attestd::backend::AttestationBackend,
     R: openburnbar_attestd::rate_limit::RequestRateLimiter,
 {
-    use openburnbar_attestd::protocol::Response;
     use openburnbar_attestd::server::encode_response;
+    use openburnbar_attestd::server::BrokerReply;
 
     connection.set_deadlines(deadline)?;
-    let response = match connection.receive_request() {
+    let reply = match connection.receive_request() {
         Ok(packet) => broker.process_packet(&packet.bytes, packet.credentials),
-        Err(error) => Response::failure(String::new(), &error),
+        Err(error) => BrokerReply::failure(String::new(), &error),
     };
-    connection.send_response(&encode_response(&response)?)
+    reply.validate()?;
+    connection.send_response(
+        &encode_response(&reply.response)?,
+        reply.evidence_bundle.as_ref(),
+    )
 }
 
 #[cfg(target_os = "linux")]
@@ -28,7 +32,10 @@ fn send_failure(
     use openburnbar_attestd::protocol::Response;
     use openburnbar_attestd::server::encode_response;
 
-    connection.send_response(&encode_response(&Response::failure(String::new(), error))?)
+    connection.send_response(
+        &encode_response(&Response::failure(String::new(), error))?,
+        None,
+    )
 }
 
 #[cfg(target_os = "linux")]

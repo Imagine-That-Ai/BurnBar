@@ -16,7 +16,8 @@ import {
 import {
   buildDebPackage,
   buildRpmPackage,
-  stageNativeLinuxPackageRoot
+  stageNativeLinuxPackageRoot,
+  validateDedicatedLinuxFirebaseAppId
 } from './lib/native-linux-packager.mjs';
 import { gitInfo, packageVersion, repoRoot } from './lib/linux-release-common.mjs';
 
@@ -31,6 +32,41 @@ const architecture = process.arch === 'arm64' ? 'aarch64' : process.arch === 'x6
 if (Object.hasOwn(process.env, 'OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM')) {
   throw new Error('OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM is forbidden; pass the native signing key only by stdin or file');
 }
+const firebaseAppIdIndex = process.argv.indexOf('--firebase-app-id');
+const cliFirebaseAppId = firebaseAppIdIndex >= 0
+  ? process.argv[firebaseAppIdIndex + 1]?.trim()
+  : null;
+const environmentFirebaseAppId = process.env.OPENBURNBAR_LINUX_FIREBASE_APP_ID?.trim() || null;
+if (cliFirebaseAppId && environmentFirebaseAppId && cliFirebaseAppId !== environmentFirebaseAppId) {
+  throw new Error('--firebase-app-id does not match OPENBURNBAR_LINUX_FIREBASE_APP_ID');
+}
+const firebaseAppId = cliFirebaseAppId || environmentFirebaseAppId;
+const configuredStandardWebFirebaseAppIds = [
+  process.env.OPENBURNBAR_STANDARD_WEB_FIREBASE_APP_IDS,
+  process.env.APP_CHECK_STANDARD_WEB_APP_IDS
+].filter(Boolean).flatMap((value) => value.split(/[\s,]+/u)).filter(Boolean);
+const productionEnvironment = fs.readFileSync(
+  path.join(repoRoot, 'functions/.env.burnbar.production'),
+  'utf8'
+);
+const productionRegistryLine = productionEnvironment
+  .split(/\r?\n/u)
+  .filter((line) => line.startsWith('APP_CHECK_STANDARD_WEB_APP_IDS='));
+if (productionRegistryLine.length !== 1) {
+  throw new Error('committed production standard Web Firebase app ID registry must appear exactly once');
+}
+const standardWebFirebaseAppIds = productionRegistryLine[0]
+  .slice('APP_CHECK_STANDARD_WEB_APP_IDS='.length)
+  .split(/[\s,]+/u)
+  .filter(Boolean);
+const configuredRegistry = [...new Set(configuredStandardWebFirebaseAppIds)].sort();
+const committedRegistry = [...new Set(standardWebFirebaseAppIds)].sort();
+if (configuredRegistry.length > 0
+    && (configuredRegistry.length !== committedRegistry.length
+      || configuredRegistry.some((value, index) => value !== committedRegistry[index]))) {
+  throw new Error('configured standard Web Firebase app ID registry does not exactly match committed production');
+}
+validateDedicatedLinuxFirebaseAppId(firebaseAppId, standardWebFirebaseAppIds);
 const git = gitInfo();
 const appDirectory = path.join(repoRoot, 'apps/linux-desktop/src-tauri');
 const targetDirectory = path.join(appDirectory, 'target');
@@ -100,7 +136,9 @@ const common = {
   version,
   gitCommit: git.commit,
   architecture,
-  privateKeyPem
+  privateKeyPem,
+  firebaseAppId,
+  standardWebFirebaseAppIds
 };
 
 fs.mkdirSync(bundleDirectory, { recursive: true });
@@ -152,6 +190,7 @@ const signingReceipt = createNativePackageSigningReceipt({
   version,
   architecture,
   gitCommit: git.commit,
+  firebaseAppId,
   preparationDigestSha256,
   signerInputsRootSha256: finalSignerInputs.rootSha256,
   packages: packageRows
@@ -166,6 +205,7 @@ console.log(JSON.stringify({
   version,
   architecture,
   gitCommit: git.commit,
+  firebaseAppId,
   preparationDigestSha256,
   signerInputsRootSha256: signerInputs.rootSha256,
   signingReceipt: path.relative(repoRoot, signingReceiptPath),

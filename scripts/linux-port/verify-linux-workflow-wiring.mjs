@@ -49,6 +49,14 @@ export function verifyLinuxWorkflowWiring(input) {
     'https://downloads.burnbar.ai/latest-linux.json'
   ]) requireText(input.release, marker, 'two-architecture release closure');
   requireText(input.release, 'unset OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM', 'signer environment scrub');
+  for (const marker of [
+    'vars.OPENBURNBAR_LINUX_FIREBASE_APP_ID',
+    'vars.APP_CHECK_STANDARD_WEB_APP_IDS',
+    '${OPENBURNBAR_LINUX_FIREBASE_APP_ID:?',
+    '${APP_CHECK_STANDARD_WEB_APP_IDS:?',
+    '-e OPENBURNBAR_LINUX_FIREBASE_APP_ID',
+    '-e APP_CHECK_STANDARD_WEB_APP_IDS'
+  ]) requireText(input.release, marker, 'dedicated Linux Firebase release identity');
   const privateKeyStdinUses = input.release.match(/--private-key-stdin/g)?.length ?? 0;
   if (privateKeyStdinUses < 2) {
     failures.push('both native-package and aggregate release signers must use --private-key-stdin.');
@@ -66,6 +74,9 @@ export function verifyLinuxWorkflowWiring(input) {
   ]) requireText(aggregateSigner, marker, 'aggregate signer custody');
   requireText(input.pr, 'bash scripts/linux-port/run-linux-native-tests.sh', 'PR native behavior gate');
   requireText(input.pr, 'crates/openburnbar-attestd/**', 'PR attestation broker path trigger');
+  requireText(input.pr, 'schemas/linux-attestation-*', 'PR attestation schema path trigger');
+  requireText(input.pr, 'tests/fixtures/linux-attestation/**', 'PR attestation fixture path trigger');
+  requireText(input.pr, 'linux-attestation-contract.test.mjs', 'PR attestation schema contract suite');
   requireText(input.pr, 'verify-linux-release.test.mjs', 'PR release mutation suite');
   requireText(input.pr, 'assemble-linux-release.test.mjs', 'PR architecture assembly mutation suite');
   requireText(input.pr, 'build-linux-release-boundary.test.mjs', 'PR release phase-boundary suite');

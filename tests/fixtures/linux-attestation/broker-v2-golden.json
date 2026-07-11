@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "describeBindingRequest": {
+    "protocolVersion": 2,
+    "requestId": "describe-0001",
+    "operation": "describe_binding"
+  },
+  "describeBindingResponse": {
+    "protocolVersion": 2,
+    "requestId": "describe-0001",
+    "ok": true,
+    "binding": {
+      "appId": "1:123456789:web:abcdef0123456789",
+      "deviceId": "ak-sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "appVersion": "1.0.30",
+      "architecture": "x86_64",
+      "releaseDigestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "policyId": "openburnbar-linux-tpm2-ima-v1",
+      "attestationKind": "tpm2_ima_signed_verdict_v1"
+    }
+  },
+  "attestRequest": {
+    "protocolVersion": 2,
+    "requestId": "attest-0001",
+    "operation": "attest",
+    "challenge": {
+      "challengeId": "challenge-0001",
+      "challenge": "bm9uY2UtMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODk",
+      "expiresAtMillis": 1900000120000,
+      "appId": "1:123456789:web:abcdef0123456789",
+      "policyId": "openburnbar-linux-tpm2-ima-v1",
+      "protocolVersion": 1
+    },
+    "binding": {
+      "appId": "1:123456789:web:abcdef0123456789",
+      "deviceId": "ak-sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "appVersion": "1.0.30",
+      "architecture": "x86_64",
+      "releaseDigestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "policyId": "openburnbar-linux-tpm2-ima-v1",
+      "attestationKind": "tpm2_ima_signed_verdict_v1"
+    }
+  },
+  "attestResponse": {
+    "protocolVersion": 2,
+    "requestId": "attest-0001",
+    "ok": true,
+    "attestation": {
+      "challengeId": "challenge-0001",
+      "challenge": "bm9uY2UtMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODk",
+      "kind": "tpm2_ima_signed_verdict_v1",
+      "evidence": {
+        "schemaVersion": 1,
+        "deviceId": "ak-sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "quoteAttestationBase64": "cXVvdGUtYXR0ZXN0YXRpb24=",
+        "quoteSignatureBase64": "cXVvdGUtc2lnbmF0dXJl",
+        "quotePcrValuesBase64": "cXVvdGUtcGNyLXZhbHVlcw==",
+        "pcrBank": "sha256",
+        "pcrSelection": [0, 2, 4, 7, 10],
+        "qualifyingDataSha256": "d9247babd9fba0a728843f11de96ff5f411f9fa8d4227cfb42d860cfd465c8a1"
+      },
+      "evidenceBundle": {
+        "descriptorIndex": 0,
+        "format": "openburnbar_tpm_evidence_bundle_v1",
+        "byteLength": 4096,
+        "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      }
+    }
+  },
+  "unsupportedResponse": {
+    "protocolVersion": 2,
+    "requestId": "describe-0001",
+    "ok": false,
+    "error": {
+      "code": "attestation_unsupported",
+      "message": "TPM2 and IMA attestation is not configured on this broker",
+      "retryable": false
+    }
+  }
+}

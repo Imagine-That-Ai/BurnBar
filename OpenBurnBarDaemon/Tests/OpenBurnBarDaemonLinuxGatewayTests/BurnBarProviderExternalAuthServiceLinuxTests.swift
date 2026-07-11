@@ -1,6 +1,6 @@
 import Foundation
-import OpenBurnBarCore
 import XCTest
+@testable import OpenBurnBarCore
 @testable import OpenBurnBarDaemon
 
 final class BurnBarProviderExternalAuthServiceLinuxTests: XCTestCase {

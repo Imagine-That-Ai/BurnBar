@@ -10,8 +10,10 @@ on:
       - "crates/openburnbar-attestd/**"
       - "docs/linux-port/**"
       - "packaging/linux/**"
+      - "schemas/linux-attestation-*"
       - "schemas/linux-runtime-capability-manifest.schema.json"
       - "scripts/linux-port/**"
+      - "tests/fixtures/linux-attestation/**"
       - "tools/linux-toolchain/**"
       - "OpenBurnBarCore/**"
       - "OpenBurnBarDaemon/**"
@@ -115,6 +117,7 @@ jobs:
           scripts/linux-port/prepare-linux-package-payload.test.mjs
           scripts/linux-port/native-linux-packager.test.mjs
           packaging/linux/openburnbar-attestd-packaging.test.mjs
+          scripts/linux-port/linux-attestation-contract.test.mjs
           scripts/linux-port/credential-storage-contract.test.mjs
           scripts/linux-port/verify-linux-release.test.mjs
           scripts/linux-port/resolve-linux-release-version.test.mjs
