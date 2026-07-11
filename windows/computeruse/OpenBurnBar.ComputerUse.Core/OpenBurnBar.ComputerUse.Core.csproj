@@ -1,0 +1,64 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Portable Computer-Use policy + crypto core for the OpenBurnBar Windows port
+    (Phase 4 · W5). This is the PLATFORM-INDEPENDENT half of the Computer-Use
+    subsystem: the capability-token issuer/verifier (Ed25519, attestation-bound,
+    single-use nonce), the tamper-evident audit hash-chain + Ed25519 signed head,
+    the triple-independent kill-switch state machine (hotkey + workspace-lock +
+    Remote-Config, fail-closed-on-RC-error), the deny-region / scope matcher, the
+    capability-gate decision tree, and the watchdog command/response wire
+    protocol.
+
+    It has NO Windows / WinUI / P/Invoke dependency on purpose — the SAME managed
+    assembly is:
+      * consumed by the WinUI app and the Windows adapter project
+        (OpenBurnBar.ComputerUse.Windows, net8.0-windows) whose SendInput / UIA /
+        Windows.Graphics.Capture / named-pipe adapters implement the interfaces in
+        Adapters/, AND
+      * unit-tested on the macOS authoring host today via `dotnet test`
+        (windows/tests/computeruse), exactly the pattern already proven by the
+        storage seam and the Pal.Ipc signed-nonce handshake.
+
+    Parity sources (macOS, OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/):
+      * CapabilityToken.swift / CapabilityTokenSigning.swift / CapabilityTokenIssuer.swift
+        / CapabilityTokenVerifier.swift / CapabilityTokenIssuerTrustMaterial.swift
+                                              -> Capability/*.cs
+      * ComputerUseAuditChain.swift / ComputerUseAuditLogger.swift /
+        ComputerUseAuditSignedHead.swift / ComputerUseAuditHeadFinalizer.swift /
+        ComputerUseAuditVerifier.swift        -> Audit/*.cs
+      * ComputerUseScopeRule.swift / ComputerUseDenyRegistry.swift -> Scope/*.cs
+      * ComputerUseCapabilityGate.swift / ComputerUseBudgetEnvelope.swift /
+        ComputerUseActionDescriptor.swift / ComputerUseSessionMetadata.swift -> Gate/*.cs
+      * PrivilegedInputKillSwitch.swift + ComputerUsePanicHaltCoordinator.swift (Mac glue)
+                                              -> KillSwitch/*.cs
+      * PrivilegedInputKillSwitchWatchdogMain.swift (daemon) -> Watchdog/*.cs
+      * AppCheckAttestationBinding.swift      -> AttestationBinding.cs
+
+    Ed25519 (RFC 8032) is provided by the pure-managed, cross-platform
+    BouncyCastle.Cryptography package so the token/audit signatures are REAL
+    crypto on both the macOS authoring host and Windows CI (the .NET BCL has no
+    built-in Ed25519). SHA-256 uses the BCL. The crypto lives behind the
+    ICapabilitySigner / ICapabilityVerifier seams so a Windows dev host can swap
+    in a CNG/TPM-backed signer without touching the state machines.
+
+    Targets net8.0 so the net8.0-windows adapter + WinUI app can reference it,
+    while the net10.0 test project consumes it too (a lower TFM is usable by a
+    higher one).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.ComputerUse.Core</RootNamespace>
+    <AssemblyName>OpenBurnBar.ComputerUse.Core</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.4.0" />
+  </ItemGroup>
+
+</Project>

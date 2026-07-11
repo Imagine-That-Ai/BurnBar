@@ -1,0 +1,45 @@
+{
+  "provider": "codex",
+  "source": "OfficialApi",
+  "confidence": "Exact",
+  "statusMessage": "Pro quota snapshot from the local Codex login session.",
+  "nowUnix": 1783036800,
+  "buckets": [
+    {
+      "key": "codex-5h",
+      "label": "5-hour window",
+      "windowKind": "RollingHours",
+      "usedValue": 37.25,
+      "limitValue": 100,
+      "remainingValue": 62.75,
+      "usedPercent": 37.25,
+      "resetsAtUnix": 1783040400,
+      "unit": "Percent",
+      "isEstimated": false
+    },
+    {
+      "key": "codex-7d",
+      "label": "7-day window",
+      "windowKind": "RollingDays",
+      "usedValue": 68,
+      "limitValue": 100,
+      "remainingValue": 32,
+      "usedPercent": 68,
+      "resetsAtUnix": 1751500000,
+      "unit": "Percent",
+      "isEstimated": false
+    },
+    {
+      "key": "codex-code-review-5h",
+      "label": "Code Review 5-hour window",
+      "windowKind": "RollingHours",
+      "usedValue": 5,
+      "limitValue": 100,
+      "remainingValue": 95,
+      "usedPercent": 5,
+      "resetsAtUnix": 1783036920,
+      "unit": "Percent",
+      "isEstimated": false
+    }
+  ]
+}

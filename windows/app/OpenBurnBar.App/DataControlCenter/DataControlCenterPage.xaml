@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The AppShell content page for the Data Control Center nav destination (key "dataControlCenter").
+  Hosts the DataControlCenterView governance workbench so selecting the sidebar item shows the real
+  surface instead of the SurfaceStubPage placeholder.
+-->
+<Page
+    x:Class="OpenBurnBar.App.DataControlCenter.DataControlCenterPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:OpenBurnBar.App.DataControlCenter"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    AutomationProperties.AutomationId="RouteRoot.dataControlCenter"
+    RequestedTheme="Dark"
+    Background="{StaticResource PensieveColorInkBaseBrush}">
+
+    <local:DataControlCenterView x:Name="Workbench" />
+</Page>

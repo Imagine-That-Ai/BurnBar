@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Windows render of MissionBurnForecastStrip
+  (OpenBurnBarCore/.../MissionControl/MissionBurnForecast.swift). A pre-dispatch sanity panel:
+  three mono digit blocks (tokens / cost / ETA) with low-high ranges. The COST block tints
+  ember when the projected high breaches $1. Binds to MissionConsoleViewModel.Forecast (the
+  portable, unit-tested band) and the resolved runtime's provider accent.
+-->
+<UserControl
+    x:Class="OpenBurnBar.App.MissionControl.MissionBurnForecastView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="ms-appx:///MissionControl/MissionControlResources.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <Border Padding="14,10"
+            CornerRadius="{StaticResource PensieveRadiusMdCorner}"
+            Background="{StaticResource PensieveColorGlassBgBrush}"
+            BorderBrush="{StaticResource PensieveColorGlassLineBrush}"
+            BorderThickness="1">
+        <StackPanel Spacing="8">
+            <!-- Header -->
+            <Grid>
+                <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Left">
+                    <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="13" Glyph="&#xE9D9;"
+                              Foreground="{x:Bind ViewModel.RuntimeAccentKey, Mode=OneWay, Converter={StaticResource ProviderBrush}}"
+                              VerticalAlignment="Center" />
+                    <TextBlock Text="FORECAST"
+                               FontFamily="{StaticResource OBBMonoFontFamily}"
+                               FontSize="12"
+                               FontWeight="Bold"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+                <TextBlock HorizontalAlignment="Right"
+                           Text="{x:Bind ViewModel.ResolvedRuntime.DisplayName, Mode=OneWay}"
+                           FontFamily="{StaticResource OBBMonoFontFamily}"
+                           FontSize="12"
+                           FontWeight="SemiBold"
+                           Foreground="{x:Bind ViewModel.RuntimeAccentKey, Mode=OneWay, Converter={StaticResource ProviderBrush}}" />
+            </Grid>
+
+            <!-- Cells -->
+            <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="1" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="1" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Spacing="2">
+                    <TextBlock Text="TOKENS" FontFamily="{StaticResource OBBMonoFontFamily}" FontSize="11"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    <TextBlock Text="{x:Bind ViewModel.Forecast.TokenRangeLabel, Mode=OneWay}"
+                               FontFamily="{StaticResource OBBMonoFontFamily}" FontSize="14" FontWeight="Bold"
+                               Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                </StackPanel>
+
+                <Border Grid.Column="1" Background="{StaticResource PensieveColorGlassLineBrush}" Opacity="0.7" />
+
+                <StackPanel Grid.Column="2" Spacing="2">
+                    <TextBlock Text="COST" FontFamily="{StaticResource OBBMonoFontFamily}" FontSize="11"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    <TextBlock Text="{x:Bind ViewModel.Forecast.CostRangeLabel, Mode=OneWay}"
+                               FontFamily="{StaticResource OBBMonoFontFamily}" FontSize="14" FontWeight="Bold"
+                               Foreground="{x:Bind ViewModel.Forecast.IsCostElevated, Mode=OneWay, Converter={StaticResource CostElevatedBrush}}" />
+                </StackPanel>
+
+                <Border Grid.Column="3" Background="{StaticResource PensieveColorGlassLineBrush}" Opacity="0.7" />
+
+                <StackPanel Grid.Column="4" Spacing="2">
+                    <TextBlock Text="ETA" FontFamily="{StaticResource OBBMonoFontFamily}" FontSize="11"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    <TextBlock Text="{x:Bind ViewModel.Forecast.EtaRangeLabel, Mode=OneWay}"
+                               FontFamily="{StaticResource OBBMonoFontFamily}" FontSize="14" FontWeight="Bold"
+                               Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                </StackPanel>
+            </Grid>
+        </StackPanel>
+    </Border>
+</UserControl>

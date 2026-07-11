@@ -1,0 +1,254 @@
+.memory-surface {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.memory-inbox-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.memory-inbox-kicker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-dim);
+}
+
+.memory-inbox-kicker-mark {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--color-ember-core);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-ember-core) 55%, transparent);
+}
+
+.memory-inbox-title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--color-text-bright);
+}
+
+.memory-inbox-lede {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--color-text-base);
+  max-width: 42rem;
+}
+
+.memory-inbox-pending-pill {
+  margin-left: auto;
+  padding: var(--space-1) var(--space-2);
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--color-brass-bright);
+  border-radius: var(--radius-full);
+  border: 1px solid color-mix(in srgb, var(--color-brass-bright) 40%, transparent);
+  background: color-mix(in srgb, var(--color-brass-bright) 16%, transparent);
+}
+
+.memory-filter-rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.memory-filter-kicker {
+  margin: 0;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-dim);
+}
+
+.memory-filter-scroll {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.memory-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-text-dim);
+  background: color-mix(in srgb, var(--color-glass-bg, var(--color-glass-fill)) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-glass-line) 70%, transparent);
+  border-radius: var(--radius-full, 999px);
+  backdrop-filter: blur(var(--glass-blur-sm, 12px)) saturate(var(--glass-saturate, 160%));
+  -webkit-backdrop-filter: blur(var(--glass-blur-sm, 12px)) saturate(var(--glass-saturate, 160%));
+  box-shadow: var(--glass-inner-light, inset 0 1px 0 var(--color-frost-line));
+  cursor: pointer;
+}
+
+.memory-filter-chip:hover,
+.memory-filter-chip:focus-visible {
+  border-color: color-mix(in srgb, var(--color-ember-core) 45%, transparent);
+  outline: none;
+}
+
+.memory-filter-chip--active {
+  color: var(--color-text-bright);
+  border-color: color-mix(in srgb, var(--color-ember-core) 45%, transparent);
+  background: color-mix(in srgb, var(--color-ember-core) 18%, transparent);
+}
+
+.memory-filter-chip-count {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--color-ink-void) 12%, transparent);
+}
+
+.memory-filter-chip--active .memory-filter-chip-count {
+  background: color-mix(in srgb, var(--color-ember-core) 22%, transparent);
+}
+
+.memory-inbox-banner {
+  padding: var(--space-3);
+  font-size: 0.85rem;
+  color: var(--color-text-base);
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--color-brass-bright) 30%, transparent);
+  background: color-mix(in srgb, var(--color-brass-bright) 10%, transparent);
+  backdrop-filter: blur(var(--glass-blur-sm, 12px));
+  -webkit-backdrop-filter: blur(var(--glass-blur-sm, 12px));
+  box-shadow: var(--glass-inner-light, inset 0 1px 0 var(--color-frost-line));
+}
+
+.memory-inbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.memory-review-card {
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-glass-line);
+  background: color-mix(in srgb, var(--color-glass-bg, var(--color-glass-fill)) 62%, transparent);
+  backdrop-filter: var(--glass-card-blur, blur(20px) saturate(160%));
+  -webkit-backdrop-filter: var(--glass-card-blur, blur(20px) saturate(160%));
+  box-shadow: var(--glass-card-shadow, inset 0 1px 0 var(--color-frost-line));
+}
+
+.memory-review-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.memory-review-kind {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: var(--space-1) var(--space-2);
+  color: var(--color-brass-bright);
+  border-radius: var(--radius-full);
+  border: 1px solid color-mix(in srgb, var(--color-ember-core) 25%, transparent);
+  background: color-mix(in srgb, var(--color-brass-bright) 14%, transparent);
+}
+
+.memory-review-confidence {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--color-text-dim);
+}
+
+.memory-review-body {
+  margin: 0 0 var(--space-3);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--color-text-bright);
+}
+
+.memory-review-source {
+  margin: 0 0 var(--space-3);
+  font-size: 0.75rem;
+  color: var(--color-text-dim);
+}
+
+.memory-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.memory-review-actions .primary {
+  font-size: 0.8rem;
+}
+
+.memory-review-approved-mark {
+  margin-right: auto;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-success, var(--color-brass-bright));
+}
+
+.memory-review-reject {
+  color: var(--color-danger, var(--color-ember-bright));
+}
+
+.memory-inbox-empty {
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+  border-radius: var(--radius-md);
+  border: 1px dashed color-mix(in srgb, var(--color-glass-line) 80%, transparent);
+}
+
+.memory-inbox-empty-title {
+  margin: 0 0 var(--space-2);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text-bright);
+}
+
+.memory-inbox-empty-body {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-text-dim);
+  max-width: 28rem;
+  margin-inline: auto;
+}
+
+.memory-boundaries-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid color-mix(in srgb, var(--color-glass-line) 65%, transparent);
+}
+
+.memory-boundaries-heading {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--color-text-base);
+}
+
+.memory-boundaries-heading strong {
+  color: var(--color-text-bright);
+  font-weight: 600;
+}
+
+.memory-boundaries-empty {
+  margin: 0;
+}

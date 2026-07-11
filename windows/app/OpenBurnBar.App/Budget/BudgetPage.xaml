@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Windows render of AgentLens/Views/Settings/BudgetSettingsView.swift (Phase 3 · W7 — Budget).
+  The budget rule editor landing: an intro, the global / per-credential / per-project rule
+  sections (each a list of rule rows + an "add" button that opens BudgetRuleEditorDialog), a
+  recent-activity audit list, a reconciliation footer, and a live preview of the reusable
+  BurnRailBudgetChip + BudgetBlockedCard. Hosted as the "budget" destination in the AppShell
+  NavigationView.
+
+  Binds to the portable OpenBurnBar.App.Presentation.Budget.BudgetSettingsModel (unit-tested on
+  macOS). Rule rows read straight from BudgetRule via the BudgetFormat static helpers + the
+  scope/severity brush converters; CommunityToolkit SettingsCard supplies the idiomatic rows.
+-->
+<Page
+    x:Class="OpenBurnBar.App.Budget.BudgetPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:tk="using:CommunityToolkit.WinUI.Controls"
+    xmlns:budget="using:OpenBurnBar.App.Presentation.Budget"
+    xmlns:components="using:OpenBurnBar.App.Components"
+    xmlns:local="using:OpenBurnBar.App.Budget"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    AutomationProperties.AutomationId="RouteRoot.budget">
+
+    <Page.Resources>
+        <local:BudgetScopeBrushConverter x:Key="ScopeBrush" />
+        <local:BudgetEventBrushConverter x:Key="EventBrush" />
+
+        <!-- Shared rule-row template: scope glyph, label + subtitle, amount + period. -->
+        <DataTemplate x:Key="RuleRowTemplate" x:DataType="budget:BudgetRule">
+            <tk:SettingsCard IsClickEnabled="True" Click="RuleRow_Click" Tag="{x:Bind Id}">
+                <tk:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="{x:Bind local:BudgetFormat.ScopeGlyph(Scope)}"
+                              Foreground="{x:Bind Scope, Converter={StaticResource ScopeBrush}}" />
+                </tk:SettingsCard.HeaderIcon>
+                <tk:SettingsCard.Header>
+                    <TextBlock Text="{x:Bind DisplayLabel}" TextTrimming="CharacterEllipsis" />
+                </tk:SettingsCard.Header>
+                <tk:SettingsCard.Description>
+                    <TextBlock Text="{x:Bind local:BudgetFormat.RuleSubtitle(Behavior, PausedUntil, IsEnabled)}"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                </tk:SettingsCard.Description>
+                <StackPanel HorizontalAlignment="Right" Spacing="0">
+                    <TextBlock Text="{x:Bind local:BudgetFormat.Amount(AmountUsd)}"
+                               FontFamily="Cascadia Mono, Consolas"
+                               FontWeight="SemiBold"
+                               HorizontalAlignment="Right"
+                               Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                    <TextBlock Text="{x:Bind local:BudgetFormat.PeriodLabel(Period)}"
+                               FontSize="11"
+                               HorizontalAlignment="Right"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                </StackPanel>
+            </tk:SettingsCard>
+        </DataTemplate>
+
+        <!-- Recent-activity audit row. -->
+        <DataTemplate x:Key="EventRowTemplate" x:DataType="budget:BudgetEvent">
+            <Grid Padding="4,6" ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <FontIcon Grid.Column="0"
+                          FontSize="14"
+                          VerticalAlignment="Center"
+                          Glyph="{x:Bind local:BudgetFormat.EventGlyph(Kind)}"
+                          Foreground="{x:Bind Kind, Converter={StaticResource EventBrush}}" />
+                <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
+                    <TextBlock Text="{x:Bind local:BudgetFormat.EventTitle(Kind)}"
+                               FontSize="13"
+                               Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                    <TextBlock Text="{x:Bind local:BudgetFormat.EventTimestamp(OccurredAt)}"
+                               FontSize="11"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                </StackPanel>
+                <TextBlock Grid.Column="2"
+                           Text="{x:Bind local:BudgetFormat.EventAmounts(AmountAtEvent, LimitAtEvent)}"
+                           FontFamily="Cascadia Mono, Consolas"
+                           FontSize="11"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+            </Grid>
+        </DataTemplate>
+    </Page.Resources>
+
+    <ScrollViewer Padding="{StaticResource PensieveSpace6Thickness}" Background="{StaticResource PensieveColorInkBaseBrush}">
+        <StackPanel Spacing="10" MaxWidth="760" HorizontalAlignment="Left">
+
+            <TextBlock Style="{StaticResource TitleTextBlockStyle}"
+                       Foreground="{StaticResource PensieveColorTextBrightBrush}"
+                       Text="Budgets" />
+            <TextBlock Margin="0,0,0,4"
+                       TextWrapping="Wrap"
+                       Foreground="{StaticResource PensieveColorTextMuteBrush}"
+                       Text="Spending limits enforced locally. Per-usage credentials (Anthropic / OpenAI API keys, OpenRouter, etc.) get hard blocks when a rule is exceeded. Subscription credentials (Claude Pro, bundled CLI plans) are exempt — they cost flat." />
+
+            <!-- Global cap -->
+            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}"
+                       Margin="0,8,0,0"
+                       Foreground="{StaticResource PensieveColorTextBaseBrush}"
+                       Text="Global cap" />
+            <TextBlock FontSize="12"
+                       TextWrapping="Wrap"
+                       Foreground="{StaticResource PensieveColorTextMuteBrush}"
+                       Text="A single ceiling across every per-usage credential. The most permissive global rule wins." />
+            <ItemsControl x:Name="GlobalList" ItemTemplate="{StaticResource RuleRowTemplate}" />
+            <Button x:Name="AddGlobalButton" Tag="global" Click="Add_Click"
+                    Style="{StaticResource LiquidGlassInteractiveStyle}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon FontSize="13" Glyph="&#xE710;" />
+                    <TextBlock Text="Add global cap" />
+                </StackPanel>
+            </Button>
+
+            <!-- Per credential / API key -->
+            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}"
+                       Margin="0,12,0,0"
+                       Foreground="{StaticResource PensieveColorTextBaseBrush}"
+                       Text="Per credential / API key" />
+            <TextBlock FontSize="12"
+                       TextWrapping="Wrap"
+                       Foreground="{StaticResource PensieveColorTextMuteBrush}"
+                       Text="Hard-blocks a specific API key (Anthropic Console, OpenAI, OpenRouter, etc.). Use this when one project should not drain your monthly OpenAI budget." />
+            <ItemsControl x:Name="CredentialList" ItemTemplate="{StaticResource RuleRowTemplate}" />
+            <Button x:Name="AddCredentialButton" Tag="credential" Click="Add_Click"
+                    Style="{StaticResource LiquidGlassInteractiveStyle}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon FontSize="13" Glyph="&#xE710;" />
+                    <TextBlock Text="Add per-credential limit" />
+                </StackPanel>
+            </Button>
+
+            <!-- Per project -->
+            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}"
+                       Margin="0,12,0,0"
+                       Foreground="{StaticResource PensieveColorTextBaseBrush}"
+                       Text="Per project" />
+            <TextBlock FontSize="12"
+                       TextWrapping="Wrap"
+                       Foreground="{StaticResource PensieveColorTextMuteBrush}"
+                       Text="Cap a single project's monthly burn. Names match the project labels rendered in the Project Ranking lane." />
+            <ItemsControl x:Name="ProjectList" ItemTemplate="{StaticResource RuleRowTemplate}" />
+            <Button x:Name="AddProjectButton" Tag="project" Click="Add_Click"
+                    Style="{StaticResource LiquidGlassInteractiveStyle}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon FontSize="13" Glyph="&#xE710;" />
+                    <TextBlock Text="Add per-project limit" />
+                </StackPanel>
+            </Button>
+
+            <!-- Recent activity -->
+            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}"
+                       Margin="0,16,0,0"
+                       Foreground="{StaticResource PensieveColorTextBaseBrush}"
+                       Text="Recent activity" />
+            <components:UnifiedGlassCard x:Name="EventsCardHost" Visibility="Collapsed">
+                <ItemsControl x:Name="EventsList" ItemTemplate="{StaticResource EventRowTemplate}" />
+            </components:UnifiedGlassCard>
+            <TextBlock x:Name="NoEventsText"
+                       FontSize="12"
+                       Foreground="{StaticResource PensieveColorTextDimBrush}"
+                       Text="No warnings, blocks, or rule changes yet." />
+
+            <!-- Reconciliation -->
+            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}"
+                       Margin="0,16,0,0"
+                       Foreground="{StaticResource PensieveColorTextBaseBrush}"
+                       Text="Reconciliation" />
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <FontIcon Grid.Column="0" FontSize="13" Glyph="&#xE895;"
+                          VerticalAlignment="Top" Margin="0,2,0,0"
+                          Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                <TextBlock Grid.Column="1"
+                           FontSize="12"
+                           TextWrapping="Wrap"
+                           Foreground="{StaticResource PensieveColorTextMuteBrush}"
+                           Text="Billing API reconciliation compares local-pricing spend against Anthropic / OpenAI / OpenRouter billing APIs. Drift over 5% is flagged in the audit log above." />
+            </Grid>
+
+            <!-- Live component preview (dev-host proof of the reusable chip + blocked card). -->
+            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}"
+                       Margin="0,16,0,0"
+                       Foreground="{StaticResource PensieveColorTextBaseBrush}"
+                       Text="Preview" />
+            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                <TextBlock Text="Top-rail chip:" FontSize="12" VerticalAlignment="Center"
+                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                <local:BurnRailBudgetChip x:Name="PreviewChip" VerticalAlignment="Center" />
+            </StackPanel>
+            <local:BudgetBlockedCard x:Name="PreviewBlockedCard" MaxWidth="420" HorizontalAlignment="Left" />
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>

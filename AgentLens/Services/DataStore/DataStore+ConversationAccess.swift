@@ -2,7 +2,7 @@ import Foundation
 import OpenBurnBarCore
 
 extension DataStore {
-    func fetchUnsyncedConversations(limit: Int = 400) async throws -> [ConversationRecord] {
+    func fetchUnsyncedConversations(limit: Int = 400) async throws -> [OpenBurnBarCore.ConversationRecord] {
         try await actor.conversationStore.fetchUnsyncedConversations(limit: limit)
     }
 
@@ -10,7 +10,7 @@ extension DataStore {
         try await actor.conversationStore.markConversationsSynced(ids: ids)
     }
 
-    func upsertConversation(_ record: ConversationRecord) async throws {
+    func upsertConversation(_ record: OpenBurnBarCore.ConversationRecord) async throws {
         try await actor.conversationStore.upsertConversation(record)
     }
 
@@ -18,30 +18,30 @@ extension DataStore {
         try await actor.conversationStore.fileModifiedAtForConversation(id: id)
     }
 
-    func fetchConversation(id: String) async throws -> ConversationRecord? {
+    func fetchConversation(id: String) async throws -> OpenBurnBarCore.ConversationRecord? {
         try await actor.conversationStore.fetchConversation(id: id)
     }
 
-    nonisolated func fetchConversationSynchronously(id: String) throws -> ConversationRecord? {
+    nonisolated func fetchConversationSynchronously(id: String) throws -> OpenBurnBarCore.ConversationRecord? {
         try actor.conversationStore.fetchConversationSynchronously(id: id)
     }
 
-    func fetchConversations(limit: Int = 500) async throws -> [ConversationRecord] {
+    func fetchConversations(limit: Int = 500) async throws -> [OpenBurnBarCore.ConversationRecord] {
         try await actor.conversationStore.fetchConversations(limit: limit)
     }
 
-    nonisolated func fetchConversationsSynchronously(limit: Int = 500) throws -> [ConversationRecord] {
+    nonisolated func fetchConversationsSynchronously(limit: Int = 500) throws -> [OpenBurnBarCore.ConversationRecord] {
         try actor.conversationStore.fetchConversationsSynchronously(limit: limit)
     }
 
     /// Paginated conversation fetch using offset-based cursor.
-    func fetchConversations(limit: Int, offset: Int) async throws -> [ConversationRecord] {
+    func fetchConversations(limit: Int, offset: Int) async throws -> [OpenBurnBarCore.ConversationRecord] {
         try await actor.conversationStore.fetchConversations(limit: limit, offset: offset)
     }
 
     /// Fetches multiple conversations by their IDs.
     /// Used by gap repair to check if indexed content is stale.
-    func fetchConversations(ids: [String]) async throws -> [ConversationRecord] {
+    func fetchConversations(ids: [String]) async throws -> [OpenBurnBarCore.ConversationRecord] {
         try await actor.conversationStore.fetchConversations(ids: ids)
     }
 
@@ -75,7 +75,7 @@ extension DataStore {
         now: Date = Date(),
         retryCooldown: TimeInterval? = nil,
         indexedAfter: Date? = nil
-    ) async throws -> [ConversationRecord] {
+    ) async throws -> [OpenBurnBarCore.ConversationRecord] {
         try await actor.conversationStore.fetchConversationsNeedingSummary(
             limit: limit,
             now: now,
@@ -116,7 +116,7 @@ extension DataStore {
     }
 
     /// Local tombstones older than `before`, eligible for retention-window GC.
-    func fetchExpiredConversationTombstones(before: Date, limit: Int = 200) async throws -> [ConversationRecord] {
+    func fetchExpiredConversationTombstones(before: Date, limit: Int = 200) async throws -> [OpenBurnBarCore.ConversationRecord] {
         try await actor.conversationStore.fetchExpiredConversationTombstones(before: before, limit: limit)
     }
 
@@ -199,15 +199,15 @@ extension DataStore {
         )
     }
 
-    func fetchAllSessionLogs(limit: Int = 1000) async throws -> [ConversationRecord] {
+    func fetchAllSessionLogs(limit: Int = 1000) async throws -> [OpenBurnBarCore.ConversationRecord] {
         try await actor.conversationStore.fetchAllSessionLogs(limit: limit)
     }
 
-    func fetchSessionLogSummaries(limit: Int = 1000) async throws -> [ConversationRecord] {
+    func fetchSessionLogSummaries(limit: Int = 1000) async throws -> [OpenBurnBarCore.ConversationRecord] {
         try await actor.conversationStore.fetchSessionLogSummaries(limit: limit)
     }
 
-    func fetchUnsyncedSessionLogs(limit: Int = 100) async throws -> [ConversationRecord] {
+    func fetchUnsyncedSessionLogs(limit: Int = 100) async throws -> [OpenBurnBarCore.ConversationRecord] {
         try await actor.conversationStore.fetchUnsyncedSessionLogs(limit: limit)
     }
 
@@ -228,7 +228,7 @@ extension DataStore {
         try await actor.conversationStore.countConversations()
     }
 
-    func insertRemoteConversation(_ record: ConversationRecord) async throws {
+    func insertRemoteConversation(_ record: OpenBurnBarCore.ConversationRecord) async throws {
         try await actor.conversationStore.insertRemoteConversation(record)
     }
 
@@ -236,7 +236,7 @@ extension DataStore {
         try await actor.conversationStore.updateConversationFullText(id: id, fullText: fullText)
     }
 
-    /// Synthesizes a single `cliAssistant` ConversationRecord from persisted chat messages
+    /// Synthesizes a single `cliAssistant` OpenBurnBarCore.ConversationRecord from persisted chat messages
     /// and upserts it so the Session Logs center and cloud sync treat it like any other session.
     func upsertCLIConversation(from messages: [ChatMessageRecord]) async throws {
         guard messages.isEmpty == false else { return }
@@ -251,11 +251,11 @@ extension DataStore {
             .filter { $0.role == .user }
             .reduce(0) { $0 + $1.content.split(separator: " ").count }
 
-        let markdown = SessionLogMarkdownFormatter.cliMarkdown(from: messages)
+        let markdown = OpenBurnBarCore.SessionLogMarkdownFormatter.cliMarkdown(from: messages)
         let lastAssistant = messages.last(where: { $0.role == .assistant })?.content ?? ""
 
-        let record = ConversationRecord(
-            id: ConversationRecord.cliAssistantId,
+        let record = OpenBurnBarCore.ConversationRecord(
+            id: OpenBurnBarCore.ConversationRecord.cliAssistantId,
             provider: .claudeCode,
             sessionId: "cli-assistant-local",
             projectName: "OpenBurnBar",
@@ -285,9 +285,9 @@ extension DataStore {
         provider: AgentProvider?,
         projectName: String?,
         dateRange: ClosedRange<Date>?,
-        conversationSources: Set<ConversationSourceType>?,
+        conversationSources: Set<OpenBurnBarCore.ConversationSourceType>?,
         limit: Int = 500
-    ) async throws -> [ConversationRecord] {
+    ) async throws -> [OpenBurnBarCore.ConversationRecord] {
         try await actor.conversationStore.fetchConversationsForTranscriptScan(
             provider: provider,
             projectName: projectName,

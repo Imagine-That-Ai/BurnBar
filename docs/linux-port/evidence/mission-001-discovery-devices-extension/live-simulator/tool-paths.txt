@@ -1,0 +1,6 @@
+/usr/bin/avahi-browse
+/usr/bin/avahi-publish-service
+/usr/sbin/avahi-daemon
+/usr/bin/dbus-daemon
+/usr/bin/curl
+/usr/bin/python3

@@ -43,6 +43,8 @@ vi.mock("firebase-admin/firestore", async () => {
   return {
     ...actual,
     getFirestore: () => ({
+      settings: () => undefined,
+      doc: () => ({ get: async () => ({ exists: false }) }),
       collection: (name: string) => {
         if (name === "users") {
           return {
@@ -67,7 +69,7 @@ vi.mock("firebase-admin/firestore", async () => {
             }),
           };
         }
-        return { doc: () => ({}) };
+        return { doc: () => ({ get: async () => ({ exists: false }) }) };
       },
     }),
   };

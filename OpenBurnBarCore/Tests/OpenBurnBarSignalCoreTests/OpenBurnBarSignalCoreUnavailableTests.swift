@@ -1,4 +1,5 @@
 import XCTest
+import OpenBurnBarCore
 @testable import OpenBurnBarSignalCore
 
 final class OpenBurnBarSignalCoreUnavailableTests: XCTestCase {

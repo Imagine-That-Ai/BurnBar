@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Windows render of AgentLens/Views/Memory/MemoryReviewInboxView.swift (Phase 3 · W7).
+  The human approval gate for extracted memories (G4): a stats header, a filter-chip
+  bar (Pending / Approved), then a loading / empty-state / ListView switch. Binds to
+  the portable OpenBurnBar.App.Presentation.Memories.MemoryReviewInboxModel, which is
+  unit-tested on macOS. Consumes the Pensieve tokens + Liquid-Glass surface styles.
+-->
+<UserControl
+    x:Class="OpenBurnBar.App.Memory.MemoryReviewInboxView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:theme="using:OpenBurnBar.App.Theme"
+    xmlns:mem="using:OpenBurnBar.App.Presentation.Memories"
+    xmlns:conv="using:OpenBurnBar.App.Converters"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <conv:BoolToVisibilityConverter x:Key="BoolToVisibility" />
+        <conv:NegatedBoolToVisibilityConverter x:Key="NegatedBoolToVisibility" />
+    </UserControl.Resources>
+
+    <Grid Background="Transparent">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0"
+                    Spacing="8"
+                    Padding="20,20,20,12">
+            <Grid>
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <FontIcon Glyph="&#xE8F1;" FontSize="11" Foreground="{StaticResource OBBAccentBrush}" />
+                    <TextBlock Text="MEMORY REVIEW"
+                               FontSize="11"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                </StackPanel>
+                <Border HorizontalAlignment="Right"
+                        CornerRadius="{StaticResource PensieveRadiusPillCorner}"
+                        Background="#29FDC42C"
+                        BorderBrush="#66FDC42C"
+                        BorderThickness="0.5"
+                        Padding="8,2"
+                        Visibility="{x:Bind ViewModel.HasPending, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock Text="{x:Bind ViewModel.PendingPillText, Mode=OneWay}"
+                               FontSize="11"
+                               Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
+                </Border>
+            </Grid>
+
+            <TextBlock Text="Approve what to remember"
+                       FontSize="18"
+                       FontWeight="SemiBold"
+                       Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+
+            <TextBlock Text="Memories stay quarantined until you approve them — nothing is used in a chat before you say so."
+                       FontSize="12"
+                       TextWrapping="Wrap"
+                       Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+        </StackPanel>
+
+        <!-- Filter chips -->
+        <StackPanel Grid.Row="1"
+                    Orientation="Horizontal"
+                    Spacing="8"
+                    Padding="20,0,20,12">
+            <Button x:Name="PendingChip"
+                    Content="Pending"
+                    Click="OnPendingFilterClick"
+                    Style="{StaticResource LiquidGlassInteractiveStyle}" />
+            <Button x:Name="ApprovedChip"
+                    Content="Approved"
+                    Click="OnApprovedFilterClick"
+                    Style="{StaticResource LiquidGlassInteractiveStyle}" />
+        </StackPanel>
+
+        <!-- Error banner -->
+        <Border Grid.Row="2"
+                Margin="20,0,20,12"
+                CornerRadius="{StaticResource PensieveRadiusMdCorner}"
+                Background="#1AFDBA2C"
+                BorderBrush="#4DFDBA2C"
+                BorderThickness="0.5"
+                Padding="12"
+                Visibility="{x:Bind ViewModel.HasError, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <FontIcon Glyph="&#xE7BA;" FontSize="12" Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
+                <TextBlock Text="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+                           FontSize="12"
+                           TextWrapping="Wrap"
+                           Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+            </StackPanel>
+        </Border>
+
+        <!-- Divider -->
+        <Border Grid.Row="3" Height="1" Background="{StaticResource PensieveColorGlassLineBrush}" />
+
+        <!-- Content: loading / empty / list -->
+        <Grid Grid.Row="4">
+            <ProgressRing IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                          Width="28"
+                          Height="28"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center"
+                          Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
+
+            <StackPanel HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="12"
+                        Padding="40"
+                        Visibility="{x:Bind ViewModel.ShowEmpty, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+                <FontIcon Glyph="&#xE7B8;" FontSize="48" Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                <TextBlock Text="No memories to review"
+                           HorizontalAlignment="Center"
+                           FontSize="16"
+                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                <TextBlock Text="When a chat turns up a durable fact or preference worth remembering, it lands here for your approval."
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center"
+                           MaxWidth="420"
+                           TextWrapping="Wrap"
+                           FontSize="13"
+                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+            </StackPanel>
+
+            <ListView x:Name="ItemsList"
+                      ItemsSource="{x:Bind ViewModel.Items, Mode=OneWay}"
+                      SelectionMode="None"
+                      Padding="20"
+                      Visibility="{x:Bind ViewModel.HasItems, Mode=OneWay, Converter={StaticResource BoolToVisibility}}"
+                      ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="Margin" Value="0,0,0,8" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    </Style>
+                </ListView.ItemContainerStyle>
+                <ListView.ItemTemplate>
+                    <DataTemplate x:DataType="mem:MemoryReviewItem">
+                        <Border Style="{StaticResource LiquidGlassSurfaceStyle}" theme:LiquidGlass.Surface="True" CornerRadius="{StaticResource OBBCardCornerRadius}"
+                                Padding="12">
+                            <StackPanel Spacing="8">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Border CornerRadius="{StaticResource PensieveRadiusPillCorner}"
+                                            Background="#24FDC42C"
+                                            Padding="8,2">
+                                        <TextBlock Text="{x:Bind KindBadge}"
+                                                   FontSize="11"
+                                                   Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
+                                    </Border>
+                                    <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Center">
+                                        <FontIcon Glyph="&#xE9D9;" FontSize="9" Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                                        <TextBlock Text="{x:Bind ConfidenceLabel}"
+                                                   FontSize="11"
+                                                   Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <TextBlock Text="{x:Bind DisplayBody}"
+                                           FontSize="13"
+                                           MaxLines="3"
+                                           TextTrimming="CharacterEllipsis"
+                                           TextWrapping="Wrap"
+                                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+
+                                <StackPanel Orientation="Horizontal"
+                                            Spacing="8"
+                                            HorizontalAlignment="Right">
+                                    <Button Content="Reject"
+                                            Tag="{x:Bind Id}"
+                                            Click="OnRejectClick"
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            Foreground="{StaticResource PensieveColorSealCrimsonBrush}" />
+                                    <Button Content="Approve"
+                                            Tag="{x:Bind Id}"
+                                            Click="OnApproveClick"
+                                            IsEnabled="{x:Bind CanApprove}"
+                                            Style="{StaticResource LiquidGlassInteractiveStyle}"
+                                            Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </Grid>
+    </Grid>
+</UserControl>

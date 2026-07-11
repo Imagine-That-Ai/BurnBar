@@ -1,0 +1,28 @@
+{
+  "generatedAt": "2026-07-04T14:24:28.102Z",
+  "lane": "W07LinuxComputerUseMediaMobileRepair",
+  "halt": {
+    "sessionId": "linux-app-ui-runtime-evidence",
+    "source": "app-ui",
+    "status": "halted",
+    "durationMs": 35,
+    "closed": [
+      "capture",
+      "input",
+      "media"
+    ],
+    "resourcesClosed": true,
+    "auditEntry": {
+      "actionKind": "panic.halt",
+      "source": "app-ui",
+      "summary": "Panic halt from app-ui",
+      "approvedBy": "panic",
+      "index": 0,
+      "timestampMillis": 1777000000056
+    },
+    "restartReconnect": {
+      "restoredHaltedState": true,
+      "activeResourcesAfterRestore": 0
+    }
+  }
+}

@@ -2,6 +2,13 @@ import XCTest
 @testable import OpenBurnBarCore
 
 final class CLIAuthDiscoveryTests: XCTestCase {
+    override func tearDown() {
+        CLILaunchAdapter.executableResolver = nil
+        CLILaunchAdapter.environmentProvider = { ProcessInfo.processInfo.environment }
+        CLILaunchAdapter.homeDirectoryProvider = { FileManager.default.homeDirectoryForCurrentUser.path }
+        super.tearDown()
+    }
+
     func test_formattedAccountDescription_prefersNameAndEmail() {
         XCTAssertEqual(
             CLIAuthDiscovery.formattedAccountDescription(
@@ -48,5 +55,34 @@ final class CLIAuthDiscoveryTests: XCTestCase {
 
         XCTAssertEqual(environment["CLAUDE_CONFIG_DIR"], scopedPath)
         XCTAssertEqual(environment["CLAUDE_CONFIG_PATH"], scopedPath)
+    }
+
+    func test_junieDiscoveryRequiresRecordedSessionNotEmptyDirectory() throws {
+        let tempRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-junie-auth-\(UUID().uuidString)", isDirectory: true)
+        let configDir = tempRoot.appendingPathComponent(".junie", isDirectory: true)
+        let sessionsDir = configDir.appendingPathComponent("sessions", isDirectory: true)
+        let executableURL = tempRoot.appendingPathComponent("junie")
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        try FileManager.default.createDirectory(at: sessionsDir, withIntermediateDirectories: true)
+        try "#!/bin/sh\n".write(to: executableURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executableURL.path)
+        CLILaunchAdapter.executableResolver = { cliType in
+            cliType == .junie ? executableURL : nil
+        }
+        CLILaunchAdapter.environmentProvider = { [:] }
+
+        let empty = CLIAuthDiscovery.discoverAuthState(for: .junie, configDirectoryOverride: configDir.path)
+        XCTAssertEqual(empty.authState, .notAuthenticated)
+        XCTAssertNil(empty.accountDescription)
+
+        let sessionDir = sessionsDir.appendingPathComponent("session-1", isDirectory: true)
+        try FileManager.default.createDirectory(at: sessionDir, withIntermediateDirectories: true)
+        try "{}\n".write(to: sessionDir.appendingPathComponent("events.jsonl"), atomically: true, encoding: .utf8)
+
+        let recorded = CLIAuthDiscovery.discoverAuthState(for: .junie, configDirectoryOverride: configDir.path)
+        XCTAssertEqual(recorded.authState, .authenticated(lastRefresh: nil))
+        XCTAssertEqual(recorded.accountDescription, "Junie local sessions")
     }
 }

@@ -129,7 +129,7 @@ test("screamingSnake derives Kotlin enum constants correctly", () => {
 
 test("Swift parser round-trips ping/pong implicit raw values", () => {
   const swift = parseSwiftFrames(
-    readFileSync(new URL("../../OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRealtimeRelayFrameType.swift", import.meta.url), "utf8"),
+    readFileSync(new URL("../../OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesRealtimeRelayFrameType.swift", import.meta.url), "utf8"),
   );
   const ping = swift.find((f) => f.id === "ping");
   assert.ok(ping, "ping case not parsed");

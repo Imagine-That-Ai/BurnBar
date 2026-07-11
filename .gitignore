@@ -15,11 +15,13 @@
 # Build
 build/
 build-derived/
+.lane-modulecache/
 Vendor/OpenBurnBarIroh.xcframework/
 Vendor/OpenBurnBarSignalFfi.xcframework/
 Vendor/BurnBarRemote.xcframework/
 build_ios/
 DerivedData/
+*.pcm
 *.ipa
 *.dSYM.zip
 *.dSYM
@@ -78,7 +80,10 @@ xcuserdata/
 # Secrets
 .secrets/
 *.env
+scripts/macmini/config.env
 *.pem
+# Public verification keys are safe and required in-tree (private keys stay ignored)
+!packaging/linux/openburnbar-linux-ed25519.pub.pem
 *.p12
 *.p8
 *.mobileprovision
@@ -104,6 +109,12 @@ artifacts/
 functions/lib/
 website/public/downloads/*.dmg
 website/public/downloads/*.zip
+
+# Linux port mission evidence/build outputs. Keep compact JSON/text/PNG proof
+# artifacts tracked, but never commit generated build caches or source tarballs.
+docs/linux-port/evidence/**/harness/.build/
+docs/linux-port/evidence/**/sidecars/*.tar
+crates/openburnbar-iroh/target-linux-ffi-serial/
 
 # BurnBar local MCP (Python venv)
 tools/burnbar-mcp/.venv/
@@ -269,4 +280,21 @@ node_modules/
 # Dotnet build output directories (C# / WinUI)
 **/bin/
 **/obj/
+.lane-logs/
 
+# Agent-factory build artifacts — must never be committed (see chore/purge-build-artifacts).
+# 483MB of Swift precompiled module cache (.pcm) + factory lane logs had been tracked.
+.lane-logs*/
+.lane-modulecache/
+*.pcm
+.tmp-*
+
+# Ledger-referenced Linux-port evidence logs (VAL-OPS-002, VAL-EXTENSION-001):
+# these two .log files are release-gate proof and must be committed despite *.log.
+!docs/linux-port/evidence/mission-001-ops-toolchain/docker-toolchain-smoke-current.log
+!docs/linux-port/evidence/mission-001-discovery-devices-extension/extension-focused-tests.log
+
+# Mac mini UI-automation local pull-back artifacts (never commit)
+.artifacts/
+# Transient AppImage extraction dir from package smoke (--appimage-extract)
+squashfs-root/

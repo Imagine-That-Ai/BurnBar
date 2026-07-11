@@ -22,7 +22,7 @@ plugins {
     // version (not in the root plugins block) so the mapping-upload + native
     // gradle config stays scoped to :app. Upload is auth-token gated below so
     // local/offline builds without Sentry credentials still succeed.
-    id("io.sentry.android.gradle") version "6.11.0"
+    id("io.sentry.android.gradle") version "6.14.0"
     // Baseline-profile consumer: wires the :macrobenchmark producer so
     // `./gradlew :app:generateBaselineProfile` captures an app-specific
     // profile (library profiles for Compose/activity already ship via the
@@ -116,8 +116,8 @@ android {
         applicationId = "com.openburnbar"
         minSdk = 26
         targetSdk = 35
-        versionCode = 38
-        versionName = "1.0.28"
+        versionCode = 39
+        versionName = "1.0.29"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // App Check: when this build is meant for Firebase App Distribution
@@ -433,7 +433,7 @@ dependencies {
     "baselineProfile"(project(":macrobenchmark"))
 
     // Compose BOM
-    val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
+    val composeBom = platform("androidx.compose:compose-bom:2026.06.01")
     implementation(composeBom)
     androidTestImplementation(composeBom)
 
@@ -506,7 +506,7 @@ dependencies {
     implementation("com.google.android.libraries.identity.googleid:googleid:1.2.0")
 
     // Google Play Billing for BurnBar Pro (Hosted Quota + hosted LLM + encrypted cloud search).
-    implementation("com.android.billingclient:billing-ktx:8.3.0")
+    implementation("com.android.billingclient:billing-ktx:9.1.0")
 
     // OkHttp + WebSocket for Hermes
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
@@ -539,7 +539,7 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.10.0")
 
     // DataStore for preferences
-    implementation("androidx.datastore:datastore-preferences:1.1.1")
+    implementation("androidx.datastore:datastore-preferences:1.2.1")
 
     // Coil for image loading
     implementation("io.coil-kt:coil-compose:2.7.0")
@@ -564,11 +564,11 @@ dependencies {
     testImplementation("net.i2p.crypto:eddsa:0.3.0")
     // DataStore Preferences test helpers — the partner-save preference
     // store materialises a Preferences DataStore on a temp dir.
-    testImplementation("androidx.datastore:datastore-preferences:1.1.1")
+    testImplementation("androidx.datastore:datastore-preferences:1.2.1")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
-    androidTestImplementation("androidx.compose.ui:ui-test-junit4:1.7.8")
-    androidTestImplementation("androidx.compose.ui:ui-test-manifest:1.7.8")
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation("androidx.compose.ui:ui-test-manifest")
     // Mockk on-device flavor — pure-JVM `io.mockk:mockk` brings in
     // bytebuddy classes the ART runtime can't load, so the instrumented
     // suites use `mockk-android` instead.

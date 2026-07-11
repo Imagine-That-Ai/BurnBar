@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="OpenBurnBar.App.Components.UnifiedQuotaSignalView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!--
+      Windows peer of OpenBurnBarCore/.../UnifiedQuotaSignalView.swift — the battery-bar quota
+      gauge. Identity row (bucket name + window pill + compact %), a status word, an optional
+      detail line, the battery (track + gradient fill + terminal), and a footer with the verbose
+      remaining/usage text. All numeric text + the fill fraction/band come from the parity-tested
+      QuotaBucket + QuotaFill models; brand tints come from ProviderBrand. Layout constants adapt
+      to Compact from code-behind.
+    -->
+    <Border x:Name="Container"
+            CornerRadius="16"
+            BorderThickness="1"
+            Padding="12">
+        <StackPanel x:Name="Body" Spacing="8">
+
+            <!-- Identity row. -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="BucketName"
+                           Grid.Column="0"
+                           FontSize="12"
+                           FontWeight="SemiBold"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                <Border x:Name="WindowPill"
+                        Grid.Column="1"
+                        Margin="6,0,0,0"
+                        Padding="6,1"
+                        CornerRadius="{StaticResource PensieveRadiusPillCorner}"
+                        BorderThickness="0.5"
+                        VerticalAlignment="Center"
+                        Visibility="Collapsed">
+                    <TextBlock x:Name="WindowLabel" FontSize="10" FontFamily="Cascadia Mono, Consolas" />
+                </Border>
+                <TextBlock x:Name="PercentCompact"
+                           Grid.Column="3"
+                           FontSize="13"
+                           FontWeight="Bold"
+                           FontFamily="Cascadia Mono, Consolas"
+                           VerticalAlignment="Center"
+                           Visibility="Collapsed" />
+            </Grid>
+
+            <!-- Status row. -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="StatusLabel"
+                           Grid.Column="0"
+                           FontSize="10"
+                           FontFamily="Cascadia Mono, Consolas" />
+                <TextBlock x:Name="RemainingCompact"
+                           Grid.Column="1"
+                           FontSize="14"
+                           FontWeight="Bold"
+                           FontFamily="Cascadia Mono, Consolas"
+                           Visibility="Collapsed" />
+            </Grid>
+
+            <!-- Status detail (non-compact). -->
+            <TextBlock x:Name="StatusDetail"
+                       FontSize="12"
+                       TextWrapping="Wrap"
+                       Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+
+            <!-- Battery. -->
+            <Grid x:Name="BatteryRow" ColumnSpacing="2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Grid x:Name="BatteryTrackHost"
+                      Grid.Column="0"
+                      SizeChanged="OnTrackSizeChanged">
+                    <Border x:Name="BatteryTrack"
+                            CornerRadius="8"
+                            BorderThickness="1.5" />
+                    <Border x:Name="BatteryFill"
+                            HorizontalAlignment="Left"
+                            Margin="2"
+                            Width="0"
+                            CornerRadius="6.5" />
+                </Grid>
+                <Border x:Name="BatteryTerminal"
+                        Grid.Column="1"
+                        CornerRadius="2"
+                        VerticalAlignment="Center" />
+            </Grid>
+
+            <!-- Footer (non-compact). -->
+            <Grid x:Name="FooterRow">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="FullRemaining"
+                           Grid.Column="0"
+                           FontSize="10"
+                           FontFamily="Cascadia Mono, Consolas" />
+                <TextBlock x:Name="UsageText"
+                           Grid.Column="2"
+                           FontSize="10"
+                           FontFamily="Cascadia Mono, Consolas"
+                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+            </Grid>
+        </StackPanel>
+    </Border>
+</UserControl>

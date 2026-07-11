@@ -205,6 +205,14 @@ extension DataStore {
         try await actor.projectionStore.chunkEmbeddingVersionStats(embeddingVersionID: embeddingVersionID)
     }
 
+    /// Round-4 perf sweep (B1 integration): lightweight key scan returning
+    /// `(chunkID, updatedAt)` for every embedding in a version without loading
+    /// the `vectorBlob` column. Used by the delta overlay to compute the
+    /// added/updated/deleted diff against a base snapshot's `builtAt`.
+    func fetchChunkEmbeddingKeys(embeddingVersionID: String) async throws -> [(chunkID: String, updatedAt: Date)] {
+        try await actor.projectionStore.fetchChunkEmbeddingKeys(embeddingVersionID: embeddingVersionID)
+    }
+
     func upsertVectorIndexSnapshot(_ snapshot: VectorIndexSnapshotRecord) async throws {
         try await actor.projectionStore.upsertVectorIndexSnapshot(snapshot)
     }

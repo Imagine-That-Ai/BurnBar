@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "execution": {
+    "strategy": "direct-xctest-isolated-per-test",
+    "buildTimeoutSeconds": 1200,
+    "perTestTimeoutSeconds": 300,
+    "terminationGraceSeconds": 30
+  },
+  "suites": [
+    {
+      "id": "core-foundation",
+      "packagePath": "OpenBurnBarCore",
+      "target": "OpenBurnBarLinuxCoreFoundationTests",
+      "filter": "OpenBurnBarLinuxCoreFoundationTests",
+      "minimumExecutedTests": 14,
+      "scratchPath": ".build-linux-swift-tests/core"
+    },
+    {
+      "id": "linux-security",
+      "packagePath": "OpenBurnBarCore",
+      "target": "OpenBurnBarLinuxSecurityTests",
+      "filter": "OpenBurnBarLinuxSecurityTests",
+      "minimumExecutedTests": 11,
+      "scratchPath": ".build-linux-swift-tests/core"
+    },
+    {
+      "id": "linux-data",
+      "packagePath": "OpenBurnBarCore",
+      "target": "OpenBurnBarDataTests",
+      "filter": "OpenBurnBarDataTests.OpenBurnBarDataLinuxTests",
+      "minimumExecutedTests": 6,
+      "scratchPath": ".build-linux-swift-tests/core"
+    },
+    {
+      "id": "portable-wrap-vectors",
+      "packagePath": "OpenBurnBarCore",
+      "target": "OpenBurnBarCoreTests",
+      "filter": "OpenBurnBarCoreTests.LLMSafeWrapVectorTests",
+      "minimumExecutedTests": 5,
+      "scratchPath": ".build-linux-swift-tests/core"
+    },
+    {
+      "id": "computer-use-linux",
+      "packagePath": "OpenBurnBarCore",
+      "target": "OpenBurnBarComputerUseCoreTests",
+      "filter": "OpenBurnBarComputerUseCoreTests",
+      "minimumExecutedTests": 8,
+      "scratchPath": ".build-linux-swift-tests/core"
+    },
+    {
+      "id": "daemon-linux",
+      "packagePath": "OpenBurnBarDaemon",
+      "target": "OpenBurnBarDaemonLinuxGatewayTests",
+      "filter": "OpenBurnBarDaemonLinuxGatewayTests",
+      "minimumExecutedTests": 15,
+      "scratchPath": "OpenBurnBarDaemon/.build"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "capturedOn": "macos-webkit",
+  "engine": "WebKit (WKWebView, macOS headless capture)",
+  "note": "Authoritative Mac golden captured from the verbatim pretext.bundle.min.js via headless WKWebView. Regenerate with tools/pretext-golden/capture_golden.swift.",
+  "results": {"plain-short":{"height":22,"lineCount":1,"lineWidths":[171.6640625],"lineTexts":["Ship the complete thing."]},"wrap-paragraph":{"height":110,"lineCount":5,"lineWidths":[264.1171875,265.921875,247.2578125,273.8984375,152.9765625],"lineTexts":["The marginal cost of completeness is ","near zero with AI. Do the whole thing, ","do it right, and do it so well that the ","reviewer is genuinely impressed rather ","than politely satisfied."]},"layout-height-narrow":{"height":120,"lineCount":6},"line-stats-paragraph":{"lineCount":2,"maxLineWidth":296.85791015625},"natural-width-prewrap":{"width":249.046875},"letter-spacing":{"height":20,"lineCount":1,"lineWidths":[342.9814453125],"lineTexts":["SPACED OUT HEADING TEXT FOR CHIPS"]},"pre-wrap-whitespace":{"height":22,"lineCount":1,"lineWidths":[273.921875],"lineTexts":["keep   these   runs   of   spaces   intact"]},"cjk-keep-all":{"height":72,"lineCount":3,"lineWidths":[160,160,32],"lineTexts":["日本語のテキストを折","り返して表示する例文","です"]},"emoji-line":{"height":22,"lineCount":1,"lineWidths":[224.875],"lineTexts":["Deploy 🚀 the 🔥 build ✨ now"]},"rich-inline-mention-chip":{"lineCount":3,"lineWidths":[221.0078125,216.09375,196.578125]}}
+}

@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    macOS-host unit tests for the portable Settings shell + search core
+    (Phase 3 · W7 · Settings lane).
+
+    Runs on the macOS authoring host today via `dotnet test`: the search index,
+    ranking engine, manifest integrity, and router path/navigation logic are all
+    framework-free managed code, so no WinUI / Windows runtime is needed. The
+    WinUI XAML that consumes them (NavigationView shell + SettingsCard/Expander
+    leaf pages) is Windows/dev-host-deferred at the XamlCompiler gate.
+
+    Targets net10.0 (the installed runtime) and references the net8.0 library — a
+    higher runtime referencing a lower library is allowed, and the WinUI app
+    (net8.0-windows) references the same library. Mirrors
+    windows/pretext/OpenBurnBar.Pretext.Tests (net10.0, xUnit).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../app/OpenBurnBar.App.Settings/OpenBurnBar.App.Settings.csproj" />
+  </ItemGroup>
+
+</Project>

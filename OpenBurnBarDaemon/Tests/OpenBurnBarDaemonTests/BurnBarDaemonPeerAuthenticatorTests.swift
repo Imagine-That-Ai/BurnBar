@@ -78,12 +78,12 @@ final class BurnBarDaemonPeerAuthenticatorTests: XCTestCase {
         let profile = try authenticator.validatePeer(socketFD: pair.acceptedFD, peerPID: nil)
         XCTAssertTrue(profile.permits(.health))
         XCTAssertTrue(profile.permits(.codeSearch))
+        XCTAssertTrue(profile.permits(.runCreate))
         XCTAssertTrue(profile.permits(.runResume))
         XCTAssertFalse(profile.permits(.configUpdate))
         XCTAssertFalse(profile.permits(.providerCredentialSlotUpsert))
         XCTAssertFalse(profile.permits(.computerUseInvoke))
         XCTAssertFalse(profile.permits(.workspaceExecuteTool))
-        XCTAssertFalse(profile.permits(.runCreate))
     }
 
     func test_peerIdentityMapsBundleIdentifierToAuthorityProfile() {

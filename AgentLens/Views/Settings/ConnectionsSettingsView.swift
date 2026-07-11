@@ -1201,6 +1201,8 @@ struct ConnectionsSettingsView: View {
             return .kimi
         case .pi:
             return AgentProvider.piAgent.providerID
+        case .junie:
+            return AgentProvider.junie.providerID
         case .omp:
             return AgentProvider.omp.providerID
         }
@@ -1277,7 +1279,7 @@ struct ConnectionsSettingsView: View {
             isCurrentLogin: account.isCurrentLogin,
             hasQuotaWindows: !quotaWindows(for: account).isEmpty,
             authConnected: authInfo.map(isExternalAuthConnected),
-            snapshotSource: snapshot?.source,
+            snapshotSource: snapshot?.sourceKind,
             snapshotConfidence: snapshot?.confidence
         )
 
@@ -1570,6 +1572,8 @@ struct ConnectionsSettingsView: View {
             return .kimi
         case .pi:
             return AgentProvider.piAgent.providerID
+        case .junie:
+            return AgentProvider.junie.providerID
         case .omp:
             return AgentProvider.omp.providerID
         }

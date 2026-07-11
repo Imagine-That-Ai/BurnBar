@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    macOS unit tests for the PORTABLE Windows distribution core (Phase 5 · signed distribution).
+    Runs on the macOS authoring host today via `dotnet test`:
+
+      • the update-feed SECURITY KERNEL — real Ed25519 (BouncyCastle) sign→verify round-trips, the
+        pinned-key gate, per-field tamper detection, wrong-key + malformed-signature fail-closed,
+        the all-zero-placeholder-pin refusal, content-sha256 integrity, strict feed parse, version
+        ordering, and the fail-closed update DECISION (an unsigned/tampered entry can NEVER become
+        "available"), and
+      • the DLL-hardening POLICY ↔ PROPS cross-check — asserts the packaging props under
+        windows/dist/props actually carry every flag/property HardeningPolicy requires, so the
+        policy + the shipped props can never silently drift.
+
+    No Windows APIs run here; the Win32 SetDefaultDllDirectories path is proven on a Windows dev
+    host / Windows CI. Mirrors windows/tests/input (net10.0, xUnit) — the toolchain already proven
+    on this host.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../dist/OpenBurnBar.Dist.UpdateFeed/OpenBurnBar.Dist.UpdateFeed.csproj" />
+    <ProjectReference Include="../../dist/OpenBurnBar.Dist.Hardening/OpenBurnBar.Dist.Hardening.csproj" />
+  </ItemGroup>
+
+</Project>

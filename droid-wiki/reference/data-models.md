@@ -142,7 +142,7 @@ Both are persisted to local SQLite (`chat_messages`, `chat_threads`) and optiona
 
 ### Mission Control — `BurnBarMissionStatus` and `BurnBarRunStateSnapshot`
 
-**`BurnBarMissionStatus`** (`OpenBurnBarCore/Sources/OpenBurnBarCore/Contracts/BurnBarRPCContracts.swift`)
+**`BurnBarMissionStatus`** (`OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarRPCContracts.swift`)
 
 Lifecycle states: `draft`, `pending`, `queued`, `running`, `paused`, `completed`, `failed`, `cancelled`, `approved`, `rejected`.
 

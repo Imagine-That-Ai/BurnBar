@@ -58,16 +58,19 @@ struct AuthGateView: View {
             guard !MobileE2ERoute.isRemoteUnlockRoute else { return }
             #endif
             guard let uid = authStore.currentIdentity?.uid, !uid.isEmpty else { return }
-            if !BudgetEnforcement.shared.isConfigured {
+            BudgetEnforcement.shared.resetIfConfiguredForDifferentUser(uid)
+            if !BudgetEnforcement.shared.isConfigured(forUserID: uid) {
                 let rulesStore = BudgetRulesStore()
                 let settings = BudgetSettings(store: rulesStore)
                 let budgetDashboard = DashboardStore()
                 await budgetDashboard.load()
+                guard !Task.isCancelled, authStore.currentIdentity?.uid == uid else { return }
                 let ledger = BudgetLedger(dataSource: budgetDashboard)
                 let gate = BudgetGate(settings: settings, ledger: ledger)
                 let notifications = BudgetNotificationCenter()
                 let forecast = BudgetForecast(dataSource: budgetDashboard)
                 BudgetEnforcement.shared.configure(
+                    userID: uid,
                     gate: gate,
                     notifications: notifications,
                     forecast: forecast
@@ -173,7 +176,6 @@ struct AuthGateView: View {
     #if DEBUG
     private func logHermesE2EAuthState(_ context: String) {
         guard hasHermesE2EPrompt else { return }
-        print("OpenBurnBarMobile Hermes E2E auth \(context) state=\(authStateLabel(authStore.state)) onboardingComplete=\(hasCompletedOnboarding) horizontalSizeClass=\(horizontalSizeClassLabel)")
         Self.hermesE2ELogger.info("Hermes E2E \(context, privacy: .public) authState=\(authStateLabel(authStore.state), privacy: .public) onboardingComplete=\(hasCompletedOnboarding, privacy: .public) horizontalSizeClass=\(horizontalSizeClassLabel, privacy: .public)")
     }
 

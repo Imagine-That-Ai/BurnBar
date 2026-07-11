@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  OpenBurnBar — Chocolatey package manifest.
+
+  Installs the DIRECT-DOWNLOAD portable zip, so this channel is unblocked independent
+  of MSIX packaging. The
+  tools\chocolateyinstall.ps1 script fetches the per-arch portable zip from the GitHub
+  release, verifies its SHA256, and extracts + shims OpenBurnBar.App.exe.
+
+  CEILING (honest): `choco pack` / `choco install` run on Windows. On macOS this file
+  is checked for XML well-formedness (xmllint) and its NuGet-core metadata subset is
+  validated against the NuGet 2015 nuspec.xsd; the Chocolatey-superset elements
+  (packageSourceUrl / projectSourceUrl / docsUrl / bugTrackerUrl) are validated by
+  `choco pack`. The tools\*.ps1 checksums are release-stamped placeholders until the
+  portable zips are built + hashed on the Windows runner.
+-->
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>openburnbar</id>
+    <version>0.1.0</version>
+    <packageSourceUrl>https://github.com/Imagine-That-Ai/BurnBar/tree/main/windows/packaging/chocolatey</packageSourceUrl>
+    <owners>Imagine That</owners>
+    <title>OpenBurnBar</title>
+    <authors>Imagine That</authors>
+    <projectUrl>https://github.com/Imagine-That-Ai/BurnBar</projectUrl>
+    <iconUrl>https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/main/windows/packaging/chocolatey/icon.png</iconUrl>
+    <copyright>Copyright (c) Imagine That, Inc.</copyright>
+    <licenseUrl>https://github.com/Imagine-That-Ai/BurnBar/blob/main/LICENSE</licenseUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <projectSourceUrl>https://github.com/Imagine-That-Ai/BurnBar</projectSourceUrl>
+    <docsUrl>https://github.com/Imagine-That-Ai/BurnBar/tree/main/docs</docsUrl>
+    <bugTrackerUrl>https://github.com/Imagine-That-Ai/BurnBar/issues</bugTrackerUrl>
+    <tags>openburnbar ai agent claude codex cursor coding-assistant developer-tools productivity tray admin</tags>
+    <summary>One bar to watch, steer, and remember every coding-agent session.</summary>
+    <description>
+OpenBurnBar is a desktop companion for AI coding agents. It watches Claude Code, Codex,
+Cursor, and other CLI/agent sessions from a tray flyout, keeps provider quota and usage
+in view, remembers context across sessions, and can pair with your phone and smart
+displays.
+
+This Chocolatey package installs the portable build (no installer, no admin required for
+the files themselves) and shims `OpenBurnBar.App.exe`. Cloud sync is end-to-end
+encrypted; the app auto-updates from an Ed25519-pinned release feed whose key is pinned
+independent of any code-signing certificate.
+    </description>
+    <releaseNotes>https://github.com/Imagine-That-Ai/BurnBar/releases/tag/v0.1.0</releaseNotes>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+  </files>
+</package>

@@ -252,6 +252,7 @@ struct DashboardView: View {
                             }
                         )
                         .offset(x: chatController.panelFloatOffset.width, y: chatController.panelFloatOffset.height)
+                        .accessibilityIdentifier(OBBAccessibilityID.chatPanel)
                         .transition(.asymmetric(
                             insertion: .move(edge: .trailing).combined(with: .opacity),
                             removal: .opacity
@@ -288,6 +289,7 @@ struct DashboardView: View {
             .padding(EdgeInsets(top: 24, leading: 20, bottom: 20, trailing: 20))
         }
         .toolbar { toolbarContent }
+        .accessibilityIdentifier(OBBAccessibilityID.dashboardRoot)
         .background {
             sectionShortcuts
             commandPaletteShortcut
@@ -742,6 +744,7 @@ struct DashboardView: View {
                     ])
                 }
             ))
+            .accessibilityIdentifier(OBBAccessibilityID.dashboardLayoutSwitcher)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, DesignSystem.Spacing.xl)

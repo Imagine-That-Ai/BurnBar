@@ -32,6 +32,7 @@ struct AssistantsPopoverStrip: View {
         case .cursorAgent: return "Ask Cursor Agentâ¦"
         case .openClaude: return "Ask OpenClaude…"
         case .omp: return "Ask OMP…"
+        case .junie: return "Ask Junie…"
         }
     }
 

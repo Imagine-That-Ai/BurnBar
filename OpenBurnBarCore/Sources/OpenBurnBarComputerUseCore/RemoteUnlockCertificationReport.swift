@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 public struct RemoteUnlockCertificationProbe: Codable, Hashable, Sendable {
     public var succeeded: Bool

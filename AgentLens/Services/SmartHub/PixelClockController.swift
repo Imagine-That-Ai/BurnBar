@@ -1102,10 +1102,17 @@ final class PixelClockStockSimulatorServer {
         if isRunning, boundPort == port { return }
         stop()
 
+        guard let nwPort = NWEndpoint.Port(rawValue: port) else {
+            isRunning = false
+            boundPort = nil
+            listener = nil
+            return
+        }
+
         do {
             let parameters = NWParameters.tcp
             parameters.allowLocalEndpointReuse = true
-            let listener = try NWListener(using: parameters, on: NWEndpoint.Port(rawValue: port)!)
+            let listener = try NWListener(using: parameters, on: nwPort)
             listener.newConnectionHandler = { [weak self] connection in
                 guard let self else { return }
                 Task { @MainActor in

@@ -1,0 +1,64 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Portable Managed-Agent-Runtime core for the OpenBurnBar Windows port
+    (Phase 3 · W7). This is the PLATFORM-INDEPENDENT half of the managed agent
+    runtime: the runtime-adapter contract + status/instance model, the Pi Agent
+    runtime-controller state machine (refresh + open lifecycle), the Pi CLI
+    command-profile, the Redis-backed instance-discovery seam + its response
+    decoder, the OpenAI-compatible gateway probe seam, and the process-run
+    orchestration seam.
+
+    It has NO WinUI / Windows / P/Invoke dependency on purpose — the SAME managed
+    assembly is:
+      * referenced by the WinUI app (windows/app/OpenBurnBar.App) + a future
+        net8.0-windows adapter that implements the process-runner /
+        executable-resolver seams with the real ConPTY / Win32 CreateProcessW
+        launch (the Windows/bucket-B remainder — it delegates to the already
+        landed windows/app/OpenBurnBar.App/Cli/ConPtyCliStream.cs +
+        OpenBurnBar.Pal.Ipc.Windows.ConPtySession), AND
+      * unit-tested on the macOS authoring host today via `dotnet test`
+        (windows/tests/managed-agent-runtime), exactly the pattern already proven
+        by the storage seam, the Computer-Use policy core, and the presentation
+        view-models.
+
+    Parity sources (macOS, AgentLens/Services/ManagedAgentRuntime/):
+      * ManagedAgentRuntime.swift            -> ManagedAgentRuntimeKind.cs
+                                                ManagedAgentInstance.cs
+                                                ManagedAgentRuntimeStatus.cs
+                                                IManagedAgentRuntimeAdapter.cs
+      * PiAgentCommandProfile.swift          -> PiAgentCommandProfile.cs
+      * PiAgentRedisDiscovery.swift          -> Discovery/PiAgentRedisSnapshot.cs
+                                                Discovery/IPiAgentRedisDiscovery.cs
+                                                Discovery/PiAgentRedisInstanceDecoder.cs
+                                                Discovery/PiAgentRedisHttpDiscovery.cs
+      * ManagedRuntimeProcessRunner.swift    -> Process/IManagedRuntimeProcessRunner.cs
+                                                Process/IManagedExecutableResolver.cs
+      * PiAgentRuntimeAdapter.swift          -> PiAgentRuntimeAdapterDependencies.cs
+                                                PiAgentRuntimeAdapter.cs
+      * OpenAICompatibleModelProbe (CLIBridge/OpenAICompatibleChatGatewayClient.swift)
+        + OpenAICompatibleModelListParser (CLIBridge/CLIStreamParsers.swift)
+                                             -> Gateway/IManagedRuntimeGatewayProbe.cs
+                                                Gateway/OpenAICompatibleGatewayProbe.cs
+                                                Http/IManagedRuntimeHttpTransport.cs
+                                                Http/HttpClientManagedRuntimeHttpTransport.cs
+
+    Targets net8.0 so the net8.0-windows WinUI app + adapter can reference it,
+    while the net10.0 test project consumes it too (a lower TFM is usable by a
+    higher one). No third-party packages: the Redis discovery + gateway probe
+    parse plain JSON with System.Text.Json (BCL) over an injectable HTTP
+    transport seam, so the request-SHAPE + response-PARSE core runs unchanged on
+    the macOS authoring host.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.App.ManagedAgentRuntime</RootNamespace>
+    <AssemblyName>OpenBurnBar.App.ManagedAgentRuntime</AssemblyName>
+  </PropertyGroup>
+
+</Project>

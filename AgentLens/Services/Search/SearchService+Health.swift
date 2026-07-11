@@ -7,7 +7,7 @@ extension SearchService {
             provider: AgentProvider? = nil,
             projectName: String? = nil,
             dateRange: ClosedRange<Date>? = nil,
-            conversationSources: Set<ConversationSourceType>? = nil,
+            conversationSources: Set<OpenBurnBarCore.ConversationSourceType>? = nil,
             resultLimit: Int = 50
         ) async -> [SearchResult] {
             let boundedLimit = max(1, min(resultLimit, 200))
@@ -36,7 +36,9 @@ extension SearchService {
                 return SearchResult(
                     conversation: conversation,
                     snippet: result.snippet,
-                    rank: result.rerankScore
+                    rank: result.rerankScore,
+                    startOffset: result.startOffset,
+                    endOffset: result.endOffset
                 )
             }
         }

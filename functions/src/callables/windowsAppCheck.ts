@@ -35,7 +35,7 @@ import { assertAuth } from "../auth.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import { checkPublicHttpEndpointRateLimit } from "./publicRateLimit.js";
-import { optionalBoundedInt, optionalUnknown, parseCallableInput } from "../validation/callableSchema.js";
+import { parseCallableInput } from "../validation/callableSchema.js";
 
 /** Discriminator for the Phase-0 mock attestation claim. */
 const MOCK_ATTESTATION_KIND = "mock" as const;

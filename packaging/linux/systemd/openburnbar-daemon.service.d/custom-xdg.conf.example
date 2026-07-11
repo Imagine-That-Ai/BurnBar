@@ -1,0 +1,27 @@
+# Drop-in example: custom XDG_DATA_HOME / support dir under ProtectHome=read-only.
+#
+# Install as:
+#   ~/.config/systemd/user/openburnbar-daemon.service.d/custom-xdg.conf
+# then:
+#   systemctl --user daemon-reload
+#   systemctl --user restart openburnbar-daemon.service
+#
+# Default unit ReadWritePaths only allow:
+#   ~/.local/share/openburnbar
+#   ~/.config/openburnbar
+#   ~/.cache/openburnbar
+#   $XDG_RUNTIME_DIR/openburnbar
+#
+# If your support data lives elsewhere, extend ReadWritePaths and pin the same
+# OPENBURNBAR_DAEMON_SUPPORT_DIR the shell/extension use.
+
+[Service]
+Environment=XDG_DATA_HOME=%h/.local/share
+Environment=OPENBURNBAR_DAEMON_SUPPORT_DIR=%h/.local/share/openburnbar
+# Example custom location (uncomment and edit both lines together):
+# Environment=OPENBURNBAR_DAEMON_SUPPORT_DIR=%h/data/openburnbar
+# ReadWritePaths=%h/data/openburnbar
+
+# SECURITY: do NOT set OPENBURNBAR_DAEMON_LINUX_PEER_ROOTS here.
+# The launch script refuses PEER_ROOTS containing /tmp and other weak prefixes.
+# AppImage trust must use SHA-256 pins, not world-writable mount prefixes.

@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Portable presentation layer for the OpenBurnBar WinUI port (Phase 3 · W7).
+
+    This is the DEPENDENCY-FREE half of the SessionLogs + Memory surfaces: the
+    view-models, the ported record types, the pure grouping/filter passes, and the
+    transcript parser. It has NO WinUI / Windows dependency on purpose — the SAME
+    managed assembly is:
+      • referenced by the WinUI app (windows/app/OpenBurnBar.App), whose XAML views
+        x:Bind to these view-models, AND
+      • unit-tested on the macOS authoring host today via `dotnet test`
+        (windows/tests/presentation), exactly the pattern already proven by the
+        storage seam (VAL-P0-DB-010) and the Liquid-Glass transparency math.
+
+    Parity sources (macOS):
+      • AgentLens/Views/Memory/MemoryReviewInboxModel.swift   -> Memory/MemoryReviewInboxModel.cs
+      • AgentLens/Services/TranscriptBlockParser.swift         -> SessionLogs/TranscriptBlockParser.cs
+      • AgentLens/Views/SessionLogs/SessionLogsView.swift      -> SessionLogs/SessionLogGrouping.cs + SessionLogsViewModel.cs
+      • OpenBurnBarCore/.../Memory/MemoryServing.swift         -> Memory/MemoryModels.cs (record subset the inbox reads)
+      • OpenBurnBarCore/.../MissionControl/MissionConsoleTypes.swift -> MissionControl/MissionEnums.cs + MissionModels.cs + MissionForecastComputer.cs + MissionFormatting.cs
+      • OpenBurnBarCore/.../MissionControl/MissionFABGauge.swift     -> MissionControl/MissionFabGaugeState.cs
+      • OpenBurnBarCore/.../MissionControl/MissionConsoleHero.swift  -> MissionControl/MissionHeroText.cs
+      • OpenBurnBarCore/.../MissionControl/MissionRuntimeConstellation.swift + MissionKindChooser.swift -> MissionControl/MissionRuntimeCardItem.cs + MissionKindChipItem.cs
+      • AgentLens/Views/Dashboard/MissionConsoleMacHost.swift  -> MissionControl/MissionSnapshotBuilder.cs + MissionRecord.cs + MissionConsoleViewModel.cs
+
+    Targets net8.0 so the net8.0-windows WinUI app can reference it, while the
+    net10.0 test + storage-adapter projects can reference it too (a lower TFM is
+    consumable by a higher one).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.App.Presentation</RootNamespace>
+    <AssemblyName>OpenBurnBar.App.Presentation</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\storage\OpenBurnBar.Storage\OpenBurnBar.Storage.csproj" />
+  </ItemGroup>
+
+</Project>

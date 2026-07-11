@@ -61,6 +61,15 @@ base_ref = os.environ["BASE_REF"]
 repo_root = os.environ["REPO_ROOT"]
 repo_root_real = os.path.realpath(repo_root)
 threshold = int(os.environ["COVERAGE_THRESHOLD"])
+output_path = os.environ.get("DIFF_COVERAGE_OUTPUT")
+
+def emit_json(payload):
+    text = json.dumps(payload, indent=2)
+    if output_path:
+        with open(output_path, "w", encoding="utf-8") as fh:
+            fh.write(text)
+            fh.write("\n")
+    print(text)
 
 patterns = [
     "functions/src/*.ts",
@@ -78,7 +87,7 @@ for pattern in patterns:
 changed = sorted(set(c.strip() for c in changed if c.strip() and not c.endswith(".d.ts")))
 
 if not changed:
-    print(json.dumps({"diffCoverage": {"percent": 100.0, "passed": True, "surface": "typescript"}}))
+    emit_json({"diffCoverage": {"percent": 100.0, "passed": True, "surface": "typescript"}})
     raise SystemExit(0)
 
 # Real evidence: istanbul/v8 coverage JSON from the vitest runs above. A
@@ -119,8 +128,8 @@ for cov_path in coverage_paths:
 prod = [p for p in changed if "/test/" not in p and "__tests__" not in p
         and not p.endswith(".test.ts") and not p.endswith(".spec.ts")]
 if not prod:
-    print(json.dumps({"diffCoverage": {"percent": 100.0, "passed": True,
-        "surface": "typescript", "method": "tests_only_diff"}}))
+    emit_json({"diffCoverage": {"percent": 100.0, "passed": True,
+        "surface": "typescript", "method": "tests_only_diff"}})
     raise SystemExit(0)
 
 def normalized_code(lines):
@@ -274,7 +283,7 @@ for path in prod:
 
 prod_with_runtime_changes = [p for p in prod if file_lines.get(p)]
 if not prod_with_runtime_changes:
-    print(json.dumps({
+    emit_json({
         "diffCoverage": {
             "percent": 100.0,
             "threshold": threshold,
@@ -285,12 +294,12 @@ if not prod_with_runtime_changes:
             "method": "no_runtime_ts_lines",
         },
         "details": [],
-    }, indent=2))
+    })
     raise SystemExit(0)
 
 missing_evidence = [p for p in prod_with_runtime_changes if p not in line_cov]
 if missing_evidence:
-    print(json.dumps({
+    emit_json({
         "diffCoverage": {
             "percent": 0.0,
             "passed": False,
@@ -299,7 +308,7 @@ if missing_evidence:
             "method": "istanbul_evidence_missing",
             "missingEvidenceFor": missing_evidence[:20],
         },
-    }, indent=2))
+    })
     raise SystemExit(1)
 
 total_exc = 0
@@ -316,7 +325,7 @@ for path in prod_with_runtime_changes:
 
 total_pct = 100.0 if total_exc == 0 else round(total_hit * 100.0 / total_exc, 2)
 passed = total_pct >= threshold
-print(json.dumps({
+emit_json({
     "diffCoverage": {
         "percent": total_pct,
         "threshold": threshold,
@@ -327,7 +336,7 @@ print(json.dumps({
         "method": "istanbul_line_intersection",
     },
     "details": details,
-}, indent=2))
+})
 if not passed:
     raise SystemExit(1)
 PY

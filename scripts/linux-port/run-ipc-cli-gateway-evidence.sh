@@ -5,7 +5,32 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
 EVIDENCE_DIR="${EVIDENCE_DIR:-$ROOT/docs/linux-port/evidence/mission-001-ipc-cli-gateway}"
-BUILD_DIR="$ROOT/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway"
+BUILD_DIR="${OPENBURNBAR_LINUX_BUILD_DIR:-$ROOT/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway}"
+LINUX_IMAGE="${OPENBURNBAR_LINUX_TOOLCHAIN_IMAGE:-openburnbar-linux-toolchain:mission-001}"
+
+if [[ "$(uname -s)" != "Linux" && "${OPENBURNBAR_IPC_EVIDENCE_INNER:-0}" != "1" ]]; then
+  mkdir -p "$EVIDENCE_DIR"
+  LOG="$EVIDENCE_DIR/docker-ipc-cli-gateway-evidence.log"
+  TMP_LOG="$(mktemp "${TMPDIR:-/tmp}/openburnbar-ipc-cli-gateway.XXXXXX.log")"
+  set +e
+  docker run --rm \
+    -v "$ROOT:/workspace" \
+    -w /workspace \
+    -e OPENBURNBAR_IPC_EVIDENCE_INNER=1 \
+    -e EVIDENCE_DIR=/workspace/docs/linux-port/evidence/mission-001-ipc-cli-gateway \
+    -e OPENBURNBAR_LINUX_BUILD_DIR=/tmp/openburnbar-ipc-cli-gateway-build \
+    -e OPENBURNBAR_LINUX_TOOLCHAIN_IMAGE="$LINUX_IMAGE" \
+    "$LINUX_IMAGE" \
+    bash /workspace/scripts/linux-port/run-ipc-cli-gateway-evidence.sh \
+    > "$TMP_LOG" 2>&1
+  rc=$?
+  set -e
+  cp "$TMP_LOG" "$LOG"
+  rm -f "$TMP_LOG"
+  cat "$LOG"
+  exit "$rc"
+fi
+
 TMP_ROOT="$(mktemp -d)"
 SOCKET_DIR="$TMP_ROOT/socket"
 SOCKET_PATH="$SOCKET_DIR/openburnbar.sock"
@@ -22,6 +47,33 @@ mkdir -p "$EVIDENCE_DIR"
 rm -f "$EVIDENCE_DIR"/*.txt "$EVIDENCE_DIR"/*.json "$EVIDENCE_DIR"/*.jsonl "$EVIDENCE_DIR"/*.log 2>/dev/null || true
 mkdir -p "$SOCKET_DIR"
 chmod 700 "$SOCKET_DIR"
+
+if [[ "$BUILD_DIR" == "$ROOT"/OpenBurnBarDaemon/.build-linux-ipc-cli-gateway || "$BUILD_DIR" == /tmp/openburnbar-ipc-cli-gateway-build* ]]; then
+  rm -rf "$BUILD_DIR"
+fi
+
+{
+  echo "### swift build daemon/cli/gateway evidence products"
+  echo "image=$LINUX_IMAGE"
+  echo "build_dir=$BUILD_DIR"
+  echo "product=OpenBurnBarDaemon"
+  swift build \
+    --disable-index-store \
+    --jobs 1 \
+    --package-path "$ROOT/OpenBurnBarDaemon" \
+    --build-path "$BUILD_DIR" \
+    --product OpenBurnBarDaemon
+  echo "daemon_product_build_exit_code=$?"
+  echo
+  echo "product=OpenBurnBarCLI"
+  swift build \
+    --disable-index-store \
+    --jobs 1 \
+    --package-path "$ROOT/OpenBurnBarDaemon" \
+    --build-path "$BUILD_DIR" \
+    --product OpenBurnBarCLI
+  echo "cli_product_build_exit_code=$?"
+} > "$EVIDENCE_DIR/build.log" 2>&1
 
 cleanup() {
   terminate_pid "${DAEMON_PID:-}"
@@ -47,18 +99,23 @@ terminate_pid() {
 }
 
 find_binary() {
-  local name="$1"
+  local label="$1"
+  shift
+  local name
   local path
-  path="$(find "$BUILD_DIR" -path "*/debug/$name" -type f -perm -111 | head -n 1 || true)"
-  if [[ -z "$path" ]]; then
-    echo "missing built binary: $name under $BUILD_DIR" >&2
-    exit 127
-  fi
-  printf '%s\n' "$path"
+  for name in "$@"; do
+    path="$(find "$BUILD_DIR" -path "*/debug/$name" -type f -perm -111 | head -n 1 || true)"
+    if [[ -n "$path" ]]; then
+      printf '%s\n' "$path"
+      return 0
+    fi
+  done
+  echo "missing built binary for $label under $BUILD_DIR; tried: $*" >&2
+  exit 127
 }
 
-DAEMON_BIN="$(find_binary OpenBurnBarDaemon)"
-CLI_BIN="$(find_binary OpenBurnBarCLI)"
+DAEMON_BIN="$(find_binary daemon OpenBurnBarDaemon OpenBurnBarDaemonExecutable openburnbar-daemon)"
+CLI_BIN="$(find_binary cli OpenBurnBarCLI)"
 
 {
   echo "daemon_bin=$DAEMON_BIN"
@@ -412,6 +469,224 @@ function send(label, request) {
 NODE
 }
 
+record_subscription_phase() {
+  local phase="$1"
+  local mode="$2"
+  local after_seq="${3:-1}"
+  SOCKET_PATH="$SOCKET_PATH" SOCKET_AUTH_TOKEN="$SOCKET_TOKEN" SUB_PHASE="$phase" SUB_MODE="$mode" SUB_AFTER_SEQ="$after_seq" node <<'NODE'
+const net = require("node:net");
+
+const socketPath = process.env.SOCKET_PATH;
+const token = process.env.SOCKET_AUTH_TOKEN;
+const phase = process.env.SUB_PHASE;
+const mode = process.env.SUB_MODE;
+const afterSeq = Number(process.env.SUB_AFTER_SEQ || "1");
+const subscriptionID = "ipc-evidence-health-subscription";
+
+function redact(request) {
+  return { ...request, authToken: request.authToken ? "redacted-present" : null };
+}
+
+function send(label, request) {
+  return new Promise((resolve) => {
+    const client = net.createConnection(socketPath);
+    let data = "";
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      const parsed = result.data ? JSON.parse(result.data) : null;
+      console.log(JSON.stringify({
+        phase,
+        label,
+        socketPath,
+        authContext: {
+          token: "redacted-present",
+          capability: "run",
+          peerCodesign: "disabled-debug-only"
+        },
+        request: redact(request),
+        response: parsed
+      }));
+      resolve(parsed);
+    };
+    client.setTimeout(3000, () => {
+      client.destroy();
+      finish({ data: JSON.stringify({ error: "timeout" }) });
+    });
+    client.on("connect", () => {
+      client.end(`${JSON.stringify(request)}\n`);
+    });
+    client.on("data", (chunk) => {
+      data += chunk.toString("utf8");
+    });
+    client.on("end", () => {
+      finish({ data: data.trim() });
+    });
+    client.on("error", (error) => {
+      finish({ data: JSON.stringify({ error: error.message }) });
+    });
+  });
+}
+
+(async () => {
+  if (mode === "start") {
+    const started = await send("subscription.start", {
+      id: `${phase}-subscription-start`,
+      method: "subscription.start",
+      authToken: token,
+      params: {
+        topic: "health",
+        requested_subscription_id: subscriptionID,
+        client_id: "ipc-evidence-cli"
+      }
+    });
+    const seq = started && started.result && Number.isFinite(started.result.seq) ? started.result.seq : 1;
+    await send("subscription.resume", {
+      id: `${phase}-subscription-resume`,
+      method: "subscription.resume",
+      authToken: token,
+      params: {
+        subscription_id: subscriptionID,
+        topic: "health",
+        after_seq: seq,
+        client_id: "ipc-evidence-cli"
+      }
+    });
+    return;
+  }
+  await send("subscription.resume", {
+    id: `${phase}-subscription-resume`,
+    method: "subscription.resume",
+    authToken: token,
+    params: {
+      subscription_id: subscriptionID,
+      topic: "health",
+      after_seq: afterSeq,
+      client_id: "ipc-evidence-cli"
+    }
+  });
+})();
+NODE
+}
+
+record_subscription_e2e() {
+  : > "$EVIDENCE_DIR/subscription-e2e-transcript.jsonl"
+  {
+    echo "{\"phase\":\"setup\",\"socket_path\":\"$SOCKET_PATH\",\"gateway\":\"127.0.0.1:$PORT\",\"transport\":\"AF_UNIX newline-framed BurnBarRPC\",\"gateway_health\":\"$(http_get "/health" "Bearer $GATEWAY_TOKEN" | head -n 1 | tr -d '\r')\"}"
+    record_subscription_phase "before-restart" "start" "0"
+  } >> "$EVIDENCE_DIR/subscription-e2e-transcript.jsonl"
+  restart_positive_daemon
+  {
+    echo "{\"phase\":\"after-restart-setup\",\"socket_path\":\"$SOCKET_PATH\",\"gateway\":\"127.0.0.1:$PORT\",\"transport\":\"AF_UNIX newline-framed BurnBarRPC\",\"gateway_health\":\"$(http_get "/health" "Bearer $GATEWAY_TOKEN" | head -n 1 | tr -d '\r')\"}"
+    record_subscription_phase "after-restart" "resume" "2"
+  } >> "$EVIDENCE_DIR/subscription-e2e-transcript.jsonl"
+}
+
+verify_subscription_e2e() {
+  SUBSCRIPTION_TRANSCRIPT="$EVIDENCE_DIR/subscription-e2e-transcript.jsonl" \
+  SUBSCRIPTION_ASSERTION="$EVIDENCE_DIR/subscription-e2e-assertion.json" \
+  node <<'NODE'
+const fs = require("node:fs");
+
+const transcript = process.env.SUBSCRIPTION_TRANSCRIPT;
+const assertionPath = process.env.SUBSCRIPTION_ASSERTION;
+const rows = fs.readFileSync(transcript, "utf8")
+  .split("\n")
+  .map((line) => line.trim())
+  .filter(Boolean)
+  .map((line) => JSON.parse(line));
+
+function fail(message) {
+  throw new Error(message);
+}
+
+function findRow(phase, label) {
+  const row = rows.find((entry) => entry.phase === phase && entry.label === label);
+  if (!row) fail(`missing subscription transcript row ${phase}/${label}`);
+  return row;
+}
+
+function requireResult(row) {
+  if (row.response?.error) {
+    fail(`${row.phase}/${row.label} returned RPC error ${JSON.stringify(row.response.error)}`);
+  }
+  if (!row.response?.result) {
+    fail(`${row.phase}/${row.label} missing result`);
+  }
+  return row.response.result;
+}
+
+const setup = rows.find((entry) => entry.phase === "setup");
+const restarted = rows.find((entry) => entry.phase === "after-restart-setup");
+if (!setup || !/^HTTP\/1\.1 200/.test(setup.gateway_health || "")) {
+  fail("initial gateway setup/health row missing");
+}
+if (!restarted || !/^HTTP\/1\.1 200/.test(restarted.gateway_health || "")) {
+  fail("after-restart gateway setup/health row missing");
+}
+
+const start = requireResult(findRow("before-restart", "subscription.start"));
+const beforeResume = requireResult(findRow("before-restart", "subscription.resume"));
+const afterResume = requireResult(findRow("after-restart", "subscription.resume"));
+
+if (start.subscription_id !== "ipc-evidence-health-subscription") {
+  fail(`unexpected subscription_id ${start.subscription_id}`);
+}
+if (start.first_snapshot !== true) {
+  fail("subscription.start did not deliver first snapshot");
+}
+if (!Array.isArray(start.events) || start.events.length === 0) {
+  fail("subscription.start delivered no events");
+}
+if (!Number.isInteger(start.seq) || start.seq < 1) {
+  fail("subscription.start seq missing");
+}
+if (!Number.isInteger(beforeResume.seq) || beforeResume.seq <= start.seq) {
+  fail("subscription.resume before restart did not advance seq");
+}
+if (!Number.isInteger(afterResume.seq) || afterResume.seq <= 2) {
+  fail("subscription.resume after restart did not resume past requested seq");
+}
+if (afterResume.recovered_after_restart !== true) {
+  fail("after-restart resume did not record recovery");
+}
+if (afterResume.disconnect_detected !== true) {
+  fail("after-restart resume did not record disconnect detection");
+}
+if (afterResume.terminal_state_delivered !== true) {
+  fail("after-restart resume did not record terminal-state delivery");
+}
+for (const result of [start, beforeResume, afterResume]) {
+  if (result.degraded_fallback !== true) {
+    fail(`subscription result ${result.subscription_id} missing explicit degraded fallback row`);
+  }
+  if (result.backpressure !== "coalesce_latest_per_topic") {
+    fail(`subscription result ${result.subscription_id} missing backpressure semantics`);
+  }
+}
+
+const assertion = {
+  ok: true,
+  transcript,
+  rowCount: rows.length,
+  setupGatewayHealth: setup.gateway_health,
+  afterRestartGatewayHealth: restarted.gateway_health,
+  subscriptionID: start.subscription_id,
+  startSeq: start.seq,
+  beforeRestartResumeSeq: beforeResume.seq,
+  afterRestartResumeSeq: afterResume.seq,
+  recoveredAfterRestart: afterResume.recovered_after_restart,
+  disconnectDetected: afterResume.disconnect_detected,
+  terminalStateDelivered: afterResume.terminal_state_delivered,
+  degradedFallback: afterResume.degraded_fallback,
+  backpressure: afterResume.backpressure
+};
+fs.writeFileSync(assertionPath, `${JSON.stringify(assertion, null, 2)}\n`);
+console.log(`subscription_e2e_assertion=${assertionPath}`);
+NODE
+}
+
 record_http_gateway() {
   {
     echo "### GET /health without auth"
@@ -569,7 +844,7 @@ record_cli_flow() {
   capture_cli "subscription resume health after daemon restart" subscription-resume "$sub_id" --topic health --after-seq "$sub_seq" >/dev/null
 
   local run_output
-  run_output="$(capture_cli "run create mock provider" run create --prompt "linux evidence run" --model glm-5 --mock-provider)"
+  run_output="$(capture_cli "run create mock provider" run create --prompt "linux evidence run" --model gpt-5.5 --mock-provider)"
   printf '%s\n' "$run_output" > "$RUN_ID_FILE"
   local run_id
   run_id="$(awk -F'[ =]' '/run_id=/{print $2; exit}' "$RUN_ID_FILE")"
@@ -587,10 +862,28 @@ record_ipc_drift() {
   {
     echo "### generator"
     if command -v node >/dev/null 2>&1; then
+      echo "generator_source=tools/ipc/generate-burnbarrpc-canon.mjs"
       node tools/ipc/generate-burnbarrpc-canon.mjs
       echo "generator_exit_code=$?"
+      echo "generated_swift=OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarRPCIPCCanon.generated.swift"
+      echo "generated_typescript=extensions/openburnbar/src/generated/burnbar-rpc-ipc-canon.generated.ts"
+      echo "generated_json=docs/linux-port/generated/burnbar-rpc-ipc-canon.linux.json"
+      echo
+      echo "### method coverage table"
+      node - <<'NODE'
+const fs = require("node:fs");
+const canon = JSON.parse(fs.readFileSync("docs/linux-port/generated/burnbar-rpc-ipc-canon.linux.json", "utf8"));
+for (const row of canon.methods) {
+  console.log(`${row.id}\tcase=${row.caseName}\tdomain=${row.domain}\tcapability=${row.capability}\tparams=${row.params}\tresult=${row.result}\terror=${row.error}`);
+}
+NODE
+      echo
+      echo "### check"
       node tools/ipc/generate-burnbarrpc-canon.mjs --check
       echo "check_exit_code=$?"
+      echo
+      echo "### negative fixture"
+      echo "fixture_path=docs/linux-port/fixtures/burnbarrpc-canon-missing-subscription.fixture.json"
       set +e
       node tools/ipc/generate-burnbarrpc-canon.mjs --fixture docs/linux-port/fixtures/burnbarrpc-canon-missing-subscription.fixture.json
       local fixture_rc=$?
@@ -630,7 +923,7 @@ record_source_scans() {
     echo
     echo "### capability/subscription classification scan"
     search_source 'subscriptionStart|subscriptionResume|case subscription|cliSupport|capability_denied' \
-      OpenBurnBarCore/Sources/OpenBurnBarCore/Contracts/BurnBarRPCContracts.swift \
+      OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarRPCContracts.swift \
       OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarRPCCapability.swift \
       OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC \
       OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift
@@ -659,6 +952,8 @@ start_positive_daemon
 record_permissions
 record_raw_socket_roundtrip
 record_cli_flow
+record_subscription_e2e
+verify_subscription_e2e
 record_http_gateway
 record_gateway_bind_safety
 record_negative_cases

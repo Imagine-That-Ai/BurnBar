@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="OpenBurnBar.App.Onboarding.OnboardingPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    AutomationProperties.AutomationId="RouteRoot.onboarding">
+
+    <!--
+      First-run onboarding wizard shell — Windows peer of OnboardingWizardView.swift.
+      A thin gradient progress bar (top), a Frame that hosts the seven step Pages with
+      slide transitions (middle), and a Back / Skip / Continue footer (bottom). All
+      navigation/gating/labels are driven by the portable, unit-tested
+      OnboardingWizardModel; this Page is pure presentation over it.
+    -->
+    <Grid RowSpacing="0">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Progress bar: a subtle track with an ember-gradient fill sized in code-behind. -->
+        <Grid Grid.Row="0" Height="3">
+            <Border Background="{StaticResource OBBStrokeBrush}" />
+            <Border x:Name="ProgressFill"
+                    HorizontalAlignment="Left"
+                    Width="0"
+                    CornerRadius="1.5">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                        <GradientStop Color="#FFFA6B06" Offset="0" />
+                        <GradientStop Color="#FFFDC42C" Offset="1" />
+                    </LinearGradientBrush>
+                </Border.Background>
+            </Border>
+        </Grid>
+
+        <!-- Step content host. -->
+        <Frame x:Name="StepFrame" Grid.Row="1" Padding="24" />
+
+        <!-- Footer. -->
+        <Grid x:Name="Footer" Grid.Row="2" Padding="24,0,24,20" ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <Button x:Name="BackButton"
+                    Grid.Column="0"
+                    Content="Back"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Click="OnBackClicked" />
+
+            <Button x:Name="SkipButton"
+                    Grid.Column="2"
+                    Content="Skip"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Click="OnSkipClicked" />
+
+            <Button x:Name="ContinueButton"
+                    Grid.Column="3"
+                    Content="Continue"
+                    Style="{StaticResource AccentButtonStyle}"
+                    Click="OnContinueClicked" />
+        </Grid>
+    </Grid>
+</Page>

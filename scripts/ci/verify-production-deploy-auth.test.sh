@@ -8,7 +8,7 @@ trap 'rm -rf "$TMP_ROOT"' EXIT
 
 copy_base_fixture() {
   local dst="$1"
-  mkdir -p "$dst/.github/workflows" "$dst/scripts/ci" "$dst/functions"
+  mkdir -p "$dst/.github/workflows" "$dst/scripts/ci" "$dst/functions" "$dst/services/hosted-mcp"
   cp "$SOURCE_ROOT/.github/workflows/deploy-hosting.yml" "$dst/.github/workflows/deploy-hosting.yml"
   cp "$SOURCE_ROOT/.github/workflows/deploy-production.yml" "$dst/.github/workflows/deploy-production.yml"
   cp "$SOURCE_ROOT/.github/workflows/deploy-firestore.yml" "$dst/.github/workflows/deploy-firestore.yml"
@@ -17,6 +17,7 @@ copy_base_fixture() {
   cp "$SOURCE_ROOT/firestore.rules" "$dst/firestore.rules"
   cp "$SOURCE_ROOT/firestore.indexes.json" "$dst/firestore.indexes.json"
   cp "$SOURCE_ROOT/storage.rules" "$dst/storage.rules"
+  cp "$SOURCE_ROOT/services/hosted-mcp/Dockerfile" "$dst/services/hosted-mcp/Dockerfile"
   cp "$SOURCE_ROOT/scripts/ci/write-firebase-hosting-ci-config.mjs" "$dst/scripts/ci/write-firebase-hosting-ci-config.mjs"
 }
 
@@ -147,6 +148,11 @@ copy_base_fixture "$fixture"
 mutate_file "$fixture" ".github/workflows/deploy-production.yml" 'text = text.replace("--non-interactive", "--non-interactive \\\n            --force", 1)'
 expect_fail "functions forced deploy fails" run_gate "$fixture"
 
+fixture="$TMP_ROOT/functions-missing-rules-first-readback"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-production.yml" 'text = text.replace("node scripts/ci/check-firestore-deploy-drift.mjs \"$FIREBASE_PROJECT\"", "echo rules-readback-skipped", 1)'
+expect_fail "functions missing rules-first readback fails" run_gate "$fixture"
+
 fixture="$TMP_ROOT/functions-raw-dispatch-tag"
 copy_base_fixture "$fixture"
 mutate_file "$fixture" ".github/workflows/deploy-production.yml" 'text = text.replace("TAG=\"$INPUT_TAG\"", "TAG=\"${{ inputs.tag }}\"", 1)'
@@ -211,6 +217,21 @@ fixture="$TMP_ROOT/cloud-run-build-secret"
 copy_base_fixture "$fixture"
 mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'needle = "  build-hosted-mcp-artifact:\n    name: Build hosted MCP deploy artifact\n"; text = text.replace(needle, needle + "    env:\n      BAD_SECRET: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}\n", 1)'
 expect_fail "cloud run build job secret fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/cloud-run-mutable-base"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" "services/hosted-mcp/Dockerfile" 'import re; text = re.sub(r"(node:22-bookworm-slim)@sha256:[a-f0-9]{64}", r"\1", text)'
+expect_fail "cloud run mutable Docker base fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/cloud-run-base-mismatch"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" "services/hosted-mcp/Dockerfile" 'import re; text = re.sub(r"sha256:[a-f0-9]{64}", "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", text, count=1)'
+expect_fail "cloud run Docker stage digest mismatch fails" run_gate "$fixture"
+
+fixture="$TMP_ROOT/cloud-run-prime-mismatch"
+copy_base_fixture "$fixture"
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'import re; text = re.sub(r"sha256:[a-f0-9]{64}", "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", text, count=1)'
+expect_fail "cloud run primed base digest mismatch fails" run_gate "$fixture"
 
 fixture="$TMP_ROOT/cloud-run-deploy-checkout"
 copy_base_fixture "$fixture"

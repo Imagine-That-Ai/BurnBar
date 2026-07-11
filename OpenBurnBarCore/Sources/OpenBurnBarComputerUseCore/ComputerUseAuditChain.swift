@@ -1,5 +1,5 @@
 import Foundation
-import CryptoKit
+import OpenBurnBarKernel
 
 /// One entry in the Computer Use audit chain. The field set is locked at
 /// Phase 10 ship and never reordered — the chain hashes a canonical-JSON
@@ -78,6 +78,25 @@ public struct ComputerUseAuditEntry: Codable, Hashable, Sendable {
     }
 }
 
+public extension ComputerUseActionMeteringHeader {
+    init(auditEntry: ComputerUseAuditEntry) {
+        self.init(
+            entryIndex: auditEntry.entryIndex,
+            actionKind: auditEntry.actionKind,
+            approvedBy: auditEntry.approvedBy.rawValue,
+            scopeRuleId: auditEntry.scopeRuleId,
+            denyReason: Self.privacySafeDenyReason(auditEntry.denyReason),
+            parentEntryHashHex: auditEntry.parentEntryHashHex,
+            recordedAt: auditEntry.timestamp
+        )
+    }
+
+    private static func privacySafeDenyReason(_ rawValue: String?) -> String? {
+        guard let rawValue else { return nil }
+        return ComputerUseDenyReason(rawValue: rawValue)?.rawValue ?? "dispatch_error"
+    }
+}
+
 /// Canonical-JSON encoder + hash function. Two requirements: keys are
 /// sorted alphabetically and `Date` is encoded as a millisecond integer
 /// so the chain re-hashes byte-identically across Swift compiler versions
@@ -110,8 +129,7 @@ public struct ComputerUseAuditHasher: Sendable {
     public func hash(data: Data) -> String {
         switch algorithm {
         case .sha256:
-            let digest = SHA256.hash(data: data)
-            return digest.map { String(format: "%02x", $0) }.joined()
+            return PlatformCrypto.sha256Hex(data)
         }
     }
 

@@ -1,6 +1,5 @@
 import Foundation
-import CryptoKit
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Cross-platform HPKE envelope used by Remote Unlock credential frames.
 ///
@@ -49,9 +48,9 @@ public enum RemoteUnlockCredentialEnvelopeCrypto {
         guard let publicKeyData = Data(base64Encoded: recipientPublicKeyBase64) else {
             throw CryptoError.invalidRecipientPublicKey
         }
-        let publicKey: Curve25519.KeyAgreement.PublicKey
+        let publicKey: PlatformCurve25519KeyAgreementPublicKey
         do {
-            publicKey = try Curve25519.KeyAgreement.PublicKey(rawRepresentation: publicKeyData)
+            publicKey = try PlatformCrypto.curve25519KeyAgreementPublicKey(rawRepresentation: publicKeyData)
         } catch {
             throw CryptoError.invalidRecipientPublicKey
         }
@@ -65,15 +64,14 @@ public enum RemoteUnlockCredentialEnvelopeCrypto {
             recipientKeyId: recipientKeyId,
             algorithm: algorithm
         )
-        var sender = try HPKE.Sender(
-            recipientKey: publicKey,
-            ciphersuite: .Curve25519_SHA256_ChachaPoly,
+        let sealed = try PlatformCrypto.hpkeSealCurve25519SHA256ChaChaPoly(
+            plaintext: plaintext,
+            recipientPublicKey: publicKey,
             info: info
         )
-        let sealed = try sender.seal(plaintext)
         var combined = Data()
-        combined.append(sender.encapsulatedKey)
-        combined.append(sealed)
+        combined.append(sealed.encapsulatedKey)
+        combined.append(sealed.ciphertext)
         return SealedCredential(
             ciphertextBase64: combined.base64EncodedString(),
             aadBase64: info.base64EncodedString(),
@@ -83,7 +81,7 @@ public enum RemoteUnlockCredentialEnvelopeCrypto {
 
     public static func open(
         envelope: HermesRealtimeRelayRemoteUnlockCredentialEnvelope,
-        recipientPrivateKey: Curve25519.KeyAgreement.PrivateKey
+        recipientPrivateKey: PlatformCurve25519AgreementMaterial
     ) throws -> String {
         guard envelope.algorithm == Self.algorithm else {
             throw CryptoError.unsupportedAlgorithm(envelope.algorithm)
@@ -107,13 +105,12 @@ public enum RemoteUnlockCredentialEnvelopeCrypto {
 
         let encapsulatedKey = combined.prefix(encapsulatedKeyByteCount)
         let ciphertext = combined.dropFirst(encapsulatedKeyByteCount)
-        var recipient = try HPKE.Recipient(
-            privateKey: recipientPrivateKey,
-            ciphersuite: .Curve25519_SHA256_ChachaPoly,
+        let plaintext = try PlatformCrypto.hpkeOpenCurve25519SHA256ChaChaPoly(
+            ciphertext: Data(ciphertext),
+            recipientPrivateKey: recipientPrivateKey,
             info: suppliedInfo,
             encapsulatedKey: Data(encapsulatedKey)
         )
-        let plaintext = try recipient.open(Data(ciphertext))
         guard let credential = String(data: plaintext, encoding: .utf8),
               !credential.isEmpty else {
             throw CryptoError.invalidPlaintext

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AppearanceModeControl — the Windows port of AgentLens/Views/Settings/AppearanceModePickerView.
+
+  A row of selectable mode cards (System / Light / Dark / High contrast) over a
+  "Reduce transparency" toggle. Selection drives the shell-wide ThemeService, which
+  applies the ElementTheme + backdrop on/off across every window.
+
+  macOS renders bespoke mini-mockup swatches per card; here we use accessible
+  RadioButtons with a glyph+label template — functional + keyboard/Narrator-ready,
+  with the richer swatch art deferred to the design pass (Bucket A Settings).
+-->
+<UserControl
+    x:Class="OpenBurnBar.App.Theme.AppearanceModeControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:OpenBurnBar.App.Theme"
+    xmlns:controls="using:Microsoft.UI.Xaml.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <StackPanel Spacing="14">
+
+        <TextBlock Text="Appearance"
+                   FontWeight="SemiBold"
+                   FontSize="15" />
+
+        <controls:RadioButtons x:Name="ModeButtons"
+                               MaxColumns="4"
+                               SelectionChanged="ModeButtons_SelectionChanged">
+            <controls:RadioButtons.ItemTemplate>
+                <DataTemplate x:DataType="local:AppearanceModeOption">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon FontFamily="Segoe MDL2 Assets"
+                                  FontSize="14"
+                                  Glyph="{x:Bind Glyph}" />
+                        <TextBlock Text="{x:Bind Label}" VerticalAlignment="Center" />
+                    </StackPanel>
+                </DataTemplate>
+            </controls:RadioButtons.ItemTemplate>
+        </controls:RadioButtons>
+
+        <Grid ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                <TextBlock Text="Reduce transparency"
+                           FontWeight="SemiBold"
+                           FontSize="13" />
+                <TextBlock Text="Turn off Mica/Acrylic and use solid surfaces."
+                           Opacity="0.7"
+                           FontSize="12"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+            <ToggleSwitch Grid.Column="1"
+                          x:Name="ReduceTransparencyToggle"
+                          MinWidth="0"
+                          Toggled="ReduceTransparencyToggle_Toggled" />
+        </Grid>
+
+    </StackPanel>
+</UserControl>

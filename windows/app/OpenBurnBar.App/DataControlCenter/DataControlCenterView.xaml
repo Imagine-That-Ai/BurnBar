@@ -1,0 +1,313 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Data & Privacy Control Center — layout lockstep with macOS
+  AgentLens/Views/Settings/DataControlCenter/DataControlCenterView.swift:
+
+    NavigationSplitView
+      sidebar: tier-grouped domain list + plan footer
+      detail:
+        toolbar (Refresh · Export all · Recovery · Panic)
+        HSplitView
+          inventory: Basin above bordered table
+          inspector: domain footprint + actions
+-->
+<UserControl
+    x:Class="OpenBurnBar.App.DataControlCenter.DataControlCenterView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:OpenBurnBar.App.DataControlCenter"
+    xmlns:theme="using:OpenBurnBar.App.Theme"
+    xmlns:dcc="using:OpenBurnBar.App.Presentation.DataControlCenter"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    RequestedTheme="Dark">
+
+    <UserControl.Resources>
+        <local:TierBrushConverter x:Key="TierBrush" />
+        <local:TierSoftBrushConverter x:Key="TierSoftBrush" />
+        <local:TierGlyphConverter x:Key="TierGlyph" />
+        <local:TierLabelConverter x:Key="TierLabel" />
+        <local:BytesToStringConverter x:Key="BytesToString" />
+        <local:RetentionLabelConverter x:Key="RetentionLabel" />
+        <local:DomainGlyphConverter x:Key="DomainGlyph" />
+    </UserControl.Resources>
+
+    <!-- Outer: sidebar | detail  (macOS NavigationSplitView) -->
+    <Grid Background="{StaticResource PensieveColorInkBaseBrush}">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="250" MinWidth="220" MaxWidth="300" />
+            <ColumnDefinition Width="1" />
+            <ColumnDefinition Width="*" MinWidth="520" />
+        </Grid.ColumnDefinitions>
+
+        <!-- ═══ Sidebar (macOS listStyle .sidebar) ═══ -->
+        <Grid Grid.Column="0" Background="#E612121A">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <ListView x:Name="DomainList"
+                      Grid.Row="0"
+                      SelectionMode="Single"
+                      IsItemClickEnabled="False"
+                      Background="Transparent"
+                      SelectionChanged="OnDomainListSelectionChanged"
+                      Padding="8,12,8,8">
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Padding" Value="8,6" />
+                        <Setter Property="Margin" Value="0,1" />
+                        <Setter Property="MinHeight" Value="0" />
+                        <Setter Property="CornerRadius" Value="8" />
+                    </Style>
+                </ListView.ItemContainerStyle>
+                <!-- Items built in code-behind: section headers + domain rows -->
+            </ListView>
+
+            <!-- Plan footer (macOS safeAreaInset bottom) -->
+            <Border Grid.Row="1"
+                    BorderBrush="{StaticResource PensieveColorGlassLineBrush}"
+                    BorderThickness="0,1,0,0"
+                    Padding="12,10">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon x:Name="PlanGlyph" Glyph="&#xE753;" FontSize="12"
+                              Foreground="{StaticResource PensieveColorBrassCoreBrush}" />
+                    <TextBlock x:Name="PlanSummary" Text="Free plan" FontSize="12" FontWeight="SemiBold"
+                               Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <Border Grid.Column="1" Background="{StaticResource PensieveColorGlassLineBrush}" />
+
+        <!-- ═══ Detail (toolbar + HSplit inventory | inspector) ═══ -->
+        <Grid Grid.Column="2" Background="Transparent">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- Toolbar (macOS .primaryAction group) -->
+            <Border Grid.Row="0"
+                    Style="{StaticResource LiquidGlassToolbarStyle}"
+                    theme:LiquidGlass.Surface="True"
+                    Margin="12,10,12,0">
+                <Grid>
+                    <TextBlock Text="Data &amp; Privacy"
+                               VerticalAlignment="Center"
+                               FontSize="15"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                        <Button x:Name="RefreshButton" Click="OnRefreshClick"
+                                Style="{StaticResource LiquidGlassInteractiveStyle}"
+                                ToolTipService.ToolTip="Refresh your data footprint">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <ProgressRing x:Name="RefreshSpinner" Width="14" Height="14" IsActive="False" Visibility="Collapsed" />
+                                <FontIcon x:Name="RefreshGlyph" Glyph="&#xE72C;" FontSize="12"
+                                          Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                <TextBlock Text="Refresh" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="ExportAllButton" Click="OnExportAllClick"
+                                Style="{StaticResource LiquidGlassInteractiveStyle}"
+                                ToolTipService.ToolTip="Export all of your data">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xEDE1;" FontSize="12"
+                                          Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                <TextBlock Text="Export all" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="RecoveryButton" Click="OnRecoveryClick"
+                                Style="{StaticResource LiquidGlassInteractiveStyle}"
+                                ToolTipService.ToolTip="Set up recovery before end-to-end encrypted mode">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE192;" FontSize="12"
+                                          Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                <TextBlock Text="Recovery" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="PanicButton" Click="OnPanicClick"
+                                Style="{StaticResource LiquidGlassInteractiveStyle}"
+                                ToolTipService.ToolTip="Revoke all access immediately">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE730;" FontSize="12"
+                                           Foreground="{StaticResource PensieveColorSealCrimsonBrush}" />
+                                <TextBlock Text="Panic" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{StaticResource PensieveColorSealCrimsonBrush}" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Error banner -->
+            <Border x:Name="ErrorBanner" Grid.Row="1" Margin="16,8,16,0" Visibility="Collapsed"
+                    CornerRadius="{StaticResource PensieveRadiusSmCorner}"
+                    Background="#1AFDC42C" Padding="12,8">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="&#xE7BA;" FontSize="12" Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
+                    <TextBlock x:Name="ErrorText" FontSize="12" TextWrapping="Wrap"
+                               Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
+                </StackPanel>
+            </Border>
+
+            <!-- HSplitView: inventory | inspector -->
+            <Grid Grid.Row="2" Margin="0,8,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" MinWidth="360" />
+                    <ColumnDefinition Width="1" />
+                    <ColumnDefinition Width="400" MinWidth="360" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Inventory column: Basin above table (macOS order) -->
+                <Grid Grid.Column="0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <local:MercuryBasinView x:Name="Basin" Grid.Row="0" Margin="16,8,16,12" />
+
+                    <!-- Table header -->
+                    <Border Grid.Row="1" Margin="16,0"
+                            BorderBrush="{StaticResource PensieveColorGlassLineBrush}"
+                            BorderThickness="1,1,1,0"
+                            Background="{StaticResource PensieveColorGlassBgBrush}"
+                            CornerRadius="10,10,0,0"
+                            Padding="4,0">
+                        <Grid Padding="0,0,0,2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" MinWidth="124" />
+                                <ColumnDefinition Width="140" />
+                                <ColumnDefinition Width="80" />
+                                <ColumnDefinition Width="100" />
+                                <ColumnDefinition Width="*" MinWidth="80" />
+                            </Grid.ColumnDefinitions>
+                            <Button Grid.Column="0" Tag="Domain" Click="OnSortHeaderClick" Style="{StaticResource DataGridHeaderButtonStyle}">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <TextBlock Text="Domain" />
+                                    <FontIcon x:Name="SortDomain" FontSize="9" Glyph="" />
+                                </StackPanel>
+                            </Button>
+                            <Button Grid.Column="1" Tag="Tier" Click="OnSortHeaderClick" Style="{StaticResource DataGridHeaderButtonStyle}">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <TextBlock Text="Tier" />
+                                    <FontIcon x:Name="SortTier" FontSize="9" Glyph="" />
+                                </StackPanel>
+                            </Button>
+                            <Button Grid.Column="2" Tag="Records" Click="OnSortHeaderClick" Style="{StaticResource DataGridHeaderButtonStyle}">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <TextBlock Text="Records" />
+                                    <FontIcon x:Name="SortRecords" FontSize="9" Glyph="" />
+                                </StackPanel>
+                            </Button>
+                            <Button Grid.Column="3" Tag="Stored" Click="OnSortHeaderClick" Style="{StaticResource DataGridHeaderButtonStyle}">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <TextBlock Text="Stored" />
+                                    <FontIcon x:Name="SortStored" FontSize="9" Glyph="&#xE70D;" />
+                                </StackPanel>
+                            </Button>
+                            <Button Grid.Column="4" Tag="Retention" Click="OnSortHeaderClick" Style="{StaticResource DataGridHeaderButtonStyle}">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <TextBlock Text="Retention" />
+                                    <FontIcon x:Name="SortRetention" FontSize="9" Glyph="" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+                    </Border>
+
+                    <!-- Table body -->
+                    <Border Grid.Row="2" Margin="16,0,16,16"
+                            BorderBrush="{StaticResource PensieveColorGlassLineBrush}"
+                            BorderThickness="1,0,1,1"
+                            Background="{StaticResource PensieveColorGlassBgBrush}"
+                            CornerRadius="0,0,10,10">
+                        <ListView x:Name="InventoryList"
+                                  SelectionMode="Single"
+                                  SelectionChanged="OnInventorySelectionChanged"
+                                  Background="Transparent"
+                                  Padding="4,0,4,8">
+                            <ListView.ItemContainerStyle>
+                                <Style TargetType="ListViewItem">
+                                    <Setter Property="Padding" Value="8,0" />
+                                    <Setter Property="Margin" Value="0" />
+                                    <Setter Property="MinHeight" Value="40" />
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                </Style>
+                            </ListView.ItemContainerStyle>
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="dcc:DomainRow">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" MinWidth="124" />
+                                            <ColumnDefinition Width="140" />
+                                            <ColumnDefinition Width="80" />
+                                            <ColumnDefinition Width="100" />
+                                            <ColumnDefinition Width="*" MinWidth="80" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                            <FontIcon FontSize="12"
+                                                      Glyph="{x:Bind Domain, Converter={StaticResource DomainGlyph}}"
+                                                      Foreground="{x:Bind Tier, Converter={StaticResource TierBrush}}" />
+                                            <TextBlock Text="{x:Bind Title}" FontSize="12" TextTrimming="CharacterEllipsis"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                                        </StackPanel>
+                                        <Border Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                CornerRadius="{StaticResource PensieveRadiusPillCorner}"
+                                                Background="{x:Bind Tier, Converter={StaticResource TierSoftBrush}}"
+                                                Padding="8,3">
+                                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                                <FontIcon FontSize="10"
+                                                          Glyph="{x:Bind Tier, Converter={StaticResource TierGlyph}}"
+                                                          Foreground="{x:Bind Tier, Converter={StaticResource TierBrush}}" />
+                                                <TextBlock Text="{x:Bind Tier, Converter={StaticResource TierLabel}}"
+                                                           FontSize="10" FontWeight="SemiBold"
+                                                           Foreground="{x:Bind Tier, Converter={StaticResource TierBrush}}" />
+                                            </StackPanel>
+                                        </Border>
+                                        <TextBlock Grid.Column="2" Text="{x:Bind Count}" VerticalAlignment="Center"
+                                                   FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                                                   Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                                        <TextBlock Grid.Column="3" Text="{x:Bind Bytes, Converter={StaticResource BytesToString}}"
+                                                   VerticalAlignment="Center"
+                                                   FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                                                   Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                                        <TextBlock Grid.Column="4" Text="{x:Bind Retention, Converter={StaticResource RetentionLabel}}"
+                                                   VerticalAlignment="Center" FontSize="11" TextTrimming="CharacterEllipsis"
+                                                   Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </Border>
+                </Grid>
+
+                <Border Grid.Column="1" Background="{StaticResource PensieveColorGlassLineBrush}" />
+
+                <!-- Inspector column -->
+                <Grid Grid.Column="2" Background="#9912121A">
+                    <local:DomainInspectorView x:Name="Inspector" Visibility="Collapsed" Margin="8" />
+                    <StackPanel x:Name="EmptyInspector" Spacing="8" Padding="24"
+                                HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <FontIcon Glyph="&#xE7C9;" FontSize="32" Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                        <TextBlock Text="No domain selected" FontSize="14" HorizontalAlignment="Center"
+                                   Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                        <TextBlock Text="Select a data domain to inspect its footprint and actions."
+                                   FontSize="12" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="240"
+                                   Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </Grid>
+    </Grid>
+</UserControl>

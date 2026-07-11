@@ -7,6 +7,12 @@ import Foundation
 /// when present, the viewer device / phone-control peer identifiers from the
 /// request. The old global "always allow" bit is retired on startup because it
 /// did not bind consent to a device.
+///
+/// Remembering is ON by default: the first accepted request from a device
+/// creates a device-bound grant, and each auto-accepted session renews the
+/// grant's expiry (sliding window), so an actively-used phone only ever needs
+/// its first Accept at the Mac. Grants for devices that go dormant past the
+/// TTL expire, and the ledger is revocable from Media permissions.
 @MainActor
 final class MercuryConsentStore: ObservableObject {
     struct MirrorAutoAcceptGrant: Codable, Equatable, Identifiable {
@@ -17,14 +23,14 @@ final class MercuryConsentStore: ObservableObject {
         let controlAuthorityPeerNodeId: String?
         let requesterName: String
         let grantedAt: Date
-        let expiresAt: Date
+        var expiresAt: Date
         var lastUsedAt: Date?
     }
 
     private static let legacyAlwaysAllowKey = "mercuryAlwaysAllowMyIPhoneToMirror"
     private static let rememberAcceptedPeersKey = "mercuryRememberAcceptedMirrorPeers"
     private static let grantsKey = "mercuryMirrorAutoAcceptGrants.v2"
-    private static let grantTTL: TimeInterval = 30 * 24 * 60 * 60
+    private static let grantTTL: TimeInterval = 365 * 24 * 60 * 60
 
     @Published var rememberAcceptedMirrorPeers: Bool {
         didSet {
@@ -36,6 +42,7 @@ final class MercuryConsentStore: ObservableObject {
 
     private let defaults: UserDefaults
     private let encodeGrants: ([MirrorAutoAcceptGrant]) throws -> Data
+    private var defaultsObserver: AnyCancellable?
 
     init(
         defaults: UserDefaults = .standard,
@@ -43,12 +50,35 @@ final class MercuryConsentStore: ObservableObject {
     ) {
         self.defaults = defaults
         self.encodeGrants = encodeGrants
-        self.rememberAcceptedMirrorPeers = defaults.bool(forKey: Self.rememberAcceptedPeersKey)
+        // Default ON: an unset key means the user never chose, and the grant
+        // model is device-bound + revocable, so remember-by-default is safe and
+        // spares the round-trip to the Mac for every session after the first.
+        // An explicit user choice (either way) is always respected.
+        if defaults.object(forKey: Self.rememberAcceptedPeersKey) == nil {
+            self.rememberAcceptedMirrorPeers = true
+        } else {
+            self.rememberAcceptedMirrorPeers = defaults.bool(forKey: Self.rememberAcceptedPeersKey)
+        }
         self.grants = Self.decodeGrants(defaults.data(forKey: Self.grantsKey))
         if defaults.object(forKey: Self.legacyAlwaysAllowKey) != nil {
+            let legacyAlwaysAllow = defaults.bool(forKey: Self.legacyAlwaysAllowKey)
             defaults.removeObject(forKey: Self.legacyAlwaysAllowKey)
-            self.rememberAcceptedMirrorPeers = false
+            if defaults.object(forKey: Self.rememberAcceptedPeersKey) == nil {
+                defaults.set(legacyAlwaysAllow, forKey: Self.rememberAcceptedPeersKey)
+                self.rememberAcceptedMirrorPeers = legacyAlwaysAllow
+            }
         }
+        defaultsObserver = NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
+            .sink { [weak self, weak defaults] notification in
+                if let changedDefaults = notification.object as? UserDefaults,
+                   let defaults,
+                   changedDefaults !== defaults {
+                    return
+                }
+                Task { @MainActor [weak self] in
+                    self?.reloadRememberAcceptedMirrorPeers()
+                }
+            }
         pruneExpired()
     }
 
@@ -79,12 +109,40 @@ final class MercuryConsentStore: ObservableObject {
             viewerDeviceId: viewerDeviceId,
             controlAuthorityPeerNodeId: controlAuthorityPeerNodeId
         )
-        guard let index = grants.firstIndex(where: { $0.key == key && $0.expiresAt > now }) else {
+        guard grants.contains(where: { $0.key == key && $0.expiresAt > now }) else {
             return false
         }
-        grants[index].lastUsedAt = now
-        persist()
         return true
+    }
+
+    func renewAutoAcceptGrant(
+        connectionId: String,
+        viewerDeviceId: String?,
+        controlAuthorityPeerNodeId: String?,
+        remotePeerNodeId: String?,
+        now: Date = Date()
+    ) {
+        guard Self.peerNodeIDsMatch(
+            declaredPeerNodeId: controlAuthorityPeerNodeId,
+            remotePeerNodeId: remotePeerNodeId
+        ) else {
+            return
+        }
+        pruneExpired(now: now)
+        let key = Self.grantKey(
+            connectionId: connectionId,
+            viewerDeviceId: viewerDeviceId,
+            controlAuthorityPeerNodeId: controlAuthorityPeerNodeId
+        )
+        guard let index = grants.firstIndex(where: { $0.key == key && $0.expiresAt > now }) else {
+            return
+        }
+        grants[index].lastUsedAt = now
+        // Sliding window: every actually auto-accepted session renews the
+        // grant, so active devices avoid re-ringing while declined/ringing
+        // attempts cannot keep consent alive.
+        grants[index].expiresAt = now.addingTimeInterval(Self.grantTTL)
+        persist()
     }
 
     func rememberAcceptedPeer(
@@ -141,6 +199,14 @@ final class MercuryConsentStore: ObservableObject {
         // intact rather than overwriting it with nil.
         guard let data = Self.encodeGrants(grants, encode: encodeGrants) else { return }
         defaults.set(data, forKey: Self.grantsKey)
+    }
+
+    private func reloadRememberAcceptedMirrorPeers() {
+        guard defaults.object(forKey: Self.rememberAcceptedPeersKey) != nil else { return }
+        let persisted = defaults.bool(forKey: Self.rememberAcceptedPeersKey)
+        if rememberAcceptedMirrorPeers != persisted {
+            rememberAcceptedMirrorPeers = persisted
+        }
     }
 
     /// Encode the grant ledger for persistence, returning `nil` (and logging) on a

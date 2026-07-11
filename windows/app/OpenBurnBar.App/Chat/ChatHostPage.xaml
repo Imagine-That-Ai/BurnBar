@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Phase-3 tail: the nav-frame HOSTING page for the full-canvas Chat surface. The AppShell content
+  Frame navigates Page types (SurfacePageResolver.Resolve), while the ported surface itself ships
+  as a UserControl (ChatSurfaceView). This thin Page adapts the one to the other so the "chat"
+  destination — destination #2 of the 12 in NavCatalog — renders its real surface instead of the
+  SurfaceStubPage placeholder. The surface owns its own ChatSurfaceViewModel + offscreen WebView2
+  Pretext host, so this host adds no wiring; it exists only to satisfy the Frame's Page contract.
+-->
+<Page
+    x:Class="OpenBurnBar.App.Chat.ChatHostPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:chat="using:OpenBurnBar.App.Chat"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    AutomationProperties.AutomationId="RouteRoot.chat">
+
+    <chat:ChatSurfaceView />
+</Page>

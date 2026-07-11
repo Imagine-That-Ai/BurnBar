@@ -1,0 +1,154 @@
+{
+  "aadVectors" : {
+    "connectionID" : "conn-abc",
+    "hermesChunkKind" : "delta",
+    "hermesChunkSHA256Hex" : "ac745278650b146e540f3f1003768bf6802e5a3f96a394e938c8414f64a433d0",
+    "hermesChunkSequence" : 3,
+    "hermesKeySHA256Hex" : "3932ad07f5582e5fb4be1285a32f493361a20646b902d78268e0042e361e752c",
+    "hermesRequestSHA256Hex" : "65d0f370c3b5084ec8ea188231d41c6c72464d1ab9104f0cdd6753c1efc8f91f",
+    "piAgentRequestSHA256Hex" : "6b76b6d1fd9e01c618f40a98980f1fd68e8347a0be89a6b694a2415d2860265a",
+    "requestID" : "req-001",
+    "uid" : "user-123"
+  },
+  "computerUse" : {
+    "actionCap" : 50,
+    "mode" : "browser",
+    "sessionId" : "linux-core-session",
+    "sessionTimeoutSeconds" : 1800,
+    "trustMode" : "manual"
+  },
+  "dashboardLayouts" : [
+    {
+      "displayName" : "Classic",
+      "isKernelForward" : false,
+      "rawValue" : "classic",
+      "storageKey" : "dashboardLayout",
+      "symbolName" : "rectangle.grid.1x2"
+    },
+    {
+      "displayName" : "Aurora",
+      "isKernelForward" : false,
+      "rawValue" : "aurora",
+      "storageKey" : "dashboardLayout",
+      "symbolName" : "sun.haze"
+    },
+    {
+      "displayName" : "Nebula",
+      "isKernelForward" : false,
+      "rawValue" : "nebula",
+      "storageKey" : "dashboardLayout",
+      "symbolName" : "rectangle.grid.2x2"
+    },
+    {
+      "displayName" : "Constellation",
+      "isKernelForward" : true,
+      "rawValue" : "constellation",
+      "storageKey" : "dashboardLayout",
+      "symbolName" : "sparkles"
+    },
+    {
+      "displayName" : "Cockpit",
+      "isKernelForward" : false,
+      "rawValue" : "cockpit",
+      "storageKey" : "dashboardLayout",
+      "symbolName" : "gauge.with.dots.needle.67percent"
+    },
+    {
+      "displayName" : "Atelier",
+      "isKernelForward" : true,
+      "rawValue" : "atelier",
+      "storageKey" : "dashboardLayout",
+      "symbolName" : "paintpalette"
+    }
+  ],
+  "generatedBy" : "OpenBurnBarCore/Tests/OpenBurnBarLinuxCoreFoundationTests/LinuxCoreFoundationTests.swift",
+  "media" : {
+    "cursor" : {
+      "x" : 12,
+      "y" : -34
+    },
+    "flags" : [
+      "keyframe",
+      "hasCursorMetadata"
+    ],
+    "frameIndex" : 2,
+    "gopID" : 7,
+    "kind" : "videoNAL",
+    "payloadBase64" : "bWVkaWE=",
+    "presentationTimestampMillis" : 123456789,
+    "wireHex" : "0000001b0109000000070000000200000000075bcd15000cffde6d65646961",
+    "wireSHA256Hex" : "e0af4bd8f72e3c9853521b16fbe556d91b969bc3bc1ffadd831f5279ae7c7d51"
+  },
+  "providers" : [
+    {
+      "displayName" : "Codex",
+      "persistedToken" : "codex",
+      "providerID" : "codex",
+      "quotaSignal" : true
+    },
+    {
+      "displayName" : "Claude Code",
+      "persistedToken" : "claudecode",
+      "providerID" : "claude-code",
+      "quotaSignal" : true
+    },
+    {
+      "displayName" : "OpenBurnBar",
+      "persistedToken" : "openburnbar",
+      "providerID" : "openburnbar",
+      "quotaSignal" : true
+    }
+  ],
+  "quotaBuckets" : [
+    {
+      "limit" : 100,
+      "meta" : {
+        "label" : "Codex primary",
+        "resetsAt" : "2026-07-03T02:00:00Z"
+      },
+      "name" : "codex-primary",
+      "remaining" : 88,
+      "resetsAt" : "2026-07-03T02:00:00Z",
+      "used" : 12,
+      "window" : "rollingHours"
+    },
+    {
+      "limit" : 10,
+      "meta" : {
+        "label" : "Hosted agent"
+      },
+      "name" : "openburnbar-hosted",
+      "remaining" : 7,
+      "resetsAt" : "2026-07-04T00:00:00Z",
+      "used" : 3,
+      "window" : "daily"
+    }
+  ],
+  "schema" : "openburnbar-core-model-parity-v2",
+  "skins" : [
+    {
+      "displayName" : "Aurora",
+      "rawValue" : "aurora",
+      "storageKey" : "appSkin"
+    },
+    {
+      "displayName" : "Editorial",
+      "rawValue" : "editorial",
+      "storageKey" : "appSkin"
+    }
+  ],
+  "themeModes" : [
+    {
+      "description" : "The classic Aurora experience",
+      "displayName" : "Standard",
+      "iconName" : "sparkles",
+      "rawValue" : "standard"
+    },
+    {
+      "description" : "Big, bright, and finger-friendly",
+      "displayName" : "Cooking",
+      "iconName" : "frying.pan",
+      "rawValue" : "cooking"
+    }
+  ]
+}

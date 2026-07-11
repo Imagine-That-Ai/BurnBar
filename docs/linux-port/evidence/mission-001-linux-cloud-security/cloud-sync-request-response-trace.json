@@ -1,0 +1,33 @@
+[
+  {
+    "committed" : false,
+    "requestPath" : "users\/uid-123\/provider_accounts\/provider-1",
+    "response" : "200 allowed",
+    "step" : "owner_upload_allowed"
+  },
+  {
+    "committed" : false,
+    "requestPath" : "users\/other\/provider_accounts\/provider-1",
+    "response" : "403 owner_mismatch",
+    "step" : "bola_denied"
+  },
+  {
+    "committed" : false,
+    "requestPath" : "users\/uid-123\/chat_threads\/thread-1",
+    "response" : "400 plaintext_private_field",
+    "step" : "plaintext_private_field_denied"
+  },
+  {
+    "committed" : false,
+    "requestPath" : "users\/uid-123\/provider_accounts\/provider-1",
+    "response" : "local_commit_failed_watermark_held",
+    "step" : "failure_injection_before_commit"
+  },
+  {
+    "committed" : true,
+    "requestPath" : "users\/uid-123\/provider_accounts\/provider-1",
+    "response" : "watermark_advanced",
+    "step" : "watermark_after_local_commit",
+    "watermark" : 1800000001000
+  }
+]

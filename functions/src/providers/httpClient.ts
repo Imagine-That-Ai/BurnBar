@@ -3,7 +3,7 @@
  * All outbound provider API calls must go through providerFetch.
  */
 
-import { resilientFetch } from "../resilienceHelpers.js";
+import { providerResilientFetch } from "../resilienceHelpers.js";
 
 export function providerFetch(
   provider: string,
@@ -11,5 +11,5 @@ export function providerFetch(
   url: string | URL,
   init?: RequestInit,
 ): Promise<Response> {
-  return resilientFetch(`${provider}.${operation}`, url, init);
+  return providerResilientFetch(provider, operation, url, init);
 }

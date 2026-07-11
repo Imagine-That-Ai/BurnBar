@@ -1,0 +1,120 @@
+### local-peer advertise-metadata (json)
+command=run_cli\ local-peer\ advertise-metadata\ --json
+{
+  "instance" : "OpenBurnBar-a5f6cc21c2bf",
+  "service_type" : "_openburnbar-peer._tcp",
+  "txt" : {
+    "daemon_version" : "1.0.29",
+    "pairing" : "mdns",
+    "platform" : "linux",
+    "protocol_version" : "1",
+    "transport" : "unix-domain"
+  }
+}
+exit_code=0
+
+### local-peer disabled-state (json)
+command=run_cli\ local-peer\ disabled-state\ --json
+{
+  "disabled" : false
+}
+exit_code=0
+
+### local-peer disabled-state with OPENBURNBAR_DISABLE_LOCAL_DISCOVERY=1 (json)
+command=docker\ run\ --rm\ -e\ OPENBURNBAR_DISABLE_LOCAL_DISCOVERY=1\ -v\ $WORKSPACE:/workspace\ -w\ /workspace\ openburnbar-linux-toolchain:mission-001-fts5\ /workspace/OpenBurnBarDaemon/.build-linux-w08-gate-remediation/aarch64-unknown-linux-gnu/debug/OpenBurnBarCLI\ local-peer\ disabled-state\ --json
+{
+  "disabled" : true
+}
+exit_code=0
+
+### local-peer browse (json, timeout 1)
+command=run_cli\ local-peer\ browse\ --json\ --timeout\ 1
+Avahi tools are unavailable: avahi-browse not found on PATH
+exit_code=1
+
+### devices parity (json)
+command=run_cli\ devices\ parity\ --json
+[
+  {
+    "adapter" : "pixel_clock",
+    "blocker" : "Install avahi-utils for mDNS browse.",
+    "discoveryMethod" : "_http._tcp awtrix_*",
+    "evidence" : "CLI devices pixel-clock discover",
+    "status" : "blocked"
+  },
+  {
+    "adapter" : "google_cast",
+    "blocker" : "Install avahi-utils for Cast browse.",
+    "discoveryMethod" : "_googlecast._tcp",
+    "evidence" : "CLI devices iot cast status",
+    "status" : "blocked"
+  },
+  {
+    "adapter" : "home_assistant",
+    "blocker" : "Requires OPENBURNBAR_HOME_ASSISTANT_URL for control beyond discovery.",
+    "discoveryMethod" : "_home-assistant._tcp",
+    "evidence" : "CLI devices iot homeassistant status",
+    "status" : "blocked_missing_home_assistant_url"
+  },
+  {
+    "adapter" : "smart_hub_bridge",
+    "blocker" : "Start Linux SmartHub bridge and rerun CLI status for live control proof.",
+    "discoveryMethod" : "loopback_http",
+    "evidence" : "CLI devices iot smarthub status",
+    "status" : "blocked_until_bridge_health_reachable"
+  },
+  {
+    "adapter" : "awtrix_http",
+    "blocker" : "Install avahi-utils.",
+    "discoveryMethod" : "_http._tcp",
+    "evidence" : "CLI devices discover awtrix",
+    "status" : "blocked"
+  }
+]
+exit_code=0
+
+### devices discover all (json)
+command=run_cli\ devices\ discover\ all\ --json
+[{"adapter":"pixel_clock","rawTranscript":"avahi-browse unavailable","instances":[],"serviceType":"_http._tcp"},{"adapter":"google_cast","rawTranscript":"avahi-browse unavailable","instances":[],"serviceType":"_googlecast._tcp"},{"adapter":"awtrix_http","rawTranscript":"avahi-browse unavailable","instances":[],"serviceType":"_http._tcp"},{"adapter":"home_assistant","rawTranscript":"avahi-browse unavailable","instances":[],"serviceType":"_home-assistant._tcp"},{"adapter":"smart_hub_bridge","rawTranscript":"avahi-browse unavailable","instances":[],"serviceType":"_openburnbar-peer._tcp"}]
+exit_code=0
+
+### devices iot cast status (json)
+command=run_cli\ devices\ iot\ cast\ status\ --json
+{"control_response":"","discovery_method":"_googlecast._tcp","status":"blocked_no_googlecast_instances","adapter":"google_cast","blocker":"avahi-browse unavailable","control_probe":"","bridge_default_port":"8787","instances":""}
+exit_code=0
+
+### devices iot smarthub status (json)
+command=run_cli\ devices\ iot\ smarthub\ status\ --json
+{"health_response":"","health_probe":"curl -fsS --max-time 2 http:\/\/127.0.0.1:8787\/health","note":"Linux shell exposes bridge status via CLI; AWTRIX via _http._tcp awtrix_* instances.","control_surface":"CLI status + local bridge HTTP","discovery":"mDNS+http","blocker":"Start the Linux SmartHub bridge on 127.0.0.1:8787 or provide a live bridge URL with \/health and \/api\/display.","control_response":"","status":"blocked_bridge_not_reachable","adapter":"smart_hub_bridge","control_probe":"curl -fsS --max-time 2 -X POST http:\/\/127.0.0.1:8787\/api\/display","bridge_listen":"127.0.0.1:8787"}
+exit_code=0
+
+### devices iot homeassistant status (json)
+command=run_cli\ devices\ iot\ homeassistant\ status\ --json
+{"blocker":"Set OPENBURNBAR_HOME_ASSISTANT_URL for authenticated control when instance is discovered.","control":"http_api","status":"blocked_missing_home_assistant_url","adapter":"home_assistant","discovery":"_home-assistant._tcp"}
+exit_code=0
+
+### devices pixel-clock discover (json)
+command=run_cli\ devices\ pixel-clock\ discover\ --json
+{"adapter":"pixel_clock","rawTranscript":"avahi-browse unavailable","serviceType":"_http._tcp","instances":[]}
+exit_code=0
+
+### devices pixel-clock agents (json)
+command=run_cli\ devices\ pixel-clock\ agents\ --json
+[]
+exit_code=0
+
+### devices pixel-clock control (json)
+command=run_cli\ devices\ pixel-clock\ control\ --json
+{"status":"blocked_no_runtime_agent_or_device","agent_processes":"","accepted_commands":"discover,agents,firmware-lane,control","blocker":"No pixel_clock\/awtrix runtime process or OPENBURNBAR_PIXELCLOCK_URL endpoint detected; attach device, start agent, or run accepted simulator before runtime control.","adapter":"pixel_clock","agent_process_count":"0","control_surface":"cli+shell"}
+exit_code=0
+
+### devices pixel-clock firmware-lane (json)
+command=run_cli\ devices\ pixel-clock\ firmware-lane\ --json
+{"network_manager_dbus":"probe_failed_permissions_or_missing_nm","lane":"pixel_clock_firmware_v1","serial_devices":"","libudev_serial":"blocked_hardware_serial_port_required","busctl_path":"missing","summary":"AWTRIX serial firmware flash requires attached USB\/UART hardware and elevated port access; record when device present.","udevadm_path":"missing","blocker":"AWTRIX serial firmware flash requires attached USB\/UART hardware and elevated port access; record when device present.","firmware_image":"missing","dbus_send_path":"\/usr\/bin\/dbus-send"}
+exit_code=0
+
+### local-peer parse-fixture (captured Avahi parsable line, json)
+command=run_cli\ local-peer\ parse-fixture\ /workspace/docs/linux-port/evidence/mission-001-discovery-devices-extension/avahi-parsable-fixture.txt\ --json
+The operation could not be completed. The file doesn’t exist.
+exit_code=1
+

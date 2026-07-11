@@ -11,7 +11,7 @@ const HTTP_RUNTIME_INVOCATION =
 
 const RUNTIME_BODY_MARKERS = [
   CALLABLE_RUNTIME_INVOCATION,
-  /\b(?:alice|bob|other-user|ALICE_UID|BOB_UID|tier2CallableProof|seedBolaVictimTenant|snapshotTenantPaths|expectTenantPathsUnchanged)\b/u,
+  /\b(?:alice|bob|userA|userB|other-user|ALICE_UID|BOB_UID|tier2CallableProof|seedBolaVictimTenant|snapshotTenantPaths|expectTenantPathsUnchanged)\b/u,
   /\b(?:rejects|permission-denied|not-found|assertFails|toMatchObject|toThrow|expectCallableDenial|tier2CallableProof)\b/u,
 ] as const;
 
@@ -77,7 +77,7 @@ function validateRuntimeTestBody(
 ): string[] {
   const errors: string[] = [];
   const markers =
-    trigger === "http"
+    trigger === "http" || trigger === "provider-webhook"
       ? [HTTP_RUNTIME_INVOCATION, RUNTIME_BODY_MARKERS[1], RUNTIME_BODY_MARKERS[2]]
       : [...RUNTIME_BODY_MARKERS];
   for (const marker of markers) {

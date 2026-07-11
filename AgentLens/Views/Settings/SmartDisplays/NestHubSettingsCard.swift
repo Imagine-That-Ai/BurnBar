@@ -510,7 +510,7 @@ struct NestHubSettingsCard: View {
                     Text("Identify on refresh")
                         .font(DesignSystem.Typography.body)
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
-                    Text("Pings the voice routine endpoint so Google can speak the latest totals.")
+                    Text("Pings the voice routine endpoint so the Hub page can speak the latest totals.")
                         .font(DesignSystem.Typography.tiny)
                         .foregroundStyle(DesignSystem.Colors.textMuted)
                 }
@@ -745,6 +745,7 @@ private struct NestHubProviderChip: View {
         case .xAI:          return "Grok"
         case .mimo:         return "MiMo"
         case .openBurnBar:  return "BurnBar"
+        case .junie:        return "Junie"
         }
     }
 }

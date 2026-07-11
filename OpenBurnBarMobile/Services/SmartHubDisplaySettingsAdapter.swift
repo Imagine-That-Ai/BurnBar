@@ -41,6 +41,8 @@ final class MobileSmartHubDisplayOperationsAdapter: SmartHubDisplayOperations {
             }
             return .error
         } catch {
+            // A failed probe *is* the answer: the bridge is unreachable from
+            // this device's network. Not an error worth logging.
             return .unreachable
         }
     }

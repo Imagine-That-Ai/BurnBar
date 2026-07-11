@@ -61,6 +61,11 @@ runs:
       with:
         github-token: ${{ inputs.github-token }}
         script: |
+          const {
+            BLOCKER_LABEL,
+            ESCALATED_LABEL,
+            evaluateP0Escalation,
+          } = require(`${process.env.GITHUB_WORKSPACE || require('node:process').cwd()}/.github/actions/ops-failure-issue/escalation.cjs`);
           const mode = process.env.OPS_MODE;
           const rawLane = process.env.OPS_LANE;
           if (!rawLane) {
@@ -156,6 +161,8 @@ runs:
             ['P2 - Medium', 'Significant issue. Fix within this sprint.'],
             ['P3 - Low', 'Nice to have. Fix when capacity allows.'],
             ['area: infra', 'CI/CD, build, deployment infrastructure.'],
+            [BLOCKER_LABEL, 'Named owner or external blocker exempts a known red from automatic age escalation.'],
+            [ESCALATED_LABEL, 'P0 remained open beyond the 72-hour recovery SLO and was escalated.'],
           ]);
           const labelColor = (name) => {
             if (name.startsWith('lane:')) return 'd0e0ff';
@@ -164,6 +171,8 @@ runs:
             if (name === 'P1 - High') return 'e4503f';
             if (name === 'P2 - Medium') return 'f4c430';
             if (name === 'P3 - Low') return '0075ca';
+            if (name === ESCALATED_LABEL) return 'd73a4a';
+            if (name === BLOCKER_LABEL) return '5319e7';
             if (name.startsWith('area:')) return 'd0e0ff';
             return 'ededed';
           };
@@ -221,7 +230,7 @@ runs:
             `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}` +
             `/actions/runs/${context.runId}`;
 
-          await ensureIssueLabels([laneLabel]);
+          await ensureIssueLabels([laneLabel, BLOCKER_LABEL, ESCALATED_LABEL]);
 
           // Find this lane's open issue by the per-lane label ONLY, paginating
           // fully so a backlog of other-lane issues can never hide it.
@@ -248,7 +257,9 @@ runs:
               // skip — a new occurrence must always leave a trace.
               const issue = matches[0];
               const { previous, next } = bumpCountLabel(issue);
-              await ensureIssueLabels([next]);
+              const escalation = evaluateP0Escalation(issue);
+              const labelsToAdd = escalation.shouldEscalate ? [next, ESCALATED_LABEL] : [next];
+              await ensureIssueLabels(labelsToAdd);
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -258,6 +269,9 @@ runs:
                   '',
                   `Run: ${runUrl}`,
                   `Ref: ${oneLine(context.ref, 'unknown')}`,
+                  escalation.shouldEscalate
+                    ? `Escalation: @albertonunez - this P0 has remained open for ${escalation.ageHours} hours without a named blocker.`
+                    : null,
                   details ? '' : null,
                   details || null,
                 ].filter((l) => l !== null).join('\n'),
@@ -274,8 +288,11 @@ runs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issue.number,
-                labels: [next],
+                labels: labelsToAdd,
               });
+              if (escalation.shouldEscalate) {
+                core.warning(`Lane '${lane}': escalated overdue P0 issue #${issue.number} at ${escalation.ageHours} hours.`);
+              }
               core.notice(`Lane '${lane}': commented on standing issue #${issue.number} (${next}).`);
               return;
             }

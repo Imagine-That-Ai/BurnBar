@@ -2,19 +2,21 @@
 # Shrink-only per-tree size ratchet for the Windows source tree (windows/).
 #
 # Mirrors scripts/debt/check-swift-file-size-budget.sh, but is rooted at
-# `windows/` and PARTITIONED by the four documented sub-trees so counters cannot
+# `windows/` and PARTITIONED by the ten documented sub-trees so counters cannot
 # collide across trees:
 #
 #   • A macOS-tree change (AgentLens/, OpenBurnBarCore/, OpenBurnBarDaemon/) or an
 #     Android-tree change (android/) is NEVER scanned — the scan root is windows/ —
 #     so it cannot move any Windows counter, and vice-versa.
-#   • Each area counter (app / pal / native / tests) is computed ONLY from
-#     windows/<area>/, so growth in one area cannot move another area's counter.
+#   • Each area counter (app / pal / native / storage / cloudsync / particles /
+#     pretext / computeruse / integrations / packaging / dist / tests) is computed
+#     ONLY from windows/<area>/, so growth in one area cannot move another area's
+#     counter.
 #
 # Fails CI if EITHER:
 #   - a NEW Windows source file crosses the size target (not in the baseline), or
 #   - a baselined file GROWS beyond its recorded line count, or
-#   - a Windows source file lives OUTSIDE the four documented sub-trees.
+#   - a Windows source file lives OUTSIDE the twelve documented sub-trees.
 # Baselined files may only shrink. As they drop below the target, regenerate the
 # baseline (`--print-live`) to ratchet down.
 #
@@ -27,6 +29,19 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 baseline_path="${repo_root}/budgets/windows-tree-baseline.json"
 mode="${1:-}"
 
+# No-tracked-binaries tripwire (docs/windows-port/PARITY_100_REMEDIATION_PLAN.md,
+# Wave 0 item 6): windows/ must stay 100% text in git. Build outputs are already
+# gitignored (**/bin/, **/obj/); this guards the residual risk — a future
+# force-add or a copy step that lands compiled artifacts outside bin/ or obj/.
+tracked_binaries="$(cd "${repo_root}" && git ls-files -- windows/ \
+  | grep -E '\.(dll|so|dylib|pdb|exe|winmd|lib|a|o|nupkg|msix|msi|zip)$' || true)"
+if [[ -n "${tracked_binaries}" ]]; then
+  echo "ERROR: compiled/binary artifacts are tracked under windows/ — the tree must stay text-only in git:" >&2
+  echo "${tracked_binaries}" >&2
+  echo "Remove them from the index (git rm --cached); build outputs belong under gitignored bin/ or obj/." >&2
+  exit 1
+fi
+
 python3 - "${repo_root}" "${baseline_path}" "${mode}" <<'PY'
 import json
 import sys
@@ -37,7 +52,7 @@ baseline_path = Path(sys.argv[2])
 mode = sys.argv[3] if len(sys.argv) > 3 else ""
 
 WIN_ROOT = repo_root / "windows"
-AREAS = ("app", "pal", "native", "tests")
+AREAS = ("app", "pal", "native", "storage", "cloudsync", "particles", "pretext", "computeruse", "integrations", "packaging", "dist", "tests")
 SOURCE_SUFFIXES = {".cs", ".xaml", ".cpp", ".cxx", ".cc", ".c", ".h", ".hpp", ".rs"}
 DEFAULT_TARGET = 800
 
@@ -152,7 +167,9 @@ if stray:
     for path in stray:
         print(f"    {path}", file=sys.stderr)
     print(
-        "Place Windows source under windows/{app,pal,native,tests}/ (see windows/README.md).",
+        "Place Windows source under "
+        "windows/{app,pal,native,storage,cloudsync,particles,pretext,computeruse,integrations,packaging,dist,tests}/ "
+        "(see windows/README.md).",
         file=sys.stderr,
     )
 

@@ -1,0 +1,12 @@
+{
+  "exportedAt": "2026-07-10T02:33:56.639Z",
+  "commit": "7d5f1c46df692bb22df8205277b3392595d8b224",
+  "tree": "7f6c988849675f4c4b68619c685ba8311fdf43b3",
+  "fileCount": 10277,
+  "archivePath": "/private/tmp/openburnbar-candidate-7d5f1c4-a/openburnbar-candidate-7d5f1c46df69.tar.gz",
+  "archiveSha256": "65b2a52c700376336acae105c3632af8afb9bea1956092299eaf445e1d41f703",
+  "archiveSize": 407142228,
+  "manifestPath": "/private/tmp/openburnbar-candidate-7d5f1c4-a/openburnbar-candidate-7d5f1c46df69.manifest.json",
+  "manifestSha256": "35cd73407d6949ec606e3f7bfc3e0cc617c4ebd9bc5b1c0de0c24793677a933b",
+  "manifestPayloadSha256": "d9936ad651ba42c043fbcb5f3357f8f4233cdf709f078f1f71c6ccfd169f956e"
+}

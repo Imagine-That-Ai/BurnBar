@@ -14,12 +14,12 @@ private func makeTempExecutable(at path: String, content: String = "#!/bin/sh\ne
 }
 
 /// Lightweight test helper for cross-task capture in deterministic seam assertions.
-/// Thread-safe mutable box backed by `Locked<T>` from OpenBurnBarCore.
+/// Thread-safe mutable box backed by `OpenBurnBarCore.Locked<T>` from OpenBurnBarCore.
 private final class MutableBox<Value>: Sendable {
-    private let storage: Locked<Value>
+    private let storage: OpenBurnBarCore.Locked<Value>
 
     init(_ value: Value) {
-        self.storage = Locked(value)
+        self.storage = OpenBurnBarCore.Locked(value)
     }
 
     var value: Value {
@@ -886,6 +886,18 @@ final class SwitcherCLILaunchTests: XCTestCase {
         XCTAssertFalse(result.keys.contains("GITHUB_TOKEN"), "Sensitive token should not be in baseline environment")
     }
 
+    func test_buildAllowlistedBaselineEnvironment_excludesProfileScopedJunieAPIKey() {
+        let ambientEnv = [
+            "HOME": "/Users/test",
+            "JUNIE_API_KEY": "junie-secret"
+        ]
+
+        let result = CLILaunchAdapter.buildAllowlistedBaselineEnvironment(baseEnv: ambientEnv)
+
+        XCTAssertEqual(result["HOME"], "/Users/test")
+        XCTAssertNil(result["JUNIE_API_KEY"], "Junie API key must only pass through explicit profile envKeysToPass")
+    }
+
     func test_buildAllowlistedBaselineEnvironment_includesAllKnownAllowlistedKeys() {
         let ambientEnv: [String: String] = [
             "HOME": "/Users/test",
@@ -1005,6 +1017,40 @@ final class SwitcherCLILaunchTests: XCTestCase {
         // Should not have keys not in base env
         XCTAssertNil(result["USER"])
         XCTAssertNil(result["SHELL"])
+    }
+
+    func test_buildCLILaunch_passesJunieAPIKeyOnlyWhenProfileRequestsIt() {
+        let junieURL = URL(fileURLWithPath: "/tmp/test-junie-launch")
+        let cleanup = makeTempExecutable(at: junieURL.path)
+        defer { cleanup() }
+        CLILaunchAdapter.executableResolver = { cliType in
+            cliType == .junie ? junieURL : nil
+        }
+        CLILaunchAdapter.environmentProvider = {
+            [
+                "JUNIE_API_KEY": "perm-test",
+                "OPENAI_API_KEY": "must-not-leak"
+            ]
+        }
+
+        let profile = SwitcherProfileRecord(
+            targetKind: .cli,
+            cliType: .junie,
+            cliMetadata: SwitcherCLIProfileMetadata(
+                envKeysToPass: ["JUNIE_API_KEY"],
+                displayLabel: "Junie"
+            ),
+            sortKey: 1
+        )
+
+        let result = CLILaunchAdapter.buildCLILaunch(profile: profile)
+        guard case .success(let config) = result else {
+            XCTFail("Expected launch config")
+            return
+        }
+
+        XCTAssertEqual(config.env["JUNIE_API_KEY"], "perm-test")
+        XCTAssertNil(config.env["OPENAI_API_KEY"])
     }
 
     func test_buildCLILaunch_usesAllowlistedBaselineNotFullAmbient() {

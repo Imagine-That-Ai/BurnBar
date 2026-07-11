@@ -69,6 +69,8 @@ public enum OpenBurnBarModelDisplayName {
             return "xAI"
         case "factory", "factory-custom":
             return "Factory"
+        case "jetbrains", "junie":
+            return "JetBrains"
         case "openrouter":
             return "OpenRouter"
         case "ollama":
@@ -346,6 +348,18 @@ public enum CLIRuntimeModelCatalog {
                 "cursor",
                 "Cursor via Cursor Agent CLI",
                 source: .cursorAgentProfile
+            )
+        case .junie:
+            return option(
+                "",
+                OpenBurnBarModelDisplayName.compose(
+                    modelName: "Junie default",
+                    providerName: "JetBrains",
+                    providerID: "jetbrains",
+                    reasoningLevel: "CLI default"
+                ),
+                "jetbrains",
+                "JetBrains via Junie CLI"
             )
         case .droid, .forge, .hermes, .pi, .openClaw, .openClaude, .omp:
             return nil

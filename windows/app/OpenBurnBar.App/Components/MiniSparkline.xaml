@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="OpenBurnBar.App.Components.MiniSparkline"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!--
+      Windows peer of AgentLens/Views/Components/MiniSparkline.swift. SwiftUI Charts renders
+      the smoothed line + area fill internally; on Windows we compute the identical Catmull-Rom
+      curve via the parity-tested Components/Models/SparklineGeometry and draw it as an area Path
+      (gradient fill) under a line Path plus an end-point cap.
+    -->
+    <Canvas x:Name="ChartCanvas"
+            Width="60"
+            Height="20"
+            SizeChanged="OnCanvasSizeChanged" />
+</UserControl>

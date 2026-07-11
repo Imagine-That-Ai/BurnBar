@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Portable Pretext text-layout bridge for the Windows port (W6-DS-PRETEXT).
+
+    This library holds the PLATFORM-INDEPENDENT half of the Pretext engine: the
+    JSON bridge protocol (id/method/params -> id/ok/value/error), the prepared-text
+    handle cache, the async request/reply plumbing, the value-type mirror of the
+    Swift `Pretext*` API, and the metric-parity corpus/golden harness. It is the
+    C# peer of `OpenBurnBarCore/Sources/OpenBurnBarCore/Pretext/PretextEngine.swift`
+    + `PretextTypes.swift`.
+
+    It targets plain net8.0 (no Windows TFM, no WinUI, no WebView2 hard dependency)
+    ON PURPOSE:
+      * the same assembly compiles and its logic is unit-tested on the macOS
+        authoring host today via `dotnet build` / `dotnet test` against a fake
+        in-memory web host (no browser needed);
+      * the WinUI app (net8.0-windows) plugs a REAL offscreen WebView2 into the
+        `IPretextWebHost` seam for the live measurement path
+        (windows/app/OpenBurnBar.App/Pretext/WebView2PretextHost.cs);
+      * net8.0 (not net10.0) so the net8.0-windows app target can reference it.
+
+    The bundled `Resources/Pretext/pretext.bundle.min.js` is a BYTE-VERBATIM copy of
+    the macOS engine's bundle (see Resources/Pretext/README.md — provenance + the
+    `cmp` invariant). `Resources/Pretext/index.html` is the WebView2 bridge shell
+    (chrome.webview transport) mirroring the WKWebView shell method-for-method.
+
+    Risk R22 (Chromium-vs-WebKit metric drift) is documented in
+    docs/windows-port/design/0005-pretext-webview2-metric-parity.md; the live
+    metric-parity run against the Mac golden is Windows/dev-host-deferred.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.Pretext</RootNamespace>
+    <AssemblyName>OpenBurnBar.Pretext</AssemblyName>
+    <!-- Lets a net10-only SDK build the net8 target without the net8 shared
+         runtime installed (the ref pack restores from NuGet). -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <!-- The bundled JS shell + the metric-parity corpus/golden ride as embedded
+       resources so the runtime parity runner and the tests load them without any
+       CopyToOutputDirectory path fragility. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Resources/Pretext/pretext.bundle.min.js" LogicalName="pretext.bundle.min.js" />
+    <EmbeddedResource Include="Resources/Pretext/index.html" LogicalName="pretext.index.html" />
+    <EmbeddedResource Include="corpus/pretext-corpus.json" LogicalName="pretext-corpus.json" />
+    <EmbeddedResource Include="corpus/golden.mac.json" LogicalName="golden.mac.json" />
+  </ItemGroup>
+
+</Project>

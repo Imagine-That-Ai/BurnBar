@@ -156,7 +156,7 @@ final class QuotaWorkspaceViewModelTests: XCTestCase {
     func test_rebuild_prefersAccountSnapshotOverProviderRollupWhenAccountHasNoSignal() async throws {
         let appSupportRoot = try makeTemporaryDirectory()
         let home = try makeTemporaryDirectory()
-        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupportRoot)
+        let appPaths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupportRoot)
         let store = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: .default)
         let staleRollup = ProviderQuotaSnapshot(
             provider: .claudeCode,
@@ -222,7 +222,7 @@ final class QuotaWorkspaceViewModelTests: XCTestCase {
     func test_rebuild_showsDefaultCLILoginAlongsideIsolatedProfiles() async throws {
         let appSupportRoot = try makeTemporaryDirectory()
         let home = try makeTemporaryDirectory()
-        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupportRoot)
+        let appPaths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupportRoot)
         let store = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: .default)
         let current = ProviderQuotaSnapshot(
             provider: .codex,
@@ -301,7 +301,7 @@ final class QuotaWorkspaceViewModelTests: XCTestCase {
     func test_rebuild_keepsPendingAccountVisibleAlongsideDisplayableAccounts() async throws {
         let appSupportRoot = try makeTemporaryDirectory()
         let home = try makeTemporaryDirectory()
-        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupportRoot)
+        let appPaths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupportRoot)
         let store = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: .default)
         let active = ProviderQuotaSnapshot(
             provider: .codex,
@@ -459,7 +459,7 @@ final class QuotaWorkspaceViewModelTests: XCTestCase {
             statusMessage: "Isolated profile quota.",
             buckets: [
                 ProviderQuotaBucket(
-                    key: "codex-profile-5h",
+                    key: "codex-isolated-5h",
                     label: "5-hour window",
                     windowKind: .rollingHours,
                     usedValue: 25,

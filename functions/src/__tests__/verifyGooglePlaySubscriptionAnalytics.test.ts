@@ -47,6 +47,7 @@ vi.mock("googleapis", () => ({
 vi.mock("../adminRuntime.js", () => ({
   db: {
     doc: (path: string) => ({
+      get: async () => ({ exists: false }),
       set: async (data: Record<string, unknown>) => {
         state.docSets.push({ path, data });
       },

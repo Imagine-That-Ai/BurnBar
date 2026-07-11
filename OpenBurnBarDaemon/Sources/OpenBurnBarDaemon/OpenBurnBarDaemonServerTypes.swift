@@ -4,6 +4,9 @@ import Foundation
 // Socket/RPC envelope types shared by `BurnBarDaemonServer` (actor implementation stays in BurnBarDaemonServer.swift).
 
 public enum BurnBarDaemonError: Error, LocalizedError {
+    case daemonAlreadyRunning(String)
+    case activeSocketAlreadyExists(String)
+    case socketPathChanged(String)
     case socketPathTooLong(String)
     case unexpectedExistingItem(String)
     case failedToCreateSocket(code: Int32, detail: String)
@@ -14,6 +17,12 @@ public enum BurnBarDaemonError: Error, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
+        case .daemonAlreadyRunning(let path):
+            return "Another OpenBurnBar daemon owns the socket lock at \(path)."
+        case .activeSocketAlreadyExists(let path):
+            return "Another process is accepting connections on the OpenBurnBar socket at \(path)."
+        case .socketPathChanged(let path):
+            return "The OpenBurnBar socket path changed while startup or shutdown was in progress: \(path)"
         case .socketPathTooLong(let path):
             return "OpenBurnBar socket path exceeds sockaddr_un capacity: \(path)"
         case .unexpectedExistingItem(let path):

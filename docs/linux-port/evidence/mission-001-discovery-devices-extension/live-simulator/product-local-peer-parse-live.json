@@ -1,0 +1,26 @@
+[
+  {
+    "hostName" : "4434109eb686.local",
+    "instanceName" : "OpenBurnBar SmartHub Bridge",
+    "port" : 18084,
+    "txt" : {
+      "daemon_version" : "smarthub-sim",
+      "friendly" : "SmartHub Bridge",
+      "protocol_version" : "1",
+      "transport" : "http"
+    }
+  },
+  {
+    "hostName" : "4434109eb686.local",
+    "instanceName" : "OpenBurnBar validator",
+    "port" : 48313,
+    "txt" : {
+      "conflict_attempt" : "1",
+      "daemon_version" : "mission-001-conflict",
+      "friendly" : "OpenBurnBar validator",
+      "note" : "quoted;semi",
+      "protocol_version" : "1",
+      "transport" : "unix-domain"
+    }
+  }
+]

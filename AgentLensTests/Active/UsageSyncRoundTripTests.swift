@@ -19,6 +19,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
     private var providerAccountSync: ProviderAccountSyncService!
     private var quotaSnapshotSync: QuotaSnapshotSyncService!
     private var vaultKeyProvider: TestConversationVaultKeyProvider!
+    private var analyticsTransport: FakeAnalyticsTransport!
 
     override func setUp() async throws {
         dataStore = try makeDiscoveryInMemoryStore()
@@ -36,6 +37,23 @@ final class UsageSyncRoundTripTests: XCTestCase {
         downloadSync = DownloadSyncService(context: context, conversationVaultKeyProvider: vaultKeyProvider)
         providerAccountSync = ProviderAccountSyncService(context: context)
         quotaSnapshotSync = QuotaSnapshotSyncService(context: context)
+        let consent = AnalyticsConsentStore(defaults: makeIsolatedAnalyticsDefaults())
+        consent.grant()
+        analyticsTransport = FakeAnalyticsTransport()
+        AnalyticsRuntime.configure(
+            consentStore: consent,
+            recorder: Analytics(consent: consent, transport: analyticsTransport, superProperties: { [:] })
+        )
+        // The reconciliation lifecycle is durable (UserDefaults.standard) and
+        // therefore process-global: start every test from a known idle state.
+        UsageSyncService.orphanReconciliationState = .idle
+    }
+
+    override func tearDown() async throws {
+        // Never leak an armed/pending durable reconciliation state into other
+        // suites that construct UsageSyncService instances.
+        UsageSyncService.orphanReconciliationState = .idle
+        UserDefaults.standard.removeObject(forKey: UsageSyncService.orphanReconciliationDefaultsKey)
     }
 
     // MARK: - Write → Read Round Trip
@@ -74,7 +92,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
         XCTAssertTrue(unsyncedAfter.isEmpty)
     }
 
-    func test_usageSyncPublishesDeviceHeartbeatBeforeVaultKeyFailureWithoutSyncStatus() async throws {
+    func test_usageSyncPublishesDeviceHeartbeatAndFailureStatusBeforeVaultKeyFailure() async throws {
         let throwingProvider = ThrowingConversationVaultKeyProvider(error: TestVaultError.unavailable)
         usageSync = UsageSyncService(context: context, vaultKeyProvider: throwingProvider)
         let usage = TokenUsage(
@@ -96,10 +114,13 @@ final class UsageSyncRoundTripTests: XCTestCase {
         XCTAssertEqual(deviceDoc["platform"] as? String, "macOS")
         XCTAssertNotNil(deviceDoc["lastSeenAt"] as? Timestamp)
 
-        XCTAssertNil(
-            fakeGateway.documentData(at: "users/test-uid-1/sync_status/test-device-1"),
-            "sync_status must not claim usage is synced before the upload path succeeds"
-        )
+        let statusDoc = try XCTUnwrap(fakeGateway.documentData(at: "users/test-uid-1/sync_status/test-device-1"))
+        XCTAssertEqual(statusDoc["deviceId"] as? String, "test-device-1")
+        XCTAssertEqual(statusDoc["isOnline"] as? Bool, true)
+        XCTAssertEqual(statusDoc["lastErrorCode"] as? String, "other")
+        XCTAssertNotNil(statusDoc["lastAttemptAt"] as? Timestamp)
+        XCTAssertNil(statusDoc["lastSyncAt"], "sync_status must not claim usage is synced before the upload path succeeds")
+        XCTAssertNil(statusDoc["collectionsInSync"], "sync_status must not claim usage is synced before the upload path succeeds")
 
         XCTAssertEqual(throwingProvider.callCount, 1)
         let unsyncedAfter = try await dataStore.fetchUnsynced()
@@ -147,7 +168,13 @@ final class UsageSyncRoundTripTests: XCTestCase {
 
         // A key holder can recover the exact project name (seal → open round trip).
         let envelope = try XCTUnwrap(OpenBurnBarCore.CloudVaultCrypto.decodeSealedText(from: sealed))
-        let opened = try CloudVaultCrypto.openText(envelope, keyData: vaultKeyProvider.keyData)
+        let aadContext = try CloudVaultAADContext(
+            uid: "test-uid-1",
+            collection: "usage",
+            docID: "test-device-1_\(usage.id.uuidString)",
+            field: "sealedProjectName"
+        )
+        let opened = try CloudVaultCrypto.openText(envelope, keyData: vaultKeyProvider.keyData, aadContext: aadContext)
         XCTAssertEqual(opened, "Top Secret Project")
 
         // The opaque hash is stable for the same name + key.
@@ -207,6 +234,327 @@ final class UsageSyncRoundTripTests: XCTestCase {
         XCTAssertEqual(fakeGateway.documents(under: "users/test-uid-1/usage").count, 805)
         let remainingUnsynced = try await dataStore.fetchUnsynced()
         XCTAssertTrue(remainingUnsynced.isEmpty)
+        await Task.yield()
+        let completed = analyticsTransport.sent.last { $0.name == AnalyticsEvent.cloudsyncCompleted.rawValue }
+        XCTAssertEqual(
+            completed?.properties["item_count_bucket"],
+            .string(">500"),
+            "cloudsync.completed must bucket the full synced total, not the final partial batch"
+        )
+    }
+
+    func test_usageSyncDeletesSameDeviceRandomIdOrphansAfterDeterministicRecount() async throws {
+        let baseTime = Date(timeIntervalSince1970: 1_700_000_000)
+        let usage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "recount-session",
+            projectName: "RecountProject",
+            model: "claude-3-5-sonnet",
+            inputTokens: 100,
+            outputTokens: 50,
+            startTime: baseTime,
+            endTime: baseTime.addingTimeInterval(60)
+        )
+        let currentDocID = "test-device-1_\(usage.id.uuidString)"
+        fakeGateway.setDocumentData([
+            "id": UUID().uuidString,
+            "deviceId": "test-device-1",
+            "provider": AgentProvider.claudeCode.rawValue,
+            "sessionId": "recount-session",
+            "model": "claude-3-5-sonnet",
+            "startTime": Timestamp(date: baseTime),
+            "endTime": Timestamp(date: baseTime.addingTimeInterval(60))
+        ], at: "users/test-uid-1/usage/test-device-1_11111111-1111-4111-8111-111111111111")
+        fakeGateway.setDocumentData([
+            "id": UUID().uuidString,
+            "deviceId": "remote-device-2",
+            "provider": AgentProvider.claudeCode.rawValue,
+            "sessionId": "remote-session",
+            "model": "claude-3-5-sonnet",
+            "startTime": Timestamp(date: baseTime),
+            "endTime": Timestamp(date: baseTime.addingTimeInterval(60))
+        ], at: "users/test-uid-1/usage/remote-device-2_22222222-2222-4222-8222-222222222222")
+        try await dataStore.insert(usage)
+
+        UsageSyncService.requestOrphanReconciliation()
+        await usageSync.sync()
+
+        let docs = fakeGateway.documents(under: "users/test-uid-1/usage")
+        XCTAssertNil(docs["users/test-uid-1/usage/test-device-1_11111111-1111-4111-8111-111111111111"])
+        XCTAssertNotNil(docs["users/test-uid-1/usage/\(currentDocID)"])
+        XCTAssertNotNil(docs["users/test-uid-1/usage/remote-device-2_22222222-2222-4222-8222-222222222222"])
+    }
+
+    func test_orphanCleanup_skippedWithoutReconciliationRequest() async throws {
+        let baseTime = Date(timeIntervalSince1970: 1_700_000_000)
+        let usage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "incremental-session",
+            projectName: "IncrementalProject",
+            model: "claude-3-5-sonnet",
+            inputTokens: 10,
+            outputTokens: 5,
+            startTime: baseTime,
+            endTime: baseTime.addingTimeInterval(30)
+        )
+        let staleDocPath = "users/test-uid-1/usage/test-device-1_33333333-3333-4333-8333-333333333333"
+        fakeGateway.setDocumentData([
+            "id": UUID().uuidString,
+            "deviceId": "test-device-1",
+            "provider": AgentProvider.claudeCode.rawValue,
+            "sessionId": "stale-session",
+            "model": "claude-3-5-sonnet",
+            "startTime": Timestamp(date: baseTime),
+            "endTime": Timestamp(date: baseTime.addingTimeInterval(30))
+        ], at: staleDocPath)
+        try await dataStore.insert(usage)
+
+        // No requestOrphanReconciliation(): an ordinary incremental sync must
+        // not run the O(total-history) orphan scan, so the stale doc survives.
+        UsageSyncService.orphanReconciliationState = .idle
+        await usageSync.sync()
+
+        let docs = fakeGateway.documents(under: "users/test-uid-1/usage")
+        XCTAssertNotNil(docs[staleDocPath])
+        XCTAssertNotNil(docs["users/test-uid-1/usage/test-device-1_\(usage.id.uuidString)"])
+    }
+
+    func test_orphanCleanup_refusedWhenLocalTableEmpty() async throws {
+        let baseTime = Date(timeIntervalSince1970: 1_700_000_000)
+        let cloudDocPath = "users/test-uid-1/usage/test-device-1_44444444-4444-4444-8444-444444444444"
+        fakeGateway.setDocumentData([
+            "id": UUID().uuidString,
+            "deviceId": "test-device-1",
+            "provider": AgentProvider.claudeCode.rawValue,
+            "sessionId": "history-session",
+            "model": "claude-3-5-sonnet",
+            "startTime": Timestamp(date: baseTime),
+            "endTime": Timestamp(date: baseTime.addingTimeInterval(30))
+        ], at: cloudDocPath)
+
+        // Recount requested reconciliation but persistence failed: the local
+        // table is empty. Cleanup must refuse rather than delete the device's
+        // entire cloud history.
+        UsageSyncService.requestOrphanReconciliation()
+        await usageSync.sync()
+
+        let docs = fakeGateway.documents(under: "users/test-uid-1/usage")
+        XCTAssertNotNil(docs[cloudDocPath])
+    }
+
+    func test_orphanCleanup_runsAfterReplacementUploadCommits() async throws {
+        let baseTime = Date(timeIntervalSince1970: 1_700_000_000)
+        let usage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "ordering-session",
+            projectName: "OrderingProject",
+            model: "claude-3-5-sonnet",
+            inputTokens: 100,
+            outputTokens: 50,
+            startTime: baseTime,
+            endTime: baseTime.addingTimeInterval(60)
+        )
+        let staleDocPath = "users/test-uid-1/usage/test-device-1_55555555-5555-4555-8555-555555555555"
+        fakeGateway.setDocumentData([
+            "id": UUID().uuidString,
+            "deviceId": "test-device-1",
+            "provider": AgentProvider.claudeCode.rawValue,
+            "sessionId": "ordering-session-old",
+            "model": "claude-3-5-sonnet",
+            "startTime": Timestamp(date: baseTime),
+            "endTime": Timestamp(date: baseTime.addingTimeInterval(60))
+        ], at: staleDocPath)
+        try await dataStore.insert(usage)
+
+        // Fail all writes (the replacement upload throws after retries), so
+        // cleanup must never have run: the old doc is still present even
+        // though it is orphaned.
+        fakeGateway.nextError = NSError(
+            domain: FirestoreErrorDomain,
+            code: FirestoreErrorCode.unavailable.rawValue,
+            userInfo: [NSLocalizedDescriptionKey: "unavailable"]
+        )
+        UsageSyncService.requestOrphanReconciliation()
+        await usageSync.sync()
+        fakeGateway.nextError = nil
+
+        let docs = fakeGateway.documents(under: "users/test-uid-1/usage")
+        XCTAssertNotNil(docs[staleDocPath], "orphan cleanup must not run when the replacement upload failed")
+    }
+
+    func test_orphanCleanupScansSameDeviceDocsInBoundedPages() async throws {
+        let baseTime = Date(timeIntervalSince1970: 1_700_000_000)
+        let usage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "paged-cleanup-session",
+            projectName: "PagedCleanupProject",
+            model: "claude-3-5-sonnet",
+            inputTokens: 100,
+            outputTokens: 50,
+            startTime: baseTime,
+            endTime: baseTime.addingTimeInterval(60)
+        )
+        try await dataStore.insert(usage)
+
+        for index in 0..<505 {
+            let suffix = String(format: "stale-%04d", index)
+            fakeGateway.setDocumentData([
+                "id": suffix,
+                "deviceId": "test-device-1",
+                "provider": AgentProvider.claudeCode.rawValue,
+                "sessionId": "stale-\(index)",
+                "model": "claude-3-5-sonnet",
+                "startTime": Timestamp(date: baseTime),
+                "endTime": Timestamp(date: baseTime.addingTimeInterval(60))
+            ], at: "users/test-uid-1/usage/test-device-1_\(suffix)")
+        }
+        fakeGateway.setDocumentData([
+            "id": "remote-keep",
+            "deviceId": "remote-device-2",
+            "provider": AgentProvider.claudeCode.rawValue,
+            "sessionId": "remote-keep",
+            "model": "claude-3-5-sonnet",
+            "startTime": Timestamp(date: baseTime),
+            "endTime": Timestamp(date: baseTime.addingTimeInterval(60))
+        ], at: "users/test-uid-1/usage/remote-device-2_stale-keep")
+
+        UsageSyncService.requestOrphanReconciliation()
+        await usageSync.sync()
+
+        let docs = fakeGateway.documents(under: "users/test-uid-1/usage")
+        let staleSameDeviceDocs = docs.keys.filter { $0.contains("/test-device-1_stale-") }
+        XCTAssertTrue(staleSameDeviceDocs.isEmpty, "cleanup must continue past the first 500-doc page")
+        XCTAssertNotNil(docs["users/test-uid-1/usage/test-device-1_\(usage.id.uuidString)"])
+        XCTAssertNotNil(docs["users/test-uid-1/usage/remote-device-2_stale-keep"])
+    }
+
+    func test_orphanCleanup_notRunWhileRecountCompletionPending() async throws {
+        let baseTime = Date(timeIntervalSince1970: 1_700_000_000)
+        // Simulates a recount that died mid-persist: the local table is
+        // NON-EMPTY but incomplete (one row landed, the rest never did), so
+        // the empty-table refusal alone would not stop cleanup.
+        let partiallyPersisted = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "partial-recount-session",
+            projectName: "PartialRecount",
+            model: "claude-3-5-sonnet",
+            inputTokens: 100,
+            outputTokens: 50,
+            startTime: baseTime,
+            endTime: baseTime.addingTimeInterval(60)
+        )
+        // Cloud doc for a row the interrupted recount never re-persisted.
+        // Deleting it would be permanent data loss.
+        let unpersistedRowDocPath = "users/test-uid-1/usage/test-device-1_66666666-6666-4666-8666-666666666666"
+        fakeGateway.setDocumentData([
+            "id": "66666666-6666-4666-8666-666666666666",
+            "deviceId": "test-device-1",
+            "provider": AgentProvider.claudeCode.rawValue,
+            "sessionId": "not-yet-repersisted-session",
+            "model": "claude-3-5-sonnet",
+            "startTime": Timestamp(date: baseTime),
+            "endTime": Timestamp(date: baseTime.addingTimeInterval(60))
+        ], at: unpersistedRowDocPath)
+        try await dataStore.insert(partiallyPersisted)
+
+        // The recount started but its persist never verifiably committed:
+        // only the durable start marker was set, never the completion marker
+        // (exactly the state a crash mid-recount leaves behind on relaunch).
+        UsageSyncService.beginOrphanReconciliationRecount()
+        await usageSync.sync()
+
+        var docs = fakeGateway.documents(under: "users/test-uid-1/usage")
+        XCTAssertNotNil(
+            docs[unpersistedRowDocPath],
+            "cleanup must not delete cloud docs while the recount persist is unverified"
+        )
+        XCTAssertNotNil(
+            docs["users/test-uid-1/usage/test-device-1_\(partiallyPersisted.id.uuidString)"],
+            "the upload path must still proceed while reconciliation is pending"
+        )
+
+        // The request stays pending: a later sync still must not clean up.
+        await usageSync.sync()
+        docs = fakeGateway.documents(under: "users/test-uid-1/usage")
+        XCTAssertNotNil(docs[unpersistedRowDocPath])
+
+        // The retried recount completes and its persist fully commits.
+        UsageSyncService.requestOrphanReconciliation()
+        await usageSync.sync()
+        docs = fakeGateway.documents(under: "users/test-uid-1/usage")
+        XCTAssertNil(docs[unpersistedRowDocPath], "cleanup must run once the rebuild verifiably committed")
+        XCTAssertNotNil(docs["users/test-uid-1/usage/test-device-1_\(partiallyPersisted.id.uuidString)"])
+
+        // One-shot: the request was consumed, so a later orphan is untouched
+        // until the next recount completion arms reconciliation again.
+        let lateOrphanDocPath = "users/test-uid-1/usage/test-device-1_77777777-7777-4777-8777-777777777777"
+        fakeGateway.setDocumentData([
+            "id": "77777777-7777-4777-8777-777777777777",
+            "deviceId": "test-device-1",
+            "provider": AgentProvider.claudeCode.rawValue,
+            "sessionId": "late-orphan-session",
+            "model": "claude-3-5-sonnet",
+            "startTime": Timestamp(date: baseTime),
+            "endTime": Timestamp(date: baseTime.addingTimeInterval(60))
+        ], at: lateOrphanDocPath)
+        await usageSync.sync()
+        XCTAssertNotNil(fakeGateway.documents(under: "users/test-uid-1/usage")[lateOrphanDocPath])
+    }
+
+    func test_recountStart_demotesAlreadyArmedReconciliation() async throws {
+        let baseTime = Date(timeIntervalSince1970: 1_700_000_000)
+        let usage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "demote-session",
+            projectName: "DemoteProject",
+            model: "claude-3-5-sonnet",
+            inputTokens: 10,
+            outputTokens: 5,
+            startTime: baseTime,
+            endTime: baseTime.addingTimeInterval(30)
+        )
+        let orphanDocPath = "users/test-uid-1/usage/test-device-1_88888888-8888-4888-8888-888888888888"
+        fakeGateway.setDocumentData([
+            "id": "88888888-8888-4888-8888-888888888888",
+            "deviceId": "test-device-1",
+            "provider": AgentProvider.claudeCode.rawValue,
+            "sessionId": "demote-orphan-session",
+            "model": "claude-3-5-sonnet",
+            "startTime": Timestamp(date: baseTime),
+            "endTime": Timestamp(date: baseTime.addingTimeInterval(30))
+        ], at: orphanDocPath)
+        try await dataStore.insert(usage)
+
+        // Reconciliation was armed, but a NEW recount begins before the sync
+        // pass runs: the armed request must demote so cleanup cannot compare
+        // the cloud against a table that is about to be cleared and rebuilt.
+        UsageSyncService.requestOrphanReconciliation()
+        UsageSyncService.beginOrphanReconciliationRecount()
+        await usageSync.sync()
+
+        let docs = fakeGateway.documents(under: "users/test-uid-1/usage")
+        XCTAssertNotNil(
+            docs[orphanDocPath],
+            "a recount starting must demote an armed reconciliation before any cloud deletion"
+        )
+    }
+
+    func test_orphanReconciliation_migratesLegacyDurableBoolFlag() throws {
+        // Pre-tri-state builds persisted a Bool meaning "a recount completed
+        // and requested reconciliation". It must read as ready…
+        UserDefaults.standard.removeObject(forKey: UsageSyncService.orphanReconciliationStateDefaultsKey)
+        UserDefaults.standard.set(true, forKey: UsageSyncService.orphanReconciliationDefaultsKey)
+        XCTAssertEqual(UsageSyncService.orphanReconciliationState, .readyForReconciliation)
+
+        // …and the first transition rewrites to the tri-state key and clears
+        // the legacy flag so it can never re-arm reconciliation later.
+        UsageSyncService.beginOrphanReconciliationRecount()
+        XCTAssertEqual(UsageSyncService.orphanReconciliationState, .awaitingRecountCompletion)
+        XCTAssertNil(UserDefaults.standard.object(forKey: UsageSyncService.orphanReconciliationDefaultsKey))
+
+        // A legacy false/absent flag reads as idle.
+        UserDefaults.standard.removeObject(forKey: UsageSyncService.orphanReconciliationStateDefaultsKey)
+        XCTAssertEqual(UsageSyncService.orphanReconciliationState, .idle)
     }
 
     func test_providerAccountUpload_writesOnlyNonSecretLocalAccountMetadata() async throws {

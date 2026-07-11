@@ -1,0 +1,62 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    macOS-runnable parity tests for the shared UI-component LOGIC core
+    (Phase 3 · W7 · Shared UI components — Bucket A). Runs on the macOS authoring host
+    today via `dotnet test` — it LINKS the dependency-free portable model files under
+    ../../app/OpenBurnBar.App/Components/Models/ (System-only, no WinUI) plus the
+    foundation's ../../app/OpenBurnBar.App/Theme/ProviderBrand.cs, so the parity-critical
+    ports of the Swift quota math, tool-call classification, session-ledger grouping,
+    update-banner copy, sparkline smoothing, provider metadata, and dashboard-glyph
+    geometry are asserted against independently hand-computed Swift golden values.
+
+    The WinUI UserControls that CONSUME these models (Components/*.xaml[.cs]) are
+    Windows-only and type-check separately at the XamlCompiler gate on a Windows host;
+    see the PR's Validation section. Mirrors
+    windows/tests/theme/OpenBurnBar.App.Theme.Tests.csproj (net10.0, xUnit).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Foundation: the provider/model brand enum + tables the metadata port keys on. -->
+    <Compile Include="../../app/OpenBurnBar.App/Theme/ProviderBrand.cs" />
+    <!-- The portable component-logic cores (no WinUI dependency). -->
+    <Compile Include="../../app/OpenBurnBar.App/Components/Models/ProviderMetadata.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Components/Models/QuotaModels.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Components/Models/QuotaPacing.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Components/Models/QuotaArcDialModel.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Components/Models/SubscriptionConstellationModel.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Components/Models/ToolCallModels.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Components/Models/SessionLedgerModels.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Components/Models/UpdateBannerModels.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Components/Models/SparklineGeometry.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Components/Models/DashboardGlyphGeometry.cs" />
+    <!-- The tests. -->
+    <Compile Include="ProviderMetadataTests.cs" />
+    <Compile Include="QuotaModelTests.cs" />
+    <Compile Include="QuotaPacingTests.cs" />
+    <Compile Include="QuotaArcDialModelTests.cs" />
+    <Compile Include="SubscriptionConstellationModelTests.cs" />
+    <Compile Include="ToolCallModelTests.cs" />
+    <Compile Include="SessionLedgerModelTests.cs" />
+    <Compile Include="UpdateBannerModelTests.cs" />
+    <Compile Include="SparklineGeometryTests.cs" />
+    <Compile Include="DashboardGlyphGeometryTests.cs" />
+  </ItemGroup>
+
+</Project>

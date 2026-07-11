@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "description": "Entitlement-precedence contract vectors encoding the N3 invariants of AgentLens/Services/MacCloudEntitlementStore.swift (publishMembershipEntitlements + preferred(over:) + per-tier merge + StoreKit UID-binding fail-closed). Consumed initially only by scripts/ci/check-budget-enforcement-fixture.mjs structural checks; a future pure Core function (EntitlementArbitration.effectiveTier(cloud:storeKit:now:), Wave-5 PR-C) will execute them. cloud[].key maps to the entitlement doc listeners: hostedQuota=cloud tier, hostedComputerUse=pro tier, proMax=pro tier, ultra=ultra tier. A cloud doc is active only when active==true AND (expiry is null OR expiry > now). When any cloud doc yields an active tier, the cloud plane replaces StoreKit entirely; StoreKit is only a fallback when the cloud plane is empty. StoreKit entries count only when uidBound==true, revoked==false, and not expired. Per-tier merge keeps the entitlement with the later expiry; a dated expiry is preferred over an undated one. Ultra implies Pro implies Cloud.",
+  "vectors": [
+    {
+      "id": "active-cloud-doc-wins-over-storekit",
+      "description": "an active cloud doc replaces the StoreKit plane entirely, even when StoreKit holds a higher tier",
+      "now": "2026-06-15T12:00:00Z",
+      "cloud": [
+        { "key": "hostedQuota", "active": true, "expiry": "2026-08-01T00:00:00Z" }
+      ],
+      "storeKit": [
+        { "productID": "com.openburnbar.ultra.monthly", "uidBound": true, "revoked": false, "expiry": "2026-08-15T00:00:00Z" }
+      ],
+      "expected": { "tier": "cloud", "cloudExpiry": "2026-08-01T00:00:00Z", "proExpiry": null, "ultraExpiry": null }
+    },
+    {
+      "id": "lapsed-cloud-doc-invisible",
+      "description": "a lapsed cloud doc (active flag still true but expiry in the past) is invisible and must not suppress a valid StoreKit entitlement",
+      "now": "2026-06-15T12:00:00Z",
+      "cloud": [
+        { "key": "hostedQuota", "active": true, "expiry": "2026-05-01T00:00:00Z" }
+      ],
+      "storeKit": [
+        { "productID": "com.openburnbar.proMax.v2.monthly", "uidBound": true, "revoked": false, "expiry": "2026-08-01T00:00:00Z" }
+      ],
+      "expected": { "tier": "pro", "cloudExpiry": "2026-08-01T00:00:00Z", "proExpiry": "2026-08-01T00:00:00Z", "ultraExpiry": null }
+    },
+    {
+      "id": "storekit-unbound-fails-closed-to-free",
+      "description": "a StoreKit transaction without a server-minted appAccountToken bound to the signed-in UID fails closed to free",
+      "now": "2026-06-15T12:00:00Z",
+      "cloud": [],
+      "storeKit": [
+        { "productID": "com.openburnbar.ultra.monthly", "uidBound": false, "revoked": false, "expiry": "2026-08-15T00:00:00Z" }
+      ],
+      "expected": { "tier": "free", "cloudExpiry": null, "proExpiry": null, "ultraExpiry": null }
+    },
+    {
+      "id": "storekit-revoked-fails-closed-to-free",
+      "description": "a revoked StoreKit transaction confers nothing",
+      "now": "2026-06-15T12:00:00Z",
+      "cloud": [],
+      "storeKit": [
+        { "productID": "com.openburnbar.ultra.monthly", "uidBound": true, "revoked": true, "expiry": "2026-08-15T00:00:00Z" }
+      ],
+      "expected": { "tier": "free", "cloudExpiry": null, "proExpiry": null, "ultraExpiry": null }
+    },
+    {
+      "id": "storekit-expired-ignored",
+      "description": "an expired StoreKit transaction confers nothing",
+      "now": "2026-06-15T12:00:00Z",
+      "cloud": [],
+      "storeKit": [
+        { "productID": "com.openburnbar.proMax.v2.monthly", "uidBound": true, "revoked": false, "expiry": "2026-05-01T00:00:00Z" }
+      ],
+      "expected": { "tier": "free", "cloudExpiry": null, "proExpiry": null, "ultraExpiry": null }
+    },
+    {
+      "id": "storekit-fallback-active-when-no-cloud-docs",
+      "description": "with no cloud docs, a bound, unrevoked, unexpired StoreKit transaction confers its catalog tier",
+      "now": "2026-06-15T12:00:00Z",
+      "cloud": [],
+      "storeKit": [
+        { "productID": "com.openburnbar.pro.monthly", "uidBound": true, "revoked": false, "expiry": "2026-08-01T00:00:00Z" }
+      ],
+      "expected": { "tier": "cloud", "cloudExpiry": "2026-08-01T00:00:00Z", "proExpiry": null, "ultraExpiry": null }
+    },
+    {
+      "id": "per-tier-max-expiry-merge",
+      "description": "two active cloud docs merge per tier keeping the later expiry: hostedQuota (Sep) + proMax (Oct) yields cloud expiring Oct via the pro doc's implied cloud entitlement",
+      "now": "2026-06-15T12:00:00Z",
+      "cloud": [
+        { "key": "hostedQuota", "active": true, "expiry": "2026-09-01T00:00:00Z" },
+        { "key": "proMax", "active": true, "expiry": "2026-10-01T00:00:00Z" }
+      ],
+      "storeKit": [],
+      "expected": { "tier": "pro", "cloudExpiry": "2026-10-01T00:00:00Z", "proExpiry": "2026-10-01T00:00:00Z", "ultraExpiry": null }
+    },
+    {
+      "id": "ultra-implies-pro-implies-cloud",
+      "description": "an active ultra doc populates the ultra, pro, and cloud tiers with the same entitlement",
+      "now": "2026-06-15T12:00:00Z",
+      "cloud": [
+        { "key": "ultra", "active": true, "expiry": "2026-12-31T00:00:00Z" }
+      ],
+      "storeKit": [],
+      "expected": { "tier": "ultra", "cloudExpiry": "2026-12-31T00:00:00Z", "proExpiry": "2026-12-31T00:00:00Z", "ultraExpiry": "2026-12-31T00:00:00Z" }
+    },
+    {
+      "id": "dated-expiry-preferred-over-undated",
+      "description": "when two active entitlements merge into the same tier, a dated expiry is preferred over an undated one (preferred(over:) contract)",
+      "now": "2026-06-15T12:00:00Z",
+      "cloud": [
+        { "key": "hostedQuota", "active": true, "expiry": null },
+        { "key": "proMax", "active": true, "expiry": "2026-10-01T00:00:00Z" }
+      ],
+      "storeKit": [],
+      "expected": { "tier": "pro", "cloudExpiry": "2026-10-01T00:00:00Z", "proExpiry": "2026-10-01T00:00:00Z", "ultraExpiry": null }
+    }
+  ]
+}

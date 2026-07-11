@@ -17,7 +17,7 @@ else
   echo "cargo-deny not installed — skipping Rust deny (install: cargo install cargo-deny)"
 fi
 
-echo ">> npm audit (functions + extension)"
+echo ">> npm audit (functions + extension + website + console)"
 if ! "$repo_root/scripts/supply-chain-audit.sh"; then
   failed=1
 fi
@@ -26,7 +26,9 @@ if command -v osv-scanner >/dev/null 2>&1; then
   echo ">> OSV-Scanner lockfiles"
   if ! osv-scanner \
     --lockfile="$repo_root/functions/package-lock.json" \
-    --lockfile="$repo_root/extensions/openburnbar/package-lock.json"; then
+    --lockfile="$repo_root/extensions/openburnbar/package-lock.json" \
+    --lockfile="$repo_root/website/package-lock.json" \
+    --lockfile="$repo_root/apps/console/package-lock.json"; then
     failed=1
   fi
 else

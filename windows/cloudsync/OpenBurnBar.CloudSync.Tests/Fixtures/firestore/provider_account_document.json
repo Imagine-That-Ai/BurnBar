@@ -1,0 +1,14 @@
+{
+  "name": "projects/openburnbar-demo/databases/(default)/documents/users/uid-1/provider_accounts/acc-1",
+  "fields": {
+    "id": { "stringValue": "acc-1" },
+    "sortKey": { "integerValue": "10" },
+    "isDefault": { "booleanValue": true },
+    "score": { "doubleValue": 0.875 },
+    "lastErrorCode": { "nullValue": null },
+    "scopes": { "arrayValue": { "values": [ { "stringValue": "chat.read" }, { "stringValue": "chat.send" } ] } },
+    "connectContext": { "mapValue": { "fields": { "authMethodID": { "stringValue": "am-1" }, "region": { "stringValue": "us" } } } },
+    "createdAt": { "timestampValue": "2026-07-03T10:00:00.0000000Z" },
+    "digest": { "bytesValue": "ZGlnZXN0" }
+  }
+}

@@ -2,6 +2,7 @@ import Foundation
 import GRDB
 import XCTest
 @testable import OpenBurnBar
+@testable import OpenBurnBarCore
 
 final class OpenBurnBarMigrationTests: XCTestCase {
 
@@ -12,7 +13,7 @@ final class OpenBurnBarMigrationTests: XCTestCase {
 
         try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
 
-        let paths = OpenBurnBarAppPaths(applicationSupportRoot: root)
+        let paths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: root)
         let legacyDirectory = root.appendingPathComponent("AgentLens", isDirectory: true)
         try fileManager.createDirectory(at: legacyDirectory, withIntermediateDirectories: true)
 

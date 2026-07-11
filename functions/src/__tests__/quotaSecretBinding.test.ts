@@ -1,15 +1,27 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { seedDoc } from "./bola/callableBolaHarness.js";
 
 const mocks = vi.hoisted(() => ({
   fetchQuota: vi.fn(),
+  logInfo: vi.fn(),
+  resilientFetch: vi.fn(),
   retrieveCredential: vi.fn(),
 }));
+
+vi.mock("../logging.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../logging.js")>();
+  return { ...actual, logInfo: mocks.logInfo };
+});
 
 vi.mock("../secrets.js", () => ({
   retrieveCredential: mocks.retrieveCredential,
 }));
+
+vi.mock("../resilienceHelpers.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../resilienceHelpers.js")>();
+  return { ...actual, resilientFetch: mocks.resilientFetch };
+});
 
 vi.mock("../providers/openai.js", () => ({
   openaiAdapter: {
@@ -19,10 +31,16 @@ vi.mock("../providers/openai.js", () => ({
   },
 }));
 
-import { providerAccountSecretRefPath, refreshUserProviderAccountQuota, type QuotaFirestoreLike } from "../quota.js";
+import {
+  providerAccountSecretRefPath,
+  refreshUserProviderAccountQuota,
+  refreshUserProviderQuota,
+  type QuotaFirestoreLike,
+} from "../quota.js";
 
 const UID = "quota-secret-user";
 const ACCOUNT_ID = "openai_default";
+const CLAUDE_ACCOUNT_ID = "claude-hosted";
 const DEMO_ACCOUNT_ID = "demo_android_openai";
 const NOW = "2026-06-24T17:00:00.000Z";
 
@@ -54,7 +72,23 @@ function seedSecretRef(store: Map<string, Record<string, unknown>>, providerID =
   });
 }
 
-function seedEntitlement(store: Map<string, Record<string, unknown>>, entitlementID = "burnbar_pro", productID = "com.openburnbar.pro.monthly") {
+function seedLegacyConnection(store: Map<string, Record<string, unknown>>, provider = "openai") {
+  seedDoc(store, `users/${UID}/provider_connections/${provider}`, {
+    provider,
+    status: "connected",
+    credentialKind: "bearer",
+    redactedLabel: `${provider}_***test`,
+    schemaVersion: 1,
+    lastValidatedAt: NOW,
+    lastRefreshAt: NOW,
+  });
+}
+
+function seedEntitlement(
+  store: Map<string, Record<string, unknown>>,
+  entitlementID = "burnbar_pro",
+  productID = "com.openburnbar.pro.monthly",
+) {
   seedDoc(store, `users/${UID}/entitlements/${entitlementID}`, {
     active: true,
     productID,
@@ -110,10 +144,18 @@ function quotaTestFirestore(store: Map<string, Record<string, unknown>>): QuotaF
 
 describe("provider account quota secret binding", () => {
   beforeEach(() => {
+    vi.stubEnv("HOSTED_QUOTA_RUNNER_URL", "https://quota-runner.test");
+    vi.stubEnv("HOSTED_QUOTA_RUNNER_ALLOWED_HOSTS", "quota-runner.test");
     mocks.fetchQuota.mockReset();
+    mocks.logInfo.mockReset();
+    mocks.resilientFetch.mockReset();
     mocks.retrieveCredential.mockReset();
     mocks.retrieveCredential.mockResolvedValue("bound-secret");
     mocks.fetchQuota.mockResolvedValue({ ok: true, snapshot: quotaSnapshot() });
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("rejects a private secret ref whose provider does not match the account provider", async () => {
@@ -158,6 +200,53 @@ describe("provider account quota secret binding", () => {
       providerID: "openai",
       accountID: ACCOUNT_ID,
     });
+    expect(store.get(`users/${UID}/provider_accounts/${ACCOUNT_ID}`)).toMatchObject({
+      quotaNextRefreshAt: "2026-06-24T17:15:00.000Z",
+      quotaRemainingFraction: null,
+      quotaWindowKind: "custom",
+    });
+    expect(mocks.logInfo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "quota.snapshot_written",
+        provider: "openai",
+        source: "provider",
+        age_ms_bucket: ">=4h",
+      }),
+    );
+  });
+
+  it("logs freshness telemetry for legacy provider snapshot writes", async () => {
+    const store = new Map<string, Record<string, unknown>>();
+    seedLegacyConnection(store, "openai");
+    seedSecretRef(store, "openai");
+    seedEntitlement(store);
+
+    const db = quotaTestFirestore(store);
+
+    const snapshot = await refreshUserProviderQuota(db, UID, "openai");
+
+    expect(snapshot).toMatchObject({
+      providerID: "openai",
+      accountID: "openai_default",
+      accountStorageScope: "cloud_refreshable",
+    });
+    expect(store.get(`users/${UID}/quota_snapshots/openai_default`)).toMatchObject({
+      providerID: "openai",
+      accountID: "openai_default",
+    });
+    expect(store.get(`users/${UID}/provider_connections/openai`)).toMatchObject({
+      quotaNextRefreshAt: "2026-06-24T17:15:00.000Z",
+      quotaRemainingFraction: null,
+      quotaWindowKind: "custom",
+    });
+    expect(mocks.logInfo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "quota.snapshot_written",
+        provider: "openai",
+        source: "provider",
+        age_ms_bucket: ">=4h",
+      }),
+    );
   });
 
   it("refreshes quota for an Ultra-only entitlement", async () => {
@@ -195,6 +284,91 @@ describe("provider account quota secret binding", () => {
       providerID: "openai",
       accountID: ACCOUNT_ID,
       accountStorageScope: "cloud_refreshable",
+    });
+  });
+
+  it("refreshes server-private Claude Code quota through the hosted runner", async () => {
+    const store = new Map<string, Record<string, unknown>>();
+    seedDoc(store, `users/${UID}/provider_accounts/${CLAUDE_ACCOUNT_ID}`, {
+      id: CLAUDE_ACCOUNT_ID,
+      providerID: "claude-code",
+      label: "Claude Max",
+      status: "connected",
+      credentialKind: "session",
+      storageScope: "server_private",
+      redactedLabel: "claude_***hosted",
+      isDefault: false,
+      sortKey: 0,
+      schemaVersion: 1,
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    seedDoc(store, providerAccountSecretRefPath(UID, CLAUDE_ACCOUNT_ID), {
+      uid: UID,
+      providerID: "claude-code",
+      accountID: CLAUDE_ACCOUNT_ID,
+      secretVersionName: "projects/test/secrets/claude-hosted/versions/1",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    seedEntitlement(store);
+    mocks.resilientFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        snapshot: {
+          provider: "claude-code",
+          sourceKind: "provider",
+          sourceId: "hosted-runner",
+          fetchedAt: NOW,
+          source: "Claude Code /usage",
+          confidence: "high",
+          buckets: [
+            {
+              name: "Current session",
+              used: 4,
+              limit: 20,
+              remaining: 16,
+              window: "5h",
+            },
+          ],
+        },
+      }),
+    });
+
+    const db = quotaTestFirestore(store);
+
+    const snapshot = await refreshUserProviderAccountQuota(db, UID, CLAUDE_ACCOUNT_ID);
+
+    expect(mocks.retrieveCredential).toHaveBeenCalledWith("projects/test/secrets/claude-hosted/versions/1");
+    expect(mocks.fetchQuota).not.toHaveBeenCalled();
+    expect(mocks.resilientFetch).toHaveBeenCalledWith(
+      "hosted-quota-runner.refresh",
+      expect.any(URL),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          provider: "claude-code",
+          accountID: CLAUDE_ACCOUNT_ID,
+          credential: "bound-secret",
+        }),
+      }),
+    );
+    expect(snapshot).toMatchObject({
+      providerID: "claude-code",
+      accountID: CLAUDE_ACCOUNT_ID,
+      accountStorageScope: "server_private",
+      sourceId: "hosted-runner",
+    });
+    expect(store.get(`users/${UID}/quota_snapshots/claude-code_${CLAUDE_ACCOUNT_ID}_hosted-runner`)).toMatchObject({
+      providerID: "claude-code",
+      accountID: CLAUDE_ACCOUNT_ID,
+      accountStorageScope: "server_private",
+    });
+    expect(store.get(`users/${UID}/provider_accounts/${CLAUDE_ACCOUNT_ID}`)).toMatchObject({
+      quotaNextRefreshAt: "2026-06-24T17:30:00.000Z",
+      quotaRemainingFraction: 0.8,
+      quotaWindowKind: "rollingHours",
     });
   });
 

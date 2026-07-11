@@ -223,6 +223,7 @@ struct MenuBarPopoverView: View {
         .frame(width: popoverWidth)
         .frame(height: popoverViewportHeight)
         .background(DesignSystem.Colors.background)
+        .accessibilityIdentifier(OBBAccessibilityID.popoverRoot)
         .overlay(alignment: .bottomTrailing) {
             resizeHandle
         }
@@ -768,6 +769,7 @@ struct MenuBarPopoverView: View {
                     ProviderListRow(summary: summary)
                         .padding(.horizontal, DesignSystem.Spacing.sm)
                         .padding(.vertical, DesignSystem.Spacing.xs)
+                        .accessibilityIdentifier(OBBAccessibilityID.providersRow(summary.provider.providerID.rawValue))
                         .popoverTooltip("\(summary.provider.displayName): \(summary.sessionCount) session\(summary.sessionCount == 1 ? "" : "s")")
                         .opacity(listAppeared ? 1 : 0)
                         .offset(y: listAppeared ? 0 : 8)
@@ -851,6 +853,7 @@ struct MenuBarPopoverView: View {
                 onOpenDashboard()
             }
             .popoverTooltip("Open the full dashboard")
+            .accessibilityIdentifier(OBBAccessibilityID.popoverDashboardButton)
 
             GlassButton(
                 title: "Settings",
@@ -862,6 +865,7 @@ struct MenuBarPopoverView: View {
                 onOpenSettings()
             }
             .popoverTooltip("Open settings")
+            .accessibilityIdentifier(OBBAccessibilityID.popoverSettingsButton)
 
             PetCompanionToggleButton()
                 .popoverTooltip("Show or hide the desktop pet companion")

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-03T11:36:59.673Z",
+  "generatedAt": "2026-07-08T03:19:09.867Z",
   "lane": "W06LinuxShellUx",
   "mode": "route-dom-a11y-oracle",
   "routes": [
@@ -41,7 +41,7 @@
         "Tab to active route",
         "Enter route button"
       ],
-      "screenshotExpectation": "covered by route DOM/a11y transcript and route-snapshot-plan.json"
+      "screenshotExpectation": "covered by screenshot-route-insights.png when the packaged desktop route is captured"
     },
     {
       "route": "database",
@@ -61,7 +61,7 @@
         "Tab to active route",
         "Enter route button"
       ],
-      "screenshotExpectation": "covered by route DOM/a11y transcript and route-snapshot-plan.json"
+      "screenshotExpectation": "covered by screenshot-route-database.png when the packaged desktop route is captured"
     },
     {
       "route": "providers",
@@ -81,7 +81,7 @@
         "Tab to active route",
         "Enter route button"
       ],
-      "screenshotExpectation": "covered by route DOM/a11y transcript and route-snapshot-plan.json"
+      "screenshotExpectation": "covered by screenshot-route-providers.png when the packaged desktop route is captured"
     },
     {
       "route": "projects",
@@ -101,7 +101,7 @@
         "Tab to active route",
         "Enter route button"
       ],
-      "screenshotExpectation": "covered by route DOM/a11y transcript and route-snapshot-plan.json"
+      "screenshotExpectation": "covered by screenshot-route-projects.png when the packaged desktop route is captured"
     },
     {
       "route": "missions",
@@ -121,7 +121,7 @@
         "Tab to active route",
         "Enter route button"
       ],
-      "screenshotExpectation": "covered by route DOM/a11y transcript and route-snapshot-plan.json"
+      "screenshotExpectation": "covered by screenshot-route-missions.png when the packaged desktop route is captured"
     },
     {
       "route": "activity",
@@ -141,7 +141,7 @@
         "Tab to active route",
         "Enter route button"
       ],
-      "screenshotExpectation": "covered by route DOM/a11y transcript and route-snapshot-plan.json"
+      "screenshotExpectation": "covered by screenshot-route-activity.png when the packaged desktop route is captured"
     },
     {
       "route": "chat",
@@ -161,7 +161,7 @@
         "Tab to active route",
         "Enter route button"
       ],
-      "screenshotExpectation": "covered by route DOM/a11y transcript and route-snapshot-plan.json"
+      "screenshotExpectation": "covered by screenshot-route-chat.png when the packaged desktop route is captured"
     },
     {
       "route": "memory",
@@ -181,7 +181,7 @@
         "Tab to active route",
         "Enter route button"
       ],
-      "screenshotExpectation": "covered by route DOM/a11y transcript and route-snapshot-plan.json"
+      "screenshotExpectation": "covered by screenshot-route-memory.png when the packaged desktop route is captured"
     },
     {
       "route": "settings",
@@ -201,7 +201,7 @@
         "Tab to active route",
         "Enter route button"
       ],
-      "screenshotExpectation": "covered by route DOM/a11y transcript and route-snapshot-plan.json"
+      "screenshotExpectation": "covered by screenshot-route-settings.png when the packaged desktop route is captured"
     },
     {
       "route": "account",
@@ -221,7 +221,7 @@
         "Tab to active route",
         "Enter route button"
       ],
-      "screenshotExpectation": "covered by route DOM/a11y transcript and route-snapshot-plan.json"
+      "screenshotExpectation": "covered by screenshot-route-account.png when the packaged desktop route is captured"
     },
     {
       "route": "updates",
@@ -241,7 +241,7 @@
         "Tab to active route",
         "Enter route button"
       ],
-      "screenshotExpectation": "covered by route DOM/a11y transcript and route-snapshot-plan.json"
+      "screenshotExpectation": "covered by screenshot-route-updates.png when the packaged desktop route is captured"
     },
     {
       "route": "support",
@@ -261,7 +261,7 @@
         "Tab to active route",
         "Enter route button"
       ],
-      "screenshotExpectation": "covered by route DOM/a11y transcript and route-snapshot-plan.json"
+      "screenshotExpectation": "covered by screenshot-route-support.png when the packaged desktop route is captured"
     },
     {
       "route": "onboarding",
@@ -281,7 +281,7 @@
         "Tab to active route",
         "Enter route button"
       ],
-      "screenshotExpectation": "covered by route DOM/a11y transcript and route-snapshot-plan.json"
+      "screenshotExpectation": "covered by screenshot-route-onboarding.png when the packaged desktop route is captured"
     },
     {
       "route": "pet",
@@ -301,7 +301,7 @@
         "Tab to active route",
         "Enter route button"
       ],
-      "screenshotExpectation": "covered by screenshot-pet-gltf.png browser artifact plus GLB runtime test"
+      "screenshotExpectation": "covered by screenshot-route-pet.png from packaged desktop session plus GLB runtime test"
     },
     {
       "route": "text-expansion",
@@ -321,7 +321,7 @@
         "Tab to active route",
         "Enter route button"
       ],
-      "screenshotExpectation": "covered by screenshot-text-expansion-crud.png browser artifact plus local CRUD transcript"
+      "screenshotExpectation": "covered by screenshot-route-text-expansion.png from packaged desktop session plus local CRUD transcript"
     }
   ]
 }

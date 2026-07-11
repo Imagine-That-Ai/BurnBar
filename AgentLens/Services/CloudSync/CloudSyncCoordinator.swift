@@ -41,6 +41,7 @@ final class CloudSyncCoordinator {
     private let providerAccountSync: ProviderAccountSyncService
     private let quotaSnapshotSync: QuotaSnapshotSyncService
     private let textExpansionSync: TextExpansionSyncService
+    private let roamingProfileSync: RoamingProfileSyncService
     private let collaborationSync: CollaborationSyncService
     private let downloadSync: DownloadSyncService
 
@@ -88,6 +89,7 @@ final class CloudSyncCoordinator {
         self.providerAccountSync = ProviderAccountSyncService(context: context)
         self.quotaSnapshotSync = QuotaSnapshotSyncService(context: context)
         self.textExpansionSync = TextExpansionSyncService(context: context)
+        self.roamingProfileSync = RoamingProfileSyncService(context: context)
         self.collaborationSync = CollaborationSyncService(
             context: context,
             sharedArtifactVaultKeyProvider: conversationVaultKeyProvider
@@ -171,6 +173,11 @@ final class CloudSyncCoordinator {
         await propagateTextExpansionErrors { await textExpansionSync.sync() }
     }
 
+    /// Upload or download the encrypted roaming profile carrying non-secret routing/profile state.
+    func syncRoamingProfile() async {
+        await propagateRoamingProfileErrors { await roamingProfileSync.sync() }
+    }
+
     /// Upload non-secret provider account metadata to Firestore for iOS visibility.
     func syncProviderAccounts() async {
         let shouldProceed = await MainActor.run { () -> Bool in
@@ -248,7 +255,7 @@ final class CloudSyncCoordinator {
     // MARK: - Session Log Read
 
     /// Fetches session log manifests from Firestore for the signed-in user.
-    func fetchCloudSessionLogs(limit: Int = 200) async throws -> [ConversationRecord] {
+    func fetchCloudSessionLogs(limit: Int = 200) async throws -> [OpenBurnBarCore.ConversationRecord] {
         try await sessionLogSync.fetchCloudSessionLogs(limit: limit)
     }
 
@@ -344,6 +351,26 @@ final class CloudSyncCoordinator {
             }
             if textExpansionSync.lastSyncDate != nil {
                 lastSyncDate = textExpansionSync.lastSyncDate
+            }
+            isSyncing = false
+        }
+    }
+
+    private func propagateRoamingProfileErrors(_ block: () async -> Void) async {
+        let shouldProceed = await MainActor.run { () -> Bool in
+            guard !isSyncing else { return false }
+            isSyncing = true
+            clearSyncFailureState()
+            return true
+        }
+        guard shouldProceed else { return }
+        await block()
+        await MainActor.run {
+            if let err = roamingProfileSync.lastSyncError, err.isEmpty == false {
+                recordSyncFailure(err)
+            }
+            if roamingProfileSync.lastSyncDate != nil {
+                lastSyncDate = roamingProfileSync.lastSyncDate
             }
             isSyncing = false
         }

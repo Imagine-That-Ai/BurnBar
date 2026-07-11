@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "description": "Pretext metric-parity corpus for the Windows port (W6-DS-PRETEXT / R22). Each case is measured on macOS/WebKit to produce golden.mac.json, then re-measured on Windows/WebView2 and compared field-by-field within tolerance. Cases cover the geometry Chat bubbles depend on: single-line width, multi-line wrap height + per-line widths, line stats, natural width, letter-spacing, pre-wrap whitespace, CJK keep-all, emoji, and rich-inline (mentions/chips).",
+  "fontNote": "Fonts are pinned to Arial, which ships on BOTH Windows and macOS, so the golden is capturable and the Windows run needs no bundled font. For exact parity, bundle a single .woff2 and repin (see the @font-face seam in Resources/Pretext/index.html and docs/windows-port/design/0005-pretext-webview2-metric-parity.md).",
+  "defaultTolerance": { "height": 1.5, "width": 2.0, "lineCount": 0 },
+  "cases": [
+    {
+      "id": "plain-short",
+      "method": "layoutWithLines",
+      "text": "Ship the complete thing.",
+      "font": "16px Arial",
+      "maxWidth": 320,
+      "lineHeight": 22
+    },
+    {
+      "id": "wrap-paragraph",
+      "method": "layoutWithLines",
+      "text": "The marginal cost of completeness is near zero with AI. Do the whole thing, do it right, and do it so well that the reviewer is genuinely impressed rather than politely satisfied.",
+      "font": "16px Arial",
+      "maxWidth": 280,
+      "lineHeight": 22
+    },
+    {
+      "id": "layout-height-narrow",
+      "method": "layout",
+      "text": "The marginal cost of completeness is near zero with AI. Do the whole thing, do it right, and do it so well that the reviewer is genuinely impressed rather than politely satisfied.",
+      "font": "16px Arial",
+      "maxWidth": 240,
+      "lineHeight": 20
+    },
+    {
+      "id": "line-stats-paragraph",
+      "method": "measureLineStats",
+      "text": "Search before building. Test before shipping. Ship the complete thing. Boil the ocean.",
+      "font": "15px Arial",
+      "maxWidth": 300,
+      "lineHeight": 21
+    },
+    {
+      "id": "natural-width-prewrap",
+      "method": "measureNaturalWidth",
+      "text": "short\na noticeably longer forced line here\nmid",
+      "font": "16px Arial",
+      "maxWidth": 1000,
+      "lineHeight": 22,
+      "options": { "whiteSpace": "pre-wrap" }
+    },
+    {
+      "id": "letter-spacing",
+      "method": "layoutWithLines",
+      "text": "SPACED OUT HEADING TEXT FOR CHIPS",
+      "font": "600 14px Arial",
+      "maxWidth": 400,
+      "lineHeight": 20,
+      "options": { "letterSpacing": 2.0 }
+    },
+    {
+      "id": "pre-wrap-whitespace",
+      "method": "layoutWithLines",
+      "text": "keep   these   runs   of   spaces   intact",
+      "font": "16px Arial",
+      "maxWidth": 400,
+      "lineHeight": 22,
+      "options": { "whiteSpace": "pre-wrap" }
+    },
+    {
+      "id": "cjk-keep-all",
+      "method": "layoutWithLines",
+      "text": "日本語のテキストを折り返して表示する例文です",
+      "font": "16px Arial",
+      "maxWidth": 160,
+      "lineHeight": 24,
+      "options": { "wordBreak": "keep-all" },
+      "tolerance": { "height": 2.0, "width": 4.0, "lineCount": 0 }
+    },
+    {
+      "id": "emoji-line",
+      "method": "layoutWithLines",
+      "text": "Deploy 🚀 the 🔥 build ✨ now",
+      "font": "16px Arial",
+      "maxWidth": 320,
+      "lineHeight": 22,
+      "tolerance": { "height": 2.0, "width": 6.0, "lineCount": 1 }
+    },
+    {
+      "id": "rich-inline-mention-chip",
+      "method": "layoutRichInline",
+      "maxWidth": 240,
+      "items": [
+        { "text": "Hey ", "font": "16px Arial" },
+        { "text": "@alberto", "font": "600 16px Arial", "breakNever": true, "extraWidth": 8 },
+        { "text": " can you review the complete Windows Pretext port when you get a chance", "font": "16px Arial" }
+      ],
+      "tolerance": { "height": 1.5, "width": 4.0, "lineCount": 0 }
+    }
+  ]
+}

@@ -111,7 +111,8 @@ final class TerminalAssistantCommitTests: XCTestCase {
             memoryService: nil,
             extractionContext: makeContext()
         )
-        // No crash + no extraction is the success condition here.
+        let messages = try await store.fetchChatMessages(threadID: "thread-1")
+        XCTAssertEqual(messages.map(\.content), ["Here is the answer."])
     }
 
     func testNilExtractionContextIsNoOp() async throws {

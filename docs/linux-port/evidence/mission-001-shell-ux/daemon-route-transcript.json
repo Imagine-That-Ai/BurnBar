@@ -1,15 +1,15 @@
 {
-  "generatedAt": "2026-07-03T11:36:59.676Z",
+  "generatedAt": "2026-07-08T03:19:09.872Z",
   "lane": "W06LinuxShellUx",
-  "mode": "daemon-backed-oracle",
+  "mode": "real-daemon-af-unix-oracle",
   "daemon": {
     "ok": true,
     "protocolVersion": 1,
-    "daemonVersion": "gui-session-fake-daemon-0.1.0",
-    "socketPath": "$XDG_DATA_HOME/openburnbar/openburnbar-daemon.sock",
-    "gatewayEnabled": true,
+    "daemonVersion": "OpenBurnBarDaemon shell-session-evidence",
+    "socketPath": "/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock",
+    "gatewayEnabled": false,
     "gatewayHost": "127.0.0.1",
-    "gatewayPort": 47877
+    "gatewayPort": 0
   },
   "routes": [
     {
@@ -20,17 +20,17 @@
         {
           "id": "daemon-version",
           "title": "Daemon version",
-          "detail": "gui-session-fake-daemon-0.1.0 / protocol 1"
+          "detail": "OpenBurnBarDaemon shell-session-evidence / protocol 1"
         },
         {
           "id": "socket-path",
           "title": "AF_UNIX socket",
-          "detail": "$XDG_DATA_HOME/openburnbar/openburnbar-daemon.sock"
+          "detail": "/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock"
         },
         {
           "id": "gateway-status",
           "title": "Gateway",
-          "detail": "127.0.0.1:47877"
+          "detail": "disabled"
         }
       ]
     },
@@ -42,17 +42,17 @@
         {
           "id": "daemon-version",
           "title": "Daemon version",
-          "detail": "gui-session-fake-daemon-0.1.0 / protocol 1"
+          "detail": "OpenBurnBarDaemon shell-session-evidence / protocol 1"
         },
         {
           "id": "socket-path",
           "title": "AF_UNIX socket",
-          "detail": "$XDG_DATA_HOME/openburnbar/openburnbar-daemon.sock"
+          "detail": "/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock"
         },
         {
           "id": "gateway-status",
           "title": "Gateway",
-          "detail": "127.0.0.1:47877"
+          "detail": "disabled"
         }
       ]
     },
@@ -64,17 +64,17 @@
         {
           "id": "daemon-version",
           "title": "Daemon version",
-          "detail": "gui-session-fake-daemon-0.1.0 / protocol 1"
+          "detail": "OpenBurnBarDaemon shell-session-evidence / protocol 1"
         },
         {
           "id": "socket-path",
           "title": "AF_UNIX socket",
-          "detail": "$XDG_DATA_HOME/openburnbar/openburnbar-daemon.sock"
+          "detail": "/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock"
         },
         {
           "id": "gateway-status",
           "title": "Gateway",
-          "detail": "127.0.0.1:47877"
+          "detail": "disabled"
         }
       ]
     },
@@ -86,17 +86,17 @@
         {
           "id": "daemon-version",
           "title": "Daemon version",
-          "detail": "gui-session-fake-daemon-0.1.0 / protocol 1"
+          "detail": "OpenBurnBarDaemon shell-session-evidence / protocol 1"
         },
         {
           "id": "socket-path",
           "title": "AF_UNIX socket",
-          "detail": "$XDG_DATA_HOME/openburnbar/openburnbar-daemon.sock"
+          "detail": "/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock"
         },
         {
           "id": "gateway-status",
           "title": "Gateway",
-          "detail": "127.0.0.1:47877"
+          "detail": "disabled"
         }
       ]
     },
@@ -108,17 +108,17 @@
         {
           "id": "daemon-version",
           "title": "Daemon version",
-          "detail": "gui-session-fake-daemon-0.1.0 / protocol 1"
+          "detail": "OpenBurnBarDaemon shell-session-evidence / protocol 1"
         },
         {
           "id": "socket-path",
           "title": "AF_UNIX socket",
-          "detail": "$XDG_DATA_HOME/openburnbar/openburnbar-daemon.sock"
+          "detail": "/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock"
         },
         {
           "id": "gateway-status",
           "title": "Gateway",
-          "detail": "127.0.0.1:47877"
+          "detail": "disabled"
         }
       ]
     },
@@ -130,17 +130,17 @@
         {
           "id": "daemon-version",
           "title": "Daemon version",
-          "detail": "gui-session-fake-daemon-0.1.0 / protocol 1"
+          "detail": "OpenBurnBarDaemon shell-session-evidence / protocol 1"
         },
         {
           "id": "socket-path",
           "title": "AF_UNIX socket",
-          "detail": "$XDG_DATA_HOME/openburnbar/openburnbar-daemon.sock"
+          "detail": "/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock"
         },
         {
           "id": "gateway-status",
           "title": "Gateway",
-          "detail": "127.0.0.1:47877"
+          "detail": "disabled"
         }
       ]
     },
@@ -152,17 +152,17 @@
         {
           "id": "daemon-version",
           "title": "Daemon version",
-          "detail": "gui-session-fake-daemon-0.1.0 / protocol 1"
+          "detail": "OpenBurnBarDaemon shell-session-evidence / protocol 1"
         },
         {
           "id": "socket-path",
           "title": "AF_UNIX socket",
-          "detail": "$XDG_DATA_HOME/openburnbar/openburnbar-daemon.sock"
+          "detail": "/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock"
         },
         {
           "id": "gateway-status",
           "title": "Gateway",
-          "detail": "127.0.0.1:47877"
+          "detail": "disabled"
         }
       ]
     },
@@ -174,17 +174,17 @@
         {
           "id": "daemon-version",
           "title": "Daemon version",
-          "detail": "gui-session-fake-daemon-0.1.0 / protocol 1"
+          "detail": "OpenBurnBarDaemon shell-session-evidence / protocol 1"
         },
         {
           "id": "socket-path",
           "title": "AF_UNIX socket",
-          "detail": "$XDG_DATA_HOME/openburnbar/openburnbar-daemon.sock"
+          "detail": "/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock"
         },
         {
           "id": "gateway-status",
           "title": "Gateway",
-          "detail": "127.0.0.1:47877"
+          "detail": "disabled"
         }
       ]
     },
@@ -196,17 +196,17 @@
         {
           "id": "daemon-version",
           "title": "Daemon version",
-          "detail": "gui-session-fake-daemon-0.1.0 / protocol 1"
+          "detail": "OpenBurnBarDaemon shell-session-evidence / protocol 1"
         },
         {
           "id": "socket-path",
           "title": "AF_UNIX socket",
-          "detail": "$XDG_DATA_HOME/openburnbar/openburnbar-daemon.sock"
+          "detail": "/tmp/openburnbar-linux-desktop-session/home/.local/share/openburnbar/openburnbar-daemon.sock"
         },
         {
           "id": "gateway-status",
           "title": "Gateway",
-          "detail": "127.0.0.1:47877"
+          "detail": "disabled"
         }
       ]
     }
