@@ -23,6 +23,7 @@ import {
   requireActiveIrohPairing,
   requireIrohTransportNodeId,
   requireVerifiedControllerAuthority,
+  verifyIrohControllerAuthorityProof,
   verifyIrohControllerRouteProof,
 } from "./irohControllerRouteSecurity.js";
 import { assertActiveBurnBarCloudProEntitlement } from "./shared.js";
@@ -95,12 +96,20 @@ function verifyRouteJoin(args: {
     controller: Record<string, unknown>;
   };
   nowMillis: number;
-}): { authorityPublicKeySHA256: string; pairingPublishedAtMillis: number } {
+}): {
+  authorityPublicKeySHA256: string;
+  authorityPublicKey: Buffer;
+  authorityKeyKind: "ed25519" | "se-p256";
+  pairingPublishedAtMillis: number;
+} {
   const allowlist = normalizedControllerDeviceAllowlist(args.join.pairing.authorizedControllerDeviceIds);
   if (allowlist.length !== 1 || allowlist[0] !== args.sourceDeviceId) {
     throw new HttpsError("permission-denied", "Iroh pairing does not have one unambiguous controller device.");
   }
   requireTrustedDeviceRecord(args.join.sourceDevice, args.sourceDeviceId, PHONE_CONTROL_ESCROW_PLATFORMS);
+  if (args.join.sourceDevice.peerNodeId !== args.authorityPeerNodeId) {
+    throw new HttpsError("permission-denied", "Controller authority is not the device's current peer binding.");
+  }
   const hostDeviceId = boundedFirestoreDocumentId(
     args.join.pairing.publishedByDeviceId,
     "pairing.publishedByDeviceId",
@@ -122,6 +131,8 @@ function verifyRouteJoin(args: {
   });
   return {
     authorityPublicKeySHA256: authority.authorityPublicKeySHA256,
+    authorityPublicKey: authority.authorityPublicKey,
+    authorityKeyKind: authority.authorityKeyKind,
     pairingPublishedAtMillis: pairing.publishedAtMillis,
   };
 }
@@ -228,12 +239,29 @@ export const registerIrohControllerRoute = onCallProduction(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (request: CallableRequest<{ challengeId?: unknown; signatureBase64?: unknown }>) => {
+  async (
+    request: CallableRequest<{
+      challengeId?: unknown;
+      transportSignatureBase64?: unknown;
+      authoritySignatureBase64?: unknown;
+    }>,
+  ) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before registering a controller route.");
     await assertActiveBurnBarCloudProEntitlement(uid);
     const challengeId = boundedFirestoreDocumentId(request.data.challengeId, "challengeId", 64);
-    const signatureBase64 = requireBase64Like(request.data.signatureBase64, "signatureBase64", 80, 128);
+    const transportSignatureBase64 = requireBase64Like(
+      request.data.transportSignatureBase64,
+      "transportSignatureBase64",
+      80,
+      128,
+    );
+    const authoritySignatureBase64 = requireBase64Like(
+      request.data.authoritySignatureBase64,
+      "authoritySignatureBase64",
+      80,
+      128,
+    );
     const challengeRef = db.doc(`users/${uid}/iroh_controller_route_challenges/${challengeId}`);
     const nowMillis = Date.now();
 
@@ -271,7 +299,7 @@ export const registerIrohControllerRoute = onCallProduction(
       if (challenge.canonicalPayloadBase64 !== canonicalPayload) {
         throw new HttpsError("failed-precondition", "Controller-route challenge payload is inconsistent.");
       }
-      if (!verifyIrohControllerRouteProof(transportPublicKey, canonicalPayload, signatureBase64)) {
+      if (!verifyIrohControllerRouteProof(transportPublicKey, canonicalPayload, transportSignatureBase64)) {
         throw new HttpsError("permission-denied", "Controller route does not prove possession of transportNodeId.");
       }
 
@@ -284,6 +312,16 @@ export const registerIrohControllerRoute = onCallProduction(
         join,
         nowMillis,
       });
+      if (
+        !verifyIrohControllerAuthorityProof(
+          verified.authorityPublicKey,
+          verified.authorityKeyKind,
+          canonicalPayload,
+          authoritySignatureBase64,
+        )
+      ) {
+        throw new HttpsError("permission-denied", "Controller route does not prove possession of authorityPeerNodeId.");
+      }
       const routeRef = db.doc(`users/${uid}/iroh_pairing/${connectionId}/controller_routes/${sourceDeviceId}`);
       const existingRoute = await transaction.get(routeRef);
       const currentGeneration = existingRoute.exists
@@ -366,19 +404,26 @@ export const revokeIrohControllerRoute = onCallProduction(
       );
       requireTrustedDeviceRecord(sourceDevice, sourceDeviceId, PHONE_CONTROL_ESCROW_PLATFORMS);
       const route = await transaction.get(routeRef);
-      if (!route.exists) return 0;
-      const priorGeneration = boundedInteger(route.get("generation"), "route.generation", 1, MAX_GENERATION, true) ?? 0;
-      if (route.get("sourceDeviceId") !== sourceDeviceId || route.get("connectionId") !== connectionId) {
+      const priorGeneration = route.exists
+        ? (boundedInteger(route.get("generation"), "route.generation", 1, MAX_GENERATION, true) ?? 0)
+        : 0;
+      if (
+        route.exists &&
+        (route.get("sourceDeviceId") !== sourceDeviceId || route.get("connectionId") !== connectionId)
+      ) {
         throw new HttpsError("permission-denied", "Controller route ownership is inconsistent.");
       }
       const nextGeneration = priorGeneration + 1;
       transaction.set(
         routeRef,
         {
+          connectionId,
+          sourceDeviceId,
           status: "revoked",
           generation: nextGeneration,
           expiresAtMillis: nowMillis,
           revokedAtMillis: nowMillis,
+          schemaVersion: ROUTE_SCHEMA_VERSION,
           updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true },

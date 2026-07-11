@@ -131,7 +131,7 @@ Computer Use keeps three controller identities distinct:
 | Identity | Meaning | Verification |
 |---|---|---|
 | `transportNodeId` | canonical 64-character lowercase-hex iroh QUIC NodeId (legacy 52-character base32 is normalized) | Ed25519 signature by the endpoint private key over a server challenge |
-| `authorityPeerNodeId` | `ios-phone-*`, `ios-se-*`, `android-phone-*`, or `android-se-*` app-layer signing authority | deterministically derived from `controllers/{peerNodeId}.publicKeyBase64` and `signingKeyKind` |
+| `authorityPeerNodeId` | `ios-phone-*`, `ios-se-*`, `android-phone-*`, or `android-se-*` app-layer signing authority | key-kind-aware signature over the same server challenge plus deterministic derivation from `controllers/{peerNodeId}.publicKeyBase64` |
 | `sourceDeviceId` | trusted iOS/iPadOS/Android escrow device | same-user server-owned `escrow_devices/{deviceId}` with `trustState == trusted` |
 
 The server never trusts `devices/{deviceId}.irohPeerNodeId`. A controller first
@@ -139,17 +139,23 @@ calls `issueIrohControllerRouteChallenge` with all three identities and a fresh
 high-risk nonce. In one transaction, the callable verifies the current signed
 host pairing, its trusted macOS/Linux host device, the pairing's single controller-device
 binding, the trusted mobile escrow device, and the key-derived controller
-authority. It returns `canonicalPayloadBase64`, which is the exact byte string
-the iroh endpoint key must sign with Ed25519. Clients must decode that base64,
-sign the bytes without hashing or JSON re-encoding, and submit the canonical
-base64 Ed25519 signature to `registerIrohControllerRoute`.
+authority, including the mobile escrow device's current `peerNodeId` binding.
+It returns `canonicalPayloadBase64`, which is the exact byte string both the
+iroh endpoint key and phone-control authority key must sign. Clients decode
+that base64 once, sign the bytes without JSON re-encoding, and submit
+`transportSignatureBase64` (Ed25519) plus `authoritySignatureBase64`
+(Ed25519 or P-256, matching `signingKeyKind`) to
+`registerIrohControllerRoute`.
 
 The payload domain is `OpenBurnBar-IrohControllerRoute-v1`. Every following
 key/value segment is UTF-8 framed as `<byteLength>:<value>\n`, in this order:
 `version`, `challengeId`, `challengeNonce`, `uid`, `connectionId`,
 `sourceDeviceId`, `transportNodeId`, `authorityPeerNodeId`,
 `registrationGeneration`, `issuedAtMillis`, `expiresAtMillis`. The challenge
-expires after 60 seconds and is consumed only after a valid proof. Concurrent
+expires after 60 seconds and is consumed only after both proofs are valid. A
+revocation writes a generation tombstone even before the first registration,
+so an outstanding challenge cannot activate a route after explicit revoke.
+Concurrent
 registrations use compare-and-advance generations, so only one wins.
 
 `resolveActiveIrohControllerRoutes` returns at most one route and no public or

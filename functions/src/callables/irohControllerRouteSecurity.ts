@@ -11,6 +11,7 @@ import {
   requireDerivedPhoneControlPeerNodeId,
   requirePhoneControlAuthorityPublicKey,
   verifyEd25519RawSignature,
+  verifyPhoneControlAuthoritySignature,
 } from "./computerUseSecurityCodecs.js";
 
 const IROH_NODE_ID_ALPHABET = "abcdefghijklmnopqrstuvwxyz234567";
@@ -120,7 +121,13 @@ export function requireVerifiedControllerAuthority(args: {
   sourceDeviceId: string;
   authorityPeerNodeId: string;
   controller: Record<string, unknown>;
-}): { sourceDeviceId: string; authorityPeerNodeId: string; authorityPublicKeySHA256: string } {
+}): {
+  sourceDeviceId: string;
+  authorityPeerNodeId: string;
+  authorityPublicKeySHA256: string;
+  authorityPublicKey: Buffer;
+  authorityKeyKind: "ed25519" | "se-p256";
+} {
   const { controller } = args;
   if (
     controller.connectionId !== args.connectionId ||
@@ -137,7 +144,20 @@ export function requireVerifiedControllerAuthority(args: {
     sourceDeviceId: args.sourceDeviceId,
     authorityPeerNodeId: args.authorityPeerNodeId,
     authorityPublicKeySHA256: createHash("sha256").update(bytes).digest("hex"),
+    authorityPublicKey: bytes,
+    authorityKeyKind: keyKind,
   };
+}
+
+export function verifyIrohControllerAuthorityProof(
+  authorityPublicKey: Buffer,
+  authorityKeyKind: "ed25519" | "se-p256",
+  canonicalPayloadBase64: string,
+  signatureBase64: string,
+): boolean {
+  const payload = Buffer.from(canonicalPayloadBase64, "base64");
+  if (payload.toString("base64") !== canonicalPayloadBase64) return false;
+  return verifyPhoneControlAuthoritySignature(authorityPublicKey, authorityKeyKind, payload, signatureBase64);
 }
 
 export function requireActiveIrohPairing(args: {

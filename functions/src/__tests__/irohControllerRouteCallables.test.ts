@@ -157,6 +157,7 @@ function seedTrustGraph() {
     deviceId: SOURCE_DEVICE_ID,
     platform: "iOS",
     trustState: "trusted",
+    peerNodeId: authorityPeerNodeId,
   });
   store.set(`users/${UID}/iroh_pairing_keys/host`, {
     id: "host",
@@ -181,7 +182,7 @@ function seedTrustGraph() {
     publicKeyBase64: authorityPublic.toString("base64"),
     signingKeyKind: "ed25519",
   });
-  return { authorityPeerNodeId, transport, transportNodeId };
+  return { authority, authorityPeerNodeId, transport, transportNodeId };
 }
 
 async function issueChallenge(authorityPeerNodeId: string, transportNodeId: string) {
@@ -200,11 +201,14 @@ async function issueChallenge(authorityPeerNodeId: string, transportNodeId: stri
 
 async function registerChallenge(
   challenge: { challengeId: string; canonicalPayloadBase64: string },
-  privateKey: ReturnType<typeof generateKeyPairSync>["privateKey"],
+  transportPrivateKey: ReturnType<typeof generateKeyPairSync>["privateKey"],
+  authorityPrivateKey: ReturnType<typeof generateKeyPairSync>["privateKey"],
 ) {
+  const payload = Buffer.from(challenge.canonicalPayloadBase64, "base64");
   return invoke<Record<string, unknown>>(registerIrohControllerRoute, UID, {
     challengeId: challenge.challengeId,
-    signatureBase64: sign(null, Buffer.from(challenge.canonicalPayloadBase64, "base64"), privateKey).toString("base64"),
+    transportSignatureBase64: sign(null, payload, transportPrivateKey).toString("base64"),
+    authoritySignatureBase64: sign(null, payload, authorityPrivateKey).toString("base64"),
   });
 }
 
@@ -255,7 +259,11 @@ describe("verified iroh controller route registry", () => {
   it("registers and resolves distinct transport, authority, and device identities", async () => {
     const fixture = seedTrustGraph();
     const challenge = await issueChallenge(fixture.authorityPeerNodeId, fixture.transportNodeId);
-    const registration = await registerChallenge(challenge, fixture.transport.privateKey);
+    const registration = await registerChallenge(
+      challenge,
+      fixture.transport.privateKey,
+      fixture.authority.privateKey,
+    );
     expect(registration).toMatchObject({
       ok: true,
       sourceDeviceId: SOURCE_DEVICE_ID,
@@ -286,18 +294,35 @@ describe("verified iroh controller route registry", () => {
     const fixture = seedTrustGraph();
     const attacker = generateKeyPairSync("ed25519");
     const challenge = await issueChallenge(fixture.authorityPeerNodeId, fixture.transportNodeId);
-    await expect(registerChallenge(challenge, attacker.privateKey)).rejects.toMatchObject({
+    await expect(registerChallenge(challenge, attacker.privateKey, fixture.authority.privateKey)).rejects.toMatchObject({
       code: "permission-denied",
     });
     expect(store.get(`users/${UID}/iroh_controller_route_challenges/${challenge.challengeId}`)?.status).toBe("pending");
-    await expect(registerChallenge(challenge, fixture.transport.privateKey)).resolves.toMatchObject({ ok: true });
+    await expect(
+      registerChallenge(challenge, fixture.transport.privateKey, fixture.authority.privateKey),
+    ).resolves.toMatchObject({ ok: true });
+  });
+
+  it("rejects a forged authority proof without consuming the challenge", async () => {
+    const fixture = seedTrustGraph();
+    const attacker = generateKeyPairSync("ed25519");
+    const challenge = await issueChallenge(fixture.authorityPeerNodeId, fixture.transportNodeId);
+    await expect(
+      registerChallenge(challenge, fixture.transport.privateKey, attacker.privateKey),
+    ).rejects.toMatchObject({ code: "permission-denied" });
+    expect(store.get(`users/${UID}/iroh_controller_route_challenges/${challenge.challengeId}`)?.status).toBe("pending");
+    await expect(
+      registerChallenge(challenge, fixture.transport.privateKey, fixture.authority.privateKey),
+    ).resolves.toMatchObject({ ok: true });
   });
 
   it("consumes a successful proof exactly once", async () => {
     const fixture = seedTrustGraph();
     const challenge = await issueChallenge(fixture.authorityPeerNodeId, fixture.transportNodeId);
-    await registerChallenge(challenge, fixture.transport.privateKey);
-    await expect(registerChallenge(challenge, fixture.transport.privateKey)).rejects.toMatchObject({
+    await registerChallenge(challenge, fixture.transport.privateKey, fixture.authority.privateKey);
+    await expect(
+      registerChallenge(challenge, fixture.transport.privateKey, fixture.authority.privateKey),
+    ).rejects.toMatchObject({
       code: "failed-precondition",
     });
   });
@@ -306,8 +331,10 @@ describe("verified iroh controller route registry", () => {
     const fixture = seedTrustGraph();
     const first = await issueChallenge(fixture.authorityPeerNodeId, fixture.transportNodeId);
     const second = await issueChallenge(fixture.authorityPeerNodeId, fixture.transportNodeId);
-    await registerChallenge(first, fixture.transport.privateKey);
-    await expect(registerChallenge(second, fixture.transport.privateKey)).rejects.toMatchObject({ code: "aborted" });
+    await registerChallenge(first, fixture.transport.privateKey, fixture.authority.privateKey);
+    await expect(
+      registerChallenge(second, fixture.transport.privateKey, fixture.authority.privateKey),
+    ).rejects.toMatchObject({ code: "aborted" });
   });
 
   it("fails closed for stale pairing, ambiguous controllers, authority rotation, and route expiry", async () => {
@@ -331,7 +358,16 @@ describe("verified iroh controller route registry", () => {
     store.clear();
     const registered = seedTrustGraph();
     const challenge = await issueChallenge(registered.authorityPeerNodeId, registered.transportNodeId);
-    await registerChallenge(challenge, registered.transport.privateKey);
+    await registerChallenge(challenge, registered.transport.privateKey, registered.authority.privateKey);
+    const sourceDevicePath = `users/${UID}/escrow_devices/${SOURCE_DEVICE_ID}`;
+    store.set(sourceDevicePath, { ...store.get(sourceDevicePath), peerNodeId: "ios-phone-rotated" });
+    await expect(invoke(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID })).rejects.toMatchObject(
+      { code: "permission-denied" },
+    );
+    store.set(sourceDevicePath, {
+      ...store.get(sourceDevicePath),
+      peerNodeId: registered.authorityPeerNodeId,
+    });
     const controllerPath = `users/${UID}/iroh_pairing/${CONNECTION_ID}/controllers/${registered.authorityPeerNodeId}`;
     store.set(controllerPath, { ...store.get(controllerPath), publicKeyBase64: randomBytes(32).toString("base64") });
     await expect(invoke(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID })).rejects.toBeTruthy();
@@ -339,7 +375,7 @@ describe("verified iroh controller route registry", () => {
     store.clear();
     const expired = seedTrustGraph();
     const expiryChallenge = await issueChallenge(expired.authorityPeerNodeId, expired.transportNodeId);
-    await registerChallenge(expiryChallenge, expired.transport.privateKey);
+    await registerChallenge(expiryChallenge, expired.transport.privateKey, expired.authority.privateKey);
     const routePath = `users/${UID}/iroh_pairing/${CONNECTION_ID}/controller_routes/${SOURCE_DEVICE_ID}`;
     store.set(routePath, { ...store.get(routePath), expiresAtMillis: Date.now() - 1 });
     await expect(invoke(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID })).rejects.toMatchObject(
@@ -350,7 +386,7 @@ describe("verified iroh controller route registry", () => {
   it("revokes durably by advancing the generation and blocks resolution", async () => {
     const fixture = seedTrustGraph();
     const challenge = await issueChallenge(fixture.authorityPeerNodeId, fixture.transportNodeId);
-    await registerChallenge(challenge, fixture.transport.privateKey);
+    await registerChallenge(challenge, fixture.transport.privateKey, fixture.authority.privateKey);
     await expect(
       invoke(revokeIrohControllerRoute, UID, {
         sourceDeviceId: SOURCE_DEVICE_ID,
@@ -363,10 +399,31 @@ describe("verified iroh controller route registry", () => {
     );
   });
 
+  it("tombstones an absent route so an outstanding first-generation challenge cannot register", async () => {
+    const fixture = seedTrustGraph();
+    const challenge = await issueChallenge(fixture.authorityPeerNodeId, fixture.transportNodeId);
+    await expect(
+      invoke(revokeIrohControllerRoute, UID, {
+        sourceDeviceId: SOURCE_DEVICE_ID,
+        connectionId: CONNECTION_ID,
+        nonce: "revoke-before-register-nonce",
+      }),
+    ).resolves.toMatchObject({ ok: true, generation: 1 });
+    expect(store.get(`users/${UID}/iroh_pairing/${CONNECTION_ID}/controller_routes/${SOURCE_DEVICE_ID}`)).toMatchObject({
+      connectionId: CONNECTION_ID,
+      sourceDeviceId: SOURCE_DEVICE_ID,
+      status: "revoked",
+      generation: 1,
+    });
+    await expect(
+      registerChallenge(challenge, fixture.transport.privateKey, fixture.authority.privateKey),
+    ).rejects.toMatchObject({ code: "aborted" });
+  });
+
   it("tombstones the verified route when the host revokes its pairing", async () => {
     const fixture = seedTrustGraph();
     const challenge = await issueChallenge(fixture.authorityPeerNodeId, fixture.transportNodeId);
-    await registerChallenge(challenge, fixture.transport.privateKey);
+    await registerChallenge(challenge, fixture.transport.privateKey, fixture.authority.privateKey);
     await expect(
       invoke(revokeIrohPairingRecord, UID, {
         deviceId: HOST_DEVICE_ID,
@@ -404,10 +461,15 @@ describe("verified iroh controller route registry", () => {
     await expect(
       invoke(registerIrohControllerRoute, BOB_UID, {
         challengeId: challenge.challengeId,
-        signatureBase64: sign(
+        transportSignatureBase64: sign(
           null,
           Buffer.from(challenge.canonicalPayloadBase64, "base64"),
           fixture.transport.privateKey,
+        ).toString("base64"),
+        authoritySignatureBase64: sign(
+          null,
+          Buffer.from(challenge.canonicalPayloadBase64, "base64"),
+          fixture.authority.privateKey,
         ).toString("base64"),
       }),
     ).rejects.toMatchObject({ code: "failed-precondition" });
