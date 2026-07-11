@@ -340,6 +340,26 @@ describe("FirestoreIngressTicketStore", () => {
     );
     assert.equal(firestore.values.get(enrollmentPath(enrollment))?.revokedReason, "operator_revoke");
   });
+
+  it("preserves a revoked tombstone when retry exhaustion terminals its ticket", async () => {
+    const firestore = new MemoryFirestore();
+    const enrollment = candidate();
+    firestore.values.set(TICKET_PATH, { ...enrollmentTicket(enrollment), attemptCount: 3 });
+    firestore.values.set(enrollmentPath(enrollment), {
+      ...enrollment,
+      beginTicketId: ingressTicketCredential.ticketId,
+      revokedAtMillis: NOW,
+      revokedReason: "operator_revoke",
+    } as unknown as Record<string, unknown>);
+    const store = new FirestoreIngressTicketStore(firestore as unknown as Firestore);
+
+    await assert.rejects(
+      store.claimEnrollmentBegin(ingressTicketCredential, enrollment, NOW + 1, 75_000, 3),
+      (error: unknown) => error instanceof PublicError && error.code === "rate_limited",
+    );
+    assert.equal(firestore.values.get(enrollmentPath(enrollment))?.revokedReason, "operator_revoke");
+    assert.equal(firestore.values.get(TICKET_PATH)?.status, "terminal");
+  });
 });
 
 describe("Firestore ingress state adapters", () => {
