@@ -19,6 +19,8 @@ internal static class WindowsMediaBufferReader
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(surface);
+        Direct3DSurfaceDescription description = surface.Description;
+        _ = CheckedBgraLength(description.Width, description.Height);
         using SoftwareBitmap bitmap = await SoftwareBitmap
             .CreateCopyFromSurfaceAsync(surface, BitmapAlphaMode.Premultiplied)
             .AsTask(cancellationToken)
@@ -84,7 +86,7 @@ internal static class WindowsMediaBufferReader
         return bytes;
     }
 
-    private static int CheckedBgraLength(int width, int height)
+    internal static int CheckedBgraLength(int width, int height)
     {
         if (width <= 0 || height <= 0)
         {

@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using OpenBurnBar.Integrations.Mercury.Adapters;
+using Windows.Graphics;
 using Windows.Graphics.Capture;
 using Windows.Graphics.DirectX;
 using Windows.Graphics.DirectX.Direct3D11;
@@ -32,6 +33,8 @@ public sealed class GraphicsCaptureScreenSource : IScreenCaptureSource
     private GraphicsCaptureItem? _captureItem;
     private CancellationTokenSource? _captureCancellation;
     private Func<CapturedFrame, ValueTask>? _onFrame;
+    private int _frameWidth;
+    private int _frameHeight;
     private bool _disposed;
 
     public GraphicsCaptureScreenSource(
@@ -82,6 +85,8 @@ public sealed class GraphicsCaptureScreenSource : IScreenCaptureSource
             _captureCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             _captureItem = _itemFactory();
             var size = _captureItem.Size;
+            _frameWidth = size.Width;
+            _frameHeight = size.Height;
             _framePool = Direct3D11CaptureFramePool.CreateFreeThreaded(
                 _device,
                 DirectXPixelFormat.B8G8R8A8UIntNormalized,
@@ -110,28 +115,38 @@ public sealed class GraphicsCaptureScreenSource : IScreenCaptureSource
     {
         var handler = _onFrame;
         var captureCancellation = _captureCancellation;
-        if (handler is null || captureCancellation is null || !_frameGate.Wait(0))
+        Direct3D11CaptureFrame? frame = sender.TryGetNextFrame();
+        if (frame is null)
         {
             return;
         }
 
+        if (handler is null || captureCancellation is null || !_frameGate.Wait(0))
+        {
+            frame.Dispose();
+            return;
+        }
+
+        CapturedFrame? captured = null;
+        SizeInt32? resize = null;
         try
         {
-            using var frame = sender.TryGetNextFrame();
-            if (frame is null)
+            if (frame.ContentSize.Width != _frameWidth || frame.ContentSize.Height != _frameHeight)
             {
-                return;
+                resize = frame.ContentSize;
             }
-
-            SoftwareBitmapBytes pixels = await WindowsMediaBufferReader
-                .ReadSurfaceBgraAsync(frame.Surface, captureCancellation.Token)
-                .ConfigureAwait(false);
-            ulong timestamp = checked((ulong)Math.Max(0, frame.SystemRelativeTime.TotalMilliseconds));
-            await handler(new CapturedFrame(
-                pixels.Bytes,
-                pixels.Width,
-                pixels.Height,
-                timestamp)).ConfigureAwait(false);
+            else
+            {
+                SoftwareBitmapBytes pixels = await WindowsMediaBufferReader
+                    .ReadSurfaceBgraAsync(frame.Surface, captureCancellation.Token)
+                    .ConfigureAwait(false);
+                ulong timestamp = checked((ulong)Math.Max(0, frame.SystemRelativeTime.TotalMilliseconds));
+                captured = new CapturedFrame(
+                    pixels.Bytes,
+                    pixels.Width,
+                    pixels.Height,
+                    timestamp);
+            }
         }
         catch (OperationCanceledException) when (captureCancellation.IsCancellationRequested)
         {
@@ -142,7 +157,46 @@ public sealed class GraphicsCaptureScreenSource : IScreenCaptureSource
         }
         finally
         {
+            frame.Dispose();
+            if (resize is { } size && !captureCancellation.IsCancellationRequested)
+            {
+                try
+                {
+                    sender.Recreate(
+                        _device,
+                        DirectXPixelFormat.B8G8R8A8UIntNormalized,
+                        numberOfBuffers: 2,
+                        size);
+                    _frameWidth = size.Width;
+                    _frameHeight = size.Height;
+                }
+                catch (Exception ex)
+                {
+                    LastError = ex;
+                }
+            }
+
             _frameGate.Release();
+        }
+
+        if (resize is not null)
+        {
+            return;
+        }
+
+        if (captured is not null && !captureCancellation.IsCancellationRequested)
+        {
+            try
+            {
+                await handler(captured).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (captureCancellation.IsCancellationRequested)
+            {
+            }
+            catch (Exception ex)
+            {
+                LastError = ex;
+            }
         }
     }
 
@@ -160,6 +214,8 @@ public sealed class GraphicsCaptureScreenSource : IScreenCaptureSource
             _session?.Dispose();
             _session = null;
             _captureItem = null;
+            _frameWidth = 0;
+            _frameHeight = 0;
             _framePool?.Dispose();
             _framePool = null;
         }

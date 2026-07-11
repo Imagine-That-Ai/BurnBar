@@ -142,7 +142,7 @@ internal static class Program
         return new CaptureHostSummary(
             Passed: checks.All(check => check.Passed),
             GeneratedAtUtc: DateTimeOffset.UtcNow,
-            MachineName: Environment.MachineName,
+            MachineName: "WINDOWS-HOST-REDACTED",
             OsVersion: Environment.OSVersion.VersionString,
             OsArchitecture: RuntimeInformation.OSArchitecture.ToString(),
             ProcessArchitecture: RuntimeInformation.ProcessArchitecture.ToString(),
