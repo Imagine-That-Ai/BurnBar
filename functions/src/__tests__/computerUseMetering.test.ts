@@ -94,6 +94,16 @@ describe("computer use immediate metering", () => {
       systemActionsExecuted: 1,
       phoneControlIntentsExecuted: 1,
     });
+    expect(
+      __testing__.actionQuotaDelta({
+        status: "error",
+        toolKind: "mac_input_click",
+        approvedBy: "phone",
+      }),
+    ).toMatchObject({
+      systemActionsRejected: 1,
+      phoneControlIntentsRejected: 1,
+    });
   });
 
   it("counts terminal failures as rejected and clamps untrusted spend", () => {
