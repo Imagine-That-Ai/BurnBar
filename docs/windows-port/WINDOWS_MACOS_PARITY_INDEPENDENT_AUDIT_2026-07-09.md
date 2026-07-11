@@ -24,12 +24,20 @@ Current evidence materially supersedes the original source-only findings:
 - [Exact-candidate x64 run 29160940577](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29160940577)
   verified 10,476/10,476 exported blobs with zero mismatches and passed the
   Windows foundation harness and secret scan.
+- [Signed hosted x64 run 29162867538](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29162867538)
+  passed clean signed-MSIX registration, package identity checks, uninstall
+  with absence verification, and reinstall.
 - An exact `778e735a69ea9d812db87146630223ac1a3a49d7` candidate was imported into
   Windows 11 Pro ARM64 under UTM with 10,475/10,475 files verified and zero
   mismatches. The ARM64 solution build, 180 focused tests, all ten storage
   failure/recovery cases, chat evidence, and a zero-finding artifact secret scan
   passed. The evidence archive SHA-256 is
   `1a276bd023f5d6078fee4501ced80a94da9ba1db0414b774fd184fb4a843c7ad`.
+- The signed ARM64 MSIX then passed clean install, responsive first launch,
+  protocol activation, uninstall with absence verification, reinstall, and
+  responsive final launch in the signed-in Windows 11 user session. Windows
+  reported the expected publisher, `Arm64` architecture, version `1.0.29.0`,
+  valid Microsoft Artifact Signing chain, and RFC 3161 timestamp.
 - The physical iPhone companion built, signed, installed, and launched. Its
   suite recorded 1,240 passed, 13 failed, and 28 skipped tests, so this is
   physical compile/install evidence rather than a green-suite claim.

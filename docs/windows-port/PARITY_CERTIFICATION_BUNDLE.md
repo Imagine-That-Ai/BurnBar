@@ -183,7 +183,7 @@ Each row: **(a)** screenshot — Win11 Pro pass; **(b)** test/command; **(c)** a
 
 | Flow / surface | Screenshot (Win11 Pro) | Automated evidence | Drift |
 |----------------|------------------------|--------------------|-------|
-| Cold install signed MSIX | _(blocked — physical Win11 Pro pass pending)_ | Signed x64/ARM64 packages and hashes: run [29160512069](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29160512069); hosted/UTM registration lifecycle tracked in `evidence/final-certification-2026-07-11/` | D10 |
+| Cold install signed MSIX | Hosted x64 and ARM64 UTM signed-user lifecycles passed; physical Win11 Pro pass remains | Signed packages/hashes: run [29160512069](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29160512069); hosted x64 registration/uninstall/reinstall: run [29162867538](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29162867538); ARM64 install/launch/protocol/uninstall/reinstall receipt: `evidence/final-certification-2026-07-11/arm64-utm/signed-arm64-msix-lifecycle.json` | D10 |
 | Auto-update from Ed25519 feed | _(blocked — Win11 Pro pass pending)_ | `OpenBurnBar.Updater.Tests` + recorded feed apply log | — |
 | Tray → flyout → main window | _(blocked — Win11 Pro pass pending)_ | `DEV_HOST_RUNBOOK.md` / validation pass script | — |
 | Dashboard populated | _(blocked — Win11 Pro pass pending)_ | `dotnet test windows/tests/dashboard` | D1 |

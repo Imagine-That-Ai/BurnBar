@@ -13,7 +13,7 @@
       "device": {
         "architecture": "arm64",
         "deviceId": "<IOS_USB_UDID>",
-        "deviceName": "Alberto’s iPhone 17Pro Max",
+        "deviceName": "Physical iPhone 17 Pro Max",
         "modelName": "iPhone 17 Pro Max",
         "osBuildNumber": "24A5380h",
         "osVersion": "27.0",

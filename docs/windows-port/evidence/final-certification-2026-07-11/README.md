@@ -9,6 +9,7 @@ physical-hardware certification claim.
 - Product candidate commit: `778e735a69ea9d812db87146630223ac1a3a49d7`
 - Candidate tree: `97a56caca0f60cf62ecb027f24334899d21d2f72`
 - Signed release workflow: [run 29160512069](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29160512069)
+- Signed hosted x64 lifecycle workflow: [run 29162867538](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29162867538)
 - Exact-candidate hosted x64 workflow: [run 29160940577](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29160940577)
 - ARM64 UTM evidence archive SHA-256: `1a276bd023f5d6078fee4501ced80a94da9ba1db0414b774fd184fb4a843c7ad`
 
@@ -37,6 +38,12 @@ The workflow's checksum file and signed update-feed metadata are preserved
 under `hosted-windows/`. The ARM64 MSIX is the package used by the UTM lifecycle
 pass.
 
+Run 29162867538 then registered the signed x64 MSIX on a clean hosted Windows
+runner, verified version `1.0.29.0`, `X64` architecture, publisher, and install
+location, removed it and proved it absent, and registered the same identity
+again. The receipt is `hosted-windows/signed-x64-msix-lifecycle.json` (SHA-256
+`f5a31fdb93084441643674589aefa27c26fd381d7b2e3bcafc514ba09f5c5e3d`).
+
 ### ARM64 Windows foundation
 
 The Windows 11 Pro ARM64 UTM host imported 10,475 candidate files and reported
@@ -47,6 +54,14 @@ and the evidence secret scan reported zero findings.
 
 The committed JSON files are metadata and summaries only. Secret plaintext and
 protected key material are deliberately excluded.
+
+The signed ARM64 MSIX lifecycle also passed in the signed-in Windows user
+session. Windows verified the complete package SHA-256 and Microsoft Artifact
+Signing chain, registered `ImagineThat.OpenBurnBar_1.0.29.0_arm64`, launched a
+responsive app, handled `openburnbar://dashboard`, removed the package, proved
+it absent, reinstalled the same identity, and launched it again. The receipt is
+`arm64-utm/signed-arm64-msix-lifecycle.json` (SHA-256
+`b400116b2604acaca6738768b3fe713f18510ea06e6f84adeb8ffa4f61de19fa`).
 
 ### Physical iPhone companion
 
@@ -66,7 +81,8 @@ gate; it does not claim a green mobile suite. The failures are preserved in
   cross-device flows.
 - End-to-end Computer Use, media, call, screen-share, and malicious-file safety
   on physical Windows targets.
-- Public update, rollback, Store/winget, and public release lifecycle.
+- Public update, rollback, Store/winget, and public release lifecycle. The local
+  signed install/uninstall/reinstall lifecycle is proven separately above.
 
 Until these gates have evidence, the implementation ledger may be complete but
 the release must not be described as 100% physically certified parity.
