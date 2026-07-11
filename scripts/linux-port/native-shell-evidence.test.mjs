@@ -121,6 +121,13 @@ function writeCompleteNativeArtifacts(root) {
     finalEnabled: true,
     userAutostartPreserved: true
   });
+  writeJson(root, 'native-login-start-relogin.json', {
+    passed: true,
+    sameProcess: true,
+    routeSampleObserved: true,
+    route: 'chat',
+    action: 'open-chat'
+  });
   writeJson(root, 'tray-host-loss-recovery.json', {
     passed: true,
     hostLost: true,

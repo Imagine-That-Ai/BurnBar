@@ -1578,7 +1578,13 @@ if [[ "${1:-}" == "login-start-inner" ]]; then
     return 1
   }
 
-  "$installed_bin" --background >"$out_dir/native-login-start-relogin.stdout.log" 2>"$out_dir/native-login-start-relogin.stderr.log" &
+  read -r -a autostart_argv <<< "$autostart_exec"
+  autostart_binary="$(command -v "${autostart_argv[0]}" || true)"
+  if [[ -z "$autostart_binary" || "$(readlink -f "$autostart_binary")" != "$installed_bin_real" ]]; then
+    echo "Autostart Exec does not resolve to the installed package binary: $autostart_exec" >&2
+    exit 1
+  fi
+  "${autostart_argv[@]}" >"$out_dir/native-login-start-relogin.stdout.log" 2>"$out_dir/native-login-start-relogin.stderr.log" &
   app_pid="$!"
   background_process_started=false
   hidden_background_window=true
@@ -1596,6 +1602,13 @@ if [[ "${1:-}" == "login-start-inner" ]]; then
     fi
     sleep 0.1
   done
+  if xdotool search --onlyvisible --name OpenBurnBar >/dev/null 2>&1; then
+    hidden_background_window=false
+  fi
+  if [[ "$hidden_background_window" != true ]]; then
+    echo "Background launch exposed a visible OpenBurnBar window before activation" >&2
+    exit 1
+  fi
 
   route_offset="$(sample_file_offset)"
   "$installed_bin" "openburnbar://chat" >>"$out_dir/native-login-start-relogin.stdout.log" 2>>"$out_dir/native-login-start-relogin.stderr.log" &
@@ -1946,6 +1959,13 @@ fi
 
 echo "== uninstall deb =="
 package_autostart_reference="/usr/share/openburnbar/autostart/openburnbar.desktop"
+package_autostart_existed_before=false
+if [[ -e "$package_autostart_reference" ]]; then
+  package_autostart_existed_before=true
+else
+  echo "Package-owned autostart reference was absent before uninstall: $package_autostart_reference" >&2
+  exit 1
+fi
 dpkg -r "$pkg"
 if dpkg-query -W "$pkg" >/dev/null 2>&1; then
   echo "Package still installed after dpkg -r $pkg" >&2
@@ -1963,6 +1983,7 @@ node - \
   "$out_dir/native-login-start-relogin.json" \
   "$deb_basename" \
   "$package_autostart_reference" \
+  "$package_autostart_existed_before" \
   "$package_autostart_removed" <<'NODE'
 const fs = require('fs');
 const [
@@ -1971,12 +1992,14 @@ const [
   loginReloginPath,
   debBasename,
   packageAutostartReference,
+  packageAutostartExistedBeforeText,
   packageAutostartRemovedText
 ] = process.argv.slice(2);
 const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
 const loginRoundtrip = JSON.parse(fs.readFileSync(loginRoundtripPath, 'utf8'));
 const loginRelogin = JSON.parse(fs.readFileSync(loginReloginPath, 'utf8'));
 const packageAutostartRemoved = packageAutostartRemovedText === 'true';
+const packageAutostartExistedBefore = packageAutostartExistedBeforeText === 'true';
 const userAutostartPreserved = fs.existsSync(loginRoundtrip.autostartFile);
 const finalizedLoginStart = {
   ...loginRoundtrip,
@@ -1985,12 +2008,15 @@ const finalizedLoginStart = {
     loginRoundtrip.disabled === true &&
     loginRoundtrip.staleFileReplaced === true &&
     loginRelogin.passed === true &&
+    packageAutostartExistedBefore &&
+    userAutostartPreserved &&
     packageAutostartRemoved,
   relogin: loginRelogin.passed === true,
   reloginEvidence: loginRelogin,
   uninstallRemoved: packageAutostartRemoved,
   uninstallScope: 'package-owned-autostart-reference',
   packageAutostartReference,
+  packageAutostartExistedBefore,
   userAutostartPreserved
 };
 fs.writeFileSync(loginRoundtripPath, JSON.stringify(finalizedLoginStart, null, 2) + '\n');

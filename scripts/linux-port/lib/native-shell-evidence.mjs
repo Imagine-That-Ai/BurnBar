@@ -323,17 +323,19 @@ function evaluateGlobalPanicShortcut(evidenceDir) {
 
 function evaluateLoginStart(evidenceDir) {
   const loginStart = fileJson(evidenceDir, 'native-login-start-roundtrip.json');
+  const relogin = fileJson(evidenceDir, 'native-login-start-relogin.json');
   const passed = jsonPass(loginStart) &&
     loginStart?.enabled === true &&
     loginStart?.disabled === true &&
     loginStart?.relogin === true &&
     loginStart?.staleFileReplaced === true &&
     loginStart?.uninstallRemoved === true;
+  const reloginPassed = jsonPass(relogin) && relogin?.sameProcess === true && relogin?.routeSampleObserved === true;
   return result(
     'login-start',
-    passed,
-    passed ? 'login-start lifecycle passed' : 'missing complete login-start lifecycle proof',
-    ['native-login-start-roundtrip.json']
+    passed && reloginPassed,
+    passed && reloginPassed ? 'login-start lifecycle passed' : 'missing complete login-start lifecycle proof',
+    ['native-login-start-roundtrip.json', 'native-login-start-relogin.json']
   );
 }
 
