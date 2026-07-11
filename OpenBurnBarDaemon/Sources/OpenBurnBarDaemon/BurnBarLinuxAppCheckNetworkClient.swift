@@ -515,6 +515,8 @@ struct EnvironmentBurnBarLinuxAttestationIngressClient: Sendable {
         self.transport = transport
     }
 
+    var hasValidEndpoint: Bool { baseEndpoint != nil }
+
     func claimUpload(
         declaration: BurnBarLinuxAttestationUploadDeclaration,
         ticket: BurnBarLinuxAttestationTicketIssue,
@@ -587,7 +589,19 @@ struct EnvironmentBurnBarLinuxAttestationIngressClient: Sendable {
         var request = Self.baseRequest(endpoint: endpoint, method: "PUT", idToken: idToken, timeout: 120)
         request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
         request.setValue(String(body.byteCount), forHTTPHeaderField: "Content-Length")
-        request.httpBodyStream = try body.makeInputStream()
+        let stream = try body.makeInputStream()
+        defer { stream.close() }
+        var payload = Data()
+        payload.reserveCapacity(body.byteCount)
+        var buffer = [UInt8](repeating: 0, count: min(64 * 1024, body.byteCount))
+        while payload.count < body.byteCount {
+            let count = stream.read(&buffer, maxLength: min(buffer.count, body.byteCount - payload.count))
+            guard count > 0 else {
+                throw BurnBarLinuxAttestationIngressClientError.invalidRequest
+            }
+            payload.append(buffer, count: count)
+        }
+        request.httpBody = payload
         let data = try await perform(request, endpoint: endpoint, expectedStatus: 200)
         do {
             try EnvironmentBurnBarLinuxAppCheckCloudClient.requireExactJSONKeys(
