@@ -41,6 +41,10 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 
+# Firestore must build from source on iOS 27+; the prebuilt grpc-binary path
+# faults at runtime and the mobile target has a build-phase tripwire for it.
+export FIREBASE_SOURCE_FIRESTORE="${FIREBASE_SOURCE_FIRESTORE:-1}"
+
 # shellcheck source=scripts/lib/openburnbar-app-test-classifier.sh
 source "$repo_root/scripts/lib/openburnbar-app-test-classifier.sh"
 

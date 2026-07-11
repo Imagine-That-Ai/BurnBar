@@ -116,7 +116,20 @@ jobs:
           # Allow known-safe license exceptions. BlueOak-1.0.0 is a permissive
           # npm ecosystem license used by tar and related transitive packages;
           # allow it so patched releases can land without vulnerable downgrades.
-          allow-licenses: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, CC0-1.0, Unlicense, LGPL-2.0-only, LGPL-2.1-only, LGPL-3.0-only, LGPL-3.0-or-later, MPL-2.0, CC-BY-4.0, OFL-1.1, Unicode-3.0, BlueOak-1.0.0
+          # Zlib and Apache-2.0 WITH LLVM-exception arrive with the Linux Tauri
+          # shell's Cargo.lock (foldhash, target-lexicon); both are permissive.
+          allow-licenses: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, CC0-1.0, Unlicense, LGPL-2.0-only, LGPL-2.1-only, LGPL-3.0-only, LGPL-3.0-or-later, MPL-2.0, CC-BY-4.0, OFL-1.1, Unicode-3.0, BlueOak-1.0.0, Zlib, Apache-2.0 WITH LLVM-exception
+          # Per-package license exemptions (PURL) for classifier false-positives.
+          # Microsoft.Graphics.Win2D is MIT (github.com/microsoft/Win2D LICENSE.txt),
+          # but GitHub's dependency graph reports it as `LicenseRef-github-OTHER`
+          # because it cannot resolve the NuGet package's license expression. The
+          # actual license (MIT) is already in allow-licenses above; exempt the
+          # package by PURL so the Windows particle GPU renderer can land.
+          # brotli-decompressor (BSD-3-Clause/MIT), dbus and libdbus-sys
+          # (Apache-2.0 OR MIT) are dual-licensed Rust crates from the Linux
+          # Tauri shell; the dependency graph mangles their SPDX expressions
+          # into LicenseRef-bad-* strings, so exempt them by PURL.
+          allow-dependencies-licenses: pkg:nuget/Microsoft.Graphics.Win2D, pkg:cargo/brotli-decompressor, pkg:cargo/dbus, pkg:cargo/libdbus-sys
           # Deny packages that have been deprecated or yanked
           deny-packages: ""
           comment-summary-in-pr: always
@@ -168,6 +181,7 @@ jobs:
             firestore.indexes.json
             firestore.rules
             functions
+            services/hosted-mcp/Dockerfile
             scripts/ci/verify-production-deploy-auth.sh
             scripts/ci/verify-production-deploy-auth.test.sh
             scripts/ci/write-firebase-hosting-ci-config.mjs
@@ -494,6 +508,9 @@ jobs:
           set -euo pipefail
           export PATH="$PWD/functions/node_modules/.bin:$PATH"
           npm --prefix firestore-rules-tests run test:ci
+
+      - name: Run Storage security-rules emulator tests
+        run: bash scripts/ci/test-storage-rules.sh
 
       # session-log-backup has 3 PRE-EXISTING failures (Pro-entitlement manifest
       # accept/refresh/overwrite) that fail standalone on the base tree and are

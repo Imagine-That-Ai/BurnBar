@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="OpenBurnBar.App.Quota.SubscriptionConstellationHero"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!--
+      Windows peer of AgentLens/Views/Dashboard/Quota/SubscriptionConstellationHero.swift — the
+      editorial hero that opens the Quota workspace: eyebrow caption (with an inline "Show all
+      providers" affordance when focused), 22pt headline, mono meta strip, a mercury hairline, and
+      a horizontal scroll of SubscriptionOrbs underneath. The eyebrow/headline copy + the one-orb-
+      per-provider chip set come from the parity-tested SubscriptionConstellation; the code-behind
+      populates the orb rail and re-raises taps as OrbTapped so the workspace toggles provider focus.
+    -->
+    <StackPanel Spacing="{StaticResource PensieveSpace3}">
+        <!-- Eyebrow row. -->
+        <StackPanel Orientation="Horizontal" Spacing="{StaticResource PensieveSpace2}">
+            <TextBlock x:Name="EyebrowText"
+                       VerticalAlignment="Center"
+                       FontFamily="{StaticResource PensieveFontMono}"
+                       FontSize="10"
+                       Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+            <Button x:Name="ClearButton"
+                    Click="OnClearClicked"
+                    Visibility="Collapsed"
+                    Padding="8,3"
+                    Background="{StaticResource PensieveColorGlassBgBrush}"
+                    BorderBrush="{StaticResource PensieveColorGlassLineBrush}"
+                    BorderThickness="0.5"
+                    CornerRadius="{StaticResource PensieveRadiusPillCorner}">
+                <StackPanel Orientation="Horizontal" Spacing="3">
+                    <FontIcon FontFamily="Segoe MDL2 Assets"
+                              Glyph="&#xE711;"
+                              FontSize="10" />
+                    <TextBlock Text="Show all providers"
+                               FontFamily="{StaticResource PensieveFontMono}"
+                               FontSize="10" />
+                </StackPanel>
+            </Button>
+        </StackPanel>
+
+        <!-- Headline. -->
+        <TextBlock x:Name="HeadlineText"
+                   FontFamily="{StaticResource PensieveFontDisplay}"
+                   FontSize="22"
+                   FontWeight="SemiBold"
+                   TextWrapping="Wrap"
+                   Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+
+        <!-- Meta strip (built in code-behind). -->
+        <StackPanel x:Name="MetaStrip"
+                    Orientation="Horizontal"
+                    Spacing="6" />
+
+        <!-- Mercury hairline. -->
+        <Rectangle Height="1" Margin="0,2,0,0">
+            <Rectangle.Fill>
+                <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
+                    <GradientStop Offset="0.0" Color="#00A8B0BE" />
+                    <GradientStop Offset="0.25" Color="#BFA8B0BE" />
+                    <GradientStop Offset="0.5" Color="#D9C6A15A" />
+                    <GradientStop Offset="0.75" Color="#BFA8B0BE" />
+                    <GradientStop Offset="1.0" Color="#00A8B0BE" />
+                </LinearGradientBrush>
+            </Rectangle.Fill>
+        </Rectangle>
+
+        <!-- Orb constellation. -->
+        <ScrollViewer HorizontalScrollMode="Enabled"
+                      HorizontalScrollBarVisibility="Hidden"
+                      VerticalScrollMode="Disabled"
+                      VerticalScrollBarVisibility="Disabled"
+                      Padding="2,8">
+            <StackPanel x:Name="OrbHost"
+                        Orientation="Horizontal"
+                        Spacing="{StaticResource PensieveSpace3}" />
+        </ScrollViewer>
+    </StackPanel>
+</UserControl>

@@ -71,7 +71,14 @@ final class IrohPairingDirectoryTests: XCTestCase {
         }, expected: IrohPairingDirectoryError.recordNotFound)
     }
 
-    func testFetchAndVerifyRejectsInWindowReplay() async throws {
+    func testFetchAndVerifyToleratesInWindowReplay() async throws {
+        // Re-dials legitimately re-read the SAME record: the Mac only
+        // republishes every ~60s while a reconnecting client retries every
+        // few seconds. The implementation intentionally swallows
+        // IrohPairingError.replayed within the freshness window so retries
+        // succeed (observed live 2026-07-03). This test verifies that
+        // behaviour: a second fetch within the signature freshness window
+        // returns the dial target instead of throwing.
         let directory = InMemoryIrohPairingDirectory()
         let publisher = IrohPairingPublisher(directory: directory)
         let macKeypair = IrohPairingKeypair()
@@ -89,14 +96,14 @@ final class IrohPairingDirectoryTests: XCTestCase {
             publicKey: macKeypair.publicKeyRaw,
             now: now.addingTimeInterval(30)
         )
-        await XCTAssertThrowsErrorAsync({
-            _ = try await publisher.fetchAndVerify(
-                uid: "u-4",
-                connectionId: "c-4",
-                publicKey: macKeypair.publicKeyRaw,
-                now: now.addingTimeInterval(60)
-            )
-        }, expected: IrohPairingError.replayed)
+        // Second fetch within the freshness window should succeed (not throw).
+        let replayTarget = try await publisher.fetchAndVerify(
+            uid: "u-4",
+            connectionId: "c-4",
+            publicKey: macKeypair.publicKeyRaw,
+            now: now.addingTimeInterval(60)
+        )
+        XCTAssertEqual(replayTarget.nodeId, "node-replay")
     }
 
     func testRevokeRemovesRecord() async throws {

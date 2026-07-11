@@ -1,7 +1,7 @@
 import Foundation
-import OpenBurnBarCore
 import XCTest
 @testable import OpenBurnBar
+@testable import OpenBurnBarCore
 
 /// Focused coverage for the `readCache()` hardening: a missing cache must
 /// stay silent and fall through, a *present-but-corrupt* cache must degrade
@@ -219,11 +219,11 @@ final class ClaudeOAuthUsageFetcherMattersTests: XCTestCase {
 }
 
 /// Hermetic `URLProtocol` stub for the fetcher's live path. Mirrors the
-/// `Locked`-backed pattern already used by `ProviderQuotaServiceTests` so the
+/// `OpenBurnBarCore.Locked`-backed pattern already used by `ProviderQuotaServiceTests` so the
 /// handler seam is thread-safe and swiftlint-clean.
 private final class ClaudeOAuthUsageStubProtocol: URLProtocol {
     private static let _requestHandler =
-        Locked<(@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?>(nil)
+        OpenBurnBarCore.Locked<(@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?>(nil)
 
     static var requestHandler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))? {
         get { _requestHandler.read() }

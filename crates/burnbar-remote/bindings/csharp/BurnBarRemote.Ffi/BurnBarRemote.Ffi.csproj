@@ -7,12 +7,13 @@
     cdylib — do not hand-edit it. See ../README.md and
     docs/windows-port/decisions/0001-csharp-binding-path.md.
 
-    Targets net10.0 to match the toolchain proving the macOS round-trip today;
-    the shipping WinUI consumer (Phase 1+) may retarget to a Windows TFM without
+    Targets net8.0 — the portable-core TFM the windows/ tree standardizes on —
+    so the native shim (windows/native/OpenBurnBar.Native.BurnBarRemote, net8.0)
+    can reference it. The net10.0 test projects reference it downward without
     regenerating.
   -->
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>

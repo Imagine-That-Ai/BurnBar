@@ -465,3 +465,121 @@ absent-field tolerance), `BurnBarDaemonControllerRuntimeSnapshotTests`
 snapshot), `BurnBarDaemonSocketRPCCoverageTests` (handler registration),
 and `DaemonSocketClientBufferTests` (client: >64 KB response reads over a
 local socket, legacy fallback + downgrade memo).
+
+---
+
+## §17 — Round-4 performance sweep
+
+A comprehensive sweep across macOS (AgentLens, OpenBurnBarCore,
+OpenBurnBarDaemon) and iOS (OpenBurnBarMobile) targeting state-of-the-art
+throughput, latency, memory, and energy without altering features or
+visuals.
+
+### Tier A — hot-path optimizations
+
+**A1 — ParserDiskCache binary plist persistence.** The parser disk cache
+persisted JSON with `.prettyPrinted` + `.sortedKeys`, producing slow writes
+and bloated cache files. Switched to binary plist
+(`PropertyListEncoder`) with a dual-read fallback (plist first, then JSON)
+for backward compatibility and in-place upgrade of existing JSON caches.
+~3–5× faster encoding, ~2–3× smaller files, native `Date` fidelity.
+
+**A2 — SearchQueryCache bounded LRU + metrics.** The search query cache
+was an unbounded dictionary with no eviction and no observability.
+Refactored to a bounded LRU cache (default 256 entries) with
+opportunistic expired-entry sweeps, LRU eviction on insertion, and
+metrics (hits, misses, evictions, expired evictions, entry count) emitted
+via `OpenBurnBarMetrics`.
+
+**A3 — Daemon accept-loop connection back-pressure.** The daemon's
+`runAcceptLoop` spawned an unbounded `Task.detached` per connection,
+risking file descriptor exhaustion under load. Introduced
+`BurnBarConnectionGate` to cap simultaneously in-flight connection
+handlers; new connections at capacity are immediately closed.
+
+**A4 — Single-scan SQL for fullText occurrence counts.**
+`countOccurrencesInConversationFullText` ran a full-table scan per
+pattern via `UNION ALL LENGTH/REPLACE` (N scans for N patterns).
+Refactored to a single scan that sums all pattern expressions in one
+pass. Mathematically identical: `SUM(a_i + b_i) == SUM(a_i) + SUM(b_i)`.
+
+**A5 — SearchService hydration JOIN collapse.** The hydration path
+issued two separate DB round-trips: one for missing chunks, another for
+their parent documents. Introduced `fetchChunksWithDocuments` to perform
+a single JOIN query, retrieving both chunks and documents in one pass.
+
+**A6 — iOS TrendAtlasCard digest/insights memoization.** `TrendAtlasCard`
+rebuilt `TrendDataDigest.build(...)` and `TrendInsightEngine.insights(...)`
+on every `body` evaluation. Introduced `DigestCacheStore`, an
+`@StateObject`-backed reference cache that recomputes only when input
+hashes change.
+
+**A7 — iOS HermesSquareRoot rollbackSections cache.** The
+`rollbackSections` computed property filtered and sorted
+`rollbackService.snapshotsBySession` on every `body` evaluation. Added a
+`@State` cache rebuilt via `.onChange` only when the underlying data
+changes.
+
+### Tier B — structural improvements
+
+**B1 — Incremental HNSW delta segments.** The HNSW vector index is an
+immutable binary snapshot; every projection cycle that added or removed
+embeddings triggered a full O(n log n) rebuild. Introduced
+`BurnBarVectorIndexDelta` and `BurnBarVectorIndexDeltaOverlay` following
+the LSM-tree "base + delta" pattern: the immutable base snapshot handles
+O(log n) HNSW search; appended vectors are searched via O(k) brute-force
+on the bounded delta; tombstoned keys are filtered from base results. The
+delta is bounded by `compactionThreshold` (default 2,000); the caller
+triggers a background compaction to fold the delta into a new base when
+the threshold is exceeded. Added `searchKeys(for:limit:)`,
+`chunkID(forKey:)`, and `keyToChunkIDMapping` to
+`BurnBarPersistentVectorIndexSnapshot` to support the overlay merge.
+
+The delta overlay is wired into `VectorSemanticCandidateProvider`'s
+snapshot lifecycle. When the embedding version fingerprint changes
+(chunks added/updated/deleted), the provider computes a delta against the
+existing base snapshot instead of triggering a full rebuild. The delta
+computation uses a cheap O(n) metadata scan (`fetchChunkEmbeddingKeys` —
+`chunkID` + `updatedAt` only, no `vectorBlob`) to diff against the base
+mapping, then an O(k) vector fetch for only the changed chunkIDs. When
+the total changes exceed the compaction threshold (`max(2000, baseSize /
+5)`), the provider falls through to a full rebuild. Delta metrics
+(appended count, tombstoned count, compaction threshold, base vector
+count) are surfaced in `SemanticRetrievalHealthDetails` for observability.
+
+Validation: `BurnBarVectorIndexDeltaTests` (14 tests: append, tombstone,
+re-add, clear, compaction threshold, parity vs. full rebuild, key codec
+allocation), `VectorSemanticDeltaIntegrationTests` (6 tests: add via
+delta, delete via tombstone, update via override, compaction fallback,
+parity with full rebuild, fresh-launch disk recovery).
+
+**B2 — Streaming Claude JSONL parser (bounded accumulator).** The
+`ClaudeConversationAccumulator.fullText` grew unbounded via O(n²) string
+concatenation (`fullText += ...` on every message). Refactored to an
+array-based accumulator that joins once at finalize time (single O(n)
+allocation) with a configurable `maxFullTextBytes` cap (default 1 MB).
+Word/message metrics continue counting after the cap. Also added
+`maxLineBytes` guard (default 16 MB) to `BufferedLineSequence` to skip
+pathological single-line inputs that would blow up the read buffer.
+
+Validation: `ConversationParsingTests` (4 new tests: cap enforcement,
+word count continues after cap, join-once-at-finalize, UTF-8 scalar
+boundary truncation), `BufferedLineSequenceTests` (3 new tests: oversized
+line skipped, oversized line at EOF skipped, normal lines unaffected).
+
+**B3 — SQL-side pre-filter for credential scans.** The credential
+exposure scanner loaded `fullText` for every conversation matching
+metadata filters, then applied regex in Swift. Added
+`fetchTranscriptScanBatchWithCredentialPreFilter` with `INSTR`-based
+WHERE clauses using distinctive credential indicator substrings (`sk-`,
+`AIza`, `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `api_key`, `access_token`,
+`secret_key`, `secret`, `token`, `password`, `bearer `, `private_key`,
+`aws_access_key`, `slack_token`). SQLite skips conversations that don't
+contain any indicator before loading their `fullText` into Swift memory.
+The pre-filter is high-recall/low-precision; the Swift-side regex still
+provides precise filtering.
+
+Validation: `CredentialExposureScanTests` (10 tests: OpenAI key, GitHub
+token, Google API key, generic key assignment, `PASSWORD=` / `TOKEN=`
+recall, clean conversation skipped, pre-filter selectivity, pre-filter
+false-positive rejection, placeholder filtering, limit enforcement).

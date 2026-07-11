@@ -353,6 +353,7 @@ export const AUDIT_ACTIONS = {
   recoveryConfirm: "recovery.confirm",
   panicRevoke: "access.revoke_all",
   browserEscrowRegister: "escrow.browser_register",
+  highRiskOwnerAction: "security.high_risk_owner_action",
 } as const;
 
 /** Resolve a stable actor label for audit events from the callable request. */

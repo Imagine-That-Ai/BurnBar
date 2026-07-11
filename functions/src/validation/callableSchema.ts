@@ -151,31 +151,6 @@ export function boundedInt(options: { min: number; max: number }): CallableField
 }
 
 
-/** Optional field: absent ⇒ `undefined`; any present value passes through as `unknown`. */
-export function optionalUnknown(): CallableField {
-  return {
-    optional: true,
-    parse: (value: unknown): CallableInputValue => {
-      if (value === undefined || value === null) return undefined;
-      if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
-      if (Array.isArray(value)) return value.filter((v): v is string => typeof v === "string");
-      return undefined;
-    },
-  };
-}
-
-/** Optional finite integer clamped to `[min, max]`; absent or non-number ⇒ `undefined`. */
-export function optionalBoundedInt(options: { min: number; max: number }): CallableField<number | undefined> {
-  return {
-    optional: true,
-    parse: (value: unknown) => {
-      if (value === undefined) return undefined;
-      if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
-      return requireBoundedNumber(value, "ttlMillis", options.min, options.max);
-    },
-  };
-}
-
 /** Required boolean; anything non-boolean is rejected. */
 export function booleanField(): CallableField<boolean> {
   return {

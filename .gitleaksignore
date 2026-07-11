@@ -1,7 +1,7 @@
 AgentLensTests/Active/DatabaseEncryptionServiceTests.swift:generic-api-key:81
 AgentLensTests/Active/AppLoggerSanitizationTests.swift:generic-api-key:8
 AgentLensTests/Active/AppLoggerSanitizationTests.swift:generic-api-key:11
-OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRelayCrypto.swift:generic-api-key:6
+OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesRelayCrypto.swift:generic-api-key:6
 OpenBurnBarMobile/Services/iOSDeviceKeypair.swift:generic-api-key:11
 docs/HOSTED_QUOTA_SYNC.md:curl-auth-header:404
 functions/scripts/test-appstore.mjs:generic-api-key:217

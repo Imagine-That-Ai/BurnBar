@@ -259,6 +259,92 @@ paths = [
 ]
 
 [[allowlists]]
+description = "Flow validator rubric says auth context as evidence text, not an auth secret"
+condition = "AND"
+regexTarget = "match"
+regexes = [
+  '''auth context,\s+idempotency/concurrency behavior''',
+]
+paths = [
+  '''\.claude/agents/flow-validator\.md''',
+]
+
+[[allowlists]]
+description = "Swift crypto private-key type labels and aliases name parameters/types, not committed key material"
+condition = "AND"
+regexTarget = "match"
+regexes = [
+  '''recipientPrivateKey:\s+Curve25519\.KeyAgreement\.PrivateKey''',
+  '''typealias\s+PlatformP256KeyAgreementPrivateKey\s*=\s*P256\.KeyAgreement\.PrivateKey''',
+]
+paths = [
+  '''OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/RemoteUnlockCredentialEnvelopeCrypto\.swift''',
+  '''OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformSupport\.swift''',
+]
+
+[[allowlists]]
+description = "ElderWand Windows preset storage key is a local-storage identifier, not credential material"
+condition = "AND"
+regexTarget = "match"
+regexes = [
+  '''PresetsStorageKey\s*=\s*"[A-Za-z0-9_.:-]+"''',
+]
+paths = [
+  '''windows/app/OpenBurnBar\.App\.Presentation/ElderWand/ElderWandSettingsModel\.cs''',
+]
+
+[[allowlists]]
+description = "Deterministic Windows CloudVault KAT generator and fixtures use synthetic recovery/shared-secret vectors"
+condition = "AND"
+regexTarget = "match"
+regexes = [
+  '''recoveryKey:\s*"[A-Z0-9-]+"''',
+  '''"recoveryKey"\s*:\s*"[A-Z0-9-]+"''',
+  '''"sharedSecretHex"\s*:\s*"[A-Fa-f0-9]{64}"''',
+]
+paths = [
+  '''windows/cloudsync/tools/CloudVaultVectorGen/Sources/CloudVaultVectorGen/main\.swift''',
+  '''windows/tests/cloudsync/Fixtures/cloudvault-kat-vectors\.json''',
+]
+
+[[allowlists]]
+description = "Vendored SQLite C API symbols contain key-like words but are not credentials"
+condition = "AND"
+regexTarget = "match"
+regexes = [
+  '''sqlite3_api->column_bytes16''',
+  '''sqlite3_api->soft_heap_limit64''',
+  '''sqlite3_api->hard_heap_limit64''',
+  '''iKey==FTS5_AVERAGES_ROWID''',
+]
+paths = [
+  '''OpenBurnBarCore/Sources/CSQLite/sqlite3\.c''',
+]
+
+[[allowlists]]
+description = "Windows ARD auth test comments use a public AES all-zero known-answer vector"
+condition = "AND"
+regexTarget = "match"
+regexes = [
+  '''16-zero key = [A-Fa-f0-9]{32}''',
+]
+paths = [
+  '''windows/tests/mercury/RfbArdAuthTests\.cs''',
+]
+
+[[allowlists]]
+description = "Signal interop fixtures contain deterministic pre-key records for cross-language tests"
+condition = "AND"
+regexTarget = "match"
+regexes = [
+  '''"bobSignedPreKeyRecordB64"\s*:\s*"[A-Za-z0-9+/_=-]+"''',
+  '''"bobPreKeyRecordB64"\s*:\s*"[A-Za-z0-9+/_=-]+"''',
+]
+paths = [
+  '''windows/tests/signal-interop/android-alice-to-swift-bob\.json''',
+]
+
+[[allowlists]]
 description = "Signal prekey directory algorithm identifiers are public protocol labels, not credentials"
 condition = "AND"
 regexTarget = "match"
@@ -415,4 +501,70 @@ paths = [
   '''extensions/openburnbar/test/analytics/config\.test\.ts''',
   '''extensions/openburnbar/test/analytics/consentContract\.test\.ts''',
   '''extensions/openburnbar/test/analytics/wiring\.test\.ts''',
+]
+
+[[allowlists]]
+description = "Windows settings page reads VaultKeyB64 from AppConfiguration (UI binding, not a committed secret)"
+condition = "AND"
+regexTarget = "match"
+regexes = [
+  '''VaultKeyBox\.Text = snap\.VaultKeyB64 \?\? string\.Empty''',
+]
+paths = [
+  '''windows/app/OpenBurnBar\.App/Settings/DataSourceSettingsPage\.xaml\.cs''',
+]
+
+[[allowlists]]
+description = "Linux-port evidence transcripts: sha256 digests, ed25519 public-key hashes, and signer identifiers captured in committed proof bundles under docs/linux-port/evidence — digests of evidence artifacts, never credential material (the privacy-invariants gate governs PII there separately)"
+condition = "AND"
+regexTarget = "match"
+regexes = [
+  '''[0-9a-f]{24,64}''',
+]
+paths = [
+  '''docs/linux-port/evidence/.*''',
+]
+
+[[allowlists]]
+description = "Linux core-foundation parity fixture: hermesKeySHA256Hex is the digest of a synthetic fixture key generated for the parser-parity oracle"
+condition = "AND"
+regexTarget = "match"
+regexes = [
+  '''[0-9a-f]{24,64}''',
+]
+paths = [
+  '''OpenBurnBarCore/Tests/OpenBurnBarLinuxCoreFoundationTests/Fixtures/linux-provider-model-parity-fixture\.json''',
+]
+
+[[allowlists]]
+description = "PlatformSupport crypto typealiases (e.g. PlatformEd25519SigningMaterial = Curve25519.Signing.PrivateKey) — Swift type names that pattern-match key keywords, not key material"
+condition = "AND"
+regexTarget = "line"
+regexes = [
+  '''public typealias Platform[A-Za-z0-9]+ =''',
+]
+paths = [
+  '''OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformSupport\.swift''',
+]
+
+[[allowlists]]
+description = "Linux-port evidence daemon log transcripts: structured os_log lines (subsystem=com.openburnbar.daemon) captured as gateway/IPC proof — auth-token words appear in error copy, never as real token values"
+condition = "AND"
+regexTarget = "line"
+regexes = [
+  '''subsystem=com\.openburnbar\.daemon''',
+]
+paths = [
+  '''docs/linux-port/evidence/.*''',
+]
+
+[[allowlists]]
+description = "Historical PR #1196 credential-exposure scanner fixtures were synthetic secret-redaction test strings; current tree removed the literals, and this exception is pinned to the exact old commits and test path"
+condition = "AND"
+commits = [
+  '''a932276d059401f54a15e8e755027fc6a62fd30a''',
+  '''36324c24e287e5d2b5c0a1f4df4aeca8bd236857''',
+]
+paths = [
+  '''AgentLensTests/Active/CredentialExposureScanTests\.swift''',
 ]

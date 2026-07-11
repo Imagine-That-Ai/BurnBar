@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Live SmartHub bridge + mDNS adapter (Phase 4 · integrations lane).
+
+    The platform-facing half:
+      * HttpListenerBridgeHost — a System.Net.HttpListener that fronts the pure
+        BridgeRouter (the socket the Swift NWListener owned).
+      * MdnsResponder — a System.Net.Sockets.UdpClient multicast responder that
+        emits the pure MdnsAdvertisement bytes and answers matching browse
+        queries (the socket NetService owned).
+      * NetworkInterfaceLanEnumerator — a System.Net.NetworkInformation adapter
+        feeding the pure Ipv4Subnet math (the getifaddrs half).
+
+    Target framework note: this targets plain net10.0 (net-generic), NOT
+    net10.0-windows — HttpListener / UdpClient / NetworkInterface are all
+    cross-platform, so the SAME assembly the Windows app ships is BUILT AND RUN
+    on the macOS authoring host today (windows/tests/integrations stands up the
+    HttpListener host on loopback and drives real HTTP round-trips through it).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.Integrations.SmartHub.Net</RootNamespace>
+    <AssemblyName>OpenBurnBar.Integrations.SmartHub.Net</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../OpenBurnBar.Integrations.SmartHub/OpenBurnBar.Integrations.SmartHub.csproj" />
+  </ItemGroup>
+
+</Project>

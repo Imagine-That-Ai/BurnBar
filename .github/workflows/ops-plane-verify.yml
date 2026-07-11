@@ -13,14 +13,57 @@ on:
         required: false
         type: boolean
         default: false
+  # PRs run ONLY the creds-free drift-check self-tests (drift-check-selftest job).
+  # The live diff steps live in the `verify` job, which is gated on GCP creds and
+  # never runs on a PR — so the diff LOGIC is gated on every PR while the live
+  # comparison stays a scheduled/dispatch concern.
+  pull_request:
+    branches: [main]
+    paths:
+      - "scripts/lib/branch-protection-drift.mjs"
+      - "scripts/lib/ops-alert-plane-drift.mjs"
+      - "scripts/ops/check-branch-protection-drift.*"
+      - "scripts/ops/check-ops-alert-plane-drift.*"
+      - "scripts/ops/verify-github-governance.sh"
+      - "governance/branch-protection.main.json"
+      - "functions/scripts/ops-alert-policy-definitions.mjs"
+      - "functions/scripts/billing-alert-policy-definitions.mjs"
+      - ".github/workflows/ops-plane-verify.yml"
 
 concurrency:
   group: ops-plane-verify
   cancel-in-progress: false
 
 jobs:
+  # Creds-free gate for the drift-check scripts themselves. Runs on PRs and on
+  # schedule/dispatch so a drift check that can no longer DETECT drift fails loud
+  # before it is ever trusted to guard live state. No GCP/gh credentials required.
+  drift-check-selftest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+
+      - name: Branch-protection drift check — offline self-test
+        run: node --test scripts/ops/check-branch-protection-drift.test.mjs
+
+      - name: Ops alert-plane drift check — offline self-test
+        run: node --test scripts/ops/check-ops-alert-plane-drift.test.mjs
+
+      - name: Syntax-check reworked GitHub governance verifier
+        run: bash -n scripts/ops/verify-github-governance.sh
+
   detect-secrets:
     runs-on: ubuntu-latest
+    # Production-environment jobs (this, plus verify / skipped-no-gcp-key via `needs`)
+    # run only on schedule / workflow_dispatch. On pull_request, only drift-check-selftest
+    # runs (it has no environment), so PRs never hit production environment protection.
+    # Without this guard the PR check fails with "not allowed to deploy to production".
+    if: github.event_name != 'pull_request'
     environment: production
     outputs:
       has-gcp-sa-key: ${{ steps.detect.outputs.has-gcp-sa-key }}
@@ -38,7 +81,7 @@ jobs:
 
   verify:
     needs: detect-secrets
-    if: needs.detect-secrets.outputs.has-gcp-sa-key == 'true'
+    if: github.event_name != 'pull_request' && needs.detect-secrets.outputs.has-gcp-sa-key == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: production
@@ -90,6 +133,25 @@ jobs:
           HERMES_AGENT_SRC: ${{ steps.hermes-agent-source.outputs.path }}
         run: bash scripts/ops/verify-production-ops-plane.sh
 
+      # Live drift checks: prove LIVE state == committed source of truth. These
+      # need creds (gh repo scope / gcloud) so they run ONLY here, never on PRs.
+      # Fail CLOSED on any divergence. (Branch-protection drift is also exercised
+      # transitively by verify-production-ops-plane.sh -> verify-github-governance.sh;
+      # this explicit step gives a distinct, readable CI signal.)
+      - name: Branch-protection drift — live (ruleset + classic) vs committed source of truth
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPENBURNBAR_GOVERNANCE_REPO: ${{ github.repository }}
+          OPENBURNBAR_GOVERNANCE_ORG: ${{ github.repository_owner }}
+        run: node scripts/ops/check-branch-protection-drift.mjs
+
+      - name: Ops alert-plane drift — live GCP policies vs committed manifest
+        if: always()
+        env:
+          GCLOUD_PROJECT: burnbar
+        run: node scripts/ops/check-ops-alert-plane-drift.mjs
+
       - name: Collect Firebase security evidence
         env:
           FIREBASE_PROJECT: burnbar
@@ -118,7 +180,7 @@ jobs:
 
   skipped-no-gcp-key:
     needs: detect-secrets
-    if: needs.detect-secrets.outputs.has-gcp-sa-key == 'false'
+    if: github.event_name != 'pull_request' && needs.detect-secrets.outputs.has-gcp-sa-key == 'false'
     runs-on: ubuntu-latest
     steps:
       # Fail CLOSED on the scheduled production run: a missing GCP_SA_KEY there means

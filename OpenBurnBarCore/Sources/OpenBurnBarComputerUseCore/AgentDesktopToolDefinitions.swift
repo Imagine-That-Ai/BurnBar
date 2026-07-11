@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Tool descriptors that are safe to expose to LLM runtimes only after a
 /// matching `AgentCapabilityGrant` is active.

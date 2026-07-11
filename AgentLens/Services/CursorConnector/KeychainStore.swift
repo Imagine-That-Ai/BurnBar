@@ -1,5 +1,6 @@
 import Foundation
 import LocalAuthentication
+import OpenBurnBarCore
 import Security
 
 #if os(macOS)
@@ -80,6 +81,25 @@ struct LiveSecurityKeychainOperations: SecurityKeychainOperations {
 struct SecurityKeychainStoreBackend: KeychainStoreBackend {
     private let security: any SecurityKeychainOperations
 
+    /// One process-wide context for NON-INTERACTIVE reads. Allocating a fresh
+    /// `LAContext` per read made `LAContext.__allocating_init` (and its
+    /// securityd handshake) dominate the keychain path in CPU profiles:
+    /// `ProviderQuotaService.makeContext` resolves dozens of provider keys on
+    /// every quota refresh, and each *missing* key re-scans every legacy
+    /// service too — so one `apiKey(for:)` can be many `SecItemCopyMatching`
+    /// calls, each previously minting a new context. The context only carries
+    /// `interactionNotAllowed = true`: a set-once, read-only configuration that
+    /// is never mutated and never drives a policy evaluation (the sole
+    /// concurrency hazard for `LAContext`), so sharing one instance is
+    /// semantically identical and safe to read from any thread. The global
+    /// `withKeychainInteractionDisabled` toggle still wraps every read, so the
+    /// legacy-ACL belt-and-suspenders documented at file top is unchanged.
+    nonisolated(unsafe) private static let nonInteractiveContext: LAContext = {
+        let context = LAContext()
+        context.interactionNotAllowed = true
+        return context
+    }()
+
     init(security: any SecurityKeychainOperations = LiveSecurityKeychainOperations()) {
         self.security = security
     }
@@ -123,9 +143,7 @@ struct SecurityKeychainStoreBackend: KeychainStoreBackend {
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
         if !allowUserInteraction {
-            let context = LAContext()
-            context.interactionNotAllowed = true
-            query[kSecUseAuthenticationContext as String] = context
+            query[kSecUseAuthenticationContext as String] = Self.nonInteractiveContext
         }
         var item: CFTypeRef?
         let status: OSStatus
@@ -172,8 +190,8 @@ struct KeychainStore: Sendable {
     private let backend: any KeychainStoreBackend
 
     init(
-        service: String = OpenBurnBarIdentity.cursorConnectorKeychainService,
-        legacyServices: [String] = OpenBurnBarIdentity.legacyCursorConnectorKeychainServices,
+        service: String = OpenBurnBarCore.OpenBurnBarIdentity.cursorConnectorKeychainService,
+        legacyServices: [String] = OpenBurnBarCore.OpenBurnBarIdentity.legacyCursorConnectorKeychainServices,
         backend: any KeychainStoreBackend = SecurityKeychainStoreBackend()
     ) {
         self.service = service

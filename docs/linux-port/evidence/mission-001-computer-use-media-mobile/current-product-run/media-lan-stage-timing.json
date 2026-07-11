@@ -1,0 +1,38 @@
+{
+  "generatedAt": "2026-07-08T03:24:57.332Z",
+  "target": "VAL-MEDIA-001",
+  "status": "pass",
+  "acceptedAsPass": true,
+  "stages": [
+    {
+      "name": "iroh.loopback.alpn_handshake",
+      "source": "cargo test --test loopback_handshake",
+      "passed": true
+    },
+    {
+      "name": "mercury.codec.negotiation",
+      "source": "OpenBurnBarMedia product APIs",
+      "selectedVideoCodec": "h264",
+      "passed": true
+    },
+    {
+      "name": "mercury.frame.seal",
+      "source": "OpenBurnBarMedia product APIs",
+      "sealedEnvelope": true,
+      "passed": true
+    },
+    {
+      "name": "mercury.backpressure",
+      "source": "OpenBurnBarMedia product APIs",
+      "action": "paused-producer",
+      "passed": true
+    },
+    {
+      "name": "mobile.media_control_frames",
+      "source": "iOS simulator to Linux peer transcript",
+      "passed": true
+    }
+  ],
+  "loopbackLog": "current-product-run/iroh-loopback-handshake.log",
+  "proof": "current-product-run/media-iroh-mercury-proof.json"
+}

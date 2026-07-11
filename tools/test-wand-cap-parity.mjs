@@ -42,7 +42,7 @@ function assertCaps(label, actual) {
   assert.deepEqual(actual, expected, `${label} Wand cap ladder drifted from packages/entitlements`);
 }
 
-const swift = readRepo("OpenBurnBarCore/Sources/OpenBurnBarCore/Membership/GatedFeature.swift");
+const swift = readRepo("OpenBurnBarCore/Sources/OpenBurnBarKernel/Membership/GatedFeature.swift");
 assertCaps("Swift WandFanOut.maxParallel", {
   free: numberFrom(swift, /case \.none:\s*return\s+(\d+)/, "Swift free cap"),
   cloud: numberFrom(swift, /case \.cloud:\s*return\s+(\d+)/, "Swift cloud cap"),

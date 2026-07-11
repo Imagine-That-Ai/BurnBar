@@ -1,17 +1,23 @@
-import CryptoKit
 import Foundation
 import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
 #if canImport(Security)
 import Security
 #endif
+#if os(Linux)
+import Glibc
+#endif
 
 #if canImport(Security)
 private let daemonErrSecSuccessCompat: Int32 = errSecSuccess
 private let daemonErrSecDuplicateItemCompat: Int32 = errSecDuplicateItem
+private let daemonErrSecDecodeCompat: Int32 = errSecDecode
+private let daemonErrSecParamCompat: Int32 = errSecParam
 #else
 private let daemonErrSecSuccessCompat: Int32 = 0
 private let daemonErrSecDuplicateItemCompat: Int32 = -25299
+private let daemonErrSecDecodeCompat: Int32 = -26275
+private let daemonErrSecParamCompat: Int32 = -50
 #endif
 
 /// T-DMN-04 — daemon-side pinned phone local-auth verifying-key store.
@@ -198,6 +204,141 @@ public struct DaemonPhoneKeyKeychainPinBacking: DaemonPhoneKeyPinBacking {
 extension DaemonPhoneKeyPinStore {
     public static func defaultBacking() -> DaemonPhoneKeyPinBacking {
         DaemonPhoneKeyKeychainPinBacking()
+    }
+}
+#elseif os(Linux)
+public final class DaemonPhoneKeyFilePinBacking: DaemonPhoneKeyPinBacking, Sendable {
+    public static let relativeStorePath = "openburnbar/daemon-phone-control-pins.json"
+
+    private let fileURL: URL
+    private let state = Locked(())
+
+    public init(fileURL: URL = DaemonPhoneKeyFilePinBacking.defaultFileURL()) {
+        self.fileURL = fileURL
+    }
+
+    public static func defaultFileURL(environment: [String: String] = ProcessInfo.processInfo.environment) -> URL {
+        let base: String
+        if let xdgState = environment["XDG_STATE_HOME"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+           xdgState.isEmpty == false {
+            base = xdgState
+        } else if let home = environment["HOME"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  home.isEmpty == false {
+            base = URL(fileURLWithPath: home).appendingPathComponent(".local/state").path
+        } else {
+            base = "/var/lib"
+        }
+        return URL(fileURLWithPath: base)
+            .appendingPathComponent(Self.relativeStorePath)
+    }
+
+    public func load(deviceId: String) -> DaemonPhoneKeyPinLoad {
+        state.withLock { _ in
+            do {
+                let records = try readStore()
+                return records[deviceId].map(DaemonPhoneKeyPinLoad.found) ?? .absent
+            } catch let error as FileStoreError {
+                return error.loadResult
+            } catch {
+                return .unreadable(daemonErrSecDecodeCompat)
+            }
+        }
+    }
+
+    @discardableResult
+    public func save(_ record: DaemonPhoneKeyPinRecord) -> Int32 {
+        state.withLock { _ in
+            do {
+                var records = try readStore()
+                guard records[record.deviceId] == nil else {
+                    return daemonErrSecDuplicateItemCompat
+                }
+                records[record.deviceId] = record
+                try writeStore(records)
+                return daemonErrSecSuccessCompat
+            } catch let error as FileStoreError {
+                return error.status
+            } catch {
+                return daemonErrSecParamCompat
+            }
+        }
+    }
+
+    public func delete(deviceId: String) {
+        state.withLock { _ in
+            do {
+                var records = try readStore()
+                records.removeValue(forKey: deviceId)
+                try writeStore(records)
+            } catch {
+                return
+            }
+        }
+    }
+
+    private func readStore() throws -> [String: DaemonPhoneKeyPinRecord] {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return [:] }
+        do {
+            let data = try Data(contentsOf: fileURL)
+            guard data.isEmpty == false else { return [:] }
+            return try JSONDecoder().decode([String: DaemonPhoneKeyPinRecord].self, from: data)
+        } catch let error as NSError where error.domain == NSCocoaErrorDomain && error.code == NSFileReadNoSuchFileError {
+            return [:]
+        } catch {
+            throw FileStoreError(status: daemonErrSecDecodeCompat)
+        }
+    }
+
+    private func writeStore(_ records: [String: DaemonPhoneKeyPinRecord]) throws {
+        let directory = fileURL.deletingLastPathComponent()
+        do {
+            try FileManager.default.createDirectory(
+                at: directory,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+            chmodPath(directory.path, mode: 0o700)
+            let data = try JSONEncoder().encode(records)
+            let tempURL = directory
+                .appendingPathComponent(".\(fileURL.lastPathComponent).\(UUID().uuidString).tmp")
+            try data.write(to: tempURL, options: [])
+            chmodPath(tempURL.path, mode: 0o600)
+            try renamePath(tempURL.path, to: fileURL.path)
+            chmodPath(fileURL.path, mode: 0o600)
+        } catch let error as FileStoreError {
+            throw error
+        } catch {
+            throw FileStoreError(status: Int32(errno == 0 ? daemonErrSecParamCompat : errno))
+        }
+    }
+
+    private func chmodPath(_ path: String, mode: mode_t) {
+        path.withCString { _ = Glibc.chmod($0, mode) }
+    }
+
+    private func renamePath(_ source: String, to destination: String) throws {
+        let status = source.withCString { sourcePointer in
+            destination.withCString { destinationPointer in
+                Glibc.rename(sourcePointer, destinationPointer)
+            }
+        }
+        guard status == 0 else {
+            throw FileStoreError(status: Int32(errno == 0 ? daemonErrSecParamCompat : errno))
+        }
+    }
+
+    private struct FileStoreError: Error {
+        let status: Int32
+
+        var loadResult: DaemonPhoneKeyPinLoad {
+            .unreadable(status)
+        }
+    }
+}
+
+extension DaemonPhoneKeyPinStore {
+    public static func defaultBacking() -> DaemonPhoneKeyPinBacking {
+        DaemonPhoneKeyFilePinBacking()
     }
 }
 #else

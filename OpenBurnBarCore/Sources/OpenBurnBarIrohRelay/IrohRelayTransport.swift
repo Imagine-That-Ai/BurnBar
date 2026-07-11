@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// One iroh bidirectional stream. Per spec, every `requestId` gets its own
 /// stream; the long-lived `host.register` / `host.ready` exchange uses a

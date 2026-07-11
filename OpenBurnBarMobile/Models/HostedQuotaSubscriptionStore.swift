@@ -1,6 +1,7 @@
 import Foundation
 import StoreKit
 import OpenBurnBarCore
+import os.log
 #if os(iOS)
 import UIKit
 #endif
@@ -277,6 +278,7 @@ typealias HostedQuotaCurrentEntitlementReader = @MainActor () async -> HostedQuo
 @Observable
 @MainActor
 final class HostedQuotaSubscriptionStore {
+    private static let log = Logger(subsystem: "com.openburnbar.app", category: "HostedQuotaSubscriptionStore")
     static let productID = OpenBurnBarProductCatalog.cloudMonthlyProductID
     static let legacyHostedQuotaProductID = OpenBurnBarProductCatalog.legacyHostedQuotaProductID
     static let legacyHostedQuotaOriginalProductID = OpenBurnBarProductCatalog.legacyHostedQuotaOriginalProductID
@@ -604,6 +606,9 @@ final class HostedQuotaSubscriptionStore {
             apply(response: response)
             return isActive
         } catch {
+            // Recovery probe — "false" just moves callers to the next source,
+            // but log the read failure so entitlement-recovery gaps are traceable.
+            Self.log.warning("applyDirectReadIfActive: entitlement document read failed: \(error.localizedDescription, privacy: .public)")
             return false
         }
     }
@@ -620,6 +625,9 @@ final class HostedQuotaSubscriptionStore {
             }
             return apply(serverResolvedTier: tier)
         } catch {
+            // Recovery probe — "false" just moves callers to the next source,
+            // but log the callable failure so entitlement-recovery gaps are traceable.
+            Self.log.warning("applyServerResolvedTierIfActive: tier callable failed: \(error.localizedDescription, privacy: .public)")
             return false
         }
     }
@@ -762,6 +770,7 @@ final class HostedQuotaSubscriptionStore {
             if isActive { return true }
         } catch {
             // Fall through to the Firestore read used by relay security rules.
+            Self.log.warning("recoverEntitlementAfterVerificationFailure: restore callable failed: \(error.localizedDescription, privacy: .public)")
         }
         if await applyDirectReadIfActive() {
             return true
@@ -788,6 +797,7 @@ final class HostedQuotaSubscriptionStore {
         } catch {
             // Keep the original StoreKit-facing error unless the recovery path
             // finds a live server entitlement.
+            Self.log.warning("recoverExistingEntitlementAfterStoreKitFailure: refreshEntitlement failed: \(error.localizedDescription, privacy: .public)")
         }
         return false
     }

@@ -255,45 +255,46 @@ extension SearchService {
 
             let hydrationStartedAt = OpenBurnBarPerformanceTimer.now()
 
+            // Round-4 perf sweep: collapse chunk + document hydration into a
+            // single JOIN query. The old flow fetched missing chunks, then
+            // fetched their parent documents in a second round-trip. The
+            // combined fetch returns both in one pass; documents already in
+            // `lexicalDocumentMap` are simply overwritten (same content).
             let missingChunkIDs = boundedChunkIDs.filter { lexicalChunkMap[$0] == nil }
-            let fetchedChunks: [SearchChunkRecord]
-            if missingChunkIDs.isEmpty {
-                fetchedChunks = []
-            } else {
+            var chunkMap = lexicalChunkMap
+            var documentMap = lexicalDocumentMap
+            if missingChunkIDs.isEmpty == false {
                 do {
-                    fetchedChunks = try await dataStore.fetchSearchChunks(ids: missingChunkIDs)
+                    let combined = try await dataStore.fetchSearchChunksWithDocuments(ids: missingChunkIDs)
+                    for (chunk, document) in combined {
+                        chunkMap[chunk.id] = chunk
+                        documentMap[document.id] = document
+                    }
                 } catch {
-                    fetchedChunks = []
                     indexStale = true
                     indexStaleError = indexStaleError ?? error.localizedDescription
                 }
             }
-            var chunkMap = lexicalChunkMap
-            for chunk in fetchedChunks {
-                chunkMap[chunk.id] = chunk
-            }
 
+            // Documents for lexical-only chunks whose documents weren't in the
+            // lexical match payload (rare — the lexical match includes document
+            // fields — but defensive against schema gaps).
             let allDocumentIDs = Set(
                 boundedChunkIDs.compactMap { chunkID in
                     chunkMap[chunkID]?.documentID
                 }
             )
-            let missingDocumentIDs = allDocumentIDs.filter { lexicalDocumentMap[$0] == nil }
-            let fetchedDocuments: [SearchDocumentRecord]
-            if missingDocumentIDs.isEmpty {
-                fetchedDocuments = []
-            } else {
+            let missingDocumentIDs = allDocumentIDs.filter { documentMap[$0] == nil }
+            if missingDocumentIDs.isEmpty == false {
                 do {
-                    fetchedDocuments = try await dataStore.fetchSearchDocuments(ids: Array(missingDocumentIDs))
+                    let fetchedDocuments = try await dataStore.fetchSearchDocuments(ids: Array(missingDocumentIDs))
+                    for document in fetchedDocuments {
+                        documentMap[document.id] = document
+                    }
                 } catch {
-                    fetchedDocuments = []
                     indexStale = true
                     indexStaleError = indexStaleError ?? error.localizedDescription
                 }
-            }
-            var documentMap = lexicalDocumentMap
-            for document in fetchedDocuments {
-                documentMap[document.id] = document
             }
 
             let readableSharedSourceIDs: Set<String>?
@@ -327,7 +328,7 @@ extension SearchService {
 
             // Batch preload conversations to eliminate N+1 queries during scoring.
             // Extract all unique conversation sourceIDs from the candidate set.
-            var conversationCache: [String: ConversationRecord?] = [:]
+            var conversationCache: [String: OpenBurnBarCore.ConversationRecord?] = [:]
             let conversationSourceIDs = Set(boundedChunkIDs.compactMap { chunkID -> String? in
                 guard let chunk = chunkMap[chunkID],
                       let document = documentMap[chunk.documentID],
@@ -360,7 +361,7 @@ extension SearchService {
                     continue
                 }
 
-                let conversation: ConversationRecord?
+                let conversation: OpenBurnBarCore.ConversationRecord?
                 if document.sourceKind == .conversation {
                     conversation = conversationCache[document.sourceID] ?? nil
                 } else {

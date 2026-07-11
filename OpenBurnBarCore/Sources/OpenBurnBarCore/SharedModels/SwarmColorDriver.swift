@@ -178,7 +178,7 @@ public struct SwarmColorDriver: Equatable, Sendable {
             return RGBA(r: 0.98, g: 0.31, b: 0.33, a: base.a)
         case .forgeDev, .aider:
             return RGBA(r: 1.00, g: 0.50, b: 0.24, a: base.a)
-        case .copilot, .kiloCode, .goose:
+        case .copilot, .kiloCode, .goose, .junie:
             return RGBA(r: 0.34, g: 1.00, b: 0.54, a: base.a)
         case .cline:
             return RGBA(r: 0.92, g: 0.68, b: 0.44, a: base.a)

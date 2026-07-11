@@ -149,7 +149,7 @@ final class ConversationSyncService: CloudSyncDomain, Sendable {
     }
 
     static func encodeConversation(
-        _ record: ConversationRecord,
+        _ record: OpenBurnBarCore.ConversationRecord,
         uid: String,
         deviceId: String,
         docId: String,

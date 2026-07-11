@@ -1,7 +1,7 @@
 rules_version = '2';
 // OpenBurnBar currently syncs explicit owner-scoped collections:
 // - users/{uid}/usage, conversations, chat_threads, text_snippets, session_logs (+ chunks), devices
-// - users/{uid}/quota_snapshots, provider_connections, provider_accounts, usage_rollups
+// - users/{uid}/quota_snapshots, provider_connections, provider_accounts, usage_rollups, roaming_profile
 // - users/{uid}/projects (derived read model)
 // - users/{uid}/hermes_connections, hermes_pairings, hermes_relay_requests, hermes_session_cache, hermes_audit_events
 // - users/{uid}/iroh_pairing, iroh_pairing_keys, iroh_audit_events, incoming_call_contexts
@@ -32,7 +32,8 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function isSignedIn() {
-      return request.auth != null;
+      return request.auth != null
+        && !exists(/databases/$(database)/documents/account_erasure_tombstones/$(request.auth.uid));
     }
 
     function isOperator() {
@@ -156,6 +157,23 @@ service cloud.firestore {
           "auditHeadHashHex",
           "macAppVersion",
           "schemaVersion",
+          "updatedAt",
+          "quotaStartMeteredEventId",
+          "quotaStartMeteredDayKey",
+          "quotaStartMeteredAt",
+          "quotaCompletionMeteredEventId",
+          "quotaCompletionMeteredDayKey",
+          "quotaCompletionMeteredAt"
+        ])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "endedAt",
+          "endReason",
+          "actionCount",
+          "approvalCount",
+          "rejectionCount",
+          "panicHaltCount",
+          "visionSpendUSD",
+          "auditHeadHashHex",
           "updatedAt"
         ])
         && (!("id" in request.resource.data) || request.resource.data.id == sessionId)
@@ -184,15 +202,15 @@ service cloud.firestore {
           "error"
         ])
         && request.resource.data.actionCount is int
-        && request.resource.data.actionCount >= 0
+        && request.resource.data.actionCount >= resource.data.actionCount
         && request.resource.data.approvalCount is int
-        && request.resource.data.approvalCount >= 0
+        && request.resource.data.approvalCount >= resource.data.approvalCount
         && request.resource.data.rejectionCount is int
-        && request.resource.data.rejectionCount >= 0
+        && request.resource.data.rejectionCount >= resource.data.rejectionCount
         && request.resource.data.panicHaltCount is int
-        && request.resource.data.panicHaltCount >= 0
+        && request.resource.data.panicHaltCount >= resource.data.panicHaltCount
         && request.resource.data.visionSpendUSD is number
-        && request.resource.data.visionSpendUSD >= 0
+        && request.resource.data.visionSpendUSD >= resource.data.visionSpendUSD
         && (!("auditHeadHashHex" in request.resource.data) || (request.resource.data.auditHeadHashHex is string && request.resource.data.auditHeadHashHex.matches("^[A-Fa-f0-9]{64}$")))
         && (!("updatedAt" in request.resource.data) || request.resource.data.updatedAt is timestamp);
     }
@@ -731,8 +749,7 @@ service cloud.firestore {
 
     function validSessionLogManifestCore(userId, logId) {
       return validSessionLogManifestKeys()
-        && sessionLogPostWriteHasNoPlaintextFields(request.resource.data)
-        && (!("inferredTaskTitle" in request.resource.data) || request.resource.data.inferredTaskTitle == "Encrypted session")
+        && request.resource.data.get("inferredTaskTitle", "Encrypted session") == "Encrypted session"
         && (!("sealedTitle" in request.resource.data) || validSessionLogSealedTextAt(userId, logId, "sealedTitle", request.resource.data.sealedTitle))
         && (!("sealedBodyPreview" in request.resource.data) || validSessionLogSealedTextAt(userId, logId, "sealedBodyPreview", request.resource.data.sealedBodyPreview))
         && (!("encryption" in request.resource.data) || request.resource.data.encryption is map)
@@ -741,8 +758,11 @@ service cloud.firestore {
     }
 
     function validSessionLogLifecycleFields(data) {
-      return (!("deletedAt" in data) || data.deletedAt is timestamp)
-        && (!("version" in data) || (data.version is int && data.version >= 1));
+      let deletedAt = data.get("deletedAt", request.time);
+      let version = data.get("version", 1);
+      return deletedAt is timestamp
+        && version is int
+        && version >= 1;
     }
 
     function sessionLogTombstoneIsSticky() {
@@ -799,14 +819,15 @@ service cloud.firestore {
     // light so legitimate encrypted manifests stay within Firestore's rule
     // evaluator budget.
     function validOptionalInt(data, field) {
-      return !(field in data) || (data[field] is int && data[field] >= 0);
+      let value = data.get(field, 0);
+      return value is int && value >= 0;
     }
 
     function validSessionLogToolTags(data) {
-      return !("toolTags" in data) || (
-        data.toolTags is list
-        && data.toolTags.size() <= 12
-        && data.toolTags.hasOnly([
+      let toolTags = data.get("toolTags", []);
+      return toolTags is list
+        && toolTags.size() <= 12
+        && toolTags.hasOnly([
           "apply_patch",
           "bash",
           "edit",
@@ -821,16 +842,19 @@ service cloud.firestore {
           "sed",
           "shell",
           "write"
-        ])
-      );
+        ]);
     }
 
     function validSessionLogFacets(data) {
-      return (!("model" in data) || (data.model is string && data.model.size() <= 200))
-        && (!("provider" in data) || (data.provider is string && data.provider.size() <= 80))
-        && (!("sourceType" in data) || (data.sourceType is string && data.sourceType.size() <= 80))
+      let model = data.get("model", "");
+      let provider = data.get("provider", "");
+      let sourceType = data.get("sourceType", "");
+      let costUSD = data.get("costUSD", 0);
+      return model is string && model.size() <= 200
+        && provider is string && provider.size() <= 80
+        && sourceType is string && sourceType.size() <= 80
         && validSessionLogToolTags(data)
-        && (!("costUSD" in data) || (data.costUSD is number && data.costUSD >= 0))
+        && costUSD is number && costUSD >= 0
         && validOptionalInt(data, "inputTokens")
         && validOptionalInt(data, "outputTokens")
         && validOptionalInt(data, "cacheCreationTokens")
@@ -965,6 +989,12 @@ service cloud.firestore {
 
     function cloudVaultAADContext(userId, collection, docID, field) {
       return "OpenBurnBar-CloudVault-aad-v2|" + userId + "|" + collection + "|" + docID + "|" + field + "|2|" + field;
+    }
+
+    function roamingProfileAADContext(userId) {
+      return "OpenBurnBar-CloudVault-aad-v2|"
+        + userId
+        + "|roaming_profile|current|sealedPayload|2|OpenBurnBar-RoamingProfile-v1";
     }
 
     function validCloudVaultAAD(value) {
@@ -1167,6 +1197,55 @@ service cloud.firestore {
         && value.sealedBoxBase64.size() > 0
         && value.sealedBoxBase64.size() <= 900000
         && value.sealedBoxBase64.matches("^[A-Za-z0-9+/=]+$");
+    }
+
+    function validRoamingProfileSealedPayload(userId, value) {
+      return value is map
+        && value.keys().hasOnly([
+          "schemaVersion",
+          "algorithm",
+          "keyVersion",
+          "vaultKeyID",
+          "sealedBoxBase64",
+          "aad"
+        ])
+        && value.schemaVersion == 2
+        && value.algorithm == "AES-256-GCM"
+        && value.keyVersion is int
+        && value.keyVersion >= 1
+        && value.keyVersion <= 100
+        && validVaultKeyID(value.vaultKeyID)
+        && matchesCurrentVaultKey(userId, value.vaultKeyID)
+        && value.aad == roamingProfileAADContext(userId)
+        && value.sealedBoxBase64 is string
+        && value.sealedBoxBase64.size() > 0
+        && value.sealedBoxBase64.size() <= 900000
+        && value.sealedBoxBase64.matches("^[A-Za-z0-9+/=]+$");
+    }
+
+    function validRoamingProfileDocument(userId, profileId) {
+      return profileId == "current"
+        && request.resource.data.keys().hasOnly([
+          "uid",
+          "schemaVersion",
+          "payloadSchemaVersion",
+          "sourceDeviceID",
+          "updatedAt",
+          "sealedPayload"
+        ])
+        && request.resource.data.keys().hasAll([
+          "uid",
+          "schemaVersion",
+          "payloadSchemaVersion",
+          "updatedAt",
+          "sealedPayload"
+        ])
+        && request.resource.data.uid == userId
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.payloadSchemaVersion == 1
+        && (!("sourceDeviceID" in request.resource.data) || (request.resource.data.sourceDeviceID is string && request.resource.data.sourceDeviceID.size() <= 160))
+        && request.resource.data.updatedAt is timestamp
+        && validRoamingProfileSealedPayload(userId, request.resource.data.sealedPayload);
     }
 
     // M-007: use this only on writers that already emit path-bound AAD. Today
@@ -1671,6 +1750,13 @@ service cloud.firestore {
     // Cloud Functions store Secret Manager version names here. The Admin SDK
     // bypasses rules; clients must never read or write these documents.
     match /provider_account_secret_refs/{refId} {
+      allow read, write: if false;
+    }
+
+    // Durable write barrier created by the account-erasure service before it
+    // enumerates data. Admin cleanup bypasses rules; clients can never observe,
+    // create, update, or delete their own barrier.
+    match /account_erasure_tombstones/{userId} {
       allow read, write: if false;
     }
 
@@ -3429,6 +3515,13 @@ service cloud.firestore {
       allow delete: if ownsUserNamespace(userId);
     }
 
+    match /users/{userId}/roaming_profile/{profileId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId)
+        && validRoamingProfileDocument(userId, profileId);
+      allow delete: if ownsUserNamespace(userId);
+    }
+
     // Provider account device links. Canonical top-level collection used by
     // `adoptProviderAccountForDevice`, `revokeProviderAccountDeviceLink`, and
     // the `backfillProviderAccountDeviceLinks` callable / schedule. Writes
@@ -3815,12 +3908,11 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Daily counters mirrored from the Mac. Owner-writable; cloud
-    // function `recomputeComputerUseQuotaUsage` reconciles drift.
+    // Server-owned daily counters. Immutable action/session headers advance
+    // these transactionally; the hourly function only reconciles upward.
     match /users/{userId}/computer_use_quota_usage/{day} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId)
-        && validComputerUseQuotaUsageDocument(day);
+      allow create, update: if false;
       allow delete: if false;
     }
 

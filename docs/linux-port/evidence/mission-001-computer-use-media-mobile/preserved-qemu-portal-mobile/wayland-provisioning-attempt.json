@@ -1,0 +1,17 @@
+{
+  "generatedAt": "2026-07-04T14:26:32.539Z",
+  "enabled": false,
+  "status": "skipped",
+  "reason": "Set OB_CU_WAYLAND_PROVISION=1 to run transient apt provisioning and the headless Sway/wlroots Wayland startup.",
+  "image": "openburnbar-linux-toolchain:mission-001",
+  "commands": [
+    {
+      "id": "toolchain-image-package-probe",
+      "command": "docker run --rm openburnbar-linux-toolchain:mission-001 bash -lc \nset +e\necho \"## package and device probe\"\nuname -a\nfor bin in dbus-run-session weston gnome-shell kwin_wayland sway xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-wlr pipewire wireplumber pw-cli gdbus at-spi-bus-launcher Xvfb xdotool scrot grim weston-screenshooter; do\n  if command -v \"$bin\" >/dev/null 2>&1; then printf \"%s=%s\\n\" \"$bin\" \"$(command -v \"$bin\")\"; else printf \"%s=missing\\n\" \"$bin\"; fi\ndone\npkg-config --modversion libei-1.0 2>/dev/null || pkg-config --modversion libei 2>/dev/null || true\ntest -e /dev/uinput && ls -l /dev/uinput || true\n",
+      "exitCode": 0,
+      "durationMs": 354,
+      "stdoutTail": "## package and device probe\nLinux 10b6c84a94e4 6.12.72-linuxkit #1 SMP Wed Feb 25 13:21:17 UTC 2026 aarch64 aarch64 aarch64 GNU/Linux\ndbus-run-session=/usr/bin/dbus-run-session\nweston=missing\ngnome-shell=missing\nkwin_wayland=missing\nsway=missing\nxdg-desktop-portal=missing\nxdg-desktop-portal-gtk=missing\nxdg-desktop-portal-wlr=missing\npipewire=/usr/bin/pipewire\nwireplumber=missing\npw-cli=/usr/bin/pw-cli\ngdbus=/usr/bin/gdbus\nat-spi-bus-launcher=missing\nXvfb=/usr/bin/Xvfb\nxdotool=/usr/bin/xdotool\nscrot=/usr/bin/scrot\ngrim=missing\nweston-screenshooter=missing\n1.2.1\n",
+      "stderrTail": ""
+    }
+  ]
+}

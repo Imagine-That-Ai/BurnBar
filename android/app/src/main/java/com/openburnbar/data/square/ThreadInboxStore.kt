@@ -456,6 +456,7 @@ class ThreadInboxStore private constructor(
         "antigravity", "agy", "google_antigravity", "google-antigravity" -> AssistantRuntimeID.ANTIGRAVITY
         "grok", "xai", "x-ai" -> AssistantRuntimeID.GROK
         "cursoragent", "cursor_agent", "cursor-agent" -> AssistantRuntimeID.CURSOR_AGENT
+        "junie", "jetbrainsjunie", "jetbrains_junie", "jetbrains-junie" -> AssistantRuntimeID.JUNIE
         else -> null
     }
 

@@ -14,9 +14,10 @@ final class MobileThemeTests: XCTestCase {
     }
 
     func testColorForModelUnknownHashesWithoutCrash() {
-        _ = MobileTheme.Colors.colorForModel("")
-        _ = MobileTheme.Colors.colorForModel("a")
-        _ = MobileTheme.Colors.colorForModel(String(repeating: "x", count: 10_000))
+        XCTAssertEqual(MobileTheme.Colors.colorForModel(""), MobileTheme.Colors.colorForModel(""))
+        XCTAssertEqual(MobileTheme.Colors.colorForModel("a"), MobileTheme.Colors.colorForModel("a"))
+        let longUnknown = String(repeating: "x", count: 10_000)
+        XCTAssertEqual(MobileTheme.Colors.colorForModel(longUnknown), MobileTheme.Colors.colorForModel(longUnknown))
     }
 
     func testColorForModelKnownBrands() {

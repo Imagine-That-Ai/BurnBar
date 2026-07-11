@@ -22,7 +22,7 @@ final class StubArtifactDiscoverySettings: ArtifactDiscoverySettingsProviding {
 
 @MainActor
 func makeDiscoveryInMemoryStore() throws -> DataStore {
-    let queue = try DatabaseQueue(path: ":memory:")
+    let queue = try DatabaseQueue()
     return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
 }
 

@@ -59,19 +59,19 @@ final class SettingsManagerSecretStorageTests: XCTestCase {
         XCTAssertNil(defaults.object(forKey: "controllerTelegramBotToken"))
         XCTAssertNil(defaults.object(forKey: "gatewayAuthToken"))
         XCTAssertEqual(
-            try gatewaySecrets.string(for: OpenBurnBarIdentity.openClawBearerTokenAccount),
+            try gatewaySecrets.string(for: OpenBurnBar.OpenBurnBarIdentity.openClawBearerTokenAccount),
             "legacy-openclaw-token"
         )
         XCTAssertEqual(
-            try gatewaySecrets.string(for: OpenBurnBarIdentity.hermesBearerTokenAccount),
+            try gatewaySecrets.string(for: OpenBurnBar.OpenBurnBarIdentity.hermesBearerTokenAccount),
             "legacy-hermes-token"
         )
         XCTAssertEqual(
-            try gatewaySecrets.string(for: OpenBurnBarIdentity.gatewayAuthTokenAccount),
+            try gatewaySecrets.string(for: OpenBurnBar.OpenBurnBarIdentity.gatewayAuthTokenAccount),
             "legacy-gateway-token"
         )
         XCTAssertEqual(
-            try controllerSecrets.string(for: OpenBurnBarIdentity.controllerTelegramBotTokenAccount),
+            try controllerSecrets.string(for: OpenBurnBar.OpenBurnBarIdentity.controllerTelegramBotTokenAccount),
             "legacy-telegram-token"
         )
     }
@@ -114,19 +114,19 @@ final class SettingsManagerSecretStorageTests: XCTestCase {
         XCTAssertNil(defaults.object(forKey: "gatewayAuthToken"))
         XCTAssertEqual(defaults.string(forKey: "controllerTelegramChatID"), "chat-id")
         XCTAssertEqual(
-            try controllerSecrets.string(for: OpenBurnBarIdentity.controllerTelegramBotTokenAccount),
+            try controllerSecrets.string(for: OpenBurnBar.OpenBurnBarIdentity.controllerTelegramBotTokenAccount),
             "controller-token"
         )
         XCTAssertEqual(
-            try gatewaySecrets.string(for: OpenBurnBarIdentity.openClawBearerTokenAccount),
+            try gatewaySecrets.string(for: OpenBurnBar.OpenBurnBarIdentity.openClawBearerTokenAccount),
             "openclaw-token"
         )
         XCTAssertEqual(
-            try gatewaySecrets.string(for: OpenBurnBarIdentity.hermesBearerTokenAccount),
+            try gatewaySecrets.string(for: OpenBurnBar.OpenBurnBarIdentity.hermesBearerTokenAccount),
             "hermes-token"
         )
         XCTAssertEqual(
-            try gatewaySecrets.string(for: OpenBurnBarIdentity.gatewayAuthTokenAccount),
+            try gatewaySecrets.string(for: OpenBurnBar.OpenBurnBarIdentity.gatewayAuthTokenAccount),
             "gateway-token"
         )
 
@@ -135,10 +135,10 @@ final class SettingsManagerSecretStorageTests: XCTestCase {
         settings.hermesBearerToken = ""
         settings.gatewayAuthToken = ""
 
-        XCTAssertNil(try controllerSecrets.string(for: OpenBurnBarIdentity.controllerTelegramBotTokenAccount))
-        XCTAssertNil(try gatewaySecrets.string(for: OpenBurnBarIdentity.openClawBearerTokenAccount))
-        XCTAssertNil(try gatewaySecrets.string(for: OpenBurnBarIdentity.hermesBearerTokenAccount))
-        XCTAssertNil(try gatewaySecrets.string(for: OpenBurnBarIdentity.gatewayAuthTokenAccount))
+        XCTAssertNil(try controllerSecrets.string(for: OpenBurnBar.OpenBurnBarIdentity.controllerTelegramBotTokenAccount))
+        XCTAssertNil(try gatewaySecrets.string(for: OpenBurnBar.OpenBurnBarIdentity.openClawBearerTokenAccount))
+        XCTAssertNil(try gatewaySecrets.string(for: OpenBurnBar.OpenBurnBarIdentity.hermesBearerTokenAccount))
+        XCTAssertNil(try gatewaySecrets.string(for: OpenBurnBar.OpenBurnBarIdentity.gatewayAuthTokenAccount))
     }
 
     func test_generateGatewayAuthToken_producesUniqueURLSafeSecrets() throws {
@@ -331,7 +331,7 @@ final class SettingsManagerSecretStorageTests: XCTestCase {
         let persistence = SettingsSecretPersistence(defaults: defaults, keychain: keychain)
 
         let result = persistence.load(
-            account: OpenBurnBarIdentity.openClawBearerTokenAccount,
+            account: OpenBurnBar.OpenBurnBarIdentity.openClawBearerTokenAccount,
             legacyDefaultsKey: "openClawBearerToken"
         )
 
@@ -363,7 +363,7 @@ final class SettingsManagerSecretStorageTests: XCTestCase {
 
         persistence.persist(
             "new-hermes-token",
-            account: OpenBurnBarIdentity.hermesBearerTokenAccount,
+            account: OpenBurnBar.OpenBurnBarIdentity.hermesBearerTokenAccount,
             legacyDefaultsKey: "hermesBearerToken"
         )
 
@@ -392,7 +392,7 @@ final class SettingsManagerSecretStorageTests: XCTestCase {
         let persistence = SettingsSecretPersistence(defaults: defaults, keychain: keychain)
 
         let result = persistence.load(
-            account: OpenBurnBarIdentity.gatewayAuthTokenAccount,
+            account: OpenBurnBar.OpenBurnBarIdentity.gatewayAuthTokenAccount,
             legacyDefaultsKey: "gatewayAuthToken"
         )
 
@@ -435,7 +435,7 @@ final class SettingsManagerSecretStorageTests: XCTestCase {
         // The fault must surface as a logged nil read, never a thrown error or crash.
         XCTAssertNoThrow(
             result = persistence.load(
-                account: OpenBurnBarIdentity.openClawBearerTokenAccount,
+                account: OpenBurnBar.OpenBurnBarIdentity.openClawBearerTokenAccount,
                 legacyDefaultsKey: "openClawBearerToken"
             )
         )
@@ -466,7 +466,7 @@ final class SettingsManagerSecretStorageTests: XCTestCase {
         var result = "unset"
         XCTAssertNoThrow(
             result = persistence.load(
-                account: OpenBurnBarIdentity.hermesBearerTokenAccount,
+                account: OpenBurnBar.OpenBurnBarIdentity.hermesBearerTokenAccount,
                 legacyDefaultsKey: "hermesBearerToken"
             )
         )

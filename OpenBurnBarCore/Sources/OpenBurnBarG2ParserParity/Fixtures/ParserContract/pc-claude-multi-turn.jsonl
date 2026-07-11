@@ -1,0 +1,4 @@
+{"type":"user","timestamp":"2025-03-15T00:53:20.000Z","message":{"role":"user","content":[{"type":"text","text":"Create a new Swift file for authentication."}]}}
+{"type":"assistant","timestamp":"2025-03-15T00:53:21.000Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"Write","input":{"file_path":"/test/Auth.swift","content":"import Foundation\n\nstruct Auth {}\n"}}],"model":"claude-sonnet-4-20250514","usage":{"input_tokens":50,"output_tokens":100}}}
+{"type":"user","timestamp":"2025-03-15T00:53:22.000Z","message":{"role":"user","content":[{"type":"text","text":"Now add a login method."}]}}
+{"type":"assistant","timestamp":"2025-03-15T00:53:23.000Z","message":{"role":"assistant","content":[{"type":"text","text":"I'll add the login method."}],"model":"claude-sonnet-4-20250514","usage":{"input_tokens":150,"output_tokens":200}}}

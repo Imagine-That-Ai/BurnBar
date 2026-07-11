@@ -1,9 +1,14 @@
 import OpenBurnBarCore
 import Foundation
+#if canImport(SQLite3)
 import SQLite3
+#else
+import CSQLite
+#endif
 
 private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
-private let indexedSearchQueueKey = DispatchSpecificKey<UUID>()
+// DispatchSpecificKey is not Sendable; access is confined to the search serial queue.
+private nonisolated(unsafe) let indexedSearchQueueKey = DispatchSpecificKey<UUID>()
 
 // AUDIT(@unchecked Sendable): Mutable state (snapshotContext) and raw SQLite pointer
 // are serialized through dbQueue DispatchQueue; manual thread safety is correct.

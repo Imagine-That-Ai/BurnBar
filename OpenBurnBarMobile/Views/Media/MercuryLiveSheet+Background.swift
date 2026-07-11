@@ -319,6 +319,56 @@ extension MercuryLiveSheet {
         }
     }
 
+    @ViewBuilder
+    func floatingCallAckHUD(for ack: HermesRealtimeRelayCallAck) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: callAckIcon(for: ack))
+                .foregroundStyle(callAckColor(for: ack))
+                .font(.system(size: 20, weight: .bold))
+                .symbolEffect(.bounce, value: ackAnimateTrigger)
+                .shadow(color: callAckColor(for: ack).opacity(0.3), radius: 4)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(callBannerTitle(for: ack))
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+
+                if let detail = ack.detail {
+                    Text(detail)
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.75))
+                        .multilineTextAlignment(.leading)
+                }
+            }
+
+            Spacer()
+
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    lastCallAck = nil
+                }
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 18))
+                    .foregroundStyle(.white.opacity(0.4))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(hudGlassBackground(wash: callAckColor(for: ack).opacity(0.04)))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(callAckGradient(for: ack), lineWidth: 1.5)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .shadow(color: callAckColor(for: ack).opacity(0.18), radius: 22, x: 0, y: 12)
+        .shadow(color: .black.opacity(0.35), radius: 15, x: 0, y: 8)
+        .onAppear {
+            ackAnimateTrigger.toggle()
+        }
+    }
+
     func ackGradient(for ack: HermesRealtimeRelayMirrorAck) -> LinearGradient {
         let colors: [Color]
         switch ack.decision {
@@ -367,12 +417,30 @@ extension MercuryLiveSheet {
         }
     }
 
+    func callAckIcon(for ack: HermesRealtimeRelayCallAck) -> String {
+        switch ack.decision {
+        case .accepted: return "phone.connection.fill"
+        case .denied: return "phone.down.fill"
+        case .busy: return "minus.circle.fill"
+        case .unsupported: return "slash.circle.fill"
+        }
+    }
+
     func ackColor(for ack: HermesRealtimeRelayMirrorAck) -> Color {
         switch ack.decision {
         case .accepted:    return .green
         case .denied:      return .red
         case .coolingDown: return .orange
         case .busy:        return .orange
+        case .unsupported: return .gray
+        }
+    }
+
+    func callAckColor(for ack: HermesRealtimeRelayCallAck) -> Color {
+        switch ack.decision {
+        case .accepted: return .green
+        case .denied: return .red
+        case .busy: return .orange
         case .unsupported: return .gray
         }
     }
@@ -387,9 +455,59 @@ extension MercuryLiveSheet {
         }
     }
 
+    func callBannerTitle(for ack: HermesRealtimeRelayCallAck) -> String {
+        switch ack.decision {
+        case .accepted: return "Mac accepted the call."
+        case .denied: return "Mac declined the call."
+        case .busy: return "Mac is busy."
+        case .unsupported: return "Mac can't call right now."
+        }
+    }
+
+    func callAckGradient(for ack: HermesRealtimeRelayCallAck) -> LinearGradient {
+        let colors: [Color]
+        switch ack.decision {
+        case .accepted:
+            colors = [Color.green.opacity(0.65), Color.green.opacity(0.20), Color.white.opacity(0.08)]
+        case .denied:
+            colors = [Color.red.opacity(0.65), Color.orange.opacity(0.20), Color.white.opacity(0.08)]
+        case .busy:
+            colors = [Color.orange.opacity(0.65), Color.yellow.opacity(0.20), Color.white.opacity(0.08)]
+        case .unsupported:
+            colors = [Color.gray.opacity(0.65), Color.white.opacity(0.12), Color.white.opacity(0.08)]
+        }
+        return LinearGradient(
+            colors: colors,
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
     var canRequestMirror: Bool {
         awaitingRequestID == nil
             && peer.capabilities.contains(.mirrorHost)
+    }
+
+    var canPlaceCall: Bool {
+        Self.canStartCall(
+            pendingCallRequestID: pendingCallRequestID,
+            peerCanPlaceCall: peer.canPlaceCall,
+            controlStreamPhase: controlStreamCoordinator.phase
+        )
+    }
+
+    static func canStartCall(
+        pendingCallRequestID: String?,
+        peerCanPlaceCall: Bool,
+        controlStreamPhase: MediaControlStreamCoordinator.Phase
+    ) -> Bool {
+        pendingCallRequestID == nil
+            && peerCanPlaceCall
+            && controlStreamPhase == .live
+    }
+
+    static func shouldDetachCallAckHandlerOnDisappear(pendingCallRequestID: String?) -> Bool {
+        pendingCallRequestID == nil
     }
 
     var mirrorAutoAccept: Bool {
@@ -405,6 +523,27 @@ extension MercuryLiveSheet {
             return nil
         case .idle, .dialing:
             return "Mercury is connecting to your Mac..."
+        case .reconnecting:
+            return "Mercury lost the Mac connection and is reconnecting..."
+        case .failed(let reason):
+            return "Mercury unavailable: \(reason)"
+        case .stopped:
+            return "Mercury is stopped. Reopen BurnBar on the Mac, then try again."
+        }
+    }
+
+    var callStatusMessage: String? {
+        if pendingCallRequestID != nil {
+            return "Calling Mac. Waiting for a response..."
+        }
+        if !peer.canPlaceCall {
+            return "This Mac is not advertising calls yet."
+        }
+        switch controlStreamCoordinator.phase {
+        case .live:
+            return nil
+        case .idle, .dialing:
+            return "Mercury is connecting to your Mac before calling..."
         case .reconnecting:
             return "Mercury lost the Mac connection and is reconnecting..."
         case .failed(let reason):

@@ -196,6 +196,19 @@ struct CloudSyncCircuitBreakerOpenError: Error, LocalizedError, Sendable {
     var errorDescription: String? { "Cloud sync circuit breaker is open — calls are temporarily suspended" }
 }
 
+/// Error thrown when the retry loop exhausts without capturing an underlying
+/// error — reachable only through a policy edge such as `maxAttempts <= 0`,
+/// where the attempt loop never executes. Replaces a force-unwrap crash with a
+/// typed, observable failure.
+struct CloudSyncRetryExhaustedError: Error, LocalizedError, Sendable {
+    let domain: String
+    let attempts: Int
+
+    var errorDescription: String? {
+        "Cloud sync retry exhausted for \(domain) after \(attempts) attempt(s) without a captured error"
+    }
+}
+
 /// Namespace for the retry logger.
 private enum CloudSyncRetryLog {
     static let logger = Logger(subsystem: "com.openburnbar.cloudsync", category: "retry")
@@ -209,7 +222,9 @@ private enum CloudSyncRetryLog {
 ///   - domain: A label for logging (e.g. "usage", "conversation").
 ///   - operation: The async throwing closure to execute.
 /// - Returns: The result of the operation on success.
-/// - Throws: The last error if all retries are exhausted, or immediately on terminal/permission errors.
+/// - Throws: The last error if all retries are exhausted, immediately on terminal/permission
+///   errors, or `CloudSyncRetryExhaustedError` when the loop exhausts without ever running
+///   (e.g. `maxAttempts <= 0`).
 @MainActor
 func withCloudSyncRetry<T>(
     policy: CloudSyncRetryPolicy,
@@ -265,5 +280,14 @@ func withCloudSyncRetry<T>(
         }
     }
 
-    throw lastError!
+    if let lastError {
+        throw lastError
+    }
+    // Reachable only when the attempt loop never executed (e.g. maxAttempts <= 0):
+    // there is no captured error to rethrow, so surface a typed exhaustion error
+    // instead of force-unwrapping nil.
+    CloudSyncRetryLog.logger.error(
+        "\(domain, privacy: .public) retry loop exhausted with no captured error (maxAttempts=\(policy.maxAttempts)), throwing typed exhaustion error"
+    )
+    throw CloudSyncRetryExhaustedError(domain: domain, attempts: policy.maxAttempts)
 }

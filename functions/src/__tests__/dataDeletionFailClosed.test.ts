@@ -24,6 +24,7 @@ const emptyCollection = {
 vi.mock("../adminRuntime.js", () => ({
   db: {
     collection: () => emptyCollection,
+    doc: () => ({ get: async () => ({ exists: false }) }),
     recursiveDelete: vi.fn(async () => undefined),
   },
   auth: {},

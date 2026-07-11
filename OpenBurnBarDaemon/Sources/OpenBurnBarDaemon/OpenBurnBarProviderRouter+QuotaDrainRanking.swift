@@ -147,6 +147,11 @@ extension BurnBarProviderRouter {
         if lhs.breakdown.providerID != rhs.breakdown.providerID {
             return lhs.breakdown.providerID < rhs.breakdown.providerID
         }
+        let lhsPriority = slotInfoMap[lhs.breakdown.routeKey]?.priority ?? Int.max
+        let rhsPriority = slotInfoMap[rhs.breakdown.routeKey]?.priority ?? Int.max
+        if lhsPriority != rhsPriority {
+            return lhsPriority < rhsPriority
+        }
         let lhsLastSelected = slotInfoMap[lhs.breakdown.routeKey]?.lastSelectedAt ?? .distantPast
         let rhsLastSelected = slotInfoMap[rhs.breakdown.routeKey]?.lastSelectedAt ?? .distantPast
         if lhsLastSelected != rhsLastSelected {

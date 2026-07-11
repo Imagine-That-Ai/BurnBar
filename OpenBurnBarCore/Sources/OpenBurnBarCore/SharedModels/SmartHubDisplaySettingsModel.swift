@@ -225,6 +225,11 @@ public final class SmartHubDisplaySettingsModel {
     private var debounceTask: Task<Void, Never>?
     private let onEnabledChange: ((Bool) -> Void)?
 
+    /// Clock driving the debounced-persist delay. Production uses
+    /// `ContinuousClock`; tests inject an immediate clock so the debounce
+    /// advances deterministically instead of racing wall-clock sleeps.
+    private let debounceClock: any Clock<Duration>
+
     public convenience init(
         enabled: Bool = false,
         initialConfig: SmartHubDisplayConfig = .default,
@@ -244,6 +249,7 @@ public final class SmartHubDisplaySettingsModel {
         initialConfig: SmartHubDisplayConfig,
         operations: any SmartHubDisplayOperations,
         availableProviders: [AgentProvider] = AgentProvider.quotaSignalProviders,
+        debounceClock: any Clock<Duration> = ContinuousClock(),
         onEnabledChange: ((Bool) -> Void)? = nil
     ) {
         self.enabled = enabled
@@ -253,6 +259,7 @@ public final class SmartHubDisplaySettingsModel {
         self.lastRepairStatus = nil
         self.operations = operations
         self.availableProviders = availableProviders
+        self.debounceClock = debounceClock
         self.onEnabledChange = onEnabledChange
     }
 
@@ -464,12 +471,21 @@ public final class SmartHubDisplaySettingsModel {
     private func scheduleDebouncedPersist() {
         debounceTask?.cancel()
         let snapshot = config
+        let clock = debounceClock
         debounceTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 300_000_000)
+            try? await clock.sleep(for: .milliseconds(300))
             guard let self else { return }
             guard !Task.isCancelled else { return }
             await self.operations.updateDisplayConfig(snapshot)
         }
+    }
+
+    /// Awaits the in-flight debounced persist, if any. Test hook: paired
+    /// with an injected immediate `debounceClock`, suites observe the
+    /// persisted config deterministically instead of racing the debounce
+    /// window with fixed wall-clock sleeps.
+    public func flushPendingPersist() async {
+        await debounceTask?.value
     }
 
     private func runOperation(

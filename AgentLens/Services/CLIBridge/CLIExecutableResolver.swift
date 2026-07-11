@@ -411,7 +411,7 @@ extension CLIBridge {
 /// and the unrestricted shell. Instead we start from an allowlisted baseline.
 ///
 /// The allowlist is built as: the proven Switcher launch baseline
-/// (`CLILaunchAdapter.allowlistedEnvKeys`, e.g. HOME/PATH/USER/SHELL/TERM/
+/// (`CLILaunchAdapter.isBaselineEnvKeyAllowlisted`, e.g. HOME/PATH/USER/SHELL/TERM/
 /// TMPDIR/LANG/LC_ALL and the per-CLI config-dir vars) PLUS the provider/
 /// API-key env an agent legitimately reads from ambient to authenticate
 /// (ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.). The Switcher baseline deliberately
@@ -467,7 +467,7 @@ enum AgentChildProcessEnvironment {
     /// the proven Switcher launch baseline, in the agent provider/API-key set, or
     /// it is a locale (`LC_*`) variable.
     static func isAllowlisted(_ key: String) -> Bool {
-        CLILaunchAdapter.isEnvKeyAllowlisted(key)
+        CLILaunchAdapter.isBaselineEnvKeyAllowlisted(key)
             || providerEnvKeys.contains(key)
             || key.hasPrefix("LC_")
     }

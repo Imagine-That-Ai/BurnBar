@@ -23,7 +23,7 @@ final class ChatBackendSettings {
         didSet {
             secretPersistence.persist(
                 openClawBearerToken,
-                account: OpenBurnBarIdentity.openClawBearerTokenAccount,
+                account: OpenBurnBarCore.OpenBurnBarIdentity.openClawBearerTokenAccount,
                 legacyDefaultsKey: SettingsSecretDefaultsKey.openClawBearerToken
             )
         }
@@ -33,7 +33,7 @@ final class ChatBackendSettings {
         didSet {
             secretPersistence.persist(
                 hermesBearerToken,
-                account: OpenBurnBarIdentity.hermesBearerTokenAccount,
+                account: OpenBurnBarCore.OpenBurnBarIdentity.hermesBearerTokenAccount,
                 legacyDefaultsKey: SettingsSecretDefaultsKey.hermesBearerToken
             )
         }
@@ -145,7 +145,7 @@ final class ChatBackendSettings {
         didSet {
             secretPersistence.persist(
                 piAgentBearerToken,
-                account: OpenBurnBarIdentity.piAgentBearerTokenAccount,
+                account: OpenBurnBarCore.OpenBurnBarIdentity.piAgentBearerTokenAccount,
                 legacyDefaultsKey: SettingsSecretDefaultsKey.piAgentBearerToken
             )
         }
@@ -265,11 +265,11 @@ final class ChatBackendSettings {
         self.secretPersistence = secretPersistence
         self.openClawGatewayBaseURL = persistence.string(forKey: "openClawGatewayBaseURL", defaultValue: "http://127.0.0.1:18789")
         self.openClawBearerToken = secretPersistence.load(
-            account: OpenBurnBarIdentity.openClawBearerTokenAccount,
+            account: OpenBurnBarCore.OpenBurnBarIdentity.openClawBearerTokenAccount,
             legacyDefaultsKey: SettingsSecretDefaultsKey.openClawBearerToken
         )
         self.hermesBearerToken = secretPersistence.load(
-            account: OpenBurnBarIdentity.hermesBearerTokenAccount,
+            account: OpenBurnBarCore.OpenBurnBarIdentity.hermesBearerTokenAccount,
             legacyDefaultsKey: SettingsSecretDefaultsKey.hermesBearerToken
         )
         self.hermesChatModelOverride = persistence.string(forKey: "hermesChatModelOverride")
@@ -299,7 +299,7 @@ final class ChatBackendSettings {
         self.launchHermesWithOpenBurnBar = persistence.bool(forKey: "launchHermesWithOpenBurnBar")
         self.piAgentGatewayBaseURL = persistence.string(forKey: "piAgentGatewayBaseURL", defaultValue: "http://127.0.0.1:8765")
         self.piAgentBearerToken = secretPersistence.load(
-            account: OpenBurnBarIdentity.piAgentBearerTokenAccount,
+            account: OpenBurnBarCore.OpenBurnBarIdentity.piAgentBearerTokenAccount,
             legacyDefaultsKey: SettingsSecretDefaultsKey.piAgentBearerToken
         )
         self.piAgentRedisURL = persistence.string(forKey: "piAgentRedisURL")

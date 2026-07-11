@@ -48,8 +48,10 @@ struct ChatPanel: View {
         Group {
             if controller.isMinimized {
                 minimizedPill
+                    .accessibilityIdentifier(OBBAccessibilityID.chatPanelMinimized)
             } else {
                 expandedPanel
+                    .accessibilityIdentifier(OBBAccessibilityID.chatPanel)
             }
         }
         .environment(\.hermesAtomNavigator, atomRouter)
@@ -951,6 +953,7 @@ struct ChatPanel: View {
         case .cursorAgent: return "Ask Cursor Agent\u{2026}"
         case .openClaude: return "Ask OpenClaude\u{2026}"
         case .omp: return "Ask OMP\u{2026}"
+        case .junie: return "Ask Junie\u{2026}"
         }
     }
 

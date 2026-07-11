@@ -1,6 +1,6 @@
 import XCTest
 import GRDB
-import OpenBurnBarCore
+@testable import OpenBurnBarCore
 @testable import OpenBurnBar
 @MainActor
 final class ProjectionPipelineServiceTests: XCTestCase {

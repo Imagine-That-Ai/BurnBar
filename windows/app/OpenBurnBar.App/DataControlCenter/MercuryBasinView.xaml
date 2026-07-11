@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Windows render of the macOS Basin (AgentLens/Views/Settings/DataControlCenter/
+  DataControlCenterBasin.swift). A rounded mercury pool whose fill tracks the sealed-data fraction.
+  The swirling mercury is painted by a Win2D CanvasAnimatedControl (MercuryBasinHost, added in
+  code-behind) driven by the portable, unit-tested BasinModel; this UserControl adds the frosted
+  shell, the bright rim, and the "NN% sealed" caption overlay — the chrome around the GPU pool.
+-->
+<UserControl
+    x:Class="OpenBurnBar.App.DataControlCenter.MercuryBasinView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Height="168">
+        <!-- Frosted shell + the Win2D canvas host (Border.Child set in code-behind). -->
+        <Border x:Name="ShellBorder"
+                CornerRadius="22"
+                Background="{StaticResource PensieveColorGlassBgBrush}" />
+        <Border x:Name="CanvasHostBorder" CornerRadius="22" />
+
+        <!-- Bright meniscus rim. -->
+        <Border CornerRadius="22" BorderThickness="1" IsHitTestVisible="False">
+            <Border.BorderBrush>
+                <LinearGradientBrush StartPoint="0.5,0" EndPoint="0.5,1">
+                    <GradientStop Color="#8CF4F6FB" Offset="0" />
+                    <GradientStop Color="#4C8B94A8" Offset="1" />
+                </LinearGradientBrush>
+            </Border.BorderBrush>
+        </Border>
+
+        <!-- "NN% sealed" caption. -->
+        <Border VerticalAlignment="Bottom"
+                HorizontalAlignment="Left"
+                Margin="12"
+                CornerRadius="{StaticResource PensieveRadiusPillCorner}"
+                Background="#38000000"
+                Padding="10,5">
+            <TextBlock x:Name="CaptionText"
+                       FontFamily="Cascadia Mono, Consolas"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       Foreground="{StaticResource PensieveColorMercuryBrightBrush}" />
+        </Border>
+    </Grid>
+</UserControl>

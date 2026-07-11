@@ -11,6 +11,14 @@ expected_version="$(grep -E '^\s+MARKETING_VERSION:' "$repo_root/project.yml" | 
 
 echo "Expected version (from project.yml): $expected_version"
 
+requested_version="${OPENBURNBAR_EXPECTED_VERSION:-}"
+if [[ -n "$requested_version" && "$requested_version" != "$expected_version" ]]; then
+  echo "FAIL: requested release version — expected '$expected_version', found '$requested_version'" >&2
+  fail=1
+elif [[ -n "$requested_version" ]]; then
+  echo "PASS: requested release version"
+fi
+
 check() {
   local file="$1"
   local pattern="$2"
@@ -63,6 +71,40 @@ fi
 
 check "$repo_root/OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonConfiguration.swift" '.*current = "([^"]+)".*' "Daemon version enum"
 check "$repo_root/SECURITY.md" '.*repo metadata \(`([^`]+)`.*' "SECURITY.md supported version"
+
+# ── Windows direct-download channel (deferred until the Windows release ships) ──
+# The WinUI app identity version lives in windows/app/OpenBurnBar.App/app.manifest
+# (assemblyIdentity version="A.B.C.D"). It is compared on its first three components against
+# the macOS marketing version. Like the Homebrew cask, it is DEFERRED (pass with a notice)
+# until the Windows channel actually ships — the Windows app needs the W0 Authenticode cert +
+# a Windows build host first — and becomes REQUIRED at tag time or when
+# OPENBURNBAR_REQUIRE_CURRENT_WINDOWS_VERSION=1.
+windows_manifest="$repo_root/windows/app/OpenBurnBar.App/app.manifest"
+require_current_windows="${OPENBURNBAR_REQUIRE_CURRENT_WINDOWS_VERSION:-0}"
+if [[ "${GITHUB_REF_TYPE:-}" == "tag" || "${GITHUB_REF:-}" =~ refs/tags/ ]]; then
+  require_current_windows=1
+fi
+if [[ ! -f "$windows_manifest" ]]; then
+  echo "FAIL: Windows app manifest — file not found at $windows_manifest" >&2
+  fail=1
+else
+  # Match the 4-part assemblyIdentity version only (manifestVersion="1.0" is 2-part and the
+  # leading non-letter guard excludes the "manifestVersion" attribute name).
+  windows_version_full="$(sed -nE 's/.*[^A-Za-z]version="([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)".*/\1/p' "$windows_manifest" | head -1 || true)"
+  windows_version_core="$(printf '%s' "$windows_version_full" | cut -d. -f1-3)"
+  if [[ -z "$windows_version_core" ]]; then
+    echo "FAIL: Windows app manifest — assemblyIdentity version not found in $windows_manifest" >&2
+    fail=1
+  elif [[ "$windows_version_core" == "$expected_version" ]]; then
+    echo "PASS: Windows app manifest"
+  elif [[ "$require_current_windows" == "1" ]]; then
+    echo "FAIL: Windows app manifest — expected '$expected_version', found '$windows_version_core' in $windows_manifest" >&2
+    echo "      Bump the assemblyIdentity version to ${expected_version}.0 when cutting the Windows release." >&2
+    fail=1
+  else
+    echo "PASS: Windows app manifest deferred (currently '$windows_version_core'; bump to v$expected_version when the Windows channel ships)"
+  fi
+fi
 
 if [[ $fail -ne 0 ]]; then
   echo "Version consistency check FAILED." >&2

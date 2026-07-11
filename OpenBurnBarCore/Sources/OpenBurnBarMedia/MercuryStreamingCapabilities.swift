@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Codec names used by Mercury's next-generation mirror streaming probes.
 ///

@@ -1,5 +1,9 @@
 import OpenBurnBarCore
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Foundation
 
 public enum BurnBarDaemonPaths {
@@ -10,14 +14,22 @@ public enum BurnBarDaemonPaths {
             return URL(fileURLWithPath: override, isDirectory: true)
         }
 
+        #if os(Linux)
+        return OpenBurnBarLinuxPaths.supportDirectoryURL()
+        #else
         return FileManager.default
             .homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/OpenBurnBar", isDirectory: true)
+        #endif
     }
 
     public static var defaultSocketURL: URL {
+        #if os(Linux)
+        return OpenBurnBarLinuxPaths.defaultDaemonSocketURL()
+        #else
         supportDirectoryURL
             .appendingPathComponent("openburnbar-daemon.sock", isDirectory: false)
+        #endif
     }
 
     public static var defaultSocketPath: String {
@@ -46,6 +58,10 @@ public enum BurnBarDaemonPaths {
 
     public static var defaultProxyRouteEventsURL: URL {
         supportDirectoryURL.appendingPathComponent("proxy-route-events.jsonl", isDirectory: false)
+    }
+
+    public static var defaultQuotaSignalsURL: URL {
+        supportDirectoryURL.appendingPathComponent("quota-signals.jsonl", isDirectory: false)
     }
 
     public static var defaultGatewayModelHealthURL: URL {
@@ -86,10 +102,36 @@ public enum BurnBarDaemonPaths {
     public static var defaultClaudeHandoffSessionsURL: URL {
         supportDirectoryURL.appendingPathComponent("claude-handoff-sessions.json", isDirectory: false)
     }
+
+    public static var defaultMembershipCacheURL: URL {
+        supportDirectoryURL.appendingPathComponent("membership-entitlement-cache.json", isDirectory: false)
+    }
+
+    public static var defaultComputerUseCapabilityStateURL: URL {
+        supportDirectoryURL
+            .appendingPathComponent("computer-use", isDirectory: true)
+            .appendingPathComponent("capability-state.json", isDirectory: false)
+    }
+
+    public static var defaultLinuxOnboardingStateURL: URL {
+        supportDirectoryURL.appendingPathComponent("linux-onboarding-state.json", isDirectory: false)
+    }
 }
 
 public enum BurnBarDaemonVersion {
-    public static let current = "1.0.28"
+    public static let current = "1.0.29"
+}
+
+public enum OpenBurnBarDaemonOllamaEndpointDefaults {
+    public static func synthesizedLegacyDefault(
+        providerBaseURL: String? = nil,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> BurnBarOllamaEndpointConfig {
+        BurnBarOllamaEndpointConfig.synthesizedLegacyDefault(
+            providerBaseURL: providerBaseURL,
+            environment: environment
+        )
+    }
 }
 
 public struct BurnBarGatewayConfiguration: Codable, Hashable, Sendable {

@@ -13,8 +13,8 @@ settings:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
     ENABLE_PREVIEWS: YES
-    MARKETING_VERSION: "1.0.28"
-    CURRENT_PROJECT_VERSION: 68
+    MARKETING_VERSION: "1.0.29"
+    CURRENT_PROJECT_VERSION: 69
     CODE_SIGN_STYLE: Automatic
     INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.utilities"
     INFOPLIST_KEY_LSUIElement: true
@@ -52,7 +52,10 @@ packages:
     from: "8.0.0"
   AmplitudeSwift:
     url: https://github.com/amplitude/Amplitude-Swift
-    from: "1.17.3"
+    from: "1.18.6"
+  AmplitudeCore:
+    url: https://github.com/amplitude/AmplitudeCore-Swift.git
+    from: "1.4.8"
   GLTFKit2:
     url: https://github.com/warrenm/GLTFKit2
     from: "0.5.15"
@@ -67,6 +70,16 @@ packages:
     from: "1.18.0"
 
 schemes:
+  OpenBurnBarUITests:
+    build:
+      targets:
+        OpenBurnBar: all
+        OpenBurnBarUITests: test
+    test:
+      config: Debug
+      targets:
+        - OpenBurnBarUITests
+
   OpenBurnBarMobileUnitTests:
     build:
       targets:
@@ -431,6 +444,8 @@ targets:
         product: Sentry
       - package: AmplitudeSwift
         product: AmplitudeSwift
+      - package: AmplitudeCore
+        product: AmplitudeCoreFramework
       - package: GLTFKit2
         product: GLTFKit2
       - package: DracoSwift
@@ -451,6 +466,7 @@ targets:
         SKIP_INSTALL: true
         GCC_PREPROCESSOR_DEFINITIONS: "$(inherited) SQLITE_HAS_CODEC=1"
         OTHER_CFLAGS: "$(inherited) -DSQLITE_HAS_CODEC"
+        OTHER_SWIFT_FLAGS: "$(inherited) -Xcc -fmodule-map-file=$(SRCROOT)/OpenBurnBarCore/Sources/Czlib/module.modulemap"
     preBuildScripts:
       - name: Dedupe GRDB Link File Entries (Xcode 16)
         script: |
@@ -483,6 +499,9 @@ targets:
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
         link: false
+      - package: OpenBurnBarCore
+        product: OpenBurnBarLinuxSecurity
+        link: false
       - package: GRDB
         product: GRDB
       - package: SQLCipher
@@ -511,6 +530,8 @@ targets:
         product: OpenBurnBarCore
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
+      - package: OpenBurnBarCore
+        product: OpenBurnBarLinuxSecurity
 
   OpenBurnBarPrivilegedInputExecution:
     type: tool
@@ -528,8 +549,6 @@ targets:
         SKIP_INSTALL: true
     dependencies:
       - target: OpenBurnBarRemoteAccessAgentCore
-      - package: OpenBurnBarCore
-        product: OpenBurnBarComputerUseCore
 
   OpenBurnBarVirtualHIDBridge:
     type: tool
@@ -547,8 +566,6 @@ targets:
         SKIP_INSTALL: true
     dependencies:
       - target: OpenBurnBarRemoteAccessAgentCore
-      - package: OpenBurnBarCore
-        product: OpenBurnBarComputerUseCore
       - sdk: SystemConfiguration.framework
 
   OpenBurnBarPrivilegedInputKillSwitchWatchdog:
@@ -577,10 +594,10 @@ targets:
       base:
         PRODUCT_NAME: OpenBurnBarRemoteAccessAgentCore
         SKIP_INSTALL: true
+        OTHER_SWIFT_FLAGS: "$(inherited) -Xcc -fmodule-map-file=$(SRCROOT)/OpenBurnBarCore/Sources/Czlib/module.modulemap"
     dependencies:
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
-        link: false
       - sdk: CoreGraphics.framework
       - sdk: IOKit.framework
       - sdk: Security.framework
@@ -607,6 +624,8 @@ targets:
       - path: tools/app-store-connect/asc-api.js
         buildPhase: resources
       - path: tools/openburnbar-mcp/eligible_providers.json
+        buildPhase: resources
+      - path: tests/fixtures/llm-safe-wrap/llm-safe-wrap-vectors.json
         buildPhase: resources
       - path: AgentLensTests/Active/Parsers/Fixtures/Grok/sample-session/summary.json
         buildPhase: resources
@@ -688,6 +707,25 @@ targets:
       - package: SnapshotTesting
         product: SnapshotTesting
 
+  OpenBurnBarUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: OpenBurnBarUITests
+        excludes:
+          - "**/.DS_Store"
+      - path: AgentLens/Support/AccessibilityIdentifiers.swift
+    settings:
+      base:
+        SWIFT_VERSION: "5.10"
+        PRODUCT_NAME: OpenBurnBarUITests
+        PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.uitests
+        TEST_TARGET_NAME: OpenBurnBar
+        SWIFT_ENABLE_EXPLICIT_MODULES: NO
+    dependencies:
+      - target: OpenBurnBar
+
   OpenBurnBarDaemonTests:
     type: bundle.unit-test
     platform: macOS
@@ -709,6 +747,8 @@ targets:
         product: OpenBurnBarCore
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
+      - package: OpenBurnBarCore
+        product: OpenBurnBarLinuxSecurity
 
   OpenBurnBarMobile:
     type: application
@@ -760,7 +800,7 @@ targets:
         PRODUCT_NAME: OpenBurnBarMobile
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app
         MARKETING_VERSION: "1.0.2"
-        CURRENT_PROJECT_VERSION: 81
+        CURRENT_PROJECT_VERSION: 82
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES: YES
@@ -970,6 +1010,8 @@ targets:
         product: OpenBurnBarSignalCore
       - package: AmplitudeSwift
         product: AmplitudeSwift
+      - package: AmplitudeCore
+        product: AmplitudeCoreFramework
       - package: Firebase
         product: FirebaseAuth
       - package: Firebase
@@ -1053,7 +1095,7 @@ targets:
         PRODUCT_NAME: OpenBurnBarWidget
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.widget
         MARKETING_VERSION: "1.0.2"
-        CURRENT_PROJECT_VERSION: 81
+        CURRENT_PROJECT_VERSION: 82
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: OpenBurnBarWidget/Resources/OpenBurnBarWidget.entitlements
@@ -1082,6 +1124,8 @@ targets:
         product: OpenBurnBarAnalytics
       - package: AmplitudeSwift
         product: AmplitudeSwift
+      - package: AmplitudeCore
+        product: AmplitudeCoreFramework
 
   OpenBurnBarKeyboard:
     type: app-extension
@@ -1096,7 +1140,7 @@ targets:
         PRODUCT_NAME: OpenBurnBarKeyboard
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.keyboard
         MARKETING_VERSION: "1.0.2"
-        CURRENT_PROJECT_VERSION: 81
+        CURRENT_PROJECT_VERSION: 82
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: OpenBurnBarKeyboard/Resources/OpenBurnBarKeyboard.entitlements
@@ -1131,3 +1175,5 @@ targets:
         product: OpenBurnBarAnalytics
       - package: AmplitudeSwift
         product: AmplitudeSwift
+      - package: AmplitudeCore
+        product: AmplitudeCoreFramework

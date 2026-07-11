@@ -29,4 +29,6 @@ export const auth = getAuth();
 // `undefined` directly on writes without crashing the transaction. Firestore
 // otherwise rejects the entire document, which surfaces as a generic INTERNAL
 // error to the iOS connect flow.
-db.settings({ ignoreUndefinedProperties: true });
+if (typeof db.settings === "function") {
+  db.settings({ ignoreUndefinedProperties: true });
+}

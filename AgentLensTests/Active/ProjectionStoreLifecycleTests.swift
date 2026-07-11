@@ -44,7 +44,7 @@ final class ProjectionStoreLifecycleTests: XCTestCase {
             dataStore: store,
             settingsManager: SettingsManager.shared,
             quotaService: ProviderQuotaService(
-                appPaths: OpenBurnBarAppPaths(applicationSupportRoot: FileManager.default.temporaryDirectory),
+                appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: FileManager.default.temporaryDirectory),
                 homeDirectoryURL: FileManager.default.temporaryDirectory,
                 refreshProviders: []
             )
@@ -249,7 +249,7 @@ final class ProjectionStoreLifecycleTests: XCTestCase {
             dataStore: store,
             settingsManager: SettingsManager.shared,
             quotaService: ProviderQuotaService(
-                appPaths: OpenBurnBarAppPaths(applicationSupportRoot: FileManager.default.temporaryDirectory),
+                appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: FileManager.default.temporaryDirectory),
                 homeDirectoryURL: FileManager.default.temporaryDirectory,
                 refreshProviders: []
             )

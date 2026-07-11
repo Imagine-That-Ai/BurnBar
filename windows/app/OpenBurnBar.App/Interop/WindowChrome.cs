@@ -1,9 +1,8 @@
 using System;
 using Microsoft.UI;
-using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Media;
+using OpenBurnBar.App.Theme;
 using Windows.Graphics;
 using WinRT.Interop;
 
@@ -28,15 +27,37 @@ internal static class WindowChrome
     }
 
     /// <summary>
-    /// Apply a Mica backdrop to the window when the OS supports it. On Windows 10 (no Mica)
-    /// this silently no-ops and the window keeps its solid theme brush — the honest fallback
-    /// the master plan calls for (Frosted↔System↔Clear + reduced-transparency).
+    /// Apply the window backdrop through the Liquid-Glass chokepoint
+    /// (<see cref="LiquidGlass.ApplyWindowBackdrop"/>), so the window honors the transparency
+    /// preference (Frosted↔System↔Clear = Mica BaseAlt ↔ Mica Base ↔ DesktopAcrylic) and the
+    /// Reduce-Transparency clamp. On Windows 10 (no backdrop support) the chokepoint resolves
+    /// to a null backdrop and the window keeps its solid theme brush — the honest fallback the
+    /// master plan calls for. Retained as a thin compatibility wrapper over the shim so every
+    /// window-backdrop decision flows through the single glass seam.
     /// </summary>
-    public static void TryApplyMica(Window window)
+    public static void TryApplyMica(Window window) =>
+        LiquidGlass.ApplyWindowBackdrop(window, LiquidGlassEnvironment.Current);
+
+    /// <summary>
+    /// Enable or disable the translucent window backdrop — the shell's window-level
+    /// reduced-transparency / high-contrast on/off switch (master plan §9.6 theme axes),
+    /// owned by <c>ThemeService</c>. Enabling routes through <see cref="TryApplyMica"/> →
+    /// <see cref="LiquidGlass.ApplyWindowBackdrop"/> so the resolved kind (Mica BaseAlt ↔
+    /// Mica Base ↔ DesktopAcrylic) still honors the transparency-preference math in the
+    /// glass shim (#1200); disabling clears <see cref="Window.SystemBackdrop"/> so the window
+    /// falls back to its solid theme brush — the same null backdrop the shim itself resolves
+    /// to for its <c>Solid</c> kind. One coherent backdrop path: every window-backdrop
+    /// decision flows through the single glass seam, this method only gates it on/off.
+    /// </summary>
+    public static void ApplyBackdrop(Window window, bool enabled)
     {
-        if (MicaController.IsSupported())
+        if (enabled)
         {
-            window.SystemBackdrop = new MicaBackdrop { Kind = MicaKind.Base };
+            TryApplyMica(window);
+        }
+        else
+        {
+            window.SystemBackdrop = null;
         }
     }
 

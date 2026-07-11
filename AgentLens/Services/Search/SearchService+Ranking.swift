@@ -18,7 +18,7 @@ extension SearchService {
 
         func matchesFilters(
             document: SearchDocumentRecord,
-            conversation: ConversationRecord?,
+            conversation: OpenBurnBarCore.ConversationRecord?,
             filters: RetrievalFilters,
             readableSharedSourceIDs: Set<String>?
         ) -> Bool {

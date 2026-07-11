@@ -126,8 +126,8 @@ final class VideoEncoder: VideoEncoding {
         }
         self.session = session
 
-        try setProperty(session, key: kVTCompressionPropertyKey_RealTime, value: kCFBooleanTrue!)
-        try setProperty(session, key: kVTCompressionPropertyKey_AllowFrameReordering, value: kCFBooleanFalse!)
+        try setProperty(session, key: kVTCompressionPropertyKey_RealTime, value: true as CFBoolean)
+        try setProperty(session, key: kVTCompressionPropertyKey_AllowFrameReordering, value: false as CFBoolean)
         try setProperty(
             session,
             key: kVTCompressionPropertyKey_AverageBitRate,
@@ -144,7 +144,7 @@ final class VideoEncoder: VideoEncoding {
             value: NSNumber(value: Int(configuration.frameRate))
         )
         if configuration.enableLongTermReference {
-            try setProperty(session, key: kVTCompressionPropertyKey_EnableLTR, value: kCFBooleanTrue!)
+            try setProperty(session, key: kVTCompressionPropertyKey_EnableLTR, value: true as CFBoolean)
         }
         VTCompressionSessionPrepareToEncodeFrames(session)
     }

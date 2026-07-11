@@ -1,0 +1,11 @@
+{
+  "adapterActionName": "click",
+  "adapterDidAction": true,
+  "adapterFoundTarget": true,
+  "adapterRole": "push button",
+  "afterScreenshot": true,
+  "beforeScreenshot": true,
+  "targetClicked": true,
+  "targetLabel": "OpenBurnBar AT-SPI2 Applied",
+  "targetReady": true
+}

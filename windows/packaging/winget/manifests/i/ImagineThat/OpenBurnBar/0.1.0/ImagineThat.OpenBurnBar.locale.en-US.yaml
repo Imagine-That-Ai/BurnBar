@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+# OpenBurnBar — winget DEFAULT-LOCALE manifest (en-US listing metadata).
+PackageIdentifier: ImagineThat.OpenBurnBar
+PackageVersion: 0.1.0
+PackageLocale: en-US
+Publisher: Imagine That
+PublisherUrl: https://imagine-that.ai
+PublisherSupportUrl: https://github.com/Imagine-That-Ai/BurnBar/issues
+Author: Imagine That
+PackageName: OpenBurnBar
+PackageUrl: https://github.com/Imagine-That-Ai/BurnBar
+License: Proprietary
+Copyright: Copyright (c) Imagine That, Inc.
+ShortDescription: One bar to watch, steer, and remember every coding-agent session.
+Description: >-
+  OpenBurnBar is a desktop companion for AI coding agents. It watches Claude Code,
+  Codex, Cursor, and other CLI/agent sessions from a tray flyout, keeps provider quota
+  and usage in view, remembers context across sessions, and can pair with your phone
+  and smart displays. Cloud sync is end-to-end encrypted; auto-updates arrive over an
+  Ed25519-pinned feed whose key is pinned independent of the code-signing certificate.
+Moniker: openburnbar
+Tags:
+  - ai
+  - agent
+  - claude
+  - codex
+  - cursor
+  - coding-assistant
+  - developer-tools
+  - productivity
+  - tray
+ReleaseNotesUrl: https://github.com/Imagine-That-Ai/BurnBar/releases/tag/v0.1.0
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

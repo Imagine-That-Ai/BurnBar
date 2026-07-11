@@ -1,0 +1,62 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Portable PetCompanion core for the OpenBurnBar WinUI port (Phase 4 · G4 —
+    PetCompanion lane).
+
+    This is the DEPENDENCY-FREE half of the desktop pet: the behavior-graph
+    interpreter, the deterministic seeded RNG, the reaction brain, the petdef
+    parser, the chat-event bridge that drives the graph from the LANDED portable
+    Chat state machine, and the transport-agnostic glTF-scene controller. It has
+    NO WinUI / Windows / three.js / Win2D dependency on purpose — the SAME managed
+    assembly is:
+      • referenced by the WinUI app (windows/app/OpenBurnBar.App), whose overlay
+        window + WebView2 three.js host + chat bubble bind to these types, AND
+      • unit-tested on the macOS authoring host today via `dotnet test`
+        (windows/tests/pet), exactly the pattern already proven by the storage
+        seam, the Chat state machine, and the particle engine.
+
+    Parity sources (macOS):
+      • AgentLens/PetCompanion/Core/Behavior.swift          -> Behavior/*.cs
+      • AgentLens/PetCompanion/Core/PetReactionBrain.swift   -> Reaction/PetReactionBrain.cs
+      • AgentLens/PetCompanion/Core/PetDefinition.swift      -> Definition/PetDefinition.cs (behavior + clip subset)
+      • AgentLens/PetCompanion/Core/PetRenderer.swift        -> Gltf/PetGltfSceneController.cs (state->clip drive)
+      • AgentLens/PetCompanion/Chat/PetChatBubble.swift      -> Chat/PetChatBubbleViewModel.cs (reuses landed Chat VM)
+
+    Targets net8.0 so the net8.0-windows WinUI app can reference it, while the
+    net10.0 test project can reference it too (a lower TFM is consumable by a
+    higher one). Mirrors OpenBurnBar.App.Presentation / .Dashboard / .Settings.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.App.Pet</RootNamespace>
+    <AssemblyName>OpenBurnBar.App.Pet</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      The LANDED portable Chat state machine (Phase 3 · W7). The PetCompanion chat
+      bubble REUSES this view-model (ChatSessionStateMachine) verbatim — the pet's
+      behavior graph is driven by its lifecycle (send / stream-start / result) via
+      Chat/PetChatEventBridge, and PetChatBubbleViewModel wraps it for the bubble UI.
+    -->
+    <ProjectReference Include="../OpenBurnBar.App.Presentation/OpenBurnBar.App.Presentation.csproj" />
+  </ItemGroup>
+
+  <!--
+    The three.js WebView2 pet shell rides as an embedded resource so the WinUI host
+    (WebView2PetGltfHost) and the macOS tests load it without CopyToOutputDirectory
+    path fragility (mirrors OpenBurnBar.Pretext's index.html embed). The three.js
+    runtime itself is dev-host-vendored under Resources/PetGltf/vendor/ (see that
+    folder's README) and is NOT embedded.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="Gltf/Resources/PetGltf/index.html" LogicalName="petgltf.index.html" />
+  </ItemGroup>
+
+</Project>

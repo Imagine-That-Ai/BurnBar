@@ -1,6 +1,5 @@
 import Foundation
-import CryptoKit
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Pure Ed25519 signer / verifier for `PhoneControlAuthority`
 /// envelopes. Phase 12. Lives in `OpenBurnBarComputerUseCore` so iOS
@@ -83,7 +82,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         signedIntentHash: String,
         authenticatedAt: Date,
         expiresAt: Date,
-        privateKey: Curve25519.Signing.PrivateKey
+        privateKey: PlatformEd25519SigningMaterial
     ) throws -> HermesRealtimeRelayAgentGrantLocalAuthProof {
         let payload = localAuthProofSignablePayload(
             proofId: proofId,
@@ -92,7 +91,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
             authenticatedAt: authenticatedAt,
             expiresAt: expiresAt
         )
-        let signature = try privateKey.signature(for: payload)
+        let signature = try PlatformCrypto.ed25519Signature(message: payload, privateKey: privateKey)
         return HermesRealtimeRelayAgentGrantLocalAuthProof(
             proofId: proofId,
             deviceId: deviceId,
@@ -111,9 +110,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let canonical = try encoder.encode(intent)
-        return SHA256.hash(data: canonical)
-            .map { String(format: "%02x", $0) }
-            .joined()
+        return PlatformCrypto.sha256Hex(canonical)
     }
 
     /// Canonical hash for the Phase 12 wire intent. The authority
@@ -456,11 +453,11 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         peerNodeId: String,
         counter: UInt64,
         timestamp: Date,
-        privateKey: Curve25519.Signing.PrivateKey
+        privateKey: PlatformEd25519SigningMaterial
     ) throws -> SignedAuthority {
         let intentHashHex = try canonicalIntentHashHex(intent: intent)
         let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
-        let signature = try privateKey.signature(for: payload)
+        let signature = try PlatformCrypto.ed25519Signature(message: payload, privateKey: privateKey)
         return SignedAuthority(
             peerNodeId: peerNodeId,
             counter: counter,
@@ -475,11 +472,11 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         peerNodeId: String,
         counter: UInt64,
         timestamp: Date,
-        privateKey: Curve25519.Signing.PrivateKey
+        privateKey: PlatformEd25519SigningMaterial
     ) throws -> SignedAuthority {
         let intentHashHex = try canonicalInputIntentHashHex(intent: intent)
         let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
-        let signature = try privateKey.signature(for: payload)
+        let signature = try PlatformCrypto.ed25519Signature(message: payload, privateKey: privateKey)
         return SignedAuthority(
             peerNodeId: peerNodeId,
             counter: counter,
@@ -494,11 +491,11 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         peerNodeId: String,
         counter: UInt64,
         timestamp: Date,
-        privateKey: Curve25519.Signing.PrivateKey
+        privateKey: PlatformEd25519SigningMaterial
     ) throws -> SignedAuthority {
         let intentHashHex = try canonicalAgentGrantRequestHashHex(request: request)
         let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
-        let signature = try privateKey.signature(for: payload)
+        let signature = try PlatformCrypto.ed25519Signature(message: payload, privateKey: privateKey)
         return SignedAuthority(
             peerNodeId: peerNodeId,
             counter: counter,
@@ -513,11 +510,11 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         peerNodeId: String,
         counter: UInt64,
         timestamp: Date,
-        privateKey: Curve25519.Signing.PrivateKey
+        privateKey: PlatformEd25519SigningMaterial
     ) throws -> SignedAuthority {
         let intentHashHex = try canonicalApprovalResponseHashHex(response: response)
         let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
-        let signature = try privateKey.signature(for: payload)
+        let signature = try PlatformCrypto.ed25519Signature(message: payload, privateKey: privateKey)
         return SignedAuthority(
             peerNodeId: peerNodeId,
             counter: counter,
@@ -532,11 +529,11 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         peerNodeId: String,
         counter: UInt64,
         timestamp: Date,
-        privateKey: Curve25519.Signing.PrivateKey
+        privateKey: PlatformEd25519SigningMaterial
     ) throws -> SignedAuthority {
         let intentHashHex = try canonicalClipboardRequestHashHex(request: request)
         let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
-        let signature = try privateKey.signature(for: payload)
+        let signature = try PlatformCrypto.ed25519Signature(message: payload, privateKey: privateKey)
         return SignedAuthority(
             peerNodeId: peerNodeId,
             counter: counter,
@@ -551,11 +548,11 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         peerNodeId: String,
         counter: UInt64,
         timestamp: Date,
-        privateKey: Curve25519.Signing.PrivateKey
+        privateKey: PlatformEd25519SigningMaterial
     ) throws -> SignedAuthority {
         let intentHashHex = try canonicalRemoteUnlockSessionHashHex(session: session)
         let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
-        let signature = try privateKey.signature(for: payload)
+        let signature = try PlatformCrypto.ed25519Signature(message: payload, privateKey: privateKey)
         return SignedAuthority(
             peerNodeId: peerNodeId,
             counter: counter,
@@ -570,11 +567,11 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         peerNodeId: String,
         counter: UInt64,
         timestamp: Date,
-        privateKey: Curve25519.Signing.PrivateKey
+        privateKey: PlatformEd25519SigningMaterial
     ) throws -> SignedAuthority {
         let intentHashHex = try canonicalRemoteUnlockCredentialHashHex(credential: credential)
         let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
-        let signature = try privateKey.signature(for: payload)
+        let signature = try PlatformCrypto.ed25519Signature(message: payload, privateKey: privateKey)
         return SignedAuthority(
             peerNodeId: peerNodeId,
             counter: counter,
@@ -589,11 +586,11 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         peerNodeId: String,
         counter: UInt64,
         timestamp: Date,
-        privateKey: Curve25519.Signing.PrivateKey
+        privateKey: PlatformEd25519SigningMaterial
     ) throws -> SignedAuthority {
         let intentHashHex = try canonicalAgentContextTargetHashHex(target: target)
         let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
-        let signature = try privateKey.signature(for: payload)
+        let signature = try PlatformCrypto.ed25519Signature(message: payload, privateKey: privateKey)
         return SignedAuthority(
             peerNodeId: peerNodeId,
             counter: counter,
@@ -608,11 +605,11 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         peerNodeId: String,
         counter: UInt64,
         timestamp: Date,
-        privateKey: Curve25519.Signing.PrivateKey
+        privateKey: PlatformEd25519SigningMaterial
     ) throws -> SignedAuthority {
         let intentHashHex = try canonicalSystemPermissionRequestHashHex(request: request)
         let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
-        let signature = try privateKey.signature(for: payload)
+        let signature = try PlatformCrypto.ed25519Signature(message: payload, privateKey: privateKey)
         return SignedAuthority(
             peerNodeId: peerNodeId,
             counter: counter,
@@ -644,7 +641,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
     public func verify<Intent: Encodable>(
         intent: Intent,
         authority: SignedAuthority,
-        peerPublicKey: Curve25519.Signing.PublicKey,
+        peerPublicKey: PlatformEd25519PublicKey,
         lastSeenCounter: UInt64,
         now: Date,
         freshnessSeconds: TimeInterval = 5.0
@@ -668,7 +665,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
             counter: authority.counter,
             timestamp: authority.timestamp
         )
-        guard peerPublicKey.isValidSignature(signatureData, for: payload) else {
+        guard try PlatformCrypto.verifyEd25519Signature(signatureData, message: payload, publicKey: peerPublicKey) else {
             throw VerifyError.signatureFailed
         }
     }
@@ -676,7 +673,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
     public func verify(
         intent: HermesRealtimeRelayInputIntent,
         authority: SignedAuthority,
-        peerPublicKey: Curve25519.Signing.PublicKey,
+        peerPublicKey: PlatformEd25519PublicKey,
         lastSeenCounter: UInt64,
         now: Date,
         freshnessSeconds: TimeInterval = 5.0
@@ -700,7 +697,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
             counter: authority.counter,
             timestamp: authority.timestamp
         )
-        guard peerPublicKey.isValidSignature(signatureData, for: payload) else {
+        guard try PlatformCrypto.verifyEd25519Signature(signatureData, message: payload, publicKey: peerPublicKey) else {
             throw VerifyError.signatureFailed
         }
     }
@@ -708,7 +705,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
     public func verify(
         request: HermesRealtimeRelayAgentGrantRequest,
         authority: SignedAuthority,
-        peerPublicKey: Curve25519.Signing.PublicKey,
+        peerPublicKey: PlatformEd25519PublicKey,
         lastSeenCounter: UInt64,
         now: Date,
         freshnessSeconds: TimeInterval = 5.0
@@ -732,7 +729,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
             counter: authority.counter,
             timestamp: authority.timestamp
         )
-        guard peerPublicKey.isValidSignature(signatureData, for: payload) else {
+        guard try PlatformCrypto.verifyEd25519Signature(signatureData, message: payload, publicKey: peerPublicKey) else {
             throw VerifyError.signatureFailed
         }
     }
@@ -740,7 +737,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
     public func verify(
         target: HermesRealtimeRelayAgentContextTarget,
         authority: SignedAuthority,
-        peerPublicKey: Curve25519.Signing.PublicKey,
+        peerPublicKey: PlatformEd25519PublicKey,
         lastSeenCounter: UInt64,
         now: Date,
         freshnessSeconds: TimeInterval = 5.0
@@ -764,7 +761,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
             counter: authority.counter,
             timestamp: authority.timestamp
         )
-        guard peerPublicKey.isValidSignature(signatureData, for: payload) else {
+        guard try PlatformCrypto.verifyEd25519Signature(signatureData, message: payload, publicKey: peerPublicKey) else {
             throw VerifyError.signatureFailed
         }
     }
@@ -772,7 +769,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
     public func verify(
         clipboardRequest request: HermesRealtimeRelayClipboardRequest,
         authority: SignedAuthority,
-        peerPublicKey: Curve25519.Signing.PublicKey,
+        peerPublicKey: PlatformEd25519PublicKey,
         lastSeenCounter: UInt64,
         now: Date,
         freshnessSeconds: TimeInterval = 5.0
@@ -796,7 +793,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
             counter: authority.counter,
             timestamp: authority.timestamp
         )
-        guard peerPublicKey.isValidSignature(signatureData, for: payload) else {
+        guard try PlatformCrypto.verifyEd25519Signature(signatureData, message: payload, publicKey: peerPublicKey) else {
             throw VerifyError.signatureFailed
         }
     }
@@ -804,7 +801,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
     public func verify(
         systemPermissionRequest request: HermesRealtimeRelaySystemPermissionRequest,
         authority: SignedAuthority,
-        peerPublicKey: Curve25519.Signing.PublicKey,
+        peerPublicKey: PlatformEd25519PublicKey,
         lastSeenCounter: UInt64,
         now: Date,
         freshnessSeconds: TimeInterval = 5.0
@@ -828,7 +825,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
             counter: authority.counter,
             timestamp: authority.timestamp
         )
-        guard peerPublicKey.isValidSignature(signatureData, for: payload) else {
+        guard try PlatformCrypto.verifyEd25519Signature(signatureData, message: payload, publicKey: peerPublicKey) else {
             throw VerifyError.signatureFailed
         }
     }
@@ -836,7 +833,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
     public func verify(
         remoteUnlockCredential credential: HermesRealtimeRelayRemoteUnlockCredentialEnvelope,
         authority: SignedAuthority,
-        peerPublicKey: Curve25519.Signing.PublicKey,
+        peerPublicKey: PlatformEd25519PublicKey,
         lastSeenCounter: UInt64,
         now: Date,
         freshnessSeconds: TimeInterval = 5.0
@@ -860,7 +857,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
             counter: authority.counter,
             timestamp: authority.timestamp
         )
-        guard peerPublicKey.isValidSignature(signatureData, for: payload) else {
+        guard try PlatformCrypto.verifyEd25519Signature(signatureData, message: payload, publicKey: peerPublicKey) else {
             throw VerifyError.signatureFailed
         }
     }

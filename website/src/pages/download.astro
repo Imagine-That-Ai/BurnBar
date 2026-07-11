@@ -10,18 +10,64 @@ const macDownloadHref = macDownloadBaseUrl
 const hasMacUpdateFeed = Boolean(macUpdateBaseUrl);
 const macLatestHref = hasMacUpdateFeed ? `${macUpdateBaseUrl}/${SITE.macUpdateFeedFile}` : "";
 const macAppcastHref = hasMacUpdateFeed ? `${macUpdateBaseUrl}/${SITE.macAppcastFile}` : "";
+
+const linuxDownloadBaseUrl = SITE.linuxDownloadBaseUrl.replace(/\/$/, "");
+const linuxAppImageHref = `${linuxDownloadBaseUrl}/${SITE.linuxReleaseFile}`;
+const linuxDebHref = `${linuxDownloadBaseUrl}/${SITE.linuxDebFile}`;
+const linuxRpmHref = `${linuxDownloadBaseUrl}/${SITE.linuxRpmFile}`;
+const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
 ---
 
 <BaseLayout
   title="Download"
-  description="Download OpenBurnBar. macOS app available by direct download and submitted to Mac App Store review, iOS in App Store review, Cursor and VS Code extensions source-only."
+  description="Download OpenBurnBar for macOS and Linux (ARM64). iOS in App Store review; Cursor/VS Code extension source-only; Android Play Store pending."
 >
   <section class="pagehead">
     <div class="container pagehead__inner">
       <span class="eyebrow eyebrow--ember">Download</span>
       <h1 class="pagehead__h">Get OpenBurnBar</h1>
+      <p class="lead pagehead__lead">
+        <strong>macOS</strong> and <strong>Linux</strong> ship today. iOS is in App Store review — Android
+        and the editor extension are buildable from source.
+      </p>
+
+      <!-- At-a-glance platform grid so Linux isn't buried mid-page -->
+      <div class="platgrid" aria-label="Platform availability">
+        <a class="platcard platcard--live" href="#macos">
+          <span class="platcard__os">macOS</span>
+          <span class="platcard__ver mono">v{SITE.macReleaseLatest}</span>
+          <span class="platcard__status">Available now</span>
+          <span class="platcard__cta">Download DMG →</span>
+        </a>
+        <a class="platcard platcard--live" href="#linux">
+          <span class="platcard__os">Linux</span>
+          <span class="platcard__ver mono">v{SITE.linuxReleaseLatest} · ARM64</span>
+          <span class="platcard__status">Available now</span>
+          <span class="platcard__cta">AppImage · deb · rpm →</span>
+        </a>
+        <a class="platcard platcard--pending" href="#ios">
+          <span class="platcard__os">iOS · iPadOS</span>
+          <span class="platcard__ver mono">App Store</span>
+          <span class="platcard__status">In review</span>
+          <span class="platcard__cta">See status →</span>
+        </a>
+        <a class="platcard platcard--pending" href="#editor">
+          <span class="platcard__os">Cursor · VS Code</span>
+          <span class="platcard__ver mono">source</span>
+          <span class="platcard__status">Build locally</span>
+          <span class="platcard__cta">Setup guide →</span>
+        </a>
+        <a class="platcard platcard--pending" href="#android">
+          <span class="platcard__os">Android</span>
+          <span class="platcard__ver mono">source</span>
+          <span class="platcard__status">Play Store pending</span>
+          <span class="platcard__cta">Details →</span>
+        </a>
+      </div>
+
       <nav class="jump" aria-label="Jump to platform">
-        <a href="#macos">macOS</a>
+        <a class="jump--live" href="#macos">macOS</a>
+        <a class="jump--live" href="#linux">Linux</a>
         <a href="#ios">iOS · iPadOS</a>
         <a href="#editor">Editor</a>
         <a href="#android">Android</a>
@@ -107,6 +153,122 @@ const macAppcastHref = hasMacUpdateFeed ? `${macUpdateBaseUrl}/${SITE.macAppcast
 cd BurnBar
 make install</code></pre>
           <p class="muted small">Requires Xcode 16+, Swift 5.10+, XcodeGen optional.</p>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <!-- LINUX -->
+  <section id="linux" class="dlsec dlsec--linux">
+    <div class="container dlsec__shell">
+      <div class="dlsec__head">
+        <div class="dlsec__intro">
+          <span class="tag tag--exact tag--plain mono">{SITE.linuxStatus}</span>
+          <h2>Linux desktop app</h2>
+          <p class="lead">
+            Available now. Tauri + WebView shell over the native OpenBurnBar daemon. First public
+            release ships <strong>{SITE.linuxArch}</strong> builds — AppImage, deb, and rpm, every artifact
+            Ed25519-signed with keyless Sigstore/cosign attestation.
+          </p>
+        </div>
+      </div>
+
+      <div class="linux-downloads" data-animate-onview>
+        <a class="linux-dl linux-dl--primary" href={linuxAppImageHref}>
+          <span class="linux-dl__kind mono">PRIMARY</span>
+          <span class="linux-dl__title">AppImage</span>
+          <span class="linux-dl__meta">Portable · {SITE.linuxArch}</span>
+          <span class="linux-dl__action">Download · {SITE.linuxReleaseLatest} ↓</span>
+        </a>
+        <a class="linux-dl" href={linuxDebHref}>
+          <span class="linux-dl__kind mono">DEB</span>
+          <span class="linux-dl__title">.deb</span>
+          <span class="linux-dl__meta">Debian · Ubuntu · arm64</span>
+          <span class="linux-dl__action">Download ↓</span>
+        </a>
+        <a class="linux-dl" href={linuxRpmHref}>
+          <span class="linux-dl__kind mono">RPM</span>
+          <span class="linux-dl__title">.rpm</span>
+          <span class="linux-dl__meta">Fedora · RHEL · aarch64</span>
+          <span class="linux-dl__action">Download ↓</span>
+        </a>
+      </div>
+
+      <p class="linux-note muted small">
+        {SITE.linuxStatusDetail}. Hosted on the signed GitHub Release{" "}
+        <a href={`${SITE.github}/releases/tag/linux-v${SITE.linuxReleaseLatest}`}
+          >linux-v{SITE.linuxReleaseLatest}</a
+        >. x86_64 builds are next.
+      </p>
+
+      <ol class="steps" data-animate-onview>
+        <li class="step">
+          <span class="step__num mono">1</span>
+          <div class="step__card">
+            <h3>Install</h3>
+            <p>
+              <strong>AppImage:</strong>{" "}
+              <code
+                >chmod +x OpenBurnBar_{SITE.linuxReleaseLatest}_aarch64.AppImage && ./OpenBurnBar_{
+                  SITE.linuxReleaseLatest
+                }_aarch64.AppImage</code
+              >
+            </p>
+            <p>
+              <strong>deb:</strong>{" "}
+              <code>sudo apt install ./OpenBurnBar_{SITE.linuxReleaseLatest}_arm64.deb</code>
+            </p>
+            <p>
+              <strong>rpm:</strong>{" "}
+              <code>sudo dnf install ./OpenBurnBar-{SITE.linuxReleaseLatest}-1.aarch64.rpm</code>
+            </p>
+          </div>
+        </li>
+        <li class="step">
+          <span class="step__num mono">2</span>
+          <div class="step__card">
+            <h3>Daemon &amp; socket</h3>
+            <p>
+              The app talks to the OpenBurnBar daemon over an AF_UNIX socket. The deb/rpm packages
+              install a systemd unit; AppImage users can start the daemon via the shipped binary or{
+                " "
+              }
+              <code>openburnbar-cli service</code>. Install to a trusted path (e.g.{" "}
+              <code>/usr/bin</code>) so the daemon's peer-trust check accepts the client.
+            </p>
+          </div>
+        </li>
+        <li class="step">
+          <span class="step__num mono">3</span>
+          <div class="step__card">
+            <h3>Verify the signature (optional)</h3>
+            <p>
+              Detached Ed25519 signatures ship beside each artifact, plus keyless cosign bundles.
+              Public key:{" "}
+              <a href={linuxPubKeyHref}>openburnbar-linux-ed25519.pub.pem</a>.
+            </p>
+          </div>
+        </li>
+      </ol>
+
+      <details class="reqs">
+        <summary>Requirements &amp; notes</summary>
+        <div class="reqs__body">
+          <h4>Linux</h4>
+          <ul>
+            <li>
+              <strong>{SITE.linuxArch} only</strong> for 0.1.0. x86_64 lane is the next release milestone.
+            </li>
+            <li>GTK 3 + WebKit2GTK 4.1 (bundled in the AppImage).</li>
+            <li>
+              Signed with Ed25519 detached signatures and keyless Sigstore/cosign attestation
+              bundles.
+            </li>
+            <li>
+              Tagged as a signed prerelease so it can seed the auto-update chain; the app is fully
+              downloadable and runnable today.
+            </li>
+          </ul>
         </div>
       </details>
     </div>
@@ -235,6 +397,16 @@ npm run build</code></pre>
           </ul>
         </article>
         <article class="reqcard">
+          <h4>Linux</h4>
+          <ul>
+            <li>{SITE.linuxArch} for v{SITE.linuxReleaseLatest}</li>
+            <li>AppImage, deb, or rpm from the signed GitHub Release</li>
+            <li>GTK 3 + WebKit2GTK 4.1 (bundled in AppImage)</li>
+            <li>Ed25519 + Sigstore/cosign attestation bundles</li>
+            <li>Daemon AF_UNIX socket; trusted install path for peer auth</li>
+          </ul>
+        </article>
+        <article class="reqcard">
           <h4>iOS / iPadOS</h4>
           <ul>
             <li>{SITE.iosMin} or later</li>
@@ -288,9 +460,79 @@ npm run build</code></pre>
   .pagehead__h {
     margin-top: var(--s-3);
   }
-  .pagehead .lead {
+  .pagehead .lead,
+  .pagehead__lead {
     margin-top: var(--s-4);
     max-width: 58ch;
+  }
+
+  /* ── at-a-glance platform cards ── */
+  .platgrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
+    gap: var(--s-3);
+    width: 100%;
+    max-width: 56rem;
+    margin-top: var(--s-6);
+    text-align: left;
+  }
+  .platcard {
+    display: grid;
+    gap: 0.25rem;
+    padding: 1rem 1.05rem 0.95rem;
+    border-radius: var(--r-md, 12px);
+    border: 1px solid var(--ink-line);
+    background: color-mix(in oklab, var(--glass-bg-elevated) 88%, transparent);
+    text-decoration: none;
+    color: inherit;
+    transition:
+      border-color var(--dur-base) var(--ease),
+      transform var(--dur-base) var(--ease),
+      box-shadow var(--dur-base) var(--ease);
+  }
+  .platcard:hover {
+    border-color: color-mix(in oklab, var(--ember-core) 45%, var(--ink-line));
+    transform: translateY(-2px);
+    box-shadow: 0 10px 28px color-mix(in oklab, var(--ember-core) 12%, transparent);
+  }
+  .platcard--live {
+    border-color: color-mix(in oklab, var(--ember-core) 35%, var(--ink-line));
+    background: linear-gradient(
+      160deg,
+      color-mix(in oklab, var(--ember-core) 14%, transparent),
+      color-mix(in oklab, var(--glass-bg-elevated) 92%, transparent) 55%
+    );
+  }
+  .platcard--pending {
+    opacity: 0.78;
+  }
+  .platcard__os {
+    font-weight: 650;
+    font-size: 1.02rem;
+    letter-spacing: -0.01em;
+  }
+  .platcard__ver {
+    font-size: 0.72rem;
+    color: var(--text-mute);
+  }
+  .platcard__status {
+    margin-top: 0.35rem;
+    font-size: 0.82rem;
+    color: var(--ember-bright, var(--ember-core));
+    font-weight: 550;
+  }
+  .platcard--pending .platcard__status {
+    color: var(--text-mute);
+    font-weight: 450;
+  }
+  .platcard__cta {
+    margin-top: 0.45rem;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--text-mute);
+  }
+  .platcard--live .platcard__cta {
+    color: var(--ember-bright, var(--ember-core));
   }
 
   /* platform jump links */
@@ -314,9 +556,85 @@ npm run build</code></pre>
       color var(--dur-base) var(--ease),
       border-color var(--dur-base) var(--ease);
   }
-  .jump a:hover {
+  .jump a:hover,
+  .jump a.jump--live:hover {
     color: var(--ember-bright);
     border-color: color-mix(in oklab, var(--ember-core) 40%, var(--ink-line));
+  }
+  .jump a.jump--live {
+    color: var(--ember-bright, var(--ember-core));
+    border-color: color-mix(in oklab, var(--ember-core) 40%, var(--ink-line));
+    background: color-mix(in oklab, var(--ember-core) 10%, transparent);
+  }
+
+  /* ── Linux download tiles ── */
+  .dlsec--linux {
+    background: radial-gradient(
+      80% 60% at 50% 0%,
+      color-mix(in oklab, var(--ember-core) 10%, transparent),
+      transparent 70%
+    );
+  }
+  .linux-downloads {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--s-3);
+    margin-bottom: var(--s-4);
+  }
+  @media (max-width: 720px) {
+    .linux-downloads {
+      grid-template-columns: 1fr;
+    }
+  }
+  .linux-dl {
+    display: grid;
+    gap: 0.3rem;
+    padding: 1.15rem 1.2rem;
+    border-radius: var(--r-md, 12px);
+    border: 1px solid var(--ink-line);
+    background: color-mix(in oklab, var(--glass-bg-elevated) 90%, transparent);
+    text-decoration: none;
+    color: inherit;
+    transition:
+      border-color var(--dur-base) var(--ease),
+      transform var(--dur-base) var(--ease),
+      box-shadow var(--dur-base) var(--ease);
+  }
+  .linux-dl:hover {
+    border-color: color-mix(in oklab, var(--ember-core) 50%, var(--ink-line));
+    transform: translateY(-2px);
+    box-shadow: 0 12px 32px color-mix(in oklab, var(--ember-core) 14%, transparent);
+  }
+  .linux-dl--primary {
+    border-color: color-mix(in oklab, var(--ember-core) 45%, var(--ink-line));
+    background: linear-gradient(
+      155deg,
+      color-mix(in oklab, var(--ember-core) 18%, transparent),
+      color-mix(in oklab, var(--glass-bg-elevated) 90%, transparent) 60%
+    );
+  }
+  .linux-dl__kind {
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    color: var(--ember-bright, var(--ember-core));
+  }
+  .linux-dl__title {
+    font-size: 1.25rem;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+  }
+  .linux-dl__meta {
+    font-size: 0.85rem;
+    color: var(--text-mute);
+  }
+  .linux-dl__action {
+    margin-top: 0.55rem;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--ember-bright, var(--ember-core));
+  }
+  .linux-note {
+    margin-bottom: var(--s-6);
   }
 
   /* ---------- section shell — keeps content tasteful, not full-bleed ---------- */

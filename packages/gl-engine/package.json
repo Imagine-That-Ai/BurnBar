@@ -1,0 +1,13 @@
+{
+  "name": "@openburnbar/gl-engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./BackdropEngine": "./src/engine/BackdropEngine.ts",
+    "./registry": "./src/engine/registry.ts",
+    "./types": "./src/engine/types.ts",
+    "./palette": "./src/engine/palette.ts"
+  },
+  "license": "AGPL-3.0-only"
+}

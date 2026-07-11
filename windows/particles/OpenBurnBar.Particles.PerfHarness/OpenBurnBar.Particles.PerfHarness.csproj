@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Headless perf harness for the particle-engine renderer (W6-DS-SWARM sub-spike).
+    Plain net8.0 console app — builds AND runs on macOS/Linux CI, so the ARM64/60fps
+    CPU frame-budget spike is measurable without a Windows GPU. `dotnet run -c Release`.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>OpenBurnBar.Particles.PerfHarness</RootNamespace>
+    <AssemblyName>OpenBurnBar.Particles.PerfHarness</AssemblyName>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Optimize>true</Optimize>
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <!--
+      Target net8.0 (the app's runtime baseline) but roll forward so the harness
+      runs on any newer installed runtime (e.g. a net10 CI/dev box that has no
+      net8 runtime). Compile still binds net8.0 ref assemblies.
+    -->
+    <RollForward>LatestMajor</RollForward>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenBurnBar.Particles\OpenBurnBar.Particles.csproj" />
+  </ItemGroup>
+
+</Project>
