@@ -73,9 +73,13 @@ let linuxIrohNativeLibraryDirectory: String? = {
         return nil
     }
     let directory = URL(fileURLWithPath: configured).standardizedFileURL
-    let library = directory.appendingPathComponent("libopenburnbar_iroh.so")
-    guard FileManager.default.fileExists(atPath: library.path) else {
-        fatalError("OPENBURNBAR_LINUX_IROH_LIBRARY_DIR is missing libopenburnbar_iroh.so: \(directory.path)")
+    let dynamicLibrary = directory.appendingPathComponent("libopenburnbar_iroh.so")
+    let staticLibrary = directory.appendingPathComponent("libopenburnbar_iroh.a")
+    guard FileManager.default.fileExists(atPath: dynamicLibrary.path),
+          FileManager.default.fileExists(atPath: staticLibrary.path) else {
+        fatalError(
+            "OPENBURNBAR_LINUX_IROH_LIBRARY_DIR must contain libopenburnbar_iroh.so and libopenburnbar_iroh.a: \(directory.path)"
+        )
     }
     return directory.path
 }()
@@ -234,8 +238,11 @@ let irohFFITargets: [Target] = {
             path: "Sources/openburnbar_irohFFI",
             publicHeadersPath: "include",
             linkerSettings: [
-                .unsafeFlags(["-L", libraryDirectory]),
-                .linkedLibrary("openburnbar_iroh")
+                // Link the Rust transport archive into standalone daemon
+                // artifacts. Native packages also stage the .so for their
+                // existing runtime payload contract, but a downloaded daemon
+                // executable must not depend on an unshipped sibling library.
+                .unsafeFlags([libraryDirectory + "/libopenburnbar_iroh.a"])
             ]
         ),
         .target(

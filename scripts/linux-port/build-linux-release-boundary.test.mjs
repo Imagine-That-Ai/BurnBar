@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const scriptPath = path.join(repoRoot, 'scripts/linux-port/build-linux-release.mjs');
 const source = fs.readFileSync(scriptPath, 'utf8');
+const coreManifest = fs.readFileSync(path.join(repoRoot, 'OpenBurnBarCore/Package.swift'), 'utf8');
 const signingKeyName = 'OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM';
 
 function invoke(args, extraEnvironment = {}) {
@@ -59,6 +60,12 @@ test('build orchestration cannot invoke native signing or inherit the ambient en
   assert.ok(irohBuild >= 0 && swiftBuild > irohBuild);
   assert.match(source, /OPENBURNBAR_LINUX_IROH_LIBRARY_DIR: irohNativeLibraryDirectory/u);
   assert.match(source, /OPENBURNBAR_LINUX_IROH_BUILD_JOBS\?\.trim\(\) \|\| '1'/u);
+});
+
+test('standalone daemon statically links the iroh runtime archive', () => {
+  assert.match(coreManifest, /libopenburnbar_iroh\.a/u);
+  assert.match(coreManifest, /\.unsafeFlags\(\[libraryDirectory \+ "\/libopenburnbar_iroh\.a"\]\)/u);
+  assert.doesNotMatch(coreManifest, /\.linkedLibrary\("openburnbar_iroh"\)/u);
 });
 
 test('finalization is bound to the successful preparation receipt', () => {
