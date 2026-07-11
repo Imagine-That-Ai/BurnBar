@@ -100,6 +100,19 @@ export function nativeEvidenceChecks(evidence) {
 
 export function nativeRequirementPasses(evidence, requirement) {
   const identifiers = [requirement.id, ...requirement.keys];
+  if (requirement.id === 'global-panic-shortcut') {
+    const requiredArtifacts = new Set([
+      'native-global-panic-shortcut-response.json',
+      'native-global-panic-shortcut.json'
+    ]);
+    return nativeEvidenceChecks(evidence).some((check) => {
+      const id = String(check.id ?? check.name ?? check.capability ?? '').trim();
+      const artifacts = new Set(Array.isArray(check.artifacts) ? check.artifacts : []);
+      return identifiers.includes(id) &&
+        passedValue(check) &&
+        [...requiredArtifacts].every((artifact) => artifacts.has(artifact));
+    });
+  }
   const directPass = nativeEvidenceSources(evidence).some((source) =>
     identifiers.some((identifier) => passedValue(source[identifier]))
   );
