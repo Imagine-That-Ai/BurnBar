@@ -1,6 +1,8 @@
 package com.openburnbar
 
+import com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair
 import com.openburnbar.data.computeruse.InMemoryPhoneControlCounterStore
+import com.openburnbar.data.computeruse.IrohControllerRouteRegistrarProvider
 import com.openburnbar.data.computeruse.PhoneControlAuthorityDocumentFactory
 import com.openburnbar.data.computeruse.PhoneControlAuthorityPublisher
 import com.openburnbar.data.computeruse.PhoneControlIntent
@@ -34,7 +36,13 @@ internal object MainActivityE2EComputerUseStreamSetup {
                 keyStore = HermesRelayKeyStore(activity.applicationContext),
                 relayURL = target.relayURL,
             )
-        transport.start()
+        val endpointIdentity = transport.start()
+        IrohControllerRouteRegistrarProvider.fromContext(activity.applicationContext)
+            .ensureRegistered(
+                uid = uid,
+                connectionId = connectionId,
+                endpointIdentity = endpointIdentity,
+            )
         val stream = transport.connect(target, timeoutMillis = MainActivityE2EConstants.COMPUTER_USE_DIAL_TIMEOUT_MILLIS)
         MainActivityE2EComputerUseLogging.computerUseProofLog("dial_opened connection=$connectionId")
         return StreamSession(transport, stream)
@@ -43,7 +51,7 @@ internal object MainActivityE2EComputerUseStreamSetup {
     suspend fun publishPhoneControlAuthority(activity: MainActivity, uid: String, connectionId: String, keyStore: PhoneControlSigningKeyStore) {
         val identity = keyStore.signingIdentity()
         val peerNodeId = keyStore.peerNodeId(identity)
-        val deviceId = MainActivityE2EComputerUseLogging.androidDeviceIdForComputerUseProof(activity)
+        val deviceId = AndroidCloudVaultDeviceKeypair.loadOrCreate().deviceId
         val authority =
             PhoneControlAuthorityDocumentFactory.document(
                 connectionId = connectionId,

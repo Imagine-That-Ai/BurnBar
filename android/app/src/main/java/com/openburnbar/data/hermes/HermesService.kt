@@ -2,6 +2,7 @@ package com.openburnbar.data.hermes
 
 import android.content.Context
 import com.openburnbar.data.assistants.AssistantChatHistoryStore
+import com.openburnbar.data.computeruse.IrohControllerRouteRegistrarProvider
 import com.openburnbar.data.hermes.relay.AndroidIrohTransportAuditLogger
 import com.openburnbar.data.hermes.relay.FirestoreIrohPairingDirectory
 import com.openburnbar.data.hermes.relay.FirestoreIrohPairingPublicKeyProvider
@@ -15,6 +16,7 @@ import com.openburnbar.data.hermes.relay.HermesRelayTransporting
 import com.openburnbar.irohrelay.OpenBurnBarIrohFfiBackend
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -79,6 +81,7 @@ class HermesService(
     relayClient: HermesRelayClient? = null,
     relayTransport: HermesRelayTransporting? = null,
 ) {
+    private val destroyed = AtomicBoolean(false)
     private val client =
         OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
@@ -156,6 +159,9 @@ class HermesService(
     internal var legacyConnectionInternal = HermesConnection()
     private var chatTilePreferences = ChatTilePreferences.DEFAULT
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val lifecycleRegistration = HermesAuthLifecycleRegistry.register(priority = 100) {
+        closeForAuthTransition()
+    }
 
     private val _currentThreadID = MutableStateFlow<String?>(null)
     val currentThreadID: StateFlow<String?> = _currentThreadID
@@ -364,8 +370,37 @@ class HermesService(
     }
 
     fun destroy() {
+        if (!destroyed.compareAndSet(false, true)) return
+        HermesAuthLifecycleRegistry.unregister(lifecycleRegistration)
+        closeLocalResources()
+        lifecycleCloseScope.launch {
+            relayTransportInternal?.destroy()
+        }
+    }
+
+    internal suspend fun destroyAndWait() {
+        if (destroyed.compareAndSet(false, true)) {
+            HermesAuthLifecycleRegistry.unregister(lifecycleRegistration)
+            closeLocalResources()
+        }
+        relayTransportInternal?.destroy()
+    }
+
+    private suspend fun closeForAuthTransition() {
+        if (destroyed.compareAndSet(false, true)) {
+            closeLocalResources()
+        }
+        relayTransportInternal?.closeForAuthTransition()
+    }
+
+    private fun closeLocalResources() {
         disconnect()
+        client.dispatcher.cancelAll()
         scope.cancel()
+    }
+
+    private companion object {
+        val lifecycleCloseScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     }
 }
 
@@ -383,6 +418,7 @@ private fun buildHermesRelayTransport(context: Context?, client: HermesRelayClie
             sessionGrantChallengeHandler = { delivery ->
                 com.openburnbar.BurnBarApplication.sessionGrantChallengeReceiver?.ingest(delivery)
             },
+            controllerRouteRegistrar = IrohControllerRouteRegistrarProvider.fromContext(context),
         )
     val firestore =
         FirestoreRelayShim(client) { connectionId ->
