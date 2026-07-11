@@ -71,7 +71,8 @@ function writeCompleteNativeArtifacts(root) {
   });
   writeJson(root, 'native-notification-capabilities.json', {
     available: true,
-    serverName: 'mako'
+    serverName: 'mako',
+    serverCapabilities: ['actions', 'body']
   });
   writeJson(root, 'native-notification-action-result.json', {
     passed: true,
@@ -83,12 +84,14 @@ function writeCompleteNativeArtifacts(root) {
   writeJson(root, 'native-notification-relaunch-route.json', {
     passed: true,
     focusedExistingWindow: true,
-    route: 'chat'
+    route: 'chat',
+    action: 'open-chat'
   });
   writeJson(root, 'native-deep-link-relaunch.json', {
     passed: true,
     sameProcess: true,
-    route: 'chat'
+    route: 'chat',
+    action: 'open-chat'
   });
   writeJson(root, 'native-login-start-roundtrip.json', {
     passed: true,
@@ -177,6 +180,37 @@ test('partial login-start lifecycle artifact remains blocked', () => {
     assert.ok(evidence.missing.includes('login-start'));
     const loginCheck = evidence.checks.find((check) => check.id === 'login-start');
     assert.match(loginCheck?.detail ?? '', /missing complete login-start lifecycle proof/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('native notification and deep-link evidence reject unsupported route/action pairs', () => {
+  const root = tempDir();
+  try {
+    writeCompleteNativeArtifacts(root);
+    writeJson(root, 'native-notification-action-result.json', {
+      passed: true,
+      delivered: true,
+      actionsAttached: true,
+      route: 'settings',
+      action: 'open-chat'
+    });
+    writeJson(root, 'native-deep-link-relaunch.json', {
+      passed: true,
+      sameProcess: true,
+      route: 'settings',
+      action: 'open-chat'
+    });
+
+    const evidence = buildNativeShellEvidence({
+      evidenceDir: root,
+      commit: 'def456',
+      environmentId: 'fedora-kde-wayland-x86_64'
+    });
+
+    assert.equal(evidence.nativeShell.notificationActions, false);
+    assert.equal(evidence.nativeShell.deepLinkRelaunch, false);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

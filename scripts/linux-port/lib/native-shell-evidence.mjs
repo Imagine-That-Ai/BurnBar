@@ -64,6 +64,18 @@ export const nativeShellEvidenceRequirements = [
   }
 ];
 
+const nativeRouteActionPairs = new Set([
+  'overview:open-dashboard',
+  'activity:open-search',
+  'chat:open-chat',
+  'insights:open-insights',
+  'providers:open-providers',
+  'updates:open-updates',
+  'support:reconnect-daemon',
+  'account:membership-success',
+  'account:membership-cancel'
+]);
+
 export function passedValue(value) {
   if (value === true) return true;
   if (!value || typeof value !== 'object') return false;
@@ -139,6 +151,12 @@ function result(id, passed, detail, artifacts = []) {
 
 function jsonPass(value) {
   return value?.passed === true || value?.pass === true || value?.ok === true || value?.status === 'passed';
+}
+
+function nativeRouteActionPasses(value) {
+  return typeof value?.route === 'string' &&
+    typeof value?.action === 'string' &&
+    nativeRouteActionPairs.has(`${value.route}:${value.action}`);
 }
 
 function evaluateTrayHost(evidenceDir) {
@@ -228,11 +246,14 @@ function evaluateStatusWindowA11y(evidenceDir) {
 
 function evaluateNotificationServer(evidenceDir) {
   const capabilities = fileJson(evidenceDir, 'native-notification-capabilities.json');
-  const passed = capabilities?.available === true && typeof capabilities.serverName === 'string';
+  const passed = capabilities?.available === true &&
+    Array.isArray(capabilities.serverCapabilities) &&
+    capabilities.serverCapabilities.every((capability) => typeof capability === 'string');
+  const server = capabilities?.serverName ?? capabilities?.serverCapabilities?.join(', ') ?? 'unknown';
   return result(
     'notification-server',
     passed,
-    passed ? `notification server available: ${capabilities.serverName}` : 'missing freedesktop notification server capability',
+    passed ? `notification server available: ${server}` : 'missing freedesktop notification server capability',
     ['native-notification-capabilities.json']
   );
 }
@@ -242,8 +263,7 @@ function evaluateNotificationActions(evidenceDir) {
   const passed = jsonPass(action) &&
     action?.delivered === true &&
     action?.actionsAttached === true &&
-    typeof action?.route === 'string' &&
-    typeof action?.action === 'string';
+    nativeRouteActionPasses(action);
   return result(
     'notification-actions',
     passed,
@@ -254,7 +274,10 @@ function evaluateNotificationActions(evidenceDir) {
 
 function evaluateNotificationRelaunch(evidenceDir) {
   const relaunch = fileJson(evidenceDir, 'native-notification-relaunch-route.json');
-  const passed = jsonPass(relaunch) && relaunch?.focusedExistingWindow === true && typeof relaunch?.route === 'string';
+  const focusedOrRelaunched = relaunch?.focusedExistingWindow === true ||
+    relaunch?.relaunches === true ||
+    relaunch?.relaunched === true;
+  const passed = jsonPass(relaunch) && focusedOrRelaunched && nativeRouteActionPasses(relaunch);
   return result(
     'notification-relaunch-route',
     passed,
@@ -265,7 +288,7 @@ function evaluateNotificationRelaunch(evidenceDir) {
 
 function evaluateDeepLinkRelaunch(evidenceDir) {
   const relaunch = fileJson(evidenceDir, 'native-deep-link-relaunch.json');
-  const passed = jsonPass(relaunch) && relaunch?.sameProcess === true && typeof relaunch?.route === 'string';
+  const passed = jsonPass(relaunch) && relaunch?.sameProcess === true && nativeRouteActionPasses(relaunch);
   return result(
     'deep-link-relaunch',
     passed,

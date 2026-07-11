@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildNativeShellEvidence } from './lib/native-shell-evidence.mjs';
+import { buildNativeShellEvidence, evidenceCommit } from './lib/native-shell-evidence.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const evidenceOutput = process.env.OB_EVIDENCE_OUT ?? process.env.OPENBURNBAR_LINUX_EVIDENCE_OUT;
@@ -517,13 +517,31 @@ if (!fs.existsSync(evidenceDir)) {
   if (mode === 'full') checkPerf();
 }
 
-const nativeShellEvidence = fs.existsSync(evidenceDir)
-  ? buildNativeShellEvidence({
+const currentCommit = currentGitCommit();
+const nativeEvidencePath = path.join(evidenceDir, 'native-shell-evidence.json');
+let existingNativeShellEvidence = null;
+if (fs.existsSync(nativeEvidencePath)) {
+  try {
+    existingNativeShellEvidence = JSON.parse(fs.readFileSync(nativeEvidencePath, 'utf8'));
+  } catch (error) {
+    common(`invalid JSON in native-shell-evidence.json: ${error.message}`);
+  }
+}
+
+let nativeShellEvidence = null;
+if (fs.existsSync(evidenceDir)) {
+  const existingCommit = evidenceCommit(existingNativeShellEvidence ?? {});
+  if (existingCommit && currentCommit && existingCommit !== currentCommit) {
+    common(`native shell evidence commit ${existingCommit} does not match verifier commit ${currentCommit}`);
+    nativeShellEvidence = existingNativeShellEvidence;
+  } else {
+    nativeShellEvidence = buildNativeShellEvidence({
       evidenceDir,
-      commit: currentGitCommit(),
+      commit: currentCommit,
       environmentId: requestedEnvironmentId()
-    })
-  : null;
+    });
+  }
+}
 if (nativeShellEvidence) {
   fs.writeFileSync(
     path.join(evidenceDir, 'native-shell-evidence.json'),
