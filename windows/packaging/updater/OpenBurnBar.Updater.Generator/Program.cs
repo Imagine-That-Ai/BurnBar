@@ -23,6 +23,7 @@ using System.Collections.Generic;
 using System.IO;
 using OpenBurnBar.Updater.Core.Crypto;
 using OpenBurnBar.Updater.Core.Feed;
+using OpenBurnBar.Updater.Core.Verification;
 
 namespace OpenBurnBar.Updater.Generator;
 
@@ -62,17 +63,56 @@ internal static class Program
             var jsonOut = Require(options, "json-out");
             File.WriteAllText(appcastOut, AppcastFeedWriter.Write(descriptor));
             File.WriteAllText(jsonOut, JsonFeedWriter.Write(descriptor));
+            VerifyGeneratedFeed(
+                appcastOut,
+                FeedFormat.Appcast,
+                keyPair.PublicKeyBase64,
+                artifactBytes);
+            VerifyGeneratedFeed(
+                jsonOut,
+                FeedFormat.Json,
+                keyPair.PublicKeyBase64,
+                artifactBytes);
 
             Console.Error.WriteLine(
                 $"generate-windows-appcast: wrote {appcastOut} + {jsonOut} " +
                 $"(version={descriptor.Version} length={descriptor.Length} " +
-                $"sha256={descriptor.Sha256} pinnedKey={keyPair.PublicKeyBase64})");
+                $"sha256={descriptor.Sha256} pinnedKey={keyPair.PublicKeyBase64} " +
+                "verified=appcast,json)");
             return 0;
         }
         catch (Exception ex)
         {
             Console.Error.WriteLine($"generate-windows-appcast: {ex.Message}");
             return 1;
+        }
+    }
+
+    private static void VerifyGeneratedFeed(
+        string feedPath,
+        FeedFormat format,
+        string publicKeyBase64,
+        byte[] artifactBytes)
+    {
+        var verifier = UpdateFeedVerifier.TryCreate(publicKeyBase64)
+            ?? throw new InvalidDataException("Generated update-feed public key is invalid.");
+        var feedText = File.ReadAllText(feedPath);
+        var manifest = format switch
+        {
+            FeedFormat.Appcast => AppcastFeedReader.TryParse(feedText),
+            FeedFormat.Json => JsonFeedReader.TryParse(feedText),
+            _ => null,
+        };
+        if (manifest is null)
+        {
+            throw new InvalidDataException($"Generated {format} feed could not be parsed.");
+        }
+
+        var verification = verifier.VerifyArtifact(manifest, artifactBytes);
+        if (!verification.Verified)
+        {
+            throw new InvalidDataException(
+                $"Generated {format} feed failed artifact verification: {verification.Reason}.");
         }
     }
 

@@ -212,6 +212,9 @@ jobs:
           WINDOWS_UPDATE_PUBLIC_KEY: ${{ vars.WINDOWS_UPDATE_PUBLIC_KEY }}
         run: bash scripts/ci/verify-windows-release-signing-preflight.sh
 
+      - name: Run updater unit tests against committed sample pin
+        run: dotnet test windows/tests/updater/OpenBurnBar.Updater.Tests.csproj -c Release
+
       - name: Publish WinUI app (win-x64 + win-arm64)
         # Real build. Unproven until WINUI-017 lands the full WinUI toolchain build; this only
         # runs on a windows-v* tag, which is not cut until the app builds green.
@@ -424,8 +427,6 @@ jobs:
             --commit "${GITHUB_SHA}" \
             --created-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --pub-date "$(date -u '+%a, %d %b %Y %H:%M:%S GMT')"
-
-          dotnet test windows/tests/updater/OpenBurnBar.Updater.Tests.csproj -c Release
 
       - name: Upload Windows release artifacts
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)

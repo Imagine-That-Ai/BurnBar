@@ -76,6 +76,21 @@ assert.ok(
   windowsReleaseWorkflow.includes("SBOM contains no dependency packages after expanding Windows artifacts"),
   "Windows SBOM generation must fail closed when package dependencies are absent",
 );
+const updaterTestsIndex = windowsReleaseWorkflow.indexOf(
+  "Run updater unit tests against committed sample pin",
+);
+const productionPinIndex = windowsReleaseWorkflow.indexOf(
+  'printf \'%s\\n\' "$WINDOWS_UPDATE_PUBLIC_KEY" > "$pin"',
+);
+assert.ok(
+  updaterTestsIndex >= 0 && productionPinIndex > updaterTestsIndex,
+  "committed updater fixtures must run before the production key replaces their development pin",
+);
+assert.match(
+  read("windows/packaging/updater/OpenBurnBar.Updater.Generator/Program.cs"),
+  /VerifyGeneratedFeed\([\s\S]*UpdateFeedVerifier\.TryCreate\([\s\S]*VerifyArtifact\(/,
+  "the Windows feed generator must parse and pin-verify its emitted release feeds",
+);
 assert.match(
   read("windows/packaging/msix/New-MsixPackage.ps1"),
   /SetAttribute\("Version", "\$Version\.0"\)[\s\S]*SetAttribute\("ProcessorArchitecture", \$Architecture\)/,
