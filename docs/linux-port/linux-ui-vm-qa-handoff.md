@@ -113,9 +113,22 @@ Run before claiming visual or functional parity:
 npm test --prefix apps/linux-desktop
 npm run build --prefix apps/linux-desktop
 OB_EVIDENCE_OUT=/tmp/openburnbar-linux-ui-qa node scripts/linux-port/run-shell-desktop-session.mjs
-node scripts/linux-port/verify-shell-evidence.mjs /tmp/openburnbar-linux-ui-qa
+OB_LINUX_ENVIRONMENT_ID=<support-row-id> \
+  node scripts/linux-port/verify-shell-evidence.mjs /tmp/openburnbar-linux-ui-qa
+OPENBURNBAR_LINUX_INSTALLED_EVIDENCE=<installed-package-evidence.json> \
+OPENBURNBAR_LINUX_ACCESSIBILITY_EVIDENCE=<installed-accessibility-evidence.json> \
+OPENBURNBAR_LINUX_NATIVE_SHELL_EVIDENCE=/tmp/openburnbar-linux-ui-qa/native-shell-evidence.json \
+  node scripts/linux-port/run-linux-matrix-harness.mjs --environment <support-row-id>
 git diff --check
 ```
+
+The desktop-session run should produce `tray-chat-menu-event.txt`,
+`tray-providers-menu-event.txt`, `tray-updates-menu-event.txt`,
+`tray-login-start-menu-event.txt`, `tray-action-route-results.json`,
+`native-status-window-report.json`, `native-status-window-a11y.json`,
+`screenshot-native-status-window.png`, and `native-deep-link-relaunch.json`.
+Treat a missing artifact as a failed native shell capture, not as a manual QA
+item.
 
 Manual visual pass:
 

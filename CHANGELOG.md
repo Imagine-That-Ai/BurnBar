@@ -42,6 +42,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ready unless the exact commit and requested environment prove tray
   host/actions, compact status accessibility, notification server/actions/
   relaunch, deep-link relaunch, login-start, and tray-host-loss recovery.
+  `verify-shell-evidence.mjs` now emits `native-shell-evidence.json` from the
+  installed-session artifacts so VM runs get a concrete pass/missing report for
+  that gate.
+- **Linux native-shell installed captures** - the packaged desktop-session
+  harness now drives every tray route through the real StatusNotifier D-Bus
+  menu, captures quick-status window screenshot and AT-SPI focus evidence, and
+  records secondary `openburnbar://chat` single-instance relaunch proof. The
+  login-start capture records enable/disable/stale-file behavior without
+  promoting the row until relogin and uninstall lifecycle evidence exists.
 - **Linux daemon event subscription authority** - replaces one-shot terminal
   subscription fixtures with bounded daemon-owned start/resume/stop state,
   monotonic cursors, restart recovery, cancellation tombstones, strict scope

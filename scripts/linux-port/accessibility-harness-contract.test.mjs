@@ -46,6 +46,20 @@ test('packaged session provisions and exercises the Linux accessibility stack', 
     'orca --list-apps',
     '--mode activate',
     'atspi-command-route-',
+    'tray-action-route-results.json',
+    'tray-chat-menu-event.txt',
+    'tray-providers-menu-event.txt',
+    'tray-updates-menu-event.txt',
+    'tray-login-start-menu-event.txt',
+    'tray-action-route-results.json',
+    'native-status-window-report.json',
+    'native-status-window-a11y.json',
+    'native-deep-link-relaunch.json',
+    'native-login-start-roundtrip.json',
+    'CHAT_ID',
+    'PROVIDERS_ID',
+    'UPDATES_ID',
+    'LOGIN_START_ID',
     'atspi-keyboard-focus-sequence.json',
     'screenshot-linux-desktop-zoom-200-requested.png',
     'zoom-accessibility-evidence.json'
@@ -58,6 +72,29 @@ test('packaged session provisions and exercises the Linux accessibility stack', 
     'validateAtspiAction',
     'Orca did not list OpenBurnBar'
   ]) assert.ok(verifier.includes(marker), marker);
+});
+
+test('packaged session captures native shell evidence inputs from real D-Bus actions', () => {
+  for (const marker of [
+    'QUICK_STATUS_ID',
+    'CHAT_ID',
+    'PROVIDERS_ID',
+    'UPDATES_ID',
+    'LOGIN_START_ID',
+    'wait_for_new_route_sample',
+    'tray-chat-menu-event.txt',
+    'tray-providers-menu-event.txt',
+    'tray-updates-menu-event.txt',
+    'tray-login-start-menu-event.txt',
+    'native-status-window-report.json',
+    'screenshot-native-status-window.png',
+    'native-status-window-a11y.json',
+    'native-deep-link-relaunch.json',
+    'native-login-start-roundtrip.json',
+    'packaged-ui-route-after-paint:${route}',
+    'openburnbar://chat',
+    'secondaryProcessExited'
+  ]) assert.ok(session.includes(marker), marker);
 });
 
 test('toolchain and artifact reuse preserve the complete accessibility proof', () => {

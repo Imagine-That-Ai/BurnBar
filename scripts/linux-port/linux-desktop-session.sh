@@ -10,6 +10,7 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
   out_dir="$3"
   work_dir="$4"
   socket_path="$5"
+  installed_bin_real="$(readlink -f "$installed_bin" 2>/dev/null || printf '%s' "$installed_bin")"
 
   export HOME="$work_dir/home"
   export XDG_RUNTIME_DIR="$work_dir/runtime"
@@ -425,7 +426,12 @@ while ((match = re.exec(layout))) {
 }
 const byLabel = (needle) => actions.find((action) => action.label.toLowerCase().includes(needle))?.id;
 const env = {
+  QUICK_STATUS_ID: byLabel('open quick status'),
   OPEN_ID: byLabel('open dashboard'),
+  CHAT_ID: byLabel('open chat'),
+  PROVIDERS_ID: byLabel('open providers'),
+  UPDATES_ID: byLabel('check updates'),
+  LOGIN_START_ID: byLabel('start at login'),
   RECONNECT_ID: byLabel('reconnect daemon'),
   QUIT_ID: byLabel('quit openburnbar')
 };
@@ -455,6 +461,182 @@ NODE
       uint32:0
   }
 
+  sample_file_offset() {
+    wc -c <"$samples_file" 2>/dev/null || echo 0
+  }
+
+  has_new_route_sample() {
+    local route="$1"
+    local offset="$2"
+    [[ -f "$samples_file" ]] || return 1
+    tail -c "+$((offset + 1))" "$samples_file" 2>/dev/null | \
+      grep -q "packaged-ui-route-after-paint:${route}"
+  }
+
+  wait_for_new_route_sample() {
+    local route="$1"
+    local offset="$2"
+    for _ in $(seq 1 80); do
+      if has_new_route_sample "$route" "$offset"; then
+        return 0
+      fi
+      sleep 0.1
+    done
+    return 1
+  }
+  list_installed_app_pids() {
+    local candidate exe
+    for candidate in /proc/[0-9]*; do
+      exe="$(readlink -f "$candidate/exe" 2>/dev/null || true)"
+      if [[ "$exe" == "$installed_bin_real" ]]; then
+        basename "$candidate"
+      fi
+    done | sort -n
+  }
+
+  capture_native_status_window() {
+    : >"$out_dir/tray-quick-status-menu-event.txt"
+    {
+      echo "== open quick status =="
+      send_menu_event "$QUICK_STATUS_ID"
+    } >"$out_dir/tray-quick-status-menu-event.txt" 2>&1
+
+    status_window_id=""
+    for _ in $(seq 1 80); do
+      status_window_id="$(xdotool search --onlyvisible --name "OpenBurnBar Status" 2>/dev/null | head -n 1 || true)"
+      if [[ -n "$status_window_id" ]]; then
+        break
+      fi
+      sleep 0.1
+    done
+    if [[ -z "$status_window_id" ]]; then
+      echo "Open quick status did not show the native status window" >&2
+      exit 1
+    fi
+
+    xdotool windowactivate --sync "$status_window_id" 2>/dev/null || xdotool windowactivate "$status_window_id"
+    xdotool windowfocus --sync "$status_window_id" 2>/dev/null || true
+    sleep 0.5
+    xwininfo -id "$status_window_id" >"$out_dir/native-status-window-xwininfo.txt"
+    scrot -u "$out_dir/screenshot-native-status-window.png"
+    python3 "$root/scripts/linux-port/capture-atspi-tree.py" \
+      --application OpenBurnBar \
+      --mode summary \
+      --route native-status \
+      --expected-name "Quick status" \
+      --output "$out_dir/native-status-window-atspi-summary.json"
+    xdotool key --clearmodifiers Tab
+    sleep 0.5
+    python3 "$root/scripts/linux-port/capture-atspi-tree.py" \
+      --application OpenBurnBar \
+      --mode focus \
+      --route native-status \
+      --output "$out_dir/native-status-window-focus.json"
+
+    xdotool key --clearmodifiers Escape || true
+    sleep 0.5
+    status_closed=false
+    status_close_method=escape
+    if xdotool search --onlyvisible --name "OpenBurnBar Status" >/dev/null 2>&1; then
+      status_close_method=windowclose
+      xdotool windowclose "$status_window_id" 2>/dev/null || true
+      for _ in $(seq 1 40); do
+        if ! xdotool search --onlyvisible --name "OpenBurnBar Status" >/dev/null 2>&1; then
+          status_closed=true
+          break
+        fi
+        sleep 0.1
+      done
+    else
+      status_closed=true
+    fi
+
+    node - \
+      "$out_dir/native-status-window-report.json" \
+      "$out_dir/native-status-window-a11y.json" \
+      "$out_dir/native-status-window-xwininfo.txt" \
+      "$out_dir/screenshot-native-status-window.png" \
+      "$out_dir/native-status-window-atspi-summary.json" \
+      "$out_dir/native-status-window-focus.json" \
+      "$status_window_id" \
+      "$status_closed" \
+      "$status_close_method" <<'STATUS'
+const fs = require('fs');
+const [
+  reportPath,
+  a11yPath,
+  xwininfoPath,
+  screenshotPath,
+  summaryPath,
+  focusPath,
+  windowId,
+  closedText,
+  closeMethod
+] = process.argv.slice(2);
+const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
+const summary = readJson(summaryPath);
+const focus = readJson(focusPath);
+const screenshotBytes = fs.statSync(screenshotPath).size;
+const xwininfo = fs.readFileSync(xwininfoPath, 'utf8');
+const closed = closedText === 'true';
+const a11y = {
+  schemaVersion: 1,
+  passed: summary.pass === true && focus.pass === true,
+  keyboard: focus.pass === true,
+  assistiveTechnology: summary.pass === true,
+  summary: 'native-status-window-atspi-summary.json',
+  focus: 'native-status-window-focus.json',
+  nodeCount: summary.nodeCount,
+  namedNodeCount: summary.namedNodeCount,
+  actionableNodeCount: summary.actionableNodeCount,
+  focusedNodes: focus.focusedNodes ?? []
+};
+const report = {
+  schemaVersion: 1,
+  generatedAt: new Date().toISOString(),
+  passed: a11y.passed && closed && screenshotBytes >= 256 && /OpenBurnBar Status/.test(xwininfo),
+  windowId,
+  title: 'OpenBurnBar Status',
+  screenshot: 'screenshot-native-status-window.png',
+  screenshotBytes,
+  openedFrom: 'tray-open-quick-status-dbusmenu',
+  closed,
+  closeMethod,
+  accessibility: a11y
+};
+fs.writeFileSync(a11yPath, JSON.stringify(a11y, null, 2) + '\n');
+fs.writeFileSync(reportPath, JSON.stringify(report, null, 2) + '\n');
+console.log(JSON.stringify({ report, a11y }, null, 2));
+if (!report.passed) process.exit(1);
+STATUS
+  }
+
+  activate_tray_route_action() {
+    local menu_id="$1"
+    local route="$2"
+    local action="$3"
+    local event_file="$4"
+    local expected_name="$5"
+    local offset
+    offset="$(sample_file_offset)"
+    {
+      echo "== route=$route action=$action =="
+      send_menu_event "$menu_id"
+    } >"$event_file" 2>&1
+    if ! wait_for_new_route_sample "$route" "$offset"; then
+      echo "Tray action $action did not produce a fresh route.navigation sample for $route" >&2
+      exit 1
+    fi
+    python3 "$root/scripts/linux-port/capture-atspi-tree.py" \
+      --application OpenBurnBar \
+      --mode summary \
+      --route "$route" \
+      --expected-name "$expected_name" \
+      --output "$out_dir/atspi-tray-route-${route}.json"
+  }
+
+  capture_native_status_window
+
   tray_open_samples=()
   reopened_window_id="$window_id"
   : >"$out_dir/tray-open-menu-event.txt"
@@ -467,6 +649,7 @@ NODE
       sleep 0.1
     done
     tray_open_start_ms="$(date +%s%3N)"
+    tray_open_route_offset="$(sample_file_offset)"
     {
       echo "== sample $sample_index =="
       send_menu_event "$OPEN_ID"
@@ -483,10 +666,107 @@ NODE
       echo "Tray Open dashboard action did not reopen the window for sample $sample_index" >&2
       exit 1
     fi
+    if ! wait_for_new_route_sample overview "$tray_open_route_offset"; then
+      echo "Tray Open dashboard action did not produce a fresh overview route sample for sample $sample_index" >&2
+      exit 1
+    fi
     tray_open_samples+=("$(( $(date +%s%3N) - tray_open_start_ms ))")
   done
   xwininfo -id "$reopened_window_id" >"$out_dir/window-after-tray-open-xwininfo.txt"
   scrot "$out_dir/screenshot-linux-desktop-after-tray-open.png"
+
+  activate_tray_route_action "$CHAT_ID" chat "open-chat" "$out_dir/tray-chat-menu-event.txt" "Chat / Hermes"
+  activate_tray_route_action "$PROVIDERS_ID" providers "open-providers" "$out_dir/tray-providers-menu-event.txt" "Providers & models"
+  activate_tray_route_action "$UPDATES_ID" updates "open-updates" "$out_dir/tray-updates-menu-event.txt" "Updates"
+
+  login_autostart_file="$XDG_CONFIG_HOME/autostart/dev.openburnbar.OpenBurnBar.desktop"
+  rm -f "$login_autostart_file"
+  : >"$out_dir/tray-login-start-menu-event.txt"
+  {
+    echo "== enable start at login =="
+    send_menu_event "$LOGIN_START_ID"
+  } >>"$out_dir/tray-login-start-menu-event.txt" 2>&1
+  login_start_enabled=false
+  for _ in $(seq 1 40); do
+    if [[ -s "$login_autostart_file" ]]; then
+      login_start_enabled=true
+      break
+    fi
+    sleep 0.1
+  done
+  if [[ "$login_start_enabled" != true ]]; then
+    echo "Tray Start at login action did not create $login_autostart_file" >&2
+    exit 1
+  fi
+  cp "$login_autostart_file" "$out_dir/native-login-start-enabled.desktop"
+  {
+    echo "== disable start at login =="
+    send_menu_event "$LOGIN_START_ID"
+  } >>"$out_dir/tray-login-start-menu-event.txt" 2>&1
+  login_start_disabled=false
+  for _ in $(seq 1 40); do
+    if [[ ! -e "$login_autostart_file" ]]; then
+      login_start_disabled=true
+      break
+    fi
+    sleep 0.1
+  done
+  if [[ "$login_start_disabled" != true ]]; then
+    echo "Tray Start at login action did not remove $login_autostart_file" >&2
+    exit 1
+  fi
+  mkdir -p "$(dirname "$login_autostart_file")"
+  printf '%s\n' "[Desktop Entry]" "Name=stale OpenBurnBar test entry" "Exec=/tmp/stale-openburnbar" >"$login_autostart_file"
+  {
+    echo "== replace stale start-at-login file =="
+    send_menu_event "$LOGIN_START_ID"
+  } >>"$out_dir/tray-login-start-menu-event.txt" 2>&1
+  login_start_stale_replaced=false
+  for _ in $(seq 1 40); do
+    if [[ -s "$login_autostart_file" ]] && grep -q "openburnbar-linux-desktop" "$login_autostart_file" && ! grep -q "stale-openburnbar" "$login_autostart_file"; then
+      login_start_stale_replaced=true
+      break
+    fi
+    sleep 0.1
+  done
+  if [[ "$login_start_stale_replaced" != true ]]; then
+    echo "Tray Start at login action did not replace stale autostart file" >&2
+    exit 1
+  fi
+  cp "$login_autostart_file" "$out_dir/native-login-start-stale-replaced.desktop"
+  {
+    echo "== cleanup start at login =="
+    send_menu_event "$LOGIN_START_ID"
+  } >>"$out_dir/tray-login-start-menu-event.txt" 2>&1
+  for _ in $(seq 1 40); do
+    if [[ ! -e "$login_autostart_file" ]]; then
+      break
+    fi
+    sleep 0.1
+  done
+  node - \
+    "$out_dir/native-login-start-roundtrip.json" \
+    "$login_autostart_file" \
+    "$login_start_enabled" \
+    "$login_start_disabled" \
+    "$login_start_stale_replaced" <<'LOGIN'
+const fs = require('fs');
+const [outPath, autostartFile, enabledText, disabledText, staleText] = process.argv.slice(2);
+const payload = {
+  schemaVersion: 1,
+  generatedAt: new Date().toISOString(),
+  passed: false,
+  enabled: enabledText === 'true',
+  disabled: disabledText === 'true',
+  relogin: false,
+  staleFileReplaced: staleText === 'true',
+  uninstallRemoved: false,
+  autostartFile,
+  note: 'Installed session proves tray enable, disable, and stale replacement. Relogin and package-uninstall ownership require a dedicated desktop lifecycle harness.'
+};
+fs.writeFileSync(outPath, JSON.stringify(payload, null, 2) + '\n');
+console.log(JSON.stringify(payload, null, 2));
+LOGIN
 
   daemon_log="$out_dir/daemon-socket-gui-session.log"
   if [[ -f "$out_dir/daemon-shell-session.log" ]]; then
@@ -497,10 +777,15 @@ NODE
   for sample_index in $(seq 1 10); do
     before_reconnect_lines="$(wc -l <"$daemon_log" 2>/dev/null || echo 0)"
     reconnect_start_ms="$(date +%s%3N)"
+    reconnect_route_offset="$(sample_file_offset)"
     {
       echo "== sample $sample_index =="
       send_menu_event "$RECONNECT_ID"
     } >>"$out_dir/tray-reconnect-menu-event.txt" 2>&1
+    if ! wait_for_new_route_sample support "$reconnect_route_offset"; then
+      echo "Tray Reconnect daemon action did not produce a fresh support route sample for sample $sample_index" >&2
+      exit 1
+    fi
     reconnect_observed=false
     for _ in $(seq 1 80); do
       current_lines="$(wc -l <"$daemon_log" 2>/dev/null || echo 0)"
@@ -517,6 +802,78 @@ NODE
     ipc_health_roundtrip_samples+=("$(( $(date +%s%3N) - reconnect_start_ms ))")
   done
 
+  deep_link_start_ms="$(date +%s%3N)"
+  deep_link_route_offset="$(sample_file_offset)"
+  "$installed_bin" "openburnbar://chat" >>"$out_dir/openburnbar-linux-desktop.stdout.log" 2>>"$out_dir/openburnbar-linux-desktop.stderr.log" &
+  deep_link_pid="$!"
+  deep_link_secondary_exited=false
+  for _ in $(seq 1 80); do
+    if ! kill -0 "$deep_link_pid" 2>/dev/null; then
+      deep_link_secondary_exited=true
+      break
+    fi
+    sleep 0.1
+  done
+  if [[ "$deep_link_secondary_exited" != true ]]; then
+    kill "$deep_link_pid" 2>/dev/null || true
+    wait "$deep_link_pid" 2>/dev/null || true
+    echo "Secondary openburnbar://chat launch did not exit after single-instance handoff" >&2
+    exit 1
+  fi
+  wait "$deep_link_pid" 2>/dev/null || true
+  deep_link_routed=false
+  if wait_for_new_route_sample chat "$deep_link_route_offset"; then
+    deep_link_routed=true
+  fi
+  deep_link_existing_alive=false
+  if kill -0 "$app_pid" 2>/dev/null; then
+    deep_link_existing_alive=true
+  fi
+  deep_link_window_count="$(xdotool search --onlyvisible --name OpenBurnBar 2>/dev/null | wc -l | tr -d ' ')"
+  deep_link_process_count="$(list_installed_app_pids | wc -l | tr -d ' ')"
+  deep_link_duration_ms="$(( $(date +%s%3N) - deep_link_start_ms ))"
+  node - \
+    "$out_dir/native-deep-link-relaunch.json" \
+    "$deep_link_routed" \
+    "$deep_link_existing_alive" \
+    "$deep_link_secondary_exited" \
+    "$deep_link_window_count" \
+    "$deep_link_process_count" \
+    "$deep_link_duration_ms" <<'DEEPLINK'
+const fs = require('fs');
+const [
+  outPath,
+  routedText,
+  existingAliveText,
+  secondaryExitedText,
+  windowCountText,
+  processCountText,
+  durationText
+] = process.argv.slice(2);
+const windowCount = Number(windowCountText);
+const processCount = Number(processCountText);
+const routed = routedText === 'true';
+const existingAlive = existingAliveText === 'true';
+const secondaryExited = secondaryExitedText === 'true';
+const payload = {
+  schemaVersion: 1,
+  generatedAt: new Date().toISOString(),
+  passed: routed && existingAlive && secondaryExited && processCount === 1 && windowCount === 1,
+  sameProcess: existingAlive && secondaryExited && processCount === 1,
+  route: 'chat',
+  action: 'open-chat',
+  uri: 'openburnbar://chat',
+  focusedExistingWindow: windowCount === 1,
+  secondaryProcessExited: secondaryExited,
+  processCount,
+  windowCount,
+  durationMs: Number(durationText)
+};
+fs.writeFileSync(outPath, JSON.stringify(payload, null, 2) + '\n');
+console.log(JSON.stringify(payload, null, 2));
+if (!payload.passed) process.exit(1);
+DEEPLINK
+
   quit_start_ms="$(date +%s%3N)"
   send_menu_event "$QUIT_ID" >"$out_dir/tray-quit-menu-event.txt" 2>&1
   for _ in $(seq 1 80); do
@@ -530,6 +887,81 @@ NODE
     exit 1
   fi
   tray_quit_ms="$(( $(date +%s%3N) - quit_start_ms ))"
+  node - \
+    "$out_dir/tray-action-route-results.json" \
+    "$login_start_enabled" \
+    "$login_start_disabled" \
+    "$login_start_stale_replaced" \
+    "$tray_quit_ms" <<'TRAYRESULTS'
+const fs = require('fs');
+const [outPath, loginEnabledText, loginDisabledText, staleReplacedText, quitMsText] = process.argv.slice(2);
+const loginStart = {
+  passed: loginEnabledText === 'true' && loginDisabledText === 'true' && staleReplacedText === 'true',
+  enabled: loginEnabledText === 'true',
+  disabled: loginDisabledText === 'true',
+  staleFileReplaced: staleReplacedText === 'true',
+  enabledArtifact: 'native-login-start-enabled.desktop',
+  staleReplacedArtifact: 'native-login-start-stale-replaced.desktop'
+};
+const actions = {
+  openDashboard: {
+    passed: true,
+    route: 'overview',
+    action: 'open-dashboard',
+    routeSampleObserved: true,
+    eventArtifact: 'tray-open-menu-event.txt',
+    screenshot: 'screenshot-linux-desktop-after-tray-open.png'
+  },
+  openChat: {
+    passed: true,
+    route: 'chat',
+    action: 'open-chat',
+    routeSampleObserved: true,
+    eventArtifact: 'tray-chat-menu-event.txt',
+    atspiSummary: 'atspi-tray-route-chat.json'
+  },
+  openProviders: {
+    passed: true,
+    route: 'providers',
+    action: 'open-providers',
+    routeSampleObserved: true,
+    eventArtifact: 'tray-providers-menu-event.txt',
+    atspiSummary: 'atspi-tray-route-providers.json'
+  },
+  openUpdates: {
+    passed: true,
+    route: 'updates',
+    action: 'open-updates',
+    routeSampleObserved: true,
+    eventArtifact: 'tray-updates-menu-event.txt',
+    atspiSummary: 'atspi-tray-route-updates.json'
+  },
+  reconnectDaemon: {
+    passed: true,
+    route: 'support',
+    action: 'reconnect-daemon',
+    routeSampleObserved: true,
+    daemonActivityObserved: true,
+    eventArtifact: 'tray-reconnect-menu-event.txt'
+  },
+  loginStart,
+  quit: {
+    passed: true,
+    exited: true,
+    durationMs: Number(quitMsText),
+    eventArtifact: 'tray-quit-menu-event.txt'
+  }
+};
+const payload = {
+  schemaVersion: 1,
+  generatedAt: new Date().toISOString(),
+  passed: Object.values(actions).every((action) => action.passed === true),
+  actions
+};
+fs.writeFileSync(outPath, JSON.stringify(payload, null, 2) + '\n');
+console.log(JSON.stringify(payload, null, 2));
+if (!payload.passed) process.exit(1);
+TRAYRESULTS
 
   # Add nine warm relaunches to the first cold launch. The process is fully
   # terminated between samples, and each sample ends only when the real X11
@@ -642,10 +1074,17 @@ const report = {
   evidence: {
     firstRunScreenshot: 'screenshot-linux-desktop-first-run.png',
     afterTrayOpenScreenshot: 'screenshot-linux-desktop-after-tray-open.png',
+    nativeStatusWindowScreenshot: 'screenshot-native-status-window.png',
     packagedRouteTranscript: 'packaged-route-session-transcript.json',
     runtimePerfSamples: 'runtime-perf-samples.jsonl',
     daemonSocketLog: fs.existsSync(outDir + '/daemon-shell-session.log') ? 'daemon-shell-session.log' : 'daemon-socket-gui-session.log',
     trayMenuLayout: 'tray-menu-layout.txt',
+    trayMenuActions: 'tray-menu-actions.json',
+    trayActionRouteResults: 'tray-action-route-results.json',
+    nativeStatusWindowReport: 'native-status-window-report.json',
+    nativeStatusWindowA11y: 'native-status-window-a11y.json',
+    nativeDeepLinkRelaunch: 'native-deep-link-relaunch.json',
+    nativeLoginStartRoundtrip: 'native-login-start-roundtrip.json',
     accessibilitySnapshot: 'accessibility-tree-linux-desktop.txt',
     atspiTree: 'atspi-tree-linux-desktop.json',
     atspiFocusSequence: 'atspi-keyboard-focus-sequence.json',
@@ -676,6 +1115,7 @@ rm -f \
   "$out_dir"/atspi-command-route-*.json \
   "$out_dir"/atspi-keyboard-focus-sequence.json \
   "$out_dir"/atspi-route-*.json \
+  "$out_dir"/atspi-tray-route-*.json \
   "$out_dir"/atspi-tree-linux-desktop.json \
   "$out_dir"/atspi-zoom-200-requested.json \
   "$out_dir"/daemon-socket-gui-session.log \
@@ -686,6 +1126,15 @@ rm -f \
   "$out_dir"/desktop-package-provision.txt \
   "$out_dir"/desktop-package-versions.txt \
   "$out_dir"/linux-desktop-session-report.json \
+  "$out_dir"/native-deep-link-relaunch.json \
+  "$out_dir"/native-login-start-enabled.desktop \
+  "$out_dir"/native-login-start-roundtrip.json \
+  "$out_dir"/native-login-start-stale-replaced.desktop \
+  "$out_dir"/native-status-window-a11y.json \
+  "$out_dir"/native-status-window-atspi-summary.json \
+  "$out_dir"/native-status-window-focus.json \
+  "$out_dir"/native-status-window-report.json \
+  "$out_dir"/native-status-window-xwininfo.txt \
   "$out_dir"/package-daemon-path.txt \
   "$out_dir"/package-version.txt \
   "$out_dir"/openburnbar-linux-desktop.pid \
@@ -703,18 +1152,25 @@ rm -f \
   "$out_dir"/runtime-perf-samples.jsonl \
   "$out_dir"/shell-version-readback.txt \
   "$out_dir"/openbox.log \
+  "$out_dir"/screenshot-native-status-window.png \
   "$out_dir"/screenshot-linux-desktop-after-tray-open*.png \
   "$out_dir"/screenshot-linux-desktop-first-run*.png \
   "$out_dir"/screenshot-linux-desktop-zoom-200-requested.png \
   "$out_dir"/screenshot-route-*.png \
+  "$out_dir"/tray-action-route-results.json \
   "$out_dir"/tray-menu-actions.json \
   "$out_dir"/tray-menu-layout.txt \
   "$out_dir"/tray-menu-property.txt \
+  "$out_dir"/tray-chat-menu-event.txt \
+  "$out_dir"/tray-login-start-menu-event.txt \
   "$out_dir"/tray-open-menu-event.txt \
+  "$out_dir"/tray-providers-menu-event.txt \
+  "$out_dir"/tray-quick-status-menu-event.txt \
   "$out_dir"/tray-quit-menu-event.txt \
   "$out_dir"/tray-reconnect-menu-event.txt \
   "$out_dir"/tray-registered-items.err \
   "$out_dir"/tray-registered-items.txt \
+  "$out_dir"/tray-updates-menu-event.txt \
   "$out_dir"/tray-status-notifier-introspection.txt \
   "$out_dir"/window-after-tray-open-xwininfo.txt \
   "$out_dir"/window-initial-xprop.txt \

@@ -282,7 +282,13 @@ Linux now has a single-instance native launch boundary, validated deep links,
 background startup, live tray facts/actions, and user-owned XDG login start.
 The desktop matrix harness also requires current native-shell evidence before a
 support row can become ready, so P-26/P-27 source work cannot be promoted by
-package/accessibility evidence alone.
+package/accessibility evidence alone. The shell verifier now emits
+<code>native-shell-evidence.json</code> for that gate, and the installed desktop-session
+harness now captures the tray action, compact-status, status-window
+accessibility, and secondary deep-link relaunch artifacts named by the
+producer. Current installed evidence remains blocked until VM runs capture
+notification server/actions/relaunch, complete login-start relogin/uninstall
+lifecycle, and tray-host-loss artifacts.
 The current auth packet also adds purpose-bound in-app device authorization,
 daemon-owned Firebase token exchange and refresh, writable-keyring preflight,
 local sign-out, and a strict renderer-redacted account contract. Native Linux
@@ -398,7 +404,7 @@ exercised in installed packages.</li>
 </tr>
 <tr>
 <td>Native shell</td>
-<td>Single-instance/background launch, typed deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, user XDG login start, and fail-closed native-shell matrix evidence requirements are implemented</td>
+<td>Single-instance/background launch, typed deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, user XDG login start, fail-closed native-shell matrix evidence requirements, and verifier-produced <code>native-shell-evidence.json</code> are implemented</td>
 <td>Certify rich/icon-only GNOME, KDE, X11, wlroots, accessibility, notification, cloud inline-reply, provider OAuth return, and lifecycle rows</td>
 </tr>
 <tr>
@@ -868,7 +874,7 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-26</td>
 <td>Tray and native shell</td>
 <td>Rich live menu-bar status, quick switch, chat, quota, update state</td>
-<td>Live cost/tokens, quota floor, provider count, freshness, compact status window, dashboard/chat/provider/update/reconnect/login-start/quit actions exist; matrix rows now require native-shell evidence; account quick switch, host-loss behavior, and installed matrix proof remain</td>
+<td>Live cost/tokens, quota floor, provider count, freshness, compact status window, dashboard/chat/provider/update/reconnect/login-start/quit actions exist; matrix rows now require and can emit native-shell evidence; account quick switch, host-loss behavior, and installed matrix proof remain</td>
 <td>Near parity</td>
 <td>High</td>
 </tr>
@@ -876,7 +882,7 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-27</td>
 <td>Notifications/deep links</td>
 <td>Actionable notifications, OAuth return, global commands, login start</td>
-<td>Single-instance validated deep links, membership return, background launch, XDG login start, source-level freedesktop notification actions, and daemon-backed panic shortcut exist; matrix rows now require notification/action/relaunch evidence; cloud agent-reply listener/inline reply, provider OAuth callback contract, and installed shortcut/desktop matrix proof remain</td>
+<td>Single-instance validated deep links, membership return, background launch, XDG login start, source-level freedesktop notification actions, and daemon-backed panic shortcut exist; matrix rows now require and can emit notification/action/relaunch evidence; cloud agent-reply listener/inline reply, provider OAuth callback contract, and installed shortcut/desktop matrix proof remain</td>
 <td>Partial</td>
 <td>High</td>
 </tr>
@@ -956,7 +962,7 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-37</td>
 <td>Linux matrix</td>
 <td>N/A; macOS supported versions are exercised</td>
-<td>Environment-bound fail-closed harness exists, requires package/accessibility/native-shell evidence, and aarch64 X11/XFCE passed; GNOME Wayland, KDE Wayland, wlroots, x86_64, and real portal/keyring rows remain open</td>
+<td>Environment-bound fail-closed harness exists, requires package/accessibility/native-shell evidence, emits the native-shell matrix input from shell verification, and aarch64 X11/XFCE passed; GNOME Wayland, KDE Wayland, wlroots, x86_64, and real portal/keyring rows remain open</td>
 <td>Partial</td>
 <td>Critical</td>
 </tr>
@@ -1571,9 +1577,9 @@ unavailable capability copy, and migration from existing localStorage keys.</li>
 <h3>GAP-014 - Build native tray, notifications, deep links, shortcuts, and startup</h3>
 <p><strong>Implementation update (2026-07-10): native launch/tray/startup foundation,
 compact status window, source-level freedesktop notification action primitive,
-and fail-closed native-shell matrix evidence requirements implemented; installed
-certification, cloud inline reply, and provider OAuth return remain open.</strong> Rust
-now owns single-instance arbitration,
+fail-closed native-shell matrix evidence requirements, and verifier-produced
+<code>native-shell-evidence.json</code> implemented; installed certification, cloud inline
+reply, and provider OAuth return remain open.</strong> Rust now owns single-instance arbitration,
 background launch, an allowlisted <code>openburnbar://</code> parser,
 listener-race-safe delivery, window focus, live tray actions/facts, lazy compact
 status-window lifecycle, freedesktop notification capability/delivery commands,
@@ -1583,7 +1589,9 @@ canonical autostart entry. The environment matrix harness now requires a current
 <code>OPENBURNBAR_LINUX_NATIVE_SHELL_EVIDENCE</code> file proving tray host/actions,
 compact-status accessibility, notification server/actions/relaunch, deep-link
 relaunch, login-start, and tray-host-loss recovery before a requested support
-row can become ready. Direct ARM64 GNOME X11 evidence now proves hidden
+row can become ready; <code>verify-shell-evidence.mjs</code> emits that JSON from
+installed-session artifacts and records missing rows instead of claiming false
+success. Direct ARM64 GNOME X11 evidence now proves hidden
 background launch, one-process Chat routing, the bundled icon/native menu, and
 an exact login-start off/on/off round trip. This is not installed package,
 freedesktop notification server, tray-host-loss, or desktop-matrix
@@ -1596,9 +1604,9 @@ quota, providers, quick switch, chat, freshness, and update state. Linux now
 exposes live cost/tokens, quota floor, provider count, freshness, a compact
 status window, primary navigation/reconnect/login-start actions, validated
 membership/navigation links, source-level freedesktop notification actions,
-background launch, and a certification gate for native-shell evidence. It
-still lacks account quick switch, cloud agent-reply inline reply, installed
-notification certification, and a provider OAuth callback matrix.</li>
+background launch, and a producer-backed certification gate for native-shell
+evidence. It still lacks account quick switch, cloud agent-reply inline reply,
+installed notification certification, and a provider OAuth callback matrix.</li>
 <li><strong>Why it matters:</strong> repeated daily workflows, alerts, recovery, auth, and panic
 controls feel incomplete or cannot work outside the main window.</li>
 <li><strong>Recommended solution:</strong> certify the implemented tray, compact status
@@ -2018,7 +2026,7 @@ queueing, locked keyring, and redaction.</li>
 <tr>
 <td>LNX-NATIVE-001</td>
 <td>Partially implemented</td>
-<td>Single-instance launch, typed deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, XDG login start, and native-shell evidence requirements in the matrix harness</td>
+<td>Single-instance launch, typed deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, XDG login start, native-shell evidence requirements in the matrix harness, and verifier-produced native-shell evidence JSON</td>
 <td>Cloud inline reply, provider OAuth return, and installed desktop/notification matrix evidence</td>
 </tr>
 <tr>
@@ -2199,7 +2207,7 @@ truth-sync, not the first time behavior is documented.</p>
 <tr>
 <td>LNX-NATIVE-001</td>
 <td>LNX-CAP-001</td>
-<td>Single-instance/background launch, typed navigation/membership deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, XDG startup, and fail-closed native-shell matrix evidence requirements are implemented; add cloud inline reply, provider OAuth return, and exact-candidate matrix certification</td>
+<td>Single-instance/background launch, typed navigation/membership deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, XDG startup, fail-closed native-shell matrix evidence requirements, and verifier-produced native-shell evidence JSON are implemented; add cloud inline reply, provider OAuth return, and exact-candidate matrix certification</td>
 <td>Repeated native workflows pass on GNOME/KDE/wlroots, rich and icon-only hosts, accessibility, notification, and lifecycle rows</td>
 </tr>
 <tr>
@@ -2745,6 +2753,9 @@ and <code>apps/linux-desktop/src/providerPathRegistry.ts</code></li>
 <li>Ledger validator: <code>scripts/linux-port/lib/parity-ledger-validate.mjs</code></li>
 <li>Release verifier: <code>scripts/linux-port/verify-linux-release.mjs</code></li>
 <li>Environment-bound matrix harness: <code>scripts/linux-port/run-linux-matrix-harness.mjs</code></li>
+<li>Native shell matrix evidence producer:
+<code>scripts/linux-port/verify-shell-evidence.mjs</code> -&gt;
+<code>native-shell-evidence.json</code></li>
 <li>Packaging path drift gate: <code>scripts/linux-port/check-packaging-path-sync.mjs</code></li>
 <li>Release evidence: <code>docs/linux-port/evidence/mission-002-reanchor/</code></li>
 <li>Current aarch64 installed-session audit summary:
