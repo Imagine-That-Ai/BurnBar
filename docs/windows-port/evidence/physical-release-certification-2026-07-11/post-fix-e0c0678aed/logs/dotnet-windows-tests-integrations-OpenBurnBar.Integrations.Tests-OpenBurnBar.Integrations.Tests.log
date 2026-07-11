@@ -1,0 +1,13 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  OpenBurnBar.Integrations.SmartHub -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/integrations/smarthub/OpenBurnBar.Integrations.SmartHub/bin/Release/net8.0/OpenBurnBar.Integrations.SmartHub.dll
+  OpenBurnBar.App.Configuration -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/app/OpenBurnBar.App.Configuration/bin/Release/net8.0/OpenBurnBar.App.Configuration.dll
+  OpenBurnBar.Integrations.SmartHub.Net -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/integrations/smarthub/OpenBurnBar.Integrations.SmartHub.Net/bin/Release/net10.0/OpenBurnBar.Integrations.SmartHub.Net.dll
+  OpenBurnBar.Integrations.HomeAssistant -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/integrations/homeassistant/OpenBurnBar.Integrations.HomeAssistant/bin/Release/net8.0/OpenBurnBar.Integrations.HomeAssistant.dll
+  OpenBurnBar.Integrations.HomeAssistant.Net -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/integrations/homeassistant/OpenBurnBar.Integrations.HomeAssistant.Net/bin/Release/net10.0/OpenBurnBar.Integrations.HomeAssistant.Net.dll
+  OpenBurnBar.Integrations.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/integrations/OpenBurnBar.Integrations.Tests/bin/Release/net10.0/OpenBurnBar.Integrations.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/integrations/OpenBurnBar.Integrations.Tests/bin/Release/net10.0/OpenBurnBar.Integrations.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:   163, Skipped:     0, Total:   163, Duration: 177 ms - OpenBurnBar.Integrations.Tests.dll (net10.0)
