@@ -177,7 +177,7 @@ final class LinuxSecretStorageTests: XCTestCase {
 
     private func permissions(_ url: URL) throws -> mode_t {
         var info = stat()
-        let status = url.path.withCString { Glibc.stat($0, &info) }
+        let status = url.path.withCString { Glibc.lstat($0, &info) }
         XCTAssertEqual(status, 0)
         return info.st_mode & 0o777
     }

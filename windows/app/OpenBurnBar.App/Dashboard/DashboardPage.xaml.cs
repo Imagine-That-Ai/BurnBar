@@ -2,14 +2,14 @@ using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenBurnBar.App.Configuration;
+using OpenBurnBar.App.Data;
 using OpenBurnBar.App.Diagnostics;
 using OpenBurnBar.App.Dashboard.EasterEgg;
 using OpenBurnBar.App.Dashboard.Layout;
 using OpenBurnBar.App.Dashboard.Layouts;
 using OpenBurnBar.App.Presentation.Dashboard;
-using OpenBurnBar.App.Storage;
 using OpenBurnBar.App.Theme;
-using OpenBurnBar.Storage;
+using OpenBurnBar.App.UsageRuntime;
 using Windows.UI.ViewManagement;
 
 namespace OpenBurnBar.App.Dashboard;
@@ -93,11 +93,14 @@ public sealed partial class DashboardPage : Page
         }
 
         LiquidGlassEnvironment.PreferencesChanged += OnGlassPreferencesChanged;
-        WindowsUsageRuntimeHost.SnapshotChanged += OnUsageSnapshotChanged;
         ActualThemeChanged += OnActualThemeChanged;
 
         LoadCommandSnapshot();
         ShowLayout(Switcher.State.Selection);
+        if (App.Current.UsageRuntime is { } usageRuntime)
+        {
+            usageRuntime.StateChanged += OnUsageRuntimeStateChanged;
+        }
         Unloaded += OnUnloaded;
     }
 
@@ -105,9 +108,27 @@ public sealed partial class DashboardPage : Page
     {
         _commandSnapshot = RuntimeDataMode.SampleModeEnabled
             ? DashboardCommandSampleData.Snapshot()
-            : WindowsUsageRuntimeHost.DashboardSnapshot();
+            : App.Current.UsageRuntime is { } usageRuntime
+                ? UsageRuntimePresentationMapper.ToDashboardCommandSnapshot(usageRuntime.State)
+                : DashboardCommandSnapshot.Empty;
         CommandSidebar.ApplySnapshot(_commandSnapshot);
         ApplyDetailChrome();
+    }
+
+    private void OnUsageRuntimeStateChanged(object? sender, UsageRuntimeStateChangedEventArgs args)
+    {
+        if (args.Current.IsScanning || RuntimeDataMode.SampleModeEnabled)
+        {
+            return;
+        }
+
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            _commandSnapshot = UsageRuntimePresentationMapper.ToDashboardCommandSnapshot(args.Current);
+            CommandSidebar.ApplySnapshot(_commandSnapshot);
+            ApplyDetailChrome();
+            ShowLayout(Switcher.State.Selection);
+        });
     }
 
     private void OnCommandSelectionChanged(object? sender, DashboardCommandSelection selection)
@@ -308,12 +329,15 @@ public sealed partial class DashboardPage : Page
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         LiquidGlassEnvironment.PreferencesChanged -= OnGlassPreferencesChanged;
-        WindowsUsageRuntimeHost.SnapshotChanged -= OnUsageSnapshotChanged;
         ActualThemeChanged -= OnActualThemeChanged;
         _controller.EventPresented -= OnEventPresented;
         Switcher.LayoutChanged -= OnLayoutChanged;
         CommandSidebar.SelectionChanged -= OnCommandSelectionChanged;
         CommandSidebar.ViewModeChanged -= OnCommandViewModeChanged;
+        if (App.Current.UsageRuntime is { } usageRuntime)
+        {
+            usageRuntime.StateChanged -= OnUsageRuntimeStateChanged;
+        }
         if (_kernel is not null)
         {
             _kernel.Ready -= OnKernelReady;
@@ -330,7 +354,4 @@ public sealed partial class DashboardPage : Page
 
         _backdrop?.Dispose();
     }
-
-    private void OnUsageSnapshotChanged(object? sender, TokenUsageAggregateSnapshot snapshot) =>
-        DispatcherQueue.TryEnqueue(LoadCommandSnapshot);
 }

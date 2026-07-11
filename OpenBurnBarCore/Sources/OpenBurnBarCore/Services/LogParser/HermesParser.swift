@@ -39,6 +39,10 @@ public final class HermesParser: LogParser, Sendable {
     }()
 
     public func parse() async throws -> ParseResult {
+        try parseSynchronously()
+    }
+
+    func parseSynchronously() throws -> ParseResult {
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
         var seenSessionIds: Set<String> = []

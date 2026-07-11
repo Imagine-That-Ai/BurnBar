@@ -3,8 +3,8 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenBurnBar.App.Configuration;
+using OpenBurnBar.App.Data;
 using OpenBurnBar.App.Presentation.Dashboard;
-using OpenBurnBar.App.Storage;
 using OpenBurnBar.App.Theme;
 using Windows.UI;
 
@@ -48,7 +48,9 @@ public sealed partial class AtelierLayoutView : UserControl
         ProviderList.Children.Clear();
         DashboardCommandSnapshot snapshot = RuntimeDataMode.SampleModeEnabled
             ? DashboardCommandSampleData.Snapshot()
-            : WindowsUsageRuntimeHost.DashboardSnapshot();
+            : App.Current.UsageRuntime is { } usageRuntime
+                ? UsageRuntimePresentationMapper.ToDashboardCommandSnapshot(usageRuntime.State)
+                : DashboardCommandSnapshot.Empty;
 
         if (snapshot.Providers.Count == 0)
         {

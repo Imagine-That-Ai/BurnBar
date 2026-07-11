@@ -1,13 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
+
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
+    <ImplicitUsings>disable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.App.UsageRuntime</RootNamespace>
+    <AssemblyName>OpenBurnBar.App.UsageRuntime</AssemblyName>
   </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="../../storage/OpenBurnBar.Storage/OpenBurnBar.Storage.csproj" />
   </ItemGroup>
+
 </Project>
