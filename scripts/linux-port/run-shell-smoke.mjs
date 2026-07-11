@@ -6,8 +6,9 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const appDir = path.join(root, 'apps/linux-desktop');
-const outDir = process.env.OB_EVIDENCE_OUT
-  ? path.resolve(process.env.OB_EVIDENCE_OUT)
+const evidenceOutput = process.env.OB_EVIDENCE_OUT ?? process.env.OPENBURNBAR_LINUX_EVIDENCE_OUT;
+const outDir = evidenceOutput
+  ? path.resolve(evidenceOutput)
   : path.join(root, 'docs/linux-port/evidence/mission-001-shell-ux');
 fs.mkdirSync(outDir, { recursive: true });
 
@@ -45,7 +46,15 @@ function currentDesktopArtifactsAreReusable() {
     'linux-desktop-session-report.json',
     'packaged-route-session-transcript.json',
     'runtime-perf-samples.jsonl',
-    'daemon-session-oracle.json'
+    'daemon-session-oracle.json',
+    'atspi-tree-linux-desktop.json',
+    'atspi-keyboard-focus-sequence.json',
+    'atspi-zoom-200-requested.json',
+    'orca-applications.txt',
+    'orca-debug.log',
+    'orca-process.txt',
+    'orca-version.txt',
+    'zoom-accessibility-evidence.json'
   ];
   for (const fileName of required) {
     const filePath = path.join(outDir, fileName);
@@ -59,13 +68,32 @@ function currentDesktopArtifactsAreReusable() {
   const runtimeRows = fs.readFileSync(path.join(outDir, 'runtime-perf-samples.jsonl'), 'utf8')
     .split('\n')
     .filter((line) => line.trim().length > 0);
+  const routeEvidenceIsComplete = routes?.routes?.every((route) => {
+    if (route?.navMethod !== 'atspi-command-palette-actions') return false;
+    const routeSlug = route?.route;
+    if (typeof routeSlug !== 'string' || routeSlug.length === 0) return false;
+    const actionFiles = [
+      `atspi-command-open-${routeSlug}.json`,
+      `atspi-command-route-${routeSlug}.json`,
+      `atspi-route-${routeSlug}.json`
+    ];
+    return actionFiles.every((fileName) => {
+      const artifact = readJSON(fileName);
+      return artifact?.pass === true;
+    });
+  });
   return Number.isFinite(generatedAt) &&
     Date.now() - generatedAt <= maxAgeMs &&
     report?.performance?.appStartMs > 0 &&
     report?.performance?.ipcHealthRoundTripMs > 0 &&
+    report?.accessibility?.atspiTree?.pass === true &&
+    report?.accessibility?.keyboardFocus?.pass === true &&
+    report?.accessibility?.zoom?.pass === true &&
+    report?.accessibility?.orcaProcessObserved === true &&
     routes?.mode === 'packaged-desktop-route-navigation' &&
     Array.isArray(routes?.routes) &&
-    routes.routes.length > 0 &&
+    routes.routes.length === 19 &&
+    routeEvidenceIsComplete === true &&
     oracle?.mode === 'openburnbar-daemon-af-unix' &&
     oracle?.status === 'ready' &&
     runtimeRows.length >= 5;
@@ -98,6 +126,19 @@ steps.push(currentDesktopArtifactsAreReusable()
   ? reusedDesktopStep()
   : run('node', [path.join(root, 'scripts/linux-port/run-shell-desktop-session.mjs')], root, evidenceEnv, desktopSessionTimeoutMs));
 steps.push(run('node', [path.join(root, 'scripts/linux-port/run-shell-evidence.mjs')], root, evidenceEnv, 120000));
+const matchedProfile = process.env.OB_MATCHED_PERF_PROFILE || 'pr';
+const matchedArguments = [
+  path.join(root, 'scripts/linux-port/run-matched-performance.mjs'),
+  '--profile', matchedProfile
+];
+if (process.env.OB_MATCHED_MACOS_INPUT) {
+  matchedArguments.push('--macos-input', process.env.OB_MATCHED_MACOS_INPUT);
+}
+if (process.env.OB_MATCHED_LINUX_INPUT) {
+  matchedArguments.push('--linux-input', process.env.OB_MATCHED_LINUX_INPUT);
+}
+const matchedTimeoutMs = matchedProfile === 'nightly' ? 2700000 : 900000;
+steps.push(run('node', matchedArguments, root, evidenceEnv, matchedTimeoutMs));
 steps.push(run('node', [path.join(root, 'scripts/linux-port/run-perf-budget.mjs')], root, evidenceEnv, 120000));
 steps.push(run('node', [path.join(root, 'scripts/linux-port/verify-shell-evidence.mjs'), outDir], root, evidenceEnv, 120000));
 

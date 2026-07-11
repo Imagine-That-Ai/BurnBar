@@ -345,10 +345,19 @@ extension ControllerKeyPinStore {
     /// Production default: the device Keychain.
     public static func defaultBacking() -> ControllerKeyPinBacking { ControllerKeyKeychainPinBacking() }
 }
+#elseif os(Linux)
+extension ControllerKeyPinStore {
+    /// Linux production default: freedesktop Secret Service, with an encrypted
+    /// 0600 file fallback when no session secret service is available. Never
+    /// silently degrades to in-memory persistence.
+    public static func defaultBacking() -> ControllerKeyPinBacking {
+        LinuxSecretControllerKeyPinBacking(service: LinuxPersistentSecretStore.controllerPinService)
+    }
+}
 #else
 extension ControllerKeyPinStore {
-    /// On platforms without the Security framework (Linux CI) the default backing
-    /// is in-memory; the shipping macOS app always resolves to the Keychain.
+    /// Non-production fallback for platforms without Security or the Linux
+    /// secret backend. Production macOS and Linux resolve above.
     public static func defaultBacking() -> ControllerKeyPinBacking { InMemoryControllerKeyPinBacking() }
 }
 #endif

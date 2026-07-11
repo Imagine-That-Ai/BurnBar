@@ -1124,18 +1124,30 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
 public struct BurnBarProviderConfigurationSnapshot: Codable, Hashable, Sendable {
     public var providers: [BurnBarProviderSettings]
     public var routerMode: ProviderRouterMode
+    public var telemetryEnabled: Bool
+    public var privacyOptIn: Bool
+    public var cloudSyncEnabled: Bool
 
     public init(
         providers: [BurnBarProviderSettings],
-        routerMode: ProviderRouterMode = .providerFamilyFailover
+        routerMode: ProviderRouterMode = .providerFamilyFailover,
+        telemetryEnabled: Bool = false,
+        privacyOptIn: Bool = false,
+        cloudSyncEnabled: Bool = false
     ) {
         self.providers = providers
         self.routerMode = routerMode
+        self.telemetryEnabled = telemetryEnabled
+        self.privacyOptIn = privacyOptIn
+        self.cloudSyncEnabled = cloudSyncEnabled
     }
 
     private enum CodingKeys: String, CodingKey {
         case providers
         case routerMode
+        case telemetryEnabled
+        case privacyOptIn
+        case cloudSyncEnabled
     }
 
     public init(from decoder: Decoder) throws {
@@ -1143,6 +1155,9 @@ public struct BurnBarProviderConfigurationSnapshot: Codable, Hashable, Sendable 
         self.providers = try container.decode([BurnBarProviderSettings].self, forKey: .providers)
         self.routerMode = try container.decodeIfPresent(ProviderRouterMode.self, forKey: .routerMode)
             ?? .providerFamilyFailover
+        self.telemetryEnabled = try container.decodeIfPresent(Bool.self, forKey: .telemetryEnabled) ?? false
+        self.privacyOptIn = try container.decodeIfPresent(Bool.self, forKey: .privacyOptIn) ?? false
+        self.cloudSyncEnabled = try container.decodeIfPresent(Bool.self, forKey: .cloudSyncEnabled) ?? false
     }
 
     public func providerSettings(id: String) -> BurnBarProviderSettings? {

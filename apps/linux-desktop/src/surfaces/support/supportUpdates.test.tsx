@@ -29,6 +29,9 @@ function resetStores(): void {
     versionInfo: null,
     versionLoading: false,
     versionError: null,
+    updateStatus: null,
+    updateLoading: false,
+    updateError: null,
     exportState: 'idle',
     exportPath: null,
     exportError: null
@@ -65,6 +68,13 @@ function mockBridge(overrides: Partial<LinuxShellBridge> = {}): LinuxShellBridge
       daemonVersion: '1.0.0',
       packageChannel: 'deb',
       updateCheck: 'unavailable-in-shell'
+    }),
+    updateStatus: vi.fn().mockResolvedValue({
+      state: 'current',
+      currentVersion: '1.0.0',
+      latestVersion: '1.0.0',
+      channel: 'stable',
+      publishedAt: '2026-07-09T00:00:00Z'
     }),
     exportDiagnostics: vi.fn().mockResolvedValue({ path: '/home/user/diagnostics.json' }),
     sessionEnv: vi.fn(),
@@ -113,6 +123,61 @@ describe('P09 updates and support', () => {
     });
     expect(container.querySelector('.banner.degraded[role="alert"]')).not.toBeNull();
     expect(screen.getByText(/Shell and daemon versions differ/)).toBeTruthy();
+  });
+
+  it('shows a native-verified update and opens only its validated artifact URL', async () => {
+    const openUpdateUrl = vi.fn().mockResolvedValue(undefined);
+    const bridge = mockBridge({
+      openUpdateUrl,
+      updateStatus: vi.fn().mockResolvedValue({
+        state: 'available',
+        currentVersion: '1.0.0',
+        latestVersion: '1.1.0',
+        channel: 'stable',
+        publishedAt: '2026-07-09T00:00:00Z',
+        notes: 'Security and reliability fixes.',
+        artifact: {
+          type: 'deb',
+          architecture: 'aarch64',
+          url: 'https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v1.1.0/OpenBurnBar_1.1.0_arm64.deb',
+          sha256: 'a'.repeat(64),
+          size: 100,
+          signatureUrl: 'https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v1.1.0/OpenBurnBar_1.1.0_arm64.deb.sig'
+        }
+      })
+    });
+    useShellStore.setState({ bridge, fixtureMode: false });
+    render(<UpdatesSurface />);
+    await act(async () => {
+      await useSupportStore.getState().loadVersion();
+    });
+    expect(screen.getByRole('heading', { name: /1.1.0 is available/ })).toBeTruthy();
+    expect(screen.getByText('Ed25519 verified feed')).toBeTruthy();
+    expect(screen.getByText('Security and reliability fixes.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Open signed download' }));
+    expect(openUpdateUrl).toHaveBeenCalledWith(
+      'https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v1.1.0/OpenBurnBar_1.1.0_arm64.deb'
+    );
+  });
+
+  it('renders rejected update metadata as an alert with the native reason', async () => {
+    const bridge = mockBridge({
+      updateStatus: vi.fn().mockResolvedValue({
+        state: 'invalid',
+        currentVersion: '1.0.0',
+        reason: 'Update feed detached Ed25519 signature verification failed.'
+      })
+    });
+    useShellStore.setState({ bridge, fixtureMode: false });
+    render(<UpdatesSurface />);
+    await act(async () => {
+      await useSupportStore.getState().loadVersion();
+    });
+    expect(screen.getByRole('alert').textContent).toContain('Update metadata rejected');
+    expect(screen.getByRole('alert').textContent).toContain('Ed25519 signature verification failed');
+    expect(screen.getByText('Signature or schema rejected')).toBeTruthy();
+    expect(screen.queryByText('Ed25519 verified feed')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open signed download' })).toBeNull();
   });
 
   it('exports diagnostics successfully via bridge', async () => {
@@ -175,8 +240,8 @@ describe('P09 updates and support', () => {
     expect(localStorage.getItem('openburnbar.linux.daemonFixture')).toBe('1');
   });
 
-  it('mounts Mercury media below diagnostics and preserves media.control.stage perf sample', async () => {
-    recordPerfSample('media.control.stage', 8.5, 'test');
+  it('mounts Mercury media below diagnostics without treating staged media as performance proof', async () => {
+    recordPerfSample('route.navigation', 8.5, 'packaged-ui-route-after-paint:support');
     const bridge = mockBridge();
     useShellStore.setState({ bridge, fixtureMode: false });
     const { container } = render(<SupportSurface />);
@@ -192,7 +257,8 @@ describe('P09 updates and support', () => {
     expect(perf).not.toBeNull();
     expect(diagnostics!.compareDocumentPosition(media!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(media!.compareDocumentPosition(perf!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.getByText('media.control.stage')).toBeTruthy();
+    expect(screen.getByText('route.navigation')).toBeTruthy();
+    expect(screen.queryByText('media.control.stage')).toBeNull();
   });
 
   it('lists diagnostics manifest items before export', () => {

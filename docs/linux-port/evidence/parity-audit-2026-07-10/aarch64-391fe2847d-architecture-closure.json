@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-10T06:55:51.332Z",
+  "version": "0.1.0",
+  "git": {
+    "commit": "391fe2847d7a9f1446174575e533112952f99e82",
+    "branch": "codex/linux-parity-final",
+    "remote": "https://github.com/Imagine-That-Ai/BurnBar.git",
+    "dirty": false,
+    "dirtyEntries": [],
+    "gitAvailable": true
+  },
+  "architecture": "aarch64",
+  "artifacts": [
+    {
+      "type": "appimage",
+      "architecture": "aarch64",
+      "file": "../../../../../evidence/artifacts/OpenBurnBar_0.1.0_aarch64.AppImage",
+      "sourceFile": "apps/linux-desktop/src-tauri/target/release/bundle/appimage/OpenBurnBar_0.1.0_aarch64.AppImage",
+      "size": 147520008,
+      "sha256": "389fd6ec5814037d0c748738ce5370d084054714def2c360d9d63bb996ea291e"
+    },
+    {
+      "type": "deb",
+      "architecture": "aarch64",
+      "file": "../../../../../evidence/artifacts/OpenBurnBar_0.1.0_arm64.deb",
+      "sourceFile": "apps/linux-desktop/src-tauri/target/release/bundle/deb/OpenBurnBar_0.1.0_arm64.deb",
+      "size": 86548430,
+      "sha256": "2cd2e2966394cbd76061b0177b4d8215ab2e841fe48b9ef221cb82659f48a1ff"
+    },
+    {
+      "type": "rpm",
+      "architecture": "aarch64",
+      "file": "../../../../../evidence/artifacts/OpenBurnBar-0.1.0-1.aarch64.rpm",
+      "sourceFile": "apps/linux-desktop/src-tauri/target/release/bundle/rpm/OpenBurnBar-0.1.0-1.aarch64.rpm",
+      "size": 86540062,
+      "sha256": "cd32744330cc6da29a9e3e304bbf6ada4535b715b157f2f9ce41d486f35b9e38"
+    },
+    {
+      "type": "daemon",
+      "architecture": "aarch64",
+      "file": "../../../../../evidence/artifacts/openburnbar-daemon-0.1.0-linux-aarch64",
+      "sourceFile": "OpenBurnBarDaemon/.build/release/OpenBurnBarDaemon",
+      "size": 100330520,
+      "sha256": "82f5c9ce5bc3484fcddbd8d6bbd1d3b0946354e38b7b279d774bd9a87de7a11a"
+    }
+  ],
+  "blockers": []
+}

@@ -1,0 +1,105 @@
+.capability-boundary {
+  min-height: min(620px, calc(100vh - 168px));
+  width: 100%;
+  padding: clamp(32px, 7vh, 88px) clamp(24px, 6vw, 96px);
+  display: grid;
+  grid-template-columns: 28px minmax(0, 620px);
+  align-content: center;
+  justify-content: center;
+  gap: var(--space-4);
+  border-block: 1px solid var(--color-glass-line);
+  background: color-mix(in srgb, var(--color-surface) 86%, transparent);
+}
+
+.capability-boundary__icon {
+  width: 22px;
+  height: 22px;
+  margin-top: 4px;
+  display: grid;
+  place-items: center;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  color: var(--color-seal-crimson);
+  font-size: 0.8rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.capability-boundary__icon--spin {
+  border-right-color: transparent;
+  color: var(--color-accent);
+  animation: capability-boundary-spin 1.1s linear infinite;
+}
+
+.capability-boundary__body {
+  min-width: 0;
+}
+
+.capability-boundary__eyebrow {
+  margin: 0 0 var(--space-2);
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.capability-boundary h3 {
+  margin: 0 0 var(--space-3);
+  font-size: clamp(1.35rem, 2vw, 1.8rem);
+  line-height: 1.2;
+}
+
+.capability-boundary__body > p:not(.capability-boundary__eyebrow) {
+  margin: var(--space-2) 0;
+  color: var(--color-text-secondary);
+  line-height: 1.55;
+}
+
+.capability-boundary__action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.capability-degraded {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) clamp(20px, 4vw, 48px);
+  border-block: 1px solid color-mix(in srgb, var(--color-tier-server-readable) 45%, transparent);
+  color: var(--color-text-secondary);
+  background: color-mix(in srgb, var(--color-tier-server-readable) 9%, transparent);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.capability-degraded__icon {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  font-size: 0.7rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+@keyframes capability-boundary-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .capability-boundary__icon--spin { animation: none; }
+}
+
+@media (max-width: 640px) {
+  .capability-boundary {
+    grid-template-columns: 24px minmax(0, 1fr);
+    justify-content: stretch;
+  }
+}

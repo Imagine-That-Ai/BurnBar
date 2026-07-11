@@ -16,6 +16,9 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .authBootstrap: "auth.bootstrap",
         .health: "daemon.health",
         .catalog: "daemon.catalog",
+        .linuxOnboardingSnapshot: "daemon.onboarding.snapshot",
+        .linuxOnboardingAction: "daemon.onboarding.action",
+        .linuxOnboardingReset: "daemon.onboarding.reset",
         .configGet: "daemon.config.get",
         .configUpdate: "daemon.config.update",
         .providerCredentialSlotUpsert: "daemon.provider.credential_slot.upsert",
@@ -110,6 +113,16 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .codeExplore: "daemon.code.explore",
         .codeOpsDiagnostics: "daemon.code.ops_diagnostics",
         .runResume: "run.resume",
+        .daemonMediaSessionState: "daemon.media.session.state",
+        .daemonMediaCallAccept: "daemon.media.call.accept",
+        .daemonMediaCallDecline: "daemon.media.call.decline",
+        .daemonMediaCallEnd: "daemon.media.call.end",
+        .daemonMediaCapabilityGet: "daemon.media.capability.get",
+        .daemonMediaStatus: "daemon.media.status",
+        .daemonMediaFileOfferList: "daemon.media.file.offer.list",
+        .daemonMediaFileAccept: "daemon.media.file.accept",
+        .daemonMediaFileDecline: "daemon.media.file.decline",
+        .daemonMediaFileSend: "daemon.media.file.send",
         // Added with the 98-method canon regen (main 69e2a41deb): membership +
         // subscription lifecycle + perf.measure. Wire names pinned to the enum rawValues.
         .membershipStatus: "daemon.membership.status",
@@ -117,6 +130,7 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .membershipRestore: "daemon.membership.restore",
         .subscriptionStart: "subscription.start",
         .subscriptionResume: "subscription.resume",
+        .subscriptionStop: "subscription.stop",
         .perfMeasure: "perf.measure"
     ]
 

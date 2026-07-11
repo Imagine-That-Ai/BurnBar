@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "id": "openburnbar-linux-macos-parity-v1",
+  "goldStandard": "OpenBurnBar for macOS",
+  "audit": "docs/linux-port/LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md",
+  "policy": {
+    "allRequirementsMandatory": true,
+    "missingCapabilitiesMayNotBeDocumentedAway": true,
+    "readyEvidenceMustMatchTargetHead": true,
+    "minimumSupportRowsMayNotBeAllowBlocked": true
+  },
+  "minimumSupportMatrix": [
+    {
+      "id": "ubuntu-24.04-gnome-x11-x86_64",
+      "os": "Ubuntu 24.04",
+      "desktop": "GNOME",
+      "session": "X11",
+      "architecture": "x86_64"
+    },
+    {
+      "id": "ubuntu-24.04-gnome-x11-aarch64",
+      "os": "Ubuntu 24.04",
+      "desktop": "GNOME",
+      "session": "X11",
+      "architecture": "aarch64"
+    },
+    {
+      "id": "ubuntu-24.04-gnome-wayland-x86_64",
+      "os": "Ubuntu 24.04",
+      "desktop": "GNOME",
+      "session": "Wayland",
+      "architecture": "x86_64"
+    },
+    {
+      "id": "ubuntu-24.04-gnome-wayland-aarch64",
+      "os": "Ubuntu 24.04",
+      "desktop": "GNOME",
+      "session": "Wayland",
+      "architecture": "aarch64"
+    },
+    {
+      "id": "fedora-kde-wayland-x86_64",
+      "os": "Fedora",
+      "desktop": "KDE Plasma",
+      "session": "Wayland",
+      "architecture": "x86_64"
+    },
+    {
+      "id": "fedora-kde-wayland-aarch64",
+      "os": "Fedora",
+      "desktop": "KDE Plasma",
+      "session": "Wayland",
+      "architecture": "aarch64"
+    },
+    {
+      "id": "arch-sway-wayland-x86_64",
+      "os": "Arch Linux",
+      "desktop": "Sway/wlroots",
+      "session": "Wayland",
+      "architecture": "x86_64"
+    }
+  ],
+  "requirements": [
+    { "id": "P-01", "area": "release-integrity", "priority": "Critical", "minimumEvidenceTier": "A" },
+    { "id": "P-02", "area": "parity-certification", "priority": "Critical", "minimumEvidenceTier": "A" },
+    { "id": "P-03", "area": "installed-runtime", "priority": "Critical", "minimumEvidenceTier": "A" },
+    { "id": "P-04", "area": "architecture-reach", "priority": "Critical", "minimumEvidenceTier": "A" },
+    { "id": "P-05", "area": "credential-custody", "priority": "Critical", "minimumEvidenceTier": "A" },
+    { "id": "P-06", "area": "gateway-credential-boundary", "priority": "Critical", "minimumEvidenceTier": "A" },
+    { "id": "P-07", "area": "computer-use", "priority": "Critical", "minimumEvidenceTier": "A" },
+    { "id": "P-08", "area": "mercury-media", "priority": "Critical", "minimumEvidenceTier": "A" },
+    { "id": "P-09", "area": "navigation-and-shell", "priority": "Medium", "minimumEvidenceTier": "B" },
+    { "id": "P-10", "area": "dashboard-layouts", "priority": "Medium", "minimumEvidenceTier": "B" },
+    { "id": "P-11", "area": "usage-ingestion", "priority": "High", "minimumEvidenceTier": "A" },
+    { "id": "P-12", "area": "quota", "priority": "Medium", "minimumEvidenceTier": "B" },
+    { "id": "P-13", "area": "onboarding", "priority": "High", "minimumEvidenceTier": "A" },
+    { "id": "P-14", "area": "chat", "priority": "High", "minimumEvidenceTier": "A" },
+    { "id": "P-15", "area": "account-and-billing", "priority": "High", "minimumEvidenceTier": "A" },
+    { "id": "P-16", "area": "cloud-and-devices", "priority": "High", "minimumEvidenceTier": "A" },
+    { "id": "P-17", "area": "activity-and-session-logs", "priority": "High", "minimumEvidenceTier": "A" },
+    { "id": "P-18", "area": "memory-review", "priority": "High", "minimumEvidenceTier": "A" },
+    { "id": "P-19", "area": "projects", "priority": "Medium", "minimumEvidenceTier": "B" },
+    { "id": "P-20", "area": "missions", "priority": "Medium", "minimumEvidenceTier": "B" },
+    { "id": "P-21", "area": "insights", "priority": "Medium", "minimumEvidenceTier": "B" },
+    { "id": "P-22", "area": "database", "priority": "Medium", "minimumEvidenceTier": "B" },
+    { "id": "P-23", "area": "provider-and-model-workspace", "priority": "Medium", "minimumEvidenceTier": "B" },
+    { "id": "P-24", "area": "settings", "priority": "Medium", "minimumEvidenceTier": "B" },
+    { "id": "P-25", "area": "updates", "priority": "High", "minimumEvidenceTier": "A" },
+    { "id": "P-26", "area": "tray-and-native-shell", "priority": "High", "minimumEvidenceTier": "A" },
+    { "id": "P-27", "area": "notifications-and-deep-links", "priority": "High", "minimumEvidenceTier": "A" },
+    { "id": "P-28", "area": "smarthub", "priority": "High", "minimumEvidenceTier": "A" },
+    { "id": "P-29", "area": "text-expansion", "priority": "High", "minimumEvidenceTier": "A" },
+    { "id": "P-30", "area": "pet-companion", "priority": "High", "minimumEvidenceTier": "A" },
+    { "id": "P-31", "area": "accessibility", "priority": "High", "minimumEvidenceTier": "A" },
+    { "id": "P-32", "area": "performance", "priority": "High", "minimumEvidenceTier": "A" },
+    { "id": "P-33", "area": "reliability", "priority": "High", "minimumEvidenceTier": "A" },
+    { "id": "P-34", "area": "security-hardening", "priority": "Critical", "minimumEvidenceTier": "A" },
+    { "id": "P-35", "area": "diagnostics-and-support", "priority": "Medium", "minimumEvidenceTier": "B" },
+    { "id": "P-36", "area": "visual-and-interaction-polish", "priority": "Medium", "minimumEvidenceTier": "B" },
+    { "id": "P-37", "area": "linux-matrix", "priority": "Critical", "minimumEvidenceTier": "A" },
+    { "id": "P-38", "area": "ci-and-release-automation", "priority": "Critical", "minimumEvidenceTier": "A" },
+    { "id": "P-39", "area": "cross-platform-differential-proof", "priority": "High", "minimumEvidenceTier": "A" },
+    { "id": "P-40", "area": "data-and-privacy", "priority": "High", "minimumEvidenceTier": "A" }
+  ]
+}

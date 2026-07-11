@@ -1,4 +1,5 @@
 import OpenBurnBarCore
+import OpenBurnBarLinuxSecurity
 import Foundation
 #if canImport(FoundationNetworking)
 @preconcurrency import FoundationNetworking
@@ -117,6 +118,12 @@ public struct BurnBarProxyStreamingUnsupported: Error, Sendable {
 /// a helper that opens a line-framed byte stream from a `URLRequest`.
 public enum BurnBarProxyStreaming {
     private static let logger = BurnBarDaemonLogger(category: "provider-stream")
+    #if os(Linux)
+    // swift-corelibs-foundation can fail to complete a data task after an
+    // upstream RST. Bound post-response silence so the gateway always closes
+    // the downstream client instead of holding a streamed request forever.
+    private static let linuxStreamInactivityTimeoutNanoseconds: UInt64 = 15_000_000_000
+    #endif
 
     /// Streaming responses can stay open far longer than a normal request,
     /// so this session relaxes the per-request and resource timeouts that
@@ -142,7 +149,10 @@ public enum BurnBarProxyStreaming {
         defaultContentType: String
     ) async throws -> BurnBarProviderProxyStream {
         #if os(Linux)
-        let delegate = LinuxURLSessionByteStreamDelegate(defaultContentType: defaultContentType)
+        let delegate = LinuxURLSessionByteStreamDelegate(
+            defaultContentType: defaultContentType,
+            inactivityTimeoutNanoseconds: linuxStreamInactivityTimeoutNanoseconds
+        )
         let stream = delegate.makeStream()
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 300
@@ -255,164 +265,6 @@ public enum BurnBarProxyStreaming {
         return chunk
     }
 }
-
-#if os(Linux)
-// All mutable state (continuations, buffered result, termination handler) is guarded
-// by the NSLock below; the NSObject/URLSessionDataDelegate constraint rules out an
-// actor. sendable-allowlist: nslock-protected-storage
-private final class LinuxURLSessionByteStreamDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
-    struct ResponseHead {
-        let statusCode: Int
-        let contentType: String
-    }
-
-    private let lock = NSLock()
-    private let defaultContentType: String
-    private var responseContinuation: CheckedContinuation<ResponseHead, Error>?
-    private var responseResult: Result<ResponseHead, Error>?
-    private var streamContinuation: AsyncThrowingStream<Data, Error>.Continuation?
-    private var terminationHandler: (() -> Void)?
-    private var successStatusCode: Int?
-    private var upstreamErrorStatusCode: Int?
-    private var upstreamErrorData = Data()
-    private var upstreamErrorHeaders: [String: String] = [:]
-    private var finished = false
-
-    init(defaultContentType: String) {
-        self.defaultContentType = defaultContentType
-    }
-
-    func makeStream() -> AsyncThrowingStream<Data, Error> {
-        AsyncThrowingStream { continuation in
-            lock.lock()
-            streamContinuation = continuation
-            lock.unlock()
-
-            continuation.onTermination = { [weak self] _ in
-                self?.lock.lock()
-                let handler = self?.terminationHandler
-                self?.lock.unlock()
-                handler?()
-            }
-        }
-    }
-
-    func setTerminationHandler(_ handler: @escaping () -> Void) {
-        lock.lock()
-        terminationHandler = handler
-        lock.unlock()
-    }
-
-    func awaitHTTPResponse() async throws -> ResponseHead {
-        try await withCheckedThrowingContinuation { continuation in
-            lock.lock()
-            if let responseResult {
-                lock.unlock()
-                continuation.resume(with: responseResult)
-            } else {
-                responseContinuation = continuation
-                lock.unlock()
-            }
-        }
-    }
-
-    func urlSession(
-        _ session: URLSession,
-        dataTask: URLSessionDataTask,
-        didReceive response: URLResponse,
-        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
-    ) {
-        guard let httpResponse = response as? HTTPURLResponse else {
-            completeResponse(.failure(BurnBarProviderExecutorError.invalidResponse))
-            completionHandler(.cancel)
-            return
-        }
-
-        let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type") ?? defaultContentType
-        if (200..<300).contains(httpResponse.statusCode) {
-            lock.lock()
-            successStatusCode = httpResponse.statusCode
-            lock.unlock()
-            completeResponse(.success(ResponseHead(statusCode: httpResponse.statusCode, contentType: contentType)))
-        } else {
-            lock.lock()
-            upstreamErrorStatusCode = httpResponse.statusCode
-            upstreamErrorHeaders = BurnBarProxyStreaming.normalizedHeaders(from: httpResponse)
-            lock.unlock()
-        }
-        completionHandler(.allow)
-    }
-
-    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
-        lock.lock()
-        let isSuccess = successStatusCode != nil
-        let continuation = streamContinuation
-        if !isSuccess, upstreamErrorData.count < 64 * 1024 {
-            upstreamErrorData.append(data.prefix(max(0, 64 * 1024 - upstreamErrorData.count)))
-        }
-        lock.unlock()
-
-        if isSuccess, !data.isEmpty {
-            continuation?.yield(data)
-        }
-    }
-
-    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        lock.lock()
-        guard !finished else {
-            lock.unlock()
-            return
-        }
-        finished = true
-        let continuation = streamContinuation
-        let upstreamStatus = upstreamErrorStatusCode
-        let upstreamBody = String(data: upstreamErrorData, encoding: .utf8) ?? ""
-        let upstreamHeaders = upstreamErrorHeaders
-        let sawSuccess = successStatusCode != nil
-        lock.unlock()
-
-        defer { session.finishTasksAndInvalidate() }
-
-        if let error {
-            completeResponse(.failure(error))
-            continuation?.finish(throwing: error)
-            return
-        }
-
-        if let upstreamStatus {
-            let upstreamError = BurnBarProviderExecutorError.upstreamErrorWithHeaders(
-                upstreamStatus,
-                upstreamBody,
-                upstreamHeaders
-            )
-            completeResponse(.failure(upstreamError))
-            continuation?.finish(throwing: upstreamError)
-            return
-        }
-
-        if sawSuccess {
-            continuation?.finish()
-        } else {
-            let invalid = BurnBarProviderExecutorError.invalidResponse
-            completeResponse(.failure(invalid))
-            continuation?.finish(throwing: invalid)
-        }
-    }
-
-    private func completeResponse(_ result: Result<ResponseHead, Error>) {
-        lock.lock()
-        if responseResult == nil {
-            responseResult = result
-            let continuation = responseContinuation
-            responseContinuation = nil
-            lock.unlock()
-            continuation?.resume(with: result)
-        } else {
-            lock.unlock()
-        }
-    }
-}
-#endif
 
 public struct BurnBarStructuredPromptRequest: Sendable {
     public let systemPrompt: String?
@@ -1078,6 +930,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
     private let hermesCredentialPoolURL: URL?
     private let claudeCodeCredentialsURL: URL?
     private let claudeOAuthRefreshSession: URLSession
+    private let linuxSecretCustodian: LinuxSecretCustodian
 
     public init(
         service: String = BurnBarKeychainSecretStore.defaultService,
@@ -1087,7 +940,8 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
         claudeCodeCredentialsURL: URL? = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".claude/.credentials.json", isDirectory: false),
         fallbackSecretFileURL: URL? = BurnBarDaemonPaths.defaultProviderSecretContinuityURL,
-        claudeOAuthRefreshSession: URLSession = .shared
+        claudeOAuthRefreshSession: URLSession = .shared,
+        linuxSecretCustodian: LinuxSecretCustodian = LinuxSecretStoreFactory.production()
     ) {
         self.service = service
         self.legacyServices = legacyServices ?? (
@@ -1096,6 +950,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
         self.hermesCredentialPoolURL = hermesCredentialPoolURL
         self.claudeCodeCredentialsURL = claudeCodeCredentialsURL
         self.claudeOAuthRefreshSession = claudeOAuthRefreshSession
+        self.linuxSecretCustodian = linuxSecretCustodian
         if let fallbackSecretFileURL {
             // Legacy continuity vaults were plaintext JSON. They are no longer
             // trusted as a credential source; best-effort scrub stale copies.
@@ -1317,6 +1172,15 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
         let decoded = String(data: data, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return decoded?.isEmpty == false ? decoded : nil
+#elseif os(Linux)
+        do {
+            return try linuxSecretCustodian.requireHighValueSecret(
+                id: "\(service):\(account)",
+                secretClass: .providerCredential
+            ).secret
+        } catch LinuxSecretStoreError.missingSecret(_) {
+            return nil
+        }
 #else
         return nil
 #endif
@@ -1372,6 +1236,22 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             guard deleteStatus == errSecSuccess || deleteStatus == errSecItemNotFound else {
                 throw NSError(domain: NSOSStatusErrorDomain, code: Int(deleteStatus))
             }
+        }
+#elseif os(Linux)
+        let account = "provider.\(providerID).apiKey"
+        let id = "\(service):\(account)"
+        if let normalized = secret?.trimmingCharacters(in: .whitespacesAndNewlines),
+           normalized.isEmpty == false {
+            _ = try linuxSecretCustodian.storeHighValueSecret(
+                normalized,
+                id: id,
+                secretClass: .providerCredential
+            )
+        } else {
+            try linuxSecretCustodian.deleteHighValueSecret(
+                id: id,
+                secretClass: .providerCredential
+            )
         }
 #else
         throw NSError(
@@ -1930,59 +1810,4 @@ struct ProviderCompletionResponse: Decodable {
 
     let choices: [Choice]
     let usage: Usage?
-}
-
-struct OllamaNativeChatResponse: Decodable {
-    struct Message: Decodable {
-        let role: String?
-        let content: String?
-        let thinking: String?
-        let toolCalls: [OllamaNativeToolCall]?
-
-        private enum CodingKeys: String, CodingKey {
-            case role
-            case content
-            case thinking
-            case tool_calls
-            case toolCalls
-        }
-
-        init(from decoder: Decoder) throws {
-            let container = try decoder.container(keyedBy: CodingKeys.self)
-            role = try container.decodeIfPresent(String.self, forKey: .role)
-            content = try container.decodeIfPresent(String.self, forKey: .content)
-            thinking = try container.decodeIfPresent(String.self, forKey: .thinking)
-            toolCalls = try container.decodeIfPresent([OllamaNativeToolCall].self, forKey: .tool_calls)
-                ?? container.decodeIfPresent([OllamaNativeToolCall].self, forKey: .toolCalls)
-        }
-    }
-
-    let model: String?
-    let createdAt: String?
-    let message: Message?
-    let done: Bool?
-    let doneReason: String?
-    let promptEvalCount: Int?
-    let evalCount: Int?
-
-    private enum CodingKeys: String, CodingKey {
-        case model
-        case createdAt = "created_at"
-        case message
-        case done
-        case doneReason = "done_reason"
-        case promptEvalCount = "prompt_eval_count"
-        case evalCount = "eval_count"
-    }
-}
-
-struct OllamaNativeToolCall: Decodable {
-    struct Function: Decodable {
-        let name: String?
-        let arguments: BurnBarJSONValue?
-    }
-
-    let id: String?
-    let type: String?
-    let function: Function?
 }

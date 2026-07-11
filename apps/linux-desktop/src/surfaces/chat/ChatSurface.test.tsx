@@ -2,18 +2,24 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fixtureSessionList } from '../../daemonFixture.js';
-import type { LinuxShellBridge, SessionListResult } from '../../tauriBridge.js';
+import { bridgeStubDefaults } from '../../testing/bridgeStubs.js';
+import type { GatewayProxyRequest, LinuxShellBridge, SessionListResult } from '../../tauriBridge.js';
 import { useChatStore } from '../../state/chatStore.js';
 import { useShellStore } from '../../state/shellStore.js';
+import { availableRuntimeCapabilities } from '../../testing/bridgeStubs.js';
 import { ChatSurface } from './ChatSurface.js';
 
 function mockBridge(handlers: {
   sessionList?: () => Promise<SessionListResult>;
   sessionSearch?: (query: string) => Promise<SessionListResult>;
+  gatewayProbe?: () => Promise<boolean>;
+  gatewayChatStream?: (request: GatewayProxyRequest, onChunk: (chunk: string) => void) => Promise<void>;
 }): LinuxShellBridge {
   const emptyList = async (): Promise<SessionListResult> => ({ sessions: [], nextCursor: null });
   const bridge: LinuxShellBridge = {
+    ...bridgeStubDefaults,
     daemonHealth: async () => ({ ok: true }),
+    runtimeCapabilities: availableRuntimeCapabilities,
     openDashboard: async () => {},
     quitApp: async () => {},
     trayDegraded: async () => false,
@@ -81,7 +87,9 @@ function mockBridge(handlers: {
     }),
     exportDiagnostics: async () => ({ path: '/tmp/diag.zip' }),
     sessionEnv: async () => ({}),
-    gatewayAuthToken: async () => null,
+    gatewayProbe: handlers.gatewayProbe ?? (async () => false),
+    gatewayChatStream: handlers.gatewayChatStream ?? (async () => undefined),
+    gatewayChatCancel: async () => undefined,
     mediaStatus: async () => ({ capabilityAvailable: false, pairedDevices: [] }),
     integrationsStatus: async () => ({ integrations: [] })
   };
@@ -278,17 +286,15 @@ describe('ChatSurface', () => {
     expect(screen.getByRole('button', { name: /Send message/i })).toHaveProperty('disabled', true);
   });
 
-  it('renders the Linux 503 unimplemented gateway state honestly', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi
-        .fn()
-        .mockResolvedValueOnce(new Response('{}', { status: 200 }))
-        .mockResolvedValueOnce(new Response('{}', { status: 200 }))
-        .mockResolvedValueOnce(new Response('{"error":{"message":"chat completions unimplemented"}}', { status: 503 }))
-    );
+  it('renders an unimplemented response from the native gateway proxy honestly', async () => {
     useShellStore.setState({
-      bridge: mockBridge({ sessionList: async () => ({ sessions: [], nextCursor: null }) }),
+      bridge: mockBridge({
+        sessionList: async () => ({ sessions: [], nextCursor: null }),
+        gatewayProbe: async () => true,
+        gatewayChatStream: async () => {
+          throw new Error('gateway_http:503:chat completions unimplemented');
+        }
+      }),
       fixtureMode: false,
       bridgeReady: true,
       health: { ok: true, gatewayEnabled: true, gatewayHost: '127.0.0.1', gatewayPort: 8642 }

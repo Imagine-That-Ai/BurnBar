@@ -12,7 +12,7 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
         defer { upstream.stop() }
 
         let harness = try LinuxGatewayHarness()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
         try await harness.configureZAIProvider(baseURL: "http://127.0.0.1:\(upstream.port)/v1")
         try await harness.start()
 
@@ -60,7 +60,7 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
         defer { upstream.stop() }
 
         let harness = try LinuxGatewayHarness()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
         try await harness.configureZAIProvider(baseURL: "http://127.0.0.1:\(upstream.port)/v1")
         try await harness.start()
 
@@ -84,7 +84,7 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
         defer { upstream.stop() }
 
         let harness = try LinuxGatewayHarness()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
         try await harness.configureAnthropicProvider(baseURL: "http://127.0.0.1:\(upstream.port)/anthropic/v1")
         try await harness.start()
 
@@ -136,7 +136,7 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
         defer { upstream.stop() }
 
         let harness = try LinuxGatewayHarness()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
         try await harness.configureZAIProvider(baseURL: "http://127.0.0.1:\(upstream.port)/v1")
         try await harness.start()
 
@@ -176,7 +176,7 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
         defer { upstream.stop() }
 
         let harness = try LinuxGatewayHarness()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
         try await harness.configureAnthropicProvider(baseURL: "http://127.0.0.1:\(upstream.port)/anthropic/v1")
         try await harness.start()
 
@@ -212,7 +212,7 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
 
     func testRejectsMalformedChatCompletionsRequestBeforeRouting() async throws {
         let harness = try LinuxGatewayHarness()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
         try await harness.start()
 
         let response = try await LinuxHTTPClient.post(
