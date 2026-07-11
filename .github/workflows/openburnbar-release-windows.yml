@@ -403,6 +403,24 @@ jobs:
           dotnet run --project "$tool" -c Release -- verify-feed \
             --feed "artifacts/windows-update-feed-v${VERSION}.json" --pinned-public-base64 "$pub"
 
+          appcast_generator="windows/packaging/updater/OpenBurnBar.Updater.Generator/OpenBurnBar.Updater.Generator.csproj"
+          dotnet run --project "$appcast_generator" -c Release -- \
+            --version "${VERSION}" \
+            --build "${VERSION}" \
+            --bundle-id com.openburnbar.app \
+            --artifact "artifacts/OpenBurnBar-${VERSION}-x64.msix" \
+            --download-url "https://dl.openburnbar.app/windows/OpenBurnBar-${VERSION}-x64.msix" \
+            --appcast-url "https://dl.openburnbar.app/windows/appcast-windows.xml" \
+            --ed-seed-base64-env WINDOWS_UPDATE_SIGNING_KEY \
+            --appcast-out artifacts/appcast-windows.xml \
+            --json-out artifacts/latest-windows.json \
+            --release-notes-url "https://dl.openburnbar.app/windows/release-metadata.json" \
+            --commit "${GITHUB_SHA}" \
+            --created-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --pub-date "$(date -u '+%a, %d %b %Y %H:%M:%S GMT')"
+
+          dotnet test windows/tests/updater/OpenBurnBar.Updater.Tests.csproj -c Release
+
       - name: Upload Windows release artifacts
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
