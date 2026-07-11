@@ -43,9 +43,11 @@ public sealed class JsonlUsageLogParser : IUsageLogParser
 
         var aggregates = new Dictionary<string, MutableUsage>(StringComparer.Ordinal);
         var conversation = new StringBuilder(Math.Min(_maxConversationChars, 16_384));
-        string fallbackSession = Path.GetFileNameWithoutExtension(log.Path);
+        bool isCodex = log.Provider.Equals("codex", StringComparison.OrdinalIgnoreCase);
+        string fallbackSession = isCodex ? "unknown" : Path.GetFileNameWithoutExtension(log.Path);
         string sessionId = fallbackSession;
-        string projectName = ProjectFromPath(log.Path);
+        string projectName = isCodex ? string.Empty : ProjectFromPath(log.Path);
+        bool hasExplicitSession = false;
         string? title = null;
         DateTimeOffset firstAt = info.CreationTimeUtc;
         DateTimeOffset lastAt = info.LastWriteTimeUtc;
@@ -78,14 +80,24 @@ public sealed class JsonlUsageLogParser : IUsageLogParser
                     MaxDepth = 128,
                 });
                 JsonElement root = document.RootElement;
-                sessionId = FindString(root, SessionAliases) ?? sessionId;
-                projectName = NormalizeProject(FindString(root, ProjectAliases)) ?? projectName;
+                string? explicitSession = FindString(root, SessionAliases);
+                if (explicitSession is not null)
+                {
+                    sessionId = explicitSession;
+                    hasExplicitSession = true;
+                }
+
+                string? explicitProject = NormalizeProject(FindString(root, ProjectAliases));
+                if (explicitProject is not null)
+                {
+                    projectName = explicitProject;
+                }
                 DateTimeOffset timestamp = FindTimestamp(root) ?? lastAt;
                 if (timestamp < firstAt) firstAt = timestamp;
                 if (timestamp > lastAt) lastAt = timestamp;
 
                 string model = FindString(root, ModelAliases) ?? "unknown";
-                if (FindUsage(root) is { } usage && usage.TotalTokens > 0)
+                if (FindUsage(root, isCodex) is { } usage && usage.TotalTokens > 0)
                 {
                     string key = sessionId + "\n" + model;
                     if (!aggregates.TryGetValue(key, out MutableUsage? aggregate))
@@ -94,7 +106,7 @@ public sealed class JsonlUsageLogParser : IUsageLogParser
                         aggregates.Add(key, aggregate);
                     }
 
-                    aggregate.Add(usage, timestamp, IsCumulativeProvider(log.Provider));
+                    aggregate.Add(usage, timestamp);
                 }
 
                 foreach (string text in FindText(root))
@@ -117,6 +129,7 @@ public sealed class JsonlUsageLogParser : IUsageLogParser
 
         string conversationId = StableId("conversation", log.Provider, sessionId, log.Path);
         ConversationRecord? conversationRecord = conversation.Length == 0 && aggregates.Count == 0
+            || isCodex && !hasExplicitSession
             ? null
             : new ConversationRecord(
                 conversationId,
@@ -155,7 +168,7 @@ public sealed class JsonlUsageLogParser : IUsageLogParser
         return new ParsedUsageLog(rows, conversationRecord);
     }
 
-    private static UsageValues? FindUsage(JsonElement element)
+    private static UsageValues? FindUsage(JsonElement element, bool isCodex)
     {
         var queue = new Queue<JsonElement>();
         queue.Enqueue(element);
@@ -164,6 +177,32 @@ public sealed class JsonlUsageLogParser : IUsageLogParser
             JsonElement current = queue.Dequeue();
             if (current.ValueKind == JsonValueKind.Object)
             {
+                if (isCodex && current.TryGetProperty("total_token_usage", out JsonElement totalUsage)
+                    && totalUsage.ValueKind == JsonValueKind.Object)
+                {
+                    return UsageValues.From(totalUsage, isCumulative: true, inclusiveCache: true);
+                }
+
+                if (isCodex && current.TryGetProperty("token_count", out JsonElement tokenCount)
+                    && tokenCount.ValueKind == JsonValueKind.Object
+                    && tokenCount.TryGetProperty("input_tokens", out _)
+                    && tokenCount.TryGetProperty("output_tokens", out _))
+                {
+                    return UsageValues.From(tokenCount, isCumulative: true, inclusiveCache: true);
+                }
+
+                if (isCodex && current.TryGetProperty("last_token_usage", out JsonElement lastUsage)
+                    && lastUsage.ValueKind == JsonValueKind.Object)
+                {
+                    return UsageValues.From(lastUsage, isCumulative: false, inclusiveCache: true);
+                }
+
+                if (isCodex && current.TryGetProperty("input_tokens", out _)
+                    && current.TryGetProperty("output_tokens", out _))
+                {
+                    return UsageValues.From(current, isCumulative: true, inclusiveCache: true);
+                }
+
                 UsageValues values = UsageValues.From(current);
                 if (values.TotalTokens > 0)
                 {
@@ -296,10 +335,6 @@ public sealed class JsonlUsageLogParser : IUsageLogParser
         builder.Append(text.AsSpan(0, Math.Min(text.Length, remaining)));
     }
 
-    private static bool IsCumulativeProvider(string provider) =>
-        provider.Equals("codex", StringComparison.OrdinalIgnoreCase)
-        || provider.Equals("grok", StringComparison.OrdinalIgnoreCase);
-
     private static string StableId(params string[] parts)
     {
         byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(string.Join("\n", parts)));
@@ -331,10 +366,11 @@ public sealed class JsonlUsageLogParser : IUsageLogParser
         public long TotalTokens { get; private set; }
         public double Cost { get; private set; }
         public DateTimeOffset LastAt { get; private set; }
+        private bool HasCumulativeUsage { get; set; }
 
-        public void Add(UsageValues value, DateTimeOffset at, bool cumulative)
+        public void Add(UsageValues value, DateTimeOffset at)
         {
-            if (cumulative)
+            if (value.IsCumulative)
             {
                 InputTokens = Math.Max(InputTokens, value.InputTokens);
                 OutputTokens = Math.Max(OutputTokens, value.OutputTokens);
@@ -343,8 +379,9 @@ public sealed class JsonlUsageLogParser : IUsageLogParser
                 ReasoningTokens = Math.Max(ReasoningTokens, value.ReasoningTokens);
                 TotalTokens = Math.Max(TotalTokens, value.TotalTokens);
                 Cost = Math.Max(Cost, value.Cost);
+                HasCumulativeUsage = true;
             }
-            else
+            else if (!HasCumulativeUsage)
             {
                 InputTokens += value.InputTokens;
                 OutputTokens += value.OutputTokens;
@@ -366,17 +403,18 @@ public sealed class JsonlUsageLogParser : IUsageLogParser
         long CacheReadTokens,
         long ReasoningTokens,
         long TotalTokens,
-        double Cost)
+        double Cost,
+        bool IsCumulative = false)
     {
         private static readonly string[] Input = { "input_tokens", "inputTokens", "prompt_tokens", "promptTokens" };
         private static readonly string[] Output = { "output_tokens", "outputTokens", "completion_tokens", "completionTokens" };
         private static readonly string[] CacheCreate = { "cache_creation_input_tokens", "cacheCreationInputTokens" };
-        private static readonly string[] CacheRead = { "cache_read_input_tokens", "cacheReadInputTokens", "cached_tokens", "cachedTokens" };
+        private static readonly string[] CacheRead = { "cache_read_input_tokens", "cacheReadInputTokens", "cached_input_tokens", "cachedInputTokens", "cached_tokens", "cachedTokens" };
         private static readonly string[] Reasoning = { "reasoning_tokens", "reasoningTokens" };
         private static readonly string[] Total = { "total_tokens", "totalTokens" };
         private static readonly string[] CostAliases = { "cost_usd", "costUsd", "total_cost_usd", "totalCostUsd", "cost" };
 
-        public static UsageValues From(JsonElement element)
+        public static UsageValues From(JsonElement element, bool isCumulative = false, bool inclusiveCache = false)
         {
             long input = FindLong(element, Input);
             long output = FindLong(element, Output);
@@ -384,8 +422,13 @@ public sealed class JsonlUsageLogParser : IUsageLogParser
             long cacheRead = FindLong(element, CacheRead);
             long reasoning = FindLong(element, Reasoning);
             long total = FindLong(element, Total);
+            if (inclusiveCache)
+            {
+                input = Math.Max(input - cacheRead, 0);
+            }
+
             if (total == 0) total = input + output + cacheCreate + cacheRead + reasoning;
-            return new UsageValues(input, output, cacheCreate, cacheRead, reasoning, total, FindDouble(element, CostAliases));
+            return new UsageValues(input, output, cacheCreate, cacheRead, reasoning, total, FindDouble(element, CostAliases), isCumulative);
         }
 
         private static long FindLong(JsonElement element, IReadOnlyList<string> aliases)

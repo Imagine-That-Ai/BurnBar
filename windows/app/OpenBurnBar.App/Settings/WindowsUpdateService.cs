@@ -162,7 +162,13 @@ internal static class WindowsUpdateService
     {
         FeedMetadata feed = GetFeedMetadata();
         string pin = Environment.GetEnvironmentVariable(PinEnv) ?? feed.PinnedKey;
-        bool productionPinInjected = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(PinEnv));
+        string updatesDir = Path.Combine(AppContext.BaseDirectory, "Resources", "Updates");
+        string channelMarkerPath = Path.Combine(updatesDir, "pin-channel.txt");
+        bool productionPinInjected = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(PinEnv))
+            || string.Equals(
+                File.Exists(channelMarkerPath) ? File.ReadAllText(channelMarkerPath).Trim() : null,
+                "production",
+                StringComparison.Ordinal);
         bool automatic = persistence.Read(AutomaticChecksKey, false);
         string version = CurrentVersion();
         string channel = productionPinInjected ? "direct-download" : "direct-download dev pin";

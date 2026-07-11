@@ -49,6 +49,40 @@ public sealed class UsageRuntimeTests : IDisposable
     }
 
     [Fact]
+    public void CodexParser_AccumulatesDeltasUntilCumulativeTotalsArrive_AndSeparatesCache()
+    {
+        string path = WriteLog(
+            "codex-delta.jsonl",
+            """
+            {"event_msg":{"token_count":{"last_token_usage":{"input_tokens":10,"cached_input_tokens":3,"output_tokens":4}}}}
+            {"event_msg":{"token_count":{"last_token_usage":{"input_tokens":6,"cached_input_tokens":1,"output_tokens":2}}}}
+            {"event_msg":{"token_count":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":25,"output_tokens":10,"total_tokens":110}}}}
+            """);
+
+        TokenUsageRecord usage = Assert.Single(new JsonlUsageLogParser().Parse(Log("codex", path)).UsageRecords);
+        Assert.Equal(75, usage.InputTokens);
+        Assert.Equal(25, usage.CacheReadTokens);
+        Assert.Equal(10, usage.OutputTokens);
+        Assert.Equal(110, usage.TotalTokens);
+    }
+
+    [Fact]
+    public void CodexParser_DoesNotInventSessionOrProjectMetadataFromPath()
+    {
+        string path = WriteLog(
+            "rollout-session-encoded-path.jsonl",
+            """
+            {"total_token_usage":{"input_tokens":4,"output_tokens":2,"total_tokens":6},"text":"private prompt"}
+            """);
+
+        ParsedUsageLog parsed = new JsonlUsageLogParser().Parse(Log("codex", path));
+        TokenUsageRecord usage = Assert.Single(parsed.UsageRecords);
+        Assert.Equal("unknown", usage.SessionId);
+        Assert.Equal(string.Empty, usage.ProjectName);
+        Assert.Null(parsed.Conversation);
+    }
+
+    [Fact]
     public void Discovery_UsesKnownRoots_FiltersExtensions_AndCapsNewestFirst()
     {
         string claude = Path.Combine(_root, ".claude", "projects");

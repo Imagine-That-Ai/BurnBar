@@ -8,6 +8,7 @@ using OpenBurnBar.App.Theme;
 using OpenBurnBar.App.CloudSync;
 using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Diagnostics;
+using OpenBurnBar.App.Settings;
 using OpenBurnBar.App.Settings.Winui;
 using OpenBurnBar.App.Storage;
 using OpenBurnBar.App.Tray;
@@ -155,6 +156,11 @@ public partial class App : Application
         {
             ShowMainWindow();
             _mainWindow?.Shell.Navigate(route.RouteKey);
+            if (route.Payload == "updates")
+            {
+                (_dispatcherQueue ?? DispatcherQueue.GetForCurrentThread())
+                    ?.TryEnqueue(() => SettingsDeepLink.Route(SettingsAnchor.UpdatesOverview));
+            }
         }
     }
 

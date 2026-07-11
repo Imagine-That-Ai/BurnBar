@@ -192,6 +192,8 @@ jobs:
       - name: Publish WinUI app (win-x64 + win-arm64)
         # Real build. Unproven until WINUI-017 lands the full WinUI toolchain build; this only
         # runs on a windows-v* tag, which is not cut until the app builds green.
+        env:
+          WINDOWS_UPDATE_PUBLIC_KEY: ${{ vars.WINDOWS_UPDATE_PUBLIC_KEY }}
         run: |
           set -euo pipefail
           app="windows/app/OpenBurnBar.App/OpenBurnBar.App.csproj"
