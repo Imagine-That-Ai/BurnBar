@@ -165,6 +165,22 @@ for (const requiredEvidence of [
   );
 }
 
+const windowsDistPrWorkflow = read(".github/workflows/pr-windows-dist.yml");
+assert.match(
+  windowsDistPrWorkflow,
+  /windows\/packaging\/msix\//,
+  "Windows distribution PR detection must include the MSIX packaging surface",
+);
+assert.match(
+  windowsDistPrWorkflow,
+  /Get-ChildItem windows\/packaging\/msix[\s\S]*Language\.Parser\]::ParseFile\(/,
+  "Windows distribution PR verification must parse the MSIX PowerShell scripts",
+);
+assert.ok(
+  windowsDistPrWorkflow.includes("node scripts/ci/verify-ops-script-hardening.test.mjs"),
+  "Windows distribution PR verification must execute the release wiring regressions",
+);
+
 const firebaseRules = read("scripts/ci/deploy-firebase-rules-releases.mjs");
 assert.ok(
   firebaseRules.includes("rulesSourceForDeploy"),
