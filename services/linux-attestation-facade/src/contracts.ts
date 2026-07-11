@@ -1,5 +1,6 @@
 import { base64, base64url, brokerLabel, exactKeys, identifier, integer, object, sha256, sha256Hex } from "./validation.js";
 import { PublicError } from "./errors.js";
+import { MAX_EVIDENCE_BYTES } from "./constants.js";
 
 export const PROTOCOL_VERSION = 1 as const;
 export const ATTESTATION_KIND = "tpm2_ima_signed_verdict_v1" as const;
@@ -135,7 +136,7 @@ export function parseEvidenceReceipt(value: unknown): EvidenceReceipt {
     uploadId: identifier(source.uploadId, "evidence.upload.uploadId"),
     generation: identifier(source.generation, "evidence.upload.generation"),
     sha256: sha256Hex(source.sha256, "evidence.upload.sha256"),
-    size: integer(source.size, "evidence.upload.size", 1, 64 * 1024 * 1024),
+    size: integer(source.size, "evidence.upload.size", 1, MAX_EVIDENCE_BYTES),
   };
 }
 
@@ -171,7 +172,7 @@ export function parseVerifyRequest(value: unknown): VerifyRequest {
       evidenceBundle: {
         descriptorIndex: 0,
         format: "openburnbar_tpm_evidence_bundle_v1",
-        byteLength: integer(bundle.byteLength, "evidence.evidenceBundle.byteLength", 1, 64 * 1024 * 1024),
+        byteLength: integer(bundle.byteLength, "evidence.evidenceBundle.byteLength", 1, MAX_EVIDENCE_BYTES),
         sha256: sha256Hex(bundle.sha256, "evidence.evidenceBundle.sha256"),
       },
       upload: parseEvidenceReceipt(evidence.upload),

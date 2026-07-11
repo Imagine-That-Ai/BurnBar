@@ -36,7 +36,7 @@ describe("OBBATST1 parser", () => {
     ["bad magic", (bytes: Buffer) => { bytes[0] = 0; return bytes; }],
     ["record hash mismatch", (bytes: Buffer) => { bytes[bytes.length - 1] = (bytes[bytes.length - 1] ?? 0) ^ 1; return bytes; }],
     ["trailing data", (bytes: Buffer) => Buffer.concat([bytes, Buffer.from([0])])],
-    ["oversize descriptor", () => Buffer.alloc(64 * 1024 * 1024 + 1)],
+    ["oversize descriptor", () => Buffer.alloc(16 * 1024 * 1024 + 1)],
   ] as const) {
     it(`rejects ${name}`, () => {
       const value = mutation(Buffer.from(fixture().bytes));

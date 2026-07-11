@@ -180,7 +180,7 @@ final class BurnBarLinuxAppCheckNetworkClientTests: XCTestCase {
         XCTAssertEqual(put.value(forHTTPHeaderField: "Content-Length"), "4096")
         XCTAssertNil(put.value(forHTTPHeaderField: EnvironmentBurnBarLinuxAttestationIngressClient.ticketHeader))
         XCTAssertFalse(put.url!.absoluteString.contains(try credential.wireValue(ticketID: ticketID)))
-        XCTAssertEqual(try streamData(put), evidence)
+        XCTAssertEqual(put.httpBody, evidence)
     }
 
     func testIngressExpiryCanonicalIDsAndResponseSchemaFailClosed() async throws {
@@ -698,20 +698,6 @@ final class BurnBarLinuxAppCheckNetworkClientTests: XCTestCase {
 
     private func jsonObject(_ request: URLRequest) throws -> [String: Any] {
         try XCTUnwrap(JSONSerialization.jsonObject(with: try XCTUnwrap(request.httpBody)) as? [String: Any])
-    }
-
-    private func streamData(_ request: URLRequest) throws -> Data {
-        let stream = try XCTUnwrap(request.httpBodyStream)
-        stream.open()
-        defer { stream.close() }
-        var result = Data()
-        var buffer = [UInt8](repeating: 0, count: 4_096)
-        while true {
-            let count = stream.read(&buffer, maxLength: buffer.count)
-            if count == 0 { return result }
-            if count < 0 { throw stream.streamError ?? URLError(.cannotDecodeRawData) }
-            result.append(buffer, count: count)
-        }
     }
 
     private func assertAppCheckError(

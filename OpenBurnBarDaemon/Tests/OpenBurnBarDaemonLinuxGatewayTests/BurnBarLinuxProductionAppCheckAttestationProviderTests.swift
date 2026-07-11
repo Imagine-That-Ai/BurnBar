@@ -189,6 +189,35 @@ final class BurnBarLinuxProductionAppCheckAttestationProviderTests: XCTestCase {
         XCTAssertEqual(counts.payloads, [evidence, evidence, evidence])
     }
 
+    func testInvalidIngressEndpointFailsBeforeIssuingUploadTicket() async throws {
+        let fixture = try Fixture()
+        let ticketIssuer = RetryingTicketIssuer(expiresAtMillis: 1_900)
+        let ingress = EnvironmentBurnBarLinuxAttestationIngressClient(
+            environment: [:],
+            nowMillis: { 1_000 }
+        )
+        let uploader = EnvironmentBurnBarLinuxAttestationReceiptUploader(
+            ticketIssuer: ticketIssuer,
+            ingress: ingress,
+            nowMillis: { 1_000 },
+            sleep: { _ in }
+        )
+
+        do {
+            _ = try await uploader.uploadEvidence(
+                result: fixture.broker.result,
+                challenge: fixture.challenge,
+                binding: fixture.binding,
+                credential: try .random(),
+                idToken: "firebase-id-token"
+            )
+            XCTFail("Invalid ingress endpoint must fail before ticket issuance")
+        } catch let error as BurnBarLinuxAppCheckError {
+            XCTAssertEqual(error, .invalidResponse)
+        }
+        XCTAssertEqual(await ticketIssuer.callCount(), 0)
+    }
+
     private static func receipt(size: Int = 8, sha256: String = String(repeating: "a", count: 64))
         -> BurnBarLinuxAttestationUploadReceipt {
         .init(uploadId: "QEFCQ0RFRkdISUpLTE1OTw", generation: "123456789", sha256: sha256, size: size)

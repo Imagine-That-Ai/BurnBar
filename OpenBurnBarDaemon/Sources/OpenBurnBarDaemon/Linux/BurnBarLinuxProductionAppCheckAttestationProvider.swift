@@ -34,6 +34,10 @@ protocol BurnBarLinuxAttestationUploadTicketIssuing: Sendable {
 
 extension EnvironmentBurnBarLinuxAppCheckCloudClient: BurnBarLinuxAttestationUploadTicketIssuing {}
 
+protocol BurnBarLinuxAttestationIngressEndpointChecking: Sendable {
+    var hasValidEndpoint: Bool { get }
+}
+
 protocol BurnBarLinuxAttestationIngressing: Sendable {
     func claimUpload(
         declaration: BurnBarLinuxAttestationUploadDeclaration,
@@ -50,6 +54,7 @@ protocol BurnBarLinuxAttestationIngressing: Sendable {
 }
 
 extension EnvironmentBurnBarLinuxAttestationIngressClient: BurnBarLinuxAttestationIngressing {}
+extension EnvironmentBurnBarLinuxAttestationIngressClient: BurnBarLinuxAttestationIngressEndpointChecking {}
 
 private struct BurnBarLinuxAttestationDescriptorUploadBody: BurnBarLinuxAttestationUploadBody {
     let evidenceDescriptor: BurnBarLinuxAttestationEvidenceDescriptor
@@ -115,6 +120,11 @@ struct EnvironmentBurnBarLinuxAttestationReceiptUploader: BurnBarLinuxAttestatio
         }
 
         let body = BurnBarLinuxAttestationDescriptorUploadBody(evidenceDescriptor: result.evidenceDescriptor)
+        if let endpointChecker = ingress as? any BurnBarLinuxAttestationIngressEndpointChecking {
+            guard endpointChecker.hasValidEndpoint else {
+                throw BurnBarLinuxAppCheckError.invalidResponse
+            }
+        }
         let ticket = try await retry(until: challenge.expiresAtMillis) {
             try await ticketIssuer.issueUploadTicket(
                 challenge: challenge,
