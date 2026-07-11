@@ -117,9 +117,9 @@ final class CommunityService: ObservableObject {
         }
     }
 
-    private func getOptionalDocumentData(_ document: CloudSyncDocumentGateway) async throws -> [String: Any]? {
+    private func getOptionalDocumentData(_ document: CloudSyncDocumentGateway) async throws -> NSDictionary? {
         do {
-            return try await document.getData()
+            return try await document.getData() as NSDictionary
         } catch let error as NSError
             where error.domain == FirestoreErrorDomain && error.code == FirestoreErrorCode.notFound.rawValue {
             return nil
