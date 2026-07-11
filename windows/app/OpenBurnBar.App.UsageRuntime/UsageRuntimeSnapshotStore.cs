@@ -57,6 +57,10 @@ public sealed class SqlCipherUsageRuntimeSnapshotStore : IUsageRuntimeSnapshotSt
                 .ToArray();
             UsageRuntimeSnapshotWriteSeam.Write(connection, usages, conversations);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (UsageRuntimeException)
         {
             throw;
