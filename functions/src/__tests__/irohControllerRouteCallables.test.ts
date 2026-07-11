@@ -195,6 +195,7 @@ async function issueChallenge(authorityPeerNodeId: string, transportNodeId: stri
     connectionId: CONNECTION_ID,
     authorityPeerNodeId,
     transportNodeId,
+    expectedUid: UID,
     nonce: "high-risk-nonce",
   });
 }
@@ -209,6 +210,7 @@ async function registerChallenge(
     challengeId: challenge.challengeId,
     transportSignatureBase64: sign(null, payload, transportPrivateKey).toString("base64"),
     authoritySignatureBase64: sign(null, payload, authorityPrivateKey).toString("base64"),
+    expectedUid: UID,
   });
 }
 
@@ -259,11 +261,7 @@ describe("verified iroh controller route registry", () => {
   it("registers and resolves distinct transport, authority, and device identities", async () => {
     const fixture = seedTrustGraph();
     const challenge = await issueChallenge(fixture.authorityPeerNodeId, fixture.transportNodeId);
-    const registration = await registerChallenge(
-      challenge,
-      fixture.transport.privateKey,
-      fixture.authority.privateKey,
-    );
+    const registration = await registerChallenge(challenge, fixture.transport.privateKey, fixture.authority.privateKey);
     expect(registration).toMatchObject({
       ok: true,
       sourceDeviceId: SOURCE_DEVICE_ID,
@@ -295,9 +293,11 @@ describe("verified iroh controller route registry", () => {
     const fixture = seedTrustGraph();
     const attacker = generateKeyPairSync("ed25519");
     const challenge = await issueChallenge(fixture.authorityPeerNodeId, fixture.transportNodeId);
-    await expect(registerChallenge(challenge, attacker.privateKey, fixture.authority.privateKey)).rejects.toMatchObject({
-      code: "permission-denied",
-    });
+    await expect(registerChallenge(challenge, attacker.privateKey, fixture.authority.privateKey)).rejects.toMatchObject(
+      {
+        code: "permission-denied",
+      },
+    );
     expect(store.get(`users/${UID}/iroh_controller_route_challenges/${challenge.challengeId}`)?.status).toBe("pending");
     await expect(
       registerChallenge(challenge, fixture.transport.privateKey, fixture.authority.privateKey),
@@ -308,9 +308,9 @@ describe("verified iroh controller route registry", () => {
     const fixture = seedTrustGraph();
     const attacker = generateKeyPairSync("ed25519");
     const challenge = await issueChallenge(fixture.authorityPeerNodeId, fixture.transportNodeId);
-    await expect(
-      registerChallenge(challenge, fixture.transport.privateKey, attacker.privateKey),
-    ).rejects.toMatchObject({ code: "permission-denied" });
+    await expect(registerChallenge(challenge, fixture.transport.privateKey, attacker.privateKey)).rejects.toMatchObject(
+      { code: "permission-denied" },
+    );
     expect(store.get(`users/${UID}/iroh_controller_route_challenges/${challenge.challengeId}`)?.status).toBe("pending");
     await expect(
       registerChallenge(challenge, fixture.transport.privateKey, fixture.authority.privateKey),
@@ -392,6 +392,7 @@ describe("verified iroh controller route registry", () => {
       invoke(revokeIrohControllerRoute, UID, {
         sourceDeviceId: SOURCE_DEVICE_ID,
         connectionId: CONNECTION_ID,
+        expectedUid: UID,
         nonce: "revoke-nonce",
       }),
     ).resolves.toMatchObject({ ok: true, generation: 2 });
@@ -407,15 +408,18 @@ describe("verified iroh controller route registry", () => {
       invoke(revokeIrohControllerRoute, UID, {
         sourceDeviceId: SOURCE_DEVICE_ID,
         connectionId: CONNECTION_ID,
+        expectedUid: UID,
         nonce: "revoke-before-register-nonce",
       }),
     ).resolves.toMatchObject({ ok: true, generation: 1 });
-    expect(store.get(`users/${UID}/iroh_pairing/${CONNECTION_ID}/controller_routes/${SOURCE_DEVICE_ID}`)).toMatchObject({
-      connectionId: CONNECTION_ID,
-      sourceDeviceId: SOURCE_DEVICE_ID,
-      status: "revoked",
-      generation: 1,
-    });
+    expect(store.get(`users/${UID}/iroh_pairing/${CONNECTION_ID}/controller_routes/${SOURCE_DEVICE_ID}`)).toMatchObject(
+      {
+        connectionId: CONNECTION_ID,
+        sourceDeviceId: SOURCE_DEVICE_ID,
+        status: "revoked",
+        generation: 1,
+      },
+    );
     await expect(
       registerChallenge(challenge, fixture.transport.privateKey, fixture.authority.privateKey),
     ).rejects.toMatchObject({ code: "aborted" });
@@ -449,6 +453,7 @@ describe("verified iroh controller route registry", () => {
         connectionId: CONNECTION_ID,
         authorityPeerNodeId: fixture.authorityPeerNodeId,
         transportNodeId: fixture.transportNodeId,
+        expectedUid: BOB_UID,
         nonce: "attacker-nonce",
       }),
     ).rejects.toMatchObject({ code: "failed-precondition" });
@@ -472,6 +477,7 @@ describe("verified iroh controller route registry", () => {
           Buffer.from(challenge.canonicalPayloadBase64, "base64"),
           fixture.authority.privateKey,
         ).toString("base64"),
+        expectedUid: BOB_UID,
       }),
     ).rejects.toMatchObject({ code: "failed-precondition" });
     expect(snapshotTenantPaths(UID)).toEqual(before);
@@ -493,9 +499,26 @@ describe("verified iroh controller route registry", () => {
       invoke(revokeIrohControllerRoute, BOB_UID, {
         sourceDeviceId: SOURCE_DEVICE_ID,
         connectionId: CONNECTION_ID,
+        expectedUid: BOB_UID,
         nonce: "attacker-revoke-nonce",
       }),
     ).rejects.toMatchObject({ code: "failed-precondition" });
+    expect(snapshotTenantPaths(UID)).toEqual(before);
+  });
+
+  it("rejects a stale expected account before any route mutation", async () => {
+    const fixture = seedTrustGraph();
+    const before = snapshotTenantPaths(UID);
+    await expect(
+      invoke(issueIrohControllerRouteChallenge, UID, {
+        sourceDeviceId: SOURCE_DEVICE_ID,
+        connectionId: CONNECTION_ID,
+        authorityPeerNodeId: fixture.authorityPeerNodeId,
+        transportNodeId: fixture.transportNodeId,
+        expectedUid: BOB_UID,
+        nonce: "stale-account-nonce",
+      }),
+    ).rejects.toMatchObject({ code: "permission-denied" });
     expect(snapshotTenantPaths(UID)).toEqual(before);
   });
 });
