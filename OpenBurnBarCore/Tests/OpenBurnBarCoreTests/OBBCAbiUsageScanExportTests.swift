@@ -65,7 +65,20 @@ final class OBBCAbiUsageScanExportTests: XCTestCase {
         XCTAssertTrue(first.usages.contains(where: { $0.provider == AgentProvider.claudeCode.rawValue }))
         XCTAssertTrue(first.usages.contains(where: { $0.provider == AgentProvider.cursorAgent.rawValue }))
         XCTAssertFalse(first.conversations.isEmpty)
+        XCTAssertFalse(second.conversations.isEmpty)
         XCTAssertEqual(first.usages.map(\.id), second.usages.map(\.id))
+
+        let cacheFiles = try fileManager.contentsOfDirectory(
+            at: support,
+            includingPropertiesForKeys: nil
+        )
+        for cacheFile in cacheFiles where cacheFile.lastPathComponent.contains("parser_cache") {
+            let cacheData = try Data(contentsOf: cacheFile)
+            XCTAssertFalse(cacheData.contains(Data("Hello, help me write a function that adds two numbers.".utf8)))
+            XCTAssertFalse(cacheData.contains(Data("Here's a simple Swift function:".utf8)))
+            XCTAssertFalse(cacheData.contains(Data("Inspect the Windows usage runtime".utf8)))
+            XCTAssertFalse(cacheData.contains(Data("I found the parser boundary.".utf8)))
+        }
     }
 
     func test_scanRejectsIncompleteRequest() throws {

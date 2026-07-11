@@ -120,7 +120,7 @@ public final class FactoryDroidParser: LogParser, Sendable {
                         parseCache.fileEntries[cacheKey] = FactoryDroidCacheEntry(
                             signature: signature,
                             usage: parsed?.usage,
-                            conversation: options.includeConversationBodies ? parsed?.conversation : nil
+                            conversation: nil
                         )
                         cacheMutated = true
                     }
@@ -431,23 +431,26 @@ public final class FactoryDroidParser: LogParser, Sendable {
             return stripped
         }
 
-        guard cached.conversation == nil else { return cached }
-        let parsed = try? parseSession( // try?-ok(best-effort conversation cache rewarm)
+        let parsed = try? parseSession( // try?-ok(best-effort conversation cache reparse)
             sessionId: sessionId,
             jsonlFile: jsonlFile,
             settingsFile: settingsFile,
             projectName: projectName
         )
-        let refreshed = FactoryDroidCacheEntry(
+        let transient = FactoryDroidCacheEntry(
             signature: signature,
             usage: cached.usage ?? parsed?.usage,
             conversation: parsed?.conversation
         )
-        if refreshed != cached {
-            parseCache.fileEntries[cacheKey] = refreshed
+        if cached.conversation != nil || (cached.usage == nil && parsed?.usage != nil) {
+            parseCache.fileEntries[cacheKey] = FactoryDroidCacheEntry(
+                signature: signature,
+                usage: transient.usage,
+                conversation: nil
+            )
             cacheMutated = true
         }
-        return refreshed
+        return transient
     }
 
     private func resolveModel(structuredModel: String, inlineModel: String?) -> String {
