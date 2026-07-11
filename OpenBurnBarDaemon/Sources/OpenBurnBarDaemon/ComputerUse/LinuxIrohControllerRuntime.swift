@@ -345,7 +345,7 @@ actor LinuxIrohControllerRuntime {
         )
     }
 
-    func stop() async {
+    func stop(teardownCredentials: LinuxIrohControllerCredentialContext? = nil) async {
         if let terminalInvalidationTask {
             terminalInvalidationTask.cancel()
             _ = await terminalInvalidationTask.result
@@ -390,7 +390,12 @@ actor LinuxIrohControllerRuntime {
         _ = await acceptTask?.result
         _ = await refreshTask?.result
         _ = await routeExpiryTask?.result
-        if let connectionIDToRevoke { await revokeHostRecordWithRetry(connectionIDToRevoke) }
+        if let connectionIDToRevoke {
+            await revokeHostRecordWithRetry(
+                connectionIDToRevoke,
+                credentials: teardownCredentials
+            )
+        }
         clearLocalState()
         stopping = false
         lifecycle = .stopped(epoch: epoch)
@@ -980,12 +985,21 @@ actor LinuxIrohControllerRuntime {
 
     private func revokeHostRecordWithRetry(
         _ connectionID: String,
+        credentials: LinuxIrohControllerCredentialContext? = nil,
         maximumAttempts: Int = 4
     ) async {
         var attempt = 0
         while attempt < maximumAttempts {
             do {
-                try await directory.revokeHostRecord(connectionID: connectionID)
+                if let credentials,
+                   let scopedDirectory = directory as? any LinuxIrohControllerCredentialScopedRevoking {
+                    try await scopedDirectory.revokeHostRecord(
+                        connectionID: connectionID,
+                        credentials: credentials
+                    )
+                } else {
+                    try await directory.revokeHostRecord(connectionID: connectionID)
+                }
                 return
             } catch {
                 attempt += 1

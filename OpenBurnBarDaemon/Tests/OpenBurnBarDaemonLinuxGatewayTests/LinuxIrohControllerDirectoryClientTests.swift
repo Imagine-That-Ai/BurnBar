@@ -14,7 +14,64 @@ private actor LinuxIrohRequestRecorder {
     func snapshot() -> URLRequest? { request }
 }
 
+private actor LinuxIrohRequestList {
+    private var requests: [URLRequest] = []
+    private var providerCalls = 0
+
+    func record(_ request: URLRequest) { requests.append(request) }
+    func recordProviderCall() { providerCalls += 1 }
+    func snapshot() -> [URLRequest] { requests }
+    func credentialProviderCallCount() -> Int { providerCalls }
+}
+
 final class LinuxIrohControllerDirectoryClientTests: XCTestCase {
+    func testScopedRevokeUsesOldCredentialSnapshotWithoutReacquiringProvider() async throws {
+        let recorder = LinuxIrohRequestList()
+        let oldContext = LinuxIrohControllerCredentialContext(
+            uid: "account-A",
+            sessionGeneration: 7,
+            idToken: "account-A-id-token",
+            appCheckToken: "account-A-app-check",
+            deviceID: "linux-device-A"
+        )
+        let client = LinuxIrohControllerDirectoryClient(
+            credentials: {
+                await recorder.recordProviderCall()
+                throw LinuxIrohControllerDirectoryError.invalidRequest
+            },
+            transport: { request in
+                await recorder.record(request)
+                let result: [String: Any]
+                if request.url?.path == "/issueHighRiskActionNonce" {
+                    result = ["nonce": "old-account-nonce"]
+                } else {
+                    result = ["ok": true, "connectionId": "linux-host-old"]
+                }
+                let response = try JSONSerialization.data(withJSONObject: ["result": result])
+                return (
+                    response,
+                    HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+                )
+            }
+        )
+
+        try await client.revokeHostRecord(
+            connectionID: "linux-host-old",
+            credentials: oldContext
+        )
+
+        let requests = await recorder.snapshot()
+        let providerCalls = await recorder.credentialProviderCallCount()
+        XCTAssertEqual(providerCalls, 0)
+        XCTAssertEqual(requests.map { $0.url?.path }, [
+            "/issueHighRiskActionNonce", "/revokeIrohPairingRecord"
+        ])
+        XCTAssertTrue(requests.allSatisfy {
+            $0.value(forHTTPHeaderField: "Authorization") == "Bearer account-A-id-token"
+                && $0.value(forHTTPHeaderField: "X-Firebase-AppCheck") == "account-A-app-check"
+        })
+    }
+
     func testResolveBindsAuthenticatedAccountAndCanonicalRoute() async throws {
         let now = Date(timeIntervalSince1970: 2_000_000_000)
         let recorder = LinuxIrohRequestRecorder()

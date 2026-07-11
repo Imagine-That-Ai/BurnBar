@@ -76,6 +76,7 @@ public actor BurnBarDaemonServer {
     let computerUseSessionGrantReadinessProvider: ComputerUseSessionGrantReadinessProvider?
     #if os(Linux)
     let linuxComputerUseOwnerAuthorizer: LinuxComputerUseOwnerAuthorizer
+    let linuxCloudCredentialAuthority: LinuxDaemonCloudCredentialAuthority?
     let linuxIrohControllerRuntime: LinuxIrohControllerRuntime?
     let linuxIrohControllerUnavailableStatus: LinuxIrohControllerRuntime.RuntimeStatus?
     #endif
@@ -129,6 +130,7 @@ public actor BurnBarDaemonServer {
         computerUseSessionGrantMetadataResolver: ComputerUseSessionGrantMetadataResolver? = nil,
         computerUseSessionGrantReadinessProvider: ComputerUseSessionGrantReadinessProvider? = nil,
         linuxIrohControllerCredentialProvider: LinuxIrohControllerCredentialProvider? = nil,
+        linuxCloudCredentialAuthority: LinuxDaemonCloudCredentialAuthority? = nil,
         linuxComputerUseOwnerAuthorizer: LinuxComputerUseOwnerAuthorizer? = nil,
         linuxOnboardingService: BurnBarLinuxOnboardingService? = nil,
         subscriptionService: BurnBarSubscriptionService? = nil
@@ -141,6 +143,7 @@ public actor BurnBarDaemonServer {
         self.localAuthProofVerifier = localAuthProofVerifier
         self.phoneControlPinStore = phoneControlPinStore
         #if os(Linux)
+        self.linuxCloudCredentialAuthority = linuxCloudCredentialAuthority
         if let linuxComputerUseOwnerAuthorizer {
             self.linuxComputerUseOwnerAuthorizer = linuxComputerUseOwnerAuthorizer
         } else {
@@ -154,6 +157,7 @@ public actor BurnBarDaemonServer {
             }
         }
         #else
+        _ = linuxCloudCredentialAuthority
         self.computerUseApprovalAuthorityVerifier = nil
         self.computerUsePanicAuthorityVerifier = nil
         self.computerUseSessionGrantBroker = computerUseSessionGrantBroker
@@ -601,6 +605,64 @@ public actor BurnBarDaemonServer {
         if let linuxIrohControllerRuntime { return await linuxIrohControllerRuntime.status() }
         return linuxIrohControllerUnavailableStatus
     }
+
+    public func handleLinuxCloudAuthSessionEvent(_ event: LinuxCloudAuthSessionEvent) async {
+        guard let linuxIrohControllerRuntime else { return }
+        switch event {
+        case .credentialsAvailable:
+            do {
+                try await linuxIrohControllerRuntime.start()
+            } catch {
+                logger.warning(
+                    "linux_iroh_controller_credential_restart_failed",
+                    metadata: ["reason": "unavailable"]
+                )
+            }
+        case .invalidated:
+            await linuxIrohControllerRuntime.stop()
+        }
+    }
+
+    public func handleLinuxCloudAuthTeardown(
+        credentials: LinuxIrohControllerCredentialContext?
+    ) async {
+        guard let linuxIrohControllerRuntime else { return }
+        await linuxIrohControllerRuntime.stop(teardownCredentials: credentials)
+    }
+
+    public func linuxCloudAuthStatus() async -> BurnBarLinuxAuthStatusResponse {
+        guard let linuxCloudCredentialAuthority else {
+            return BurnBarLinuxAuthStatusResponse(
+                state: .unavailable,
+                signedIn: false,
+                detail: "credential_authority_unavailable"
+            )
+        }
+        return await linuxCloudCredentialAuthority.status()
+    }
+
+    public func beginLinuxCloudSignIn() async throws -> BurnBarLinuxAuthBeginResponse {
+        guard let linuxCloudCredentialAuthority else {
+            throw LinuxCloudAuthAuthorityError.configurationRequired
+        }
+        return try await linuxCloudCredentialAuthority.beginSignIn()
+    }
+
+    public func cancelLinuxCloudSignIn(operationID: String) async throws -> BurnBarLinuxAuthStatusResponse {
+        guard let linuxCloudCredentialAuthority else {
+            throw LinuxCloudAuthAuthorityError.configurationRequired
+        }
+        try await linuxCloudCredentialAuthority.cancelSignIn(operationID: operationID)
+        return await linuxCloudCredentialAuthority.status()
+    }
+
+    public func signOutLinuxCloud() async throws -> BurnBarLinuxAuthStatusResponse {
+        guard let linuxCloudCredentialAuthority else {
+            throw LinuxCloudAuthAuthorityError.configurationRequired
+        }
+        try await linuxCloudCredentialAuthority.signOut()
+        return await linuxCloudCredentialAuthority.status()
+    }
     #endif
 
     func ingestComputerUsePanic(
@@ -1043,6 +1105,12 @@ public actor BurnBarDaemonServer {
             let request = BurnBarRPCRequestEnvelope(id: incomingRequest.id, method: method, authToken: incomingRequest.authToken)
 
             switch method {
+            case .linuxAuthStatus, .linuxAuthBegin, .linuxAuthCancel, .linuxAuthSignOut:
+                return try await handleLinuxAuthRPC(
+                    method: method,
+                    decoder: decoder,
+                    requestData: requestData
+                )
             case .health, .catalog, .authBootstrap, .linuxOnboardingSnapshot:
                 return try await handleLifecycleRPC(
                     method: method,

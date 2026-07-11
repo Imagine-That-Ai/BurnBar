@@ -24,6 +24,13 @@ protocol LinuxIrohControllerDirectoryServing: Sendable {
     func revokeHostRecord(connectionID: String) async throws
 }
 
+protocol LinuxIrohControllerCredentialScopedRevoking: Sendable {
+    func revokeHostRecord(
+        connectionID: String,
+        credentials: LinuxIrohControllerCredentialContext
+    ) async throws
+}
+
 enum LinuxIrohControllerDirectoryError: Error, Equatable, Sendable {
     case invalidConfiguration
     case invalidRequest
@@ -36,7 +43,8 @@ enum LinuxIrohControllerDirectoryError: Error, Equatable, Sendable {
 }
 
 typealias LinuxIrohCallableTransport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
-struct LinuxIrohControllerDirectoryClient: LinuxIrohControllerDirectoryServing {
+struct LinuxIrohControllerDirectoryClient: LinuxIrohControllerDirectoryServing,
+    LinuxIrohControllerCredentialScopedRevoking {
     static let defaultBaseURL = URL(string: "https://us-central1-burnbar.cloudfunctions.net")!
     static let maximumRequestBytes = 32 * 1_024
     static let maximumResponseBytes = 64 * 1_024
@@ -157,6 +165,13 @@ struct LinuxIrohControllerDirectoryClient: LinuxIrohControllerDirectoryServing {
 
     func revokeHostRecord(connectionID: String) async throws {
         let context = try await credentials()
+        try await revokeHostRecord(connectionID: connectionID, credentials: context)
+    }
+
+    func revokeHostRecord(
+        connectionID: String,
+        credentials context: LinuxIrohControllerCredentialContext
+    ) async throws {
         let nonce = try await issueNonce(context: context)
         let result: MutationResult = try await call(
             name: "revokeIrohPairingRecord",
