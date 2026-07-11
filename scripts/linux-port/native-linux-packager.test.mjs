@@ -364,6 +364,7 @@ test('Debian assembly writes control metadata and lifecycle scripts before invok
   assert.match(control, /Architecture: amd64/);
   assert.match(control, /Depends: .*libwebkit2gtk-4\.1-0/);
   assert.match(control, /Depends: .*libayatana-appindicator3-1/);
+  assert.match(control, /Depends: .*tpm2-tools/);
   assert.equal(fs.statSync(path.join(staged.root, 'DEBIAN/postinst')).mode & 0o777, 0o755);
   fs.rmSync(f.root, { recursive: true, force: true });
 });
@@ -402,6 +403,7 @@ test('RPM assembly emits a bounded spec with lifecycle sections and copies one r
   assert.match(spec, /%global debug_package %\{nil\}/);
   assert.match(spec, /Requires: .*webkit2gtk4\.1/);
   assert.match(spec, /Requires: .*libayatana-appindicator-gtk3/);
+  assert.match(spec, /Requires: .*tpm2-tools/);
   assert.match(spec, /Requires\(post\): systemd/);
   assert.match(spec, /%post\nset -eu/);
   assert.match(spec, /%files -f %\{SOURCE1\}/);

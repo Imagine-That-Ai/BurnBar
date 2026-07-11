@@ -56,6 +56,7 @@
     "attestationSystemSocket": "/usr/lib/systemd/system/openburnbar-attestd.socket",
     "attestationSocket": "/run/openburnbar/attestd.sock",
     "attestationState": "/var/lib/openburnbar-attestd",
+    "attestationAkContext": "/var/lib/openburnbar-attestd/ak.ctx",
     "attestationInstalledManifest": "/usr/share/openburnbar/attestation/installed-manifest.json",
     "attestationInstalledManifestSignature": "/usr/share/openburnbar/attestation/installed-manifest.json.sig",
     "attestationReleasePublicKey": "/usr/share/openburnbar/attestation/release-ed25519.pub.pem"
@@ -64,8 +65,10 @@
     "productionPackages": ["deb", "rpm"],
     "socketActivation": true,
     "defaultActivation": "disabled-until-enrolled-and-rollout-enabled",
-    "socketMode": "0666",
-    "peerAuthorization": [
+      "socketMode": "0666",
+      "quoteCollector": "/usr/bin/tpm2_quote",
+      "akContext": "/var/lib/openburnbar-attestd/ak.ctx",
+      "peerAuthorization": [
       "SCM_CREDENTIALS pid and uid attached to the complete SOCK_SEQPACKET request",
       "open /proc/<pid>/exe identity without path re-resolution",
       "root-owned mode-0755 executable",
@@ -84,14 +87,14 @@
     "primaryBackend": "org.freedesktop.secrets",
     "optionalBackend": "kwallet-query",
     "debian": {
-      "depends": ["libsecret-tools"],
+      "depends": ["libsecret-tools", "tpm2-tools"],
       "recommends": ["gnome-keyring", "libkf5wallet-bin", "libkf6wallet-bin"]
     },
     "rpm": {
-      "depends": ["libsecret"]
+      "depends": ["libsecret", "tpm2-tools"]
     },
     "arch": {
-      "depends": ["libsecret"],
+      "depends": ["libsecret", "tpm2-tools"],
       "optdepends": ["kwallet"]
     },
     "flatpak": {

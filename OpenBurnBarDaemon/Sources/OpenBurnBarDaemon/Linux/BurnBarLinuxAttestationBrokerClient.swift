@@ -149,7 +149,7 @@ struct BurnBarLinuxAttestationBrokerClient: Sendable {
 
     init(
         socketPath: String = Self.productionSocketPath,
-        timeout: TimeInterval = 6,
+        timeout: TimeInterval = 35,
         expectedOwnerUID: uid_t = 0,
         expectedOwnerGID: gid_t = 0,
         requestID: @escaping @Sendable () -> String = { UUID().uuidString.lowercased() }

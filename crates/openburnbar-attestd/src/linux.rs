@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 use std::env;
+use std::ffi::CString;
 use std::fs::{File, Metadata, OpenOptions};
 use std::io::{Read, Seek, SeekFrom};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
@@ -272,6 +273,9 @@ pub fn systemd_listener(socket_fd: i32) -> Result<SeqpacketListener, BrokerError
         unsafe_code,
         reason = "systemd socket activation requires adopting inherited fd 3"
     )]
+    // systemd hands the listener to us without guaranteeing close-on-exec.
+    // Seal that boundary before any helper process can be spawned.
+    set_descriptor_cloexec(SYSTEMD_LISTEN_FD, true)?;
     let fd = unsafe { OwnedFd::from_raw_fd(SYSTEMD_LISTEN_FD) };
     Ok(SeqpacketListener { fd })
 }
@@ -536,8 +540,77 @@ pub fn validate_evidence_bundle_fd(
     Ok(())
 }
 
-#[cfg(test)]
-pub(crate) fn create_sealed_memfd(bytes: &[u8]) -> Result<OwnedFd, BrokerError> {
+pub fn create_unsealed_memfd(name: &str) -> Result<File, BrokerError> {
+    let name = CString::new(name).map_err(|_| {
+        BrokerError::new(
+            ErrorCode::Internal,
+            "attestation memfd name is invalid",
+            false,
+        )
+    })?;
+    // SAFETY: the C string is NUL-terminated and successful memfd_create
+    // returns one new descriptor owned by the caller.
+    // tpm2-tools writes quote artifacts to file paths, so the broker backs
+    // those paths with anonymous memfd descriptors instead of filesystem state.
+    // reason: anonymous quote output descriptors require Linux memfd_create.
+    #[allow(
+        unsafe_code,
+        reason = "anonymous quote output descriptors require Linux memfd_create"
+    )]
+    let raw_fd =
+        unsafe { libc::memfd_create(name.as_ptr(), libc::MFD_CLOEXEC | libc::MFD_ALLOW_SEALING) };
+    if raw_fd < 0 {
+        return Err(BrokerError::io(
+            ErrorCode::Internal,
+            "cannot create quote output descriptor",
+            std::io::Error::last_os_error(),
+        ));
+    }
+    // SAFETY: raw_fd was returned as a new descriptor and is converted once.
+    // reason: the successful memfd_create result transfers exactly one owned descriptor.
+    #[allow(unsafe_code, reason = "memfd_create transfers one owned descriptor")]
+    let owned = unsafe { OwnedFd::from_raw_fd(raw_fd) };
+    Ok(File::from(owned))
+}
+
+pub fn set_descriptor_cloexec(fd: RawFd, cloexec: bool) -> Result<(), BrokerError> {
+    // SAFETY: F_GETFD/F_SETFD inspect and update descriptor flags only.
+    // reason: tpm2_quote needs temporary inherited memfds addressed through /proc/self/fd.
+    #[allow(
+        unsafe_code,
+        reason = "descriptor inheritance is controlled through fcntl FD_CLOEXEC"
+    )]
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+    if flags < 0 {
+        return Err(BrokerError::io(
+            ErrorCode::Internal,
+            "cannot inspect descriptor flags",
+            std::io::Error::last_os_error(),
+        ));
+    }
+    let next_flags = if cloexec {
+        flags | libc::FD_CLOEXEC
+    } else {
+        flags & !libc::FD_CLOEXEC
+    };
+    // SAFETY: F_SETFD updates the live descriptor's close-on-exec bit.
+    // reason: see F_GETFD block above.
+    #[allow(
+        unsafe_code,
+        reason = "descriptor inheritance is controlled through fcntl FD_CLOEXEC"
+    )]
+    let result = unsafe { libc::fcntl(fd, libc::F_SETFD, next_flags) };
+    if result != 0 {
+        return Err(BrokerError::io(
+            ErrorCode::Internal,
+            "cannot update descriptor flags",
+            std::io::Error::last_os_error(),
+        ));
+    }
+    Ok(())
+}
+
+pub fn create_sealed_memfd(bytes: &[u8]) -> Result<OwnedFd, BrokerError> {
     // SAFETY: the name is a static NUL-terminated string and successful
     // memfd_create returns one new descriptor owned by the caller.
     // reason: Linux memfd_create is required to build sealed evidence fixtures.

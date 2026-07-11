@@ -62,6 +62,7 @@ const expectedInstallPaths = {
   attestationSystemService: '/usr/lib/systemd/system/openburnbar-attestd.service',
   attestationSystemSocket: '/usr/lib/systemd/system/openburnbar-attestd.socket',
   attestationSocket: '/run/openburnbar/attestd.sock',
+  attestationAkContext: '/var/lib/openburnbar-attestd/ak.ctx',
   attestationInstalledManifest: '/usr/share/openburnbar/attestation/installed-manifest.json',
   attestationInstalledManifestSignature: '/usr/share/openburnbar/attestation/installed-manifest.json.sig',
   attestationReleasePublicKey: '/usr/share/openburnbar/attestation/release-ed25519.pub.pem'
@@ -73,6 +74,12 @@ for (const [key, expected] of Object.entries(expectedInstallPaths)) {
 }
 if (manifest.rootAttestationBroker?.defaultActivation !== 'disabled-until-enrolled-and-rollout-enabled') {
   failures.push('root attestation broker must remain disabled until enrollment and rollout gates pass');
+}
+if (manifest.rootAttestationBroker?.quoteCollector !== '/usr/bin/tpm2_quote') {
+  failures.push('root attestation broker must use the packaged tpm2_quote collector');
+}
+if (manifest.rootAttestationBroker?.akContext !== '/var/lib/openburnbar-attestd/ak.ctx') {
+  failures.push('root attestation broker AK context path is fixed by the activation gate');
 }
 if (!(manifest.rootAttestationBroker?.peerAuthorization ?? []).some((entry) =>
   entry.includes('SCM_CREDENTIALS') && entry.includes('SOCK_SEQPACKET'))) {
@@ -148,6 +155,7 @@ for (const requiredContract of [
   if (!nativeBuilder.includes(requiredContract)) failures.push(`native package builder missing ${requiredContract}`);
 }
 const canonicalSignerInputs = [
+  'functions/.env.burnbar.production',
   ...Object.values(NATIVE_GENERATED_PACKAGE_INPUT_PATHS),
   ...Object.values(NATIVE_PACKAGE_ASSET_PATHS),
   ...Object.values(NATIVE_PACKAGE_LIFECYCLE_PATHS.deb),
