@@ -59,6 +59,10 @@ impl LaunchIntent {
             rejected_deep_links,
         }
     }
+
+    fn should_open_dashboard(&self) -> bool {
+        self.deep_links.is_empty() && self.rejected_deep_links == 0 && !self.background
+    }
 }
 
 fn validate_deep_link(raw: &str) -> Result<NativeDeepLink, ()> {
@@ -236,8 +240,9 @@ fn autostart_path_from_environment() -> Result<PathBuf, String> {
 }
 
 fn login_start_enabled_at(path: &Path) -> Result<bool, String> {
+    let expected = autostart_entry_for_current_executable()?;
     match fs::read_to_string(path) {
-        Ok(contents) => Ok(contents == AUTOSTART_ENTRY),
+        Ok(contents) => Ok(contents == expected),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
         Err(_) => Err("native_shell_autostart_read_failed".to_string()),
     }
@@ -272,8 +277,9 @@ fn set_login_start_at(path: &Path, enabled: bool) -> Result<(), String> {
         .mode(0o600)
         .open(&temp_path)
         .map_err(|_| "native_shell_autostart_temp_create_failed".to_string())?;
+    let entry = autostart_entry_for_current_executable()?;
     let write_result = temp
-        .write_all(AUTOSTART_ENTRY.as_bytes())
+        .write_all(entry.as_bytes())
         .and_then(|_| temp.sync_all())
         .map_err(|_| "native_shell_autostart_write_failed".to_string());
     if write_result.is_ok() {
@@ -286,6 +292,44 @@ fn set_login_start_at(path: &Path, enabled: bool) -> Result<(), String> {
         return write_result;
     }
     Ok(())
+}
+
+fn autostart_entry_for_current_executable() -> Result<String, String> {
+    let executable = std::env::var_os("APPIMAGE")
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .or_else(|| {
+            std::env::current_exe()
+                .ok()
+                .filter(|path| path.is_absolute())
+        })
+        .ok_or_else(|| "native_shell_executable_unavailable".to_string())?;
+    let raw = executable
+        .to_str()
+        .ok_or_else(|| "native_shell_executable_invalid".to_string())?;
+    if raw
+        .chars()
+        .any(|character| character == '\n' || character == '\r')
+    {
+        return Err("native_shell_executable_invalid".to_string());
+    }
+    let escaped = raw
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('`', "\\`")
+        .replace('$', "\\$");
+    Ok(AUTOSTART_ENTRY
+        .lines()
+        .map(|line| {
+            if line.starts_with("Exec=") {
+                format!("Exec=\"{escaped}\" --background")
+            } else {
+                line.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n")
 }
 
 fn show_main_window(app: &AppHandle) {
@@ -309,7 +353,7 @@ fn route_from_tray(app: &AppHandle, route: &str, action: &str) {
 
 pub fn handle_secondary_launch(app: &AppHandle, args: Vec<String>) {
     let intent = LaunchIntent::from_args(args);
-    if intent.deep_links.is_empty() && !intent.background {
+    if intent.should_open_dashboard() {
         route_from_tray(app, "overview", "open-dashboard");
         return;
     }
@@ -568,6 +612,12 @@ mod tests {
         assert!(intent.background);
         assert_eq!(intent.deep_links.len(), 1);
         assert_eq!(intent.rejected_deep_links, 1);
+        assert!(!intent.should_open_dashboard());
+
+        let rejected_only =
+            LaunchIntent::from_args(["openburnbar-linux-desktop", "openburnbar://unknown"]);
+        assert!(!rejected_only.should_open_dashboard());
+        assert!(LaunchIntent::from_args(["openburnbar-linux-desktop"]).should_open_dashboard());
     }
 
     #[test]
@@ -601,7 +651,9 @@ mod tests {
         assert!(!login_start_enabled_at(&path).unwrap());
         set_login_start_at(&path, true).unwrap();
         assert!(login_start_enabled_at(&path).unwrap());
-        assert_eq!(fs::read_to_string(&path).unwrap(), AUTOSTART_ENTRY);
+        let entry = fs::read_to_string(&path).unwrap();
+        assert_eq!(entry, autostart_entry_for_current_executable().unwrap());
+        assert!(entry.contains(" --background\n"));
         assert_eq!(
             fs::metadata(path.parent().unwrap())
                 .unwrap()

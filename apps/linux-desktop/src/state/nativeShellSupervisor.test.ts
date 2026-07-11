@@ -46,6 +46,22 @@ describe('buildNativeTraySnapshot', () => {
     expect(buildNativeTraySnapshot(summary, catalog, { ...base, online: false }, 0, 120_000).freshness).toBe('offline');
     expect(buildNativeTraySnapshot(summary, catalog, { ...base, daemonOk: false }, 0, 120_000).freshness).toBe('unavailable');
   });
+
+  it('counts configured providers that do not expose quota buckets', () => {
+    const withoutBuckets: ProviderCatalog = [{
+      id: 'openai',
+      label: 'OpenAI',
+      accountLabel: 'Work',
+      quotaBuckets: []
+    }];
+    expect(buildNativeTraySnapshot(
+      summary,
+      withoutBuckets,
+      { daemonOk: true, online: true, lastDaemonEventAt: null },
+      0,
+      120_000
+    ).connectedProviders).toBe(1);
+  });
 });
 
 describe('NativeShellSupervisor', () => {
@@ -105,6 +121,31 @@ describe('NativeShellSupervisor', () => {
     await start;
     await pending;
     expect(usageSummary).toHaveBeenCalledTimes(2);
+    supervisor.stop();
+  });
+
+  it('replaces stale tray data with unavailable state when daemon refresh fails', async () => {
+    const update = vi.fn(async () => {});
+    const bridge = {
+      onNativeDeepLink: async () => () => {},
+      nativeShellReady: async () => [],
+      nativeTrayUpdate: update,
+      usageSummary: vi.fn(async () => { throw new Error('daemon down'); }),
+      providerCatalog: vi.fn(async () => catalog)
+    } as unknown as LinuxShellBridge;
+    const onError = vi.fn();
+    const supervisor = new NativeShellSupervisor(bridge, () => {}, {
+      status: () => ({ daemonOk: false, online: true, lastDaemonEventAt: null }),
+      onError
+    });
+    await supervisor.start();
+    expect(onError).toHaveBeenCalled();
+    expect(update).toHaveBeenCalledWith({
+      todayCostUsd: 0,
+      todayTokens: 0,
+      connectedProviders: 0,
+      freshness: 'unavailable'
+    });
     supervisor.stop();
   });
 });

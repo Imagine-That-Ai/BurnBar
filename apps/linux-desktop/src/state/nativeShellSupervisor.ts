@@ -44,6 +44,7 @@ export function buildNativeTraySnapshot(
     provider.quotaBuckets.filter((bucket) => bucket.state !== 'missing_credential')
   );
   const connectedProviders = catalog.filter((provider) =>
+    provider.quotaBuckets.length === 0 ||
     provider.quotaBuckets.some((bucket) => bucket.state !== 'missing_credential')
   ).length;
   const remaining = eligibleBuckets.map((bucket) =>
@@ -109,6 +110,7 @@ export class NativeShellSupervisor {
       await this.refresh();
     } catch (error) {
       this.onError(error);
+      await this.publishUnavailable();
     }
   }
 
@@ -139,6 +141,7 @@ export class NativeShellSupervisor {
       }
     } catch (error) {
       this.onError(error);
+      await this.publishUnavailable();
     } finally {
       this.running = false;
     }
@@ -150,5 +153,20 @@ export class NativeShellSupervisor {
 
   private async dispatch(link: NativeDeepLink): Promise<void> {
     if (!this.stopped) await this.onDeepLink(link);
+  }
+
+  private async publishUnavailable(): Promise<void> {
+    if (this.stopped) return;
+    const runtime = this.status();
+    try {
+      await this.bridge.nativeTrayUpdate({
+        todayCostUsd: 0,
+        todayTokens: 0,
+        connectedProviders: 0,
+        freshness: runtime.online ? 'unavailable' : 'offline'
+      });
+    } catch (error) {
+      this.onError(error);
+    }
   }
 }
