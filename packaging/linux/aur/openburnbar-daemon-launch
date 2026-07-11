@@ -8,6 +8,8 @@ set -euo pipefail
 
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 unset BASH_ENV ENV CDPATH GLOBIGNORE LD_PRELOAD LD_AUDIT NODE_OPTIONS
+unset OPENBURNBAR_DAEMON_LINUX_PEER_ROOTS BURNBAR_DAEMON_LINUX_PEER_ROOTS
+unset OPENBURNBAR_DAEMON_LINUX_PEER_SHA256_PINS BURNBAR_DAEMON_LINUX_PEER_SHA256_PINS
 
 APP_DIR_NAME=openburnbar
 HOME_DIR="${HOME:-/}"
@@ -22,10 +24,6 @@ if [[ -n "${APPDIR:-}" ]]; then
     "${appdir_real}"/*) APPIMAGE_ROOT="${appdir_real}" ;;
   esac
 fi
-
-# Canonical peer roots are forced and never replaced by inherited environment.
-# AppImage trust uses SHA-256 pins, not world-writable mount prefixes.
-HARDENED_PEER_ROOTS="/usr/bin:/usr/local/bin:/opt/openburnbar/bin"
 
 # Support override matches TS/Swift/Rust first_non_empty precedence.
 if [[ -n "${OPENBURNBAR_DAEMON_SUPPORT_DIR:-}" ]]; then
@@ -109,18 +107,18 @@ if [[ "${mode}" != "600" && "${mode}" != "400" && "${mode}" != "0600" && "${mode
   exit 1
 fi
 
-# Force hardened PEER_ROOTS so direct launches cannot weaken peer path checks.
-if [[ -n "${OPENBURNBAR_DAEMON_LINUX_PEER_ROOTS:-}" && \
-      "${OPENBURNBAR_DAEMON_LINUX_PEER_ROOTS}" != "${HARDENED_PEER_ROOTS}" ]]; then
-  echo "openburnbar-daemon-launch: ignoring non-canonical OPENBURNBAR_DAEMON_LINUX_PEER_ROOTS from environment" >&2
-  echo "  got=${OPENBURNBAR_DAEMON_LINUX_PEER_ROOTS}" >&2
-  echo "  using=${HARDENED_PEER_ROOTS}" >&2
-  echo "  remove OPENBURNBAR_DAEMON_LINUX_PEER_ROOTS from the launch environment" >&2
-fi
-export OPENBURNBAR_DAEMON_LINUX_PEER_ROOTS="${HARDENED_PEER_ROOTS}"
-
 export OPENBURNBAR_DAEMON_SUPPORT_DIR="${SUPPORT_DIR}"
 export OPENBURNBAR_INDEX_DATABASE_PATH="${OPENBURNBAR_INDEX_DATABASE_PATH:-${SUPPORT_DIR}/openburnbar.sqlite}"
+
+# Public OAuth/Firebase identifiers ship with the exact package. AppImage must
+# point the daemon at its mounted payload; deb/rpm use the same immutable path
+# below /usr. The daemon reopens this path with O_NOFOLLOW and validates the
+# root-owned, non-writable file plus its strict JSON schema.
+if [[ -n "${APPIMAGE_ROOT}" ]]; then
+  export OPENBURNBAR_PACKAGED_CLOUD_AUTH_CONFIG_FILE="${APPIMAGE_ROOT}/usr/share/openburnbar/cloud-auth.json"
+else
+  export OPENBURNBAR_PACKAGED_CLOUD_AUTH_CONFIG_FILE="/usr/share/openburnbar/cloud-auth.json"
+fi
 
 # The launcher owns the packaged Browser Computer Use bridge
 # path. This keeps installed deb/rpm and AppImage sessions on the immutable

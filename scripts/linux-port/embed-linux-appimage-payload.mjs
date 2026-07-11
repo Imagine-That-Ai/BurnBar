@@ -6,6 +6,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { discoverBundleArtifacts, relative, repoRoot } from './lib/linux-release-common.mjs';
 import { findAppImageFilesystemOffset } from './lib/appimage-filesystem.mjs';
+import {
+  linuxAppImagePeerExecutableRelativePath,
+  linuxAppImagePeerManifestName,
+  linuxAppImagePeerSignatureName,
+  verifyLinuxAppImagePeerManifest,
+  writeSignedLinuxAppImagePeerManifest
+} from './lib/linux-appimage-peer-manifest.mjs';
 
 export const requiredPayloadPaths = [
   'openburnbar-daemon',
@@ -14,7 +21,8 @@ export const requiredPayloadPaths = [
   'native/libopenburnbar_iroh.so',
   'playwright/openburnbar-playwright-bridge.js',
   'playwright/openburnbar-browser-runtime-probe',
-  'playwright/browser-runtime-requirements.json'
+  'playwright/browser-runtime-requirements.json',
+  'cloud-auth.json'
 ];
 
 function requirePath(candidate, label, expectedType) {
@@ -60,6 +68,7 @@ export function validatePayload(payloadRoot) {
     'AppImage browser runtime requirements',
     0o644
   );
+  requireRegularResource(path.join(root, 'cloud-auth.json'), 'AppImage cloud auth config', 0o644);
   return root;
 }
 
@@ -98,7 +107,7 @@ function copyFileRange(source, destination, bytes = null) {
   }
 }
 
-function assertEmbeddedPayload(appDir) {
+function assertEmbeddedPayload(appDir, { requirePeerManifest }) {
   const required = [
     'usr/bin/openburnbar-daemon',
     'usr/libexec/openburnbar-daemon-launch',
@@ -107,8 +116,15 @@ function assertEmbeddedPayload(appDir) {
     'usr/lib/openburnbar/native/libopenburnbar_iroh.so',
     'usr/lib/openburnbar/playwright/openburnbar-playwright-bridge.js',
     'usr/lib/openburnbar/playwright/openburnbar-browser-runtime-probe',
-    'usr/lib/openburnbar/playwright/browser-runtime-requirements.json'
+    'usr/lib/openburnbar/playwright/browser-runtime-requirements.json',
+    'usr/share/openburnbar/cloud-auth.json'
   ];
+  if (requirePeerManifest) {
+    required.push(
+      `usr/share/openburnbar/${linuxAppImagePeerManifestName}`,
+      `usr/share/openburnbar/${linuxAppImagePeerSignatureName}`
+    );
+  }
   for (const entry of required) requirePath(path.join(appDir, entry), `embedded AppImage path ${entry}`, entry.endsWith('/swift') ? 'directory' : 'file');
   requireRegularResource(
     path.join(appDir, 'usr/lib/openburnbar/native/libopenburnbar_iroh.so'),
@@ -125,6 +141,37 @@ function assertEmbeddedPayload(appDir) {
     'embedded AppImage browser runtime probe',
     0o755
   );
+  requireRegularResource(
+    path.join(appDir, 'usr/share/openburnbar/cloud-auth.json'),
+    'embedded AppImage cloud auth config',
+    0o644
+  );
+  if (requirePeerManifest) {
+    requireRegularResource(
+      path.join(appDir, `usr/share/openburnbar/${linuxAppImagePeerManifestName}`),
+      'embedded AppImage peer manifest',
+      0o644
+    );
+    requireRegularResource(
+      path.join(appDir, `usr/share/openburnbar/${linuxAppImagePeerSignatureName}`),
+      'embedded AppImage peer manifest signature',
+      0o644
+    );
+    verifyLinuxAppImagePeerManifest({
+      manifestBytes: fs.readFileSync(path.join(appDir, `usr/share/openburnbar/${linuxAppImagePeerManifestName}`)),
+      signature: fs.readFileSync(path.join(appDir, `usr/share/openburnbar/${linuxAppImagePeerSignatureName}`)),
+      executable: path.join(appDir, linuxAppImagePeerExecutableRelativePath),
+      publicKeyPem: fs.readFileSync(path.join(repoRoot, 'packaging/linux/openburnbar-linux-ed25519.pub.pem'))
+    });
+  }
+}
+
+export function resolveLinuxAppImagePeerSigning(environment) {
+  const privateKeyPem = environment.OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM?.trim() || null;
+  if (!privateKeyPem && environment.OPENBURNBAR_LINUX_RELEASE_BUILD === '1') {
+    throw new Error('OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM is required to sign the AppImage peer manifest');
+  }
+  return privateKeyPem;
 }
 
 export function embedLinuxAppImagePayload({ appImage, payloadRoot, env = process.env }) {
@@ -139,6 +186,7 @@ export function embedLinuxAppImagePayload({ appImage, payloadRoot, env = process
   const candidate = `${image}.payload.tmp`;
   const appImageEnv = { ...env, APPIMAGE_EXTRACT_AND_RUN: '1' };
   const runtimeProbe = env.OPENBURNBAR_APPIMAGE_RUNTIME_PROBE?.trim() || 'appimage';
+  const peerManifestPrivateKey = resolveLinuxAppImagePeerSigning(env);
   if (!['appimage', 'extracted'].includes(runtimeProbe)) {
     throw new Error(`invalid OPENBURNBAR_APPIMAGE_RUNTIME_PROBE: ${runtimeProbe}`);
   }
@@ -178,7 +226,19 @@ export function embedLinuxAppImagePayload({ appImage, payloadRoot, env = process
       dereference: false,
       preserveTimestamps: true
     });
-    assertEmbeddedPayload(appDir);
+    fs.mkdirSync(path.join(appDir, 'usr/share/openburnbar'), { recursive: true });
+    fs.copyFileSync(
+      path.join(payload, 'cloud-auth.json'),
+      path.join(appDir, 'usr/share/openburnbar/cloud-auth.json')
+    );
+    fs.chmodSync(path.join(appDir, 'usr/share/openburnbar/cloud-auth.json'), 0o644);
+    if (peerManifestPrivateKey) {
+      writeSignedLinuxAppImagePeerManifest({
+        appDir,
+        privateKeyPem: peerManifestPrivateKey
+      });
+    }
+    assertEmbeddedPayload(appDir, { requirePeerManifest: peerManifestPrivateKey !== null });
 
     run('mksquashfs', [appDir, squash, '-noappend', '-root-owned', '-comp', 'zstd', '-no-xattrs'], {
       cwd: work,
@@ -205,7 +265,7 @@ export function embedLinuxAppImagePayload({ appImage, payloadRoot, env = process
       String(candidateOffset),
       candidate
     ], { cwd: verify, env: appImageEnv });
-    assertEmbeddedPayload(verifiedRoot);
+    assertEmbeddedPayload(verifiedRoot, { requirePeerManifest: peerManifestPrivateKey !== null });
     run(path.join(verifiedRoot, 'usr/libexec/openburnbar-daemon-launch'), ['--help'], {
       cwd: verify,
       env: { ...appImageEnv, APPDIR: verifiedRoot }
@@ -220,7 +280,12 @@ export function embedLinuxAppImagePayload({ appImage, payloadRoot, env = process
     }
 
     fs.renameSync(candidate, image);
-    return { appImage: image, size: fs.statSync(image).size, filesystemOffset: offset };
+    return {
+      appImage: image,
+      size: fs.statSync(image).size,
+      filesystemOffset: offset,
+      peerManifestSigned: peerManifestPrivateKey !== null
+    };
   } finally {
     fs.rmSync(candidate, { force: true });
     fs.rmSync(work, { recursive: true, force: true });

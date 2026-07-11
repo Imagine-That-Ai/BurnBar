@@ -52,6 +52,7 @@ const expectedInstallPaths = {
   swiftRuntime: '/usr/lib/openburnbar/swift',
   nativeRuntime: '/usr/lib/openburnbar/native',
   irohNativeLibrary: '/usr/lib/openburnbar/native/libopenburnbar_iroh.so',
+  cloudAuthConfig: '/usr/share/openburnbar/cloud-auth.json',
   computerUsePolkitPolicy: '/usr/share/polkit-1/actions/com.openburnbar.computer-use.policy'
 };
 for (const [key, expected] of Object.entries(expectedInstallPaths)) {
@@ -67,7 +68,8 @@ const tauri = readJson(path.join(repoRoot, 'apps/linux-desktop/src-tauri/tauri.c
 const packageSources = {
   '/usr/bin/openburnbar-daemon': 'target/openburnbar-package-payload/openburnbar-daemon',
   '/usr/lib/openburnbar/swift': 'target/openburnbar-package-payload/swift',
-  '/usr/lib/openburnbar/native': 'target/openburnbar-package-payload/native'
+  '/usr/lib/openburnbar/native': 'target/openburnbar-package-payload/native',
+  '/usr/share/openburnbar/cloud-auth.json': 'target/openburnbar-package-payload/cloud-auth.json'
 };
 for (const packageType of ['deb', 'rpm']) {
   const files = tauri.bundle?.linux?.[packageType]?.files ?? {};
@@ -103,6 +105,33 @@ const releaseBuilder = fs.readFileSync(path.join(repoRoot, 'scripts/linux-port/b
 if (!releaseBuilder.includes('embed-linux-appimage-payload.mjs')) {
   failures.push('release build must inject the staged native payload into the base AppImage');
 }
+if (!releaseBuilder.includes("OPENBURNBAR_LINUX_RELEASE_BUILD: '1'")) {
+  failures.push('release builder must require configured Linux cloud-auth public identifiers');
+}
+const releaseWorkflow = fs.readFileSync(path.join(repoRoot, '.github/workflows/linux-release.yml'), 'utf8');
+if (!releaseWorkflow.includes('OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM: ${{ secrets.OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM }}')
+    || !releaseWorkflow.includes('-e OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM')) {
+  failures.push('Linux architecture builds must receive the release Ed25519 key for the signed AppImage peer manifest');
+}
+for (const variable of manifest.externalCredentials?.publicCloudAuthVariables ?? []) {
+  if (!releaseWorkflow.includes(`vars.${variable}`) || !releaseWorkflow.includes(`-e ${variable}`)) {
+    failures.push(`Linux release workflow must inject repository variable ${variable} into the native build`);
+  }
+}
+const functionsProductionConfig = fs.readFileSync(
+  path.join(repoRoot, 'functions/.env.burnbar.production'),
+  'utf8'
+);
+const productionLinuxAppID = functionsProductionConfig.match(/^LINUX_APP_CHECK_APP_ID=(\S+)$/mu)?.[1];
+if (!productionLinuxAppID
+    || !/^1:[0-9]{6,20}:web:[A-Za-z0-9_-]{8,128}$/u.test(productionLinuxAppID)
+    || /placeholder/iu.test(productionLinuxAppID)) {
+  failures.push('Functions production config must declare the real dedicated Linux Firebase web app id');
+}
+if (process.env.OPENBURNBAR_LINUX_APP_CHECK_APP_ID
+    && process.env.OPENBURNBAR_LINUX_APP_CHECK_APP_ID !== productionLinuxAppID) {
+  failures.push('Linux release App Check app id must match the Functions production app id');
+}
 const aurPkgbuild = fs.readFileSync(path.join(repoRoot, 'packaging/linux/aur/PKGBUILD'), 'utf8');
 if (!aurPkgbuild.includes('--appimage-extract usr/lib/openburnbar/native/libopenburnbar_iroh.so')
     || !aurPkgbuild.includes('/usr/lib/openburnbar/native/libopenburnbar_iroh.so')) {
@@ -115,6 +144,22 @@ const canonicalLauncher = fs.readFileSync(path.join(repoRoot, 'packaging/linux/o
 const aurLauncher = fs.readFileSync(path.join(repoRoot, 'packaging/linux/aur/openburnbar-daemon-launch'));
 if (!canonicalLauncher.equals(aurLauncher)) {
   failures.push('AUR and canonical daemon launch scripts must be byte-identical');
+}
+const launcherText = canonicalLauncher.toString('utf8');
+if (/export OPENBURNBAR_DAEMON_LINUX_PEER_ROOTS/u.test(launcherText)
+    || !launcherText.includes('unset OPENBURNBAR_DAEMON_LINUX_PEER_SHA256_PINS')) {
+  failures.push('packaged launchers must discard legacy peer roots and raw hash pins');
+}
+const appImageEmbedder = fs.readFileSync(
+  path.join(repoRoot, 'scripts/linux-port/embed-linux-appimage-payload.mjs'),
+  'utf8'
+);
+for (const marker of [
+  'writeSignedLinuxAppImagePeerManifest',
+  'verifyLinuxAppImagePeerManifest',
+  'OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM is required'
+]) {
+  if (!appImageEmbedder.includes(marker)) failures.push(`AppImage peer-manifest embedder missing ${marker}`);
 }
 if (fs.existsSync(path.join(repoRoot, 'website/public/downloads/latest-linux.json'))) {
   failures.push('website/public/downloads/latest-linux.json must not be checked in before release verification is green');

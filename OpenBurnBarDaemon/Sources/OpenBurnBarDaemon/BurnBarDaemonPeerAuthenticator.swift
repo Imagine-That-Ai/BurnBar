@@ -43,6 +43,16 @@ public struct BurnBarLinuxPeerCredential: Equatable, Sendable {
         self.executableSHA256 = executableSHA256
     }
 }
+
+public struct BurnBarLinuxPeerManifestTrustKey: Equatable, Sendable {
+    public let keyID: String
+    public let publicKeyRaw: Data
+
+    public init(keyID: String, publicKeyRaw: Data) {
+        self.keyID = keyID
+        self.publicKeyRaw = publicKeyRaw
+    }
+}
 #else
 public typealias BurnBarDaemonAuditToken = Int32
 public typealias BurnBarDaemonStatus = Int32
@@ -85,12 +95,11 @@ public enum BurnBarDaemonPeerIdentity: String, CaseIterable, Codable, Sendable {
 /// Validates UNIX-socket peers of the main daemon control socket against the
 /// first-party designated requirement.
 ///
-/// Authority: the accepted peer's audit-token code signature must satisfy the
-/// canonical OpenBurnBar designated requirement (Apple anchor + Team ID + exact
-/// first-party identifier + hardened runtime + library validation). The trust
-/// primitives are shared with the privileged sockets and socket clients via
-/// `OpenBurnBarPrivilegedTrust` (`OpenBurnBarComputerUseCore`), so both halves of
-/// every OpenBurnBar connection validate the other with the same requirement.
+/// On macOS, the accepted peer's audit-token code signature must satisfy the
+/// canonical OpenBurnBar designated requirement. On Linux, `SO_PEERCRED` binds
+/// the peer to `/proc/<pid>/exe`; installed peers must be exact root-owned package
+/// paths, while AppImage peers must match a canonical manifest signed by the
+/// pinned Linux release key inside a non-writable package filesystem.
 ///
 /// This is the load-bearing RR-3 fix: the bearer token (checked separately in
 /// `BurnBarDaemonServer.responseData`) remains as defense in depth, but the
@@ -239,7 +248,10 @@ public struct BurnBarDaemonPeerAuthenticator: Sendable {
     public static func validateLinuxPeerCredential(
         _ credential: BurnBarLinuxPeerCredential,
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        currentUID: uid_t = geteuid()
+        currentUID: uid_t = geteuid(),
+        trustedFilesystemOwnerUID: uid_t = 0,
+        trustedManifestKeys: [BurnBarLinuxPeerManifestTrustKey]? = nil,
+        allowDebugHashPins: Bool? = nil
     ) throws -> BurnBarDaemonPeerIdentity {
         guard credential.uid == currentUID else {
             throw BurnBarDaemonPeerAuthenticationFailure.codeSignatureInvalid(status: daemonTokenUnavailableStatus)
@@ -247,41 +259,219 @@ public struct BurnBarDaemonPeerAuthenticator: Sendable {
 
         let executablePath = URL(fileURLWithPath: credential.executablePath).standardizedFileURL.path
         let executableName = URL(fileURLWithPath: executablePath).lastPathComponent
+        guard executablePath == credential.executablePath,
+              executablePath.hasPrefix("/"),
+              !executablePath.contains(" (deleted)") else {
+            throw linuxPeerInvalid()
+        }
+
+        if let installedIdentity = try linuxInstalledPeerIdentity(
+            executablePath: executablePath,
+            executableSHA256: credential.executableSHA256,
+            ownerUID: trustedFilesystemOwnerUID
+        ) {
+            return installedIdentity
+        }
+
+        if executableName == "openburnbar-linux-desktop" {
+            if let appImageIdentity = try? linuxAppImagePeerIdentity(
+                executablePath: executablePath,
+                executableSHA256: credential.executableSHA256,
+                ownerUID: trustedFilesystemOwnerUID,
+                trustedKeys: trustedManifestKeys ?? linuxReleasePeerManifestTrustKeys
+            ) {
+                return appImageIdentity
+            }
+        }
+
+        if allowDebugHashPins ?? linuxDebugHashPinsEnabled,
+           let identity = linuxDebugPinnedPeerIdentity(
+               executablePath: executablePath,
+               executableName: executableName,
+               executableSHA256: credential.executableSHA256,
+               environment: environment
+           ) {
+            return identity
+        }
+
+        throw linuxPeerInvalid()
+    }
+
+    private struct LinuxPeerManifest {
+        let keyID: String
+        let identity: String
+        let executableRelativePath: String
+        let executableBasename: String
+        let executableSHA256: String
+
+        init(data: Data) throws {
+            let object = try JSONSerialization.jsonObject(with: data)
+            guard let dictionary = object as? [String: Any],
+                  Set(dictionary.keys) == Set([
+                      "schemaVersion", "kind", "keyId", "identity",
+                      "executableRelativePath", "executableBasename", "executableSHA256"
+                  ]),
+                  dictionary["schemaVersion"] as? Int == 1,
+                  dictionary["kind"] as? String == "openburnbar.appimage.peer.v1",
+                  let keyID = dictionary["keyId"] as? String,
+                  let identity = dictionary["identity"] as? String,
+                  let executableRelativePath = dictionary["executableRelativePath"] as? String,
+                  let executableBasename = dictionary["executableBasename"] as? String,
+                  let executableSHA256 = dictionary["executableSHA256"] as? String else {
+                throw linuxPeerInvalid()
+            }
+            self.keyID = keyID
+            self.identity = identity
+            self.executableRelativePath = executableRelativePath
+            self.executableBasename = executableBasename
+            self.executableSHA256 = executableSHA256
+        }
+    }
+
+    private static let linuxReleasePeerManifestTrustKeys: [BurnBarLinuxPeerManifestTrustKey] = {
+        guard let raw = Data(base64Encoded: "WPJHS2mAIVuX4A9POmB58154l2+c20up/WasNc9Tlng=") else { return [] }
+        return [BurnBarLinuxPeerManifestTrustKey(
+            keyID: "0e0fd1f52af308d96c71571ef7e94f3e183218abf531760dfcc8ef8e499e5c37",
+            publicKeyRaw: raw
+        )]
+    }()
+
+    private static var linuxDebugHashPinsEnabled: Bool {
+        #if DEBUG
+        true
+        #else
+        false
+        #endif
+    }
+
+    private static func linuxInstalledPeerIdentity(
+        executablePath: String,
+        executableSHA256: String,
+        ownerUID: uid_t
+    ) throws -> BurnBarDaemonPeerIdentity? {
+        let identities: [String: BurnBarDaemonPeerIdentity] = [
+            "/usr/bin/openburnbar-linux-desktop": .app,
+            "/usr/local/bin/openburnbar-linux-desktop": .app,
+            "/opt/openburnbar/bin/openburnbar-linux-desktop": .app,
+            "/usr/bin/openburnbar-cli": .cli,
+            "/usr/local/bin/openburnbar-cli": .cli,
+            "/opt/openburnbar/bin/openburnbar-cli": .cli,
+            "/usr/bin/openburnbar": .cli,
+            "/usr/local/bin/openburnbar": .cli,
+            "/opt/openburnbar/bin/openburnbar": .cli,
+            "/usr/bin/openburnbar-daemon": .daemon,
+            "/usr/local/bin/openburnbar-daemon": .daemon,
+            "/opt/openburnbar/bin/openburnbar-daemon": .daemon
+        ]
+        guard let identity = identities[executablePath] else { return nil }
+        let bytes = try linuxReadBoundedRegularFile(
+            path: executablePath,
+            maximumBytes: 512 * 1024 * 1024,
+            requiredOwnerUID: ownerUID,
+            requireNoGroupOrWorldWrite: true
+        )
+        guard constantTimeTokensEqual(PlatformCrypto.sha256Hex(bytes), executableSHA256.lowercased()) else {
+            throw linuxPeerInvalid()
+        }
+        return identity
+    }
+
+    private static func linuxAppImagePeerIdentity(
+        executablePath: String,
+        executableSHA256: String,
+        ownerUID: uid_t,
+        trustedKeys: [BurnBarLinuxPeerManifestTrustKey]
+    ) throws -> BurnBarDaemonPeerIdentity {
+        // The root is derived from the kernel-observed executable, never APPDIR.
+        let relativePath = "usr/bin/openburnbar-linux-desktop"
+        let executableSuffix = "/\(relativePath)"
+        guard executablePath.hasSuffix(executableSuffix) else { throw linuxPeerInvalid() }
+        let root = String(executablePath.dropLast(executableSuffix.count))
+        guard !root.isEmpty, root.hasPrefix("/") else { throw linuxPeerInvalid() }
+        try linuxValidateImmutableDirectory(path: root, requiredOwnerUID: ownerUID)
+
+        let resourceRoot = root + "/usr/share/openburnbar"
+        let manifestPath = resourceRoot + "/appimage-peer-manifest.json"
+        let signaturePath = resourceRoot + "/appimage-peer-manifest.ed25519.sig"
+        let manifestData = try linuxReadBoundedRegularFile(
+            path: manifestPath,
+            maximumBytes: 4096,
+            requiredOwnerUID: ownerUID,
+            requireNoGroupOrWorldWrite: true
+        )
+        let signature = try linuxReadBoundedRegularFile(
+            path: signaturePath,
+            minimumBytes: 64,
+            maximumBytes: 64,
+            requiredOwnerUID: ownerUID,
+            requireNoGroupOrWorldWrite: true
+        )
+        let manifest = try LinuxPeerManifest(data: manifestData)
+        guard manifest.identity == BurnBarDaemonPeerIdentity.app.rawValue,
+              manifest.executableRelativePath == relativePath,
+              manifest.executableBasename == "openburnbar-linux-desktop",
+              manifest.keyID.count == 64,
+              manifest.keyID.allSatisfy({ $0.isHexDigit && !$0.isUppercase }),
+              manifest.executableSHA256.count == 64,
+              manifest.executableSHA256.allSatisfy({ $0.isHexDigit && !$0.isUppercase }),
+              manifestData == linuxCanonicalPeerManifestData(manifest),
+              constantTimeTokensEqual(manifest.executableSHA256, executableSHA256.lowercased()),
+              let trustedKey = trustedKeys.first(where: { $0.keyID == manifest.keyID }),
+              trustedKey.publicKeyRaw.count == 32,
+              (try? PlatformCrypto.verifyEd25519Signature(
+                  signature,
+                  message: manifestData,
+                  publicKeyRaw: trustedKey.publicKeyRaw
+              )) == true else {
+            throw linuxPeerInvalid()
+        }
+
+        let executableBytes = try linuxReadBoundedRegularFile(
+            path: executablePath,
+            maximumBytes: 512 * 1024 * 1024,
+            requiredOwnerUID: ownerUID,
+            requireNoGroupOrWorldWrite: true
+        )
+        guard constantTimeTokensEqual(PlatformCrypto.sha256Hex(executableBytes), manifest.executableSHA256) else {
+            throw linuxPeerInvalid()
+        }
+        return .app
+    }
+
+    private static func linuxCanonicalPeerManifestData(_ manifest: LinuxPeerManifest) -> Data {
+        let lines = [
+            "{",
+            "  \"schemaVersion\": 1,",
+            "  \"kind\": \"openburnbar.appimage.peer.v1\",",
+            "  \"keyId\": \"\(manifest.keyID)\",",
+            "  \"identity\": \"\(manifest.identity)\",",
+            "  \"executableRelativePath\": \"\(manifest.executableRelativePath)\",",
+            "  \"executableBasename\": \"\(manifest.executableBasename)\",",
+            "  \"executableSHA256\": \"\(manifest.executableSHA256)\"",
+            "}"
+        ]
+        return Data((lines.joined(separator: "\n") + "\n").utf8)
+    }
+
+    private static func linuxDebugPinnedPeerIdentity(
+        executablePath: String,
+        executableName: String,
+        executableSHA256: String,
+        environment: [String: String]
+    ) -> BurnBarDaemonPeerIdentity? {
         let identity: BurnBarDaemonPeerIdentity
         switch executableName {
-        case "OpenBurnBarCLI", "openburnbar-cli", "openburnbar":
-            identity = .cli
-        case "OpenBurnBarDaemon", "OpenBurnBarDaemonExecutable", "openburnbar-daemon":
-            identity = .daemon
-        case "OpenBurnBar", "OpenBurnBarApp", "openburnbar-linux-desktop":
-            identity = .app
-        default:
-            throw BurnBarDaemonPeerAuthenticationFailure.codeSignatureInvalid(status: daemonTokenUnavailableStatus)
+        case "OpenBurnBarCLI", "openburnbar-cli", "openburnbar": identity = .cli
+        case "OpenBurnBarDaemon", "OpenBurnBarDaemonExecutable", "openburnbar-daemon": identity = .daemon
+        case "OpenBurnBar", "OpenBurnBarApp", "openburnbar-linux-desktop": identity = .app
+        default: return nil
         }
-
-        let allowedRoots = linuxAllowedPeerRoots(environment: environment)
         let pins = linuxPeerHashPins(environment: environment)
-        let expectedHash = pins[executablePath] ?? pins[credential.executablePath] ?? pins[executableName]
-        guard !allowedRoots.isEmpty || expectedHash?.isEmpty == false else {
-            throw BurnBarDaemonPeerAuthenticationFailure.codeSignatureInvalid(status: daemonTokenUnavailableStatus)
+        guard let expected = pins[executablePath] ?? pins[executableName],
+              expected.count == 64,
+              constantTimeTokensEqual(executableSHA256.lowercased(), expected.lowercased()) else {
+            return nil
         }
-        if !allowedRoots.isEmpty {
-            let rootAllowed = allowedRoots.contains { root in
-                if executablePath == root { return true }
-                let boundary = root.hasSuffix("/") ? root : root + "/"
-                return executablePath.hasPrefix(boundary)
-            }
-            guard rootAllowed else {
-                throw BurnBarDaemonPeerAuthenticationFailure.codeSignatureInvalid(status: daemonTokenUnavailableStatus)
-            }
-        }
-
-        if let expected = expectedHash, !expected.isEmpty {
-            guard constantTimeTokensEqual(credential.executableSHA256.lowercased(), expected.lowercased()) else {
-                throw BurnBarDaemonPeerAuthenticationFailure.codeSignatureInvalid(status: daemonTokenUnavailableStatus)
-            }
-        }
-
         return identity
     }
 
@@ -294,8 +484,18 @@ public struct BurnBarDaemonPeerAuthenticator: Sendable {
         guard status == 0, length == socklen_t(MemoryLayout<BurnBarLinuxPeerSocketCredentials>.size) else {
             throw BurnBarDaemonPeerAuthenticationFailure.auditTokenUnavailable
         }
+        let executableFD = open("/proc/\(credential.pid)/exe", O_RDONLY | O_CLOEXEC)
+        guard executableFD >= 0 else {
+            throw BurnBarDaemonPeerAuthenticationFailure.auditTokenUnavailable
+        }
+        defer { close(executableFD) }
+        var executableStat = stat()
+        guard fstat(executableFD, &executableStat) == 0,
+              (executableStat.st_mode & mode_t(S_IFMT)) == mode_t(S_IFREG) else {
+            throw BurnBarDaemonPeerAuthenticationFailure.auditTokenUnavailable
+        }
         let executablePath = try linuxExecutablePath(pid: credential.pid)
-        let sha256 = try linuxExecutableSHA256(path: executablePath)
+        let sha256 = try linuxExecutableSHA256(fileDescriptor: executableFD)
         return BurnBarLinuxPeerCredential(
             pid: credential.pid,
             uid: credential.uid,
@@ -309,25 +509,89 @@ public struct BurnBarDaemonPeerAuthenticator: Sendable {
         let linkPath = "/proc/\(pid)/exe"
         var buffer = [CChar](repeating: 0, count: 4096)
         let count = readlink(linkPath, &buffer, buffer.count - 1)
-        guard count > 0 else {
+        guard count > 0, count < buffer.count - 1 else {
             throw BurnBarDaemonPeerAuthenticationFailure.auditTokenUnavailable
         }
-        buffer[Int(count)] = 0
-        return String(cString: buffer)
+        let bytes = Data(buffer.prefix(Int(count)).map { UInt8(bitPattern: $0) })
+        guard let path = String(data: bytes, encoding: .utf8), !path.contains("\0") else {
+            throw BurnBarDaemonPeerAuthenticationFailure.auditTokenUnavailable
+        }
+        return path
     }
 
-    private static func linuxExecutableSHA256(path: String) throws -> String {
-        let data = try Data(contentsOf: URL(fileURLWithPath: path))
+    private static func linuxExecutableSHA256(fileDescriptor: Int32) throws -> String {
+        guard lseek(fileDescriptor, 0, SEEK_SET) >= 0 else {
+            throw BurnBarDaemonPeerAuthenticationFailure.auditTokenUnavailable
+        }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 64 * 1024)
+        while true {
+            let count = Glibc.read(fileDescriptor, &buffer, buffer.count)
+            if count == 0 { break }
+            if count < 0 {
+                if errno == EINTR { continue }
+                throw BurnBarDaemonPeerAuthenticationFailure.auditTokenUnavailable
+            }
+            data.append(buffer, count: count)
+            if data.count > 512 * 1024 * 1024 {
+                throw BurnBarDaemonPeerAuthenticationFailure.auditTokenUnavailable
+            }
+        }
         return PlatformCrypto.sha256Hex(data)
     }
 
-    private static func linuxAllowedPeerRoots(environment: [String: String]) -> [String] {
-        let raw = environment["OPENBURNBAR_DAEMON_LINUX_PEER_ROOTS"]
-            ?? environment["BURNBAR_DAEMON_LINUX_PEER_ROOTS"]
-        return (raw ?? "")
-            .split(separator: ":")
-            .map { URL(fileURLWithPath: String($0)).standardizedFileURL.path }
-            .filter { !$0.isEmpty }
+    private static func linuxValidateImmutableDirectory(path: String, requiredOwnerUID: uid_t) throws {
+        var metadata = stat()
+        var filesystem = statvfs()
+        guard lstat(path, &metadata) == 0,
+              (metadata.st_mode & mode_t(S_IFMT)) == mode_t(S_IFDIR),
+              metadata.st_uid == requiredOwnerUID,
+              metadata.st_mode & mode_t(0o022) == 0,
+              statvfs(path, &filesystem) == 0,
+              metadata.st_mode & mode_t(0o200) == 0
+                || filesystem.f_flag & UInt(ST_RDONLY) != 0 else {
+            throw linuxPeerInvalid()
+        }
+    }
+
+    private static func linuxReadBoundedRegularFile(
+        path: String,
+        minimumBytes: Int = 1,
+        maximumBytes: Int,
+        requiredOwnerUID: uid_t,
+        requireNoGroupOrWorldWrite: Bool
+    ) throws -> Data {
+        let descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
+        guard descriptor >= 0 else { throw linuxPeerInvalid() }
+        defer { close(descriptor) }
+        var metadata = stat()
+        guard fstat(descriptor, &metadata) == 0,
+              (metadata.st_mode & mode_t(S_IFMT)) == mode_t(S_IFREG),
+              metadata.st_uid == requiredOwnerUID,
+              (!requireNoGroupOrWorldWrite || metadata.st_mode & mode_t(0o022) == 0),
+              Int(metadata.st_size) >= minimumBytes,
+              Int(metadata.st_size) <= maximumBytes else {
+            throw linuxPeerInvalid()
+        }
+        var data = Data()
+        data.reserveCapacity(Int(metadata.st_size))
+        var buffer = [UInt8](repeating: 0, count: min(maximumBytes, 64 * 1024))
+        while true {
+            let count = Glibc.read(descriptor, &buffer, buffer.count)
+            if count == 0 { break }
+            if count < 0 {
+                if errno == EINTR { continue }
+                throw linuxPeerInvalid()
+            }
+            data.append(buffer, count: count)
+            guard data.count <= maximumBytes else { throw linuxPeerInvalid() }
+        }
+        guard data.count >= minimumBytes else { throw linuxPeerInvalid() }
+        return data
+    }
+
+    private static func linuxPeerInvalid() -> BurnBarDaemonPeerAuthenticationFailure {
+        .codeSignatureInvalid(status: daemonTokenUnavailableStatus)
     }
 
     private static func linuxPeerHashPins(environment: [String: String]) -> [String: String] {
