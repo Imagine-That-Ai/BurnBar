@@ -34,8 +34,10 @@ Inputs used:
 | Finish line | **F2_True_1to1** | `WINDOWS_PARITY_LEDGER.yml` |
 | 100% parity (ledger laws) | **YES** | never bare “100%” — always **F2 True 1:1** |
 
-Operational residuals (not ledger failures): Authenticode private key, branch-protection
-required-check flip for `pr-windows-full`, physical TPM claim on hardware.
+Operational residuals (not ledger failures): Authenticode private key,
+branch-protection required-check flip for `pr-windows-full`, physical TPM claim
+on hardware, signed Computer Use virtual HID, and physical Computer Use device
+certification.
 
 ### Historical scan baseline (plan authoring, pre-remediation)
 
@@ -58,7 +60,7 @@ The five foundation rows that were Real at plan write (not product-surface parit
 - `pal-ipc-named-pipe`
 - `quota-portable-parsers`
 
-The nine current `Blocked` rows are:
+The nine rows that were `Blocked` at plan write were:
 
 - `nav-chat`
 - `nav-database`
@@ -450,6 +452,10 @@ Exit criteria:
 - No integration page displays controls for unsupported backends without an
   explicit capability-absent state.
 
+Computer Use checkpoint (2026-07-10): exact candidate `08e425a0dec6` passed the
+Windows ARM64 lower-privilege UIA/SendInput/WGC/audit/watchdog host loop. The
+signed virtual HID path and physical x64/ARM64 certification remain under U7.
+
 ## 13. Phase H9 - F1 Ship
 
 Time: 2-4 weeks after H2-H8 evidence.
@@ -576,7 +582,7 @@ gate. The remaining uncertainty is not hidden; it is listed below.
 | U4 | merge cost from `windows/liquid-glass-kernel-reskin` to current `main` | rebase early and isolate theme work | theme cannot block data Real |
 | U5 | whether Alberto wants F2 in year-one launch | written F1/F2 decision | default F1 |
 | U6 | DCC high-risk action envelope complexity | H4 spike after OAuth/App Check | keep export/revoke partial until proven |
-| U7 | ViGEm/driver friction for Computer Use | H8 host pass | ship lower-privilege CU subset only if labeled |
+| U7 | Signed-driver friction for Computer Use secure/privileged input | signed virtual HID + physical x64/ARM64 H8 pass | ship lower-privilege CU subset only if labeled; fail signed-driver-required actions closed |
 | U8 | Mac-only features not yet represented in ledger | periodic `AgentLens/Views` and service inventory | add rows, do not absorb silently |
 
 ## 18. First 48 Hours

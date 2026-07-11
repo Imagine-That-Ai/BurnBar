@@ -22,6 +22,10 @@ public sealed class ComputerUseDesktopLoop
         _killSwitch = killSwitch ?? throw new ArgumentNullException(nameof(killSwitch));
     }
 
+    /// <summary>Whether the configured adapter satisfies this action's integrity route.</summary>
+    public bool CanRoute(MacInputAction action) =>
+        !action.RequiresSignedDriver || _input.RoutesThroughSignedDriver;
+
     /// <summary>
     /// Dispatch one already-approved input action through the production path.
     /// </summary>
@@ -32,6 +36,13 @@ public sealed class ComputerUseDesktopLoop
         if (_killSwitch.ShouldBlockDispatch())
         {
             return ComputerUseLoopResult.Denied(ComputerUseDenyReason.KillSwitch);
+        }
+
+        if (!CanRoute(action))
+        {
+            return ComputerUseLoopResult.Denied(
+                ComputerUseDenyReason.SignatureFailure,
+                "signed_input_driver_required");
         }
 
         InputSynthesisResult result = _input.Synthesize(action);

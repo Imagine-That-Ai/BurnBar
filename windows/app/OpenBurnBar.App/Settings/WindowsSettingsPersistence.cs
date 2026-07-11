@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using OpenBurnBar.App.CloudSync;
 using OpenBurnBar.App.Configuration;
+using OpenBurnBar.App.ComputerUse;
 using OpenBurnBar.App.Settings.ViewModels;
 using OpenBurnBar.App.TextExpansion;
 using OpenBurnBar.CloudSync.Crypto;
@@ -120,8 +121,9 @@ internal static class WindowsSettingsComposition
             WindowsAccessibilityProbe.Instance),
         SettingsTab.ComputerUse => new ComputerUseSettingsViewModel(
             WindowsAccessibilityProbe.Instance,
-            UnavailableComputerUseAuditService.Instance,
-            new ComputerUsePermissionsStore(Persistence)),
+            WindowsComputerUseRuntimeHost.Current,
+            new ComputerUsePermissionsStore(Persistence),
+            WindowsComputerUseRuntimeHost.Current),
         SettingsTab.Pets => new PetsSettingsViewModel(store: new PetStore(Persistence)),
         SettingsTab.Account => new AccountSettingsViewModel(
             new OAuthAccountSessionGate(OAuth.Value),
@@ -350,11 +352,4 @@ internal static class WindowsSettingsComposition
         public bool TriggerBackup() => false;
     }
 
-    private sealed class UnavailableComputerUseAuditService : IComputerUseAuditService
-    {
-        public static readonly UnavailableComputerUseAuditService Instance = new();
-        public AuditActionResult ValidateChain(string sessionId) => AuditActionResult.Fail("No audit archive is open for this session.");
-        public AuditActionResult ExportArchive(string sessionId, bool includeScreenshots) => AuditActionResult.Fail("No audit archive is open for this session.");
-        public AuditActionResult Notarize(string sessionId) => AuditActionResult.Fail("Audit notarization requires an authenticated production account.");
-    }
 }

@@ -19,7 +19,7 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
-    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <RootNamespace>OpenBurnBar.App</RootNamespace>
     <AssemblyName>OpenBurnBar.App</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -152,6 +152,8 @@
     <ProjectReference Include="../../pal/overlay/OpenBurnBar.Pal.Overlay.csproj" />
     <ProjectReference Include="../../pal/ipc/OpenBurnBar.Pal.Ipc.csproj" />
     <ProjectReference Include="../../pal/ipc-windows/OpenBurnBar.Pal.Ipc.Windows.csproj" />
+    <ProjectReference Include="../../computeruse/OpenBurnBar.ComputerUse.Core/OpenBurnBar.ComputerUse.Core.csproj" />
+    <ProjectReference Include="../../computeruse/OpenBurnBar.ComputerUse.Windows/OpenBurnBar.ComputerUse.Windows.csproj" />
   </ItemGroup>
 
   <ItemGroup>

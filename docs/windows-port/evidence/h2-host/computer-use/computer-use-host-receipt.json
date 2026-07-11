@@ -1,0 +1,37 @@
+﻿{
+    "schema":  "openburnbar.windows.computer-use-host-evidence.v1",
+    "generatedAtUtc":  "2026-07-10T23:03:21.3340688Z",
+    "status":  "passed",
+    "source":  {
+                   "branch":  "codex/windows-certification-computer-use",
+                   "commit":  "08e425a0dec691fa1d8d657674bf5a9bdd04580b",
+                   "commitDate":  "2026-07-10T17:49:22-05:00",
+                   "parentCommits":  [
+                                         "6c8d7bb6cb673de7500d836b8dcec69e443dea57"
+                                     ],
+                   "ref":  "HEAD",
+                   "tree":  "23af5df0dc45c9188ff045c941184e63975c54ff"
+               },
+    "candidateManifestSha256":  "8abee7370403ff65f12a0e41f1500b4540579bccf0957aa4b4a0f5a3c1f4eeb0",
+    "sessionId":  1,
+    "osArchitecture":  "ARM 64-bit Processor",
+    "systemType":  "ARM64-based PC",
+    "processArchitecture":  "X64",
+    "app":  {
+                "fileName":  "OpenBurnBar.App.exe",
+                "sha256":  "e324e68be79ea4e8185e7049e3a416139a26905d732066d94a5813feae92f2d3",
+                "size":  260096
+            },
+    "hostSummary":  {
+                        "fileName":  "host/computer-use-host-summary.json",
+                        "sha256":  "f55ed98fcb4669494cf7c9b4d837a9b182614e0fde88a2c3616d8066f31d2808",
+                        "checks":  15,
+                        "passed":  true,
+                        "auditHeadHash":  "2b36e7ec6daa58299cb4a799c464b4b199e0e0f6e2661c3bb43cdce1859f0cab"
+                    },
+    "wgcCapture":  {
+                       "fileName":  "host/computer-use-wgc.png",
+                       "sha256":  "d563ec6ad466505376e2ecc8271162a57f13c885454bb248301ca9f0afe0f46d",
+                       "size":  13202
+                   }
+}

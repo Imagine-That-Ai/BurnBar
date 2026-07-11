@@ -23,6 +23,18 @@ dependency; code may ship portable cores and fail-closed empty paths.
 | Signed MSIX + update | `dist-msix-signed` | Trusted Signing cert active + signed install/update evidence |
 | PR Windows Full Gate required | `ci-windows-full-gate` | Branch protection makes `pr-windows-full` required on `main` |
 
+## Computer Use trigger result - 2026-07-10
+
+The Computer Use revive trigger fired for the lower-privilege desktop loop.
+Exact candidate `08e425a0dec6` passed import verification and 15/15 interactive
+SendInput/UIA/WGC/audit/watchdog checks on the Windows 11 ARM64 host. Evidence is
+under `docs/windows-port/evidence/h2-host/computer-use/`.
+
+This does not revive secure-desktop or lock-screen injection. Those actions
+still require a signed non-bypassable virtual HID route and physical-device
+certification; the current app denies signed-driver-required actions through
+the advisory adapter.
+
 ## Revive process
 
 1. Capture host runbook output under `docs/windows-port/evidence/h2-host/` or dist evidence.

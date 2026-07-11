@@ -59,6 +59,19 @@ if ($manifest.schema -ne 'openburnbar.windows.candidate-export.v1') {
     throw "Unsupported candidate manifest schema: $($manifest.schema)"
 }
 
+if ($env:OS -eq 'Windows_NT') {
+    $longest = $manifest.files |
+        ForEach-Object {
+            $relative = ([string]$_.path) -replace '/', [System.IO.Path]::DirectorySeparatorChar
+            [pscustomobject]@{ path = [string]$_.path; length = (Join-Path $destinationFull $relative).Length }
+        } |
+        Sort-Object length -Descending |
+        Select-Object -First 1
+    if ($null -ne $longest -and $longest.length -ge 260) {
+        throw "Destination path is too long for the Windows tar/import toolchain ($($longest.length) chars): $($longest.path). Choose a shorter DestinationRoot such as C:\obb\candidate."
+    }
+}
+
 $actualArchiveHash = Get-Sha256 $archiveFull
 if ($actualArchiveHash -ne $manifest.archive.sha256) {
     throw "Archive SHA-256 mismatch. expected=$($manifest.archive.sha256) actual=$actualArchiveHash"

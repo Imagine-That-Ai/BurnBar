@@ -1,0 +1,25 @@
+﻿{
+    "schema":  "openburnbar.windows.candidate-import-verification.v1",
+    "verifiedAt":  "2026-07-10T23:00:41.3676875Z",
+    "destinationRoot":  "C:\\obb\\cu08e4",
+    "manifestPath":  "C:\\OpenBurnBarCandidates\\08e425a0dec6\\openburnbar-candidate-08e425a0dec6.manifest.json",
+    "manifestSha256":  "8abee7370403ff65f12a0e41f1500b4540579bccf0957aa4b4a0f5a3c1f4eeb0",
+    "archivePath":  "C:\\OpenBurnBarCandidates\\08e425a0dec6\\openburnbar-candidate-08e425a0dec6.full.tar.gz",
+    "archiveSha256":  "1b3bdde2c62bb247b17342e59d7912d5b82e5e82b832ac80be025450443ea112",
+    "source":  {
+                   "branch":  "codex/windows-certification-computer-use",
+                   "commit":  "08e425a0dec691fa1d8d657674bf5a9bdd04580b",
+                   "commitDate":  "2026-07-10T17:49:22-05:00",
+                   "parentCommits":  [
+                                         "6c8d7bb6cb673de7500d836b8dcec69e443dea57"
+                                     ],
+                   "ref":  "HEAD",
+                   "tree":  "23af5df0dc45c9188ff045c941184e63975c54ff"
+               },
+    "checkedFiles":  10265,
+    "expectedFiles":  10265,
+    "mismatches":  [
+
+                   ],
+    "status":  "passed"
+}
