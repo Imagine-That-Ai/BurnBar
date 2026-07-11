@@ -20,6 +20,18 @@ public struct BurnBarRecoveryEngine {
                 reason: "workspace_policy_gate",
                 userMessage: error.message
             )
+        case .operatorDenied:
+            return BurnBarRecoveryDecision(
+                action: .failRun,
+                reason: "operator_denied",
+                userMessage: error.message
+            )
+        case .computerUseDenied:
+            return BurnBarRecoveryDecision(
+                action: .failRun,
+                reason: "computer_use_denied",
+                userMessage: error.message
+            )
         case .applyFailed, .terminalFailed, .unknown:
             let reason = policyEngine.isRetryable(error) && attempt < 2
                 ? "retryable_tool_failure"

@@ -211,6 +211,42 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         )
     }
 
+    /// Canonical identifier placed in a Computer Use grant's signed
+    /// `clientIntentId`. Proof verification can then bind the grant to the exact
+    /// session request without including the proof fields themselves.
+    public func canonicalComputerUseSessionIntentID(
+        request: ComputerUseSessionStartRequest
+    ) throws -> String {
+        struct SignableComputerUseSessionIntent: Encodable {
+            let version: Int
+            let mode: String
+            let trustMode: String
+            let scopeRuleIds: [String]
+            let phoneViewerNodeId: String?
+            let macHostNodeId: String?
+            let actionCap: Int
+            let sessionTimeoutSeconds: Int
+            let clientId: String
+            let runId: String?
+            let runCallId: String?
+            let runGeneration: UInt64?
+        }
+        return try canonicalIntentHashHex(intent: SignableComputerUseSessionIntent(
+            version: 2,
+            mode: request.mode,
+            trustMode: request.trustMode,
+            scopeRuleIds: request.scopeRuleIds.sorted(),
+            phoneViewerNodeId: request.phoneViewerNodeId,
+            macHostNodeId: request.macHostNodeId,
+            actionCap: request.actionCap,
+            sessionTimeoutSeconds: request.sessionTimeoutSeconds,
+            clientId: request.clientID.rawValue,
+            runId: request.runID?.rawValue,
+            runCallId: request.runCallID,
+            runGeneration: request.runGeneration
+        ))
+    }
+
     private func canonicalAgentGrantRequestHashHex(
         requestId: String,
         runtime: String,

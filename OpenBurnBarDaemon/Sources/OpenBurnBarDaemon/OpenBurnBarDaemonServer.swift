@@ -43,6 +43,7 @@ public actor BurnBarDaemonServer {
     /// first-party Mac app provisions this store via `phoneControlPinProvision` so
     /// the daemon can verify local-auth proofs independently of the app.
     let phoneControlPinStore: DaemonPhoneKeyPinStore?
+    let computerUseApprovalAuthorityVerifier: DaemonComputerUseApprovalAuthorityVerifier?
     let linuxOnboardingService: BurnBarLinuxOnboardingService
     let subscriptionService: BurnBarSubscriptionService
     let providerExternalAuthService: any BurnBarProviderExternalAuthServing
@@ -54,6 +55,7 @@ public actor BurnBarDaemonServer {
     let runService: BurnBarRunService
     let toolingProxy: BurnBarToolingProxyService
     let computerUseService: ComputerUseService
+    let computerUseAuthorizationRegistry: ComputerUseAuthorizationRegistry
     #if os(Linux)
     let mediaService: MercuryLinuxMediaSessionController
     #endif
@@ -72,8 +74,6 @@ public actor BurnBarDaemonServer {
     private var acceptLoopTask: Task<Void, Never>?
     private var heartbeatTask: Task<Void, Never>?
     private var oauthRefreshTask: Task<Void, Never>?
-    var localAuthVerifiedComputerUseSessions: [String: Date] = [:]
-
     public init(
         configuration: BurnBarDaemonConfiguration = BurnBarDaemonConfiguration(),
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(),
@@ -83,6 +83,8 @@ public actor BurnBarDaemonServer {
         quotaSignalStore: BurnBarQuotaSignalStore? = nil,
         clientRegistry: BurnBarClientRegistry? = nil,
         runService: BurnBarRunService? = nil,
+        computerUseService: ComputerUseService? = nil,
+        computerUseAuthorizationRegistry: ComputerUseAuthorizationRegistry? = nil,
         missionControlService: (any BurnBarMissionControlServing)? = nil,
         accountService: (any BurnBarAccountServing)? = nil,
         linuxAppCheckService: BurnBarLinuxAppCheckService? = nil,
@@ -92,6 +94,7 @@ public actor BurnBarDaemonServer {
         capabilityProfile: BurnBarPeerCapabilityProfile = .full,
         localAuthProofVerifier: DaemonLocalAuthProofVerifier? = nil,
         phoneControlPinStore: DaemonPhoneKeyPinStore? = nil,
+        computerUseApprovalAuthorityVerifier: DaemonComputerUseApprovalAuthorityVerifier? = nil,
         linuxOnboardingService: BurnBarLinuxOnboardingService? = nil,
         subscriptionService: BurnBarSubscriptionService? = nil,
         providerExternalAuthService: (any BurnBarProviderExternalAuthServing)? = nil
@@ -103,6 +106,25 @@ public actor BurnBarDaemonServer {
         self.capabilityProfile = capabilityProfile
         self.localAuthProofVerifier = localAuthProofVerifier
         self.phoneControlPinStore = phoneControlPinStore
+        #if os(Linux)
+        if localAuthProofVerifier != nil {
+            self.computerUseApprovalAuthorityVerifier = computerUseApprovalAuthorityVerifier
+                ?? DaemonComputerUseApprovalAuthorityVerifier(
+                    resolvePinnedKey: { peerNodeID in
+                        guard let phoneControlPinStore else { return nil }
+                        if case .pinned(let key) = phoneControlPinStore.pinnedKey(deviceId: peerNodeID) {
+                            return key
+                        }
+                        return nil
+                    },
+                    replayCounterStore: .production()
+                )
+        } else {
+            self.computerUseApprovalAuthorityVerifier = nil
+        }
+        #else
+        self.computerUseApprovalAuthorityVerifier = nil
+        #endif
         self.linuxOnboardingService = linuxOnboardingService ?? BurnBarLinuxOnboardingService()
         self.subscriptionService = subscriptionService ?? BurnBarSubscriptionService(
             daemonVersion: configuration.daemonVersion
@@ -125,6 +147,53 @@ public actor BurnBarDaemonServer {
         let resolvedClientRegistry = clientRegistry ?? BurnBarClientRegistry(
             logger: BurnBarDaemonLogger(category: "client-registry")
         )
+        let resolvedComputerUseAuthorizationRegistry = computerUseAuthorizationRegistry
+            ?? ComputerUseAuthorizationRegistry(enforcementEnabled: localAuthProofVerifier != nil)
+        let resolvedComputerUseService = computerUseService ?? ComputerUseService(
+            authorizationRegistry: resolvedComputerUseAuthorizationRegistry
+        )
+        let computerUseBrowserDispatcher: BurnBarComputerUseBrowserDispatcher?
+        let computerUseRunBindingChecker: BurnBarComputerUseRunBindingChecker?
+        let computerUseRunRevoker: BurnBarComputerUseRunRevoker?
+        #if os(Linux)
+        computerUseBrowserDispatcher = { invocation in
+            guard let sessionID = await resolvedComputerUseService.sessionID(for: invocation.runID),
+                  await resolvedComputerUseAuthorizationRegistry.permits(
+                    sessionID: sessionID,
+                    invocation: invocation
+                  ) else {
+                throw ComputerUseService.ServiceError.authorizationExpired(invocation.runID.rawValue)
+            }
+            let response = try await resolvedComputerUseService.invokeForRun(invocation)
+            return BurnBarComputerUseBrowserDispatchResult(
+                expectedSessionID: sessionID,
+                response: response
+            )
+        }
+        computerUseRunBindingChecker = { runID, expectedGeneration in
+            await resolvedComputerUseAuthorizationRegistry.hasActiveBinding(
+                runID: runID,
+                generation: expectedGeneration
+            )
+        }
+        computerUseRunRevoker = { runID, expectedGeneration in
+            guard let binding = await resolvedComputerUseAuthorizationRegistry.binding(runID: runID),
+                  binding.generation == expectedGeneration else {
+                return
+            }
+            await resolvedComputerUseAuthorizationRegistry.revoke(sessionID: binding.sessionID)
+            _ = try? await resolvedComputerUseService.panicHalt(
+                ComputerUsePanicHaltRequest(
+                    sessionId: binding.sessionID.rawValue,
+                    source: ComputerUsePanicSource.revoked.rawValue
+                )
+            )
+        }
+        #else
+        computerUseBrowserDispatcher = nil
+        computerUseRunBindingChecker = nil
+        computerUseRunRevoker = nil
+        #endif
         let resolvedRunService = runService ?? BurnBarRunService(
             router: BurnBarProviderRouter(
                 configStore: resolvedConfigStore,
@@ -133,6 +202,9 @@ public actor BurnBarDaemonServer {
             ),
             usageRecorder: resolvedUsageRecorder,
             clientRegistry: resolvedClientRegistry,
+            computerUseBrowserDispatcher: computerUseBrowserDispatcher,
+            computerUseRunBindingChecker: computerUseRunBindingChecker,
+            computerUseRunRevoker: computerUseRunRevoker,
             logger: BurnBarDaemonLogger(category: "run-service")
         )
 
@@ -146,7 +218,8 @@ public actor BurnBarDaemonServer {
             connectorPlaneService: resolvedRunService.connectorPlaneService,
             browserToolService: resolvedRunService.browserToolService
         )
-        self.computerUseService = ComputerUseService()
+        self.computerUseService = resolvedComputerUseService
+        self.computerUseAuthorizationRegistry = resolvedComputerUseAuthorizationRegistry
         #if os(Linux)
         let mediaLogger = BurnBarDaemonLogger(category: "linux-media")
         self.mediaService = MercuryLinuxMediaSessionController(

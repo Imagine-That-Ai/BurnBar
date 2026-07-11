@@ -15,7 +15,8 @@
 The Linux app now has a substantial production implementation: a 19-route Tauri
 shell, all six persisted dashboard layouts, shared daemon RPC access, canonical
 XDG path handling, live usage/quota data, missions, durable memory decisions,
-database indexing/watch recovery, Browser Computer Use plus guarded system input,
+database indexing/watch recovery, Browser Computer Use safety/routing foundations
+plus capability-gated system-input primitives,
 AppImage/deb/rpm construction, and a source-level signed apt/RPM repository
 builder and verifier. The remediation wave also replaced the false-
 green certification baseline, added Linux-native secret custody, moved gateway
@@ -38,6 +39,30 @@ feed, verifies public bytes, compensates post-activation failures, and uploads
 Sigstore-verified immutable evidence. This is source closure, not live promotion
 evidence: production DNS, credentials, OpenPGP identity, published bytes,
 installed lifecycle, and a real scheduled refresh execution remain unproven.
+
+The Browser Computer Use source safety boundary is materially stronger. Agent
+browser tools now pause for an exact run/call/generation-bound Computer Use
+session, then dispatch through the shared scope, approval, panic, Playwright,
+and tamper-evident audit coordinator with no direct-Playwright fallback.
+Exact-generation leases, terminal revocation, durable failure handling, and
+Linux-only verification of fresh phone-signed action responses are implemented;
+replay counters persist across daemon restart and fail closed if their store is
+unreadable. Session-start intent signs the exact run, call, and generation.
+Pin provisioning binds the source-device and transport-peer identities in one
+atomic alias-set commit. Waiting sessions restore as unleased requirements;
+an interrupted in-flight Browser action is instead durably failed as outcome-
+unknown and can only be retried with a new call/generation. Every later action
+in an already-bound session is checkpointed before external dispatch, so
+restart cannot regenerate or redispatch it. The Linux surface lists waiting
+runs, renders exact-session approval context, and retires only the exact
+selected session after authoritative terminal state without mistaking a
+transport failure for termination. This is source safety closure, not an available release workflow: the
+release shell requires a phone-signed session-start grant and fresh signed
+authority for every action response, but the current surface acquires neither
+and keeps those controls disabled. Packaged Browser Computer Use therefore
+fails closed before session start or approval. Real installed actions, phone
+authority acquisition, restart certification, Agent Watch, Linux system
+capture/input, and the supported-desktop matrix remain open.
 
 Mercury is no longer a missing code path: Linux now has daemon-owned iroh session
 control, inbound and outbound file transfer, call/mirror state, sealed media
@@ -242,7 +267,7 @@ The correct release posture is therefore:
 | Linux App Check | Durable five-minute challenge, atomic replay defense, pinned signed-verdict boundary, fixed 30-minute TTL, daemon memory-only acquisition/cache, hash-only ticket reservation, exact ingress claim, streamed evidence upload, receipt-native mint evidence, root broker/native deb-rpm packaging, broker-owned `tpm2_createak` AK lifecycle initialization/rotation guard, root-owned enrollment-state binding, private AK context activation, source TPM quote collection, sealed IMA/measured-boot/manifest evidence descriptor, verifier-side enrollment recheck, Functions mint revocation gate, high-risk owner revocation administration, atomic tamper-evident completion audit, and the 16 MiB evidence ceiling are source-implemented; mint kill switch defaults off | Provision the Firebase Web app; activate real remote enrollment, prove physical-TPM quotes and complete IMA verification through deployed verifier/revocation operations, deploy ingress/verifier/revocation callable, capture production audit evidence, run negative/revocation vectors, and certify the installed matrix; Linux remains `linux_lower_trust` |
 | Packaging | aarch64 and x86_64 AppImage/deb/rpm/daemon construction and smoke passed; aarch64 installed `.deb` session passed | Produce installed x86_64 session, signed aggregate, rpm/AppImage lifecycle, and prior-version proof |
 | Core product workflows | Six dashboard layouts, XDG/provider paths, and daemon-authoritative memory decisions are implemented; several routes remain partial/read-only | Complete onboarding, chat, sessions, account/cloud, and workspace depth |
-| Advanced platform features | Mercury implementation and guarded Linux input/panic paths exist; unsupported outcomes remain capability-gated | Certify Mercury; complete system CU capture, SmartHub devices, IBus/Fcitx, and companion overlay |
+| Advanced platform features | Mercury implementation and guarded Linux input/panic paths exist; Computer Use source routing, exact-generation authority, durable replay protection, and signed-response verification are implemented, while unavailable release controls and unsupported outcomes fail closed | Implement phone-backed start-grant and action-approval acquisition; then certify installed Browser CU actions/restart, system CU capture, Mercury, SmartHub devices, IBus/Fcitx, and companion overlay |
 
 ### What "full parity" means
 
@@ -275,22 +300,35 @@ live product state were independently reproducible.
 
 ### Verification performed
 
-- `npm test --prefix apps/linux-desktop -- --maxWorkers=2`: **64 files, 457 tests passed**.
+- `npm test --prefix apps/linux-desktop -- --run`: **68 files, 496 tests passed**.
 - `npm run build --prefix apps/linux-desktop`: **passed**; the main JavaScript
-  chunk is **678.93 kB** minified and Vite reports a chunk-size warning.
+  chunk is **700.90 kB** minified and Vite reports a chunk-size warning.
 - `cargo test --manifest-path apps/linux-desktop/src-tauri/Cargo.toml`:
-  **26/26 passed**, including native deep-link/autostart, account-network,
+  **43/43 passed**, including native deep-link/autostart, account-network,
   capability-catalog,
-  Mercury-probe, update-feed, URL, gateway, panic-shortcut, and wire-contract
-  coverage.
+  Mercury-probe, update-feed, URL, gateway, panic-shortcut, signed Computer Use
+  session/approval transport, and wire-contract coverage.
 - ARM64 Ubuntu 24.04 GNOME X11 native-shell pass: production-protocol ELF
   `cfc14d7da1124d32d2370adf515cf4636b7c1c0345376377f71d09bd0099608d`
   stayed at one process through `openburnbar://chat`, rendered the bundled tray
   icon/menu, preserved honest offline state, and completed a native-menu XDG
   login-start off/on/off round trip with canonical `0600` user-owned content.
-- Fail-closed OpenBurnBar Core/security/daemon Linux manifest: **100/100 passed**.
+- Fail-closed OpenBurnBar Core/security/daemon Linux manifest: **222/222 native
+  Swift selectors passed** (14 core, 30 security, 178 daemon), including exact-
+  generation run binding, concurrency, expiry/renewal, shared dispatch, signed
+  session and action authority, restart replay rejection, corrupt-store refusal,
+  atomic identity-alias pinning, authoritative terminal polling, denial
+  attribution, panic, terminal revocation, retryably durable restart
+  normalization, already-bound pre-dispatch checkpointing, pre/post-dispatch
+  persistence failure, and no-fallback Browser Computer Use selectors. The broker's root-
+  ownership tests passed **33/33**, its all-target clippy gate passed with
+  warnings denied, and the real RPM mutation-sensitive assembly test passed.
 - Linux media crate capability/capture/decode suite: **3/3 passed**.
-- Extension daemon-client suite: **40/40 passed**.
+- Extension daemon-client focused suite: **213/213 passed**, including the
+  Computer Use waiting phase and operator/computer-use denial projections.
+- macOS Computer Use compatibility selector: **1/1 passed**, executing an
+  approved `browser.goto` through the direct Playwright driver while proving no
+  Linux managed-run binding was acquired.
 - Linux release/config/packaging/matrix contract suites: **78/78 passed**.
 - Current source comparison of macOS routes, settings, chat, parser registry,
   daemon lifecycle, cloud/account, Computer Use, Mercury, SmartHub, text
@@ -382,7 +420,7 @@ required gates and were not made green by the Ed25519 result.
 | P-04 | Architecture reach | Published build covers the declared macOS architecture support contract | Native aarch64/x86_64 shard workflow exists and architecture-correct local construction/smoke is green for both; a native hosted x86_64 run, signed aggregate, and installed x86_64 evidence are not yet produced | Partial | Critical |
 | P-05 | Credential custody | Keychain-backed provider, connector, auth, and sync secrets | Secret Service, KWallet, and encrypted headless custodians are wired; live keyring/recovery matrix remains incomplete | Partial | Critical |
 | P-06 | Gateway credential boundary | Native process owns bearer credentials | Rust owns the bearer and proxies bounded authenticated HTTP/SSE; renderer receives typed data, not the token | Near parity | Critical |
-| P-07 | Computer Use | Browser, Agent Watch, Mac System, approval, audit, and three panic paths | Runtime manifest hides unsupported system mode; complete browser action proof and Linux system capture/input adapter remain missing | Partial | Critical |
+| P-07 | Computer Use | Browser, Agent Watch, Mac System, approval, audit, and three panic paths | Source now provides exact run/call/generation binding and signed intent, atomic device/peer pinning, waiting-run selection, shared scope/panic/Playwright/audit routing, exact-session terminal polling, retryably durable restart normalization, pre-dispatch checkpointing for later bound actions, fail-safe terminal revocation, durable replay counters, and Linux-only verification of signed phone approval responses. The release UI cannot yet acquire the phone-signed session grant or signed approval authority, so packaged Browser CU remains unavailable; installed browser/restart proof, Agent Watch, and Linux system capture/input remain missing | Partial | Critical |
 | P-08 | Mercury media | File transfer, calls, screen share, mirroring, presence, consent | Daemon-owned transport, calls, files, sealed capture, portal consent, HUD, and live capability probing are implemented; real cross-device and compositor proof remains open | Partial | Critical |
 | P-09 | Navigation and shell | Dashboard, insights, deep provider/model routes, multi-window flows | All 19 installed routes activate through AT-SPI; validated single-instance dashboard/search/chat/insights/membership deep links now route through typed native events; provider/model depth and native multi-window behavior remain thinner | Near parity | Medium |
 | P-10 | Dashboard layouts | Six dense layouts with real live content and persisted state | All six layouts, persistence, loading/error/offline/populated states, tokens, and tests exist; the packaged six-layout visual matrix remains incomplete | Near parity | Medium |
@@ -598,33 +636,66 @@ therefore not closed.
 
 ### GAP-005 - Complete Computer Use rather than exposing unsupported modes
 
-**Implementation update (2026-07-10): honesty gap closed; capability gap open.**
+**Implementation update (2026-07-11): unsupported-mode honesty and source
+routing safety improved; release authority acquisition and installed capability
+remain open.**
 The typed runtime manifest now marks Linux system Computer Use unavailable and
-prevents the route from offering a guaranteed-failure action. Browser Computer
-Use remains the supported Linux mode. Full browser action/result E2E and a real
-portal/PipeWire/AT-SPI/libei or constrained X11 system adapter are still required.
+prevents the route from offering a guaranteed-failure action. Browser is the
+only exposed source mode, but the release workflow is not yet operational.
+Daemon-managed browser tools now require a live session bound to the exact
+agent run/call/generation, reserve concurrent starts, release expired bindings,
+store that run ID in the hashed manifest, and execute through the shared
+Computer Use scope, approval, panic, Playwright, and audit coordinator. Unbound,
+halted, mismatched-result, persistence-error, and coordinator-error paths fail
+closed with no legacy Playwright fallback; every terminal path revokes the exact
+generation before cleanup. Every already-bound action is durably checkpointed
+before external dispatch. A waiting requirement restores without a lease, while
+an action interrupted in flight is durably normalized to an outcome-unknown
+failure and can only retry with a fresh call/generation. The surface has a
+waiting-run picker and exact-row approval context; filtered polling carries
+authoritative session liveness, so it retires only that exact terminal session
+and retains it across transport errors.
 
-- **Baseline difference (2026-07-09):** macOS ships Browser, Agent Watch, and Mac System behavior with
-  approval, audit, and panic paths. Linux presents browser, agent-watch, and
-  system choices, but the daemon rejects non-browser modes, the surface has no
-  real target/action/result workflow, and no Linux capture/input adapter exists.
+Linux release verification now requires the exact session, approval ID, pending-
+request hash, pinned transport-peer key and key kind, 30-second freshness,
+strictly increasing durable counter, canonical response-intent hash, and valid
+signature. Corrupt replay state fails closed, and the source-device/peer-node
+pin alias is provisioned as one atomic set on both the Linux file store and the
+macOS Keychain. Backings without atomic multi-alias support fail before writing.
+The remaining product blocker is authority
+acquisition: the current surface supplies neither the phone-signed start grant
+nor the signed action response, so Start and approval controls are disabled
+instead of issuing guaranteed-failure release requests. Full installed browser
+action/result/restart E2E and a real portal/PipeWire/AT-SPI/libei or constrained
+X11 system adapter are still required.
+
+- **Baseline difference (2026-07-09):** At the 2026-07-09 baseline, macOS shipped
+  Browser, Agent Watch, and Mac System behavior with approval, audit, and panic
+  paths. Linux presented browser, agent-watch, and system choices, but the daemon
+  rejected non-browser modes, the surface had no real target/action/result
+  workflow, and no Linux capture/input adapter existed.
 - **Why it matters:** this is a safety-sensitive feature. Offering guaranteed-
   failure modes and unproven panic behavior is both misleading and dangerous.
-- **Recommended solution:** first return a typed runtime capability manifest and
-  hide unsupported modes; complete browser actions over the real Playwright
-  bridge; then build portal/PipeWire capture, AT-SPI inspection, libei input,
-  constrained X11/XTest, and explicitly consented uinput fallback.
+- **Recommended solution:** acquire the canonical phone-signed start grant and
+  exact signed action response from the paired controller; wire Linux desktop-
+  owner authentication through an explicit polkit/PAM policy without weakening
+  pinned-phone validation; preserve restart-safe authority state; complete
+  browser actions over the real Playwright bridge; then build portal/PipeWire
+  capture, AT-SPI inspection, libei input, constrained X11/XTest, and explicitly
+  consented uinput fallback.
 - **Priority:** **Critical**.
 - **Implementation notes:** preserve approval as ground truth; trust elevation
   remains Mac/desktop local; the Linux-native daemon-wide global panic path and
   deterministic installed X11 chord proof now exist, while lock/sleep/
   permission-revocation kill paths and real-desktop latency certification remain;
-  audit every action and terminal entry; capability-gate per compositor and
-  session type.
+  never redispatch an action whose pre-dispatch checkpoint may have crossed the
+  external boundary; audit every action and terminal entry; capability-gate per
+  compositor and session type.
 - **QA verification:** navigate/click/type/screenshot against real browser
   targets; exercise manual/step/trusted policy, approval races, denial, audit
-  tampering, lock/sleep, portal revocation, daemon crash, and panic latency on
-  GNOME/KDE/Sway Wayland and X11.
+  tampering, lock/sleep, portal revocation, daemon crash before and after a later
+  bound action dispatch, explicit retry, and panic latency on GNOME/KDE/Sway
+  Wayland and X11.
 
 ### GAP-006 - Build the Mercury Linux media host
 
@@ -1366,6 +1437,7 @@ coverage.
 | LNX-AUTH-001 family | Source foundation implemented; deployment and product depth open | Purpose-bound sealed device auth, daemon refresh/keyring custody, redacted state, local sign-out, and the App Check challenge/verifier/daemon-client/ingress bridge boundary | Deploy account auth; complete the App Check verifier, rollout, and installed proof; then membership, sync, and trusted devices |
 | LNX-APPCHECK-001 | Source daemon bridge, root-broker, and revocation administration implemented; production blocked | Five-minute Firestore challenge, atomic replay consumption, exact signed-verdict binding, fixed 30-minute token TTL, kill switch default off, account-bound daemon memory cache, hash-only upload-ticket reservation, exact ingress claim, streamed evidence PUT, receipt-native mint evidence, root `openburnbar-attestd`, signed installed manifest, exact peer authorization, broker-owned `tpm2_createak` AK lifecycle initialization/rotation guard, private root-owned AK-bound enrollment-state binding, private `ak.ctx` activation, `tpm2_quote` collection, sealed IMA/measured-boot/manifest descriptor, verifier-side active-enrollment recheck before verdict signing, Functions-side revocation gate before challenge consumption/token minting, high-risk owner revocation with atomic tombstone/audit persistence, stale-worker tombstone preservation, systemd socket activation, native deb/rpm lifecycle, AppImage exclusion, and the 16 MiB descriptor ceiling | Real Firebase Web app ID, remote enrollment activation, physical-TPM quote vectors, complete IMA verification, deployed remote verifier/revocation operation and production audit evidence, ingress/verifier deployment, negative vectors, and exact-candidate GNOME/KDE/headless installed matrix |
 | LNX-NATIVE-001 | Partially implemented | Single-instance launch, typed deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, deterministic installed notification action capture, installed X11 global-panic capture, deterministic login-start lifecycle capture, deterministic tray-host-loss/restart capture, XDG login start, daemon-owned typed provider external login, native-shell evidence requirements in the matrix harness, and verifier-produced native-shell evidence JSON | Cloud quick reply, installed provider-login and rich notification-host breadth, durable provider multi-account profiles, display-manager/package-manager breadth, and full installed desktop matrix evidence |
+| LNX-CU-BROWSER-001 | Source safety/routing implemented; product authority acquisition blocked | Exact run/call/generation signed intent; atomic source-device/peer alias pinning; shared coordinator dispatch; signed approval and durable replay validation; exact-session lifecycle polling; waiting-requirement restore; pre-dispatch checkpointing for later bound actions; retryably durable outcome-unknown failure for interrupted actions; extension phase/error support; 222-selector native manifest | Paired-controller grant/approval acquisition, Linux owner authentication, real installed browser actions, phone/restart/panic/audit certification |
 | LNX-CAT-001, LNX-DIFF-001 | Open | Existing provider/path contracts retained | Shared catalog plus same-commit macOS/Linux differential proof |
 | Phase 2 core workflows | Open/partial | Existing routes and bounded mutations retained | Complete product outcomes and daemon-authoritative state |
 | Phase 3 native features | In progress | Mercury core, Linux CU input, panic, and outbound capture foundations are implemented; unsupported outcomes remain capability-gated | Cross-device Mercury proof, system CU capture, SmartHub, IBus/Fcitx, pet adapters |
@@ -1474,7 +1546,7 @@ accepted together.
 
 | Task | Depends on | Engineering work | Acceptance criteria |
 |---|---|---|---|
-| LNX-CU-BROWSER-001 | LNX-CAP-001, LNX-IPC-001, LNX-SESS-001, LNX-NATIVE-001, LNX-EVT-001 | Real target/action/result Browser CU workflow with native panic/lifecycle | Navigate/type/click/screenshot/approval/panic/audit/restart E2E green |
+| LNX-CU-BROWSER-001 | LNX-CAP-001, LNX-IPC-001, LNX-SESS-001, LNX-NATIVE-001, LNX-EVT-001 | Implemented in source: exact waiting-run picker; signed run/call/generation intent; atomic device/peer aliases; verified-session leases; shared coordinator routing; result identity validation; exact signed pending-approval verifier; durable replay counters; authoritative exact-session polling; exact-generation cancellation/terminal revocation; pre-dispatch checkpointing for later bound actions; and retryably durable outcome-unknown restart normalization. Remaining: real phone pairing/proof acquisition, signed response acquisition, native owner-auth integration, and installed/restart lifecycle | Release build completes navigate/type/click/screenshot with real paired authority; unsigned/forged/replayed/stale/wrong-session/wrong-request responses fail; deny/panic/timeout/cancel/journal failure revoke only the exact generation; restart never redispatches an in-flight action, requires fresh session authority, and retains replay high-water marks; audit/tamper proof passes |
 | LNX-CU-SYSTEM-001 | LNX-CU-BROWSER-001, LNX-CAP-001, LNX-NATIVE-001 | Portal/PipeWire/AT-SPI/libei plus constrained X11/uinput adapters | Safety and compositor matrix green; unsupported modes hidden |
 | LNX-MEDIA-001 | LNX-CAP-001, LNX-IPC-001, LNX-SEC-001, LNX-AUTH-DEPLOY-001, LNX-APPCHECK-001, LNX-NATIVE-001, LNX-EVT-001 | Mercury transport, secure pairing, files, calls, share, codecs, consent, notification/lifecycle | Real two-device matrix green on supported desktops |
 | LNX-IOT-001 | LNX-IPC-001 | Typed SmartHub discovery/action APIs | Real device and hostile-input tests green |
@@ -1502,7 +1574,7 @@ accepted together.
 | 3 | **Mainstream install** | Package construction and apt/RPM repository source foundation complete; signing identity, public mirrors, installed lifecycle, and AUR/Flatpak decisions remain | LNX-PKG-001, LNX-CHANNEL-001 | Both architectures and every declared package/repository channel install locally |
 | 4 | **Daily-use native foundation** | In progress; onboarding, bounded event refresh, single-instance/deep-link, live-tray, compact status, source-level notifications, installed X11 global-panic capture, XDG login-start, account-auth foundations, Linux App Check challenge/verifier/daemon-client/ingress boundaries, root broker/native deb-rpm lifecycle, source owner revocation administration with atomic audit persistence, and typed provider external login implemented; production TPM/IMA evidence, deployed remote verification/revocation and audit proof, membership/cloud/device depth, cloud quick reply, provider-login installed certification/multi-account profiles, and installed matrix remain | LNX-EVT-001, LNX-ONB-001, LNX-AUTH-DEPLOY-001, LNX-APPCHECK-001, LNX-MEMBERSHIP-001, LNX-SYNC-001, LNX-DEVICE-001, LNX-NATIVE-001, LNX-UPD-001, LNX-CAT-001, LNX-DIFF-001 | Setup, deployed auth, production attestation, data freshness, alerts/tray, update lifecycle, and current provider diff green |
 | 5 | **Core product workflows** | Open/partial | LNX-SESS-001, LNX-CHAT-001, LNX-MEM-001, LNX-PROJ-001, LNX-MISSION-001, LNX-INSIGHT-001, LNX-DB-001, LNX-PROVIDER-001, LNX-PRIV-001, LNX-SET-001 | No synthetic state; every primary workspace and privacy workflow completes |
-| 6 | **Browser automation parity** | Open/partial | LNX-CU-BROWSER-001 | Real actions, approval, panic, audit, restart recovery |
+| 6 | **Browser automation parity** | In progress; source routing, waiting-run picker, durable replay state, and signed-response verifier implemented; release authority acquisition open | LNX-CU-BROWSER-001 | Phone-backed session start/action approval, real actions, panic, audit, and restart recovery |
 | 7 | **Media and system integration** | In progress; Mercury code complete | LNX-CU-SYSTEM-001, LNX-MEDIA-001 | Supported compositor safety and two-device media proof |
 | 8 | **Extended features** | Pending | LNX-IOT-001, LNX-TEXT-001, LNX-PET-001 | SmartHub, input-method, and companion outcomes proven or honestly substituted |
 | 9 | **Candidate and certification** | Blocked on milestones 3-8 | LNX-REL-CANDIDATE-001, LNX-A11Y-CERT-001, LNX-PERF-CERT-001, LNX-QA-001, LNX-DOC-001 | Exact signed candidate, assistive-tech, performance, architecture, desktop matrix, and docs green |
@@ -1694,7 +1766,14 @@ Keep one integration owner at a time for `routes.ts`, `tauriBridge.ts`, the Taur
 
 ### Computer Use, media, and extended features
 
-- [ ] Unsupported Computer Use modes are unavailable before session start.
+- [x] The source surface exposes Browser only and disables actions when signed
+  phone authority is unavailable.
+- [ ] The exact installed candidate proves unsupported Computer Use modes hidden.
+- [x] Source daemon-managed agent browser tools require an exact live run/session
+  binding and use the same scope, approval, panic, Playwright, and audit
+  authority as explicit Computer Use actions, with no direct-dispatch fallback.
+- [ ] A paired phone supplies the exact signed session grant and action response;
+  unsigned, forged, replayed, stale, wrong-session, and wrong-request vectors fail.
 - [ ] Browser actions, approvals, deny, panic, audit, tamper detection, restart,
   and permission revocation pass against a real browser.
 - [ ] System capture/input/inspection passes the declared GNOME/KDE/Sway and
@@ -1777,7 +1856,7 @@ Primary current evidence and implementation references:
   `functions/src/callables/cliLink.ts`, and `website/src/pages/link.astro`
 - Linux account-auth reproducible verification entry points:
   `bash scripts/linux-port/run-linux-native-tests.sh`,
-  `npm test --prefix apps/linux-desktop -- --maxWorkers=2`,
+  `npm test --prefix apps/linux-desktop -- --run`,
   `npx vitest run` in `functions/`, and `npm test --prefix website`
 - macOS route oracle: `AgentLens/Views/Dashboard/DashboardNavigationModel.swift`
 - macOS settings oracle: `AgentLens/Views/Settings/SettingsTab.swift`
@@ -1785,6 +1864,18 @@ Primary current evidence and implementation references:
 - Linux chat controls/state: `apps/linux-desktop/src/surfaces/chat/` and
   `apps/linux-desktop/src/state/chatStore.ts`
 - Linux Tauri capability/commands: `apps/linux-desktop/src-tauri/src/lib.rs`
+- Linux Browser Computer Use authority and lifecycle:
+  `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/ComputerUseAuthorizationRegistry.swift`,
+  `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/DaemonComputerUseApprovalAuthorityVerifier.swift`,
+  `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/DaemonComputerUseApprovalReplayCounterStore.swift`,
+  `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/DaemonPhoneKeyPinStore.swift`,
+  `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarRunService+ToolDispatch.swift`,
+  `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarRunService+Lifecycle.swift`,
+  `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarRunService.swift`, and
+  `apps/linux-desktop/src/surfaces/computerUse/ComputerUseSurface.tsx`
+- Linux Browser Computer Use native contract gate:
+  `scripts/linux-port/run-linux-native-tests.sh` and
+  `scripts/linux-port/run-linux-native-tests.test.mjs`
 - Linux provider external-auth authority:
   `docs/architecture/014-linux-provider-external-auth.md`,
   `OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarProviderContracts.swift`,

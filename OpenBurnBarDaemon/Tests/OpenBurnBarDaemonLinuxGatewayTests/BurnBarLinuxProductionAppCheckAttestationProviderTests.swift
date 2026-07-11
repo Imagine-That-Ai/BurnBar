@@ -51,7 +51,7 @@ final class BurnBarLinuxProductionAppCheckAttestationProviderTests: XCTestCase {
         let encoded = try JSONEncoder().encode(attestation)
         XCTAssertFalse(String(decoding: encoded, as: UTF8.self).contains("obbat1_"))
         XCTAssertFalse(String(decoding: encoded, as: UTF8.self).contains("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"))
-        XCTAssertEqual(fcntl(fixture.rawDescriptor, F_GETFD), -1)
+        assertDescriptorClosed(fixture.evidenceDescriptor)
     }
 
     func testUnsupportedBrokerMakesNoUploadCall() async throws {
@@ -95,7 +95,7 @@ final class BurnBarLinuxProductionAppCheckAttestationProviderTests: XCTestCase {
         XCTAssertEqual(credentialCalls.value, 0)
         let capture = await uploader.capture()
         XCTAssertNil(capture)
-        XCTAssertEqual(fcntl(fixture.rawDescriptor, F_GETFD), -1)
+        assertDescriptorClosed(fixture.evidenceDescriptor)
     }
 
     func testReceiptMismatchFailsAndClosesDescriptor() async throws {
@@ -120,7 +120,7 @@ final class BurnBarLinuxProductionAppCheckAttestationProviderTests: XCTestCase {
         } catch let error as BurnBarLinuxAppCheckError {
             XCTAssertEqual(error, .invalidAttestation)
         }
-        XCTAssertEqual(fcntl(fixture.rawDescriptor, F_GETFD), -1)
+        assertDescriptorClosed(fixture.evidenceDescriptor)
     }
 
     func testProductionUploaderReusesCredentialReservationAndFreshDescriptorStreamAcrossRetries() async throws {
@@ -224,7 +224,7 @@ final class BurnBarLinuxProductionAppCheckAttestationProviderTests: XCTestCase {
         let quote: BurnBarLinuxAppCheckJSONValue
         let metadata: BurnBarLinuxAttestationEvidenceBundleMetadata
         let receipt: BurnBarLinuxAttestationUploadReceipt
-        let rawDescriptor: Int32
+        let evidenceDescriptor: BurnBarLinuxAttestationEvidenceDescriptor
         let broker: FakeBroker
 
         init(byteLength: Int = 8) throws {
@@ -265,16 +265,32 @@ final class BurnBarLinuxProductionAppCheckAttestationProviderTests: XCTestCase {
                 size: byteLength,
                 sha256: metadata.sha256
             )
-            rawDescriptor = Glibc.open("/dev/null", O_RDONLY | O_CLOEXEC)
+            let rawDescriptor = Glibc.open("/dev/null", O_RDONLY | O_CLOEXEC)
             guard rawDescriptor >= 0 else { throw POSIXError(.EIO) }
+            evidenceDescriptor = .init(fileDescriptor: rawDescriptor, metadata: metadata)
             let result = BurnBarLinuxAttestationBrokerResult(
                 challengeId: challenge.challengeId,
                 challenge: challenge.challenge,
                 kind: binding.attestationKind,
                 evidence: quote,
-                evidenceDescriptor: .init(fileDescriptor: rawDescriptor, metadata: metadata)
+                evidenceDescriptor: evidenceDescriptor
             )
             broker = FakeBroker(binding: binding, result: result)
+        }
+    }
+
+    private func assertDescriptorClosed(
+        _ descriptor: BurnBarLinuxAttestationEvidenceDescriptor,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertThrowsError(try descriptor.duplicateForStreaming(), file: file, line: line) { error in
+            XCTAssertEqual(
+                error as? BurnBarLinuxAttestationBrokerClientError,
+                .invalidEvidenceDescriptor,
+                file: file,
+                line: line
+            )
         }
     }
 }
