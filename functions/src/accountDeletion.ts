@@ -20,10 +20,7 @@ import {
   writeAccountErasureCompletionRequired,
 } from "./accountDeletionAudit.js";
 
-export {
-  isAccountErasureResumable,
-  verifyRetainedAccountErasureEvents,
-} from "./accountDeletionAudit.js";
+export { isAccountErasureResumable, verifyRetainedAccountErasureEvents } from "./accountDeletionAudit.js";
 
 type AccountStoragePrefixKind = "user_data" | "avatar";
 
@@ -130,10 +127,9 @@ export const ACCOUNT_ERASURE_ROOT_OWNER_REGISTRY = [
 function accountStoragePrefixes(uid: string): Array<{ kind: AccountStoragePrefixKind; prefix: string }> {
   return [
     { kind: "user_data", prefix: `users/${uid}/` },
-    // Deliberately omit the trailing slash: legacy profile uploads used the
-    // exact object key `avatars/${uid}`, while current uploads live below it.
-    // A single prefix delete covers both forms without a second retry surface.
-    { kind: "avatar", prefix: `avatars/${uid}` },
+    // Keep the trailing slash so prefix deletion cannot overmatch neighboring
+    // avatar owners such as `avatars/${uid}-other/...`.
+    { kind: "avatar", prefix: `avatars/${uid}/` },
   ];
 }
 
