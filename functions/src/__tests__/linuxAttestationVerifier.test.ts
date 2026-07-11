@@ -7,6 +7,7 @@ vi.mock("../providers/httpClient.js", () => ({ providerFetch }));
 
 import {
   __testing__,
+  GoogleCloudRunIdentityTokenProvider,
   LINUX_ATTESTATION_KIND,
   RemoteSignedLinuxAttestationVerifier,
   sha256Hex,
@@ -16,6 +17,8 @@ import {
 const NOW = 1_900_000_000_000;
 const { publicKey, privateKey } = generateKeyPairSync("ed25519");
 const publicKeyBase64 = publicKey.export({ format: "der", type: "spki" }).toString("base64");
+const authorizationHeader = "Bearer eyJhbGciOiJSUzI1NiJ9.eyJhdWQiOiJmaXh0dXJlIn0.signature";
+const identityTokenProvider = { getAuthorizationHeader: vi.fn() };
 
 function challenge(): LinuxAttestationChallenge {
   return {
@@ -66,15 +69,20 @@ function signedEnvelope(input: LinuxAttestationChallenge) {
 function verifier(): RemoteSignedLinuxAttestationVerifier {
   return new RemoteSignedLinuxAttestationVerifier({
     endpoint: new URL("https://attest.burnbar.ai/v1/verify"),
+    oidcAudience: "https://attest.burnbar.ai",
     publicKeyBase64,
     keyId: "linux-attestation-key-1",
     issuer: "https://attest.burnbar.ai",
     audience: "openburnbar-linux-app-check",
+    identityTokenProvider,
   });
 }
 
 describe("remote signed Linux attestation verifier", () => {
-  beforeEach(() => providerFetch.mockReset());
+  beforeEach(() => {
+    providerFetch.mockReset();
+    identityTokenProvider.getAuthorizationHeader.mockReset().mockResolvedValue(authorizationHeader);
+  });
 
   it("accepts only a pinned Ed25519 verdict with exact challenge bindings", async () => {
     const input = challenge();
@@ -92,8 +100,63 @@ describe("remote signed Linux attestation verifier", () => {
       "linux-attestation",
       "verify",
       new URL("https://attest.burnbar.ai/v1/verify"),
-      expect.objectContaining({ method: "POST" }),
+      expect.objectContaining({
+        method: "POST",
+        redirect: "error",
+        signal: expect.any(AbortSignal),
+        headers: {
+          Authorization: authorizationHeader,
+          "content-type": "application/json",
+          "cache-control": "no-store",
+        },
+      }),
     );
+  });
+
+  it("does not make an unauthenticated request when identity-token acquisition fails", async () => {
+    identityTokenProvider.getAuthorizationHeader.mockRejectedValueOnce(new Error("ADC unavailable"));
+
+    await expect(verifier().verify({ challenge: challenge(), evidence: {}, nowMillis: NOW })).rejects.toThrow(
+      /unavailable/i,
+    );
+    expect(providerFetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed identity-token headers before making a request", async () => {
+    identityTokenProvider.getAuthorizationHeader.mockResolvedValueOnce("Bearer not-a-jwt");
+
+    await expect(verifier().verify({ challenge: challenge(), evidence: {}, nowMillis: NOW })).rejects.toThrow(
+      /unavailable/i,
+    );
+    expect(providerFetch).not.toHaveBeenCalled();
+  });
+
+  it("requires the transport OIDC audience to be the exact verifier HTTPS origin", () => {
+    const base = {
+      endpoint: new URL("https://attest.burnbar.ai/v1/verify"),
+      publicKeyBase64,
+      keyId: "linux-attestation-key-1",
+      issuer: "https://attest.burnbar.ai",
+      audience: "openburnbar-linux-app-check",
+      identityTokenProvider,
+    };
+
+    expect(() => new RemoteSignedLinuxAttestationVerifier({ ...base, oidcAudience: "" })).toThrow(/not configured/i);
+    expect(
+      () =>
+        new RemoteSignedLinuxAttestationVerifier({
+          ...base,
+          oidcAudience: "https://other-service.example.test",
+        }),
+    ).toThrow(/not configured/i);
+    expect(
+      () =>
+        new RemoteSignedLinuxAttestationVerifier({
+          ...base,
+          endpoint: new URL("https://user:password@attest.burnbar.ai/v1/verify"),
+          oidcAudience: "https://attest.burnbar.ai",
+        }),
+    ).toThrow(/not configured/i);
   });
 
   it("fails closed for forged signatures and mismatched challenge bindings", async () => {
@@ -133,5 +196,45 @@ describe("remote signed Linux attestation verifier", () => {
     await expect(verifier().verify({ challenge: challenge(), evidence: {}, nowMillis: NOW })).rejects.toThrow(
       /invalid verdict/i,
     );
+  });
+});
+
+describe("Google Cloud Run identity-token provider", () => {
+  it("shares one ID-token client across concurrent requests", async () => {
+    const getRequestHeaders = vi.fn().mockResolvedValue({ get: () => authorizationHeader });
+    const getIdTokenClient = vi.fn().mockResolvedValue({ getRequestHeaders });
+    const provider = new GoogleCloudRunIdentityTokenProvider("https://attest.burnbar.ai", { getIdTokenClient });
+
+    await expect(Promise.all([provider.getAuthorizationHeader(), provider.getAuthorizationHeader()])).resolves.toEqual([
+      authorizationHeader,
+      authorizationHeader,
+    ]);
+    expect(getIdTokenClient).toHaveBeenCalledTimes(1);
+    expect(getIdTokenClient).toHaveBeenCalledWith("https://attest.burnbar.ai");
+  });
+
+  it("does not permanently cache a failed ID-token client acquisition", async () => {
+    const getIdTokenClient = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("metadata unavailable"))
+      .mockResolvedValueOnce({
+        getRequestHeaders: vi.fn().mockResolvedValue({ get: () => authorizationHeader }),
+      });
+    const provider = new GoogleCloudRunIdentityTokenProvider("https://attest.burnbar.ai", { getIdTokenClient });
+
+    await expect(provider.getAuthorizationHeader()).rejects.toThrow(/metadata unavailable/i);
+    await expect(provider.getAuthorizationHeader()).resolves.toBe(authorizationHeader);
+    expect(getIdTokenClient).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("Linux verifier request deadline", () => {
+  it("fails a pending operation when its shared request signal aborts", async () => {
+    const controller = new AbortController();
+    const operation = __testing__.abortable(new Promise<string>(() => undefined), controller.signal);
+
+    controller.abort(new Error("deadline exceeded"));
+
+    await expect(operation).rejects.toThrow(/deadline exceeded/i);
   });
 });

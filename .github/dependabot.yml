@@ -83,6 +83,18 @@ updates:
       timezone: "America/Los_Angeles"
     open-pull-requests-limit: 3
 
+  - package-ecosystem: "npm"
+    directory: "/services/linux-attestation-facade"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+
   - package-ecosystem: "gradle"
     directory: "/android"
     schedule:

@@ -735,6 +735,7 @@ jobs:
     timeout-minutes: 8
     outputs:
       rust_changed: ${{ steps.changed.outputs.rust_changed }}
+      linux_attestation_facade_changed: ${{ steps.changed.outputs.linux_attestation_facade_changed }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
@@ -743,7 +744,7 @@ jobs:
           # while leaving enough room for large artifact-purge diffs to checkout.
           fetch-depth: 2
 
-      - name: Detect Rust-relevant changes
+      - name: Detect Rust and Linux attestation facade changes
         id: changed
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || '' }}
@@ -767,6 +768,57 @@ jobs:
           else
             echo "rust_changed=false" >> "$GITHUB_OUTPUT"
           fi
+          if grep -Eq '^(services/linux-attestation-facade/|tests/fixtures/linux-attestation/broker-v2-golden\.json$|schemas/linux-attestation-evidence-bundle-header-v1\.schema\.json$|\.github/(workflows/fast-feedback\.yml|dependabot\.yml)$|scripts/ci/(check-npm-audit-fail-closed|verify-linux-attestation-facade-ci)(\.test)?\.mjs$)' /tmp/fast-feedback-changed-paths.txt; then
+            echo "linux_attestation_facade_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "linux_attestation_facade_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Self-test Linux attestation facade CI contract
+        run: node scripts/ci/verify-linux-attestation-facade-ci.test.mjs
+
+      - name: Verify Linux attestation facade CI contract
+        run: node scripts/ci/verify-linux-attestation-facade-ci.mjs
+
+  # ── Linux attestation facade: complete package and image gate ────────────
+  linux-attestation-facade-fast:
+    name: Linux attestation facade (types + lint + tests + images)
+    needs: fast-feedback-path-filter
+    if: needs.fast-feedback-path-filter.outputs.linux_attestation_facade_changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: services/linux-attestation-facade/package-lock.json
+
+      - name: Install Linux attestation facade dependencies
+        run: npm ci --prefix services/linux-attestation-facade
+
+      - name: Type-check Linux attestation facade
+        run: npm run typecheck --prefix services/linux-attestation-facade
+
+      - name: Lint Linux attestation facade
+        run: npm run lint --prefix services/linux-attestation-facade
+
+      - name: Test Linux attestation facade
+        run: npm run test --prefix services/linux-attestation-facade
+
+      - name: Build Linux attestation facade
+        run: npm run build --prefix services/linux-attestation-facade
+
+      - name: Audit Linux attestation facade dependencies
+        run: npm audit --prefix services/linux-attestation-facade --audit-level=high
+
+      - name: Build ingress image
+        run: docker build --target ingress --tag openburnbar-linux-attestation-ingress:ci services/linux-attestation-facade
+
+      - name: Build verifier image
+        run: docker build --target verifier --tag openburnbar-linux-attestation-verifier:ci services/linux-attestation-facade
 
   # ── Rust: fmt + clippy + cargo-deny on iroh crate (WS5) ─────────────────
   rust-deny-fast:
@@ -1212,6 +1264,7 @@ jobs:
     name: Fast Feedback Gate
     needs:
       - fast-feedback-path-filter
+      - linux-attestation-facade-fast
       - functions-fast
       - extension-fast
       - website-fast
