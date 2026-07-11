@@ -459,7 +459,7 @@ private class FirebaseAgentCapabilityGrantAuthorityPublishing(
     private val firestore: FirebaseFirestore,
 ) : AgentCapabilityGrantAuthorityPublishing {
     private val publisher: PhoneControlAuthorityPublisher by lazy {
-        PhoneControlAuthorityPublisher(firestore)
+        PhoneControlAuthorityPublisher(firestore = firestore)
     }
 
     override suspend fun publish(uid: String, authority: PhoneControlAuthorityDoc) {

@@ -43,7 +43,21 @@ class HermesAuthLifecycleRegistryTest {
         assertEquals(1, HermesAuthLifecycleRegistry.activeResourceCountForTests())
         service.destroyAndWait()
 
-        assertEquals(listOf("close"), transport.events)
+        assertEquals(listOf("destroy"), transport.events)
+        assertEquals(0, HermesAuthLifecycleRegistry.activeResourceCountForTests())
+    }
+
+    @Test
+    fun `service disposal still destroys transport after auth transition closed it`() = runTest {
+        val transport = RecordingRelayTransport()
+        val service = HermesService(relayTransport = transport)
+        val transition = HermesAuthLifecycleRegistry.holdAuthTransitionGate()
+
+        HermesAuthLifecycleRegistry.closeResourcesForTransition(transition)
+        HermesAuthLifecycleRegistry.releaseAuthTransitionGate(transition)
+        service.destroyAndWait()
+
+        assertEquals(listOf("close", "destroy"), transport.events)
         assertEquals(0, HermesAuthLifecycleRegistry.activeResourceCountForTests())
     }
 
@@ -56,6 +70,10 @@ class HermesAuthLifecycleRegistryTest {
 
         override suspend fun closeForAuthTransition() {
             events += "close"
+        }
+
+        override suspend fun destroy() {
+            events += "destroy"
         }
     }
 }

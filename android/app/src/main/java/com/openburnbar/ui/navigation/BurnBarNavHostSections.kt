@@ -46,7 +46,9 @@ import com.openburnbar.ui.burn.BurnView
 import com.openburnbar.ui.components.AuroraNavIcon
 import com.openburnbar.ui.components.BurnBarLogo
 import com.openburnbar.ui.computeruse.ComputerUseAgentWatchScreen
+import com.openburnbar.ui.hermes.AccountScopedHermesServiceProvider
 import com.openburnbar.ui.hermes.AssistantsScreen
+import com.openburnbar.ui.hermes.rememberAccountScopedHermesService
 import com.openburnbar.ui.insights.InsightsScreen
 import com.openburnbar.ui.media.CallHUDView
 import com.openburnbar.ui.media.PairedMacControlsScreen
@@ -549,6 +551,7 @@ internal data class BurnBarSignedInShellState(
     val isCloudMember: Boolean,
     val currentTier: com.openburnbar.ui.pro.CloudTier = com.openburnbar.ui.pro.CloudTier.NONE,
     val priceForTier: (com.openburnbar.ui.pro.CloudTier) -> String? = { null },
+    val userUid: String,
     val userDisplayName: String?,
     val userPhotoUrl: String?,
     val chatState: FloatingChatState,
@@ -556,12 +559,14 @@ internal data class BurnBarSignedInShellState(
 
 @Composable
 internal fun BurnBarSignedInShell(state: BurnBarSignedInShellState, navController: NavHostController, navigateTo: (BurnBarTab) -> Unit) {
-    if (state.isWideScreen) {
-        BurnBarWideScreenShell(state = state, navController = navController, navigateTo = navigateTo)
-    } else {
-        BurnBarPhoneShell(state = state, navController = navController, navigateTo = navigateTo)
+    AccountScopedHermesServiceProvider(accountUid = state.userUid) {
+        if (state.isWideScreen) {
+            BurnBarWideScreenShell(state = state, navController = navController, navigateTo = navigateTo)
+        } else {
+            BurnBarPhoneShell(state = state, navController = navController, navigateTo = navigateTo)
+        }
+        BurnBarSignedInOverlays(state = state, navigateTo = navigateTo)
     }
-    BurnBarSignedInOverlays(state = state, navigateTo = navigateTo)
 }
 
 @Composable
@@ -649,7 +654,7 @@ private fun BurnBarSignedInOverlays(state: BurnBarSignedInShellState, navigateTo
         }
     }
 
-    val hermesService = remember { com.openburnbar.data.hermes.HermesService() }
+    val hermesService = rememberAccountScopedHermesService()
     com.openburnbar.ui.chartstudio.ChartStudioOverlay(hermes = hermesService)
 
     com.openburnbar.ui.insights.MissionActivityOverlay(

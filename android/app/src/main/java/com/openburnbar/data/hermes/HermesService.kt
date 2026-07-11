@@ -370,19 +370,18 @@ class HermesService(
     }
 
     fun destroy() {
-        if (!destroyed.compareAndSet(false, true)) return
+        val shouldCloseLocalResources = destroyed.compareAndSet(false, true)
         HermesAuthLifecycleRegistry.unregister(lifecycleRegistration)
-        closeLocalResources()
+        if (shouldCloseLocalResources) closeLocalResources()
         lifecycleCloseScope.launch {
             relayTransportInternal?.destroy()
         }
     }
 
     internal suspend fun destroyAndWait() {
-        if (destroyed.compareAndSet(false, true)) {
-            HermesAuthLifecycleRegistry.unregister(lifecycleRegistration)
-            closeLocalResources()
-        }
+        val shouldCloseLocalResources = destroyed.compareAndSet(false, true)
+        HermesAuthLifecycleRegistry.unregister(lifecycleRegistration)
+        if (shouldCloseLocalResources) closeLocalResources()
         relayTransportInternal?.destroy()
     }
 
