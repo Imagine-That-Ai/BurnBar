@@ -437,7 +437,7 @@ function validateFeedDocument(document, input, expectedFingerprint) {
   if (!seen.has('appimage:aarch64') || !seen.has('appimage:x86_64')) {
     return 'feed document omits a required AppImage architecture';
   }
-  const expectedSignatureUrl = `${releasePrefix}latest-linux.json.ed25519.sig`;
+  const expectedSignatureUrl = `${releasePrefix}latest-linux-${input.channel}.json.ed25519.sig`;
   if (!isPlainObject(document.signature)
       || !hasExactKeys(document.signature, ['algorithm', 'publicKeySpkiSha256', 'url'])
       || document.signature.algorithm !== 'Ed25519'
@@ -464,7 +464,7 @@ function validateFeedPublicationInput(input) {
       || !COMMIT_PATTERN.test(input.sourceCommit ?? '') || !validHttpEtag(input.repositoryPointerEtag)) {
     return 'feed publication repository identity is invalid';
   }
-  const expectedFeedKey = `linux/releases/linux-v${input.version}/latest-linux.json`;
+  const expectedFeedKey = `linux/releases/linux-v${input.version}/latest-linux-${input.channel}.json`;
   if (!isPlainObject(input.feed)
       || !hasExactKeys(input.feed, ['key', 'signatureKey', 'sha256', 'size', 'signatureSha256', 'signatureSize'])
       || input.feed.key !== expectedFeedKey

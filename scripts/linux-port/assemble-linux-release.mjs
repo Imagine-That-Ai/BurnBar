@@ -273,6 +273,7 @@ for (const artifact of artifacts) {
 const publishedAt = new Date().toISOString();
 const publishedFeedName = manifest.updateMetadata.publishedName;
 const feedSignatureName = `${publishedFeedName}.ed25519.sig`;
+const feedSignatureObjectName = `latest-linux-${channel}.json.ed25519.sig`;
 const feed = {
   schemaVersion: 1,
   product: manifest.product,
@@ -295,7 +296,7 @@ const feed = {
   signature: {
     algorithm: 'Ed25519',
     publicKeySpkiSha256: manifest.signing.publicKeySpkiSha256,
-    url: releaseBaseUrl ? `${releaseBaseUrl}/${feedSignatureName}` : ''
+    url: releaseBaseUrl ? `${releaseBaseUrl}/${feedSignatureObjectName}` : ''
   }
 };
 if (feed.notes === undefined) delete feed.notes;

@@ -211,7 +211,13 @@ const secretName = process.argv[3];
 const token = fs.readFileSync(3, 'utf8');
 fs.writeFileSync(output, `${JSON.stringify({ [secretName]: token })}\n`, { mode: 0o600 });
 NODE
-  if [[ ! -s "$output" || "$(stat -f '%Lp' "$output" 2>/dev/null || stat -c '%a' "$output")" != "600" ]]; then
+  local mode
+  case "$(uname -s)" in
+    Darwin) mode="$(stat -f '%Lp' "$output")" ;;
+    Linux) mode="$(stat -c '%a' "$output")" ;;
+    *) echo "unsupported host for protected Worker secret mode validation" >&2; exit 1 ;;
+  esac
+  if [[ ! -s "$output" || "$mode" != "600" ]]; then
     echo "failed to create the protected Worker secret file" >&2
     exit 1
   fi

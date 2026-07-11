@@ -24,10 +24,10 @@ test('publisher uploads every immutable object through the authenticated Worker 
     const snapshotPrefix = `linux/repository-snapshots/prerelease/${value.snapshotId}`;
     assert.equal(keys.length, new Set(keys).size, 'publisher must not overwrite an object within one transaction');
     for (const name of [
-      'latest-linux.json',
+      'latest-linux-prerelease.json',
       ...value.artifactNames,
       ...value.artifactNames.map((artifact) => `${artifact}.ed25519.sig`),
-      'latest-linux.json.ed25519.sig'
+      'latest-linux-prerelease.json.ed25519.sig'
     ]) {
       assert.ok(keys.includes(`${releasePrefix}/${name}`), name);
     }
@@ -203,7 +203,7 @@ function fixture({ failAfterPut = null } = {}) {
 
   const feed = {
     version,
-    signature: { url: `${publicBase}/${releasePrefix}/latest-linux.json.ed25519.sig` },
+    signature: { url: `${publicBase}/${releasePrefix}/latest-linux-prerelease.json.ed25519.sig` },
     artifacts: artifactNames.map((name) => ({
       url: `${publicBase}/${releasePrefix}/${name}`,
       signatureUrl: `${publicBase}/${releasePrefix}/${name}.ed25519.sig`

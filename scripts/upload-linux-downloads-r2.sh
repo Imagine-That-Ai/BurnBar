@@ -159,9 +159,15 @@ NODE
 # Release artifacts, detached signatures, and the signed feed candidate are
 # immutable. The control Worker later atomically points the root feed routes at
 # these versioned bytes after repository activation.
-put_object "$feed" "$release_prefix/latest-linux.json"
+feed_object_name="latest-linux-$channel.json"
+feed_signature_object_name="$feed_object_name.ed25519.sig"
+put_object "$feed" "$release_prefix/$feed_object_name"
 for file in "${release_artifacts[@]}" "${release_signatures[@]}"; do
-  put_object "$file" "$release_prefix/$(basename "$file")"
+  if [[ "$file" == "$signature" ]]; then
+    put_object "$file" "$release_prefix/$feed_signature_object_name"
+  else
+    put_object "$file" "$release_prefix/$(basename "$file")"
+  fi
 done
 
 declare -a repository_packages=()
@@ -234,7 +240,9 @@ for file in \
   "${release_signatures[@]}" \
   "${shared_repository_files[@]}"; do
   if [[ "$file" == "$feed" ]]; then
-    verify_public_byte "$file" "$release_prefix/latest-linux.json"
+    verify_public_byte "$file" "$release_prefix/$feed_object_name"
+  elif [[ "$file" == "$signature" ]]; then
+    verify_public_byte "$file" "$release_prefix/$feed_signature_object_name"
   elif [[ "$file" == "$repository_root"/* ]]; then
     relative="${file#"$repository_root"/}"
     verify_public_byte "$file" "linux/$relative"

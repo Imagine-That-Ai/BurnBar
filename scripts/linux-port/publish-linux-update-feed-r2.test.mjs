@@ -294,8 +294,8 @@ function feedRecord({ channel = 'stable', generation, snapshotId, repositoryEtag
     version,
     sourceCommit: 'a'.repeat(40),
     feed: {
-      key: `linux/releases/linux-v${version}/latest-linux.json`,
-      signatureKey: `linux/releases/linux-v${version}/latest-linux.json.ed25519.sig`,
+      key: `linux/releases/linux-v${version}/latest-linux-${channel}.json`,
+      signatureKey: `linux/releases/linux-v${version}/latest-linux-${channel}.json.ed25519.sig`,
       sha256: 'b'.repeat(64), size: 1, signatureSha256: 'c'.repeat(64), signatureSize: 1
     },
     publishedAt: '2026-07-11T00:00:00.000Z',

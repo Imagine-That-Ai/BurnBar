@@ -229,6 +229,7 @@ if (statusCode === '200') {
   if (current.schemaVersion !== 1 || current.status !== 'inactive') throw new Error('inactive feed status is invalid');
 }
 const releasePrefix = `linux/releases/linux-v${version}`;
+const feedObjectName = `latest-linux-${channel}.json`;
 const request = {
   schemaVersion: 1,
   channel,
@@ -238,8 +239,8 @@ const request = {
   sourceCommit,
   repositoryPointerEtag,
   feed: {
-    key: `${releasePrefix}/latest-linux.json`,
-    signatureKey: `${releasePrefix}/latest-linux.json.ed25519.sig`,
+    key: `${releasePrefix}/${feedObjectName}`,
+    signatureKey: `${releasePrefix}/${feedObjectName}.ed25519.sig`,
     sha256: digest(feedBytes),
     size: feedBytes.length,
     signatureSha256: digest(signatureBytes),

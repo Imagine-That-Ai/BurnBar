@@ -1251,7 +1251,7 @@ async function seedFeedBundle(bucket, snapshot, repositoryPointerEtag, options =
     signature: {
       algorithm: 'Ed25519',
       publicKeySpkiSha256: TEST_FEED_FINGERPRINT,
-      url: `${publicPrefix}/latest-linux.json.ed25519.sig`
+      url: `${publicPrefix}/latest-linux-${snapshot.channel}.json.ed25519.sig`
     }
   };
   if (options.notes !== undefined) feed.notes = options.notes;
@@ -1259,7 +1259,7 @@ async function seedFeedBundle(bucket, snapshot, repositoryPointerEtag, options =
   const signatureBytes = new Uint8Array(await crypto.webcrypto.subtle.sign(
     'Ed25519', TEST_FEED_KEYS.privateKey, new TextEncoder().encode(feedBytes)
   ));
-  const key = `${releasePrefix}/latest-linux.json`;
+  const key = `${releasePrefix}/latest-linux-${snapshot.channel}.json`;
   const signatureKey = `${key}.ed25519.sig`;
   bucket.seed(key, feedBytes, { contentType: 'application/json; charset=utf-8' });
   bucket.seed(signatureKey, signatureBytes, { contentType: 'application/octet-stream' });

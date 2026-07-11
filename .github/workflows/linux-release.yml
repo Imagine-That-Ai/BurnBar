@@ -725,7 +725,8 @@ jobs:
           if [[ "${{ steps.publish_github_release.outcome }}" == "success" ]]; then
             exit 0
           fi
-          if [[ "${{ steps.cleanup_github_release.outcome }}" != "success" ]]; then
+          if [[ "${{ steps.publish_github_release.outcome }}" != "skipped" \
+            && "${{ steps.cleanup_github_release.outcome }}" != "success" ]]; then
             echo "failed Linux publication did not prove its run-owned GitHub release was removed" >&2
             exit 1
           fi

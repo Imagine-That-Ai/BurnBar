@@ -105,8 +105,8 @@ function descriptor(value) {
     version: value.version,
     sourceCommit: value.sourceCommit,
     feed: {
-      key: `linux/releases/linux-v${value.version}/latest-linux.json`,
-      signatureKey: `linux/releases/linux-v${value.version}/latest-linux.json.ed25519.sig`,
+      key: `linux/releases/linux-v${value.version}/latest-linux-${value.channel}.json`,
+      signatureKey: `linux/releases/linux-v${value.version}/latest-linux-${value.channel}.json.ed25519.sig`,
       sha256: '1'.repeat(64),
       size: 100,
       signatureSha256: '2'.repeat(64),
