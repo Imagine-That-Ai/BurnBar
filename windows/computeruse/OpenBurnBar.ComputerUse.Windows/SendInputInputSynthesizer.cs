@@ -134,14 +134,14 @@ public sealed class SendInputInputSynthesizer : IInputSynthesizer
         if (deltaY != 0)
         {
             var wheel = MakeMouse(NativeMethods.MouseEventFWheel);
-            wheel.u.mi.mouseData = unchecked((uint)deltaY);
+            wheel.u.mi.mouseData = WheelDataForPixelDelta(deltaY);
             inputs.Add(wheel);
         }
 
         if (deltaX != 0)
         {
             var wheel = MakeMouse(NativeMethods.MouseEventFHWheel);
-            wheel.u.mi.mouseData = unchecked((uint)deltaX);
+            wheel.u.mi.mouseData = WheelDataForPixelDelta(deltaX);
             inputs.Add(wheel);
         }
 
@@ -197,6 +197,26 @@ public sealed class SendInputInputSynthesizer : IInputSynthesizer
             && displayX < (long)left + width
             && displayY >= top
             && displayY < (long)top + height;
+    }
+
+    private static uint WheelDataForPixelDelta(int pixelDelta)
+    {
+        uint linesPerNotch = 3;
+        NativeMethods.SystemParametersInfo(
+            NativeMethods.SpiGetWheelScrollLines,
+            0,
+            ref linesPerNotch,
+            0);
+        if (linesPerNotch == 0 || linesPerNotch == uint.MaxValue)
+        {
+            linesPerNotch = 3;
+        }
+
+        var pixelsPerLine = Math.Max(1, NativeMethods.GetSystemMetrics(NativeMethods.SmCyVScroll));
+        long pixelsPerNotch = Math.Max(1L, (long)linesPerNotch * pixelsPerLine);
+        long notches = Math.Max(1L, (Math.Abs((long)pixelDelta) + pixelsPerNotch - 1) / pixelsPerNotch);
+        long units = Math.Min((long)int.MaxValue, notches) * NativeMethods.WheelDelta;
+        return pixelDelta < 0 ? unchecked((uint)-units) : (uint)units;
     }
 
     private static InputSynthesisResult DragDrop(int? startX, int? startY, int? endX, int? endY, int mouseButton)

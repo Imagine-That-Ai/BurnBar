@@ -36,6 +36,8 @@ internal static class NativeMethods
     internal const int SmYVirtualScreen = 77;
     internal const int SmCxVirtualScreen = 78;
     internal const int SmCyVirtualScreen = 79;
+    internal const int SmCyVScroll = 2;
+    internal const uint SpiGetWheelScrollLines = 0x0068;
     internal const int WheelDelta = 120;
 
     [StructLayout(LayoutKind.Sequential)]
@@ -88,6 +90,14 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     internal static extern int GetSystemMetrics(int nIndex);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool SystemParametersInfo(
+        uint uiAction,
+        uint uiParam,
+        ref uint pvParam,
+        uint fWinIni);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
