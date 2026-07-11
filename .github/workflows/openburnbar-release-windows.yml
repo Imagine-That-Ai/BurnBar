@@ -215,14 +215,20 @@ jobs:
       - name: Publish WinUI app (win-x64 + win-arm64)
         # Real build. Unproven until WINUI-017 lands the full WinUI toolchain build; this only
         # runs on a windows-v* tag, which is not cut until the app builds green.
+        env:
+          WINDOWS_UPDATE_PUBLIC_KEY: ${{ vars.WINDOWS_UPDATE_PUBLIC_KEY }}
         run: |
           set -euo pipefail
           app="windows/app/OpenBurnBar.App/OpenBurnBar.App.csproj"
+          pin="windows/packaging/updater/feed/pinned-update-key.pub"
+          printf '%s\n' "$WINDOWS_UPDATE_PUBLIC_KEY" > "$pin"
           for rid in win-x64 win-arm64; do
             plat="x64"
             [[ "$rid" == "win-arm64" ]] && plat="ARM64"
             dotnet publish "$app" -c Release -r "$rid" --self-contained true \
               -p:Platform="$plat" -p:WindowsPackageType=None \
+              -p:Version="$VERSION" -p:AssemblyVersion="${VERSION}.0" \
+              -p:FileVersion="${VERSION}.0" -p:InformationalVersion="$VERSION" \
               -o "publish/$rid"
           done
 
@@ -248,7 +254,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $expectedPublisher = "Imagine That AI LLC"
+          $expectedPublisher = "CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US"
           $signedFiles = @()
           foreach ($rid in @("win-x64", "win-arm64")) {
             $publishRoot = Join-Path $env:GITHUB_WORKSPACE "publish/$rid"
@@ -269,7 +275,7 @@ jobs:
             if ($signature.Status -ne "Valid") {
               throw "Portable Authenticode signature is $($signature.Status): $relativePath"
             }
-            if (-not $signature.SignerCertificate -or $signature.SignerCertificate.Subject -notlike "*$expectedPublisher*") {
+            if (-not $signature.SignerCertificate -or $signature.SignerCertificate.Subject -cne $expectedPublisher) {
               throw "Portable Authenticode signer is not ${expectedPublisher}: $relativePath :: $($signature.SignerCertificate.Subject)"
             }
             if (-not $signature.TimeStamperCertificate) {
@@ -330,7 +336,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $expectedPublisher = "Imagine That AI LLC"
+          $expectedPublisher = "CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US"
           $expectedPackages = @(
             "artifacts/OpenBurnBar-${env:VERSION}-x64.msix",
             "artifacts/OpenBurnBar-${env:VERSION}-arm64.msix"
@@ -346,7 +352,7 @@ jobs:
             if ($signature.Status -ne "Valid") {
               throw "MSIX Authenticode signature is $($signature.Status): $relativePath"
             }
-            if (-not $signature.SignerCertificate -or $signature.SignerCertificate.Subject -notlike "*$expectedPublisher*") {
+            if (-not $signature.SignerCertificate -or $signature.SignerCertificate.Subject -cne $expectedPublisher) {
               throw "MSIX Authenticode signer is not ${expectedPublisher}: $relativePath :: $($signature.SignerCertificate.Subject)"
             }
             if (-not $signature.TimeStamperCertificate) {
