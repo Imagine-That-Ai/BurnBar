@@ -200,7 +200,7 @@ public enum OBBCAbiUsageScanExport {
             request.codexHomeDirectory,
             request.cursorSessionsDirectory,
             request.factorySessionsDirectory,
-            request.hermesHomeDirectory,
+            request.hermesHomeDirectory
         ]
         guard required.allSatisfy({ !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
             throw OBBCAbiUsageScanError.invalidRequest
