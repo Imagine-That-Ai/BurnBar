@@ -57,6 +57,12 @@ export {
   publishRelaySenderKey,
   publishAgentGrantAuthority,
 } from "./phoneControlCallables.js";
+export {
+  issueIrohControllerRouteChallenge,
+  registerIrohControllerRoute,
+  revokeIrohControllerRoute,
+  resolveActiveIrohControllerRoutes,
+} from "./irohControllerRouteCallables.js";
 export { queueAgentCapabilityGrantRequest, respondMissionApproval } from "./agentGrantCallables.js";
 
 /**

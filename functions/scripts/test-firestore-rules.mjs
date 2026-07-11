@@ -1000,6 +1000,8 @@ test("iroh pairing trust roots are server-owned while audit events remain metada
   const otherDb = authedDb("mallory");
   const publicKeyPath = "users/iroh-owner/iroh_pairing_keys/host";
   const pairingPath = "users/iroh-owner/iroh_pairing/relay-1";
+  const controllerRoutePath = "users/iroh-owner/iroh_pairing/relay-1/controller_routes/phone-1";
+  const controllerChallengePath = "users/iroh-owner/iroh_controller_route_challenges/challenge-1";
   const auditPath = "users/iroh-owner/iroh_audit_events/event-1";
 
   await assertFails(
@@ -1036,6 +1038,22 @@ test("iroh pairing trust roots are server-owned while audit events remain metada
       schemaVersion: 1,
     })
   );
+  await assertFails(
+    setDoc(doc(ownerDb, controllerRoutePath), {
+      connectionId: "relay-1",
+      sourceDeviceId: "phone-1",
+      transportNodeId: "a".repeat(52),
+      authorityPeerNodeId: "ios-phone-authority",
+      status: "active",
+      generation: 1,
+      expiresAtMillis: 1778860860000,
+      schemaVersion: 1,
+    })
+  );
+  await assertSucceeds(getDoc(doc(ownerDb, controllerRoutePath)));
+  await assertFails(getDoc(doc(otherDb, controllerRoutePath)));
+  await assertFails(getDoc(doc(ownerDb, controllerChallengePath)));
+  await assertFails(setDoc(doc(ownerDb, controllerChallengePath), { status: "pending" }));
 
   await assertSucceeds(
     setDoc(doc(ownerDb, auditPath), {

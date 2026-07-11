@@ -1407,6 +1407,29 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     handlerModule: "callables/escrowDeviceCallables.ts",
   },
   {
+    exportedName: "issueIrohControllerRouteChallenge",
+    trigger: "callable",
+    authMethod: "Firebase Auth, App Check, Cloud Pro entitlement, and a single-use high-risk nonce",
+    appCheck: "required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: ["sourceDeviceId", "connectionId", "authorityPeerNodeId", "transportNodeId"],
+    ownershipCheck:
+      "handler scopes every document path to request.auth.uid and transactionally joins the signed pairing, trusted host, sole trusted controller device, and key-derived controller authority before issuing a one-minute challenge",
+    handlerModule: "callables/irohControllerRouteCallables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/irohControllerRouteCallables.test.ts",
+        test: "issue challenge scopes every lookup to request.auth.uid",
+        kind: "runtime-cross-user",
+        covers: ["issueIrohControllerRouteChallenge"],
+        expectedOutcome: "throws",
+        expectedCode: "failed-precondition",
+      },
+    ],
+    highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
+  },
+  {
     exportedName: "issueLinuxAppCheckChallenge",
     trigger: "callable",
     authMethod:
@@ -2433,6 +2456,30 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     lowerTrustDesktopPolicy: "deny",
   },
   {
+    exportedName: "registerIrohControllerRoute",
+    trigger: "callable",
+    authMethod:
+      "Firebase Auth, App Check, Cloud Pro entitlement, and a live single-use iroh Ed25519 possession challenge",
+    appCheck: "required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: ["challengeId"],
+    ownershipCheck:
+      "handler loads the challenge only below request.auth.uid, verifies its transport-key signature, then revalidates the same-user trust graph before atomically consuming it and rotating the route generation",
+    handlerModule: "callables/irohControllerRouteCallables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/irohControllerRouteCallables.test.ts",
+        test: "registration cannot consume a cross-user challenge",
+        kind: "runtime-cross-user",
+        covers: ["registerIrohControllerRoute"],
+        expectedOutcome: "throws",
+        expectedCode: "failed-precondition",
+      },
+    ],
+    highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
+  },
+  {
     exportedName: "registerPasskey",
     trigger: "callable",
     authMethod: "Firebase Auth with callable-level ownership checks",
@@ -2515,6 +2562,29 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     ],
     highRiskComputerUse: false,
     lowerTrustDesktopPolicy: "deny",
+  },
+  {
+    exportedName: "resolveActiveIrohControllerRoutes",
+    trigger: "callable",
+    authMethod: "Firebase Auth, App Check, and Cloud Pro entitlement; read-only fail-closed trust-graph resolution",
+    appCheck: "required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: ["connectionId"],
+    ownershipCheck:
+      "handler reads only request.auth.uid paths and returns one route only after revalidating pairing freshness/signature, host and controller trust, exact authority derivation, route generation, TTL, and revocation state",
+    handlerModule: "callables/irohControllerRouteCallables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/irohControllerRouteCallables.test.ts",
+        test: "resolution cannot read a cross-user route",
+        kind: "runtime-cross-user",
+        covers: ["resolveActiveIrohControllerRoutes"],
+        expectedOutcome: "throws",
+        expectedCode: "failed-precondition",
+      },
+    ],
+    highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "linux-low-risk",
   },
   {
     exportedName: "respondHermesGatewayApproval",
@@ -2728,6 +2798,29 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
         covers: ["revokeHermesGatewayClient"],
         expectedOutcome: "throws",
         expectedCode: "not-found",
+      },
+    ],
+    highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
+  },
+  {
+    exportedName: "revokeIrohControllerRoute",
+    trigger: "callable",
+    authMethod: "Firebase Auth, App Check, a single-use high-risk nonce, and the trusted sole controller device",
+    appCheck: "required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: ["sourceDeviceId", "connectionId"],
+    ownershipCheck:
+      "handler derives the tenant from request.auth.uid and only advances the generation of the route bound to the pairing's sole trusted controller device",
+    handlerModule: "callables/irohControllerRouteCallables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/irohControllerRouteCallables.test.ts",
+        test: "revocation cannot mutate a cross-user route",
+        kind: "runtime-cross-user",
+        covers: ["revokeIrohControllerRoute"],
+        expectedOutcome: "throws",
+        expectedCode: "failed-precondition",
       },
     ],
     highRiskComputerUse: false,

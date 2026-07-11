@@ -24,7 +24,7 @@ import { assertActiveBurnBarCloudProEntitlement, boundedTrimmedString } from "./
 import { recordOrUndefined } from "../guards.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import {
-  MAC_ESCROW_PLATFORMS,
+  IROH_HOST_ESCROW_PLATFORMS,
   PHONE_CONTROL_ESCROW_PLATFORMS,
   RELAY_AUTH_ENCRYPTION,
   RELAY_AUTH_KEY_VERSION,
@@ -39,6 +39,7 @@ import {
   requirePhoneControlAuthorityPublicKey,
 } from "./computerUseSecurityCodecs.js";
 import { requireTrustedDeviceActionProof, requireTrustedEscrowDevice } from "./computerUseSecurityFirestore.js";
+import { revokeIrohPairingAndControllerRoutes } from "./irohControllerRouteFirestore.js";
 
 const RELAY_SENDER_KEY_PUBLISH_ACTION_KIND = "relay_sender_key_publish";
 const RELAY_SENDER_PROOF_PROTOCOL_VERSION = "3";
@@ -197,7 +198,7 @@ export const publishIrohPairingPublicKey = onCallProduction(
     if (roleId !== "host") {
       throw new HttpsError("invalid-argument", "Only the host iroh pairing key role is client-publishable.");
     }
-    await requireTrustedEscrowDevice(uid, deviceId, MAC_ESCROW_PLATFORMS);
+    await requireTrustedEscrowDevice(uid, deviceId, IROH_HOST_ESCROW_PLATFORMS);
     const publicKeyBase64 = requireBase64Like(request.data.publicKeyBase64, "publicKeyBase64", 32, 128);
 
     await db.doc(`users/${uid}/iroh_pairing_keys/${roleId}`).set(
@@ -249,7 +250,7 @@ export const publishIrohPairingRecord = onCallProduction(
     await assertActiveBurnBarCloudProEntitlement(uid);
 
     const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
-    await requireTrustedEscrowDevice(uid, deviceId, MAC_ESCROW_PLATFORMS);
+    await requireTrustedEscrowDevice(uid, deviceId, IROH_HOST_ESCROW_PLATFORMS);
     const connectionId = boundedTrimmedString(request.data.connectionId, "connectionId", 160, true);
     const nodeId = boundedTrimmedString(request.data.nodeId, "nodeId", 128, true);
     const relayURLRaw =
@@ -314,8 +315,8 @@ export const revokeIrohPairingRecord = onCallProduction(
 
     const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
     const connectionId = boundedTrimmedString(request.data.connectionId, "connectionId", 160, true);
-    await requireTrustedEscrowDevice(uid, deviceId, MAC_ESCROW_PLATFORMS);
-    await db.doc(`users/${uid}/iroh_pairing/${connectionId}`).delete();
+    await requireTrustedEscrowDevice(uid, deviceId, IROH_HOST_ESCROW_PLATFORMS);
+    await revokeIrohPairingAndControllerRoutes(uid, connectionId);
 
     logInfo({
       event: "callable_info",
