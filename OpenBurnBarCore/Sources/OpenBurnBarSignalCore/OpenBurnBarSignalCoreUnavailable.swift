@@ -12,7 +12,7 @@ import Security
 
 public enum OpenBurnBarSignalCoreAvailability: Sendable {
     public static let isLibSignalBacked = false
-    public static let unavailableReason = "Vendor/libsignal/swift is not present; using the CryptoKit compatibility fallback for Signal envelopes."
+    public static let unavailableReason = "Vendor/libsignal/swift is not present; Signal envelope encryption, opening, and trust signatures are unavailable."
 }
 
 public enum OpenBurnBarSignalCoreError: LocalizedError, Sendable, Equatable {
@@ -305,12 +305,7 @@ public enum OpenBurnBarSignalAtRest {
         recipientIdentityPublicKey: Data,
         binding: SignalEnvelopeAAD.Binding
     ) throws -> Data {
-        let canonical = try signalEnvelopeBindingToAAD(binding)
-        return try OpenBurnBarSignalCoreFallbackCrypto.sealAESGCM(
-            plaintext: plaintext,
-            keyData: recipientIdentityPublicKey,
-            authenticating: Data(canonical.utf8)
-        )
+        throw OpenBurnBarSignalCoreError.libSignalUnavailable
     }
 
     public static func atRestOpen(
@@ -318,13 +313,7 @@ public enum OpenBurnBarSignalAtRest {
         recipientIdentityPrivateKey: Data,
         binding: SignalEnvelopeAAD.Binding
     ) throws -> Data {
-        let privateKey = try P256.KeyAgreement.PrivateKey(rawRepresentation: recipientIdentityPrivateKey)
-        let canonical = try signalEnvelopeBindingToAAD(binding)
-        return try OpenBurnBarSignalCoreFallbackCrypto.openAESGCM(
-            combined: ciphertext,
-            keyData: privateKey.publicKey.x963Representation,
-            authenticating: Data(canonical.utf8)
-        )
+        throw OpenBurnBarSignalCoreError.libSignalUnavailable
     }
 
     public static func sealPayload(
@@ -334,56 +323,7 @@ public enum OpenBurnBarSignalAtRest {
         senderIdentityKeyId: String,
         senderIdentityPrivateKey: Data
     ) throws -> CloudVaultSignalEnvelope {
-        try validate(recipients: recipients)
-
-        let senderPrivateKey = try P256.KeyAgreement.PrivateKey(rawRepresentation: senderIdentityPrivateKey)
-        let senderPublicKeyData = senderPrivateKey.publicKey.x963Representation
-        let aad = try canonicalAAD(for: binding.aadBinding)
-        let contentKey = try OpenBurnBarSignalCoreFallbackCrypto.secureRandomBytes(count: CloudVaultCrypto.signalAtRestContentKeyLength)
-        let sealedPayload = try OpenBurnBarSignalCoreFallbackCrypto.sealAESGCM(
-            plaintext: plaintext,
-            keyData: contentKey,
-            authenticating: aad.associatedData
-        )
-        let payloadCiphertextB64 = sealedPayload.base64EncodedString()
-        let wraps = try recipients.map { recipient in
-            let sealedContentKey = try atRestSeal(
-                contentKey,
-                recipientIdentityPublicKey: recipient.publicKeyData,
-                binding: binding.aadBinding
-            )
-            return CloudVaultSignalAtRestWrap(
-                recipientKind: recipient.recipientKind,
-                recipientIdentityKeyId: recipient.recipientIdentityKeyId,
-                recipientIdentityKeyB64: recipient.publicKeyData.base64EncodedString(),
-                sealedContentKeyB64: sealedContentKey.base64EncodedString()
-            )
-        }
-
-        let signedMessage = senderAuthSignedMessage(
-            info: aad.info,
-            payloadCiphertextB64: payloadCiphertextB64,
-            wraps: wraps
-        )
-        let signature = OpenBurnBarSignalCoreFallbackCrypto.hmacSHA256(
-            signedMessage,
-            keyData: senderPublicKeyData
-        )
-
-        return CloudVaultSignalEnvelope(
-            ciphertextLayer: CloudVaultSignalCiphertextLayer(
-                payloadCiphertextB64: payloadCiphertextB64,
-                payloadAADLabel: payloadAADLabel(forCanonicalAAD: aad.canonical),
-                schemaVersion: payloadCiphertextSchemaVersion
-            ),
-            keyDelivery: CloudVaultSignalAtRestKeyDelivery(wraps: wraps),
-            binding: binding,
-            senderAuth: CloudVaultSignalSenderAuth(
-                senderIdentityKeyId: senderIdentityKeyId,
-                senderIdentityKeyB64: senderPublicKeyData.base64EncodedString(),
-                signatureB64: signature.base64EncodedString()
-            )
-        )
+        throw OpenBurnBarSignalCoreError.libSignalUnavailable
     }
 
     public static func openPayload(
@@ -393,62 +333,7 @@ public enum OpenBurnBarSignalAtRest {
         expectedBinding: CloudVaultSignalBinding,
         trustedSenderPublicKeys: [String: Data]
     ) throws -> Data {
-        guard envelope.signalEnvelopeFormatVersion == CloudVaultCrypto.signalEnvelopeFormatVersion,
-              envelope.mode == CloudVaultCrypto.signalAtRestMode,
-              envelope.relayEncryption == CloudVaultCrypto.signalAtRestEncryption,
-              envelope.keyDelivery.scheme == CloudVaultCrypto.signalAtRestEncryption,
-              envelope.keyDelivery.contentKeyLength == CloudVaultCrypto.signalAtRestContentKeyLength,
-              envelope.ciphertextLayer.schemaVersion == payloadCiphertextSchemaVersion else {
-            throw OpenBurnBarSignalCoreError.invalidEnvelope
-        }
-        guard envelope.binding == expectedBinding else {
-            throw OpenBurnBarSignalCoreError.bindingMismatch
-        }
-        guard let senderAuth = envelope.senderAuth else {
-            throw OpenBurnBarSignalCoreError.senderAuthMissing
-        }
-        guard let pinnedSenderKey = trustedSenderPublicKeys[senderAuth.senderIdentityKeyId] else {
-            throw OpenBurnBarSignalCoreError.senderNotTrusted(senderAuth.senderIdentityKeyId)
-        }
-        let aad = try canonicalAAD(for: expectedBinding.aadBinding)
-        guard envelope.ciphertextLayer.payloadAADLabel == payloadAADLabel(forCanonicalAAD: aad.canonical) else {
-            throw OpenBurnBarSignalCoreError.invalidEnvelope
-        }
-        let signedMessage = senderAuthSignedMessage(
-            info: aad.info,
-            payloadCiphertextB64: envelope.ciphertextLayer.payloadCiphertextB64,
-            wraps: envelope.keyDelivery.wraps
-        )
-        guard let signatureBytes = Data(base64Encoded: senderAuth.signatureB64),
-              signatureBytes == OpenBurnBarSignalCoreFallbackCrypto.hmacSHA256(signedMessage, keyData: pinnedSenderKey) else {
-            throw OpenBurnBarSignalCoreError.senderSignatureInvalid
-        }
-        let wrap = envelope.keyDelivery.wraps.first { $0.recipientIdentityKeyId == recipientIdentityKeyId }
-        guard let wrap else {
-            throw OpenBurnBarSignalCoreError.missingRecipientWrap(recipientIdentityKeyId)
-        }
-        let recipientPrivateKey = try P256.KeyAgreement.PrivateKey(rawRepresentation: recipientIdentityPrivateKey)
-        let expectedPublicKey = recipientPrivateKey.publicKey.x963Representation.base64EncodedString()
-        guard wrap.recipientIdentityKeyB64 == expectedPublicKey else {
-            throw OpenBurnBarSignalCoreError.recipientPrivateKeyMismatch
-        }
-        guard let sealedContentKey = Data(base64Encoded: wrap.sealedContentKeyB64),
-              let payloadCiphertext = Data(base64Encoded: envelope.ciphertextLayer.payloadCiphertextB64) else {
-            throw OpenBurnBarSignalCoreError.invalidEnvelope
-        }
-        let contentKey = try atRestOpen(
-            sealedContentKey,
-            recipientIdentityPrivateKey: recipientIdentityPrivateKey,
-            binding: expectedBinding.aadBinding
-        )
-        guard contentKey.count == CloudVaultCrypto.signalAtRestContentKeyLength else {
-            throw OpenBurnBarSignalCoreError.invalidContentKey
-        }
-        return try OpenBurnBarSignalCoreFallbackCrypto.openAESGCM(
-            combined: payloadCiphertext,
-            keyData: contentKey,
-            authenticating: aad.associatedData
-        )
+        throw OpenBurnBarSignalCoreError.libSignalUnavailable
     }
 
     private static func canonicalAAD(for binding: SignalEnvelopeAAD.Binding) throws -> (
@@ -555,10 +440,7 @@ public enum CloudVaultDeviceTrustChain {
         _ payload: CloudVaultDeviceTrustChainPayload,
         approverIdentity: OpenBurnBarSignalIdentityKeypair
     ) throws -> String {
-        OpenBurnBarSignalCoreFallbackCrypto.hmacSHA256(
-            canonicalPayload(payload),
-            keyData: approverIdentity.publicKeyData
-        ).base64EncodedString()
+        throw OpenBurnBarSignalCoreError.libSignalUnavailable
     }
 
     public static func verify(
@@ -566,13 +448,7 @@ public enum CloudVaultDeviceTrustChain {
         signatureBase64: String,
         approverPublicKeyData: Data
     ) -> Bool {
-        guard let signature = Data(base64Encoded: signatureBase64) else {
-            return false
-        }
-        return signature == OpenBurnBarSignalCoreFallbackCrypto.hmacSHA256(
-            canonicalPayload(payload),
-            keyData: approverPublicKeyData
-        )
+        false
     }
 }
 
@@ -639,10 +515,7 @@ public enum CloudVaultTrustedDeviceActionProof {
         _ payload: CloudVaultTrustedDeviceActionProofPayload,
         identity: OpenBurnBarSignalIdentityKeypair
     ) throws -> String {
-        OpenBurnBarSignalCoreFallbackCrypto.hmacSHA256(
-            canonicalPayload(payload),
-            keyData: identity.publicKeyData
-        ).base64EncodedString()
+        throw OpenBurnBarSignalCoreError.libSignalUnavailable
     }
 
     public static func verify(
@@ -650,13 +523,7 @@ public enum CloudVaultTrustedDeviceActionProof {
         signatureBase64: String,
         publicKeyData: Data
     ) -> Bool {
-        guard let signature = Data(base64Encoded: signatureBase64) else {
-            return false
-        }
-        return signature == OpenBurnBarSignalCoreFallbackCrypto.hmacSHA256(
-            canonicalPayload(payload),
-            keyData: publicKeyData
-        )
+        false
     }
 }
 
