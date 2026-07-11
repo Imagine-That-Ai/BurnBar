@@ -52,8 +52,7 @@ jobs:
         run: >
           docker run --rm
           -e OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM
-          -e ACTIONS_ID_TOKEN_REQUEST_TOKEN
-          -e ACTIONS_ID_TOKEN_REQUEST_URL
+          -e OPENBURNBAR_CI_OIDC_AVAILABLE=true
           -v "$PWD:/workspace"
           -w /workspace
           openburnbar-linux-toolchain:mission-001

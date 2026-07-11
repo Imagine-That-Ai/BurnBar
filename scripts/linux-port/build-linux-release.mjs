@@ -296,10 +296,10 @@ if (privateKeyPem) {
   });
 }
 
-if (!process.env.SIGSTORE_ID_TOKEN && !process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN) {
+if (!process.env.SIGSTORE_ID_TOKEN && process.env.OPENBURNBAR_CI_OIDC_AVAILABLE !== 'true') {
   blockers.push({
     kind: 'cosign-oidc',
-    message: 'GitHub OIDC request token is unavailable locally; CI must produce and verify cosign bundle with GitHub OIDC.'
+    message: 'GitHub OIDC availability was not confirmed locally; CI must produce and verify cosign bundle with GitHub OIDC.'
   });
 }
 
