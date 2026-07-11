@@ -127,6 +127,32 @@ public struct DaemonLocalAuthProofVerifier: Sendable {
         expectedIntentHashHex: String,
         now: Date = Date()
     ) throws -> VerificationResult {
+        let result = try validate(
+            proof: proof,
+            expectedDeviceId: expectedDeviceId,
+            expectedIntentHashHex: expectedIntentHashHex,
+            now: now
+        )
+
+        // Single-use: consume the proof id only AFTER the signature verifies, so a
+        // forged-signature probe cannot burn a future legitimate proof id.
+        guard consumeProof(proof.proofId, proof.expiresAt) else {
+            throw reject(.replay(proofId: proof.proofId), proof: proof)
+        }
+
+        return result
+    }
+
+    /// Validates the complete pinned-phone proof without consuming its replay id.
+    /// Linux Browser Computer Use uses this before an interactive polkit prompt,
+    /// then calls `verify` immediately before session creation. A cancelled local
+    /// prompt therefore cannot burn a legitimate phone grant.
+    public func validate(
+        proof: HermesRealtimeRelayAgentGrantLocalAuthProof,
+        expectedDeviceId: String,
+        expectedIntentHashHex: String,
+        now: Date = Date()
+    ) throws -> VerificationResult {
         guard proof.deviceId == expectedDeviceId else {
             throw reject(.wrongDevice(expected: expectedDeviceId, observed: proof.deviceId), proof: proof)
         }
@@ -172,12 +198,6 @@ public struct DaemonLocalAuthProofVerifier: Sendable {
         )
         guard pinnedKey.isValidSignature(signature, for: payload) else {
             throw reject(.signatureInvalid, proof: proof)
-        }
-
-        // Single-use: consume the proof id only AFTER the signature verifies, so a
-        // forged-signature probe cannot burn a future legitimate proof id.
-        guard consumeProof(proof.proofId, proof.expiresAt) else {
-            throw reject(.replay(proofId: proof.proofId), proof: proof)
         }
 
         return VerificationResult(proofId: proof.proofId, deviceId: proof.deviceId, verifiedAt: now)

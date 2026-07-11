@@ -10,7 +10,10 @@ import { findAppImageFilesystemOffset } from './lib/appimage-filesystem.mjs';
 export const requiredPayloadPaths = [
   'openburnbar-daemon',
   'swift',
-  'native/libsqlcipher.so.0'
+  'native/libsqlcipher.so.0',
+  'playwright/openburnbar-playwright-bridge.js',
+  'playwright/openburnbar-browser-runtime-probe',
+  'playwright/browser-runtime-requirements.json'
 ];
 
 function requirePath(candidate, label, expectedType) {
@@ -20,11 +23,37 @@ function requirePath(candidate, label, expectedType) {
   if (expectedType === 'directory' && !stat.isDirectory()) throw new Error(`${label} is not a directory: ${candidate}`);
 }
 
+function requireRegularResource(candidate, label, expectedMode) {
+  if (!fs.existsSync(candidate)) throw new Error(`${label} missing: ${candidate}`);
+  const stat = fs.lstatSync(candidate);
+  if (!stat.isFile() || stat.isSymbolicLink()) {
+    throw new Error(`${label} is not a regular file: ${candidate}`);
+  }
+  if ((stat.mode & 0o777) !== expectedMode) {
+    throw new Error(`${label} mode must be ${expectedMode.toString(8)}: ${candidate}`);
+  }
+}
+
 export function validatePayload(payloadRoot) {
   const root = path.resolve(payloadRoot);
   for (const entry of requiredPayloadPaths) {
     requirePath(path.join(root, entry), `AppImage payload ${entry}`, entry === 'swift' ? 'directory' : 'file');
   }
+  requireRegularResource(
+    path.join(root, 'playwright/openburnbar-playwright-bridge.js'),
+    'AppImage Playwright bridge',
+    0o644
+  );
+  requireRegularResource(
+    path.join(root, 'playwright/openburnbar-browser-runtime-probe'),
+    'AppImage browser runtime probe',
+    0o755
+  );
+  requireRegularResource(
+    path.join(root, 'playwright/browser-runtime-requirements.json'),
+    'AppImage browser runtime requirements',
+    0o644
+  );
   return root;
 }
 
@@ -68,9 +97,22 @@ function assertEmbeddedPayload(appDir) {
     'usr/bin/openburnbar-daemon',
     'usr/libexec/openburnbar-daemon-launch',
     'usr/lib/openburnbar/swift',
-    'usr/lib/openburnbar/native/libsqlcipher.so.0'
+    'usr/lib/openburnbar/native/libsqlcipher.so.0',
+    'usr/lib/openburnbar/playwright/openburnbar-playwright-bridge.js',
+    'usr/lib/openburnbar/playwright/openburnbar-browser-runtime-probe',
+    'usr/lib/openburnbar/playwright/browser-runtime-requirements.json'
   ];
   for (const entry of required) requirePath(path.join(appDir, entry), `embedded AppImage path ${entry}`, entry.endsWith('/swift') ? 'directory' : 'file');
+  requireRegularResource(
+    path.join(appDir, 'usr/lib/openburnbar/playwright/openburnbar-playwright-bridge.js'),
+    'embedded AppImage Playwright bridge',
+    0o644
+  );
+  requireRegularResource(
+    path.join(appDir, 'usr/lib/openburnbar/playwright/openburnbar-browser-runtime-probe'),
+    'embedded AppImage browser runtime probe',
+    0o755
+  );
 }
 
 export function embedLinuxAppImagePayload({ appImage, payloadRoot, env = process.env }) {
@@ -107,6 +149,7 @@ export function embedLinuxAppImagePayload({ appImage, payloadRoot, env = process
     fs.chmodSync(path.join(appDir, 'usr/bin/openburnbar-daemon'), 0o755);
     fs.rmSync(path.join(appDir, 'usr/lib/openburnbar/swift'), { recursive: true, force: true });
     fs.rmSync(path.join(appDir, 'usr/lib/openburnbar/native'), { recursive: true, force: true });
+    fs.rmSync(path.join(appDir, 'usr/lib/openburnbar/playwright'), { recursive: true, force: true });
     fs.mkdirSync(path.join(appDir, 'usr/lib/openburnbar'), { recursive: true });
     fs.cpSync(path.join(payload, 'swift'), path.join(appDir, 'usr/lib/openburnbar/swift'), {
       recursive: true,
@@ -114,6 +157,11 @@ export function embedLinuxAppImagePayload({ appImage, payloadRoot, env = process
       preserveTimestamps: true
     });
     fs.cpSync(path.join(payload, 'native'), path.join(appDir, 'usr/lib/openburnbar/native'), {
+      recursive: true,
+      dereference: false,
+      preserveTimestamps: true
+    });
+    fs.cpSync(path.join(payload, 'playwright'), path.join(appDir, 'usr/lib/openburnbar/playwright'), {
       recursive: true,
       dereference: false,
       preserveTimestamps: true

@@ -473,6 +473,39 @@ export type ComputerUsePanicHaltResult = {
   source: ComputerUsePanicSource;
   raw?: RawJsonValue;
 };
+
+export type ComputerUseSessionAuthorityState =
+  | 'available'
+  | 'waiting_phone'
+  | 'waiting_local_owner'
+  | 'authorized'
+  | 'expired'
+  | 'rejected'
+  | 'unavailable';
+
+export type ComputerUseSessionAuthorityStatus = {
+  state: ComputerUseSessionAuthorityState;
+  expiresAt?: number;
+  detail?: string;
+  sessionId?: string;
+};
+
+export type ComputerUseSessionStartRequest = {
+  mode: 'browser';
+  trustMode: 'manual' | 'step' | 'trusted';
+  scopeRuleIds?: string[];
+  phoneViewerNodeId?: string;
+  macHostNodeId?: string;
+  actionCap?: number;
+  sessionTimeoutSeconds?: number;
+  clientId: 'linux-shell';
+  runId: string;
+  runCallId: string;
+  runGeneration: number;
+  desktopOwnerAuthorizationRequest: {
+    method: 'linux_desktop_owner';
+  };
+};
 // ─────────────────────────── P13: integrations status ─────────────────────
 
 export type IntegrationKind =
@@ -630,7 +663,10 @@ export interface LinuxShellBridge {
     action: 'approve' | 'reject' | 'audit' | 'remember' | 'forget',
     payload: Record<string, unknown>
   ): Promise<unknown>;
-  computerUseSessionStart?(params: Record<string, unknown>): Promise<unknown>;
+  computerUseSessionAuthorityStatus?(): Promise<ComputerUseSessionAuthorityStatus>;
+  computerUseSessionStart?(
+    params: ComputerUseSessionStartRequest
+  ): Promise<ComputerUseSessionAuthorityStatus>;
   computerUseInvoke?(params: Record<string, unknown>): Promise<unknown>;
   computerUseApprovalPending?(params?: Record<string, unknown>): Promise<unknown>;
   computerUseApprovalRespond?(params: Record<string, unknown>): Promise<unknown>;
@@ -2239,8 +2275,10 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     },
     memorySetStatus: (action, payload) =>
       invoke<RawJsonValue>('memory_set_status', { action, payload }),
+    computerUseSessionAuthorityStatus: () =>
+      invoke<ComputerUseSessionAuthorityStatus>('computer_use_session_authority_status'),
     computerUseSessionStart: (params) =>
-      invoke<RawJsonValue>('computer_use_session_start', { params }),
+      invoke<ComputerUseSessionAuthorityStatus>('computer_use_session_start', { params }),
     computerUseInvoke: (params) => invoke<RawJsonValue>('computer_use_invoke', { params }),
     computerUseApprovalPending: (params) =>
       invoke<RawJsonValue>('computer_use_approval_pending', { params: params ?? null }),

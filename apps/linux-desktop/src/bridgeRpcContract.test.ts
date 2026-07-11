@@ -81,6 +81,8 @@ describe('VAL-RPC bridge contract', () => {
   it('wires computer use wrappers to existing enum methods', () => {
     for (const method of [
       'daemon.computer_use.session.start',
+      'daemon.computer_use.session_grant.acquire',
+      'daemon.computer_use.session_grant.status',
       'daemon.computer_use.invoke',
       'daemon.computer_use.approval.pending',
       'daemon.computer_use.approval.respond',

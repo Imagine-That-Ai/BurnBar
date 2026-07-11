@@ -4,6 +4,7 @@ import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantLocalAuthProof
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantReceipt
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayAuthorityEnvelope
+import com.openburnbar.irohrelay.HermesRealtimeRelayComputerUseSessionGrantChallenge
 import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -98,6 +99,8 @@ data class AgentCapabilityGrantRequest(
     val clientIntentId: String = UUID.randomUUID().toString(),
     val localAuthenticationSatisfied: Boolean = false,
     val localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof? = null,
+    val capabilities: Set<AgentDesktopCapability> = preset.capabilities,
+    val trustMode: String = preset.trustMode,
 ) {
     val requestedAtSwiftReferenceSeconds: Double
         get() = swiftReferenceSeconds(requestedAtMillis)
@@ -106,7 +109,7 @@ data class AgentCapabilityGrantRequest(
         get() = swiftReferenceSeconds(expiresAtMillis)
 
     val capabilityWireValues: List<String>
-        get() = preset.capabilities.map { it.wireValue }.sorted()
+        get() = capabilities.map { it.wireValue }.sorted()
 
     fun toWire(authority: HermesRealtimeRelayAuthorityEnvelope): HermesRealtimeRelayAgentGrantRequest = HermesRealtimeRelayAgentGrantRequest(
         requestId = requestId,
@@ -114,7 +117,7 @@ data class AgentCapabilityGrantRequest(
         threadId = threadId,
         preset = preset.wireValue,
         capabilities = capabilityWireValues,
-        trustMode = preset.trustMode,
+        trustMode = trustMode,
         deliveryMode = deliveryMode.wireValue,
         requestedAt = requestedAtSwiftReferenceSeconds,
         expiresAt = expiresAtSwiftReferenceSeconds,
@@ -134,7 +137,7 @@ data class AgentCapabilityGrantRequest(
         status = AgentGrantDecisionStatus.QUEUED,
         appliedGrantId = null,
         capabilities = capabilityWireValues,
-        trustMode = preset.trustMode,
+        trustMode = trustMode,
         receivedAtMillis = System.currentTimeMillis(),
         grantExpiresAtMillis = System.currentTimeMillis() + grantDurationSeconds.toLong() * 1000L,
         sourceDeviceId = sourceDeviceId,
@@ -148,6 +151,33 @@ data class AgentCapabilityGrantRequest(
         fun swiftReferenceSeconds(unixMillis: Long): Double = unixMillis.toDouble() / 1000.0 - SWIFT_REFERENCE_TO_UNIX_SECONDS
 
         fun unixMillisFromSwiftReferenceSeconds(value: Double): Long = ((value + SWIFT_REFERENCE_TO_UNIX_SECONDS) * 1000.0).toLong()
+
+        fun fromValidatedSessionChallenge(
+            challenge: HermesRealtimeRelayComputerUseSessionGrantChallenge,
+            sourceDeviceId: String,
+            localAuthenticationSatisfied: Boolean = false,
+            nowMillis: Long = System.currentTimeMillis(),
+        ): AgentCapabilityGrantRequest {
+            val sessionIntentId = ComputerUseSessionGrantChallengeValidator.validate(challenge, nowMillis)
+            val preset = AgentPermissionPreset.entries.first { it.wireValue == challenge.preset }
+            return AgentCapabilityGrantRequest(
+                requestId = challenge.challengeId,
+                runtime = challenge.runtime,
+                threadId = challenge.threadId,
+                preset = preset,
+                deliveryMode = AgentGrantDeliveryMode.LIVE,
+                requestedAtMillis = unixMillisFromSwiftReferenceSeconds(challenge.issuedAt),
+                expiresAtMillis = unixMillisFromSwiftReferenceSeconds(challenge.expiresAt),
+                grantDurationSeconds = minOf(MILLIS_3 * MILLIS_4, challenge.sessionTimeoutSeconds.toDouble()),
+                sourceDeviceId = sourceDeviceId,
+                clientIntentId = sessionIntentId,
+                localAuthenticationSatisfied = localAuthenticationSatisfied,
+                capabilities = challenge.capabilities.map { raw ->
+                    AgentDesktopCapability.entries.first { it.wireValue == raw }
+                }.toSet(),
+                trustMode = challenge.trustMode,
+            )
+        }
     }
 }
 

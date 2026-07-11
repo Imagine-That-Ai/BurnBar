@@ -3658,6 +3658,176 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(defaults.object(forKey: "openburnbar.phoneControl.counter.ios-phone-cancelled-trackpad-test") as? Int, 1)
     }
 
+    func testLiveAgentGrantDoesNotQueueWhenSenderIsUnavailable() async throws {
+        var queueWrites = 0
+        let controller = MobileAgentPermissionGrantController(
+            liveGrantDelivery: { _ in false },
+            queuedGrantDelivery: { _ in queueWrites += 1 }
+        )
+
+        do {
+            _ = try await controller.deliver(
+                uid: "user",
+                request: agentGrantRequest(deliveryMode: .live)
+            )
+            XCTFail("Expected live delivery to fail when no sender is available")
+        } catch let error as MobileAgentPermissionGrantController.GrantError {
+            guard case .liveDeliveryUnavailable = error else {
+                return XCTFail("Unexpected grant error: \(error)")
+            }
+        }
+
+        XCTAssertEqual(queueWrites, 0)
+    }
+
+    func testLiveAgentGrantDoesNotQueueWhenSenderFails() async throws {
+        let expectedError = NSError(domain: "MobileAgentPermissionGrantControllerTests", code: 1)
+        var queueWrites = 0
+        let controller = MobileAgentPermissionGrantController(
+            liveGrantDelivery: { _ in throw expectedError },
+            queuedGrantDelivery: { _ in queueWrites += 1 }
+        )
+
+        do {
+            _ = try await controller.deliver(
+                uid: "user",
+                request: agentGrantRequest(deliveryMode: .live)
+            )
+            XCTFail("Expected live delivery failure to propagate")
+        } catch {
+            XCTAssertEqual(error as NSError, expectedError)
+        }
+
+        XCTAssertEqual(queueWrites, 0)
+    }
+
+    func testLiveThenQueuedAgentGrantStillQueuesWhenSenderIsUnavailable() async throws {
+        var queueWrites = 0
+        let controller = MobileAgentPermissionGrantController(
+            liveGrantDelivery: { _ in false },
+            queuedGrantDelivery: { _ in queueWrites += 1 }
+        )
+
+        _ = try await controller.deliver(
+            uid: "user",
+            request: agentGrantRequest(deliveryMode: .liveThenQueued)
+        )
+
+        XCTAssertEqual(queueWrites, 1)
+    }
+
+    private func agentGrantRequest(deliveryMode: AgentGrantDeliveryMode) -> AgentCapabilityGrantRequest {
+        AgentCapabilityGrantRequest(
+            runtimeID: .claude,
+            threadID: "thread",
+            preset: .low,
+            deliveryMode: deliveryMode,
+            sourceDeviceID: "phone"
+        )
+    }
+
+    func testAgentWatchReceiverValidatesAndDeliversExactSessionGrantChallengeOnce() async throws {
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_100)
+        let challenge = try sessionGrantChallenge(now: now)
+        var deliveredChallenges: [HermesRealtimeRelayComputerUseSessionGrantChallenge] = []
+        let delivered = expectation(description: "session grant challenge delivered")
+        let challengeReceiver = MobileComputerUseSessionGrantChallengeReceiver(
+            now: { now },
+            grantHandler: { received in
+                deliveredChallenges.append(received)
+                delivered.fulfill()
+            }
+        )
+        let receiver = AgentWatchReceiver(
+            uid: "user",
+            connectionId: "connection",
+            approvalFrameSink: { _ in },
+            sessionGrantChallengeReceiver: challengeReceiver
+        )
+        let frame = HermesRealtimeRelayFrame(
+            type: .controlSessionGrantChallenge,
+            uid: "user",
+            connectionId: "connection",
+            control: HermesRealtimeRelayControlPayload(sessionGrantChallenge: challenge)
+        )
+
+        receiver.ingest(frame)
+        receiver.ingest(frame)
+        await fulfillment(of: [delivered], timeout: 1)
+        await Task.yield()
+
+        XCTAssertEqual(deliveredChallenges, [challenge])
+    }
+
+    func testAgentWatchReceiverRejectsInvalidSessionGrantChallengeBeforeDelivery() throws {
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_100)
+        var challenge = try sessionGrantChallenge(now: now)
+        challenge.sessionIntentId = String(repeating: "0", count: 64)
+        var deliveryCount = 0
+        let challengeReceiver = MobileComputerUseSessionGrantChallengeReceiver(
+            now: { now },
+            grantHandler: { _ in deliveryCount += 1 }
+        )
+        let receiver = AgentWatchReceiver(
+            uid: "user",
+            connectionId: "connection",
+            approvalFrameSink: { _ in },
+            sessionGrantChallengeReceiver: challengeReceiver
+        )
+
+        receiver.ingest(HermesRealtimeRelayFrame(
+            type: .controlSessionGrantChallenge,
+            uid: "user",
+            connectionId: "connection",
+            control: HermesRealtimeRelayControlPayload(sessionGrantChallenge: challenge)
+        ))
+
+        XCTAssertEqual(deliveryCount, 0)
+    }
+
+    func testIrohRequestStreamRoutesSessionGrantChallengeToDedicatedReceiver() {
+        XCTAssertTrue(
+            HermesIrohRelayTransport.routesRequestStreamFrameToSessionGrantChallengeReceiverForTesting(
+                .controlSessionGrantChallenge
+            )
+        )
+        XCTAssertFalse(
+            HermesIrohRelayTransport.ignoresRequestStreamFrameForTesting(.controlSessionGrantChallenge)
+        )
+    }
+
+    private func sessionGrantChallenge(
+        now: Date
+    ) throws -> HermesRealtimeRelayComputerUseSessionGrantChallenge {
+        let signer = ComputerUsePhoneControlSigner()
+        var challenge = HermesRealtimeRelayComputerUseSessionGrantChallenge(
+            version: 1,
+            challengeId: "challenge-mobile-1",
+            nonce: "0123456789abcdef0123456789abcdef",
+            issuedAt: now.addingTimeInterval(-10),
+            expiresAt: now.addingTimeInterval(290),
+            sessionIntentId: "",
+            runtime: AssistantRuntimeID.codex.rawValue,
+            threadId: "thread-linux-1",
+            preset: AgentPermissionPreset.desktop.rawValue,
+            capabilities: AgentPermissionPreset.desktop.capabilities.map(\.rawValue),
+            mode: ComputerUseMode.browser.rawValue,
+            trustMode: ComputerUseTrustMode.manual.rawValue,
+            scopeRuleIds: ["workspace-only", "deny-payments"],
+            phoneViewerNodeId: "phone-viewer-1",
+            macHostNodeId: "linux-host-1",
+            actionCap: 50,
+            sessionTimeoutSeconds: 1_800,
+            clientId: "linux-desktop",
+            runId: "run-42",
+            runCallId: "call-7",
+            runGeneration: 4,
+            desktopOwnerAuthorizationMethod: ComputerUseDesktopOwnerAuthorizationMethod.linuxDesktopOwner.rawValue
+        )
+        challenge.sessionIntentId = try signer.canonicalComputerUseSessionIntentID(challenge: challenge)
+        return challenge
+    }
+
     func testPhoneControlSenderRequiresAttestationBeforeEveryNonInputSend() async throws {
         let suiteName = "PhoneControlSenderStrictAttestation-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

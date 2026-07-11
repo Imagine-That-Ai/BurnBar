@@ -2117,6 +2117,659 @@ const CU_CLIENT_ID: &str = "linux-shell";
 const CU_LOCAL_AUTH_MAX_PROOF_LIFETIME_SECONDS: f64 = 5.0 * 60.0;
 const CU_LOCAL_AUTH_MAX_CLOCK_SKEW_SECONDS: f64 = 30.0;
 const CU_LOCAL_AUTH_MAX_GRANT_DURATION_SECONDS: f64 = 30.0 * 60.0;
+const CU_BROKER_RPC_TIMEOUT: Duration = Duration::from_secs(5);
+// The daemon's interactive phone + polkit flow may take up to two minutes.
+// Keep the shell outside that budget so a successful daemon operation is not
+// abandoned while the local owner prompt is still visible.
+const CU_INTERACTIVE_AUTH_RPC_TIMEOUT: Duration = Duration::from_secs(135);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ComputerUseSessionBrokerRPCContract {
+    readiness_method: &'static str,
+    acquire_method: &'static str,
+    status_method: &'static str,
+    session_start_method: &'static str,
+    session_status_method: &'static str,
+}
+
+const CU_SESSION_BROKER_RPC_CONTRACT: ComputerUseSessionBrokerRPCContract =
+    ComputerUseSessionBrokerRPCContract {
+        readiness_method: "daemon.computer_use.session_grant.readiness",
+        acquire_method: "daemon.computer_use.session_grant.acquire",
+        status_method: "daemon.computer_use.session_grant.status",
+        session_start_method: "daemon.computer_use.session.start",
+        session_status_method: "daemon.computer_use.approval.pending",
+    };
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum ComputerUseSessionAuthorityState {
+    Available,
+    WaitingPhone,
+    WaitingLocalOwner,
+    Authorized,
+    Expired,
+    Rejected,
+    Unavailable,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ComputerUseSessionAuthorityStatus {
+    state: ComputerUseSessionAuthorityState,
+    expires_at: Option<f64>,
+    detail: Option<String>,
+    session_id: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum ComputerUseDaemonSessionGrantState {
+    Unavailable,
+    AwaitingPhone,
+    AwaitingDesktopOwner,
+    Ready,
+    Denied,
+    Expired,
+    Consumed,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ComputerUseDaemonSessionGrantStatus {
+    challenge_id: String,
+    session_intent_id: String,
+    state: ComputerUseDaemonSessionGrantState,
+    issued_at: f64,
+    expires_at: f64,
+    denial_reason: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ComputerUseDaemonSessionGrantReadiness {
+    available: bool,
+    reason: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ComputerUseDaemonSessionStartResponse {
+    session_id: String,
+    manifest_hash_hex: String,
+    started_at: f64,
+    entitlement_product_id: String,
+    action_cap: u32,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ComputerUseDesktopOwnerAuthorizationRequest {
+    method: String,
+}
+
+/// Renderer-safe request. Phone proof and local-owner results deliberately do
+/// not exist on this type; a native broker implementation must acquire and
+/// retain them outside the webview process.
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ComputerUseBrokerSessionStartRequest {
+    mode: String,
+    trust_mode: String,
+    #[serde(default)]
+    scope_rule_ids: Vec<String>,
+    phone_viewer_node_id: Option<String>,
+    mac_host_node_id: Option<String>,
+    action_cap: Option<u32>,
+    session_timeout_seconds: Option<u32>,
+    client_id: String,
+    run_id: String,
+    run_call_id: String,
+    run_generation: u64,
+    desktop_owner_authorization_request: ComputerUseDesktopOwnerAuthorizationRequest,
+}
+
+#[derive(Clone, Debug)]
+struct ActiveComputerUseBrokerFlow {
+    request: ComputerUseBrokerSessionStartRequest,
+    challenge_id: Option<String>,
+    session_intent_id: Option<String>,
+    status: ComputerUseSessionAuthorityStatus,
+    start_in_progress: bool,
+}
+
+static COMPUTER_USE_BROKER_FLOW: OnceLock<Mutex<Option<ActiveComputerUseBrokerFlow>>> =
+    OnceLock::new();
+
+fn computer_use_broker_flow() -> &'static Mutex<Option<ActiveComputerUseBrokerFlow>> {
+    COMPUTER_USE_BROKER_FLOW.get_or_init(|| Mutex::new(None))
+}
+
+trait ComputerUseSessionBroker: Send + Sync {
+    #[cfg(test)]
+    fn rpc_contract(&self) -> ComputerUseSessionBrokerRPCContract;
+    fn status(&self) -> ComputerUseSessionAuthorityStatus;
+    fn start(
+        &self,
+        request: ComputerUseBrokerSessionStartRequest,
+    ) -> Result<ComputerUseSessionAuthorityStatus, String>;
+}
+
+struct DaemonComputerUseSessionBroker;
+
+impl ComputerUseSessionBroker for DaemonComputerUseSessionBroker {
+    #[cfg(test)]
+    fn rpc_contract(&self) -> ComputerUseSessionBrokerRPCContract {
+        CU_SESSION_BROKER_RPC_CONTRACT
+    }
+
+    fn status(&self) -> ComputerUseSessionAuthorityStatus {
+        computer_use_broker_status_with(call_computer_use_broker_daemon_method)
+    }
+
+    fn start(
+        &self,
+        request: ComputerUseBrokerSessionStartRequest,
+    ) -> Result<ComputerUseSessionAuthorityStatus, String> {
+        validate_computer_use_broker_request(&request)?;
+        Ok(computer_use_broker_acquire_with(
+            request,
+            call_computer_use_broker_daemon_method,
+        ))
+    }
+}
+
+fn validate_computer_use_broker_request(
+    request: &ComputerUseBrokerSessionStartRequest,
+) -> Result<(), String> {
+    if request.mode != "browser" {
+        return Err("Linux Computer Use authorization supports browser mode only".into());
+    }
+    validate_cu_trust_mode(&request.trust_mode)?;
+    if request.run_id.trim().is_empty() || request.run_call_id.trim().is_empty() {
+        return Err("computer use session start requires an exact runId and runCallId".into());
+    }
+    if request.client_id != CU_CLIENT_ID {
+        return Err("computer use session start requires the linux-shell client".into());
+    }
+    if request.scope_rule_ids.len() > 256
+        || request
+            .scope_rule_ids
+            .iter()
+            .any(|value| !is_bounded_computer_use_identifier(value))
+        || request
+            .action_cap
+            .is_some_and(|value| value == 0 || value > 10_000)
+        || request
+            .session_timeout_seconds
+            .is_some_and(|value| value == 0 || value > 24 * 60 * 60)
+    {
+        return Err("computer use session start contains invalid bounded metadata".into());
+    }
+    if request.desktop_owner_authorization_request.method != "linux_desktop_owner" {
+        return Err("computer use session start requires linux_desktop_owner authorization".into());
+    }
+    Ok(())
+}
+
+fn is_bounded_computer_use_identifier(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 512
+        && value
+            .chars()
+            .all(|character| character.is_ascii() && character != '\n' && character != '\r')
+}
+
+fn safe_computer_use_detail(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_ascii() && !character.is_ascii_control() {
+                character
+            } else {
+                ' '
+            }
+        })
+        .take(512)
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn unavailable_computer_use_broker_status(
+    detail: impl AsRef<str>,
+) -> ComputerUseSessionAuthorityStatus {
+    ComputerUseSessionAuthorityStatus {
+        state: ComputerUseSessionAuthorityState::Unavailable,
+        expires_at: None,
+        detail: Some(safe_computer_use_detail(detail.as_ref())),
+        session_id: None,
+    }
+}
+
+fn available_computer_use_broker_status() -> ComputerUseSessionAuthorityStatus {
+    ComputerUseSessionAuthorityStatus {
+        state: ComputerUseSessionAuthorityState::Available,
+        expires_at: None,
+        detail: Some("Ready to request paired-phone Computer Use authorization.".into()),
+        session_id: None,
+    }
+}
+
+fn computer_use_session_request_wire(
+    request: &ComputerUseBrokerSessionStartRequest,
+    challenge_id: Option<&str>,
+) -> serde_json::Value {
+    serde_json::json!({
+        "mode": request.mode,
+        "trustMode": request.trust_mode,
+        "scopeRuleIds": request.scope_rule_ids,
+        "phoneViewerNodeId": request.phone_viewer_node_id,
+        "macHostNodeId": request.mac_host_node_id,
+        "actionCap": request.action_cap.unwrap_or(50),
+        "sessionTimeoutSeconds": request.session_timeout_seconds.unwrap_or(1800),
+        "clientID": request.client_id,
+        "runID": request.run_id,
+        "runCallID": request.run_call_id,
+        "runGeneration": request.run_generation,
+        "grantChallengeId": challenge_id,
+        "desktopOwnerAuthorizationRequest": request.desktop_owner_authorization_request,
+    })
+}
+
+fn computer_use_session_grant_acquire_wire(
+    request: &ComputerUseBrokerSessionStartRequest,
+) -> serde_json::Value {
+    serde_json::json!({
+        "sessionRequest": computer_use_session_request_wire(request, None),
+    })
+}
+
+fn call_computer_use_broker_daemon_method(
+    method: &str,
+    params: serde_json::Value,
+    timeout: Duration,
+) -> Result<serde_json::Value, String> {
+    call_daemon_method_with_timeout(method, Some(params), timeout)
+}
+
+fn decode_computer_use_grant_status(
+    value: serde_json::Value,
+    expected_challenge_id: Option<&str>,
+    expected_session_intent_id: Option<&str>,
+) -> Result<ComputerUseDaemonSessionGrantStatus, String> {
+    let decoded: ComputerUseDaemonSessionGrantStatus = serde_json::from_value(value)
+        .map_err(|_| "Computer Use broker returned malformed status metadata".to_string())?;
+    if !is_bounded_computer_use_identifier(&decoded.challenge_id)
+        || !is_sha256_hex(&decoded.session_intent_id)
+        || !decoded.issued_at.is_finite()
+        || !decoded.expires_at.is_finite()
+        || decoded.expires_at <= decoded.issued_at
+        || decoded.expires_at - decoded.issued_at > CU_LOCAL_AUTH_MAX_PROOF_LIFETIME_SECONDS
+        || expected_challenge_id.is_some_and(|value| value != decoded.challenge_id)
+        || expected_session_intent_id.is_some_and(|value| value != decoded.session_intent_id)
+    {
+        return Err("Computer Use broker returned mismatched status metadata".into());
+    }
+    Ok(decoded)
+}
+
+fn public_computer_use_grant_status(
+    status: &ComputerUseDaemonSessionGrantStatus,
+) -> ComputerUseSessionAuthorityStatus {
+    let state = match status.state {
+        ComputerUseDaemonSessionGrantState::AwaitingPhone
+        | ComputerUseDaemonSessionGrantState::Ready => {
+            ComputerUseSessionAuthorityState::WaitingPhone
+        }
+        ComputerUseDaemonSessionGrantState::AwaitingDesktopOwner => {
+            ComputerUseSessionAuthorityState::WaitingLocalOwner
+        }
+        ComputerUseDaemonSessionGrantState::Denied
+        | ComputerUseDaemonSessionGrantState::Consumed => {
+            ComputerUseSessionAuthorityState::Rejected
+        }
+        ComputerUseDaemonSessionGrantState::Expired => ComputerUseSessionAuthorityState::Expired,
+        ComputerUseDaemonSessionGrantState::Unavailable => {
+            ComputerUseSessionAuthorityState::Unavailable
+        }
+    };
+    ComputerUseSessionAuthorityStatus {
+        state,
+        expires_at: Some(status.expires_at),
+        detail: status
+            .denial_reason
+            .as_deref()
+            .map(safe_computer_use_detail),
+        session_id: None,
+    }
+}
+
+fn update_computer_use_broker_flow(
+    expected_challenge_id: Option<&str>,
+    update: impl FnOnce(&mut ActiveComputerUseBrokerFlow),
+) -> bool {
+    let Ok(mut guard) = computer_use_broker_flow().lock() else {
+        return false;
+    };
+    let Some(flow) = guard.as_mut() else {
+        return false;
+    };
+    if expected_challenge_id.is_some_and(|expected| flow.challenge_id.as_deref() != Some(expected))
+    {
+        return false;
+    }
+    update(flow);
+    true
+}
+
+fn computer_use_broker_acquire_with<F>(
+    request: ComputerUseBrokerSessionStartRequest,
+    caller: F,
+) -> ComputerUseSessionAuthorityStatus
+where
+    F: Fn(&str, serde_json::Value, Duration) -> Result<serde_json::Value, String>,
+{
+    let requesting = ComputerUseSessionAuthorityStatus {
+        state: ComputerUseSessionAuthorityState::WaitingPhone,
+        expires_at: None,
+        detail: Some("Requesting approval from the paired phone.".into()),
+        session_id: None,
+    };
+    {
+        let Ok(mut guard) = computer_use_broker_flow().lock() else {
+            return unavailable_computer_use_broker_status(
+                "Computer Use authorization state is unavailable.",
+            );
+        };
+        if let Some(active) = guard.as_ref() {
+            if matches!(
+                active.status.state,
+                ComputerUseSessionAuthorityState::WaitingPhone
+                    | ComputerUseSessionAuthorityState::WaitingLocalOwner
+            ) {
+                if active.request == request {
+                    return active.status.clone();
+                }
+                return ComputerUseSessionAuthorityStatus {
+                    state: ComputerUseSessionAuthorityState::Rejected,
+                    expires_at: active.status.expires_at,
+                    detail: Some(
+                        "A different Computer Use authorization request is already active.".into(),
+                    ),
+                    session_id: None,
+                };
+            }
+        }
+        *guard = Some(ActiveComputerUseBrokerFlow {
+            request: request.clone(),
+            challenge_id: None,
+            session_intent_id: None,
+            status: requesting.clone(),
+            start_in_progress: false,
+        });
+    }
+
+    let raw = match caller(
+        CU_SESSION_BROKER_RPC_CONTRACT.acquire_method,
+        computer_use_session_grant_acquire_wire(&request),
+        CU_BROKER_RPC_TIMEOUT,
+    ) {
+        Ok(value) => value,
+        Err(_) => {
+            let unavailable = unavailable_computer_use_broker_status(
+                "Paired-phone Computer Use authorization is unavailable.",
+            );
+            update_computer_use_broker_flow(None, |flow| flow.status = unavailable.clone());
+            return unavailable;
+        }
+    };
+    let decoded = match decode_computer_use_grant_status(raw, None, None) {
+        Ok(value) => value,
+        Err(_) => {
+            let unavailable = unavailable_computer_use_broker_status(
+                "Paired-phone Computer Use authorization returned invalid metadata.",
+            );
+            update_computer_use_broker_flow(None, |flow| flow.status = unavailable.clone());
+            return unavailable;
+        }
+    };
+    let public = public_computer_use_grant_status(&decoded);
+    update_computer_use_broker_flow(None, |flow| {
+        flow.challenge_id = Some(decoded.challenge_id.clone());
+        flow.session_intent_id = Some(decoded.session_intent_id.clone());
+        flow.status = public.clone();
+    });
+    public
+}
+
+fn computer_use_start_failure_status(error: &str) -> ComputerUseSessionAuthorityStatus {
+    let normalized = error.to_ascii_lowercase();
+    if normalized.contains("expired") {
+        return ComputerUseSessionAuthorityStatus {
+            state: ComputerUseSessionAuthorityState::Expired,
+            expires_at: None,
+            detail: Some("The Computer Use authorization expired before session start.".into()),
+            session_id: None,
+        };
+    }
+    if normalized.contains("unavailable")
+        || normalized.contains("timed out")
+        || normalized.contains("connection")
+        || normalized.contains("no such file")
+    {
+        return unavailable_computer_use_broker_status(
+            "Computer Use session authorization is unavailable.",
+        );
+    }
+    ComputerUseSessionAuthorityStatus {
+        state: ComputerUseSessionAuthorityState::Rejected,
+        expires_at: None,
+        detail: Some("Linux desktop-owner authorization was not completed.".into()),
+        session_id: None,
+    }
+}
+
+fn decode_computer_use_session_start(
+    value: serde_json::Value,
+) -> Result<ComputerUseSessionAuthorityStatus, String> {
+    let decoded: ComputerUseDaemonSessionStartResponse = serde_json::from_value(value)
+        .map_err(|_| "Computer Use session start returned malformed metadata".to_string())?;
+    if !is_bounded_computer_use_identifier(&decoded.session_id)
+        || !is_sha256_hex(&decoded.manifest_hash_hex)
+        || !decoded.started_at.is_finite()
+        || !is_bounded_computer_use_identifier(&decoded.entitlement_product_id)
+        || decoded.action_cap == 0
+        || decoded.action_cap > 10_000
+    {
+        return Err("Computer Use session start returned invalid metadata".into());
+    }
+    Ok(ComputerUseSessionAuthorityStatus {
+        state: ComputerUseSessionAuthorityState::Authorized,
+        expires_at: None,
+        detail: None,
+        session_id: Some(decoded.session_id),
+    })
+}
+
+fn computer_use_broker_status_with<F>(caller: F) -> ComputerUseSessionAuthorityStatus
+where
+    F: Fn(&str, serde_json::Value, Duration) -> Result<serde_json::Value, String>,
+{
+    let snapshot = {
+        let Ok(guard) = computer_use_broker_flow().lock() else {
+            return unavailable_computer_use_broker_status(
+                "Computer Use authorization state is unavailable.",
+            );
+        };
+        guard.clone()
+    };
+    let Some(snapshot) = snapshot else {
+        return match caller(
+            CU_SESSION_BROKER_RPC_CONTRACT.readiness_method,
+            serde_json::json!({}),
+            CU_BROKER_RPC_TIMEOUT,
+        ) {
+            Ok(value) => {
+                match serde_json::from_value::<ComputerUseDaemonSessionGrantReadiness>(value) {
+                    Ok(readiness) if readiness.available && readiness.reason == "ready" => {
+                        available_computer_use_broker_status()
+                    }
+                    Ok(readiness) => {
+                        unavailable_computer_use_broker_status(match readiness.reason.as_str() {
+                            "transport_unavailable" => {
+                                "Paired-phone Computer Use transport is unavailable."
+                            }
+                            "proof_validator_unavailable" => {
+                                "Paired-phone proof validation is unavailable."
+                            }
+                            "pairing_unavailable" => "No trusted paired controller is available.",
+                            _ => "Paired-phone Computer Use authorization is unavailable.",
+                        })
+                    }
+                    Err(_) => unavailable_computer_use_broker_status(
+                        "Computer Use readiness returned malformed metadata.",
+                    ),
+                }
+            }
+            Err(_) => unavailable_computer_use_broker_status(
+                "Computer Use readiness could not be verified.",
+            ),
+        };
+    };
+    {
+        let flow = &snapshot;
+        if flow.start_in_progress
+            || matches!(
+                flow.status.state,
+                ComputerUseSessionAuthorityState::Expired
+                    | ComputerUseSessionAuthorityState::Rejected
+                    | ComputerUseSessionAuthorityState::Unavailable
+            )
+        {
+            return flow.status.clone();
+        }
+    }
+    if snapshot.status.state == ComputerUseSessionAuthorityState::Authorized {
+        let Some(session_id) = snapshot.status.session_id.as_deref() else {
+            return unavailable_computer_use_broker_status(
+                "Authorized Computer Use state is missing its session identifier.",
+            );
+        };
+        return match caller(
+            CU_SESSION_BROKER_RPC_CONTRACT.session_status_method,
+            serde_json::json!({ "sessionId": session_id }),
+            CU_BROKER_RPC_TIMEOUT,
+        ) {
+            Ok(value)
+                if value
+                    .get("sessionActive")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(true) =>
+            {
+                snapshot.status
+            }
+            Ok(value)
+                if value
+                    .get("sessionActive")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false) =>
+            {
+                if let Ok(mut guard) = computer_use_broker_flow().lock() {
+                    *guard = None;
+                }
+                ComputerUseSessionAuthorityStatus {
+                    state: ComputerUseSessionAuthorityState::Expired,
+                    expires_at: None,
+                    detail: Some("The authorized Computer Use session is no longer active.".into()),
+                    session_id: None,
+                }
+            }
+            Ok(_) => unavailable_computer_use_broker_status(
+                "Computer Use session status returned malformed metadata.",
+            ),
+            Err(_) => unavailable_computer_use_broker_status(
+                "Computer Use session state could not be revalidated.",
+            ),
+        };
+    }
+    let Some(challenge_id) = snapshot.challenge_id.as_deref() else {
+        return snapshot.status;
+    };
+    let raw = match caller(
+        CU_SESSION_BROKER_RPC_CONTRACT.status_method,
+        serde_json::json!({ "challengeId": challenge_id }),
+        CU_BROKER_RPC_TIMEOUT,
+    ) {
+        Ok(value) => value,
+        Err(_) => {
+            let unavailable = unavailable_computer_use_broker_status(
+                "Paired-phone Computer Use authorization status is unavailable.",
+            );
+            update_computer_use_broker_flow(Some(challenge_id), |flow| {
+                flow.status = unavailable.clone()
+            });
+            return unavailable;
+        }
+    };
+    let decoded = match decode_computer_use_grant_status(
+        raw,
+        Some(challenge_id),
+        snapshot.session_intent_id.as_deref(),
+    ) {
+        Ok(value) => value,
+        Err(_) => {
+            let unavailable = unavailable_computer_use_broker_status(
+                "Paired-phone Computer Use authorization returned invalid status metadata.",
+            );
+            update_computer_use_broker_flow(Some(challenge_id), |flow| {
+                flow.status = unavailable.clone()
+            });
+            return unavailable;
+        }
+    };
+    if decoded.state != ComputerUseDaemonSessionGrantState::Ready {
+        let public = public_computer_use_grant_status(&decoded);
+        update_computer_use_broker_flow(Some(challenge_id), |flow| flow.status = public.clone());
+        return public;
+    }
+
+    let waiting_owner = ComputerUseSessionAuthorityStatus {
+        state: ComputerUseSessionAuthorityState::WaitingLocalOwner,
+        expires_at: Some(decoded.expires_at),
+        detail: Some("Waiting for Linux desktop-owner authorization.".into()),
+        session_id: None,
+    };
+    let owns_start = update_computer_use_broker_flow(Some(challenge_id), |flow| {
+        flow.start_in_progress = true;
+        flow.status = waiting_owner.clone();
+    });
+    if !owns_start {
+        return unavailable_computer_use_broker_status(
+            "Computer Use authorization changed before session start.",
+        );
+    }
+
+    let final_wire = computer_use_session_request_wire(&snapshot.request, Some(challenge_id));
+    let final_status = match caller(
+        CU_SESSION_BROKER_RPC_CONTRACT.session_start_method,
+        final_wire,
+        CU_INTERACTIVE_AUTH_RPC_TIMEOUT,
+    ) {
+        Ok(value) => decode_computer_use_session_start(value).unwrap_or_else(|_| {
+            unavailable_computer_use_broker_status(
+                "Computer Use session start returned invalid metadata.",
+            )
+        }),
+        Err(error) => computer_use_start_failure_status(&error),
+    };
+    update_computer_use_broker_flow(Some(challenge_id), |flow| {
+        flow.start_in_progress = false;
+        flow.status = final_status.clone();
+    });
+    final_status
+}
 
 fn detect_linux_package_channel() -> String {
     if let Ok(channel) = std::env::var("OPENBURNBAR_PACKAGE_CHANNEL") {
@@ -2184,6 +2837,7 @@ struct ValidatedComputerUseLocalAuthTransport {
     binding: ComputerUseLocalAuthGrantBinding,
 }
 
+#[cfg(test)]
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ComputerUseSessionStartParams {
@@ -2202,6 +2856,7 @@ struct ComputerUseSessionStartParams {
     run_id: Option<String>,
     run_call_id: Option<String>,
     run_generation: Option<u64>,
+    desktop_owner_authorization_request: Option<ComputerUseDesktopOwnerAuthorizationRequest>,
     local_auth_proof: Option<ComputerUseLocalAuthProof>,
     source_device_id: Option<String>,
     intent_hash_hex: Option<String>,
@@ -2273,6 +2928,7 @@ struct ComputerUseAuditExportParams {
     anchor_open_timestamps: Option<bool>,
 }
 
+#[cfg(test)]
 fn validate_cu_mode(mode: &str) -> Result<(), String> {
     match mode {
         "agent_watch" | "browser" | "system" => Ok(()),
@@ -2400,6 +3056,7 @@ fn canonical_local_auth_binding_hash_hex(
     Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
+#[cfg(test)]
 fn canonical_computer_use_session_intent_id(
     params: &ComputerUseSessionStartParams,
 ) -> Result<String, String> {
@@ -2429,6 +3086,12 @@ fn canonical_computer_use_session_intent_id(
     }
     if let Some(value) = params.run_generation {
         canonical.insert("runGeneration".into(), serde_json::json!(value));
+    }
+    if let Some(value) = params.desktop_owner_authorization_request.as_ref() {
+        canonical.insert(
+            "desktopOwnerAuthorizationMethod".into(),
+            serde_json::json!(value.method),
+        );
     }
     canonical.insert("scopeRuleIds".into(), serde_json::json!(scope_rule_ids));
     canonical.insert(
@@ -2601,6 +3264,7 @@ fn require_computer_use_grant_capability(
     }
 }
 
+#[cfg(test)]
 fn validate_computer_use_start_grant(
     transport: &ValidatedComputerUseLocalAuthTransport,
     mode: &str,
@@ -2637,6 +3301,7 @@ fn validate_computer_use_invoke_grant(
     }
 }
 
+#[cfg(test)]
 fn computer_use_session_start_wire(
     params: ComputerUseSessionStartParams,
     require_local_auth: bool,
@@ -2644,6 +3309,17 @@ fn computer_use_session_start_wire(
 ) -> Result<serde_json::Value, String> {
     validate_cu_mode(&params.mode)?;
     validate_cu_trust_mode(&params.trust_mode)?;
+    if require_local_auth
+        && params.mode == "browser"
+        && params
+            .desktop_owner_authorization_request
+            .as_ref()
+            .is_none_or(|request| request.method != "linux_desktop_owner")
+    {
+        return Err(
+            "release Browser Computer Use requires linux_desktop_owner authorization".into(),
+        );
+    }
     let expected_session_intent_id = canonical_computer_use_session_intent_id(&params)?;
     let local_auth = acquire_computer_use_local_auth_transport(
         params.local_auth_proof,
@@ -2676,7 +3352,8 @@ fn computer_use_session_start_wire(
         "clientID": client_id,
         "runID": params.run_id,
         "runCallID": params.run_call_id,
-        "runGeneration": params.run_generation
+        "runGeneration": params.run_generation,
+        "desktopOwnerAuthorizationRequest": params.desktop_owner_authorization_request
     });
     append_computer_use_local_auth_fields(
         payload
@@ -2742,15 +3419,25 @@ fn computer_use_invoke_wire(
 }
 
 #[tauri::command]
-fn computer_use_session_start(
-    params: ComputerUseSessionStartParams,
-) -> Result<serde_json::Value, String> {
-    let payload = computer_use_session_start_wire(
-        params,
-        release_computer_use_local_auth_required(),
-        foundation_reference_date_seconds(),
-    )?;
-    call_daemon_method("daemon.computer_use.session.start", Some(payload))
+async fn computer_use_session_authority_status() -> ComputerUseSessionAuthorityStatus {
+    tauri::async_runtime::spawn_blocking(|| DaemonComputerUseSessionBroker.status())
+        .await
+        .unwrap_or_else(|_| {
+            unavailable_computer_use_broker_status("Computer Use authorization status task failed.")
+        })
+}
+
+#[tauri::command]
+async fn computer_use_session_start(
+    params: ComputerUseBrokerSessionStartRequest,
+) -> Result<ComputerUseSessionAuthorityStatus, String> {
+    // The concrete daemon/relay broker is intentionally replaceable. Until it
+    // responds, production stays unavailable rather than accepting
+    // renderer-created proof. The interactive session start occurs only after
+    // daemon status reports the opaque challenge ready.
+    tauri::async_runtime::spawn_blocking(move || DaemonComputerUseSessionBroker.start(params))
+        .await
+        .map_err(|error| format!("computer_use_authority_broker_join_failed:{error}"))?
 }
 
 #[tauri::command]
@@ -3099,6 +3786,7 @@ pub fn run() {
             media_file_send,
             tool_approval_respond,
             memory_set_status,
+            computer_use_session_authority_status,
             computer_use_session_start,
             computer_use_invoke,
             computer_use_approval_pending,
@@ -3136,6 +3824,41 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    static COMPUTER_USE_BROKER_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    fn computer_use_broker_test_guard() -> std::sync::MutexGuard<'static, ()> {
+        let guard = COMPUTER_USE_BROKER_TEST_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap();
+        *computer_use_broker_flow().lock().unwrap() = None;
+        guard
+    }
+
+    fn computer_use_broker_request_fixture() -> ComputerUseBrokerSessionStartRequest {
+        serde_json::from_value(serde_json::json!({
+            "mode": "browser",
+            "trustMode": "step",
+            "clientId": "linux-shell",
+            "runId": "run-1",
+            "runCallId": "call-1",
+            "runGeneration": 7,
+            "desktopOwnerAuthorizationRequest": { "method": "linux_desktop_owner" }
+        }))
+        .unwrap()
+    }
+
+    fn computer_use_grant_status_fixture(state: &str) -> serde_json::Value {
+        serde_json::json!({
+            "challengeId": "challenge-opaque-1",
+            "sessionIntentId": "a".repeat(64),
+            "state": state,
+            "issuedAt": 800_000_000.0,
+            "expiresAt": 800_000_300.0,
+            "denialReason": null
+        })
+    }
 
     // BurnBarMissionApproveRequest/CancelRequest decode `missionID` (capital ID,
     // Swift property name verbatim — no CodingKeys remap) plus a non-optional
@@ -3305,6 +4028,11 @@ mod tests {
             run_id: Some("run-1".into()),
             run_call_id: Some("call-1".into()),
             run_generation: Some(7),
+            desktop_owner_authorization_request: Some(
+                ComputerUseDesktopOwnerAuthorizationRequest {
+                    method: "linux_desktop_owner".into(),
+                },
+            ),
             local_auth_proof: Some(proof),
             source_device_id: Some("android-device-1".into()),
             intent_hash_hex: None,
@@ -3351,7 +4079,7 @@ mod tests {
         let (params, _) = computer_use_session_start_fixture();
         assert_eq!(
             canonical_computer_use_session_intent_id(&params).unwrap(),
-            "76a01cfd3b2795d2dc664612b76758b5c5c46943f9e2927a5449190764dd0c1e"
+            "555334e1ee5f0855971b88ab018bb32a1b10bfe269579986c93aa4524a0fd566"
         );
     }
 
@@ -3367,6 +4095,10 @@ mod tests {
         assert_eq!(payload["runID"], "run-1");
         assert_eq!(payload["runCallID"], "call-1");
         assert_eq!(payload["runGeneration"], 7);
+        assert_eq!(
+            payload["desktopOwnerAuthorizationRequest"]["method"],
+            "linux_desktop_owner"
+        );
         assert_eq!(payload["sourceDeviceId"], "android-device-1");
         assert_eq!(payload["localAuthProof"]["proofId"], "proof-1");
         assert_eq!(payload["intentHashHex"], expected_hash);
@@ -3379,6 +4111,269 @@ mod tests {
             true
         );
         assert!(payload.get("local_auth_proof").is_none());
+    }
+
+    #[test]
+    fn computer_use_broker_request_rejects_renderer_authority_material() {
+        let safe = serde_json::json!({
+            "mode": "browser",
+            "trustMode": "step",
+            "clientId": "linux-shell",
+            "runId": "run-1",
+            "runCallId": "call-1",
+            "runGeneration": 7,
+            "desktopOwnerAuthorizationRequest": { "method": "linux_desktop_owner" }
+        });
+        let request: ComputerUseBrokerSessionStartRequest =
+            serde_json::from_value(safe.clone()).unwrap();
+        validate_computer_use_broker_request(&request).unwrap();
+
+        for forbidden in [
+            "grantChallengeId",
+            "challengeId",
+            "sessionIntentId",
+            "localAuthProof",
+            "signatureEd25519",
+            "password",
+            "localAuthenticationSatisfied",
+            "authorized",
+        ] {
+            let mut poisoned = safe.clone();
+            poisoned[forbidden] = serde_json::json!(true);
+            assert!(
+                serde_json::from_value::<ComputerUseBrokerSessionStartRequest>(poisoned).is_err()
+            );
+        }
+
+        let mut forged_owner = safe;
+        forged_owner["desktopOwnerAuthorizationRequest"]["localAuthenticationSatisfied"] =
+            serde_json::json!(true);
+        assert!(
+            serde_json::from_value::<ComputerUseBrokerSessionStartRequest>(forged_owner).is_err()
+        );
+    }
+
+    #[test]
+    fn computer_use_broker_is_typed_and_interactive_timeout_is_safe() {
+        let broker = DaemonComputerUseSessionBroker;
+        assert!(CU_INTERACTIVE_AUTH_RPC_TIMEOUT > Duration::from_secs(120));
+        assert!(CU_INTERACTIVE_AUTH_RPC_TIMEOUT > CU_BROKER_RPC_TIMEOUT);
+        assert_eq!(
+            broker.rpc_contract(),
+            ComputerUseSessionBrokerRPCContract {
+                readiness_method: "daemon.computer_use.session_grant.readiness",
+                acquire_method: "daemon.computer_use.session_grant.acquire",
+                status_method: "daemon.computer_use.session_grant.status",
+                session_start_method: "daemon.computer_use.session.start",
+                session_status_method: "daemon.computer_use.approval.pending"
+            }
+        );
+
+        let encoded = [
+            ComputerUseSessionAuthorityState::Available,
+            ComputerUseSessionAuthorityState::WaitingPhone,
+            ComputerUseSessionAuthorityState::WaitingLocalOwner,
+            ComputerUseSessionAuthorityState::Authorized,
+            ComputerUseSessionAuthorityState::Expired,
+            ComputerUseSessionAuthorityState::Rejected,
+            ComputerUseSessionAuthorityState::Unavailable,
+        ]
+        .into_iter()
+        .map(|state| serde_json::to_value(state).unwrap())
+        .collect::<Vec<_>>();
+        assert_eq!(
+            encoded,
+            serde_json::json!([
+                "available",
+                "waiting_phone",
+                "waiting_local_owner",
+                "authorized",
+                "expired",
+                "rejected",
+                "unavailable"
+            ])
+            .as_array()
+            .unwrap()
+            .clone()
+        );
+    }
+
+    #[test]
+    fn computer_use_broker_keeps_challenge_native_and_starts_once_when_ready() {
+        let _guard = computer_use_broker_test_guard();
+        let calls = Mutex::new(Vec::<(String, serde_json::Value, Duration)>::new());
+        let request = computer_use_broker_request_fixture();
+        let acquired =
+            computer_use_broker_acquire_with(request.clone(), |method, params, timeout| {
+                calls
+                    .lock()
+                    .unwrap()
+                    .push((method.to_string(), params, timeout));
+                Ok(computer_use_grant_status_fixture("awaiting_phone"))
+            });
+        assert_eq!(
+            acquired.state,
+            ComputerUseSessionAuthorityState::WaitingPhone
+        );
+        let renderer_status = serde_json::to_value(&acquired).unwrap().to_string();
+        assert!(!renderer_status.contains("challenge-opaque-1"));
+        assert!(!renderer_status.contains("sessionIntentId"));
+
+        let authorized = computer_use_broker_status_with(|method, params, timeout| {
+            calls
+                .lock()
+                .unwrap()
+                .push((method.to_string(), params, timeout));
+            match method {
+                "daemon.computer_use.session_grant.status" => {
+                    Ok(computer_use_grant_status_fixture("ready"))
+                }
+                "daemon.computer_use.session.start" => Ok(serde_json::json!({
+                    "sessionId": "session-1",
+                    "manifestHashHex": "b".repeat(64),
+                    "startedAt": 800_000_100.0,
+                    "entitlementProductId": "openburnbar.computer-use",
+                    "actionCap": 50
+                })),
+                other => panic!("unexpected broker method: {other}"),
+            }
+        });
+        assert_eq!(
+            authorized.state,
+            ComputerUseSessionAuthorityState::Authorized
+        );
+        assert_eq!(authorized.session_id.as_deref(), Some("session-1"));
+
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), 3);
+        assert_eq!(calls[0].0, "daemon.computer_use.session_grant.acquire");
+        assert_eq!(calls[0].2, CU_BROKER_RPC_TIMEOUT);
+        assert_eq!(calls[0].1.as_object().unwrap().len(), 1);
+        assert!(calls[0].1.get("runtime").is_none());
+        assert!(calls[0].1.get("threadId").is_none());
+        assert!(calls[0].1.get("preset").is_none());
+        assert!(calls[0].1.get("capabilities").is_none());
+        assert_eq!(calls[1].0, "daemon.computer_use.session_grant.status");
+        assert_eq!(calls[1].2, CU_BROKER_RPC_TIMEOUT);
+        assert_eq!(calls[2].0, "daemon.computer_use.session.start");
+        assert_eq!(calls[2].2, CU_INTERACTIVE_AUTH_RPC_TIMEOUT);
+        assert_eq!(
+            calls[0].1["sessionRequest"]["grantChallengeId"],
+            serde_json::Value::Null
+        );
+        assert_eq!(calls[2].1["grantChallengeId"], "challenge-opaque-1");
+        for (_, payload, _) in calls.iter() {
+            let encoded = payload.to_string();
+            assert!(!encoded.contains("localAuthProof"));
+            assert!(!encoded.contains("signatureEd25519"));
+            assert!(!encoded.contains("password"));
+            assert!(!encoded.contains("localAuthenticationSatisfied"));
+        }
+
+        let stable = computer_use_broker_status_with(|method, params, timeout| {
+            assert_eq!(method, "daemon.computer_use.approval.pending");
+            assert_eq!(params, serde_json::json!({ "sessionId": "session-1" }));
+            assert_eq!(timeout, CU_BROKER_RPC_TIMEOUT);
+            Ok(serde_json::json!({ "requests": [], "sessionActive": true }))
+        });
+        assert_eq!(stable.state, ComputerUseSessionAuthorityState::Authorized);
+
+        let ended = computer_use_broker_status_with(|_, _, _| {
+            Ok(serde_json::json!({ "requests": [], "sessionActive": false }))
+        });
+        assert_eq!(ended.state, ComputerUseSessionAuthorityState::Expired);
+        assert!(ended.session_id.is_none());
+    }
+
+    #[test]
+    fn computer_use_broker_fails_closed_on_malformed_or_mismatched_status() {
+        let _guard = computer_use_broker_test_guard();
+        let idle = computer_use_broker_status_with(|method, params, timeout| {
+            assert_eq!(method, "daemon.computer_use.session_grant.readiness");
+            assert_eq!(params, serde_json::json!({}));
+            assert_eq!(timeout, CU_BROKER_RPC_TIMEOUT);
+            Ok(serde_json::json!({ "available": true, "reason": "ready" }))
+        });
+        assert_eq!(idle.state, ComputerUseSessionAuthorityState::Available);
+        assert!(idle.session_id.is_none());
+
+        let unavailable = computer_use_broker_status_with(|_, _, _| {
+            Ok(serde_json::json!({
+                "available": false,
+                "reason": "transport_unavailable"
+            }))
+        });
+        assert_eq!(
+            unavailable.state,
+            ComputerUseSessionAuthorityState::Unavailable
+        );
+
+        let request = computer_use_broker_request_fixture();
+        let absent = computer_use_broker_acquire_with(request.clone(), |_, _, _| {
+            Err("empty daemon response".into())
+        });
+        assert_eq!(absent.state, ComputerUseSessionAuthorityState::Unavailable);
+
+        *computer_use_broker_flow().lock().unwrap() = None;
+        let malformed = computer_use_broker_acquire_with(request.clone(), |_, _, _| {
+            Ok(serde_json::json!({ "state": "awaiting_phone" }))
+        });
+        assert_eq!(
+            malformed.state,
+            ComputerUseSessionAuthorityState::Unavailable
+        );
+
+        *computer_use_broker_flow().lock().unwrap() = None;
+        let acquired = computer_use_broker_acquire_with(request, |_, _, _| {
+            Ok(computer_use_grant_status_fixture("awaiting_phone"))
+        });
+        assert_eq!(
+            acquired.state,
+            ComputerUseSessionAuthorityState::WaitingPhone
+        );
+        let mismatched = computer_use_broker_status_with(|_, _, _| {
+            let mut status = computer_use_grant_status_fixture("ready");
+            status["challengeId"] = serde_json::json!("different-challenge");
+            Ok(status)
+        });
+        assert_eq!(
+            mismatched.state,
+            ComputerUseSessionAuthorityState::Unavailable
+        );
+        assert!(mismatched.session_id.is_none());
+    }
+
+    #[test]
+    fn computer_use_release_browser_start_requires_owner_authorization_request() {
+        let (mut params, now) = computer_use_session_start_fixture();
+        params.desktop_owner_authorization_request = None;
+        assert!(computer_use_session_start_wire(params, true, now)
+            .unwrap_err()
+            .contains("requires linux_desktop_owner"));
+    }
+
+    #[test]
+    fn computer_use_owner_authorization_method_is_part_of_the_session_intent() {
+        let (params, _) = computer_use_session_start_fixture();
+        let owner_bound = canonical_computer_use_session_intent_id(&params).unwrap();
+
+        let mut missing = params.clone();
+        missing.desktop_owner_authorization_request = None;
+        assert_ne!(
+            canonical_computer_use_session_intent_id(&missing).unwrap(),
+            owner_bound
+        );
+
+        let mut retargeted = params;
+        retargeted
+            .desktop_owner_authorization_request
+            .as_mut()
+            .unwrap()
+            .method = "other_owner_method".into();
+        assert_ne!(
+            canonical_computer_use_session_intent_id(&retargeted).unwrap(),
+            owner_bound
+        );
     }
 
     #[test]

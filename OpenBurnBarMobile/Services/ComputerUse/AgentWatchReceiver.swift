@@ -4,6 +4,62 @@ import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
 import OpenBurnBarMedia
 
+/// Validates and serializes Linux session-grant challenges before handing one
+/// exact challenge to the live-only mobile grant controller.
+@MainActor
+public final class MobileComputerUseSessionGrantChallengeReceiver {
+    typealias Validator = (_ challenge: HermesRealtimeRelayComputerUseSessionGrantChallenge, _ now: Date) throws -> Void
+    typealias GrantHandler = (_ challenge: HermesRealtimeRelayComputerUseSessionGrantChallenge) async throws -> Void
+
+    public static let shared = MobileComputerUseSessionGrantChallengeReceiver()
+
+    private let now: () -> Date
+    private let validator: Validator
+    private let grantHandler: GrantHandler
+    private var inFlight: [String: Task<Void, Never>] = [:]
+    private var completedExpirations: [String: Date] = [:]
+
+    init(
+        now: @escaping () -> Date = Date.init,
+        validator: Validator? = nil,
+        grantHandler: GrantHandler? = nil
+    ) {
+        let signer = ComputerUsePhoneControlSigner()
+        self.now = now
+        self.validator = validator ?? { challenge, validationDate in
+            try signer.validateSessionGrantChallenge(challenge, now: validationDate)
+        }
+        self.grantHandler = grantHandler ?? { challenge in
+            _ = try await MobileAgentPermissionGrantController.shared.grant(sessionChallenge: challenge)
+        }
+    }
+
+    func ingest(_ challenge: HermesRealtimeRelayComputerUseSessionGrantChallenge) {
+        let validationDate = now()
+        completedExpirations = completedExpirations.filter { $0.value > validationDate }
+        do {
+            try validator(challenge, validationDate)
+        } catch {
+            return
+        }
+        guard inFlight[challenge.challengeId] == nil,
+              completedExpirations[challenge.challengeId] == nil else {
+            return
+        }
+
+        inFlight[challenge.challengeId] = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await grantHandler(challenge)
+                completedExpirations[challenge.challengeId] = challenge.expiresAt
+            } catch {
+                // A live-only failure remains retryable while the challenge is valid.
+            }
+            inFlight[challenge.challengeId] = nil
+        }
+    }
+}
+
 /// iOS-side reducer for Computer Use `control.*` frames.
 ///
 /// The transport layer owns bytes and streams; this receiver owns the
@@ -15,6 +71,7 @@ public final class AgentWatchReceiver: ObservableObject {
     public let state: AgentWatchState
     private let approvalFrameSink: PhoneControlSender.FrameSink
     private let phoneControlSender: PhoneControlSender?
+    private let sessionGrantChallengeReceiver: MobileComputerUseSessionGrantChallengeReceiver
     private let uid: String
     private let connectionId: String
 
@@ -23,13 +80,15 @@ public final class AgentWatchReceiver: ObservableObject {
         uid: String,
         connectionId: String,
         approvalFrameSink: @escaping PhoneControlSender.FrameSink,
-        phoneControlSender: PhoneControlSender? = nil
+        phoneControlSender: PhoneControlSender? = nil,
+        sessionGrantChallengeReceiver: MobileComputerUseSessionGrantChallengeReceiver = .shared
     ) {
         self.state = state
         self.uid = uid
         self.connectionId = connectionId
         self.approvalFrameSink = approvalFrameSink
         self.phoneControlSender = phoneControlSender
+        self.sessionGrantChallengeReceiver = sessionGrantChallengeReceiver
     }
 
     public func ingest(_ frame: HermesRealtimeRelayFrame) {
@@ -54,6 +113,9 @@ public final class AgentWatchReceiver: ObservableObject {
                state.pendingApproval?.approvalId == response.approvalId {
                 state.setPendingApproval(nil)
             }
+        case .controlSessionGrantChallenge:
+            guard let challenge = frame.control?.sessionGrantChallenge else { return }
+            sessionGrantChallengeReceiver.ingest(challenge)
         case .controlAgentGrantReceipt:
             guard let wireReceipt = frame.control?.agentGrantReceipt,
                   let receipt = try? AgentCapabilityGrantReceipt(wire: wireReceipt) else { return }

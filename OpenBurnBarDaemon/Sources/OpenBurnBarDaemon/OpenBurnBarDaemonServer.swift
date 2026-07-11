@@ -7,6 +7,23 @@ import Glibc
 #endif
 import Foundation
 
+public typealias LinuxComputerUseOwnerAuthorizer = @Sendable (
+    _ peerProcessID: Int32,
+    _ operationID: String,
+    _ reason: String
+) async throws -> Void
+
+/// Resolves phone-pairing authority from daemon-owned state for one exact run.
+/// The socket client cannot supply peer, device, connection, or grant scope.
+public typealias ComputerUseSessionGrantMetadataResolver = @Sendable (
+    _ requirement: BurnBarComputerUseRunRequirement,
+    _ request: ComputerUseSessionStartRequest
+) async throws -> ComputerUseSessionGrantBroker.AcquisitionMetadata
+
+/// Confirms that the daemon can resolve a currently trusted paired controller
+/// before the desktop advertises the Browser Computer Use flow as available.
+public typealias ComputerUseSessionGrantReadinessProvider = @Sendable () async -> Bool
+
 public actor BurnBarDaemonServer {
     private static let maxRequestBytes = 64 * 1024
 
@@ -44,6 +61,12 @@ public actor BurnBarDaemonServer {
     /// the daemon can verify local-auth proofs independently of the app.
     let phoneControlPinStore: DaemonPhoneKeyPinStore?
     let computerUseApprovalAuthorityVerifier: DaemonComputerUseApprovalAuthorityVerifier?
+    let computerUseSessionGrantBroker: ComputerUseSessionGrantBroker?
+    let computerUseSessionGrantMetadataResolver: ComputerUseSessionGrantMetadataResolver?
+    let computerUseSessionGrantReadinessProvider: ComputerUseSessionGrantReadinessProvider?
+    #if os(Linux)
+    let linuxComputerUseOwnerAuthorizer: LinuxComputerUseOwnerAuthorizer
+    #endif
     let linuxOnboardingService: BurnBarLinuxOnboardingService
     let subscriptionService: BurnBarSubscriptionService
     let configStore: BurnBarConfigStore
@@ -90,6 +113,10 @@ public actor BurnBarDaemonServer {
         localAuthProofVerifier: DaemonLocalAuthProofVerifier? = nil,
         phoneControlPinStore: DaemonPhoneKeyPinStore? = nil,
         computerUseApprovalAuthorityVerifier: DaemonComputerUseApprovalAuthorityVerifier? = nil,
+        computerUseSessionGrantBroker: ComputerUseSessionGrantBroker? = nil,
+        computerUseSessionGrantMetadataResolver: ComputerUseSessionGrantMetadataResolver? = nil,
+        computerUseSessionGrantReadinessProvider: ComputerUseSessionGrantReadinessProvider? = nil,
+        linuxComputerUseOwnerAuthorizer: LinuxComputerUseOwnerAuthorizer? = nil,
         linuxOnboardingService: BurnBarLinuxOnboardingService? = nil,
         subscriptionService: BurnBarSubscriptionService? = nil
     ) {
@@ -100,7 +127,22 @@ public actor BurnBarDaemonServer {
         self.capabilityProfile = capabilityProfile
         self.localAuthProofVerifier = localAuthProofVerifier
         self.phoneControlPinStore = phoneControlPinStore
+        self.computerUseSessionGrantBroker = computerUseSessionGrantBroker
+        self.computerUseSessionGrantMetadataResolver = computerUseSessionGrantMetadataResolver
+        self.computerUseSessionGrantReadinessProvider = computerUseSessionGrantReadinessProvider
         #if os(Linux)
+        if let linuxComputerUseOwnerAuthorizer {
+            self.linuxComputerUseOwnerAuthorizer = linuxComputerUseOwnerAuthorizer
+        } else {
+            let coordinator = LinuxComputerUseOwnerAuthorizationCoordinator()
+            self.linuxComputerUseOwnerAuthorizer = { peerProcessID, operationID, reason in
+                _ = try await coordinator.authorize(
+                    peerProcessID: peerProcessID,
+                    operationID: operationID,
+                    reason: reason
+                )
+            }
+        }
         if localAuthProofVerifier != nil {
             self.computerUseApprovalAuthorityVerifier = computerUseApprovalAuthorityVerifier
                 ?? DaemonComputerUseApprovalAuthorityVerifier(
@@ -370,6 +412,24 @@ public actor BurnBarDaemonServer {
         } else {
             self.gatewayServer = nil
         }
+    }
+
+    /// Entry point for the authenticated paired-controller transport. The
+    /// transport must pass the peer identity established by its own handshake;
+    /// renderer/socket fields are never accepted as that identity.
+    public func ingestComputerUseSessionGrant(
+        _ request: HermesRealtimeRelayAgentGrantRequest,
+        authenticatedTransportPeerNodeID: String,
+        now: Date = Date()
+    ) async throws {
+        guard let computerUseSessionGrantBroker else {
+            throw ComputerUseSessionGrantBroker.BrokerError.transportUnavailable
+        }
+        try await computerUseSessionGrantBroker.ingest(
+            request,
+            authenticatedTransportPeerNodeID: authenticatedTransportPeerNodeID,
+            now: now
+        )
     }
 
     public func start() async throws {
@@ -766,6 +826,8 @@ public actor BurnBarDaemonServer {
                     requestData: requestData
                 )
             case .computerUseCapabilityStateUpdate,
+                 .computerUseSessionGrantReadiness, .computerUseSessionGrantAcquire,
+                 .computerUseSessionGrantStatus,
                  .computerUseSessionStart, .computerUseInvoke,
                  .computerUseApprovalPending, .computerUseApprovalRespond,
                  .computerUsePanicHalt, .computerUseAuditExport,
@@ -773,7 +835,8 @@ public actor BurnBarDaemonServer {
                 return try await handleComputerUseRPC(
                     method: method,
                     decoder: decoder,
-                    requestData: requestData
+                    requestData: requestData,
+                    peerPID: peerPID
                 )
             case .daemonMediaSessionState, .daemonMediaCallAccept,
                  .daemonMediaCallDecline, .daemonMediaCallEnd,
@@ -905,6 +968,17 @@ public actor BurnBarDaemonServer {
         var pidSize = socklen_t(MemoryLayout<pid_t>.size)
         let result = getsockopt(clientFileDescriptor, SOL_LOCAL, LOCAL_PEERPID, &pid, &pidSize)
         return result == 0 ? pid : nil
+        #elseif os(Linux)
+        var credential = BurnBarLinuxPeerSocketCredentials()
+        var credentialSize = socklen_t(MemoryLayout<BurnBarLinuxPeerSocketCredentials>.size)
+        let result = withUnsafeMutablePointer(to: &credential) { pointer in
+            getsockopt(clientFileDescriptor, SOL_SOCKET, SO_PEERCRED, pointer, &credentialSize)
+        }
+        guard result == 0,
+              credentialSize == socklen_t(MemoryLayout<BurnBarLinuxPeerSocketCredentials>.size) else {
+            return nil
+        }
+        return credential.pid
         #else
         return nil
         #endif

@@ -21,6 +21,7 @@
     "autostartEntry": "packaging/linux/autostart/openburnbar.desktop",
     "systemdUserService": "packaging/linux/openburnbar-daemon.service",
     "daemonLaunchScript": "packaging/linux/openburnbar-daemon-launch.sh",
+    "computerUsePolkitPolicy": "packaging/linux/com.openburnbar.computer-use.policy",
     "daemonEnvExample": "packaging/linux/daemon.env.example",
     "customXdgDropInExample": "packaging/linux/systemd/openburnbar-daemon.service.d/custom-xdg.conf.example"
   },
@@ -29,8 +30,26 @@
     "daemonBinary": "/usr/bin/openburnbar-daemon",
     "swiftRuntime": "/usr/lib/openburnbar/swift",
     "nativeRuntime": "/usr/lib/openburnbar/native",
+    "playwrightBridge": "/usr/lib/openburnbar/playwright/openburnbar-playwright-bridge.js",
+    "browserRuntimeProbe": "/usr/lib/openburnbar/playwright/openburnbar-browser-runtime-probe",
+    "browserRuntimeRequirements": "/usr/lib/openburnbar/playwright/browser-runtime-requirements.json",
     "systemdUserService": "/usr/lib/systemd/user/openburnbar-daemon.service",
+    "computerUsePolkitPolicy": "/usr/share/polkit-1/actions/com.openburnbar.computer-use.policy",
     "desktopEntry": "/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop"
+  },
+  "browserComputerUseRuntime": {
+    "requirements": "packaging/linux/browser-runtime-requirements.json",
+    "bridgePackaged": true,
+    "nodeNativePackageDependency": true,
+    "playwrightBundled": false,
+    "chromiumBundled": false,
+    "dynamicInstallAtActionTime": false,
+    "trustedPlaywrightRoot": "/usr/lib/node_modules/playwright",
+    "trustedPlaywrightCoreRoot": "/usr/lib/node_modules/playwright-core",
+    "trustedChromiumRoot": "/usr/lib/openburnbar/playwright-browsers",
+    "runtimeTrust": "uid-0-owned-no-group-or-world-write-recursive",
+    "readinessProbe": "/usr/lib/openburnbar/playwright/openburnbar-browser-runtime-probe",
+    "promotionStatus": "blocked-until-preprovisioned-runtime-and-installed-matrix-evidence-pass"
   },
   "credentialStorage": {
     "requiredCommand": "secret-tool",

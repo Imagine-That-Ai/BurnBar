@@ -17,6 +17,7 @@ public actor OpenBurnBarPlaywrightLifecycle {
         case installFailed(exitCode: Int32, stderr: String)
         case checksumMismatch(expected: String, observed: String)
         case bridgeScriptMissingInBundle
+        case runtimeProbeFailed(exitCode: Int32, detail: String)
     }
 
     public struct Readiness: Codable, Sendable, Equatable {
@@ -45,8 +46,6 @@ public actor OpenBurnBarPlaywrightLifecycle {
     }
 
     public static let pinnedPlaywrightVersion = "1.49.1"
-    /// Sentinel string the install path checks for before declaring success.
-    public static let pinnedPlaywrightVersionPrefix = "1.49."
 
     public let bridgeScriptURL: URL
     public let logger: BurnBarDaemonLogger
@@ -70,10 +69,13 @@ public actor OpenBurnBarPlaywrightLifecycle {
             throw LifecycleError.bridgeScriptMissingInBundle
         }
         let searched = ["/opt/homebrew/bin/node", "/usr/local/bin/node", "/usr/bin/node"]
-        guard let nodePath = locateExecutable("node") else {
+        let packagedRuntime = ProcessInfo.processInfo.environment["OPENBURNBAR_PACKAGED_PLAYWRIGHT_RUNTIME"] == "1"
+        let nodePath = packagedRuntime ? "/usr/bin/node" : locateExecutable("node")
+        guard let nodePath, FileManager.default.isExecutableFile(atPath: nodePath) else {
             throw LifecycleError.nodeMissing(searchedPaths: searched)
         }
-        guard let npmPath = locateExecutable("npm") else {
+        let npmPath = packagedRuntime ? "/usr/bin/npm" : locateExecutable("npm")
+        guard let npmPath, FileManager.default.isExecutableFile(atPath: npmPath) else {
             throw LifecycleError.npmMissing(searchedPaths: searched)
         }
 
@@ -83,7 +85,7 @@ public actor OpenBurnBarPlaywrightLifecycle {
                 throw LifecycleError.installFailed(exitCode: -1, stderr: "Playwright is not installed and install was declined")
             }
             try await installPlaywright(npmPath: npmPath)
-        } else if let installed = installedVersion, !installed.hasPrefix(Self.pinnedPlaywrightVersionPrefix) {
+        } else if let installed = installedVersion, installed != Self.pinnedPlaywrightVersion {
             guard performInstallIfMissing else {
                 throw LifecycleError.installFailed(
                     exitCode: -1,
@@ -91,6 +93,28 @@ public actor OpenBurnBarPlaywrightLifecycle {
                 )
             }
             try await installPlaywright(npmPath: npmPath)
+        }
+
+        if packagedRuntime {
+            let probe = try await runProcess(
+                executable: nodePath,
+                arguments: [bridgeScriptURL.path, "--probe-runtime"]
+            )
+            guard probe.exitCode == 0,
+                  let report = try? JSONSerialization.jsonObject(with: probe.stdout) as? [String: Any],
+                  report["ready"] as? Bool == true else {
+                let output = String(decoding: probe.stdout + probe.stderr, as: UTF8.self)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                throw LifecycleError.runtimeProbeFailed(exitCode: probe.exitCode, detail: output)
+            }
+            return Readiness(
+                nodePath: nodePath,
+                npmPath: npmPath,
+                playwrightVersion: Self.pinnedPlaywrightVersion,
+                chromiumInstalled: true,
+                bridgeScriptURL: bridgeScriptURL,
+                resolvedAt: Date()
+            )
         }
 
         let chromiumInstalled = try await installChromiumIfMissing(npmPath: npmPath, performIfMissing: performInstallIfMissing)

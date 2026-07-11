@@ -91,7 +91,7 @@ describe('VAL-RPC-002 bridge behavior', () => {
   });
 
   it('computerUseSessionStart maps contract fields including the bound agent run', async () => {
-    invoke.mockResolvedValueOnce({ sessionId: 's1' });
+    invoke.mockResolvedValueOnce({ state: 'authorized', sessionId: 's1' });
     const b = await bridge();
     await b.computerUseSessionStart?.({
       mode: 'browser',
@@ -99,7 +99,8 @@ describe('VAL-RPC-002 bridge behavior', () => {
       clientId: 'linux-shell',
       runId: 'run-1',
       runCallId: 'call-1',
-      runGeneration: 7
+      runGeneration: 7,
+      desktopOwnerAuthorizationRequest: { method: 'linux_desktop_owner' }
     });
     expect(invoke).toHaveBeenCalledWith('computer_use_session_start', {
       params: {
@@ -108,9 +109,19 @@ describe('VAL-RPC-002 bridge behavior', () => {
         clientId: 'linux-shell',
         runId: 'run-1',
         runCallId: 'call-1',
-        runGeneration: 7
+        runGeneration: 7,
+        desktopOwnerAuthorizationRequest: { method: 'linux_desktop_owner' }
       }
     });
+  });
+
+  it('computerUseSessionAuthorityStatus uses the native broker command without parameters', async () => {
+    invoke.mockResolvedValueOnce({ state: 'waiting_phone' });
+    const b = await bridge();
+    await expect(b.computerUseSessionAuthorityStatus?.()).resolves.toEqual({
+      state: 'waiting_phone'
+    });
+    expect(invoke).toHaveBeenCalledWith('computer_use_session_authority_status');
   });
 
   it('computerUseInvoke maps nested invocation object', async () => {
@@ -224,7 +235,15 @@ describe('VAL-RPC-002 bridge behavior', () => {
     invoke.mockRejectedValueOnce(new Error('daemon down'));
     const b = await bridge();
     await expect(
-      b.computerUseSessionStart?.({ mode: 'browser', trustMode: 'manual' })
+      b.computerUseSessionStart?.({
+        mode: 'browser',
+        trustMode: 'manual',
+        clientId: 'linux-shell',
+        runId: 'run-1',
+        runCallId: 'call-1',
+        runGeneration: 1,
+        desktopOwnerAuthorizationRequest: { method: 'linux_desktop_owner' }
+      })
     ).rejects.toThrow(/daemon down/);
   });
 

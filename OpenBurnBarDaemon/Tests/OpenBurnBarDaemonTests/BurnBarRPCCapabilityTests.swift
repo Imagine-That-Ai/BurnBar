@@ -59,6 +59,8 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertFalse(profile.permits(.providerCredentialSlotUpsert))
         XCTAssertFalse(profile.permits(.runCreate))
         XCTAssertFalse(profile.permits(.computerUseInvoke))
+        XCTAssertFalse(profile.permits(.computerUseSessionGrantAcquire))
+        XCTAssertFalse(profile.permits(.computerUseSessionGrantStatus))
         XCTAssertFalse(profile.permits(.computerUseSessionStart))
         XCTAssertFalse(profile.permits(.computerUseCapabilityStateUpdate))
         XCTAssertFalse(profile.permits(.browserAction))

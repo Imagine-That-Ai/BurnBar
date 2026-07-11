@@ -49,6 +49,21 @@ export function verifyLinuxWorkflowWiring(input) {
   requireText(input.pr, 'verify-linux-release.test.mjs', 'PR release mutation suite');
   requireText(input.pr, 'assemble-linux-release.test.mjs', 'PR architecture assembly mutation suite');
   requireText(input.pr, 'linux-package-session.test.mjs', 'PR package lifecycle session suite');
+  requireText(
+    input.pr,
+    'scripts/linux-port/browser-runtime-packaging.test.mjs',
+    'PR Browser Computer Use package runtime suite'
+  );
+  requireText(
+    input.pr,
+    'scripts/linux-port/aur-browser-runtime-packaging.test.mjs',
+    'PR AUR Browser Computer Use package runtime suite'
+  );
+  requireText(
+    input.pr,
+    'scripts/linux-port/embed-linux-appimage-payload.test.mjs',
+    'PR AppImage Browser Computer Use payload suite'
+  );
   requireText(input.pr, 'render-parity-ledger.mjs --check', 'PR Markdown drift gate');
   for (const command of [
     'macos-matched-performance',
@@ -167,8 +182,12 @@ export function verifyLinuxWorkflowWiring(input) {
   if (/\#\[tauri::command\][\s\S]{0,120}fn\s+gateway_auth_token/.test(input.rustBridge)) {
     failures.push('a Tauri command may not return the gateway bearer token to the renderer.');
   }
-  for (const forbidden of ['gatewayAuthToken', 'bearerToken', 'Authorization']) {
-    if (input.rendererBridge.includes(forbidden)) {
+  for (const [forbidden, pattern] of [
+    ['gatewayAuthToken', /gatewayAuthToken/],
+    ['bearerToken', /bearerToken/],
+    ['Authorization', /\bAuthorization\b/]
+  ]) {
+    if (pattern.test(input.rendererBridge)) {
       failures.push(`renderer gateway code may not contain credential surface: ${forbidden}`);
     }
   }

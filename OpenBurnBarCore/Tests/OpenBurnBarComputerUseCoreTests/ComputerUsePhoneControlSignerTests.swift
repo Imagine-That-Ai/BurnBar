@@ -4,6 +4,7 @@ import OpenBurnBarCore
 @testable import OpenBurnBarComputerUseCore
 
 final class ComputerUsePhoneControlSignerTests: XCTestCase {
+    private let sessionIntentGoldenHash = "3d6398b75451a30ff531b969d3b73568d0baeb09ed9010b0d7aa134316aae6f5"
     private struct ToyIntent: Codable, Hashable {
         let kind: String
         let nx: Double?
@@ -11,6 +12,179 @@ final class ComputerUsePhoneControlSignerTests: XCTestCase {
     }
 
     private let signer = ComputerUsePhoneControlSigner()
+
+    func testLinuxSessionGrantChallengeMatchesCrossPlatformGoldenVector() throws {
+        let challenge = sessionGrantChallenge()
+        let request = ComputerUseSessionStartRequest(
+            mode: ComputerUseMode.browser.rawValue,
+            trustMode: ComputerUseTrustMode.manual.rawValue,
+            scopeRuleIds: ["workspace-only", "deny-payments"],
+            phoneViewerNodeId: "phone-viewer-1",
+            macHostNodeId: "linux-host-1",
+            actionCap: 50,
+            sessionTimeoutSeconds: 1_800,
+            clientID: BurnBarClientID(rawValue: "linux-desktop"),
+            runID: BurnBarRunID(rawValue: "run-42"),
+            runCallID: "call-7",
+            runGeneration: 4,
+            desktopOwnerAuthorizationRequest: .init(method: .linuxDesktopOwner)
+        )
+
+        XCTAssertEqual(try signer.canonicalComputerUseSessionIntentID(challenge: challenge), sessionIntentGoldenHash)
+        XCTAssertEqual(try signer.canonicalComputerUseSessionIntentID(request: request), sessionIntentGoldenHash)
+        XCTAssertEqual(
+            try signer.validateSessionGrantChallenge(
+                challenge,
+                now: Date(timeIntervalSinceReferenceDate: 800_000_100)
+            ),
+            sessionIntentGoldenHash
+        )
+    }
+
+    func testValidatedChallengeBuildsExactExistingGrantRequest() throws {
+        let request = try AgentCapabilityGrantRequest(
+            validatedSessionChallenge: sessionGrantChallenge(),
+            sourceDeviceID: "ios-device-1",
+            localAuthenticationSatisfied: true,
+            now: Date(timeIntervalSinceReferenceDate: 800_000_100)
+        )
+
+        XCTAssertEqual(request.requestID, "challenge-00000001")
+        XCTAssertEqual(request.clientIntentID, sessionIntentGoldenHash)
+        XCTAssertEqual(request.runtimeID, .codex)
+        XCTAssertEqual(request.preset, .desktop)
+        XCTAssertEqual(request.trustMode, .manual)
+        XCTAssertEqual(request.deliveryMode, .live)
+        XCTAssertEqual(request.grantDurationSeconds, 1_800)
+        XCTAssertTrue(request.localAuthenticationSatisfied)
+    }
+
+    func testSessionChallengeAcceptsDesktopSubsetWithStepTrustAndPreservesExactGrant() throws {
+        var challenge = sessionGrantChallenge()
+        challenge.capabilities = [
+            AgentDesktopCapability.desktopBrowser.rawValue,
+            AgentDesktopCapability.desktopScreenshot.rawValue
+        ]
+        challenge.trustMode = ComputerUseTrustMode.step.rawValue
+        challenge.sessionIntentId = try signer.canonicalComputerUseSessionIntentID(challenge: challenge)
+
+        let request = try AgentCapabilityGrantRequest(
+            validatedSessionChallenge: challenge,
+            sourceDeviceID: "ios-device-1",
+            now: Date(timeIntervalSinceReferenceDate: 800_000_100)
+        )
+
+        XCTAssertEqual(request.capabilities, [.desktopBrowser, .desktopScreenshot])
+        XCTAssertEqual(request.trustMode, .step)
+        XCTAssertEqual(request.clientIntentID, challenge.sessionIntentId)
+    }
+
+    func testSessionChallengeRejectsCapabilityOutsidePresetEvenWithValidIntentHash() throws {
+        var challenge = sessionGrantChallenge()
+        challenge.capabilities.append(AgentDesktopCapability.shellUnrestricted.rawValue)
+        challenge.sessionIntentId = try signer.canonicalComputerUseSessionIntentID(challenge: challenge)
+
+        XCTAssertThrowsError(try signer.validateSessionGrantChallenge(
+            challenge,
+            now: Date(timeIntervalSinceReferenceDate: 800_000_100)
+        )) {
+            XCTAssertEqual(
+                $0 as? ComputerUsePhoneControlSigner.SessionGrantChallengeValidationError,
+                .presetCapabilityTrustMismatch
+            )
+        }
+    }
+
+    func testSessionGrantChallengeFailsClosedOnExpiryMismatchAndTrustElevation() throws {
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_301)
+        XCTAssertThrowsError(try signer.validateSessionGrantChallenge(sessionGrantChallenge(), now: now)) {
+            XCTAssertEqual($0 as? ComputerUsePhoneControlSigner.SessionGrantChallengeValidationError, .expired)
+        }
+
+        var mismatched = sessionGrantChallenge()
+        mismatched.actionCap += 1
+        XCTAssertThrowsError(try signer.validateSessionGrantChallenge(
+            mismatched,
+            now: Date(timeIntervalSinceReferenceDate: 800_000_100)
+        )) {
+            XCTAssertEqual($0 as? ComputerUsePhoneControlSigner.SessionGrantChallengeValidationError, .sessionIntentMismatch)
+        }
+
+        var elevated = sessionGrantChallenge()
+        elevated.trustMode = ComputerUseTrustMode.trusted.rawValue
+        XCTAssertThrowsError(try signer.validateSessionGrantChallenge(
+            elevated,
+            now: Date(timeIntervalSinceReferenceDate: 800_000_100)
+        )) {
+            XCTAssertEqual($0 as? ComputerUsePhoneControlSigner.SessionGrantChallengeValidationError, .sessionIntentMismatch)
+        }
+
+        var trustedWithoutDesktopOwner = sessionGrantChallenge()
+        trustedWithoutDesktopOwner.preset = AgentPermissionPreset.yolo.rawValue
+        trustedWithoutDesktopOwner.capabilities = AgentPermissionPreset.yolo.capabilities.map(\.rawValue)
+        trustedWithoutDesktopOwner.trustMode = ComputerUseTrustMode.trusted.rawValue
+        trustedWithoutDesktopOwner.desktopOwnerAuthorizationMethod = nil
+        XCTAssertThrowsError(try signer.validateSessionGrantChallenge(
+            trustedWithoutDesktopOwner,
+            now: Date(timeIntervalSinceReferenceDate: 800_000_100)
+        )) {
+            XCTAssertEqual(
+                $0 as? ComputerUsePhoneControlSigner.SessionGrantChallengeValidationError,
+                .desktopOwnerAuthorizationRequired
+            )
+        }
+    }
+
+    func testDesktopOwnerAuthorizationRequirementIsCanonicalAndWireCompatible() throws {
+        let withoutOwnerAuthorization = ComputerUseSessionStartRequest(
+            mode: ComputerUseMode.browser.rawValue,
+            trustMode: ComputerUseTrustMode.manual.rawValue,
+            clientID: BurnBarClientID(rawValue: "linux-desktop")
+        )
+        let withOwnerAuthorization = ComputerUseSessionStartRequest(
+            mode: ComputerUseMode.browser.rawValue,
+            trustMode: ComputerUseTrustMode.manual.rawValue,
+            clientID: BurnBarClientID(rawValue: "linux-desktop"),
+            desktopOwnerAuthorizationRequest: .init(method: .linuxDesktopOwner)
+        )
+
+        XCTAssertNotEqual(
+            try signer.canonicalComputerUseSessionIntentID(request: withoutOwnerAuthorization),
+            try signer.canonicalComputerUseSessionIntentID(request: withOwnerAuthorization)
+        )
+        let roundTrip = try JSONDecoder().decode(
+            ComputerUseSessionStartRequest.self,
+            from: JSONEncoder().encode(withOwnerAuthorization)
+        )
+        XCTAssertEqual(roundTrip.desktopOwnerAuthorizationRequest?.method, .linuxDesktopOwner)
+    }
+
+    private func sessionGrantChallenge() -> HermesRealtimeRelayComputerUseSessionGrantChallenge {
+        HermesRealtimeRelayComputerUseSessionGrantChallenge(
+            version: 1,
+            challengeId: "challenge-00000001",
+            nonce: "0123456789abcdef0123456789abcdef",
+            issuedAt: Date(timeIntervalSinceReferenceDate: 800_000_000),
+            expiresAt: Date(timeIntervalSinceReferenceDate: 800_000_300),
+            sessionIntentId: sessionIntentGoldenHash,
+            runtime: AssistantRuntimeID.codex.rawValue,
+            threadId: "thread-linux-1",
+            preset: AgentPermissionPreset.desktop.rawValue,
+            capabilities: AgentPermissionPreset.desktop.capabilities.map(\.rawValue),
+            mode: ComputerUseMode.browser.rawValue,
+            trustMode: ComputerUseTrustMode.manual.rawValue,
+            scopeRuleIds: ["workspace-only", "deny-payments"],
+            phoneViewerNodeId: "phone-viewer-1",
+            macHostNodeId: "linux-host-1",
+            actionCap: 50,
+            sessionTimeoutSeconds: 1_800,
+            clientId: "linux-desktop",
+            runId: "run-42",
+            runCallId: "call-7",
+            runGeneration: 4,
+            desktopOwnerAuthorizationMethod: ComputerUseDesktopOwnerAuthorizationMethod.linuxDesktopOwner.rawValue
+        )
+    }
 
     func testRoundTripVerifySucceeds() throws {
         let priv = Curve25519.Signing.PrivateKey()

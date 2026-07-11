@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useShellStore } from '../../state/shellStore.js';
+import type {
+  ComputerUseSessionAuthorityState,
+  ComputerUseSessionAuthorityStatus,
+  ComputerUseSessionStartRequest
+} from '../../tauriBridge.js';
 import './computer-use.css';
 
 export type ComputerUseTrust = 'manual' | 'step' | 'trusted';
@@ -56,7 +61,7 @@ export function buildComputerUseSessionStartParams(
   selectedRunId: string,
   trustMode: ComputerUseTrust,
   requirements: readonly RunRequirement[]
-) {
+): ComputerUseSessionStartRequest {
   const runId = selectedRunId.trim();
   const selectedRequirement = requirements.find(
     (item) => (item.runID ?? item.runId) === runId
@@ -71,9 +76,22 @@ export function buildComputerUseSessionStartParams(
     clientId: 'linux-shell',
     runId,
     runCallId,
-    runGeneration: selectedRequirement.generation
+    runGeneration: selectedRequirement.generation,
+    desktopOwnerAuthorizationRequest: {
+      method: 'linux_desktop_owner'
+    }
   };
 }
+
+const AUTHORITY_COPY: Record<ComputerUseSessionAuthorityState, string> = {
+  available: 'Ready to request paired-phone Computer Use authorization.',
+  waiting_phone: 'Waiting for approval on your paired phone.',
+  waiting_local_owner: 'Waiting for Linux desktop-owner authorization.',
+  authorized: 'Computer Use authorization complete.',
+  expired: 'The Computer Use authorization request expired. Start again to retry.',
+  rejected: 'The Computer Use authorization request was rejected.',
+  unavailable: 'Paired phone approval is unavailable in this build.'
+};
 
 /**
  * Computer Use control surface (Phase 4 / VAL-CU-001).
@@ -88,6 +106,11 @@ export function ComputerUseSurface() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingApproval[]>([]);
   const [status, setStatus] = useState<'idle' | 'busy' | 'error' | 'offline'>('idle');
+  const [authorityStatus, setAuthorityStatus] = useState<ComputerUseSessionAuthorityStatus>(
+    fixtureMode
+      ? { state: 'authorized' }
+      : { state: 'unavailable' }
+  );
   const [error, setError] = useState<string | null>(null);
   const [log, setLog] = useState<string[]>([]);
 
@@ -101,6 +124,55 @@ export function ComputerUseSurface() {
       (item) => (item.sessionId ?? item.sessionID) !== expectedSessionId
     ));
   }, []);
+
+  const applyAuthorityStatus = useCallback((next: ComputerUseSessionAuthorityStatus) => {
+    setAuthorityStatus(next);
+    if (next.state === 'authorized') {
+      if (!next.sessionId) {
+        setStatus('error');
+        setError('Authorization completed without an active Computer Use session.');
+        return;
+      }
+      setSessionId(next.sessionId);
+      setStatus('idle');
+      setError(null);
+      pushLog(`Session started: ${next.sessionId} · mode=browser`);
+      return;
+    }
+    if (next.state === 'waiting_phone' || next.state === 'waiting_local_owner') {
+      setStatus('idle');
+      setError(null);
+      return;
+    }
+    if (next.state === 'available') {
+      setStatus('idle');
+      setError(null);
+      return;
+    }
+    if (next.state === 'rejected' || next.state === 'expired') {
+      setStatus('error');
+      setError(next.detail ?? AUTHORITY_COPY[next.state]);
+      return;
+    }
+    setStatus('offline');
+  }, [pushLog]);
+
+  const refreshAuthorityStatus = useCallback(async () => {
+    if (fixtureMode) {
+      setAuthorityStatus({ state: 'authorized' });
+      return;
+    }
+    if (!bridge?.computerUseSessionAuthorityStatus) {
+      setAuthorityStatus({ state: 'unavailable' });
+      return;
+    }
+    try {
+      applyAuthorityStatus(await bridge.computerUseSessionAuthorityStatus());
+    } catch (err) {
+      setAuthorityStatus({ state: 'unavailable', detail: errorMessage(err) });
+      setStatus('offline');
+    }
+  }, [applyAuthorityStatus, bridge, fixtureMode]);
 
   const refreshPending = useCallback(async () => {
     if (fixtureMode) {
@@ -145,14 +217,28 @@ export function ComputerUseSurface() {
     }
   }, [bridge, fixtureMode, retireSession, sessionId]);
 
-  // Release RPCs require phone-signed session and action authority. Until the
-  // paired-controller acquisition bridge exists, keep controls honestly
-  // unavailable instead of issuing requests that are guaranteed to fail.
-  const signedAuthorityAvailable = fixtureMode;
+  const sessionAuthorityAvailable = fixtureMode
+    || (Boolean(bridge?.computerUseSessionStart)
+      && authorityStatus.state !== 'unavailable');
+  // Action approval has a separate phone-signature contract. A session grant
+  // must never be reused as authority for individual actions.
+  const signedActionAuthorityAvailable = fixtureMode;
 
   useEffect(() => {
     void refreshPending();
   }, [refreshPending]);
+
+  useEffect(() => {
+    void refreshAuthorityStatus();
+  }, [refreshAuthorityStatus]);
+
+  useEffect(() => {
+    if (fixtureMode
+      || (authorityStatus.state !== 'waiting_phone'
+        && authorityStatus.state !== 'waiting_local_owner')) return;
+    const poll = window.setInterval(() => void refreshAuthorityStatus(), 1_000);
+    return () => window.clearInterval(poll);
+  }, [authorityStatus.state, fixtureMode, refreshAuthorityStatus]);
 
   useEffect(() => {
     if (fixtureMode || !bridge?.computerUseApprovalPending) return;
@@ -182,14 +268,7 @@ export function ComputerUseSurface() {
     }
     try {
       const params = buildComputerUseSessionStartParams(normalizedRunId, trust, runRequirements);
-      const result = (await bridge.computerUseSessionStart(params)) as {
-        sessionId?: string;
-        sessionID?: string;
-      };
-      const id = result.sessionId ?? result.sessionID ?? null;
-      setSessionId(id);
-      setStatus('idle');
-      pushLog(`Session started: ${id ?? 'ok'} · mode=browser · trust=${trust}`);
+      applyAuthorityStatus(await bridge.computerUseSessionStart(params));
     } catch (err) {
       setStatus('error');
       setError(err instanceof Error ? err.message : String(err));
@@ -302,9 +381,13 @@ export function ComputerUseSurface() {
           {error}
         </p>
       ) : null}
-      {!signedAuthorityAvailable ? (
-        <p className="computer-use-surface__error" role="status">
-          Paired phone approval is unavailable in this build.
+      {!fixtureMode ? (
+        <p
+          className={`computer-use-surface__authority computer-use-surface__authority--${authorityStatus.state}`}
+          role="status"
+          aria-live="polite"
+        >
+          {authorityStatus.detail ?? AUTHORITY_COPY[authorityStatus.state]}
         </p>
       ) : null}
 
@@ -346,7 +429,11 @@ export function ComputerUseSurface() {
           type="button"
           className="computer-use-btn"
           onClick={() => void startSession()}
-          disabled={!signedAuthorityAvailable || status === 'busy' || Boolean(sessionId)}
+          disabled={!sessionAuthorityAvailable
+            || authorityStatus.state === 'waiting_phone'
+            || authorityStatus.state === 'waiting_local_owner'
+            || status === 'busy'
+            || Boolean(sessionId)}
         >
           Start session
         </button>
@@ -406,13 +493,13 @@ export function ComputerUseSurface() {
                       ) : null}
                     </span>
                     <span className="computer-use-actions">
-                      <button type="button" disabled={!signedAuthorityAvailable || !id || !itemSessionId} aria-label={`Approve ${heading}`} onClick={() => id && itemSessionId && void respondApproval('approve', id, itemSessionId)}>
+                      <button type="button" disabled={!signedActionAuthorityAvailable || !id || !itemSessionId} aria-label={`Approve ${heading}`} onClick={() => id && itemSessionId && void respondApproval('approve', id, itemSessionId)}>
                         Approve
                       </button>
-                      <button type="button" disabled={!signedAuthorityAvailable || !id || !itemSessionId} aria-label={`Reject ${heading}`} onClick={() => id && itemSessionId && void respondApproval('reject', id, itemSessionId)}>
+                      <button type="button" disabled={!signedActionAuthorityAvailable || !id || !itemSessionId} aria-label={`Reject ${heading}`} onClick={() => id && itemSessionId && void respondApproval('reject', id, itemSessionId)}>
                         Reject
                       </button>
-                      <button type="button" disabled={!signedAuthorityAvailable || !id || !itemSessionId} aria-label={`Reject and halt ${heading}`} onClick={() => id && itemSessionId && void respondApproval('reject_and_halt', id, itemSessionId)}>
+                      <button type="button" disabled={!signedActionAuthorityAvailable || !id || !itemSessionId} aria-label={`Reject and halt ${heading}`} onClick={() => id && itemSessionId && void respondApproval('reject_and_halt', id, itemSessionId)}>
                         Reject + halt
                       </button>
                     </span>

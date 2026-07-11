@@ -202,6 +202,58 @@ final class DaemonLocalAuthProofVerifierTests: XCTestCase {
         }
     }
 
+    func test_prevalidationDoesNotConsumeProofBeforeInteractiveOwnerAuthorization() throws {
+        let now = Date()
+        let key = Curve25519.Signing.PrivateKey()
+        let proof = try makeProof(
+            privateKey: key,
+            deviceId: deviceId,
+            intentHash: intentHash,
+            authenticatedAt: now,
+            expiresAt: now.addingTimeInterval(120)
+        )
+        let ledger = DaemonConsumedLocalAuthProofLedger()
+        let verifier = makeVerifier(pinned: [deviceId: .ed25519(key.publicKey)], ledger: ledger)
+
+        XCTAssertNoThrow(
+            try verifier.validate(
+                proof: proof,
+                expectedDeviceId: deviceId,
+                expectedIntentHashHex: intentHash,
+                now: now
+            )
+        )
+        XCTAssertNoThrow(
+            try verifier.validate(
+                proof: proof,
+                expectedDeviceId: deviceId,
+                expectedIntentHashHex: intentHash,
+                now: now
+            )
+        )
+        XCTAssertNoThrow(
+            try verifier.verify(
+                proof: proof,
+                expectedDeviceId: deviceId,
+                expectedIntentHashHex: intentHash,
+                now: now
+            )
+        )
+        XCTAssertThrowsError(
+            try verifier.verify(
+                proof: proof,
+                expectedDeviceId: deviceId,
+                expectedIntentHashHex: intentHash,
+                now: now
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? DaemonLocalAuthProofVerifier.VerificationFailure,
+                .replay(proofId: proof.proofId)
+            )
+        }
+    }
+
     func test_forgedSignatureDoesNotBurnProofId() throws {
         // A failed-signature probe must NOT consume the proof id, so a later
         // legitimate proof with that id (single-use ledger) is not pre-burned.

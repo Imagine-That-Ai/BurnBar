@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useShellStore } from '../../state/shellStore.js';
+import type { ComputerUseSessionStartRequest } from '../../tauriBridge.js';
 import {
   buildComputerUseSessionStartParams,
   clearSessionIfCurrent,
@@ -25,8 +26,91 @@ describe('ComputerUseSurface', () => {
       clientId: 'linux-shell',
       runId: 'run-1',
       runCallId: 'call-1',
-      runGeneration: 7
+      runGeneration: 7,
+      desktopOwnerAuthorizationRequest: {
+        method: 'linux_desktop_owner'
+      }
     });
+  });
+
+  it.each([
+    ['available', 'Ready to request paired-phone Computer Use authorization.'],
+    ['waiting_phone', 'Waiting for approval on your paired phone.'],
+    ['waiting_local_owner', 'Waiting for Linux desktop-owner authorization.'],
+    ['expired', 'authorization request expired'],
+    ['rejected', 'authorization request was rejected'],
+    ['unavailable', 'Paired phone approval is unavailable']
+  ] as const)('exposes the %s broker state without authority material', async (state, copy) => {
+    useShellStore.setState({
+      fixtureMode: false,
+      bridge: {
+        computerUseSessionAuthorityStatus: vi.fn(async () => ({ state })),
+        computerUseApprovalPending: vi.fn(async () => ({ requests: [] }))
+      } as never
+    });
+
+    render(<ComputerUseSurface />);
+    expect((await screen.findByRole('status')).textContent).toMatch(new RegExp(copy, 'i'));
+  });
+
+  it('exposes authorized only with the native broker session', async () => {
+    useShellStore.setState({
+      fixtureMode: false,
+      bridge: {
+        computerUseSessionAuthorityStatus: vi.fn(async () => ({
+          state: 'authorized',
+          sessionId: 'native-session-1'
+        })),
+        computerUseApprovalPending: vi.fn(async () => ({ requests: [] }))
+      } as never
+    });
+
+    render(<ComputerUseSurface />);
+    expect(await screen.findByText(/Computer Use authorization complete/i)).toBeTruthy();
+    expect(screen.getByText(/Session · native-sess/i)).toBeTruthy();
+  });
+
+  it('sends only the typed run and Linux owner-authorization request to the native broker', async () => {
+    const computerUseSessionStart = vi.fn(
+      async (_request: ComputerUseSessionStartRequest) => ({ state: 'waiting_phone' as const })
+    );
+    useShellStore.setState({
+      fixtureMode: false,
+      bridge: {
+        computerUseSessionAuthorityStatus: vi.fn(async () => ({ state: 'available' as const })),
+        computerUseSessionStart,
+        computerUseApprovalPending: vi.fn(async () => ({
+          requests: [],
+          runRequirements: [{
+            runID: 'run-safe',
+            callID: 'call-safe',
+            generation: 11,
+            toolKind: 'browser_goto'
+          }]
+        }))
+      } as never
+    });
+
+    render(<ComputerUseSurface />);
+    const runPicker = await screen.findByRole('combobox', { name: /Agent run/i });
+    fireEvent.change(runPicker, { target: { value: 'run-safe' } });
+    fireEvent.click(screen.getByRole('button', { name: /Start session/i }));
+
+    await waitFor(() => expect(computerUseSessionStart).toHaveBeenCalledOnce());
+    const request = computerUseSessionStart.mock.calls[0]?.[0];
+    expect(request).toEqual({
+      mode: 'browser',
+      trustMode: 'step',
+      clientId: 'linux-shell',
+      runId: 'run-safe',
+      runCallId: 'call-safe',
+      runGeneration: 11,
+      desktopOwnerAuthorizationRequest: { method: 'linux_desktop_owner' }
+    });
+    expect(JSON.stringify(request)).not.toMatch(
+      /private|password|signature|proof|localAuthenticationSatisfied|authorized\s*:/i
+    );
+    expect(await screen.findByText(/Waiting for approval on your paired phone/i)).toBeTruthy();
   });
 
   it('starts a fixture session and shows pending approvals', async () => {

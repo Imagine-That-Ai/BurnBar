@@ -63,6 +63,7 @@ public enum HermesRealtimeRelayFrameType: String, Codable, Sendable, Equatable {
     case controlInputIntent = "control.input.intent"
     case controlApprovalRequest = "control.approval.request"
     case controlApprovalResponse = "control.approval.response"
+    case controlSessionGrantChallenge = "control.session.grant.challenge"
     case controlAgentGrantRequest = "control.agent.grant.request"
     case controlAgentGrantReceipt = "control.agent.grant.receipt"
     case controlClipboardRequest = "control.clipboard.request"

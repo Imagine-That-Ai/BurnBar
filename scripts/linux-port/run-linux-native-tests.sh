@@ -130,87 +130,6 @@ run_swift_suite() {
     done
 }
 
-build_attestd_test_harness() {
-    local manifest="$1"
-    local cargo_messages
-    local harnesses
-    local test_binary
-
-    cargo_messages="$(mktemp)"
-    harnesses="$(mktemp)"
-    if ! RUSTUP_TOOLCHAIN=1.94.0 \
-        CARGO_BUILD_JOBS="${OPENBURNBAR_LINUX_CARGO_BUILD_JOBS:-1}" \
-        cargo test --manifest-path "${manifest}" --locked --lib --no-run \
-            --message-format=json >"${cargo_messages}"; then
-        rm -f "${cargo_messages}" "${harnesses}"
-        return 1
-    fi
-
-    if ! jq -r '
-        select(
-            .reason == "compiler-artifact"
-            and .target.name == "openburnbar_attestd"
-            and (.target.kind | type == "array" and index("lib") != null)
-            and .profile.test == true
-            and (.executable | type == "string")
-        )
-        | .executable
-    ' "${cargo_messages}" | LC_ALL=C sort -u >"${harnesses}"; then
-        rm -f "${cargo_messages}" "${harnesses}"
-        return 1
-    fi
-    local harness_count
-    harness_count="$(wc -l <"${harnesses}" | tr -d '[:space:]')"
-    if [[ "${harness_count}" -ne 1 ]]; then
-        printf 'cargo identified %s openburnbar-attestd library test harnesses; expected exactly one\n' \
-            "${harness_count}" >&2
-        rm -f "${cargo_messages}" "${harnesses}"
-        return 1
-    fi
-    test_binary="$(<"${harnesses}")"
-    rm -f "${cargo_messages}"
-    rm -f "${harnesses}"
-
-    if [[ ! -x "${test_binary}" ]]; then
-        printf '%s\n' "cargo-reported openburnbar-attestd test harness is not executable: ${test_binary}" >&2
-        return 1
-    fi
-    if ! "${test_binary}" --list 2>/dev/null \
-        | grep -F 'backend::tests::attest_collects_tpm_quote_and_sealed_bundle' >/dev/null; then
-        printf '%s\n' "cargo-reported openburnbar-attestd library harness is missing the root fixture test: ${test_binary}" >&2
-        return 1
-    fi
-
-    printf '%s\n' "${test_binary}"
-}
-
-run_attestd_tests() {
-    local manifest="crates/openburnbar-attestd/Cargo.toml"
-    if [[ "${EUID}" -eq 0 ]]; then
-        RUSTUP_TOOLCHAIN=1.94.0 \
-            CARGO_BUILD_JOBS="${OPENBURNBAR_LINUX_CARGO_BUILD_JOBS:-1}" \
-            cargo test --manifest-path "${manifest}" --locked
-        return
-    fi
-
-    if ! sudo -n true >/dev/null 2>&1; then
-        printf '%s\n' \
-            "openburnbar-attestd tests require root-owned security fixtures; run in the canonical root toolchain container or configure non-interactive sudo." >&2
-        return 1
-    fi
-
-    local test_binary=""
-    if ! test_binary="$(build_attestd_test_harness "${manifest}")"; then
-        printf '%s\n' "could not resolve the current openburnbar-attestd library test harness from Cargo output" >&2
-        return 1
-    fi
-
-    sudo -n "${test_binary}" --test-threads=1
-    RUSTUP_TOOLCHAIN=1.94.0 \
-        CARGO_BUILD_JOBS="${OPENBURNBAR_LINUX_CARGO_BUILD_JOBS:-1}" \
-        cargo test --manifest-path "${manifest}" --locked --doc
-}
-
 core_foundation_tests=(
     AgentProviderLogDiscoveryLinuxTests/testPartialLogFilePatternDocumentsCodexSessionJsonl
     AgentProviderLogDiscoveryLinuxTests/testResolveLogSourceUsesInjectedHomeForHeadlessLinuxFixtures
@@ -329,6 +248,20 @@ daemon_linux_tests=(
     ComputerUseServiceRunBindingTests/testInvokeForUnboundRunFailsBeforeAnyBrowserDispatch
     ComputerUseServiceRunBindingTests/testRunIDChangesManifestAuditRoot
     ComputerUseServiceRunBindingTests/testRunBindingIsManifestBoundUniqueAndRemovedByPanicHalt
+    ComputerUseSessionGrantBrokerTests/testExpiryWipesReadyGrantAndPreventsConsume
+    ComputerUseSessionGrantBrokerTests/testConcurrentStartReservationIsTokenBoundAndNonReusable
+    ComputerUseSessionGrantBrokerTests/testDefiniteStartFailureRestoresReadyForOneFreshRetry
+    ComputerUseSessionGrantBrokerTests/testForgedProofFailsClosedAndLegitimateRetryCanSucceed
+    ComputerUseSessionGrantBrokerTests/testPublishesExactChallengeAndConsumesVerifiedGrantOnce
+    ComputerUseSessionGrantBrokerTests/testRecordBoundFailsClosedAndExpiryCleanupReleasesCapacity
+    ComputerUseSessionGrantBrokerTests/testRejectsFieldMismatchWithoutCallingProofValidator
+    ComputerUseSessionGrantBrokerTests/testRejectsWrongPeerWithoutBurningChallenge
+    ComputerUseSessionGrantBrokerTests/testRendererProofFieldsAndChangedConsumeRequestAreRejected
+    ComputerUseSessionGrantBrokerTests/testReplayIsRejectedBeforeAndAfterConsume
+    ComputerUseSessionGrantBrokerTests/testStartingExpiryBecomesConsumedBeforeTerminalCleanup
+    ComputerUseSessionGrantBrokerTests/testUnavailableTransportAndProofValidatorFailClosed
+    ComputerUseSessionGrantRPCCompositionTests/testAcquireIngestStatusDenialAndKnownStartFailureRemainRetryableUntilSuccess
+    ComputerUseSessionGrantRPCCompositionTests/testReadinessReportsBrokerPairingAndOperationalStates
     DaemonLinuxLocalAuthProofVerifierTests/testLinuxFilePinBackingRoundTripsIntoLocalAuthProofVerifier
     DaemonLinuxLocalAuthProofVerifierTests/testLinuxVerifierRejectsBindingMismatchWithPersistedPin
     LinuxComputerUseInputAdapterTests/testAtspiClickPlanUsesPythonWhenSessionBusIsAvailable
@@ -338,6 +271,12 @@ daemon_linux_tests=(
     LinuxComputerUseInputAdapterTests/testDenyRegionInspectorMapsPasswordRoleAtPoint
     LinuxComputerUseInputAdapterTests/testDenyRegionInspectorUsesFocusedAccessibleForKeyboardInput
     LinuxComputerUseInputAdapterTests/testKillSwitchFlagBlocksDispatchBeforeCommandRuns
+    LinuxComputerUseOwnerAuthorizationCoordinatorTests/testAuthorizesExactStableAppPeerWithFreshPolkitProof
+    LinuxComputerUseOwnerAuthorizationCoordinatorTests/testPromptReasonIsPrintableCollapsedAndBounded
+    LinuxComputerUseOwnerAuthorizationCoordinatorTests/testRejectsNonPolkitOrMismatchedProof
+    LinuxComputerUseOwnerAuthorizationCoordinatorTests/testRejectsPeerIdentityChangeAcrossPrompt
+    LinuxComputerUseOwnerAuthorizationCoordinatorTests/testRejectsUnsupportedExecutableBeforePrompt
+    LinuxComputerUseOwnerAuthorizationCoordinatorTests/testSingleFlightRejectsConcurrentPromptForSamePeer
     LinuxComputerUseServiceSystemInputTests/testLinuxKillSwitchProviderDeniesBeforeDispatch
     LinuxComputerUseServiceSystemInputTests/testPasswordFieldDenyRegionRejectsBeforeLinuxDispatchAndAudits
     LinuxComputerUseInputAdapterTests/testRuntimeDirectoryKillSwitchFlagBlocksDispatchByDefault

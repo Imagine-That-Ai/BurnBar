@@ -1,10 +1,13 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # Launch OpenBurnBar daemon with the same XDG path contract as the shell/extension
 # (VAL-PATH-001). Support/token always share one resolved directory.
 #
 # Installed as: /usr/libexec/openburnbar-daemon-launch
 # (AUR PKGBUILD, deb/rpm via tauri.conf.json bundle files, release-manifest).
 set -euo pipefail
+
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+unset BASH_ENV ENV CDPATH GLOBIGNORE LD_PRELOAD LD_AUDIT NODE_OPTIONS
 
 APP_DIR_NAME=openburnbar
 HOME_DIR="${HOME:-/}"
@@ -20,7 +23,7 @@ if [[ -n "${APPDIR:-}" ]]; then
   esac
 fi
 
-# Canonical peer roots — forced, never replaced by daemon.env / EnvironmentFile.
+# Canonical peer roots are forced and never replaced by inherited environment.
 # AppImage trust uses SHA-256 pins, not world-writable mount prefixes.
 HARDENED_PEER_ROOTS="/usr/bin:/usr/local/bin:/opt/openburnbar/bin"
 
@@ -106,27 +109,41 @@ if [[ "${mode}" != "600" && "${mode}" != "400" && "${mode}" != "0600" && "${mode
   exit 1
 fi
 
-# Force hardened PEER_ROOTS. systemd EnvironmentFile=daemon.env can override the
-# unit's Environment= line — ignore that class of override entirely so restart
-# cannot set PEER_ROOTS=/ or $HOME and defeat peer path checks.
+# Force hardened PEER_ROOTS so direct launches cannot weaken peer path checks.
 if [[ -n "${OPENBURNBAR_DAEMON_LINUX_PEER_ROOTS:-}" && \
       "${OPENBURNBAR_DAEMON_LINUX_PEER_ROOTS}" != "${HARDENED_PEER_ROOTS}" ]]; then
   echo "openburnbar-daemon-launch: ignoring non-canonical OPENBURNBAR_DAEMON_LINUX_PEER_ROOTS from environment" >&2
   echo "  got=${OPENBURNBAR_DAEMON_LINUX_PEER_ROOTS}" >&2
   echo "  using=${HARDENED_PEER_ROOTS}" >&2
-  echo "  remove PEER_ROOTS from ~/.config/openburnbar/daemon.env (not allowed)" >&2
+  echo "  remove OPENBURNBAR_DAEMON_LINUX_PEER_ROOTS from the launch environment" >&2
 fi
 export OPENBURNBAR_DAEMON_LINUX_PEER_ROOTS="${HARDENED_PEER_ROOTS}"
 
 export OPENBURNBAR_DAEMON_SUPPORT_DIR="${SUPPORT_DIR}"
 export OPENBURNBAR_INDEX_DATABASE_PATH="${OPENBURNBAR_INDEX_DATABASE_PATH:-${SUPPORT_DIR}/openburnbar.sqlite}"
 
+# The launcher owns the packaged Browser Computer Use bridge
+# path. This keeps installed deb/rpm and AppImage sessions on the immutable
+# package resource while development launches may still use the explicit
+# OPENBURNBAR_PLAYWRIGHT_BRIDGE override.
+if [[ -n "${APPIMAGE_ROOT}" ]]; then
+  export OPENBURNBAR_PACKAGED_PLAYWRIGHT_BRIDGE="${APPIMAGE_ROOT}/usr/lib/openburnbar/playwright/openburnbar-playwright-bridge.js"
+else
+  export OPENBURNBAR_PACKAGED_PLAYWRIGHT_BRIDGE="/usr/lib/openburnbar/playwright/openburnbar-playwright-bridge.js"
+fi
+
+# Packaged Browser Computer Use never resolves JavaScript or Chromium from the
+# user's environment. The externally provisioned runtime is accepted only from
+# these root-owned, non-group/world-writable trees; the bridge revalidates every
+# entry before loading Playwright and before launching Chromium.
+unset NODE_OPTIONS
+export OPENBURNBAR_PACKAGED_PLAYWRIGHT_RUNTIME=1
+export NODE_PATH="/usr/lib/node_modules"
+export PLAYWRIGHT_BROWSERS_PATH="/usr/lib/openburnbar/playwright-browsers"
+
 # Swift and native runtimes for the packaged daemon. AppImage exposes its
 # extracted root through APPDIR; deb/rpm install the same payload under /usr.
 swift_lib_dirs=()
-if [[ -n "${OPENBURNBAR_SWIFT_LIB_DIR:-}" ]]; then
-  swift_lib_dirs+=("${OPENBURNBAR_SWIFT_LIB_DIR}")
-fi
 if [[ -n "${APPIMAGE_ROOT}" ]]; then
   swift_lib_dirs+=("${APPIMAGE_ROOT}/usr/lib/openburnbar/swift")
 fi
@@ -161,8 +178,10 @@ if [[ -n "${swift_ld}" || -n "${native_ld}" ]]; then
   library_paths=()
   [[ -n "${swift_ld}" ]] && library_paths+=("${swift_ld}")
   [[ -n "${native_ld}" ]] && library_paths+=("${native_ld}")
-  [[ -n "${LD_LIBRARY_PATH:-}" ]] && library_paths+=("${LD_LIBRARY_PATH}")
-  export LD_LIBRARY_PATH="$(IFS=:; echo "${library_paths[*]}")"
+  library_path_value="$(IFS=:; echo "${library_paths[*]}")"
+  export LD_LIBRARY_PATH="$library_path_value"
+else
+  unset LD_LIBRARY_PATH
 fi
 
 daemon_candidates=()
@@ -182,12 +201,8 @@ for candidate in "${daemon_candidates[@]}"; do
   fi
 done
 if [[ -z "${DAEMON_BIN}" ]]; then
-  if command -v openburnbar-daemon >/dev/null 2>&1; then
-    DAEMON_BIN="$(command -v openburnbar-daemon)"
-  else
-    echo "openburnbar-daemon-launch: openburnbar-daemon binary not found" >&2
-    exit 1
-  fi
+  echo "openburnbar-daemon-launch: openburnbar-daemon binary not found" >&2
+  exit 1
 fi
 
 exec "${DAEMON_BIN}" \
