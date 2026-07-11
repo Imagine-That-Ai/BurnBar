@@ -45,12 +45,12 @@ final class LinuxSwitcherAndPensieveTests: XCTestCase {
         let result = try BurnBarCLIShellShimInstaller(installDirectory: root)
             .installShims(invokedExecutablePath: "/opt/Open Burn'Bar/openburnbar-cli")
 
-        XCTAssertEqual(result.installedCommands, ["codex", "claude", "gemini", "opencode", "goose", "droid", "pi"])
+        XCTAssertEqual(result.installedCommands, SwitcherCLIProfileType.allCases.map(\.rawValue))
         let codex = root.appendingPathComponent("codex")
         XCTAssertTrue(FileManager.default.isExecutableFile(atPath: codex.path))
         let contents = try String(contentsOf: codex, encoding: .utf8)
         XCTAssertTrue(contents.contains("'/opt/Open Burn'\\''Bar/openburnbar-cli'"))
-        XCTAssertTrue(contents.contains("switcher run --cli codex -- \"$@\""))
+        XCTAssertTrue(contents.contains("exec codex -- \"$@\""))
     }
 
     func testPensieveWatcherWritesPrivateManifestAndStopsIdempotently() throws {
