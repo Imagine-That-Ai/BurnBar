@@ -21,6 +21,7 @@ import type {
   DaemonSubscriptionStopRequest,
   DaemonSubscriptionStopResponse
 } from '../tauriBridge.js';
+import type { NativeDeepLink, NativeShellSnapshot } from '../tauriBridge.js';
 import {
   RUNTIME_CAPABILITY_IDS,
   type RuntimeCapabilityManifest
@@ -174,6 +175,18 @@ export const emptySubscriptionStop = (
   lastSeq: 0
 });
 
+export const emptyNativeShellSnapshot = (): Promise<NativeShellSnapshot> =>
+  Promise.resolve({
+    loginStartEnabled: false,
+    loginStartPath: '/tmp/openburnbar-test-autostart.desktop',
+    backgroundLaunch: false,
+    rejectedDeepLinks: 0
+  });
+
+export const emptyNativeDeepLinks = (): Promise<NativeDeepLink[]> => Promise.resolve([]);
+export const emptyNativeTrayUpdate = (): Promise<void> => Promise.resolve();
+export const emptyNativeListener = async (): Promise<() => void> => () => {};
+
 export const makeAvailableRuntimeCapabilityManifest = (): RuntimeCapabilityManifest => ({
     schemaVersion: 1,
     catalogVersion: 'test',
@@ -216,6 +229,12 @@ export const bridgeStubDefaults = {
   subscriptionStart: emptySubscriptionStart,
   subscriptionResume: emptySubscriptionResume,
   subscriptionStop: emptySubscriptionStop,
+  nativeShellReady: emptyNativeDeepLinks,
+  nativeShellSnapshot: emptyNativeShellSnapshot,
+  nativeShellSetLoginStart: emptyNativeShellSnapshot,
+  nativeTrayUpdate: emptyNativeTrayUpdate,
+  onNativeDeepLink: emptyNativeListener,
+  onNativeShellState: emptyNativeListener,
   runtimeCapabilities: availableRuntimeCapabilities,
   gatewayProbe: emptyGatewayProbe,
   gatewayChatStream: emptyGatewayChatStream,

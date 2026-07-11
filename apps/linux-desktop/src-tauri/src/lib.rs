@@ -11,14 +11,18 @@ use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 use tauri::ipc::Channel;
-use tauri::menu::{MenuBuilder, MenuItemBuilder};
-use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, WindowEvent};
 use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
 use tauri_plugin_shell::ShellExt;
 
 mod media;
+mod native_shell;
 mod update_feed;
+
+use native_shell::{
+    build_tray, handle_secondary_launch, native_shell_ready, native_shell_set_login_start,
+    native_shell_snapshot, native_tray_update, LaunchIntent, NativeShellState,
+};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -2349,43 +2353,6 @@ fn foundation_reference_date_seconds() -> f64 {
     unix - 978_307_200.0
 }
 
-fn build_tray(app: &AppHandle) -> tauri::Result<()> {
-    let open_i = MenuItemBuilder::with_id("open", "Open dashboard").build(app)?;
-    let health_i = MenuItemBuilder::with_id("health", "Reconnect daemon").build(app)?;
-    let quit_i = MenuItemBuilder::with_id("quit", "Quit OpenBurnBar").build(app)?;
-    let menu = MenuBuilder::new(app)
-        .items(&[&open_i, &health_i, &quit_i])
-        .build()?;
-
-    let _tray = TrayIconBuilder::new()
-        .menu(&menu)
-        .tooltip("OpenBurnBar")
-        .on_menu_event(|app, event| match event.id.as_ref() {
-            "open" => {
-                let _ = open_dashboard(app.clone());
-            }
-            "health" => {
-                let health = daemon_health();
-                let _ = app.emit("daemon-health", health);
-            }
-            "quit" => quit_app(app.clone()),
-            _ => {}
-        })
-        .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::Click {
-                button: MouseButton::Left,
-                button_state: MouseButtonState::Up,
-                ..
-            } = event
-            {
-                let app = tray.app_handle();
-                let _ = open_dashboard(app.clone());
-            }
-        })
-        .build(app)?;
-    Ok(())
-}
-
 /// Installs the process-wide `tracing` subscriber for the desktop shell.
 ///
 /// Idempotent: `try_init` returns `Err` if a global subscriber is already set,
@@ -2440,8 +2407,14 @@ pub fn run() {
     // subscriber) a no-op instead of a panic.
     init_tracing();
 
+    let launch_intent = LaunchIntent::from_args(std::env::args());
+
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            handle_secondary_launch(app, args);
+        }))
         .plugin(tauri_plugin_shell::init())
+        .manage(NativeShellState::new(launch_intent))
         .invoke_handler(tauri::generate_handler![
             daemon_health,
             runtime_capabilities,
@@ -2461,6 +2434,10 @@ pub fn run() {
             subscription_start,
             subscription_resume,
             subscription_stop,
+            native_shell_ready,
+            native_shell_snapshot,
+            native_shell_set_login_start,
+            native_tray_update,
             usage_summary,
             provider_catalog,
             session_list,
@@ -2531,6 +2508,11 @@ pub fn run() {
             register_computer_use_panic_shortcuts(app.handle());
             start_media_session_poll_loop(app.handle().clone());
             media::start_media_socket_reader(app.handle().clone());
+            if app.state::<NativeShellState>().background_launch() {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                }
+            }
             Ok(())
         })
         .build(tauri::generate_context!())

@@ -70,6 +70,9 @@ for (const packageType of ['deb', 'rpm']) {
       failures.push(`${packageType} must package ${source} at ${destination}`);
     }
   }
+  if (!files['/usr/share/openburnbar/autostart/openburnbar.desktop']) {
+    failures.push(`${packageType} must package the canonical XDG autostart reference`);
+  }
 }
 const appImageFiles = tauri.bundle?.linux?.appimage?.files ?? {};
 for (const destination of Object.keys(packageSources)) {
@@ -79,7 +82,8 @@ for (const destination of Object.keys(packageSources)) {
 }
 for (const destination of [
   '/usr/libexec/openburnbar-daemon-launch',
-  '/usr/lib/systemd/user/openburnbar-daemon.service'
+  '/usr/lib/systemd/user/openburnbar-daemon.service',
+  '/usr/share/openburnbar/autostart/openburnbar.desktop'
 ]) {
   if (!appImageFiles[destination]) failures.push(`appimage must package ${destination}`);
 }

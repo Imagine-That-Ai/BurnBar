@@ -12,6 +12,7 @@ source=(
   "OpenBurnBar-${pkgver}.AppImage::https://github.com/Imagine-That-Ai/BurnBar/releases/download/v${pkgver}/OpenBurnBar-${pkgver}-linux-${CARCH}.AppImage"
   "openburnbar-daemon-${pkgver}-${CARCH}::https://github.com/Imagine-That-Ai/BurnBar/releases/download/v${pkgver}/openburnbar-daemon-${pkgver}-linux-${CARCH}"
   "openburnbar.desktop"
+  "openburnbar-autostart.desktop"
   "openburnbar-safe-mode.desktop"
   "openburnbar-daemon.service"
   "openburnbar-daemon-launch"
@@ -20,6 +21,7 @@ sha256sums=(
   "REPLACE_WITH_APPIMAGE_SHA256"
   "REPLACE_WITH_DAEMON_SHA256"
   "REPLACE_WITH_DESKTOP_SHA256"
+  "REPLACE_WITH_AUTOSTART_DESKTOP_SHA256"
   "REPLACE_WITH_SAFE_MODE_DESKTOP_SHA256"
   "REPLACE_WITH_SERVICE_SHA256"
   "REPLACE_WITH_LAUNCH_SHA256"
@@ -30,6 +32,7 @@ package() {
   install -Dm755 "${srcdir}/openburnbar-daemon-${pkgver}-${CARCH}" "${pkgdir}/usr/bin/openburnbar-daemon"
   install -Dm755 "${srcdir}/openburnbar-daemon-launch" "${pkgdir}/usr/libexec/openburnbar-daemon-launch"
   install -Dm644 "${srcdir}/openburnbar.desktop" "${pkgdir}/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop"
+  install -Dm644 "${srcdir}/openburnbar-autostart.desktop" "${pkgdir}/usr/share/openburnbar/autostart/openburnbar.desktop"
   install -Dm644 "${srcdir}/openburnbar-safe-mode.desktop" "${pkgdir}/usr/share/applications/dev.openburnbar.OpenBurnBar.SafeMode.desktop"
   install -Dm644 "${srcdir}/openburnbar-daemon.service" "${pkgdir}/usr/lib/systemd/user/openburnbar-daemon.service"
 }

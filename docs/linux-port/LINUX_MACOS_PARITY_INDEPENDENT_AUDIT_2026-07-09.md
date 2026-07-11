@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | `codex/linux-parity-final`; clean aarch64 and architecture-correct x86_64 release shards at `391fe2847d` |
+| Remediation evidence | Stacked implementation through `codex/linux-parity-native`; clean aarch64 and architecture-correct x86_64 release shards at `391fe2847d` |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -29,8 +29,11 @@ and a runtime probe that exposes the route only when the daemon can support it.
 It is still **unproven as a parity outcome** until a real Linux-to-macOS/mobile
 two-device matrix passes. The largest remaining functional gaps are complete
 system Computer Use capture/execution, provider/auth/portal completion inside
-transactional onboarding, account/cloud/device workflows, chat and session depth, global text expansion, and richer
-Linux-native shell integrations. The largest certification gaps are an x86_64
+transactional onboarding, account/cloud/device workflows, chat and session
+depth, global text expansion, and freedesktop notification/status-window depth.
+Linux now has a single-instance native launch boundary, validated deep links,
+background startup, live tray facts/actions, and user-owned XDG login start.
+The largest certification gaps are an x86_64
 installed session, a prior-version update/rollback baseline, a valid public
 signed feed, and real GNOME Wayland/KDE/wlroots proof. Package construction is
 now green for both architectures, but that does not substitute for those live
@@ -60,12 +63,12 @@ commit `9886a6ac0b`:
 The current integration branch adds measured source and package evidence beyond
 that historical installed baseline:
 
-- **95** focused Swift Core/daemon tests passed across XDG paths, provider
+- **100** fail-closed Swift Core/security/daemon tests passed across XDG paths, provider
   discovery, gateway, switcher, Pensieve/inotify, Computer Use, and Mercury;
-- **59 files / 394 tests** passed in the Linux desktop suite, including every
+- **62 files / 419 tests** passed in the Linux desktop suite, including every
   route under axe, six-layout state, provider-path parity, durable memory, and
-  real Mercury RPC decoding;
-- **17/17** Tauri Rust tests, **3/3** media-crate tests, **40/40** extension
+  real Mercury RPC decoding plus native-shell lifecycle and settings coverage;
+- **24/24** Tauri Rust tests, **3/3** media-crate tests, **40/40** extension
   daemon-client tests, and **78/78** release/workflow contract tests passed;
 - clean aarch64 and architecture-correct x86_64 shards at `391fe2847d` each
   produced AppImage, deb, rpm, and daemon artifacts with SHA-256 closure, zero
@@ -101,6 +104,7 @@ The correct release posture is therefore:
 | Accessibility | Route axe plus installed AT-SPI/Orca/keyboard/200% proof passed on aarch64 X11 | Repeat on GNOME Wayland, KDE Wayland, wlroots, x86_64, and high-contrast rows |
 | Performance/reliability | Matched harness, supervisor, percentiles, and nightly soak contracts implemented | Produce final same-hardware macOS/Linux candidate results and desktop-matrix runs |
 | Updates | Native signed-feed verification implemented; invalid endpoint fails honestly | Serve valid signed feed and prove package-manager update/rollback/data preservation |
+| Native shell | Single-instance/background launch, typed deep links, live tray facts/actions, and user XDG login start are implemented | Add actionable freedesktop notifications and status window; certify rich/icon-only GNOME, KDE, X11, wlroots, accessibility, and lifecycle rows |
 | Packaging | aarch64 and x86_64 AppImage/deb/rpm/daemon construction and smoke passed; aarch64 installed `.deb` session passed | Produce installed x86_64 session, signed aggregate, rpm/AppImage lifecycle, and prior-version proof |
 | Core product workflows | Six dashboard layouts, XDG/provider paths, and daemon-authoritative memory decisions are implemented; several routes remain partial/read-only | Complete onboarding, chat, sessions, account/cloud, and workspace depth |
 | Advanced platform features | Mercury implementation and guarded Linux input/panic paths exist; unsupported outcomes remain capability-gated | Certify Mercury; complete system CU capture, SmartHub devices, IBus/Fcitx, and companion overlay |
@@ -136,12 +140,18 @@ live product state were independently reproducible.
 
 ### Verification performed
 
-- `npm test --prefix apps/linux-desktop -- --maxWorkers=2`: **61 files, 411 tests passed**.
+- `npm test --prefix apps/linux-desktop -- --maxWorkers=2`: **62 files, 419 tests passed**.
 - `npm run build --prefix apps/linux-desktop`: **passed**; the main JavaScript
-  chunk is **655.47 kB** minified and Vite reports a chunk-size warning.
+  chunk is **662.74 kB** minified and Vite reports a chunk-size warning.
 - `cargo test --manifest-path apps/linux-desktop/src-tauri/Cargo.toml`:
-  **19/19 passed**, including capability-catalog, Mercury-probe, update-feed,
-  URL, gateway, panic-shortcut, and wire-contract coverage.
+  **24/24 passed**, including native deep-link/autostart, capability-catalog,
+  Mercury-probe, update-feed, URL, gateway, panic-shortcut, and wire-contract
+  coverage.
+- ARM64 Ubuntu 24.04 GNOME X11 native-shell pass: production-protocol ELF
+  `cfc14d7da1124d32d2370adf515cf4636b7c1c0345376377f71d09bd0099608d`
+  stayed at one process through `openburnbar://chat`, rendered the bundled tray
+  icon/menu, preserved honest offline state, and completed a native-menu XDG
+  login-start off/on/off round trip with canonical `0600` user-owned content.
 - Fail-closed OpenBurnBar Core/security/daemon Linux manifest: **100/100 passed**.
 - Linux media crate capability/capture/decode suite: **3/3 passed**.
 - Extension daemon-client suite: **40/40 passed**.
@@ -238,7 +248,7 @@ required gates and were not made green by the Ed25519 result.
 | P-06 | Gateway credential boundary | Native process owns bearer credentials | Rust owns the bearer and proxies bounded authenticated HTTP/SSE; renderer receives typed data, not the token | Near parity | Critical |
 | P-07 | Computer Use | Browser, Agent Watch, Mac System, approval, audit, and three panic paths | Runtime manifest hides unsupported system mode; complete browser action proof and Linux system capture/input adapter remain missing | Partial | Critical |
 | P-08 | Mercury media | File transfer, calls, screen share, mirroring, presence, consent | Daemon-owned transport, calls, files, sealed capture, portal consent, HUD, and live capability probing are implemented; real cross-device and compositor proof remains open | Partial | Critical |
-| P-09 | Navigation and shell | Dashboard, insights, deep provider/model routes, multi-window flows | All 19 installed routes activate through AT-SPI; deep links and native multi-window behavior remain thinner | Near parity | Medium |
+| P-09 | Navigation and shell | Dashboard, insights, deep provider/model routes, multi-window flows | All 19 installed routes activate through AT-SPI; validated single-instance dashboard/search/chat/insights/membership deep links now route through typed native events; provider/model depth and native multi-window behavior remain thinner | Near parity | Medium |
 | P-10 | Dashboard layouts | Six dense layouts with real live content and persisted state | All six layouts, persistence, loading/error/offline/populated states, tokens, and tests exist; the packaged six-layout visual matrix remains incomplete | Near parity | Medium |
 | P-11 | Usage ingestion | 27 parser registrations, API/quota aggregation, recount, projections, cloud mirror | One 15-row Linux path registry now drives shell discovery copy and is contract-tested against Swift; the full macOS/Linux normalized parser corpus remains unproven | Partial | High |
 | P-12 | Quota | Provider quotas, histories, account switching, alerts | Strong read surface; account profiles, drain targets, and switching lag | Partial | Medium |
@@ -255,8 +265,8 @@ required gates and were not made green by the Ed25519 result.
 | P-23 | Provider/model workspace | Provider and model deep dives, health, catalog, failover, routing | Quota-centric provider route; no equivalent model workspace/failover flow | Partial | Medium |
 | P-24 | Settings | 16 searchable tabs with deep links and writable state | 13 tabs; Model Proxy, Computer Use, Pets omitted; several controls read-only | Partial | Medium |
 | P-25 | Updates | Automatic checks, channel, install/restart truth | Native signed-feed availability check fails closed; valid public feed and package-manager install/restart/rollback proof remain open | Partial | High |
-| P-26 | Tray and native shell | Rich live menu-bar status, quick switch, chat, quota, update state | Open/Reconnect/Quit tray only | Partial | High |
-| P-27 | Notifications/deep links | Actionable notifications, OAuth return, global commands, login start | No complete freedesktop notification, deep-link, shortcut, or autostart adapter | Missing | High |
+| P-26 | Tray and native shell | Rich live menu-bar status, quick switch, chat, quota, update state | Live cost/tokens, quota floor, provider count, freshness, dashboard/chat/provider/update/reconnect/login-start/quit actions exist; account quick switch, status window, host-loss behavior, and installed matrix remain | Near parity | High |
+| P-27 | Notifications/deep links | Actionable notifications, OAuth return, global commands, login start | Single-instance validated deep links, membership return, background launch, XDG login start, and daemon-backed panic shortcut exist; freedesktop actionable notifications, provider OAuth callback contract, and installed shortcut/desktop matrix remain | Partial | High |
 | P-28 | SmartHub | Discovery, status, allowlisted device actions | Runtime requires a trusted root-owned packaged CLI and otherwise fails closed; real device outcomes remain unproven | Partial | High |
 | P-29 | Text expansion | Global, secure-field-aware expansion, persistence, sync, previews | Preview-only in-app engine, plaintext localStorage, no normal composer hook | Substitute | High |
 | P-30 | Pet companion | Animated ambient overlay, click-through, summon, selection, interactions | Route-contained point-cloud preview with optimistic capability detection | Partial | High |
@@ -737,15 +747,30 @@ remains required.
 
 ### GAP-014 - Build native tray, notifications, deep links, shortcuts, and startup
 
+**Implementation update (2026-07-10): native launch/tray/startup foundation
+implemented; notification and installed certification remain open.** Rust now
+owns single-instance arbitration, background launch, an allowlisted
+`openburnbar://` parser, listener-race-safe delivery, window focus, live tray
+actions/facts, and atomic user XDG autostart mutation. The renderer accepts only
+correlated typed route/action pairs. deb, rpm, AppImage, and AUR packaging share
+the canonical autostart entry. Direct ARM64 GNOME X11 evidence now proves hidden
+background launch, one-process Chat routing, the bundled icon/native menu, and
+an exact login-start off/on/off round trip. This is not installed package or
+desktop-matrix certification. See `LINUX_NATIVE_SHELL_AUTHORITY.md` and
+`evidence/mission-003-native-shell/runtime-transcript.txt`.
+
 - **Difference:** macOS provides a rich menu-bar experience with live cost,
-  quota, providers, quick switch, chat, freshness, and update state. Linux has an
-  Open/Reconnect/Quit tray and lacks a complete notification, OAuth deep-link,
-  global shortcut, and login-start integration.
+  quota, providers, quick switch, chat, freshness, and update state. Linux now
+  exposes live cost/tokens, quota floor, provider count, freshness, primary
+  navigation/reconnect/login-start actions, validated membership/navigation
+  links, and background launch. It still lacks account quick switch, the compact
+  status window, actionable notifications, and a provider OAuth callback matrix.
 - **Why it matters:** repeated daily workflows, alerts, recovery, auth, and panic
   controls feel incomplete or cannot work outside the main window.
-- **Recommended solution:** implement StatusNotifier/AppIndicator plus a compact
-  status window, freedesktop notifications, validated deep links, portal/global
-  shortcuts with X11 fallback, and systemd/XDG startup controls.
+- **Recommended solution:** certify the implemented tray, typed deep links,
+  daemon-backed panic, and XDG startup across installed environments; then add
+  the compact status window, freedesktop notification actions, dedicated OAuth
+  callback validation, and portal/global shortcut coverage with X11 fallback.
 - **Priority:** **High**.
 - **Implementation notes:** support GNOME's icon-only limitations; use shared
   live view models and freshness semantics; never depend on the tray as the sole
@@ -887,7 +912,7 @@ backoff and coalesced mounted-route reloads. See
 - **Difference:** Linux now has daemon-owned bounded pull subscriptions, a
   single-flight data supervisor, packaged startup/reopen/reconnect percentiles,
   a matched Swift workload harness, Rust boundary tests, and a 30-minute soak
-  contract. It still lacks a native push stream. The built main chunk is 655.47
+  contract. It still lacks a native push stream. The built main chunk is 662.74
   kB minified and still triggers the Vite size warning. Exact-candidate
   suspend/portal/keyring recovery, comparable-hardware macOS/Linux p95/p99, and
   the full desktop matrix remain unproven.
@@ -1164,7 +1189,7 @@ truth-sync, not the first time behavior is documented.
 | LNX-EVT-001 | LNX-CAP-001 | Bounded pull subscription authority, cadence, cancellation, restart/offline recovery, and coalesced route refresh are implemented; add native push and exact-candidate installed certification | Kill/stall/suspend/offline tests recover without stale or frozen UI |
 | LNX-ONB-001 | LNX-SEC-001, LNX-RUN-001, LNX-CAP-001 | Daemon-owned transactional state/readback foundation is implemented; add provider/auth/portal/tray/update/chat/first-data probes | A clean user cannot finish required setup while any declared required prerequisite is missing |
 | LNX-AUTH-001 | LNX-SEC-001, LNX-IPC-001 | PKCE/device auth, membership, App Check, sync, trusted devices, safe billing callbacks | Full sign-in/out/device/backup/restore/checkout matrix passes |
-| LNX-NATIVE-001 | LNX-CAP-001 | Tray/status window, notifications, deep links, shortcuts, startup | Repeated native workflows pass on GNOME/KDE and icon-only fallback |
+| LNX-NATIVE-001 | LNX-CAP-001 | Single-instance/background launch, typed navigation/membership deep links, live tray facts/actions, and XDG startup are implemented; add notifications, provider OAuth return, status window, and exact-candidate matrix certification | Repeated native workflows pass on GNOME/KDE/wlroots, rich and icon-only hosts, accessibility, notification, and lifecycle rows |
 | LNX-UPD-001 | LNX-PKG-001, LNX-CHANNEL-001, LNX-NATIVE-001 | Signed check, compatibility, package/channel-native install/restart/rollback UX | Tamper/replay/arch/version tests fail; prior-version update and rollback succeed for every declared channel |
 | LNX-CAT-001 | LNX-CAP-001 | Shared provider/model/parser/path manifest and golden fixtures | Equivalent normalized provider results on macOS/Linux |
 | LNX-DIFF-001 | LNX-CAT-001, LNX-CI-001 | Same-commit macOS/Linux binaries run one attested corpus and workflow suite | Mutations on either platform fail the normalized differential oracle |
@@ -1214,7 +1239,7 @@ truth-sync, not the first time behavior is documented.
 | 1 | **Trustworthy engineering baseline** | Complete in code; dual-architecture construction and aarch64 installed proof live | LNX-REL-VERIFY-001, LNX-CI-001, LNX-RUN-001, LNX-A11Y-HARNESS-001, LNX-PERF-HARNESS-001 | Add installed x86_64 and prior-version package sessions without regressing strict gates |
 | 2 | **Security foundation** | Complete in code; matrix pending | LNX-SEC-001, LNX-IPC-001, LNX-CAP-001 | GNOME/KDE/headless credential and installed adversarial verification green |
 | 3 | **Mainstream install** | Package construction complete; installed/channel proof in progress | LNX-PKG-001, LNX-CHANNEL-001 | Both architectures and every declared package/repository channel install locally |
-| 4 | **Daily-use native foundation** | In progress; onboarding and bounded event-refresh foundations implemented, installed matrix pending | LNX-EVT-001, LNX-ONB-001, LNX-AUTH-001, LNX-NATIVE-001, LNX-UPD-001, LNX-CAT-001, LNX-DIFF-001 | Setup, auth, data freshness, alerts/tray, update lifecycle, and current provider diff green |
+| 4 | **Daily-use native foundation** | In progress; onboarding, bounded event refresh, single-instance/deep-link, live-tray, and XDG login-start foundations implemented; notifications/auth and installed matrix pending | LNX-EVT-001, LNX-ONB-001, LNX-AUTH-001, LNX-NATIVE-001, LNX-UPD-001, LNX-CAT-001, LNX-DIFF-001 | Setup, auth, data freshness, alerts/tray, update lifecycle, and current provider diff green |
 | 5 | **Core product workflows** | Pending | LNX-SESS-001, LNX-CHAT-001, LNX-MEM-001, LNX-PROJ-001, LNX-MISSION-001, LNX-INSIGHT-001, LNX-DB-001, LNX-PROVIDER-001, LNX-PRIV-001, LNX-SET-001 | No synthetic state; every primary workspace and privacy workflow completes |
 | 6 | **Browser automation parity** | Pending | LNX-CU-BROWSER-001 | Real actions, approval, panic, audit, restart recovery |
 | 7 | **Media and system integration** | In progress; Mercury code complete | LNX-CU-SYSTEM-001, LNX-MEDIA-001 | Supported compositor safety and two-device media proof |
@@ -1314,6 +1339,10 @@ Keep one integration owner at a time for `routes.ts`, `tauriBridge.ts`, the Taur
 
 ### Account, cloud, and native shell
 
+- [x] Native launch arguments and secondary instances deliver only allowlisted,
+  correlated route/action pairs after the renderer listener is installed.
+- [x] Settings and tray share one atomically written, package-pinned user XDG
+  login-start entry with source and packaging drift tests.
 - [ ] Sign-in/link/sign-out, state validation, expiry, refresh, revocation, offline,
   and clock-skew cases pass.
 - [ ] Trusted device add/revoke/transfer and credential transfer are secure.

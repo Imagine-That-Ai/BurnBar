@@ -79,6 +79,12 @@ for (const artifact of closure.artifacts ?? []) {
       'deb package missing systemd user unit'
     );
     assertContains(
+      'assert deb contains canonical XDG autostart reference',
+      contents.stdout,
+      'usr/share/openburnbar/autostart/openburnbar.desktop',
+      'deb package missing canonical XDG autostart reference'
+    );
+    assertContains(
       'assert deb contains Swift runtime under usr/lib/openburnbar/swift',
       contents.stdout,
       'usr/lib/openburnbar/swift',
@@ -124,6 +130,12 @@ for (const artifact of closure.artifacts ?? []) {
       listing.stdout,
       '/usr/bin/openburnbar-daemon',
       'rpm package missing /usr/bin/openburnbar-daemon'
+    );
+    assertContains(
+      'assert rpm contains canonical XDG autostart reference',
+      listing.stdout,
+      '/usr/share/openburnbar/autostart/openburnbar.desktop',
+      'rpm package missing canonical XDG autostart reference'
     );
     assertContains(
       'assert rpm contains Swift runtime under /usr/lib/openburnbar/swift',
@@ -186,7 +198,8 @@ for (const artifact of closure.artifacts ?? []) {
         'usr/bin/openburnbar-daemon',
         'usr/libexec/openburnbar-daemon-launch',
         'usr/lib/openburnbar/swift',
-        'usr/lib/openburnbar/native/libsqlcipher.so.0'
+        'usr/lib/openburnbar/native/libsqlcipher.so.0',
+        'usr/share/openburnbar/autostart/openburnbar.desktop'
       ]) {
         const present = fs.existsSync(path.join(appDir, requiredPath));
         steps.push({
