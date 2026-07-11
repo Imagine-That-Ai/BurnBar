@@ -2,21 +2,24 @@
 set -eu
 
 DEFAULT_ENROLLMENT_STATE=/var/lib/openburnbar-attestd/tpm-enrollment.json
+DEFAULT_AK_CONTEXT=/var/lib/openburnbar-attestd/ak.ctx
 DEFAULT_ROLLOUT_MARKER=/etc/openburnbar/attestation-rollout-enabled
 
 case "$#" in
   0)
     enrollment_state=$DEFAULT_ENROLLMENT_STATE
+    ak_context=$DEFAULT_AK_CONTEXT
     rollout_marker=$DEFAULT_ROLLOUT_MARKER
     ;;
-  2)
+  3)
     # Explicit paths exist only to make the fail-closed file contract testable.
     # Package lifecycle hooks always use the root-owned production defaults.
     enrollment_state=$1
-    rollout_marker=$2
+    ak_context=$2
+    rollout_marker=$3
     ;;
   *)
-    echo "usage: openburnbar-attestd-activation-ready [enrollment-state rollout-marker]" >&2
+    echo "usage: openburnbar-attestd-activation-ready [enrollment-state ak-context rollout-marker]" >&2
     exit 64
     ;;
 esac
@@ -41,6 +44,8 @@ root_owned_mode() {
 # from activating a world-connectable root socket.
 [ -s "$enrollment_state" ] || exit 1
 root_owned_mode "$enrollment_state" '400:600' || exit 1
+[ -s "$ak_context" ] || exit 1
+root_owned_mode "$ak_context" '400:600' || exit 1
 root_owned_mode "$rollout_marker" '400:600:644' || exit 1
 [ "$(cat -- "$rollout_marker")" = enabled ] || exit 1
 

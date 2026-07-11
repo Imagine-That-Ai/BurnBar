@@ -124,11 +124,13 @@ Linux is a distinct, permanently lower-assurance principal:
   token, App Check token, quote, descriptor, and upload receipt out of durable
   state. Account changes invalidate acquisition and cached state. The renderer
   may receive redacted availability and expiry status, never token material.
-  The broker now loads private root-owned enrollment state to describe the
-  installed release/device binding, but real TPM quote collection and complete
-  TPM/IMA evidence production remain unimplemented. The production factory
-  composes this bridge but the broker still fails closed as unsupported before
-  any upload or mint can occur.
+  The broker now loads private root-owned enrollment state, validates the
+  private `ak.ctx` quote context, invokes `/usr/bin/tpm2_quote` with the
+  broker-derived qualifying data, and returns a sealed descriptor containing
+  IMA measurements, measured-boot log, installed manifest, and manifest
+  signature. The production factory composes this bridge, but production
+  remains blocked until real TPM enrollment, verifier deployment, revocation,
+  and installed-candidate matrix evidence exist.
 - `LINUX_APP_CHECK_MINT_ENABLED` defaults to false. Mock attestation remains
   limited to existing test/emulator policy and is forced off in production.
 
@@ -138,9 +140,10 @@ broker foundation now ships in source for native deb/rpm packages:
 - `openburnbar-attestd.socket` owns `/run/openburnbar/attestd.sock` when the
   attestation rollout is eligible. Fresh installs keep the socket disabled and
   stopped; package hooks activate it only when private root-owned TPM enrollment
-  state and the explicit root-owned rollout marker both pass. The root service
-  is network denied and systemd sandboxed without hiding the peer PID
-  information needed for authorization.
+  state, the private root-owned `ak.ctx` quote context, and the explicit
+  root-owned rollout marker all pass. The root service is network denied and
+  systemd sandboxed without hiding the peer PID information needed for
+  authorization.
 - Each complete bounded `SOCK_SEQPACKET` request carries kernel-supplied
   `SCM_CREDENTIALS`; the broker never trusts connection-time identity. It pins
   `/proc/<sender-pid>/exe`, requires the exact root-owned daemon inode, and
@@ -170,30 +173,34 @@ broker foundation now ships in source for native deb/rpm packages:
   `schemaVersion`, `deviceId`, `agentId`, `akTpmBase64`, `ekTpmBase64`,
   `ekCertificateBase64`, and `enrolledAtMillis`; the broker recomputes
   `ak-sha256:<sha256(decoded akTpmBase64)>` before returning a binding. The
-  attest operation still returns the typed permanent result
-  `attestation_unsupported`. It has no mock or software fallback, and the
-  daemon production factory remains unavailable.
+  attest operation requires `/var/lib/openburnbar-attestd/ak.ctx`, runs
+  `tpm2_quote -Q -c ak.ctx -l sha256:0,2,4,7,10 -q <qualifying-data> -m ... -s ... -f tss -F serialized -g sha256 -o ...`,
+  collects quote artifacts through anonymous memfds, and returns one sealed
+  evidence descriptor. It has no mock or software fallback; unsupported or
+  incomplete hosts fail closed before upload or mint.
 
 Executable hashing is not yet sufficient production client authentication.
 `SCM_CREDENTIALS` fixes the sender PID for a packet, but a process can queue a
 packet and then `exec` the signed daemon before `/proc/<pid>/exe` is inspected;
 same-user loader or process injection also cannot be excluded by an inode hash.
-This is non-exploitable while the socket is disabled and attest remains
-unsupported, but it is a High activation blocker. A production backend must
-first add root-controlled daemon launch provenance in a non-user-overridable
-cgroup, sanitized loader state and disabled dumpability, pidfd/cgroup/executable
-revalidation, and a broker-issued per-connection nonce before accepting the
-second request packet. The verifier policy must also cover executable and mmap
-measurements. Activation tests must reject queue-then-exec, PID reuse,
+This remains contained by the default-disabled socket and explicit rollout
+marker, but it is a High production-activation blocker. A production rollout
+must first add root-controlled daemon launch provenance in a
+non-user-overridable cgroup, sanitized loader state and disabled dumpability,
+pidfd/cgroup/executable revalidation, and a broker-issued per-connection nonce
+before accepting the second request packet. The verifier policy must also cover
+executable and mmap measurements. Activation tests must reject queue-then-exec,
+PID reuse,
 `LD_PRELOAD`, ptrace/injection, cgroup escape, and inherited-descriptor attempts.
 Connection admission must also move ahead of the bounded worker queue or apply
 an equivalent credential-aware cap so unauthenticated idle local connections
 cannot exhaust all broker workers before per-UID request limiting runs.
 
 The next implementation stage adds broker-managed TPM 2.0 attestation-key
-creation/rotation, Keylime enrollment-state installation, nonce-qualified quote
-collection, package/release verification, and UEFI measured-boot evidence plus
-IMA PCR 10. A remote verifier must evaluate that evidence and return the signed
+creation/rotation, Keylime enrollment-state installation and activation,
+package/release verification, hardened launch provenance, hardware quote
+vectors, and verifier-side UEFI measured-boot plus IMA PCR 10 policy
+evaluation. A remote verifier must evaluate that evidence and return the signed
 decision consumed by Functions. Complete logs must use the digest-bound ingress
 receipt and stay within the current 16 MiB upload contract; logs must never be
 truncated. A larger limit requires a separately designed direct-to-object-storage
@@ -225,9 +232,10 @@ privileged Linux broker is introduced.
 
 It does not establish production host integrity. The broker transport,
 release-signed installed manifest, native package lifecycle, and local
-enrollment-state binding are implemented, but a real Firebase Web app ID,
-TPM/IMA quote collection, verifier and enrollment deployment, revocation
-behavior, and installed matrix proof are still required.
+enrollment-state binding, TPM quote collector, and sealed evidence descriptor
+are implemented, but a real Firebase Web app ID, broker-managed hardware
+enrollment, verifier deployment, revocation behavior, physical TPM/IMA vectors,
+and installed matrix proof are still required.
 Until those exist, protected cloud operations remain unavailable and Linux stays
 `linux_lower_trust`.
 

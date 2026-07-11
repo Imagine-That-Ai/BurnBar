@@ -60,11 +60,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let broker = Arc::new(Broker::new(
         ProcPeerAuthorizer::new(
             PathBuf::from(DEFAULT_DAEMON_PATH),
-            config.manifest,
-            config.manifest_signature,
+            config.manifest.clone(),
+            config.manifest_signature.clone(),
             config.public_key,
         )?,
-        TpmImaAttestationBackend::new(config.state_dir)?,
+        TpmImaAttestationBackend::new(
+            config.state_dir,
+            config.manifest,
+            config.manifest_signature,
+        )?,
         PerUidRateLimiter::new(4, Duration::from_secs(60))?,
     ));
 

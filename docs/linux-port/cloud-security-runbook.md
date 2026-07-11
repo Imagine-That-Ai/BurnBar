@@ -129,30 +129,33 @@ kernel-supplied `SCM_CREDENTIALS`; the broker pins that sender's
 installed-file manifest before accepting the bounded request. Package install,
 upgrade, normal removal, explicit state purge, and active user-daemon upgrade
 recovery own the lifecycle. Fresh installs keep the root socket disabled and
-stopped; activation requires private root-owned enrollment state plus an exact
-root-owned rollout marker. The broker now parses that private state, verifies
-the AK-bound `ak-sha256:*` device ID, and returns the installed release/device
-binding only when the state file is root-owned, root-group, non-symlinked, and
-mode `0400` or `0600`. AppImage and sandboxed/source channels do not install the
-broker. The installed-files root uses unsigned UTF-8 byte ordering for its
+stopped; activation requires private root-owned enrollment state, a private
+root-owned `ak.ctx` quote context, and an exact root-owned rollout marker. The
+broker now parses that private state, verifies the AK-bound `ak-sha256:*`
+device ID, returns the installed release/device binding only when the state file
+is root-owned, root-group, non-symlinked, and mode `0400` or `0600`, invokes the
+packaged `/usr/bin/tpm2_quote` collector with the broker-derived qualifying
+data, and builds one sealed evidence descriptor from complete IMA measurements,
+the measured-boot log, the installed manifest, and its detached signature.
+AppImage and sandboxed/source channels do not install the broker. The
+installed-files root uses unsigned UTF-8 byte ordering for its
 NUL-delimited records, covered by one shared JS/Rust golden vector. Release
 preparation measures every native signer input; the isolated signer remeasures
 before and after packaging and emits a signed receipt over the exact deb/rpm
 hashes; finalization verifies that receipt and current inputs. RPM construction
 also extracts the final artifact and checks every signed payload record, which
-prevents rpmbuild post-processing from invalidating daemon authorization. The
-current backend still returns `attestation_unsupported` for quote collection, so
-this does not produce trustworthy platform evidence. The source-level client
-bridge does not change that posture: broker TPM/IMA production evidence
-collection remains unsupported, the composed production path fails closed at the
-broker before upload or mint, and no installed or production parity is claimed.
+prevents rpmbuild post-processing from invalidating daemon authorization. This
+is still source-level broker evidence only. Missing enrollment, missing
+`ak.ctx`, missing `tpm2-tools`, unavailable TPM devices, unavailable IMA or
+measured-boot logs, manifest digest mismatch, and invalid quote output all fail
+closed before upload or mint, and no installed or production parity is claimed.
 
-Production still requires TPM 2.0 key enrollment and nonce-qualified quotes,
-UEFI measured-boot policy, IMA PCR 10 and full measurement-log verification,
-revocation, and the deployed remote verifier. Complete IMA logs must use the
-digest-bound ingress receipt and stay within the current 16 MiB upload contract;
-they must never be truncated. A larger limit requires a separately designed
-direct-to-object-storage protocol. See
+Production still requires broker-managed TPM 2.0 key enrollment and revocation,
+real physical-TPM nonce-qualified quote vectors, UEFI measured-boot policy, IMA
+PCR 10 and full measurement-log verification, and the deployed remote verifier.
+Complete IMA logs must use the digest-bound ingress receipt and stay within the
+current 16 MiB upload contract; they must never be truncated. A larger limit
+requires a separately designed direct-to-object-storage protocol. See
 [`ADR 015`](../architecture/015-linux-app-check-attestation.md).
 
 ## Configuration
@@ -323,9 +326,10 @@ after durable local commit.
 Do not claim high-risk production Linux cloud availability until all are present:
 
 - a dedicated real Firebase Web app ID and production allow-list entry;
-- deployed root-owned broker, TPM 2.0 enrollment/revocation, nonce-qualified
-  quotes, release/package measurement, UEFI measured-boot policy, and IMA
-  measurement verification where required;
+- deployed root-owned broker with broker-managed TPM 2.0
+  enrollment/revocation, real nonce-qualified quote vectors, release/package
+  measurement, UEFI measured-boot policy, and IMA measurement verification
+  where required;
 - deployed signed-verdict verifier with pinned identity and operational key
   rotation, outage, denial, and audit behavior;
 - signed release/provenance binding and revocation for replaced candidates;

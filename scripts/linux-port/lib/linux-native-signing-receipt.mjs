@@ -11,6 +11,7 @@ export const NATIVE_GENERATED_PACKAGE_INPUT_PATHS = Object.freeze({
 });
 
 export const NATIVE_PACKAGE_ASSET_PATHS = Object.freeze({
+  releaseManifest: 'packaging/linux/release-manifest.json',
   daemonLaunch: 'packaging/linux/openburnbar-daemon-launch.sh',
   daemonUserService: 'packaging/linux/openburnbar-daemon.service',
   attestdService: 'packaging/linux/openburnbar-attestd.service',

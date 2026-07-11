@@ -95,27 +95,33 @@ test('attestation activation requires both private enrollment and an explicit ro
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-activation-'));
   const bin = path.join(root, 'bin');
   const state = path.join(root, 'tpm-enrollment.json');
+  const akContext = path.join(root, 'ak.ctx');
   const marker = path.join(root, 'attestation-rollout-enabled');
   const helper = path.join(packagingRoot, 'openburnbar-attestd-activation-ready');
   fs.mkdirSync(bin);
   fs.writeFileSync(state, '{"key":"sealed"}\n', { mode: 0o600 });
+  fs.writeFileSync(akContext, 'ak-context\n', { mode: 0o600 });
   fs.writeFileSync(marker, 'enabled\n', { mode: 0o644 });
   const stat = path.join(bin, 'stat');
   fs.writeFileSync(stat, `#!/bin/sh
 case "$*" in
   *tpm-enrollment.json) printf '%s\\n' '0 600' ;;
+  *ak.ctx) printf '%s\\n' '0 600' ;;
   *attestation-rollout-enabled) printf '%s\\n' '0 644' ;;
   *) exit 1 ;;
 esac
 `, { mode: 0o755 });
 
   const env = { ...process.env, PATH: `${bin}:${process.env.PATH}` };
-  assert.equal(spawnSync(helper, [state, marker], { env }).status, 0);
+  assert.equal(spawnSync(helper, [state, akContext, marker], { env }).status, 0);
   fs.writeFileSync(marker, 'disabled\n', { mode: 0o644 });
-  assert.equal(spawnSync(helper, [state, marker], { env }).status, 1);
+  assert.equal(spawnSync(helper, [state, akContext, marker], { env }).status, 1);
   fs.writeFileSync(marker, 'enabled\n', { mode: 0o644 });
+  fs.rmSync(akContext);
+  assert.equal(spawnSync(helper, [state, akContext, marker], { env }).status, 1);
+  fs.writeFileSync(akContext, 'ak-context\n', { mode: 0o600 });
   fs.rmSync(state);
-  assert.equal(spawnSync(helper, [state, marker], { env }).status, 1);
+  assert.equal(spawnSync(helper, [state, akContext, marker], { env }).status, 1);
   fs.rmSync(root, { recursive: true, force: true });
 });
 
@@ -274,6 +280,7 @@ test('manual RPM state purge requires explicit identity-destruction confirmation
   assert.match(helper, /--confirm-device-identity-destruction/u);
   assert.match(helper, /exit 64/u);
   assert.match(helper, /attestation-rollout-enabled/u);
+  assert.match(read('packaging/linux/openburnbar-attestd-activation-ready'), /ak\.ctx/u);
 });
 
 test('systemd units pass systemd-analyze when it is installed', (context) => {
