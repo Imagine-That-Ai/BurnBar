@@ -667,11 +667,29 @@ fn mission_create(
 // BurnBarMissionApproveRequest/CancelRequest require `missionID` (capital ID —
 // matches the Swift property name verbatim, no CodingKeys remap) and a
 // non-optional `actor: String`. Missing either → Swift Codable decode throws.
-fn mission_decision_wire(id: &str, decision: &str) -> (&'static str, serde_json::Value) {
-    let method = if decision == "deny" {
-        "daemon.mission.cancel"
-    } else {
-        "daemon.mission.approve"
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum MissionApprovalDecision {
+    Approve,
+    Deny,
+}
+
+impl MissionApprovalDecision {
+    fn parse(decision: &str) -> Result<Self, String> {
+        match decision {
+            "approve" => Ok(Self::Approve),
+            "deny" => Ok(Self::Deny),
+            _ => Err("Mission approval decision must be exactly 'approve' or 'deny'.".to_string()),
+        }
+    }
+}
+
+fn mission_decision_wire(
+    id: &str,
+    decision: MissionApprovalDecision,
+) -> (&'static str, serde_json::Value) {
+    let method = match decision {
+        MissionApprovalDecision::Approve => "daemon.mission.approve",
+        MissionApprovalDecision::Deny => "daemon.mission.cancel",
     };
     (
         method,
@@ -679,9 +697,53 @@ fn mission_decision_wire(id: &str, decision: &str) -> (&'static str, serde_json:
     )
 }
 
+fn mission_pending_approval<'a>(
+    mission_list: &'a serde_json::Value,
+    mission_id: &str,
+) -> Option<&'a serde_json::Value> {
+    mission_list
+        .get("pendingApprovals")
+        .or_else(|| mission_list.get("approvals"))
+        .or_else(|| mission_list.get("questions"))
+        .and_then(|approvals| approvals.as_array())
+        .and_then(|approvals| {
+            approvals.iter().find(|approval| {
+                approval
+                    .get("missionId")
+                    .or_else(|| approval.get("mission_id"))
+                    .and_then(|value| value.as_str())
+                    == Some(mission_id)
+            })
+        })
+}
+
+fn mission_approval_is_high_risk(approval: &serde_json::Value) -> bool {
+    approval
+        .get("risk")
+        .or_else(|| approval.get("severity"))
+        .and_then(|value| value.as_str())
+        .map(|risk| risk.to_ascii_lowercase().contains("high"))
+        .unwrap_or(false)
+}
+
 #[tauri::command]
 fn mission_approval_decision(id: String, decision: String) -> Result<serde_json::Value, String> {
-    let (method, params) = mission_decision_wire(&id, &decision);
+    let id = id.trim();
+    if id.is_empty() {
+        return Err("Mission id is required for approval decisions.".to_string());
+    }
+    let decision = MissionApprovalDecision::parse(&decision)?;
+    let mission_list = mission_list()?;
+    let approval = mission_pending_approval(&mission_list, id).ok_or_else(|| {
+        "Mission approval decision rejected: no matching pending approval.".to_string()
+    })?;
+    if decision == MissionApprovalDecision::Approve && mission_approval_is_high_risk(approval) {
+        return Err(
+            "High-risk mission approval requires trusted-device step-up and cannot be approved from the Linux shell."
+                .to_string(),
+        );
+    }
+    let (method, params) = mission_decision_wire(id, decision);
     call_daemon_method(method, Some(params))
 }
 
@@ -1232,16 +1294,58 @@ mod tests {
     // silently breaking approvals. This test pins the wire shape.
     #[test]
     fn mission_decision_wire_contract_is_pinned() {
-        let (method, params) = mission_decision_wire("m-42", "approve");
+        let (method, params) = mission_decision_wire("m-42", MissionApprovalDecision::Approve);
         assert_eq!(method, "daemon.mission.approve");
         assert_eq!(params["missionID"], "m-42");
         assert_eq!(params["actor"], "linux-shell");
         assert!(params.get("missionId").is_none());
         assert!(params.get("id").is_none());
 
-        let (method, params) = mission_decision_wire("m-43", "deny");
+        let (method, params) = mission_decision_wire("m-43", MissionApprovalDecision::Deny);
         assert_eq!(method, "daemon.mission.cancel");
         assert_eq!(params["missionID"], "m-43");
         assert_eq!(params["actor"], "linux-shell");
+    }
+
+    #[test]
+    fn mission_decision_rejects_unknown_values() {
+        assert_eq!(
+            MissionApprovalDecision::parse("approve"),
+            Ok(MissionApprovalDecision::Approve)
+        );
+        assert_eq!(
+            MissionApprovalDecision::parse("deny"),
+            Ok(MissionApprovalDecision::Deny)
+        );
+        assert!(MissionApprovalDecision::parse("not-deny-means-approve").is_err());
+        assert!(MissionApprovalDecision::parse("APPROVE").is_err());
+    }
+
+    #[test]
+    fn mission_pending_approval_requires_matching_pending_mission() {
+        let mission_list = serde_json::json!({
+            "pendingApprovals": [
+                {"id": "approval-1", "missionId": "m-1", "risk": "standard"},
+                {"id": "approval-2", "missionId": "m-2", "risk": "high"}
+            ]
+        });
+
+        let approval = mission_pending_approval(&mission_list, "m-2")
+            .expect("expected pending approval for m-2");
+        assert_eq!(approval["id"], "approval-2");
+        assert!(mission_pending_approval(&mission_list, "attacker-chosen-mission-id").is_none());
+    }
+
+    #[test]
+    fn mission_high_risk_detection_matches_daemon_aliases() {
+        assert!(mission_approval_is_high_risk(
+            &serde_json::json!({"risk": "high"})
+        ));
+        assert!(mission_approval_is_high_risk(
+            &serde_json::json!({"severity": "HIGH_RISK"})
+        ));
+        assert!(!mission_approval_is_high_risk(
+            &serde_json::json!({"risk": "standard"})
+        ));
     }
 }
