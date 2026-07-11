@@ -1,0 +1,574 @@
+{
+  "schema": "openburnbar.windows.chat-host-artifact-index.v1",
+  "candidate": {
+    "branch": "codex/windows-final-certification",
+    "commit": "778e735a69ea9d812db87146630223ac1a3a49d7",
+    "commitDate": "2026-07-11T16:26:37Z",
+    "parentCommits": [
+      "b35206464ab0aafb11bde06330cfeb4f18021ae6"
+    ],
+    "ref": "HEAD",
+    "tree": "97a56caca0f60cf62ecb027f24334899d21d2f72"
+  },
+  "generatedFrom": "openburnbar.windows.foundation-host-evidence-manifest.v1",
+  "scenarios": [
+    {
+      "id": "chat.attachment.drop",
+      "status": "captured",
+      "source": "focused-foundation-evidence",
+      "artifacts": [
+        {
+          "kind": "focused-foundation-artifact",
+          "relativePath": "focused-foundation/chat-evidence/chat-storage.json",
+          "sha256": "628bfef09911ba0c1a652c9322187afb44248825bcf5352d30efdaa72a2a4dc2",
+          "size": 392
+        }
+      ]
+    },
+    {
+      "id": "chat.attachment.file",
+      "status": "captured",
+      "source": "focused-foundation-evidence",
+      "artifacts": [
+        {
+          "kind": "focused-foundation-artifact",
+          "relativePath": "focused-foundation/chat-evidence/chat-storage.json",
+          "sha256": "628bfef09911ba0c1a652c9322187afb44248825bcf5352d30efdaa72a2a4dc2",
+          "size": 392
+        }
+      ]
+    },
+    {
+      "id": "chat.attachment.missing",
+      "status": "captured",
+      "source": "focused-foundation-evidence",
+      "artifacts": [
+        {
+          "kind": "focused-foundation-artifact",
+          "relativePath": "focused-foundation/chat-evidence/chat-storage.json",
+          "sha256": "628bfef09911ba0c1a652c9322187afb44248825bcf5352d30efdaa72a2a4dc2",
+          "size": 392
+        }
+      ]
+    },
+    {
+      "id": "chat.attachment.paste",
+      "status": "captured",
+      "source": "interactive-uia",
+      "artifacts": [
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.attachment.paste/uia-before.json",
+          "sha256": "132bab38c9462d290e7dc98128f7aa868ce5a33cc68cf8375f699527c9084bff",
+          "size": 96220
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.attachment.paste/screenshot-before.png",
+          "sha256": "a7f75e2f42caa20d9dd6283eef3335d0ef27056467bb4213d0f3b4ccadfb8330",
+          "size": 47926
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.attachment.paste/uia-after.json",
+          "sha256": "bb9ba1afc4fadb43eb81e0c13ddfbe76e655ed03dfc0bfa58a8d9abe57ce1eb4",
+          "size": 137853
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.attachment.paste/screenshot-after.png",
+          "sha256": "b89538e0f65825121bf6975097fce6c78e9ae2a94bfcd1bf478db9a7d383f09d",
+          "size": 57009
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.attachment.paste/route-smoke/chat-result.json",
+          "sha256": "909f887d16233f4694ffe72e991174a1845e13e3916086159f19ef79ec57aeb0",
+          "size": 583
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.attachment.paste/route-smoke/chat.png",
+          "sha256": "7637c503886c7a06d242f1ff86b8c08012a66b73283a379dc21b8fb4f7c04eb0",
+          "size": 34184
+        }
+      ]
+    },
+    {
+      "id": "chat.executable.approve",
+      "status": "captured",
+      "source": "interactive-uia",
+      "artifacts": [
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.approve/uia-before.json",
+          "sha256": "6d1fecd51de7e3a7abd43b25022ab37a066d04174bd683364ed1f766d5d94ce1",
+          "size": 96262
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.approve/screenshot-before.png",
+          "sha256": "82ee8eaf1cf9bc40ab4d3d1b8bcc261a6bdd1cb2b2cdc58e0a37dc3a8c1ff731",
+          "size": 52952
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.approve/uia-after.json",
+          "sha256": "f924c71edaa20f8878c1b5a52b97d1008fe91f0e03f30b6bf64a08688f34d877",
+          "size": 104244
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.approve/screenshot-after.png",
+          "sha256": "416b3b8196b10455f4d0c1d9b86856dab2dc92a2e80213307bc115e84642dd5b",
+          "size": 53176
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.approve/route-smoke/chat-result.json",
+          "sha256": "8e5f144915de74f161235cbfbbfc21e66c5e453a851bba9549c19abed5c014e8",
+          "size": 585
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.approve/route-smoke/chat.png",
+          "sha256": "586ed72f192a3cca235bfa29e61a357dfbe1f7643096da93b659f2b6411e05f9",
+          "size": 67011
+        }
+      ]
+    },
+    {
+      "id": "chat.executable.denial.missing",
+      "status": "captured",
+      "source": "interactive-uia",
+      "artifacts": [
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.denial.missing/uia-before.json",
+          "sha256": "76b32b656f4c17ebbe88b606fe1e66fb87e278f026eb92aebbb4e58af2f9c764",
+          "size": 104165
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.denial.missing/screenshot-before.png",
+          "sha256": "570dabd41d74f32eca7c7c1a89a72a9337ffe73826ec27c541b02916a5e741f0",
+          "size": 44346
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.denial.missing/route-smoke/chat-result.json",
+          "sha256": "250c9c0a5e7c6c4fd51989fc692280c8cbb2874cc3c287c58756575cf1b5ca7f",
+          "size": 592
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.denial.missing/route-smoke/chat.png",
+          "sha256": "d8890ffa8e30f6ad2ac4d0b903ba535f9966091f5379b844e6b2a1dbdad7e0bf",
+          "size": 64347
+        }
+      ]
+    },
+    {
+      "id": "chat.executable.denial.replaced",
+      "status": "captured",
+      "source": "interactive-uia",
+      "artifacts": [
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.denial.replaced/uia-before.json",
+          "sha256": "13b7374df62068b573a7fe7c6ee2cc03610cb16d12bb5f7368a7fc3d8d14e88c",
+          "size": 104169
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.denial.replaced/screenshot-before.png",
+          "sha256": "570dabd41d74f32eca7c7c1a89a72a9337ffe73826ec27c541b02916a5e741f0",
+          "size": 44346
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.denial.replaced/route-smoke/chat-result.json",
+          "sha256": "02224628b1d948bf88f4dd556d65963ba08bedb82737f8ff164950796c37769d",
+          "size": 593
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.denial.replaced/route-smoke/chat.png",
+          "sha256": "02229f961cbc0f087143fcf2b7e360ea6d1ed4d600805d87bb6014ca59838d63",
+          "size": 64494
+        }
+      ]
+    },
+    {
+      "id": "chat.executable.denial.unapproved",
+      "status": "captured",
+      "source": "interactive-uia",
+      "artifacts": [
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.denial.unapproved/uia-before.json",
+          "sha256": "7ba86fb663a5c4bceef5f3c92a13c2f25eeb127e7320286c63c4e9f6f97d324c",
+          "size": 96260
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.denial.unapproved/screenshot-before.png",
+          "sha256": "570dabd41d74f32eca7c7c1a89a72a9337ffe73826ec27c541b02916a5e741f0",
+          "size": 44346
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.denial.unapproved/route-smoke/chat-result.json",
+          "sha256": "c3d338b2436cf0306091de2d36d886df3a600f424ac581794730afd3388b7801",
+          "size": 597
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.denial.unapproved/route-smoke/chat.png",
+          "sha256": "1c0bc1dfc61b1314e531767f555829d512d9359f82476418afc77e0fff3741d6",
+          "size": 52284
+        }
+      ]
+    },
+    {
+      "id": "chat.executable.remove",
+      "status": "captured",
+      "source": "interactive-uia",
+      "artifacts": [
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.remove/uia-before.json",
+          "sha256": "097d125e186b4ed87c9bd53c6f0397c3496c0786983526d34a94fd84e58b509a",
+          "size": 96220
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.remove/screenshot-before.png",
+          "sha256": "d28256c4c28eaf25bb512799a200b6bffdeacbee5bf57035010b6a6192d4e2f6",
+          "size": 47938
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.remove/uia-after.json",
+          "sha256": "09e60dbe9f76d931181d3d327827f56dbae4dd430ccc435601e863d7a79b54e9",
+          "size": 96405
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.remove/screenshot-after.png",
+          "sha256": "e881b9662a12f084efd4d94facb09fd763649fb24d55afb30117ca4076c27529",
+          "size": 48467
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.remove/route-smoke/chat-result.json",
+          "sha256": "6a47ea374a7f5a2961f1793f7a2df5bdab89dca69b5e3a6e67b4aace9847a7af",
+          "size": 584
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.remove/route-smoke/chat.png",
+          "sha256": "b3cb49750c9dd9c433ebda1daba777a07908a80c71e6a1265ee6bd793c2c06fd",
+          "size": 55262
+        }
+      ]
+    },
+    {
+      "id": "chat.executable.rotate",
+      "status": "captured",
+      "source": "interactive-uia",
+      "artifacts": [
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.rotate/uia-before.json",
+          "sha256": "79710311fa04dd0f63adfb22e372f32b570cf867b1eeb865eea50dcf954f9511",
+          "size": 96260
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.rotate/screenshot-before.png",
+          "sha256": "4cad5ee949608b4c6a8e3f4338fe7799b182ffd6faa7805e65bb7344ad8577c0",
+          "size": 35807
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.rotate/uia-after.json",
+          "sha256": "a4b5d9b03b2460ef8c9aa643ade2931614b62ab1898d87275812f86912a34692",
+          "size": 104258
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.rotate/screenshot-after.png",
+          "sha256": "86eab9a24d939014a2606bfe76353d9e0a9b76a282a9aaf5dd76e30b68feb600",
+          "size": 35810
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.rotate/route-smoke/chat-result.json",
+          "sha256": "381a71941f7150007d300bef76a25ffcf71cdabd83130a6ab5d331b234c43a94",
+          "size": 585
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.rotate/route-smoke/chat.png",
+          "sha256": "358b3ddb95abf4f39cd280addcee432ff05e9ba31010e8e177d95d345d6f576f",
+          "size": 67540
+        }
+      ]
+    },
+    {
+      "id": "chat.executable.setup",
+      "status": "captured",
+      "source": "interactive-uia",
+      "artifacts": [
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.setup/uia-before.json",
+          "sha256": "9a0f209c5ae4470d8b0817379a503f4f6f16687ce476f4e7403f9b966cd57101",
+          "size": 96258
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.setup/screenshot-before.png",
+          "sha256": "e0031660ce33d492dbab798d9b811a267d90f7c47379dc55988469f0fef424bb",
+          "size": 35473
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.setup/route-smoke/chat-result.json",
+          "sha256": "e801476507b1fe71ad5c50a97479e8af45a2a6e2e376471eba96204d52908f14",
+          "size": 585
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.executable.setup/route-smoke/chat.png",
+          "sha256": "1c0bc1dfc61b1314e531767f555829d512d9359f82476418afc77e0fff3741d6",
+          "size": 52284
+        }
+      ]
+    },
+    {
+      "id": "chat.history.corrupt",
+      "status": "captured",
+      "source": "interactive-uia",
+      "artifacts": [
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.history.corrupt/uia-before.json",
+          "sha256": "fe871cf7f46d16e5a8ff358926756e86364fbf794ddc2739597324c438b3ab0b",
+          "size": 101388
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.history.corrupt/screenshot-before.png",
+          "sha256": "570dabd41d74f32eca7c7c1a89a72a9337ffe73826ec27c541b02916a5e741f0",
+          "size": 44346
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.history.corrupt/route-smoke/chat-result.json",
+          "sha256": "a35668a6b56358757f893daa7ac7ac3f72e0c9c376cc871ec19e089aa9c99ee9",
+          "size": 583
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.history.corrupt/route-smoke/chat.png",
+          "sha256": "55ceb23b217d31ce2249284f8dc65a76a24c453f2945dc44a32d7fd51e35d08d",
+          "size": 49347
+        }
+      ]
+    },
+    {
+      "id": "chat.history.locked",
+      "status": "captured",
+      "source": "interactive-uia",
+      "artifacts": [
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.history.locked/uia-before.json",
+          "sha256": "d32b841d3f07c7ab96943bc620c000a67ac06b32df6e56832d9b96a46421d526",
+          "size": 101373
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.history.locked/screenshot-before.png",
+          "sha256": "570dabd41d74f32eca7c7c1a89a72a9337ffe73826ec27c541b02916a5e741f0",
+          "size": 44346
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.history.locked/route-smoke/chat-result.json",
+          "sha256": "5eccd200dacba82a97280d53676d4fee4683bd78e0f70fdcd0ee651c27cad975",
+          "size": 582
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.history.locked/route-smoke/chat.png",
+          "sha256": "57eca7d3b48ae1f14aaa006b230da2703474cbd33b4bc93eb4c0370a018e89d7",
+          "size": 48898
+        }
+      ]
+    },
+    {
+      "id": "chat.history.retry",
+      "status": "captured",
+      "source": "interactive-uia",
+      "artifacts": [
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.history.retry/uia-before.json",
+          "sha256": "2023e955828208d09f87a1546f2ad349ce6fa55d0ab0b9fc3bde82d452924c26",
+          "size": 101388
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.history.retry/screenshot-before.png",
+          "sha256": "570dabd41d74f32eca7c7c1a89a72a9337ffe73826ec27c541b02916a5e741f0",
+          "size": 44346
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.history.retry/uia-after.json",
+          "sha256": "b8eec378a72eef4a447a529243f5d8b7b0aa27437a089bfb5115a051a763f742",
+          "size": 101354
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.history.retry/screenshot-after.png",
+          "sha256": "6372cd60e5908ccc7fd1386953a2af2cfa70b174f1169584eb53df67bdf59d88",
+          "size": 44581
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.history.retry/route-smoke/chat-result.json",
+          "sha256": "b191ec49f35927afbad41e2807e607317067d71f5416d6d2caeef862e13b98b4",
+          "size": 582
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.history.retry/route-smoke/chat.png",
+          "sha256": "e81ea3932200fbbfbd51b7bc2932eccbe76da7206994a13eb1254c16a7fc312e",
+          "size": 49477
+        }
+      ]
+    },
+    {
+      "id": "chat.history.unavailable",
+      "status": "captured",
+      "source": "interactive-uia",
+      "artifacts": [
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.history.unavailable/uia-before.json",
+          "sha256": "ebf4c7991520f703e018fec306f889681fea618b0f47bf73c23d5603a105103f",
+          "size": 101383
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.history.unavailable/screenshot-before.png",
+          "sha256": "570dabd41d74f32eca7c7c1a89a72a9337ffe73826ec27c541b02916a5e741f0",
+          "size": 44346
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.history.unavailable/route-smoke/chat-result.json",
+          "sha256": "a6720af6e67bc3ce95f51b521cdb5bf2512ca0012147dd61092ed86ed2c821d0",
+          "size": 586
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.history.unavailable/route-smoke/chat.png",
+          "sha256": "f9ec1313a7e57cfe6482869b16fe936cbb6e1a51c496c2183e1864cc827fbc16",
+          "size": 49022
+        }
+      ]
+    },
+    {
+      "id": "chat.restart.durable-rehydrate",
+      "status": "captured",
+      "source": "interactive-uia",
+      "artifacts": [
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.restart.durable-rehydrate/uia-before.json",
+          "sha256": "f7e0b6d47dd279907432f090077d264d00079ea27c8c3cc862c911700032b6f9",
+          "size": 119343
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.restart.durable-rehydrate/screenshot-before.png",
+          "sha256": "570dabd41d74f32eca7c7c1a89a72a9337ffe73826ec27c541b02916a5e741f0",
+          "size": 44346
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.restart.durable-rehydrate/route-smoke/chat-result.json",
+          "sha256": "3fcf1316cb3649ab7fa0737cd1c828224bffccfeca3c37377bc9ace3753f7fe2",
+          "size": 592
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.restart.durable-rehydrate/route-smoke/chat.png",
+          "sha256": "b4bfa44a20c29ad8581d9ce2f3dd51681d588ae599f25c54437553b1883609d0",
+          "size": 65816
+        }
+      ]
+    },
+    {
+      "id": "chat.restart.process",
+      "status": "captured",
+      "source": "interactive-uia",
+      "artifacts": [
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.restart.process/uia-before.json",
+          "sha256": "3c62967dd51b77bcb4fa157439e3edde67041b3688db3731a306fbb02cdb67d7",
+          "size": 96220
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.restart.process/screenshot-before.png",
+          "sha256": "d28256c4c28eaf25bb512799a200b6bffdeacbee5bf57035010b6a6192d4e2f6",
+          "size": 47938
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.restart.process/uia-after.json",
+          "sha256": "537d46332b35a95df02bcb5c6251ea9f1dccc0112edd422dd8434d5e9911892f",
+          "size": 135229
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.restart.process/screenshot-after.png",
+          "sha256": "e881b9662a12f084efd4d94facb09fd763649fb24d55afb30117ca4076c27529",
+          "size": 48467
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.restart.process/route-smoke/chat-result.json",
+          "sha256": "f02655d8599332d8ee00d85cea95d5562865c632e20ed35cc9f08f65b07d2f2c",
+          "size": 583
+        },
+        {
+          "kind": "uia-or-screenshot",
+          "relativePath": "interactive-uia/scenarios/chat.restart.process/route-smoke/chat.png",
+          "sha256": "f68a6e7b17107bd890277d84a7b49f494cbd304d65afae781e103f12ef2b6cd8",
+          "size": 81545
+        }
+      ]
+    },
+    {
+      "id": "chat.retrieval.degraded",
+      "status": "captured",
+      "source": "focused-foundation-evidence",
+      "artifacts": [
+        {
+          "kind": "focused-foundation-artifact",
+          "relativePath": "focused-foundation/chat-evidence/chat-storage.json",
+          "sha256": "628bfef09911ba0c1a652c9322187afb44248825bcf5352d30efdaa72a2a4dc2",
+          "size": 392
+        }
+      ]
+    }
+  ]
+}

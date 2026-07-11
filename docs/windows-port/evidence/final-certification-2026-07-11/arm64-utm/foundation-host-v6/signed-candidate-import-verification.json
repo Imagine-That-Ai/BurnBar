@@ -1,0 +1,34 @@
+{
+  "archiveSha256": "d33f75687eff55c69bccc25556f7764a1297252fe131a403b3d0ab30ffa09f6a",
+  "candidate": "9dbcaa791794944326ce9ffb18ed4d9771f31ecc",
+  "completedAtUtc": "2026-07-11T21:57:25.8208787Z",
+  "error": null,
+  "manifestSha256": "86045eee5dbeb1f9a21c264586966d6dabfdcde4bf60fa25a6be103db04d3c8d",
+  "schema": "openburnbar.windows.candidate-prepare.v1",
+  "stage": "complete",
+  "startedAtUtc": "2026-07-11T21:48:24.3373317Z",
+  "status": "passed",
+  "verification": {
+    "archivePath": "C:\\Users\\Public\\openburnbar-final-9dbcaa-codex\\openburnbar-candidate-9dbcaa791794.tar.gz",
+    "archiveSha256": "d33f75687eff55c69bccc25556f7764a1297252fe131a403b3d0ab30ffa09f6a",
+    "checkedFiles": 10477,
+    "destinationRoot": "C:\\candidate9dbcaa_codex",
+    "expectedFiles": 10477,
+    "manifestPath": "C:\\Users\\Public\\openburnbar-final-9dbcaa-codex\\openburnbar-candidate-9dbcaa791794.manifest.json",
+    "manifestSha256": "86045eee5dbeb1f9a21c264586966d6dabfdcde4bf60fa25a6be103db04d3c8d",
+    "mismatches": [],
+    "schema": "openburnbar.windows.candidate-import-verification.v1",
+    "source": {
+      "branch": "codex/windows-signed-install-gate",
+      "commit": "9dbcaa791794944326ce9ffb18ed4d9771f31ecc",
+      "commitDate": "2026-07-11T15:24:16-05:00",
+      "parentCommits": [
+        "5985fa8f5e682d370053586e5752361e28451570"
+      ],
+      "ref": "9dbcaa791794944326ce9ffb18ed4d9771f31ecc",
+      "tree": "e884419af6b85610e0ea978c9c35a932e032c7ec"
+    },
+    "status": "passed",
+    "verifiedAt": "2026-07-11T21:57:25.6081148Z"
+  }
+}

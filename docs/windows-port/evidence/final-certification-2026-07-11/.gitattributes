@@ -1,0 +1,2 @@
+arm64-utm/signed-arm64-winui-diagnostic-v2.log -diff -text
+arm64-utm/foundation-host-v6/interactive-uia/scenarios/** -diff -text

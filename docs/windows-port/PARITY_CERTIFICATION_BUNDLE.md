@@ -56,6 +56,17 @@ Ed25519 feed generation, SBOM, OpenVEX, and Sigstore passed in release run
 Exact-candidate hosted x64 and Windows 11 Pro ARM64 UTM foundation evidence is
 indexed under
 [`evidence/final-certification-2026-07-11/`](evidence/final-certification-2026-07-11/README.md).
+The decisive ARM64 foundation run verified candidate
+`778e735a69ea9d812db87146630223ac1a3a49d7` and captured 53/53 required
+scenarios, including 17 process cases and 14 interactive UIA cases, with 94
+artifacts indexed and zero secret findings. Its separately bound collector is
+PR #1546 commit `05e6a0bb5c` at SHA-256
+`8844a50251d2239d6d8a0f4120436c3f143ce6f5006bf10c498ac953ec3ed137`.
+Corrected signed runtime evidence remains owned by descendant candidate
+`9dbcaa791794944326ce9ffb18ed4d9771f31ecc`; the bundle does not collapse these
+different proof scopes into a false single-candidate claim. Its ARM64 import
+verified 10,477/10,477 files with zero mismatches before package lifecycle
+validation.
 
 G5 is not yet a public GO. Physical Windows performance/graphics, the manual
 accessibility and display matrix, live staging account/cloud/cross-device
@@ -183,7 +194,7 @@ Each row: **(a)** screenshot — Win11 Pro pass; **(b)** test/command; **(c)** a
 
 | Flow / surface | Screenshot (Win11 Pro) | Automated evidence | Drift |
 |----------------|------------------------|--------------------|-------|
-| Cold install signed MSIX | Hosted x64 and ARM64 UTM signed-user lifecycles passed; physical Win11 Pro pass remains | Signed packages/hashes: run [29160512069](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29160512069); hosted x64 registration/uninstall/reinstall: run [29162867538](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29162867538); ARM64 install/launch/protocol/uninstall/reinstall receipt: `evidence/final-certification-2026-07-11/arm64-utm/signed-arm64-msix-lifecycle.json` | D10 |
+| Cold install signed MSIX | Corrected hosted x64 and ARM64 UTM signed-user lifecycles passed; physical Win11 Pro pass remains | Corrected signed packages/hashes and hosted x64 lifecycle: run [29166970379](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29166970379) plus `evidence/final-certification-2026-07-11/hosted-windows/signed-x64-msix-lifecycle-v2.json`; exact ARM64 install/sustained-launch/uninstall/reinstall receipt: `evidence/final-certification-2026-07-11/arm64-utm/signed-arm64-msix-lifecycle-v2.json`. The earlier run and v1 receipts are preserved as integrity/registration evidence and explicitly invalidated for runtime. | D10 |
 | Auto-update from Ed25519 feed | _(blocked — Win11 Pro pass pending)_ | `OpenBurnBar.Updater.Tests` + recorded feed apply log | — |
 | Tray → flyout → main window | _(blocked — Win11 Pro pass pending)_ | `DEV_HOST_RUNBOOK.md` / validation pass script | — |
 | Dashboard populated | _(blocked — Win11 Pro pass pending)_ | `dotnet test windows/tests/dashboard` | D1 |

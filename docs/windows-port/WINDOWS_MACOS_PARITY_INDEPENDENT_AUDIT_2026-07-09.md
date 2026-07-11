@@ -34,6 +34,16 @@ Current evidence materially supersedes the original source-only findings:
   failure/recovery cases, chat evidence, and a zero-finding artifact secret scan
   passed. The evidence archive SHA-256 is
   `1a276bd023f5d6078fee4501ced80a94da9ba1db0414b774fd184fb4a843c7ad`.
+- The decisive foundation host pass for the same exact candidate captured all
+  53 required scenarios: 17 process cases and 14 interactive UIA cases in
+  signed-in session 1. Its manifest indexes 94 artifacts with no missing
+  scenarios and zero secret findings. The evidence collector is independently
+  bound to PR #1546 commit `05e6a0bb5c` by matching expected/actual SHA-256
+  `8844a50251d2239d6d8a0f4120436c3f143ce6f5006bf10c498ac953ec3ed137`.
+  The committed evidence includes the exact aggregate UIA result, all 34
+  manifest-indexed UIA/route JSON artifacts, and a process trace with signed-in
+  profile paths deterministically redacted; raw and committed hashes are in
+  `arm64-utm/foundation-host-v6/host-evidence-provenance.json`.
 - The initial signed ARM64 receipt was invalidated. Its process samples were
   taken about 0.1 seconds after creation; repeated sustained launches later
   exited with `Microsoft.UI.Xaml.Markup.XamlParseException` at
@@ -51,6 +61,17 @@ Current evidence materially supersedes the original source-only findings:
   hashes are `ac5b63a258c2151c7f1c8f3092ff54720d8c97b375efa38754a2e4a1857e0f43`
   for x64 and `7350fd248f65fd9de6eb3b2b5804508d9b47386a9fa0d9028526d70791874d8b`
   for ARM64.
+- These are related but deliberately separate proof candidates. Foundation
+  candidate `778e735a69ea9d812db87146630223ac1a3a49d7` proves source import,
+  build/tests, storage, process, and interactive UIA behavior. Descendant signed
+  runtime candidate `9dbcaa791794944326ce9ffb18ed4d9771f31ecc` proves corrected
+  package signing, install, sustained launch, uninstall, and reinstall. Its
+  ARM64 import independently verified 10,477/10,477 files with zero mismatches.
+  Git ancestry establishes `778e735a` as the successor's merge base and
+  ancestor. Their exact eight-file delta is confined to release workflows,
+  candidate export/evidence tooling, and MSIX packaging/lifecycle gates; no
+  Windows app/product source file differs. The collector fix does not change
+  product behavior.
 - The physical iPhone companion built, signed, installed, and launched. Its
   suite recorded 1,240 passed, 13 failed, and 28 skipped tests, so this is
   physical compile/install evidence rather than a green-suite claim.
