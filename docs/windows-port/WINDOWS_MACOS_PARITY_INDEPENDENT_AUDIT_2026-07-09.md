@@ -194,3 +194,14 @@ assets, tray recovery, diagnostics, and exact-candidate host evidence. A parity
 release must still satisfy every applicable QA item with signed artifacts and
 independent Windows-host or physical-device evidence; source composition and a
 single VM run do not lower that bar.
+
+## Independent physical-release certification addendum — 2026-07-11
+
+The independent release-certification lane is recorded under
+[`evidence/physical-release-certification-2026-07-11/CERTIFICATION_REPORT.md`](evidence/physical-release-certification-2026-07-11/CERTIFICATION_REPORT.md).
+Its post-fix macOS-reachable matrix is green, but the overall verdict remains
+**NO-GO**: physical x64/ARM64 performance, manual accessibility/display,
+live staging OAuth/App Check/CloudVault, advanced media/Computer Use safety,
+and Store/update lifecycle evidence are each explicitly blocked by named
+external prerequisites. The UTM ARM64 guest is retained for preparation only
+and is not counted as physical ARM64 certification.
