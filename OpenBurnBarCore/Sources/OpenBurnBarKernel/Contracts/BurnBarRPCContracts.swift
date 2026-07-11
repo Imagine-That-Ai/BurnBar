@@ -46,6 +46,7 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case accountDeviceAuthPoll = "daemon.account.device_auth.poll"
     case accountDeviceAuthCancel = "daemon.account.device_auth.cancel"
     case accountSignOut = "daemon.account.sign_out"
+    case linuxAppCheckStatus = "daemon.cloud.app_check.status"
     case membershipStatus = "daemon.membership.status"
     case membershipCheckoutURL = "daemon.membership.checkoutUrl"
     case membershipRestore = "daemon.membership.restore"

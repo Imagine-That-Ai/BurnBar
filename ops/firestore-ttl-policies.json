@@ -229,6 +229,36 @@
       "source": "functions/src/appCheckAttestation.ts"
     },
     {
+      "collectionGroup": "linux_app_check_challenges",
+      "path": "users/{uid}/linux_app_check_challenges/{challengeId}",
+      "category": "security-ephemeral",
+      "growth": "One document per Linux custom-provider attestation attempt.",
+      "mechanism": "firestore-ttl-field",
+      "ttlField": "expireAt",
+      "retentionSeconds": 86400,
+      "retention": "24 hours after issue; the attestation itself expires after 2 minutes but the consumed marker remains for cross-instance replay defense.",
+      "indexDeclared": true,
+      "status": "active",
+      "operatorAction": "Enable and verify the expireAt TTL field before production Linux minting is enabled.",
+      "rationale": "Durable consumed markers prevent a challenge from being replayed after a Functions cold start or on a different instance.",
+      "source": "functions/src/security/linuxAttestation.ts"
+    },
+    {
+      "collectionGroup": "linux_app_check_sessions",
+      "path": "users/{uid}/linux_app_check_sessions/{sessionHash}",
+      "category": "security-ephemeral",
+      "growth": "One verifier receipt per successful Linux App Check token mint.",
+      "mechanism": "firestore-ttl-field",
+      "ttlField": "expireAt",
+      "retentionSeconds": 1800,
+      "retention": "30 minutes, matching the fixed Linux lower-trust token lifetime.",
+      "indexDeclared": true,
+      "status": "active",
+      "operatorAction": "Enable and verify the expireAt TTL field before production Linux minting is enabled.",
+      "rationale": "The server-side receipt binds a minted token hash to its device, release, policy, and verifier decision without persisting the bearer token.",
+      "source": "functions/src/callables/linuxAppCheck.ts"
+    },
+    {
       "collectionGroup": "hermes_gateway_device_sessions",
       "path": "hermes_gateway_device_sessions/{sessionId}",
       "category": "security-ephemeral",

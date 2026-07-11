@@ -5,6 +5,34 @@ import Foundation
 import XCTest
 
 final class BurnBarDaemonServerTests: XCTestCase {
+    func testLinuxAppCheckStatusRPCIsRedactedAndUnavailableByDefault() async throws {
+        let socketPath = makeSocketPath(name: "linux-app-check")
+        let server = BurnBarDaemonServer(
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: socketPath,
+                socketAuthToken: "test-token",
+                startsMissionControlBackgroundLoops: false
+            )
+        )
+
+        try await server.start()
+        addTeardownBlock { await server.stop() }
+
+        let response: BurnBarRPCResponseEnvelope<BurnBarLinuxAppCheckStatusResponse> = try sendRequest(
+            BurnBarRPCRequestEnvelope(
+                id: "linux-app-check-status",
+                method: .linuxAppCheckStatus,
+                authToken: "test-token"
+            ),
+            socketPath: socketPath
+        )
+
+        XCTAssertNil(response.error)
+        XCTAssertEqual(response.result?.state, .unavailable)
+        XCTAssertEqual(response.result?.trustClass, "linux_lower_trust")
+        XCTAssertNil(response.result?.expiresAt)
+    }
+
     func testDaemonBootsRespondsToHealthAndCleansUpSocketOnShutdown() async throws {
         let socketPath = makeSocketPath(name: "health")
         let server = BurnBarDaemonServer(

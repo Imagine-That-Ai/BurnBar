@@ -99,13 +99,15 @@ function resolveAppCheckAppIdSurface(
     configString(openburnbar, "linux_app_check_app_id") ??
     PLACEHOLDER_LINUX_APP_CHECK_APP_ID;
 
-  // The lower-trust desktop placeholders are always allowed; operators may allowlist additional ids
-  // (e.g. the real Windows app id, once provisioned) via env/config. Deduped so a
-  // configured id equal to the placeholder does not appear twice.
+  // Desktop placeholders remain available to non-production fixture paths. A real
+  // Linux id must also be explicitly operator-allowlisted so removing it remains
+  // an independent containment control from the Linux mint kill switch.
   const configured = parseStringList(
     process.env.APP_CHECK_ALLOWED_APP_IDS ?? configString(openburnbar, "app_check_allowed_app_ids"),
   );
-  const allowedAppCheckAppIDs = [...new Set([windowsAppCheckAppID, linuxAppCheckAppID, ...configured])];
+  const linuxFixtureIDs =
+    linuxAppCheckAppID === PLACEHOLDER_LINUX_APP_CHECK_APP_ID ? [linuxAppCheckAppID] : [];
+  const allowedAppCheckAppIDs = [...new Set([windowsAppCheckAppID, ...linuxFixtureIDs, ...configured])];
 
   // Fail-closed fence: the mock verifier can NEVER be enabled in production, no
   // matter what an operator sets. In non-prod it defaults on (local dev / CI) but

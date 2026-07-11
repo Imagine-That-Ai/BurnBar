@@ -20,6 +20,11 @@ environment-certified parity:
   [`LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md`](LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md)
   for the independent executive summary, parity matrix, implementation plan,
   prioritized roadmap, and QA checklist.
+- The Linux App Check challenge/verifier/daemon-client boundary is implemented
+  in source, but production minting defaults off. The real Firebase Web app,
+  privileged TPM/IMA broker and verifier, deployment, and installed matrix are
+  still blocked; Linux remains `linux_lower_trust` and this is not production
+  attestation proof.
 - For the CMUX-synthesized implementation plan, see
   [`FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md`](FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md).
 - The 2026-07-05 release notes below are historical context and should not be
@@ -77,6 +82,10 @@ Primary files:
 - [`LINUX_CHAT_THREAD_AUTHORITY.md`](LINUX_CHAT_THREAD_AUTHORITY.md) - canonical
   encrypted thread history, exact-thread typed RPCs, idempotent send ordering,
   strict renderer decoding, failure behavior, and remaining chat parity work.
+- [`cloud-security-runbook.md`](cloud-security-runbook.md) - lower-trust Linux
+  App Check protocol, configuration, supported/unsupported environments,
+  rollout/rollback, production blockers, and QA acceptance. The architectural
+  decision is [ADR 015](../architecture/015-linux-app-check-attestation.md).
 - [`ui-parity/`](ui-parity/README.md) - W6/W7 UI parity execution plan:
   foundation reference plus parallel task packets P01–P15.
 - [`evidence/`](evidence/) - generated and collected mission evidence.

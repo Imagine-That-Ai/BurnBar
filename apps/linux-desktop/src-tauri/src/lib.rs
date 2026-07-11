@@ -695,6 +695,20 @@ struct RuntimeMediaCapability {
     detail: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeLinuxAppCheckStatus {
+    state: String,
+    trust_class: String,
+    expires_at: Option<String>,
+}
+
+fn linux_app_check_expiry_is_future(value: &str) -> bool {
+    chrono::DateTime::parse_from_rfc3339(value)
+        .map(|expires_at| expires_at.with_timezone(&chrono::Utc) > chrono::Utc::now())
+        .unwrap_or(false)
+}
+
 const RUNTIME_CAPABILITY_CATALOG: &str =
     include_str!("../../../../packaging/linux/runtime-capability-catalog.json");
 
@@ -704,6 +718,7 @@ fn evaluate_runtime_capability(
     session_type: Option<&str>,
     has_session_bus: bool,
     media: Option<&RuntimeMediaCapability>,
+    app_check: Option<&RuntimeLinuxAppCheckStatus>,
 ) -> Result<RuntimeCapabilityEntry, String> {
     let available = |reason: &str, source: &str| {
         (
@@ -750,6 +765,41 @@ fn evaluate_runtime_capability(
                     .clone()
                     .unwrap_or_else(|| definition.unavailable_reason.clone()),
                 capability.source.clone(),
+            ),
+            None => unavailable(),
+        },
+        "app-check" => match app_check {
+            Some(status)
+                if status.state == "ready"
+                    && status.trust_class == "linux_lower_trust"
+                    && status
+                        .expires_at
+                        .as_deref()
+                        .map(linux_app_check_expiry_is_future)
+                        .unwrap_or(false) => (
+                "available".to_string(),
+                format!(
+                    "The daemon holds a current lower-trust Linux App Check token{}.",
+                    status
+                        .expires_at
+                        .as_deref()
+                        .map(|value| format!(" through {value}"))
+                        .unwrap_or_default()
+                ),
+                "daemon-app-check-status".to_string(),
+            ),
+            Some(status) if status.state == "acquiring" => (
+                "degraded".to_string(),
+                "The daemon is acquiring a fresh Linux App Check token.".to_string(),
+                "daemon-app-check-status".to_string(),
+            ),
+            Some(status) => (
+                "blocked".to_string(),
+                format!(
+                    "{} Trust class remains {}.",
+                    definition.unavailable_reason, status.trust_class
+                ),
+                "daemon-app-check-status".to_string(),
             ),
             None => unavailable(),
         },
@@ -829,17 +879,34 @@ fn evaluate_runtime_capabilities() -> Result<RuntimeCapabilityManifest, String> 
     let has_session_bus = std::env::var("DBUS_SESSION_BUS_ADDRESS")
         .ok()
         .is_some_and(|value| !value.trim().is_empty());
-    let media = health
-        .ok
-        .then(|| {
-            call_daemon_method_with_timeout(
-                "daemon.media.capability.get",
-                Some(serde_json::json!({})),
-                Duration::from_secs(2),
+    let (media, app_check) = if health.ok {
+        std::thread::scope(|scope| {
+            let media = scope.spawn(|| {
+                call_daemon_method_with_timeout(
+                    "daemon.media.capability.get",
+                    Some(serde_json::json!({})),
+                    Duration::from_secs(2),
+                )
+                .ok()
+                .and_then(|value| serde_json::from_value::<RuntimeMediaCapability>(value).ok())
+            });
+            let app_check = scope.spawn(|| {
+                call_daemon_method_with_timeout(
+                    "daemon.cloud.app_check.status",
+                    Some(serde_json::json!({})),
+                    Duration::from_secs(2),
+                )
+                .ok()
+                .and_then(|value| serde_json::from_value::<RuntimeLinuxAppCheckStatus>(value).ok())
+            });
+            (
+                media.join().unwrap_or(None),
+                app_check.join().unwrap_or(None),
             )
         })
-        .and_then(Result::ok)
-        .and_then(|value| serde_json::from_value::<RuntimeMediaCapability>(value).ok());
+    } else {
+        (None, None)
+    };
     let capabilities = catalog
         .capabilities
         .into_iter()
@@ -850,6 +917,7 @@ fn evaluate_runtime_capabilities() -> Result<RuntimeCapabilityManifest, String> 
                 session_type.as_deref(),
                 has_session_bus,
                 media.as_ref(),
+                app_check.as_ref(),
             )
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -3126,6 +3194,7 @@ mod tests {
                     | "daemon"
                     | "gateway"
                     | "media"
+                    | "app-check"
                     | "trusted-cli"
                     | "secret-service"
                     | "kwallet"
@@ -3159,6 +3228,7 @@ mod tests {
             Some("wayland"),
             true,
             Some(&available),
+            None,
         )
         .unwrap();
         assert_eq!(entry.state, "available");
@@ -3187,6 +3257,7 @@ mod tests {
             Some("x11"),
             true,
             Some(&degraded),
+            None,
         )
         .unwrap();
         assert_eq!(entry.state, "degraded");
@@ -3215,6 +3286,7 @@ mod tests {
             Some("wayland"),
             true,
             Some(&unavailable),
+            None,
         )
         .unwrap();
         assert_eq!(explicit.state, "unavailable");
@@ -3226,9 +3298,89 @@ mod tests {
             Some("wayland"),
             true,
             None,
+            None,
         )
         .unwrap();
         assert_eq!(missing.state, "unavailable");
         assert_eq!(missing.reason, "Mercury is unavailable.");
+    }
+
+    #[test]
+    fn linux_app_check_runtime_capability_is_blocked_until_daemon_token_is_ready() {
+        let definition = || RuntimeCapabilityDefinition {
+            id: "cloud.app-check".to_string(),
+            domain: "security".to_string(),
+            evaluator: "app-check".to_string(),
+            unavailable_reason: "Production Linux App Check attestation is not ready.".to_string(),
+            substitute: None,
+        };
+        let unavailable = RuntimeLinuxAppCheckStatus {
+            state: "unavailable".to_string(),
+            trust_class: "linux_lower_trust".to_string(),
+            expires_at: None,
+        };
+        let blocked = evaluate_runtime_capability(
+            definition(),
+            &DaemonHealth::default(),
+            Some("wayland"),
+            true,
+            None,
+            Some(&unavailable),
+        )
+        .unwrap();
+        assert_eq!(blocked.state, "blocked");
+        assert!(blocked.reason.contains("linux_lower_trust"));
+
+        let future_expiry = (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339();
+        let ready = RuntimeLinuxAppCheckStatus {
+            state: "ready".to_string(),
+            trust_class: "linux_lower_trust".to_string(),
+            expires_at: Some(future_expiry.clone()),
+        };
+        let available = evaluate_runtime_capability(
+            definition(),
+            &DaemonHealth::default(),
+            Some("wayland"),
+            true,
+            None,
+            Some(&ready),
+        )
+        .unwrap();
+        assert_eq!(available.state, "available");
+        assert!(available.reason.contains(&future_expiry));
+
+        for invalid in [
+            RuntimeLinuxAppCheckStatus {
+                state: "ready".to_string(),
+                trust_class: "unverified_fixture".to_string(),
+                expires_at: Some(future_expiry),
+            },
+            RuntimeLinuxAppCheckStatus {
+                state: "ready".to_string(),
+                trust_class: "linux_lower_trust".to_string(),
+                expires_at: None,
+            },
+            RuntimeLinuxAppCheckStatus {
+                state: "ready".to_string(),
+                trust_class: "linux_lower_trust".to_string(),
+                expires_at: Some("not-a-timestamp".to_string()),
+            },
+            RuntimeLinuxAppCheckStatus {
+                state: "ready".to_string(),
+                trust_class: "linux_lower_trust".to_string(),
+                expires_at: Some("2020-01-01T00:00:00Z".to_string()),
+            },
+        ] {
+            let blocked = evaluate_runtime_capability(
+                definition(),
+                &DaemonHealth::default(),
+                Some("wayland"),
+                true,
+                None,
+                Some(&invalid),
+            )
+            .unwrap();
+            assert_eq!(blocked.state, "blocked");
+        }
     }
 }

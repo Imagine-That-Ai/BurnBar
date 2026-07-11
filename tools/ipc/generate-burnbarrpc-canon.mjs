@@ -115,6 +115,7 @@ const explicitTypes = {
   "daemon.account.device_auth.poll": ["BurnBarAccountFlowRequest", "BurnBarAccountStatusResponse"],
   "daemon.account.device_auth.cancel": ["BurnBarAccountFlowRequest", "BurnBarAccountStatusResponse"],
   "daemon.account.sign_out": ["BurnBarRPCRequestEnvelope", "BurnBarAccountStatusResponse"],
+  "daemon.cloud.app_check.status": ["BurnBarRPCRequestEnvelope", "BurnBarLinuxAppCheckStatusResponse"],
   "daemon.media.session.state": ["BurnBarRPCRequestEnvelope", "DaemonMediaSessionStateResponse"],
   "daemon.media.call.accept": ["DaemonMediaCallAcceptRequest", "DaemonMediaCallActionResponse"],
   "daemon.media.call.decline": ["DaemonMediaCallDeclineRequest", "DaemonMediaCallActionResponse"],

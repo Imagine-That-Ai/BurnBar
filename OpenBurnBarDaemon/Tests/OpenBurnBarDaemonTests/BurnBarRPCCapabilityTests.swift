@@ -32,6 +32,7 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .linuxOnboardingReset), .config)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .accountStatus), .account)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .accountSignOut), .account)
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .linuxAppCheckStatus), .account)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .searchQuery), .search)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .chatThreadList), .chat)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .chatThreadGet), .chat)
@@ -74,6 +75,7 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertFalse(profile.permits(.memoryRemember))
         XCTAssertFalse(profile.permits(.memoryForget))
         XCTAssertFalse(profile.permits(.codeIndexProject))
+        XCTAssertFalse(profile.permits(.linuxAppCheckStatus))
     }
 
     func test_runClientProfileIsDeniedComputerUseAndConfig() {
@@ -131,6 +133,7 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertFalse(profile.permits(.missionCancel))
         XCTAssertFalse(profile.permits(.memoryRemember))
         XCTAssertFalse(profile.permits(.codeOpsDiagnostics))
+        XCTAssertFalse(profile.permits(.linuxAppCheckStatus))
     }
 
     func test_attenuationOnlyNarrows() {
