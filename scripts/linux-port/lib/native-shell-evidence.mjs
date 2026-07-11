@@ -297,6 +297,7 @@ function evaluateTrayHostLossRecovery(evidenceDir) {
     recovery?.recovered === true &&
     recovery?.staleActions === false &&
     recovery?.actionAfterRecovery?.passed === true &&
+    recovery?.registeredItemCountAfterRecovery === 1 &&
     recovery?.processCount === 1;
   return result(
     'tray-host-loss-recovery',

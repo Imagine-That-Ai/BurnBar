@@ -111,6 +111,8 @@ test('packaged session captures native shell evidence inputs from real D-Bus act
     'openburnbar://chat',
     'secondaryProcessExited'
   ]) assert.ok(session.includes(marker), marker);
+  assert.ok(session.includes('terminate_process_tree "$panel_pid"'));
+  assert.doesNotMatch(session, /pkill .*xfce4-panel/);
 });
 
 test('toolchain and artifact reuse preserve the complete accessibility proof', () => {

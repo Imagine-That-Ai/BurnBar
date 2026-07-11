@@ -103,6 +103,7 @@ function writeCompleteNativeArtifacts(root) {
     hostLost: true,
     recovered: true,
     staleActions: false,
+    registeredItemCountAfterRecovery: 1,
     processCount: 1,
     actionAfterRecovery: {
       passed: true,
@@ -194,12 +195,13 @@ test('tray host recovery artifact rejects stale or duplicate actions', () => {
   try {
     writeCompleteNativeArtifacts(root);
     writeJson(root, 'tray-host-loss-recovery.json', {
-      passed: false,
+      passed: true,
+      hostLost: true,
       recovered: true,
-      staleActions: true,
+      staleActions: false,
       hostLossObserved: true,
       recoveryRegistered: true,
-      recoveredAction: true,
+      actionAfterRecovery: { passed: true },
       registeredItemCountAfterRecovery: 2,
       processCount: 1,
       windowCount: 1

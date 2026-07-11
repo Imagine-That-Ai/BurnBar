@@ -48,6 +48,7 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
 
   openbox >"$out_dir/openbox.log" 2>&1 &
   xfce4-panel --disable-wm-check >"$out_dir/xfce4-panel.log" 2>&1 &
+  panel_pid="$!"
   sleep 2
   {
     echo "== panel processes =="
@@ -1038,8 +1039,15 @@ DEEPLINK
       printf '%s\n' "$original_menu_path"
     } >"$out_dir/tray-host-loss-before.txt" 2>&1
 
-    pkill -TERM -x xfce4-panel 2>/dev/null || true
-    pkill -TERM -f 'panel/plugins/(libsystray|libsntray)' 2>/dev/null || true
+    terminate_process_tree() {
+      local parent_pid="$1"
+      local child_pid
+      while IFS= read -r child_pid; do
+        [[ -n "$child_pid" ]] && terminate_process_tree "$child_pid"
+      done < <(pgrep -P "$parent_pid" 2>/dev/null || true)
+      kill -TERM "$parent_pid" 2>/dev/null || true
+    }
+    terminate_process_tree "$panel_pid"
     for _ in $(seq 1 80); do
       if ! gdbus call --session \
         --dest org.kde.StatusNotifierWatcher \
@@ -1070,7 +1078,8 @@ DEEPLINK
     } >"$out_dir/tray-host-loss-during.txt" 2>&1
 
     xfce4-panel --disable-wm-check >>"$out_dir/xfce4-panel-restart.log" 2>&1 &
-    echo "$!" >"$out_dir/xfce4-panel-restart.pid"
+    panel_pid="$!"
+    echo "$panel_pid" >"$out_dir/xfce4-panel-restart.pid"
     sleep 2
     refresh_tray_item_handles tray-recovered
     item_spec="$refreshed_item_spec"
