@@ -48,9 +48,11 @@
                                    VerticalAlignment="Center"
                                    Foreground="{StaticResource PensieveColorTextBrightBrush}" />
                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
-                            <Button Style="{StaticResource LiquidGlassCircleButtonStyle}"
+                            <Button x:Name="ScanButton"
+                                    Style="{StaticResource LiquidGlassCircleButtonStyle}"
                                     theme:LiquidGlass.CircleButtonDiameter="28"
                                     ToolTipService.ToolTip="Import sessions"
+                                    AutomationProperties.Name="Scan provider activity"
                                     Click="Scan_Click">
                                 <FontIcon Glyph="&#xE72C;" FontSize="11"
                                           Foreground="{StaticResource PensieveColorTextBaseBrush}" />

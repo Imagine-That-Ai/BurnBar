@@ -42,7 +42,29 @@
       (restore / project evaluation / schema checks). Real compile stays on Windows.
     -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <OpenBurnBarNativeEngineDirectory
+      Condition="'$(OpenBurnBarNativeEngineDirectory)' == ''">$(MSBuildProjectDirectory)\..\..\native-engine\$(RuntimeIdentifier)</OpenBurnBarNativeEngineDirectory>
   </PropertyGroup>
+
+  <ItemGroup Condition="Exists('$(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCoreCAbi.dll')">
+    <Content Include="$(OpenBurnBarNativeEngineDirectory)\*.dll"
+             Link="%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(OpenBurnBarNativeEngineDirectory)\native-engine-manifest.json"
+             Condition="Exists('$(OpenBurnBarNativeEngineDirectory)\native-engine-manifest.json')"
+             Link="native-engine-manifest.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="RequireOpenBurnBarNativeEngine"
+          BeforeTargets="Publish"
+          Condition="'$(OpenBurnBarRequireNativeEngine)' == 'true'">
+    <Error
+      Condition="!Exists('$(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCoreCAbi.dll')"
+      Text="Required Windows parser engine is missing: $(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCoreCAbi.dll" />
+  </Target>
 
   <ItemGroup>
     <Using Include="Microsoft.UI" />
@@ -113,6 +135,7 @@
     -->
     <ProjectReference Include="../OpenBurnBar.App.Presentation/OpenBurnBar.App.Presentation.csproj" />
     <ProjectReference Include="../OpenBurnBar.App.Configuration/OpenBurnBar.App.Configuration.csproj" />
+    <ProjectReference Include="../OpenBurnBar.App.UsageRuntime/OpenBurnBar.App.UsageRuntime.csproj" />
     <ProjectReference Include="../OpenBurnBar.App.CloudSync/OpenBurnBar.App.CloudSync.csproj" />
     <ProjectReference Include="../../storage/OpenBurnBar.Storage/OpenBurnBar.Storage.csproj" />
     <!--

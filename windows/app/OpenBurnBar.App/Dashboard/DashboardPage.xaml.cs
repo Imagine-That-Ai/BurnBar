@@ -2,12 +2,14 @@ using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenBurnBar.App.Configuration;
+using OpenBurnBar.App.Data;
 using OpenBurnBar.App.Diagnostics;
 using OpenBurnBar.App.Dashboard.EasterEgg;
 using OpenBurnBar.App.Dashboard.Layout;
 using OpenBurnBar.App.Dashboard.Layouts;
 using OpenBurnBar.App.Presentation.Dashboard;
 using OpenBurnBar.App.Theme;
+using OpenBurnBar.App.UsageRuntime;
 using Windows.UI.ViewManagement;
 
 namespace OpenBurnBar.App.Dashboard;
@@ -95,19 +97,38 @@ public sealed partial class DashboardPage : Page
 
         LoadCommandSnapshot();
         ShowLayout(Switcher.State.Selection);
+        if (App.Current.UsageRuntime is { } usageRuntime)
+        {
+            usageRuntime.StateChanged += OnUsageRuntimeStateChanged;
+        }
         Unloaded += OnUnloaded;
     }
 
     private void LoadCommandSnapshot()
     {
-        // Sample-mode fills the Command rail the same way macOS sample usage fills
-        // dashboardProviderSummaries. Live SQLCipher aggregation lands with the
-        // usage-window seam; until then empty is honest when sample mode is off.
         _commandSnapshot = RuntimeDataMode.SampleModeEnabled
             ? DashboardCommandSampleData.Snapshot()
-            : DashboardCommandSnapshot.Empty;
+            : App.Current.UsageRuntime is { } usageRuntime
+                ? UsageRuntimePresentationMapper.ToDashboardCommandSnapshot(usageRuntime.State)
+                : DashboardCommandSnapshot.Empty;
         CommandSidebar.ApplySnapshot(_commandSnapshot);
         ApplyDetailChrome();
+    }
+
+    private void OnUsageRuntimeStateChanged(object? sender, UsageRuntimeStateChangedEventArgs args)
+    {
+        if (args.Current.IsScanning || RuntimeDataMode.SampleModeEnabled)
+        {
+            return;
+        }
+
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            _commandSnapshot = UsageRuntimePresentationMapper.ToDashboardCommandSnapshot(args.Current);
+            CommandSidebar.ApplySnapshot(_commandSnapshot);
+            ApplyDetailChrome();
+            ShowLayout(Switcher.State.Selection);
+        });
     }
 
     private void OnCommandSelectionChanged(object? sender, DashboardCommandSelection selection)
@@ -313,6 +334,10 @@ public sealed partial class DashboardPage : Page
         Switcher.LayoutChanged -= OnLayoutChanged;
         CommandSidebar.SelectionChanged -= OnCommandSelectionChanged;
         CommandSidebar.ViewModeChanged -= OnCommandViewModeChanged;
+        if (App.Current.UsageRuntime is { } usageRuntime)
+        {
+            usageRuntime.StateChanged -= OnUsageRuntimeStateChanged;
+        }
         if (_kernel is not null)
         {
             _kernel.Ready -= OnKernelReady;
