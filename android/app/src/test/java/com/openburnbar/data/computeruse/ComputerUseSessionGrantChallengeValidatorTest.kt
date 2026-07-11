@@ -157,6 +157,5 @@ class ComputerUseSessionGrantChallengeValidatorTest {
         desktopOwnerAuthorizationMethod = "linux_desktop_owner",
     )
 
-    private fun unixMillis(swiftReferenceSeconds: Double): Long =
-        AgentCapabilityGrantRequest.unixMillisFromSwiftReferenceSeconds(swiftReferenceSeconds)
+    private fun unixMillis(swiftReferenceSeconds: Double): Long = AgentCapabilityGrantRequest.unixMillisFromSwiftReferenceSeconds(swiftReferenceSeconds)
 }
