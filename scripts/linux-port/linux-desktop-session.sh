@@ -26,6 +26,7 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
   export GSETTINGS_BACKEND=memory
   export OPENBURNBAR_SOCKET_PATH="$socket_path"
   export OPENBURNBAR_EVIDENCE_OUT="$out_dir"
+  export OPENBURNBAR_NATIVE_NOTIFICATION_EVIDENCE=1
   unset NO_AT_BRIDGE
 
   mkdir -p "$HOME" "$XDG_RUNTIME_DIR" "$XDG_DATA_HOME" "$XDG_CONFIG_HOME"
@@ -58,6 +59,67 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
     gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus --method org.freedesktop.DBus.ListNames
   } >"$out_dir/dbus-before-app.txt" 2>&1 || true
 
+  python3 "$root/scripts/linux-port/freedesktop-notification-test-server.py" \
+    --ready-file "$out_dir/native-notification-server-ready.json" \
+    --log-jsonl "$out_dir/native-notification-server-events.jsonl" \
+    >"$out_dir/native-notification-server.stdout.log" \
+    2>"$out_dir/native-notification-server.stderr.log" &
+  notification_server_pid="$!"
+  for _ in $(seq 1 80); do
+    if [[ -s "$out_dir/native-notification-server-ready.json" ]]; then
+      break
+    fi
+    if ! kill -0 "$notification_server_pid" 2>/dev/null; then
+      echo "Freedesktop notification test server exited before ready" >&2
+      cat "$out_dir/native-notification-server.stderr.log" >&2 || true
+      exit 1
+    fi
+    sleep 0.1
+  done
+  if [[ ! -s "$out_dir/native-notification-server-ready.json" ]]; then
+    echo "Timed out waiting for freedesktop notification test server" >&2
+    cat "$out_dir/native-notification-server.stderr.log" >&2 || true
+    exit 1
+  fi
+  gdbus call --session \
+    --dest org.freedesktop.Notifications \
+    --object-path /org/freedesktop/Notifications \
+    --method org.freedesktop.Notifications.GetServerInformation \
+    >"$out_dir/native-notification-server-info.txt"
+  gdbus call --session \
+    --dest org.freedesktop.Notifications \
+    --object-path /org/freedesktop/Notifications \
+    --method org.freedesktop.Notifications.GetCapabilities \
+    >"$out_dir/native-notification-server-capabilities.txt"
+  node - \
+    "$out_dir/native-notification-server-info.txt" \
+    "$out_dir/native-notification-server-capabilities.txt" \
+    "$out_dir/native-notification-capabilities.json" <<'NOTIFYCAPS'
+const fs = require('fs');
+const [infoPath, capabilitiesPath, outputPath] = process.argv.slice(2);
+const quoted = (text) => [...text.matchAll(/'([^']*)'/g)].map((match) => match[1]);
+const info = quoted(fs.readFileSync(infoPath, 'utf8'));
+const capabilities = quoted(fs.readFileSync(capabilitiesPath, 'utf8'));
+const payload = {
+  schemaVersion: 1,
+  generatedAt: new Date().toISOString(),
+  available: true,
+  serverName: info[0] ?? 'OpenBurnBar Test Notifications',
+  vendor: info[1] ?? 'OpenBurnBar',
+  version: info[2] ?? '1.0',
+  specVersion: info[3] ?? '1.2',
+  actions: capabilities.includes('actions'),
+  persistence: capabilities.includes('persistence'),
+  body: capabilities.includes('body'),
+  bodyMarkup: capabilities.includes('body-markup'),
+  serverCapabilities: capabilities,
+  source: 'org.freedesktop.Notifications test server'
+};
+fs.writeFileSync(outputPath, JSON.stringify(payload, null, 2) + '\n');
+console.log(JSON.stringify(payload, null, 2));
+if (!payload.available || !payload.actions || !payload.body) process.exit(1);
+NOTIFYCAPS
+
   orca --version >"$out_dir/orca-version.txt" 2>&1
   orca --replace --disable speech --disable braille --disable braille-monitor \
     --debug-file="$out_dir/orca-debug.log" \
@@ -68,6 +130,33 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
     cat "$out_dir/orca.stderr.log" >&2 || true
     exit 1
   fi
+
+  samples_file="$out_dir/runtime-perf-samples.jsonl"
+  has_route_sample() {
+    [[ -f "$samples_file" ]] && grep -q "packaged-ui-route-after-paint:${1}" "$samples_file"
+  }
+  sample_file_offset() {
+    wc -c <"$samples_file" 2>/dev/null || echo 0
+  }
+  has_new_route_sample() {
+    local route="$1"
+    local offset="$2"
+    [[ -f "$samples_file" ]] || return 1
+    tail -c "+$((offset + 1))" "$samples_file" 2>/dev/null | \
+      grep -q "packaged-ui-route-after-paint:${route}"
+  }
+  wait_for_new_route_sample() {
+    local route="$1"
+    local offset="$2"
+    for _ in $(seq 1 80); do
+      if has_new_route_sample "$route" "$offset"; then
+        return 0
+      fi
+      sleep 0.1
+    done
+    return 1
+  }
+  notification_route_offset="$(sample_file_offset)"
 
   start_ms="$(date +%s%3N)"
   "$installed_bin" >"$out_dir/openburnbar-linux-desktop.stdout.log" 2>"$out_dir/openburnbar-linux-desktop.stderr.log" &
@@ -106,6 +195,91 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
     --output "$out_dir/atspi-tree-linux-desktop.json" \
     --tree-text "$out_dir/accessibility-tree-linux-desktop.txt" \
     --expected-name OpenBurnBar
+
+  notification_routed=false
+  for _ in $(seq 1 80); do
+    if [[ -s "$out_dir/native-notification-action-result.json" ]] && \
+       [[ -s "$out_dir/native-notification-response-result.json" ]] && \
+       wait_for_new_route_sample chat "$notification_route_offset"; then
+      notification_routed=true
+      break
+    fi
+    sleep 0.1
+  done
+  if [[ ! -s "$out_dir/native-notification-action-result.json" ]]; then
+    echo "Native notification action result was not written by the packaged app" >&2
+    exit 1
+  fi
+  if [[ ! -s "$out_dir/native-notification-response-result.json" ]]; then
+    echo "Native notification response result was not written by the packaged app" >&2
+    exit 1
+  fi
+  if [[ "$notification_routed" != true ]]; then
+    echo "Native notification action did not produce a fresh chat route sample" >&2
+    exit 1
+  fi
+  notification_window_count="$(xdotool search --onlyvisible --name OpenBurnBar 2>/dev/null | wc -l | tr -d ' ')"
+  notification_existing_alive=false
+  if kill -0 "$app_pid" 2>/dev/null; then
+    notification_existing_alive=true
+  fi
+  notification_active_window_id=""
+  notification_focus_matches=false
+  for _ in $(seq 1 80); do
+    notification_active_window_id="$(xdotool getactivewindow 2>/dev/null || true)"
+    if [[ -n "$notification_active_window_id" && "$notification_active_window_id" == "$window_id" ]]; then
+      notification_focus_matches=true
+      break
+    fi
+    sleep 0.1
+  done
+  node - \
+    "$out_dir/native-notification-relaunch-route.json" \
+    "$out_dir/native-notification-action-result.json" \
+    "$out_dir/native-notification-response-result.json" \
+    "$notification_existing_alive" \
+    "$notification_window_count" \
+    "$notification_focus_matches" \
+    "$notification_active_window_id" \
+    "$window_id" <<'NOTIFYROUTE'
+const fs = require('fs');
+const [
+  outPath,
+  actionPath,
+  responsePath,
+  aliveText,
+  windowCountText,
+  focusMatchesText,
+  activeWindowId,
+  appWindowId
+] = process.argv.slice(2);
+const action = JSON.parse(fs.readFileSync(actionPath, 'utf8'));
+const response = JSON.parse(fs.readFileSync(responsePath, 'utf8'));
+const windowCount = Number(windowCountText);
+const payload = {
+  schemaVersion: 1,
+  generatedAt: new Date().toISOString(),
+  passed: action.passed === true &&
+    response.passed === true &&
+    aliveText === 'true' &&
+    windowCount >= 1 &&
+    focusMatchesText === 'true' &&
+    action.route === 'chat' &&
+    action.action === 'open-chat',
+  focusedExistingWindow: focusMatchesText === 'true',
+  activeWindowId,
+  appWindowId,
+  route: action.route,
+  action: action.action,
+  notificationId: action.notificationId,
+  response: response.response,
+  windowCount,
+  source: 'freedesktop ActionInvoked signal through notify-rust'
+};
+fs.writeFileSync(outPath, JSON.stringify(payload, null, 2) + '\n');
+console.log(JSON.stringify(payload, null, 2));
+if (!payload.passed) process.exit(1);
+NOTIFYROUTE
 
   route_tsv="$work_dir/packaged-route-session.tsv"
   : >"$route_tsv"
@@ -165,10 +339,6 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
   xdotool windowfocus --sync "$window_id" 2>/dev/null || true
   sleep 2
 
-  samples_file="$out_dir/runtime-perf-samples.jsonl"
-  has_route_sample() {
-    [[ -f "$samples_file" ]] && grep -q "packaged-ui-route-after-paint:${1}" "$samples_file"
-  }
   palette_navigate() {
     local route="$1"
     local label="$2"
@@ -461,29 +631,6 @@ NODE
       uint32:0
   }
 
-  sample_file_offset() {
-    wc -c <"$samples_file" 2>/dev/null || echo 0
-  }
-
-  has_new_route_sample() {
-    local route="$1"
-    local offset="$2"
-    [[ -f "$samples_file" ]] || return 1
-    tail -c "+$((offset + 1))" "$samples_file" 2>/dev/null | \
-      grep -q "packaged-ui-route-after-paint:${route}"
-  }
-
-  wait_for_new_route_sample() {
-    local route="$1"
-    local offset="$2"
-    for _ in $(seq 1 80); do
-      if has_new_route_sample "$route" "$offset"; then
-        return 0
-      fi
-      sleep 0.1
-    done
-    return 1
-  }
   list_installed_app_pids() {
     local candidate exe
     for candidate in /proc/[0-9]*; do
@@ -1083,6 +1230,10 @@ const report = {
     trayActionRouteResults: 'tray-action-route-results.json',
     nativeStatusWindowReport: 'native-status-window-report.json',
     nativeStatusWindowA11y: 'native-status-window-a11y.json',
+    nativeNotificationCapabilities: 'native-notification-capabilities.json',
+    nativeNotificationActionResult: 'native-notification-action-result.json',
+    nativeNotificationResponseResult: 'native-notification-response-result.json',
+    nativeNotificationRelaunchRoute: 'native-notification-relaunch-route.json',
     nativeDeepLinkRelaunch: 'native-deep-link-relaunch.json',
     nativeLoginStartRoundtrip: 'native-login-start-roundtrip.json',
     accessibilitySnapshot: 'accessibility-tree-linux-desktop.txt',
@@ -1130,6 +1281,16 @@ rm -f \
   "$out_dir"/native-login-start-enabled.desktop \
   "$out_dir"/native-login-start-roundtrip.json \
   "$out_dir"/native-login-start-stale-replaced.desktop \
+  "$out_dir"/native-notification-action-result.json \
+  "$out_dir"/native-notification-capabilities.json \
+  "$out_dir"/native-notification-relaunch-route.json \
+  "$out_dir"/native-notification-response-result.json \
+  "$out_dir"/native-notification-server-capabilities.txt \
+  "$out_dir"/native-notification-server-events.jsonl \
+  "$out_dir"/native-notification-server-info.txt \
+  "$out_dir"/native-notification-server-ready.json \
+  "$out_dir"/native-notification-server.stderr.log \
+  "$out_dir"/native-notification-server.stdout.log \
   "$out_dir"/native-status-window-a11y.json \
   "$out_dir"/native-status-window-atspi-summary.json \
   "$out_dir"/native-status-window-focus.json \
@@ -1207,6 +1368,8 @@ desktop_packages=(
   scrot
   at-spi2-core
   python3
+  python3-dbus
+  python3-gi
   python3-pyatspi
   orca
 )

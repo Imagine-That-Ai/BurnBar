@@ -33,7 +33,7 @@ test('axe runs every route and both fail-closed capability states', () => {
 });
 
 test('packaged session provisions and exercises the Linux accessibility stack', () => {
-  for (const dependency of ['at-spi2-core', 'python3-pyatspi', 'orca']) {
+  for (const dependency of ['at-spi2-core', 'python3-dbus', 'python3-gi', 'python3-pyatspi', 'orca']) {
     assert.match(session, new RegExp(`\\n  ${dependency.replace('-', '\\-')}\\n`), dependency);
   }
   for (const route of REQUIRED_ROUTES) {
@@ -52,6 +52,16 @@ test('packaged session provisions and exercises the Linux accessibility stack', 
     'tray-updates-menu-event.txt',
     'tray-login-start-menu-event.txt',
     'tray-action-route-results.json',
+    'freedesktop-notification-test-server.py',
+    'OPENBURNBAR_NATIVE_NOTIFICATION_EVIDENCE',
+    'native-notification-capabilities.json',
+    'native-notification-action-result.json',
+    'native-notification-response-result.json',
+    'native-notification-relaunch-route.json',
+    'notification_focus_matches',
+    'xdotool getactivewindow',
+    'activeWindowId',
+    'appWindowId',
     'native-status-window-report.json',
     'native-status-window-a11y.json',
     'native-deep-link-relaunch.json',

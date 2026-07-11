@@ -371,7 +371,11 @@ export type NotificationCommandResult = { command: string; ok: boolean; message:
 
 // ─────────────────────────── P11: session env ─────────────────────────────
 
-export type SessionEnv = { XDG_SESSION_TYPE?: string; XDG_CURRENT_DESKTOP?: string };
+export type SessionEnv = {
+  XDG_SESSION_TYPE?: string;
+  XDG_CURRENT_DESKTOP?: string;
+  nativeNotificationEvidence?: boolean;
+};
 
 // ─────────────────────────── P12: Mercury media ───────────────────────────
 
@@ -2506,7 +2510,8 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       const raw = await invoke<RawJsonValue>('session_env');
       return {
         XDG_SESSION_TYPE: str(pick(raw, 'xdg_session_type', 'XDG_SESSION_TYPE')) || undefined,
-        XDG_CURRENT_DESKTOP: str(pick(raw, 'xdg_current_desktop', 'XDG_CURRENT_DESKTOP')) || undefined
+        XDG_CURRENT_DESKTOP: str(pick(raw, 'xdg_current_desktop', 'XDG_CURRENT_DESKTOP')) || undefined,
+        nativeNotificationEvidence: Boolean(pick(raw, 'native_notification_evidence', 'nativeNotificationEvidence'))
       };
     },
     // P12 — daemon media_status / media.control observation

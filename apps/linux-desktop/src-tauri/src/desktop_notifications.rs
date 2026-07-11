@@ -4,6 +4,8 @@ use crate::native_shell::{route_action_allowed, NativeDeepLink};
 use serde::{Deserialize, Serialize};
 #[cfg(all(unix, not(target_os = "macos")))]
 use std::collections::HashSet;
+use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::AppHandle;
 
 #[cfg(all(unix, not(target_os = "macos")))]
@@ -190,6 +192,7 @@ fn capability_snapshot() -> NativeNotificationCapabilities {
     }
 }
 
+#[cfg(any(test, all(unix, not(target_os = "macos"))))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum NativeNotificationResponse {
     Default,
@@ -197,12 +200,76 @@ enum NativeNotificationResponse {
     Closed,
 }
 
+#[cfg(any(test, all(unix, not(target_os = "macos"))))]
 fn should_route_response(response: &NativeNotificationResponse) -> bool {
     match response {
         NativeNotificationResponse::Default => true,
         NativeNotificationResponse::Action(action) => action == "default" || action == "open",
         NativeNotificationResponse::Closed => false,
     }
+}
+
+fn evidence_dir() -> Option<PathBuf> {
+    std::env::var_os("OPENBURNBAR_EVIDENCE_OUT")
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+}
+
+fn write_evidence_json(file_name: &str, value: serde_json::Value) {
+    let Some(out_dir) = evidence_dir() else {
+        return;
+    };
+    let path = out_dir.join(file_name);
+    if std::fs::create_dir_all(&out_dir).is_err() {
+        return;
+    }
+    if let Ok(json) = serde_json::to_string_pretty(&value) {
+        let _ = std::fs::write(path, format!("{json}\n"));
+    }
+}
+
+fn evidence_timestamp() -> String {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| format!("unix:{}.{:09}", duration.as_secs(), duration.subsec_nanos()))
+        .unwrap_or_else(|_| "unix:0.000000000".to_string())
+}
+
+fn write_notification_action_evidence(link: &NativeDeepLink, result: &NativeNotificationResult) {
+    write_evidence_json(
+        "native-notification-action-result.json",
+        serde_json::json!({
+            "schemaVersion": 1,
+            "generatedAt": evidence_timestamp(),
+            "passed": result.delivered && result.actions_attached,
+            "notificationId": &result.notification_id,
+            "delivered": result.delivered,
+            "actionsAttached": result.actions_attached,
+            "route": &link.route,
+            "action": &link.action,
+            "degradedReason": &result.degraded_reason,
+            "source": "native_notification_show"
+        }),
+    );
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn write_notification_response_evidence(
+    link: &NativeDeepLink,
+    response: &NativeNotificationResponse,
+) {
+    write_evidence_json(
+        "native-notification-response-result.json",
+        serde_json::json!({
+            "schemaVersion": 1,
+            "generatedAt": evidence_timestamp(),
+            "passed": should_route_response(response),
+            "route": &link.route,
+            "action": &link.action,
+            "response": format!("{response:?}"),
+            "source": "notify-rust wait_for_response"
+        }),
+    );
 }
 
 #[cfg(all(unix, not(target_os = "macos")))]
@@ -229,25 +296,29 @@ pub fn native_notification_show(
     let request = validate_request(request)?;
     let capabilities = capability_snapshot();
     if !capabilities.available {
-        return Ok(NativeNotificationResult {
+        let result = NativeNotificationResult {
             notification_id: request.id,
             delivered: false,
             actions_attached: false,
             degraded_reason: capabilities.degraded_reason,
-        });
+        };
+        write_notification_action_evidence(&request.link, &result);
+        return Ok(result);
     }
 
     #[cfg(not(all(unix, not(target_os = "macos"))))]
     {
         let _ = app;
-        return Ok(NativeNotificationResult {
+        let result = NativeNotificationResult {
             notification_id: request.id,
             delivered: false,
             actions_attached: false,
             degraded_reason: Some(
                 "native_notification_server_unavailable:unsupported_host".to_string(),
             ),
-        });
+        };
+        write_notification_action_evidence(&request.link, &result);
+        return Ok(result);
     }
 
     #[cfg(all(unix, not(target_os = "macos")))]
@@ -283,7 +354,9 @@ fn show_notification_linux(
     let app_for_response = app.clone();
     thread::spawn(move || {
         let _ = handle.wait_for_response(|response: &NotificationResponse| {
-            if should_route_response(&map_notify_response(response)) {
+            let mapped = map_notify_response(response);
+            write_notification_response_evidence(&link, &mapped);
+            if should_route_response(&mapped) {
                 let route = link.route.clone();
                 let action = link.action.clone();
                 let app_for_route = app_for_response.clone();
@@ -294,7 +367,7 @@ fn show_notification_linux(
         });
     });
 
-    Ok(NativeNotificationResult {
+    let result = NativeNotificationResult {
         notification_id: request.id,
         delivered: true,
         actions_attached: capabilities.actions,
@@ -303,7 +376,9 @@ fn show_notification_linux(
         } else {
             Some("native_notification_actions_unavailable".to_string())
         },
-    })
+    };
+    write_notification_action_evidence(&request.link, &result);
+    Ok(result)
 }
 
 #[cfg(test)]

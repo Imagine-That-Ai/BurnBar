@@ -51,6 +51,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   records secondary `openburnbar://chat` single-instance relaunch proof. The
   login-start capture records enable/disable/stale-file behavior without
   promoting the row until relogin and uninstall lifecycle evidence exists.
+- **Linux native notification installed captures** - the packaged desktop-
+  session harness now starts a deterministic `org.freedesktop.Notifications`
+  test server, records server capabilities, notification action delivery,
+  `notify-rust` response handling, and notification-triggered relaunch routing
+  through the installed app. This proves the native D-Bus action path without
+  claiming rich desktop-server breadth or cloud inline-reply parity.
 - **Linux daemon event subscription authority** - replaces one-shot terminal
   subscription fixtures with bounded daemon-owned start/resume/stop state,
   monotonic cursors, restart recovery, cancellation tombstones, strict scope
