@@ -31,6 +31,15 @@ import { assertActiveBurnBarCloudProEntitlement } from "./shared.js";
 const ROUTE_SCHEMA_VERSION = 1;
 const MAX_GENERATION = Number.MAX_SAFE_INTEGER - 1;
 
+function requireExpectedAuthenticatedUID(expectedUID: unknown, authenticatedUID: string): void {
+  if (typeof expectedUID !== "string" || expectedUID.length === 0 || expectedUID.length > 128) {
+    throw new HttpsError("invalid-argument", "expectedUid is required for controller-route mutations.");
+  }
+  if (expectedUID !== authenticatedUID) {
+    throw new HttpsError("permission-denied", "Authenticated account changed during controller-route mutation.");
+  }
+}
+
 function requireRecord(
   snapshot: { exists: boolean; data(): Record<string, unknown> | undefined },
   message: string,
@@ -150,11 +159,13 @@ export const issueIrohControllerRouteChallenge = onCallProduction(
       connectionId?: unknown;
       authorityPeerNodeId?: unknown;
       transportNodeId?: unknown;
+      expectedUid?: unknown;
       nonce?: unknown;
     }>,
   ) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before issuing a controller-route challenge.");
+    requireExpectedAuthenticatedUID(request.data.expectedUid, uid);
     await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
     await assertActiveBurnBarCloudProEntitlement(uid);
 
@@ -244,10 +255,12 @@ export const registerIrohControllerRoute = onCallProduction(
       challengeId?: unknown;
       transportSignatureBase64?: unknown;
       authoritySignatureBase64?: unknown;
+      expectedUid?: unknown;
     }>,
   ) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before registering a controller route.");
+    requireExpectedAuthenticatedUID(request.data.expectedUid, uid);
     await assertActiveBurnBarCloudProEntitlement(uid);
     const challengeId = boundedFirestoreDocumentId(request.data.challengeId, "challengeId", 64);
     const transportSignatureBase64 = requireBase64Like(
@@ -381,9 +394,17 @@ export const revokeIrohControllerRoute = onCallProduction(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (request: CallableRequest<{ sourceDeviceId?: unknown; connectionId?: unknown; nonce?: unknown }>) => {
+  async (
+    request: CallableRequest<{
+      sourceDeviceId?: unknown;
+      connectionId?: unknown;
+      expectedUid?: unknown;
+      nonce?: unknown;
+    }>,
+  ) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before revoking a controller route.");
+    requireExpectedAuthenticatedUID(request.data.expectedUid, uid);
     await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
     const sourceDeviceId = boundedFirestoreDocumentId(request.data.sourceDeviceId, "sourceDeviceId", 160);
     const connectionId = boundedFirestoreDocumentId(request.data.connectionId, "connectionId", 160);

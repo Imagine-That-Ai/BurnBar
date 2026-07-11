@@ -438,6 +438,21 @@ describe("F2 publishPhoneControlAuthority keyKind", () => {
     expect(store.get(`users/${UID}/escrow_devices/${DEVICE}`)?.peerNodeId).toBe(key.peerNodeId);
   });
 
+  it("rejects authority publication when the expected account is stale", async () => {
+    const key = ed25519Key();
+    await expect(
+      invokeCallable(publishPhoneControlAuthority, {
+        deviceId: DEVICE,
+        connectionId: CONN,
+        peerNodeId: key.peerNodeId,
+        publicKeyBase64: key.base64,
+        publishedAtMillis: Date.now(),
+        expectedUid: "replaced-account",
+      }),
+    ).rejects.toMatchObject({ code: "permission-denied" });
+    expect(store.has(`users/${UID}/iroh_pairing/${CONN}/controllers/${key.peerNodeId}`)).toBe(false);
+  });
+
   it("rejects a peerNodeId that does not match the published key", async () => {
     const key = seP256Key();
     await expect(

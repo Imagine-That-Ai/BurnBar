@@ -51,6 +51,16 @@ function boundAppCheckAttestationDigest(request: CallableRequest): string | unde
   return appCheckAttestationDigestHex(claim.appId, claim.boundAtMillis);
 }
 
+function rejectMismatchedExpectedUID(expectedUID: unknown, authenticatedUID: string): void {
+  if (expectedUID == null) return;
+  if (typeof expectedUID !== "string" || expectedUID.length === 0 || expectedUID.length > 128) {
+    throw new HttpsError("invalid-argument", "expectedUid must be a valid authenticated account identifier.");
+  }
+  if (expectedUID !== authenticatedUID) {
+    throw new HttpsError("permission-denied", "Authenticated account changed during authority publication.");
+  }
+}
+
 function normalizedTrustedDevicePeerNodeIds(rawPeerNodeId: unknown, rawPeerNodeIds: unknown): string[] {
   const ids: string[] = [];
   const append = (value: unknown) => {
@@ -350,11 +360,13 @@ export const publishPhoneControlAuthority = onCallProduction(
       keyKind?: unknown;
       publishedAtMillis?: unknown;
       protocolVersion?: unknown;
+      expectedUid?: unknown;
       nonce?: unknown;
     }>,
   ) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before publishing phone-control authority.");
+    rejectMismatchedExpectedUID(request.data.expectedUid, uid);
     await enforceHighRiskComputerUseCallableWithNonce(request, uid, request.data.nonce);
     await assertActiveBurnBarCloudProEntitlement(uid);
 
