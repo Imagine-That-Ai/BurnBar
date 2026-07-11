@@ -51,6 +51,12 @@ export const nativeShellEvidenceRequirements = [
     description: 'Secondary openburnbar:// launches reuse the existing instance and route correctly'
   },
   {
+    id: 'global-panic-shortcut',
+    key: 'globalPanicShortcut',
+    keys: ['globalPanicShortcut', 'global-panic-shortcut'],
+    description: 'The installed global panic chord reaches the daemon-wide kill path while another app has focus'
+  },
+  {
     id: 'login-start',
     key: 'loginStart',
     keys: ['loginStart', 'login-start'],
@@ -94,6 +100,19 @@ export function nativeEvidenceChecks(evidence) {
 
 export function nativeRequirementPasses(evidence, requirement) {
   const identifiers = [requirement.id, ...requirement.keys];
+  if (requirement.id === 'global-panic-shortcut') {
+    const requiredArtifacts = new Set([
+      'native-global-panic-shortcut-response.json',
+      'native-global-panic-shortcut.json'
+    ]);
+    return nativeEvidenceChecks(evidence).some((check) => {
+      const id = String(check.id ?? check.name ?? check.capability ?? '').trim();
+      const artifacts = new Set(Array.isArray(check.artifacts) ? check.artifacts : []);
+      return identifiers.includes(id) &&
+        passedValue(check) &&
+        [...requiredArtifacts].every((artifact) => artifacts.has(artifact));
+    });
+  }
   const directPass = nativeEvidenceSources(evidence).some((source) =>
     identifiers.some((identifier) => passedValue(source[identifier]))
   );
@@ -274,19 +293,49 @@ function evaluateDeepLinkRelaunch(evidenceDir) {
   );
 }
 
+function evaluateGlobalPanicShortcut(evidenceDir) {
+  const response = fileJson(evidenceDir, 'native-global-panic-shortcut-response.json');
+  const report = fileJson(evidenceDir, 'native-global-panic-shortcut.json');
+  const allowedChords = new Set(['Ctrl+Alt+Super+Period', 'Ctrl+Alt+Shift+Period']);
+  const passed = jsonPass(response) &&
+    jsonPass(report) &&
+    response?.daemonAccepted === true &&
+    response?.source === 'hotkey' &&
+    response?.sessionId === '*' &&
+    response?.endedAtPresent === true &&
+    response?.auditHeadPresent === true &&
+    response?.result?.sessionId === '*' &&
+    response?.result?.endedAt !== undefined &&
+    typeof response?.result?.auditHeadHashHex === 'string' &&
+    allowedChords.has(response?.chord) &&
+    report?.appWindowFocused === false &&
+    report?.foregroundProbeFocused === true &&
+    report?.chord === response?.chord;
+  return result(
+    'global-panic-shortcut',
+    passed,
+    passed
+      ? 'global panic chord reached the daemon-wide kill path while the probe window held focus'
+      : 'missing installed global panic shortcut focus and daemon-acceptance proof',
+    ['native-global-panic-shortcut-response.json', 'native-global-panic-shortcut.json']
+  );
+}
+
 function evaluateLoginStart(evidenceDir) {
   const loginStart = fileJson(evidenceDir, 'native-login-start-roundtrip.json');
+  const relogin = fileJson(evidenceDir, 'native-login-start-relogin.json');
   const passed = jsonPass(loginStart) &&
     loginStart?.enabled === true &&
     loginStart?.disabled === true &&
     loginStart?.relogin === true &&
     loginStart?.staleFileReplaced === true &&
     loginStart?.uninstallRemoved === true;
+  const reloginPassed = jsonPass(relogin) && relogin?.sameProcess === true && relogin?.routeSampleObserved === true;
   return result(
     'login-start',
-    passed,
-    passed ? 'login-start lifecycle passed' : 'missing complete login-start lifecycle proof',
-    ['native-login-start-roundtrip.json']
+    passed && reloginPassed,
+    passed && reloginPassed ? 'login-start lifecycle passed' : 'missing complete login-start lifecycle proof',
+    ['native-login-start-roundtrip.json', 'native-login-start-relogin.json']
   );
 }
 
@@ -316,6 +365,7 @@ const artifactEvaluators = new Map([
   ['notification-actions', evaluateNotificationActions],
   ['notification-relaunch-route', evaluateNotificationRelaunch],
   ['deep-link-relaunch', evaluateDeepLinkRelaunch],
+  ['global-panic-shortcut', evaluateGlobalPanicShortcut],
   ['login-start', evaluateLoginStart],
   ['tray-host-loss-recovery', evaluateTrayHostLossRecovery]
 ]);

@@ -1,5 +1,11 @@
 export type PetTier = 'overlay-pass-through' | 'draggable-contained';
-export function detectPetTierFromEnv(env: Record<string, string | undefined> = {}): {
+
+export type PetTierEnvironment = {
+  XDG_SESSION_TYPE?: string;
+  XDG_CURRENT_DESKTOP?: string;
+};
+
+export function detectPetTierFromEnv(env: PetTierEnvironment = {}): {
   tier: PetTier;
   compositor: string;
   message: string;

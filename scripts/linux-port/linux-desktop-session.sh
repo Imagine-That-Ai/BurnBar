@@ -188,6 +188,92 @@ NOTIFYCAPS
   xprop -id "$window_id" >"$out_dir/window-initial-xprop.txt"
   scrot "$out_dir/screenshot-linux-desktop-first-run.png"
 
+  xmessage \
+    -title "OpenBurnBar Panic Shortcut Probe" \
+    -buttons "Dismiss:0" \
+    "This window must retain focus while the OpenBurnBar global panic shortcut fires." \
+    >"$out_dir/native-global-panic-probe.stdout.log" \
+    2>"$out_dir/native-global-panic-probe.stderr.log" &
+  panic_probe_pid="$!"
+  panic_probe_window_id=""
+  for _ in $(seq 1 80); do
+    panic_probe_window_id="$(xdotool search --onlyvisible --name "OpenBurnBar Panic Shortcut Probe" 2>/dev/null | head -n 1 || true)"
+    if [[ -n "$panic_probe_window_id" ]]; then
+      break
+    fi
+    if ! kill -0 "$panic_probe_pid" 2>/dev/null; then
+      echo "Global panic shortcut focus probe exited before showing a window" >&2
+      exit 1
+    fi
+    sleep 0.1
+  done
+  if [[ -z "$panic_probe_window_id" ]]; then
+    echo "Timed out waiting for global panic shortcut focus probe" >&2
+    exit 1
+  fi
+  xdotool windowactivate --sync "$panic_probe_window_id" 2>/dev/null || xdotool windowactivate "$panic_probe_window_id"
+  xdotool windowfocus --sync "$panic_probe_window_id" 2>/dev/null || true
+  panic_active_window_before="$(xdotool getactivewindow)"
+  if [[ "$panic_active_window_before" != "$panic_probe_window_id" ]]; then
+    echo "Global panic shortcut probe did not hold focus before dispatch" >&2
+    exit 1
+  fi
+  xdotool key --clearmodifiers ctrl+alt+shift+period
+  for _ in $(seq 1 80); do
+    if [[ -s "$out_dir/native-global-panic-shortcut-response.json" ]]; then
+      break
+    fi
+    sleep 0.1
+  done
+  if [[ ! -s "$out_dir/native-global-panic-shortcut-response.json" ]]; then
+    echo "Installed global panic shortcut did not produce daemon response evidence" >&2
+    exit 1
+  fi
+  panic_active_window_after="$(xdotool getactivewindow)"
+  node - \
+    "$out_dir/native-global-panic-shortcut-response.json" \
+    "$out_dir/native-global-panic-shortcut.json" \
+    "$window_id" \
+    "$panic_probe_window_id" \
+    "$panic_active_window_before" \
+    "$panic_active_window_after" <<'PANICSHORTCUT'
+const fs = require('fs');
+const [responsePath, outputPath, appWindowId, probeWindowId, activeBefore, activeAfter] = process.argv.slice(2);
+const response = JSON.parse(fs.readFileSync(responsePath, 'utf8'));
+const foregroundProbeFocused = activeBefore === probeWindowId;
+const appWindowFocused = activeBefore === appWindowId;
+const passed = response.passed === true &&
+  response.daemonAccepted === true &&
+  response.source === 'hotkey' &&
+  response.sessionId === '*' &&
+  response.endedAtPresent === true &&
+  response.auditHeadPresent === true &&
+  response.chord === 'Ctrl+Alt+Shift+Period' &&
+  foregroundProbeFocused &&
+  !appWindowFocused;
+const payload = {
+  schemaVersion: 1,
+  generatedAt: new Date().toISOString(),
+  passed,
+  source: response.source,
+  chord: response.chord,
+  daemonAccepted: response.daemonAccepted === true,
+  sessionId: response.sessionId,
+  foregroundProbeFocused,
+  appWindowFocused,
+  appWindowId,
+  probeWindowId,
+  activeWindowBefore: activeBefore,
+  activeWindowAfter: activeAfter,
+  focusMethod: 'xmessage-foreground-window-plus-xdotool-global-chord'
+};
+fs.writeFileSync(outputPath, JSON.stringify(payload, null, 2) + '\n');
+console.log(JSON.stringify(payload, null, 2));
+if (!passed) process.exit(1);
+PANICSHORTCUT
+  kill "$panic_probe_pid" 2>/dev/null || true
+  wait "$panic_probe_pid" 2>/dev/null || true
+
   gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus \
     --method org.a11y.Bus.GetAddress >"$out_dir/atspi-bus-address.txt"
   orca --list-apps >"$out_dir/orca-applications.txt" 2>"$out_dir/orca-list-apps.err"
@@ -877,16 +963,6 @@ STATUS
     exit 1
   fi
   cp "$login_autostart_file" "$out_dir/native-login-start-stale-replaced.desktop"
-  {
-    echo "== cleanup start at login =="
-    send_menu_event "$LOGIN_START_ID"
-  } >>"$out_dir/tray-login-start-menu-event.txt" 2>&1
-  for _ in $(seq 1 40); do
-    if [[ ! -e "$login_autostart_file" ]]; then
-      break
-    fi
-    sleep 0.1
-  done
   node - \
     "$out_dir/native-login-start-roundtrip.json" \
     "$login_autostart_file" \
@@ -903,9 +979,11 @@ const payload = {
   disabled: disabledText === 'true',
   relogin: false,
   staleFileReplaced: staleText === 'true',
+  finalEnabled: fs.existsSync(autostartFile),
   uninstallRemoved: false,
   autostartFile,
-  note: 'Installed session proves tray enable, disable, and stale replacement. Relogin and package-uninstall ownership require a dedicated desktop lifecycle harness.'
+  reloginArtifact: 'native-login-start-relogin.json',
+  note: 'Installed session proves tray enable, disable, and stale replacement. Fresh-session relogin and package-owned uninstall proof are merged by the outer lifecycle finalizer.'
 };
 fs.writeFileSync(outPath, JSON.stringify(payload, null, 2) + '\n');
 console.log(JSON.stringify(payload, null, 2));
@@ -1425,6 +1503,207 @@ NODE
   exit 0
 fi
 
+if [[ "${1:-}" == "login-start-inner" ]]; then
+  shift
+  pkg="$1"
+  installed_bin="$2"
+  out_dir="$3"
+  work_dir="$4"
+  socket_path="$5"
+  installed_bin_real="$(readlink -f "$installed_bin" 2>/dev/null || printf '%s' "$installed_bin")"
+
+  export HOME="$work_dir/home"
+  export XDG_RUNTIME_DIR="$work_dir/login-runtime"
+  export XDG_DATA_HOME="$HOME/.local/share"
+  export XDG_CONFIG_HOME="$HOME/.config"
+  export DISPLAY=:100
+  export XDG_SESSION_TYPE=x11
+  export XDG_CURRENT_DESKTOP=XFCE
+  export GDK_BACKEND=x11
+  export LIBGL_ALWAYS_SOFTWARE=1
+  export WEBKIT_DISABLE_COMPOSITING_MODE=1
+  export ACCESSIBILITY_ENABLED=1
+  export GSETTINGS_BACKEND=memory
+  export OPENBURNBAR_SOCKET_PATH="$socket_path"
+  export OPENBURNBAR_EVIDENCE_OUT="$out_dir"
+  unset OPENBURNBAR_NATIVE_NOTIFICATION_EVIDENCE
+  unset NO_AT_BRIDGE
+
+  mkdir -p "$XDG_RUNTIME_DIR"
+  chmod 700 "$XDG_RUNTIME_DIR"
+
+  cleanup_login_inner() {
+    jobs -pr | xargs -r kill 2>/dev/null || true
+  }
+  trap cleanup_login_inner EXIT
+
+  Xvfb "$DISPLAY" -screen 0 1280x900x24 -nolisten tcp >"$out_dir/login-start-xvfb.log" 2>&1 &
+  for _ in $(seq 1 50); do
+    if xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then
+      break
+    fi
+    sleep 0.1
+  done
+  xdpyinfo -display "$DISPLAY" >"$out_dir/login-start-x11-display-info.txt"
+  openbox >"$out_dir/login-start-openbox.log" 2>&1 &
+  xfce4-panel --disable-wm-check >"$out_dir/login-start-xfce4-panel.log" 2>&1 &
+  sleep 2
+
+  login_autostart_file="$XDG_CONFIG_HOME/autostart/dev.openburnbar.OpenBurnBar.desktop"
+  if [[ ! -s "$login_autostart_file" ]]; then
+    echo "Login-start lifecycle could not find enabled autostart file: $login_autostart_file" >&2
+    exit 1
+  fi
+  autostart_exec="$(grep -E '^Exec=' "$login_autostart_file" | head -n 1 | cut -d= -f2-)"
+  if [[ "$autostart_exec" != "openburnbar-linux-desktop --background" ]]; then
+    echo "Unexpected autostart Exec line: $autostart_exec" >&2
+    exit 1
+  fi
+  printf '%s\n' "$autostart_exec" >"$out_dir/native-login-start-autostart-exec.txt"
+
+  list_installed_app_pids() {
+    local candidate exe
+    for candidate in /proc/[0-9]*; do
+      exe="$(readlink -f "$candidate/exe" 2>/dev/null || true)"
+      if [[ "$exe" == "$installed_bin_real" ]]; then
+        basename "$candidate"
+      fi
+    done | sort -n
+  }
+  sample_file_offset() {
+    wc -c <"$out_dir/runtime-perf-samples.jsonl" 2>/dev/null || echo 0
+  }
+  wait_for_new_route_sample() {
+    local route="$1"
+    local offset="$2"
+    for _ in $(seq 1 80); do
+      if [[ -f "$out_dir/runtime-perf-samples.jsonl" ]] && \
+        tail -c "+$((offset + 1))" "$out_dir/runtime-perf-samples.jsonl" 2>/dev/null | \
+          grep -q "packaged-ui-route-after-paint:${route}"; then
+        return 0
+      fi
+      sleep 0.1
+    done
+    return 1
+  }
+
+  read -r -a autostart_argv <<< "$autostart_exec"
+  autostart_binary="$(command -v "${autostart_argv[0]}" || true)"
+  if [[ -z "$autostart_binary" || "$(readlink -f "$autostart_binary")" != "$installed_bin_real" ]]; then
+    echo "Autostart Exec does not resolve to the installed package binary: $autostart_exec" >&2
+    exit 1
+  fi
+  "${autostart_argv[@]}" >"$out_dir/native-login-start-relogin.stdout.log" 2>"$out_dir/native-login-start-relogin.stderr.log" &
+  app_pid="$!"
+  background_process_started=false
+  hidden_background_window=true
+  for _ in $(seq 1 80); do
+    if kill -0 "$app_pid" 2>/dev/null; then
+      background_process_started=true
+      break
+    fi
+    sleep 0.1
+  done
+  for _ in $(seq 1 10); do
+    if xdotool search --onlyvisible --name OpenBurnBar >/dev/null 2>&1; then
+      hidden_background_window=false
+      break
+    fi
+    sleep 0.1
+  done
+  if xdotool search --onlyvisible --name OpenBurnBar >/dev/null 2>&1; then
+    hidden_background_window=false
+  fi
+  if [[ "$hidden_background_window" != true ]]; then
+    echo "Background launch exposed a visible OpenBurnBar window before activation" >&2
+    exit 1
+  fi
+
+  route_offset="$(sample_file_offset)"
+  "$installed_bin" "openburnbar://chat" >>"$out_dir/native-login-start-relogin.stdout.log" 2>>"$out_dir/native-login-start-relogin.stderr.log" &
+  secondary_pid="$!"
+  secondary_exited=false
+  for _ in $(seq 1 80); do
+    if ! kill -0 "$secondary_pid" 2>/dev/null; then
+      secondary_exited=true
+      break
+    fi
+    sleep 0.1
+  done
+  if [[ "$secondary_exited" != true ]]; then
+    kill "$secondary_pid" 2>/dev/null || true
+    wait "$secondary_pid" 2>/dev/null || true
+  fi
+  wait "$secondary_pid" 2>/dev/null || true
+
+  routed=false
+  if wait_for_new_route_sample chat "$route_offset"; then
+    routed=true
+  fi
+  visible_after_route=false
+  window_count="$(xdotool search --onlyvisible --name OpenBurnBar 2>/dev/null | wc -l | tr -d ' ')"
+  if [[ "$window_count" -ge 1 ]]; then
+    visible_after_route=true
+  fi
+  process_count="$(list_installed_app_pids | wc -l | tr -d ' ')"
+
+  node - \
+    "$out_dir/native-login-start-relogin.json" \
+    "$login_autostart_file" \
+    "$background_process_started" \
+    "$hidden_background_window" \
+    "$secondary_exited" \
+    "$routed" \
+    "$visible_after_route" \
+    "$process_count" \
+    "$window_count" <<'LOGINREL'
+const fs = require('fs');
+const [
+  outPath,
+  autostartFile,
+  backgroundText,
+  hiddenText,
+  secondaryExitedText,
+  routedText,
+  visibleText,
+  processCountText,
+  windowCountText
+] = process.argv.slice(2);
+const processCount = Number(processCountText);
+const windowCount = Number(windowCountText);
+const payload = {
+  schemaVersion: 1,
+  generatedAt: new Date().toISOString(),
+  passed: backgroundText === 'true' &&
+    hiddenText === 'true' &&
+    secondaryExitedText === 'true' &&
+    routedText === 'true' &&
+    visibleText === 'true' &&
+    processCount === 1,
+  method: 'fresh-dbus-x11-autostart-session',
+  autostartFile,
+  execLine: 'openburnbar-linux-desktop --background',
+  backgroundProcessStarted: backgroundText === 'true',
+  hiddenBeforeRoute: hiddenText === 'true',
+  secondaryProcessExited: secondaryExitedText === 'true',
+  sameProcess: processCount === 1,
+  route: 'chat',
+  action: 'open-chat',
+  routeSampleObserved: routedText === 'true',
+  visibleAfterRoute: visibleText === 'true',
+  processCount,
+  windowCount
+};
+fs.writeFileSync(outPath, JSON.stringify(payload, null, 2) + '\n');
+console.log(JSON.stringify(payload, null, 2));
+if (!payload.passed) process.exit(1);
+LOGINREL
+
+  kill "$app_pid" 2>/dev/null || true
+  wait "$app_pid" 2>/dev/null || true
+  exit 0
+fi
+
 out_dir="${OB_EVIDENCE_OUT:-/evidence}"
 work_dir="${OB_SESSION_WORKDIR:-/tmp/openburnbar-linux-desktop-session}"
 mkdir -p "$out_dir"
@@ -1451,9 +1730,21 @@ rm -f \
   "$out_dir"/dbus-before-app.txt \
   "$out_dir"/desktop-package-provision.txt \
   "$out_dir"/desktop-package-versions.txt \
+  "$out_dir"/login-start-openbox.log \
+  "$out_dir"/login-start-x11-display-info.txt \
+  "$out_dir"/login-start-xfce4-panel.log \
+  "$out_dir"/login-start-xvfb.log \
   "$out_dir"/linux-desktop-session-report.json \
   "$out_dir"/native-deep-link-relaunch.json \
+  "$out_dir"/native-global-panic-probe.stderr.log \
+  "$out_dir"/native-global-panic-probe.stdout.log \
+  "$out_dir"/native-global-panic-shortcut-response.json \
+  "$out_dir"/native-global-panic-shortcut.json \
+  "$out_dir"/native-login-start-autostart-exec.txt \
   "$out_dir"/native-login-start-enabled.desktop \
+  "$out_dir"/native-login-start-relogin.json \
+  "$out_dir"/native-login-start-relogin.stderr.log \
+  "$out_dir"/native-login-start-relogin.stdout.log \
   "$out_dir"/native-login-start-roundtrip.json \
   "$out_dir"/native-login-start-stale-replaced.desktop \
   "$out_dir"/native-notification-action-result.json \
@@ -1664,6 +1955,10 @@ echo "== desktop session =="
 dbus-run-session -- bash "$root/scripts/linux-port/linux-desktop-session.sh" \
   desktop-inner "$pkg" "$installed_bin" "$out_dir" "$work_dir" "$socket_path"
 
+echo "== login-start lifecycle session =="
+dbus-run-session -- bash "$root/scripts/linux-port/linux-desktop-session.sh" \
+  login-start-inner "$pkg" "$installed_bin" "$out_dir" "$work_dir" "$socket_path"
+
 echo "== daemon socket log =="
 if [[ -f "$out_dir/daemon-shell-session.log" ]]; then
   cat "$out_dir/daemon-shell-session.log"
@@ -1672,22 +1967,76 @@ else
 fi
 
 echo "== uninstall deb =="
+package_autostart_reference="/usr/share/openburnbar/autostart/openburnbar.desktop"
+package_autostart_existed_before=false
+if [[ -e "$package_autostart_reference" ]]; then
+  package_autostart_existed_before=true
+else
+  echo "Package-owned autostart reference was absent before uninstall: $package_autostart_reference" >&2
+  exit 1
+fi
 dpkg -r "$pkg"
 if dpkg-query -W "$pkg" >/dev/null 2>&1; then
   echo "Package still installed after dpkg -r $pkg" >&2
   exit 1
 fi
+package_autostart_removed=false
+if [[ ! -e "$package_autostart_reference" ]]; then
+  package_autostart_removed=true
+fi
 echo "uninstall_verified=true"
 
-node - "$out_dir/linux-desktop-session-report.json" "$deb_basename" <<'NODE'
+node - \
+  "$out_dir/linux-desktop-session-report.json" \
+  "$out_dir/native-login-start-roundtrip.json" \
+  "$out_dir/native-login-start-relogin.json" \
+  "$deb_basename" \
+  "$package_autostart_reference" \
+  "$package_autostart_existed_before" \
+  "$package_autostart_removed" <<'NODE'
 const fs = require('fs');
-const reportPath = process.argv[2];
-const debBasename = process.argv[3];
+const [
+  reportPath,
+  loginRoundtripPath,
+  loginReloginPath,
+  debBasename,
+  packageAutostartReference,
+  packageAutostartExistedBeforeText,
+  packageAutostartRemovedText
+] = process.argv.slice(2);
 const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+const loginRoundtrip = JSON.parse(fs.readFileSync(loginRoundtripPath, 'utf8'));
+const loginRelogin = JSON.parse(fs.readFileSync(loginReloginPath, 'utf8'));
+const packageAutostartRemoved = packageAutostartRemovedText === 'true';
+const packageAutostartExistedBefore = packageAutostartExistedBeforeText === 'true';
+const userAutostartPreserved = fs.existsSync(loginRoundtrip.autostartFile);
+const finalizedLoginStart = {
+  ...loginRoundtrip,
+  generatedAt: new Date().toISOString(),
+  passed: loginRoundtrip.enabled === true &&
+    loginRoundtrip.disabled === true &&
+    loginRoundtrip.staleFileReplaced === true &&
+    loginRelogin.passed === true &&
+    packageAutostartExistedBefore &&
+    userAutostartPreserved &&
+    packageAutostartRemoved,
+  relogin: loginRelogin.passed === true,
+  reloginEvidence: loginRelogin,
+  uninstallRemoved: packageAutostartRemoved,
+  uninstallScope: 'package-owned-autostart-reference',
+  packageAutostartReference,
+  packageAutostartExistedBefore,
+  userAutostartPreserved
+};
+fs.writeFileSync(loginRoundtripPath, JSON.stringify(finalizedLoginStart, null, 2) + '\n');
 report.package.uninstallVerified = true;
 report.package.debArtifact = debBasename;
+report.package.autostartReferenceRemoved = packageAutostartRemoved;
+report.evidence.nativeLoginStartRelogin = 'native-login-start-relogin.json';
+report.evidence.nativeLoginStartRoundtrip = 'native-login-start-roundtrip.json';
 fs.writeFileSync(reportPath, JSON.stringify(report, null, 2) + '\n');
-console.log(JSON.stringify(report, null, 2));
+console.log(JSON.stringify({ report, loginStart: finalizedLoginStart }, null, 2));
+if (!finalizedLoginStart.passed) process.exit(1);
 NODE
 
 cp "$transcript" "$out_dir/linux-tauri-build-transcript.txt"

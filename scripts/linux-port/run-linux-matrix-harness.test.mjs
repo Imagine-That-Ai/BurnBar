@@ -5,6 +5,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
+import {
+  nativeRequirementPasses,
+  nativeShellEvidenceRequirements
+} from './lib/native-shell-evidence.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const script = path.join(repoRoot, 'scripts/linux-port/run-linux-matrix-harness.mjs');
@@ -39,11 +43,25 @@ function completeNativeEvidence(commit, environmentId = supportedEnvironment) {
       notificationActions: true,
       notificationRelaunchRoute: true,
       deepLinkRelaunch: true,
+      globalPanicShortcut: true,
       loginStart: true,
       trayHostLossRecovery: true
-    }
+    },
+    checks: [{
+      id: 'global-panic-shortcut',
+      passed: true,
+      artifacts: [
+        'native-global-panic-shortcut-response.json',
+        'native-global-panic-shortcut.json'
+      ]
+    }]
   };
 }
+
+test('rejects boolean-only global panic matrix evidence', () => {
+  const requirement = nativeShellEvidenceRequirements.find(({ id }) => id === 'global-panic-shortcut');
+  assert.equal(nativeRequirementPasses({ nativeShell: { globalPanicShortcut: true } }, requirement), false);
+});
 
 test('rejects unknown support environment identifiers', () => {
   const result = spawnSync(process.execPath, [script, '--environment', 'not-a-supported-row'], {
@@ -158,6 +176,7 @@ test('accepts commit and environment matched native-shell matrix evidence', () =
     assert.equal(nativeCheck?.passed, true);
     assert.deepEqual(report.evidenceInputs.nativeShellEvidence.missing, []);
     assert.ok(report.nativeShellEvidenceRequirements.some((requirement) => requirement.id === 'login-start'));
+    assert.ok(report.nativeShellEvidenceRequirements.some((requirement) => requirement.id === 'global-panic-shortcut'));
     assert.equal(report.blocked.some((item) => item.capability === 'native-shell-evidence'), false);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });

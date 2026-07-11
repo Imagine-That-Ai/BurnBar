@@ -41,7 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   installed-package and accessibility evidence. A support row cannot become
   ready unless the exact commit and requested environment prove tray
   host/actions, compact status accessibility, notification server/actions/
-  relaunch, deep-link relaunch, login-start, and tray-host-loss recovery.
+  relaunch, deep-link relaunch, global panic-shortcut dispatch, login-start, and
+  tray-host-loss recovery.
   `verify-shell-evidence.mjs` now emits `native-shell-evidence.json` from the
   installed-session artifacts so VM runs get a concrete pass/missing report for
   that gate.
@@ -49,19 +50,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   harness now drives every tray route through the real StatusNotifier D-Bus
   menu, captures quick-status window screenshot and AT-SPI focus evidence, and
   records secondary `openburnbar://chat` single-instance relaunch proof. The
-  login-start capture records enable/disable/stale-file behavior without
-  promoting the row until relogin and uninstall lifecycle evidence exists.
+  login-start capture records enable/disable/stale-file behavior and feeds the
+  lifecycle finalizer below.
 - **Linux native notification installed captures** - the packaged desktop-
   session harness now starts a deterministic `org.freedesktop.Notifications`
   test server, records server capabilities, notification action delivery,
   `notify-rust` response handling, and notification-triggered relaunch routing
   through the installed app. This proves the native D-Bus action path without
-  claiming rich desktop-server breadth or cloud inline-reply parity.
+  claiming rich desktop-server breadth or cloud quick-reply parity.
 - **Linux tray host-loss installed capture** - the packaged desktop-session
   harness now terminates and restarts the XFCE/AppIndicator StatusNotifier
   host, refreshes the recovered D-Bus menu handles, invokes a recovered tray
   route, and fails if duplicate tray registrations or extra app processes
   remain after recovery.
+- **Linux login-start lifecycle installed capture** - the packaged session now
+  leaves the validated XDG autostart entry enabled, launches a fresh D-Bus/X11
+  session from the parsed `Exec=openburnbar-linux-desktop --background` entry,
+  verifies hidden background start plus same-process `openburnbar://chat`
+  routing, and proves package-owned autostart reference removal after `dpkg -r`
+  without deleting the user's autostart file.
+- **Linux global panic-shortcut installed capture** - the packaged session now
+  focuses a separate X11 probe window, dispatches the native
+  `Ctrl+Alt+Shift+Period` fallback chord, and requires a daemon-wide
+  `daemon.computer_use.panic_halt` acceptance artifact. Direct RPC, app-focused,
+  missing, and malformed responses fail the native-shell matrix gate.
 - **Linux daemon event subscription authority** - replaces one-shot terminal
   subscription fixtures with bounded daemon-owned start/resume/stop state,
   monotonic cursors, restart recovery, cancellation tombstones, strict scope
