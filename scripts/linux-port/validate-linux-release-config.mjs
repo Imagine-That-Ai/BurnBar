@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -104,6 +105,13 @@ if (!canonicalLauncher.equals(aurLauncher)) {
 }
 if (fs.existsSync(path.join(repoRoot, 'website/public/downloads/latest-linux.json'))) {
   failures.push('website/public/downloads/latest-linux.json must not be checked in before release verification is green');
+}
+const contractTest = spawnSync(process.execPath, ['--test', 'scripts/linux-port/resolve-linux-release-ref.test.mjs'], {
+  cwd: repoRoot,
+  encoding: 'utf8'
+});
+if (contractTest.status !== 0) {
+  failures.push(`Linux release binding contract failed:\n${contractTest.stdout}${contractTest.stderr}`.trim());
 }
 const report = { generatedAt: new Date().toISOString(), passed: failures.length === 0, failures };
 // Never rewrite sealed mission-001-release evidence (same rule as parity-ledger validator).

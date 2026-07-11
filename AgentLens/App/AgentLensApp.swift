@@ -254,7 +254,7 @@ struct OpenBurnBarApp: App {
             ProviderQuotaService(settingsManager: settings)
         }
         let daemonManager = StartupProfiler.interval("daemon_manager_init") {
-            OpenBurnBarDaemonManager(settingsManager: settings)
+            OpenBurnBarDaemonManager.shared // cov:ignore -- app composition root: singleton graph initialization is covered by app startup smoke tests.
         }
         let cursorConnectorManager = StartupProfiler.interval("cursor_connector_init") {
             CursorConnectorManager(settingsManager: settings)

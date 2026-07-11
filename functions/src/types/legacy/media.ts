@@ -228,6 +228,12 @@ export interface ComputerUseSessionDoc {
   auditHeadHashHex?: string;
   macAppVersion: string;
   schemaVersion: number;
+  quotaStartMeteredEventId?: string;
+  quotaStartMeteredDayKey?: string;
+  quotaStartMeteredAt?: import("firebase-admin/firestore").Timestamp;
+  quotaCompletionMeteredEventId?: string;
+  quotaCompletionMeteredDayKey?: string;
+  quotaCompletionMeteredAt?: import("firebase-admin/firestore").Timestamp;
 }
 
 /**
@@ -254,6 +260,9 @@ export interface ComputerUseActionDoc {
   visionTokensCostUSD?: number;
   recordedAt: import("firebase-admin/firestore").Timestamp;
   schemaVersion: number;
+  quotaMeteredEventId?: string;
+  quotaMeteredDayKey?: string;
+  quotaMeteredAt?: import("firebase-admin/firestore").Timestamp;
 }
 
 /**

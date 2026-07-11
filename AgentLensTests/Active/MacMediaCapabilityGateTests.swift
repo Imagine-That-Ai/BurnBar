@@ -91,11 +91,11 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         let expiration = Date(timeIntervalSinceNow: 3_600)
         let purchase = Date(timeIntervalSinceNow: -7_200)
 
-        store.applyHostedMedia(data: [
+        store.applyHostedMedia(data: MacCloudEntitlementDocument([
             "active": true,
             "expiresAt": expiration,
             "purchaseDate": purchase
-        ])
+        ]))
 
         XCTAssertTrue(store.hostedMediaIsActive)
         XCTAssertEqual(store.hostedMediaExpirationDate?.timeIntervalSince1970, expiration.timeIntervalSince1970)
@@ -130,11 +130,11 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         let future = Date(timeIntervalSinceNow: 7_200)
         let purchase = Date(timeIntervalSince1970: 1_700_000_000)
 
-        store.applyHostedMedia(data: [
+        store.applyHostedMedia(data: MacCloudEntitlementDocument([
             "active": true,
             "expireAt": future.timeIntervalSince1970,
             "originalPurchaseDate": ISO8601DateFormatter().string(from: purchase)
-        ])
+        ]))
 
         XCTAssertTrue(store.hostedMediaIsActive)
         XCTAssertEqual(
@@ -148,11 +148,11 @@ final class MacMediaCapabilityGateTests: XCTestCase {
             accuracy: 0.001
         )
 
-        store.applyHostedMedia(data: [
+        store.applyHostedMedia(data: MacCloudEntitlementDocument([
             "active": true,
             "expirationDate": Int(Date(timeIntervalSinceNow: -60).timeIntervalSince1970),
             "purchaseDate": purchase
-        ])
+        ]))
 
         XCTAssertFalse(store.hostedMediaIsActive)
         XCTAssertEqual(store.hostedMediaPurchaseDate, purchase)
@@ -209,6 +209,46 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         XCTAssertEqual(provider.currentEntitlementReadCount, 1)
     }
 
+    func testCachedActiveEntitlementCannotOverrideServerRevocation() async throws {
+        let provider = FakeMacStoreKitEntitlementProvider(entitlements: [
+            MacStoreKitEntitlementSnapshot(
+                productID: MacCloudStoreKitProductCatalog.cloudProAnnualProductID,
+                expirationDate: Date(timeIntervalSinceNow: 3_600),
+                transactionID: 9_002,
+                appAccountToken: proAppAccountToken
+            )
+        ])
+        let store = MacCloudEntitlementStore(
+            storeKitEntitlementProvider: provider,
+            appAccountTokenBindingProvider: FakeMacStoreKitAppAccountTokenBindingProvider(bindings: [
+                proAppAccountToken: storeKitUID
+            ]),
+            observesStoreKitTransactions: false,
+            signedInUID: storeKitUID
+        )
+        await store.refreshStoreKitEntitlementsForTesting()
+        XCTAssertTrue(store.hostedComputerUseIsActive)
+
+        store.applyHostedComputerUse(
+            data: MacCloudEntitlementDocument(["active": true]),
+            isFromCache: true,
+            observedAt: Date()
+        )
+        XCTAssertTrue(store.hostedComputerUseIsActive)
+
+        let serverObservedAt = Date()
+        store.applyHostedComputerUse(
+            data: MacCloudEntitlementDocument(["active": false, "updatedAt": serverObservedAt]),
+            isFromCache: false,
+            observedAt: serverObservedAt
+        )
+
+        XCTAssertFalse(store.hostedComputerUseIsActive)
+        let provenance = try XCTUnwrap(store.computerUseAuthorityProvenance)
+        XCTAssertEqual(provenance.source, .firestoreServer)
+        XCTAssertEqual(provenance.observedAt, serverObservedAt)
+    }
+
     func testMacCloudEntitlementStoreTreatsVerifiedEmptyStoreKitSnapshotAsFree() async {
         let provider = FakeMacStoreKitEntitlementProvider(entitlements: [])
         let store = MacCloudEntitlementStore(
@@ -252,11 +292,11 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         await store.refreshStoreKitEntitlementsForTesting()
         XCTAssertEqual(store.currentTier, .ultra)
 
-        store.applyHostedQuota(data: [
+        store.applyHostedQuota(data: MacCloudEntitlementDocument([
             "active": true,
             "productID": MacCloudStoreKitProductCatalog.cloudMonthlyProductID,
             "expiresAt": cloudExpires
-        ])
+        ]))
 
         XCTAssertTrue(store.isActive)
         XCTAssertFalse(store.hostedComputerUseIsActive)
@@ -266,7 +306,7 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         XCTAssertEqual(store.expirationDate?.timeIntervalSince1970 ?? 0, cloudExpires.timeIntervalSince1970, accuracy: 0.001)
     }
 
-    func testMacCloudEntitlementStoreUsesLocalStoreKitWhenOnlyCloudDocIsLapsed() async {
+    func testMacCloudEntitlementStoreDoesNotOverrideLapsedServerEntitlementWithStoreKit() async {
         let localExpires = Date(timeIntervalSinceNow: 7_200)
         let localPurchase = Date(timeIntervalSinceNow: -3_600)
         let cloudLapsedExpires = Date(timeIntervalSinceNow: -1_800)
@@ -291,20 +331,20 @@ final class MacMediaCapabilityGateTests: XCTestCase {
         )
         await store.refreshStoreKitEntitlementsForTesting()
 
-        store.applyHostedQuota(data: [
+        store.applyHostedQuota(data: MacCloudEntitlementDocument([
             "active": true,
             "productID": MacCloudStoreKitProductCatalog.cloudMonthlyProductID,
             "expiresAt": fractionalISO8601.string(from: cloudLapsedExpires)
-        ])
+        ]))
 
         XCTAssertTrue(store.hasVerifiedStoreKitEntitlementSnapshot)
-        XCTAssertTrue(store.isActive)
-        XCTAssertTrue(store.hostedComputerUseIsActive)
+        XCTAssertFalse(store.isActive)
+        XCTAssertFalse(store.hostedComputerUseIsActive)
         XCTAssertFalse(store.isUltraActive)
-        XCTAssertEqual(store.currentTier, .pro)
-        XCTAssertEqual(store.cloudTier, .pro)
-        XCTAssertEqual(store.expirationDate?.timeIntervalSince1970 ?? 0, localExpires.timeIntervalSince1970, accuracy: 0.001)
-        XCTAssertEqual(store.purchaseDate?.timeIntervalSince1970 ?? 0, localPurchase.timeIntervalSince1970, accuracy: 0.001)
+        XCTAssertEqual(store.currentTier, .free)
+        XCTAssertEqual(store.cloudTier, .none)
+        XCTAssertNil(store.expirationDate)
+        XCTAssertNil(store.purchaseDate)
         XCTAssertEqual(provider.currentEntitlementReadCount, 1)
     }
 

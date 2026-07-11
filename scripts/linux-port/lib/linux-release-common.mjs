@@ -12,6 +12,9 @@ export const reanchorEvidenceDir = process.env.OPENBURNBAR_LINUX_EVIDENCE_OUT
   ? path.resolve(repoRoot, process.env.OPENBURNBAR_LINUX_EVIDENCE_OUT)
   : path.join(repoRoot, 'docs/linux-port/evidence/mission-002-reanchor');
 export const manifestPath = path.join(repoRoot, 'packaging/linux/release-manifest.json');
+export const linuxReleaseWorkflowIdentity = 'https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-release.yml';
+
+const linuxReleaseTagPattern = /^linux-v([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/u;
 
 export function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -20,6 +23,43 @@ export function readJson(file) {
 export function writeJson(file, value) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
+
+export function parseLinuxReleaseTag(tag) {
+  const match = linuxReleaseTagPattern.exec(tag);
+  if (!match) {
+    throw new Error(`Invalid Linux release tag: ${tag} (expected linux-vMAJOR.MINOR.PATCH[-prerelease][+build])`);
+  }
+  const version = match[1];
+  const [coreAndPrerelease, build] = version.split('+');
+  const prereleaseSeparator = coreAndPrerelease.indexOf('-');
+  const core = prereleaseSeparator === -1
+    ? coreAndPrerelease
+    : coreAndPrerelease.slice(0, prereleaseSeparator);
+  const prerelease = prereleaseSeparator === -1
+    ? undefined
+    : coreAndPrerelease.slice(prereleaseSeparator + 1);
+  const coreParts = core.split('.');
+  if (coreParts[0].length > 3 || coreParts.some((part) => part.length > 1 && part.startsWith('0'))) {
+    throw new Error(`Invalid Linux release tag: ${tag} (numeric identifiers cannot have leading zeroes; MAJOR is capped at 999)`);
+  }
+  for (const [kind, identifiers] of [['prerelease', prerelease], ['build', build]]) {
+    if (identifiers?.split('.').some((identifier) => !identifier)) {
+      throw new Error(`Invalid Linux release tag: ${tag} (${kind} identifiers cannot be empty)`);
+    }
+  }
+  if (prerelease?.split('.').some((identifier) => /^\d+$/u.test(identifier) && identifier.length > 1 && identifier.startsWith('0'))) {
+    throw new Error(`Invalid Linux release tag: ${tag} (numeric prerelease identifiers cannot have leading zeroes)`);
+  }
+  return version;
+}
+
+export function expectedLinuxReleaseIdentity(ref) {
+  if (!ref.startsWith('refs/tags/')) {
+    throw new Error(`Linux release identity requires a tag ref, received: ${ref}`);
+  }
+  parseLinuxReleaseTag(ref.slice('refs/tags/'.length));
+  return `${linuxReleaseWorkflowIdentity}@${ref}`;
 }
 
 export function runStep(command, args, options = {}) {
@@ -42,6 +82,14 @@ export function sha256(file) {
   const hash = crypto.createHash('sha256');
   hash.update(fs.readFileSync(file));
   return hash.digest('hex');
+}
+
+export function verifyEd25519Signature(artifact, signature, publicKeyPem) {
+  const publicKey = publicKeyPem?.type === 'public'
+    ? publicKeyPem
+    : crypto.createPublicKey(publicKeyPem);
+  if (publicKey.asymmetricKeyType !== 'ed25519') return false;
+  return crypto.verify(null, artifact, publicKey, signature);
 }
 
 export function fileSize(file) {

@@ -41,8 +41,8 @@ assert.ok(
 );
 assert.match(
   firebaseRules,
-  /method: "PATCH",[\s\S]*body: JSON\.stringify\(\{\s*release: update,\s*updateMask: "rulesetName",\s*\}\)/,
-  "Firebase Rules release PATCH must use the nested release payload with a field mask",
+  /method: "PATCH",[\s\S]*body: JSON\.stringify\(\{\s*release: update,\s*\}\)/,
+  "Firebase Rules release PATCH must match firebase-tools' nested release payload without updateMask",
 );
 const firestoreWorkflow = read(".github/workflows/deploy-firestore.yml");
 assert.match(

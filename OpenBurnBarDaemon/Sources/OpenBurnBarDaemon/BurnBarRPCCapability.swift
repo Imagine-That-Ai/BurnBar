@@ -79,7 +79,8 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
         case .connectorPlaneGet, .connectorConfigUpdate, .connectorAction,
              .browserToolingGet, .browserToolingUpdate, .browserAction:
             return .tooling
-        case .computerUseSessionStart, .computerUseInvoke,
+        case .computerUseCapabilityStateUpdate,
+             .computerUseSessionStart, .computerUseInvoke,
              .computerUseApprovalPending, .computerUseApprovalRespond,
              .computerUsePanicHalt, .computerUseAuditExport:
             return .computerUse

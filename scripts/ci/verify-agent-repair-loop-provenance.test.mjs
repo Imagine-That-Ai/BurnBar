@@ -31,13 +31,17 @@ const fixture = (strings, ...values) =>
 const REMEDIATED_CODEX = fixture`
 name: Codex Nightly CI Repair
 on:
+  schedule:
+    - cron: "15 11 * * *"
   workflow_run:
     workflows: [Workflow Lint]
     types: [completed]
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: codex-nightly-ci-repair-singleton
+  group: codex-nightly-ci-repair-\${{ github.event_name == 'workflow_run' && format('continuation-{0}', github.event.workflow_run.id) || format('{0}-{1}', github.event_name, github.run_id) }}
+  cancel-in-progress: \${{ github.event_name == 'workflow_run' }}
 env:
   GH_REPO: \${{ github.repository }}
   REPAIR_BRANCH: codex/nightly-ci-repair
@@ -88,6 +92,16 @@ jobs:
         uses: openai/codex-action@a26d2d4d8b78a694338b8e3715c3630254340b2c
         with:
           openai-api-key: \${{ secrets.OPENAI_API_KEY }}
+      - name: Collect latest scheduled CI failures
+        run: |
+          workflows=("deploy-production.yml" "deploy-cloud-run.yml")
+          for workflow in "\${workflows[@]}"; do
+            branch_args=(--branch main)
+            case "$workflow" in
+              deploy-production.yml|deploy-cloud-run.yml) branch_args=() ;;
+            esac
+            gh run list --workflow "$workflow" "\${branch_args[@]}"
+          done
       - name: Publish
         run: |
           echo REDACTED_TOKEN
@@ -98,13 +112,17 @@ jobs:
 const REMEDIATED_CURSOR = fixture`
 name: Cursor Nightly CI Repair
 on:
+  schedule:
+    - cron: "15 11 * * *"
   workflow_run:
     workflows: [Workflow Lint]
     types: [completed]
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: cursor-nightly-ci-repair-singleton
+  group: cursor-nightly-ci-repair-\${{ github.event_name == 'workflow_run' && format('continuation-{0}', github.event.workflow_run.id) || format('{0}-{1}', github.event_name, github.run_id) }}
+  cancel-in-progress: \${{ github.event_name == 'workflow_run' }}
 env:
   GH_REPO: \${{ github.repository }}
   REPAIR_BRANCH: cursor/nightly-ci-repair
@@ -236,6 +254,44 @@ expect(
     "supply-chain-provenance.yml": SUPPLY_CHAIN_ALLOWLIST,
   },
   0,
+);
+
+expect(
+  "singleton concurrency that lets workflow_run cancel scheduled repair fails",
+  {
+    "codex-nightly-ci-repair.yml": REMEDIATED_CODEX
+      .replace(
+        "  group: codex-nightly-ci-repair-${{ github.event_name == 'workflow_run' && format('continuation-{0}', github.event.workflow_run.id) || format('{0}-{1}', github.event_name, github.run_id) }}",
+        "  group: codex-nightly-ci-repair-singleton",
+      )
+      .replace(
+        "  cancel-in-progress: ${{ github.event_name == 'workflow_run' }}",
+        "  cancel-in-progress: true",
+      ),
+  },
+  1,
+);
+
+expect(
+  "shared workflow_run continuation concurrency fails",
+  {
+    "codex-nightly-ci-repair.yml": REMEDIATED_CODEX.replace(
+      "format('continuation-{0}', github.event.workflow_run.id)",
+      "'continuation'",
+    ),
+  },
+  1,
+);
+
+expect(
+  "tag deploy workflows scoped to main fail",
+  {
+    "codex-nightly-ci-repair.yml": REMEDIATED_CODEX.replace(
+      "deploy-production.yml|deploy-cloud-run.yml) branch_args=()",
+      "deploy-production.yml|deploy-cloud-run.yml) branch_args=(--branch main)",
+    ),
+  },
+  1,
 );
 
 expect(

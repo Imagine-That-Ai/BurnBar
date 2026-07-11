@@ -100,3 +100,19 @@ node scripts/linux-port/validate-linux-release-config.mjs
 node scripts/linux-port/validate-parity-ledger.mjs --allow-blocked
 node scripts/linux-port/check-linux-docs.mjs
 ```
+
+The Linux toolchain image also runs five explicit Swift suites with a
+fail-closed xUnit floor of 51 executed tests. The active SwiftPM test graph must
+exactly match that inventory; placeholder targets, missing output, skipped tests
+below the floor, an omitted target, or a zero-test pass fails both the Linux PR
+gate and nightly matrix:
+
+```bash
+docker build -t openburnbar-linux-toolchain:mission-001 tools/linux-toolchain
+docker run --rm -v "$PWD:/workspace" -w /workspace \
+  openburnbar-linux-toolchain:mission-001 \
+  bash scripts/linux-port/run-linux-swift-tests.sh
+```
+
+The runnable suite inventory lives in
+[`../../scripts/linux-port/linux-swift-test-manifest.json`](../../scripts/linux-port/linux-swift-test-manifest.json).

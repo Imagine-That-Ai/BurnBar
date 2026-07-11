@@ -107,6 +107,12 @@ public enum BurnBarDaemonPaths {
         supportDirectoryURL.appendingPathComponent("membership-entitlement-cache.json", isDirectory: false)
     }
 
+    public static var defaultComputerUseCapabilityStateURL: URL {
+        supportDirectoryURL
+            .appendingPathComponent("computer-use", isDirectory: true)
+            .appendingPathComponent("capability-state.json", isDirectory: false)
+    }
+
     public static var defaultLinuxOnboardingStateURL: URL {
         supportDirectoryURL.appendingPathComponent("linux-onboarding-state.json", isDirectory: false)
     }

@@ -546,11 +546,46 @@ final class AccountManager {
 
     func deleteCurrentUser() async throws {
         guard isFirebaseAvailable, Self.hasConfiguredFirebaseApp,
-              let user = Auth.auth().currentUser else {
+              Auth.auth().currentUser != nil else {
             throw AccountError.firebaseNotConfigured
         }
-        try await deleteCloudDataForCurrentUser()
-        try await user.delete()
+        try await Self.completeServerAuthoritativeAccountDeletion(
+            requestServerErasure: { [self] in
+                try await deleteCloudDataForCurrentUser()
+            },
+            signOutFirebaseLocally: {
+                try Auth.auth().signOut()
+            },
+            clearClientAuthState: { [self] in
+                GIDSignIn.sharedInstance.signOut()
+                applyAuthStateSnapshot(nil)
+                lastOAuthProviderID = nil
+                lastOAuthToken = nil
+                lastOAuthEmail = nil
+                lastOAuthDisplayName = nil
+            },
+            observeLocalSignOutFailure: { error in
+                Self.logAuthFailure("Firebase Auth local sign-out after account deletion", error)
+            }
+        )
+    }
+
+    /// The callable owns authoritative data and Firebase Auth deletion. Once it
+    /// returns, a local SDK sign-out failure must not turn completed erasure into
+    /// a false failure response or prompt a second server-side user deletion.
+    static func completeServerAuthoritativeAccountDeletion(
+        requestServerErasure: () async throws -> Void,
+        signOutFirebaseLocally: () throws -> Void,
+        clearClientAuthState: () -> Void,
+        observeLocalSignOutFailure: (Error) -> Void
+    ) async throws {
+        try await requestServerErasure()
+        do {
+            try signOutFirebaseLocally()
+        } catch {
+            observeLocalSignOutFailure(error)
+        }
+        clearClientAuthState()
     }
 
     private func deleteCloudDataForCurrentUser() async throws {

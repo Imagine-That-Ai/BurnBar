@@ -57,6 +57,7 @@ enum BurnBarDaemonSocketRPCCoverage {
     ]
 
     static let computerUse: Set<BurnBarRPCMethod> = [
+        .computerUseCapabilityStateUpdate,
         .computerUseSessionStart,
         .computerUseInvoke,
         .computerUseApprovalPending,

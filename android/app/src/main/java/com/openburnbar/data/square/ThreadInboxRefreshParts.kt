@@ -52,19 +52,7 @@ private fun threadInboxHistoryItems(history: AssistantChatHistoryStore, mobileCL
             "junie-agent",
             "jetbrains-junie",
             -> {
-                val runtime =
-                    when (runtimeLower) {
-                        "codex" -> AssistantRuntimeID.CODEX
-                        "claude" -> AssistantRuntimeID.CLAUDE
-                        "openclaw" -> AssistantRuntimeID.OPEN_CLAW
-                        "droid" -> AssistantRuntimeID.DROID
-                        "forge" -> AssistantRuntimeID.FORGE
-                        "antigravity" -> AssistantRuntimeID.ANTIGRAVITY
-                        "grok" -> AssistantRuntimeID.GROK
-                        "cursoragent", "cursor_agent", "cursor-agent" -> AssistantRuntimeID.CURSOR_AGENT
-                        "junie", "junie-agent", "jetbrains-junie" -> AssistantRuntimeID.JUNIE
-                        else -> return@mapNotNull null
-                    }
+                val runtime = threadInboxCLIRuntimeID(runtimeLower) ?: return@mapNotNull null
                 agentURI = AgentIdentity.builtInURI(runtime)
                 source = ThreadInboxItem.Source.CLI_MIRROR
                 mobileCLIThreadIDs.add(thread.id)
@@ -88,6 +76,19 @@ private fun threadInboxHistoryItems(history: AssistantChatHistoryStore, mobileCL
             priorityOrder = thread.priorityOrder,
         )
     }
+
+private fun threadInboxCLIRuntimeID(runtime: String): AssistantRuntimeID? = when (runtime) {
+    "codex" -> AssistantRuntimeID.CODEX
+    "claude" -> AssistantRuntimeID.CLAUDE
+    "openclaw" -> AssistantRuntimeID.OPEN_CLAW
+    "droid" -> AssistantRuntimeID.DROID
+    "forge" -> AssistantRuntimeID.FORGE
+    "antigravity" -> AssistantRuntimeID.ANTIGRAVITY
+    "grok" -> AssistantRuntimeID.GROK
+    "cursoragent", "cursor_agent", "cursor-agent" -> AssistantRuntimeID.CURSOR_AGENT
+    "junie", "junie-agent", "jetbrains-junie" -> AssistantRuntimeID.JUNIE
+    else -> null
+}
 
 private fun threadInboxCliMirrorItems(parsed: List<CLIAgentSessionRecord>, mobileCLIThreadIDs: Set<String>): List<ThreadInboxItem> =
     parsed.filter { it.id !in mobileCLIThreadIDs }.map { record ->

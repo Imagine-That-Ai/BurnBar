@@ -1232,6 +1232,14 @@ jobs:
       - name: Windows tree budget (per-tree shrink-only ratchet)
         run: ./scripts/debt/check-windows-tree-budget.sh
 
+      - name: BurnBarRPC IPC canon is current
+        run: node tools/ipc/generate-burnbarrpc-canon.mjs --check
+
+      - name: Migration rollback catalog covers both migrators
+        run: |
+          node --test scripts/ci/verify-migration-rollback-catalog.test.mjs
+          node scripts/ci/verify-migration-rollback-catalog.mjs
+
   # ── Fast summary gate ──────────────────────────────────────────────────────
   fast-feedback-gate:
     name: Fast Feedback Gate

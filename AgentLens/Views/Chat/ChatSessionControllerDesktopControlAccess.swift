@@ -51,13 +51,32 @@ extension ChatSessionController {
     }
 
     func revokeDesktopControl() {
+        let runtimeID = assistantRuntimeID(for: chatBackend)
+        let threadID = activeThreadID
+        #if canImport(AppKit) && !DISTRIBUTION_MAS
+        let runtimeController = computerUseRuntimeController
+        #endif
         AgentCapabilityGrantStore.shared.revoke(
-            runtimeID: assistantRuntimeID(for: chatBackend),
-            threadID: activeThreadID
+            runtimeID: runtimeID,
+            threadID: threadID
         )
         desktopControlGrant = desktopControlGrant?.revoked()
         desktopControlError = nil
-        Task { await cliBridge.cancelAndWait() }
+        // Revocation is an active kill, not merely a state update checked by
+        // the next tool call. Start each teardown independently so a stalled
+        // daemon RPC cannot delay the app-owned System or CLI kill paths.
+        Task {
+            _ = await AgentToolBroker.revokeDaemonBrowserSessions(
+                runtimeID: runtimeID,
+                threadID: threadID
+            )
+        }
+        #if canImport(AppKit) && !DISTRIBUTION_MAS
+        Task { await runtimeController?.endSession() }
+        #endif
+        Task {
+            await cliBridge.cancelAndWait()
+        }
     }
 
     func activeAgentToolBroker() -> AgentToolBroker? {

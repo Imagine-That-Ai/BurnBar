@@ -4,7 +4,7 @@
 # Usage:
 #   ./scripts/supply-chain-audit.sh
 #
-# Fails on high/critical npm audit findings in functions/ and extensions/openburnbar.
+# Fails on high/critical npm audit findings in every shipped Node surface.
 
 set -euo pipefail
 
@@ -32,10 +32,16 @@ audit_npm() {
 
 audit_npm "$repo_root/functions" "Cloud Functions"
 audit_npm "$repo_root/extensions/openburnbar" "VS Code extension"
+audit_npm "$repo_root/website" "Website"
+audit_npm "$repo_root/apps/console" "Operator console"
 
 if command -v osv-scanner >/dev/null 2>&1; then
     echo "=== OSV-Scanner ==="
-    if ! osv-scanner --lockfile="$repo_root/functions/package-lock.json" --lockfile="$repo_root/extensions/openburnbar/package-lock.json"; then
+    if ! osv-scanner \
+        --lockfile="$repo_root/functions/package-lock.json" \
+        --lockfile="$repo_root/extensions/openburnbar/package-lock.json" \
+        --lockfile="$repo_root/website/package-lock.json" \
+        --lockfile="$repo_root/apps/console/package-lock.json"; then
         failed=1
     fi
 else

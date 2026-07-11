@@ -58,8 +58,10 @@ function sealedText(aad) {
   return value;
 }
 
-function validManifest(uid = aliceUid) {
-  const documentID = "mac-device_Factory_8adc9f4f-cfce-4856-9537-6feaa5e8ae8e";
+function validManifest(
+  uid = aliceUid,
+  documentID = "mac-device_Factory_8adc9f4f-cfce-4856-9537-6feaa5e8ae8e"
+) {
   const bodyHash = "a".repeat(64);
   return {
     path: `users/${uid}/session_logs/${documentID}`,
@@ -304,6 +306,39 @@ async function main() {
       await setDoc(doc(ctx.firestore(), legacy.path), legacy.data);
     });
     await assertSucceeds(setDoc(doc(aliceDB, aliceManifest.path), validFacetRefresh(), { merge: true }));
+  });
+
+  await step("existing encrypted manifest rejects malformed optional facets", async () => {
+    const malformedFacets = [
+      { model: 42 },
+      { costUSD: -0.01 },
+      { inputTokens: 1.5 },
+      { toolTags: "bash" },
+      { toolTags: ["not-allowlisted"] },
+    ];
+    for (const malformedFacet of malformedFacets) {
+      await assertFails(
+        setDoc(doc(aliceDB, aliceManifest.path), malformedFacet, { merge: true })
+      );
+    }
+  });
+
+  await step("new encrypted manifest rejects malformed immutable facets", async () => {
+    const validFreshManifest = validManifest(aliceUid, "mac-device_Factory_valid-immutable-facets");
+    await assertSucceeds(
+      setDoc(doc(aliceDB, validFreshManifest.path), validFreshManifest.data)
+    );
+
+    const malformedFacets = [
+      { provider: "p".repeat(81) },
+      { sourceType: [] },
+    ];
+    for (const [index, malformedFacet] of malformedFacets.entries()) {
+      const manifest = validManifest(aliceUid, `mac-device_Factory_invalid-facet-${index}`);
+      await assertFails(
+        setDoc(doc(aliceDB, manifest.path), { ...manifest.data, ...malformedFacet })
+      );
+    }
   });
 
   await step("session-log chunks are server-owned and reject legacy plaintext merges", async () => {

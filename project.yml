@@ -52,7 +52,10 @@ packages:
     from: "8.0.0"
   AmplitudeSwift:
     url: https://github.com/amplitude/Amplitude-Swift
-    from: "1.17.3"
+    from: "1.18.6"
+  AmplitudeCore:
+    url: https://github.com/amplitude/AmplitudeCore-Swift.git
+    from: "1.4.8"
   GLTFKit2:
     url: https://github.com/warrenm/GLTFKit2
     from: "0.5.15"
@@ -441,6 +444,8 @@ targets:
         product: Sentry
       - package: AmplitudeSwift
         product: AmplitudeSwift
+      - package: AmplitudeCore
+        product: AmplitudeCoreFramework
       - package: GLTFKit2
         product: GLTFKit2
       - package: DracoSwift
@@ -1005,6 +1010,8 @@ targets:
         product: OpenBurnBarSignalCore
       - package: AmplitudeSwift
         product: AmplitudeSwift
+      - package: AmplitudeCore
+        product: AmplitudeCoreFramework
       - package: Firebase
         product: FirebaseAuth
       - package: Firebase
@@ -1117,6 +1124,8 @@ targets:
         product: OpenBurnBarAnalytics
       - package: AmplitudeSwift
         product: AmplitudeSwift
+      - package: AmplitudeCore
+        product: AmplitudeCoreFramework
 
   OpenBurnBarKeyboard:
     type: app-extension
@@ -1166,3 +1175,5 @@ targets:
         product: OpenBurnBarAnalytics
       - package: AmplitudeSwift
         product: AmplitudeSwift
+      - package: AmplitudeCore
+        product: AmplitudeCoreFramework

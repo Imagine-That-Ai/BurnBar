@@ -1,4 +1,5 @@
 import OpenBurnBarCore
+import OpenBurnBarComputerUseCore
 import Foundation
 
 enum OpenBurnBarDaemonSocketClient {
@@ -403,6 +404,19 @@ enum OpenBurnBarDaemonSocketClient {
             ),
             socketURL: socketURL
         ) as ComputerUseSessionStartResponse
+    }
+
+    static func updateComputerUseCapabilityState(
+        _ request: ComputerUseCapabilityStateUpdateRequest,
+        at socketURL: URL
+    ) throws -> ComputerUseCapabilityStateUpdateResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .computerUseCapabilityStateUpdate,
+                params: request
+            ),
+            socketURL: socketURL
+        ) as ComputerUseCapabilityStateUpdateResponse
     }
 
     static func invokeComputerUse(

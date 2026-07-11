@@ -27,6 +27,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Launch-readiness hardening** — added durable account-erasure barriers,
+  resumable oldest-first reconciliation with poison-record quarantine, and
+  privacy-safe retained audit receipts across Functions, Firestore, and Storage.
+- **Computer Use quota enforcement and telemetry** — added a locked local
+  app/daemon quota ledger, replay-safe reservations, privacy-safe cloud headers,
+  transactional aggregation, and monotonic reconciliation. Cloud aggregates are
+  explicitly operational telemetry, not authoritative billing evidence.
+- **Cross-platform proof gates** — added real Android, Windows, and Linux test
+  floors; non-vacuous diff coverage and duplication checks; deployment trust
+  fixtures; migration rollback contracts; and repair-loop provenance controls.
 - **Linux daemon event subscription authority** - replaces one-shot terminal
   subscription fixtures with bounded daemon-owned start/resume/stop state,
   monotonic cursors, restart recovery, cancellation tombstones, strict scope

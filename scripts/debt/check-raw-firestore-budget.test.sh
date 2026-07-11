@@ -28,7 +28,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# new_repo → prints the repo path on stdout. Seeds the three sanctioned gateway
+# new_repo → prints the repo path on stdout. Seeds the four sanctioned gateway
 # files, each already holding a raw handle that must NEVER be counted.
 new_repo() {
   local dir
@@ -38,6 +38,7 @@ new_repo() {
     "${dir}/scripts/debt" \
     "${dir}/budgets" \
     "${dir}/AgentLens/Services/CloudSync" \
+    "${dir}/AgentLens/Services/ComputerUse" \
     "${dir}/AgentLens/Views/Settings" \
     "${dir}/OpenBurnBarMobile/Services" \
     "${dir}/android/app/src/main/java/com/openburnbar/data" \
@@ -45,6 +46,8 @@ new_repo() {
   cp "${gate}" "${dir}/scripts/debt/check-raw-firestore-budget.sh"
   printf 'func make() { let db = Firestore.firestore(); _ = db }\n' \
     >"${dir}/AgentLens/Services/CloudSync/CloudSyncFirestoreGateway.swift"
+  printf 'func make() { let db = Firestore.firestore(); _ = db }\n' \
+    >"${dir}/AgentLens/Services/ComputerUse/ComputerUseFirestoreGateway.swift"
   printf 'var db: Firestore { Firestore.firestore() }\n' \
     >"${dir}/OpenBurnBarMobile/Services/FirestoreRepository.swift"
   printf 'val db = Firebase.firestore\n' \
@@ -109,6 +112,8 @@ printf 'val db = FirebaseFirestore.getInstance()\n' \
 # Pile extra handles into the gateways (incl. three on one line) — still exempt.
 printf 'let a = Firestore.firestore(); let b = Firestore.firestore(); let c = Firestore.firestore()\n' \
   >"${r}/AgentLens/Services/CloudSync/CloudSyncFirestoreGateway.swift"
+printf 'let a = Firestore.firestore(); let b = Firestore.firestore()\n' \
+  >"${r}/AgentLens/Services/ComputerUse/ComputerUseFirestoreGateway.swift"
 printf 'val a = Firebase.firestore\nval b = FirebaseFirestore.getInstance()\n' \
   >"${r}/android/app/src/main/java/com/openburnbar/data/firebase/FirestoreRepository.kt"
 write_baseline "${r}" 1 1 2

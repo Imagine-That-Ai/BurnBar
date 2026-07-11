@@ -57,7 +57,7 @@ jobs:
     name: Linux fast package and parity gate
     runs-on: ubuntu-24.04-arm
     needs: [macos-matched-performance]
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       OPENBURNBAR_LINUX_EVIDENCE_OUT: ${{ github.workspace }}/.linux-evidence
     steps:
@@ -133,6 +133,12 @@ jobs:
 
       - name: Toolchain smoke
         run: docker run --rm -v "$PWD:/workspace" -w /workspace openburnbar-linux-toolchain:mission-001 bash tools/linux-toolchain/smoke.sh
+
+      - name: Run Linux Swift package tests
+        run: >
+          docker run --rm -v "$PWD:/workspace" -w /workspace
+          openburnbar-linux-toolchain:mission-001
+          bash scripts/linux-port/run-linux-swift-tests.sh
 
       - name: Download macOS matched performance reference
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)

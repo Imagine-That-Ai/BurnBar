@@ -293,6 +293,13 @@ jobs:
         run: |
           set -euo pipefail
           tag="${{ needs.resolve-release.outputs.tag }}"
+          release_commit="$(git rev-parse HEAD)"
+          git fetch --force origin "+refs/tags/${tag}:refs/tags/${tag}"
+          tag_commit="$(git rev-list -n 1 "refs/tags/${tag}^{commit}")"
+          if [[ "$tag_commit" != "$release_commit" ]]; then
+            echo "::error::Remote release tag drifted: expected ${release_commit}, resolved ${tag_commit}"
+            exit 1
+          fi
           art="$OPENBURNBAR_LINUX_RELEASE_OUT"
           cp packaging/linux/openburnbar-linux-ed25519.pub.pem "$art/"
           cp "$art/latest-linux.draft.json" "$art/latest-linux.json"
@@ -308,6 +315,9 @@ jobs:
             prerelease="--prerelease"
           fi
           gh release create "$tag" $prerelease \
+            --verify-tag \
+            --target "$release_commit" \
+            --latest=false \
             --title "OpenBurnBar Linux ${{ needs.resolve-release.outputs.version }}" \
             --notes "OpenBurnBar Linux candidate for aarch64 and x86_64. Artifacts include Ed25519 signatures, Sigstore bundles, source, SBOM, VEX, provenance, and parity attestation." \
             "${assets[@]}"

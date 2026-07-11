@@ -43,6 +43,7 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .browserToolingGet: "daemon.browser.tooling.get",
         .browserToolingUpdate: "daemon.browser.tooling.update",
         .browserAction: "daemon.browser.action",
+        .computerUseCapabilityStateUpdate: "daemon.computer_use.capability_state.update",
         .computerUseSessionStart: "daemon.computer_use.session.start",
         .computerUseInvoke: "daemon.computer_use.invoke",
         .computerUseApprovalPending: "daemon.computer_use.approval.pending",

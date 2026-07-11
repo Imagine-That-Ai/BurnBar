@@ -114,12 +114,32 @@ evidence for every declared package channel.
 
 Local signing verifier support is implemented with Ed25519 detached signatures
 when `OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM` is present. GitHub release CI
-must additionally produce keyless Sigstore/cosign bundles with `id-token: write`
-and identity:
+additionally produces and verifies keyless Sigstore/cosign bundles with
+`id-token: write`. The workflow runs only from a pre-existing
+`linux-v<version>` tag and uses this identity:
 
 ```text
 https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-release.yml@refs/tags/linux-v<version>
 ```
+
+Create the release commit and tag before running the workflow:
+
+```bash
+git tag linux-v<version> <release-commit>
+git push origin linux-v<version>
+```
+
+The tag push starts the release automatically. A manual rerun must select the
+same existing tag in GitHub's **Use workflow from** selector; dispatching from a
+branch fails closed. The package version, checkout `HEAD`, source archive,
+provenance predicate, Sigstore certificate identity, `gh release --target`, and
+remote tag must all resolve to that one commit. Prerelease status is derived
+from a SemVer prerelease suffix such as `linux-v0.2.0-rc.1`, not from a mutable
+workflow input.
+
+Linux releases explicitly use `--latest=false`; the repository-level latest
+release remains the canonical macOS release rather than changing whenever a
+platform-specific Linux tag is published.
 
 Missing local signing material, OIDC, package-store credentials, or Flathub/AUR
 publisher access is a named blocker. It is not a reason to publish weaker
@@ -138,7 +158,7 @@ public website/download metadata is added. The verifier checks:
 
 - required artifacts and package metadata exist;
 - checksums match artifact bytes;
-- SBOM, VEX, provenance predicate, and source archive exist;
+- SBOM, VEX, provenance predicate, and exact-commit source archive exist;
 - detached signatures are recorded;
 - package install/uninstall and update/rollback smoke logs exist;
 - the worktree is clean and metadata binds to the release commit;

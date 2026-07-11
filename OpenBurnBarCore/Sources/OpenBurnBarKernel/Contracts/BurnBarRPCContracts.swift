@@ -44,6 +44,7 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case browserToolingGet = "daemon.browser.tooling.get"
     case browserToolingUpdate = "daemon.browser.tooling.update"
     case browserAction = "daemon.browser.action"
+    case computerUseCapabilityStateUpdate = "daemon.computer_use.capability_state.update"
     case computerUseSessionStart = "daemon.computer_use.session.start"
     case computerUseInvoke = "daemon.computer_use.invoke"
     case computerUseApprovalPending = "daemon.computer_use.approval.pending"

@@ -1539,6 +1539,66 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     highRiskComputerUse: false,
   },
   {
+    exportedName: "meterComputerUseAction",
+    trigger: "firestore-trigger",
+    authMethod: "Firebase Functions event trigger (not client-callable)",
+    appCheck: "not-applicable",
+    tenantSource: "users/{uid}/computer_use_actions/{actionId} trigger path",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "trigger derives uid from the Firestore event path and meters only the immutable source document in that user namespace",
+    handlerModule: "computerUseMetering.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
+        covers: ["meterComputerUseAction"],
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  {
+    exportedName: "meterComputerUseSessionCompletion",
+    trigger: "firestore-trigger",
+    authMethod: "Firebase Functions event trigger (not client-callable)",
+    appCheck: "not-applicable",
+    tenantSource: "users/{uid}/computer_use_sessions/{sessionId} trigger path",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "trigger derives uid from the Firestore event path and meters only the source session in that user namespace",
+    handlerModule: "computerUseMetering.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
+        covers: ["meterComputerUseSessionCompletion"],
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  {
+    exportedName: "meterComputerUseSessionStart",
+    trigger: "firestore-trigger",
+    authMethod: "Firebase Functions event trigger (not client-callable)",
+    appCheck: "not-applicable",
+    tenantSource: "users/{uid}/computer_use_sessions/{sessionId} trigger path",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "trigger derives uid from the Firestore event path and meters only the source session in that user namespace",
+    handlerModule: "computerUseMetering.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
+        covers: ["meterComputerUseSessionStart"],
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  {
     exportedName: "mintLinuxAppCheckToken",
     trigger: "callable",
     authMethod:
@@ -2020,6 +2080,26 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
         test: "platform triggers are not client-callable",
         kind: "platform-trigger",
         covers: ["recomputeMediaQuotaUsage"],
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  {
+    exportedName: "reconcileAccountErasures",
+    trigger: "scheduled",
+    authMethod: "Cloud Scheduler / Firebase Functions platform trigger",
+    appCheck: "not-applicable",
+    tenantSource: "server-owned account_erasure_audit receipts",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "scheduled job reads nonterminal server-owned receipts and resumes cleanup using the receipt uid; no client input is accepted",
+    handlerModule: "accountDeletionReconciler.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
+        covers: ["reconcileAccountErasures"],
       },
     ],
     highRiskComputerUse: false,

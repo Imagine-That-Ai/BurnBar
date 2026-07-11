@@ -217,6 +217,37 @@ public struct ComputerUseInvokeRequest: Codable, Hashable, Sendable {
     }
 }
 
+/// Privacy-safe subset of an on-disk audit entry used for server metering.
+/// It deliberately excludes action summaries, descriptors, screenshots, URLs,
+/// selectors, coordinates, and other user content.
+public struct ComputerUseActionMeteringHeader: Codable, Hashable, Sendable {
+    public let entryIndex: Int
+    public let actionKind: String
+    public let approvedBy: String
+    public let scopeRuleId: String?
+    public let denyReason: String?
+    public let parentEntryHashHex: String
+    public let recordedAt: Date
+
+    public init(
+        entryIndex: Int,
+        actionKind: String,
+        approvedBy: String,
+        scopeRuleId: String? = nil,
+        denyReason: String? = nil,
+        parentEntryHashHex: String,
+        recordedAt: Date
+    ) {
+        self.entryIndex = entryIndex
+        self.actionKind = actionKind
+        self.approvedBy = approvedBy
+        self.scopeRuleId = scopeRuleId
+        self.denyReason = denyReason
+        self.parentEntryHashHex = parentEntryHashHex
+        self.recordedAt = recordedAt
+    }
+}
+
 public struct ComputerUseInvokeResponse: Codable, Hashable, Sendable {
     /// Sub-second outcome categories. `awaitingApproval` means the
     /// dispatcher raised an approval request and the caller should
@@ -235,6 +266,7 @@ public struct ComputerUseInvokeResponse: Codable, Hashable, Sendable {
     public let denyReason: String?
     public let auditEntryIndex: Int?
     public let auditHeadHashHex: String?
+    public let meteringHeader: ComputerUseActionMeteringHeader?
     public let result: BurnBarToolResult?
 
     public init(
@@ -245,6 +277,7 @@ public struct ComputerUseInvokeResponse: Codable, Hashable, Sendable {
         denyReason: String? = nil,
         auditEntryIndex: Int? = nil,
         auditHeadHashHex: String? = nil,
+        meteringHeader: ComputerUseActionMeteringHeader? = nil,
         result: BurnBarToolResult? = nil
     ) {
         self.sessionId = sessionId
@@ -254,6 +287,7 @@ public struct ComputerUseInvokeResponse: Codable, Hashable, Sendable {
         self.denyReason = denyReason
         self.auditEntryIndex = auditEntryIndex
         self.auditHeadHashHex = auditHeadHashHex
+        self.meteringHeader = meteringHeader
         self.result = result
     }
 }

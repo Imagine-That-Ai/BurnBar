@@ -17,6 +17,7 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
     func test_highRiskMethodsMapToExpectedGroups() {
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .computerUseInvoke), .computerUse)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .computerUseSessionStart), .computerUse)
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .computerUseCapabilityStateUpdate), .computerUse)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .configUpdate), .config)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .providerCredentialSlotUpsert), .config)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .runCreate), .run)
@@ -59,6 +60,7 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertFalse(profile.permits(.runCreate))
         XCTAssertFalse(profile.permits(.computerUseInvoke))
         XCTAssertFalse(profile.permits(.computerUseSessionStart))
+        XCTAssertFalse(profile.permits(.computerUseCapabilityStateUpdate))
         XCTAssertFalse(profile.permits(.browserAction))
         XCTAssertFalse(profile.permits(.memoryRemember))
         XCTAssertFalse(profile.permits(.memoryForget))
@@ -74,6 +76,7 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertTrue(profile.permits(.codeSearch))
         // A compromised run client must NOT reach the HID-adjacent computer-use
         // surface or rewrite stored provider credentials.
+        XCTAssertFalse(profile.permits(.computerUseCapabilityStateUpdate))
         XCTAssertFalse(profile.permits(.computerUseInvoke))
         XCTAssertFalse(profile.permits(.configUpdate))
         XCTAssertFalse(profile.permits(.providerCredentialSlotUpsert))
@@ -109,6 +112,7 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertFalse(profile.permits(.providerCredentialSlotUpsert))
         XCTAssertFalse(profile.permits(.computerUseSessionStart))
         XCTAssertFalse(profile.permits(.computerUseInvoke))
+        XCTAssertFalse(profile.permits(.computerUseCapabilityStateUpdate))
         XCTAssertFalse(profile.permits(.workspaceExecuteTool))
         XCTAssertFalse(profile.permits(.missionCreate))
         XCTAssertFalse(profile.permits(.missionCancel))

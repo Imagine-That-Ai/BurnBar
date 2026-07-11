@@ -692,7 +692,8 @@ public actor BurnBarDaemonServer {
                     decoder: decoder,
                     requestData: requestData
                 )
-            case .computerUseSessionStart, .computerUseInvoke,
+            case .computerUseCapabilityStateUpdate,
+                 .computerUseSessionStart, .computerUseInvoke,
                  .computerUseApprovalPending, .computerUseApprovalRespond,
                  .computerUsePanicHalt, .computerUseAuditExport,
                  .phoneControlPinProvision:
