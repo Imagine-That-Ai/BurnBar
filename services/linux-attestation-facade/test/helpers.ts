@@ -4,7 +4,7 @@ import type { AttestationChallenge, SignedVerdictEnvelope, VerifyRequest } from 
 import { quoteQualifyingDataSha256 } from "../src/contracts.js";
 import type { AttestationPolicy, EnrollmentCandidate, EnrollmentRecord, EnrollmentStore, EvidenceObjectStore, IngressTicketStore, KeylimeResult, KeylimeVerifier, PolicyStore, UploadBinding, UploadRecord, UploadStateStore, VerdictSigner } from "../src/ports.js";
 import { sha256 } from "../src/validation.js";
-import { sameEnrollmentIdentity } from "../src/enrollment.js";
+import { enrollmentRevoked, sameEnrollmentIdentity } from "../src/enrollment.js";
 import type { IngressTicketCredential } from "../src/ingressTicket.js";
 
 export class MemoryState implements UploadStateStore {
@@ -121,6 +121,7 @@ export class MemoryEnrollments implements EnrollmentStore {
   > {
     const record = this.records.find(value => value.uid === uid && value.deviceId === deviceId);
     if (record === undefined) throw new PublicError(409, "conflict", "Enrollment is not pending");
+    if (enrollmentRevoked(record)) throw new PublicError(409, "conflict", "Enrollment state changed");
     if (record.active) return { kind: "cached" };
     if (record.activationBlob === undefined) throw new PublicError(409, "conflict", "Enrollment is not pending");
     if ((record.activationLeaseExpiresAtMillis ?? 0) > nowMillis) return { kind: "busy" };
@@ -132,7 +133,7 @@ export class MemoryEnrollments implements EnrollmentStore {
   async claimRegistration(record: EnrollmentRecord, nowMillis: number, leaseMillis: number): Promise<{ kind: "acquired"; leaseToken: string } | { kind: "cached"; record: EnrollmentRecord } | { kind: "busy" }> {
     const existing = this.records.find(value => value.uid === record.uid && value.deviceId === record.deviceId);
     if (existing !== undefined) {
-      if (existing.active || !sameEnrollmentIdentity(existing, record)) throw new PublicError(409, "conflict", "Enrollment state changed");
+      if (enrollmentRevoked(existing) || existing.active || !sameEnrollmentIdentity(existing, record)) throw new PublicError(409, "conflict", "Enrollment state changed");
       if (existing.activationBlob !== undefined) return { kind: "cached", record: structuredClone(existing) };
       if ((existing.registrationLeaseExpiresAtMillis ?? 0) > nowMillis) return { kind: "busy" };
     }
@@ -143,7 +144,7 @@ export class MemoryEnrollments implements EnrollmentStore {
   }
   async completeRegistration(uid: string, deviceId: string, leaseToken: string, activationBlob: string): Promise<EnrollmentRecord> {
     const record = this.records.find(value => value.uid === uid && value.deviceId === deviceId && value.registrationLeaseToken === leaseToken && !value.active);
-    if (record === undefined) throw new PublicError(409, "conflict", "Enrollment state changed");
+    if (record === undefined || enrollmentRevoked(record)) throw new PublicError(409, "conflict", "Enrollment state changed");
     record.activationBlob = activationBlob;
     delete record.registrationLeaseToken;
     delete record.registrationLeaseExpiresAtMillis;
@@ -165,7 +166,7 @@ export class MemoryEnrollments implements EnrollmentStore {
       && value.agentId === agentId
       && !value.active
       && value.activationLeaseToken === leaseToken);
-    if (record === undefined) throw new PublicError(409, "conflict", "Enrollment state changed");
+    if (record === undefined || enrollmentRevoked(record)) throw new PublicError(409, "conflict", "Enrollment state changed");
     record.active = true;
     delete record.activationBlob;
     delete record.activationLeaseToken;
@@ -177,7 +178,7 @@ export class MemoryEnrollments implements EnrollmentStore {
       && !value.active
       && value.activationBlob !== undefined
       && value.activationLeaseToken === leaseToken);
-    if (record === undefined) throw new PublicError(409, "conflict", "Enrollment state changed");
+    if (record === undefined || enrollmentRevoked(record)) throw new PublicError(409, "conflict", "Enrollment state changed");
     record.activationLeaseExpiresAtMillis = nowMillis + leaseMillis;
   }
   async releaseActivation(uid: string, deviceId: string, leaseToken: string): Promise<void> {
@@ -187,7 +188,7 @@ export class MemoryEnrollments implements EnrollmentStore {
     delete record.activationLeaseExpiresAtMillis;
   }
   async requireActive(uid: string, deviceId: string): Promise<EnrollmentRecord> {
-    const record = this.records.find(value => value.uid === uid && value.deviceId === deviceId && value.active);
+    const record = this.records.find(value => value.uid === uid && value.deviceId === deviceId && value.active && !enrollmentRevoked(value));
     if (record === undefined) throw new PublicError(403, "verification_failed", "Device attestation was not accepted");
     return structuredClone(record);
   }

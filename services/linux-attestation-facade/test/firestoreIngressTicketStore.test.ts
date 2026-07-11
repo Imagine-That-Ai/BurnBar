@@ -11,7 +11,15 @@ import { enrollmentMaterialHashes, ingressTicketClaimFingerprint, ingressTicketS
 import type { EnrollmentCandidate, EnrollmentRecord, UploadBinding } from "../src/ports.js";
 import { ingressTicketCredential } from "./helpers.js";
 
-interface Ref { path: string }
+interface Snapshot {
+  exists: boolean;
+  data(): Record<string, unknown> | undefined;
+}
+
+interface Ref {
+  path: string;
+  get(): Promise<Snapshot>;
+}
 
 function isDeletionTransform(value: unknown): boolean {
   if (typeof value !== "object" || value === null) return false;
@@ -23,8 +31,20 @@ class MemoryFirestore {
   readonly values = new Map<string, Record<string, unknown>>();
   private tail = Promise.resolve();
 
-  doc(path: string): Ref { return { path }; }
-  collection(path: string) { return { doc: (id: string): Ref => ({ path: `${path}/${id}` }) }; }
+  doc(path: string): Ref { return this.ref(path); }
+  collection(path: string) { return { doc: (id: string): Ref => this.ref(`${path}/${id}`) }; }
+
+  private ref(path: string): Ref {
+    return {
+      path,
+      get: async () => this.snapshot(path),
+    };
+  }
+
+  private snapshot(path: string): Snapshot {
+    const value = this.values.get(path);
+    return { exists: value !== undefined, data: () => value === undefined ? undefined : structuredClone(value) };
+  }
 
   async runTransaction<T>(body: (transaction: {
     get(ref: Ref): Promise<{ exists: boolean; data(): Record<string, unknown> | undefined }>;
@@ -40,10 +60,7 @@ class MemoryFirestore {
     try {
       const writes: Array<() => void> = [];
       const result = await body({
-        get: async ref => {
-          const value = this.values.get(ref.path);
-          return { exists: value !== undefined, data: () => value === undefined ? undefined : structuredClone(value) };
-        },
+        get: async ref => this.snapshot(ref.path),
         create: (ref, value) => writes.push(() => {
           if (this.values.has(ref.path)) throw new Error(`already exists: ${ref.path}`);
           this.values.set(ref.path, structuredClone(value));
@@ -303,6 +320,44 @@ describe("FirestoreIngressTicketStore", () => {
       );
     }
   });
+
+  it("preserves revoked enrollment tombstones against replacement", async () => {
+    const firestore = new MemoryFirestore();
+    const enrollment = candidate();
+    firestore.values.set(TICKET_PATH, enrollmentTicket(enrollment));
+    firestore.values.set(enrollmentPath(enrollment), {
+      ...enrollment,
+      revokedAtMillis: NOW,
+      revokedReason: "operator_revoke",
+    } as unknown as Record<string, unknown>);
+    const store = new FirestoreIngressTicketStore(firestore as unknown as Firestore);
+
+    await assert.rejects(
+      store.claimEnrollmentBegin(ingressTicketCredential, enrollment, NOW + 1, 75_000, 3),
+      (error: unknown) => error instanceof PublicError && error.code === "conflict",
+    );
+    assert.equal(firestore.values.get(enrollmentPath(enrollment))?.revokedReason, "operator_revoke");
+  });
+
+  it("preserves a revoked tombstone when retry exhaustion terminals its ticket", async () => {
+    const firestore = new MemoryFirestore();
+    const enrollment = candidate();
+    firestore.values.set(TICKET_PATH, { ...enrollmentTicket(enrollment), attemptCount: 3 });
+    firestore.values.set(enrollmentPath(enrollment), {
+      ...enrollment,
+      beginTicketId: ingressTicketCredential.ticketId,
+      revokedAtMillis: NOW,
+      revokedReason: "operator_revoke",
+    } as unknown as Record<string, unknown>);
+    const store = new FirestoreIngressTicketStore(firestore as unknown as Firestore);
+
+    await assert.rejects(
+      store.claimEnrollmentBegin(ingressTicketCredential, enrollment, NOW + 1, 75_000, 3),
+      (error: unknown) => error instanceof PublicError && error.code === "rate_limited",
+    );
+    assert.equal(firestore.values.get(enrollmentPath(enrollment))?.revokedReason, "operator_revoke");
+    assert.equal(firestore.values.get(TICKET_PATH)?.status, "terminal");
+  });
 });
 
 describe("Firestore ingress state adapters", () => {
@@ -351,5 +406,22 @@ describe("Firestore ingress state adapters", () => {
     await store.activate(UID, enrollment.deviceId, enrollment.agentId, second.leaseToken);
     assert.equal(firestore.values.get(enrollmentPath(enrollment))?.active, true);
     assert.equal(firestore.values.get(enrollmentPath(enrollment))?.activationBlob, undefined);
+  });
+
+  it("rejects revoked active enrollments from verifier use", async () => {
+    const firestore = new MemoryFirestore();
+    const enrollment = candidate();
+    firestore.values.set(enrollmentPath(enrollment), {
+      ...enrollment,
+      active: true,
+      revokedAtMillis: NOW,
+      revokedReason: "operator_revoke",
+    } as unknown as Record<string, unknown>);
+    const store = new FirestoreEnrollmentStore(firestore as unknown as Firestore);
+
+    await assert.rejects(
+      store.requireActive(UID, enrollment.deviceId),
+      (error: unknown) => error instanceof PublicError && error.status === 403 && error.code === "verification_failed",
+    );
   });
 });

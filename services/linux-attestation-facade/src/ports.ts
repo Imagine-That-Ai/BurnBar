@@ -69,6 +69,10 @@ export interface EnrollmentRecord {
   beginTicketId?: string;
   activationLeaseToken?: string;
   activationLeaseExpiresAtMillis?: number;
+  revokedAtMillis?: number;
+  revokedAt?: unknown;
+  revokedReason?: string;
+  revocationReason?: string;
   active: boolean;
 }
 
@@ -79,6 +83,10 @@ export interface EnrollmentCandidate extends EnrollmentRecord {
   beginTicketId?: never;
   activationLeaseToken?: never;
   activationLeaseExpiresAtMillis?: never;
+  revokedAtMillis?: never;
+  revokedAt?: never;
+  revokedReason?: never;
+  revocationReason?: never;
   active: false;
 }
 

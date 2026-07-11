@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { Firestore } from "firebase-admin/firestore";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { ATTESTATION_KIND, PROTOCOL_VERSION } from "./contracts.js";
-import { sameEnrollmentIdentity } from "./enrollment.js";
+import { enrollmentRevoked, sameEnrollmentIdentity } from "./enrollment.js";
 import { PublicError } from "./errors.js";
 import {
   enrollmentMaterialHashes,
@@ -240,6 +240,7 @@ export class FirestoreIngressTicketStore implements IngressTicketStore {
       }
       if (ticket.status === "succeeded") {
         if (existing === undefined
+            || enrollmentRevoked(existing)
             || existing.activationBlob === undefined
             || existing.beginTicketId !== ticket.ticketId
             || !sameEnrollmentIdentity(existing, candidate)) throw conflict();
@@ -252,11 +253,14 @@ export class FirestoreIngressTicketStore implements IngressTicketStore {
       const attemptCount = ticket.attemptCount ?? 0;
       if (attemptCount >= maxAttempts) {
         transaction.update(ticketRef, { status: "terminal", terminalAt: Timestamp.fromMillis(nowMillis) });
-        if (existing !== undefined && !existing.active && existing.beginTicketId === ticket.ticketId) transaction.delete(enrollmentRef);
+        if (existing !== undefined
+            && !existing.active
+            && !enrollmentRevoked(existing)
+            && existing.beginTicketId === ticket.ticketId) transaction.delete(enrollmentRef);
         return { kind: "attempts_exhausted" as const };
       }
       if (existing !== undefined) {
-        if (existing.active || !sameEnrollmentIdentity(existing, candidate)) throw conflict();
+        if (enrollmentRevoked(existing) || existing.active || !sameEnrollmentIdentity(existing, candidate)) throw conflict();
         if (existing.beginTicketId === undefined) throw conflict();
         if (existing.beginTicketId !== ticket.ticketId) {
           if ((existing.registrationLeaseExpiresAtMillis ?? 0) > nowMillis
@@ -327,6 +331,7 @@ export class FirestoreIngressTicketStore implements IngressTicketStore {
           || ticket.uid !== uid
           || ticket.deviceId !== deviceId
           || existing === undefined
+          || enrollmentRevoked(existing)
           || existing.active
           || existing.beginTicketId !== ticketId
           || existing.registrationLeaseToken !== leaseToken) throw conflict();

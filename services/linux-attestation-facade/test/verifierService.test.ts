@@ -6,7 +6,9 @@ import { PublicError } from "../src/errors.js";
 import { VerifierService } from "../src/verifierService.js";
 import { CryptoSigner, FakeKeylime, fixture, MemoryEnrollments, MemoryObjects, MemoryState, policyStore } from "./helpers.js";
 
-function harness(now = 1_700_000_000_000) {
+const NOW = 1_700_000_000_000;
+
+function harness(now = NOW) {
   let currentNow = now;
   const data = fixture(now);
   const state = new MemoryState();
@@ -81,6 +83,42 @@ describe("VerifierService", () => {
     const h = harness();
     h.keylime.result = { valid: false, receipt: { privateFailure: "PCR 7 secret mismatch" } };
     await assert.rejects(h.service.verify(h.request), (error: unknown) => error instanceof PublicError && error.publicMessage === "Device attestation was not accepted");
+    assert.equal(h.state.records.get("upload-1")!.status, "rejected");
+  });
+
+  it("rejects a revoked enrollment before calling Keylime or signing", async () => {
+    const h = harness();
+    h.enrollments.records[0]!.revokedAtMillis = NOW + 1;
+    h.enrollments.records[0]!.revokedReason = "operator_revoke";
+    await assert.rejects(h.service.verify(h.request), (error: unknown) =>
+      error instanceof PublicError && error.publicMessage === "Device attestation was not accepted");
+    assert.equal(h.keylime.calls, 0);
+    assert.equal(h.signer.calls, 0);
+    assert.equal(h.state.records.get("upload-1")!.status, "rejected");
+  });
+
+  it("rechecks revocation after Keylime before signing a verdict", async () => {
+    const h = harness();
+    h.keylime.onVerify = () => {
+      h.enrollments.records[0]!.revokedAtMillis = NOW + 1;
+      h.enrollments.records[0]!.revokedReason = "operator_revoke";
+    };
+    await assert.rejects(h.service.verify(h.request), (error: unknown) =>
+      error instanceof PublicError && error.publicMessage === "Device attestation was not accepted");
+    assert.equal(h.keylime.calls, 1);
+    assert.equal(h.signer.calls, 0);
+    assert.equal(h.state.records.get("upload-1")!.status, "rejected");
+  });
+
+  it("rechecks enrollment identity after Keylime before signing a verdict", async () => {
+    const h = harness();
+    h.keylime.onVerify = () => {
+      h.enrollments.records[0]!.akTpmBase64 = Buffer.from("replacement-ak").toString("base64");
+    };
+    await assert.rejects(h.service.verify(h.request), (error: unknown) =>
+      error instanceof PublicError && error.publicMessage === "Device attestation was not accepted");
+    assert.equal(h.keylime.calls, 1);
+    assert.equal(h.signer.calls, 0);
     assert.equal(h.state.records.get("upload-1")!.status, "rejected");
   });
 

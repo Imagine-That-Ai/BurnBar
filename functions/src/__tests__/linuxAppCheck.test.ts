@@ -7,9 +7,11 @@ import { PLACEHOLDER_LINUX_APP_CHECK_APP_ID } from "../config.js";
 import {
   LINUX_APP_CHECK_TOKEN_TTL_MS,
   LINUX_ATTESTATION_CHALLENGE_TTL_MS,
+  LINUX_ATTESTATION_KIND,
   type LinuxAttestationBinding,
   type LinuxAttestationChallenge,
   type LinuxAttestationDecision,
+  type LinuxAttestationEnrollmentTrustStore,
   type LinuxAttestationVerifier,
 } from "../security/linuxAttestation.js";
 
@@ -66,6 +68,16 @@ class SharedChallengeStore {
   }
 }
 
+class FakeEnrollmentTrustStore implements LinuxAttestationEnrollmentTrustStore {
+  calls: Array<{ uid: string; deviceId: string }> = [];
+  error: Error | undefined = undefined;
+
+  async requireActive(uid: string, deviceId: string): Promise<void> {
+    this.calls.push({ uid, deviceId });
+    if (this.error !== undefined) throw this.error;
+  }
+}
+
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -93,15 +105,18 @@ function stubMinter(): AppCheckTokenMinter & { calls: Array<{ appId: string; ttl
   return Object.assign(fn, { calls });
 }
 
-async function challengeFor(store: SharedChallengeStore): Promise<LinuxAttestationChallenge> {
-  return issueLinuxAppCheckChallengeCore({ binding: binding(), store, nowMillis: NOW });
+async function challengeFor(
+  store: SharedChallengeStore,
+  overrides: Partial<LinuxAttestationBinding> = {},
+): Promise<LinuxAttestationChallenge> {
+  return issueLinuxAppCheckChallengeCore({ binding: binding(overrides), store, nowMillis: NOW });
 }
 
 function evidence(challenge: LinuxAttestationChallenge, mac = mockMac(challenge)): Record<string, unknown> {
   return {
     challengeId: challenge.challengeId,
     challenge: challenge.challenge,
-    kind: MOCK_ATTESTATION_KIND,
+    kind: challenge.attestationKind,
     evidence: { mac },
   };
 }
@@ -282,6 +297,48 @@ describe("Linux App Check durable challenge boundary", () => {
 
     await expect(mint).rejects.toThrow(/mismatched identity binding/i);
     expect(minter.calls).toHaveLength(0);
+  });
+
+  it("rechecks production enrollment trust before consuming a challenge or minting", async () => {
+    const store = new SharedChallengeStore();
+    const challenge = await challengeFor(store, { attestationKind: LINUX_ATTESTATION_KIND });
+    const minter = stubMinter();
+    const sessions: LinuxAttestationDecision[] = [];
+    const enrollmentTrustStore = new FakeEnrollmentTrustStore();
+    enrollmentTrustStore.error = new Error("revoked enrollment");
+    const verifier: LinuxAttestationVerifier = {
+      kind: LINUX_ATTESTATION_KIND,
+      async verify({ challenge: boundChallenge }) {
+        return {
+          ...boundChallenge,
+          trustClass: "linux_lower_trust",
+          verifierReceiptHash: "d".repeat(64),
+          attestedAtMillis: NOW,
+          expiresAtMillis: boundChallenge.expiresAtMillis,
+        };
+      },
+    };
+
+    await expect(
+      mintLinuxAppCheckTokenCore({
+        uid: UID,
+        rawEvidence: evidence(challenge),
+        store,
+        verifiers: new Map([[LINUX_ATTESTATION_KIND, verifier]]),
+        enrollmentTrustStore,
+        allowedAppIDs: [APP_ID],
+        createToken: minter,
+        recordSession: async (decision) => {
+          sessions.push(decision);
+        },
+        nowMillis: NOW,
+      }),
+    ).rejects.toThrow(/revoked enrollment/i);
+
+    expect(enrollmentTrustStore.calls).toEqual([{ uid: UID, deviceId: challenge.deviceId }]);
+    expect(minter.calls).toHaveLength(0);
+    expect(sessions).toHaveLength(0);
+    expect((await store.load(UID, challenge.challengeId))?.consumedAtMillis).toBeUndefined();
   });
 
   it("derives a unique session id even when the verifier reuses a receipt hash", async () => {

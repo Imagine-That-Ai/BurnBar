@@ -81,6 +81,10 @@ export interface LinuxAttestationChallengeStore {
   consume(uid: string, challengeId: string, expectedChallengeHash: string, nowMillis: number): Promise<void>;
 }
 
+export interface LinuxAttestationEnrollmentTrustStore {
+  requireActive(uid: string, deviceId: string): Promise<void>;
+}
+
 export interface LinuxAttestationVerifier {
   readonly kind: string;
   verify(input: {
@@ -134,6 +138,10 @@ export class GoogleCloudRunIdentityTokenProvider implements LinuxVerifierIdentit
 
 export function sha256Hex(value: string | Buffer): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+export function linuxAttestationEnrollmentDocId(uid: string, deviceId: string): string {
+  return sha256Hex([uid, deviceId].join("\n"));
 }
 
 function boundedLabel(raw: unknown, field: string, maxLength: number): string {
@@ -256,6 +264,40 @@ export class FirestoreLinuxAttestationChallengeStore implements LinuxAttestation
         consumedAt: Timestamp.fromMillis(nowMillis),
       });
     });
+  }
+}
+
+function isActiveLinuxAttestationEnrollment(
+  raw: FirebaseFirestore.DocumentData | undefined,
+  uid: string,
+  deviceId: string,
+): boolean {
+  return raw?.uid === uid
+    && raw.deviceId === deviceId
+    && raw.active === true
+    && typeof raw.agentId === "string"
+    && raw.agentId.length > 0
+    && typeof raw.akTpmBase64 === "string"
+    && raw.akTpmBase64.length > 0
+    && typeof raw.tpmEkPem === "string"
+    && raw.tpmEkPem.length > 0
+    && typeof raw.revokedAtMillis !== "number"
+    && raw.revokedAt == null
+    && !(typeof raw.revokedReason === "string" && raw.revokedReason.length > 0)
+    && !(typeof raw.revocationReason === "string" && raw.revocationReason.length > 0);
+}
+
+export class FirestoreLinuxAttestationEnrollmentTrustStore implements LinuxAttestationEnrollmentTrustStore {
+  constructor(
+    private readonly firestore: Firestore,
+    private readonly collection = "linux_attestation_enrollments",
+  ) {}
+
+  async requireActive(uid: string, deviceId: string): Promise<void> {
+    const snap = await this.firestore.collection(this.collection).doc(linuxAttestationEnrollmentDocId(uid, deviceId)).get();
+    if (!snap.exists || !isActiveLinuxAttestationEnrollment(snap.data(), uid, deviceId)) {
+      throw linuxAttestationError("verdict_denied");
+    }
   }
 }
 
@@ -567,4 +609,5 @@ export const __testing__ = {
   abortable,
   linuxAttestationError,
   parseStoredChallenge,
+  isActiveLinuxAttestationEnrollment,
 };
