@@ -269,7 +269,21 @@ builder and verifier. The remediation wave also replaced the false-
 green certification baseline, added Linux-native secret custody, moved gateway
 authentication behind native proxies, introduced a runtime capability manifest,
 added installed-app accessibility and matched-performance gates, and implemented
-a signed update-feed verifier plus two-architecture release assembly.</p>
+a signed update-feed verifier plus two-architecture release assembly. The Linux
+channel source now also has four role-isolated Cloudflare Workers, create-only
+immutable uploads, no-pointer snapshot preview, conditional repository and feed
+per-channel pointers with isolated retained rollback descriptors, exact
+public-byte/header verification, rollback/deactivation
+containment, generation-plus-ETag ABA defense, write-ahead activation intent,
+official-key feed verification with artifact binding, rollback feed rebinding,
+and Sigstore-attested publication receipts. Stable remains the legacy root-feed
+alias while prerelease and nightly use channel-qualified public routes.
+First-cutover compensation restores the applicable legacy direct-R2 paths;
+later unrecoverable rollback fails closed behind an inactive tombstone. This is
+source closure,
+not live promotion evidence: production DNS, credentials, OpenPGP identity,
+published bytes, installed lifecycle, and scheduled metadata refresh remain
+unproven.</p>
 <p>Mercury is no longer a missing code path: Linux now has daemon-owned iroh session
 control, inbound and outbound file transfer, call/mirror state, sealed media
 frames, portal/PipeWire capture, codec probing, consent/revocation, a call HUD,
@@ -2113,9 +2127,9 @@ queueing, locked keyring, and redaction.</li>
 </tr>
 <tr>
 <td>LNX-CHANNEL-001</td>
-<td>Source foundation implemented; deployment and lifecycle blocked</td>
-<td>Fail-closed apt/RPM repository builder and verifier, architecture-specific and checksum-addressed indices, signed seven-day apt expiry, pinned signing-subkey capability/strength/lifetime policy and signature-identity verification, immutable RPM header/payload comparison, feed/channel and immutable release-package root binding, R2-before-GitHub publish order, and explicit AUR/Flatpak non-promotion</td>
-<td>Provision the recoverable production OpenPGP public key/fingerprints and CI private-key secret; add one-switch RPM repository activation and scheduled pre-expiry apt metadata refresh at the delivery layer; build and publish the exact-candidate closure; verify public copies and interrupted-publish rollback; prove clean install, update, rollback, and uninstall on both architectures; resolve AUR/Flatpak promotion decisions</td>
+<td>Role-isolated atomic publication source implemented; live deployment, refresh, and lifecycle blocked</td>
+<td>Fail-closed apt/RPM builder and verifier; checksum-addressed indices; seven-day apt expiry; pinned signing-subkey policy; immutable RPM identity proof; closure-addressed R2 snapshots; separate upload/control/serving/feed Workers with least-privilege routes and distinct control credentials; create-only upload with bounded legacy-byte adoption and mandatory large-object digest metadata; no-pointer preview lifecycle; snapshot/generation/ETag repository CAS and per-channel feed CAS/history; write-ahead activation intent; official-key Ed25519 feed verification plus signed-artifact R2 binding; channel-isolated retained feed descriptor rebinding after rollback; channel-qualified snapshot/bootstrap/feed routing; exact public header/byte proof; legacy direct-R2 first-cutover restoration or later fail-closed deactivation; draft-aware, repeated-absence GitHub cleanup; Sigstore-attested operational receipts; explicit AUR/Flatpak non-promotion</td>
+<td>Provision the production OpenPGP identity and CI key, Cloudflare credentials/DNS and distinct upload/activation secrets; deploy and exercise all four Workers; implement scheduled metadata-only pre-expiry refresh with signed closure chaining; prove an installed keyring overlap/rotation lifecycle; publish the exact candidate; fault-inject upload/activation/feed/rollback/deactivation and ambiguous responses; prove clean install, update, rollback, and uninstall on both architectures; resolve AUR/Flatpak promotion decisions</td>
 </tr>
 <tr>
 <td>LNX-EVT-001</td>
@@ -2301,8 +2315,8 @@ truth-sync, not the first time behavior is documented.</p>
 <tr>
 <td>LNX-CHANNEL-001</td>
 <td>LNX-PKG-001, LNX-REL-VERIFY-001</td>
-<td>Fail-closed apt/RPM metadata construction, bounded apt freshness, pinned signing-subkey policy and identity proof, immutable RPM header/payload comparison, immutable release URLs, feed/channel binding, release-root binding, and verification are source-implemented; provision the production OpenPGP identity, add atomic RPM snapshot activation and scheduled pre-expiry refresh, publish and verify exact-candidate mirrors, correct and certify the AUR recipe, and retain Flatpak as unpromoted until its portal/keyring contract passes</td>
-<td>Each declared channel installs the correct architecture and verifies repository/package metadata; missing/expired/excessive freshness and interrupted publication fail without stranding the previous snapshot; metadata refresh completes before expiry; public bytes match the repository closure; unpromoted channels are explicitly labeled and absent from install copy</td>
+<td>Fail-closed apt/RPM construction, bounded freshness, signing identity proof, immutable release URLs, release-root binding, create-only authenticated uploads, closure-addressed snapshots, shared immutable leaves, role-isolated upload/control/serving/feed Workers, snapshot/generation/ETag repository CAS, independent per-channel feed CAS with retained-descriptor rebinding, pre-activation snapshot lifecycle, channel-qualified bootstrap/feed routing, exact public-byte/header proof, write-ahead intent and ambiguous-result reconciliation, official-key feed/artifact validation, rollback/deactivation compensation, draft-aware GitHub cleanup with repeated dual-source absence proof, and attested publication receipts are source-implemented; provision and deploy the production identities/infrastructure, add scheduled signed metadata-only refresh, prove installed keyring overlap/rotation, publish and verify exact-candidate mirrors, correct and certify AUR, and retain Flatpak as unpromoted until its portal/keyring contract passes</td>
+<td>Each declared channel installs the correct architecture and verifies repository/package metadata; failed, interrupted, ambiguous, drifted, ABA-raced, concurrent, or downstream publication cannot mutate immutable bytes or leave an unverified candidate active; stale CAS and malformed/missing targets fail closed; rollback selects a retained unexpired generation and restores its same-channel signed feed without consuming another channel&#39;s history; first activation restores applicable legacy direct-R2 behavior when deactivated; unavailable rollback disables mutable routes; metadata refresh completes before expiry without changing package/RPM bytes; public bytes match the signed closure; unpromoted channels remain absent from install copy</td>
 </tr>
 <tr>
 <td>LNX-EVT-001</td>

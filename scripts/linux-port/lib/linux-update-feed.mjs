@@ -55,6 +55,10 @@ export function validateFeedDocument(document, options = {}) {
   if (!COMMIT.test(document?.gitCommit ?? '')) failures.push('feed gitCommit must be a 40-character lowercase SHA.');
   if (!CHANNELS.has(document?.channel)) failures.push('feed channel is invalid.');
   if (!document?.publishedAt || Number.isNaN(Date.parse(document.publishedAt))) failures.push('feed publishedAt must be an ISO date.');
+  if ('notes' in (document ?? {})
+      && (typeof document.notes !== 'string' || document.notes.length === 0 || document.notes.length > 8192)) {
+    failures.push('feed notes must be a non-empty string of at most 8192 characters when present.');
+  }
   if (options.previousVersion && compareSemver(document?.version, options.previousVersion) <= 0) {
     failures.push('feed version is not monotonic relative to the previous release.');
   }

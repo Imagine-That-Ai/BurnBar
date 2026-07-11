@@ -22,6 +22,19 @@ const COMMIT = '0123456789abcdef0123456789abcdef01234567';
 const FINGERPRINT = '0123456789ABCDEF0123456789ABCDEF01234567';
 const sourceRepoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
+test('repository Worker pins the release-manifest Ed25519 feed identity exactly', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(sourceRepoRoot, 'packaging/linux/release-manifest.json'), 'utf8'));
+  const publicKeyPath = path.join(sourceRepoRoot, manifest.signing.publicKey);
+  const spki = crypto.createPublicKey(fs.readFileSync(publicKeyPath)).export({ type: 'spki', format: 'der' });
+  const fingerprint = crypto.createHash('sha256').update(spki).digest('hex');
+  const worker = fs.readFileSync(path.join(sourceRepoRoot, 'workers/linux-repository-router/src/index.mjs'), 'utf8');
+  const bundledSpki = worker.match(/OFFICIAL_FEED_PUBLIC_KEY_SPKI_BASE64 = '([^']+)'/u)?.[1];
+  const bundledFingerprint = worker.match(/OFFICIAL_FEED_PUBLIC_KEY_SPKI_SHA256 = '([a-f0-9]{64})'/u)?.[1];
+  assert.equal(fingerprint, manifest.signing.publicKeySpkiSha256);
+  assert.equal(bundledSpki, spki.toString('base64'));
+  assert.equal(bundledFingerprint, fingerprint);
+});
+
 function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-repository-test-'));
   const releaseOut = path.join(root, 'release');
@@ -407,7 +420,7 @@ test('builder rejects a package closure generated beyond the five-minute clock-s
   fs.rmSync(value.root, { recursive: true, force: true });
 });
 
-test('release workflow preserves key custody, lifecycle, attestation, and metadata-last publication order', () => {
+test('release workflow preserves key custody, lifecycle, attestation, atomic activation, and feed order', () => {
   const workflow = fs.readFileSync(path.join(sourceRepoRoot, '.github/workflows/linux-release.yml'), 'utf8');
   const lifecycle = fs.readFileSync(path.join(sourceRepoRoot, 'scripts/linux-port/verify-linux-repository-lifecycle.sh'), 'utf8');
   const upload = fs.readFileSync(path.join(sourceRepoRoot, 'scripts/upload-linux-downloads-r2.sh'), 'utf8');
@@ -420,10 +433,23 @@ test('release workflow preserves key custody, lifecycle, attestation, and metada
     'Pre-attestation Linux release verification',
     'Attest Linux release sidecars and packages',
     'Final Linux release verification',
-    'Configure branded Linux update origin',
-    'Publish signed update feed to downloads origin',
+    'Provision branded Linux repository storage',
+    'Publish immutable Linux release and repository snapshot',
+    'Verify exact snapshot apt and dnf lifecycle before activation',
+    'Atomically activate Linux repository snapshot',
+    'Deploy branded Linux repository serving routes',
+    'Verify active public Linux repository bytes',
+    'Verify clean public apt and dnf repository lifecycle',
+    'Drill repository rollback and candidate reactivation',
+    'Atomically publish signed update feed pointer',
+    'Deploy branded Linux update feed routes',
+    'Verify signed update feed pointer and public bytes',
     'Verify live Linux update feed after publish',
-    'Publish Linux GitHub release'
+    'Preserve and attest repository publication evidence',
+    'Publish Linux GitHub release',
+    'Remove partial draft GitHub release',
+    'Compensate failed repository publication',
+    'Enforce atomic repository publication outcome'
   ];
   let cursor = -1;
   for (const marker of orderedWorkflowMarkers) {
@@ -436,10 +462,53 @@ test('release workflow preserves key custody, lifecycle, attestation, and metada
   assert.match(workflow, /docker\/setup-qemu-action@[a-f0-9]{40}/u);
   for (const required of [
     'linux/amd64', 'linux/arm64', 'apt-get remove -y open-burn-bar',
-    'dnf --assumeyes remove open-burn-bar', 'repo_gpgcheck=1', '@sha256:'
+    'dnf --assumeyes remove open-burn-bar', 'repo_gpgcheck=1', '@sha256:',
+    'activeSnapshotId', 'transcriptSha256', 'lifecycle_mode', 'receipt_base_url',
+    'OPENBURNBAR_LINUX_REPOSITORY_PREVIEW_SNAPSHOT', 'repository-preview/$channel/$preview_snapshot'
   ]) assert.ok(lifecycle.includes(required), required);
-  assert.ok(upload.indexOf('repository_packages[@]') < upload.indexOf('repository_pointer_documents[@]'));
-  assert.ok(upload.indexOf('repository_pointer_documents[@]') < upload.indexOf('repository_root_documents[@]'));
+  assert.ok(upload.indexOf('for file in "${shared_repository_files[@]}"')
+    < upload.indexOf('for file in "${repository_files[@]}"'));
+  assert.doesNotMatch(upload, /put_object[^\n]*['"]latest-linux\.json['"]/u);
+});
+
+test('public lifecycle consumes canonical published onboarding while local mode keeps isolated fixtures', () => {
+  const lifecycle = fs.readFileSync(
+    path.join(sourceRepoRoot, 'scripts/linux-port/verify-linux-repository-lifecycle.sh'),
+    'utf8'
+  );
+
+  for (const publishedPath of [
+    'apt/openburnbar-archive-keyring.gpg',
+    'apt/openburnbar-$channel-archive-keyring.gpg',
+    'apt/openburnbar-$channel.sources',
+    'rpm/RPM-GPG-KEY-openburnbar',
+    'rpm/RPM-GPG-KEY-openburnbar-$channel',
+    'rpm/openburnbar-$channel.repo'
+  ]) assert.ok(lifecycle.includes(`$repository_base_url/${publishedPath}`), publishedPath);
+  for (const publicInput of [
+    '"$OPENBURNBAR_APT_KEY_URL" --output "$keyring"',
+    '"$OPENBURNBAR_APT_SOURCES_URL" --output "$published_sources"',
+    '"$OPENBURNBAR_RPM_KEY_URL" --output "$key"',
+    '"$OPENBURNBAR_RPM_REPO_URL" --output "$published_repo"'
+  ]) assert.ok(lifecycle.includes(publicInput), publicInput);
+
+  assert.match(lifecycle, /gpg --batch --show-keys "\$keyring"/u);
+  assert.match(lifecycle, /gpg --batch --show-keys "\$key"/u);
+  assert.match(lifecycle, /cmp --silent \/tmp\/openburnbar\.expected\.sources "\$published_sources"/u);
+  assert.match(lifecycle, /cmp --silent \/tmp\/openburnbar\.expected\.repo "\$published_repo"/u);
+  assert.match(lifecycle, /mode === 'preview' \? 'preview-onboarding-with-synthesized-base'/u);
+  assert.match(lifecycle, /onboarding: mode !== 'local'/u);
+  assert.match(lifecycle, /previewSnapshotId: mode === 'preview' \? activeSnapshotId : null/u);
+  assert.match(lifecycle, /sed "s\|URIs: \$OPENBURNBAR_CANONICAL_REPOSITORY_BASE_URL\/apt/u);
+  assert.match(lifecycle, /sed "s\|baseurl=\$OPENBURNBAR_CANONICAL_REPOSITORY_BASE_URL\/rpm\//u);
+  assert.ok(lifecycle.indexOf('closure_sha256="$(sha256sum')
+    < lifecycle.indexOf('active_snapshot_id="$(curl --disable'));
+  assert.match(lifecycle, /if \[\[ "\$active_snapshot_id" != "\$closure_sha256" \]\]/u);
+
+  assert.match(lifecycle, /apt_mount_args=\(-v "\$repository_root\/apt\/openburnbar-archive-keyring\.gpg:/u);
+  assert.match(lifecycle, /rpm_mount_args=\(-v "\$repository_root\/rpm\/RPM-GPG-KEY-openburnbar:/u);
+  assert.match(lifecycle, /cp \/openburnbar-repository\.gpg \/etc\/apt\/keyrings\/openburnbar-repository\.gpg/u);
+  assert.match(lifecycle, /gpgkey=file:\/\/\/openburnbar-rpm-key/u);
 });
 
 function installFakeTools(bin) {

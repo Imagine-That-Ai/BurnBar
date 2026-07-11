@@ -1,0 +1,34 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "openburnbar-linux-repository-control",
+  "main": "src/index.mjs",
+  "compatibility_date": "2026-07-10",
+  "workers_dev": false,
+  "routes": [
+    {
+      "pattern": "downloads.burnbar.ai/linux/repository-admin/*",
+      "zone_name": "burnbar.ai"
+    },
+    {
+      "pattern": "downloads.burnbar.ai/linux/repository-activations/*",
+      "zone_name": "burnbar.ai"
+    },
+    {
+      "pattern": "downloads.burnbar.ai/linux/update-feed-activation.json",
+      "zone_name": "burnbar.ai"
+    },
+    {
+      "pattern": "downloads.burnbar.ai/linux/update-feed-activations/*",
+      "zone_name": "burnbar.ai"
+    }
+  ],
+  "vars": {
+    "WORKER_ROLE": "control"
+  },
+  "r2_buckets": [
+    {
+      "binding": "REPOSITORY_BUCKET",
+      "bucket_name": "openburnbar-downloads"
+    }
+  ]
+}

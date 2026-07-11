@@ -35,7 +35,7 @@ permissions:
   attestations: write
 
 concurrency:
-  group: linux-release-${{ github.ref }}
+  group: linux-repository-release
   cancel-in-progress: false
 
 jobs:
@@ -363,7 +363,7 @@ jobs:
       - name: Attest Linux release sidecars and packages
         run: |
           set -euo pipefail
-          mapfile -t files < <(find "$OPENBURNBAR_LINUX_RELEASE_OUT" -type f \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name 'openburnbar-daemon-*' -o -name '*.spdx.json' -o -name '*.openvex.json' -o -name '*checksums.txt' -o -name '*source-*.tar' -o -name '*parity-attestation.json' -o -name '*provenance-predicate.json' -o -name 'repository-closure.json' -o -name 'repository-lifecycle.json' -o -name 'latest-linux.draft.json' \) | sort)
+          mapfile -t files < <(find "$OPENBURNBAR_LINUX_RELEASE_OUT" -type f \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name 'openburnbar-daemon-*' -o -name '*.spdx.json' -o -name '*.openvex.json' -o -name '*checksums.txt' -o -name '*source-*.tar' -o -name '*parity-attestation.json' -o -name '*provenance-predicate.json' -o -name 'repository-closure.json' -o -name 'repository-lifecycle.json' \) | sort)
           test "${#files[@]}" -gt 0
           for file in "${files[@]}"; do
             predicate="${file}.predicate.json"
@@ -385,7 +385,7 @@ jobs:
           --phase final
           --version '${{ needs.resolve-release.outputs.version }}'
 
-      - name: Configure branded Linux update origin
+      - name: Provision branded Linux repository storage
         if: needs.resolve-release.outputs.publish_allowed == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -393,31 +393,203 @@ jobs:
           OPENBURNBAR_R2_BUCKET: ${{ vars.OPENBURNBAR_R2_BUCKET }}
           OPENBURNBAR_R2_CUSTOM_DOMAIN: downloads.burnbar.ai
           OPENBURNBAR_R2_ZONE_ID: ${{ secrets.OPENBURNBAR_R2_ZONE_ID }}
-        run: bash scripts/setup-macos-downloads-r2.sh
+          OPENBURNBAR_LINUX_REPOSITORY_UPLOAD_TOKEN: ${{ secrets.OPENBURNBAR_LINUX_REPOSITORY_UPLOAD_TOKEN }}
+          OPENBURNBAR_LINUX_REPOSITORY_ACTIVATION_TOKEN: ${{ secrets.OPENBURNBAR_LINUX_REPOSITORY_ACTIVATION_TOKEN }}
+        run: bash scripts/setup-linux-downloads-r2.sh --provision-only
 
-      - name: Publish signed update feed to downloads origin
+      - name: Publish immutable Linux release and repository snapshot
         if: needs.resolve-release.outputs.publish_allowed == 'true'
+        env:
+          OPENBURNBAR_R2_PUBLIC_BASE_URL: https://downloads.burnbar.ai
+          OPENBURNBAR_LINUX_REPOSITORY_UPLOAD_TOKEN: ${{ secrets.OPENBURNBAR_LINUX_REPOSITORY_UPLOAD_TOKEN }}
+        run: bash scripts/upload-linux-downloads-r2.sh
+
+      - name: Verify exact snapshot apt and dnf lifecycle before activation
+        if: needs.resolve-release.outputs.publish_allowed == 'true'
+        env:
+          OPENBURNBAR_LINUX_REPOSITORY_VERSION: ${{ needs.resolve-release.outputs.version }}
+          OPENBURNBAR_LINUX_REPOSITORY_CHANNEL: ${{ needs.resolve-release.outputs.channel }}
+          OPENBURNBAR_LINUX_REPOSITORY_LIFECYCLE_RECEIPT: ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/preview-repository-lifecycle.json
+        run: |
+          set -euo pipefail
+          snapshot="$(node -e "const fs=require('node:fs');const crypto=require('node:crypto');process.stdout.write(crypto.createHash('sha256').update(fs.readFileSync(process.argv[1])).digest('hex'))" "$OPENBURNBAR_LINUX_RELEASE_OUT/repositories/repository-closure.json")"
+          OPENBURNBAR_LINUX_REPOSITORY_PREVIEW_SNAPSHOT="$snapshot" \
+            bash scripts/linux-port/verify-linux-repository-lifecycle.sh
+
+      - name: Atomically activate Linux repository snapshot
+        id: activate_repository
+        if: needs.resolve-release.outputs.publish_allowed == 'true'
+        env:
+          OPENBURNBAR_LINUX_REPOSITORY_ACTIVATION_TOKEN: ${{ secrets.OPENBURNBAR_LINUX_REPOSITORY_ACTIVATION_TOKEN }}
+          OPENBURNBAR_R2_PUBLIC_BASE_URL: https://downloads.burnbar.ai
+        run: >
+          node scripts/linux-port/activate-linux-repository.mjs
+          --yes
+          --channel '${{ needs.resolve-release.outputs.channel }}'
+          --reason 'Activate exact release candidate after immutable byte and preview lifecycle verification'
+          --output "$OPENBURNBAR_LINUX_RELEASE_OUT/repository-activation.json"
+
+      - name: Deploy branded Linux repository serving routes
+        id: deploy_repository_routes
+        if: needs.resolve-release.outputs.publish_allowed == 'true'
+        continue-on-error: true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           OPENBURNBAR_R2_BUCKET: ${{ vars.OPENBURNBAR_R2_BUCKET }}
+          OPENBURNBAR_R2_CUSTOM_DOMAIN: downloads.burnbar.ai
+          OPENBURNBAR_R2_ZONE_ID: ${{ secrets.OPENBURNBAR_R2_ZONE_ID }}
+        run: bash scripts/setup-linux-downloads-r2.sh --deploy-only
+
+      - name: Verify active public Linux repository bytes
+        id: verify_public_repository
+        if: >-
+          ${{ needs.resolve-release.outputs.publish_allowed == 'true' &&
+              steps.deploy_repository_routes.outcome == 'success' }}
+        continue-on-error: true
+        env:
           OPENBURNBAR_R2_PUBLIC_BASE_URL: https://downloads.burnbar.ai
-        run: bash scripts/upload-linux-downloads-r2.sh
+          OPENBURNBAR_LINUX_PUBLIC_REPOSITORY_RECEIPT: ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/public-repository-verification.json
+        run: node scripts/linux-port/verify-linux-public-repository.mjs
+
+      - name: Verify clean public apt and dnf repository lifecycle
+        id: verify_public_lifecycle
+        if: >-
+          ${{ needs.resolve-release.outputs.publish_allowed == 'true' &&
+              steps.verify_public_repository.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          OPENBURNBAR_LINUX_REPOSITORY_VERSION: ${{ needs.resolve-release.outputs.version }}
+          OPENBURNBAR_LINUX_REPOSITORY_CHANNEL: ${{ needs.resolve-release.outputs.channel }}
+          OPENBURNBAR_LINUX_REPOSITORY_PUBLIC_BASE_URL: https://downloads.burnbar.ai
+          OPENBURNBAR_LINUX_REPOSITORY_LIFECYCLE_RECEIPT: ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/public-repository-lifecycle.json
+        run: bash scripts/linux-port/verify-linux-repository-lifecycle.sh
+
+      - name: Drill repository rollback and candidate reactivation
+        id: drill_repository_rollback
+        if: >-
+          ${{ needs.resolve-release.outputs.publish_allowed == 'true' &&
+              steps.verify_public_lifecycle.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          OPENBURNBAR_LINUX_REPOSITORY_ACTIVATION_TOKEN: ${{ secrets.OPENBURNBAR_LINUX_REPOSITORY_ACTIVATION_TOKEN }}
+          OPENBURNBAR_R2_PUBLIC_BASE_URL: https://downloads.burnbar.ai
+          OPENBURNBAR_LINUX_REPOSITORY_ROLLBACK_RECEIPT: ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/repository-rollback-drill.json
+        run: node scripts/linux-port/drill-linux-repository-rollback.mjs
+
+      - name: Atomically publish signed update feed pointer
+        id: publish_feed_pointer
+        if: >-
+          ${{ needs.resolve-release.outputs.publish_allowed == 'true' &&
+              steps.drill_repository_rollback.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          OPENBURNBAR_R2_PUBLIC_BASE_URL: https://downloads.burnbar.ai
+          OPENBURNBAR_LINUX_REPOSITORY_ACTIVATION_TOKEN: ${{ secrets.OPENBURNBAR_LINUX_REPOSITORY_ACTIVATION_TOKEN }}
+        run: bash scripts/publish-linux-update-feed-r2.sh --publish-only
+
+      - name: Deploy branded Linux update feed routes
+        id: deploy_feed_routes
+        if: >-
+          ${{ needs.resolve-release.outputs.publish_allowed == 'true' &&
+              steps.publish_feed_pointer.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          OPENBURNBAR_R2_BUCKET: ${{ vars.OPENBURNBAR_R2_BUCKET }}
+          OPENBURNBAR_R2_CUSTOM_DOMAIN: downloads.burnbar.ai
+          OPENBURNBAR_R2_ZONE_ID: ${{ secrets.OPENBURNBAR_R2_ZONE_ID }}
+        run: bash scripts/setup-linux-downloads-r2.sh --feed-only
+
+      - name: Verify signed update feed pointer and public bytes
+        id: verify_public_feed
+        if: >-
+          ${{ needs.resolve-release.outputs.publish_allowed == 'true' &&
+              steps.deploy_feed_routes.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          OPENBURNBAR_R2_PUBLIC_BASE_URL: https://downloads.burnbar.ai
+          OPENBURNBAR_LINUX_REPOSITORY_ACTIVATION_TOKEN: ${{ secrets.OPENBURNBAR_LINUX_REPOSITORY_ACTIVATION_TOKEN }}
+        run: bash scripts/publish-linux-update-feed-r2.sh --verify-only
 
       - name: Verify live Linux update feed after publish
-        if: needs.resolve-release.outputs.publish_allowed == 'true'
-        run: node scripts/linux-port/check-linux-update-feed.mjs --url https://downloads.burnbar.ai/latest-linux.json
+        id: verify_live_feed
+        if: >-
+          ${{ needs.resolve-release.outputs.publish_allowed == 'true' &&
+              steps.verify_public_feed.outcome == 'success' }}
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          channel='${{ needs.resolve-release.outputs.channel }}'
+          if [[ "$channel" == stable ]]; then
+            feed_url='https://downloads.burnbar.ai/latest-linux.json'
+          else
+            feed_url="https://downloads.burnbar.ai/linux/update/$channel/latest-linux.json"
+          fi
+          node scripts/linux-port/check-linux-update-feed.mjs --url "$feed_url"
+
+      - name: Preserve and attest repository publication evidence
+        id: attest_repository_publication
+        if: >-
+          ${{ needs.resolve-release.outputs.publish_allowed == 'true' &&
+              steps.verify_live_feed.outcome == 'success' }}
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          art="$OPENBURNBAR_LINUX_RELEASE_OUT"
+          evidence="$OPENBURNBAR_LINUX_EVIDENCE_OUT"
+          predicate="$(find "$art/sidecars" -maxdepth 1 -type f -name '*provenance-predicate.json' -print -quit)"
+          test -n "$predicate"
+          cp "$art/latest-linux.draft.json" "$art/latest-linux.json"
+          cosign attest-blob --yes \
+            --type "https://openburnbar.dev/attestations/linux-repository-publication/v1" \
+            --predicate "$predicate" \
+            --bundle "$art/latest-linux.json.sigstore.json" \
+            "$art/latest-linux.json"
+          receipts=(
+            "$art/repository-upload-manifest.json"
+            "$art/repository-upload.json"
+            "$art/repository-activation.json"
+            "$art/repository-feed-publication.json"
+            "$art/repository-feed-verification.json"
+            "$evidence/preview-repository-lifecycle.json"
+            "$evidence/public-repository-verification.json"
+            "$evidence/public-repository-lifecycle.json"
+            "$evidence/repository-rollback-drill.json"
+          )
+          for receipt in "${receipts[@]}"; do
+            test -s "$receipt"
+            if [[ "$receipt" == "$art/"* ]]; then
+              preserved="$receipt"
+            else
+              preserved="$art/sidecars/$(basename "$receipt")"
+              cp "$receipt" "$preserved"
+            fi
+            cosign attest-blob --yes \
+              --type "https://openburnbar.dev/attestations/linux-repository-publication/v1" \
+              --predicate "$predicate" \
+              --bundle "${preserved}.sigstore.json" \
+              "$preserved"
+          done
 
       - name: Publish Linux GitHub release
-        if: needs.resolve-release.outputs.publish_allowed == 'true'
+        id: publish_github_release
+        if: >-
+          ${{ needs.resolve-release.outputs.publish_allowed == 'true' &&
+              steps.attest_repository_publication.outcome == 'success' }}
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
+          OPENBURNBAR_R2_PUBLIC_BASE_URL: https://downloads.burnbar.ai
+          OPENBURNBAR_LINUX_REPOSITORY_ACTIVATION_TOKEN: ${{ secrets.OPENBURNBAR_LINUX_REPOSITORY_ACTIVATION_TOKEN }}
         run: |
           set -euo pipefail
           tag="${{ needs.resolve-release.outputs.tag }}"
           art="$OPENBURNBAR_LINUX_RELEASE_OUT"
           cp packaging/linux/openburnbar-linux-ed25519.pub.pem "$art/"
-          cp "$art/latest-linux.draft.json" "$art/latest-linux.json"
+          OPENBURNBAR_LINUX_REPOSITORY_FEED_VERIFICATION_RECEIPT="$RUNNER_TEMP/pre-github-publication-state.json" \
+            bash scripts/publish-linux-update-feed-r2.sh --verify-only
           mapfile -t assets < <(find "$art/artifacts" "$art/sidecars" "$art" -maxdepth 2 -type f \
             \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name 'openburnbar-daemon-*' \
                -o -name '*.ed25519.sig' -o -name '*.asc' -o -name '*.sigstore.json' -o -name '*.spdx.json' \
@@ -425,16 +597,148 @@ jobs:
                -o -name '*parity-attestation.json' -o -name '*provenance-predicate.json' \
                -o -name 'repository-closure.json' -o -name 'repository-closure.json.asc' \
                -o -name 'repository-lifecycle.json' \
+               -o -name 'repository-upload-manifest.json' -o -name 'repository-upload.json' \
+               -o -name 'repository-activation.json' -o -name 'repository-feed-publication.json' \
+               -o -name 'repository-feed-verification.json' -o -name 'repository-rollback-drill.json' \
+               -o -name 'preview-repository-lifecycle.json' -o -name 'public-repository-verification.json' \
+               -o -name 'public-repository-lifecycle.json' \
                -o -name 'latest-linux.json' \
                -o -name 'openburnbar-linux-ed25519.pub.pem' \) | sort -u)
           prerelease=""
           if [[ "${{ github.event_name }}" != "workflow_dispatch" || "${{ inputs.allow_prerelease }}" = "true" ]]; then
             prerelease="--prerelease"
           fi
-          gh release create "$tag" $prerelease \
+          marker="OpenBurnBar-Release-Run: $GITHUB_RUN_ID:$GITHUB_RUN_ATTEMPT"
+          notes="$RUNNER_TEMP/openburnbar-linux-release-notes.txt"
+          printf '%s\n\n%s\n' \
+            'OpenBurnBar Linux candidate for aarch64 and x86_64. Artifacts include Ed25519 signatures, Sigstore bundles, source, SBOM, VEX, provenance, parity attestation, and repository publication receipts.' \
+            "$marker" >"$notes"
+          expected_assets="$RUNNER_TEMP/openburnbar-linux-release-assets.txt"
+          node - "$expected_assets" "${assets[@]}" <<'NODE'
+          const crypto = require('node:crypto');
+          const path = require('node:path');
+          const fs = require('node:fs');
+          const [output, ...assets] = process.argv.slice(2);
+          const records = assets.map((asset) => {
+            const bytes = fs.readFileSync(asset);
+            return {
+              name: path.basename(asset),
+              size: bytes.length,
+              sha256: crypto.createHash('sha256').update(bytes).digest('hex')
+            };
+          }).sort((left, right) => left.name.localeCompare(right.name));
+          const names = records.map((record) => record.name);
+          if (new Set(names).size !== names.length) throw new Error('Linux release asset basenames are not unique');
+          fs.writeFileSync(output, `${JSON.stringify(records, null, 2)}\n`);
+          NODE
+          verify_release_assets() {
+            local phase="$1"
+            local download_dir="$RUNNER_TEMP/openburnbar-linux-release-$phase"
+            rm -rf "$download_dir"
+            mkdir -p "$download_dir"
+            gh release download "$tag" --dir "$download_dir"
+            node - "$expected_assets" "$download_dir" <<'NODE'
+          const crypto = require('node:crypto');
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const [expectedPath, downloadDir] = process.argv.slice(2);
+          const expected = JSON.parse(fs.readFileSync(expectedPath, 'utf8'));
+          const actual = fs.readdirSync(downloadDir, { withFileTypes: true })
+            .filter((entry) => entry.isFile())
+            .map((entry) => {
+              const bytes = fs.readFileSync(path.join(downloadDir, entry.name));
+              return {
+                name: entry.name,
+                size: bytes.length,
+                sha256: crypto.createHash('sha256').update(bytes).digest('hex')
+              };
+            }).sort((left, right) => left.name.localeCompare(right.name));
+          if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+            throw new Error('GitHub release assets do not match the exact local byte closure');
+          }
+          NODE
+          }
+          gh release create "$tag" --draft \
             --title "OpenBurnBar Linux ${{ needs.resolve-release.outputs.version }}" \
-            --notes "OpenBurnBar Linux candidate for aarch64 and x86_64. Artifacts include Ed25519 signatures, Sigstore bundles, source, SBOM, VEX, provenance, and parity attestation." \
-            "${assets[@]}"
+            --notes-file "$notes"
+          gh release upload "$tag" "${assets[@]}"
+          verify_release_assets draft
+          gh release edit "$tag" --draft=false $prerelease
+          verify_release_assets published
+          OPENBURNBAR_LINUX_REPOSITORY_FEED_VERIFICATION_RECEIPT="$RUNNER_TEMP/post-github-publication-state.json" \
+            bash scripts/publish-linux-update-feed-r2.sh --verify-only
+          published="$RUNNER_TEMP/openburnbar-linux-published-release.json"
+          gh release view "$tag" --json isDraft,body,assets >"$published"
+          node - "$published" "$expected_assets" "$marker" <<'NODE'
+          const fs = require('node:fs');
+          const [releasePath, expectedPath, marker] = process.argv.slice(2);
+          const release = JSON.parse(fs.readFileSync(releasePath, 'utf8'));
+          const expected = JSON.parse(fs.readFileSync(expectedPath, 'utf8')).map((asset) => asset.name).sort();
+          const actual = (release.assets ?? []).map((asset) => asset.name).sort();
+          if (release.isDraft !== false || !release.body?.includes(marker)
+              || JSON.stringify(actual) !== JSON.stringify(expected)) {
+            throw new Error('published GitHub release does not match this run and the exact asset closure');
+          }
+          NODE
+
+      - name: Remove partial draft GitHub release
+        id: cleanup_github_release
+        if: >-
+          ${{ always() && needs.resolve-release.outputs.publish_allowed == 'true' &&
+              steps.publish_github_release.outcome == 'failure' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ needs.resolve-release.outputs.tag }}"
+          marker="OpenBurnBar-Release-Run: $GITHUB_RUN_ID:$GITHUB_RUN_ATTEMPT"
+          node scripts/linux-port/cleanup-linux-github-release.mjs --tag "$tag" --marker "$marker"
+
+      - name: Compensate failed repository publication
+        id: compensate_repository_publication
+        if: >-
+          ${{ always() && needs.resolve-release.outputs.publish_allowed == 'true' &&
+              steps.activate_repository.outcome != 'skipped' &&
+              (steps.deploy_repository_routes.outcome != 'success' ||
+               steps.verify_public_repository.outcome != 'success' ||
+               steps.verify_public_lifecycle.outcome != 'success' ||
+               steps.drill_repository_rollback.outcome != 'success' ||
+               steps.publish_feed_pointer.outcome != 'success' ||
+               steps.deploy_feed_routes.outcome != 'success' ||
+               steps.verify_public_feed.outcome != 'success' ||
+               steps.verify_live_feed.outcome != 'success' ||
+               steps.attest_repository_publication.outcome != 'success' ||
+               steps.publish_github_release.outcome != 'success') }}
+        continue-on-error: true
+        env:
+          OPENBURNBAR_LINUX_REPOSITORY_ACTIVATION_TOKEN: ${{ secrets.OPENBURNBAR_LINUX_REPOSITORY_ACTIVATION_TOKEN }}
+          OPENBURNBAR_R2_PUBLIC_BASE_URL: https://downloads.burnbar.ai
+          OPENBURNBAR_LINUX_REPOSITORY_COMPENSATION_RECEIPT: ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/repository-activation-compensation.json
+        run: node scripts/linux-port/compensate-linux-repository-activation.mjs
+
+      - name: Enforce atomic repository publication outcome
+        if: >-
+          ${{ always() && needs.resolve-release.outputs.publish_allowed == 'true' &&
+              steps.activate_repository.outcome != 'skipped' }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ steps.publish_github_release.outcome }}" == "success" ]]; then
+            exit 0
+          fi
+          if [[ "${{ steps.cleanup_github_release.outcome }}" != "success" ]]; then
+            echo "failed Linux publication did not prove its run-owned GitHub release was removed" >&2
+            exit 1
+          fi
+          receipt="$OPENBURNBAR_LINUX_EVIDENCE_OUT/repository-activation-compensation.json"
+          node - "$receipt" <<'NODE'
+          const fs = require('node:fs');
+          const receipt = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          if (receipt.passed !== true || receipt.contained !== true) {
+            throw new Error('failed Linux publication was not proven contained');
+          }
+          NODE
+          echo "Linux publication failed after activation and was contained; failing the release transaction." >&2
+          exit 1
 
       - name: Upload Linux release evidence
         if: always()

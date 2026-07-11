@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import test from 'node:test';
 import { verifyLinuxWorkflowWiring } from './verify-linux-workflow-wiring.mjs';
 
 function valid() {
   return {
+    releaseYaml: fs.readFileSync(new URL('../../.github/workflows/linux-release.yml', import.meta.url), 'utf8'),
     pr: [
       'bash scripts/linux-port/run-linux-native-tests.sh',
       'crates/openburnbar-attestd/**',
@@ -16,6 +18,21 @@ function valid() {
       'build-native-linux-packages-boundary.test.mjs',
       'linux-package-session.test.mjs',
       'linux-native-signing-receipt.test.mjs',
+      'workers/linux-repository-router/**',
+      'workers/linux-repository-router/package-lock.json',
+      'workers/linux-repository-router/wrangler-upload.jsonc',
+      'workers/linux-repository-router/wrangler-control.jsonc',
+      'workers/linux-repository-router/wrangler-feed.jsonc',
+      'setup-linux-downloads-r2.test.mjs',
+      'activate-linux-repository.test.mjs',
+      'drill-linux-repository-rollback.test.mjs',
+      'compensate-linux-repository-activation.test.mjs',
+      'cleanup-linux-github-release.test.mjs',
+      'verify-linux-public-repository.test.mjs',
+      'publish-linux-update-feed-r2.test.mjs',
+      'npm test --prefix workers/linux-repository-router',
+      'wrangler deploy',
+      '--dry-run',
       'render-parity-ledger.mjs --check',
       'npm ci --prefix scripts/linux-port --ignore-scripts',
       'macos-matched-performance',
@@ -59,8 +76,33 @@ function valid() {
       'merge-multiple: false',
       "-o -name 'latest-linux.json'",
       'OPENBURNBAR_R2_CUSTOM_DOMAIN: downloads.burnbar.ai',
+      'group: linux-repository-release',
+      'setup-linux-downloads-r2.sh',
       'upload-linux-downloads-r2.sh',
+      'activate-linux-repository.mjs',
+      'OPENBURNBAR_LINUX_REPOSITORY_UPLOAD_TOKEN',
+      'OPENBURNBAR_LINUX_REPOSITORY_ACTIVATION_TOKEN',
+      'verify-linux-public-repository.mjs',
+      'OPENBURNBAR_LINUX_REPOSITORY_PUBLIC_BASE_URL',
+      'drill-linux-repository-rollback.mjs',
+      'compensate-linux-repository-activation.mjs',
+      'publish-linux-update-feed-r2.sh',
+      'repository-feed-verification.json',
+      'linux-repository-publication/v1',
+      'gh release create "$tag" --draft',
+      'OpenBurnBar-Release-Run:',
+      'Linux release asset basenames are not unique',
+      'GitHub release assets do not match the exact local byte closure',
+      'verify_release_assets draft',
+      'verify_release_assets published',
+      'OPENBURNBAR_LINUX_REPOSITORY_FEED_VERIFICATION_RECEIPT',
+      'steps.cleanup_github_release.outcome',
+      'cleanup-linux-github-release.mjs',
+      "steps.activate_repository.outcome != 'skipped'",
+      'repository-activation-compensation.json',
+      'receipt.passed !== true || receipt.contained !== true',
       'https://downloads.burnbar.ai/latest-linux.json',
+      'https://downloads.burnbar.ai/linux/update/$channel/latest-linux.json',
       'vars.OPENBURNBAR_LINUX_FIREBASE_APP_ID',
       'vars.APP_CHECK_STANDARD_WEB_APP_IDS',
       '${OPENBURNBAR_LINUX_FIREBASE_APP_ID:?',
@@ -86,10 +128,33 @@ function valid() {
       'Pre-attestation Linux release verification',
       'Attest Linux release sidecars and packages',
       'Final Linux release verification',
-      'Configure branded Linux update origin',
-      'Publish signed update feed to downloads origin',
+      'Provision branded Linux repository storage',
+      'Publish immutable Linux release and repository snapshot',
+      'Verify exact snapshot apt and dnf lifecycle before activation',
+      'Atomically activate Linux repository snapshot',
+      'Deploy branded Linux repository serving routes',
+      'Verify active public Linux repository bytes',
+      'Verify clean public apt and dnf repository lifecycle',
+      'Drill repository rollback and candidate reactivation',
+      'Atomically publish signed update feed pointer',
+      'Deploy branded Linux update feed routes',
+      'Verify signed update feed pointer and public bytes',
       'Verify live Linux update feed after publish',
-      'Publish Linux GitHub release'
+      'Preserve and attest repository publication evidence',
+      'Publish Linux GitHub release',
+      'Remove partial draft GitHub release',
+      'Compensate failed repository publication',
+      'Enforce atomic repository publication outcome',
+      'steps.deploy_repository_routes.outcome',
+      'steps.verify_public_repository.outcome',
+      'steps.verify_public_lifecycle.outcome',
+      'steps.drill_repository_rollback.outcome',
+      'steps.publish_feed_pointer.outcome',
+      'steps.deploy_feed_routes.outcome',
+      'steps.verify_public_feed.outcome',
+      'steps.verify_live_feed.outcome',
+      'steps.attest_repository_publication.outcome',
+      'steps.publish_github_release.outcome'
     ].join('\n'),
     makefile: 'release-linux:\n\tnode verify\n\nother:',
     nativeTests: [
@@ -152,6 +217,47 @@ function valid() {
 
 test('complete fail-closed workflow wiring passes', () => {
   assert.deepEqual(verifyLinuxWorkflowWiring(valid()), { passed: true, failures: [] });
+});
+
+test('every post-activation stage remains inside the compensated publication transaction', () => {
+  for (const marker of [
+    'steps.deploy_repository_routes.outcome',
+    'steps.verify_public_repository.outcome',
+    'steps.verify_public_lifecycle.outcome',
+    'steps.drill_repository_rollback.outcome',
+    'steps.publish_feed_pointer.outcome',
+    'steps.deploy_feed_routes.outcome',
+    'steps.verify_public_feed.outcome',
+    'steps.verify_live_feed.outcome',
+    'steps.attest_repository_publication.outcome',
+    'steps.publish_github_release.outcome',
+    'repository-activation-compensation.json',
+    'receipt.passed !== true || receipt.contained !== true'
+  ]) {
+    const input = valid();
+    input.release = input.release.replace(marker, 'removed-transaction-marker');
+    assert.equal(verifyLinuxWorkflowWiring(input).passed, false, marker);
+  }
+});
+
+test('release transaction structure rejects decoy markers and compensation-condition omissions', () => {
+  const missingCondition = valid();
+  missingCondition.releaseYaml = missingCondition.releaseYaml.replace(
+    "steps.verify_live_feed.outcome != 'success' ||",
+    "steps.verify_live_feed.outcome == 'success' ||"
+  );
+  let result = verifyLinuxWorkflowWiring(missingCondition);
+  assert.equal(result.passed, false);
+  assert.match(result.failures.join('\n'), /compensation condition omits transaction step: verify_live_feed/u);
+
+  const decoyCleanup = valid();
+  decoyCleanup.releaseYaml = decoyCleanup.releaseYaml.replace(
+    '        id: cleanup_github_release',
+    '        # id: cleanup_github_release'
+  );
+  result = verifyLinuxWorkflowWiring(decoyCleanup);
+  assert.equal(result.passed, false);
+  assert.match(result.failures.join('\n'), /step id is missing: cleanup_github_release/u);
 });
 
 test('removing any native behavior or process-isolation command fails', () => {
@@ -245,7 +351,8 @@ test('architecture matrix, aggregate closure, and feed publication cannot be rem
     "-o -name 'latest-linux.json'",
     'OPENBURNBAR_R2_CUSTOM_DOMAIN: downloads.burnbar.ai',
     'upload-linux-downloads-r2.sh',
-    'https://downloads.burnbar.ai/latest-linux.json'
+    'https://downloads.burnbar.ai/latest-linux.json',
+    'https://downloads.burnbar.ai/linux/update/$channel/latest-linux.json'
   ]) {
     const input = valid();
     input.release = input.release.replace(marker, '');

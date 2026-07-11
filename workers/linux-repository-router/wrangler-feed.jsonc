@@ -1,0 +1,30 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "openburnbar-linux-update-feed",
+  "main": "src/index.mjs",
+  "compatibility_date": "2026-07-10",
+  "workers_dev": false,
+  "routes": [
+    {
+      "pattern": "downloads.burnbar.ai/latest-linux.json",
+      "zone_name": "burnbar.ai"
+    },
+    {
+      "pattern": "downloads.burnbar.ai/latest-linux.json.ed25519.sig",
+      "zone_name": "burnbar.ai"
+    },
+    {
+      "pattern": "downloads.burnbar.ai/linux/update/*",
+      "zone_name": "burnbar.ai"
+    }
+  ],
+  "vars": {
+    "WORKER_ROLE": "feed"
+  },
+  "r2_buckets": [
+    {
+      "binding": "REPOSITORY_BUCKET",
+      "bucket_name": "openburnbar-downloads"
+    }
+  ]
+}

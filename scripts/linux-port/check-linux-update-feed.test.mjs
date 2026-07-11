@@ -42,6 +42,14 @@ test('strict valid JSON feed passes schema classification', () => {
   assert.deepEqual(result.document, feed);
 });
 
+test('optional release notes are bounded strings', () => {
+  const feed = validFeed();
+  feed.notes = 'Security and reliability fixes.';
+  assert.deepEqual(validateFeedDocument(feed), []);
+  feed.notes = 'x'.repeat(8193);
+  assert.ok(validateFeedDocument(feed).some((failure) => /notes/u.test(failure)));
+});
+
 test('wrong MIME fails even when body is valid JSON', () => {
   const result = classifyFeedResponse({ status: 200, contentType: 'text/plain', text: JSON.stringify(validFeed()) });
   assert.equal(result.passed, false);

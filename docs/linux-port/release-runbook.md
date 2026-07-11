@@ -179,32 +179,133 @@ repository closure and lifecycle receipt into the package closure and
 provenance predicate. A metadata-only build or archive inspection is not
 lifecycle evidence.
 
-Use this publication order so a client can never observe signed metadata that
-references an unavailable package:
+Use this publication transaction so an interrupted upload, stale publisher, or
+failed cutover cannot expose a partial generation:
 
-1. Upload all update artifacts and Ed25519 signatures to the immutable
-   `linux/releases/linux-v<version>/` R2 prefix; verify every public byte.
-2. Upload versioned apt `pool/` and RPM package objects.
-3. Upload generated indices and non-root repository metadata.
-4. Publish apt `Release.gpg` before `Release`/`InRelease`, and the RPM detached
-   signature before `repomd.xml`, so an authenticated pointer never precedes
-   its signature.
-5. Publish `repository-closure.json.asc` and then
-   `repository-closure.json` last, after every referenced repository byte.
-6. Download the public repository into a clean directory, rerun
-   `verify-linux-repositories.mjs`, then perform clean install, upgrade,
-   rollback, and uninstall tests on every declared architecture.
-7. Publish and verify `latest-linux.json`; only then create the public GitHub
-   release as a secondary release surface.
+1. Run `setup-linux-downloads-r2.sh --provision-only`. It creates or inspects
+   the bucket and custom domain, then deploys two separately named control
+   planes: the upload Worker on `linux/repository-upload/*` plus
+   `linux/repository-preview/*`, and the activation Worker on
+   `linux/repository-admin/*`. The activation Worker also guards the raw
+   repository and channel-feed pointer object paths. It requires distinct
+   upload and activation tokens. It does not claim apt, RPM, or public feed
+   routes.
+2. Run `upload-linux-downloads-r2.sh`. It uploads release artifacts, detached
+   signatures, and the signed feed draft under the create-only
+   `linux/releases/linux-v<version>/` prefix; uploads shared checksum-addressed
+   package/index leaves; uploads the complete repository below
+   `linux/repository-snapshots/<channel>/<closure-sha256>/`; and byte-verifies
+   every operation. Objects with trusted SHA-256 metadata must match it. A
+   legacy object without metadata is adoptable only when it is at most 8 MiB
+   and an exact byte hash succeeds; unknown large objects and drift fail `409`.
+3. Set `OPENBURNBAR_LINUX_REPOSITORY_PREVIEW_SNAPSHOT` to the closure SHA-256
+   and run the lifecycle verifier. The preview route reads that immutable
+   snapshot without an activation pointer, so clean apt/dnf install and remove
+   on both architectures must pass before public routing changes.
+4. Run `activate-linux-repository.mjs --yes`. The client reads the current
+   snapshot, generation, and ETag, writes a local intent receipt before any
+   mutation can be attempted, and sends all three as one compare-and-swap
+   identity. The control Worker validates the full target closure, signature
+   presence, minimum apt validity, required roots, and every object digest. An
+   object larger than 8 MiB must carry matching upload-time R2 SHA-256 custom
+   metadata. The Worker then performs one conditional R2 pointer write. Stale,
+   delayed, ABA, and concurrent publishers receive `409` without moving the
+   active generation. An ambiguous HTTP result is reconciled from the durable
+   intent receipt and live pointer state by compensation.
+5. Run `setup-linux-downloads-r2.sh --deploy-only` to claim only the apt and RPM
+   serving routes. This happens after activation so first deployment leaves the
+   prior direct-R2 routes untouched until the candidate has passed preview.
+   Mutable metadata, source/repo files, and channel-qualified bootstrap keys are
+   resolved through the active pointer; checksum-addressed leaves stay shared.
+6. Run `verify-linux-public-repository.mjs` and the public lifecycle verifier.
+   Both exact-compare local bytes and require the expected
+   `X-OpenBurnBar-Repository-Snapshot` header on every pointer-routed object.
+7. Run `drill-linux-repository-rollback.mjs`. With a retained prior generation,
+   it observes fresh CAS identity before each mutation, rolls back, verifies apt
+   plus both RPM architectures, reactivates the candidate, and proves the final
+   candidate state. First activation records an explicit no-prior skip. If a
+   first-cutover transaction later fails, authenticated deactivation restores
+   the pre-cutover direct-R2 repository paths. Stable also restores the legacy
+   raw root-feed paths; prerelease and nightly have no legacy feed alias and
+   return an ordinary headerless `404`. The legacy feed fallback serves only
+   the untouched raw keys and never the versioned candidate upload. If
+   a retained rollback generation has expired or otherwise cannot be restored,
+   compensation deactivates the candidate with a `disabled` tombstone so no
+   unverified snapshot remains available.
+8. Run `publish-linux-update-feed-r2.sh --publish-only`. The control Worker
+   verifies immutable feed bytes, the exact 64-byte Ed25519 signature against
+   the compiled official SPKI key/fingerprint, every signed artifact's R2 size
+   and SHA-256 custom metadata, and the exact repository generation, pointer
+   ETag, channel, version, and source commit before one channel-scoped
+   feed-pointer CAS. Stable, prerelease, and nightly have independent pointer
+   generations and each retains its own prior signed descriptor, so an
+   interleaved publication cannot consume another channel's rollback state. Run
+   `setup-linux-downloads-r2.sh --feed-only` only after publication succeeds,
+   then run `--verify-only`. The feed Worker rechecks the repository pointer
+   and channel feed pointer before and after every read and returns `503` if
+   either binding changed. Stable is served at `/latest-linux.json`; prerelease
+   and nightly use `/linux/update/<channel>/latest-linux.json`. Verification
+   requires the exact snapshot and feed-generation headers on both feed and
+   signature responses in addition to byte and cryptographic equality.
+9. Preserve root-generated upload, activation, and feed receipts in place;
+   copy runner evidence receipts into `sidecars/`. Materialize and attest the
+   published `latest-linux.json` filename, then Sigstore-attest every receipt
+   with the release provenance predicate. Immediately before draft creation
+   and after publication, re-verify the authenticated repository/feed pointers
+   and exact public bytes. Download every draft and published GitHub asset and
+   require its basename, size, and SHA-256 to equal the local asset closure.
+10. If any step after activation fails, discover draft and published GitHub
+    releases independently, delete only the exact run-marker-owned immutable
+    release ID, and require three consecutive dual-source absence observations.
+    Then run `compensate-linux-repository-activation.mjs`. It restores
+    and verifies the retained prior generation, rebinds the matching current or
+    retained signed feed descriptor to the new repository generation/ETag,
+    accepts an already-restored prior generation as contained, or deactivates
+    when rollback is unavailable. First-cutover deactivation proves the legacy
+    direct-R2 repository and feed routes are restored with no candidate
+    snapshot/feed-generation header; later deactivation proves every mutable
+    root returns `503`. A missing or
+    `mutationAttempted: false` intent receipt is the only no-network
+    compensation case. The workflow always fails the release after proving
+    containment; an uncontained result is a separate hard failure.
 
-R2 object puts are not a transactional multi-object operation. Apt clients use
-the single signed `InRelease` activation document and update artifacts use one
-feed document pointing only at immutable versioned bytes. RPM's conventional
-`repomd.xml` plus `repomd.xml.asc` pair still cannot be switched atomically on
-a plain R2 custom domain. The metadata-last order fails closed, but an
-interrupted pointer upload may require an operator rerun. Stable promotion
-therefore remains blocked until a Worker/KV (or equivalent) versioned-snapshot
-activation layer proves one-switch activation and rollback under interruption.
+The activation record is availability/routing state, not a new trust root.
+Package managers still verify the pinned OpenPGP identity and signed metadata.
+Shared checksum-addressed leaves let a client that fetched the old signed root
+finish after activation. Separate RPM `repomd.xml` and detached-signature
+requests can straddle a legitimate activation and fail closed transiently; a
+retry resolves one complete retained generation. Rollback activates a retained,
+unexpired snapshot with the same compare-and-swap contract. Do not delete an
+active, previous, or still-reachable snapshot or shared leaf.
+Normal promotion requires a strictly newer semantic version; rollback is a
+separate mode limited to the active record's `previousSnapshotId`. Deactivation
+is a control-plane containment operation, not a release promotion.
+Every bearer-token request is pinned to the exact
+`https://downloads.burnbar.ai` production origin; operator-supplied alternate
+origins fail before the credential is sent. The upload Worker receives only
+`OPENBURNBAR_LINUX_REPOSITORY_UPLOAD_TOKEN`; the control Worker receives only
+`OPENBURNBAR_LINUX_REPOSITORY_ACTIVATION_TOKEN`; serving and feed Workers
+receive neither. Never reuse the two control-plane credentials.
+
+Bootstrap files are part of each immutable snapshot. Public key downloads use
+channel-qualified aliases such as
+`openburnbar-prerelease-archive-keyring.gpg` and
+`RPM-GPG-KEY-openburnbar-prerelease`; the legacy channel-less aliases remain
+stable-only compatibility routes. For OpenPGP rotation, first publish an
+old-key-signed bridge generation that installs both the old and next public
+keys, prove existing installed clients retain the next trust anchor, then sign
+a later generation with the new subkey. Snapshot routing permits the bootstrap
+bytes to change atomically, but stable rotation remains blocked until a reviewed
+installed keyring update mechanism and overlap lifecycle have live proof.
+
+Source implementation does not establish deployment truth. Stable promotion
+remains blocked until the branded DNS/custom domain, scoped Cloudflare
+credentials, separate upload and activation secrets, production repository
+OpenPGP identity, exact
+candidate public copy, interruption/rollback/deactivation drill, and scheduled
+pre-expiry refresh all have live evidence. The current activation API rejects
+same-version promotion, so the required metadata-only refresh operation and
+schedule remain an explicit source blocker rather than an implied capability.
 
 Source-level repository construction and verification are not channel
 promotion. Do not add apt/dnf install copy until the signed public copy and
@@ -248,6 +349,11 @@ metadata. The command:
   CPU architecture; and
 - returns typed `current`, `available`, `unavailable`, or `invalid` state to the
   renderer without exposing unverified feed fields.
+
+The fixed application URL is the stable-channel alias. Release tooling keeps
+prerelease and nightly publication state isolated at channel-qualified URLs;
+an in-app selector for those tracks remains a separate product-parity task and
+must not be inferred from repository publication support.
 
 Installation remains package-manager native. A validated update action may
 open only an exact first-party BurnBar download path; it never self-mutates
@@ -345,10 +451,11 @@ and refuses a dirty worktree.
   been captured for the exact candidate. The repository GPG private key must
   be provisioned as `OPENBURNBAR_LINUX_REPOSITORY_GPG_PRIVATE_KEY` before CI can
   produce a signed closure.
-- Apt metadata intentionally expires after seven days. No scheduled metadata
-  refresh workflow exists yet, so public channel copy and stable promotion must
-  remain blocked until refresh uses the same closure/key policy and proves
-  interruption-safe activation before the prior `InRelease` expires.
+- Apt metadata intentionally expires after seven days. Immutable snapshot
+  activation is source-implemented, but no scheduled metadata refresh workflow
+  exists yet. Public channel copy and stable promotion remain blocked until a
+  metadata-only refresh preserves package/RPM bytes, chains signed closures,
+  and activates before the prior `InRelease` expires.
 - AUR and Flatpak remain unpromoted pending publisher credentials, a corrected
   release-bound AUR recipe, Flatpak portal/keyring policy proof, and installed
   lifecycle evidence.

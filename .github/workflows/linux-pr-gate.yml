@@ -13,6 +13,10 @@ on:
       - "schemas/linux-attestation-*"
       - "schemas/linux-runtime-capability-manifest.schema.json"
       - "scripts/linux-port/**"
+      - "scripts/setup-linux-downloads-r2.sh"
+      - "scripts/upload-linux-downloads-r2.sh"
+      - "scripts/publish-linux-update-feed-r2.sh"
+      - "workers/linux-repository-router/**"
       - "tests/fixtures/linux-attestation/**"
       - "tools/linux-toolchain/**"
       - "OpenBurnBarCore/**"
@@ -73,6 +77,7 @@ jobs:
           cache-dependency-path: |
             apps/linux-desktop/package-lock.json
             scripts/linux-port/package-lock.json
+            workers/linux-repository-router/package-lock.json
 
       - name: Install Linux documentation tool dependencies
         run: npm ci --prefix scripts/linux-port --ignore-scripts
@@ -125,11 +130,34 @@ jobs:
       - name: Linux repository channel contract tests
         run: |
           bash -n scripts/linux-port/verify-linux-repository-lifecycle.sh
+          bash -n scripts/setup-linux-downloads-r2.sh
           bash -n scripts/upload-linux-downloads-r2.sh
+          bash -n scripts/publish-linux-update-feed-r2.sh
           node --test \
             scripts/linux-port/linux-repository.test.mjs \
             scripts/linux-port/finalize-linux-repositories.test.mjs \
-            scripts/linux-port/upload-linux-downloads-r2.test.mjs
+            scripts/linux-port/upload-linux-downloads-r2.test.mjs \
+            scripts/linux-port/setup-linux-downloads-r2.test.mjs \
+            scripts/linux-port/activate-linux-repository.test.mjs \
+            scripts/linux-port/drill-linux-repository-rollback.test.mjs \
+            scripts/linux-port/compensate-linux-repository-activation.test.mjs \
+            scripts/linux-port/cleanup-linux-github-release.test.mjs \
+            scripts/linux-port/verify-linux-public-repository.test.mjs \
+            scripts/linux-port/publish-linux-update-feed-r2.test.mjs
+          npm ci --prefix workers/linux-repository-router --ignore-scripts
+          npm test --prefix workers/linux-repository-router
+          workers/linux-repository-router/node_modules/.bin/wrangler deploy \
+            --config workers/linux-repository-router/wrangler.jsonc \
+            --dry-run
+          workers/linux-repository-router/node_modules/.bin/wrangler deploy \
+            --config workers/linux-repository-router/wrangler-upload.jsonc \
+            --dry-run
+          workers/linux-repository-router/node_modules/.bin/wrangler deploy \
+            --config workers/linux-repository-router/wrangler-control.jsonc \
+            --dry-run
+          workers/linux-repository-router/node_modules/.bin/wrangler deploy \
+            --config workers/linux-repository-router/wrangler-feed.jsonc \
+            --dry-run
 
       - name: Verify Linux workflow wiring
         run: |

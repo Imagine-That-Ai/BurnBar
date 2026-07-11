@@ -30,6 +30,14 @@ if (JSON.stringify(manifest.supportedArchitectures) !== JSON.stringify(['aarch64
 if (manifest.updateMetadata?.publicUrl !== 'https://downloads.burnbar.ai/latest-linux.json') {
   failures.push('manifest updateMetadata.publicUrl must be the branded signed-feed URL');
 }
+const expectedChannelFeedUrls = {
+  stable: 'https://downloads.burnbar.ai/latest-linux.json',
+  prerelease: 'https://downloads.burnbar.ai/linux/update/prerelease/latest-linux.json',
+  nightly: 'https://downloads.burnbar.ai/linux/update/nightly/latest-linux.json'
+};
+if (JSON.stringify(manifest.updateMetadata?.channelPublicUrls) !== JSON.stringify(expectedChannelFeedUrls)) {
+  failures.push('manifest updateMetadata.channelPublicUrls must isolate every declared release channel');
+}
 for (const gate of [
   'production repository OpenPGP primary and signing-subkey fingerprints are pinned',
   'signed repository closure and lifecycle receipt verify',
@@ -47,6 +55,13 @@ for (const [kind, relPath] of Object.entries(manifest.tailMetadata ?? {})) {
 }
 if (manifest.distributionRepositories?.config !== manifest.tailMetadata?.distributionChannels) {
   failures.push('distribution repository config must be present in canonical tail metadata');
+}
+if (manifest.distributionRepositories?.feedPointerPattern !== 'linux/update-feed-activations/<channel>.json') {
+  failures.push('distribution repository feed pointer must be isolated by channel');
+}
+if (manifest.distributionRepositories?.githubReleaseCleanup
+    !== 'draft-and-published-discovery-by-owned-id-with-repeated-dual-absence-proof') {
+  failures.push('distribution repository GitHub cleanup must prove repeated draft and published absence');
 }
 const distributionConfigPath = path.join(repoRoot, manifest.distributionRepositories?.config ?? '');
 if (!fs.existsSync(distributionConfigPath)) {

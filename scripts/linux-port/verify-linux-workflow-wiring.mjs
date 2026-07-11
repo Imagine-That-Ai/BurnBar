@@ -2,10 +2,87 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parse as parseYaml } from 'yaml';
 import { repoRoot } from './lib/linux-release-common.mjs';
+
+function verifyReleaseTransactionStructure(source, failures) {
+  let workflow;
+  try {
+    workflow = parseYaml(source);
+  } catch (error) {
+    failures.push(`release workflow YAML is invalid: ${error.message}`);
+    return;
+  }
+  const steps = workflow?.jobs?.['assemble-release']?.steps;
+  if (!Array.isArray(steps)) {
+    failures.push('release workflow assemble-release steps are missing.');
+    return;
+  }
+  const byId = new Map(steps.filter((step) => typeof step?.id === 'string').map((step) => [step.id, step]));
+  const transactionIds = [
+    'activate_repository',
+    'deploy_repository_routes',
+    'verify_public_repository',
+    'verify_public_lifecycle',
+    'drill_repository_rollback',
+    'publish_feed_pointer',
+    'deploy_feed_routes',
+    'verify_public_feed',
+    'verify_live_feed',
+    'attest_repository_publication',
+    'publish_github_release'
+  ];
+  for (const id of [...transactionIds, 'cleanup_github_release', 'compensate_repository_publication']) {
+    if (!byId.has(id)) failures.push(`release transaction step id is missing: ${id}`);
+  }
+  const expectedPredecessor = new Map([
+    ['verify_public_repository', 'deploy_repository_routes'],
+    ['verify_public_lifecycle', 'verify_public_repository'],
+    ['drill_repository_rollback', 'verify_public_lifecycle'],
+    ['publish_feed_pointer', 'drill_repository_rollback'],
+    ['deploy_feed_routes', 'publish_feed_pointer'],
+    ['verify_public_feed', 'deploy_feed_routes'],
+    ['verify_live_feed', 'verify_public_feed'],
+    ['attest_repository_publication', 'verify_live_feed'],
+    ['publish_github_release', 'attest_repository_publication']
+  ]);
+  for (const [id, predecessor] of expectedPredecessor) {
+    const condition = String(byId.get(id)?.if ?? '');
+    if (!condition.includes(`steps.${predecessor}.outcome == 'success'`)) {
+      failures.push(`release transaction step ${id} is not structurally gated by ${predecessor}.`);
+    }
+  }
+  for (const id of transactionIds.slice(1)) {
+    if (byId.get(id)?.['continue-on-error'] !== true) {
+      failures.push(`release transaction step ${id} must continue only to the compensation gate.`);
+    }
+  }
+  const cleanup = byId.get('cleanup_github_release');
+  if (!String(cleanup?.if ?? '').includes("steps.publish_github_release.outcome == 'failure'")) {
+    failures.push('GitHub release cleanup is not structurally gated by publication failure.');
+  }
+  const compensation = byId.get('compensate_repository_publication');
+  const compensationCondition = String(compensation?.if ?? '');
+  if (!compensationCondition.includes('always()') || compensation?.['continue-on-error'] !== true) {
+    failures.push('repository compensation must run under always() and preserve the final enforcement step.');
+  }
+  for (const id of transactionIds.slice(1)) {
+    if (!compensationCondition.includes(`steps.${id}.outcome != 'success'`)) {
+      failures.push(`repository compensation condition omits transaction step: ${id}`);
+    }
+  }
+  const finalGate = steps.find((step) => step?.name === 'Enforce atomic repository publication outcome');
+  const finalRun = String(finalGate?.run ?? '');
+  if (!String(finalGate?.if ?? '').includes('always()')
+      || !finalRun.includes('steps.cleanup_github_release.outcome')
+      || !finalRun.includes('receipt.passed !== true || receipt.contained !== true')) {
+    failures.push('final repository publication gate is not structurally bound to cleanup and compensation proof.');
+  }
+}
 
 export function verifyLinuxWorkflowWiring(input) {
   const failures = [];
+  verifyReleaseTransactionStructure(input.releaseYaml ?? input.release, failures);
   const requireText = (body, needle, label) => {
     if (!body.includes(needle)) failures.push(`${label} is missing: ${needle}`);
   };
@@ -45,8 +122,32 @@ export function verifyLinuxWorkflowWiring(input) {
     'merge-multiple: false',
     "-o -name 'latest-linux.json'",
     'OPENBURNBAR_R2_CUSTOM_DOMAIN: downloads.burnbar.ai',
+    'group: linux-repository-release',
+    'setup-linux-downloads-r2.sh',
     'upload-linux-downloads-r2.sh',
-    'https://downloads.burnbar.ai/latest-linux.json'
+    'activate-linux-repository.mjs',
+    'OPENBURNBAR_LINUX_REPOSITORY_UPLOAD_TOKEN',
+    'OPENBURNBAR_LINUX_REPOSITORY_ACTIVATION_TOKEN',
+    'verify-linux-public-repository.mjs',
+    'OPENBURNBAR_LINUX_REPOSITORY_PUBLIC_BASE_URL',
+    'drill-linux-repository-rollback.mjs',
+    'compensate-linux-repository-activation.mjs',
+    'publish-linux-update-feed-r2.sh',
+    'repository-feed-verification.json',
+    'linux-repository-publication/v1',
+    'gh release create "$tag" --draft',
+    'OpenBurnBar-Release-Run:',
+    'Linux release asset basenames are not unique',
+    'GitHub release assets do not match the exact local byte closure',
+    'verify_release_assets draft',
+    'verify_release_assets published',
+    'OPENBURNBAR_LINUX_REPOSITORY_FEED_VERIFICATION_RECEIPT',
+    'steps.cleanup_github_release.outcome',
+    'cleanup-linux-github-release.mjs',
+    "steps.activate_repository.outcome != 'skipped'",
+    'Enforce atomic repository publication outcome',
+    'https://downloads.burnbar.ai/latest-linux.json',
+    'https://downloads.burnbar.ai/linux/update/$channel/latest-linux.json'
   ]) requireText(input.release, marker, 'two-architecture release closure');
   requireText(input.release, 'unset OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM', 'signer environment scrub');
   for (const marker of [
@@ -83,6 +184,23 @@ export function verifyLinuxWorkflowWiring(input) {
   requireText(input.pr, 'build-native-linux-packages-boundary.test.mjs', 'PR native signer custody suite');
   requireText(input.pr, 'linux-package-session.test.mjs', 'PR package lifecycle session suite');
   requireText(input.pr, 'linux-native-signing-receipt.test.mjs', 'PR signed package receipt suite');
+  for (const marker of [
+    'workers/linux-repository-router/**',
+    'workers/linux-repository-router/package-lock.json',
+    'workers/linux-repository-router/wrangler-upload.jsonc',
+    'workers/linux-repository-router/wrangler-control.jsonc',
+    'workers/linux-repository-router/wrangler-feed.jsonc',
+    'setup-linux-downloads-r2.test.mjs',
+    'activate-linux-repository.test.mjs',
+    'drill-linux-repository-rollback.test.mjs',
+    'compensate-linux-repository-activation.test.mjs',
+    'cleanup-linux-github-release.test.mjs',
+    'verify-linux-public-repository.test.mjs',
+    'publish-linux-update-feed-r2.test.mjs',
+    'npm test --prefix workers/linux-repository-router',
+    'wrangler deploy',
+    '--dry-run'
+  ]) requireText(input.pr, marker, 'PR repository activation gate');
   requireText(input.pr, 'render-parity-ledger.mjs --check', 'PR Markdown drift gate');
   requireText(input.pr, 'npm ci --prefix scripts/linux-port --ignore-scripts', 'PR Linux docs tool install');
   requireText(input.nightly, 'npm ci --prefix scripts/linux-port --ignore-scripts', 'nightly Linux docs tool install');
@@ -184,10 +302,23 @@ export function verifyLinuxWorkflowWiring(input) {
     'Pre-attestation Linux release verification',
     'Attest Linux release sidecars and packages',
     'Final Linux release verification',
-    'Configure branded Linux update origin',
-    'Publish signed update feed to downloads origin',
+    'Provision branded Linux repository storage',
+    'Publish immutable Linux release and repository snapshot',
+    'Verify exact snapshot apt and dnf lifecycle before activation',
+    'Atomically activate Linux repository snapshot',
+    'Deploy branded Linux repository serving routes',
+    'Verify active public Linux repository bytes',
+    'Verify clean public apt and dnf repository lifecycle',
+    'Drill repository rollback and candidate reactivation',
+    'Atomically publish signed update feed pointer',
+    'Deploy branded Linux update feed routes',
+    'Verify signed update feed pointer and public bytes',
     'Verify live Linux update feed after publish',
-    'Publish Linux GitHub release'
+    'Preserve and attest repository publication evidence',
+    'Publish Linux GitHub release',
+    'Remove partial draft GitHub release',
+    'Compensate failed repository publication',
+    'Enforce atomic repository publication outcome'
   ], 'release workflow');
 
   if (/verify-linux-release\.mjs[^\n]*--allow-blocked/.test(input.release)) {
@@ -199,6 +330,32 @@ export function verifyLinuxWorkflowWiring(input) {
   if (/openburnbar-linux-ed25519\.pub\.pem[^\n]*\|\|\s*true/.test(input.release)) {
     failures.push('release public-key publication may not swallow copy failures.');
   }
+  const uploadIndex = input.release.indexOf('Publish immutable Linux release and repository snapshot');
+  const previewIndex = input.release.indexOf('Verify exact snapshot apt and dnf lifecycle before activation');
+  const activationIndex = input.release.indexOf('Atomically activate Linux repository snapshot');
+  const servingIndex = input.release.indexOf('Deploy branded Linux repository serving routes');
+  const feedIndex = input.release.indexOf('Atomically publish signed update feed pointer');
+  const feedRouteIndex = input.release.indexOf('Deploy branded Linux update feed routes');
+  if (!(uploadIndex >= 0 && previewIndex > uploadIndex && activationIndex > previewIndex
+      && servingIndex > activationIndex && feedIndex > servingIndex && feedRouteIndex > feedIndex)) {
+    failures.push('repository upload, preview, activation, serving cutover, feed pointer, and feed route must remain strictly ordered.');
+  }
+  for (const stepId of [
+    'deploy_repository_routes',
+    'verify_public_repository',
+    'verify_public_lifecycle',
+    'drill_repository_rollback',
+    'publish_feed_pointer',
+    'deploy_feed_routes',
+    'verify_public_feed',
+    'verify_live_feed',
+    'attest_repository_publication',
+    'publish_github_release'
+  ]) {
+    requireText(input.release, `steps.${stepId}.outcome`, 'atomic repository publication transaction');
+  }
+  requireText(input.release, 'repository-activation-compensation.json', 'atomic repository publication containment receipt');
+  requireText(input.release, 'receipt.passed !== true || receipt.contained !== true', 'atomic repository publication containment gate');
   if (input.release.includes('-e OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM')) {
     failures.push('the installed-manifest signing key must not enter the build container environment.');
   }
@@ -238,10 +395,12 @@ export function verifyLinuxWorkflowWiring(input) {
 
 function main() {
   const read = (rel) => fs.readFileSync(path.join(repoRoot, rel), 'utf8');
+  const release = read('.github/workflows/linux-release.yml');
   const result = verifyLinuxWorkflowWiring({
     pr: read('.github/workflows/linux-pr-gate.yml'),
     nightly: read('.github/workflows/linux-nightly.yml'),
-    release: read('.github/workflows/linux-release.yml'),
+    release,
+    releaseYaml: release,
     makefile: read('Makefile'),
     nativeTests: read('scripts/linux-port/run-linux-native-tests.sh'),
     rustBridge: read('apps/linux-desktop/src-tauri/src/lib.rs'),
