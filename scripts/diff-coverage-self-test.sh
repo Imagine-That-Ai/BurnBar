@@ -12,8 +12,8 @@
 #   2. Scope partition: app-partition files are out of scope for the
 #      packages lane (reported, never silently dropped).
 #   3. No evidence ⇒ fail for executable changed lines. Plain Swift
-#      declaration-only changes are excluded because they do not emit LLVM line
-#      counters.
+#      declaration-only changes and conditional-compilation directives are
+#      excluded because they do not emit LLVM line counters.
 #   4. cov:ignore without a justification fails the gate outright;
 #      `cov:ignore -- <reason>` and justified ignore blocks exclude exactly
 #      the annotated lines.
@@ -741,7 +741,9 @@ base_app="$(git -C "$repo_app" rev-parse HEAD)"
 cat > "$repo_app/AgentLens/Services/Demo/AppLogic.swift" <<'EOF'
 enum AppLogic {
     static func value() -> Int {
+        #if os(macOS)
         return 42
+        #endif
     }
 }
 EOF
@@ -769,13 +771,15 @@ check "app file without a line map is reported as no_evidence" \
 
 app_lines="$tmp_root/app-lines.json"
 cat > "$app_lines" <<'EOF'
-{"files":{"AgentLens/Services/Demo/AppLogic.swift":{"lines":{"2":true,"3":true,"4":true}}}}
+{"files":{"AgentLens/Services/Demo/AppLogic.swift":{"lines":{"2":true,"4":true}}}}
 EOF
 verdict="$tmp_root/verdict-app-lines.json"
 rc="$(run_app_gate "$repo_app" "$base_app" 80 "$app_summary" "$app_lines" "$verdict" "$tmp_root/err-app-lines.log")"
 check "app scope passes with covered per-line evidence" "0" "$rc"
 check "app verdict uses line-level evidence" \
   "line_level(app)" "$(json_get "$verdict" 'v["details"][0]["method"]')"
+check "app scope excludes conditional-compilation directives from denominator" \
+  "2" "$(json_get "$verdict" 'v["diffCoverage"]["changedLines"]')"
 
 # -----------------------------------------------------------------------------
 

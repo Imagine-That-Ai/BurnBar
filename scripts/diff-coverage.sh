@@ -493,6 +493,14 @@ def is_structural_swift_line(text):
         return True
     if stripped in {"{", "}", "};", "],", "]", "),", ")"}:
         return True
+    if stripped in {"#else", "#endif"} or stripped.startswith((
+        "#if ",
+        "#elseif ",
+        "#warning",
+        "#error",
+        "#sourceLocation",
+    )):
+        return True
     if stripped.startswith("//") or stripped.startswith("/*") or stripped.startswith("*"):
         return True
     if stripped.startswith("@") or stripped.startswith("import "):
