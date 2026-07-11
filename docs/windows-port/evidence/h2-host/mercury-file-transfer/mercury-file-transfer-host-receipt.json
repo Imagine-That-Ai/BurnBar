@@ -1,0 +1,36 @@
+{
+  "schema": "openburnbar.windows.mercury-file-transfer-host-evidence.v1",
+  "generatedAtUtc": "2026-07-11T00:05:08.0182383Z",
+  "status": "passed",
+  "source": {
+    "branch": "codex/windows-certification-mercury-file-transfer",
+    "commit": "c9a42ebfe7738f0160c9473b5a8a1474d2ab9e85",
+    "commitDate": "2026-07-10T19:00:46-05:00",
+    "parentCommits": [
+      "3c4259d099390580b7da2b8a1fa38a87b633d446"
+    ],
+    "ref": "c9a42ebfe7",
+    "tree": "b5715f3488da7922bba879323da90a406a865e2f"
+  },
+  "candidateManifestSha256": "b606c3a870d1a247746c219f4062141f9771a6cd6ee7076e8b2832aa5dd5d272",
+  "osArchitecture": "ARM 64-bit Processor",
+  "systemType": "ARM64-based PC",
+  "app": {
+    "fileName": "OpenBurnBar.App.exe",
+    "sha256": "e324e68be79ea4e8185e7049e3a416139a26905d732066d94a5813feae92f2d3",
+    "size": 260096
+  },
+  "hostSummary": {
+    "fileName": "mercury-file-transfer-host-summary.json",
+    "sha256": "0ac101006e2c533835db11ecff43838a348ca44af683c8d2c8438faab53a5002",
+    "rawHostSha256": "98e157306f8f2f66cdadd8ec7ed528405118ae5c902205d5110d44ae11dc7a50",
+    "checks": 7,
+    "passed": true,
+    "snapshotSha256": "6ef72dcccd9b51e3a7f384632a9dff22af4c12372f3396fe557011d42e867971",
+    "promotedFileSha256": "6ef72dcccd9b51e3a7f384632a9dff22af4c12372f3396fe557011d42e867971"
+  },
+  "publicSanitization": {
+    "machineName": "replaced with WINDOWS-ARM64-HOST",
+    "contentHashesPreserved": true
+  }
+}

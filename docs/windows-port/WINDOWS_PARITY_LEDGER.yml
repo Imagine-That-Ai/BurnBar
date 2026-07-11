@@ -532,17 +532,21 @@ rows:
   macos_route: media
   macos_capability: Mercury media plane
   windows_route: media
-  windows_capability: Mercury MediaSessionStateMachine + Windows capture adapters
+  windows_capability: Mercury core + Windows file-transfer safety runtime; capture/encode/WNS disclosed unavailable
   status: Real
   evidence:
   - docs/windows-port/evidence/f1-h8/integrations-live-cores.md
+  - docs/windows-port/evidence/h2-host/mercury-file-transfer/README.md
   tests:
-  - windows/tests/settings
+  - windows/tests/mercury
+  - windows/tests/mercury-file-transfer-host
   blocking_paths:
   - windows/integrations/mercury/OpenBurnBar.Integrations.Mercury/Sessions/MediaSessionStateMachine.cs
   - windows/integrations/mercury/OpenBurnBar.Integrations.Mercury/Budget/MediaCapabilityGate.cs
+  - windows/integrations/mercury/OpenBurnBar.Integrations.Mercury/FileTransfer/InboundFileQuarantineService.cs
+  - windows/integrations/mercury/OpenBurnBar.Integrations.Mercury.Windows/WindowsMercuryFileTransferRuntime.cs
   owner_lane: wave-h8-integrations
-  notes: Production Mercury core Real.
+  notes: Production core and file-transfer safety runtime Real with exact-candidate ARM64 host proof; capture/encode/calls/WNS remain unavailable pending separate certification.
 - id: cast-smarthub
   macos_route: cast
   macos_capability: Cast / SmartHub discovery

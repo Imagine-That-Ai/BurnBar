@@ -22,7 +22,7 @@ The dependency-free logic, unit-tested on macOS (`windows/tests/mercury`, `dotne
 | **Capability gate (consent/budget/kill-switch)** | `Budget/MediaCapabilityGate.cs`, `Budget/MediaCapabilityEvaluator.cs` | `MacMediaCapabilityGate.swift` |
 | Fail-closed budget status store | `Budget/MediaBudgetStatusStore.cs` | `MediaBudgetStatusStore.swift` |
 | Mirror-consent grant ledger | `Consent/MercuryConsentStore.cs`, `Consent/MercuryConsentCodec.cs` | `MercuryConsentStore.swift` |
-| File-transfer chunk / reassemble | `FileTransfer/FileTransferChunker.cs`, `FileTransfer/FileTransferReassembler.cs` | `OpenBurnBarMedia/MediaFileTransferService.swift` |
+| File-transfer snapshot / chunk / quarantine | `FileTransfer/OutboundFileSnapshotService.cs`, `FileTransfer/FileTransferChunker.cs`, `FileTransfer/InboundFileQuarantineService.cs` | `OpenBurnBarMedia/MediaFileTransferService.swift` + Windows inbound safety policy |
 | Platform seams | `Adapters/IMediaCaptureAdapters.cs` | the interfaces the Windows adapters implement |
 
 ### `OpenBurnBar.Integrations.Mercury.Windows` (adapters, `net8.0-windows`)
@@ -36,6 +36,8 @@ Implements the seam interfaces over WinRT projections:
 | Camera | `MediaCaptureCameraSource.cs` | Windows.Media.Capture | `CameraCapturePipeline.swift` |
 | Video encode | `MediaFoundationVideoEncoder.cs` | Windows.Media (MediaFoundation) | `VideoEncoder.swift` |
 | VoIP wake | `WindowsWnsVoipPushTrigger.cs` | Windows.Networking.PushNotifications (WNS raw push) | `VoIPCallTrigger.swift` (APNs) |
+| Inbound file origin | `WindowsAttachmentOriginMarker.cs` | NTFS `Zone.Identifier` (MOTW) | macOS quarantine xattr |
+| Inbound threat scan | `WindowsDefenderThreatScanner.cs` | Microsoft Defender `MpCmdRun` custom scan | macOS malware/quarantine gate |
 
 ## Preserved security invariants (master plan § 9.5 / R17)
 
@@ -49,14 +51,25 @@ Implements the seam interfaces over WinRT projections:
 - **Peer-bound consent.** `MercuryConsentStore` auto-accepts only when the declared
   control-authority peer node id matches the connected remote peer; grants expire on a TTL; a
   failed encode leaves the persisted ledger intact rather than wiping consent.
-- **Content-addressed transfer.** `FileTransferReassembler` verifies the whole-file length +
-  SHA-256 against the manifest before handing back bytes, rejecting tamper / corruption.
+- **Immutable outbound transfer.** `OutboundFileSnapshotService` copies the source under a
+  no-write/no-delete share, detects metadata drift, hashes while copying, atomically names the
+  snapshot by SHA-256, and marks it read-only. Chat attachments use the same snapshot path.
+  Manifests are bounded to the receiver's 4 MiB chunk / 8,192-chunk ceiling, and release rehashes
+  the managed snapshot before deleting it.
+- **Fail-closed inbound transfer.** `InboundFileQuarantineService` verifies chunks directly to
+  a same-volume hidden quarantine, rehashes the completed file, applies MOTW, requires a clean
+  Defender result, and only promotes after explicit approval. Missing MOTW/Defender and every
+  non-clean scan result remain quarantined. Defender scans are serialized, use
+  `-DisableRemediation`, and terminate the scanner process on timeout or cancellation so scanning
+  cannot mutate or outlive the quarantine decision.
 
 ## Verification ceiling (honest)
 
 - **macOS-verified:** the portable lib builds + `dotnet test` passes (see `windows/tests/mercury`);
   the Windows adapter compiles Roslyn-clean against the Windows SDK projection ref pack
   (`EnableWindowsTargeting=true`, 0 errors).
+- **Windows-host evidence:** file-transfer MOTW/Defender/promotion evidence is emitted by
+  `scripts/windows-port/run-mercury-file-transfer-host-evidence.ps1`.
 - **Windows dev-host / CI deferred:** actual capture / encode / WNS delivery — the WinRT APIs have
   no macOS runtime. The device-touching leaves (D3D surface readback, audio buffer drain, MFT
   sample loop) are marked as dev-host seams in the adapter source.

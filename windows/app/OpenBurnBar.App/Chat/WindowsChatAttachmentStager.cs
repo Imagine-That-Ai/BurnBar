@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using OpenBurnBar.App.Presentation.Chat;
+using OpenBurnBar.Integrations.Mercury.FileTransfer;
 
 namespace OpenBurnBar.App.Chat;
 
@@ -31,19 +32,21 @@ public static class WindowsChatAttachmentStager
 
         string id = Guid.NewGuid().ToString();
         string displayName = info.Name;
-        string relativePath = "attachments/" + id + "-" + SafeFileName(displayName);
-        string target = Path.Combine(workspaceRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
-        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-        File.Copy(sourcePath, target, overwrite: false);
+        string attachmentDirectory = Path.Combine(workspaceRoot, "attachments");
+        var snapshotter = new OutboundFileSnapshotService(limit);
+        OutboundFileSnapshot snapshot = snapshotter.Create(sourcePath, attachmentDirectory);
+        string relativePath = Path.GetRelativePath(workspaceRoot, snapshot.SnapshotPath)
+            .Replace(Path.DirectorySeparatorChar, '/');
 
         return new ChatAttachmentRecord(
             id,
             kind,
             displayName,
             MimeTypeFor(kind, info.Extension),
-            info.Length,
+            snapshot.TotalBytes,
             relativePath,
-            kind == "textDocument" ? ReadPreview(target) : null);
+            kind == "textDocument" ? ReadPreview(snapshot.SnapshotPath) : null,
+            ContentSha256: snapshot.Sha256Hex);
     }
 
     public static ChatAttachmentRecord ImportPastedText(string text, string workspaceRoot, string? suggestedName = null)
@@ -58,19 +61,21 @@ public static class WindowsChatAttachmentStager
 
         string id = Guid.NewGuid().ToString();
         string displayName = string.IsNullOrWhiteSpace(suggestedName) ? "pasted-text.txt" : suggestedName.Trim();
-        string relativePath = "attachments/" + id + "-" + SafeFileName(displayName);
-        string target = Path.Combine(workspaceRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
-        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-        File.WriteAllBytes(target, bytes);
+        string attachmentDirectory = Path.Combine(workspaceRoot, "attachments");
+        var snapshotter = new OutboundFileSnapshotService(MaxTextDocumentBytes);
+        OutboundFileSnapshot snapshot = snapshotter.Create(bytes, SafeFileName(displayName), attachmentDirectory);
+        string relativePath = Path.GetRelativePath(workspaceRoot, snapshot.SnapshotPath)
+            .Replace(Path.DirectorySeparatorChar, '/');
 
         return new ChatAttachmentRecord(
             id,
             "textDocument",
             displayName,
             "text/plain",
-            bytes.LongLength,
+            snapshot.TotalBytes,
             relativePath,
-            text.Length <= TextPreviewBytes ? text : text[..TextPreviewBytes]);
+            text.Length <= TextPreviewBytes ? text : text[..TextPreviewBytes],
+            ContentSha256: snapshot.Sha256Hex);
     }
 
     public static ChatAttachmentRecord MarkMissingIfAbsent(ChatAttachmentRecord attachment, string workspaceRoot)
@@ -119,7 +124,9 @@ public static class WindowsChatAttachmentStager
 
     private static string? ReadPreview(string path)
     {
-        byte[] head = File.ReadAllBytes(path).Take(TextPreviewBytes).ToArray();
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, TextPreviewBytes, FileOptions.SequentialScan);
+        var head = new byte[Math.Min(TextPreviewBytes, checked((int)stream.Length))];
+        stream.ReadExactly(head);
         return Encoding.UTF8.GetString(head).TrimStart('\uFEFF');
     }
 }

@@ -42,7 +42,8 @@ public sealed record ChatAttachmentRecord(
     long ByteSize,
     string WorkspaceRelativePath,
     string? ExtractedTextPreview = null,
-    bool IsMissing = false)
+    bool IsMissing = false,
+    string? ContentSha256 = null)
 {
     public static ChatAttachmentRecord ReferenceOnly(string id) =>
         new(id, "generic", id, "application/octet-stream", 0, string.Empty, null, IsMissing: true);

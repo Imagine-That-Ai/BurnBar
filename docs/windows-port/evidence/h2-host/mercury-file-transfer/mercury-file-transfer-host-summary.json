@@ -1,0 +1,48 @@
+{
+  "Passed": true,
+  "GeneratedAtUtc": "2026-07-11T00:05:07.5714046+00:00",
+  "MachineName": "WINDOWS-ARM64-HOST",
+  "OsVersion": "Microsoft Windows NT 10.0.26200.0",
+  "OsArchitecture": "Arm64",
+  "ProcessArchitecture": "Arm64",
+  "Framework": ".NET 10.0.9",
+  "SnapshotSha256": "6ef72dcccd9b51e3a7f384632a9dff22af4c12372f3396fe557011d42e867971",
+  "PromotedFileSha256": "6ef72dcccd9b51e3a7f384632a9dff22af4c12372f3396fe557011d42e867971",
+  "Checks": [
+    {
+      "Name": "defender-available",
+      "Passed": true,
+      "Detail": "provider=Microsoft Defender MpCmdRun"
+    },
+    {
+      "Name": "immutable-outbound-snapshot",
+      "Passed": true,
+      "Detail": "bytes=1048613; hash=6ef72dcccd9b51e3a7f384632a9dff22af4c12372f3396fe557011d42e867971; readOnly=True"
+    },
+    {
+      "Name": "streaming-chunk-plan",
+      "Passed": true,
+      "Detail": "chunks=17; bytes=1048613"
+    },
+    {
+      "Name": "motw-and-defender-quarantine",
+      "Passed": true,
+      "Detail": "disposition=AwaitingUserApproval; origin=Marked; scan=Clean; motw=True"
+    },
+    {
+      "Name": "explicit-approval-atomic-promotion",
+      "Passed": true,
+      "Detail": "disposition=Promoted; motwPreserved=True; hash=6ef72dcccd9b51e3a7f384632a9dff22af4c12372f3396fe557011d42e867971"
+    },
+    {
+      "Name": "threat-result-fails-closed",
+      "Passed": true,
+      "Detail": "disposition=ThreatDetected; promotionDenied=True"
+    },
+    {
+      "Name": "outbound-snapshot-release",
+      "Passed": true,
+      "Detail": "released=True; exists=False"
+    }
+  ]
+}

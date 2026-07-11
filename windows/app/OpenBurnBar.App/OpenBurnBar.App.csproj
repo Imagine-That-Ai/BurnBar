@@ -154,6 +154,8 @@
     <ProjectReference Include="../../pal/ipc-windows/OpenBurnBar.Pal.Ipc.Windows.csproj" />
     <ProjectReference Include="../../computeruse/OpenBurnBar.ComputerUse.Core/OpenBurnBar.ComputerUse.Core.csproj" />
     <ProjectReference Include="../../computeruse/OpenBurnBar.ComputerUse.Windows/OpenBurnBar.ComputerUse.Windows.csproj" />
+    <ProjectReference Include="../../integrations/mercury/OpenBurnBar.Integrations.Mercury/OpenBurnBar.Integrations.Mercury.csproj" />
+    <ProjectReference Include="../../integrations/mercury/OpenBurnBar.Integrations.Mercury.Windows/OpenBurnBar.Integrations.Mercury.Windows.csproj" />
   </ItemGroup>
 
   <ItemGroup>

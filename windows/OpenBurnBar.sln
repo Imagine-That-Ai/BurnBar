@@ -275,6 +275,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "computeruse-host", "compute
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenBurnBar.ComputerUse.HostHarness", "tests\computeruse-host\OpenBurnBar.ComputerUse.HostHarness\OpenBurnBar.ComputerUse.HostHarness.csproj", "{E82AAD31-4312-427F-A1FF-CDCE94133ED5}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "mercury-file-transfer-host", "mercury-file-transfer-host", "{3A9D5A49-AC7F-93EF-0746-FB71ABAD1130}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenBurnBar.Mercury.FileTransfer.HostHarness", "tests\mercury-file-transfer-host\OpenBurnBar.Mercury.FileTransfer.HostHarness\OpenBurnBar.Mercury.FileTransfer.HostHarness.csproj", "{68E65ADD-3D63-480F-8815-B3564F0DC55F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|ARM64 = Debug|ARM64
@@ -1711,6 +1715,22 @@ Global
 		{E82AAD31-4312-427F-A1FF-CDCE94133ED5}.Release|x86.Build.0 = Release|Any CPU
 		{E82AAD31-4312-427F-A1FF-CDCE94133ED5}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{E82AAD31-4312-427F-A1FF-CDCE94133ED5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{68E65ADD-3D63-480F-8815-B3564F0DC55F}.Debug|ARM64.ActiveCfg = Debug|Any CPU
+		{68E65ADD-3D63-480F-8815-B3564F0DC55F}.Debug|ARM64.Build.0 = Debug|Any CPU
+		{68E65ADD-3D63-480F-8815-B3564F0DC55F}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{68E65ADD-3D63-480F-8815-B3564F0DC55F}.Debug|x64.Build.0 = Debug|Any CPU
+		{68E65ADD-3D63-480F-8815-B3564F0DC55F}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{68E65ADD-3D63-480F-8815-B3564F0DC55F}.Debug|x86.Build.0 = Debug|Any CPU
+		{68E65ADD-3D63-480F-8815-B3564F0DC55F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{68E65ADD-3D63-480F-8815-B3564F0DC55F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{68E65ADD-3D63-480F-8815-B3564F0DC55F}.Release|ARM64.ActiveCfg = Release|Any CPU
+		{68E65ADD-3D63-480F-8815-B3564F0DC55F}.Release|ARM64.Build.0 = Release|Any CPU
+		{68E65ADD-3D63-480F-8815-B3564F0DC55F}.Release|x64.ActiveCfg = Release|Any CPU
+		{68E65ADD-3D63-480F-8815-B3564F0DC55F}.Release|x64.Build.0 = Release|Any CPU
+		{68E65ADD-3D63-480F-8815-B3564F0DC55F}.Release|x86.ActiveCfg = Release|Any CPU
+		{68E65ADD-3D63-480F-8815-B3564F0DC55F}.Release|x86.Build.0 = Release|Any CPU
+		{68E65ADD-3D63-480F-8815-B3564F0DC55F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{68E65ADD-3D63-480F-8815-B3564F0DC55F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -1838,5 +1858,7 @@ Global
 		{DA4DD4F1-15F5-445F-82B7-E46FC25B6BD9} = {CED6321B-FFBE-DF1C-D07D-B669685BF23F}
 		{15BDDDCC-2688-28D2-1F52-C99E3197C90F} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{E82AAD31-4312-427F-A1FF-CDCE94133ED5} = {15BDDDCC-2688-28D2-1F52-C99E3197C90F}
+		{3A9D5A49-AC7F-93EF-0746-FB71ABAD1130} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{68E65ADD-3D63-480F-8815-B3564F0DC55F} = {3A9D5A49-AC7F-93EF-0746-FB71ABAD1130}
 	EndGlobalSection
 EndGlobal

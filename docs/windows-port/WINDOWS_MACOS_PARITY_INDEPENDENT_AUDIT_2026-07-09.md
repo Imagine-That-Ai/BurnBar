@@ -99,6 +99,25 @@ are denied with `SignatureFailure`, so this proof does not claim secure-desktop
 or lock-screen injection, a signed virtual HID driver, or physical x64/ARM64
 device certification.
 
+## Mercury File-Transfer Host Update - 2026-07-10
+
+Exact candidate `c9a42ebfe773` passed history-independent import verification on
+the Windows 11 ARM64 UTM host (`10,281 / 10,281` files, zero mismatches), the
+ARM64 shipping WinUI app build, the ARM64 host harness build, and all seven
+Mercury file-transfer safety checks. The live run covered immutable
+content-addressed snapshots, bounded streaming chunks, same-volume quarantine,
+NTFS Mark-of-the-Web, Microsoft Defender scanning without remediation, explicit
+approval, atomic no-overwrite promotion, threat-deny behavior, and snapshot
+release.
+
+The compact receipt, sanitized host summary, and exact import verification are
+under `docs/windows-port/evidence/h2-host/mercury-file-transfer/`. The app now
+composes this file-transfer runtime and chat attachments stage through immutable
+snapshots. Media Settings reports the remaining capture/encode lane as
+unavailable rather than implying readiness. This proof does not certify
+screen/camera/audio capture, Media Foundation encode, calls, WNS, cross-device
+RFB, or physical x64/ARM64 hardware.
+
 ## Executive Summary
 
 Windows is a substantial code port, but it is not at macOS product parity or
@@ -113,11 +132,11 @@ capabilities are uncomposed or explicitly deferred.
 This audit reviewed current source, current release assets, the 46-row Windows
 ledger, selected Windows unit suites, and the Windows full-suite CI result.
 The initial audit snapshot found the local Windows VM locked and its guest-exec
-channel unavailable. The later exact-candidate receipt above supersedes that
-statement for the bounded ARM64 UIA/accessibility scenarios only. Installed
-release behavior, visual performance, notifications, activation, Narrator,
-150%/200% DPI, OS-level high contrast, and physical x64/ARM64 hardware remain
-uncertified.
+channel unavailable. The later exact-candidate receipts above supersede that
+statement for bounded ARM64 UIA/accessibility, Computer Use, and Mercury
+file-transfer scenarios. Installed release behavior, visual performance,
+notifications, activation, Narrator, 150%/200% DPI, OS-level high contrast,
+Mercury capture/calls, and physical x64/ARM64 hardware remain uncertified.
 
 The public v1.0.29 release has macOS artifacts but no Windows installer or
 MSIX package. A passing scoped ledger and portable C# tests must not be
@@ -151,7 +170,7 @@ treated as end-to-end product parity evidence.
 | Onboarding and permissions | macOS probes and refreshes real permissions. Windows system permissions are informational and chat gateway health is a placeholder. See windows/app/OpenBurnBar.App/Onboarding/Steps/SystemPermissionsStepPage.xaml.cs:6-22 and ChatEngineStepPage.xaml.cs:142-146. | Add Windows-native probes for notification registration, storage/log access, runtime dependencies, UI Automation, screen capture, and optional input components. Use Windows terminology, not copied TCC labels. | High | In a clean VM, deny, grant, revoke, restart, and recover each capability. Onboarding must never falsely report readiness. |
 | Notifications, background behavior, and tray resilience | Windows has a tray foundation and a toast adapter, but live tray data, session/digest delivery, activation routing, preference persistence, Explorer restart recovery, and richer context actions are not proven or composed. See windows/app/OpenBurnBar.App/Budget/BudgetToastNotifier.cs:24-71. | Compose a notification router with the runtime. Add dedupe/rate limits, deep links, OS-disabled status, background cadence, TaskbarCreated re-registration, and Dashboard/Settings/Update tray actions. | High | Test app open/hidden/closed, sleep/wake, reboot, Explorer restart, disabled notifications, toast click/cold activation, and multi-monitor DPI. |
 | Packaging, updater, URI/file/startup activation | MSIX declares protocol, file associations, startup, and toast activation, but app launch only handles route smoke then creates the tray. The updater core is unreferenced and required MSIX images are absent. See windows/packaging/msix/Package.appxmanifest:102-167 and windows/app/OpenBurnBar.App/App.xaml.cs:44-76. | Wire activation/update services, generate package assets, sign MSIX and portable artifacts, implement startup and single-instance handoff, and publish Windows release metadata/SBOM/attestations. | Critical | Clean x64 and ARM64 install; URI/file activation warm and cold; startup toggle; valid update, tampered-feed rejection, rollback, uninstall, and reinstall. |
-| Computer Use, Mercury, and file transfer | Windows now composes the lower-privilege Computer Use runtime in the main app and has exact-candidate ARM64 VM proof for UIA/SendInput/WGC, audit, kill switch/watchdog, and signed-driver denial. It still lacks the signed virtual HID/physical-device certification boundary, while Mercury/media/file transfer retain their separate end-to-end gaps. | Keep the unsigned Computer Use subset explicitly labeled and fail signed-driver-required actions closed; complete signed virtual HID and physical x64/ARM64 certification. Separately compose media permission UI, immutable outbound snapshots, and Defender/MOTW-aware inbound quarantine. | High | On physical x64 and ARM64 devices, test protected-target denial, panic halt, capture consent, signed input route, Windows-to-Mac transfer/call/share, and malicious-file handling. |
+| Computer Use, Mercury, and file transfer | Windows composes the lower-privilege Computer Use runtime and has exact-candidate ARM64 VM proof for UIA/SendInput/WGC, audit, kill switch/watchdog, and signed-driver denial. Mercury now composes immutable outbound snapshots and Defender/MOTW-aware inbound quarantine with exact-candidate ARM64 host proof, while capture/encode/calls/WNS and physical-device certification remain open. | Keep signed-driver-required Computer Use actions fail-closed and complete signed virtual HID plus physical x64/ARM64 certification. Keep unavailable Mercury capture/call controls explicitly disabled until media permission UI, capture, encode, transport, and cross-device host proof pass. | High | On physical x64 and ARM64 devices, test protected-target denial, panic halt, capture consent, signed input route, Windows-to-Mac transfer/call/share, malicious-file handling, and unavailable-state recovery. |
 | Navigation and command palette | The Windows shell is broad, but Ctrl+K has three fabricated recent sessions rather than live search/deep links. See windows/app/OpenBurnBar.App/Shell/CommandPalette.xaml.cs:80-90. | Add cancellable FTS/recency search over actual sessions/projects/memory, ranking, loading/no-results/error states, and direct record navigation. | Medium | Keyboard-only tests for populated, empty, slow, cancelled, and failing queries; verify each selected record opens. |
 | Visual polish and responsiveness | Windows has Mica/Acrylic, WebView2/Win2D fallbacks, and semantic styling, but data-backed layouts and performance are unverified; no runtime screenshot/performance release gate exists. See windows/app/OpenBurnBar.App/Dashboard/DashboardPage.xaml.cs:38-82. | Establish shared semantic design tokens and loading/empty/error/offline/partial state components. Tune density, resizing, motion, and GPU fallbacks against macOS intent rather than copying macOS chrome. | High | Screenshot and pixel-diff baselines at 100/150/200% DPI, narrow/wide windows, light/dark/high-contrast, reduced motion/transparency, and disabled WebView2/Win2D. Capture frame/input/memory budgets. |
 | Accessibility and keyboard | macOS has extensive annotations and Cmd shortcuts. Windows currently has limited automation metadata and mostly Ctrl+K; no UIA/Narrator interaction suite proves real accessibility. | Define accessible names/values/help, focus order, live-region announcements, Ctrl/Alt shortcuts, visible focus, high-contrast/reduced-motion behavior, and Windows UI Automation tests. | High | Narrator/manual keyboard protocol plus automated UIA tests for tray, onboarding, dashboard, settings, dialogs, palette, errors, and panic behavior. |
@@ -224,8 +243,11 @@ and release acceptance fixtures between Swift and C#.
 - [x] Computer Use lower-privilege UIA/SendInput/WGC/audit/watchdog loop passes
   exact-candidate Windows ARM64 VM certification and signed-driver-required
   actions fail closed.
-- [ ] Computer Use, media, and file-transfer safety tests cover deny paths,
-  permissions, panic kill, quarantine, and audit integrity.
+- [x] Mercury file-transfer safety covers immutable snapshots, bounded chunks,
+  MOTW/Defender quarantine, explicit approval, threat denial, and cleanup on an
+  exact-candidate Windows ARM64 host.
+- [ ] Mercury capture, encode, calls, WNS, cross-device RFB, and physical-device
+  permission/recovery flows pass host certification.
 - [ ] Release evidence contains signed artifacts, hashes, SBOM/attestations,
   install/update results, and physical-device certification.
 
@@ -233,8 +255,8 @@ and release acceptance fixtures between Swift and C#.
 
 The audit now has a concrete Windows foundation implementation covering the
 live data plane, settings/onboarding, activation/updater composition, package
-assets, tray recovery, diagnostics, accessibility, unsigned distribution, and
-the lower-privilege Computer Use host loop. A parity release must still satisfy
-every applicable QA item with signed artifacts and independent Windows-host or
-physical-device evidence; source composition and bounded VM runs do not lower
-that bar.
+assets, tray recovery, diagnostics, accessibility, unsigned distribution, the
+lower-privilege Computer Use host loop, and the Mercury file-transfer safety
+path. A parity release must still satisfy every applicable QA item with signed
+artifacts and independent Windows-host or physical-device evidence; source
+composition and bounded VM runs do not lower that bar.
