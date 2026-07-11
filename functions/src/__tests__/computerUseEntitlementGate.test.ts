@@ -120,7 +120,10 @@ function request(data: Record<string, unknown> = {}) {
 }
 
 function run(callable: unknown, data?: Record<string, unknown>): Promise<unknown> {
-  const runner = callable && (typeof callable === "object" || typeof callable === "function") ? Reflect.get(callable, "run") : undefined;
+  const runner =
+    callable && (typeof callable === "object" || typeof callable === "function")
+      ? Reflect.get(callable, "run")
+      : undefined;
   if (typeof runner !== "function") {
     throw new Error("callable test target is missing run()");
   }
@@ -138,6 +141,9 @@ describe("Computer Use callables require hosted Agent Control entitlement", () =
     "publishIrohPairingPublicKey",
     "publishIrohPairingRecord",
     "publishPhoneControlAuthority",
+    "issueIrohControllerRouteChallenge",
+    "registerIrohControllerRoute",
+    "resolveActiveIrohControllerRoutes",
     "publishRelaySenderKey",
     "publishAgentGrantAuthority",
     "queueAgentCapabilityGrantRequest",

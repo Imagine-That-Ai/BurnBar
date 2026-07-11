@@ -104,8 +104,8 @@ five-minute Firestore challenge with atomic replay consumption, a pinned
 signed-verdict verifier seam, a fixed 30-minute token TTL, an account-bound
 daemon memory-only client, hash-only upload-ticket issuance, exact public
 ingress claim, streamed evidence upload, and receipt-native mint evidence.
-Endpoint-wide trust authorization now rejects Linux on 73
-callables by default, admits 29 audited low-risk operations, and permits 15
+Endpoint-wide trust authorization now rejects Linux on 76
+callables by default, admits 30 audited low-risk operations, and permits 15
 high-risk mutations only through the existing nonce plus trusted-device proof
 and mandatory-audit step-up; the two prerequisite callables are separately
 cataloged. Production minting remains disabled by default. The root-owned broker

@@ -124,7 +124,9 @@
       "typespec": "typespec/domains/iroh-pairing.tsp",
       "firestoreCollections": [
         "users/{uid}/iroh_pairings/{pairingId}",
-        "users/{uid}/device_links/{linkId}"
+        "users/{uid}/device_links/{linkId}",
+        "users/{uid}/iroh_pairing/{connectionId}/controller_routes/{sourceDeviceId}",
+        "users/{uid}/iroh_controller_route_challenges/{challengeId}"
       ],
       "emit": {
         "typescript": "functions/src/types/generated/iroh-pairing.ts",
