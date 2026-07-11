@@ -536,7 +536,7 @@ dependencies {
     implementation("androidx.glance:glance-appwidget:1.1.1")
 
     // WorkManager — schedules the periodic widget snapshot refresh.
-    implementation("androidx.work:work-runtime-ktx:2.10.0")
+    implementation("androidx.work:work-runtime-ktx:2.11.2")
 
     // DataStore for preferences
     implementation("androidx.datastore:datastore-preferences:1.2.1")
