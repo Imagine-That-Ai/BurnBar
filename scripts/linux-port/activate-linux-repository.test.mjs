@@ -104,6 +104,47 @@ test('dry run reads state but never mutates', async (t) => {
   assert.equal(calls, 1);
 });
 
+test('metadata refresh keeps the exact active CAS identity and uses the explicit refresh mode', async (t) => {
+  const value = fixture();
+  t.after(() => fs.rmSync(value.root, { recursive: true, force: true }));
+  const currentSnapshotId = 'b'.repeat(64);
+  const statusEtag = `"${'c'.repeat(32)}"`;
+  const result = await activateLinuxRepository({
+    closurePath: value.closurePath,
+    baseUrl: 'https://downloads.burnbar.ai',
+    actor: 'release-bot',
+    reason: 'Refresh signed apt expiry metadata',
+    runUrl: null,
+    mode: 'refresh',
+    confirm: false,
+    token: 'x'.repeat(32)
+  }, async () => new Response(JSON.stringify({
+    schemaVersion: 1,
+    status: 'active',
+    channel: 'stable',
+    activation: {
+      schemaVersion: 1,
+      mode: 'promote',
+      channel: 'stable',
+      generation: 7,
+      snapshotId: currentSnapshotId,
+      closureSha256: currentSnapshotId,
+      version: '1.2.3',
+      sourceCommit: 'a'.repeat(40),
+      activatedAt: '2026-07-11T03:00:00.000Z',
+      previousSnapshotId: null,
+      actor: 'release-bot',
+      runUrl: null,
+      reason: 'Initial verified promotion'
+    },
+    pointerEtag: statusEtag
+  }), { status: 200, headers: { ETag: statusEtag, 'Content-Type': 'application/json' } }));
+  assert.equal(result.request.mode, 'refresh');
+  assert.equal(result.request.expectedCurrentSnapshotId, currentSnapshotId);
+  assert.equal(result.request.expectedCurrentGeneration, 7);
+  assert.equal(result.request.expectedCurrentPointerEtag, statusEtag);
+});
+
 test('a later promotion accepts the exact active Worker status schema', async (t) => {
   const value = fixture();
   t.after(() => fs.rmSync(value.root, { recursive: true, force: true }));

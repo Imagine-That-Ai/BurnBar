@@ -63,6 +63,27 @@ if (manifest.distributionRepositories?.githubReleaseCleanup
     !== 'draft-and-published-discovery-by-owned-id-with-repeated-dual-absence-proof') {
   failures.push('distribution repository GitHub cleanup must prove repeated draft and published absence');
 }
+for (const [field, expected] of Object.entries({
+  metadataRefreshWorkflow: '.github/workflows/linux-repository-refresh.yml',
+  metadataRefreshInspector: 'scripts/linux-port/inspect-linux-repository-freshness.mjs',
+  metadataRefreshFetcher: 'scripts/linux-port/fetch-linux-repository-snapshot.mjs',
+  metadataRefreshBuilder: 'scripts/linux-port/refresh-linux-repository-metadata.mjs',
+  metadataRefreshUploader: 'scripts/linux-port/upload-linux-repository-refresh.mjs',
+  metadataRefreshEvidenceUploader: 'scripts/linux-port/upload-linux-repository-refresh-evidence.mjs',
+  metadataRefreshFeedRebind: 'scripts/linux-port/rebind-linux-repository-feed.mjs'
+})) {
+  if (manifest.distributionRepositories?.[field] !== expected || !fs.existsSync(path.join(repoRoot, expected))) {
+    failures.push(`distribution repository ${field} is missing or noncanonical`);
+  }
+}
+if (manifest.distributionRepositories?.metadataRefreshClosureSchema !== 2) {
+  failures.push('distribution repository metadata refresh closure schema must be 2');
+}
+if (manifest.distributionRepositories?.metadataRefreshCosignIssuer !== 'https://token.actions.githubusercontent.com'
+    || manifest.distributionRepositories?.metadataRefreshCosignIdentity
+      !== 'https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-repository-refresh.yml@refs/heads/main') {
+  failures.push('distribution repository metadata refresh Sigstore identity is noncanonical');
+}
 const distributionConfigPath = path.join(repoRoot, manifest.distributionRepositories?.config ?? '');
 if (!fs.existsSync(distributionConfigPath)) {
   failures.push('distribution repository config is missing');

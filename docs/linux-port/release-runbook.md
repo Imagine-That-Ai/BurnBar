@@ -269,6 +269,82 @@ failed cutover cannot expose a partial generation:
     compensation case. The workflow always fails the release after proving
     containment; an uncontained result is a separate hard failure.
 
+### Scheduled metadata refresh
+
+The release transaction and the metadata-refresh transaction share the
+`linux-repository-release` concurrency group and never cancel a run in
+progress. The refresh workflow is pinned to `refs/heads/main`, runs every six
+hours, and may also be dispatched
+for `stable`, `prerelease`, `nightly`, or all channels. It refreshes an active
+channel when signed apt validity has 96 hours or less remaining. A manual
+`force_refresh` bypasses only that time threshold; it cannot bypass signature,
+lineage, immutable-byte, lifecycle, activation, feed-binding, or compensation
+checks. The 48-hour critical threshold and the Worker's 24-hour activation
+minimum leave explicit monitoring and rollback margins inside the seven-day
+signed window.
+
+The scheduled lane is metadata-only. It does not rebuild application packages,
+create or edit a GitHub release, publish new update-feed bytes, deploy Worker
+routes, or advance an application version. Its transaction is:
+
+1. `inspect-linux-repository-freshness.mjs` authenticates control status, reads
+   the exact active closure and `InRelease` through the immutable preview, and
+   verifies their snapshot identity, OpenPGP signature, signed dates, and
+   configured thresholds. A proven inactive channel is a no-op; malformed,
+   unreachable, unsigned, expired, or inconsistent state fails the run.
+2. `fetch-linux-repository-snapshot.mjs` reconstructs the closure-listed active
+   snapshot into a new local directory and exact-compares every size and
+   SHA-256. Before key loading, the workflow reconciles that closure digest
+   with both authenticated status receipts and runs the independent repository
+   verifier over the fetched signed parent. The repository OpenPGP private key
+   is not available to any read or parent-verification phase.
+3. `refresh-linux-repository-metadata.mjs` receives the private key only through
+   stdin inside the repository toolchain container. It writes a schema-2
+   closure chained to the active snapshot, advances only the signed apt
+   `Release`, `InRelease`, and `Release.gpg` window, and preserves the version,
+   source commit, package-set root, signing identity, RPM metadata, bootstrap
+   files, `.deb` bytes, and already-signed `.rpm` bytes exactly.
+4. The normal repository verifier and clean local apt/dnf lifecycle must pass.
+   `upload-linux-repository-refresh.mjs` then create-only uploads the new
+   closure-addressed snapshot, followed by a clean preview lifecycle on both
+   architectures. Upload drift returns `409` and cannot change the active
+   pointer.
+5. `activate-linux-repository.mjs --mode refresh --yes` writes its durable intent
+   before the snapshot/generation/ETag compare-and-swap. Refresh is legal only
+   from an active snapshot with the same version and source commit and an exact
+   closure lineage to that snapshot.
+6. Activation changes the repository pointer identity, so the feed deliberately
+   returns `503` until `rebind-linux-repository-feed.mjs --target current`
+   conditionally rebinds the existing signed descriptor to the new repository
+   generation and ETag. This operation does not rewrite or republish feed bytes.
+7. The authenticated rebound feed pointer, live signed feed, exact public
+   repository bytes, snapshot headers, and clean apt/dnf lifecycle pass before
+   the workflow writes and keyless-Sigstore-attests its transaction manifest.
+   The attested manifest, predicate, Sigstore bundle, operational receipts,
+   activation receipt, and signed repository closure are then create-only
+   uploaded beneath the snapshot and activation generation. Before the first
+   upload, the local uploader runs `cosign verify-blob-attestation` over the
+   exact transaction manifest and bundle with the committed predicate type,
+   GitHub OIDC issuer, and `linux-repository-refresh.yml@refs/heads/main`
+   certificate identity. It also proves every duplicated closure/activation
+   field, input and receipt hash, size, predicate binding, immutable response
+   identity, and ETag before writing its receipt.
+   Any failure from activation onward runs
+   `compensate-linux-repository-activation.mjs`, restores and verifies the prior
+   snapshot and feed with fresh CAS identity, or disables mutable routes if a
+   safe rollback is unavailable. A compensated run still fails and opens the
+   standing `linux-repository-refresh` operations issue.
+
+The workflow loads the activation token only in authenticated status/control
+steps, the upload token only in the two create-only repository and evidence
+upload steps, and the repository
+OpenPGP key only in the signer step after the active snapshot is authenticated.
+It uses GitHub OIDC for Sigstore evidence rather than a fourth long-lived key.
+The immutable evidence namespace preserves the exact successful transaction;
+the separately uploaded GitHub run artifact preserves failures and compensation
+attempts. Neither source-level wiring nor an artifact by itself proves that the
+Workers, secrets, DNS, schedule, or public repository are deployed.
+
 The activation record is availability/routing state, not a new trust root.
 Package managers still verify the pinned OpenPGP identity and signed metadata.
 Shared checksum-addressed leaves let a client that fetched the old signed root
@@ -278,8 +354,10 @@ retry resolves one complete retained generation. Rollback activates a retained,
 unexpired snapshot with the same compare-and-swap contract. Do not delete an
 active, previous, or still-reachable snapshot or shared leaf.
 Normal promotion requires a strictly newer semantic version; rollback is a
-separate mode limited to the active record's `previousSnapshotId`. Deactivation
-is a control-plane containment operation, not a release promotion.
+separate mode limited to the active record's `previousSnapshotId`. Refresh is a
+same-version operation limited to an exact metadata-only child of the active
+snapshot. Deactivation is a control-plane containment operation, not a release
+promotion.
 Every bearer-token request is pinned to the exact
 `https://downloads.burnbar.ai` production origin; operator-supplied alternate
 origins fail before the credential is sent. The upload Worker receives only
@@ -298,14 +376,13 @@ a later generation with the new subkey. Snapshot routing permits the bootstrap
 bytes to change atomically, but stable rotation remains blocked until a reviewed
 installed keyring update mechanism and overlap lifecycle have live proof.
 
-Source implementation does not establish deployment truth. Stable promotion
-remains blocked until the branded DNS/custom domain, scoped Cloudflare
-credentials, separate upload and activation secrets, production repository
-OpenPGP identity, exact
-candidate public copy, interruption/rollback/deactivation drill, and scheduled
-pre-expiry refresh all have live evidence. The current activation API rejects
-same-version promotion, so the required metadata-only refresh operation and
-schedule remain an explicit source blocker rather than an implied capability.
+Source implementation does not establish deployment truth. The metadata-only
+builder, same-version refresh activation mode, feed rebind, compensation path,
+and scheduled/manual workflow are source-ready. Stable promotion remains
+blocked until the branded DNS/custom domain, scoped Cloudflare credentials,
+separate upload and activation secrets, production repository OpenPGP identity,
+exact candidate public copy, interruption/rollback/deactivation drill, and at
+least one scheduled pre-expiry refresh all have live production evidence.
 
 Source-level repository construction and verification are not channel
 promotion. Do not add apt/dnf install copy until the signed public copy and
@@ -451,11 +528,12 @@ and refuses a dirty worktree.
   been captured for the exact candidate. The repository GPG private key must
   be provisioned as `OPENBURNBAR_LINUX_REPOSITORY_GPG_PRIVATE_KEY` before CI can
   produce a signed closure.
-- Apt metadata intentionally expires after seven days. Immutable snapshot
-  activation is source-implemented, but no scheduled metadata refresh workflow
-  exists yet. Public channel copy and stable promotion remain blocked until a
-  metadata-only refresh preserves package/RPM bytes, chains signed closures,
-  and activates before the prior `InRelease` expires.
+- Apt metadata intentionally expires after seven days. The scheduled/manual
+  metadata-only refresh, closure chaining, same-version activation, feed rebind,
+  and compensation transaction are source-implemented. No production run has
+  yet proven that the exact package/RPM bytes remain unchanged and the new
+  signed closure activates before the prior `InRelease` expires; public channel
+  copy and stable promotion remain blocked on that live evidence.
 - AUR and Flatpak remain unpromoted pending publisher credentials, a corrected
   release-bound AUR recipe, Flatpak portal/keyring policy proof, and installed
   lifecycle evidence.

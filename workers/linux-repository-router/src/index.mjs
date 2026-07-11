@@ -15,11 +15,14 @@ const MAX_CLOSURE_BYTES = 1024 * 1024;
 const MAX_CLOSURE_FILES = 512;
 const MAX_ACTIVATION_HASH_BYTES = 8 * 1024 * 1024;
 const MINIMUM_APT_VALIDITY_MS = 24 * 60 * 60 * 1000;
+const APT_VALIDITY_MS = 168 * 60 * 60 * 1000;
+const MAX_REFRESH_CLOCK_SKEW_MS = 5 * 60 * 1000;
 const IMMUTABLE_CACHE = 'public, max-age=31536000, immutable';
 const POINTER_CACHE = 'no-cache, must-revalidate';
 const BOOTSTRAP_CACHE = 'public, max-age=300, must-revalidate';
 const OFFICIAL_FEED_PUBLIC_KEY_SPKI_BASE64 = 'MCowBQYDK2VwAyEAWPJHS2mAIVuX4A9POmB58154l2+c20up/WasNc9Tlng=';
 const OFFICIAL_FEED_PUBLIC_KEY_SPKI_SHA256 = '0e0fd1f52af308d96c71571ef7e94f3e183218abf531760dfcc8ef8e499e5c37';
+const REFRESH_EVIDENCE_BASENAME_PATTERN = /^(?:repository-activation\.json|repository-closure\.json(?:\.asc)?|repository-freshness\.json|repository-refresh-(?:build|fetch|feed-rebind|feed-verification|predicate|preview-lifecycle|public-lifecycle|public-verification|transaction|upload)\.json|repository-refresh-transaction\.json\.sigstore\.json|repository-refresh-evidence-closure\.json)$/u;
 
 export default {
   fetch(request, env) {
@@ -185,6 +188,8 @@ function validImmutableKey(key) {
       || !/^[A-Za-z0-9._+~\/-]+$/u.test(key)) return false;
   if (/^linux\/releases\/linux-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\/[A-Za-z0-9][A-Za-z0-9._+~-]*$/u.test(key)) return true;
   if (/^linux\/repository-snapshots\/(stable|prerelease|nightly)\/[a-f0-9]{64}\/(?:repository-(?:closure\.json(?:\.asc)?|lifecycle\.json)|(?:apt|rpm)\/[A-Za-z0-9._+~\/-]+)$/u.test(key)) return true;
+  const evidence = key.match(/^linux\/repository-refresh-evidence\/(stable|prerelease|nightly)\/[a-f0-9]{64}\/[1-9][0-9]*\/([^/]+)$/u);
+  if (evidence && REFRESH_EVIDENCE_BASENAME_PATTERN.test(evidence[2])) return true;
   const route = classifyPublicPath(`/${key}`);
   return Boolean(route && !route.snapshotRouted);
 }
@@ -526,14 +531,26 @@ async function handlePreview(request, url, env) {
   if (!['GET', 'HEAD'].includes(request.method)) return methodNotAllowed('GET, HEAD');
   if (url.search || url.hash || /%|\/\//u.test(url.pathname)) return problem(404, 'repository preview object not found');
   const segments = url.pathname.split('/').slice(1);
-  if (segments.length < 6 || segments[0] !== 'linux' || segments[1] !== 'repository-preview'
-      || !CHANNELS.has(segments[2]) || !SNAPSHOT_ID_PATTERN.test(segments[3])
-      || !['apt', 'rpm'].includes(segments[4])) {
+  if (segments.length < 5 || segments[0] !== 'linux' || segments[1] !== 'repository-preview'
+      || !CHANNELS.has(segments[2]) || !SNAPSHOT_ID_PATTERN.test(segments[3])) {
     return problem(404, 'repository preview object not found');
   }
   const channel = segments[2];
   const snapshotId = segments[3];
   const relative = segments.slice(4).join('/');
+  if (['repository-closure.json', 'repository-closure.json.asc'].includes(relative)) {
+    const response = await serveObject(
+      request,
+      env.REPOSITORY_BUCKET,
+      `${snapshotPrefixFor(channel, snapshotId)}/${relative}`,
+      IMMUTABLE_CACHE
+    );
+    response.headers.set('X-OpenBurnBar-Repository-Snapshot', snapshotId);
+    return response;
+  }
+  if (!['apt', 'rpm'].includes(segments[4])) {
+    return problem(404, 'repository preview object not found');
+  }
   const route = classifyPublicPath(`/linux/${relative}`);
   if (!route || (route.channel && route.channel !== channel) || !previewBootstrapMatchesChannel(relative, channel)) {
     return problem(404, 'repository preview object not found');
@@ -589,6 +606,13 @@ async function activate(request, bucket, now) {
   if (input.targetSnapshotId === currentSnapshotId) {
     return jsonResponse(409, { error: 'target snapshot is already active', currentSnapshotId });
   }
+  if (input.mode === 'refresh' && !current?.active) {
+    return jsonResponse(409, { error: 'metadata refresh requires an active repository snapshot' });
+  }
+  if (current?.active && input.mode === 'refresh'
+      && (input.version !== current.record.version || input.sourceCommit !== current.record.sourceCommit)) {
+    return jsonResponse(409, { error: 'metadata refresh must preserve the active version and source commit' });
+  }
   if (current?.active && input.mode === 'promote' && compareVersions(input.version, current.record.version) <= 0) {
     return jsonResponse(409, { error: 'promotion version must be strictly newer than the active version' });
   }
@@ -617,7 +641,7 @@ async function activate(request, bucket, now) {
   if (!(activatedAt instanceof Date) || !Number.isFinite(activatedAt.getTime())) {
     return jsonResponse(500, { error: 'activation clock is invalid' });
   }
-  const target = await validateTargetSnapshot(bucket, input, activatedAt);
+  const target = await validateTargetSnapshot(bucket, input, activatedAt, current);
   if (!target.valid) return jsonResponse(target.status, { error: target.error });
   const activation = {
     schemaVersion: 1,
@@ -742,7 +766,7 @@ async function readJsonRequest(request, limit, label) {
   }
 }
 
-async function validateTargetSnapshot(bucket, input, activatedAt) {
+async function validateTargetSnapshot(bucket, input, activatedAt, current) {
   const prefix = snapshotPrefixFor(input.channel, input.targetSnapshotId);
   const closure = await bucket.get(`${prefix}/repository-closure.json`);
   if (!closure || !('body' in closure)) {
@@ -773,6 +797,10 @@ async function validateTargetSnapshot(bucket, input, activatedAt) {
   }
   const closureFiles = validateClosureFiles(document.files, input.channel);
   if (!closureFiles.valid) return { valid: false, status: 409, error: closureFiles.error };
+  if (input.mode === 'refresh') {
+    const refresh = await validateMetadataRefresh(bucket, input, document, current, activatedAt);
+    if (!refresh.valid) return { valid: false, status: 409, error: refresh.error };
+  }
   const validUntil = Date.parse(document.repositories?.apt?.validUntil ?? '');
   if (!Number.isFinite(validUntil) || validUntil < activatedAt.getTime() + MINIMUM_APT_VALIDITY_MS) {
     return { valid: false, status: 409, error: 'target snapshot apt metadata has less than 24 hours of validity remaining' };
@@ -796,6 +824,83 @@ async function validateTargetSnapshot(bucket, input, activatedAt) {
   const signature = await bucket.head(`${prefix}/repository-closure.json.asc`);
   if (!signature || signature.size <= 0) {
     return { valid: false, status: 409, error: 'target snapshot closure signature is missing' };
+  }
+  return { valid: true };
+}
+
+async function validateMetadataRefresh(bucket, input, document, current, activatedAt) {
+  if (document.schemaVersion !== 2 || !isPlainObject(document.refresh)
+      || !hasExactKeys(document.refresh, [
+        'kind', 'refreshedAt', 'previousSnapshotId', 'previousReleaseDate', 'previousValidUntil'
+      ])
+      || document.refresh.kind !== 'apt-expiry'
+      || document.refresh.previousSnapshotId !== current.record.snapshotId) {
+    return { valid: false, error: 'metadata refresh closure does not chain to the active snapshot' };
+  }
+  const previousObject = await bucket.get(
+    `${snapshotPrefixFor(input.channel, current.record.snapshotId)}/repository-closure.json`
+  );
+  if (!previousObject || !('body' in previousObject)) {
+    return { valid: false, error: 'metadata refresh parent closure is missing' };
+  }
+  let previous;
+  try {
+    const bytes = new Uint8Array(await previousObject.arrayBuffer());
+    if (await sha256Hex(bytes) !== current.record.snapshotId) {
+      return { valid: false, error: 'metadata refresh parent closure hash is invalid' };
+    }
+    previous = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+  } catch {
+    return { valid: false, error: 'metadata refresh parent closure is invalid' };
+  }
+  const previousDate = Date.parse(previous.repositories?.apt?.releaseDate ?? '');
+  const previousValidUntil = Date.parse(previous.repositories?.apt?.validUntil ?? '');
+  const refreshedAt = Date.parse(document.refresh.refreshedAt ?? '');
+  const nextDate = Date.parse(document.repositories?.apt?.releaseDate ?? '');
+  const nextValidUntil = Date.parse(document.repositories?.apt?.validUntil ?? '');
+  if (!Number.isFinite(previousDate) || !Number.isFinite(previousValidUntil)
+      || !Number.isFinite(refreshedAt) || refreshedAt !== nextDate
+      || document.refresh.previousReleaseDate !== previous.repositories.apt.releaseDate
+      || document.refresh.previousValidUntil !== previous.repositories.apt.validUntil
+      || Math.abs(nextDate - activatedAt.getTime()) > MAX_REFRESH_CLOCK_SKEW_MS
+      || nextDate <= previousDate || nextValidUntil <= previousValidUntil
+      || nextValidUntil - nextDate !== APT_VALIDITY_MS) {
+    return { valid: false, error: 'metadata refresh signed validity window does not advance canonically' };
+  }
+  const invariantFields = [
+    'product', 'version', 'channel', 'gitCommit', 'architectures', 'packageSetRootSha256',
+    'signing', 'packages', 'lifecycleRequired'
+  ];
+  if (invariantFields.some((field) => JSON.stringify(document[field]) !== JSON.stringify(previous[field]))) {
+    return { valid: false, error: 'metadata refresh changed an immutable repository identity field' };
+  }
+  if (JSON.stringify(document.repositories?.rpm) !== JSON.stringify(previous.repositories?.rpm)) {
+    return { valid: false, error: 'metadata refresh changed RPM repository metadata' };
+  }
+  const aptWithoutWindow = (value) => {
+    if (!isPlainObject(value)) return null;
+    const { releaseDate: _releaseDate, validUntil: _validUntil, ...rest } = value;
+    return rest;
+  };
+  if (JSON.stringify(aptWithoutWindow(document.repositories?.apt))
+      !== JSON.stringify(aptWithoutWindow(previous.repositories?.apt))) {
+    return { valid: false, error: 'metadata refresh changed non-window apt repository metadata' };
+  }
+  const mutable = new Set([
+    `apt/dists/${input.channel}/Release`,
+    `apt/dists/${input.channel}/InRelease`,
+    `apt/dists/${input.channel}/Release.gpg`
+  ]);
+  const previousFiles = new Map((previous.files ?? []).map((row) => [row.file, row]));
+  const nextFiles = new Map((document.files ?? []).map((row) => [row.file, row]));
+  if (previousFiles.size !== nextFiles.size
+      || [...previousFiles.keys()].some((file) => !nextFiles.has(file))) {
+    return { valid: false, error: 'metadata refresh changed the repository file set' };
+  }
+  for (const [file, row] of previousFiles) {
+    if (!mutable.has(file) && JSON.stringify(nextFiles.get(file)) !== JSON.stringify(row)) {
+      return { valid: false, error: `metadata refresh changed immutable repository bytes: ${file}` };
+    }
   }
   return { valid: true };
 }
@@ -1221,7 +1326,7 @@ function validateActivationRecord(record) {
   ];
   if (!hasExactKeys(record, keys)) return false;
   return record.schemaVersion === 1
-    && ['promote', 'rollback'].includes(record.mode)
+    && ['promote', 'rollback', 'refresh'].includes(record.mode)
     && CHANNELS.has(record.channel)
     && Number.isSafeInteger(record.generation) && record.generation > 0
     && SNAPSHOT_ID_PATTERN.test(record.snapshotId)
@@ -1264,7 +1369,7 @@ function validateActivationInput(input) {
   ];
   if (!isPlainObject(input) || !hasExactKeys(input, keys)) return 'activation request has an invalid field set';
   if (input.schemaVersion !== 1) return 'schemaVersion must be 1';
-  if (!['promote', 'rollback'].includes(input.mode)) return 'mode must be promote or rollback';
+  if (!['promote', 'rollback', 'refresh'].includes(input.mode)) return 'mode must be promote, rollback, or refresh';
   if (!CHANNELS.has(input.channel)) return 'channel is unsupported';
   if (!SNAPSHOT_ID_PATTERN.test(input.targetSnapshotId ?? '')) return 'targetSnapshotId must be a lowercase SHA-256 digest';
   if (input.expectedCurrentSnapshotId !== null

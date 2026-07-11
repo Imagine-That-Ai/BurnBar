@@ -10,10 +10,12 @@ import {
   buildLinuxRepositories,
   hasTrustedRpmSignatureOutput,
   packageSetRoot,
+  refreshLinuxRepositoryMetadata,
   selectOpenPgpSigningKey,
   sha256File,
   validateDistributionChannels,
-  verifyLinuxRepositories
+  verifyLinuxRepositories,
+  verifyRepositorySnapshot
 } from './lib/linux-repository.mjs';
 
 const VERSION = '1.2.3';
@@ -79,7 +81,11 @@ function fixture() {
     schemaVersion: 1,
     repositoryMetadata: {
       aptValidForHours: 168,
-      signingKeyMinimumRemainingDays: 30
+      signingKeyMinimumRemainingDays: 30,
+      refreshCheckIntervalHours: 6,
+      refreshWhenRemainingHours: 96,
+      criticalRemainingHours: 48,
+      activationMinimumRemainingHours: 24
     },
     apt: {
       status: 'source-ready',
@@ -122,6 +128,9 @@ test('configuration accepts explicit unconfigured state but rejects placeholders
   assert.deepEqual(validateDistributionChannels(value.config), []);
   value.config.signing.fingerprint = 'REPLACE_ME';
   assert.ok(validateDistributionChannels(value.config).some((failure) => /unconfigured signing/u.test(failure)));
+  value.config.signing.fingerprint = null;
+  value.config.repositoryMetadata.refreshWhenRemainingHours = 72;
+  assert.ok(validateDistributionChannels(value.config).some((failure) => /refreshWhenRemainingHours must be 96/u.test(failure)));
   fs.rmSync(value.root, { recursive: true, force: true });
 });
 
@@ -397,6 +406,147 @@ test('failed rebuild preserves the last complete repository and removes staging 
     }), /fingerprint/u);
     assert.deepEqual(fs.readFileSync(first.closurePath), before);
     assert.equal(fs.readdirSync(value.releaseOut).some((name) => name.startsWith('.repositories-staging-')), false);
+  } finally {
+    process.env.PATH = previousPath;
+    fs.rmSync(value.root, { recursive: true, force: true });
+  }
+});
+
+test('metadata refresh advances only signed apt expiry roots and chains to exact immutable parent bytes', () => {
+  const value = fixture();
+  const previousPath = process.env.PATH;
+  process.env.PATH = `${value.bin}:${previousPath}`;
+  try {
+    const parent = buildLinuxRepositories({
+      repoRoot: value.root,
+      releaseOut: value.releaseOut,
+      configPath: value.configPath,
+      version: VERSION,
+      channel: CHANNEL,
+      privateKeyBytes: Buffer.from('fake-private-key')
+    });
+    const parentBytes = fs.readFileSync(parent.closurePath);
+    const parentId = crypto.createHash('sha256').update(parentBytes).digest('hex');
+    const immutableBefore = new Map(parent.closure.files
+      .filter((row) => ![
+        `apt/dists/${CHANNEL}/Release`,
+        `apt/dists/${CHANNEL}/InRelease`,
+        `apt/dists/${CHANNEL}/Release.gpg`
+      ].includes(row.file))
+      .map((row) => [row.file, row]));
+    fs.writeFileSync(path.join(value.bin, 'rpmsign'), `#!${process.execPath}\nprocess.exit(91);\n`, { mode: 0o755 });
+    const parentEpoch = Date.parse(parent.closure.repositories.apt.releaseDate) / 1000;
+    const refreshEpoch = parentEpoch + 1;
+    const output = path.join(value.root, 'refreshed-repository');
+    const refreshed = refreshLinuxRepositoryMetadata({
+      repoRoot: value.root,
+      sourceRepositoryRoot: parent.repositoryRoot,
+      outputRepositoryRoot: output,
+      configPath: value.configPath,
+      privateKeyBytes: Buffer.from('fake-private-key'),
+      refreshEpoch,
+      nowEpoch: refreshEpoch
+    });
+    assert.equal(refreshed.closure.schemaVersion, 2);
+    assert.deepEqual(refreshed.closure.refresh, {
+      kind: 'apt-expiry',
+      refreshedAt: new Date(refreshEpoch * 1000).toISOString(),
+      previousSnapshotId: parentId,
+      previousReleaseDate: parent.closure.repositories.apt.releaseDate,
+      previousValidUntil: parent.closure.repositories.apt.validUntil
+    });
+    assert.equal(Date.parse(refreshed.closure.repositories.apt.validUntil)
+      - Date.parse(refreshed.closure.repositories.apt.releaseDate), 168 * 60 * 60 * 1000);
+    assert.deepEqual(refreshed.closure.packages, parent.closure.packages);
+    assert.deepEqual(refreshed.closure.repositories.rpm, parent.closure.repositories.rpm);
+    for (const [file, record] of immutableBefore) {
+      const next = refreshed.closure.files.find((row) => row.file === file);
+      assert.deepEqual(next, record, file);
+      assert.deepEqual(fs.readFileSync(path.join(output, file)), fs.readFileSync(path.join(parent.repositoryRoot, file)), file);
+    }
+    assert.equal(verifyRepositorySnapshot({
+      repoRoot: value.root,
+      repositoryRoot: output,
+      configPath: value.configPath,
+      version: VERSION,
+      channel: CHANNEL
+    }).passed, true);
+
+    const retryOutput = path.join(value.root, 'refreshed-repository-retry');
+    const retry = refreshLinuxRepositoryMetadata({
+      repoRoot: value.root,
+      sourceRepositoryRoot: parent.repositoryRoot,
+      outputRepositoryRoot: retryOutput,
+      configPath: value.configPath,
+      privateKeyBytes: Buffer.from('fake-private-key'),
+      refreshEpoch,
+      nowEpoch: refreshEpoch
+    });
+    assert.deepEqual(fs.readFileSync(retry.closurePath), fs.readFileSync(refreshed.closurePath));
+    assert.equal(retry.snapshotId, refreshed.snapshotId);
+  } finally {
+    process.env.PATH = previousPath;
+    fs.rmSync(value.root, { recursive: true, force: true });
+  }
+});
+
+test('metadata refresh rejects parent drift, nonadvancing windows, clock skew, and preserves prior output on failure', () => {
+  const value = fixture();
+  const previousPath = process.env.PATH;
+  process.env.PATH = `${value.bin}:${previousPath}`;
+  try {
+    const parent = buildLinuxRepositories({
+      repoRoot: value.root,
+      releaseOut: value.releaseOut,
+      configPath: value.configPath,
+      version: VERSION,
+      channel: CHANNEL,
+      privateKeyBytes: Buffer.from('fake-private-key')
+    });
+    const parentEpoch = Date.parse(parent.closure.repositories.apt.releaseDate) / 1000;
+    const output = path.join(value.root, 'refresh-output');
+    fs.mkdirSync(output);
+    fs.writeFileSync(path.join(output, 'sentinel'), 'preserve\n');
+    assert.throws(() => refreshLinuxRepositoryMetadata({
+      repoRoot: value.root,
+      sourceRepositoryRoot: parent.repositoryRoot,
+      outputRepositoryRoot: parent.repositoryRoot,
+      configPath: value.configPath,
+      privateKeyBytes: Buffer.from('fake-private-key'),
+      refreshEpoch: parentEpoch + 1,
+      nowEpoch: parentEpoch + 1
+    }), /separate sibling tree/u);
+    assert.throws(() => refreshLinuxRepositoryMetadata({
+      repoRoot: value.root,
+      sourceRepositoryRoot: parent.repositoryRoot,
+      outputRepositoryRoot: output,
+      configPath: value.configPath,
+      privateKeyBytes: Buffer.from('fake-private-key'),
+      refreshEpoch: parentEpoch,
+      nowEpoch: parentEpoch
+    }), /advance beyond/u);
+    assert.equal(fs.readFileSync(path.join(output, 'sentinel'), 'utf8'), 'preserve\n');
+    assert.throws(() => refreshLinuxRepositoryMetadata({
+      repoRoot: value.root,
+      sourceRepositoryRoot: parent.repositoryRoot,
+      outputRepositoryRoot: output,
+      configPath: value.configPath,
+      privateKeyBytes: Buffer.from('fake-private-key'),
+      refreshEpoch: parentEpoch + 360,
+      nowEpoch: parentEpoch
+    }), /five minutes/u);
+    const packageRecord = parent.closure.files.find((row) => row.file.endsWith('.rpm'));
+    fs.appendFileSync(path.join(parent.repositoryRoot, packageRecord.file), 'drift');
+    assert.throws(() => refreshLinuxRepositoryMetadata({
+      repoRoot: value.root,
+      sourceRepositoryRoot: parent.repositoryRoot,
+      outputRepositoryRoot: output,
+      configPath: value.configPath,
+      privateKeyBytes: Buffer.from('fake-private-key'),
+      refreshEpoch: parentEpoch + 1,
+      nowEpoch: parentEpoch + 1
+    }), /parent repository verification failed/u);
+    assert.equal(fs.readFileSync(path.join(output, 'sentinel'), 'utf8'), 'preserve\n');
   } finally {
     process.env.PATH = previousPath;
     fs.rmSync(value.root, { recursive: true, force: true });

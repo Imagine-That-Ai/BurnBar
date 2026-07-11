@@ -1,0 +1,547 @@
+name: Linux Repository Metadata Refresh
+
+on:
+  schedule:
+    # Check often enough that delayed GitHub schedules still leave days of
+    # rollback margin before the signed apt metadata expires.
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Repository channel to inspect
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - stable
+          - prerelease
+          - nightly
+      force_refresh:
+        description: Refresh active metadata even when it is outside the normal threshold
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-repository-release
+  cancel-in-progress: false
+
+jobs:
+  resolve-channels:
+    name: Resolve repository refresh channels
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      channels: ${{ steps.channels.outputs.channels }}
+    steps:
+      - name: Resolve selected channels
+        id: channels
+        env:
+          INPUT_CHANNEL: ${{ inputs.channel || 'all' }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != refs/heads/main ]]; then
+            echo 'Linux repository metadata refresh may run only from refs/heads/main.' >&2
+            exit 1
+          fi
+          case "$INPUT_CHANNEL" in
+            all) channels='["stable","prerelease","nightly"]' ;;
+            stable|prerelease|nightly) channels="[\"$INPUT_CHANNEL\"]" ;;
+            *) echo "unsupported Linux repository refresh channel: $INPUT_CHANNEL" >&2; exit 1 ;;
+          esac
+          printf 'channels=%s\n' "$channels" >> "$GITHUB_OUTPUT"
+
+  refresh:
+    name: Refresh Linux ${{ matrix.channel }} repository metadata
+    needs: resolve-channels
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        channel: ${{ fromJSON(needs.resolve-channels.outputs.channels) }}
+    env:
+      OPENBURNBAR_LINUX_REFRESH_CHANNEL: ${{ matrix.channel }}
+      OPENBURNBAR_LINUX_RELEASE_OUT: ${{ github.workspace }}/.linux-refresh-output/${{ matrix.channel }}
+      OPENBURNBAR_LINUX_REPOSITORY_SOURCE: ${{ github.workspace }}/.linux-refresh-source/${{ matrix.channel }}
+      OPENBURNBAR_LINUX_REPOSITORY_OUT: ${{ github.workspace }}/.linux-refresh-output/${{ matrix.channel }}/repositories
+      OPENBURNBAR_LINUX_EVIDENCE_OUT: ${{ github.workspace }}/.linux-refresh-evidence/${{ matrix.channel }}
+      OPENBURNBAR_R2_PUBLIC_BASE_URL: https://downloads.burnbar.ai
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+
+      - name: Inspect active repository freshness without a signing key
+        id: inspect_freshness
+        env:
+          FORCE_REFRESH: ${{ github.event_name == 'workflow_dispatch' && inputs.force_refresh && 'true' || 'false' }}
+          OPENBURNBAR_LINUX_REPOSITORY_ACTIVATION_TOKEN: ${{ secrets.OPENBURNBAR_LINUX_REPOSITORY_ACTIVATION_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$OPENBURNBAR_LINUX_RELEASE_OUT" "$OPENBURNBAR_LINUX_EVIDENCE_OUT"
+          receipt="$OPENBURNBAR_LINUX_EVIDENCE_OUT/repository-freshness.json"
+          node scripts/linux-port/inspect-linux-repository-freshness.mjs \
+            --channel "$OPENBURNBAR_LINUX_REFRESH_CHANNEL" \
+            --output "$receipt"
+          node - "$receipt" "$GITHUB_OUTPUT" "$FORCE_REFRESH" <<'NODE'
+          const fs = require('node:fs');
+          const [receiptPath, outputPath, forceText] = process.argv.slice(2);
+          const value = JSON.parse(fs.readFileSync(receiptPath, 'utf8'));
+          if (value.schemaVersion !== 1 || value.passed !== true
+              || value.channel !== process.env.OPENBURNBAR_LINUX_REFRESH_CHANNEL
+              || !['active', 'inactive'].includes(value.status)) {
+            throw new Error('repository freshness receipt is malformed or failed');
+          }
+          let action = 'inactive';
+          if (value.status === 'active') {
+            if (typeof value.refreshRequired !== 'boolean') {
+              throw new Error('active repository freshness receipt has no refresh decision');
+            }
+            action = value.refreshRequired || forceText === 'true' ? 'refresh' : 'fresh';
+          }
+          fs.appendFileSync(outputPath, `action=${action}\n`);
+          NODE
+
+      - name: Install cosign for refresh evidence
+        if: steps.inspect_freshness.outputs.action == 'refresh'
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2 (node24-native)
+
+      - name: Fetch and authenticate the exact active repository snapshot
+        id: fetch_snapshot
+        if: steps.inspect_freshness.outputs.action == 'refresh'
+        env:
+          OPENBURNBAR_LINUX_REPOSITORY_ACTIVATION_TOKEN: ${{ secrets.OPENBURNBAR_LINUX_REPOSITORY_ACTIVATION_TOKEN }}
+        run: |
+          set -euo pipefail
+          node scripts/linux-port/fetch-linux-repository-snapshot.mjs \
+            --channel "$OPENBURNBAR_LINUX_REFRESH_CHANNEL" \
+            --output "$OPENBURNBAR_LINUX_REPOSITORY_SOURCE" \
+            --receipt "$OPENBURNBAR_LINUX_EVIDENCE_OUT/repository-refresh-fetch.json"
+
+      - name: Reconcile the fetched parent with the inspected active pointer
+        id: parent_identity
+        if: steps.fetch_snapshot.outcome == 'success'
+        run: |
+          set -euo pipefail
+          node - \
+            "$OPENBURNBAR_LINUX_EVIDENCE_OUT/repository-freshness.json" \
+            "$OPENBURNBAR_LINUX_EVIDENCE_OUT/repository-refresh-fetch.json" \
+            "$OPENBURNBAR_LINUX_REPOSITORY_SOURCE/repository-closure.json" \
+            "$GITHUB_OUTPUT" <<'NODE'
+          const crypto = require('node:crypto');
+          const fs = require('node:fs');
+          const [freshnessPath, fetchPath, closurePath, outputPath] = process.argv.slice(2);
+          const freshness = JSON.parse(fs.readFileSync(freshnessPath, 'utf8'));
+          const acquisition = JSON.parse(fs.readFileSync(fetchPath, 'utf8'));
+          const closureBytes = fs.readFileSync(closurePath);
+          const closure = JSON.parse(closureBytes);
+          const snapshotId = crypto.createHash('sha256').update(closureBytes).digest('hex');
+          if (freshness.status !== 'active' || freshness.current?.snapshotId !== snapshotId
+              || acquisition.snapshotId !== snapshotId || acquisition.channel !== closure.channel
+              || closure.channel !== process.env.OPENBURNBAR_LINUX_REFRESH_CHANNEL
+              || ![1, 2].includes(closure.schemaVersion)
+              || !/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/u.test(closure.version ?? '')) {
+            throw new Error('fetched repository parent does not match the authenticated active snapshot');
+          }
+          fs.appendFileSync(outputPath, `version=${closure.version}\nsnapshot=${snapshotId}\n`);
+          NODE
+
+      - name: Build repository toolchain image
+        if: steps.parent_identity.outcome == 'success'
+        run: docker build -t openburnbar-linux-toolchain:repository-refresh tools/linux-toolchain
+
+      - name: Independently verify the fetched signed parent repository
+        id: verify_parent_snapshot
+        if: steps.parent_identity.outcome == 'success'
+        run: >-
+          docker run --rm
+          -v "$PWD:/workspace"
+          -w /workspace
+          openburnbar-linux-toolchain:repository-refresh
+          node scripts/linux-port/verify-linux-repositories.mjs
+          --repository-root '/workspace/.linux-refresh-source/${{ matrix.channel }}'
+          --version '${{ steps.parent_identity.outputs.version }}'
+          --channel '${{ matrix.channel }}'
+
+      - name: Refresh signed apt metadata with late key loading
+        id: build_refresh
+        if: steps.verify_parent_snapshot.outcome == 'success'
+        env:
+          OPENBURNBAR_LINUX_REPOSITORY_GPG_PRIVATE_KEY: ${{ secrets.OPENBURNBAR_LINUX_REPOSITORY_GPG_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          refresh_epoch="$(date +%s)"
+          mkdir -p "$OPENBURNBAR_LINUX_RELEASE_OUT" "$OPENBURNBAR_LINUX_EVIDENCE_OUT"
+          repository_signing_key="$OPENBURNBAR_LINUX_REPOSITORY_GPG_PRIVATE_KEY"
+          unset OPENBURNBAR_LINUX_REPOSITORY_GPG_PRIVATE_KEY
+          printf '%s' "$repository_signing_key" | docker run --rm -i \
+            --network none \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m \
+            -v "$PWD:/workspace:ro" \
+            -v "$OPENBURNBAR_LINUX_REPOSITORY_SOURCE:/refresh-source:ro" \
+            -v "$OPENBURNBAR_LINUX_RELEASE_OUT:/refresh-output:rw" \
+            -v "$OPENBURNBAR_LINUX_EVIDENCE_OUT:/refresh-evidence:rw" \
+            -w /workspace \
+            openburnbar-linux-toolchain:repository-refresh \
+            node scripts/linux-port/refresh-linux-repository-metadata.mjs \
+              --source /refresh-source \
+              --output /refresh-output/repositories \
+              --private-key-stdin \
+              --refresh-epoch "$refresh_epoch" \
+              --receipt /refresh-evidence/repository-refresh-build.json
+          unset repository_signing_key
+          sudo chown -R "$(id -u):$(id -g)" "$OPENBURNBAR_LINUX_REPOSITORY_OUT"
+
+      - name: Resolve refreshed repository identity
+        id: refresh_identity
+        if: steps.build_refresh.outcome == 'success'
+        run: |
+          set -euo pipefail
+          node - "$OPENBURNBAR_LINUX_REPOSITORY_OUT/repository-closure.json" "$GITHUB_OUTPUT" <<'NODE'
+          const crypto = require('node:crypto');
+          const fs = require('node:fs');
+          const [closurePath, outputPath] = process.argv.slice(2);
+          const bytes = fs.readFileSync(closurePath);
+          const closure = JSON.parse(bytes);
+          if (closure.schemaVersion !== 2 || closure.channel !== process.env.OPENBURNBAR_LINUX_REFRESH_CHANNEL
+              || !/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/u.test(closure.version ?? '')
+              || closure.refresh?.kind !== 'apt-expiry') {
+            throw new Error('refreshed repository closure identity is invalid');
+          }
+          const snapshot = crypto.createHash('sha256').update(bytes).digest('hex');
+          fs.appendFileSync(outputPath, `version=${closure.version}\nsnapshot=${snapshot}\n`);
+          NODE
+
+      - name: Verify refreshed signed repository closure
+        if: steps.refresh_identity.outcome == 'success'
+        run: >-
+          docker run --rm
+          -v "$PWD:/workspace"
+          -w /workspace
+          openburnbar-linux-toolchain:repository-refresh
+          node scripts/linux-port/verify-linux-repositories.mjs
+          --repository-root '/workspace/.linux-refresh-output/${{ matrix.channel }}/repositories'
+          --version '${{ steps.refresh_identity.outputs.version }}'
+          --channel '${{ matrix.channel }}'
+
+      - name: Verify local clean apt and dnf lifecycle
+        if: steps.refresh_identity.outcome == 'success'
+        env:
+          OPENBURNBAR_LINUX_REPOSITORY_VERSION: ${{ steps.refresh_identity.outputs.version }}
+          OPENBURNBAR_LINUX_REPOSITORY_CHANNEL: ${{ matrix.channel }}
+        run: bash scripts/linux-port/verify-linux-repository-lifecycle.sh
+
+      - name: Upload immutable refreshed repository snapshot
+        id: upload_refresh
+        if: steps.refresh_identity.outcome == 'success'
+        env:
+          OPENBURNBAR_LINUX_REPOSITORY_UPLOAD_TOKEN: ${{ secrets.OPENBURNBAR_LINUX_REPOSITORY_UPLOAD_TOKEN }}
+        run: |
+          set -euo pipefail
+          node scripts/linux-port/upload-linux-repository-refresh.mjs \
+            --repository-root "$OPENBURNBAR_LINUX_REPOSITORY_OUT" \
+            --receipt "$OPENBURNBAR_LINUX_EVIDENCE_OUT/repository-refresh-upload.json"
+
+      - name: Verify exact preview apt and dnf lifecycle
+        id: verify_preview_lifecycle
+        if: steps.upload_refresh.outcome == 'success'
+        env:
+          OPENBURNBAR_LINUX_REPOSITORY_VERSION: ${{ steps.refresh_identity.outputs.version }}
+          OPENBURNBAR_LINUX_REPOSITORY_CHANNEL: ${{ matrix.channel }}
+          OPENBURNBAR_LINUX_REPOSITORY_PREVIEW_SNAPSHOT: ${{ steps.refresh_identity.outputs.snapshot }}
+          OPENBURNBAR_LINUX_REPOSITORY_LIFECYCLE_RECEIPT: ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/repository-refresh-preview-lifecycle.json
+        run: bash scripts/linux-port/verify-linux-repository-lifecycle.sh
+
+      - name: Atomically activate refreshed repository metadata
+        id: activate_refresh
+        if: steps.verify_preview_lifecycle.outcome == 'success'
+        continue-on-error: true
+        env:
+          OPENBURNBAR_LINUX_REPOSITORY_ACTIVATION_TOKEN: ${{ secrets.OPENBURNBAR_LINUX_REPOSITORY_ACTIVATION_TOKEN }}
+        run: >-
+          node scripts/linux-port/activate-linux-repository.mjs
+          --mode refresh
+          --yes
+          --channel '${{ matrix.channel }}'
+          --reason 'Refresh signed apt metadata after immutable-byte and preview lifecycle verification'
+          --output "$OPENBURNBAR_LINUX_RELEASE_OUT/repository-activation.json"
+
+      - name: Rebind the existing signed feed to the refreshed repository pointer
+        id: rebind_feed
+        if: steps.activate_refresh.outcome == 'success'
+        continue-on-error: true
+        env:
+          OPENBURNBAR_LINUX_REPOSITORY_ACTIVATION_TOKEN: ${{ secrets.OPENBURNBAR_LINUX_REPOSITORY_ACTIVATION_TOKEN }}
+        run: |
+          set -euo pipefail
+          node scripts/linux-port/rebind-linux-repository-feed.mjs \
+            --channel "$OPENBURNBAR_LINUX_REFRESH_CHANNEL" \
+            --target current \
+            --output "$OPENBURNBAR_LINUX_EVIDENCE_OUT/repository-refresh-feed-rebind.json"
+
+      - name: Verify rebound signed feed pointer and public bytes
+        id: verify_feed_pointer
+        if: steps.rebind_feed.outcome == 'success'
+        continue-on-error: true
+        env:
+          OPENBURNBAR_LINUX_REPOSITORY_ACTIVATION_TOKEN: ${{ secrets.OPENBURNBAR_LINUX_REPOSITORY_ACTIVATION_TOKEN }}
+          OPENBURNBAR_LINUX_REPOSITORY_FEED_VERIFICATION_RECEIPT: ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/repository-refresh-feed-verification.json
+        run: |
+          set -euo pipefail
+          if [[ "$OPENBURNBAR_LINUX_REFRESH_CHANNEL" == stable ]]; then
+            feed_path='/latest-linux.json'
+          else
+            feed_path="/linux/update/$OPENBURNBAR_LINUX_REFRESH_CHANNEL/latest-linux.json"
+          fi
+          mkdir -p "$OPENBURNBAR_LINUX_RELEASE_OUT/sidecars" "$OPENBURNBAR_LINUX_RELEASE_OUT/repositories"
+          curl --disable --proto '=https' --max-redirs 0 -fsS \
+            "$OPENBURNBAR_R2_PUBLIC_BASE_URL$feed_path" \
+            -o "$OPENBURNBAR_LINUX_RELEASE_OUT/latest-linux.draft.json"
+          curl --disable --proto '=https' --max-redirs 0 -fsS \
+            "$OPENBURNBAR_R2_PUBLIC_BASE_URL${feed_path}.ed25519.sig" \
+            -o "$OPENBURNBAR_LINUX_RELEASE_OUT/sidecars/latest-linux.json.ed25519.sig"
+          node - \
+            "$OPENBURNBAR_LINUX_EVIDENCE_OUT/repository-refresh-feed-rebind.json" \
+            "$OPENBURNBAR_LINUX_RELEASE_OUT/repository-feed-publication.json" <<'NODE'
+          const fs = require('node:fs');
+          const [rebindPath, outputPath] = process.argv.slice(2);
+          const rebind = JSON.parse(fs.readFileSync(rebindPath, 'utf8'));
+          const repository = rebind.after?.repository;
+          const feed = rebind.after?.feed;
+          if (rebind.passed !== true || !repository?.record || !feed?.record
+              || feed.record.repository?.snapshotId !== repository.record.snapshotId
+              || feed.record.repository?.generation !== repository.record.generation
+              || feed.record.repository?.pointerEtag !== repository.etag) {
+            throw new Error('feed rebind receipt does not prove the retained feed on the refreshed repository');
+          }
+          fs.writeFileSync(outputPath, `${JSON.stringify({
+            schemaVersion: 1,
+            requested: {
+              channel: repository.record.channel,
+              snapshotId: repository.record.snapshotId,
+              sourceCommit: repository.record.sourceCommit,
+              version: repository.record.version,
+              generation: repository.record.generation,
+              repositoryPointerEtag: repository.etag
+            },
+            result: { feed: feed.record, pointerEtag: feed.etag }
+          }, null, 2)}\n`, { flag: 'wx' });
+          NODE
+          bash scripts/publish-linux-update-feed-r2.sh --verify-only
+
+      - name: Verify live signed update feed after rebind
+        id: verify_live_feed
+        if: steps.verify_feed_pointer.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          if [[ "$OPENBURNBAR_LINUX_REFRESH_CHANNEL" == stable ]]; then
+            feed_url="$OPENBURNBAR_R2_PUBLIC_BASE_URL/latest-linux.json"
+          else
+            feed_url="$OPENBURNBAR_R2_PUBLIC_BASE_URL/linux/update/$OPENBURNBAR_LINUX_REFRESH_CHANNEL/latest-linux.json"
+          fi
+          node scripts/linux-port/check-linux-update-feed.mjs --url "$feed_url"
+
+      - name: Verify active public repository bytes
+        id: verify_public_repository
+        if: steps.verify_live_feed.outcome == 'success'
+        continue-on-error: true
+        env:
+          OPENBURNBAR_LINUX_PUBLIC_REPOSITORY_RECEIPT: ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/repository-refresh-public-verification.json
+        run: node scripts/linux-port/verify-linux-public-repository.mjs
+
+      - name: Verify clean public apt and dnf lifecycle
+        id: verify_public_lifecycle
+        if: steps.verify_public_repository.outcome == 'success'
+        continue-on-error: true
+        env:
+          OPENBURNBAR_LINUX_REPOSITORY_VERSION: ${{ steps.refresh_identity.outputs.version }}
+          OPENBURNBAR_LINUX_REPOSITORY_CHANNEL: ${{ matrix.channel }}
+          OPENBURNBAR_LINUX_REPOSITORY_PUBLIC_BASE_URL: https://downloads.burnbar.ai
+          OPENBURNBAR_LINUX_REPOSITORY_LIFECYCLE_RECEIPT: ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/repository-refresh-public-lifecycle.json
+        run: bash scripts/linux-port/verify-linux-repository-lifecycle.sh
+
+      - name: Preserve and attest refresh transaction evidence
+        id: attest_refresh
+        if: steps.verify_public_lifecycle.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          manifest="$OPENBURNBAR_LINUX_EVIDENCE_OUT/repository-refresh-transaction.json"
+          predicate="$OPENBURNBAR_LINUX_EVIDENCE_OUT/repository-refresh-predicate.json"
+          node - "$manifest" "$predicate" "$OPENBURNBAR_LINUX_EVIDENCE_OUT" \
+            "$OPENBURNBAR_LINUX_RELEASE_OUT/repository-activation.json" \
+            "$OPENBURNBAR_LINUX_REPOSITORY_OUT/repository-closure.json" \
+            "$OPENBURNBAR_LINUX_REPOSITORY_OUT/repository-closure.json.asc" <<'NODE'
+          const crypto = require('node:crypto');
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const [manifestPath, predicatePath, evidenceRoot, activationPath, closurePath, closureSignaturePath] = process.argv.slice(2);
+          const digest = (file) => {
+            const bytes = fs.readFileSync(file);
+            return { file: path.basename(file), sha256: crypto.createHash('sha256').update(bytes).digest('hex'), size: bytes.length };
+          };
+          const receipts = fs.readdirSync(evidenceRoot).filter((name) => name.endsWith('.json'))
+            .map((name) => path.join(evidenceRoot, name)).filter((file) => file !== manifestPath && file !== predicatePath)
+            .map(digest).sort((left, right) => left.file.localeCompare(right.file));
+          const activation = JSON.parse(fs.readFileSync(activationPath, 'utf8'));
+          const closure = JSON.parse(fs.readFileSync(closurePath, 'utf8'));
+          if (activation.dryRun !== false || activation.result?.activation?.mode !== 'refresh') {
+            throw new Error('refresh activation receipt is missing or not committed');
+          }
+          const manifest = {
+            schemaVersion: 1,
+            operation: 'linux-repository-metadata-refresh',
+            channel: closure.channel,
+            version: closure.version,
+            sourceCommit: closure.gitCommit,
+            toolCommit: process.env.GITHUB_SHA,
+            runUrl: `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
+            snapshotId: activation.result.activation.snapshotId,
+            activationGeneration: activation.result.activation.generation,
+            previousSnapshotId: activation.result.activation.previousSnapshotId,
+            packageSetRootSha256: closure.packageSetRootSha256,
+            releaseDate: closure.repositories.apt.releaseDate,
+            validUntil: closure.repositories.apt.validUntil,
+            receipts,
+            transactionInputs: [activationPath, closurePath, closureSignaturePath]
+              .map(digest).sort((left, right) => left.file.localeCompare(right.file))
+          };
+          fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' });
+          fs.writeFileSync(predicatePath, `${JSON.stringify({
+            predicateType: 'https://openburnbar.dev/attestations/linux-repository-refresh/v1',
+            subject: digest(manifestPath),
+            transaction: manifest
+          }, null, 2)}\n`, { flag: 'wx' });
+          NODE
+          cosign attest-blob --yes \
+            --type 'https://openburnbar.dev/attestations/linux-repository-refresh/v1' \
+            --predicate "$predicate" \
+            --bundle "${manifest}.sigstore.json" \
+            "$manifest"
+
+      - name: Publish immutable refresh transaction evidence
+        id: upload_refresh_evidence
+        if: steps.attest_refresh.outcome == 'success'
+        continue-on-error: true
+        env:
+          OPENBURNBAR_LINUX_REPOSITORY_UPLOAD_TOKEN: ${{ secrets.OPENBURNBAR_LINUX_REPOSITORY_UPLOAD_TOKEN }}
+        run: |
+          set -euo pipefail
+          node scripts/linux-port/upload-linux-repository-refresh-evidence.mjs \
+            --evidence-root "$OPENBURNBAR_LINUX_EVIDENCE_OUT" \
+            --activation-receipt "$OPENBURNBAR_LINUX_RELEASE_OUT/repository-activation.json" \
+            --repository-closure "$OPENBURNBAR_LINUX_REPOSITORY_OUT/repository-closure.json" \
+            --repository-closure-signature "$OPENBURNBAR_LINUX_REPOSITORY_OUT/repository-closure.json.asc" \
+            --manifest "$OPENBURNBAR_LINUX_EVIDENCE_OUT/repository-refresh-evidence-closure.json" \
+            --receipt "$OPENBURNBAR_LINUX_RELEASE_OUT/repository-refresh-evidence-upload.json"
+
+      - name: Compensate failed metadata refresh activation
+        id: compensate_refresh
+        if: >-
+          ${{ always() && steps.inspect_freshness.outputs.action == 'refresh' &&
+              steps.activate_refresh.outcome != 'skipped' &&
+              (steps.activate_refresh.outcome != 'success' ||
+               steps.rebind_feed.outcome != 'success' ||
+               steps.verify_feed_pointer.outcome != 'success' ||
+               steps.verify_live_feed.outcome != 'success' ||
+               steps.verify_public_repository.outcome != 'success' ||
+               steps.verify_public_lifecycle.outcome != 'success' ||
+               steps.attest_refresh.outcome != 'success' ||
+               steps.upload_refresh_evidence.outcome != 'success') }}
+        continue-on-error: true
+        env:
+          OPENBURNBAR_LINUX_REPOSITORY_ACTIVATION_TOKEN: ${{ secrets.OPENBURNBAR_LINUX_REPOSITORY_ACTIVATION_TOKEN }}
+          OPENBURNBAR_LINUX_REPOSITORY_COMPENSATION_RECEIPT: ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/repository-refresh-compensation.json
+        run: node scripts/linux-port/compensate-linux-repository-activation.mjs
+
+      - name: Enforce fail-closed refresh outcome
+        if: >-
+          ${{ always() && steps.inspect_freshness.outputs.action == 'refresh' &&
+              steps.activate_refresh.outcome != 'skipped' }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ steps.activate_refresh.outcome }}" == success \
+            && "${{ steps.rebind_feed.outcome }}" == success \
+            && "${{ steps.verify_feed_pointer.outcome }}" == success \
+            && "${{ steps.verify_live_feed.outcome }}" == success \
+            && "${{ steps.verify_public_repository.outcome }}" == success \
+            && "${{ steps.verify_public_lifecycle.outcome }}" == success \
+            && "${{ steps.attest_refresh.outcome }}" == success \
+            && "${{ steps.upload_refresh_evidence.outcome }}" == success ]]; then
+            exit 0
+          fi
+          receipt="$OPENBURNBAR_LINUX_EVIDENCE_OUT/repository-refresh-compensation.json"
+          node - "$receipt" <<'NODE'
+          const fs = require('node:fs');
+          const receipt = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          if (receipt.passed !== true || receipt.contained !== true) {
+            throw new Error('failed repository metadata refresh was not proven contained');
+          }
+          NODE
+          echo "Linux repository metadata refresh failed after activation and was contained." >&2
+          exit 1
+
+      - name: Upload repository refresh evidence
+        if: always()
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.6.1
+        with:
+          name: linux-repository-refresh-${{ matrix.channel }}
+          path: |
+            ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/
+            ${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/repository-activation.json
+            ${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/repository-refresh-evidence-upload.json
+            ${{ env.OPENBURNBAR_LINUX_REPOSITORY_OUT }}/repository-closure.json
+            ${{ env.OPENBURNBAR_LINUX_REPOSITORY_OUT }}/repository-closure.json.asc
+          if-no-files-found: warn
+
+  open-failure-issue:
+    name: Record repository refresh failure
+    runs-on: ubuntu-24.04
+    needs: [refresh]
+    if: always() && contains(needs.*.result, 'failure')
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: ./.github/actions/ops-failure-issue
+        with:
+          mode: open
+          lane: linux-repository-refresh
+          title-prefix: Linux repository metadata refresh failed
+          summary: Signed Linux repository metadata failed its pre-expiry refresh transaction.
+          details: |
+            Job results:
+            ```json
+            ${{ toJSON(needs) }}
+            ```
+
+  close-resolved-issue:
+    name: Close resolved repository refresh failure
+    runs-on: ubuntu-24.04
+    needs: [refresh]
+    if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: ./.github/actions/ops-failure-issue
+        with:
+          mode: close
+          lane: linux-repository-refresh
+          title-prefix: Linux repository metadata refresh failed

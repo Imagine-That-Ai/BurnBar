@@ -31,6 +31,9 @@ export async function activateLinuxRepository(options, fetchImpl = fetch) {
   if (typeof options.token !== 'string' || !/^[A-Za-z0-9._~+/=-]{32,4096}$/u.test(options.token)) {
     throw new Error('repository activation token must use the approved 32 to 4096 character alphabet');
   }
+  if (!['promote', 'rollback', 'refresh'].includes(options.mode ?? 'promote')) {
+    throw new Error('repository activation mode is invalid');
+  }
   const identity = repositorySnapshotIdentity(options.closurePath);
   if (options.channel && options.channel !== identity.channel) throw new Error('requested channel does not match repository closure');
   const baseUrl = repositoryBaseUrl(options.baseUrl, options.allowLocalTestOrigin);
@@ -55,7 +58,8 @@ export async function activateLinuxRepository(options, fetchImpl = fetch) {
     status,
     actor: options.actor,
     runUrl: options.runUrl,
-    reason: options.reason
+    reason: options.reason,
+    mode: options.mode ?? 'promote'
   });
   if (!options.confirm) return { dryRun: true, request, status };
   await options.onAttempt?.({ identity, request, status });
@@ -131,6 +135,7 @@ async function main() {
     runUrl: args.run_url ?? (process.env.GITHUB_SERVER_URL && process.env.GITHUB_REPOSITORY && process.env.GITHUB_RUN_ID
       ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}` : null),
     reason: args.reason ?? `Activate verified Linux repository snapshot from ${process.env.GITHUB_SHA ?? 'local operator'}`,
+    mode: args.mode ?? 'promote',
     confirm: args.confirm === true,
     token,
     onAttempt: outputPath ? ({ request, status }) => writeAtomicJson(outputPath, {

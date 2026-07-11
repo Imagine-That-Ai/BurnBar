@@ -139,6 +139,11 @@ jobs:
             scripts/linux-port/upload-linux-downloads-r2.test.mjs \
             scripts/linux-port/setup-linux-downloads-r2.test.mjs \
             scripts/linux-port/activate-linux-repository.test.mjs \
+            scripts/linux-port/fetch-linux-repository-snapshot.test.mjs \
+            scripts/linux-port/inspect-linux-repository-freshness.test.mjs \
+            scripts/linux-port/rebind-linux-repository-feed.test.mjs \
+            scripts/linux-port/upload-linux-repository-refresh.test.mjs \
+            scripts/linux-port/upload-linux-repository-refresh-evidence.test.mjs \
             scripts/linux-port/drill-linux-repository-rollback.test.mjs \
             scripts/linux-port/compensate-linux-repository-activation.test.mjs \
             scripts/linux-port/cleanup-linux-github-release.test.mjs \

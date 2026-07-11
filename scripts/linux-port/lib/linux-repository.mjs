@@ -10,6 +10,12 @@ const APT_ARCHITECTURES = { aarch64: 'arm64', x86_64: 'amd64' };
 const RPM_ARCHITECTURES = { aarch64: 'aarch64', x86_64: 'x86_64' };
 const APT_VALID_FOR_HOURS = 168;
 const SIGNING_KEY_MINIMUM_REMAINING_DAYS = 30;
+const REFRESH_POLICY = {
+  refreshCheckIntervalHours: 6,
+  refreshWhenRemainingHours: 96,
+  criticalRemainingHours: 48,
+  activationMinimumRemainingHours: 24
+};
 
 export function canonicalJSON(value) {
   const canonicalize = (item) => {
@@ -117,6 +123,11 @@ export function validateDistributionChannels(config) {
   }
   if (config?.repositoryMetadata?.signingKeyMinimumRemainingDays !== SIGNING_KEY_MINIMUM_REMAINING_DAYS) {
     failures.push(`repository metadata signingKeyMinimumRemainingDays must be ${SIGNING_KEY_MINIMUM_REMAINING_DAYS}`);
+  }
+  for (const [field, expected] of Object.entries(REFRESH_POLICY)) {
+    if (config?.repositoryMetadata?.[field] !== expected) {
+      failures.push(`repository metadata ${field} must be ${expected}`);
+    }
   }
   for (const kind of ['apt', 'rpm']) {
     if (config?.[kind]?.status !== 'source-ready') failures.push(`${kind} channel status must be source-ready`);
@@ -362,6 +373,291 @@ export function verifyLinuxRepositories({ repoRoot, releaseOut, configPath, vers
   return { passed: failures.length === 0, failures, closure };
 }
 
+export function verifyRepositorySnapshot({ repoRoot, repositoryRoot, configPath, version, channel }) {
+  const failures = [];
+  const fail = (message) => failures.push(message);
+  let config = {};
+  let closure = {};
+  const closurePath = path.join(repositoryRoot, 'repository-closure.json');
+  try {
+    requireVersionAndChannel(version, channel);
+    config = readJson(configPath, 'distribution channel config');
+    for (const failure of validateDistributionChannels(config)) fail(failure);
+    closure = readJson(closurePath, 'repository closure');
+  } catch (error) {
+    fail(error.message);
+  }
+  const publicKeyPath = config.signing?.publicKey ? confinedRegularFile(repoRoot, config.signing.publicKey) : null;
+  if (!publicKeyPath) fail('repository public key is missing or outside the repository');
+  if (![1, 2].includes(closure.schemaVersion)) fail('repository closure schemaVersion must be 1 or 2');
+  if (closure.product !== 'OpenBurnBar' || closure.version !== version || closure.channel !== channel) {
+    fail('repository closure identity mismatch');
+  }
+  if (!/^[a-f0-9]{40}$/u.test(closure.gitCommit ?? '')
+      || !/^[a-f0-9]{64}$/u.test(closure.packageSetRootSha256 ?? '')) {
+    fail('repository closure source or package-set identity is invalid');
+  }
+  if (closure.signing?.fingerprint !== config.signing?.fingerprint
+      || closure.signing?.signingFingerprint !== config.signing?.signingFingerprint
+      || (publicKeyPath && closure.signing?.publicKeySha256 !== sha256File(publicKeyPath))) {
+    fail('repository closure signing identity mismatch');
+  }
+  if (publicKeyPath && fs.existsSync(closurePath)) {
+    try { verifyDetached(publicKeyPath, `${closurePath}.asc`, closurePath, closure.signing?.signingFingerprint); }
+    catch (error) { fail(error.message); }
+  } else {
+    fail('repository closure or detached signature is missing');
+  }
+  const expectedFiles = new Set();
+  for (const record of closure.files ?? []) {
+    if (!record || typeof record.file !== 'string' || expectedFiles.has(record.file)) {
+      fail(`duplicate or invalid repository closure file: ${record?.file ?? '<missing>'}`);
+      continue;
+    }
+    expectedFiles.add(record.file);
+    const full = confinedRegularFile(repositoryRoot, record.file);
+    if (!full || sha256File(full) !== record.sha256 || fs.statSync(full).size !== record.size) {
+      fail(`repository file drifted: ${record.file}`);
+    }
+  }
+  for (const record of collectFiles(repositoryRoot, new Set([
+    'repository-closure.json', 'repository-closure.json.asc', 'repository-lifecycle.json'
+  ]), (relative) => relative.endsWith('.sigstore.json') || relative.endsWith('.predicate.json'))) {
+    if (!expectedFiles.has(record.file)) fail(`unbound repository file: ${record.file}`);
+  }
+  if (publicKeyPath) {
+    verifyAptRepository({ repositoryRoot, closure, publicKeyPath, source: null, version, channel, fail });
+    verifyRpmRepository({ repositoryRoot, closure, publicKeyPath, source: null, channel, fail });
+  }
+  return { passed: failures.length === 0, failures, closure };
+}
+
+export function refreshLinuxRepositoryMetadata({
+  repoRoot,
+  sourceRepositoryRoot,
+  outputRepositoryRoot,
+  configPath,
+  privateKeyBytes,
+  refreshEpoch,
+  nowEpoch = Math.floor(Date.now() / 1000)
+}) {
+  if (!Number.isSafeInteger(refreshEpoch) || refreshEpoch <= 0) throw new Error('refresh epoch must be positive whole epoch seconds');
+  if (!Number.isSafeInteger(nowEpoch) || Math.abs(refreshEpoch - nowEpoch) > 5 * 60) {
+    throw new Error('refresh epoch must be within five minutes of the trusted current time');
+  }
+  const resolvedSourceRoot = fs.realpathSync(sourceRepositoryRoot);
+  const resolvedOutputRoot = canonicalDestinationPath(outputRepositoryRoot);
+  if (resolvedOutputRoot === resolvedSourceRoot
+      || resolvedOutputRoot.startsWith(`${resolvedSourceRoot}${path.sep}`)
+      || resolvedSourceRoot.startsWith(`${resolvedOutputRoot}${path.sep}`)) {
+    throw new Error('refresh output must be a separate sibling tree from the retained parent snapshot');
+  }
+  const parentClosurePath = confinedRegularFile(resolvedSourceRoot, 'repository-closure.json');
+  if (!parentClosurePath) throw new Error('parent repository closure is missing');
+  const parentBytes = fs.readFileSync(parentClosurePath);
+  const parent = JSON.parse(parentBytes.toString('utf8'));
+  requireVersionAndChannel(parent.version, parent.channel);
+  const parentSnapshotId = sha256Bytes(parentBytes);
+  const verifiedParent = verifyRepositorySnapshot({
+    repoRoot,
+    repositoryRoot: resolvedSourceRoot,
+    configPath,
+    version: parent.version,
+    channel: parent.channel
+  });
+  if (!verifiedParent.passed) throw new Error(`parent repository verification failed: ${verifiedParent.failures.join('; ')}`);
+  const config = readJson(configPath, 'distribution channel config');
+  const validUntilEpoch = refreshEpoch + (config.repositoryMetadata.aptValidForHours * 60 * 60);
+  const parentReleaseEpoch = Date.parse(parent.repositories?.apt?.releaseDate ?? '') / 1000;
+  const parentValidUntilEpoch = Date.parse(parent.repositories?.apt?.validUntil ?? '') / 1000;
+  if (!Number.isFinite(parentReleaseEpoch) || !Number.isFinite(parentValidUntilEpoch)
+      || refreshEpoch <= parentReleaseEpoch || validUntilEpoch <= parentValidUntilEpoch) {
+    throw new Error('refresh validity window must advance beyond the parent repository window');
+  }
+
+  const stagingParent = path.dirname(resolvedOutputRoot);
+  fs.mkdirSync(stagingParent, { recursive: true });
+  const staging = fs.mkdtempSync(path.join(stagingParent, '.repository-refresh-staging-'));
+  const signingHome = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-repository-refresh-signing-'));
+  fs.chmodSync(signingHome, 0o700);
+  try {
+    fs.cpSync(resolvedSourceRoot, staging, { recursive: true, force: false, errorOnExist: false });
+    for (const relative of [
+      'repository-closure.json', 'repository-closure.json.asc', 'repository-lifecycle.json',
+      `apt/dists/${parent.channel}/Release`,
+      `apt/dists/${parent.channel}/InRelease`,
+      `apt/dists/${parent.channel}/Release.gpg`
+    ]) fs.rmSync(path.join(staging, relative), { force: true });
+
+    const keyFile = path.join(signingHome, 'private-key.asc');
+    fs.writeFileSync(keyFile, privateKeyBytes, { mode: 0o600 });
+    runChecked('gpg', ['--homedir', signingHome, '--batch', '--import', keyFile], { secretPaths: [keyFile] });
+    fs.rmSync(keyFile, { force: true });
+    const minimumKeyValidityEpoch = validUntilEpoch
+      + (config.repositoryMetadata.signingKeyMinimumRemainingDays * 24 * 60 * 60);
+    const signingKey = secretSigningKey(signingHome, minimumKeyValidityEpoch, config.signing.signingFingerprint);
+    const publicKeyPath = confinedRegularFile(repoRoot, config.signing.publicKey);
+    if (!publicKeyPath || signingKey.primaryFingerprint !== parent.signing.fingerprint
+        || signingKey.primaryFingerprint !== config.signing.fingerprint
+        || signingKey.signingFingerprint !== parent.signing.signingFingerprint
+        || signingKey.signingFingerprint !== config.signing.signingFingerprint) {
+      throw new Error('refresh signing key does not match the parent and committed signing identity');
+    }
+    const publicSigningKey = publicKeyMetadata(publicKeyPath, minimumKeyValidityEpoch, config.signing.signingFingerprint);
+    if (publicSigningKey.primaryFingerprint !== signingKey.primaryFingerprint
+        || publicSigningKey.signingFingerprint !== signingKey.signingFingerprint) {
+      throw new Error('refresh public and private signing identities do not match');
+    }
+    const aptSummary = refreshAptRelease({
+      repositoryRoot: staging,
+      config,
+      channel: parent.channel,
+      signingHome,
+      signingFingerprint: signingKey.signingFingerprint,
+      refreshEpoch
+    });
+    const closure = {
+      ...parent,
+      schemaVersion: 2,
+      refresh: {
+        kind: 'apt-expiry',
+        refreshedAt: new Date(refreshEpoch * 1000).toISOString(),
+        previousSnapshotId: parentSnapshotId,
+        previousReleaseDate: parent.repositories.apt.releaseDate,
+        previousValidUntil: parent.repositories.apt.validUntil
+      },
+      repositories: { apt: { ...parent.repositories.apt, ...aptSummary }, rpm: parent.repositories.rpm },
+      files: collectFiles(staging, new Set(['repository-closure.json', 'repository-closure.json.asc']))
+    };
+    const closurePath = path.join(staging, 'repository-closure.json');
+    fs.writeFileSync(closurePath, canonicalJSON(closure));
+    signDetached({
+      signingHome,
+      fingerprint: signingKey.signingFingerprint,
+      input: closurePath,
+      output: `${closurePath}.asc`,
+      signingEpoch: refreshEpoch
+    });
+    const candidate = verifyRepositorySnapshot({
+      repoRoot,
+      repositoryRoot: staging,
+      configPath,
+      version: parent.version,
+      channel: parent.channel
+    });
+    if (!candidate.passed) throw new Error(`refreshed repository verification failed: ${candidate.failures.join('; ')}`);
+    const invariantFailures = refreshInvariantFailures(parent, candidate.closure);
+    if (invariantFailures.length) throw new Error(`metadata refresh invariant failed: ${invariantFailures.join('; ')}`);
+    const backup = `${resolvedOutputRoot}.previous-${process.pid}-${Date.now()}`;
+    const hadPreviousOutput = fs.existsSync(resolvedOutputRoot);
+    if (hadPreviousOutput) fs.renameSync(resolvedOutputRoot, backup);
+    try {
+      fs.renameSync(staging, resolvedOutputRoot);
+      fs.rmSync(backup, { recursive: true, force: true });
+    } catch (error) {
+      fs.rmSync(resolvedOutputRoot, { recursive: true, force: true });
+      if (hadPreviousOutput && fs.existsSync(backup)) fs.renameSync(backup, resolvedOutputRoot);
+      throw error;
+    }
+    return {
+      repositoryRoot: resolvedOutputRoot,
+      closure: candidate.closure,
+      closurePath: path.join(resolvedOutputRoot, 'repository-closure.json'),
+      parentSnapshotId,
+      snapshotId: sha256File(path.join(resolvedOutputRoot, 'repository-closure.json')),
+      allowedChangedFiles: [
+        `apt/dists/${parent.channel}/Release`,
+        `apt/dists/${parent.channel}/InRelease`,
+        `apt/dists/${parent.channel}/Release.gpg`
+      ]
+    };
+  } finally {
+    spawnSync('gpgconf', ['--homedir', signingHome, '--kill', 'all'], {
+      env: { PATH: process.env.PATH, HOME: process.env.HOME }, stdio: 'ignore'
+    });
+    fs.rmSync(signingHome, { recursive: true, force: true });
+    fs.rmSync(staging, { recursive: true, force: true });
+  }
+}
+
+function canonicalDestinationPath(destination) {
+  let ancestor = path.resolve(destination);
+  const missingSegments = [];
+  while (!fs.existsSync(ancestor)) {
+    const parent = path.dirname(ancestor);
+    if (parent === ancestor) throw new Error(`refresh output has no resolvable ancestor: ${destination}`);
+    missingSegments.push(path.basename(ancestor));
+    ancestor = parent;
+  }
+  return path.join(fs.realpathSync(ancestor), ...missingSegments.reverse());
+}
+
+function refreshAptRelease({ repositoryRoot, config, channel, signingHome, signingFingerprint, refreshEpoch }) {
+  const root = path.join(repositoryRoot, 'apt');
+  const dist = path.join(root, 'dists', channel);
+  const release = path.join(dist, 'Release');
+  const validUntilEpoch = refreshEpoch + (config.repositoryMetadata.aptValidForHours * 60 * 60);
+  const releaseArgs = [
+    '-o', `APT::FTPArchive::Release::Origin=${config.apt.origin}`,
+    '-o', `APT::FTPArchive::Release::Label=${config.apt.label}`,
+    '-o', `APT::FTPArchive::Release::Suite=${channel}`,
+    '-o', `APT::FTPArchive::Release::Codename=${channel}`,
+    '-o', `APT::FTPArchive::Release::Architectures=${Object.values(config.apt.architectures).join(' ')}`,
+    '-o', `APT::FTPArchive::Release::Components=${config.apt.component}`,
+    '-o', 'APT::FTPArchive::Release::Acquire-By-Hash=yes',
+    '-o', `APT::FTPArchive::Release::Date=${new Date(refreshEpoch * 1000).toUTCString()}`,
+    '-o', `APT::FTPArchive::Release::Valid-Until=${new Date(validUntilEpoch * 1000).toUTCString()}`,
+    'release', `dists/${channel}`
+  ];
+  const result = runChecked('apt-ftparchive', releaseArgs, {
+    cwd: root,
+    env: { SOURCE_DATE_EPOCH: String(refreshEpoch) }
+  });
+  fs.writeFileSync(release, result.stdout);
+  signDetached({
+    signingHome,
+    fingerprint: signingFingerprint,
+    input: release,
+    output: path.join(dist, 'Release.gpg'),
+    signingEpoch: refreshEpoch
+  });
+  runChecked('gpg', [
+    '--homedir', signingHome, '--batch', '--yes', '--pinentry-mode', 'loopback',
+    '--faked-system-time', `${refreshEpoch}!`, '--local-user', `${signingFingerprint}!`,
+    '--digest-algo', 'SHA256', '--clearsign', '--output', path.join(dist, 'InRelease'), release
+  ]);
+  return {
+    releaseDate: new Date(refreshEpoch * 1000).toISOString(),
+    validUntil: new Date(validUntilEpoch * 1000).toISOString()
+  };
+}
+
+function refreshInvariantFailures(parent, candidate) {
+  const failures = [];
+  const same = (field) => JSON.stringify(parent[field]) === JSON.stringify(candidate[field]);
+  for (const field of [
+    'product', 'version', 'channel', 'gitCommit', 'architectures', 'packageSetRootSha256',
+    'signing', 'packages', 'lifecycleRequired'
+  ]) if (!same(field)) failures.push(`${field} changed`);
+  if (JSON.stringify(parent.repositories?.rpm) !== JSON.stringify(candidate.repositories?.rpm)) {
+    failures.push('RPM repository metadata changed');
+  }
+  const mutable = new Set([
+    `apt/dists/${parent.channel}/Release`,
+    `apt/dists/${parent.channel}/InRelease`,
+    `apt/dists/${parent.channel}/Release.gpg`
+  ]);
+  const left = new Map((parent.files ?? []).map((row) => [row.file, row]));
+  const right = new Map((candidate.files ?? []).map((row) => [row.file, row]));
+  if (left.size !== right.size || [...left.keys()].some((file) => !right.has(file))) failures.push('file set changed');
+  for (const [file, record] of left) {
+    if (!mutable.has(file) && JSON.stringify(record) !== JSON.stringify(right.get(file))) {
+      failures.push(`immutable bytes changed: ${file}`);
+    }
+  }
+  return failures;
+}
+
 function buildAptRepository({ repoRoot, repositoryRoot, config, source, version, channel, signingHome, fingerprint, signingFingerprint }) {
   const root = path.join(repositoryRoot, 'apt');
   const pool = path.join(root, 'pool/main/o/openburnbar');
@@ -576,11 +872,11 @@ function verifyRpmRepository({ repositoryRoot, closure, publicKeyPath, source, c
         }
       } catch (error) { fail(error.message); }
       const sourceRow = source?.packages.find((row) => row.type === 'rpm' && row.architecture === record.architecture);
-      if (!sourceRow || record.source.sha256 !== sourceRow.sha256 || record.source.size !== sourceRow.size) {
+      if (source && (!sourceRow || record.source.sha256 !== sourceRow.sha256 || record.source.size !== sourceRow.size)) {
         fail(`RPM source mapping drifted for ${record.architecture}`);
         continue;
       }
-      try {
+      if (sourceRow) try {
         const sourceIdentity = rpmIdentity(sourceRow.full);
         const repositoryIdentity = rpmIdentity(packagePath);
         if (JSON.stringify(repositoryIdentity) !== JSON.stringify(sourceIdentity)
@@ -647,9 +943,10 @@ function renderTemplate(repoRoot, templateRelative, destination, replacements) {
   fs.writeFileSync(destination, value);
 }
 
-function signDetached({ signingHome, fingerprint, input, output }) {
+function signDetached({ signingHome, fingerprint, input, output, signingEpoch = null }) {
   runChecked('gpg', [
     '--homedir', signingHome, '--batch', '--yes', '--pinentry-mode', 'loopback', '--local-user', `${fingerprint}!`,
+    ...(signingEpoch === null ? [] : ['--faked-system-time', `${signingEpoch}!`]),
     '--digest-algo', 'SHA256', '--armor', '--detach-sign', '--output', output, input
   ]);
 }

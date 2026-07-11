@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { verifyLinuxRepositories } from './lib/linux-repository.mjs';
+import { verifyLinuxRepositories, verifyRepositorySnapshot } from './lib/linux-repository.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const argv = process.argv.slice(2);
@@ -13,8 +13,17 @@ const version = value('--version');
 const channel = value('--channel');
 const configPath = path.resolve(repoRoot, value('--config') ?? 'packaging/linux/distribution-channels.json');
 const releaseOut = path.resolve(process.env.OPENBURNBAR_LINUX_RELEASE_OUT ?? path.join(repoRoot, '.linux-release'));
+const repositoryRootValue = value('--repository-root');
 
-const result = verifyLinuxRepositories({ repoRoot, releaseOut, configPath, version, channel });
+const result = repositoryRootValue
+  ? verifyRepositorySnapshot({
+      repoRoot,
+      repositoryRoot: path.resolve(repositoryRootValue),
+      configPath,
+      version,
+      channel
+    })
+  : verifyLinuxRepositories({ repoRoot, releaseOut, configPath, version, channel });
 console.log(JSON.stringify({
   schemaVersion: 1,
   version,

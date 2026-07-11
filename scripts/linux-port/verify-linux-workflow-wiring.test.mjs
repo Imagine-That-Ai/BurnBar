@@ -4,8 +4,15 @@ import test from 'node:test';
 import { verifyLinuxWorkflowWiring } from './verify-linux-workflow-wiring.mjs';
 
 function valid() {
+  const refresh = fs.readFileSync(new URL('../../.github/workflows/linux-repository-refresh.yml', import.meta.url), 'utf8');
   return {
     releaseYaml: fs.readFileSync(new URL('../../.github/workflows/linux-release.yml', import.meta.url), 'utf8'),
+    refresh,
+    refreshYaml: refresh,
+    refreshEvidenceUploader: fs.readFileSync(
+      new URL('./upload-linux-repository-refresh-evidence.mjs', import.meta.url),
+      'utf8'
+    ),
     pr: [
       'bash scripts/linux-port/run-linux-native-tests.sh',
       'crates/openburnbar-attestd/**',
@@ -25,11 +32,16 @@ function valid() {
       'workers/linux-repository-router/wrangler-feed.jsonc',
       'setup-linux-downloads-r2.test.mjs',
       'activate-linux-repository.test.mjs',
+      'fetch-linux-repository-snapshot.test.mjs',
+      'inspect-linux-repository-freshness.test.mjs',
+      'rebind-linux-repository-feed.test.mjs',
+      'upload-linux-repository-refresh.test.mjs',
       'drill-linux-repository-rollback.test.mjs',
       'compensate-linux-repository-activation.test.mjs',
       'cleanup-linux-github-release.test.mjs',
       'verify-linux-public-repository.test.mjs',
       'publish-linux-update-feed-r2.test.mjs',
+      'upload-linux-repository-refresh-evidence.test.mjs',
       'npm test --prefix workers/linux-repository-router',
       'wrangler deploy',
       '--dry-run',
@@ -217,6 +229,137 @@ function valid() {
 
 test('complete fail-closed workflow wiring passes', () => {
   assert.deepEqual(verifyLinuxWorkflowWiring(valid()), { passed: true, failures: [] });
+});
+
+test('repository refresh schedule, serialization, and manual channel contract are structural', () => {
+  const mutations = [
+    ['17 */6 * * *', '18 */6 * * *'],
+    ['group: linux-repository-release', 'group: linux-repository-refresh'],
+    ['cancel-in-progress: false', 'cancel-in-progress: true'],
+    ['max-parallel: 1', 'max-parallel: 3'],
+    ['- nightly', '- other']
+  ];
+  for (const [from, to] of mutations) {
+    const input = valid();
+    input.refresh = input.refresh.replace(from, to);
+    input.refreshYaml = input.refreshYaml.replace(from, to);
+    assert.equal(verifyLinuxWorkflowWiring(input).passed, false, from);
+  }
+});
+
+test('repository refresh cannot load the signing key early or publish release/feed bytes', () => {
+  for (const forbidden of [
+    'gh release create linux-v1.2.3',
+    'bash scripts/publish-linux-update-feed-r2.sh --publish-only',
+    'curl https://downloads.burnbar.ai/linux/repository-admin/publish-feed',
+    'key=linux/releases/linux-v1.2.3/latest-linux.json'
+  ]) {
+    const input = valid();
+    input.refresh += `\n${forbidden}`;
+    input.refreshYaml = input.refresh;
+    assert.equal(verifyLinuxWorkflowWiring(input).passed, false, forbidden);
+  }
+  const input = valid();
+  input.refresh = input.refresh.replace(
+    'FORCE_REFRESH:',
+    'OPENBURNBAR_LINUX_REPOSITORY_GPG_PRIVATE_KEY: ${{ secrets.OPENBURNBAR_LINUX_REPOSITORY_GPG_PRIVATE_KEY }}\n          FORCE_REFRESH:'
+  );
+  input.refreshYaml = input.refresh;
+  assert.equal(verifyLinuxWorkflowWiring(input).passed, false);
+});
+
+test('repository refresh reauthenticates the exact fetched parent before signing', () => {
+  for (const marker of [
+    'freshness.current?.snapshotId !== snapshotId',
+    'acquisition.snapshotId !== snapshotId',
+    "steps.verify_parent_snapshot.outcome == 'success'",
+    "--repository-root '/workspace/.linux-refresh-source/${{ matrix.channel }}'"
+  ]) {
+    const input = valid();
+    input.refresh = input.refresh.replaceAll(marker, 'removed-parent-authentication');
+    input.refreshYaml = input.refresh;
+    assert.equal(verifyLinuxWorkflowWiring(input).passed, false, marker);
+  }
+});
+
+test('every repository refresh post-activation step remains compensated', () => {
+  for (const id of [
+    'activate_refresh',
+    'rebind_feed',
+    'verify_feed_pointer',
+    'verify_live_feed',
+    'verify_public_repository',
+    'verify_public_lifecycle',
+    'attest_refresh',
+    'upload_refresh_evidence'
+  ]) {
+    const input = valid();
+    input.refresh = input.refresh.replace(`steps.${id}.outcome != 'success'`, `steps.${id}.outcome == 'success'`);
+    input.refreshYaml = input.refresh;
+    const result = verifyLinuxWorkflowWiring(input);
+    assert.equal(result.passed, false, id);
+    assert.match(result.failures.join('\n'), new RegExp(`compensation condition omits transaction step: ${id}`, 'u'));
+  }
+});
+
+test('repository refresh feed rebind and containment gate cannot be removed', () => {
+  for (const marker of [
+    'rebind-linux-repository-feed.mjs',
+    '--target current',
+    '--output "$OPENBURNBAR_LINUX_EVIDENCE_OUT/repository-refresh-feed-rebind.json"',
+    'publish-linux-update-feed-r2.sh --verify-only',
+    'check-linux-update-feed.mjs --url',
+    'repository-refresh-feed-verification.json',
+    'upload-linux-repository-refresh-evidence.mjs',
+    'repository-refresh-evidence-closure.json',
+    'repository-refresh-evidence-upload.json',
+    'activationGeneration',
+    'transactionInputs',
+    'repository-refresh-compensation.json',
+    'receipt.passed !== true || receipt.contained !== true'
+  ]) {
+    const input = valid();
+    input.refresh = input.refresh.replaceAll(marker, 'removed-refresh-contract');
+    input.refreshYaml = input.refresh;
+    assert.equal(verifyLinuxWorkflowWiring(input).passed, false, marker);
+  }
+});
+
+test('repository refresh production branch and Sigstore verifier identity cannot drift', () => {
+  const branch = valid();
+  branch.refresh = branch.refresh.replaceAll('refs/heads/main', 'refs/heads/feature');
+  branch.refreshYaml = branch.refresh;
+  assert.equal(verifyLinuxWorkflowWiring(branch).passed, false);
+
+  for (const marker of [
+    'verify-blob-attestation',
+    '--certificate-identity',
+    'linux-repository-refresh.yml@refs/heads/main',
+    '--certificate-oidc-issuer',
+    'https://token.actions.githubusercontent.com'
+  ]) {
+    const input = valid();
+    input.refreshEvidenceUploader = input.refreshEvidenceUploader.replaceAll(marker, 'removed-sigstore-contract');
+    assert.equal(verifyLinuxWorkflowWiring(input).passed, false, marker);
+  }
+});
+
+test('repository refresh upload credentials remain scoped to immutable upload steps', () => {
+  const jobScoped = valid();
+  jobScoped.refresh = jobScoped.refresh.replace(
+    'OPENBURNBAR_LINUX_REFRESH_CHANNEL:',
+    'OPENBURNBAR_LINUX_REPOSITORY_UPLOAD_TOKEN: ${{ secrets.OPENBURNBAR_LINUX_REPOSITORY_UPLOAD_TOKEN }}\n      OPENBURNBAR_LINUX_REFRESH_CHANNEL:'
+  );
+  jobScoped.refreshYaml = jobScoped.refresh;
+  assert.equal(verifyLinuxWorkflowWiring(jobScoped).passed, false);
+
+  const attestationScoped = valid();
+  attestationScoped.refresh = attestationScoped.refresh.replace(
+    'id: attest_refresh',
+    'id: attest_refresh\n        env:\n          OPENBURNBAR_LINUX_REPOSITORY_UPLOAD_TOKEN: ${{ secrets.OPENBURNBAR_LINUX_REPOSITORY_UPLOAD_TOKEN }}'
+  );
+  attestationScoped.refreshYaml = attestationScoped.refresh;
+  assert.equal(verifyLinuxWorkflowWiring(attestationScoped).passed, false);
 });
 
 test('every post-activation stage remains inside the compensated publication transaction', () => {

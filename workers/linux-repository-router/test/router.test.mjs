@@ -444,6 +444,60 @@ test('immutable upload verifies small legacy bytes without mutation and rejects 
   })).status, 401);
 });
 
+test('immutable upload accepts only generation-scoped repository refresh evidence keys', async () => {
+  const bucket = new FakeR2();
+  const snapshotId = 'a'.repeat(64);
+  const bytes = '{"passed":true}\n';
+  const sha256 = crypto.createHash('sha256').update(bytes).digest('hex');
+  const upload = (key) => request(bucket, '/linux/repository-upload/immutable', {
+    method: 'PUT',
+    headers: uploadAuthHeaders({
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Length': String(Buffer.byteLength(bytes)),
+      'X-OpenBurnBar-Object-Key': key,
+      'X-OpenBurnBar-Object-Sha256': sha256
+    }),
+    body: bytes
+  });
+  const prefix = `linux/repository-refresh-evidence/stable/${snapshotId}/7`;
+  for (const basename of [
+    'repository-refresh-transaction.json',
+    'repository-refresh-predicate.json',
+    'repository-refresh-transaction.json.sigstore.json',
+    'repository-freshness.json',
+    'repository-refresh-fetch.json',
+    'repository-refresh-build.json',
+    'repository-refresh-upload.json',
+    'repository-refresh-preview-lifecycle.json',
+    'repository-refresh-feed-rebind.json',
+    'repository-refresh-feed-verification.json',
+    'repository-refresh-public-verification.json',
+    'repository-refresh-public-lifecycle.json',
+    'repository-activation.json',
+    'repository-closure.json',
+    'repository-closure.json.asc',
+    'repository-refresh-evidence-closure.json'
+  ]) {
+    const response = await upload(`${prefix}/${basename}`);
+    assert.equal(response.status, 201, basename);
+    assert.equal((await response.json()).key, `${prefix}/${basename}`, basename);
+  }
+  for (const key of [
+    `${prefix}/evidence.json`,
+    `${prefix}/repository-refresh-compensation.json`,
+    `${prefix}/repository-refresh-transaction.json.asc`,
+    `${prefix}/repository-activation.json.asc`,
+    `linux/repository-refresh-evidence/other/${snapshotId}/7/evidence.json`,
+    `linux/repository-refresh-evidence/stable/${snapshotId.toUpperCase()}/7/evidence.json`,
+    `linux/repository-refresh-evidence/stable/${snapshotId}/0/evidence.json`,
+    `linux/repository-refresh-evidence/stable/${snapshotId}/07/evidence.json`,
+    `linux/repository-refresh-evidence/stable/${snapshotId}/7/nested/evidence.json`,
+    `linux/repository-refresh-evidence/stable/${snapshotId}/7/../evidence.json`,
+    `linux/repository-refresh-evidence/stable/${snapshotId}/7/evidence?.json`,
+    'linux/repository-refresh-evidence/stable/latest/evidence.json'
+  ]) assert.equal((await upload(key)).status, 400, key);
+});
+
 test('worker roles isolate upload, control, serving, preview, and feed surfaces', async () => {
   const bucket = new FakeR2();
   const cases = [
@@ -476,7 +530,11 @@ test('snapshot preview supports first cutover without a pointer and rejects unsa
   assert.equal((await request(bucket, `${base}/apt/openburnbar-nightly.sources`)).status, 404);
   assert.equal((await request(bucket, `${base}/../apt/dists/stable/InRelease`)).status, 404);
   assert.equal((await request(bucket, `${base}/apt/%2e%2e/secret`)).status, 404);
-  assert.equal((await request(bucket, `${base}/repository-closure.json`)).status, 404);
+  const closure = await request(bucket, `${base}/repository-closure.json`);
+  assert.equal(closure.status, 200);
+  assert.equal(crypto.createHash('sha256').update(await closure.text()).digest('hex'), snapshot.id);
+  assert.equal((await request(bucket, `${base}/repository-closure.json.asc`)).status, 200);
+  assert.equal((await request(bucket, `${base}/repository-lifecycle.json`)).status, 404);
 });
 
 test('activation validates exact input, content type, closure identity, hash, and signature', async () => {
@@ -619,6 +677,195 @@ test('successful forward activation and rollback advance generation and preserve
   assert.equal(rollbackRecord.generation, 3);
   assert.equal(rollbackRecord.snapshotId, first.id);
   assert.equal(rollbackRecord.previousSnapshotId, second.id);
+});
+
+test('same-version metadata refresh advances only apt expiry metadata and preserves repository identity', async () => {
+  const bucket = new FakeR2();
+  const parent = await seedSnapshot(bucket, { channel: 'stable', version: '1.2.3' });
+  assert.equal((await activate(bucket, activationBody(parent))).status, 200);
+  const refreshed = await seedRefreshSnapshot(bucket, parent);
+
+  const response = await activate(bucket, refreshActivationBody(refreshed, parent));
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.activation.mode, 'refresh');
+  assert.equal(body.activation.generation, 2);
+  assert.equal(body.activation.snapshotId, refreshed.id);
+  assert.equal(body.activation.previousSnapshotId, parent.id);
+  assert.equal(body.activation.version, parent.version);
+  assert.equal(body.activation.sourceCommit, parent.commit);
+
+  const release = await request(bucket, '/linux/apt/dists/stable/Release');
+  assert.equal(release.status, 200);
+  assert.equal(await release.text(), 'refresh:apt/dists/stable/Release\n');
+  assert.equal(release.headers.get('x-openburnbar-repository-snapshot'), refreshed.id);
+  const rpm = await request(bucket, '/linux/rpm/stable/x86_64/repodata/repomd.xml');
+  assert.equal(rpm.status, 200);
+  assert.equal(await rpm.text(), 'snapshot:rpm/stable/x86_64/repodata/repomd.xml\n');
+});
+
+test('metadata refresh rejects schema, parent, identity, package, RPM, and immutable-byte drift', async () => {
+  const scenarios = [
+    {
+      name: 'schema downgrade',
+      mutate(closure) { closure.schemaVersion = 1; },
+      error: /does not chain/u
+    },
+    {
+      name: 'wrong parent',
+      mutate(closure) { closure.refresh.previousSnapshotId = 'f'.repeat(64); },
+      error: /does not chain/u
+    },
+    {
+      name: 'signing identity drift',
+      mutate(closure) { closure.signing.signingFingerprint = 'B'.repeat(40); },
+      error: /immutable repository identity/u
+    },
+    {
+      name: 'package closure drift',
+      mutate(closure) { closure.packages[0].sha256 = 'e'.repeat(64); },
+      error: /immutable repository identity/u
+    },
+    {
+      name: 'RPM repository metadata drift',
+      mutate(closure) { closure.repositories.rpm.repomd = []; },
+      error: /changed RPM repository metadata/u
+    },
+    {
+      name: 'RPM package bytes drift',
+      mutate(closure) {
+        closure.files.find((row) => row.file.endsWith('.rpm')).sha256 = 'd'.repeat(64);
+      },
+      error: /changed immutable repository bytes: .*\.rpm/u
+    },
+    {
+      name: 'apt keyring bytes drift',
+      mutate(closure) {
+        closure.files.find((row) => row.file === 'apt/openburnbar-archive-keyring.gpg').size += 1;
+      },
+      error: /changed immutable repository bytes: apt\/openburnbar-archive-keyring\.gpg/u
+    },
+    {
+      name: 'non-canonical validity window',
+      mutate(closure) { closure.repositories.apt.validUntil = '2026-07-18T01:00:00.000Z'; },
+      error: /validity window does not advance canonically/u
+    },
+    {
+      name: 'future clock skew',
+      mutate(closure) {
+        closure.repositories.apt.releaseDate = '2026-07-10T12:06:00.000Z';
+        closure.repositories.apt.validUntil = '2026-07-17T12:06:00.000Z';
+        closure.refresh.refreshedAt = closure.repositories.apt.releaseDate;
+      },
+      error: /validity window does not advance canonically/u
+    },
+    {
+      name: 'backdated clock skew',
+      mutate(closure) {
+        closure.repositories.apt.releaseDate = '2026-07-10T11:54:00.000Z';
+        closure.repositories.apt.validUntil = '2026-07-17T11:54:00.000Z';
+        closure.refresh.refreshedAt = closure.repositories.apt.releaseDate;
+      },
+      error: /validity window does not advance canonically/u
+    }
+  ];
+
+  for (const scenario of scenarios) {
+    const bucket = new FakeR2();
+    const parent = await seedSnapshot(bucket, { channel: 'stable', version: '1.2.3' });
+    assert.equal((await activate(bucket, activationBody(parent))).status, 200, scenario.name);
+    const refreshed = await seedRefreshSnapshot(bucket, parent, { mutate: scenario.mutate });
+    const response = await activate(bucket, refreshActivationBody(refreshed, parent));
+    assert.equal(response.status, 409, scenario.name);
+    assert.match((await response.json()).error, scenario.error, scenario.name);
+    const current = JSON.parse(await bucket.text('linux/repository-activations/stable.json'));
+    assert.equal(current.snapshotId, parent.id, scenario.name);
+    assert.equal(current.generation, 1, scenario.name);
+  }
+});
+
+test('metadata refresh requires an active parent and rejects stale CAS identity', async () => {
+  const inactiveBucket = new FakeR2();
+  const inactiveParent = await seedSnapshot(inactiveBucket, { channel: 'stable', version: '1.2.3' });
+  const inactiveRefresh = await seedRefreshSnapshot(inactiveBucket, inactiveParent);
+  const inactive = await activate(inactiveBucket, refreshActivationBody(inactiveRefresh, inactiveParent, {
+    expectedCurrentSnapshotId: null
+  }));
+  assert.equal(inactive.status, 409);
+  assert.match((await inactive.json()).error, /requires an active repository snapshot/u);
+
+  const bucket = new FakeR2();
+  const parent = await seedSnapshot(bucket, { channel: 'stable', version: '1.2.3' });
+  assert.equal((await activate(bucket, activationBody(parent))).status, 200);
+  const refreshed = await seedRefreshSnapshot(bucket, parent);
+  const identity = await currentPointerIdentity(bucket, 'stable');
+  const stale = await activate(bucket, refreshActivationBody(refreshed, parent, {
+    expectedCurrentGeneration: identity.generation + 1,
+    expectedCurrentPointerEtag: identity.etag
+  }));
+  assert.equal(stale.status, 409);
+  const staleBody = await stale.json();
+  assert.match(staleBody.error, /compare-and-swap precondition failed/u);
+  assert.equal(staleBody.currentSnapshotId, parent.id);
+  assert.equal(staleBody.currentGeneration, identity.generation);
+  assert.equal(staleBody.currentPointerEtag, identity.etag);
+
+  const staleEtag = await activate(bucket, refreshActivationBody(refreshed, parent, {
+    expectedCurrentGeneration: identity.generation,
+    expectedCurrentPointerEtag: `"${'f'.repeat(64)}"`
+  }));
+  assert.equal(staleEtag.status, 409);
+  assert.equal((await staleEtag.json()).currentPointerEtag, identity.etag);
+
+  for (const [field, value] of [['version', '1.2.4'], ['sourceCommit', 'b'.repeat(40)]]) {
+    const drifted = await activate(bucket, refreshActivationBody(refreshed, parent, { [field]: value }));
+    assert.equal(drifted.status, 409, field);
+    assert.match((await drifted.json()).error, /must preserve the active version and source commit/u, field);
+  }
+});
+
+test('metadata refresh fails the signed feed closed until the retained feed is rebound to the new pointer', async () => {
+  const bucket = new FakeR2();
+  const parent = await seedSnapshot(bucket, { channel: 'stable', version: '1.2.3' });
+  const parentActivation = await (await activate(bucket, activationBody(parent))).json();
+  const publication = await seedFeedBundle(bucket, parent, parentActivation.pointerEtag);
+  const published = await (await publishFeed(bucket, publication)).json();
+  const originalFeed = await (await request(bucket, '/latest-linux.json')).text();
+  const originalSignature = Buffer.from(await (await request(bucket, '/latest-linux.json.ed25519.sig')).arrayBuffer());
+
+  const refreshed = await seedRefreshSnapshot(bucket, parent);
+  const refreshActivation = await (await activate(bucket, refreshActivationBody(refreshed, parent))).json();
+  assert.equal((await request(bucket, '/latest-linux.json')).status, 503);
+  assert.equal((await request(bucket, '/latest-linux.json.ed25519.sig')).status, 503);
+
+  const rebound = await rebindFeed(bucket, {
+    schemaVersion: 1,
+    channel: 'stable',
+    target: 'current',
+    expectedCurrent: { generation: 1, etag: published.pointerEtag },
+    expectedRepository: {
+      generation: refreshActivation.activation.generation,
+      snapshotId: refreshed.id,
+      pointerEtag: refreshActivation.pointerEtag
+    },
+    actor: 'release-engineer',
+    runUrl: RUN_URL,
+    reason: 'Rebind retained signed feed after metadata refresh activation'
+  });
+  assert.equal(rebound.status, 200);
+  const reboundBody = await rebound.json();
+  assert.equal(reboundBody.feed.generation, 2);
+  assert.equal(reboundBody.feed.repository.snapshotId, refreshed.id);
+  assert.equal(reboundBody.feed.repository.generation, 2);
+  assert.equal(reboundBody.feed.previousFeed, null);
+
+  const liveFeed = await request(bucket, '/latest-linux.json');
+  assert.equal(liveFeed.status, 200);
+  assert.equal(await liveFeed.text(), originalFeed);
+  assert.equal(liveFeed.headers.get('x-openburnbar-repository-snapshot'), refreshed.id);
+  const liveSignature = await request(bucket, '/latest-linux.json.ed25519.sig');
+  assert.equal(liveSignature.status, 200);
+  assert.deepEqual(Buffer.from(await liveSignature.arrayBuffer()), originalSignature);
 });
 
 test('feed publication validates immutable identity, uses CAS, and serves only while repository binding is exact', async () => {
@@ -1136,7 +1383,8 @@ test('strict public path grammar and fail-closed active snapshots reject unsafe 
 });
 
 async function seedSnapshot(bucket, { channel, version, commit = COMMIT, signature = true,
-  validUntil = '2026-07-20T12:00:00.000Z', largeObjectMetadata = null }) {
+  releaseDate = '2026-07-10T00:00:00.000Z', validUntil = '2026-07-17T00:00:00.000Z',
+  largeObjectMetadata = null }) {
   const criticalFiles = [
     'apt/openburnbar-archive-keyring.gpg',
     `apt/openburnbar-${channel}.sources`,
@@ -1148,7 +1396,11 @@ async function seedSnapshot(bucket, { channel, version, commit = COMMIT, signatu
     `rpm/${channel}/aarch64/repodata/repomd.xml`,
     `rpm/${channel}/aarch64/repodata/repomd.xml.asc`,
     `rpm/${channel}/x86_64/repodata/repomd.xml`,
-    `rpm/${channel}/x86_64/repodata/repomd.xml.asc`
+    `rpm/${channel}/x86_64/repodata/repomd.xml.asc`,
+    'apt/pool/main/o/openburnbar/open-burn-bar_1.2.3_arm64.deb',
+    'apt/pool/main/o/openburnbar/open-burn-bar_1.2.3_amd64.deb',
+    `rpm/${channel}/aarch64/open-burn-bar-1.2.3.aarch64.rpm`,
+    `rpm/${channel}/x86_64/open-burn-bar-1.2.3.x86_64.rpm`
   ];
   const files = criticalFiles.map((file) => {
     const bytes = Buffer.from(`snapshot:${file}\n`);
@@ -1163,13 +1415,36 @@ async function seedSnapshot(bucket, { channel, version, commit = COMMIT, signatu
       bytes: null
     });
   }
+  const packageFiles = files.filter((row) => /\.(?:deb|rpm)$/u.test(row.file));
   const closureBytes = Buffer.from(`${JSON.stringify({
     schemaVersion: 1,
     product: 'OpenBurnBar',
     version,
     channel,
     gitCommit: commit,
-    repositories: { apt: { validUntil } },
+    architectures: ['aarch64', 'x86_64'],
+    packageSetRootSha256: 'c'.repeat(64),
+    signing: {
+      algorithm: 'OpenPGP',
+      fingerprint: 'A'.repeat(40),
+      signingFingerprint: 'A'.repeat(40),
+      publicKeySha256: 'b'.repeat(64)
+    },
+    packages: packageFiles.map(({ file, sha256, size }) => ({ file, sha256, size })),
+    repositories: {
+      apt: { releaseDate, validUntil },
+      rpm: {
+        repomd: [
+          `rpm/${channel}/aarch64/repodata/repomd.xml`,
+          `rpm/${channel}/x86_64/repodata/repomd.xml`
+        ]
+      }
+    },
+    lifecycleRequired: {
+      architectures: ['aarch64', 'x86_64'],
+      operations: ['install', 'remove'],
+      packageManagers: ['apt', 'dnf']
+    },
     files: files.map(({ file, sha256, size }) => ({ file, sha256, size }))
   }, null, 2)}\n`);
   const id = crypto.createHash('sha256').update(closureBytes).digest('hex');
@@ -1187,6 +1462,49 @@ async function seedSnapshot(bucket, { channel, version, commit = COMMIT, signatu
   return { id, channel, version, commit, closureKey };
 }
 
+async function seedRefreshSnapshot(bucket, parent, options = {}) {
+  const parentClosure = JSON.parse(await bucket.text(parent.closureKey));
+  const closure = structuredClone(parentClosure);
+  closure.schemaVersion = 2;
+  closure.repositories.apt.releaseDate = options.refreshedAt ?? '2026-07-10T12:00:00.000Z';
+  closure.repositories.apt.validUntil = options.validUntil ?? '2026-07-17T12:00:00.000Z';
+  closure.refresh = {
+    kind: 'apt-expiry',
+    refreshedAt: closure.repositories.apt.releaseDate,
+    previousSnapshotId: parent.id,
+    previousReleaseDate: parentClosure.repositories.apt.releaseDate,
+    previousValidUntil: parentClosure.repositories.apt.validUntil
+  };
+  const mutable = new Set([
+    `apt/dists/${parent.channel}/Release`,
+    `apt/dists/${parent.channel}/InRelease`,
+    `apt/dists/${parent.channel}/Release.gpg`
+  ]);
+  const fileBytes = new Map();
+  for (const row of closure.files) {
+    const parentKey = `linux/repository-snapshots/${parent.channel}/${parent.id}/${row.file}`;
+    const bytes = mutable.has(row.file)
+      ? Buffer.from(`refresh:${row.file}\n`)
+      : Buffer.from(await (await bucket.get(parentKey)).arrayBuffer());
+    fileBytes.set(row.file, bytes);
+    if (mutable.has(row.file)) {
+      row.sha256 = crypto.createHash('sha256').update(bytes).digest('hex');
+      row.size = bytes.length;
+    }
+  }
+  options.mutate?.(closure, fileBytes);
+  const closureBytes = Buffer.from(`${JSON.stringify(closure, null, 2)}\n`);
+  const id = crypto.createHash('sha256').update(closureBytes).digest('hex');
+  const closureKey = `linux/repository-snapshots/${parent.channel}/${id}/repository-closure.json`;
+  bucket.seed(closureKey, closureBytes, { contentType: 'application/json; charset=utf-8' });
+  for (const row of closure.files) {
+    const bytes = fileBytes.get(row.file);
+    if (bytes) bucket.seed(`linux/repository-snapshots/${parent.channel}/${id}/${row.file}`, bytes);
+  }
+  bucket.seed(`${closureKey}.asc`, 'repository closure signature');
+  return { id, channel: parent.channel, version: parent.version, commit: parent.commit, closureKey };
+}
+
 function activationBody(snapshot) {
   return {
     schemaVersion: 1,
@@ -1201,6 +1519,16 @@ function activationBody(snapshot) {
     actor: 'release-engineer',
     runUrl: RUN_URL,
     reason: `Promote OpenBurnBar ${snapshot.version} after repository lifecycle verification`
+  };
+}
+
+function refreshActivationBody(snapshot, parent, overrides = {}) {
+  return {
+    ...activationBody(snapshot),
+    mode: 'refresh',
+    expectedCurrentSnapshotId: parent.id,
+    reason: `Refresh OpenBurnBar ${snapshot.version} apt metadata before signed expiry`,
+    ...overrides
   };
 }
 

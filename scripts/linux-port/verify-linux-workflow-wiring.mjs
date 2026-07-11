@@ -80,9 +80,194 @@ function verifyReleaseTransactionStructure(source, failures) {
   }
 }
 
+function verifyRefreshTransactionStructure(source, failures) {
+  let workflow;
+  try {
+    workflow = parseYaml(source);
+  } catch (error) {
+    failures.push(`repository refresh workflow YAML is invalid: ${error.message}`);
+    return;
+  }
+  if (!workflow?.on?.schedule?.some((entry) => entry?.cron === '17 */6 * * *')) {
+    failures.push('repository refresh workflow is missing its six-hour schedule.');
+  }
+  const dispatch = workflow?.on?.workflow_dispatch;
+  const channelInput = dispatch?.inputs?.channel;
+  if (!channelInput || JSON.stringify(channelInput.options) !== JSON.stringify([
+    'all', 'stable', 'prerelease', 'nightly'
+  ]) || dispatch?.inputs?.force_refresh?.type !== 'boolean') {
+    failures.push('repository refresh workflow manual channel/force inputs are not canonical.');
+  }
+  if (workflow?.permissions?.contents !== 'read' || Object.keys(workflow?.permissions ?? {}).length !== 1) {
+    failures.push('repository refresh workflow permissions are not least-privilege canonical.');
+  }
+  if (workflow?.concurrency?.group !== 'linux-repository-release'
+      || workflow?.concurrency?.['cancel-in-progress'] !== false) {
+    failures.push('repository refresh workflow must serialize with releases without cancellation.');
+  }
+  const job = workflow?.jobs?.refresh;
+  if (!job || job.environment !== 'release' || job.strategy?.['max-parallel'] !== 1
+      || job.strategy?.['fail-fast'] !== false) {
+    failures.push('repository refresh channel jobs must use the release environment and serialize their matrix.');
+  }
+  if (job?.permissions?.contents !== 'read' || job?.permissions?.['id-token'] !== 'write'
+      || Object.keys(job?.permissions ?? {}).length !== 2) {
+    failures.push('repository refresh mutation job permissions are not least-privilege canonical.');
+  }
+  for (const issueJobName of ['open-failure-issue', 'close-resolved-issue']) {
+    const permissions = workflow?.jobs?.[issueJobName]?.permissions;
+    if (permissions?.contents !== 'read' || permissions?.issues !== 'write'
+        || Object.keys(permissions ?? {}).length !== 2) {
+      failures.push(`repository refresh issue job permissions are not least-privilege canonical: ${issueJobName}`);
+    }
+  }
+  const steps = job?.steps;
+  if (!Array.isArray(steps)) {
+    failures.push('repository refresh workflow steps are missing.');
+    return;
+  }
+  const byId = new Map(steps.filter((step) => typeof step?.id === 'string').map((step) => [step.id, step]));
+  const requiredIds = [
+    'inspect_freshness',
+    'fetch_snapshot',
+    'parent_identity',
+    'verify_parent_snapshot',
+    'build_refresh',
+    'refresh_identity',
+    'upload_refresh',
+    'verify_preview_lifecycle',
+    'activate_refresh',
+    'rebind_feed',
+    'verify_feed_pointer',
+    'verify_live_feed',
+    'verify_public_repository',
+    'verify_public_lifecycle',
+    'attest_refresh',
+    'upload_refresh_evidence',
+    'compensate_refresh'
+  ];
+  for (const id of requiredIds) {
+    if (!byId.has(id)) failures.push(`repository refresh transaction step id is missing: ${id}`);
+  }
+  const postActivationIds = [
+    'activate_refresh',
+    'rebind_feed',
+    'verify_feed_pointer',
+    'verify_live_feed',
+    'verify_public_repository',
+    'verify_public_lifecycle',
+    'attest_refresh',
+    'upload_refresh_evidence'
+  ];
+  for (const id of postActivationIds) {
+    if (byId.get(id)?.['continue-on-error'] !== true) {
+      failures.push(`repository refresh post-activation step must continue only to compensation: ${id}`);
+    }
+  }
+  const expectedPredecessor = new Map([
+    ['build_refresh', 'verify_parent_snapshot'],
+    ['activate_refresh', 'verify_preview_lifecycle'],
+    ['rebind_feed', 'activate_refresh'],
+    ['verify_feed_pointer', 'rebind_feed'],
+    ['verify_live_feed', 'verify_feed_pointer'],
+    ['verify_public_repository', 'verify_live_feed'],
+    ['verify_public_lifecycle', 'verify_public_repository'],
+    ['attest_refresh', 'verify_public_lifecycle'],
+    ['upload_refresh_evidence', 'attest_refresh']
+  ]);
+  for (const [id, predecessor] of expectedPredecessor) {
+    if (!String(byId.get(id)?.if ?? '').includes(`steps.${predecessor}.outcome == 'success'`)) {
+      failures.push(`repository refresh step ${id} is not structurally gated by ${predecessor}.`);
+    }
+  }
+  const compensation = byId.get('compensate_refresh');
+  const compensationCondition = String(compensation?.if ?? '');
+  if (!compensationCondition.includes('always()') || compensation?.['continue-on-error'] !== true) {
+    failures.push('repository refresh compensation must run under always() and preserve final enforcement.');
+  }
+  for (const id of postActivationIds) {
+    if (!compensationCondition.includes(`steps.${id}.outcome != 'success'`)) {
+      failures.push(`repository refresh compensation condition omits transaction step: ${id}`);
+    }
+  }
+  const finalGate = steps.find((step) => step?.name === 'Enforce fail-closed refresh outcome');
+  const finalRun = String(finalGate?.run ?? '');
+  if (!String(finalGate?.if ?? '').includes('always()')
+      || !finalRun.includes('repository-refresh-compensation.json')
+      || !finalRun.includes('receipt.passed !== true || receipt.contained !== true')
+      || postActivationIds.some((id) => !finalRun.includes(`steps.${id}.outcome`))) {
+    failures.push('repository refresh final gate is not bound to compensation containment proof.');
+  }
+  const inspect = byId.get('inspect_freshness');
+  if (String(inspect?.env?.OPENBURNBAR_LINUX_REPOSITORY_GPG_PRIVATE_KEY ?? '').length > 0) {
+    failures.push('repository freshness inspection may not receive the repository signing key.');
+  }
+  const build = byId.get('build_refresh');
+  if (!String(build?.env?.OPENBURNBAR_LINUX_REPOSITORY_GPG_PRIVATE_KEY ?? '').includes('secrets.')) {
+    failures.push('repository refresh signer does not load its protected key in the signer step.');
+  }
+  const parentRun = String(byId.get('parent_identity')?.run ?? '');
+  const parentVerificationRun = String(byId.get('verify_parent_snapshot')?.run ?? '');
+  if (!parentRun.includes('freshness.current?.snapshotId !== snapshotId')
+      || !parentRun.includes('acquisition.snapshotId !== snapshotId')
+      || !parentVerificationRun.includes('--repository-root')) {
+    failures.push('repository refresh must reconcile and independently verify the exact fetched parent before signing.');
+  }
+  const rebindRun = String(byId.get('rebind_feed')?.run ?? '');
+  if (!rebindRun.includes('--target current')
+      || !rebindRun.includes('--output "$OPENBURNBAR_LINUX_EVIDENCE_OUT/repository-refresh-feed-rebind.json"')) {
+    failures.push('repository refresh feed rebind must retain the existing feed and write an attempted mutation receipt.');
+  }
+  const feedPointer = byId.get('verify_feed_pointer');
+  const feedPointerRun = String(feedPointer?.run ?? '');
+  if (!feedPointerRun.includes('publish-linux-update-feed-r2.sh --verify-only')
+      || !String(feedPointer?.env?.OPENBURNBAR_LINUX_REPOSITORY_FEED_VERIFICATION_RECEIPT ?? '')
+        .includes('repository-refresh-feed-verification.json')
+      || !String(feedPointer?.env?.OPENBURNBAR_LINUX_REPOSITORY_ACTIVATION_TOKEN ?? '').includes('secrets.')) {
+    failures.push('repository refresh must authenticate and retain exact post-rebind feed pointer verification.');
+  }
+  const liveFeedRun = String(byId.get('verify_live_feed')?.run ?? '');
+  if (!liveFeedRun.includes('check-linux-update-feed.mjs --url')
+      || !liveFeedRun.includes('/latest-linux.json') || !liveFeedRun.includes('/linux/update/$OPENBURNBAR_LINUX_REFRESH_CHANNEL/')) {
+    failures.push('repository refresh must verify the stable or channel-qualified live signed feed after rebind.');
+  }
+  const uploadEvidence = byId.get('upload_refresh_evidence');
+  const evidenceRun = String(uploadEvidence?.run ?? '');
+  if (!evidenceRun.includes('upload-linux-repository-refresh-evidence.mjs')
+      || !evidenceRun.includes('repository-refresh-evidence-closure.json')
+      || !evidenceRun.includes('repository-refresh-evidence-upload.json')
+      || !evidenceRun.includes('repository-closure.json.asc')) {
+    failures.push('repository refresh immutable evidence publication is incomplete.');
+  }
+  if (job?.env?.OPENBURNBAR_LINUX_REPOSITORY_UPLOAD_TOKEN !== undefined) {
+    failures.push('repository refresh upload token may not be job-scoped.');
+  }
+  const uploadTokenSteps = steps.filter((step) => step?.env?.OPENBURNBAR_LINUX_REPOSITORY_UPLOAD_TOKEN !== undefined);
+  if (JSON.stringify(uploadTokenSteps.map((step) => step.id).sort())
+      !== JSON.stringify(['upload_refresh', 'upload_refresh_evidence'])) {
+    failures.push('repository refresh upload token must be scoped only to immutable upload steps.');
+  }
+  if (uploadTokenSteps.some((step) => !String(step.env.OPENBURNBAR_LINUX_REPOSITORY_UPLOAD_TOKEN).includes('secrets.'))) {
+    failures.push('repository refresh immutable upload steps must use the protected upload token.');
+  }
+  const attestationRun = String(byId.get('attest_refresh')?.run ?? '');
+  for (const marker of ['activationGeneration', 'transactionInputs', 'closureSignaturePath']) {
+    if (!attestationRun.includes(marker)) failures.push(`repository refresh attestation omits durable input binding: ${marker}`);
+  }
+  for (const forbidden of [
+    'gh release',
+    'publish-linux-update-feed-r2.sh --publish-only',
+    '/publish-feed',
+    'linux/releases/linux-v'
+  ]) {
+    if (source.includes(forbidden)) failures.push(`repository refresh workflow contains forbidden release/feed publication: ${forbidden}`);
+  }
+}
+
 export function verifyLinuxWorkflowWiring(input) {
   const failures = [];
   verifyReleaseTransactionStructure(input.releaseYaml ?? input.release, failures);
+  verifyRefreshTransactionStructure(input.refreshYaml ?? input.refresh, failures);
   const requireText = (body, needle, label) => {
     if (!body.includes(needle)) failures.push(`${label} is missing: ${needle}`);
   };
@@ -149,6 +334,48 @@ export function verifyLinuxWorkflowWiring(input) {
     'https://downloads.burnbar.ai/latest-linux.json',
     'https://downloads.burnbar.ai/linux/update/$channel/latest-linux.json'
   ]) requireText(input.release, marker, 'two-architecture release closure');
+  for (const marker of [
+    'group: linux-repository-release',
+    'cancel-in-progress: false',
+    'refs/heads/main',
+    'inspect-linux-repository-freshness.mjs',
+    'fetch-linux-repository-snapshot.mjs',
+    'refresh-linux-repository-metadata.mjs',
+    '--network none',
+    '--read-only',
+    '/workspace:ro',
+    '/refresh-source:ro',
+    'upload-linux-repository-refresh.mjs',
+    'activate-linux-repository.mjs',
+    '--mode refresh',
+    'rebind-linux-repository-feed.mjs',
+    '--target current',
+    'publish-linux-update-feed-r2.sh --verify-only',
+    'check-linux-update-feed.mjs --url',
+    'verify-linux-public-repository.mjs',
+    'upload-linux-repository-refresh-evidence.mjs',
+    'repository-refresh-evidence-closure.json',
+    'repository-refresh-evidence-upload.json',
+    'compensate-linux-repository-activation.mjs',
+    'linux-repository-refresh/v1',
+    'repository-refresh-compensation.json',
+    'lane: linux-repository-refresh'
+  ]) requireText(input.refresh, marker, 'scheduled repository refresh');
+  for (const marker of [
+    'cosign',
+    'verify-blob-attestation',
+    '--certificate-identity',
+    'linux-repository-refresh.yml@refs/heads/main',
+    '--certificate-oidc-issuer',
+    'https://token.actions.githubusercontent.com'
+  ]) requireText(input.refreshEvidenceUploader, marker, 'repository refresh Sigstore evidence verifier');
+  for (const testFile of [
+    'fetch-linux-repository-snapshot.test.mjs',
+    'inspect-linux-repository-freshness.test.mjs',
+    'rebind-linux-repository-feed.test.mjs',
+    'upload-linux-repository-refresh.test.mjs',
+    'upload-linux-repository-refresh-evidence.test.mjs'
+  ]) requireText(input.pr, testFile, 'PR repository refresh regression suite');
   requireText(input.release, 'unset OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM', 'signer environment scrub');
   for (const marker of [
     'vars.OPENBURNBAR_LINUX_FIREBASE_APP_ID',
@@ -396,11 +623,15 @@ export function verifyLinuxWorkflowWiring(input) {
 function main() {
   const read = (rel) => fs.readFileSync(path.join(repoRoot, rel), 'utf8');
   const release = read('.github/workflows/linux-release.yml');
+  const refresh = read('.github/workflows/linux-repository-refresh.yml');
   const result = verifyLinuxWorkflowWiring({
     pr: read('.github/workflows/linux-pr-gate.yml'),
     nightly: read('.github/workflows/linux-nightly.yml'),
     release,
     releaseYaml: release,
+    refresh,
+    refreshYaml: refresh,
+    refreshEvidenceUploader: read('scripts/linux-port/upload-linux-repository-refresh-evidence.mjs'),
     makefile: read('Makefile'),
     nativeTests: read('scripts/linux-port/run-linux-native-tests.sh'),
     rustBridge: read('apps/linux-desktop/src-tauri/src/lib.rs'),

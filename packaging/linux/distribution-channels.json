@@ -2,7 +2,11 @@
   "schemaVersion": 1,
   "repositoryMetadata": {
     "aptValidForHours": 168,
-    "signingKeyMinimumRemainingDays": 30
+    "signingKeyMinimumRemainingDays": 30,
+    "refreshCheckIntervalHours": 6,
+    "refreshWhenRemainingHours": 96,
+    "criticalRemainingHours": 48,
+    "activationMinimumRemainingHours": 24
   },
   "apt": {
     "status": "source-ready",

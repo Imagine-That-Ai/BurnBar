@@ -78,6 +78,7 @@ export function activationRequest({ identity, status, actor, runUrl, reason, mod
   }
   const current = validateActivationStatus(status, identity.channel);
   if (typeof actor !== 'string' || !ACTOR.test(actor)) throw new Error('activation actor is invalid');
+  if (!['promote', 'rollback', 'refresh'].includes(mode)) throw new Error('activation mode is invalid');
   if (typeof reason !== 'string' || reason.length < 8 || reason.length > 500
       || reason.trim() !== reason || /[\u0000-\u001f\u007f]/u.test(reason)) {
     throw new Error('activation reason must contain 8 to 500 printable characters');
