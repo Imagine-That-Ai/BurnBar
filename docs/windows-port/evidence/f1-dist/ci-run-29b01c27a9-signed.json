@@ -1,0 +1,150 @@
+{
+  "schema": "openburnbar.windows.distribution-ci-evidence-receipt.v1",
+  "generatedAtUtc": "2026-07-11T02:18:00Z",
+  "candidate": {
+    "branch": "codex/windows-certification-signing",
+    "commit": "29b01c27a9f9eedde51f155e429e3c29fc5f40f4",
+    "version": "1.0.29"
+  },
+  "workflow": {
+    "runId": 29135662853,
+    "url": "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29135662853",
+    "event": "workflow_dispatch",
+    "mode": "signed-release-evidence",
+    "conclusion": "success",
+    "jobs": {
+      "resolveRelease": 86499358732,
+      "verifyDistributionCore": 86499366271,
+      "buildAndAuthenticodeSign": 86499451077,
+      "supplyChain": 86500071336
+    },
+    "signedSteps": [
+      "Authenticode sign OpenBurnBar-owned portable binaries with Azure Artifact Signing",
+      "Verify portable Authenticode signatures with Get-AuthenticodeSignature",
+      "Authenticode sign x64 and ARM64 MSIX packages with Azure Artifact Signing",
+      "Verify MSIX Authenticode signatures with Get-AuthenticodeSignature",
+      "Finalize checksums after all signing mutations",
+      "Sign and self-verify the pinned Ed25519 update feed",
+      "Generate SPDX SBOM, OpenVEX, and keyless Sigstore bundles"
+    ]
+  },
+  "githubArtifacts": [
+    {
+      "id": 8243563554,
+      "name": "windows-release-v1.0.29",
+      "sizeBytes": 369881691,
+      "sha256": "2ac24164063de99a56f5a88096e7df32d9b692c9bc9c0b805ed2c44393e8f2dc",
+      "expiresAtUtc": "2026-07-18T02:10:31Z"
+    },
+    {
+      "id": 8243574248,
+      "name": "windows-provenance-v1.0.29",
+      "sizeBytes": 269075,
+      "sha256": "25bab9dffc2967163ee553559b45dacd8e11e1570f1be2eb7316caac58166e82",
+      "expiresAtUtc": "2026-07-18T02:11:59Z"
+    }
+  ],
+  "releaseFiles": [
+    {
+      "name": "OpenBurnBar-1.0.29-win-x64.zip",
+      "sizeBytes": 92734653,
+      "sha256": "62951f40bb002a2c3f0676121c668f9cf22792782ee9674f2930772ab7bb2e66",
+      "channel": "portable-zip",
+      "platform": "win-x64"
+    },
+    {
+      "name": "OpenBurnBar-1.0.29-win-arm64.zip",
+      "sizeBytes": 89272577,
+      "sha256": "2db077a598379cb67798f77c6b6592dd3cb2dd517907a4d1bad23b517ea27dfc",
+      "channel": "portable-zip",
+      "platform": "win-arm64"
+    },
+    {
+      "name": "OpenBurnBar-1.0.29-x64.msix",
+      "sizeBytes": 96884889,
+      "sha256": "61bd76fc40799aa13654a89d31f297f7c2d43d013c7c644e634e18e287e37aff",
+      "channel": "msix",
+      "platform": "x64",
+      "manifestVersion": "1.0.29.0"
+    },
+    {
+      "name": "OpenBurnBar-1.0.29-arm64.msix",
+      "sizeBytes": 93661413,
+      "sha256": "978bf87af13b7c9e2d2a2ea7958c9d444b934b647ee9368e34c7f40baa488b43",
+      "channel": "msix",
+      "platform": "arm64",
+      "manifestVersion": "1.0.29.0"
+    },
+    {
+      "name": "checksums-windows-v1.0.29.txt",
+      "sizeBytes": 386,
+      "sha256": "8b5a36e82335fdd7459b25f91884f181939cc99b1736f4dba3bd904f9df58fb5",
+      "verifiedFileCount": 4,
+      "orderingInvariant": "manifest finalized after Authenticode signing"
+    },
+    {
+      "name": "windows-update-feed-v1.0.29.json",
+      "sizeBytes": 1243,
+      "sha256": "aab7237708dc8c816a1effd12a01bfde6c05226afdb620a663ff527a30284590",
+      "verifiedEntries": 2
+    },
+    {
+      "name": "entry-win-x64.json",
+      "sizeBytes": 683,
+      "sha256": "f83f438e5ed12c7f8c407d594e326c6765be94e0413b54a553b5357e970bb5a8"
+    },
+    {
+      "name": "entry-win-arm64.json",
+      "sizeBytes": 687,
+      "sha256": "a6a82ac82e4c7d69667003e449aebab65b3f846fd00f20090b746c1da89a5104"
+    }
+  ],
+  "authenticode": {
+    "provider": "Azure Artifact Signing",
+    "portableSignedOpenBurnBarFileCount": 56,
+    "msixSignedPackageCount": 2,
+    "signerSubject": "CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US",
+    "timestamp": "RFC 3161 timestamp required by CI verification",
+    "verification": "Get-AuthenticodeSignature required Valid status, expected signer subject, and timestamp certificate for portable OpenBurnBar-owned binaries and MSIX packages"
+  },
+  "updateFeed": {
+    "keyModel": "pinned Ed25519 independent of Authenticode",
+    "publicPin": "HhidA38Ybv9e1X+wuRpJp0mz1Sfhhn/UZ90r1PUPPOE=",
+    "ciVerification": "verify-feed: all 2 entries authenticated under the pinned key",
+    "localVerification": "dotnet run --project windows/dist/OpenBurnBar.Dist.UpdateFeed.Tool/OpenBurnBar.Dist.UpdateFeed.Tool.csproj -c Release -- verify-feed --feed <downloaded>/windows-update-feed-v1.0.29.json --pinned-public-base64 <public pin> passed"
+  },
+  "supplyChain": {
+    "sbom": {
+      "name": "sbom-windows-v1.0.29.spdx.json",
+      "spdxVersion": "SPDX-2.3",
+      "packageCount": 371,
+      "dependencyPackageCount": 370
+    },
+    "openVex": {
+      "name": "openburnbar-windows-v1.0.29.vex.json",
+      "statementCount": 1
+    },
+    "predicateCount": 10,
+    "sigstoreBundleCount": 10,
+    "predicateType": "https://openburnbar.dev/attestations/windows-release-artifact/v1",
+    "certificateIdentity": "https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/openburnbar-release-windows.yml@refs/heads/codex/windows-certification-signing",
+    "oidcIssuer": "https://token.actions.githubusercontent.com",
+    "cosignVersion": "3.0.6"
+  },
+  "independentVerification": {
+    "downloadPath": "/Users/albertonunez/.cache/burnbar-work/obb-signed-evidence-29135662853-1783736592",
+    "checksumManifest": "passed; all 4 post-sign release package hashes matched",
+    "updateFeed": "passed; all 2 entries authenticated under the pinned public key",
+    "predicateArtifactBindings": "passed; 10 of 10 predicates bind to commit 29b01c27a9f9eedde51f155e429e3c29fc5f40f4 and run 29135662853",
+    "artifactInventory": "passed; release artifact contains x64/ARM64 portable zips, x64/ARM64 MSIX packages, checksums, update entries, and update feed",
+    "distributionCoreTests": "passed in CI",
+    "authenticodeVerification": "passed on GitHub-hosted Windows runner via Get-AuthenticodeSignature",
+    "supplyChain": "passed in CI; SBOM dependency gate and Sigstore bundle generation completed"
+  },
+  "remainingBoundary": [
+    "This run is evidence for the signing/release pipeline; it is not a public release tag or deployment.",
+    "Clean install, update, rollback, uninstall, and reinstall remain separate certification gates on physical x64 and ARM64 Windows devices.",
+    "Microsoft Store, winget, and Chocolatey publication remain external release operations.",
+    "GitHub Actions emitted non-blocking warnings from existing Windows app code and Node 20 deprecation shims; the signed release evidence run still concluded success."
+  ]
+}
