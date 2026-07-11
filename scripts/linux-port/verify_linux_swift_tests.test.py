@@ -168,7 +168,7 @@ sleep 5
             report,
             {
                 "suiteCount": 5,
-                "minimumExecutedTests": 50,
+                "minimumExecutedTests": 51,
                 "executionStrategy": "direct-xctest-isolated-per-test",
                 "perTestTimeoutSeconds": 300,
             },
