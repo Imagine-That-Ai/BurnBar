@@ -78,34 +78,58 @@ for (const tag of ['linux-v01.2.3', 'linux-v1.2.3-01', 'linux-v1.2.3-alpha..1'])
 
 test('workflow contract preserves one commit and includes source in provenance and publication', () => {
   const workflow = fs.readFileSync(path.join(root, '.github/workflows/linux-release.yml'), 'utf8');
+  const postResolverWorkflow = workflow.slice(workflow.indexOf('Build native architecture artifacts'));
   assert.match(workflow, /tags:\s*\n\s*- "linux-v\*"/u);
-  assert.doesNotMatch(workflow, /\$\{\{ inputs\.version \}\}/u);
-  assert.match(workflow, /fetch-depth: 0/u);
-  assert.match(workflow, /OPENBURNBAR_RELEASE_COMMIT: \$\{\{ steps\.release-binding\.outputs\.commit \}\}/u);
-  assert.match(workflow, /-name '\*-source-\*\.tar\.gz'/u);
-  assert.match(workflow, /cosign verify-blob-attestation/u);
+  assert.match(workflow, /INPUT_VERSION:\s*\$\{\{ inputs\.version \}\}/u);
+  assert.equal((workflow.match(/\$\{\{ inputs\.version \}\}/gu) ?? []).length, 1);
+  assert.doesNotMatch(postResolverWorkflow, /\$\{\{ inputs\.version \}\}/u);
+  assert.match(workflow, /resolve-linux-release-version\.mjs --github-output/u);
+  assert.match(workflow, /--version '\$\{\{ needs\.resolve-release\.outputs\.version \}\}'/u);
+  assert.match(workflow, /OPENBURNBAR_LINUX_RELEASE_BASE_URL: https:\/\/github\.com\/Imagine-That-Ai\/BurnBar\/releases\/download\/\$\{\{ needs\.resolve-release\.outputs\.tag \}\}/u);
+  assert.match(workflow, /tag="\$\{\{ needs\.resolve-release\.outputs\.tag \}\}"/u);
+  assert.match(workflow, /release_commit="\$\(git rev-parse HEAD\)"/u);
+  assert.match(workflow, /git fetch --force origin "\+refs\/tags\/\$\{tag\}:refs\/tags\/\$\{tag\}"/u);
+  assert.match(workflow, /tag_commit="\$\(git rev-list -n 1 "refs\/tags\/\$\{tag\}\^\{commit\}"\)"/u);
+  assert.match(workflow, /if \[\[ "\$tag_commit" != "\$release_commit" \]\]; then/u);
+  assert.match(workflow, /-name '\*source-\*\.tar'/u);
+  assert.match(workflow, /-name '\*parity-attestation\.json'/u);
+  assert.match(workflow, /cosign attest-blob/u);
+  assert.match(workflow, /node scripts\/linux-port\/verify-linux-release\.mjs\s+--phase final\s+--version '\$\{\{ needs\.resolve-release\.outputs\.version \}\}'/u);
   assert.match(workflow, /--verify-tag/u);
-  assert.match(workflow, /--target "\$RELEASE_COMMIT"/u);
+  assert.match(workflow, /--target "\$release_commit"/u);
   assert.match(workflow, /--latest=false/u);
 });
 
 test('allow-blocked never masks release verification failures', () => {
   const verifier = fs.readFileSync(path.join(root, 'scripts/linux-port/verify-linux-release.mjs'), 'utf8');
+  const pureVerifier = fs.readFileSync(path.join(root, 'scripts/linux-port/lib/linux-release-verify.mjs'), 'utf8');
+  const workflowWiring = fs.readFileSync(path.join(root, 'scripts/linux-port/verify-linux-workflow-wiring.mjs'), 'utf8');
   assert.match(verifier, /passed:\s*failures\.length === 0,/u);
   assert.match(verifier, /process\.exit\(report\.passed \? 0 : 1\);/u);
   assert.doesNotMatch(verifier, /failures\.length === 0\s*\|\|\s*allowBlocked/u);
-  assert.match(verifier, /block\('package closure lacks a complete tag-bound release identity\.'/u);
-  assert.match(verifier, /fail\('package closure contains a partial tag-bound release identity\.'/u);
-  assert.match(verifier, /fail\('release tag, ref, and package version disagree\.'/u);
-  assert.match(verifier, /fail\('release tag resolves to a different commit than package metadata\.'/u);
-  assert.match(verifier, /fail\('provenance predicate Cosign identity differs from the release identity\.'/u);
-  assert.match(verifier, /fail\('source archive binding in package closure is incomplete\.'/u);
-  assert.match(verifier, /fail\('source archive does not represent the exact release commit\.'/u);
-  assert.match(verifier, /fail\('blocked latest-linux draft lacks a named blocker\.'/u);
-  assert.match(verifier, /if \(allowBlocked\) ledgerArgs\.push\('--allow-blocked'\);/u);
-  assert.match(verifier, /fail\('parity ledger validation failed\.'/u);
-  assert.match(verifier, /const artifactAvailable = requireGeneratedFile\(/u);
-  assert.match(verifier, /publicKeyPem && artifactAvailable && signatureAvailable/u);
+  assert.doesNotMatch(verifier, /report\.passed\s*\|\|\s*diagnostic/u);
+  assert.match(verifier, /const diagnostic = argv\.includes\('--diagnostic'\) \|\| argv\.includes\('--allow-blocked'\);/u);
+  assert.match(verifier, /--allow-blocked is deprecated; diagnostic output never downgrades release failures\./u);
+  assert.match(verifier, /import \{ verifyLinuxReleaseCandidate \} from '\.\/lib\/linux-release-verify\.mjs';/u);
+  assert.match(verifier, /const pure = verifyLinuxReleaseCandidate\(/u);
+  assert.match(verifier, /failures\.push\(\.\.\.pure\.failures\);/u);
+  assert.match(verifier, /runStep\('node', \['scripts\/linux-port\/validate-parity-ledger\.mjs'\]/u);
+  assert.doesNotMatch(verifier, /validate-parity-ledger\.mjs'[\s\S]{0,120}--allow-blocked/u);
+  assert.match(verifier, /fail\('parity ledger is not green for release promotion\.'/u);
+  assert.match(verifier, /fail\('source archive does not equal a fresh git archive of the release commit\.'/u);
+  assert.match(verifier, /verify-blob-attestation/u);
+  assert.match(verifier, /fail\('Sigstore bundle verification failed\.'/u);
+  assert.match(verifier, /release checkout has unexpected dirty files outside generated release output/u);
+  assert.match(pureVerifier, /return \{ passed: failures\.length === 0, failures \};/u);
+  assert.match(pureVerifier, /package closure schemaVersion must be 3\./u);
+  assert.match(pureVerifier, /package closure tag does not match linux release version\./u);
+  assert.match(pureVerifier, /release public-key fingerprint does not match the pinned manifest value\./u);
+  assert.match(pureVerifier, /required \$\{key\} artifact is absent from package closure\./u);
+  assert.match(pureVerifier, /update feed signing fingerprint does not match the pinned manifest value\./u);
+  assert.match(pureVerifier, /Ed25519 signature verification failed/u);
+  assert.match(pureVerifier, /\$\{kind\} sidecar is absent from package closure\./u);
+  assert.match(pureVerifier, /parity attestation is not green for the release commit\./u);
+  assert.match(workflowWiring, /release verification may not use --allow-blocked\./u);
 });
 
 test('detached release signatures verify only for the pinned key and exact bytes', () => {
