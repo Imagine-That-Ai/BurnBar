@@ -61,7 +61,7 @@ internal suspend fun <T> callBoundToExpectedUid(expectedUid: String, currentUidP
  */
 class ComputerUseSecurityCallableClient(
     private val functions: FirebaseFunctions = Firebase.functions("us-central1"),
-) : IrohControllerRouteCallables {
+) : IrohControllerRouteCallables, PhoneControlAuthorityPublishingCallables {
     private val relaySenderProofProtocolVersion = "3"
 
     suspend fun bindAppCheckAttestation(expectedUid: String? = null) {
@@ -376,24 +376,26 @@ class ComputerUseSecurityCallableClient(
         requireOk(result.getData(), "Relay sender-key publication failed.")
     }
 
-    suspend fun publishAgentGrantAuthority(deviceId: String, peerNodeId: String, publicKeyBase64: String, keyKind: String? = null) {
-        requireAuthenticatedUser()
-        bindAppCheckAttestation()
-        val nonce = issueHighRiskActionNonce()
+    override suspend fun publishAgentGrantAuthority(expectedUid: String, deviceId: String, peerNodeId: String, publicKeyBase64: String, keyKind: String?) {
+        requireAuthenticatedUser(expectedUid)
+        bindAppCheckAttestation(expectedUid)
+        val nonce = issueHighRiskActionNonce(expectedUid)
         // F2: omit keyKind entirely for legacy Ed25519 — the server treats
         // absence as `ed25519`, keeping pre-F2 publishes byte-identical.
         val payload =
             buildMap<String, Any> {
                 put("deviceId", deviceId)
+                put("expectedUid", expectedUid)
                 put("peerNodeId", peerNodeId)
                 put("publicKeyBase64", publicKeyBase64)
                 put("nonce", nonce)
                 keyKind?.let { put("keyKind", it) }
             }
-        val result =
+        val result = callBoundToExpectedUid(expectedUid, { requireAuthenticatedUser() }) {
             functions.getHttpsCallable("publishAgentGrantAuthority")
                 .call(payload)
                 .await()
+        }
         requireOk(result.getData(), "Agent grant authority publication failed.")
     }
 
