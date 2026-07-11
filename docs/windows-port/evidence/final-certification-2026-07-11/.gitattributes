@@ -1,2 +1,4 @@
 arm64-utm/signed-arm64-winui-diagnostic-v2.log -diff -text
 arm64-utm/foundation-host-v6/interactive-uia/scenarios/** -diff -text
+arm64-utm/*.json whitespace=cr-at-eol
+hosted-windows/signed-x64-msix-registration-lifecycle-v1.json whitespace=cr-at-eol
