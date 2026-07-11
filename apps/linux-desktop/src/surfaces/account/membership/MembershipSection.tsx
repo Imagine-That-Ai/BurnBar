@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Banner } from '../../../components/Banner.js';
 import { SurfaceCard } from '../../../components/SurfaceCard.js';
+import { useAccountStore } from '../../../state/accountStore.js';
 import { useLaneLoad } from '../../../state/useLaneLoad.js';
 import { useMembershipStore } from '../../../state/membershipStore.js';
 import { useShellStore } from '../../../state/shellStore.js';
@@ -41,6 +42,9 @@ export function MembershipSection() {
   const error = useMembershipStore((s) => s.error);
   const checkoutUrl = useMembershipStore((s) => s.checkoutUrl);
   const fixtureMode = useShellStore((s) => s.fixtureMode);
+  const account = useAccountStore((s) => s.data);
+  const accountAuthPhase = useAccountStore((s) => s.authPhase);
+  const startDeviceAuth = useAccountStore((s) => s.startDeviceAuth);
 
   useLaneLoad(load);
 
@@ -48,6 +52,7 @@ export function MembershipSection() {
   const checkoutInFlight = phase === 'checkout-in-flight';
   const restoreInFlight = phase === 'restore-in-flight';
   const pro = data?.tier === 'pro';
+  const signedIn = fixtureMode || account?.signedIn === true;
   const entitlementSet = useMemo(() => new Set(data?.entitlements ?? []), [data]);
   const statusText = stateCopy(data?.state, data?.tier);
   const provenance =
@@ -67,8 +72,8 @@ export function MembershipSection() {
         <div className="membership-band" role="status" aria-live="polite" aria-atomic="true">
           <span className={`membership-tier-dot ${pro ? 'membership-tier-dot--pro' : ''}`} aria-hidden="true" />
           <span className="membership-tier-copy">
-            <strong>{pro ? 'Cloud Pro member' : 'Free local member'}</strong>
-            <span>{loading ? 'Checking daemon membership status…' : `${statusText} · ${renewalLine(data?.renewsAt)}`}</span>
+            <strong>{!signedIn ? 'Sign in for membership' : pro ? 'Cloud Pro member' : 'Free local member'}</strong>
+            <span>{loading ? 'Checking daemon membership status…' : !signedIn ? 'Membership follows your OpenBurnBar identity.' : `${statusText} · ${renewalLine(data?.renewsAt)}`}</span>
           </span>
         </div>
         <p className="membership-provenance">Data source: {provenance}</p>
@@ -92,6 +97,12 @@ export function MembershipSection() {
           </Banner>
         ) : null}
 
+        {!signedIn ? (
+          <Banner tone="ok" role="status">
+            Sign in with the secure browser flow above before checkout or membership restore.
+          </Banner>
+        ) : null}
+
         <FoilCard
           eyebrow={pro ? 'OPENBURNBAR CLOUD' : 'PRO FOIL'}
           title={pro ? 'Member' : 'Lift the lid'}
@@ -102,10 +113,20 @@ export function MembershipSection() {
           }
           active={pro}
         >
-          <FoilButton disabled={loading || checkoutInFlight} onClick={() => void startCheckout()}>
-            {checkoutInFlight ? 'Waiting…' : pro ? 'Manage checkout' : 'Open checkout'}
+          <FoilButton
+            disabled={
+              loading ||
+              checkoutInFlight ||
+              accountAuthPhase === 'starting' ||
+              accountAuthPhase === 'pending' ||
+              accountAuthPhase === 'cancelling' ||
+              accountAuthPhase === 'signing-out'
+            }
+            onClick={() => void (signedIn ? startCheckout() : startDeviceAuth())}
+          >
+            {!signedIn ? 'Sign in to continue' : checkoutInFlight ? 'Waiting…' : pro ? 'Manage checkout' : 'Open checkout'}
           </FoilButton>
-          <FoilButton variant="secondary" disabled={loading || restoreInFlight} onClick={() => void restore()}>
+          <FoilButton variant="secondary" disabled={!signedIn || loading || restoreInFlight || !data?.restoreAvailable} onClick={() => void restore()}>
             {restoreInFlight ? 'Restoring…' : 'Restore'}
           </FoilButton>
           <FoilButton variant="secondary" disabled={loading} onClick={() => void load()}>
@@ -132,8 +153,8 @@ export function MembershipSection() {
           locked={!pro}
           title="Hosted Pro tools are locked"
           detail="Remote MCP, hosted quota refresh, and Cloud Pro controls wait behind verified membership."
-          cta="Unlock Pro"
-          onUnlock={() => void startCheckout()}
+          cta={signedIn ? 'Unlock Pro' : 'Sign in to unlock'}
+          onUnlock={() => void (signedIn ? startCheckout() : startDeviceAuth())}
         >
           <div className="membership-pro-preview">
             <button type="button">Hosted Remote MCP</button>

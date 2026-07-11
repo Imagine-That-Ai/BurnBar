@@ -62,6 +62,56 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.account.device_auth.cancel",
+    "caseName": "accountDeviceAuthCancel",
+    "domain": "account",
+    "capability": "account",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarAccountFlowRequest",
+    "result": "BurnBarAccountStatusResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.account.device_auth.poll",
+    "caseName": "accountDeviceAuthPoll",
+    "domain": "account",
+    "capability": "account",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarAccountFlowRequest",
+    "result": "BurnBarAccountStatusResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.account.device_auth.start",
+    "caseName": "accountDeviceAuthStart",
+    "domain": "account",
+    "capability": "account",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelope",
+    "result": "BurnBarAccountStatusResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.account.sign_out",
+    "caseName": "accountSignOut",
+    "domain": "account",
+    "capability": "account",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelope",
+    "result": "BurnBarAccountStatusResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.account.status",
+    "caseName": "accountStatus",
+    "domain": "account",
+    "capability": "account",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelope",
+    "result": "BurnBarAccountStatusResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.browser.action",
     "caseName": "browserAction",
     "domain": "tooling",

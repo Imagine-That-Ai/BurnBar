@@ -643,10 +643,15 @@ export function fixtureMemoryBoundaries(): MemoryBoundary[] {
 
 export function fixtureAccountStatus(): AccountStatus {
   return {
+    state: 'signed_in',
     signedIn: true,
+    uid: 'fixture-linux-user',
+    email: 'alberto@burnbar.dev',
     identityLabel: 'alberto@burnbar.dev',
     trustClass: 'linux-lower-trust',
     syncState: 'active',
+    credentialBackend: 'org.freedesktop.secrets',
+    updatedAt: new Date().toISOString(),
     lastSyncAt: new Date(Date.now() - 1_800_000).toISOString()
   };
 }

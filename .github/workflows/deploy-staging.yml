@@ -274,16 +274,23 @@ jobs:
           # Staging Sentry DSN is optional; unlike production this lane does not
           # fail closed on a missing DSN so a bare staging project can deploy.
           SENTRY_DSN: ${{ secrets.STAGING_SENTRY_DSN_FUNCTIONS }}
+          STAGING_FIREBASE_WEB_API_KEY: ${{ secrets.STAGING_FIREBASE_WEB_API_KEY }}
         run: |
           set -euo pipefail
           ENV_FILE="functions/.env.${FIREBASE_PROJECT}"
           STAGING_CONFIG="functions/.env.burnbar-staging"
+
+          if [[ ! "${STAGING_FIREBASE_WEB_API_KEY:-}" =~ ^AIza[0-9A-Za-z_-]{20,120}$ ]]; then
+            echo "::error::Missing or invalid STAGING_FIREBASE_WEB_API_KEY. It must belong to ${FIREBASE_PROJECT}."
+            exit 1
+          fi
 
           {
             cat "$STAGING_CONFIG"
             echo ""
             echo "FUNCTION_VERSION=${FUNCTION_VERSION}"
             echo "OPENBURNBAR_SOURCE_COMMIT=${OPENBURNBAR_SOURCE_COMMIT}"
+            echo "OPENBURNBAR_FIREBASE_WEB_API_KEY=${STAGING_FIREBASE_WEB_API_KEY}"
             if [[ -n "${SENTRY_DSN:-}" ]]; then
               echo "SENTRY_DSN=${SENTRY_DSN}"
               echo "SENTRY_ENVIRONMENT=staging"

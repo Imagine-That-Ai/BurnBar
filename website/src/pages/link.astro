@@ -3,13 +3,13 @@ import BaseLayout from "@layouts/BaseLayout.astro";
 ---
 
 <BaseLayout
-  title="Link CLI"
-  description="Link your terminal command line interface with your OpenBurnBar account."
+  title="Authorize OpenBurnBar"
+  description="Authorize a secure OpenBurnBar device connection."
 >
   <section class="pagehead">
     <div class="container pagehead__inner">
       <span class="eyebrow eyebrow--ember">Integration</span>
-      <h1 class="pagehead__h">Link CLI to Cloud</h1>
+      <h1 id="page-title" class="pagehead__h">Authorize OpenBurnBar</h1>
     </div>
   </section>
 
@@ -17,73 +17,107 @@ import BaseLayout from "@layouts/BaseLayout.astro";
     <div class="container container--narrow">
       <div class="glass-pane link-card">
         <!-- Loader / Checking Auth State -->
-        <div id="state-checking" class="link-state">
+        <div id="state-checking" class="link-state" role="status" aria-live="polite">
           <div class="spinner"></div>
           <p>Securing connection...</p>
         </div>
 
         <!-- State: Signed Out -->
         <div id="state-signed-out" class="link-state hidden">
-          <div class="icon-wrap">
-            <span class="icon-flame">🔑</span>
+          <h2 id="signed-out-heading" tabindex="-1">Authentication Required</h2>
+          <p>Sign in to the BurnBar account that should authorize this connection.</p>
+          <div class="provider-actions">
+            <button id="btn-google" type="button" class="btn btn--provider">
+              <svg class="provider-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  fill="#4285F4"
+                  d="M23.49 12.27c0-.82-.07-1.42-.22-2.04H12v3.95h6.62c-.13.98-.85 2.46-2.45 3.45l-.02.13 3.56 2.45.25.02c2.29-2.11 3.53-5.22 3.53-7.96Z"
+                ></path>
+                <path
+                  fill="#34A853"
+                  d="M12 24c3.28 0 6.03-1.08 8.04-2.94l-3.83-2.96c-1.03.72-2.41 1.22-4.21 1.22a7.32 7.32 0 0 1-6.93-5.06l-.13.01-3.7 2.87-.05.13A12 12 0 0 0 12 24Z"
+                ></path>
+                <path
+                  fill="#FBBC05"
+                  d="M5.07 14.26A7.4 7.4 0 0 1 4.67 12c0-.79.14-1.55.39-2.26l-.01-.14-3.75-2.9-.12.06A11.98 11.98 0 0 0 0 12c0 1.88.45 3.66 1.23 5.24l3.84-2.98Z"
+                ></path>
+                <path
+                  fill="#EA4335"
+                  d="M12 4.68c2.28 0 3.82.99 4.7 1.81l3.43-3.35A11.7 11.7 0 0 0 12 0 12 12 0 0 0 1.2 6.76l3.86 2.98A7.32 7.32 0 0 1 12 4.68Z"
+                ></path>
+              </svg>
+              <span>Sign in with Google</span></button
+            >
+            <button id="btn-apple" type="button" class="btn btn--provider btn--apple">
+              <svg class="provider-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  fill="currentColor"
+                  d="M16.78 12.9c-.03-3.04 2.49-4.5 2.6-4.57-1.41-2.06-3.6-2.34-4.38-2.37-1.87-.19-3.64 1.1-4.58 1.1-.95 0-2.42-1.07-3.97-1.04-2.05.03-3.94 1.19-4.99 3.02-2.13 3.69-.55 9.16 1.53 12.15 1.01 1.46 2.22 3.1 3.81 3.04 1.53-.06 2.11-.99 3.96-.99s2.37.99 3.99.96c1.65-.03 2.69-1.49 3.7-2.96 1.16-1.69 1.64-3.33 1.67-3.41-.04-.02-3.2-1.23-3.24-4.93Zm-3-8.91c.84-1.02 1.41-2.43 1.25-3.84-1.21.05-2.67.8-3.54 1.82-.78.9-1.46 2.34-1.28 3.72 1.35.1 2.73-.69 3.57-1.7Z"
+                ></path>
+              </svg>
+              <span>Sign in with Apple</span></button
+            >
           </div>
-          <h2>Authentication Required</h2>
-          <p>Please sign in with your BurnBar account to authorize this CLI connection.</p>
-          <button id="btn-signin" class="btn btn--ember"> Sign In with Google </button>
         </div>
 
         <!-- State: Signed In, Enter/Confirm Code -->
         <div id="state-confirm" class="link-state hidden">
           <div class="user-badge" id="user-badge">
-            <img id="user-avatar" src="" alt="Avatar" class="avatar hidden" />
+            <img id="user-avatar" src="" alt="" class="avatar hidden" />
             <span id="user-email" class="mono">...</span>
           </div>
-          <h2>Confirm Link Code</h2>
-          <p>Please enter or confirm the 8-character code shown in your terminal.</p>
+          <h2 id="flow-heading">Confirm link code</h2>
+          <p id="flow-description">Confirm the connection you started.</p>
 
           <div class="code-input-wrap">
+            <label id="code-label" for="code-input">One-time link code</label>
             <input
               type="text"
               id="code-input"
               placeholder="WDJB-MQXK"
               maxlength="9"
+              inputmode="text"
+              autocomplete="one-time-code"
+              aria-describedby="code-help"
               class="mono-input"
             />
+            <p id="code-help" class="field-help">
+              Enter the 8-character code shown by OpenBurnBar.
+            </p>
           </div>
 
-          <button id="btn-confirm" class="btn btn--ember"> Link CLI Device </button>
+          <button id="btn-confirm" type="button" class="btn btn--ember">Authorize connection</button
+          >
 
-          <button id="btn-signout" class="btn-text"> Sign out of this account </button>
+          <button id="btn-signout" type="button" class="btn-text">Sign out of this account</button>
         </div>
 
         <!-- State: Submitting / Linking -->
-        <div id="state-linking" class="link-state hidden">
+        <div id="state-linking" class="link-state hidden" role="status" aria-live="polite">
           <div class="spinner"></div>
-          <h2>Connecting CLI...</h2>
-          <p>Provisioning credentials and preparing secure sync endpoints.</p>
+          <h2 id="progress-heading">Authorizing connection</h2>
+          <p id="progress-description">Preparing an encrypted credential envelope.</p>
         </div>
 
         <!-- State: Success -->
-        <div id="state-success" class="link-state hidden">
-          <div class="success-glow"></div>
+        <div id="state-success" class="link-state hidden" role="status" aria-live="polite">
           <div class="icon-wrap success">
-            <span class="icon-check">✔</span>
+            <span class="icon-check" aria-hidden="true">&#10003;</span>
           </div>
-          <h2>CLI Linked Successfully!</h2>
-          <p>Your terminal is now authorized and ready to run.</p>
+          <h2 id="success-heading">Connection authorized</h2>
+          <p id="success-description">The secure credential handoff is ready.</p>
           <div class="next-step-box">
-            <p class="mono small">Return to your terminal to complete the flow.</p>
+            <p id="return-instruction" class="mono small">
+              Return to OpenBurnBar to complete setup.
+            </p>
           </div>
         </div>
 
         <!-- State: Error -->
-        <div id="state-error" class="link-state hidden">
-          <div class="icon-wrap error">
-            <span class="icon-cross">❌</span>
-          </div>
+        <div id="state-error" class="link-state hidden" role="alert" aria-live="assertive">
           <h2>Linking Failed</h2>
           <p id="error-message">An unexpected error occurred.</p>
-          <button id="btn-retry" class="btn btn--secondary"> Try Again </button>
+          <button id="btn-retry" type="button" class="btn btn--secondary">Try Again</button>
         </div>
       </div>
     </div>
@@ -103,7 +137,7 @@ import BaseLayout from "@layouts/BaseLayout.astro";
   .link-card {
     padding: 3rem 2rem;
     text-align: center;
-    border-radius: 16px;
+    border-radius: 8px;
     min-height: 320px;
     display: flex;
     flex-direction: column;
@@ -156,6 +190,40 @@ import BaseLayout from "@layouts/BaseLayout.astro";
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s ease;
+  }
+
+  .btn:disabled {
+    cursor: wait;
+    opacity: 0.65;
+  }
+
+  .provider-actions {
+    display: grid;
+    gap: 0.75rem;
+    width: 100%;
+    max-width: 320px;
+  }
+
+  .btn--provider {
+    display: inline-grid;
+    grid-template-columns: 24px minmax(0, 1fr) 24px;
+    align-items: center;
+    justify-items: center;
+    background: #ffffff;
+    border: 1px solid var(--ink-line);
+    color: #1f1f1f;
+  }
+
+  .provider-icon {
+    width: 20px;
+    height: 20px;
+    justify-self: start;
+  }
+
+  .btn--apple {
+    background: #111111;
+    border-color: #333333;
+    color: #ffffff;
   }
 
   .btn--secondary {
@@ -248,6 +316,14 @@ import BaseLayout from "@layouts/BaseLayout.astro";
     width: 100%;
     max-width: 320px;
   }
+  #code-label {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: var(--text-bright);
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-align: left;
+  }
   .mono-input {
     width: 100%;
     background: var(--ink-surface);
@@ -257,30 +333,20 @@ import BaseLayout from "@layouts/BaseLayout.astro";
     color: var(--text-bright);
     font-family: monospace;
     font-size: 1.5rem;
-    letter-spacing: 2px;
+    letter-spacing: 0;
     text-align: center;
     text-transform: uppercase;
     transition: border-color 0.2s ease;
   }
+  .field-help {
+    margin: 0.5rem 0 0;
+    color: var(--text-mute);
+    font-size: 0.8125rem;
+    text-align: left;
+  }
   .mono-input:focus {
     outline: none;
     border-color: var(--ember-bright);
-  }
-
-  /* Success Glow */
-  .success-glow {
-    position: absolute;
-    width: 200px;
-    height: 200px;
-    background: radial-gradient(
-      circle,
-      color-mix(in oklab, var(--status-exact) 15%, transparent) 0%,
-      transparent 70%
-    );
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    pointer-events: none;
   }
 
   .next-step-box {
@@ -295,9 +361,16 @@ import BaseLayout from "@layouts/BaseLayout.astro";
 </style>
 
 <script>
-  import { auth, googleProvider, functions } from "../lib/firebaseClient";
-  import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
-  import type { User } from "firebase/auth";
+  import { appleProvider, auth, functions, googleProvider } from "../lib/firebaseClient";
+  import {
+    cliLinkPurposeCopy,
+    isCompleteCliLinkCode,
+    normalizeCliLinkCode,
+    parseCliLinkFlow,
+    type CliLinkPurpose
+  } from "../lib/cliLinkFlow";
+  import { onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
+  import type { AuthProvider, User } from "firebase/auth";
   import { httpsCallable } from "firebase/functions";
 
   // Elements
@@ -310,8 +383,9 @@ import BaseLayout from "@layouts/BaseLayout.astro";
     error: document.getElementById("state-error")
   };
 
-  const btnSignin = document.getElementById("btn-signin");
-  const btnConfirm = document.getElementById("btn-confirm");
+  const btnGoogle = document.getElementById("btn-google");
+  const btnApple = document.getElementById("btn-apple");
+  const btnConfirm = document.getElementById("btn-confirm") as HTMLButtonElement | null;
   const btnSignout = document.getElementById("btn-signout");
   const btnRetry = document.getElementById("btn-retry");
 
@@ -319,8 +393,42 @@ import BaseLayout from "@layouts/BaseLayout.astro";
   const userEmail = document.getElementById("user-email");
   const userAvatar = document.getElementById("user-avatar") as HTMLImageElement;
   const errorMessage = document.getElementById("error-message");
+  const pageTitle = document.getElementById("page-title");
+  const flowHeading = document.getElementById("flow-heading");
+  const flowDescription = document.getElementById("flow-description");
+  const codeHelp = document.getElementById("code-help");
+  const progressHeading = document.getElementById("progress-heading");
+  const progressDescription = document.getElementById("progress-description");
+  const successHeading = document.getElementById("success-heading");
+  const successDescription = document.getElementById("success-description");
+  const returnInstruction = document.getElementById("return-instruction");
+  const signedOutHeading = document.getElementById("signed-out-heading");
 
   let currentUser: User | null = null;
+  let submitting = false;
+  let authStateSettled = false;
+  const queryParams = new URLSearchParams(window.location.search);
+  const purpose = parseCliLinkFlow(queryParams.getAll("flow"), queryParams.has("purpose"));
+  const invalidPurpose = purpose == null;
+  const activePurpose: CliLinkPurpose = purpose || "remote_mcp";
+  const copy = cliLinkPurposeCopy(activePurpose);
+
+  if (pageTitle) pageTitle.textContent = copy.pageTitle;
+  document.title = `${copy.pageTitle} | BurnBar`;
+  if (flowHeading) flowHeading.textContent = copy.heading;
+  if (flowDescription) flowDescription.textContent = copy.description;
+  if (codeHelp) codeHelp.textContent = copy.codeHelp;
+  if (btnConfirm) btnConfirm.textContent = copy.confirmLabel;
+  if (progressHeading) progressHeading.textContent = copy.progressHeading;
+  if (progressDescription) progressDescription.textContent = copy.progressDescription;
+  if (successHeading) successHeading.textContent = copy.successHeading;
+  if (successDescription) successDescription.textContent = copy.successDescription;
+  if (returnInstruction) returnInstruction.textContent = copy.returnInstruction;
+
+  const authStateTimeout = window.setTimeout(() => {
+    if (!authStateSettled)
+      setError("BurnBar sign-in did not finish loading. Check your connection and try again.");
+  }, 8000);
 
   // Helpers
   function showState(activeState: keyof typeof states) {
@@ -337,29 +445,65 @@ import BaseLayout from "@layouts/BaseLayout.astro";
   }
 
   function getQueryCode(): string {
-    const params = new URLSearchParams(window.location.search);
-    return (params.get("code") || "").toUpperCase();
+    return queryParams.get("code") || "";
   }
 
-  // Format code input with hyphen: WDJB-MQXK
+  function setError(message: string) {
+    if (errorMessage) errorMessage.textContent = message;
+    showState("error");
+    window.requestAnimationFrame(() => btnRetry?.focus());
+  }
+
+  function authErrorText(error: unknown): string {
+    const record = error as { code?: unknown; message?: unknown };
+    const combined = `${String(record.code || "")} ${String(record.message || "")}`.toLowerCase();
+    if (combined.includes("popup-closed-by-user")) return "Sign-in was closed before it finished.";
+    if (combined.includes("popup-blocked"))
+      return "Your browser blocked the sign-in popup. Allow popups and try again.";
+    if (combined.includes("network-request-failed"))
+      return "BurnBar could not reach Firebase. Check your connection.";
+    if (combined.includes("app check") || combined.includes("app-check")) {
+      return "BurnBar could not verify this browser. Reload the page and try again.";
+    }
+    return typeof record.message === "string" ? record.message : "Sign-in failed.";
+  }
+
+  async function signIn(provider: AuthProvider) {
+    try {
+      showState("checking");
+      await signInWithPopup(auth, provider);
+    } catch (error) {
+      setError(authErrorText(error));
+    }
+  }
+
   if (codeInput) {
     codeInput.addEventListener("input", () => {
-      let val = codeInput.value.replace(/[^A-Za-z2-9]/g, "").toUpperCase();
-      if (val.length > 4) {
-        val = val.slice(0, 4) + "-" + val.slice(4, 8);
-      } else {
-        val = val.slice(0, 4);
-      }
-      codeInput.value = val;
+      codeInput.value = normalizeCliLinkCode(codeInput.value);
     });
   }
 
-  // Auth State Listener
-  onAuthStateChanged(auth, (user) => {
-    currentUser = user;
-    if (!user) {
-      showState("signedOut");
-    } else {
+  onAuthStateChanged(
+    auth,
+    (user) => {
+      authStateSettled = true;
+      window.clearTimeout(authStateTimeout);
+      currentUser = user;
+      if (invalidPurpose) {
+        setError(
+          "This link uses an unsupported authorization purpose. Start a new connection from OpenBurnBar."
+        );
+        return;
+      }
+      if (userAvatar) {
+        userAvatar.removeAttribute("src");
+        userAvatar.classList.add("hidden");
+      }
+      if (!user) {
+        showState("signedOut");
+        window.requestAnimationFrame(() => signedOutHeading?.focus());
+        return;
+      }
       if (userEmail) userEmail.textContent = user.email || user.displayName || "Authenticated User";
       if (userAvatar && user.photoURL) {
         userAvatar.src = user.photoURL;
@@ -367,80 +511,100 @@ import BaseLayout from "@layouts/BaseLayout.astro";
       }
 
       // Auto-prefill query param code
-      const queryCode = getQueryCode();
+      const queryCode = normalizeCliLinkCode(getQueryCode());
       if (queryCode && codeInput) {
         codeInput.value = queryCode;
       }
 
       showState("confirm");
+      window.requestAnimationFrame(() => codeInput?.focus());
+    },
+    (error) => {
+      authStateSettled = true;
+      window.clearTimeout(authStateTimeout);
+      setError(authErrorText(error));
     }
-  });
+  );
 
-  // Action: Sign In
-  btnSignin?.addEventListener("click", async () => {
-    try {
-      showState("checking");
-      await signInWithPopup(auth, googleProvider);
-    } catch (err: unknown) {
-      const errorLike = err as { message?: unknown };
-      if (errorMessage) {
-        errorMessage.textContent =
-          typeof errorLike.message === "string" ? errorLike.message : "Authentication failed.";
-      }
-      showState("error");
-    }
-  });
+  btnGoogle?.addEventListener("click", () => signIn(googleProvider));
+  btnApple?.addEventListener("click", () => signIn(appleProvider));
 
-  // Action: Sign Out
   btnSignout?.addEventListener("click", async () => {
     try {
       showState("checking");
       await signOut(auth);
-    } catch (err) {
-      console.error("Sign out error", err);
+    } catch (error) {
+      setError(authErrorText(error));
     }
   });
 
-  // Action: Complete link
   btnConfirm?.addEventListener("click", async () => {
-    const code = (codeInput?.value || "").replace("-", "").trim();
-    if (code.length !== 8) {
-      alert("Please enter a valid 8-character linking code.");
+    if (submitting) return;
+    const code = normalizeCliLinkCode(codeInput?.value || "");
+    if (!isCompleteCliLinkCode(code)) {
+      setError("Enter the complete 8-character code shown by OpenBurnBar.");
+      return;
+    }
+    if (!currentUser) {
+      setError("Sign in before authorizing this connection.");
       return;
     }
 
+    submitting = true;
+    btnConfirm.disabled = true;
     try {
       showState("linking");
+      const bindAppCheckAttestation = httpsCallable(functions, "bindAppCheckAttestation");
+      await bindAppCheckAttestation({});
+      await currentUser.getIdToken(true);
+
+      const issueNonce = httpsCallable(functions, "issueHighRiskActionNonce");
+      const nonceResult = await issueNonce({});
+      const nonceData = nonceResult.data as { nonce?: unknown };
+      if (typeof nonceData.nonce !== "string" || nonceData.nonce.length < 16) {
+        throw new Error("BurnBar could not create a secure one-time approval nonce.");
+      }
+
       const completeCliLink = httpsCallable(functions, "completeCliLink");
-      await completeCliLink({ userCode: codeInput.value.trim() });
+      await completeCliLink({
+        userCode: code,
+        expectedPurpose: activePurpose,
+        nonce: nonceData.nonce
+      });
       showState("success");
-    } catch (err: unknown) {
-      console.error("Linking error", err);
-      const errorLike = err as { code?: unknown; message?: unknown };
+    } catch (error: unknown) {
+      const errorLike = error as { code?: unknown; message?: unknown };
       const errorCode = String(errorLike.code || "");
+      const rawMessage = String(errorLike.message || "");
       let friendlyMessage =
         typeof errorLike.message === "string" ? errorLike.message : "An unexpected error occurred.";
       if (errorCode === "functions/not-found" || errorCode === "not-found") {
         friendlyMessage =
-          "Link session not found or code expired. Please ensure you entered the exact code from your terminal.";
+          "That link code was not found. Start a new connection in OpenBurnBar and try again.";
+      } else if (rawMessage.toLowerCase().includes("purpose")) {
+        friendlyMessage =
+          "This code belongs to a different authorization flow. Start again from OpenBurnBar.";
       } else if (
         errorCode === "functions/failed-precondition" ||
         errorCode === "failed-precondition"
       ) {
-        friendlyMessage =
-          "BurnBar Pro is required for Remote MCP access. Please subscribe to continue.";
+        friendlyMessage = rawMessage.toLowerCase().includes("pro")
+          ? "BurnBar Pro is required for Remote MCP access."
+          : "This approval expired or was already used. Start a new connection in OpenBurnBar.";
       }
-      if (errorMessage) errorMessage.textContent = friendlyMessage;
-      showState("error");
+      setError(friendlyMessage);
+    } finally {
+      submitting = false;
+      btnConfirm.disabled = false;
     }
   });
 
-  // Action: Retry
   btnRetry?.addEventListener("click", () => {
-    if (currentUser) {
-      showState("confirm");
-    } else {
-      showState("signedOut");
+    if (invalidPurpose) {
+      window.location.assign("/link");
+      return;
     }
+    showState(currentUser ? "confirm" : "signedOut");
+    if (currentUser) window.requestAnimationFrame(() => codeInput?.focus());
   });
 </script>

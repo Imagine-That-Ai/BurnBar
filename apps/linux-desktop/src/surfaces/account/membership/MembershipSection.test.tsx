@@ -4,22 +4,39 @@ import { bridgeStubDefaults } from '../../../testing/bridgeStubs.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fixtureMembershipStatus } from '../../../daemonFixture.js';
 import {
-  clearMembershipEntitlementCache,
+  resetMembershipForIdentityChange,
   useEntitlement,
   useMembershipStore
 } from '../../../state/membershipStore.js';
+import { useAccountStore } from '../../../state/accountStore.js';
 import { useShellStore } from '../../../state/shellStore.js';
 import type { LinuxShellBridge, MembershipStatus } from '../../../tauriBridge.js';
 import { MembershipSection } from './MembershipSection.js';
 
 function resetStores(): void {
-  clearMembershipEntitlementCache();
+  resetMembershipForIdentityChange();
   window.history.replaceState({}, '', '/');
   useMembershipStore.setState({
     data: null,
     phase: 'idle',
     error: null,
     checkoutUrl: null
+  });
+  useAccountStore.setState({
+    data: {
+      state: 'signed_in',
+      signedIn: true,
+      uid: 'test-user',
+      email: 'user@example.com',
+      identityLabel: 'user@example.com',
+      trustClass: 'linux-lower-trust',
+      syncState: 'active',
+      updatedAt: '2026-07-10T00:00:00Z'
+    },
+    authPhase: 'idle',
+    authSession: null,
+    authError: null,
+    browserError: null
   });
   useShellStore.setState({
     fixtureMode: false,
@@ -31,6 +48,14 @@ function resetStores(): void {
   });
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
+
 function bridge(partial: Partial<LinuxShellBridge>): LinuxShellBridge {
   return {
     ...bridgeStubDefaults,
@@ -38,25 +63,61 @@ function bridge(partial: Partial<LinuxShellBridge>): LinuxShellBridge {
     openDashboard: async () => {},
     quitApp: async () => {},
     trayDegraded: async () => false,
-    measurePerfOperation: async (name: string) => ({ name, ms: 1, source: 'test', ok: true }),
-    usageSummary: async () => ({ todayTokens: 0, todayCostUsd: 0, sevenDay: [], recentEvents: [] }),
+    measurePerfOperation: async (name: string) => ({
+      name,
+      ms: 1,
+      source: 'test',
+      ok: true
+    }),
+    usageSummary: async () => ({
+      todayTokens: 0,
+      todayCostUsd: 0,
+      sevenDay: [],
+      recentEvents: []
+    }),
     providerCatalog: async () => [],
     sessionList: async () => ({ sessions: [], nextCursor: null }),
     sessionSearch: async () => ({ sessions: [], nextCursor: null }),
-    usageInsights: async () => ({ weekly: [], providerMix: [], modelMix: [], cacheHitRatePct: 0 }),
+    usageInsights: async () => ({
+      weekly: [],
+      providerMix: [],
+      modelMix: [],
+      cacheHitRatePct: 0
+    }),
     missionList: async () => ({ missions: [], pendingApprovals: [] }),
     missionApprovalDecision: async () => {},
     configSnapshot: async () => ({
-      paths: { supportDir: '', socketPath: '', configDir: '', providerLogPaths: [] },
+      paths: {
+        supportDir: '',
+        socketPath: '',
+        configDir: '',
+        providerLogPaths: []
+      },
       secretServiceStatus: 'unknown',
       telemetryEnabled: false,
       privacyOptIn: false
     }),
-    dbStatus: async () => ({ sqlcipherOk: false, migrationVersion: 0, sizeBytes: 0, walMode: false }),
+    dbStatus: async () => ({
+      sqlcipherOk: false,
+      migrationVersion: 0,
+      sizeBytes: 0,
+      walMode: false
+    }),
     projectList: async () => [],
     memoryBoundaries: async () => [],
-    accountStatus: async () => ({ signedIn: false, trustClass: 'linux-lower-trust', syncState: 'local-only' }),
-    appVersionInfo: async () => ({ shellVersion: '', daemonVersion: '', packageChannel: 'unknown', updateCheck: '' }),
+    accountStatus: async () => ({
+      state: 'signed_out',
+      signedIn: false,
+      trustClass: 'linux-lower-trust',
+      syncState: 'local-only',
+      updatedAt: '2026-07-10T00:00:00Z'
+    }),
+    appVersionInfo: async () => ({
+      shellVersion: '',
+      daemonVersion: '',
+      packageChannel: 'unknown',
+      updateCheck: ''
+    }),
     exportDiagnostics: async () => ({ path: '' }),
     sessionEnv: async () => ({}),
     ...partial,
@@ -103,6 +164,24 @@ describe('MembershipSection', () => {
     expect(screen.getByText(/Data source: live daemon/i)).toBeTruthy();
   });
 
+  it('discards a stale membership response after the account identity changes', async () => {
+    const statusResult = deferred<MembershipStatus>();
+    useMembershipStore.setState({ data: fixtureMembershipStatus('active') });
+    useShellStore.setState({
+      bridge: bridge({ membershipStatus: () => statusResult.promise })
+    });
+
+    const load = useMembershipStore.getState().load();
+    expect(useMembershipStore.getState().phase).toBe('loading');
+    resetMembershipForIdentityChange();
+    expect(useMembershipStore.getState().data).toBeNull();
+
+    statusResult.resolve(fixtureMembershipStatus('active'));
+    await load;
+    expect(useMembershipStore.getState().data).toBeNull();
+    expect(useMembershipStore.getState().phase).toBe('idle');
+  });
+
   it('renders cancelled fixture as free with inert locked content', async () => {
     useShellStore.setState({ fixtureMode: true });
     window.history.replaceState({}, '', '/?membershipFixture=cancelled');
@@ -136,6 +215,38 @@ describe('MembershipSection', () => {
     expect(screen.getByText(/Data source: live daemon/i)).toBeTruthy();
     expect(screen.getByText('BurnBar Pro').closest('.membership-entitlement-row')?.textContent).toContain('Locked');
     expect(screen.getByTestId('membership-veiled-content')).toBeTruthy();
+  });
+
+  it('gates checkout and restore while signed out', async () => {
+    const startDeviceAuth = vi.fn(async () => {});
+    useAccountStore.setState({
+      data: {
+        state: 'signed_out',
+        signedIn: false,
+        trustClass: 'linux-lower-trust',
+        syncState: 'local-only',
+        updatedAt: '2026-07-10T00:00:00Z'
+      },
+      startDeviceAuth
+    });
+    useShellStore.setState({
+      bridge: bridge({
+        membershipStatus: async () => ({
+          tier: 'free',
+          entitlements: [],
+          restoreAvailable: false
+        })
+      })
+    });
+    render(<MembershipSection />);
+    expect(await screen.findByText(/Sign in for membership/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Restore$/i }).hasAttribute('disabled')).toBe(true);
+    fireEvent.click(
+      screen.getAllByRole('button', {
+        name: /Sign in to continue|Sign in to unlock/i
+      })[0]!
+    );
+    expect(startDeviceAuth).toHaveBeenCalledTimes(1);
   });
 
   it('renders payment-failed and offline fixture states', async () => {

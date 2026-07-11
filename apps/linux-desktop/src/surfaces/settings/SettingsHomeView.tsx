@@ -4,6 +4,7 @@ import { readOnboarding } from '../../onboardingStore.js';
 import { GlassAlert, GlassAlertStack, type GlassAlertSeverity } from '../../components/GlassAlert.js';
 import type { SettingsTabId } from './settingsTabs.js';
 import { SettingsIconTile } from './SettingsDrillRow.js';
+import { useAccountStore } from '../../state/accountStore.js';
 
 type AttentionItem = {
   id: string;
@@ -66,12 +67,18 @@ export function SettingsHomeView({
   fixtureMode: boolean;
   onSelectTab: (tab: SettingsTabId) => void;
 }) {
+  const account = useAccountStore((state) => state.data);
   const attention = buildAttentionItems(config, status);
   const daemonStatus = status.ok ? 'Connected' : status.label;
   const daemonTint = status.ok ? 'var(--color-tier-end-to-end)' : 'var(--color-tier-server-readable)';
   const secretStatus = config?.secretServiceStatus ?? 'unknown';
   const telemetry = config?.telemetryEnabled ? 'On' : 'Off';
   const privacy = config?.privacyOptIn ? 'On' : 'Off';
+  const cloudSync = !account
+    ? 'Checking'
+    : account.signedIn
+      ? account.syncState === 'active' ? 'Active' : account.syncState === 'paused' ? 'Paused' : 'Local only'
+      : 'Signed out';
   const sourceNote = fixtureMode ? 'fixture transcript' : 'live daemon config snapshot';
 
   return (
@@ -147,7 +154,7 @@ export function SettingsHomeView({
             <SettingsIconTile glyph="⊞" tint="var(--color-tier-end-to-end)" size="sm" />
             <span className="settings-status-card-copy">
               <span className="settings-status-card-title">Cloud sync</span>
-              <span className="settings-status-card-value mono">Account lane</span>
+              <span className="settings-status-card-value mono">{cloudSync}</span>
             </span>
           </button>
           <button type="button" className="settings-status-card" onClick={() => onSelectTab('data-privacy')}>

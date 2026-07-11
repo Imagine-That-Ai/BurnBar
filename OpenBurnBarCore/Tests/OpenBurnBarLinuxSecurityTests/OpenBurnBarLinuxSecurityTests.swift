@@ -666,6 +666,231 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
         XCTAssertTrue(rows.contains { $0.step == "conflict_remote_newer_wins" && $0.conflictResolution == "remote_newer_by_update_time" })
         XCTAssertEqual(rows.last?.watermark, 1_800_000_001_000)
     }
+
+    func testDesktopAuthV2EnvelopeOpensNodeGoldenVectorAndRejectsCrossFlowReplay() throws {
+        let flowID = "123E4567-E89B-12D3-A456-426614174000"
+        let key = try LinuxDesktopAuthDeliveryKey(
+            rawPrivateKey: try XCTUnwrap(Data(base64Encoded: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="))
+        )
+        let delivery = try key.credentialDelivery(flowBinding: flowID)
+        XCTAssertEqual(delivery.algorithm, "p256-ecdh-aes-256-gcm-v2")
+        XCTAssertEqual(
+            delivery.publicKeyBase64,
+            "BG/wO5SSQc4drdQ1GeaWDgqFtBppoFwygQOqK84VlMoWPE91OlW/AdxT9sCwx+7ni0DG/30lqW4igrmJzvccFEo="
+        )
+
+        let envelope = LinuxDesktopAuthCredentialEnvelope(
+            algorithm: "p256-ecdh-aes-256-gcm-v2",
+            ephemeralPublicKeyBase64: "BFUPRxAD89+Xw99QaseX9nIfsaH7e49vg9IkSYplyI4kE2CT1wEuUJpzcVy9CwCjzA/0tcAbP/oZarH7MnA2uOY=",
+            ivBase64: "AAECAwQFBgcICQoL",
+            ciphertextBase64: "WJ1MFaVqLoBVhgpeNaI/Jus3fwj0QvlOgdZ44t7CmiTkTjdKao/EK+ZL6gbbUSfQJ0HRVZzd/DDuizoCFiNmxCAyNmO7meNcXle2a8oJjKkncnuSfxKL7O6YHpnjAHUOrL/b8ffeoZDZ5F1rCy57jKrDUjBmzCwI1la9wWs55YOYqOA0zyhn2OysABVxvyYJsYi0mtSZeF37YQ01qEbT6gNUz/M2240v3p0BCmtCk8DxbM+IdGriztHA",
+            authTagBase64: "HttMrV4lkorbCqmy2PKTFQ==",
+            aad: "openburnbar:desktop-auth:credential-delivery:v2:\(flowID)"
+        )
+        let opened = try key.open(envelope, flowBinding: flowID)
+        XCTAssertEqual(
+            String(decoding: opened, as: UTF8.self),
+            #"{"schemaVersion":1,"purpose":"desktop_auth","credentialKind":"firebase_custom_token","firebaseCustomToken":"fixture-custom-token","apiKey":"fixture-public-api-key","projectId":"burnbar"}"#
+        )
+
+        XCTAssertThrowsError(
+            try key.open(envelope, flowBinding: "D2719D7B-51D9-4E43-93AE-A732CC7537D0")
+        ) { error in
+            XCTAssertEqual(error as? LinuxDesktopAuthEnvelopeError, .invalidAdditionalAuthenticatedData)
+        }
+
+        let tampered = LinuxDesktopAuthCredentialEnvelope(
+            algorithm: envelope.algorithm,
+            ephemeralPublicKeyBase64: envelope.ephemeralPublicKeyBase64,
+            ivBase64: envelope.ivBase64,
+            ciphertextBase64: envelope.ciphertextBase64,
+            authTagBase64: "AAAAAAAAAAAAAAAAAAAAAA==",
+            aad: envelope.aad
+        )
+        XCTAssertThrowsError(try key.open(tampered, flowBinding: flowID)) { error in
+            XCTAssertEqual(error as? LinuxDesktopAuthEnvelopeError, .authenticationFailed)
+        }
+    }
+
+    func testAuthTokenStoreWritablePreflightAndSecretLoad() throws {
+        let harness = LinuxSecretCommandHarness(kind: .secretService)
+        let backend = LinuxNativeSecretStoreBackend(
+            kind: .secretService,
+            executableURL: URL(fileURLWithPath: "/usr/bin/secret-tool"),
+            runner: { executableURL, arguments, standardInput in
+                try harness.run(
+                    executableURL: executableURL,
+                    arguments: arguments,
+                    standardInput: standardInput
+                )
+            }
+        )
+        let store = LinuxAuthTokenStore(custodian: LinuxSecretCustodian(backends: [backend]))
+        XCTAssertEqual(try store.requireWritableBackend(), "org.freedesktop.secrets")
+        _ = try store.storeRefreshToken("refresh-token-fixture")
+        let restored = try store.loadRefreshToken()
+        XCTAssertEqual(restored.secret, "refresh-token-fixture")
+        XCTAssertEqual(restored.metadata.backend, "org.freedesktop.secrets")
+    }
+
+    func testAuthTokenStoreDeletesOnlyAuthoritativeBackendAndKeepsSignedOutTombstone() throws {
+        let primary = AuthAffinitySecretBackend(name: "backend-a")
+        primary.failMissingDeletes = true
+        let fallback = AuthAffinitySecretBackend(
+            name: "backend-b",
+            secrets: ["firebase-refresh-token": "stale-refresh-token"]
+        )
+        fallback.failDeletes = true
+        let store = LinuxAuthTokenStore(
+            custodian: LinuxSecretCustodian(backends: [primary, fallback])
+        )
+
+        let metadata = try store.storeRefreshToken("authoritative-refresh-token")
+        XCTAssertEqual(metadata.backend, "backend-a")
+
+        let deletion = try store.clearRefreshToken()
+        XCTAssertEqual(deletion.authoritativeBackend, "backend-a")
+        XCTAssertTrue(deletion.credentialWasPresent)
+        XCTAssertFalse(deletion.legacySweep)
+        XCTAssertNil(primary.secret(id: "firebase-refresh-token"))
+        XCTAssertEqual(fallback.secret(id: "firebase-refresh-token"), "stale-refresh-token")
+        XCTAssertFalse(fallback.deletedIDs.contains("firebase-refresh-token"))
+
+        let restarted = LinuxAuthTokenStore(
+            custodian: LinuxSecretCustodian(backends: [primary, fallback])
+        )
+        XCTAssertThrowsError(try restarted.loadRefreshToken()) { error in
+            XCTAssertEqual(
+                error as? LinuxSecretStoreError,
+                .missingSecret("firebase-refresh-token")
+            )
+        }
+
+        let repeatedDeletion = try restarted.clearRefreshToken()
+        XCTAssertEqual(repeatedDeletion.authoritativeBackend, "backend-a")
+        XCTAssertFalse(repeatedDeletion.credentialWasPresent)
+        XCTAssertFalse(repeatedDeletion.legacySweep)
+        XCTAssertEqual(
+            primary.deletedIDs.filter { $0 == "firebase-refresh-token" }.count,
+            1
+        )
+    }
+
+    func testAuthTokenStoreAffinityUsesNormalHealthyBackendFallback() throws {
+        let unavailable = AuthAffinitySecretBackend(name: "backend-a")
+        unavailable.healthError = .backendUnavailable("backend-a is locked")
+        let fallback = AuthAffinitySecretBackend(name: "backend-b")
+        let store = LinuxAuthTokenStore(
+            custodian: LinuxSecretCustodian(backends: [unavailable, fallback])
+        )
+
+        let metadata = try store.storeRefreshToken("fallback-refresh-token")
+        XCTAssertEqual(metadata.backend, "backend-b")
+        unavailable.readError = .backendUnavailable("backend-a marker read is locked")
+
+        let restarted = LinuxAuthTokenStore(
+            custodian: LinuxSecretCustodian(backends: [unavailable, fallback])
+        )
+        let restored = try restarted.loadRefreshToken()
+        XCTAssertEqual(restored.secret, "fallback-refresh-token")
+        XCTAssertEqual(restored.metadata.backend, "backend-b")
+    }
+
+    func testAuthTokenStoreIgnoresUnreadableMarkerBeforeAuthorityExists() throws {
+        let unavailable = AuthAffinitySecretBackend(name: "backend-a")
+        unavailable.readError = .backendUnavailable("backend-a marker read is locked")
+        unavailable.healthError = .backendUnavailable("backend-a is locked")
+        let fallback = AuthAffinitySecretBackend(name: "backend-b")
+        let store = LinuxAuthTokenStore(
+            custodian: LinuxSecretCustodian(backends: [unavailable, fallback])
+        )
+
+        XCTAssertEqual(try store.requireWritableBackend(), "backend-b")
+        let metadata = try store.storeRefreshToken("fallback-refresh-token")
+        XCTAssertEqual(metadata.backend, "backend-b")
+    }
+
+    func testAuthTokenStoreLegacyDeleteEstablishesAuthorityBeforeDeleting() throws {
+        let primary = AuthAffinitySecretBackend(
+            name: "backend-a",
+            secrets: ["firebase-refresh-token": "legacy-active-token"]
+        )
+        let fallback = AuthAffinitySecretBackend(
+            name: "backend-b",
+            secrets: ["firebase-refresh-token": "legacy-stale-token"]
+        )
+        fallback.failDeletes = true
+        let store = LinuxAuthTokenStore(
+            custodian: LinuxSecretCustodian(backends: [primary, fallback])
+        )
+
+        let deletion = try store.clearRefreshToken()
+        XCTAssertEqual(deletion.authoritativeBackend, "backend-a")
+        XCTAssertTrue(deletion.credentialWasPresent)
+        XCTAssertTrue(deletion.legacySweep)
+        XCTAssertNil(primary.secret(id: "firebase-refresh-token"))
+        XCTAssertEqual(fallback.secret(id: "firebase-refresh-token"), "legacy-stale-token")
+        XCTAssertFalse(fallback.deletedIDs.contains("firebase-refresh-token"))
+
+        let restarted = LinuxAuthTokenStore(
+            custodian: LinuxSecretCustodian(backends: [primary, fallback])
+        )
+        XCTAssertThrowsError(try restarted.loadRefreshToken()) { error in
+            XCTAssertEqual(
+                error as? LinuxSecretStoreError,
+                .missingSecret("firebase-refresh-token")
+            )
+        }
+    }
+
+    func testAuthTokenStoreNeverFailsOverAnExistingAuthorityToAnotherBackend() throws {
+        let primary = AuthAffinitySecretBackend(name: "backend-a")
+        let fallback = AuthAffinitySecretBackend(name: "backend-b")
+        let store = LinuxAuthTokenStore(
+            custodian: LinuxSecretCustodian(backends: [primary, fallback])
+        )
+        _ = try store.storeRefreshToken("original-authoritative-token")
+        primary.healthError = .backendUnavailable("backend-a is locked")
+
+        XCTAssertThrowsError(try store.requireWritableBackend()) { error in
+            XCTAssertEqual(
+                error as? LinuxSecretStoreError,
+                .backendUnavailable("backend-a is locked")
+            )
+        }
+        XCTAssertThrowsError(try store.storeRefreshToken("must-not-fail-over")) { error in
+            XCTAssertEqual(
+                error as? LinuxSecretStoreError,
+                .backendUnavailable("backend-a is locked")
+            )
+        }
+        XCTAssertEqual(primary.secret(id: "firebase-refresh-token"), "original-authoritative-token")
+        XCTAssertNil(fallback.secret(id: "firebase-refresh-token"))
+        XCTAssertEqual(fallback.storedIDs, [])
+    }
+
+    func testAuthTokenStoreMigratesLegacyFallbackToDurableBackendAffinity() throws {
+        let primary = AuthAffinitySecretBackend(
+            name: "backend-a",
+            secrets: ["firebase-refresh-token": "legacy-active-token"]
+        )
+        let fallback = AuthAffinitySecretBackend(
+            name: "backend-b",
+            secrets: ["firebase-refresh-token": "legacy-stale-token"]
+        )
+        let legacyStore = LinuxAuthTokenStore(
+            custodian: LinuxSecretCustodian(backends: [primary, fallback])
+        )
+
+        XCTAssertEqual(try legacyStore.loadRefreshToken().secret, "legacy-active-token")
+
+        let restartedWithReversedPreference = LinuxAuthTokenStore(
+            custodian: LinuxSecretCustodian(backends: [fallback, primary])
+        )
+        let restored = try restartedWithReversedPreference.loadRefreshToken()
+        XCTAssertEqual(restored.secret, "legacy-active-token")
+        XCTAssertEqual(restored.metadata.backend, "backend-a")
+    }
 }
 
 private final class FakePolkitAuthority: LinuxPolkitAuthorizing, @unchecked Sendable {
@@ -725,7 +950,7 @@ private final class FakePAMAuthenticator: LinuxPAMAuthenticating, @unchecked Sen
 private final class LinuxSecretCommandHarness: @unchecked Sendable {
     private let lock = NSLock()
     private let kind: LinuxNativeSecretStoreKind
-    private var storedSecret: String?
+    private var storedSecrets: [String: String] = [:]
     private var recordedArguments: [[String]] = []
     private var recordedStandardInput: String?
 
@@ -764,6 +989,7 @@ private final class LinuxSecretCommandHarness: @unchecked Sendable {
             }
             switch operation {
             case "store":
+                let id = secretID(arguments: arguments)
                 if let standardInput {
                     var value = String(decoding: standardInput, as: UTF8.self)
                     if value.hasSuffix("\n") {
@@ -772,23 +998,142 @@ private final class LinuxSecretCommandHarness: @unchecked Sendable {
                             value.removeLast()
                         }
                     }
-                    storedSecret = value
+                    storedSecrets[id] = value
                 } else {
-                    storedSecret = nil
+                    storedSecrets[id] = nil
                 }
                 return LinuxSecretCommandResult(exitCode: 0)
             case "lookup":
-                if let storedSecret {
+                if let storedSecret = storedSecrets[secretID(arguments: arguments)] {
                     return LinuxSecretCommandResult(exitCode: 0, stdout: storedSecret + "\n")
                 }
                 return LinuxSecretCommandResult(exitCode: 1, stderr: "not found")
             case "clear":
-                storedSecret = nil
+                storedSecrets[secretID(arguments: arguments)] = nil
                 return LinuxSecretCommandResult(exitCode: 0)
             default:
                 return LinuxSecretCommandResult(exitCode: 0)
             }
         }
+    }
+
+    private func secretID(arguments: [String]) -> String {
+        switch kind {
+        case .secretService:
+            guard let keyIndex = arguments.firstIndex(of: "openburnbar-id"),
+                  arguments.indices.contains(keyIndex + 1) else { return "" }
+            return arguments[keyIndex + 1]
+        case .kwallet:
+            for flag in ["-w", "-r", "-d"] {
+                guard let flagIndex = arguments.firstIndex(of: flag),
+                      arguments.indices.contains(flagIndex + 1) else { continue }
+                return arguments[flagIndex + 1]
+            }
+            return ""
+        }
+    }
+}
+
+private final class AuthAffinitySecretBackend: LinuxSecretStoreBackend, @unchecked Sendable {
+    let backendName: String
+    let trustLevel: LinuxSecretTrustLevel
+    let supportsMutations = true
+
+    private let lock = NSLock()
+    private var secrets: [String: String]
+    private var recordedDeletedIDs: [String] = []
+    var healthError: LinuxSecretStoreError?
+    var readError: LinuxSecretStoreError?
+    var failDeletes = false
+    var failMissingDeletes = false
+
+    init(
+        name: String,
+        trustLevel: LinuxSecretTrustLevel = .secretService,
+        secrets: [String: String] = [:]
+    ) {
+        backendName = name
+        self.trustLevel = trustLevel
+        self.secrets = secrets
+    }
+
+    var deletedIDs: [String] {
+        lock.withLock { recordedDeletedIDs }
+    }
+
+    private var recordedStoredIDs: [String] = []
+
+    var storedIDs: [String] {
+        lock.withLock { recordedStoredIDs }
+    }
+
+    func secret(id: String) -> String? {
+        lock.withLock { secrets[id] }
+    }
+
+    func readSecret(
+        id: String,
+        secretClass: LinuxHighValueSecretClass
+    ) throws -> LinuxSecretRecord? {
+        if let readError { throw readError }
+        return lock.withLock { () -> LinuxSecretRecord? in
+            guard let value = secrets[id] else { return nil }
+            return LinuxSecretRecord(
+                secret: value,
+                metadata: metadata(id: id, secretClass: secretClass)
+            )
+        }
+    }
+
+    func storeSecret(
+        _ secret: String,
+        id: String,
+        secretClass: LinuxHighValueSecretClass
+    ) throws -> LinuxSecretMetadata {
+        lock.withLock {
+            secrets[id] = secret
+            recordedStoredIDs.append(id)
+        }
+        return metadata(id: id, secretClass: secretClass)
+    }
+
+    func deleteSecret(id: String, secretClass _: LinuxHighValueSecretClass) throws {
+        try lock.withLock {
+            recordedDeletedIDs.append(id)
+            if failDeletes {
+                throw LinuxSecretStoreError.commandFailed(
+                    backend: backendName,
+                    operation: "delete",
+                    detail: "fixture delete failure"
+                )
+            }
+            if failMissingDeletes, secrets[id] == nil {
+                throw LinuxSecretStoreError.commandFailed(
+                    backend: backendName,
+                    operation: "delete",
+                    detail: "fixture missing-item delete failure"
+                )
+            }
+            secrets[id] = nil
+        }
+    }
+
+    func healthCheck() throws {
+        if let healthError { throw healthError }
+    }
+
+    private func metadata(
+        id: String,
+        secretClass: LinuxHighValueSecretClass
+    ) -> LinuxSecretMetadata {
+        LinuxSecretMetadata(
+            id: id,
+            secretClass: secretClass,
+            trustLevel: trustLevel,
+            backend: backendName,
+            createdAtMillis: 1_800_000_000_000,
+            note: "affinity fixture metadata"
+        )
     }
 }
 

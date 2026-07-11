@@ -67,7 +67,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: apps/linux-desktop/package-lock.json
+          cache-dependency-path: |
+            apps/linux-desktop/package-lock.json
+            scripts/linux-port/package-lock.json
+
+      - name: Install Linux documentation tool dependencies
+        run: npm ci --prefix scripts/linux-port --ignore-scripts
 
       - name: Validate Linux release config
         run: node scripts/linux-port/validate-linux-release-config.mjs

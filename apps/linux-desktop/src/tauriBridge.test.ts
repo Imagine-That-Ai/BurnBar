@@ -2,11 +2,131 @@ import { describe, expect, it } from 'vitest';
 import { bridgeStubDefaults } from './testing/bridgeStubs';
 import {
   computeCacheHitRatePct,
+  decodeAccountStatus,
   decodeDaemonSubscriptionResponse,
   decodeDaemonSubscriptionStopResponse,
   decodeNativeDeepLink,
   decodeNativeShellSnapshot
 } from './tauriBridge';
+
+const ACCOUNT_UPDATED_AT = '2026-07-10T12:00:00Z';
+
+function accountResponse(account: Record<string, unknown>) {
+  return {
+    account: {
+      state: 'signed_out',
+      uid: null,
+      email: null,
+      display_name: null,
+      photo_url: null,
+      trust_class: 'linux_lower_trust',
+      sync_state: 'local_only',
+      credential_backend: null,
+      session: null,
+      problem: null,
+      updated_at: ACCOUNT_UPDATED_AT,
+      ...account
+    }
+  };
+}
+
+describe('account wire decoding', () => {
+  it('strictly decodes a pending desktop auth session without exposing credentials', () => {
+    expect(decodeAccountStatus(accountResponse({
+      state: 'authorization_pending',
+      session: {
+        flow_id: 'flow-1',
+        user_code: 'ABCD-EFGH',
+        verification_url: 'https://burnbar.ai/link?flow=desktop_auth&code=ABCD-EFGH',
+        expires_at: '2026-07-10T12:10:00Z',
+        poll_interval_seconds: 5
+      }
+    }))).toMatchObject({
+      state: 'authorization_pending',
+      signedIn: false,
+      session: { flowId: 'flow-1', userCode: 'ABCD-EFGH', pollIntervalSeconds: 5 }
+    });
+  });
+
+  it('decodes signed-in identity and derives a safe display label', () => {
+    expect(decodeAccountStatus(accountResponse({
+      state: 'signed_in',
+      uid: 'user-1',
+      email: 'user@example.com',
+      display_name: 'User',
+      sync_state: 'active',
+      credential_backend: 'org.freedesktop.secrets'
+    }))).toMatchObject({
+      signedIn: true,
+      identityLabel: 'User',
+      syncState: 'active',
+      credentialBackend: 'org.freedesktop.secrets'
+    });
+  });
+
+  it('drops every injected credential field at the renderer boundary', () => {
+    const decoded = decodeAccountStatus(accountResponse({
+      state: 'signed_in',
+      uid: 'user-1',
+      id_token: 'id-secret',
+      refresh_token: 'refresh-secret',
+      firebase_custom_token: 'custom-secret',
+      credentialEnvelope: { ciphertextBase64: 'sealed-secret' }
+    }));
+    const serialized = JSON.stringify(decoded);
+    expect(serialized).not.toContain('id-secret');
+    expect(serialized).not.toContain('refresh-secret');
+    expect(serialized).not.toContain('custom-secret');
+    expect(serialized).not.toContain('sealed-secret');
+  });
+
+  it('rejects invented states, missing pending sessions, and noncanonical auth URLs', () => {
+    expect(() => decodeAccountStatus(accountResponse({ state: 'expired' }))).toThrow('state');
+    expect(() => decodeAccountStatus(accountResponse({ state: 'authorization_pending' }))).toThrow('session');
+    expect(() => decodeAccountStatus(accountResponse({
+      state: 'authorization_pending',
+      session: {
+        flow_id: 'flow-1',
+        user_code: 'ABCD-EFGH',
+        verification_url: 'https://burnbar.ai.evil.example/link?flow=desktop_auth',
+        expires_at: '2026-07-10T12:10:00Z',
+        poll_interval_seconds: 5
+      }
+    }))).toThrow('desktop auth boundary');
+  });
+
+  it.each([
+    ['missing code', 'ABCD-EFGH', 'https://burnbar.ai/link?flow=desktop_auth'],
+    ['extra query item', 'ABCD-EFGH', 'https://burnbar.ai/link?flow=desktop_auth&code=ABCD-EFGH&next=account'],
+    ['duplicate code', 'ABCD-EFGH', 'https://burnbar.ai/link?flow=desktop_auth&code=ABCD-EFGH&code=JKMN-PQRS'],
+    ['malformed code', 'ABCI-EFGH', 'https://burnbar.ai/link?flow=desktop_auth&code=ABCI-EFGH'],
+    ['mismatched code', 'ABCD-EFGH', 'https://burnbar.ai/link?flow=desktop_auth&code=JKMN-PQRS']
+  ])('rejects a %s desktop auth URL', (_case, userCode, verificationUrl) => {
+    expect(() => decodeAccountStatus(accountResponse({
+      state: 'authorization_pending',
+      session: {
+        flow_id: 'flow-1',
+        user_code: userCode,
+        verification_url: verificationUrl,
+        expires_at: '2026-07-10T12:10:00Z',
+        poll_interval_seconds: 5
+      }
+    }))).toThrow(/canonical|matching/);
+  });
+
+  it('decodes only the frozen account problem codes', () => {
+    expect(decodeAccountStatus(accountResponse({
+      problem: {
+        code: 'authorization_expired',
+        message: 'Start again.',
+        recoverable: true
+      }
+    })).problem).toEqual({ code: 'authorization_expired', message: 'Start again.', recoverable: true });
+    expect(() => decodeAccountStatus(accountResponse({
+      problem: { code: 'other', message: 'No', recoverable: false }
+    }))).toThrow('problem.code');
+  });
+});
 
 describe('computeCacheHitRatePct', () => {
   it('matches the macOS CacheEfficiency formula (prompt-side basis)', () => {

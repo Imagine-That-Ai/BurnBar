@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { repoRoot, writeJson } from './lib/linux-release-common.mjs';
 
 const files = [
@@ -24,6 +25,18 @@ const forbiddenClaims = [
   /AUR\s+package\s+is\s+published/i
 ];
 const failures = [];
+
+const auditHtmlCheck = spawnSync(
+  process.execPath,
+  [path.join(repoRoot, 'scripts/linux-port/render-linux-parity-audit-html.mjs'), '--check'],
+  { cwd: repoRoot, encoding: 'utf8' }
+);
+if (auditHtmlCheck.status !== 0) {
+  failures.push({
+    file: 'docs/linux-port/LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.html',
+    message: auditHtmlCheck.stderr.trim() || 'browser-ready parity audit is stale'
+  });
+}
 
 for (const rel of files) {
   const full = path.join(repoRoot, rel);

@@ -207,6 +207,27 @@ const CATALOG_OVERRIDES = {
       },
     ],
   },
+  completeCliLink: {
+    trigger: "callable",
+    authMethod: "Firebase Auth plus App Check binding and single-use high-risk nonce",
+    appCheck: "required",
+    tenantSource: "request.auth.uid is the sole subject of issued credentials",
+    objectIdsFromClient: ["userCode"],
+    ownershipCheck:
+      "handler resolves a pending server-only session by normalized userCode, binds the displayed expectedPurpose, and derives the Firebase custom-token or Remote MCP subject only from request.auth.uid",
+    handlerModule: "callables/cliLink.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/pairing.bola.test.ts",
+        test: "completeCliLink rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["completeCliLink"],
+        expectedOutcome: "throws",
+        expectedCode: "not-found",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
   pollCliLink: {
     trigger: "http",
     authMethod: "deviceCode plus device-secret verifier proof (no Firebase Auth)",
@@ -214,7 +235,7 @@ const CATALOG_OVERRIDES = {
     tenantSource: "cli_link_sessions/{deviceCode} resolved server-side",
     objectIdsFromClient: ["deviceCode"],
     ownershipCheck:
-      "poll requires a matching device-secret verifier for the deviceCode session and returns only a client-sealed credential envelope",
+      "poll and cancel require a matching device-secret verifier for the deviceCode session; approved polls return only purpose plus a client-sealed credential envelope",
     handlerModule: "callables/cliLink.ts",
     bolaCoverage: [
       {
@@ -305,7 +326,7 @@ const CATALOG_OVERRIDES = {
     tenantSource: "server-generated deviceCode",
     objectIdsFromClient: [],
     ownershipCheck:
-      "creates ephemeral cli_link_sessions with a verifier hash and credential-delivery public key; no cross-tenant reads",
+      "creates ephemeral purpose-bound cli_link_sessions with a verifier hash and credential-delivery public key; desktop_auth additionally requires an opaque 128-bit flow binding",
     handlerModule: "callables/cliLink.ts",
     bolaCoverage: [
       {

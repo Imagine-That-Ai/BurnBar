@@ -78,7 +78,7 @@ function mockBridge(handlers: {
     }),
     databaseIndexProject: async () => ({ projectID: 'test', projectRoot: '/tmp', indexedFiles: 0 }),
     databaseWatchProject: async () => ({ projectID: 'test', projectRoot: '/tmp', indexedFiles: 0 }),
-    accountStatus: async () => ({ signedIn: false, trustClass: 'linux-lower-trust', syncState: 'local-only' }),
+    accountStatus: async () => ({ state: 'signed_out', signedIn: false, trustClass: 'linux-lower-trust', syncState: 'local-only', updatedAt: '2026-07-10T00:00:00Z' }),
     appVersionInfo: async () => ({
       shellVersion: '0',
       daemonVersion: '0',

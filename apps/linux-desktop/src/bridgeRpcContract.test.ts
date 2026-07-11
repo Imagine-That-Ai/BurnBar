@@ -105,4 +105,23 @@ describe('VAL-RPC bridge contract', () => {
       expect(canonicalRpc, `${method} must exist in BurnBarRPCIPCCanon`).toContain(`id: "${method}"`);
     }
   });
+
+  it('wires the Linux account lifecycle only to canonical daemon RPC methods', () => {
+    for (const method of [
+      'daemon.account.status',
+      'daemon.account.device_auth.start',
+      'daemon.account.device_auth.poll',
+      'daemon.account.device_auth.cancel',
+      'daemon.account.sign_out'
+    ]) {
+      expect(rustBridge).toContain(method);
+      expect(canonicalRpc, `${method} must exist in BurnBarRPCIPCCanon`).toContain(`id: "${method}"`);
+    }
+    expect(rustBridge).toContain('fn account_device_auth_start');
+    expect(rustBridge).toContain('fn account_device_auth_poll');
+    expect(rustBridge).toContain('fn account_device_auth_cancel');
+    expect(rustBridge).toContain('fn account_sign_out');
+    expect(tsBridge).toContain('account_device_auth_start');
+    expect(tsBridge).toContain('open_account_auth_url');
+  });
 });

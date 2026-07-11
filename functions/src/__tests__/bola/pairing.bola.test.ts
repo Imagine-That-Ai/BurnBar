@@ -9,7 +9,6 @@ import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { Timestamp } from "firebase-admin/firestore";
 
-
 process.env.ENFORCE_APP_CHECK = "false";
 
 const bolaStore = vi.hoisted(() => new Map());
@@ -84,7 +83,7 @@ describe("BOLA — pairing", () => {
     const bobSecretHash = createHash("sha256").update(bobSecret).digest("hex");
     bolaStore.clear();
     seedDoc(bolaStore, "cli_link_sessions/bob-device-code", {
-      userCode: "ABCDEFGHJKMN",
+      userCode: "ABCD-EFGH",
       deviceSecretHash: bobSecretHash,
       status: "approved",
       expiresAt: Timestamp.fromMillis(Date.now() + 60_000),

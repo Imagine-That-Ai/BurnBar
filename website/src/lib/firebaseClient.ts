@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider, OAuthProvider, connectAuthEmulator } from "firebase/auth";
 import { getFunctions, connectFunctionsEmulator } from "firebase/functions";
+import { initializeAppCheck, ReCaptchaEnterpriseProvider, type AppCheck } from "firebase/app-check";
 
 // Public client identifiers (not secrets). Defaults are the production values for
 // the "burnbar" Firebase project so a build with no env (CI, which has no
@@ -20,7 +21,30 @@ const firebaseConfig = {
   appId: import.meta.env.PUBLIC_FIREBASE_APP_ID || "1:246956661961:web:2e267f5d3a84a525480118"
 };
 
+// Public reCAPTCHA Enterprise site key. The verification secret remains in
+// Google's App Check service; this identifier is expected to ship in browsers.
+const recaptchaEnterpriseSiteKey =
+  import.meta.env.PUBLIC_RECAPTCHA_ENTERPRISE_KEY || "6Ld3bAktAAAAAABiZujpMLmUcvSMUPiJk6qENbOg";
+
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+let appCheck: AppCheck | undefined;
+if (typeof window !== "undefined") {
+  const debugToken = import.meta.env.PUBLIC_FIREBASE_APPCHECK_DEBUG_TOKEN;
+  if (import.meta.env.DEV && debugToken) {
+    (self as unknown as { FIREBASE_APPCHECK_DEBUG_TOKEN?: string }).FIREBASE_APPCHECK_DEBUG_TOKEN =
+      debugToken;
+  }
+  try {
+    appCheck = initializeAppCheck(app, {
+      provider: new ReCaptchaEnterpriseProvider(recaptchaEnterpriseSiteKey),
+      isTokenAutoRefreshEnabled: true
+    });
+  } catch {
+    // HMR may evaluate this module after the default app already has App Check.
+  }
+}
+
+export { appCheck };
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 export const appleProvider = new OAuthProvider("apple.com");
@@ -35,7 +59,6 @@ if (import.meta.env.DEV) {
     if (!auth.emulatorConfig) {
       connectAuthEmulator(auth, "http://localhost:9099", { disableWarnings: true });
       connectFunctionsEmulator(functions, "localhost", 5001);
-      console.log("Connected to Firebase Auth & Functions Emulators.");
     }
   } catch {
     // Quietly catch HMR re-connect errors

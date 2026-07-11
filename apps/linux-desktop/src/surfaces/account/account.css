@@ -47,6 +47,103 @@
   margin: 0;
 }
 
+.device-auth-entry,
+.device-auth-panel {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-glass-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-glass-elevated);
+  text-align: left;
+}
+
+.device-auth-entry > .primary {
+  align-self: center;
+}
+
+.device-auth-entry p,
+.device-auth-panel h3,
+.device-auth-panel p {
+  margin: 0;
+}
+
+.device-auth-panel h3:focus {
+  outline: none;
+}
+
+.device-auth-code-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.device-auth-code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--color-text-bright);
+  font-family: var(--font-mono);
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.device-auth-expiry {
+  font-size: 0.85rem;
+}
+
+.device-auth-actions,
+.account-signout .actions {
+  justify-content: flex-start;
+}
+
+.account-signout {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.account-signout-confirm {
+  width: 100%;
+  padding: var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--color-seal-crimson) 56%, var(--color-glass-line));
+  border-radius: var(--radius-sm);
+  background: var(--color-glass-elevated);
+}
+
+.account-signout-confirm p {
+  margin: 0 0 var(--space-3);
+}
+
+.account-signout .danger {
+  border: 1px solid color-mix(in srgb, var(--color-seal-crimson) 65%, var(--color-glass-line));
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-4);
+  color: var(--color-text-bright);
+  background: color-mix(in srgb, var(--color-seal-crimson) 18%, transparent);
+  cursor: pointer;
+}
+
+.account-signout .danger:disabled {
+  cursor: wait;
+  opacity: 0.64;
+}
+
+@media (max-width: 620px) {
+  .device-auth-code-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .device-auth-code-row .ghost {
+    align-self: flex-start;
+  }
+}
+
 .account-identity {
   margin: 0;
 }

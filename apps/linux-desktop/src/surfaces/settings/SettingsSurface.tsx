@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
 import { useSystemStore } from '../../state/systemStore.js';
+import { useAccountStore } from '../../state/accountStore.js';
 import { SystemStatusSection } from '../SystemStatusSection.js';
 import '../system/system.css';
 import './settings.css';
@@ -41,11 +42,13 @@ export function SettingsSurface() {
   const loading = useSystemStore((s) => s.loading);
   const error = useSystemStore((s) => s.error);
   const loadConfig = useSystemStore((s) => s.loadConfig);
+  const loadAccount = useAccountStore((s) => s.load);
   const [activeTab, setActiveTab] = useState<SettingsTabId>(readStoredSettingsTab);
   const [query, setQuery] = useState('');
   const [refreshBusy, setRefreshBusy] = useState(false);
 
   useLaneLoad(loadConfig);
+  useLaneLoad(loadAccount);
 
   const onSelectTab = useCallback((tab: SettingsTabId) => {
     setActiveTab(tab);

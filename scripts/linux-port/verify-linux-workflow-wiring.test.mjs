@@ -10,6 +10,7 @@ function valid() {
       'assemble-linux-release.test.mjs',
       'linux-package-session.test.mjs',
       'render-parity-ledger.mjs --check',
+      'npm ci --prefix scripts/linux-port --ignore-scripts',
       'macos-matched-performance',
       'run-matched-performance.mjs',
       '--profile pr',
@@ -24,7 +25,8 @@ function valid() {
       '--profile nightly',
       'OB_MATCHED_MACOS_INPUT',
       'OB_MATCHED_LINUX_INPUT',
-      'linux-parity-matched-performance-nightly'
+      'linux-parity-matched-performance-nightly',
+      'npm ci --prefix scripts/linux-port --ignore-scripts'
     ].join('\n'),
     release: [
       '- "linux-v*"',
@@ -192,6 +194,14 @@ test('package lifecycle finalizer regression suite cannot be removed', () => {
   const input = valid();
   input.pr = input.pr.replace('linux-package-session.test.mjs', '');
   assert.equal(verifyLinuxWorkflowWiring(input).passed, false);
+});
+
+test('clean-checkout docs dependency install cannot be removed', () => {
+  for (const workflow of ['pr', 'nightly']) {
+    const input = valid();
+    input[workflow] = input[workflow].replace('npm ci --prefix scripts/linux-port --ignore-scripts', '');
+    assert.equal(verifyLinuxWorkflowWiring(input).passed, false, workflow);
+  }
 });
 
 test('attestation and publish order drift fails', () => {

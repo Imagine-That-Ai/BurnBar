@@ -32,6 +32,66 @@ describe('VAL-RPC-002 bridge behavior', () => {
     return b;
   }
 
+  const pendingAccountResponse = {
+    account: {
+      state: 'authorization_pending',
+      uid: null,
+      email: null,
+      display_name: null,
+      photo_url: null,
+      trust_class: 'linux_lower_trust',
+      sync_state: 'local_only',
+      credential_backend: null,
+      session: {
+        flow_id: 'flow-1',
+        user_code: 'ABCD-EFGH',
+        verification_url: 'https://burnbar.ai/link?flow=desktop_auth&code=ABCD-EFGH',
+        expires_at: '2026-07-10T12:10:00Z',
+        poll_interval_seconds: 5
+      },
+      problem: null,
+      updated_at: '2026-07-10T12:00:00Z'
+    }
+  };
+
+  it('account device auth maps the frozen native command and flow_id boundary', async () => {
+    invoke.mockResolvedValue(pendingAccountResponse);
+    const b = await bridge();
+    await expect(b.accountDeviceAuthStart?.()).resolves.toMatchObject({ state: 'authorization_pending' });
+    await expect(b.accountDeviceAuthPoll?.('flow-1')).resolves.toMatchObject({ state: 'authorization_pending' });
+    await expect(b.accountDeviceAuthCancel?.('flow-1')).resolves.toMatchObject({ state: 'authorization_pending' });
+    expect(invoke).toHaveBeenNthCalledWith(1, 'account_device_auth_start');
+    expect(invoke).toHaveBeenNthCalledWith(2, 'account_device_auth_poll', { flowId: 'flow-1' });
+    expect(invoke).toHaveBeenNthCalledWith(3, 'account_device_auth_cancel', { flowId: 'flow-1' });
+  });
+
+  it('account status, sign-out, and browser open use dedicated native commands', async () => {
+    invoke.mockResolvedValueOnce({
+      account: {
+        ...pendingAccountResponse.account,
+        state: 'signed_out',
+        session: null
+      }
+    });
+    invoke.mockResolvedValueOnce({
+      account: {
+        ...pendingAccountResponse.account,
+        state: 'signed_out',
+        session: null
+      }
+    });
+    invoke.mockResolvedValueOnce(undefined);
+    const b = await bridge();
+    await b.accountStatus();
+    await b.accountSignOut?.();
+    await b.openAccountAuthUrl?.('https://burnbar.ai/link?flow=desktop_auth&code=ABCD-EFGH');
+    expect(invoke).toHaveBeenNthCalledWith(1, 'account_status');
+    expect(invoke).toHaveBeenNthCalledWith(2, 'account_sign_out');
+    expect(invoke).toHaveBeenNthCalledWith(3, 'open_account_auth_url', {
+      url: 'https://burnbar.ai/link?flow=desktop_auth&code=ABCD-EFGH'
+    });
+  });
+
   it('runtimeCapabilities invokes and validates the native manifest', async () => {
     const { makeAvailableRuntimeCapabilityManifest } = await import('./testing/bridgeStubs.js');
     const manifest = makeAvailableRuntimeCapabilityManifest();
