@@ -380,6 +380,7 @@ async fn run_gateway_chat_stream(
     }
 
     let mut total_bytes = 0usize;
+    let mut pending_utf8 = Vec::new();
     let mut stream = response.bytes_stream();
     loop {
         let next = tokio::select! {
@@ -394,10 +395,38 @@ async fn run_gateway_chat_stream(
         if total_bytes > GATEWAY_MAX_RESPONSE_BYTES {
             return Err("gateway_response_too_large".into());
         }
-        let text = String::from_utf8(bytes.to_vec()).map_err(|_| "gateway_invalid_utf8")?;
-        on_event
-            .send(text)
-            .map_err(|_| "gateway_renderer_disconnected".to_string())?;
+        pending_utf8.extend_from_slice(&bytes);
+        loop {
+            match std::str::from_utf8(&pending_utf8) {
+                Ok(text) => {
+                    if !text.is_empty() {
+                        on_event
+                            .send(text.to_string())
+                            .map_err(|_| "gateway_renderer_disconnected".to_string())?;
+                    }
+                    pending_utf8.clear();
+                    break;
+                }
+                Err(error) => {
+                    let valid_up_to = error.valid_up_to();
+                    if valid_up_to > 0 {
+                        let text = std::str::from_utf8(&pending_utf8[..valid_up_to])
+                            .map_err(|_| "gateway_invalid_utf8")?;
+                        on_event
+                            .send(text.to_string())
+                            .map_err(|_| "gateway_renderer_disconnected".to_string())?;
+                        pending_utf8.drain(..valid_up_to);
+                    }
+                    if error.error_len().is_some() {
+                        return Err("gateway_invalid_utf8".into());
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    if !pending_utf8.is_empty() {
+        return Err("gateway_invalid_utf8".into());
     }
     Ok(())
 }
@@ -1674,8 +1703,7 @@ fn app_version_info() -> Result<serde_json::Value, String> {
     let daemon_version = probe_daemon_health()
         .daemon_version
         .unwrap_or_else(|| "unknown".to_string());
-    let package_channel =
-        std::env::var("OPENBURNBAR_PACKAGE_CHANNEL").unwrap_or_else(|_| "unknown".to_string());
+    let package_channel = detect_linux_package_channel();
     Ok(serde_json::json!({
         "shellVersion": shell_version,
         "daemonVersion": daemon_version,
@@ -1685,8 +1713,7 @@ fn app_version_info() -> Result<serde_json::Value, String> {
 
 #[tauri::command]
 async fn update_status() -> update_feed::LinuxUpdateStatus {
-    let package_channel =
-        std::env::var("OPENBURNBAR_PACKAGE_CHANNEL").unwrap_or_else(|_| "unknown".to_string());
+    let package_channel = detect_linux_package_channel();
     update_feed::check_linux_update(env!("CARGO_PKG_VERSION"), &package_channel).await
 }
 
@@ -2051,6 +2078,35 @@ fn memory_set_status(
 const CU_MAX_ARGS_BYTES: usize = 64 * 1024;
 const CU_CLIENT_ID: &str = "linux-shell";
 
+fn detect_linux_package_channel() -> String {
+    if let Ok(channel) = std::env::var("OPENBURNBAR_PACKAGE_CHANNEL") {
+        let channel = channel.trim().to_ascii_lowercase();
+        if matches!(channel.as_str(), "appimage" | "deb" | "rpm") {
+            return channel;
+        }
+    }
+    if Command::new("dpkg-query")
+        .args(["-W", "-f=${Status}", "open-burn-bar"])
+        .output()
+        .map(|output| {
+            output.status.success()
+                && String::from_utf8_lossy(&output.stdout).contains("install ok installed")
+        })
+        .unwrap_or(false)
+    {
+        return "deb".to_string();
+    }
+    if Command::new("rpm")
+        .args(["-q", "open-burn-bar"])
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+    {
+        return "rpm".to_string();
+    }
+    "appimage".to_string()
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ComputerUseSessionStartParams {
@@ -2067,6 +2123,10 @@ struct ComputerUseSessionStartParams {
     /// BurnBarClientID; defaults to linux-shell
     client_id: Option<String>,
     run_id: Option<String>,
+    local_auth_proof: Option<serde_json::Value>,
+    source_device_id: Option<String>,
+    intent_hash_hex: Option<String>,
+    local_auth_grant_binding: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2190,7 +2250,11 @@ fn computer_use_session_start(
             "actionCap": params.action_cap.unwrap_or(50),
             "sessionTimeoutSeconds": params.session_timeout_seconds.unwrap_or(1800),
             "clientID": client_id,
-            "runID": params.run_id
+            "runID": params.run_id,
+            "localAuthProof": params.local_auth_proof,
+            "sourceDeviceId": params.source_device_id,
+            "intentHashHex": params.intent_hash_hex,
+            "localAuthGrantBinding": params.local_auth_grant_binding
         })),
     )
 }

@@ -823,19 +823,22 @@ private enum LinuxPAMConversation {
                 appdata_ptr: passwordBuffer.baseAddress
             )
             var handle: LinuxPAMHandle?
+            var finalStatus: Int32 = 0
+            defer {
+                if let handle {
+                    _ = pam_end(handle, finalStatus)
+                }
+                if let baseAddress = passwordBuffer.baseAddress {
+                    memset(baseAddress, 0, passwordBuffer.count)
+                }
+            }
             let startStatus = serviceName.withCString { servicePointer in
                 username.withOptionalCString { userPointer in
                     pam_start(servicePointer, userPointer, &conv, &handle)
                 }
             }
             guard startStatus == 0 else { return false }
-            var finalStatus = startStatus
-            defer {
-                _ = pam_end(handle, finalStatus)
-                if let baseAddress = passwordBuffer.baseAddress {
-                    memset(baseAddress, 0, passwordBuffer.count)
-                }
-            }
+            finalStatus = startStatus
             finalStatus = pam_authenticate(handle, 0)
             guard finalStatus == 0 else { return false }
             finalStatus = pam_acct_mgmt(handle, 0)

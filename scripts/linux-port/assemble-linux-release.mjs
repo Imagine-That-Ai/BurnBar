@@ -137,7 +137,14 @@ for (const shardFile of shardFiles) {
     });
   }
   const smokeFile = findNamedFiles(path.dirname(shardFile), 'architecture-smoke.json')[0];
-  const smoke = smokeFile ? readJson(smokeFile) : null;
+  let smoke = null;
+  if (smokeFile) {
+    try {
+      smoke = readJson(smokeFile);
+    } catch (error) {
+      blockers.push({ kind: 'architecture-smoke-json', message: `Architecture smoke evidence is invalid for ${architecture}: ${error.message}` });
+    }
+  }
   if (!smoke || smoke.architecture !== architecture || smoke.passed !== true || smoke.failedCount !== 0) {
     blockers.push({ kind: 'architecture-smoke', message: `Native package smoke is not green for ${architecture}.` });
   }

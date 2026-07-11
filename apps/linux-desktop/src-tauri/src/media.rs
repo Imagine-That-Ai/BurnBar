@@ -143,9 +143,16 @@ fn read_media_socket(app: AppHandle, path: PathBuf, viewer: &MediaViewer) {
 }
 
 fn read_frame(stream: &mut UnixStream) -> std::io::Result<MediaFrame> {
+    const MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
     let mut prefix = [0_u8; 4];
     stream.read_exact(&mut prefix)?;
     let len = u32::from_be_bytes(prefix) as usize;
+    if len > MAX_FRAME_BYTES {
+        return Err(std::io::Error::new(
+            ErrorKind::InvalidData,
+            "media frame exceeds size limit",
+        ));
+    }
     let mut body = vec![0_u8; len];
     stream.read_exact(&mut body)?;
     if body.len() < FRAME_HEADER_BYTES {
@@ -171,12 +178,12 @@ mod gst_viewer {
     use super::MediaFrame;
 
     pub fn ensure_window() {
-        let _ = std::any::type_name::<openburnbar_media::MediaFrame>();
+        let _ = std::any::type_name::<openburnbar_media::MediaFrame<'_>>();
     }
 
     pub fn close_window() {}
 
     pub fn render_frame(_frame: &MediaFrame) {
-        let _ = std::any::type_name::<openburnbar_media::MediaFrame>();
+        let _ = std::any::type_name::<openburnbar_media::MediaFrame<'_>>();
     }
 }

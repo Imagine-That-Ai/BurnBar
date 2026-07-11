@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
 import { useMediaStore } from '../../state/mediaStore.js';
@@ -21,6 +21,7 @@ export function MediaSection() {
   const fileError = useMediaStore((s) => s.fileError);
   const fileBusyTransferID = useMediaStore((s) => s.fileBusyTransferID);
   const load = useMediaStore((s) => s.load);
+  const stopLiveSessionObservers = useMediaStore((s) => s.stopLiveSessionObservers);
   const acceptCall = useMediaStore((s) => s.acceptCall);
   const declineCall = useMediaStore((s) => s.declineCall);
   const endCall = useMediaStore((s) => s.endCall);
@@ -32,6 +33,8 @@ export function MediaSection() {
   const fixtureMode = useShellStore((s) => s.fixtureMode);
 
   useLaneLoad(load);
+
+  useEffect(() => stopLiveSessionObservers, [stopLiveSessionObservers]);
 
   let body;
   if (loadState === 'loading' || loadState === 'idle') {

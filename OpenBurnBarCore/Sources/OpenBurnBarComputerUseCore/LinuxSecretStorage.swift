@@ -122,9 +122,7 @@ final class LinuxPersistentSecretStore: Sendable {
     static let remoteUnlockCapabilityService = "com.openburnbar.remote-unlock.capability-token-issuer"
     static let defaultRemoteUnlockCapabilityAccount = "default"
 
-    private static let genericReadError: Int32 = -67671
     private static let genericWriteError: Int32 = -67672
-    private static let genericDeleteError: Int32 = -67673
 
     private let service: String
     private let secretService: any LinuxSecretServiceClient
@@ -179,6 +177,7 @@ final class LinuxPersistentSecretStore: Sendable {
             // key-swap takeover. The backup keeps load() authoritative.
             if !fileStore.save(data, service: service, account: account) {
                 logFallback("Secret Service write succeeded but encrypted file backup failed for \(service)/\(account)")
+                return Self.genericWriteError
             }
             return errSecSuccessCompat
         } catch {

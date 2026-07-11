@@ -990,7 +990,7 @@ public actor MercuryLinuxMediaSessionController {
         }
 
         let packetData: Data
-        if let position = media.sealedFramePosition ?? sniffSealedPosition(media: media),
+        if let position = media.sealedFramePosition,
            MediaFrameAEAD.isSealedEnvelope(encodedData) {
             guard let mediaFrameSealKey else {
                 return
@@ -1016,10 +1016,6 @@ public actor MercuryLinuxMediaSessionController {
         }
         _ = channel?.offer(decoded)
         updatedAt = Date()
-    }
-
-    private func sniffSealedPosition(media: HermesRealtimeRelayMediaPayload) -> HermesRealtimeRelaySealedMediaFramePosition? {
-        media.sealedFramePosition
     }
 
     private func effectivePhase(now: Date) -> DaemonMediaSessionPhase {

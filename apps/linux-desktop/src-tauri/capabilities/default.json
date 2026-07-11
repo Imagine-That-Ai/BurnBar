@@ -2,6 +2,6 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Main OpenBurnBar Linux desktop shell permissions.",
-  "windows": ["main"],
+  "windows": ["main", "status"],
   "permissions": ["core:default"]
 }

@@ -207,7 +207,7 @@ static inline int obb_secret_service_clear(
         NULL
     );
 
-    if (!ok && error != NULL) {
+    if (!ok || error != NULL) {
         if (out_error != NULL) {
             *out_error = g_strdup(error->message);
         }

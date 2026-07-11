@@ -179,7 +179,6 @@ export function ComputerUseSurface() {
           Mode
           <select value={mode} onChange={(e) => setMode(e.target.value as ComputerUseMode)}>
             <option value="browser">Browser</option>
-            <option value="agent_watch">Agent watch</option>
             <option value="system">System (Tier C)</option>
           </select>
         </label>
@@ -253,8 +252,8 @@ export function ComputerUseSurface() {
             <p className="computer-use-empty">Start a session to see activity.</p>
           ) : (
             <ul className="computer-use-list computer-use-list--log">
-              {log.map((line) => (
-                <li key={line}>{line}</li>
+              {log.map((line, index) => (
+                <li key={`${index}-${line}`}>{line}</li>
               ))}
             </ul>
           )}

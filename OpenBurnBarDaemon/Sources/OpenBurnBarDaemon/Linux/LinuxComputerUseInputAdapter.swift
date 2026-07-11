@@ -336,15 +336,13 @@ public struct LinuxComputerUseInputAdapter: Sendable {
                 arguments = ["click", button]
             }
         case .pointerMove:
-            arguments = [
-                "mousemove_relative",
-                "--",
-                String(action.deltaX ?? 0),
-                String(action.deltaY ?? 0)
-            ]
+            guard let x = action.displayX, let y = action.displayY else {
+                throw AdapterError.missingCoordinate("pointer_move requires displayX and displayY")
+            }
+            arguments = ["mousemove", String(x), String(y)]
         case .scroll:
             let delta = action.deltaY ?? 0
-            let repeatCount = max(1, min(12, abs(delta) / 120 == 0 ? abs(delta) : abs(delta) / 120))
+            let repeatCount = max(1, min(12, (abs(delta) + 119) / 120))
             arguments = ["click", "--repeat", String(repeatCount), delta >= 0 ? "4" : "5"]
         case .dragDrop:
             guard let startX = action.displayX,

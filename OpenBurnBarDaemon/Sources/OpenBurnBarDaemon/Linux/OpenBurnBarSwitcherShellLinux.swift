@@ -202,7 +202,7 @@ public final class BurnBarSwitcherSQLiteProfileStore: BurnBarSwitcherProfileStor
         case .omp: return ["omp"]
         case .kimi: return ["kimi"]
         case .junie: return ["junie"]
-        case .antigravity: return ["antigravity"]
+        case .antigravity: return ["agy", "antigravity"]
         }
     }
 }
@@ -375,13 +375,13 @@ public struct BurnBarCLIShellShimInstaller: BurnBarCLIShellShimInstalling, Senda
     public func installShims(invokedExecutablePath: String) throws -> BurnBarCLIShellShimInstallResult {
         let dir = installDirectory
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let commands = ["codex", "claude", "gemini", "opencode", "goose", "droid", "pi"]
+        let commands = SwitcherCLIProfileType.allCases.map(\.rawValue)
         var installed: [String] = []
         for command in commands {
             let shim = dir.appendingPathComponent(command)
             let script = """
             #!/usr/bin/env bash
-            exec \(Self.shellQuote(invokedExecutablePath)) switcher run --cli \(command) -- "$@"
+            exec \(Self.shellQuote(invokedExecutablePath)) exec \(command) -- "$@"
             """
             try script.write(to: shim, atomically: true, encoding: .utf8)
             try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: shim.path)

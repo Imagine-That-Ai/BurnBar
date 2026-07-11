@@ -32,9 +32,8 @@ printf 'Executed 1 test\n'
   try {
     const result = spawnSync('bash', [
       '-c',
-      'source "$1"; run_xctest_case "$2" OpenBurnBarTests/FakeRetryTest',
+      'source scripts/linux-port/run-linux-native-tests.sh; run_xctest_case "$1" OpenBurnBarTests/FakeRetryTest',
       '_',
-      path.join(repoRoot, 'scripts/linux-port/run-linux-native-tests.sh'),
       fakeXCTest
     ], {
       cwd: repoRoot,
