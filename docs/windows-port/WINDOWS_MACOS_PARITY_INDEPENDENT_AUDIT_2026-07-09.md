@@ -3,7 +3,7 @@
 **Date:** 2026-07-09
 **Reference product:** shipping macOS OpenBurnBar
 **Audit target:** local windows/liquid-glass-kernel-reskin checkout
-**Status:** implementation complete; automated certification substantially complete; physical/manual/live-staging release gates remain
+**Status:** implementation and automated signed-runtime certification complete; physical/manual/live-staging release gates remain
 
 ## Certification Update - 2026-07-11
 
@@ -26,18 +26,31 @@ Current evidence materially supersedes the original source-only findings:
   Windows foundation harness and secret scan.
 - [Signed hosted x64 run 29162867538](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29162867538)
   passed clean signed-MSIX registration, package identity checks, uninstall
-  with absence verification, and reinstall.
+  with absence verification, and reinstall. It did not launch the app and is
+  registration evidence only, not a runtime certification result.
 - An exact `778e735a69ea9d812db87146630223ac1a3a49d7` candidate was imported into
   Windows 11 Pro ARM64 under UTM with 10,475/10,475 files verified and zero
   mismatches. The ARM64 solution build, 180 focused tests, all ten storage
   failure/recovery cases, chat evidence, and a zero-finding artifact secret scan
   passed. The evidence archive SHA-256 is
   `1a276bd023f5d6078fee4501ced80a94da9ba1db0414b774fd184fb4a843c7ad`.
-- The signed ARM64 MSIX then passed clean install, responsive first launch,
-  protocol activation, uninstall with absence verification, reinstall, and
-  responsive final launch in the signed-in Windows 11 user session. Windows
-  reported the expected publisher, `Arm64` architecture, version `1.0.29.0`,
-  valid Microsoft Artifact Signing chain, and RFC 3161 timestamp.
+- The initial signed ARM64 receipt was invalidated. Its process samples were
+  taken about 0.1 seconds after creation; repeated sustained launches later
+  exited with `Microsoft.UI.Xaml.Markup.XamlParseException` at
+  `FlyoutWindow.InitializeComponent` because the manual MSIX lacked a
+  package-root `resources.pri`. Signature, identity, install, uninstall, and
+  reinstall evidence remain valid, but runtime launch did not pass. PR #1541
+  fixes the resource index and adds 20-second clean-install and reinstall
+  launch holds with WER and WinUI diagnostic rejection. Exact signed successor
+  [run 29166970379](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29166970379)
+  completed successfully from `9dbcaa791794944326ce9ffb18ed4d9771f31ecc`.
+  Its hosted x64 receipt passed both responsive launch holds with zero crash
+  events. The exact ARM64 MSIX was then hash-verified, signature-verified, and
+  independently passed the same lifecycle on Windows 11 Pro ARM64 under UTM
+  with zero crash events or fatal WinUI diagnostics. The corrected package
+  hashes are `ac5b63a258c2151c7f1c8f3092ff54720d8c97b375efa38754a2e4a1857e0f43`
+  for x64 and `7350fd248f65fd9de6eb3b2b5804508d9b47386a9fa0d9028526d70791874d8b`
+  for ARM64.
 - The physical iPhone companion built, signed, installed, and launched. Its
   suite recorded 1,240 passed, 13 failed, and 28 skipped tests, so this is
   physical compile/install evidence rather than a green-suite claim.
@@ -237,9 +250,12 @@ and release acceptance fixtures between Swift and C#.
 
 ## Conclusion
 
-The audit's implementation plan is complete under the repository's F2 ledger,
-and the signed x64/ARM64 build plus hosted x64 and ARM64 UTM foundation gates
-are proven. The evidence does not yet close every row in the QA checklist.
+The audit's implementation plan is complete under the repository's F2 ledger.
+The x64/ARM64 build, signing/provenance, hosted x64 registration, ARM64 UTM
+foundation, and corrected signed-runtime gates are proven. The corrected x64
+and ARM64 packages each passed clean-install and reinstall 20-second responsive
+launch holds with zero crash events. The evidence does not yet close every row
+in the QA checklist.
 
 Accordingly, the accurate current claim is: **100% source/product parity and
 substantially complete automated certification, but not 100% physical release

@@ -1,7 +1,18 @@
 {
   "schema": "openburnbar.windows.signed-arm64-lifecycle.v1",
-  "status": "passed",
+  "status": "invalidated",
   "completedAt": "2026-07-11T18:48:00.9643942Z",
+  "invalidatedAt": "2026-07-11T19:20:00.0000000Z",
+  "invalidation": {
+    "reason": "The launch samples were captured about 0.1 seconds after process creation and did not prove sustained runtime. Repeated later launches exited with a WinUI XAML parse failure.",
+    "exceptionType": "Microsoft.UI.Xaml.Markup.XamlParseException",
+    "hresult": "0x802B000A",
+    "failingFrame": "OpenBurnBar.App.FlyoutWindow.InitializeComponent",
+    "applicationErrorEventId": 1000,
+    "exceptionCode": "0xc000027b",
+    "werBucket": "bfae76252e0ce6847ef68a752b846826",
+    "rootCause": "The manual MSIX packager omitted package-root resources.pri, so packaged XAML resources could not be resolved."
+  },
   "release": {
     "version": "1.0.29",
     "commit": "778e735a69ea9d812db87146630223ac1a3a49d7",

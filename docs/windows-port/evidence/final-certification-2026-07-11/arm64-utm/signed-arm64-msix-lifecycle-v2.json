@@ -1,0 +1,89 @@
+{
+  "schema": "openburnbar.windows.signed-msix-lifecycle.v2",
+  "status": "passed",
+  "startedAt": "2026-07-11T21:13:35.0369405Z",
+  "completedAt": "2026-07-11T21:14:52.9568282Z",
+  "workflowRunId": "29166970379",
+  "workflowRunAttempt": "1",
+  "commit": "9dbcaa791794944326ce9ffb18ed4d9771f31ecc",
+  "package": "OpenBurnBar-1.0.29-arm64-run-29166970379.msix",
+  "packageSha256": "7350fd248f65fd9de6eb3b2b5804508d9b47386a9fa0d9028526d70791874d8b",
+  "expectedArchitecture": "Arm64",
+  "holdSeconds": 20,
+  "error": null,
+  "steps": [
+    {
+      "name": "clean-install",
+      "completedAt": "2026-07-11T21:13:50.2337375Z",
+      "packageFullName": "ImagineThat.OpenBurnBar_1.0.29.0_arm64__h8fy5g99tgfa4",
+      "version": "1.0.29.0",
+      "architecture": "Arm64",
+      "publisher": "CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US",
+      "installLocation": "C:\\Program Files\\WindowsApps\\ImagineThat.OpenBurnBar_1.0.29.0_arm64__h8fy5g99tgfa4"
+    },
+    {
+      "name": "clean-install-sustained-launch",
+      "completedAt": "2026-07-11T21:14:12.4921940Z",
+      "appUserModelId": "ImagineThat.OpenBurnBar_h8fy5g99tgfa4!OpenBurnBar",
+      "launchStartedAt": "2026-07-11T21:13:50.3232585Z",
+      "processObservedAt": "2026-07-11T21:13:51.9354929Z",
+      "holdSeconds": 20,
+      "passed": true,
+      "processes": [
+        {
+          "Id": 252,
+          "ProcessName": "OpenBurnBar.App",
+          "StartTime": "/Date(1783804431546)/",
+          "Responding": true,
+          "SessionId": 1
+        }
+      ],
+      "crashEventCount": 0,
+      "crashEvents": [],
+      "crashLogExists": true,
+      "crashLogFatal": false,
+      "crashLogSha256": "55370d9bcebc175b9335992a28303271c913206e9e5007daeae53e39fcf05839"
+    },
+    {
+      "name": "uninstall",
+      "completedAt": "2026-07-11T21:14:14.9904535Z",
+      "packageFullName": null,
+      "version": null,
+      "architecture": null,
+      "publisher": null,
+      "installLocation": null
+    },
+    {
+      "name": "reinstall",
+      "completedAt": "2026-07-11T21:14:31.6407445Z",
+      "packageFullName": "ImagineThat.OpenBurnBar_1.0.29.0_arm64__h8fy5g99tgfa4",
+      "version": "1.0.29.0",
+      "architecture": "Arm64",
+      "publisher": "CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US",
+      "installLocation": "C:\\Program Files\\WindowsApps\\ImagineThat.OpenBurnBar_1.0.29.0_arm64__h8fy5g99tgfa4"
+    },
+    {
+      "name": "reinstall-sustained-launch",
+      "completedAt": "2026-07-11T21:14:52.9374584Z",
+      "appUserModelId": "ImagineThat.OpenBurnBar_h8fy5g99tgfa4!OpenBurnBar",
+      "launchStartedAt": "2026-07-11T21:14:31.6587302Z",
+      "processObservedAt": "2026-07-11T21:14:32.7162748Z",
+      "holdSeconds": 20,
+      "passed": true,
+      "processes": [
+        {
+          "Id": 3628,
+          "ProcessName": "OpenBurnBar.App",
+          "StartTime": "/Date(1783804472668)/",
+          "Responding": true,
+          "SessionId": 1
+        }
+      ],
+      "crashEventCount": 0,
+      "crashEvents": [],
+      "crashLogExists": true,
+      "crashLogFatal": false,
+      "crashLogSha256": "9af53a777e72ea38673be587364a4e649227016e7da2c6b7d6241a86f12e335e"
+    }
+  ]
+}
