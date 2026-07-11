@@ -1019,6 +1019,57 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         XCTAssertFalse(cursorPlan.arguments.isEmpty)
     }
 
+    func test_missionRuntimePlanner_refusesRestrictedJunieVisibleTerminalPlan() {
+        let readOnlyData: [String: Any] = [
+            "source": "ios",
+            "targetProject": "~/Documents/Windsurf/BurnBar",
+            "clientThreadID": "visible-junie-read-only",
+            "commandsAllowed": false,
+            "fileEditsAllowed": false,
+            "requestedModelID": "junie-default"
+        ]
+        XCTAssertFalse(CLIAgentMissionRuntimePlanner.junieMissionHasFullDesktopCapabilities(data: readOnlyData))
+        XCTAssertNil(CLIAgentMissionRuntimePlanner.visibleTerminalLaunchPlan(
+            title: "Restricted Junie mission",
+            prompt: "Inspect without edits or commands.",
+            backend: CLIAgentMissionBackend(chatBackend: .junie),
+            data: readOnlyData
+        ))
+
+        var editOnlyData = readOnlyData
+        editOnlyData["fileEditsAllowed"] = true
+        XCTAssertFalse(CLIAgentMissionRuntimePlanner.junieMissionHasFullDesktopCapabilities(data: editOnlyData))
+        XCTAssertNil(CLIAgentMissionRuntimePlanner.visibleTerminalLaunchPlan(
+            title: "Edit-only Junie mission",
+            prompt: "Edit without commands.",
+            backend: CLIAgentMissionBackend(chatBackend: .junie),
+            data: editOnlyData
+        ))
+    }
+
+    func test_missionRuntimePlanner_allowsJunieVisibleTerminalPlanOnlyWithFullDesktopCapabilities() throws {
+        let data: [String: Any] = [
+            "source": "ios",
+            "targetProject": "~/Documents/Windsurf/BurnBar",
+            "clientThreadID": "visible-junie-full",
+            "commandsAllowed": true,
+            "fileEditsAllowed": true,
+            "requestedModelID": "junie-default"
+        ]
+
+        XCTAssertTrue(CLIAgentMissionRuntimePlanner.junieMissionHasFullDesktopCapabilities(data: data))
+        let plan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.visibleTerminalLaunchPlan(
+            title: "Full Junie mission",
+            prompt: "Run with explicit full desktop approval.",
+            backend: CLIAgentMissionBackend(chatBackend: .junie),
+            data: data
+        ))
+        XCTAssertEqual(plan.executableName, "junie")
+        XCTAssertTrue(plan.arguments.contains("--task"))
+        XCTAssertTrue(plan.arguments.contains("--model"))
+        XCTAssertTrue(plan.arguments.contains("junie-default"))
+    }
+
     func test_missionRuntimePlanner_buildsVisibleTerminalPlansForGrantBackedRuntimes() throws {
         let data: [String: Any] = [
             "source": "ios",

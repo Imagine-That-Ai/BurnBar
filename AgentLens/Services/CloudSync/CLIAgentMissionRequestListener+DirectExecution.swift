@@ -89,6 +89,15 @@ extension CLIAgentMissionRequestListener {
                 sessionID: "persona-scope-rejected-\(backend.rawValue)-\(UUID().uuidString)"
             )
         }
+        if backend.chatBackend == .junie,
+           !CLIAgentMissionRuntimePlanner.junieMissionHasFullDesktopCapabilities(data: data) {
+            return DirectCLIMissionResult(
+                status: "failed",
+                output: "",
+                errorMessage: "Junie remote missions require both command execution and file-edit approval because the Junie CLI does not expose OpenBurnBar-enforceable read-only or no-shell flags.",
+                sessionID: "policy-junie-\(UUID().uuidString)"
+            )
+        }
         if CLIAgentMissionRuntimePlanner.presentationMode(from: data) == .macVisibleCLI {
             guard let plan = CLIAgentMissionRuntimePlanner.visibleTerminalLaunchPlan(
                 title: title,
