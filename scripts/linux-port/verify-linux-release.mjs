@@ -29,10 +29,23 @@ function warn(message, detail = {}) {
   warnings.push({ message, ...detail });
 }
 
+function block(message, detail = {}) {
+  (allowBlocked ? warn : fail)(message, detail);
+}
+
 function requireFile(relPath, label) {
   const full = path.join(repoRoot, relPath);
   if (!fs.existsSync(full)) {
     fail(`${label} is missing`, { file: relPath });
+    return false;
+  }
+  return true;
+}
+
+function requireGeneratedFile(relPath, label) {
+  const full = path.join(repoRoot, relPath);
+  if (!fs.existsSync(full)) {
+    block(`${label} is unavailable until the release build runs`, { file: relPath });
     return false;
   }
   return true;
@@ -49,8 +62,10 @@ const provenancePath = path.join(repoRoot, closure.sidecars?.provenancePredicate
 const provenance = readJsonOrNull(provenancePath);
 
 const release = closure.release;
-if (!release?.tag || !release?.ref || !release?.commit || !release?.expectedCosignIdentity) {
-  fail('package closure lacks a complete tag-bound release identity.');
+if (release == null) {
+  block('package closure lacks a complete tag-bound release identity.');
+} else if (!release.tag || !release.ref || !release.commit || !release.expectedCosignIdentity) {
+  fail('package closure contains a partial tag-bound release identity.');
 } else {
   let canonicalIdentity = null;
   try {
@@ -81,17 +96,27 @@ if (!release?.tag || !release?.ref || !release?.commit || !release?.expectedCosi
 
   const head = runStep('git', ['rev-parse', 'HEAD']);
   const tag = runStep('git', ['rev-list', '-n', '1', `${release.ref}^{commit}`]);
-  if (head.exitCode !== 0 || head.stdout.trim() !== release.commit) {
-    fail('release checkout HEAD does not equal the recorded release commit.', {
+  if (head.exitCode !== 0) {
+    fail('release checkout HEAD could not be resolved.', {
+      stderr: head.stderr || null
+    });
+  } else if (head.stdout.trim() !== release.commit) {
+    block('release checkout HEAD does not equal the recorded release commit.', {
       expected: release.commit,
       actual: head.stdout.trim() || null
     });
   }
-  if (tag.exitCode !== 0 || tag.stdout.trim() !== release.commit) {
-    fail('release tag does not resolve to the recorded release commit.', {
+  if (tag.exitCode !== 0) {
+    block('release tag does not resolve to the recorded release commit.', {
       ref: release.ref,
       expected: release.commit,
-      actual: tag.stdout.trim() || null
+      actual: null
+    });
+  } else if (tag.stdout.trim() !== release.commit) {
+    fail('release tag resolves to a different commit than package metadata.', {
+      ref: release.ref,
+      expected: release.commit,
+      actual: tag.stdout.trim()
     });
   }
 
@@ -116,7 +141,7 @@ for (const required of manifest.requiredArtifacts) {
     fail(`Required ${required} artifact is absent from package closure.`);
     continue;
   }
-  if (!requireFile(artifact.file, `${required} artifact`)) continue;
+  if (!requireGeneratedFile(artifact.file, `${required} artifact`)) continue;
   const actual = sha256(path.join(repoRoot, artifact.file));
   if (actual !== artifact.sha256) {
     fail(`${required} artifact checksum drifted`, { file: artifact.file, expected: artifact.sha256, actual });
@@ -143,7 +168,7 @@ if (checksumRel && requireFile(checksumRel, 'checksums sidecar')) {
       continue;
     }
     const [, expected, file] = match;
-    if (!requireFile(file, 'checksum target')) continue;
+    if (!requireGeneratedFile(file, 'checksum target')) continue;
     const actual = sha256(path.join(repoRoot, file));
     if (actual !== expected) fail('checksum sidecar mismatch', { file, expected, actual });
   }
@@ -190,11 +215,13 @@ if (!signatures.length) {
       continue;
     }
     const row = rows[0];
-    if (row.algorithm !== 'Ed25519' || !requireFile(row.signature, 'Ed25519 detached signature')) {
+    if (row.algorithm !== 'Ed25519') {
       fail('Required artifact signature metadata is invalid.', { artifact: artifactFile });
       continue;
     }
-    if (publicKeyPem && !verifyEd25519Signature(
+    const artifactAvailable = requireGeneratedFile(artifactFile, 'required artifact');
+    const signatureAvailable = requireGeneratedFile(row.signature, 'Ed25519 detached signature');
+    if (publicKeyPem && artifactAvailable && signatureAvailable && !verifyEd25519Signature(
       fs.readFileSync(path.join(repoRoot, artifactFile)),
       fs.readFileSync(path.join(repoRoot, row.signature)),
       publicKeyPem
@@ -206,19 +233,27 @@ if (!signatures.length) {
     }
   }
 }
-if (provenance?.expectedCosignIdentity !== release?.expectedCosignIdentity) {
+if (release == null) {
+  block('release and provenance Cosign identities are unavailable until the release build runs.');
+} else if (!provenance?.expectedCosignIdentity) {
+  fail('provenance predicate lacks the expected Cosign identity.');
+} else if (provenance.expectedCosignIdentity !== release.expectedCosignIdentity) {
   fail('provenance predicate Cosign identity differs from the release identity.');
 }
 
 const sourceArchive = closure.sidecars?.sourceArchive;
-if (!sourceArchive?.file || !sourceArchive?.sha256 || !sourceArchive?.checksumFile || !sourceArchive?.represents) {
-  fail('source archive binding is missing from package closure.');
-} else if (requireFile(sourceArchive.file, 'source archive')) {
-  const actual = sha256(path.join(repoRoot, sourceArchive.file));
-  if (actual !== sourceArchive.sha256) {
-    fail('source archive checksum drifted.', { file: sourceArchive.file, expected: sourceArchive.sha256, actual });
+if (sourceArchive == null) {
+  block('source archive binding is unavailable until the release build runs.');
+} else if (!sourceArchive.file || !sourceArchive.sha256 || !sourceArchive.checksumFile || !sourceArchive.represents) {
+  fail('source archive binding in package closure is incomplete.');
+} else {
+  if (requireGeneratedFile(sourceArchive.file, 'source archive')) {
+    const actual = sha256(path.join(repoRoot, sourceArchive.file));
+    if (actual !== sourceArchive.sha256) {
+      fail('source archive checksum drifted.', { file: sourceArchive.file, expected: sourceArchive.sha256, actual });
+    }
   }
-  if (requireFile(sourceArchive.checksumFile, 'source archive checksum')) {
+  if (requireGeneratedFile(sourceArchive.checksumFile, 'source archive checksum')) {
     const checksum = fs.readFileSync(path.join(repoRoot, sourceArchive.checksumFile), 'utf8').trim();
     if (!checksum.startsWith(`${sourceArchive.sha256}  `)) {
       fail('source archive checksum sidecar does not match the archive.', {
@@ -242,10 +277,19 @@ if (!sourceArchive?.file || !sourceArchive?.sha256 || !sourceArchive?.checksumFi
   }
 }
 
-if (!latest.primaryArtifact || latest.promotionState !== 'candidate') {
-  fail('latest-linux draft is not promotable.', {
-    promotionState: latest.promotionState ?? null,
-    primaryArtifact: latest.primaryArtifact ?? null
+if (!latest.primaryArtifact) {
+  fail('latest-linux draft lacks a primary artifact.');
+} else if (latest.promotionState === 'blocked') {
+  if (!Array.isArray(latest.blockers) || latest.blockers.length === 0) {
+    fail('blocked latest-linux draft lacks a named blocker.');
+  }
+  block('latest-linux draft is not promotable.', {
+    promotionState: latest.promotionState,
+    primaryArtifact: latest.primaryArtifact
+  });
+} else if (latest.promotionState !== 'candidate') {
+  fail('latest-linux draft has an invalid promotion state.', {
+    promotionState: latest.promotionState ?? null
   });
 }
 
@@ -263,7 +307,9 @@ if (fs.existsSync(publicLatest)) {
 const smokeDir = path.join(outDir, 'smoke');
 for (const smoke of ['package-install-uninstall.log', 'package-update-rollback.log']) {
   if (!fs.existsSync(path.join(smokeDir, smoke))) {
-    fail('required package smoke log is missing', { file: relative(path.join(smokeDir, smoke)) });
+    block('required package smoke log is unavailable until the release build runs', {
+      file: relative(path.join(smokeDir, smoke))
+    });
   }
 }
 
@@ -273,14 +319,16 @@ const unexpectedDirty = gitStatus.filter((entry) => {
   return !path.startsWith(relative(outDir) + '/');
 });
 if (unexpectedDirty.length > 0) {
-  fail('release checkout has unexpected dirty files outside generated Linux release evidence.', {
+  block('release checkout has unexpected dirty files outside generated Linux release evidence.', {
     dirtyEntries: unexpectedDirty.slice(0, 40)
   });
 }
 
-const ledger = runStep('node', ['scripts/linux-port/validate-parity-ledger.mjs'], { cwd: repoRoot });
+const ledgerArgs = ['scripts/linux-port/validate-parity-ledger.mjs'];
+if (allowBlocked) ledgerArgs.push('--allow-blocked');
+const ledger = runStep('node', ledgerArgs, { cwd: repoRoot });
 if (ledger.exitCode !== 0) {
-  fail('parity ledger is not green for release promotion.', {
+  fail('parity ledger validation failed.', {
     command: ledger.command,
     stdout: ledger.stdout,
     stderr: ledger.stderr

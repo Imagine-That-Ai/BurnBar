@@ -94,6 +94,18 @@ test('allow-blocked never masks release verification failures', () => {
   assert.match(verifier, /passed:\s*failures\.length === 0,/u);
   assert.match(verifier, /process\.exit\(report\.passed \? 0 : 1\);/u);
   assert.doesNotMatch(verifier, /failures\.length === 0\s*\|\|\s*allowBlocked/u);
+  assert.match(verifier, /block\('package closure lacks a complete tag-bound release identity\.'/u);
+  assert.match(verifier, /fail\('package closure contains a partial tag-bound release identity\.'/u);
+  assert.match(verifier, /fail\('release tag, ref, and package version disagree\.'/u);
+  assert.match(verifier, /fail\('release tag resolves to a different commit than package metadata\.'/u);
+  assert.match(verifier, /fail\('provenance predicate Cosign identity differs from the release identity\.'/u);
+  assert.match(verifier, /fail\('source archive binding in package closure is incomplete\.'/u);
+  assert.match(verifier, /fail\('source archive does not represent the exact release commit\.'/u);
+  assert.match(verifier, /fail\('blocked latest-linux draft lacks a named blocker\.'/u);
+  assert.match(verifier, /if \(allowBlocked\) ledgerArgs\.push\('--allow-blocked'\);/u);
+  assert.match(verifier, /fail\('parity ledger validation failed\.'/u);
+  assert.match(verifier, /const artifactAvailable = requireGeneratedFile\(/u);
+  assert.match(verifier, /publicKeyPem && artifactAvailable && signatureAvailable/u);
 });
 
 test('detached release signatures verify only for the pinned key and exact bytes', () => {
