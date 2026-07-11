@@ -187,8 +187,8 @@ jobs:
             8.0.x
             10.0.x
 
-      - name: Locate MakeAppx
-        id: makeappx
+      - name: Locate Windows SDK packaging tools
+        id: packaging-tools
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -200,8 +200,18 @@ jobs:
           if (-not $makeappx) {
             throw "MakeAppx.exe is missing from the Windows SDK on this runner."
           }
-          "path=$makeappx" >> $env:GITHUB_OUTPUT
+          $makepri = Get-ChildItem `
+            "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\makepri.exe" `
+            -ErrorAction SilentlyContinue |
+            Sort-Object { [version]$_.Directory.Parent.Name } -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $makepri) {
+            throw "MakePri.exe is missing from the Windows SDK on this runner."
+          }
+          "makeappx=$makeappx" >> $env:GITHUB_OUTPUT
+          "makepri=$makepri" >> $env:GITHUB_OUTPUT
           "MakeAppx: $makeappx"
+          "MakePri: $makepri"
 
       - name: Download x64 native engine bundle
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
@@ -325,7 +335,8 @@ jobs:
         # the app keeps WindowsPackageType=None so the portable build is unchanged).
         run: |
           set -euo pipefail
-          makeappx='${{ steps.makeappx.outputs.path }}'
+          makeappx='${{ steps.packaging-tools.outputs.makeappx }}'
+          makepri='${{ steps.packaging-tools.outputs.makepri }}'
           publisher="CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US"
           for rid in win-x64 win-arm64; do
             arch="x64"
@@ -333,7 +344,8 @@ jobs:
             output="artifacts/OpenBurnBar-${VERSION}-${arch}.msix"
             pwsh -NoProfile -NonInteractive -File windows/packaging/msix/New-MsixPackage.ps1 \
               -PublishDir "publish/$rid" -Architecture "$arch" -Version "$VERSION" \
-              -OutputPath "$output" -MakeAppxPath "$makeappx" -Publisher "$publisher"
+              -OutputPath "$output" -MakeAppxPath "$makeappx" -MakePriPath "$makepri" \
+              -Publisher "$publisher"
           done
 
       - name: Authenticode sign the MSIX (Azure Artifact Signing)
@@ -383,92 +395,21 @@ jobs:
             Write-Host "MSIX Authenticode valid: $relativePath :: $($signature.SignerCertificate.Subject)"
           }
 
-      - name: Exercise signed x64 MSIX registration lifecycle
+      - name: Exercise signed x64 MSIX install and sustained-launch lifecycle
         if: steps.config.outputs.codesign == 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $packageName = "ImagineThat.OpenBurnBar"
           $expectedPublisher = "CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US"
-          $expectedVersion = "${env:VERSION}.0"
           $packagePath = Join-Path $env:GITHUB_WORKSPACE "artifacts/OpenBurnBar-${env:VERSION}-x64.msix"
           $receiptPath = Join-Path $env:GITHUB_WORKSPACE "artifacts/signed-x64-msix-lifecycle.json"
-          $steps = [System.Collections.Generic.List[object]]::new()
-
-          function Get-OpenBurnBarPackage {
-            Get-AppxPackage -Name $packageName -ErrorAction SilentlyContinue |
-              Select-Object -First 1
-          }
-
-          function Assert-PackageIdentity([object] $Package, [string] $Stage) {
-            if (-not $Package) {
-              throw "$Stage did not register $packageName."
-            }
-            if ($Package.Version.ToString() -cne $expectedVersion) {
-              throw "$Stage registered version $($Package.Version), expected $expectedVersion."
-            }
-            if ($Package.Architecture.ToString() -cne "X64") {
-              throw "$Stage registered architecture $($Package.Architecture), expected X64."
-            }
-            if ($Package.Publisher -cne $expectedPublisher) {
-              throw "$Stage registered publisher '$($Package.Publisher)', expected '$expectedPublisher'."
-            }
-            if (-not (Test-Path -LiteralPath $Package.InstallLocation)) {
-              throw "$Stage install location is missing: $($Package.InstallLocation)"
-            }
-          }
-
-          function Add-ReceiptStep([string] $Name, [object] $Package) {
-            $steps.Add([ordered]@{
-              name = $Name
-              completedAt = (Get-Date).ToUniversalTime().ToString("o")
-              packageFullName = if ($Package) { $Package.PackageFullName } else { $null }
-              version = if ($Package) { $Package.Version.ToString() } else { $null }
-              architecture = if ($Package) { $Package.Architecture.ToString() } else { $null }
-              publisher = if ($Package) { $Package.Publisher } else { $null }
-              installLocation = if ($Package) { $Package.InstallLocation } else { $null }
-            })
-          }
-
-          $preExisting = Get-OpenBurnBarPackage
-          if ($preExisting) {
-            throw "Hosted runner is not clean: $($preExisting.PackageFullName) is already registered."
-          }
-
-          try {
-            Add-AppxPackage -Path $packagePath -ForceApplicationShutdown
-            $firstInstall = Get-OpenBurnBarPackage
-            Assert-PackageIdentity $firstInstall "Clean install"
-            Add-ReceiptStep "clean-install" $firstInstall
-
-            Remove-AppxPackage -Package $firstInstall.PackageFullName
-            if (Get-OpenBurnBarPackage) {
-              throw "Package is still registered after uninstall."
-            }
-            Add-ReceiptStep "uninstall" $null
-
-            Add-AppxPackage -Path $packagePath -ForceApplicationShutdown
-            $secondInstall = Get-OpenBurnBarPackage
-            Assert-PackageIdentity $secondInstall "Reinstall"
-            Add-ReceiptStep "reinstall" $secondInstall
-
-            [ordered]@{
-              schema = "openburnbar.windows.signed-x64-msix-lifecycle.v1"
-              status = "passed"
-              completedAt = (Get-Date).ToUniversalTime().ToString("o")
-              workflowRunId = $env:GITHUB_RUN_ID
-              workflowRunAttempt = $env:GITHUB_RUN_ATTEMPT
-              commit = $env:GITHUB_SHA
-              package = [System.IO.Path]::GetFileName($packagePath)
-              steps = $steps
-            } | ConvertTo-Json -Depth 8 | Set-Content -Encoding UTF8 -LiteralPath $receiptPath
-          }
-          finally {
-            $installed = Get-OpenBurnBarPackage
-            if ($installed) {
-              Remove-AppxPackage -Package $installed.PackageFullName -ErrorAction SilentlyContinue
-            }
-          }
+          & windows/packaging/msix/Test-SignedMsixLifecycle.ps1 `
+            -PackagePath $packagePath `
+            -ExpectedVersion "${env:VERSION}.0" `
+            -ExpectedArchitecture X64 `
+            -ExpectedPublisher $expectedPublisher `
+            -ReceiptPath $receiptPath `
+            -HoldSeconds 20
 
       - name: Finalize checksums after signing
         run: |

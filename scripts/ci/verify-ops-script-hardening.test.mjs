@@ -56,8 +56,23 @@ assert.match(
 );
 assert.match(
   windowsReleaseWorkflow,
+  /Windows Kits\\10\\bin\\\*\\x64\\makepri\.exe/,
+  "Windows release workflow must locate MakePri from the installed Windows SDK",
+);
+assert.match(
+  windowsReleaseWorkflow,
   /windows\/packaging\/msix\/New-MsixPackage\.ps1/,
   "Windows release workflow must package the already-published app through the reviewed MSIX script",
+);
+assert.match(
+  windowsReleaseWorkflow,
+  /-MakePriPath "\$makepri"/,
+  "Windows release workflow must pass the reviewed MakePri tool to the MSIX packager",
+);
+assert.match(
+  windowsReleaseWorkflow,
+  /Test-SignedMsixLifecycle\.ps1[\s\S]*-HoldSeconds 20/,
+  "signed MSIX evidence must exercise a sustained application launch",
 );
 assert.ok(
   windowsReleaseWorkflow.includes('predicate.write_text(json.dumps(payload'),
@@ -91,16 +106,64 @@ assert.match(
   /VerifyGeneratedFeed\([\s\S]*UpdateFeedVerifier\.TryCreate\([\s\S]*VerifyArtifact\(/,
   "the Windows feed generator must parse and pin-verify its emitted release feeds",
 );
+const windowsMsixPackager = read("windows/packaging/msix/New-MsixPackage.ps1");
 assert.match(
-  read("windows/packaging/msix/New-MsixPackage.ps1"),
+  windowsMsixPackager,
   /SetAttribute\("Version", "\$Version\.0"\)[\s\S]*SetAttribute\("ProcessorArchitecture", \$Architecture\)/,
   "MSIX staging must stamp the resolved version and target architecture into the package identity",
 );
 assert.match(
-  read("windows/packaging/msix/New-MsixPackage.ps1"),
+  windowsMsixPackager,
   /\$executableAttribute\.Value/,
   "MSIX staging must validate the executable attribute value, not its serialized XML form",
 );
+assert.match(
+  windowsMsixPackager,
+  /WriteAllLines\([\s\S]*pri\.resfiles[\s\S]*@\("PRI", "RESFILES"\)/,
+  "MSIX staging must merge component PRI files through an explicit resfiles index",
+);
+assert.match(
+  windowsMsixPackager,
+  /MakePriPath new[\s\S]*\/in \$packageName[\s\S]*MakePriPath dump/,
+  "MSIX staging must build and inspect a package-identity resources.pri",
+);
+assert.match(
+  windowsMsixPackager,
+  /NamedResource\[@name='FlyoutWindow\.xbf'\]/,
+  "MSIX staging must fail closed when the packaged FlyoutWindow XBF is absent",
+);
+
+const signedMsixLifecycle = read("windows/packaging/msix/Test-SignedMsixLifecycle.ps1");
+assert.match(
+  signedMsixLifecycle,
+  /shell:AppsFolder\\\$appUserModelId/,
+  "signed MSIX lifecycle verification must launch the registered application identity",
+);
+assert.match(
+  signedMsixLifecycle,
+  /Start-Sleep -Seconds \$HoldSeconds[\s\S]*Get-Process -Name \$ProcessName/,
+  "signed MSIX lifecycle verification must prove that the process survives the hold window",
+);
+assert.match(
+  signedMsixLifecycle,
+  /Application Error\|Windows Error Reporting\|\\\.NET Runtime/,
+  "signed MSIX lifecycle verification must reject Windows crash events",
+);
+assert.match(
+  signedMsixLifecycle,
+  /Application\\\.UnhandledException\|XamlParseException\|fatal/,
+  "signed MSIX lifecycle verification must reject fatal WinUI diagnostic entries",
+);
+for (const requiredEvidence of [
+  "openburnbar.windows.signed-msix-lifecycle.v2",
+  "clean-install-sustained-launch",
+  "reinstall-sustained-launch",
+]) {
+  assert.ok(
+    signedMsixLifecycle.includes(requiredEvidence),
+    `signed MSIX lifecycle evidence must include ${requiredEvidence}`,
+  );
+}
 
 const firebaseRules = read("scripts/ci/deploy-firebase-rules-releases.mjs");
 assert.ok(
