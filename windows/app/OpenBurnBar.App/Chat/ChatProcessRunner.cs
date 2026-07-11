@@ -248,23 +248,17 @@ public static class ChatProcessRunner
         {
             Task waitTask = process.WaitForExitAsync(linkedCts.Token);
             Task drainsTask = Task.WhenAll(stdoutTask, stderrTask);
-            Task first = await Task.WhenAny(waitTask, stdoutTask, stderrTask).ConfigureAwait(false);
-            if (first != waitTask && first.IsFaulted)
+            var pendingDrains = new List<Task> { stdoutTask, stderrTask };
+            while (!waitTask.IsCompleted && pendingDrains.Count > 0)
             {
-                linkedCts.Cancel();
-                TryKillProcessTree(process);
-                try
+                Task first = await Task.WhenAny(pendingDrains.Append(waitTask)).ConfigureAwait(false);
+                if (first == waitTask)
                 {
-                    await drainsTask.ConfigureAwait(false);
-                }
-                catch (Exception ex)
-                {
-                    ChatProcessException typed = ToTypedException(ex, ChatFailureKind.StreamError);
-                    writer.TryWrite(new ChatProcessLine(null, typed.Kind, typed.Message));
+                    break;
                 }
 
-                await Task.WhenAny(waitTask, Task.Delay(TimeSpan.FromSeconds(2))).ConfigureAwait(false);
-                return;
+                pendingDrains.Remove(first);
+                await first.ConfigureAwait(false);
             }
 
             await waitTask.ConfigureAwait(false);

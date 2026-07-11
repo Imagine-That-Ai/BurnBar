@@ -19,6 +19,7 @@ import {
   validateReleaseCertificationBundle,
   writeSha256Sums,
 } from "./validate-release-certification-evidence.mjs";
+import { sanitizeCertificationLog } from "./certification-log-sanitizer.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "../..");
@@ -44,10 +45,7 @@ function commandText(file, args) {
 }
 
 function sanitize(text) {
-  let value = text ?? "";
-  value = value.replace(/(authorization|bearer|access_token|refresh_token|id_token|client_secret|api_key|app_check|private_key|passphrase)\s*[:=]\s*[^\s,;]+/gi, "$1=[REDACTED]");
-  value = value.replace(/(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{20,}\.?[A-Za-z0-9_.-]*/g, "[REDACTED_JWT]");
-  return value;
+  return sanitizeCertificationLog(text);
 }
 
 function git(args) {

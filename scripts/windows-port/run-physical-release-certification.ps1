@@ -56,7 +56,8 @@ function Test-DirtyTree {
 function Sanitize-Text([string] $Text) {
     if ($null -eq $Text) { return '' }
     $redacted = $Text
-    $redacted = [regex]::Replace($redacted, '(?im)(authorization|bearer|access_token|refresh_token|id_token|client_secret|api_key|app_check|private_key|passphrase)\s*[:=]\s*[^\s,;]+', '$1=[REDACTED]')
+    $secretPattern = '(?im)(["'']?)(authorization|bearer|access_token|refresh_token|id_token|client_secret|api_key|app_check|private_key|passphrase)\1(\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|''(?:\\.|[^''\\])*''|(?:Bearer\s+)?[^\s,;]+)'
+    $redacted = [regex]::Replace($redacted, $secretPattern, '$1$2$1$3[REDACTED]')
     $redacted = [regex]::Replace($redacted, '(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{20,}\.?[A-Za-z0-9_.-]*', '[REDACTED_JWT]')
     return $redacted
 }
@@ -123,6 +124,8 @@ function Get-ArtifactIdentity {
 function Get-DeviceIdentity {
     $os = Get-CimInstance Win32_OperatingSystem | Select-Object -First 1
     $computer = Get-CimInstance Win32_ComputerSystem | Select-Object -First 1
+    $enclosure = Get-CimInstance Win32_SystemEnclosure | Select-Object -First 1
+    $systemProduct = Get-CimInstance Win32_ComputerSystemProduct | Select-Object -First 1
     $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
     $gpu = @(Get-CimInstance Win32_VideoController | ForEach-Object { [string]$_.Name })
     $storage = @(Get-CimInstance Win32_DiskDrive | ForEach-Object { [ordered]@{ model = [string]$_.Model; mediaType = [string]$_.MediaType; sizeBytes = [int64]$_.Size } })
@@ -132,15 +135,48 @@ function Get-DeviceIdentity {
         $tpmState = ('present={0};ready={1};managedAuthLevel={2}' -f $tpm.TpmPresent, $tpm.TpmReady, [string]$tpm.ManagedAuthLevel)
     } catch { $tpmState = 'unavailable' }
     $computerArch = [string]$os.OSArchitecture
+    $processorPlatform = switch ([int]$cpu.Architecture) {
+        9 { 'x64' }
+        12 { 'ARM64' }
+        default { '' }
+    }
     $identity = "$($computer.Manufacturer) $($computer.Model)"
     if ($PhysicalHardware -and $identity -match '(?i)(VMware|VirtualBox|QEMU|UTM|Parallels|KVM|Virtual Machine|Hyper-V)') {
         throw "PhysicalHardware was asserted but the host identity looks virtualized: $identity"
+    }
+    if ($PhysicalHardware -and $processorPlatform -ne $Platform) {
+        throw "Physical hardware architecture mismatch: expected $Platform, observed processor architecture $processorPlatform."
+    }
+    $assetTag = @([string]$enclosure.SMBIOSAssetTag, [string]$systemProduct.IdentifyingNumber) |
+        Where-Object {
+            -not [string]::IsNullOrWhiteSpace($_) -and
+            $_ -notmatch '(?i)^(none|unknown|default string|to be filled by o\.e\.m\.|not specified|system asset tag)$'
+        } |
+        Select-Object -First 1
+    if ($PhysicalHardware) {
+        $liveIdentity = [ordered]@{
+            manufacturer = [string]$computer.Manufacturer
+            model = [string]$computer.Model
+            assetTag = $assetTag
+        }
+        foreach ($field in $liveIdentity.Keys) {
+            $liveValue = ([string]$liveIdentity[$field]).Trim()
+            $attestedValue = ([string]$script:HardwareAttestation.$field).Trim()
+            if ([string]::IsNullOrWhiteSpace($liveValue)) {
+                throw "Physical hardware identity did not expose a live $field value."
+            }
+            if (-not [string]::Equals($liveValue, $attestedValue, [System.StringComparison]::OrdinalIgnoreCase)) {
+                throw "Hardware attestation $field does not match the current device."
+            }
+        }
     }
     $result = [ordered]@{
         kind = if ($PhysicalHardware) { 'physical-windows' } else { 'windows-vm-or-hosted-runner' }
         manufacturer = [string]$computer.Manufacturer
         model = [string]$computer.Model
-        architecture = $computerArch
+        assetTag = $assetTag
+        architecture = $Platform
+        osArchitecture = $computerArch
         osBuild = ('{0} {1} build {2}' -f $os.Caption, $os.Version, $os.BuildNumber)
         tpm = $tpmState
         cpu = [string]$cpu.Name
@@ -288,6 +324,7 @@ $gateProtocols = @{
     'media-computer-use-safety' = @('Use harmless fixtures: capture/camera/mic permissions, calls/share/transfer interruption and recovery, snapshot/quarantine/MOTW, UIA/SendInput capability and secure-desktop denial, approval downgrade, panic/watchdog/kill switches, audit tamper, phone auth/replay.')
     'store-update-lifecycle' = @('Use a private flight or controlled Store channel: clean install, upgrade, repair, rollback/recovery, uninstall/reinstall, activation, single-instance, valid/tampered/downgrade/offline feeds, Store/direct-download coexistence, and winget eligibility.')
 }
+$supplementalGateIds = @('accessibility-display') + @($gateProtocols.Keys)
 foreach ($gate in $gateProtocols.Keys) {
     if ($gate -like 'physical-performance-*' -and $gate -ne ('physical-performance-' + $Platform)) {
         $blockerId = 'ARCHITECTURE-NOT-UNDER-TEST'
@@ -318,8 +355,9 @@ if (-not [string]::IsNullOrWhiteSpace($SupplementalReceiptDirectory)) {
         $candidate = Get-Content -Raw -LiteralPath $sourceReceiptPath.FullName | ConvertFrom-Json
         if ($candidate.schema -ne $ReceiptSchema -or $candidate.status -ne 'PASS') { continue }
         if ($candidate.source.commitSha -ne (Get-CommitSha) -or $candidate.source.dirtyTree -eq $true) { continue }
-        if (-not $gateProtocols.ContainsKey([string]$candidate.gate)) { continue }
+        if ($supplementalGateIds -notcontains [string]$candidate.gate) { continue }
         if ($candidate.artifact.availability -ne 'recorded' -or $candidate.artifact.signature.result -ne 'verified') { continue }
+        if ($candidate.artifact.sha256 -ne $artifact.sha256 -or $candidate.artifact.architecture -ne $artifact.architecture) { continue }
         $candidateFiles = @()
         foreach ($sourceFile in @($candidate.evidence.files)) {
             $relativeSource = ([string]$sourceFile.path).Replace('/', '\')

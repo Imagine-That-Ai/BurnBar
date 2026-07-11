@@ -7,10 +7,12 @@ import { join } from "node:path";
 import {
   BUNDLE_SCHEMA,
   RECEIPT_SCHEMA,
+  REQUIRED_GATE_IDS,
   validateReceipt,
   validateReleaseCertificationBundle,
   writeSha256Sums,
 } from "./validate-release-certification-evidence.mjs";
+import { sanitizeCertificationLog } from "./certification-log-sanitizer.mjs";
 
 const COMMIT = "0123456789abcdef0123456789abcdef01234567";
 
@@ -92,14 +94,77 @@ function receipt(gate, status = "PASS") {
   const result = validateReleaseCertificationBundle(bundleDir, { expectedCommit: COMMIT, requireAllGates: false });
   assert.equal(result.ok, true, result.errors.join("\n"));
 
-  const brokenReceipt = JSON.parse(readFileSync(receiptPath, "utf8"));
+  function validateState(
+    receiptValue,
+    manifestValue,
+    options = { requireAllGates: false },
+  ) {
+    writeJson(receiptPath, receiptValue);
+    manifestValue.receipts[0].sha256 = createHash("sha256")
+      .update(readFileSync(receiptPath))
+      .digest("hex");
+    writeJson(join(bundleDir, "certification-manifest.json"), manifestValue);
+    writeSha256Sums(bundleDir);
+    return validateReleaseCertificationBundle(bundleDir, options);
+  }
+
+  const brokenReceipt = structuredClone(value);
   brokenReceipt.status = "BLOCKED";
   brokenReceipt.blocker = null;
-  writeJson(receiptPath, brokenReceipt);
-  writeSha256Sums(bundleDir);
-  const blockedResult = validateReleaseCertificationBundle(bundleDir);
+  const brokenManifest = structuredClone(manifest);
+  brokenManifest.gates[0].status = "BLOCKED";
+  const blockedResult = validateState(brokenReceipt, brokenManifest);
   assert.equal(blockedResult.ok, false);
   assert.match(blockedResult.errors.join("\n"), /requires a named blocker/);
+
+  const wrongGateManifest = structuredClone(manifest);
+  wrongGateManifest.gates[0].id = "physical-performance-x64";
+  const wrongGateResult = validateState(value, wrongGateManifest);
+  assert.equal(wrongGateResult.ok, false);
+  assert.match(
+    wrongGateResult.errors.join("\n"),
+    /does not match receipt gate/,
+  );
+
+  const staleReceipt = structuredClone(value);
+  staleReceipt.source.commitSha = "abcdef0123456789abcdef0123456789abcdef01";
+  const staleResult = validateState(staleReceipt, structuredClone(manifest));
+  assert.equal(staleResult.ok, false);
+  assert.match(
+    staleResult.errors.join("\n"),
+    /receipt commit does not match bundle source commit/,
+  );
+
+  const falseGoManifest = structuredClone(manifest);
+  falseGoManifest.overallVerdict = "GO";
+  const falseGoResult = validateState(value, falseGoManifest);
+  assert.equal(falseGoResult.ok, false);
+  assert.match(
+    falseGoResult.errors.join("\n"),
+    /GO requires every required gate to be present and PASS/,
+  );
+
+  const blockedGoReceipt = structuredClone(value);
+  blockedGoReceipt.status = "BLOCKED";
+  blockedGoReceipt.blocker = {
+    id: "TEST-BLOCKER",
+    owner: "test",
+    missing: "required live evidence",
+    recovery: "run the required protocol",
+  };
+  const blockedGoManifest = structuredClone(manifest);
+  blockedGoManifest.overallVerdict = "GO";
+  blockedGoManifest.gates = REQUIRED_GATE_IDS.map((id) => ({
+    id,
+    status: id === "local-automated-checks" ? "BLOCKED" : "PASS",
+    receipts: ["receipts/local-automated-checks.json"],
+  }));
+  const blockedGoResult = validateState(blockedGoReceipt, blockedGoManifest);
+  assert.equal(blockedGoResult.ok, false);
+  assert.match(
+    blockedGoResult.errors.join("\n"),
+    /GO requires every required gate to be present and PASS/,
+  );
 }
 
 {
@@ -112,6 +177,28 @@ function receipt(gate, status = "PASS") {
   assert.equal(result.ok, false);
   assert.match(result.errors.join("\n"), /physical gate cannot PASS/);
   assert.match(result.errors.join("\n"), /physical PASS requires a recorded artifact/);
+}
+
+{
+  const value = receipt("physical-performance-x64");
+  value.device.kind = "physical-windows";
+  value.device.architecture = "ARM64";
+  value.artifact.architecture = "ARM64";
+  value.artifact.availability = "recorded";
+  value.artifact.sha256 = "a".repeat(64);
+  value.artifact.workflowRunId = "123";
+  value.artifact.workflowRunUrl = "https://example.invalid/runs/123";
+  value.artifact.signature = {
+    result: "verified",
+    identity: "test-signing-identity",
+  };
+  value.evidence.files[0].sha256 = createHash("sha256")
+    .update(readFileSync(join(value.root, "observation.log")))
+    .digest("hex");
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /requires x64 device architecture/);
+  assert.match(result.errors.join("\n"), /requires x64 artifact architecture/);
 }
 
 {
@@ -131,6 +218,22 @@ function receipt(gate, status = "PASS") {
   value.evidence.files[0].sha256 = createHash("sha256").update(readFileSync(join(value.root, "observation.log"))).digest("hex");
   const result = validateReceipt(value, { bundleDir: value.root });
   assert.equal(result.ok, true, result.errors.join("\n"));
+}
+
+{
+  const secret = "certification-secret-canary";
+  const sanitized = sanitizeCertificationLog(
+    [
+      `"access_token": "${secret}"`,
+      `'client_secret'='${secret}'`,
+      `api_key=${secret}`,
+      `Authorization: Bearer ${secret}`,
+    ].join("\n"),
+  );
+  assert.doesNotMatch(sanitized, new RegExp(secret, "g"));
+  assert.equal((sanitized.match(/\[REDACTED\]/g) ?? []).length, 4);
+  assert.match(sanitized, /"access_token": \[REDACTED\]/);
+  assert.match(sanitized, /'client_secret'=\[REDACTED\]/);
 }
 
 console.log("PASS: release certification evidence validator tests");

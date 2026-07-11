@@ -26,6 +26,10 @@ export const REQUIRED_GATE_IDS = [
 
 const STATUSES = new Set(["PASS", "FAIL", "BLOCKED", "NOT_RUN"]);
 const PHYSICAL_GATES = new Set(REQUIRED_GATE_IDS.slice(1));
+const PHYSICAL_PERFORMANCE_ARCHITECTURES = new Map([
+  ["physical-performance-x64", "x64"],
+  ["physical-performance-arm64", "arm64"],
+]);
 const REQUIRED_RECEIPT_FIELDS = [
   "schema",
   "status",
@@ -49,6 +53,15 @@ function isRecord(value) {
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function normalizeArchitecture(value) {
+  const normalized = String(value ?? "")
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9]/g, "");
+  if (["arm64", "aarch64"].includes(normalized)) return "arm64";
+  if (["x64", "amd64", "x8664"].includes(normalized)) return "x64";
+  return normalized;
 }
 
 function sha256(path) {
@@ -234,6 +247,13 @@ export function validateReceipt(receipt, options = {}) {
   if (PHYSICAL_GATES.has(receipt.gate) && receipt.status === "PASS") {
     if (receipt.artifact?.availability !== "recorded") errors.push(`${label}: physical PASS requires a recorded artifact`);
     if (receipt.source?.dirtyTree === true) errors.push(`${label}: physical PASS cannot use a dirty source tree`);
+    const expectedArchitecture = PHYSICAL_PERFORMANCE_ARCHITECTURES.get(receipt.gate);
+    if (expectedArchitecture && normalizeArchitecture(receipt.device?.architecture) !== expectedArchitecture) {
+      errors.push(`${label}: ${receipt.gate} requires ${expectedArchitecture} device architecture`);
+    }
+    if (expectedArchitecture && normalizeArchitecture(receipt.artifact?.architecture) !== expectedArchitecture) {
+      errors.push(`${label}: ${receipt.gate} requires ${expectedArchitecture} artifact architecture`);
+    }
   }
 
   return { ok: errors.length === 0, errors };
@@ -321,6 +341,9 @@ export function validateReleaseCertificationBundle(bundleDir, options = {}) {
     const result = validateReceipt(receipt, { bundleDir: root, label: entry.path });
     errors.push(...result.errors);
     receiptByPath.set(entry.path, receipt);
+    if (receipt.source?.commitSha !== manifest.source?.commitSha) {
+      errors.push(`${label}: receipt commit does not match bundle source commit`);
+    }
     if (entry.sha256 && entry.sha256 !== sha256(path)) errors.push(`${label}: receipt sha256 mismatch`);
   }
 
@@ -338,6 +361,8 @@ export function validateReleaseCertificationBundle(bundleDir, options = {}) {
     for (const path of listed) {
       if (!receiptPaths.has(path)) {
         errors.push(`bundle: gate ${gate.id} references unlisted receipt ${path}`);
+      } else if (receiptByPath.get(path)?.gate !== gate.id) {
+        errors.push(`bundle: gate ${gate.id} does not match receipt gate in ${path}`);
       } else if (receiptByPath.get(path)?.status !== gate.status) {
         errors.push(`bundle: gate ${gate.id} status does not match ${path}`);
       }
@@ -346,6 +371,19 @@ export function validateReleaseCertificationBundle(bundleDir, options = {}) {
   if (options.requireAllGates !== false) {
     for (const id of REQUIRED_GATE_IDS) {
       if (!gateById.has(id)) errors.push(`bundle: required gate is missing: ${id}`);
+    }
+  }
+  if (manifest.overallVerdict === "GO") {
+    const missingRequiredGate = REQUIRED_GATE_IDS.some(
+      (id) => !gateById.has(id),
+    );
+    const nonPassingGate = [...gateById.values()].some(
+      (gate) => gate.status !== "PASS",
+    );
+    if (missingRequiredGate || nonPassingGate) {
+      errors.push(
+        "bundle: overallVerdict GO requires every required gate to be present and PASS",
+      );
     }
   }
 
