@@ -76,6 +76,18 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
             throw BurnBarChatThreadServiceError.unavailable("the database path is empty")
         }
 
+        let databaseURL = URL(fileURLWithPath: path)
+        do {
+            try FileManager.default.createDirectory(
+                at: databaseURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+        } catch {
+            throw BurnBarChatThreadServiceError.unavailable(
+                "database directory could not be created: \(error.localizedDescription)"
+            )
+        }
+
         var opened: OpaquePointer?
         let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX
         let result = sqlite3_open_v2(path, &opened, flags, nil)
@@ -260,7 +272,7 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
             return BurnBarChatMessageAppendResponse(message: existing, inserted: false)
         }
 
-        let storedTimestamp = timestamp.timeIntervalSinceReferenceDate
+        let storedTimestamp = timestamp.timeIntervalSince1970
         try execute(
             """
             INSERT INTO chat_threads (id, createdAt, updatedAt)
