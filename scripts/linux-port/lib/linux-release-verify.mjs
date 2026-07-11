@@ -36,6 +36,9 @@ export function verifyLinuxReleaseCandidate(input) {
     provenance,
     latest,
     smokeSummary,
+    distributionConfig,
+    repositoryClosure,
+    repositoryLifecycle,
     publicKeyPem,
     expectedHead,
     expectedVersion,
@@ -190,7 +193,10 @@ export function verifyLinuxReleaseCandidate(input) {
     'architectureSessions',
     'packageSmoke',
     'updateFeed',
-    'updateFeedSignature'
+    'updateFeedSignature',
+    'repositoryClosure',
+    'repositoryClosureSignature',
+    'repositoryLifecycle'
   ];
   const sidecarBytes = new Map();
   for (const kind of requiredSidecars) {
@@ -221,6 +227,95 @@ export function verifyLinuxReleaseCandidate(input) {
     ) {
       fail(`${kind} is not identically bound by the package closure and attested provenance.`);
     }
+  }
+
+  for (const kind of ['repositoryClosure', 'repositoryClosureSignature', 'repositoryLifecycle']) {
+    const closureRecord = normalizeSidecar(closure?.sidecars?.[kind]);
+    const provenanceRecord = normalizeSidecar(provenance?.repositories?.[kind]);
+    if (
+      !closureRecord
+      || !provenanceRecord
+      || closureRecord.file !== provenanceRecord.file
+      || closureRecord.sha256 !== provenanceRecord.sha256
+      || closureRecord.size !== provenanceRecord.size
+    ) {
+      fail(`${kind} is not identically bound by the package closure and attested provenance.`);
+    }
+  }
+
+  if (repositoryClosure?.schemaVersion !== 1
+      || repositoryClosure?.version !== version
+      || repositoryClosure?.gitCommit !== commit) {
+    fail('repository closure identity does not match the release closure.');
+  }
+  if (!['stable', 'prerelease', 'nightly'].includes(repositoryClosure?.channel)) {
+    fail('repository closure channel is invalid.');
+  }
+  if (repositoryClosure?.channel !== latest?.channel) {
+    fail('repository closure channel does not match the signed update feed.');
+  }
+  if (repositoryClosure?.packageSetRootSha256 !== closure?.repositoryPackageSetRootSha256
+      || repositoryClosure?.packageSetRootSha256 !== provenance?.repositories?.packageSetRootSha256) {
+    fail('repository package-set root is not consistently bound by closure and provenance.');
+  }
+  if (repositoryClosure?.signing?.fingerprint !== distributionConfig?.signing?.fingerprint
+      || repositoryClosure?.signing?.fingerprint !== provenance?.repositories?.signingFingerprint) {
+    fail('repository signing fingerprint is not consistently pinned.');
+  }
+  if (repositoryClosure?.signing?.signingFingerprint !== distributionConfig?.signing?.signingFingerprint
+      || repositoryClosure?.signing?.signingFingerprint !== provenance?.repositories?.signingSubkeyFingerprint) {
+    fail('repository signing-subkey fingerprint is not consistently pinned.');
+  }
+  const repositoryClosureBytes = sidecarBytes.get('repositoryClosure');
+  if (repositoryClosureBytes) {
+    try {
+      if (JSON.stringify(JSON.parse(repositoryClosureBytes.toString('utf8'))) !== JSON.stringify(repositoryClosure)) {
+        fail('parsed repository closure does not equal the hash-bound sidecar.');
+      }
+    } catch {
+      fail('hash-bound repository closure is invalid JSON.');
+    }
+  }
+  const repositoryLifecycleBytes = sidecarBytes.get('repositoryLifecycle');
+  if (repositoryLifecycleBytes) {
+    try {
+      if (JSON.stringify(JSON.parse(repositoryLifecycleBytes.toString('utf8'))) !== JSON.stringify(repositoryLifecycle)) {
+        fail('parsed repository lifecycle does not equal the hash-bound sidecar.');
+      }
+    } catch {
+      fail('hash-bound repository lifecycle is invalid JSON.');
+    }
+  }
+  if (repositoryLifecycle?.schemaVersion !== 1
+      || repositoryLifecycle?.version !== version
+      || repositoryLifecycle?.channel !== repositoryClosure?.channel
+      || repositoryLifecycle?.repositoryClosureSha256 !== normalizeSidecar(closure?.sidecars?.repositoryClosure)?.sha256
+      || repositoryLifecycle?.passed !== true) {
+    fail('repository lifecycle evidence is missing, stale, or not green.');
+  }
+  const expectedRepositoryLifecycle = {
+    architectures: ['aarch64', 'x86_64'],
+    operations: ['install', 'remove'],
+    apt: [
+      { passed: true, architecture: 'amd64', platform: 'linux/amd64' },
+      { passed: true, architecture: 'arm64', platform: 'linux/arm64' }
+    ],
+    rpm: [
+      { passed: true, architecture: 'x86_64', platform: 'linux/amd64' },
+      { passed: true, architecture: 'aarch64', platform: 'linux/arm64' }
+    ]
+  };
+  for (const [key, expected] of Object.entries(expectedRepositoryLifecycle)) {
+    if (JSON.stringify(repositoryLifecycle?.[key]) !== JSON.stringify(expected)) {
+      fail(`repository lifecycle ${key} coverage is incomplete.`);
+    }
+  }
+  if (JSON.stringify(repositoryClosure?.lifecycleRequired) !== JSON.stringify({
+    architectures: expectedRepositoryLifecycle.architectures,
+    operations: expectedRepositoryLifecycle.operations,
+    packageManagers: ['apt', 'dnf']
+  })) {
+    fail('repository closure lifecycle requirement is not canonical.');
   }
 
   const checksumBytes = sidecarBytes.get('checksums');

@@ -184,10 +184,10 @@ export function verifyLinuxWorkflowWiring(input) {
     'Pre-attestation Linux release verification',
     'Attest Linux release sidecars and packages',
     'Final Linux release verification',
-    'Publish Linux GitHub release',
     'Configure branded Linux update origin',
     'Publish signed update feed to downloads origin',
-    'Verify live Linux update feed after publish'
+    'Verify live Linux update feed after publish',
+    'Publish Linux GitHub release'
   ], 'release workflow');
 
   if (/verify-linux-release\.mjs[^\n]*--allow-blocked/.test(input.release)) {

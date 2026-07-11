@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "repositoryMetadata": {
+    "aptValidForHours": 168,
+    "signingKeyMinimumRemainingDays": 30
+  },
+  "apt": {
+    "status": "source-ready",
+    "baseUrl": "https://downloads.burnbar.ai/linux/apt",
+    "origin": "OpenBurnBar",
+    "label": "OpenBurnBar Linux",
+    "component": "main",
+    "architectures": {
+      "aarch64": "arm64",
+      "x86_64": "amd64"
+    },
+    "sourcesTemplate": "packaging/linux/debian/openburnbar.sources.template",
+    "installedKeyring": "/usr/share/keyrings/openburnbar-archive-keyring.gpg"
+  },
+  "rpm": {
+    "status": "source-ready",
+    "baseUrl": "https://downloads.burnbar.ai/linux/rpm",
+    "repositoryId": "openburnbar",
+    "repositoryName": "OpenBurnBar Linux",
+    "architectures": {
+      "aarch64": "aarch64",
+      "x86_64": "x86_64"
+    },
+    "repoTemplate": "packaging/linux/rpm/openburnbar.repo.template",
+    "installedKey": "/etc/pki/rpm-gpg/RPM-GPG-KEY-openburnbar"
+  },
+  "signing": {
+    "status": "unconfigured",
+    "publicKey": null,
+    "fingerprint": null,
+    "signingFingerprint": null,
+    "provisioning": "required"
+  }
+}

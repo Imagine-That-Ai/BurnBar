@@ -262,7 +262,7 @@ jobs:
       OPENBURNBAR_LINUX_EVIDENCE_OUT: ${{ github.workspace }}/.linux-evidence
       OPENBURNBAR_LINUX_RELEASE_OUT: ${{ github.workspace }}/.linux-release
       OPENBURNBAR_LINUX_SHARDS_DIR: ${{ github.workspace }}/.linux-shards
-      OPENBURNBAR_LINUX_RELEASE_BASE_URL: https://github.com/Imagine-That-Ai/BurnBar/releases/download/${{ needs.resolve-release.outputs.tag }}
+      OPENBURNBAR_LINUX_RELEASE_BASE_URL: https://downloads.burnbar.ai/linux/releases/${{ needs.resolve-release.outputs.tag }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -299,6 +299,61 @@ jobs:
             --channel '${{ needs.resolve-release.outputs.channel }}'
           unset signing_key
 
+      - name: Build repository toolchain image
+        run: docker build -t openburnbar-linux-toolchain:mission-001 tools/linux-toolchain
+
+      - name: Build signed apt and RPM repositories
+        env:
+          OPENBURNBAR_LINUX_REPOSITORY_GPG_PRIVATE_KEY: ${{ secrets.OPENBURNBAR_LINUX_REPOSITORY_GPG_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          repository_signing_key="$OPENBURNBAR_LINUX_REPOSITORY_GPG_PRIVATE_KEY"
+          unset OPENBURNBAR_LINUX_REPOSITORY_GPG_PRIVATE_KEY
+          printf '%s' "$repository_signing_key" | docker run --rm -i \
+            -e OPENBURNBAR_LINUX_RELEASE_OUT=/workspace/.linux-release \
+            -v "$PWD:/workspace" \
+            -w /workspace \
+            openburnbar-linux-toolchain:mission-001 \
+            bash -c "git config --global --add safe.directory /workspace </dev/null && \
+            node scripts/linux-port/build-linux-repositories.mjs \
+            --private-key-stdin \
+            --version '${{ needs.resolve-release.outputs.version }}' \
+            --channel '${{ needs.resolve-release.outputs.channel }}'"
+          unset repository_signing_key
+
+      - name: Take ownership of repository output
+        run: sudo chown -R "$(id -u):$(id -g)" "$OPENBURNBAR_LINUX_RELEASE_OUT/repositories"
+
+      - name: Verify signed apt and RPM repositories
+        run: >
+          docker run --rm
+          -e OPENBURNBAR_LINUX_RELEASE_OUT=/workspace/.linux-release
+          -v "$PWD:/workspace"
+          -w /workspace
+          openburnbar-linux-toolchain:mission-001
+          node scripts/linux-port/verify-linux-repositories.mjs
+          --version '${{ needs.resolve-release.outputs.version }}'
+          --channel '${{ needs.resolve-release.outputs.channel }}'
+
+      - name: Enable cross-architecture repository clients
+        # QEMU is required because repository install/remove proof covers both
+        # release architectures from the aggregate x86_64 release job.
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+        with:
+          platforms: arm64
+
+      - name: Verify clean apt and dnf repository lifecycle
+        env:
+          OPENBURNBAR_LINUX_REPOSITORY_VERSION: ${{ needs.resolve-release.outputs.version }}
+          OPENBURNBAR_LINUX_REPOSITORY_CHANNEL: ${{ needs.resolve-release.outputs.channel }}
+        run: bash scripts/linux-port/verify-linux-repository-lifecycle.sh
+
+      - name: Bind repository lifecycle into release closure
+        run: >
+          node scripts/linux-port/finalize-linux-repositories.mjs
+          --version '${{ needs.resolve-release.outputs.version }}'
+          --channel '${{ needs.resolve-release.outputs.channel }}'
+
       - name: Pre-attestation Linux release verification
         run: >
           node scripts/linux-port/verify-linux-release.mjs
@@ -308,7 +363,7 @@ jobs:
       - name: Attest Linux release sidecars and packages
         run: |
           set -euo pipefail
-          mapfile -t files < <(find "$OPENBURNBAR_LINUX_RELEASE_OUT" -type f \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name 'openburnbar-daemon-*' -o -name '*.spdx.json' -o -name '*.openvex.json' -o -name '*checksums.txt' -o -name '*source-*.tar' -o -name '*parity-attestation.json' -o -name '*provenance-predicate.json' -o -name 'latest-linux.draft.json' \) | sort)
+          mapfile -t files < <(find "$OPENBURNBAR_LINUX_RELEASE_OUT" -type f \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name 'openburnbar-daemon-*' -o -name '*.spdx.json' -o -name '*.openvex.json' -o -name '*checksums.txt' -o -name '*source-*.tar' -o -name '*parity-attestation.json' -o -name '*provenance-predicate.json' -o -name 'repository-closure.json' -o -name 'repository-lifecycle.json' -o -name 'latest-linux.draft.json' \) | sort)
           test "${#files[@]}" -gt 0
           for file in "${files[@]}"; do
             predicate="${file}.predicate.json"
@@ -329,32 +384,6 @@ jobs:
           node scripts/linux-port/verify-linux-release.mjs
           --phase final
           --version '${{ needs.resolve-release.outputs.version }}'
-
-      - name: Publish Linux GitHub release
-        if: needs.resolve-release.outputs.publish_allowed == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          tag="${{ needs.resolve-release.outputs.tag }}"
-          art="$OPENBURNBAR_LINUX_RELEASE_OUT"
-          cp packaging/linux/openburnbar-linux-ed25519.pub.pem "$art/"
-          cp "$art/latest-linux.draft.json" "$art/latest-linux.json"
-          mapfile -t assets < <(find "$art/artifacts" "$art/sidecars" "$art" -maxdepth 2 -type f \
-            \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name 'openburnbar-daemon-*' \
-               -o -name '*.ed25519.sig' -o -name '*.sigstore.json' -o -name '*.spdx.json' \
-               -o -name '*.openvex.json' -o -name '*checksums*.txt' -o -name '*source-*.tar' \
-               -o -name '*parity-attestation.json' -o -name '*provenance-predicate.json' \
-               -o -name 'latest-linux.json' \
-               -o -name 'openburnbar-linux-ed25519.pub.pem' \) | sort -u)
-          prerelease=""
-          if [[ "${{ github.event_name }}" != "workflow_dispatch" || "${{ inputs.allow_prerelease }}" = "true" ]]; then
-            prerelease="--prerelease"
-          fi
-          gh release create "$tag" $prerelease \
-            --title "OpenBurnBar Linux ${{ needs.resolve-release.outputs.version }}" \
-            --notes "OpenBurnBar Linux candidate for aarch64 and x86_64. Artifacts include Ed25519 signatures, Sigstore bundles, source, SBOM, VEX, provenance, and parity attestation." \
-            "${assets[@]}"
 
       - name: Configure branded Linux update origin
         if: needs.resolve-release.outputs.publish_allowed == 'true'
@@ -378,6 +407,34 @@ jobs:
       - name: Verify live Linux update feed after publish
         if: needs.resolve-release.outputs.publish_allowed == 'true'
         run: node scripts/linux-port/check-linux-update-feed.mjs --url https://downloads.burnbar.ai/latest-linux.json
+
+      - name: Publish Linux GitHub release
+        if: needs.resolve-release.outputs.publish_allowed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ needs.resolve-release.outputs.tag }}"
+          art="$OPENBURNBAR_LINUX_RELEASE_OUT"
+          cp packaging/linux/openburnbar-linux-ed25519.pub.pem "$art/"
+          cp "$art/latest-linux.draft.json" "$art/latest-linux.json"
+          mapfile -t assets < <(find "$art/artifacts" "$art/sidecars" "$art" -maxdepth 2 -type f \
+            \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name 'openburnbar-daemon-*' \
+               -o -name '*.ed25519.sig' -o -name '*.asc' -o -name '*.sigstore.json' -o -name '*.spdx.json' \
+               -o -name '*.openvex.json' -o -name '*checksums*.txt' -o -name '*source-*.tar' \
+               -o -name '*parity-attestation.json' -o -name '*provenance-predicate.json' \
+               -o -name 'repository-closure.json' -o -name 'repository-closure.json.asc' \
+               -o -name 'repository-lifecycle.json' \
+               -o -name 'latest-linux.json' \
+               -o -name 'openburnbar-linux-ed25519.pub.pem' \) | sort -u)
+          prerelease=""
+          if [[ "${{ github.event_name }}" != "workflow_dispatch" || "${{ inputs.allow_prerelease }}" = "true" ]]; then
+            prerelease="--prerelease"
+          fi
+          gh release create "$tag" $prerelease \
+            --title "OpenBurnBar Linux ${{ needs.resolve-release.outputs.version }}" \
+            --notes "OpenBurnBar Linux candidate for aarch64 and x86_64. Artifacts include Ed25519 signatures, Sigstore bundles, source, SBOM, VEX, provenance, and parity attestation." \
+            "${assets[@]}"
 
       - name: Upload Linux release evidence
         if: always()

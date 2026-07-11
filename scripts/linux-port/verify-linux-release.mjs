@@ -45,6 +45,10 @@ function safeReadJson(file, label) {
 
 const closurePath = path.join(outDir, 'package-closure.json');
 const closure = safeReadJson(closurePath, 'package closure');
+const distributionConfig = safeReadJson(
+  path.join(repoRoot, manifest.distributionRepositories?.config ?? 'packaging/linux/distribution-channels.json'),
+  'distribution repository config'
+);
 const latestPath = path.join(outDir, manifest.updateMetadata.draftName);
 const latest = safeReadJson(latestPath, 'latest-linux draft');
 const provenanceRecord = closure.sidecars?.provenancePredicate;
@@ -55,6 +59,14 @@ const provenance = provenanceRel
 const smokeSummary = safeReadJson(
   path.join(outDir, 'smoke/package-smoke-summary.json'),
   'package smoke summary'
+);
+const repositoryClosure = safeReadJson(
+  path.join(outDir, 'repositories/repository-closure.json'),
+  'repository closure'
+);
+const repositoryLifecycle = safeReadJson(
+  path.join(outDir, 'repositories/repository-lifecycle.json'),
+  'repository lifecycle evidence'
 );
 const publicKeyPath = path.join(repoRoot, manifest.signing.publicKey);
 const publicKeyPem = fs.existsSync(publicKeyPath) ? fs.readFileSync(publicKeyPath, 'utf8') : '';
@@ -72,12 +84,28 @@ const pure = verifyLinuxReleaseCandidate({
   provenance,
   latest,
   smokeSummary,
+  distributionConfig,
+  repositoryClosure,
+  repositoryLifecycle,
   publicKeyPem,
   expectedHead,
   expectedVersion,
   phase
 });
 failures.push(...pure.failures);
+
+const repositoryVerification = runStep('node', [
+  'scripts/linux-port/verify-linux-repositories.mjs',
+  '--version', expectedVersion,
+  '--channel', latest.channel ?? 'invalid'
+], { cwd: repoRoot, env: process.env });
+if (repositoryVerification.exitCode !== 0) {
+  fail('signed apt/RPM repository verification failed.', {
+    command: repositoryVerification.command,
+    stdout: repositoryVerification.stdout,
+    stderr: repositoryVerification.stderr
+  });
+}
 
 for (const [kind, relPath] of Object.entries(manifest.tailMetadata ?? {})) {
   const full = path.resolve(repoRoot, relPath);
@@ -141,6 +169,27 @@ if (phase === 'final' && closure.artifacts) {
         artifact: artifact.file,
         stderr: verification.stderr
       });
+    }
+  }
+  for (const sidecarKind of ['repositoryClosure', 'repositoryLifecycle']) {
+    const record = closure.sidecars?.[sidecarKind];
+    const file = typeof record === 'string' ? record : record?.file;
+    if (!file) continue;
+    const bundle = `${file}.sigstore.json`;
+    if (!fs.existsSync(path.join(repoRoot, bundle))) {
+      fail(`final Sigstore bundle is missing: ${bundle}`);
+      continue;
+    }
+    const verification = runStep('cosign', [
+      'verify-blob-attestation',
+      '--bundle', path.join(repoRoot, bundle),
+      '--type', 'https://openburnbar.dev/attestations/linux-release-artifact/v1',
+      '--certificate-identity', identity,
+      '--certificate-oidc-issuer', manifest.signing.cosignIssuer,
+      path.join(repoRoot, file)
+    ]);
+    if (verification.exitCode !== 0) {
+      fail('repository Sigstore bundle verification failed.', { file, stderr: verification.stderr });
     }
   }
 }

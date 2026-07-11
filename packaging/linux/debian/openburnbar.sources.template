@@ -1,0 +1,6 @@
+Types: deb
+URIs: {{APT_BASE_URL}}
+Suites: {{CHANNEL}}
+Components: {{APT_COMPONENT}}
+Architectures: amd64 arm64
+Signed-By: {{APT_INSTALLED_KEYRING}}

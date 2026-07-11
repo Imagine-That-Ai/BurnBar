@@ -65,7 +65,7 @@ test('invalid architecture, sha, URL, duplicate, and missing x86 AppImage fail',
   const failures = validateFeedDocument(feed);
   assert.ok(failures.some((failure) => /architecture is invalid/.test(failure)));
   assert.ok(failures.some((failure) => /SHA-256 is invalid/.test(failure)));
-  assert.ok(failures.some((failure) => /not allowlisted HTTPS/.test(failure)));
+  assert.ok(failures.some((failure) => /not an allowed release path/.test(failure)));
   assert.ok(failures.some((failure) => /duplicate/.test(failure)));
   assert.ok(failures.some((failure) => /missing AppImage architecture/.test(failure)));
 });

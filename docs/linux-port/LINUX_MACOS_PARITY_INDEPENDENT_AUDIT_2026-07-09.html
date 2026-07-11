@@ -264,7 +264,8 @@
 shell, all six persisted dashboard layouts, shared daemon RPC access, canonical
 XDG path handling, live usage/quota data, missions, durable memory decisions,
 database indexing/watch recovery, Browser Computer Use plus guarded system input,
-and AppImage/deb/rpm construction. The remediation wave also replaced the false-
+AppImage/deb/rpm construction, and a source-level signed apt/RPM repository
+builder and verifier. The remediation wave also replaced the false-
 green certification baseline, added Linux-native secret custody, moved gateway
 authentication behind native proxies, introduced a runtime capability manifest,
 added installed-app accessibility and matched-performance gates, and implemented
@@ -338,11 +339,12 @@ verification, restart recovery, and a renderer contract that excludes tokens,
 callback URLs, paths, arguments, and terminal output. This closes the missing
 source workflow in <code>P-27</code>; installed provider-login certification and isolated
 multi-account profile switching remain open.
-The largest certification gaps are an x86_64
-installed session, a prior-version update/rollback baseline, a valid public
-signed feed, and real GNOME Wayland/KDE/wlroots proof. Package construction is
-now green for both architectures, but that does not substitute for those live
-installed-product outcomes.</p>
+The largest certification gaps are an x86_64 installed session, a prior-version
+update/rollback baseline, a valid public signed feed, public apt/RPM mirrors,
+and real GNOME Wayland/KDE/wlroots proof. Package construction is now green for
+both architectures, and signed apt/RPM repository construction is implemented
+in source, but that does not substitute for public-mirror verification or live
+installed-product outcomes. AUR and Flatpak remain explicitly unpromoted.</p>
 <p>The old parity claim is now disabled. The generated product ledger contains all
 40 audited requirements, reports <strong>0 ready / 40 blocked</strong>, and cannot promote a
 stale or incomplete claim. Release verification now checks artifact bytes,
@@ -922,7 +924,7 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-25</td>
 <td>Updates</td>
 <td>Automatic checks, channel, install/restart truth</td>
-<td>Native signed-feed availability check fails closed; valid public feed and package-manager install/restart/rollback proof remain open</td>
+<td>Native signed-feed availability check fails closed and signed apt/RPM repository closure is source-implemented; valid public feed/mirrors and package-manager install/restart/rollback proof remain open, while AUR/Flatpak remain unpromoted</td>
 <td>Partial</td>
 <td>High</td>
 </tr>
@@ -1733,10 +1735,17 @@ Ed25519 signatures, validates schema/product/platform/channel/semantic version,
 requires both supported architectures, rejects downgrade/replay and untrusted
 URLs, and exposes only typed validated state to the renderer. The installed
 <code>.deb</code> route was exercised through AT-SPI and correctly rendered <strong>Update
-metadata rejected</strong> against the currently invalid public endpoint. The
-package-manager-owned install/rollback lifecycle, signed public feed,
-two-architecture artifacts, and prior-version upgrade/rollback evidence remain
-open; this row is therefore still <strong>Partial</strong>, not closed.</p>
+metadata rejected</strong> against the currently invalid public endpoint. A follow-on
+source packet builds and independently verifies signed, architecture-specific
+apt and RPM repositories after aggregate release assembly. Apt uses signed
+Release/InRelease metadata; RPM package copies and <code>repomd.xml</code> use the same
+pinned OpenPGP identity so clients can enforce package and repository signature
+checks. The production channel config intentionally keeps that identity
+unconfigured until a recoverable public key/fingerprint and matching private
+CI secret are provisioned. The package-manager-owned install/rollback
+lifecycle, signed public feed and mirrors, exact-candidate repository closure,
+and prior-version upgrade/rollback evidence remain open; AUR and Flatpak remain
+explicitly unpromoted. This row is therefore still <strong>Partial</strong>, not closed.</p>
 <ul>
 <li><strong>Baseline difference (2026-07-09):</strong> macOS exposes version, automatic checks, channel, install, and
 restart behavior. Linux appropriately delegates installation to package
@@ -2104,9 +2113,9 @@ queueing, locked keyring, and redaction.</li>
 </tr>
 <tr>
 <td>LNX-CHANNEL-001</td>
-<td>Open</td>
-<td>Package construction exists</td>
-<td>Signed apt/rpm metadata, AUR/Flatpak truth, and channel install lifecycle</td>
+<td>Source foundation implemented; deployment and lifecycle blocked</td>
+<td>Fail-closed apt/RPM repository builder and verifier, architecture-specific and checksum-addressed indices, signed seven-day apt expiry, pinned signing-subkey capability/strength/lifetime policy and signature-identity verification, immutable RPM header/payload comparison, feed/channel and immutable release-package root binding, R2-before-GitHub publish order, and explicit AUR/Flatpak non-promotion</td>
+<td>Provision the recoverable production OpenPGP public key/fingerprints and CI private-key secret; add one-switch RPM repository activation and scheduled pre-expiry apt metadata refresh at the delivery layer; build and publish the exact-candidate closure; verify public copies and interrupted-publish rollback; prove clean install, update, rollback, and uninstall on both architectures; resolve AUR/Flatpak promotion decisions</td>
 </tr>
 <tr>
 <td>LNX-EVT-001</td>
@@ -2292,8 +2301,8 @@ truth-sync, not the first time behavior is documented.</p>
 <tr>
 <td>LNX-CHANNEL-001</td>
 <td>LNX-PKG-001, LNX-REL-VERIFY-001</td>
-<td>apt and rpm repository metadata/signing, correct AUR recipe, and a portal-safe Flatpak channel</td>
-<td>Each declared channel installs the correct architecture and verifies repository/package metadata; unpromoted channels are explicitly labeled</td>
+<td>Fail-closed apt/RPM metadata construction, bounded apt freshness, pinned signing-subkey policy and identity proof, immutable RPM header/payload comparison, immutable release URLs, feed/channel binding, release-root binding, and verification are source-implemented; provision the production OpenPGP identity, add atomic RPM snapshot activation and scheduled pre-expiry refresh, publish and verify exact-candidate mirrors, correct and certify the AUR recipe, and retain Flatpak as unpromoted until its portal/keyring contract passes</td>
+<td>Each declared channel installs the correct architecture and verifies repository/package metadata; missing/expired/excessive freshness and interrupted publication fail without stranding the previous snapshot; metadata refresh completes before expiry; public bytes match the repository closure; unpromoted channels are explicitly labeled and absent from install copy</td>
 </tr>
 <tr>
 <td>LNX-EVT-001</td>
@@ -2595,7 +2604,7 @@ accepted together.</p>
 <tr>
 <td>3</td>
 <td><strong>Mainstream install</strong></td>
-<td>Package construction complete; installed/channel proof in progress</td>
+<td>Package construction and apt/RPM repository source foundation complete; signing identity, public mirrors, installed lifecycle, and AUR/Flatpak decisions remain</td>
 <td>LNX-PKG-001, LNX-CHANNEL-001</td>
 <td>Both architectures and every declared package/repository channel install locally</td>
 </tr>
@@ -2687,6 +2696,15 @@ uninstall cleanly.</li>
 <li><input disabled="" type="checkbox"> apt and rpm repository metadata/signing, AUR recipe, and Flatpak manifest
 install only the declared version/architecture; any unpromoted channel is
 excluded from public install copy rather than presented as ready.</li>
+<li><input disabled="" type="checkbox"> The repository OpenPGP public key and full fingerprint are recoverable,
+committed, and match <code>OPENBURNBAR_LINUX_REPOSITORY_GPG_PRIVATE_KEY</code>; missing,
+placeholder, wrong, expired, or mismatched keys fail before metadata signing.</li>
+<li><input disabled="" type="checkbox"> Apt clients verify <code>InRelease</code>/<code>Release.gpg</code>; RPM clients enforce both
+<code>gpgcheck=1</code> and <code>repo_gpgcheck=1</code>; one-byte mutations of a package, index,
+repository signature, or <code>repository-closure.json</code> fail verification.</li>
+<li><input disabled="" type="checkbox"> Repository publication uploads package bytes before signed root metadata,
+and a clean public-mirror download verifies against the exact release closure
+before any apt/dnf installation copy is enabled.</li>
 <li><input disabled="" type="checkbox"> Release package smoke launches the real GUI and daemon, not only inspects
 archive contents.</li>
 </ul>

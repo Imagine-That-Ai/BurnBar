@@ -16,7 +16,8 @@ The Linux app now has a substantial production implementation: a 19-route Tauri
 shell, all six persisted dashboard layouts, shared daemon RPC access, canonical
 XDG path handling, live usage/quota data, missions, durable memory decisions,
 database indexing/watch recovery, Browser Computer Use plus guarded system input,
-and AppImage/deb/rpm construction. The remediation wave also replaced the false-
+AppImage/deb/rpm construction, and a source-level signed apt/RPM repository
+builder and verifier. The remediation wave also replaced the false-
 green certification baseline, added Linux-native secret custody, moved gateway
 authentication behind native proxies, introduced a runtime capability manifest,
 added installed-app accessibility and matched-performance gates, and implemented
@@ -91,11 +92,12 @@ verification, restart recovery, and a renderer contract that excludes tokens,
 callback URLs, paths, arguments, and terminal output. This closes the missing
 source workflow in `P-27`; installed provider-login certification and isolated
 multi-account profile switching remain open.
-The largest certification gaps are an x86_64
-installed session, a prior-version update/rollback baseline, a valid public
-signed feed, and real GNOME Wayland/KDE/wlroots proof. Package construction is
-now green for both architectures, but that does not substitute for those live
-installed-product outcomes.
+The largest certification gaps are an x86_64 installed session, a prior-version
+update/rollback baseline, a valid public signed feed, public apt/RPM mirrors,
+and real GNOME Wayland/KDE/wlroots proof. Package construction is now green for
+both architectures, and signed apt/RPM repository construction is implemented
+in source, but that does not substitute for public-mirror verification or live
+installed-product outcomes. AUR and Flatpak remain explicitly unpromoted.
 
 The old parity claim is now disabled. The generated product ledger contains all
 40 audited requirements, reports **0 ready / 40 blocked**, and cannot promote a
@@ -341,7 +343,7 @@ required gates and were not made green by the Ed25519 result.
 | P-22 | Database | Search/inspect indexed sessions, snapshots, watch/recovery, encrypted storage UX | Index/watch foundation exists; inspector, snapshot, and recovery depth lag | Partial | Medium |
 | P-23 | Provider/model workspace | Provider and model deep dives, health, catalog, failover, routing | Quota-centric provider route; no equivalent model workspace/failover flow | Partial | Medium |
 | P-24 | Settings | 16 searchable tabs with deep links and writable state | 13 tabs; Model Proxy, Computer Use, Pets omitted; several controls read-only | Partial | Medium |
-| P-25 | Updates | Automatic checks, channel, install/restart truth | Native signed-feed availability check fails closed; valid public feed and package-manager install/restart/rollback proof remain open | Partial | High |
+| P-25 | Updates | Automatic checks, channel, install/restart truth | Native signed-feed availability check fails closed and signed apt/RPM repository closure is source-implemented; valid public feed/mirrors and package-manager install/restart/rollback proof remain open, while AUR/Flatpak remain unpromoted | Partial | High |
 | P-26 | Tray and native shell | Rich live menu-bar status, quick switch, chat, quota, update state | Live cost/tokens, quota floor, provider count, freshness, compact status window, dashboard/chat/provider/update/reconnect/login-start/quit actions exist; matrix rows now require and can emit native-shell evidence; deterministic installed tray/status/deep-link/notification/login-start and XFCE/AppIndicator host-loss captures exist; account quick switch and full installed desktop matrix proof remain | Near parity | High |
 | P-27 | Notifications/deep links | Actionable notifications, provider external login, global commands, login start | Single-instance validated deep links, membership return, background launch, XDG login start, source-level freedesktop notification actions, deterministic installed notification server/action/response/relaunch capture, an installed X11 global panic chord reaching the daemon-wide kill path, and a typed daemon-owned Codex/Claude external-login workflow exist; cloud agent-reply listener/quick reply, installed provider-login and rich notification breadth, multi-account provider switching, and cross-desktop shortcut proof remain | Partial | High |
 | P-28 | SmartHub | Discovery, status, allowlisted device actions | Runtime requires a trusted root-owned packaged CLI and otherwise fails closed; real device outcomes remain unproven | Partial | High |
@@ -960,10 +962,17 @@ Ed25519 signatures, validates schema/product/platform/channel/semantic version,
 requires both supported architectures, rejects downgrade/replay and untrusted
 URLs, and exposes only typed validated state to the renderer. The installed
 `.deb` route was exercised through AT-SPI and correctly rendered **Update
-metadata rejected** against the currently invalid public endpoint. The
-package-manager-owned install/rollback lifecycle, signed public feed,
-two-architecture artifacts, and prior-version upgrade/rollback evidence remain
-open; this row is therefore still **Partial**, not closed.
+metadata rejected** against the currently invalid public endpoint. A follow-on
+source packet builds and independently verifies signed, architecture-specific
+apt and RPM repositories after aggregate release assembly. Apt uses signed
+Release/InRelease metadata; RPM package copies and `repomd.xml` use the same
+pinned OpenPGP identity so clients can enforce package and repository signature
+checks. The production channel config intentionally keeps that identity
+unconfigured until a recoverable public key/fingerprint and matching private
+CI secret are provisioned. The package-manager-owned install/rollback
+lifecycle, signed public feed and mirrors, exact-candidate repository closure,
+and prior-version upgrade/rollback evidence remain open; AUR and Flatpak remain
+explicitly unpromoted. This row is therefore still **Partial**, not closed.
 
 - **Baseline difference (2026-07-09):** macOS exposes version, automatic checks, channel, install, and
   restart behavior. Linux appropriately delegates installation to package
@@ -1294,7 +1303,7 @@ coverage.
 | LNX-RUN-001 | Partially proven | Clean aarch64 package-owned GUI/daemon/version/uninstall session | x86_64, prior-version lifecycle, suspend/resume, compositor breadth |
 | LNX-PKG-001 | Implemented in workflow; construction proven | Four-artifact aarch64 and architecture-correct x86_64 shards green with 28/28 smoke checks each; native dual-architecture aggregation is fail closed | Native hosted x86_64 run, installed x86_64 session, signed aggregate, and channel lifecycle |
 | LNX-UPD-001 | Partially implemented | Native signed-feed availability verifier rejects invalid public metadata | Valid feed plus deb/rpm/AppImage update, rollback, and data preservation |
-| LNX-CHANNEL-001 | Open | Package construction exists | Signed apt/rpm metadata, AUR/Flatpak truth, and channel install lifecycle |
+| LNX-CHANNEL-001 | Source foundation implemented; deployment and lifecycle blocked | Fail-closed apt/RPM repository builder and verifier, architecture-specific and checksum-addressed indices, signed seven-day apt expiry, pinned signing-subkey capability/strength/lifetime policy and signature-identity verification, immutable RPM header/payload comparison, feed/channel and immutable release-package root binding, R2-before-GitHub publish order, and explicit AUR/Flatpak non-promotion | Provision the recoverable production OpenPGP public key/fingerprints and CI private-key secret; add one-switch RPM repository activation and scheduled pre-expiry apt metadata refresh at the delivery layer; build and publish the exact-candidate closure; verify public copies and interrupted-publish rollback; prove clean install, update, rollback, and uninstall on both architectures; resolve AUR/Flatpak promotion decisions |
 | LNX-EVT-001 | Implemented in source; installed certification pending | Bounded pull authority, restart/offline recovery, cancellation, and coalesced refresh | Native push and exact-candidate suspend/offline matrix |
 | LNX-ONB-001 | Partially implemented | Daemon-owned transactional state and required prerequisite probes | Provider scan, deployed auth, portal, tray, update, chat, and first-data readback |
 | LNX-AUTH-001 family | Source foundation implemented; deployment and product depth open | Purpose-bound sealed device auth, daemon refresh/keyring custody, redacted state, local sign-out, and the App Check challenge/verifier/daemon-client/ingress bridge boundary | Deploy account auth; complete the App Check verifier, rollout, and installed proof; then membership, sync, and trusted devices |
@@ -1364,7 +1373,7 @@ truth-sync, not the first time behavior is documented.
 | Task | Depends on | Engineering work | Acceptance criteria |
 |---|---|---|---|
 | LNX-PKG-001 | LNX-REL-VERIFY-001, LNX-CI-001, LNX-RUN-001 | Dual-architecture AppImage/deb/rpm construction and architecture-aware manifest | Unsigned/local x86_64 and aarch64 lifecycle green on Ubuntu/Fedora before candidate signing |
-| LNX-CHANNEL-001 | LNX-PKG-001, LNX-REL-VERIFY-001 | apt and rpm repository metadata/signing, correct AUR recipe, and a portal-safe Flatpak channel | Each declared channel installs the correct architecture and verifies repository/package metadata; unpromoted channels are explicitly labeled |
+| LNX-CHANNEL-001 | LNX-PKG-001, LNX-REL-VERIFY-001 | Fail-closed apt/RPM metadata construction, bounded apt freshness, pinned signing-subkey policy and identity proof, immutable RPM header/payload comparison, immutable release URLs, feed/channel binding, release-root binding, and verification are source-implemented; provision the production OpenPGP identity, add atomic RPM snapshot activation and scheduled pre-expiry refresh, publish and verify exact-candidate mirrors, correct and certify the AUR recipe, and retain Flatpak as unpromoted until its portal/keyring contract passes | Each declared channel installs the correct architecture and verifies repository/package metadata; missing/expired/excessive freshness and interrupted publication fail without stranding the previous snapshot; metadata refresh completes before expiry; public bytes match the repository closure; unpromoted channels are explicitly labeled and absent from install copy |
 | LNX-EVT-001 | LNX-CAP-001 | Bounded pull subscription authority, cadence, cancellation, restart/offline recovery, and coalesced route refresh are implemented; add native push and exact-candidate installed certification | Kill/stall/suspend/offline tests recover without stale or frozen UI |
 | LNX-ONB-001 | LNX-SEC-001, LNX-RUN-001, LNX-CAP-001 | Daemon-owned transactional state/readback foundation is implemented; add provider/auth/portal/tray/update/chat/first-data probes | A clean user cannot finish required setup while any declared required prerequisite is missing |
 | LNX-AUTH-001 | LNX-SEC-001, LNX-IPC-001 | Umbrella account outcome, delivered through the five child packets below; the source-level sign-in/sign-out and App Check protocol foundations are implemented | Every auth child packet is accepted at one release head; full sign-in/out/keyring/device/backup/restore/checkout matrix passes without credential exposure |
@@ -1432,7 +1441,7 @@ accepted together.
 | 0 | **Disable false parity** | Complete | LNX-GATE-001 | Machine claim is off; ledger cannot certify stale/incomplete evidence |
 | 1 | **Trustworthy engineering baseline** | Complete in code; dual-architecture construction and aarch64 installed proof live | LNX-REL-VERIFY-001, LNX-CI-001, LNX-RUN-001, LNX-A11Y-HARNESS-001, LNX-PERF-HARNESS-001 | Add installed x86_64 and prior-version package sessions without regressing strict gates |
 | 2 | **Security foundation** | Complete in code; matrix pending | LNX-SEC-001, LNX-IPC-001, LNX-CAP-001 | GNOME/KDE/headless credential and installed adversarial verification green |
-| 3 | **Mainstream install** | Package construction complete; installed/channel proof in progress | LNX-PKG-001, LNX-CHANNEL-001 | Both architectures and every declared package/repository channel install locally |
+| 3 | **Mainstream install** | Package construction and apt/RPM repository source foundation complete; signing identity, public mirrors, installed lifecycle, and AUR/Flatpak decisions remain | LNX-PKG-001, LNX-CHANNEL-001 | Both architectures and every declared package/repository channel install locally |
 | 4 | **Daily-use native foundation** | In progress; onboarding, bounded event refresh, single-instance/deep-link, live-tray, compact status, source-level notifications, installed X11 global-panic capture, XDG login-start, account-auth foundations, Linux App Check challenge/verifier/daemon-client/ingress boundaries, root broker/native deb-rpm lifecycle, source owner revocation administration with atomic audit persistence, and typed provider external login implemented; production TPM/IMA evidence, deployed remote verification/revocation and audit proof, membership/cloud/device depth, cloud quick reply, provider-login installed certification/multi-account profiles, and installed matrix remain | LNX-EVT-001, LNX-ONB-001, LNX-AUTH-DEPLOY-001, LNX-APPCHECK-001, LNX-MEMBERSHIP-001, LNX-SYNC-001, LNX-DEVICE-001, LNX-NATIVE-001, LNX-UPD-001, LNX-CAT-001, LNX-DIFF-001 | Setup, deployed auth, production attestation, data freshness, alerts/tray, update lifecycle, and current provider diff green |
 | 5 | **Core product workflows** | Open/partial | LNX-SESS-001, LNX-CHAT-001, LNX-MEM-001, LNX-PROJ-001, LNX-MISSION-001, LNX-INSIGHT-001, LNX-DB-001, LNX-PROVIDER-001, LNX-PRIV-001, LNX-SET-001 | No synthetic state; every primary workspace and privacy workflow completes |
 | 6 | **Browser automation parity** | Open/partial | LNX-CU-BROWSER-001 | Real actions, approval, panic, audit, restart recovery |
@@ -1482,6 +1491,15 @@ Keep one integration owner at a time for `routes.ts`, `tauriBridge.ts`, the Taur
 - [ ] apt and rpm repository metadata/signing, AUR recipe, and Flatpak manifest
   install only the declared version/architecture; any unpromoted channel is
   excluded from public install copy rather than presented as ready.
+- [ ] The repository OpenPGP public key and full fingerprint are recoverable,
+  committed, and match `OPENBURNBAR_LINUX_REPOSITORY_GPG_PRIVATE_KEY`; missing,
+  placeholder, wrong, expired, or mismatched keys fail before metadata signing.
+- [ ] Apt clients verify `InRelease`/`Release.gpg`; RPM clients enforce both
+  `gpgcheck=1` and `repo_gpgcheck=1`; one-byte mutations of a package, index,
+  repository signature, or `repository-closure.json` fail verification.
+- [ ] Repository publication uploads package bytes before signed root metadata,
+  and a clean public-mirror download verifies against the exact release closure
+  before any apt/dnf installation copy is enabled.
 - [ ] Release package smoke launches the real GUI and daemon, not only inspects
   archive contents.
 
