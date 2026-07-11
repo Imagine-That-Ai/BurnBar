@@ -273,6 +273,9 @@ pub fn systemd_listener(socket_fd: i32) -> Result<SeqpacketListener, BrokerError
         unsafe_code,
         reason = "systemd socket activation requires adopting inherited fd 3"
     )]
+    // systemd hands the listener to us without guaranteeing close-on-exec.
+    // Seal that boundary before any helper process can be spawned.
+    set_descriptor_cloexec(SYSTEMD_LISTEN_FD, true)?;
     let fd = unsafe { OwnedFd::from_raw_fd(SYSTEMD_LISTEN_FD) };
     Ok(SeqpacketListener { fd })
 }

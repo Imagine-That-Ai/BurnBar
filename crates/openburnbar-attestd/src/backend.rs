@@ -976,6 +976,14 @@ mod tests {
         use std::fs;
         use std::os::unix::fs::PermissionsExt;
 
+        // Production enrollment state must be root-owned. Non-root CI cannot
+        // construct that identity without privileges, so leave this integration
+        // path to the root-capable Linux package lane.
+        // SAFETY: geteuid has no preconditions.
+        if unsafe { libc::geteuid() } != 0 {
+            return Ok(());
+        }
+
         let root = temp_test_dir("attestd-tpm-quote")?;
         let enrollment_path = root.join(ENROLLMENT_STATE_FILE);
         let ak_context_path = root.join(AK_CONTEXT_FILE);

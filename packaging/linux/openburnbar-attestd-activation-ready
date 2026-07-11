@@ -28,10 +28,13 @@ root_owned_mode() {
   candidate=$1
   expected_modes=$2
   [ -f "$candidate" ] && [ ! -L "$candidate" ] || return 1
-  metadata=$(stat -c '%u %a' -- "$candidate" 2>/dev/null) || return 1
+  metadata=$(stat -c '%u %g %a' -- "$candidate" 2>/dev/null) || return 1
   owner=${metadata%% *}
-  mode=${metadata#* }
+  remainder=${metadata#* }
+  group=${remainder%% *}
+  mode=${remainder#* }
   [ "$owner" = 0 ] || return 1
+  [ "$group" = 0 ] || return 1
   case ":$expected_modes:" in
     *":$mode:"*) return 0 ;;
     *) return 1 ;;

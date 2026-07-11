@@ -113,15 +113,32 @@ test('attestation activation requires both private enrollment and an explicit ro
   const stat = path.join(bin, 'stat');
   fs.writeFileSync(stat, `#!/bin/sh
 case "$*" in
-  *tpm-enrollment.json) printf '%s\\n' '0 600' ;;
-  *ak.ctx) printf '%s\\n' '0 600' ;;
-  *attestation-rollout-enabled) printf '%s\\n' '0 644' ;;
+  *tpm-enrollment.json) printf '%s\\n' '0 0 600' ;;
+  *ak.ctx) printf '%s\\n' '0 0 600' ;;
+  *attestation-rollout-enabled) printf '%s\\n' '0 0 644' ;;
   *) exit 1 ;;
 esac
 `, { mode: 0o755 });
 
   const env = { ...process.env, PATH: `${bin}:${process.env.PATH}` };
   assert.equal(spawnSync(helper, [state, akContext, marker], { env }).status, 0);
+  fs.writeFileSync(stat, `#!/bin/sh
+case "$*" in
+  *tpm-enrollment.json) printf '%s\\n' '0 0 600' ;;
+  *ak.ctx) printf '%s\\n' '0 1 600' ;;
+  *attestation-rollout-enabled) printf '%s\\n' '0 0 644' ;;
+  *) exit 1 ;;
+esac
+`, { mode: 0o755 });
+  assert.equal(spawnSync(helper, [state, akContext, marker], { env }).status, 1);
+  fs.writeFileSync(stat, `#!/bin/sh
+case "$*" in
+  *tpm-enrollment.json) printf '%s\\n' '0 0 600' ;;
+  *ak.ctx) printf '%s\\n' '0 0 600' ;;
+  *attestation-rollout-enabled) printf '%s\\n' '0 0 644' ;;
+  *) exit 1 ;;
+esac
+`, { mode: 0o755 });
   fs.writeFileSync(marker, 'disabled\n', { mode: 0o644 });
   assert.equal(spawnSync(helper, [state, akContext, marker], { env }).status, 1);
   fs.writeFileSync(marker, 'enabled\n', { mode: 0o644 });
