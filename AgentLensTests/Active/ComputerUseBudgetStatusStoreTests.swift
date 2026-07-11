@@ -62,7 +62,7 @@ final class ComputerUseBudgetStatusStoreTests: XCTestCase {
         XCTAssertEqual(payload.double("double"), 2.5)
         XCTAssertEqual(payload.double("float"), 3.5)
         XCTAssertNil(payload.string("unsupported"))
-        XCTAssertTrue(payload.firestoreData["data"] as? Data == data)
+        XCTAssertEqual(payload.firestoreData["data"] as? Data, data)
     }
 
     func testFirestorePayloadSetStringMutatesFirestoreData() {
