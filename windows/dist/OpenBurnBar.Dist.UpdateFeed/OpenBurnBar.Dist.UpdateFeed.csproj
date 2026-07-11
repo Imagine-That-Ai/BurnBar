@@ -15,7 +15,7 @@
         Info.plist, independent of the Developer-ID codesign cert. A compromised signing cert
         alone cannot ship a malicious update — the appcast enclosure must ALSO carry a valid
         EdDSA signature under the pinned key.
-      • Windows: Authenticode (Azure Trusted Signing / the W0 cert) authenticates the
+      • Windows: Authenticode (Azure Artifact Signing) authenticates the
         installer to SmartScreen and the OS loader. This library adds the SECOND, INDEPENDENT
         control: a pinned Ed25519 signature over a canonical descriptor that BINDS the
         artifact's sha256 (content), url, size, version, channel, minimum OS build, and the
