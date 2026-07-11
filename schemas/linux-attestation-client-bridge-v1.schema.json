@@ -1,0 +1,261 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openburnbar.dev/schemas/linux-attestation-client-bridge-v1.json",
+  "title": "OpenBurnBar Linux attestation client bridge v1",
+  "description": "Exact client-visible JSON boundaries from upload-ticket issuance through receipt-native App Check minting. Evidence payloads are capped at 16 MiB and every object rejects unknown fields.",
+  "oneOf": [
+    { "$ref": "#/$defs/uploadTicketCallableRequest" },
+    { "$ref": "#/$defs/uploadTicketCallableResponse" },
+    { "$ref": "#/$defs/ingressCreateRequest" },
+    { "$ref": "#/$defs/ingressCreateResponse" },
+    { "$ref": "#/$defs/uploadReceiptResponse" },
+    { "$ref": "#/$defs/mintCallableRequest" }
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "canonical32ByteBase64url": {
+      "type": "string",
+      "minLength": 43,
+      "maxLength": 43,
+      "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$"
+    },
+    "ticketId": {
+      "type": "string",
+      "minLength": 22,
+      "maxLength": 22,
+      "pattern": "^[A-Za-z0-9_-]{21}[AQgw]$"
+    },
+    "uploadId": {
+      "type": "string",
+      "minLength": 22,
+      "maxLength": 22,
+      "pattern": "^[A-Za-z0-9_-]{21}[AQgw]$"
+    },
+    "challengeId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "pattern": "^[A-Za-z0-9._:+/-]+$"
+    },
+    "brokerLabel": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z0-9._:+/=-]+$"
+    },
+    "safeIntegerMillis": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "evidenceSize": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 16777216
+    },
+    "uploadTicketIssuePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "challengeId",
+        "challenge",
+        "ticketSecretHashSha256",
+        "expectedSha256",
+        "expectedSize"
+      ],
+      "properties": {
+        "challengeId": { "$ref": "#/$defs/challengeId" },
+        "challenge": { "$ref": "#/$defs/canonical32ByteBase64url" },
+        "ticketSecretHashSha256": { "$ref": "#/$defs/sha256" },
+        "expectedSha256": { "$ref": "#/$defs/sha256" },
+        "expectedSize": { "$ref": "#/$defs/evidenceSize" }
+      }
+    },
+    "uploadTicketCallableRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["data"],
+      "properties": {
+        "data": { "$ref": "#/$defs/uploadTicketIssuePayload" }
+      }
+    },
+    "uploadTicketIssueResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ok", "ticketId", "expiresAtMillis"],
+      "properties": {
+        "ok": { "const": true },
+        "ticketId": { "$ref": "#/$defs/ticketId" },
+        "expiresAtMillis": { "$ref": "#/$defs/safeIntegerMillis" }
+      }
+    },
+    "uploadTicketCallableResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["result"],
+      "properties": {
+        "result": { "$ref": "#/$defs/uploadTicketIssueResult" }
+      }
+    },
+    "ingressCreateRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocolVersion",
+        "attestationKind",
+        "appId",
+        "deviceId",
+        "challengeId",
+        "releaseDigestSha256",
+        "expectedSha256",
+        "expectedSize"
+      ],
+      "properties": {
+        "protocolVersion": { "const": 1 },
+        "attestationKind": { "const": "tpm2_ima_signed_verdict_v1" },
+        "appId": { "$ref": "#/$defs/brokerLabel" },
+        "deviceId": { "$ref": "#/$defs/brokerLabel" },
+        "challengeId": { "$ref": "#/$defs/challengeId" },
+        "releaseDigestSha256": { "$ref": "#/$defs/sha256" },
+        "expectedSha256": { "$ref": "#/$defs/sha256" },
+        "expectedSize": { "$ref": "#/$defs/evidenceSize" }
+      }
+    },
+    "ingressCreateResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["uploadId", "expiresAtMillis"],
+      "properties": {
+        "uploadId": { "$ref": "#/$defs/uploadId" },
+        "expiresAtMillis": { "$ref": "#/$defs/safeIntegerMillis" }
+      }
+    },
+    "evidenceReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["uploadId", "generation", "sha256", "size"],
+      "properties": {
+        "uploadId": { "$ref": "#/$defs/uploadId" },
+        "generation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._:-]+$"
+        },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "size": { "$ref": "#/$defs/evidenceSize" }
+      }
+    },
+    "uploadReceiptResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["receipt"],
+      "properties": {
+        "receipt": { "$ref": "#/$defs/evidenceReceipt" }
+      }
+    },
+    "quoteEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "deviceId",
+        "quoteAttestationBase64",
+        "quoteSignatureBase64",
+        "quotePcrValuesBase64",
+        "pcrBank",
+        "pcrSelection",
+        "qualifyingDataSha256"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "deviceId": { "$ref": "#/$defs/brokerLabel" },
+        "quoteAttestationBase64": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 16384,
+          "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+        },
+        "quoteSignatureBase64": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 4096,
+          "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+        },
+        "quotePcrValuesBase64": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 16384,
+          "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+        },
+        "pcrBank": { "const": "sha256" },
+        "pcrSelection": {
+          "type": "array",
+          "prefixItems": [
+            { "const": 0 },
+            { "const": 2 },
+            { "const": 4 },
+            { "const": 7 },
+            { "const": 10 }
+          ],
+          "items": false,
+          "minItems": 5,
+          "maxItems": 5
+        },
+        "qualifyingDataSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "evidenceBundleMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["descriptorIndex", "format", "byteLength", "sha256"],
+      "properties": {
+        "descriptorIndex": { "const": 0 },
+        "format": { "const": "openburnbar_tpm_evidence_bundle_v1" },
+        "byteLength": { "$ref": "#/$defs/evidenceSize" },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "receiptNativeEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "quote", "evidenceBundle", "upload"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "quote": { "$ref": "#/$defs/quoteEvidence" },
+        "evidenceBundle": { "$ref": "#/$defs/evidenceBundleMetadata" },
+        "upload": { "$ref": "#/$defs/evidenceReceipt" }
+      }
+    },
+    "mintAttestation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["challengeId", "challenge", "kind", "evidence"],
+      "properties": {
+        "challengeId": { "$ref": "#/$defs/challengeId" },
+        "challenge": { "$ref": "#/$defs/canonical32ByteBase64url" },
+        "kind": { "const": "tpm2_ima_signed_verdict_v1" },
+        "evidence": { "$ref": "#/$defs/receiptNativeEvidence" }
+      }
+    },
+    "mintPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attestation"],
+      "properties": {
+        "attestation": { "$ref": "#/$defs/mintAttestation" }
+      }
+    },
+    "mintCallableRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["data"],
+      "properties": {
+        "data": { "$ref": "#/$defs/mintPayload" }
+      }
+    }
+  }
+}

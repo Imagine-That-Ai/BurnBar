@@ -1,6 +1,7 @@
 import { ATTESTATION_KIND, PROTOCOL_VERSION } from "./contracts.js";
 import { PublicError } from "./errors.js";
 import { base64, brokerLabel, exactKeys, integer, object, sha256Hex } from "./validation.js";
+import { MAX_EVIDENCE_BYTES } from "./constants.js";
 
 export function parseBeginEnrollment(value: unknown): { deviceId: string; ekCertificateBase64: string; ekTpmBase64: string; akTpmBase64: string } {
   const source = object(value, "request");
@@ -36,6 +37,6 @@ export function parseCreateUpload(value: unknown): {
     challengeId: brokerLabel(source.challengeId, "challengeId"),
     releaseDigestSha256: sha256Hex(source.releaseDigestSha256, "releaseDigestSha256"),
     expectedSha256: sha256Hex(source.expectedSha256, "expectedSha256"),
-    expectedSize: integer(source.expectedSize, "expectedSize", 1, 64 * 1024 * 1024),
+    expectedSize: integer(source.expectedSize, "expectedSize", 1, MAX_EVIDENCE_BYTES),
   };
 }

@@ -81,7 +81,8 @@ protocol BurnBarLinuxAppCheckAttestationProviding: Sendable {
     func makeBinding(appID: String) async throws -> BurnBarLinuxAppCheckAttestationBinding
     func makeAttestation(
         challenge: BurnBarLinuxAppCheckChallenge,
-        binding: BurnBarLinuxAppCheckAttestationBinding
+        binding: BurnBarLinuxAppCheckAttestationBinding,
+        idToken: String
     ) async throws -> BurnBarLinuxAppCheckAttestation
 }
 
@@ -152,7 +153,8 @@ private struct UnavailableBurnBarLinuxAppCheckAttestationProvider: BurnBarLinuxA
 
     func makeAttestation(
         challenge _: BurnBarLinuxAppCheckChallenge,
-        binding _: BurnBarLinuxAppCheckAttestationBinding
+        binding _: BurnBarLinuxAppCheckAttestationBinding,
+        idToken _: String
     ) async throws -> BurnBarLinuxAppCheckAttestation {
         throw BurnBarLinuxAppCheckError.attestationUnavailable
     }
@@ -220,16 +222,33 @@ public actor BurnBarLinuxAppCheckService {
         environment: [String: String] = ProcessInfo.processInfo.environment,
         session: URLSession = .shared
     ) -> BurnBarLinuxAppCheckService {
-        BurnBarLinuxAppCheckService(
+        let cloudClient = EnvironmentBurnBarLinuxAppCheckCloudClient(
+            environment: environment,
+            session: session
+        )
+        #if os(Linux)
+        let attestationProvider: any BurnBarLinuxAppCheckAttestationProviding =
+            BurnBarLinuxProductionAppCheckAttestationProvider(
+                broker: BurnBarLinuxAttestationBrokerClient(),
+                uploader: EnvironmentBurnBarLinuxAttestationReceiptUploader(
+                    ticketIssuer: cloudClient,
+                    ingress: EnvironmentBurnBarLinuxAttestationIngressClient(
+                        environment: environment,
+                        session: session
+                    )
+                )
+            )
+        #else
+        let attestationProvider: any BurnBarLinuxAppCheckAttestationProviding =
+            UnavailableBurnBarLinuxAppCheckAttestationProvider()
+        #endif
+        return BurnBarLinuxAppCheckService(
             expectedAppID: environment["OPENBURNBAR_LINUX_APP_CHECK_APP_ID"]
                 ?? "1:000000000000:linux:0000000000000000placeholder",
             accountContext: accountContext,
             accountIdentity: accountIdentity,
-            attestationProvider: UnavailableBurnBarLinuxAppCheckAttestationProvider(),
-            cloudClient: EnvironmentBurnBarLinuxAppCheckCloudClient(
-                environment: environment,
-                session: session
-            )
+            attestationProvider: attestationProvider,
+            cloudClient: cloudClient
         )
     }
 
@@ -277,8 +296,10 @@ public actor BurnBarLinuxAppCheckService {
             let expectedAppID = self.expectedAppID
             let attestationProvider = self.attestationProvider
             let cloudClient = self.cloudClient
+            let accountIdentity = self.accountIdentity
             let idToken = context.idToken
             let task = Task<BurnBarLinuxAppCheckMintResponse, Error> {
+                try Task.checkCancellation()
                 let binding = try await attestationProvider.makeBinding(appID: expectedAppID)
                 guard Self.isValidBinding(binding, expectedAppID: expectedAppID) else {
                     throw BurnBarLinuxAppCheckError.invalidAttestation
@@ -292,14 +313,23 @@ public actor BurnBarLinuxAppCheckService {
                 ) else {
                     throw BurnBarLinuxAppCheckError.invalidResponse
                 }
+                try Task.checkCancellation()
+                guard await Self.matchesCurrentIdentity(accountIdentity, expected: identity) else {
+                    throw BurnBarLinuxAppCheckError.accountChanged
+                }
                 let attestation = try await attestationProvider.makeAttestation(
                     challenge: challenge,
-                    binding: binding
+                    binding: binding,
+                    idToken: idToken
                 )
                 guard attestation.challengeId == challenge.challengeId,
                       attestation.challenge == challenge.challenge,
                       attestation.kind == binding.attestationKind else {
                     throw BurnBarLinuxAppCheckError.invalidAttestation
+                }
+                try Task.checkCancellation()
+                guard await Self.matchesCurrentIdentity(accountIdentity, expected: identity) else {
+                    throw BurnBarLinuxAppCheckError.accountChanged
                 }
                 return try await cloudClient.mintToken(attestation: attestation, idToken: idToken)
             }
@@ -419,6 +449,18 @@ public actor BurnBarLinuxAppCheckService {
         let uid = snapshot.uid.trimmingCharacters(in: .whitespacesAndNewlines)
         guard uid.isEmpty == false, uid.utf8.count <= 256 else { return nil }
         return AccountIdentity(uid: uid, sessionGeneration: snapshot.sessionGeneration)
+    }
+
+    private static func matchesCurrentIdentity(
+        _ provider: BurnBarLinuxAppCheckAccountIdentityProvider,
+        expected: AccountIdentity
+    ) async -> Bool {
+        guard let snapshot = await provider() else { return false }
+        let uid = snapshot.uid.trimmingCharacters(in: .whitespacesAndNewlines)
+        return uid.isEmpty == false
+            && uid.utf8.count <= 256
+            && uid == expected.uid
+            && snapshot.sessionGeneration == expected.sessionGeneration
     }
 
     private func validatedToken(

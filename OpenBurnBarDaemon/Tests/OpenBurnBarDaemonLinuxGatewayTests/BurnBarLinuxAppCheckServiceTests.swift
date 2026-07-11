@@ -358,7 +358,8 @@ private actor AppCheckAttestationFixture: BurnBarLinuxAppCheckAttestationProvidi
 
     func makeAttestation(
         challenge: BurnBarLinuxAppCheckChallenge,
-        binding: BurnBarLinuxAppCheckAttestationBinding
+        binding: BurnBarLinuxAppCheckAttestationBinding,
+        idToken _: String
     ) async throws -> BurnBarLinuxAppCheckAttestation {
         attestationCalls += 1
         return .init(

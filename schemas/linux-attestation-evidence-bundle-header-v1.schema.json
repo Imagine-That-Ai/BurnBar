@@ -28,8 +28,8 @@
       "required": ["kind", "offset", "byteLength", "sha256"],
       "properties": {
         "kind": { "type": "string" },
-        "offset": { "type": "integer", "minimum": 13, "maximum": 67108863 },
-        "byteLength": { "type": "integer", "minimum": 1, "maximum": 67108864 },
+        "offset": { "type": "integer", "minimum": 13, "maximum": 16777215 },
+        "byteLength": { "type": "integer", "minimum": 1, "maximum": 16777216 },
         "sha256": { "$ref": "#/$defs/sha256" }
       }
     },

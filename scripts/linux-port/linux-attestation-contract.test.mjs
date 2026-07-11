@@ -10,6 +10,7 @@ const golden = JSON.parse(fs.readFileSync('tests/fixtures/linux-attestation/brok
 const ajv = new Ajv2020({ allErrors: true, strict: true });
 const validateBroker = ajv.compile(brokerSchema);
 const validateHeader = ajv.compile(headerSchema);
+const maximumEvidenceBytes = 16 * 1024 * 1024;
 
 function clone(value) {
   return structuredClone(value);
@@ -69,6 +70,45 @@ test('broker schema rejects unknown fields, noncanonical challenge, and PCR drif
   assertInvalid(validateBroker, descriptorDrift, 'descriptor index drift');
 });
 
+test('broker and ingress evidence limits accept exactly 16 MiB and reject one byte over', () => {
+  const boundary = clone(golden.attestResponse);
+  boundary.attestation.evidenceBundle.byteLength = maximumEvidenceBytes;
+  assert.equal(validateBroker(boundary), true, ajv.errorsText(validateBroker.errors));
+
+  const oversized = clone(boundary);
+  oversized.attestation.evidenceBundle.byteLength = maximumEvidenceBytes + 1;
+  assertInvalid(validateBroker, oversized, 'broker evidence bundle exceeds 16 MiB');
+
+  assert.equal(
+    brokerSchema.$defs.evidenceBundle.properties.byteLength.maximum,
+    maximumEvidenceBytes,
+    'broker schema evidence limit drifted'
+  );
+  assert.equal(
+    headerSchema.$defs.recordBase.properties.byteLength.maximum,
+    maximumEvidenceBytes,
+    'bundle header record limit drifted'
+  );
+  assert.equal(
+    headerSchema.$defs.recordBase.properties.offset.maximum,
+    maximumEvidenceBytes - 1,
+    'bundle header offset limit drifted'
+  );
+
+  const ticketSource = fs.readFileSync('functions/src/security/linuxAttestationIngressTickets.ts', 'utf8');
+  assert.match(
+    ticketSource,
+    /LINUX_ATTESTATION_MAX_EVIDENCE_BYTES\s*=\s*16\s*\*\s*1024\s*\*\s*1024/u,
+    'Functions upload-ticket evidence limit drifted'
+  );
+  const facadeConfig = fs.readFileSync('services/linux-attestation-facade/src/config.ts', 'utf8');
+  assert.match(
+    facadeConfig,
+    /evidenceMaxBytes:\s*positive\("EVIDENCE_MAX_BYTES",\s*16\s*\*\s*1024\s*\*\s*1024,\s*16\s*\*\s*1024\s*\*\s*1024\)/u,
+    'public ingress evidence limit drifted'
+  );
+});
+
 test('golden quote blobs are canonical standard base64 with zero pad bits', () => {
   const evidence = golden.attestResponse.attestation.evidence;
   for (const field of [
@@ -96,6 +136,20 @@ test('evidence header schema fixes record order, bounds, hashes, and exact keys'
     schemaVersion: 1
   };
   assert.equal(validateHeader(valid), true, ajv.errorsText(validateHeader.errors));
+
+  const boundaryLength = clone(valid);
+  boundaryLength.records[0].byteLength = maximumEvidenceBytes;
+  assert.equal(validateHeader(boundaryLength), true, ajv.errorsText(validateHeader.errors));
+  const oversizedLength = clone(boundaryLength);
+  oversizedLength.records[0].byteLength = maximumEvidenceBytes + 1;
+  assertInvalid(validateHeader, oversizedLength, 'record byte length exceeds 16 MiB');
+
+  const boundaryOffset = clone(valid);
+  boundaryOffset.records[0].offset = maximumEvidenceBytes - 1;
+  assert.equal(validateHeader(boundaryOffset), true, ajv.errorsText(validateHeader.errors));
+  const oversizedOffset = clone(boundaryOffset);
+  oversizedOffset.records[0].offset = maximumEvidenceBytes;
+  assertInvalid(validateHeader, oversizedOffset, 'record offset reaches 16 MiB');
 
   for (const [label, mutate] of [
     ['unknown field', value => { value.records[0].unexpected = true; }],

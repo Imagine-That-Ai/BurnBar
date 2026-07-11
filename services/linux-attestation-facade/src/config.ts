@@ -1,4 +1,5 @@
 import { integer, string } from "./validation.js";
+import { MAX_EVIDENCE_BYTES } from "./constants.js";
 
 function required(name: string): string {
   return string(process.env[name], name, 2048);
@@ -16,7 +17,7 @@ function fixedHttpsOrigin(name: string): URL {
 }
 
 export function keylimeVerifierResponseHardLimit(evidenceMaxBytes: number): number {
-  if (!Number.isSafeInteger(evidenceMaxBytes) || evidenceMaxBytes <= 0 || evidenceMaxBytes > 64 * 1024 * 1024) {
+  if (!Number.isSafeInteger(evidenceMaxBytes) || evidenceMaxBytes <= 0 || evidenceMaxBytes > MAX_EVIDENCE_BYTES) {
     throw new Error("EVIDENCE_MAX_BYTES is invalid");
   }
   return evidenceMaxBytes * 2 + 8 * 1024 * 1024;
@@ -64,7 +65,7 @@ export function verifierConfig() {
     ...commonConfig(),
     keylimeVerifierUrl: fixedHttpsOrigin("KEYLIME_VERIFIER_URL"),
     evidenceBucket: required("EVIDENCE_BUCKET"),
-    evidenceMaxBytes: positive("EVIDENCE_MAX_BYTES", 16 * 1024 * 1024, 64 * 1024 * 1024),
+    evidenceMaxBytes: positive("EVIDENCE_MAX_BYTES", MAX_EVIDENCE_BYTES, MAX_EVIDENCE_BYTES),
     oidcAudience: required("VERIFIER_OIDC_AUDIENCE"),
     callerServiceAccount: required("VERIFIER_CALLER_SERVICE_ACCOUNT"),
     kmsKeyVersion: required("KMS_SIGNING_KEY_VERSION"),

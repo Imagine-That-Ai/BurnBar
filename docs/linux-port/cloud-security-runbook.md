@@ -53,6 +53,36 @@ constructs `obbat1_<ticketId>.<secret>` only for the public ingress header; it
 must never put that value in a URL, log, renderer message, crash report, or
 support bundle.
 
+The daemon client bridge uses this exact sequence:
+
+1. Receive the broker quote and sealed evidence descriptor, reject an empty or
+   larger-than-16-MiB bundle, generate the ticket secret in memory, and send only
+   the secret hash plus the exact digest and size to
+   `issueLinuxAttestationUploadTicket`.
+2. `POST` the exact upload declaration to
+   `<ingress>/v1/evidence-uploads` with the Firebase ID token and
+   `X-OpenBurnBar-Attestation-Ticket: obbat1_<ticketId>.<secret>`. The ticket
+   capability is scoped to this claim request and is not sent on the body
+   upload.
+3. `PUT` one fresh stream of the evidence descriptor to
+   `<ingress>/v1/evidence-uploads/<uploadId>` with the Firebase ID token,
+   `Content-Type: application/octet-stream`, and the exact bound
+   `Content-Length`. The client accepts only the expected final URL, status, and
+   exact receipt shape, and checks the upload ID, generation, digest, and size.
+4. Send `mintLinuxAppCheckToken` receipt-native evidence containing the quote,
+   descriptor metadata, and generation-pinned upload receipt. The mint request
+   does not inline the evidence bundle.
+
+`OPENBURNBAR_LINUX_ATTESTATION_INGRESS_ENDPOINT` is required for this bridge and
+has no default. Missing, whitespace-padded, non-HTTPS, credential-bearing,
+query-bearing, or fragment-bearing ingress configuration fails closed before a
+request. The callable clients also reject invalid explicit endpoint overrides.
+All sessions are ephemeral and refuse redirects; cancellation propagates to the
+underlying URL task. The daemon must not persist or expose the raw ticket
+secret, Firebase ID token, App Check token, quote, evidence bytes, descriptor,
+or receipt through disk state, logs, renderer/RPC payloads, crash reports, or
+support bundles.
+
 Upload ticket issuance and quota reservation are one Firestore transaction and
 one challenge can authorize only one ticket. Limits are 6 per ten minutes and
 72 per day per UID/device, 216 per day per UID, and 2 GiB of declared evidence
@@ -109,13 +139,18 @@ hashes; finalization verifies that receipt and current inputs. RPM construction
 also extracts the final artifact and checks every signed payload record, which
 prevents rpmbuild post-processing from invalidating daemon authorization. The
 current backend always returns `attestation_unsupported`, so
-this still does not produce trustworthy platform evidence.
+this still does not produce trustworthy platform evidence. The source-level
+client bridge does not change that posture: broker TPM/IMA production evidence
+and enrollment are still unsupported, the composed production path fails closed
+at the broker before upload or mint, and no installed or production parity is
+claimed.
 
 Production still requires TPM 2.0 key enrollment and nonce-qualified quotes,
 UEFI measured-boot policy, IMA PCR 10 and full measurement-log verification,
-revocation, and the deployed remote verifier. Full IMA logs must use a bounded,
-short-lived verifier upload receipt rather than exceeding the Functions 512 KiB
-limit or being truncated. See
+revocation, and the deployed remote verifier. Complete IMA logs must use the
+digest-bound ingress receipt and stay within the current 16 MiB upload contract;
+they must never be truncated. A larger limit requires a separately designed
+direct-to-object-storage protocol. See
 [`ADR 015`](../architecture/015-linux-app-check-attestation.md).
 
 ## Configuration
@@ -154,9 +189,13 @@ Daemon endpoint overrides are deployment/test controls only:
 - `OPENBURNBAR_LINUX_ATTESTATION_INGRESS_ENDPOINT`
 - `OPENBURNBAR_LINUX_APP_CHECK_MINT_ENDPOINT`
 
-All overrides must be exact HTTPS URLs. The network client refuses redirects,
-non-HTTPS endpoints, oversized responses, an unexpected final URL, malformed
-callable envelopes, and token-bearing requests without a valid account context.
+All overrides must be exact HTTPS URLs without user information, query, or
+fragment components. Invalid explicit overrides fail closed. The ingress
+override is additionally required whenever the upload bridge is active; unlike
+the callable endpoints, it has no production default. The network client
+refuses redirects, non-HTTPS endpoints, oversized responses, an unexpected
+final URL, malformed callable envelopes, and token-bearing requests without a
+valid account context.
 
 Do not place verifier private keys, raw tokens, attestation evidence, TPM
 credentials, or keyring secrets in environment variables, renderer state, logs,
@@ -303,6 +342,24 @@ remain blocked.
 
 ### App Check QA acceptance
 
+Run the source contract and service suites from the repository root:
+
+```bash
+node --test scripts/linux-port/linux-attestation-contract.test.mjs
+npm run build --prefix functions
+npm run test:unit --prefix functions -- src/__tests__/linuxAttestationClientBridge.test.ts
+npm test --prefix services/linux-attestation-facade
+docker run --rm -v "$PWD:/workspace" -w /workspace \
+  openburnbar-linux-toolchain:mission-001 \
+  bash -lc 'apt-get update >/tmp/apt-update.log &&
+    apt-get install -y libpam0g-dev >/tmp/apt-install.log &&
+    bash scripts/linux-port/run-linux-native-tests.sh'
+```
+
+These commands prove source behavior only. They do not replace the physical-TPM,
+installed-package, verifier deployment, revocation, and desktop-matrix evidence
+required for production acceptance.
+
 1. Issue one challenge and verify its raw nonce is absent from Firestore while
    the SHA-256 hash, complete binding, five-minute expiry, and 24-hour TTL marker
    are present.
@@ -334,8 +391,13 @@ remain blocked.
    unwritable to clients.
 10. Exercise daemon coalescing, refresh lead time, expiry, cancellation, account
    switch, session-generation switch, sign-out, locked keyring, offline/retry,
-   process restart, and clock skew. Raw token state must disappear on daemon
-   restart and must never cross the renderer or RPC status contract.
+   process restart, and clock skew. Verify missing or invalid ingress
+   configuration fails before transport; redirects are refused; cancellation
+   stops the active request; the ticket header is present only on the claim
+   `POST`; the `PUT` streams the exact declared bytes; and receipt mismatches
+   never reach minting. Raw token, secret, quote, evidence, descriptor, and
+   receipt state must disappear on daemon restart and must never cross the
+   renderer or RPC status contract.
 11. With `LINUX_APP_CHECK_MINT_ENABLED=false`, verify challenge, ticket, and mint paths fail
    closed while local SQLite, local provider, and local sign-out workflows work.
 12. Repeat the production vectors against the exact signed candidate on every

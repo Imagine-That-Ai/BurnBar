@@ -2,10 +2,11 @@ import { createPublicKey, verify } from "node:crypto";
 import type { AttestationChallenge } from "./contracts.js";
 import { PublicError } from "./errors.js";
 import { exactKeys, integer, object, sha256, sha256Hex, string } from "./validation.js";
+import { MAX_EVIDENCE_BYTES } from "./constants.js";
 
 const MAGIC = Buffer.from("OBBATST1", "ascii");
 const PREFIX_BYTES = 12;
-const MAX_BUNDLE_BYTES = 64 * 1024 * 1024;
+const MAX_BUNDLE_BYTES = MAX_EVIDENCE_BYTES;
 const KINDS = ["ima_ascii_runtime_measurements", "uefi_binary_bios_measurements", "installed_manifest", "installed_manifest_signature"] as const;
 
 export interface ParsedEvidenceBundle {
