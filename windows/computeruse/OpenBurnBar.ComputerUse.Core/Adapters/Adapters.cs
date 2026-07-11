@@ -118,6 +118,9 @@ public interface IUiInspector
     /// <summary>Inspects the element under a screen point.</summary>
     UiElementInfo InspectPoint(int displayX, int displayY);
 
+    /// <summary>Inspects the element under the current cursor.</summary>
+    UiElementInfo InspectCursor() => InspectFrontmost();
+
     /// <summary>Inspects the frontmost window.</summary>
     UiElementInfo InspectFrontmost();
 }

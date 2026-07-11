@@ -50,6 +50,16 @@ public sealed class UiaInspector : IUiInspector
         return Describe(element);
     }
 
+    public UiElementInfo InspectCursor()
+    {
+        if (!NativeMethods.GetCursorPos(out var point))
+        {
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        }
+
+        return InspectPoint(point.X, point.Y);
+    }
+
     public UiElementInfo InspectFrontmost()
     {
         var hwnd = NativeMethods.GetForegroundWindow();

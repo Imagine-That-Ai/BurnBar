@@ -61,20 +61,25 @@ public sealed class SendInputInputSynthesizer : IInputSynthesizer
             return new InputSynthesisResult(dispatched: false, detail: "missing_coordinates");
         }
 
+        if (!IsWithinVirtualScreen(x.Value, y.Value))
+        {
+            return new InputSynthesisResult(dispatched: false, detail: "out_of_bounds");
+        }
+
         var move = MakeAbsoluteMove(x.Value, y.Value);
         return Send(new[] { move }, "pointer_move");
     }
 
     private static InputSynthesisResult ClickAt(int? x, int? y, int mouseButton)
     {
-        if (x is null && y is null)
-        {
-            return ClickCurrent(mouseButton);
-        }
-
         if (x is null || y is null)
         {
             return new InputSynthesisResult(dispatched: false, detail: "missing_coordinates");
+        }
+
+        if (!IsWithinVirtualScreen(x.Value, y.Value))
+        {
+            return new InputSynthesisResult(dispatched: false, detail: "out_of_bounds");
         }
 
         var (down, up) = mouseButton == 1
@@ -106,20 +111,25 @@ public sealed class SendInputInputSynthesizer : IInputSynthesizer
         var inputs = new System.Collections.Generic.List<NativeMethods.INPUT>();
         if (x is not null && y is not null)
         {
+            if (!IsWithinVirtualScreen(x.Value, y.Value))
+            {
+                return new InputSynthesisResult(dispatched: false, detail: "out_of_bounds");
+            }
+
             inputs.Add(MakeAbsoluteMove(x.Value, y.Value));
         }
 
         if (deltaY != 0)
         {
             var wheel = MakeMouse(NativeMethods.MouseEventFWheel);
-            wheel.u.mi.mouseData = unchecked((uint)(deltaY * NativeMethods.WheelDelta));
+            wheel.u.mi.mouseData = unchecked((uint)deltaY);
             inputs.Add(wheel);
         }
 
         if (deltaX != 0)
         {
             var wheel = MakeMouse(NativeMethods.MouseEventFHWheel);
-            wheel.u.mi.mouseData = unchecked((uint)(deltaX * NativeMethods.WheelDelta));
+            wheel.u.mi.mouseData = unchecked((uint)deltaX);
             inputs.Add(wheel);
         }
 
@@ -161,8 +171,20 @@ public sealed class SendInputInputSynthesizer : IInputSynthesizer
 
     private static int NormalizeAbsolute(int coordinate, int origin, int extent)
     {
-        var relative = Math.Clamp((long)coordinate - origin, 0, Math.Max(0, extent - 1));
+        var relative = (long)coordinate - origin;
         return extent <= 1 ? 0 : (int)Math.Round(relative * 65535.0 / (extent - 1));
+    }
+
+    private static bool IsWithinVirtualScreen(int displayX, int displayY)
+    {
+        var left = NativeMethods.GetSystemMetrics(NativeMethods.SmXVirtualScreen);
+        var top = NativeMethods.GetSystemMetrics(NativeMethods.SmYVirtualScreen);
+        var width = Math.Max(1, NativeMethods.GetSystemMetrics(NativeMethods.SmCxVirtualScreen));
+        var height = Math.Max(1, NativeMethods.GetSystemMetrics(NativeMethods.SmCyVirtualScreen));
+        return displayX >= left
+            && displayX < (long)left + width
+            && displayY >= top
+            && displayY < (long)top + height;
     }
 
     private static InputSynthesisResult DragDrop(int? startX, int? startY, int? endX, int? endY, int mouseButton)
@@ -170,6 +192,12 @@ public sealed class SendInputInputSynthesizer : IInputSynthesizer
         if (startX is null || startY is null || endX is null || endY is null)
         {
             return new InputSynthesisResult(dispatched: false, detail: "missing_coordinates");
+        }
+
+        if (!IsWithinVirtualScreen(startX.Value, startY.Value)
+            || !IsWithinVirtualScreen(endX.Value, endY.Value))
+        {
+            return new InputSynthesisResult(dispatched: false, detail: "out_of_bounds");
         }
 
         var (down, up) = MouseButtonFlags(mouseButton);

@@ -108,7 +108,9 @@ public sealed class ComputerUseRuntimeSession
             UiElementInfo target;
             try
             {
-                target = action.DisplayX is { } x && action.DisplayY is { } y
+                target = action.ActionKind == MacInputAction.Kind.PointerClick
+                    ? _inspector.InspectCursor()
+                    : action.DisplayX is { } x && action.DisplayY is { } y
                     ? _inspector.InspectPoint(x, y)
                     : _inspector.InspectFrontmost();
             }
@@ -122,14 +124,22 @@ public sealed class ComputerUseRuntimeSession
                 return RecordDeniedLocked(action, ComputerUseDenyReason.DenyRegion, denyRegion.ToString());
             }
 
-            ComputerUseAuditEntry entry = _audit.MakeEntry(
-                action,
-                DateTimeOffset.UtcNow,
-                approvedBy,
-                approvalId: approvalId,
-                macHostNodeId: Environment.MachineName,
-                scopeContext: new ScopeContextSummary(bundleId: target.ProcessImageName));
-            _audit.Append(entry);
+            try
+            {
+                ComputerUseAuditEntry entry = _audit.MakeEntry(
+                    action,
+                    DateTimeOffset.UtcNow,
+                    approvedBy,
+                    approvalId: approvalId,
+                    macHostNodeId: Environment.MachineName,
+                    scopeContext: new ScopeContextSummary(bundleId: target.ProcessImageName));
+                _audit.Append(entry);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                return RecordDeniedLocked(action, ComputerUseDenyReason.AuditFailure, ex.GetType().Name);
+            }
+
             return _desktopLoop.Dispatch(action);
         }
     }
@@ -160,13 +170,20 @@ public sealed class ComputerUseRuntimeSession
     {
         if (_active)
         {
-            ComputerUseAuditEntry entry = _audit.MakeEntry(
-                action,
-                DateTimeOffset.UtcNow,
-                AuditApprovedBy.Denied,
-                denyReason: reason.ToWire(),
-                macHostNodeId: Environment.MachineName);
-            _audit.Append(entry);
+            try
+            {
+                ComputerUseAuditEntry entry = _audit.MakeEntry(
+                    action,
+                    DateTimeOffset.UtcNow,
+                    AuditApprovedBy.Denied,
+                    denyReason: reason.ToWire(),
+                    macHostNodeId: Environment.MachineName);
+                _audit.Append(entry);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                return ComputerUseLoopResult.Denied(ComputerUseDenyReason.AuditFailure, ex.GetType().Name);
+            }
         }
 
         return ComputerUseLoopResult.Denied(reason, detail);

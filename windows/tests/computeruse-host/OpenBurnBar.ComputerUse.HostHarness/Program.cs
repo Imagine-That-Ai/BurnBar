@@ -172,7 +172,8 @@ internal static class Program
                 displayY: scroll.Y,
                 deltaY: -2));
             bool scrollObserved = await WaitUntilAsync(() => wheelProbe.InjectedWheelEvents > 0);
-            Add(checks, "sendinput-scroll", scrolled.Dispatched && scrollObserved,
+            bool controlScrollObserved = form.ScrollOffset != scrollBefore && form.ScrollEvents > scrollEventsBefore;
+            Add(checks, "sendinput-scroll", scrolled.Dispatched && scrollObserved && controlScrollObserved,
                 $"adapter={scrolled.Detail}; injectedWheelEvents={wheelProbe.InjectedWheelEvents}; controlBefore={scrollBefore}; controlAfter={form.ScrollOffset}; controlEvents={form.ScrollEvents - scrollEventsBefore}");
         }
 
