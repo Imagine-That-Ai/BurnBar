@@ -49,6 +49,7 @@ jobs:
       - name: Build Linux release artifacts
         env:
           OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM: ${{ secrets.OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM }}
+          LINUX_RELEASE_VERSION: ${{ inputs.version }}
         run: >
           docker run --rm
           -e OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM
@@ -57,8 +58,9 @@ jobs:
           -v "$PWD:/workspace"
           -w /workspace
           openburnbar-linux-toolchain:mission-001
-          bash -c "git config --global --add safe.directory /workspace &&
-          node scripts/linux-port/build-linux-release.mjs --version '${{ inputs.version }}'"
+          bash -c 'git config --global --add safe.directory /workspace &&
+          node scripts/linux-port/build-linux-release.mjs --version "$1"'
+          bash "$LINUX_RELEASE_VERSION"
 
       - name: Package install/uninstall/update smoke
         run: >
@@ -108,11 +110,13 @@ jobs:
       - name: Publish Linux GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}
+          LINUX_RELEASE_VERSION: ${{ inputs.version }}
+          LINUX_ALLOW_PRERELEASE: ${{ inputs.allow_prerelease }}
         run: |
           set -euo pipefail
           # Linux-specific tag: does not match the macOS/iOS `v*` release trigger,
           # so publishing here never fires the Apple release pipeline.
-          tag="linux-v${{ inputs.version }}"
+          tag="linux-v${LINUX_RELEASE_VERSION}"
           art=docs/linux-port/evidence/mission-001-release
           cp packaging/linux/openburnbar-linux-ed25519.pub.pem "$art/" 2>/dev/null || true
           mapfile -t assets < <(find "$art/artifacts" "$art/sidecars" "$art" -maxdepth 2 -type f \
@@ -121,9 +125,9 @@ jobs:
                -o -name '*.openvex.json' -o -name '*checksums*.txt' -o -name '*provenance-predicate.json' \
                -o -name 'openburnbar-linux-ed25519.pub.pem' \) | sort -u)
           prerelease=""
-          [ "${{ inputs.allow_prerelease }}" = "true" ] && prerelease="--prerelease"
+          [ "$LINUX_ALLOW_PRERELEASE" = "true" ] && prerelease="--prerelease"
           gh release create "$tag" $prerelease \
-            --title "OpenBurnBar Linux ${{ inputs.version }} (aarch64)" \
+            --title "OpenBurnBar Linux ${LINUX_RELEASE_VERSION} (aarch64)" \
             --notes "First OpenBurnBar Linux desktop release — aarch64/ARM64. Signed AppImage (primary), deb, and rpm plus the daemon binary, with Ed25519 detached signatures and keyless Sigstore/cosign attestation bundles. Verify with packaging/linux/openburnbar-linux-ed25519.pub.pem. Prerelease: this build seeds the auto-update chain." \
             "${assets[@]}"
 
