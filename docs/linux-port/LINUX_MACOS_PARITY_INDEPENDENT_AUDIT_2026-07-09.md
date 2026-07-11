@@ -2,11 +2,11 @@
 
 | Audit field | Value |
 |---|---|
-| Date | Baseline audit: 2026-07-09; remediation evidence: 2026-07-10 UTC |
+| Date | Baseline audit: 2026-07-09; remediation evidence: 2026-07-11 UTC |
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | Account/auth foundation at `0d31d4ee9831e9608df7ecb3e9655cdaa3c8a2ba`; stacked native-shell source through global-panic capture commit `87288baa4b` plus the current provider external-auth and Linux App Check boundary packets; clean aarch64 and architecture-correct x86_64 release shards at `391fe2847d`. Source packets are validated but are not promoted by this text without exact-candidate environment evidence. |
+| Remediation evidence | Account/auth foundation at `0d31d4ee9831e9608df7ecb3e9655cdaa3c8a2ba`; stacked native-shell source through global-panic capture commit `87288baa4b` plus the current provider external-auth, Linux App Check boundary, and daemon attestation ingress bridge packets; clean aarch64 and architecture-correct x86_64 release shards at `391fe2847d`. Source packets are validated but are not promoted by this text without exact-candidate environment evidence. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -51,10 +51,12 @@ login-start lifecycle harness.
 The current auth packet also adds purpose-bound in-app device authorization,
 daemon-owned Firebase token exchange and refresh, writable-keyring preflight,
 local sign-out, and a strict renderer-redacted account contract. Native Linux
-App Check now has a source-level two-step boundary: a durable two-minute
-Firestore challenge with atomic replay consumption, a pinned signed-verdict
-verifier seam, a fixed 30-minute token TTL, and an account-bound daemon
-memory-only client. Endpoint-wide trust authorization now rejects Linux on 73
+App Check now has a source-level challenge-to-ingress bridge: a durable
+five-minute Firestore challenge with atomic replay consumption, a pinned
+signed-verdict verifier seam, a fixed 30-minute token TTL, an account-bound
+daemon memory-only client, hash-only upload-ticket issuance, exact public
+ingress claim, streamed evidence upload, and receipt-native mint evidence.
+Endpoint-wide trust authorization now rejects Linux on 73
 callables by default, admits 29 audited low-risk operations, and permits 14
 high-risk mutations only through the existing nonce plus trusted-device proof
 and mandatory-audit step-up; the two prerequisite callables are separately
@@ -66,10 +68,11 @@ authorization, bounded workers and local IPC, package-owned
 install/update/remove hooks, active user-daemon upgrade recovery, and an explicit
 destructive purge path. AppImage remains intentionally ineligible for host
 attestation. A real Firebase Web app ID, TPM enrollment and quote backend,
-IMA evidence path, pinned remote verifier, deployment, and installed Linux
-matrix are still missing, so protected cloud operations, membership/billing,
-cloud sync, and trusted devices remain open. This advances the Linux sign-in and
-App Check foundations without closing `GAP-010` or `LNX-APPCHECK-001`.
+complete IMA evidence, pinned remote verifier/revocation deployment, public
+ingress deployment, negative vectors, and installed Linux matrix are still
+missing, so protected cloud operations, membership/billing, cloud sync, and
+trusted devices remain open. This advances the Linux sign-in and App Check
+foundations without closing `GAP-010` or `LNX-APPCHECK-001`.
 The current provider-auth packet separately adds registry-validated,
 daemon-owned Codex and Claude external-login flows with typed
 start/status/cancel RPCs, a bounded private terminal launcher, local CLI auth
@@ -128,6 +131,15 @@ desktop suite, **26/26** Tauri Rust tests, **34/34** focused Functions auth/gran
 tests, and **44/44** website tests. A deployed GNOME/KDE browser-to-keyring run
 remains pending; these source results do not certify the production auth outcome.
 
+The current daemon attestation ingress packet passed source-level Linux
+verification: **10** network-client selectors, **5** production-provider
+selectors, **8** service selectors, and **14** broker selectors in Docker Linux
+XCTest; **3/3** Functions client-bridge tests; **99/99** Linux attestation facade
+tests; **6/6** schema/contract tests; and the no-suppression plus Linux-native
+harness meta gates. The Docker toolchain image required ephemeral
+`libpam0g-dev` installation for the linker symlink; this is environment setup
+evidence, not installed-product certification.
+
 Promotion remains blocked by several explicit conditions: no previous same-architecture
 Linux package exists to prove update, rollback, and data preservation; no x86_64
 installed architecture session has been produced; and the minimum compositor,
@@ -157,7 +169,7 @@ The correct release posture is therefore:
 | Updates | Native signed-feed verification implemented; invalid endpoint fails honestly | Serve valid signed feed and prove package-manager update/rollback/data preservation |
 | Native shell | Single-instance/background launch, typed deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, installed X11 global-panic capture, user XDG login start, daemon-owned provider external login, fail-closed native-shell matrix evidence requirements, and verifier-produced `native-shell-evidence.json` are implemented | Certify rich/icon-only GNOME, KDE, X11, wlroots, accessibility, notification, cloud quick reply, provider external-login, and lifecycle rows |
 | Account auth | Purpose-bound device authorization, sealed custom-token delivery, daemon-owned refresh, keyring custody, renderer-redacted status, and local sign-out are source-implemented | Deploy and certify the callable/browser path; complete membership/billing, cloud sync, and trusted-device lifecycle |
-| Linux App Check | Durable two-step challenge, atomic replay defense, pinned signed-verdict boundary, fixed 30-minute TTL, daemon memory-only acquisition/cache, and the root broker/native deb-rpm packaging foundation are source-implemented; mint kill switch defaults off | Provision the Firebase Web app; implement TPM enrollment/quotes, complete IMA evidence and remote verification/revocation, deploy, run negative vectors, and certify the installed matrix; Linux remains `linux_lower_trust` |
+| Linux App Check | Durable five-minute challenge, atomic replay defense, pinned signed-verdict boundary, fixed 30-minute TTL, daemon memory-only acquisition/cache, hash-only ticket reservation, exact ingress claim, streamed evidence upload, receipt-native mint evidence, and the root broker/native deb-rpm packaging foundation are source-implemented; mint kill switch defaults off | Provision the Firebase Web app; implement real TPM enrollment/quotes, complete IMA evidence and remote verification/revocation, deploy ingress/verifier, run negative vectors, and certify the installed matrix; Linux remains `linux_lower_trust` |
 | Packaging | aarch64 and x86_64 AppImage/deb/rpm/daemon construction and smoke passed; aarch64 installed `.deb` session passed | Produce installed x86_64 session, signed aggregate, rpm/AppImage lifecycle, and prior-version proof |
 | Core product workflows | Six dashboard layouts, XDG/provider paths, and daemon-authoritative memory decisions are implemented; several routes remain partial/read-only | Complete onboarding, chat, sessions, account/cloud, and workspace depth |
 | Advanced platform features | Mercury implementation and guarded Linux input/panic paths exist; unsupported outcomes remain capability-gated | Certify Mercury; complete system CU capture, SmartHub devices, IBus/Fcitx, and companion overlay |
@@ -308,7 +320,7 @@ required gates and were not made green by the Ed25519 result.
 | P-12 | Quota | Provider quotas, histories, account switching, alerts | Strong read surface; account profiles, drain targets, and switching lag | Partial | Medium |
 | P-13 | Onboarding | Provider connection, scan, permissions, chat engine, recovery, completion gates | Daemon-owned state, required-step gates, restart recovery, Secret Service readback, XDG write verification, privacy persistence, and strict native/WebView RPC decoding are implemented; provider connection/scan, onboarding integration with deployed account/provider auth, portal, tray, update, and first-data readback remain incomplete | Partial | High |
 | P-14 | Chat | Persisted threads, search, streaming, models, attachments, citations, approvals, panes/pop-out | Synthetic transcript rows and multiple disabled controls; five vs twelve backends | Partial | High |
-| P-15 | Account and billing | Sign-in/link/sign-out, membership, subscription, recovery | Purpose-bound account auth and Linux App Check foundations are source-implemented: durable challenge/replay state, pinned verifier boundary, fixed 30-minute TTL, daemon memory-only acquisition, and a root broker/native deb-rpm lifecycle with signed installed manifests and exact peer authorization; production minting defaults off and the real Firebase app ID, TPM/IMA evidence backend and remote verifier, deployment, installed proof, membership restore/checkout, and entitlement recovery remain | Partial | High |
+| P-15 | Account and billing | Sign-in/link/sign-out, membership, subscription, recovery | Purpose-bound account auth and Linux App Check foundations are source-implemented: durable challenge/replay state, pinned verifier boundary, fixed 30-minute TTL, daemon memory-only acquisition, hash-only upload tickets, exact ingress claim, streamed evidence upload, receipt-native mint evidence, and a root broker/native deb-rpm lifecycle with signed installed manifests and exact peer authorization; production minting defaults off and the real Firebase app ID, TPM/IMA evidence backend, remote verifier/revocation, ingress deployment, installed proof, membership restore/checkout, and entitlement recovery remain | Partial | High |
 | P-16 | Cloud and devices | Backup, sync, conflict handling, remote access, trusted device management | Cloud/trusted-device mutation RPCs explicitly absent | Partial | High |
 | P-17 | Activity/session logs | Indexed transcript, search, body, replay, resume, export, source resolution | Recent usage is wrapped as session metadata; no real body/resume/export | Substitute | High |
 | P-18 | Memory review | Quarantined candidates, approve/reject, durable state, audit | Approve/reject/forget now use idempotent daemon RPCs and survive reload; Linux still lacks a proven first-class quarantine feed and cross-device review matrix | Partial | High |
@@ -681,9 +693,11 @@ receive device secrets or Firebase credentials. Token-bearing daemon requests
 refuse redirects and require an exact final endpoint URL. A durable keyring
 affinity marker binds restore, rotation, preflight, and sign-out to one backend;
 the retained signed-out tombstone keeps stale secondary-keyring credentials
-inert. The App Check source foundation now adds a two-step durable challenge,
+inert. The App Check source foundation now adds a durable five-minute challenge,
 atomic cross-instance replay consumption, exact signed-verdict verification, a
-fixed 30-minute token TTL, and an account-bound daemon memory-only client. The
+fixed 30-minute token TTL, an account-bound daemon memory-only client, hash-only
+upload-ticket issuance, exact ingress claim, streamed evidence upload, and
+receipt-native mint evidence. The
 root-owned broker foundation adds default-disabled systemd socket activation,
 per-request `SCM_CREDENTIALS` plus exact executable authorization, signed
 package manifests with recomputed inventory roots, bounded worker/IPC limits,
@@ -1266,8 +1280,8 @@ coverage.
 | LNX-CHANNEL-001 | Open | Package construction exists | Signed apt/rpm metadata, AUR/Flatpak truth, and channel install lifecycle |
 | LNX-EVT-001 | Implemented in source; installed certification pending | Bounded pull authority, restart/offline recovery, cancellation, and coalesced refresh | Native push and exact-candidate suspend/offline matrix |
 | LNX-ONB-001 | Partially implemented | Daemon-owned transactional state and required prerequisite probes | Provider scan, deployed auth, portal, tray, update, chat, and first-data readback |
-| LNX-AUTH-001 family | Source foundation implemented; deployment and product depth open | Purpose-bound sealed device auth, daemon refresh/keyring custody, redacted state, local sign-out, and the App Check challenge/verifier/daemon-client boundary | Deploy account auth; complete the App Check broker, verifier, rollout, and installed proof; then membership, sync, and trusted devices |
-| LNX-APPCHECK-001 | Source boundary and root-broker foundation partially implemented; production blocked | Two-step two-minute Firestore challenge, atomic replay consumption, exact signed-verdict binding, fixed 30-minute token TTL, kill switch default off, account-bound daemon memory cache, root `openburnbar-attestd`, signed installed manifest, exact peer authorization, systemd socket activation, native deb/rpm lifecycle, and AppImage exclusion | Real Firebase Web app ID, TPM enrollment and quotes, complete IMA evidence, pinned remote verifier and revocation, Swift broker adapter, deployment, negative vectors, and exact-candidate GNOME/KDE/headless installed matrix |
+| LNX-AUTH-001 family | Source foundation implemented; deployment and product depth open | Purpose-bound sealed device auth, daemon refresh/keyring custody, redacted state, local sign-out, and the App Check challenge/verifier/daemon-client/ingress bridge boundary | Deploy account auth; complete the App Check verifier, rollout, and installed proof; then membership, sync, and trusted devices |
+| LNX-APPCHECK-001 | Source daemon bridge and root-broker foundation implemented; production blocked | Five-minute Firestore challenge, atomic replay consumption, exact signed-verdict binding, fixed 30-minute token TTL, kill switch default off, account-bound daemon memory cache, hash-only upload-ticket reservation, exact ingress claim, streamed evidence PUT, receipt-native mint evidence, root `openburnbar-attestd`, signed installed manifest, exact peer authorization, systemd socket activation, native deb/rpm lifecycle, and AppImage exclusion | Real Firebase Web app ID, TPM enrollment and quotes, complete IMA evidence, pinned remote verifier and revocation, ingress/verifier deployment, negative vectors, and exact-candidate GNOME/KDE/headless installed matrix |
 | LNX-NATIVE-001 | Partially implemented | Single-instance launch, typed deep links, live tray facts/actions, compact status window, source-level freedesktop notification actions, deterministic installed notification action capture, installed X11 global-panic capture, deterministic login-start lifecycle capture, deterministic tray-host-loss/restart capture, XDG login start, daemon-owned typed provider external login, native-shell evidence requirements in the matrix harness, and verifier-produced native-shell evidence JSON | Cloud quick reply, installed provider-login and rich notification-host breadth, durable provider multi-account profiles, display-manager/package-manager breadth, and full installed desktop matrix evidence |
 | LNX-CAT-001, LNX-DIFF-001 | Open | Existing provider/path contracts retained | Shared catalog plus same-commit macOS/Linux differential proof |
 | Phase 2 core workflows | Open/partial | Existing routes and bounded mutations retained | Complete product outcomes and daemon-authoritative state |
@@ -1352,7 +1366,7 @@ accepted together.
 | Task | Depends on | Engineering work | Required evidence | Rollback/containment | Acceptance criteria |
 |---|---|---|---|---|---|
 | LNX-AUTH-DEPLOY-001 | LNX-SEC-001, LNX-IPC-001 | Deploy the reviewed Functions and website revisions; certify the exact approval origin, purpose-bound callable, daemon exchange, keyring persistence, restart, and local sign-out | Source/deployment revision binding, CSP and endpoint checks, Google and Apple approval transcripts, GNOME Secret Service and KDE KWallet runs, captured IPC/DOM/log redaction scan | Roll back Functions and website to their prior revisions; keep the Linux client local-only and surface auth as unavailable without deleting local product data | Google and Apple sign-in, cancel, expiry, retry, restart, refresh rotation, locked/missing keyring, and double sign-out pass through production endpoints with no credential exposure |
-| LNX-APPCHECK-001 | LNX-AUTH-DEPLOY-001, LNX-CAP-001 | The lower-trust model, durable challenge/replay store, pinned signed-verdict seam, fixed 30-minute mint, default-off kill switch, daemon memory-only client, and root broker/native deb-rpm lifecycle are source-implemented; provision the real Firebase Web app, add TPM enrollment/quotes and complete IMA evidence, connect the Swift daemon adapter, deploy the pinned remote verifier/revocation service, and enforce installed-environment capability policy | ADR 015, Functions/daemon/broker negative vectors, TPM quote and complete IMA-log vectors or short-lived upload receipts, replay/revocation/clock-skew/offline tests, server decision logs, release measurements, direct Firestore/Storage surface inventory, and GNOME/KDE/headless capability results | Keep `LINUX_APP_CHECK_MINT_ENABLED=false` and remove the Linux app ID from the allow-list; Functions deny immediately, direct Firebase-product access drains within the fixed 30-minute token TTL, and local account/SQLite workflows continue | Forged, replayed, expired, revoked, wrong-user/app/device/version/architecture/release/policy attestations fail; valid supported physical-TPM environments renew without renderer/log/disk token exposure; unsupported hosts fail before action |
+| LNX-APPCHECK-001 | LNX-AUTH-DEPLOY-001, LNX-CAP-001 | The lower-trust model, durable challenge/replay store, pinned signed-verdict seam, fixed 30-minute mint, default-off kill switch, daemon memory-only client, hash-only upload-ticket reservation, exact ingress claim, streamed evidence PUT, receipt-native mint evidence, and root broker/native deb-rpm lifecycle are source-implemented; provision the real Firebase Web app, add TPM enrollment/quotes and complete IMA evidence, deploy the pinned ingress/verifier/revocation services, and enforce installed-environment capability policy | ADR 015, Functions/daemon/broker negative vectors, TPM quote and complete IMA-log vectors or short-lived upload receipts, replay/revocation/clock-skew/offline tests, server decision logs, release measurements, direct Firestore/Storage surface inventory, and GNOME/KDE/headless capability results | Keep `LINUX_APP_CHECK_MINT_ENABLED=false` and remove the Linux app ID from the allow-list; Functions deny immediately, direct Firebase-product access drains within the fixed 30-minute token TTL, and local account/SQLite workflows continue | Forged, replayed, expired, revoked, wrong-user/app/device/version/architecture/release/policy attestations fail; valid supported physical-TPM environments renew without renderer/log/disk token exposure; unsupported hosts fail before action |
 | LNX-MEMBERSHIP-001 | LNX-AUTH-DEPLOY-001, LNX-APPCHECK-001, LNX-NATIVE-001 | Add daemon-ID-token membership reads, Linux-safe checkout/manage endpoints, validated browser return, restore, entitlement refresh, and recovery; do not use Apple JWS as a Linux substitute | Free/Pro and stale/offline fixtures, checkout/return/restore transcripts, signed webhook/entitlement receipts, restart recovery, and malicious-return tests | Disable billing mutations and retain read-only entitlement/local mode; never erase local data or fabricate Pro state during outage | Free, Pro, checkout, manage, cancel, restore, renewal, expiry, refund, offline, and callback-tamper cases converge on server-authoritative entitlement state across restart |
 | LNX-SYNC-001 | LNX-APPCHECK-001, LNX-MEMBERSHIP-001, LNX-EVT-001, LNX-SEC-001 | Implement daemon-owned encrypted backup, append/merge replication, offline journal, restore, conflict policy, remote access, and explicit sync status while preserving local authority | Two-device encrypted payload inspection, deterministic conflict fixtures, offline/reconnect/retry transcripts, corruption/partial-failure recovery, and 10k-record performance | Pause remote replication and preserve local data plus the durable pending journal; never resolve uncertainty by deleting or overwriting the local authority | Backup, incremental sync, restore, conflict, duplicate retry, offline recovery, corruption recovery, account switch, and entitlement loss complete without plaintext or local data loss |
 | LNX-DEVICE-001 | LNX-APPCHECK-001, LNX-SYNC-001, LNX-SEC-001 | Add trusted-device list/add/approve/revoke/forget/transfer and encrypted credential-transfer lifecycle with daemon-owned authorization and audit | Linux-to-macOS/iOS/Android two-device matrix, approval/revocation races, transfer readback, stolen/replayed invitation tests, audit trail, and restart/offline recovery | Disable new pairing and transfers server-side while preserving revocation/audit records and local credentials; a revoked device remains denied | Add, reject, approve, revoke, forget, replace, and transfer are idempotent, survive restart, propagate across devices, and prevent revoked or replayed peers from reading new data |
@@ -1402,7 +1416,7 @@ accepted together.
 | 1 | **Trustworthy engineering baseline** | Complete in code; dual-architecture construction and aarch64 installed proof live | LNX-REL-VERIFY-001, LNX-CI-001, LNX-RUN-001, LNX-A11Y-HARNESS-001, LNX-PERF-HARNESS-001 | Add installed x86_64 and prior-version package sessions without regressing strict gates |
 | 2 | **Security foundation** | Complete in code; matrix pending | LNX-SEC-001, LNX-IPC-001, LNX-CAP-001 | GNOME/KDE/headless credential and installed adversarial verification green |
 | 3 | **Mainstream install** | Package construction complete; installed/channel proof in progress | LNX-PKG-001, LNX-CHANNEL-001 | Both architectures and every declared package/repository channel install locally |
-| 4 | **Daily-use native foundation** | In progress; onboarding, bounded event refresh, single-instance/deep-link, live-tray, compact status, source-level notifications, installed X11 global-panic capture, XDG login-start, account-auth foundations, Linux App Check challenge/verifier/daemon-client boundaries, root broker/native deb-rpm lifecycle, and typed provider external login implemented; production TPM/IMA evidence and remote verification, membership/cloud/device depth, cloud quick reply, provider-login installed certification/multi-account profiles, and installed matrix remain | LNX-EVT-001, LNX-ONB-001, LNX-AUTH-DEPLOY-001, LNX-APPCHECK-001, LNX-MEMBERSHIP-001, LNX-SYNC-001, LNX-DEVICE-001, LNX-NATIVE-001, LNX-UPD-001, LNX-CAT-001, LNX-DIFF-001 | Setup, deployed auth, production attestation, data freshness, alerts/tray, update lifecycle, and current provider diff green |
+| 4 | **Daily-use native foundation** | In progress; onboarding, bounded event refresh, single-instance/deep-link, live-tray, compact status, source-level notifications, installed X11 global-panic capture, XDG login-start, account-auth foundations, Linux App Check challenge/verifier/daemon-client/ingress boundaries, root broker/native deb-rpm lifecycle, and typed provider external login implemented; production TPM/IMA evidence and remote verification, membership/cloud/device depth, cloud quick reply, provider-login installed certification/multi-account profiles, and installed matrix remain | LNX-EVT-001, LNX-ONB-001, LNX-AUTH-DEPLOY-001, LNX-APPCHECK-001, LNX-MEMBERSHIP-001, LNX-SYNC-001, LNX-DEVICE-001, LNX-NATIVE-001, LNX-UPD-001, LNX-CAT-001, LNX-DIFF-001 | Setup, deployed auth, production attestation, data freshness, alerts/tray, update lifecycle, and current provider diff green |
 | 5 | **Core product workflows** | Open/partial | LNX-SESS-001, LNX-CHAT-001, LNX-MEM-001, LNX-PROJ-001, LNX-MISSION-001, LNX-INSIGHT-001, LNX-DB-001, LNX-PROVIDER-001, LNX-PRIV-001, LNX-SET-001 | No synthetic state; every primary workspace and privacy workflow completes |
 | 6 | **Browser automation parity** | Open/partial | LNX-CU-BROWSER-001 | Real actions, approval, panic, audit, restart recovery |
 | 7 | **Media and system integration** | In progress; Mercury code complete | LNX-CU-SYSTEM-001, LNX-MEDIA-001 | Supported compositor safety and two-device media proof |
@@ -1513,10 +1527,12 @@ Keep one integration owner at a time for `routes.ts`, `tauriBridge.ts`, the Taur
   non-overlapping and loss-tolerant polling, persistence before signed-in
   publication, restart/refresh rotation, renderer redaction, backend-affinity
   tombstones, and atomic local sign-out.
-- [x] Source-level Linux App Check contracts cover a durable two-minute
+- [x] Source-level Linux App Check contracts cover a durable five-minute
   challenge, atomic replay rejection, exact identity/release/policy binding,
   pinned signed-verdict verification, a fixed 30-minute token TTL, a default-off
-  mint kill switch, and account-bound daemon memory-only acquisition.
+  mint kill switch, account-bound daemon memory-only acquisition, hash-only
+  upload-ticket reservation, exact ingress claim, streamed evidence upload, and
+  receipt-native mint evidence.
 - [x] Every callable has a generated lower-trust desktop policy enforced in the
   shared callable wrapper; unknown IDs and uncataloged callables fail closed,
   Linux deny/low-risk/prerequisite/step-up sets are cardinality-locked, and
@@ -1535,8 +1551,8 @@ Keep one integration owner at a time for `routes.ts`, `tauriBridge.ts`, the Taur
   mutation by rpmbuild. AppImage is explicitly ineligible, and destructive
   identity purge requires an explicit confirmation flag.
 - [ ] Provision the real Firebase Web app ID; implement TPM enrollment and
-  PCR-bound quotes, complete IMA evidence delivery, revocation, the Swift broker
-  adapter, and the pinned remote verifier; pass
+  PCR-bound quotes, complete IMA evidence delivery, revocation, public ingress
+  deployment, and the pinned remote verifier; pass
   forgery/replay/expiry/wrong-binding/outage vectors and the exact-candidate
   GNOME/KDE/headless installed matrix.
 - [ ] Verify Linux App Check tokens and raw evidence never persist to disk or

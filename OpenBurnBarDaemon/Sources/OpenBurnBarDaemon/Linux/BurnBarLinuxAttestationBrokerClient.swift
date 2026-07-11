@@ -20,7 +20,7 @@ enum BurnBarLinuxAttestationBrokerClientError: Error, Equatable, Sendable {
 
 struct BurnBarLinuxAttestationEvidenceBundleMetadata: Codable, Equatable, Sendable {
     static let formatV1 = "openburnbar_tpm_evidence_bundle_v1"
-    static let maximumBytes = 64 * 1_024 * 1_024
+    static let maximumBytes = 16 * 1_024 * 1_024
 
     let descriptorIndex: Int
     let format: String

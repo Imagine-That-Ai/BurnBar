@@ -312,6 +312,49 @@ final class BurnBarLinuxAttestationBrokerClientTests: XCTestCase {
         assertClosed(descriptor)
     }
 
+    func testEvidenceDescriptorAcceptsExact16MiBBoundaryAndRejectsOneByteOver() async throws {
+        let maximumBytes = 16 * 1_024 * 1_024
+        XCTAssertEqual(BurnBarLinuxAttestationEvidenceBundleMetadata.maximumBytes, maximumBytes)
+
+        let boundaryBytes = Data(repeating: 0x46, count: maximumBytes)
+        let boundaryDescriptor = try makeMemfd(bytes: boundaryBytes, sealed: true)
+        var boundaryResponse = try fixtureObject(at: ["attestResponse"])
+        setEvidenceBundle(
+            in: &boundaryResponse,
+            byteLength: boundaryBytes.count,
+            sha256: PlatformCrypto.sha256Hex(boundaryBytes)
+        )
+        let boundaryClient = fixtureClient(
+            response: try framedJSON(boundaryResponse),
+            descriptors: [boundaryDescriptor],
+            requestID: "attest-0001"
+        )
+
+        let accepted = try await attestWithGoldenRequest(boundaryClient)
+        XCTAssertEqual(accepted.evidenceDescriptor.metadata.byteLength, maximumBytes)
+        accepted.evidenceDescriptor.closeDescriptor()
+        assertClosed(boundaryDescriptor)
+
+        let oversizedBytes = Data(repeating: 0x47, count: maximumBytes + 1)
+        let oversizedDescriptor = try makeMemfd(bytes: oversizedBytes, sealed: true)
+        var oversizedResponse = try fixtureObject(at: ["attestResponse"])
+        setEvidenceBundle(
+            in: &oversizedResponse,
+            byteLength: oversizedBytes.count,
+            sha256: PlatformCrypto.sha256Hex(oversizedBytes)
+        )
+        let oversizedClient = fixtureClient(
+            response: try framedJSON(oversizedResponse),
+            descriptors: [oversizedDescriptor],
+            requestID: "attest-0001"
+        )
+
+        await assertClientError(.invalidEvidenceDescriptor) {
+            _ = try await self.attestWithGoldenRequest(oversizedClient)
+        }
+        assertClosed(oversizedDescriptor)
+    }
+
     func testMultipleDescriptorsAreRejectedAndClosed() async throws {
         let first = try makeMemfd(bytes: Data(repeating: 0x44, count: 4_096), sealed: true)
         let second = try makeMemfd(bytes: Data(repeating: 0x45, count: 4_096), sealed: true)
@@ -329,9 +372,15 @@ final class BurnBarLinuxAttestationBrokerClientTests: XCTestCase {
     }
 
     private func performGoldenAttest(_ client: BurnBarLinuxAttestationBrokerClient) async throws {
+        _ = try await attestWithGoldenRequest(client)
+    }
+
+    private func attestWithGoldenRequest(
+        _ client: BurnBarLinuxAttestationBrokerClient
+    ) async throws -> BurnBarLinuxAttestationBrokerResult {
         let challenge = try decodedFixture(BurnBarLinuxAppCheckChallenge.self, at: ["attestRequest", "challenge"])
         let binding = try decodedFixture(BurnBarLinuxAppCheckAttestationBinding.self, at: ["attestRequest", "binding"])
-        _ = try await client.attest(challenge: challenge, binding: binding)
+        return try await client.attest(challenge: challenge, binding: binding)
     }
 
     private func fixtureClient(

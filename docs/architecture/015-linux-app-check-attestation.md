@@ -68,6 +68,18 @@ Linux is a distinct, permanently lower-assurance principal:
   and size, and a server-selected upload ID. Enrollment tickets bind UID,
   AK-derived device ID, and exact decoded AK/EK/certificate digests. Raw ticket
   secrets are never stored, logged, or placed in URLs.
+- The daemon client bridge requires an explicitly configured, exact HTTPS
+  ingress base URL; there is no production fallback endpoint. After the broker
+  returns a sealed evidence descriptor, the daemon keeps the raw ticket secret
+  in memory, sends only its domain-separated hash to the ticket callable, and
+  uses the resulting `obbat1_<ticketId>.<secret>` capability only on the upload
+  claim `POST`. The subsequent `PUT` carries the Firebase bearer token but not
+  the ticket capability, streams one fresh view of the descriptor as
+  `application/octet-stream`, and declares the exact bound `Content-Length`.
+  The client refuses redirects, a changed final URL, malformed or non-exact
+  responses, invalid endpoint configuration, and receipt fields that do not
+  match the reservation, digest, and byte count. Task cancellation cancels the
+  underlying request and closes the evidence descriptor.
 - Evidence uploads are capped at 16 MiB because the ingress is a Cloud Run
   HTTP/1 service. Larger bundles require a future direct-to-GCS flow whose
   object size and digest are bound into the ticket before upload. The ingress
@@ -102,13 +114,19 @@ Linux is a distinct, permanently lower-assurance principal:
   only a SHA-256 token hash and verifier receipt in a challenge-derived
   `users/{uid}/linux_app_check_sessions/{sessionHash}` document; it never stores the raw
   App Check token. Client access to session documents is denied.
-- The Linux daemon performs enrollment-ticket, challenge, broker-evidence,
-  upload-ticket, evidence-upload, and mint calls. It bounds the
-  encoded request and streamed response before allocation can exceed policy,
-  coalesces concurrent acquisition, binds cached state to the account UID and session
-  generation, refreshes before expiry, and keeps the App Check token in memory
-  only. Account changes invalidate acquisition and cached state. The renderer
+- The Linux daemon source implements the challenge, broker-evidence,
+  hash-only upload-ticket, claim, streamed upload, and receipt-native mint
+  bridge. Mint evidence contains the broker quote, the descriptor metadata, and
+  only the generation-pinned upload receipt; it does not inline or persist the
+  evidence bundle. The daemon bounds requests and responses, coalesces
+  concurrent acquisition, binds cached state to the account UID and session
+  generation, refreshes before expiry, and keeps the ticket secret, Firebase ID
+  token, App Check token, quote, descriptor, and upload receipt out of durable
+  state. Account changes invalidate acquisition and cached state. The renderer
   may receive redacted availability and expiry status, never token material.
+  Enrollment and the real TPM/IMA evidence backend remain unimplemented, so the
+  production factory composes this bridge but the broker fails closed as
+  unsupported before any upload or mint can occur.
 - `LINUX_APP_CHECK_MINT_ENABLED` defaults to false. Mock attestation remains
   limited to existing test/emulator policy and is forced off in production.
 
@@ -164,13 +182,13 @@ Connection admission must also move ahead of the bounded worker queue or apply
 an equivalent credential-aware cap so unauthenticated idle local connections
 cannot exhaust all broker workers before per-UID request limiting runs.
 
-The next implementation stage enrolls a TPM 2.0 attestation key, obtains a
-nonce-qualified quote, verifies the package/release identity, and supplies UEFI
-measured-boot evidence plus IMA PCR 10. A remote verifier must evaluate that
-evidence and return the signed decision consumed by Functions. Because normal
-IMA logs can exceed the Functions 512 KiB evidence limit, complete logs will be
-uploaded to a bounded short-lived verifier endpoint and represented in the mint
-request by a single-use digest-bound receipt; logs must never be truncated.
+The next implementation stage adds broker-managed TPM 2.0 attestation-key
+enrollment, obtains a nonce-qualified quote, verifies the package/release
+identity, and supplies UEFI measured-boot evidence plus IMA PCR 10. A remote
+verifier must evaluate that evidence and return the signed decision consumed by
+Functions. Complete logs must use the digest-bound ingress receipt and stay
+within the current 16 MiB upload contract; logs must never be truncated. A
+larger limit requires a separately designed direct-to-object-storage protocol.
 
 ## Supported Environments
 

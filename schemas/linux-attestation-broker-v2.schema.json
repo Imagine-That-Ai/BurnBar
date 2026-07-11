@@ -74,7 +74,7 @@
       "properties": {
         "descriptorIndex": { "const": 0 },
         "format": { "const": "openburnbar_tpm_evidence_bundle_v1" },
-        "byteLength": { "type": "integer", "minimum": 1, "maximum": 67108864 },
+        "byteLength": { "type": "integer", "minimum": 1, "maximum": 16777216 },
         "sha256": { "$ref": "#/$defs/sha256" }
       }
     },

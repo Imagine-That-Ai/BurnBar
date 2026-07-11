@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "uploadTicketCallableRequest": {
+    "data": {
+      "challengeId": "challenge-0001",
+      "challenge": "bm9uY2UtMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODk",
+      "ticketSecretHashSha256": "1f19e5b47fa987a92f2c36048a53c385f87eb0b86762fe68a631ef9e55585f7f",
+      "expectedSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "expectedSize": 4096
+    }
+  },
+  "uploadTicketCallableResponse": {
+    "result": {
+      "ok": true,
+      "ticketId": "AAECAwQFBgcICQoLDA0ODw",
+      "expiresAtMillis": 1900000300000
+    }
+  },
+  "ingressCreateRequest": {
+    "protocolVersion": 1,
+    "attestationKind": "tpm2_ima_signed_verdict_v1",
+    "appId": "1:123456789:web:abcdef0123456789",
+    "deviceId": "ak-sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "challengeId": "challenge-0001",
+    "releaseDigestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "expectedSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "expectedSize": 4096
+  },
+  "ingressCreateResponse": {
+    "uploadId": "QEFCQ0RFRkdISUpLTE1OTw",
+    "expiresAtMillis": 1900000300000
+  },
+  "uploadReceiptResponse": {
+    "receipt": {
+      "uploadId": "QEFCQ0RFRkdISUpLTE1OTw",
+      "generation": "1900000000000001",
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "size": 4096
+    }
+  },
+  "mintCallableRequest": {
+    "data": {
+      "attestation": {
+        "challengeId": "challenge-0001",
+        "challenge": "bm9uY2UtMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODk",
+        "kind": "tpm2_ima_signed_verdict_v1",
+        "evidence": {
+          "schemaVersion": 1,
+          "quote": {
+            "schemaVersion": 1,
+            "deviceId": "ak-sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "quoteAttestationBase64": "cXVvdGUtYXR0ZXN0YXRpb24=",
+            "quoteSignatureBase64": "cXVvdGUtc2lnbmF0dXJl",
+            "quotePcrValuesBase64": "cXVvdGUtcGNyLXZhbHVlcw==",
+            "pcrBank": "sha256",
+            "pcrSelection": [0, 2, 4, 7, 10],
+            "qualifyingDataSha256": "d9247babd9fba0a728843f11de96ff5f411f9fa8d4227cfb42d860cfd465c8a1"
+          },
+          "evidenceBundle": {
+            "descriptorIndex": 0,
+            "format": "openburnbar_tpm_evidence_bundle_v1",
+            "byteLength": 4096,
+            "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "upload": {
+            "uploadId": "QEFCQ0RFRkdISUpLTE1OTw",
+            "generation": "1900000000000001",
+            "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "size": 4096
+          }
+        }
+      }
+    }
+  }
+}

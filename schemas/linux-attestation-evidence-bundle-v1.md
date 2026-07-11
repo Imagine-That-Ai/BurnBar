@@ -21,7 +21,7 @@ The byte layout is:
 
 Every record offset is absolute from byte zero. Records must be contiguous,
 non-overlapping, within the descriptor size, and individually match their
-declared SHA-256 digest. The complete descriptor is limited to 64 MiB and must
+declared SHA-256 digest. The complete descriptor is limited to 16 MiB and must
 match the size and SHA-256 in the broker response.
 
 The descriptor must be a regular anonymous file with `FD_CLOEXEC` and all of
