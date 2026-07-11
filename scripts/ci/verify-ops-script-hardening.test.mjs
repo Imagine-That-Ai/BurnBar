@@ -181,6 +181,25 @@ assert.ok(
   "Windows distribution PR verification must execute the release wiring regressions",
 );
 
+const foundationUiaCollector = read(
+  "scripts/windows-port/foundation-host-uia-collector.ps1",
+);
+assert.match(
+  foundationUiaCollector,
+  /\[ValidateRange\(10000, 120000\)\] \[int\] \$WindowTimeoutMilliseconds = 30000/,
+  "foundation UIA collection must allow ARM64 cold starts enough time to expose a window",
+);
+assert.match(
+  foundationUiaCollector,
+  /Find-WindowForProcess -ProcessId \$process\.Id -TimeoutMs \$WindowTimeoutMilliseconds/,
+  "foundation UIA scenarios must use the configured window timeout",
+);
+assert.match(
+  foundationUiaCollector,
+  /timeoutMilliseconds = \$WindowTimeoutMilliseconds[\s\S]*processExited = \$process\.HasExited/,
+  "foundation UIA failures must distinguish startup timeout from early process exit",
+);
+
 const firebaseRules = read("scripts/ci/deploy-firebase-rules-releases.mjs");
 assert.ok(
   firebaseRules.includes("rulesSourceForDeploy"),
