@@ -149,13 +149,16 @@ private struct BurnBarMembershipCacheEnvelope: Codable, Sendable {
 struct EnvironmentBurnBarMembershipCloudClient: BurnBarMembershipCloudClient {
     private let environment: [String: String]
     private let session: URLSession
+    private let authTokenProvider: @Sendable () -> String?
 
     init(
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        session: URLSession = .shared
+        session: URLSession = .shared,
+        authTokenProvider: @escaping @Sendable () -> String? = { nil }
     ) {
         self.environment = environment
         self.session = session
+        self.authTokenProvider = authTokenProvider
     }
 
     func checkoutURL(_ request: BurnBarMembershipCheckoutURLRequest) async throws -> BurnBarMembershipCheckoutURLResponse {
@@ -193,8 +196,7 @@ struct EnvironmentBurnBarMembershipCloudClient: BurnBarMembershipCloudClient {
     }
 
     private func authToken() throws -> String {
-        let token = environment["OPENBURNBAR_FIREBASE_ID_TOKEN"]?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let token = authTokenProvider()?.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let token, !token.isEmpty else {
             throw BurnBarMembershipServiceError.unauthenticated
         }

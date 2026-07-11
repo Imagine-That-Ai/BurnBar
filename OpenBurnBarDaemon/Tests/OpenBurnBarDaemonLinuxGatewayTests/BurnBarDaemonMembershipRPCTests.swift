@@ -80,11 +80,14 @@ final class BurnBarDaemonMembershipRPCTests: XCTestCase {
 
     func testCheckoutAndRestoreUseTypedErrorsWithoutNetworkOrFakeURLs() async throws {
         let unauthenticatedClient = EnvironmentBurnBarMembershipCloudClient(
-            environment: ["OPENBURNBAR_MEMBERSHIP_CHECKOUT_ENDPOINT": "https://example.com/membership/checkout"]
+            environment: [
+                "OPENBURNBAR_MEMBERSHIP_CHECKOUT_ENDPOINT": "https://example.com/membership/checkout",
+                "OPENBURNBAR_FIREBASE_ID_TOKEN": "environment-token-must-not-be-used"
+            ]
         )
         do {
             _ = try await unauthenticatedClient.checkoutURL(BurnBarMembershipCheckoutURLRequest())
-            XCTFail("checkoutURL should require a real Firebase auth token")
+            XCTFail("checkoutURL should require a token from the protected auth provider")
         } catch let error as BurnBarMembershipServiceError {
             XCTAssertEqual(error.membershipCode, .unauthenticated)
         }

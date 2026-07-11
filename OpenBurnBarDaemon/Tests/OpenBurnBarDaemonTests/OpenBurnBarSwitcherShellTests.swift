@@ -284,9 +284,16 @@ final class OpenBurnBarSwitcherShellTests: XCTestCase {
                     "OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG": "1",
                     "BURNBAR_DAEMON_SOCKET_AUTH_TOKEN": "daemon-secret-2",
                     "OPENBURNBAR_GATEWAY_ALLOW_UNAUTHENTICATED_LOOPBACK": "1",
+                    "OPENBURNBAR_FIREBASE_ID_TOKEN": "firebase-id-token-secret",
+                    "BURNBAR_FIREBASE_ID_TOKEN": "legacy-firebase-id-token-secret",
+                    "OPENBURNBAR_FIREBASE_APP_CHECK_TOKEN": "app-check-secret",
+                    "OPENBURNBAR_CLOUD_VAULT_KEY_BASE64": "vault-secret",
+                    "OPENBURNBAR_MEMBERSHIP_CHECKOUT_ENDPOINT": "https://example.com/checkout",
+                    "OPENBURNBAR_MEMBERSHIP_RESTORE_ENDPOINT": "https://example.com/restore",
                     "OPENBURNBAR_DAEMON_FUTURE_SECRET": "future-daemon-val",
                     "OPENBURNBAR_GATEWAY_FUTURE_SECRET": "future-gateway-val",
                     "BURNBAR_GATEWAY_FUTURE_CONFIG": "future-config-val",
+                    "BURNBAR_MEMBERSHIP_FUTURE_CONFIG": "future-membership-val",
                     "HOME": "/tmp/home",
                     "PATH": "/usr/bin:/bin",
                     "OPENAI_API_KEY": "should-be-overridden"
@@ -314,11 +321,18 @@ final class OpenBurnBarSwitcherShellTests: XCTestCase {
         XCTAssertNil(env["OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG"])
         XCTAssertNil(env["BURNBAR_DAEMON_SOCKET_AUTH_TOKEN"])
         XCTAssertNil(env["OPENBURNBAR_GATEWAY_ALLOW_UNAUTHENTICATED_LOOPBACK"])
+        XCTAssertNil(env["OPENBURNBAR_FIREBASE_ID_TOKEN"])
+        XCTAssertNil(env["BURNBAR_FIREBASE_ID_TOKEN"])
+        XCTAssertNil(env["OPENBURNBAR_FIREBASE_APP_CHECK_TOKEN"])
+        XCTAssertNil(env["OPENBURNBAR_CLOUD_VAULT_KEY_BASE64"])
 
-        // Prefix-based stripping covers future daemon/gateway env vars.
+        // Prefix-based stripping covers future daemon/gateway/membership env vars.
+        XCTAssertNil(env["OPENBURNBAR_MEMBERSHIP_CHECKOUT_ENDPOINT"])
+        XCTAssertNil(env["OPENBURNBAR_MEMBERSHIP_RESTORE_ENDPOINT"])
         XCTAssertNil(env["OPENBURNBAR_DAEMON_FUTURE_SECRET"])
         XCTAssertNil(env["OPENBURNBAR_GATEWAY_FUTURE_SECRET"])
         XCTAssertNil(env["BURNBAR_GATEWAY_FUTURE_CONFIG"])
+        XCTAssertNil(env["BURNBAR_MEMBERSHIP_FUTURE_CONFIG"])
 
         // Non-daemon env vars pass through.
         XCTAssertEqual(env["TERM"], "xterm-256color")
