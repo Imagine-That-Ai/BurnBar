@@ -657,6 +657,9 @@ pub fn native_tray_update(
         || snapshot.today_cost_usd < 0.0
         || snapshot.today_cost_usd > 1_000_000_000.0
         || snapshot.connected_providers > 1_024
+        || snapshot
+            .quota_floor_remaining_percent
+            .is_some_and(|value| !(0..=100).contains(&value))
     {
         return Err("native_tray_snapshot_invalid".to_string());
     }

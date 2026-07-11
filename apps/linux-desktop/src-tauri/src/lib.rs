@@ -753,6 +753,11 @@ fn evaluate_runtime_capability(
             ),
             None => unavailable(),
         },
+        "notifications" if has_session_bus && native_notification_capabilities().available => available(
+            "The desktop notification server accepted the native capability probe.",
+            "native-notification-probe",
+        ),
+        "notifications" => unavailable(),
         "trusted-cli" if trusted_openburnbar_cli().is_ok() => {
             available("A trusted packaged CLI is installed.", "root-owned-package-path")
         }

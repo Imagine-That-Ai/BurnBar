@@ -113,6 +113,16 @@ fn stable_notification_id(title: &str, body: &str) -> u32 {
     hash
 }
 
+#[cfg(all(unix, not(target_os = "macos")))]
+fn escape_notification_markup(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
 fn validate_request(
     request: NativeNotificationRequest,
 ) -> Result<ValidatedNotificationRequest, String> {
@@ -262,11 +272,16 @@ fn show_notification_linux(
     request: ValidatedNotificationRequest,
     capabilities: NativeNotificationCapabilities,
 ) -> Result<NativeNotificationResult, String> {
+    let body = if capabilities.body_markup {
+        escape_notification_markup(&request.body)
+    } else {
+        request.body.clone()
+    };
     let mut notification = Notification::new();
     notification
         .appname("OpenBurnBar")
         .summary(&request.title)
-        .body(&request.body)
+        .body(&body)
         .id(request.numeric_id)
         .timeout(Timeout::Default)
         .urgency(request.urgency.as_notify_urgency());
