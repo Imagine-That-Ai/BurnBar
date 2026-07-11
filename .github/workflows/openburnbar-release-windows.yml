@@ -156,12 +156,17 @@ jobs:
           OPENBURNBAR_REQUIRE_CURRENT_WINDOWS_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.allow_unsigned == 'true' && '0' || '1' }}
         run: bash scripts/verify-version-consistency.sh
 
+  native-engine:
+    name: Build native parser engine
+    uses: ./.github/workflows/openburnbar-engine-windows.yml
+
   # ── Windows runner: build + Authenticode sign + sign the update feed ────────
   build-sign:
     name: Build + Authenticode sign
     needs:
       - resolve-release
       - portable-verify
+      - native-engine
     runs-on: windows-latest
     timeout-minutes: 60
     permissions:
@@ -198,6 +203,18 @@ jobs:
           "path=$makeappx" >> $env:GITHUB_OUTPUT
           "MakeAppx: $makeappx"
 
+      - name: Download x64 native engine bundle
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: openburnbar-native-engine-win-x64
+          path: windows/native-engine/win-x64
+
+      - name: Download ARM64 native engine bundle
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: openburnbar-native-engine-win-arm64
+          path: windows/native-engine/win-arm64
+
       - name: Preflight signing configuration
         id: config
         env:
@@ -232,6 +249,8 @@ jobs:
               -p:Platform="$plat" -p:WindowsPackageType=None \
               -p:Version="$VERSION" -p:AssemblyVersion="${VERSION}.0" \
               -p:FileVersion="${VERSION}.0" -p:InformationalVersion="$VERSION" \
+              -p:OpenBurnBarNativeEngineDirectory="$GITHUB_WORKSPACE/windows/native-engine/$rid" \
+              -p:OpenBurnBarRequireNativeEngine=true \
               -o "publish/$rid"
           done
 

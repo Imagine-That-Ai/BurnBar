@@ -1,79 +1,112 @@
-using OpenBurnBar.Storage;
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace OpenBurnBar.App.UsageRuntime;
+
+public interface IUsageRuntime : IAsyncDisposable
+{
+    event EventHandler<UsageRuntimeStateChangedEventArgs>? StateChanged;
+
+    UsageRuntimeState State { get; }
+
+    Task StartAsync(CancellationToken cancellationToken = default);
+
+    Task ScanAsync(UsageScanReason reason, CancellationToken cancellationToken = default);
+
+    Task StopAsync(CancellationToken cancellationToken = default);
+}
+
+public enum UsageScanReason
+{
+    Startup,
+    Manual,
+    FileChanged,
+    Periodic,
+}
 
 public enum UsageRuntimePhase
 {
     NotStarted,
-    Discovering,
-    Parsing,
-    Persisting,
+    Scanning,
     Ready,
-    Empty,
+    NoData,
+    Degraded,
+    Unavailable,
     Failed,
     Stopped,
 }
 
-public sealed record UsageRuntimeStatus(
+public enum UsageRuntimeFailureKind
+{
+    NativeEngineUnavailable,
+    NativeEngineFailure,
+    InvalidEngineResponse,
+    Storage,
+    PathDiscovery,
+    Cancelled,
+    Unexpected,
+}
+
+public sealed record UsageRuntimeSnapshot(
+    IReadOnlyList<UsageEngineRecord> Usages,
+    IReadOnlyList<UsageEngineConversation> Conversations,
+    DateTimeOffset CapturedAt)
+{
+    public static UsageRuntimeSnapshot Empty { get; } = new(
+        Array.Empty<UsageEngineRecord>(),
+        Array.Empty<UsageEngineConversation>(),
+        DateTimeOffset.MinValue);
+}
+
+public sealed record UsageRuntimeState(
     UsageRuntimePhase Phase,
-    string Message,
-    DateTimeOffset? LastScanAt = null,
-    int DiscoveredFiles = 0,
-    int ParsedFiles = 0,
-    int FailedFiles = 0)
+    UsageScanReason? Reason,
+    UsageRuntimeSnapshot Snapshot,
+    IReadOnlyList<UsageProviderScanResult> Providers,
+    DateTimeOffset? LastSuccessfulScan,
+    UsageRuntimeFailureKind? FailureKind,
+    string StatusMessage)
 {
-    public bool IsBusy => Phase is UsageRuntimePhase.Discovering
-        or UsageRuntimePhase.Parsing
-        or UsageRuntimePhase.Persisting;
+    public static UsageRuntimeState NotStarted { get; } = new(
+        UsageRuntimePhase.NotStarted,
+        null,
+        UsageRuntimeSnapshot.Empty,
+        Array.Empty<UsageProviderScanResult>(),
+        null,
+        null,
+        "Usage runtime has not started.");
+
+    public bool IsScanning => Phase == UsageRuntimePhase.Scanning;
 }
 
-public sealed record UsageScanResult(
-    int DiscoveredFiles,
-    int ParsedFiles,
-    int FailedFiles,
-    int WrittenUsageRows,
-    int WrittenConversations,
-    TokenUsageAggregateSnapshot Snapshot,
-    DateTimeOffset CompletedAt);
-
-public sealed record DiscoveredUsageLog(string Provider, string Path, DateTimeOffset LastWriteAt);
-
-public sealed record ParsedUsageLog(
-    IReadOnlyList<TokenUsageRecord> UsageRecords,
-    ConversationRecord? Conversation);
-
-public interface IUsageLogDiscovery
+public sealed class UsageRuntimeStateChangedEventArgs : EventArgs
 {
-    IReadOnlyList<DiscoveredUsageLog> Discover(CancellationToken cancellationToken = default);
+    public UsageRuntimeStateChangedEventArgs(UsageRuntimeState previous, UsageRuntimeState current)
+    {
+        Previous = previous;
+        Current = current;
+    }
 
-    IReadOnlyList<string> WatchRoots { get; }
+    public UsageRuntimeState Previous { get; }
+
+    public UsageRuntimeState Current { get; }
 }
 
-public interface IUsageLogParser
+public sealed class UsageRuntimeException : Exception
 {
-    ParsedUsageLog Parse(DiscoveredUsageLog log, CancellationToken cancellationToken = default);
-}
+    public UsageRuntimeException(UsageRuntimeFailureKind kind, string message)
+        : base(message)
+    {
+        Kind = kind;
+    }
 
-public interface IUsageRuntimeStore
-{
-    (int UsageRows, int Conversations) Persist(IReadOnlyList<ParsedUsageLog> logs);
+    public UsageRuntimeException(UsageRuntimeFailureKind kind, string message, Exception innerException)
+        : base(message, innerException)
+    {
+        Kind = kind;
+    }
 
-    TokenUsageAggregateSnapshot LoadSnapshot();
-}
-
-public interface IWindowsUsageRuntime : IAsyncDisposable
-{
-    event EventHandler<TokenUsageAggregateSnapshot>? SnapshotChanged;
-
-    event EventHandler<UsageRuntimeStatus>? StatusChanged;
-
-    TokenUsageAggregateSnapshot Snapshot { get; }
-
-    UsageRuntimeStatus Status { get; }
-
-    Task StartAsync(CancellationToken cancellationToken = default);
-
-    Task<UsageScanResult> ScanAsync(CancellationToken cancellationToken = default);
-
-    Task StopAsync();
+    public UsageRuntimeFailureKind Kind { get; }
 }

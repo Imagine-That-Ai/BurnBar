@@ -316,6 +316,24 @@ public sealed partial class WindowsSqlCipherProvisioner
         "CREATE INDEX IF NOT EXISTS conversations_indexed_at_idx ON conversations(indexedAt DESC)",
         "CREATE VIRTUAL TABLE IF NOT EXISTS conversations_fts USING fts5(fullText, inferredTaskTitle, tokenize='porter unicode61', content='conversations', content_rowid='rowid')",
         """
+        CREATE TRIGGER IF NOT EXISTS conversations_ai AFTER INSERT ON conversations BEGIN
+            INSERT INTO conversations_fts(rowid, inferredTaskTitle, fullText)
+            VALUES (new.rowid, new.inferredTaskTitle, new.fullText);
+        END
+        """,
+        """
+        CREATE TRIGGER IF NOT EXISTS conversations_ad AFTER DELETE ON conversations BEGIN
+            DELETE FROM conversations_fts WHERE rowid = old.rowid;
+        END
+        """,
+        """
+        CREATE TRIGGER IF NOT EXISTS conversations_au AFTER UPDATE ON conversations BEGIN
+            DELETE FROM conversations_fts WHERE rowid = old.rowid;
+            INSERT INTO conversations_fts(rowid, inferredTaskTitle, fullText)
+            VALUES (new.rowid, new.inferredTaskTitle, new.fullText);
+        END
+        """,
+        """
         CREATE TABLE IF NOT EXISTS chat_threads (
             id TEXT NOT NULL PRIMARY KEY,
             title TEXT,

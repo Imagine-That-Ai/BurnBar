@@ -25,27 +25,59 @@ public static class TokenUsageWriteSeam
     /// and its successors). Exercising it proves the Mac-authored constraint is
     /// present and honored on the Windows write path.
     /// </remarks>
-    public static int WriteTokenUsage(SqliteConnection connection, TokenUsageRecord record) =>
-        WriteTokenUsages(connection, new[] { record });
+    public static int WriteTokenUsage(SqliteConnection connection, TokenUsageRecord record)
+    {
+        using var transaction = connection.BeginTransaction();
+        int affected = WriteTokenUsage(connection, transaction, record);
+        transaction.Commit();
+        return affected;
+    }
 
-    /// <summary>Upsert a scan batch in one transaction to avoid one fsync per session.</summary>
-    public static int WriteTokenUsages(SqliteConnection connection, IReadOnlyList<TokenUsageRecord> records)
+    /// <summary>Compatibility entry point for existing scan callers.</summary>
+    public static int WriteTokenUsages(
+        SqliteConnection connection,
+        IReadOnlyList<TokenUsageRecord> records) =>
+        WriteTokenUsageBatch(connection, records);
+
+    /// <summary>
+    /// Atomically upsert a complete parser scan without opening one transaction
+    /// per row. An exception rolls back every row in the batch.
+    /// </summary>
+    public static int WriteTokenUsageBatch(
+        SqliteConnection connection,
+        IEnumerable<TokenUsageRecord> records)
     {
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(records);
-        if (records.Count == 0)
-        {
-            return 0;
-        }
 
         using var transaction = connection.BeginTransaction();
+        int affected = WriteTokenUsageBatch(connection, transaction, records);
+        transaction.Commit();
+        return affected;
+    }
+
+    internal static int WriteTokenUsageBatch(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        IEnumerable<TokenUsageRecord> records)
+    {
         int affected = 0;
         foreach (TokenUsageRecord record in records)
         {
-            using var command = connection.CreateCommand();
-            command.Transaction = transaction;
-            command.CommandText =
-                """
+            affected += WriteTokenUsage(connection, transaction, record);
+        }
+        return affected;
+    }
+
+    private static int WriteTokenUsage(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        TokenUsageRecord record)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
             INSERT INTO token_usage (
                 id, provider, sessionId, projectName, model,
                 inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens,
@@ -75,38 +107,35 @@ public static class TokenUsageWriteSeam
                 createdAt = excluded.createdAt
             """;
 
-            Bind(command, "$id", record.Id);
-            Bind(command, "$provider", record.Provider);
-            Bind(command, "$sessionId", record.SessionId);
-            Bind(command, "$projectName", record.ProjectName);
-            Bind(command, "$model", record.Model);
-            Bind(command, "$inputTokens", record.InputTokens);
-            Bind(command, "$outputTokens", record.OutputTokens);
-            Bind(command, "$cacheCreationTokens", record.CacheCreationTokens);
-            Bind(command, "$cacheReadTokens", record.CacheReadTokens);
-            Bind(command, "$reasoningTokens", record.ReasoningTokens);
-            Bind(command, "$totalTokens", record.TotalTokens);
-            Bind(command, "$cost", record.Cost);
-            Bind(command, "$startTime", record.StartTime);
-            Bind(command, "$endTime", record.EndTime);
-            Bind(command, "$createdAt", record.CreatedAt);
-            Bind(command, "$usageSource", record.UsageSource);
-            Bind(command, "$sourceDeviceId", (object?)record.SourceDeviceId ?? DBNull.Value);
-            Bind(command, "$sourceDeviceName", (object?)record.SourceDeviceName ?? DBNull.Value);
-            Bind(command, "$isRemote", record.IsRemote ? 1 : 0);
-            Bind(command, "$providerID", (object?)record.ProviderID ?? DBNull.Value);
-            Bind(command, "$providerAccountID", (object?)record.ProviderAccountID ?? DBNull.Value);
-            Bind(command, "$providerAccountLabel", (object?)record.ProviderAccountLabel ?? DBNull.Value);
-            Bind(command, "$providerAccountSource", (object?)record.ProviderAccountSource ?? DBNull.Value);
-            Bind(command, "$provenanceMethod", record.ProvenanceMethod);
-            Bind(command, "$provenanceConfidence", record.ProvenanceConfidence);
-            Bind(command, "$estimatorVersion", record.EstimatorVersion);
-            Bind(command, "$parentRequestID", (object?)record.ParentRequestID ?? DBNull.Value);
+        Bind(command, "$id", record.Id);
+        Bind(command, "$provider", record.Provider);
+        Bind(command, "$sessionId", record.SessionId);
+        Bind(command, "$projectName", record.ProjectName);
+        Bind(command, "$model", record.Model);
+        Bind(command, "$inputTokens", record.InputTokens);
+        Bind(command, "$outputTokens", record.OutputTokens);
+        Bind(command, "$cacheCreationTokens", record.CacheCreationTokens);
+        Bind(command, "$cacheReadTokens", record.CacheReadTokens);
+        Bind(command, "$reasoningTokens", record.ReasoningTokens);
+        Bind(command, "$totalTokens", record.TotalTokens);
+        Bind(command, "$cost", record.Cost);
+        Bind(command, "$startTime", record.StartTime);
+        Bind(command, "$endTime", record.EndTime);
+        Bind(command, "$createdAt", record.CreatedAt);
+        Bind(command, "$usageSource", record.UsageSource);
+        Bind(command, "$sourceDeviceId", (object?)record.SourceDeviceId ?? DBNull.Value);
+        Bind(command, "$sourceDeviceName", (object?)record.SourceDeviceName ?? DBNull.Value);
+        Bind(command, "$isRemote", record.IsRemote ? 1 : 0);
+        Bind(command, "$providerID", (object?)record.ProviderID ?? DBNull.Value);
+        Bind(command, "$providerAccountID", (object?)record.ProviderAccountID ?? DBNull.Value);
+        Bind(command, "$providerAccountLabel", (object?)record.ProviderAccountLabel ?? DBNull.Value);
+        Bind(command, "$providerAccountSource", (object?)record.ProviderAccountSource ?? DBNull.Value);
+        Bind(command, "$provenanceMethod", record.ProvenanceMethod);
+        Bind(command, "$provenanceConfidence", record.ProvenanceConfidence);
+        Bind(command, "$estimatorVersion", record.EstimatorVersion);
+        Bind(command, "$parentRequestID", (object?)record.ParentRequestID ?? DBNull.Value);
 
-            affected += command.ExecuteNonQuery();
-        }
-        transaction.Commit();
-        return affected;
+        return command.ExecuteNonQuery();
     }
 
     /// <summary>

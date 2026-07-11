@@ -11,6 +11,7 @@ using OpenBurnBar.App.Diagnostics;
 using OpenBurnBar.App.Settings.Winui;
 using OpenBurnBar.App.Storage;
 using OpenBurnBar.App.Tray;
+using OpenBurnBar.App.UsageRuntime;
 
 namespace OpenBurnBar.App;
 
@@ -36,8 +37,10 @@ public partial class App : Application
     private MainWindow? _mainWindow;
     private FlyoutWindow? _flyout;
     private DispatcherQueue? _dispatcherQueue;
+    private IUsageRuntime? _usageRuntime;
     private bool _hotkeyRegistered;
     private bool _activationRegistered;
+    private bool _isExiting;
 
     public App()
     {
@@ -71,10 +74,6 @@ public partial class App : Application
             AppDiagnostics.LogEvent("storage.recovery-required", $"{recovery.Kind}: {recovery.Title}");
         }
 
-        if (storageStatus.IsReady)
-        {
-            _ = WindowsUsageRuntimeHost.StartAsync();
-        }
         WindowsUpdateService.Configure(WindowsSettingsComposition.SharedPersistence);
         _ = WindowsUpdateService.RunAutomaticCheckIfDueAsync(WindowsSettingsComposition.SharedPersistence);
         WinAppCloudSyncHost.ConfigureFromAppConfiguration();
@@ -87,6 +86,12 @@ public partial class App : Application
         automation?.ApplyStateSeed(_state);
         _theme = new ThemeService(_state);
         automation?.WriteLaunchMarker();
+
+        if (storageStatus.IsReady)
+        {
+            _usageRuntime = CreateUsageRuntime();
+            _ = StartUsageRuntimeAsync(_usageRuntime);
+        }
 
         if ((RouteSmokeOptions.Parse(args.Arguments) ?? RouteSmokeOptions.Parse(Environment.CommandLine)) is { } smoke)
         {
@@ -104,7 +109,7 @@ public partial class App : Application
 
         // Windows are created eagerly but stay hidden — the tray owns visibility, exactly like
         // NSStatusItem owning the menu-bar popover on macOS.
-        _flyout = new FlyoutWindow(State);
+        _flyout = new FlyoutWindow(State, _usageRuntime);
         _theme.Register(_flyout);
 
         // The flyout is the always-alive window, so anchor the global Ctrl+K hotkey there.
@@ -174,9 +179,12 @@ public partial class App : Application
     /// <summary>Live shell when the main window is open (flyout deep-links).</summary>
     public AppShell? MainWindowShell => _mainWindow?.Shell;
 
+    /// <summary>Process-owned local ingestion runtime, unavailable only during typed storage recovery.</summary>
+    public IUsageRuntime? UsageRuntime => _usageRuntime;
+
     private void ToggleFlyout()
     {
-        _flyout ??= new FlyoutWindow(State);
+        _flyout ??= new FlyoutWindow(State, _usageRuntime);
         _flyout.ToggleNearTray();
     }
 
@@ -224,8 +232,43 @@ public partial class App : Application
         }
     }
 
-    private void ExitApp()
+    public void RequestExit() => ExitApp();
+
+    private WindowsUsageRuntime CreateUsageRuntime()
     {
+        var engine = new CAbiUsageEngine();
+        var store = new SqlCipherUsageRuntimeSnapshotStore(() =>
+        {
+            var (path, passphrase) = WindowsStorageDevHost.ResolveCredentials();
+            return new UsageRuntimeStorageCredentials(path!, passphrase!);
+        });
+        return new WindowsUsageRuntime(
+            engine,
+            store,
+            WindowsUsagePaths.ForCurrentUser(),
+            errorSink: ex => AppDiagnostics.LogException("usage-runtime", ex));
+    }
+
+    private static async Task StartUsageRuntimeAsync(IUsageRuntime runtime)
+    {
+        try
+        {
+            await runtime.StartAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            AppDiagnostics.LogException("usage-runtime.start", ex);
+        }
+    }
+
+    private async void ExitApp()
+    {
+        if (_isExiting)
+        {
+            return;
+        }
+        _isExiting = true;
+
         if (_hotkeyRegistered)
         {
             _hotkey.Dispose();
@@ -234,9 +277,13 @@ public partial class App : Application
 
         _tray?.Dispose();
         _tray = null;
+        if (_usageRuntime is not null)
+        {
+            await _usageRuntime.DisposeAsync();
+            _usageRuntime = null;
+        }
         _flyout?.Close();
         _mainWindow?.Close();
-        _ = WindowsUsageRuntimeHost.StopAsync();
         Exit();
     }
 
