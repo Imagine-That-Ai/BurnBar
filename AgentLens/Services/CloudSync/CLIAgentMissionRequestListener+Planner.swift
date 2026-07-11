@@ -422,6 +422,11 @@ enum CLIAgentMissionRuntimePlanner {
                 extraEnvironment: [:]
             )
         case ChatBackendID.junie.rawValue:
+            guard grant.capabilities.contains(.workspaceWrite),
+                  grant.capabilities.contains(.shell)
+            else {
+                return nil
+            }
             return CLIAgentMissionDirectLaunchPlan(
                 executableName: "junie",
                 arguments: CLIArgumentBuilder.junieArguments(
