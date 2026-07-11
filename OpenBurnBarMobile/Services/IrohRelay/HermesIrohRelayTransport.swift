@@ -1,6 +1,5 @@
 import FirebaseCore
 @preconcurrency import FirebaseAuth
-@preconcurrency import FirebaseFirestore
 import Foundation
 import FirebaseRemoteConfig
 import Network
@@ -156,6 +155,8 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
     private let transportFactory: @MainActor (_ relayURL: String?) -> any IrohRelayTransport
     private let pairingPublicKeyProvider: any IrohPairingPublicKeyProviding
     private let auditLogger: any IrohTransportAuditLogging
+    private let controllerRouteRegistrar: any IrohControllerRouteRegistering
+    private let authenticatedUIDProvider: @Sendable () -> String?
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private var endpoint: (any IrohRelayTransport)?
@@ -193,6 +194,11 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         directory: any IrohPairingDirectory = FirestoreIrohPairingDirectory.shared,
         pairingPublicKeyProvider: any IrohPairingPublicKeyProviding = FirestoreIrohPairingPublicKeyProvider.shared,
         auditLogger: any IrohTransportAuditLogging = FirestoreIrohAuditLogger.shared,
+        controllerRouteRegistrar: any IrohControllerRouteRegistering = IrohControllerRouteRegistrar.shared,
+        authenticatedUIDProvider: @escaping @Sendable () -> String? = {
+            guard FirebaseApp.app() != nil else { return nil }
+            return Auth.auth().currentUser?.uid
+        },
         transportFactory: @escaping @MainActor (_ relayURL: String?) -> any IrohRelayTransport = { relayURL in
             HermesIrohRelayTransport.defaultTransport(relayURL: relayURL)
         },
@@ -202,6 +208,8 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         self.directory = directory
         self.pairingPublicKeyProvider = pairingPublicKeyProvider
         self.auditLogger = auditLogger
+        self.controllerRouteRegistrar = controllerRouteRegistrar
+        self.authenticatedUIDProvider = authenticatedUIDProvider
         self.transportFactory = transportFactory
         self.connectTimeout = connectTimeout
         self.now = now
@@ -237,6 +245,34 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         self.mediaControlReceiver = receiver
     }
 
+    /// Fail-closed auth boundary. Persistent media streams and the endpoint
+    /// must stop before the route is revoked or local route ownership changes.
+    func tearDownForAuthTransition() async {
+        bootstrapTask?.cancel()
+        bootstrapTask = nil
+        bootstrapRelayURL = nil
+        bootstrapGeneration += 1
+
+        let coordinators = Array(mediaControlCoordinators.values)
+        mediaControlCoordinators.removeAll()
+        lastMediaControlConnectionID = nil
+        if let mediaControlReceiver {
+            await mediaControlReceiver.detachControlStream()
+        } else {
+            for coordinator in coordinators {
+                await coordinator.stop()
+            }
+        }
+
+        let endpointToStop = endpoint
+        endpoint = nil
+        identity = nil
+        endpointRelayURL = nil
+        if let endpointToStop {
+            await endpointToStop.shutdown()
+        }
+    }
+
     #if DEBUG
     var isMediaControlReceiverInstalledForTesting: Bool {
         mediaControlReceiver != nil
@@ -258,7 +294,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                 mediaControlCoordinators[connectionID] = nil
             }
         }
-        guard let uid = Auth.auth().currentUser?.uid else {
+        guard let uid = authenticatedUIDProvider() else {
             throw HermesServiceError.relayUnavailable("Mercury requires a signed-in Firebase user.")
         }
         guard mediaControlReceiver != nil else {
@@ -319,17 +355,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             now: now()
         )
         let transport = try await transport(relayURL: verifiedTarget.relayURL)
-        // The Mac's inbound allowlist admits QUIC NodeIds; without this
-        // self-report the media/control dials connect and are then purged
-        // ~2s later (the chat dial path persisted the id, but Mercury never
-        // dials chat, so the id never landed and every session flapped).
-        let mediaLocalNodeId = identity?.nodeId ?? ""
-        #if DEBUG
-        NSLog("OpenBurnBarMercury iroh_local_node_id id=%@", mediaLocalNodeId.isEmpty ? "EMPTY" : mediaLocalNodeId)
-        #endif
-        if !mediaLocalNodeId.isEmpty {
-            await persistIrohPeerNodeId(mediaLocalNodeId, uid: uid)
-        }
+        try await registerControllerRouteBeforeConnect(uid: uid, connectionID: connectionID)
         return try await transport.connect(
             to: verifiedTarget,
             timeout: Self.defaultMediaControlConnectTimeout
@@ -349,17 +375,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             now: now()
         )
         let transport = try await transport(relayURL: verifiedTarget.relayURL)
-        // The Mac's inbound allowlist admits QUIC NodeIds; without this
-        // self-report the media/control dials connect and are then purged
-        // ~2s later (the chat dial path persisted the id, but Mercury never
-        // dials chat, so the id never landed and every session flapped).
-        let mediaLocalNodeId = identity?.nodeId ?? ""
-        #if DEBUG
-        NSLog("OpenBurnBarMercury iroh_local_node_id id=%@", mediaLocalNodeId.isEmpty ? "EMPTY" : mediaLocalNodeId)
-        #endif
-        if !mediaLocalNodeId.isEmpty {
-            await persistIrohPeerNodeId(mediaLocalNodeId, uid: uid)
-        }
+        try await registerControllerRouteBeforeConnect(uid: uid, connectionID: connectionID)
         return try await transport.connect(
             to: verifiedTarget,
             timeout: connectTimeout
@@ -390,7 +406,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         timeout: TimeInterval,
         onChunk: @MainActor (HermesRelayChunkRecord) throws -> Void
     ) async throws {
-        guard let uid = Auth.auth().currentUser?.uid else {
+        guard let uid = authenticatedUIDProvider() else {
             throw HermesServiceError.relayUnavailable("Iroh relay requires a signed-in Firebase user.")
         }
         guard payload.relayEncryption == HermesRelayCrypto.relayEncryptionV3,
@@ -452,14 +468,16 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             ) {
                 try await self.transport(relayURL: verifiedTarget.relayURL)
             }
-            stage = "dial_start"
+            stage = "controller_route_register"
             let localNodeId = identity?.nodeId ?? ""
             #if DEBUG
             NSLog("OpenBurnBarMercury iroh_local_node_id id=%@ identitySet=%d", localNodeId.isEmpty ? "EMPTY" : localNodeId, identity != nil ? 1 : 0)
             #endif
-            if !localNodeId.isEmpty {
-                await persistIrohPeerNodeId(localNodeId, uid: uid)
-            }
+            try await registerControllerRouteBeforeConnect(
+                uid: uid,
+                connectionID: payload.connectionID
+            )
+            stage = "dial_start"
             await auditLogger.record(
                 event: .pairingVerified,
                 uid: uid,
@@ -913,6 +931,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             bootstrapGeneration += 1
         }
         if let endpoint {
+            await controllerRouteRegistrar.invalidateAndRevoke()
             await endpoint.shutdown()
             self.endpoint = nil
             self.identity = nil
@@ -1017,30 +1036,19 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         return LoopbackIrohRelayTransport(rendezvous: rendezvous)
     }
 
-    private func persistIrohPeerNodeId(_ nodeId: String, uid: String) async {
-        guard FirebaseApp.app() != nil else { return }
-        let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
-        let nowMillis = Int64(Date().timeIntervalSince1970 * 1000)
-        do {
-            try await Firestore.firestore()
-                .collection("users").document(uid)
-                .collection("devices").document(deviceId)
-                .setData(
-                    [
-                        "deviceId": deviceId,
-                        "irohPeerNodeId": nodeId,
-                        "updated_at_millis": nowMillis
-                    ],
-                    merge: true
-                )
-            #if DEBUG
-            NSLog("OpenBurnBarMercury iroh_node_id_persisted deviceId=%@", deviceId)
-            #endif
-        } catch {
-            #if DEBUG
-            NSLog("OpenBurnBarMercury iroh_node_id_persist_failed error=%@", "\(error)")
-            #endif
+    private func registerControllerRouteBeforeConnect(
+        uid: String,
+        connectionID: String
+    ) async throws {
+        guard let identity else {
+            throw IrohRelayTransportError.endpointNotReady
         }
+        _ = try await controllerRouteRegistrar.registerIfNeeded(
+            uid: uid,
+            connectionId: connectionID,
+            sourceDeviceId: MobileDeviceIdentity.loadOrCreateDeviceId(),
+            transportIdentity: identity
+        )
     }
 }
 
@@ -1050,7 +1058,7 @@ private enum HermesIrohHostedRelayConfig {
     private static let environmentKey = "OPENBURNBAR_IROH_HOSTED_RELAY_URL"
 
     static func refreshRemoteConfigIfAvailable() async {
-        guard !hasLocalOverride else { return }
+        guard !hasLocalOverride, FirebaseApp.app() != nil else { return }
         let remoteConfig = RemoteConfig.remoteConfig()
         remoteConfig.setDefaults([remoteConfigKey: "" as NSObject])
         await withCheckedContinuation { continuation in
@@ -1065,9 +1073,12 @@ private enum HermesIrohHostedRelayConfig {
     }
 
     static func currentURL() -> String? {
-        normalized(ProcessInfo.processInfo.environment[environmentKey])
-            ?? normalized(UserDefaults.standard.string(forKey: userDefaultsKey))
-            ?? normalized(RemoteConfig.remoteConfig().configValue(forKey: remoteConfigKey).stringValue)
+        if let localOverride = normalized(ProcessInfo.processInfo.environment[environmentKey])
+            ?? normalized(UserDefaults.standard.string(forKey: userDefaultsKey)) {
+            return localOverride
+        }
+        guard FirebaseApp.app() != nil else { return nil }
+        return normalized(RemoteConfig.remoteConfig().configValue(forKey: remoteConfigKey).stringValue)
     }
 
     private static func normalized(_ value: String?) -> String? {

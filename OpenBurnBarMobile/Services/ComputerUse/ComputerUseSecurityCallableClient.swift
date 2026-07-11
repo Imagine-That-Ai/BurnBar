@@ -103,10 +103,21 @@ enum ComputerUseSecurityCallableClient {
         return Auth.auth().currentUser
     }
 
+    static var authenticatedUID: String? {
+        guard let user = signedInUser, user.isAnonymous == false else { return nil }
+        return user.uid
+    }
+
     private static func requireSignedInUser() throws -> User {
         guard let user = signedInUser, user.isAnonymous == false else {
             throw ClientError.notAuthenticated
         }
+        return user
+    }
+
+    private static func requireSignedInUser(expectedUID: String) throws -> User {
+        let user = try requireSignedInUser()
+        guard user.uid == expectedUID else { throw ClientError.notAuthenticated }
         return user
     }
 
@@ -314,6 +325,7 @@ enum ComputerUseSecurityCallableClient {
     }
 
     static func publishPhoneControlAuthority(
+        expectedUID: String,
         deviceId: String,
         connectionId: String,
         peerNodeId: String,
@@ -322,9 +334,10 @@ enum ComputerUseSecurityCallableClient {
         protocolVersion: Int,
         keyKind: PhoneControlSigningKeyKind = .ed25519
     ) async throws {
-        _ = try requireSignedInUser()
+        _ = try requireSignedInUser(expectedUID: expectedUID)
         try await bindAppCheckAttestation()
-        let nonce = try await issueHighRiskActionNonce()
+        _ = try requireSignedInUser(expectedUID: expectedUID)
+        let nonce = try await issueHighRiskActionNonce(expectedUID: expectedUID)
         var payload: [String: Any] = [
             "deviceId": deviceId,
             "connectionId": connectionId,
@@ -332,6 +345,7 @@ enum ComputerUseSecurityCallableClient {
             "publicKeyBase64": publicKeyBase64,
             "publishedAtMillis": publishedAtMillis,
             "protocolVersion": protocolVersion,
+            "expectedUid": expectedUID,
             "nonce": nonce
         ]
         // F2: legacy publishes stay byte-identical (no keyKind field); an
@@ -341,9 +355,164 @@ enum ComputerUseSecurityCallableClient {
             payload["keyKind"] = keyKind.rawValue
         }
         let result = try await functions.httpsCallable("publishPhoneControlAuthority").call(payload)
+        _ = try requireSignedInUser(expectedUID: expectedUID)
         guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Phone-control authority publication failed.")
         }
+    }
+
+    static func issueIrohControllerRouteChallenge(
+        expectedUID: String,
+        sourceDeviceId: String,
+        connectionId: String,
+        authorityPeerNodeId: String,
+        transportNodeId: String
+    ) async throws -> IrohControllerRouteChallenge {
+        _ = try requireSignedInUser(expectedUID: expectedUID)
+        try await bindAppCheckAttestation()
+        _ = try requireSignedInUser(expectedUID: expectedUID)
+        let nonce = try await issueHighRiskActionNonce(expectedUID: expectedUID)
+        let result = try await functions.httpsCallable("issueIrohControllerRouteChallenge").call([
+            "sourceDeviceId": sourceDeviceId,
+            "connectionId": connectionId,
+            "authorityPeerNodeId": authorityPeerNodeId,
+            "transportNodeId": transportNodeId,
+            "expectedUid": expectedUID,
+            "nonce": nonce
+        ])
+        _ = try requireSignedInUser(expectedUID: expectedUID)
+        guard let dict = result.data as? [String: Any],
+              let challengeId = requiredNonemptyString(dict, key: "challengeId"),
+              let canonicalPayloadBase64 = requiredNonemptyString(dict, key: "canonicalPayloadBase64"),
+              let signatureAlgorithm = requiredNonemptyString(dict, key: "signatureAlgorithm"),
+              let registrationGeneration = positiveInt64(dict, key: "registrationGeneration"),
+              let issuedAtMillis = positiveInt64(dict, key: "issuedAtMillis"),
+              let expiresAtMillis = positiveInt64(dict, key: "expiresAtMillis"),
+              expiresAtMillis > issuedAtMillis else {
+            throw ClientError.invalidResponse("Controller-route challenge response was malformed.")
+        }
+        return IrohControllerRouteChallenge(
+            challengeId: challengeId,
+            canonicalPayloadBase64: canonicalPayloadBase64,
+            signatureAlgorithm: signatureAlgorithm,
+            registrationGeneration: registrationGeneration,
+            issuedAtMillis: issuedAtMillis,
+            expiresAtMillis: expiresAtMillis
+        )
+    }
+
+    static func registerIrohControllerRoute(
+        expectedUID: String,
+        challengeId: String,
+        transportSignatureBase64: String,
+        authoritySignatureBase64: String
+    ) async throws -> IrohControllerRouteRegistration {
+        _ = try requireSignedInUser(expectedUID: expectedUID)
+        let result = try await functions.httpsCallable("registerIrohControllerRoute").call([
+            "challengeId": challengeId,
+            "transportSignatureBase64": transportSignatureBase64,
+            "authoritySignatureBase64": authoritySignatureBase64,
+            "expectedUid": expectedUID
+        ])
+        _ = try requireSignedInUser(expectedUID: expectedUID)
+        guard let dict = result.data as? [String: Any],
+              dict["ok"] as? Bool == true,
+              let connectionId = requiredNonemptyString(dict, key: "connectionId"),
+              let sourceDeviceId = requiredNonemptyString(dict, key: "sourceDeviceId"),
+              let transportNodeId = requiredNonemptyString(dict, key: "transportNodeId"),
+              let authorityPeerNodeId = requiredNonemptyString(dict, key: "authorityPeerNodeId"),
+              let generation = positiveInt64(dict, key: "generation"),
+              let expiresAtMillis = positiveInt64(dict, key: "expiresAtMillis") else {
+            throw ClientError.invalidResponse("Controller-route registration response was malformed.")
+        }
+        return IrohControllerRouteRegistration(
+            connectionId: connectionId,
+            sourceDeviceId: sourceDeviceId,
+            transportNodeId: transportNodeId,
+            authorityPeerNodeId: authorityPeerNodeId,
+            generation: generation,
+            expiresAtMillis: expiresAtMillis
+        )
+    }
+
+    static func revokeIrohControllerRoute(
+        expectedUID: String,
+        sourceDeviceId: String,
+        connectionId: String
+    ) async throws {
+        _ = try requireSignedInUser(expectedUID: expectedUID)
+        try await bindAppCheckAttestation()
+        _ = try requireSignedInUser(expectedUID: expectedUID)
+        let nonce = try await issueHighRiskActionNonce(expectedUID: expectedUID)
+        let result = try await functions.httpsCallable("revokeIrohControllerRoute").call([
+            "sourceDeviceId": sourceDeviceId,
+            "connectionId": connectionId,
+            "expectedUid": expectedUID,
+            "nonce": nonce
+        ])
+        _ = try requireSignedInUser(expectedUID: expectedUID)
+        guard let dict = result.data as? [String: Any],
+              dict["ok"] as? Bool == true,
+              requiredNonemptyString(dict, key: "sourceDeviceId") == sourceDeviceId,
+              requiredNonemptyString(dict, key: "connectionId") == connectionId,
+              nonnegativeInt64(dict, key: "generation") != nil else {
+            throw ClientError.invalidResponse("Controller-route revocation response was malformed.")
+        }
+    }
+
+    private static func issueHighRiskActionNonce(expectedUID: String) async throws -> String {
+        _ = try requireSignedInUser(expectedUID: expectedUID)
+        let result = try await functions.httpsCallable("issueHighRiskActionNonce").call([:])
+        _ = try requireSignedInUser(expectedUID: expectedUID)
+        guard let dict = result.data as? [String: Any],
+              let nonce = dict["nonce"] as? String,
+              !nonce.isEmpty else {
+            throw ClientError.invalidResponse("Could not obtain a high-risk action nonce.")
+        }
+        return nonce
+    }
+
+    private static func requiredNonemptyString(_ dictionary: [String: Any], key: String) -> String? {
+        guard let value = dictionary[key] as? String,
+              !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return value
+    }
+
+    static func positiveInt64(_ dictionary: [String: Any], key: String) -> Int64? {
+        if let number = dictionary[key] as? NSNumber {
+            guard CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
+            let doubleValue = number.doubleValue
+            let decimalValue = number.decimalValue
+            var integralValue = Decimal()
+            var valueToRound = decimalValue
+            NSDecimalRound(&integralValue, &valueToRound, 0, .down)
+            guard doubleValue.isFinite,
+                  decimalValue > 0,
+                  decimalValue <= Decimal(Int64.max),
+                  integralValue == decimalValue else {
+                return nil
+            }
+            return NSDecimalNumber(decimal: decimalValue).int64Value
+        }
+        if let integer = dictionary[key] as? Int64, integer > 0 { return integer }
+        if let integer = dictionary[key] as? Int, integer > 0 { return Int64(integer) }
+        return nil
+    }
+
+    private static func nonnegativeInt64(_ dictionary: [String: Any], key: String) -> Int64? {
+        guard let number = dictionary[key] as? NSNumber,
+              CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
+        let decimalValue = number.decimalValue
+        var integralValue = Decimal()
+        var valueToRound = decimalValue
+        NSDecimalRound(&integralValue, &valueToRound, 0, .down)
+        guard number.doubleValue.isFinite,
+              decimalValue >= 0,
+              decimalValue <= Decimal(Int64.max),
+              integralValue == decimalValue else { return nil }
+        return NSDecimalNumber(decimal: decimalValue).int64Value
     }
 
     static func publishRelaySenderKey(
