@@ -380,6 +380,9 @@ private fun buildHermesRelayTransport(context: Context?, client: HermesRelayClie
             pairingDirectory = FirestoreIrohPairingDirectory(),
             pairingPublicKeyProvider = FirestoreIrohPairingPublicKeyProvider(),
             auditLogger = auditLogger,
+            sessionGrantChallengeHandler = { delivery ->
+                com.openburnbar.BurnBarApplication.sessionGrantChallengeReceiver?.ingest(delivery)
+            },
         )
     val firestore =
         FirestoreRelayShim(client) { connectionId ->

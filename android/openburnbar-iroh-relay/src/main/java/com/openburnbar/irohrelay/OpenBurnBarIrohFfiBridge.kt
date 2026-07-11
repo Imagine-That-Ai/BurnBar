@@ -181,6 +181,17 @@ class OpenBurnBarIrohFfiBackend(
         }
 
     private inner class UniffiBackendStream(private val streamObject: Any) : IrohBackendStream {
+        override suspend fun authenticatedRemoteNodeId(): String =
+            withContext(dispatcher) {
+                try {
+                    reflected("IrohStream.remoteNodeId") {
+                        streamClass().getMethod("remoteNodeId").invoke(streamObject)
+                    }.requireFfiField("IrohStream.remoteNodeId")
+                } catch (t: Throwable) {
+                    throw IrohBackendError.StreamFailed(t.message ?: t.javaClass.simpleName)
+                }
+            }
+
         override suspend fun sendFrame(envelope: ByteArray) =
             withContext(dispatcher) {
                 try {

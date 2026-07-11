@@ -3,6 +3,7 @@
 package com.openburnbar.data.media
 
 import android.util.Log
+import com.openburnbar.data.computeruse.ComputerUseSessionGrantChallengeDelivery
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantReceipt
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentTerminalRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayCallAck
@@ -73,6 +74,7 @@ class MediaControlStreamCoordinator(
     private val displayNameProvider: () -> String = { android.os.Build.MODEL.orEmpty().ifBlank { "Android" } },
     private val controlAuthorityPeerNodeIdProvider: () -> String? = { null },
     private val presenceHeartbeatIntervalMillis: Long = 60_000L,
+    private val sessionGrantChallengeHandler: (ComputerUseSessionGrantChallengeDelivery) -> Unit = {},
     /**
      * F7 — per-mirror media-seal establishment hook, invoked by
      * [requestMirror] with the freshly minted viewer id and the Mac's latest
@@ -243,6 +245,20 @@ class MediaControlStreamCoordinator(
     suspend fun send(frame: HermesRealtimeRelayFrame) {
         val stream = awaitLiveStream()
         stream.send(frame)
+    }
+
+    internal suspend fun inboundRouteIsLive(expectedStream: IrohRelayStream, uid: String, connectionID: String): Boolean = mutex.withLock {
+        currentStream === expectedStream &&
+            activeUID == uid &&
+            activeConnectionID == connectionID &&
+            _phase.value == Phase.Live
+    }
+
+    internal suspend fun sendOnInboundRoute(expectedStream: IrohRelayStream, uid: String, connectionID: String, frame: HermesRealtimeRelayFrame) {
+        check(inboundRouteIsLive(expectedStream, uid, connectionID)) {
+            "The exact Mercury challenge stream is no longer live."
+        }
+        expectedStream.send(frame)
     }
 
     suspend fun ensureResponsive(freshnessIntervalMillis: Long = 2_000L, probeTimeoutMillis: Long = 1_000L): Boolean {
@@ -522,6 +538,7 @@ class MediaControlStreamCoordinator(
     internal val inboundLastAgentGrantReceipt get() = _lastAgentGrantReceipt
     internal val inboundLastControlDenied get() = _lastControlDenied
     internal val inboundAgentWatchControlFrames get() = _agentWatchControlFrames
+    internal val inboundSessionGrantChallengeHandler get() = sessionGrantChallengeHandler
     internal val inboundLastClipboardResponse get() = _lastClipboardResponse
     internal val inboundLastRemoteUnlockState get() = _lastRemoteUnlockState
     internal val inboundLastRemoteUnlockResult get() = _lastRemoteUnlockResult

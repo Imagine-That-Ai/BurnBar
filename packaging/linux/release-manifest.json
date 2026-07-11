@@ -30,6 +30,7 @@
     "daemonBinary": "/usr/bin/openburnbar-daemon",
     "swiftRuntime": "/usr/lib/openburnbar/swift",
     "nativeRuntime": "/usr/lib/openburnbar/native",
+    "irohNativeLibrary": "/usr/lib/openburnbar/native/libopenburnbar_iroh.so",
     "playwrightBridge": "/usr/lib/openburnbar/playwright/openburnbar-playwright-bridge.js",
     "browserRuntimeProbe": "/usr/lib/openburnbar/playwright/openburnbar-browser-runtime-probe",
     "browserRuntimeRequirements": "/usr/lib/openburnbar/playwright/browser-runtime-requirements.json",

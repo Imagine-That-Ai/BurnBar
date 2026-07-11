@@ -3,6 +3,9 @@ package com.openburnbar.data.hermes.relay
 
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
+import com.openburnbar.data.computeruse.ComputerUseSessionGrantChallengeDelivery
+import com.openburnbar.irohrelay.HermesRealtimeRelayComputerUseSessionGrantChallenge
+import com.openburnbar.irohrelay.HermesRealtimeRelayControlPayload
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRealtimeRelayPayload
@@ -182,6 +185,60 @@ class HermesIrohRelayTransportTest {
         server.await()
         assertEquals(listOf("delta-1", "delta-2"), received)
 
+        clientTransport.shutdown()
+        hostTransport.shutdown()
+    }
+
+    @Test
+    fun requestStreamRoutesSessionGrantChallengeBeforeRequestIdCorrelation() = runTest {
+        val uid = "uid-challenge"
+        val connectionId = "conn-challenge"
+        val hostTransport = LoopbackIrohRelayTransport(rendezvous, nodeId = "host-$connectionId")
+        val clientTransport = LoopbackIrohRelayTransport(rendezvous, nodeId = "client-$connectionId")
+        hostTransport.start()
+        clientTransport.start()
+        val received = mutableListOf<ComputerUseSessionGrantChallengeDelivery>()
+        val (transport, _) =
+            makeTransport(
+                uid = uid,
+                connectionId = connectionId,
+                clientTransport = clientTransport,
+                sessionGrantChallengeHandler = { received += it },
+            )
+        val payload =
+            HermesRelayPayload(
+                operation = "models",
+                method = "GET",
+                path = "/v1/models",
+                connectionID = connectionId,
+                relayPublicKey = Base64.getEncoder().encodeToString(relayPublicX963),
+            )
+        val challenge = sessionGrantChallenge()
+        val challengeFrame =
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.CONTROL_SESSION_GRANT_CHALLENGE,
+                uid = uid,
+                connectionId = connectionId,
+                requestId = null,
+                control = HermesRealtimeRelayControlPayload(sessionGrantChallenge = challenge),
+            )
+
+        val server =
+            async {
+                val stream = hostTransport.accept(timeoutMillis = 5_000)
+                handleSingleRequest(
+                    stream = stream,
+                    chunks = listOf("ok" to HermesRelayChunkKind.DATA),
+                    beforeResponse = listOf(challengeFrame),
+                )
+            }
+        assertEquals("ok", transport.sendUnary(payload, timeoutMillis = 5_000))
+        server.await()
+
+        assertEquals(listOf(challenge.challengeId), received.map { it.challenge.challengeId })
+        assertEquals("host-$connectionId", received.single().route.authenticatedRemoteNodeId)
+        assertEquals(uid, received.single().route.uid)
+        assertEquals(connectionId, received.single().route.connectionId)
         clientTransport.shutdown()
         hostTransport.shutdown()
     }
@@ -539,6 +596,7 @@ class HermesIrohRelayTransportTest {
         uid: String,
         connectionId: String,
         clientTransport: IrohRelayTransport,
+        sessionGrantChallengeHandler: (ComputerUseSessionGrantChallengeDelivery) -> Unit = {},
     ): Pair<HermesIrohRelayTransport, InMemoryIrohPairingDirectory> {
         val directory = InMemoryIrohPairingDirectory()
         val nodeId = "host-$connectionId"
@@ -557,6 +615,7 @@ class HermesIrohRelayTransportTest {
                 transportFactory = { _ -> clientTransport },
                 auth = fakeAuth(uid),
                 connectTimeoutMillis = 2_000,
+                sessionGrantChallengeHandler = sessionGrantChallengeHandler,
             )
         return transport to directory
     }
@@ -566,7 +625,11 @@ class HermesIrohRelayTransportTest {
      * read REQUEST_START → unwrap symmetric key (keyAAD) → open body
      * (requestAAD) → emit `chunks` then RESPONSE_COMPLETE.
      */
-    private suspend fun handleSingleRequest(stream: IrohRelayStream, chunks: List<Pair<String, HermesRelayChunkKind>>) {
+    private suspend fun handleSingleRequest(
+        stream: IrohRelayStream,
+        chunks: List<Pair<String, HermesRelayChunkKind>>,
+        beforeResponse: List<HermesRealtimeRelayFrame> = emptyList(),
+    ) {
         val incoming = stream.receive() ?: return
         val framePayload = incoming.payload ?: return
         val keyData =
@@ -582,11 +645,38 @@ class HermesIrohRelayTransportTest {
             aad = HermesRelayCrypto.requestAAD(incoming.uid, incoming.connectionId, incoming.requestId.orEmpty()),
         )
 
+        beforeResponse.forEach { stream.send(it) }
+
         chunks.forEachIndexed { index, (text, kind) ->
             sendChunk(stream = stream, frame = incoming, keyData = keyData, sequence = index, kind = kind, text = text)
         }
         sendComplete(stream = stream, frame = incoming, chunkCount = chunks.size)
     }
+
+    private fun sessionGrantChallenge() = HermesRealtimeRelayComputerUseSessionGrantChallenge(
+        version = 1,
+        challengeId = "challenge-00000001",
+        nonce = "0123456789abcdef0123456789abcdef",
+        issuedAt = 800_000_000.0,
+        expiresAt = 800_000_300.0,
+        sessionIntentId = "session-intent-1",
+        runtime = "codex",
+        threadId = "thread-linux-1",
+        preset = "desktop",
+        capabilities = listOf("desktop_browser"),
+        mode = "browser",
+        trustMode = "manual",
+        scopeRuleIds = listOf("workspace-only"),
+        phoneViewerNodeId = "phone-viewer-1",
+        macHostNodeId = "linux-host-1",
+        actionCap = 50,
+        sessionTimeoutSeconds = 1_800,
+        clientId = "linux-desktop",
+        runId = "run-42",
+        runCallId = "call-7",
+        runGeneration = 4,
+        desktopOwnerAuthorizationMethod = "linux_desktop_owner",
+    )
 
     private suspend fun sendChunk(
         stream: IrohRelayStream,

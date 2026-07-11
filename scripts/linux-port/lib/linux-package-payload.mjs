@@ -16,6 +16,17 @@ function requireFile(candidate, label) {
   return path.resolve(candidate);
 }
 
+function requireRegularFile(candidate, label) {
+  if (!candidate || !fs.existsSync(candidate)) {
+    throw new Error(`${label} file not found: ${candidate || '(unset)'}`);
+  }
+  const stat = fs.lstatSync(candidate);
+  if (!stat.isFile() || stat.isSymbolicLink()) {
+    throw new Error(`${label} must be a regular file: ${candidate}`);
+  }
+  return path.resolve(candidate);
+}
+
 export function swiftTargetInfo(command = 'swift') {
   const result = spawnSync(command, ['-print-target-info'], {
     encoding: 'utf8',
@@ -57,6 +68,17 @@ export function resolveSqlcipherLibDir({ env = process.env } = {}) {
     return fs.readdirSync(candidate).some((entry) => entry.startsWith('libsqlcipher.so'));
   });
   return requireDirectory(found, 'SQLCipher runtime');
+}
+
+export function resolveIrohNativeLibrary({ env = process.env } = {}) {
+  const directory = env.OPENBURNBAR_LINUX_IROH_LIBRARY_DIR?.trim();
+  if (!directory) {
+    throw new Error('OPENBURNBAR_LINUX_IROH_LIBRARY_DIR is required for a shipping Linux package');
+  }
+  return requireRegularFile(
+    path.join(directory, 'libopenburnbar_iroh.so'),
+    'Linux iroh native runtime'
+  );
 }
 
 function copySqlcipherRuntime(source, destination) {
@@ -114,6 +136,7 @@ export function stageLinuxPackagePayload({
   payloadRoot,
   swiftRuntimeDir,
   sqlcipherLibDir,
+  irohNativeLibrary,
   env = process.env,
   probe = true
 }) {
@@ -126,6 +149,7 @@ export function stageLinuxPackagePayload({
   );
   const swiftSource = requireDirectory(swiftRuntimeDir, 'Swift runtime');
   const sqlcipherSource = requireDirectory(sqlcipherLibDir, 'SQLCipher runtime');
+  const irohNativeSource = requireRegularFile(irohNativeLibrary, 'Linux iroh native runtime');
   const root = path.resolve(payloadRoot);
   const daemonDestination = path.join(root, 'openburnbar-daemon');
   const swiftDestination = path.join(root, 'swift');
@@ -142,6 +166,9 @@ export function stageLinuxPackagePayload({
     preserveTimestamps: true
   });
   const sqlcipherFiles = copySqlcipherRuntime(sqlcipherSource, nativeDestination);
+  const irohNativeDestination = path.join(nativeDestination, 'libopenburnbar_iroh.so');
+  fs.copyFileSync(irohNativeSource, irohNativeDestination);
+  fs.chmodSync(irohNativeDestination, 0o644);
   fs.mkdirSync(playwrightDestination, { recursive: true });
   const bridgeDestination = path.join(
     playwrightDestination,
@@ -171,6 +198,7 @@ export function stageLinuxPackagePayload({
     daemon: daemonDestination,
     swiftRuntime: swiftDestination,
     nativeRuntime: nativeDestination,
+    irohNativeLibrary: irohNativeDestination,
     playwrightRuntime: playwrightDestination,
     playwrightBridge: bridgeDestination,
     browserRuntimeProbe: browserRuntimeProbeDestination,

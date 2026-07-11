@@ -3,6 +3,8 @@
 package com.openburnbar.data.media
 
 import com.openburnbar.data.computeruse.AgentCapabilityGrantState
+import com.openburnbar.data.computeruse.ComputerUseSessionGrantChallengeDelivery
+import com.openburnbar.data.computeruse.ComputerUseSessionGrantRoute
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRealtimeRelayMediaPayload
@@ -11,6 +13,7 @@ import com.openburnbar.irohrelay.HermesRealtimeRelayPresenceHeartbeat
 import com.openburnbar.irohrelay.IrohRelayStream
 import java.time.Instant
 import java.util.Base64
+import java.util.UUID
 import kotlinx.coroutines.isActive
 
 /** Inbound Mercury control bi-stream read loop and frame dispatch (extracted for detekt size limits). */
@@ -20,7 +23,7 @@ internal suspend fun MediaControlStreamCoordinator.runMercuryInboundReadLoop(str
         while (true) {
             val frame = stream.receive() ?: return
             if (frame.uid != uid || frame.connectionId != connectionID) continue
-            dispatchMercuryInboundFrame(frame, ackSender)
+            dispatchMercuryInboundFrame(frame, ackSender, stream)
         }
     } catch (t: Throwable) {
         inboundPhase.value = MediaControlStreamCoordinator.Phase.Reconnecting(
@@ -36,6 +39,7 @@ internal suspend fun MediaControlStreamCoordinator.runMercuryInboundReadLoop(str
 internal suspend fun MediaControlStreamCoordinator.dispatchMercuryInboundFrame(
     frame: HermesRealtimeRelayFrame,
     ackSender: AndroidFileTransferService.AdvertiseSender,
+    sourceStream: IrohRelayStream? = null,
 ) {
     when (frame.type) {
         HermesRealtimeRelayFrameType.MEDIA_BLOB_ADVERTISE ->
@@ -59,6 +63,28 @@ internal suspend fun MediaControlStreamCoordinator.dispatchMercuryInboundFrame(
             frame.control?.agentGrantReceipt?.let { receipt ->
                 inboundLastAgentGrantReceipt.value = receipt
                 AgentCapabilityGrantState.apply(receipt)
+            }
+        HermesRealtimeRelayFrameType.CONTROL_SESSION_GRANT_CHALLENGE ->
+            frame.control?.sessionGrantChallenge?.let { challenge ->
+                val stream = checkNotNull(sourceStream) { "A session grant challenge requires its authenticated source stream." }
+                val remoteNodeId = stream.authenticatedRemoteNodeId()?.trim().orEmpty()
+                check(remoteNodeId.isNotEmpty()) { "A session grant challenge requires an authenticated remote iroh peer." }
+                inboundSessionGrantChallengeHandler(
+                    ComputerUseSessionGrantChallengeDelivery(
+                        challenge = challenge,
+                        route =
+                        ComputerUseSessionGrantRoute(
+                            uid = frame.uid,
+                            connectionId = frame.connectionId,
+                            authenticatedRemoteNodeId = remoteNodeId,
+                            streamToken = UUID.randomUUID().toString(),
+                            live = { inboundRouteIsLive(stream, frame.uid, frame.connectionId) },
+                            frameSink = { outbound ->
+                                sendOnInboundRoute(stream, frame.uid, frame.connectionId, outbound)
+                            },
+                        ),
+                    ),
+                )
             }
         HermesRealtimeRelayFrameType.CONTROL_DENIED -> {
             frame.control?.denied?.let { inboundLastControlDenied.value = it }

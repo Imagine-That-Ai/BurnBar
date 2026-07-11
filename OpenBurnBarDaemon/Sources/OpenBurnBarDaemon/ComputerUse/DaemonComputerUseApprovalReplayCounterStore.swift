@@ -21,11 +21,29 @@ public final class DaemonComputerUseApprovalReplayCounterStore: Sendable {
         let counters: [String: UInt64]
     }
 
+    // Approval and session-grant verifiers share one counter file and therefore
+    // must also share one in-process read-modify-write lock for that file.
+    private static let fileStates = Locked([String: Locked<[String: UInt64]>]())
+
     private let fileURL: URL?
-    private let state = Locked([String: UInt64]())
+    private let state: Locked<[String: UInt64]>
 
     public init(fileURL: URL? = nil) {
-        self.fileURL = fileURL
+        let canonicalFileURL = fileURL?.standardizedFileURL
+        self.fileURL = canonicalFileURL
+        if let canonicalFileURL {
+            self.state = Self.fileStates.withLock { states in
+                let key = canonicalFileURL.path
+                if let existing = states[key] {
+                    return existing
+                }
+                let created = Locked([String: UInt64]())
+                states[key] = created
+                return created
+            }
+        } else {
+            self.state = Locked([String: UInt64]())
+        }
     }
 
     public static func production() -> DaemonComputerUseApprovalReplayCounterStore {

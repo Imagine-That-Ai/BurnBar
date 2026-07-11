@@ -47,14 +47,20 @@ if (git.dirty) {
 const logsDir = path.join(outDir, 'logs');
 const artifactsDir = path.join(outDir, 'artifacts');
 const daemonBinary = path.join(repoRoot, 'OpenBurnBarDaemon/.build/release/OpenBurnBarDaemon');
+const irohManifest = path.join(repoRoot, 'crates/openburnbar-iroh/Cargo.toml');
+const irohTargetDirectory = path.join(repoRoot, 'crates/openburnbar-iroh/target-linux-release');
+const irohNativeLibraryDirectory = path.join(irohTargetDirectory, 'release');
+const irohNativeLibrary = path.join(irohNativeLibraryDirectory, 'libopenburnbar_iroh.so');
 fs.mkdirSync(logsDir, { recursive: true });
 fs.mkdirSync(artifactsDir, { recursive: true });
 
 const cargoBuildJobs = process.env.OPENBURNBAR_LINUX_CARGO_BUILD_JOBS?.trim() || '4';
+const irohCargoBuildJobs = process.env.OPENBURNBAR_LINUX_IROH_BUILD_JOBS?.trim() || '1';
 const swiftBuildJobs = process.env.OPENBURNBAR_LINUX_SWIFT_BUILD_JOBS?.trim() || '4';
 const packageBuildEnv = {
   ...process.env,
   CARGO_BUILD_JOBS: cargoBuildJobs,
+  OPENBURNBAR_LINUX_IROH_LIBRARY_DIR: irohNativeLibraryDirectory,
   // linuxdeploy (Tauri's AppImage bundler) is itself an AppImage and needs FUSE
   // to self-mount; container builds (local toolchain + CI docker) have no FUSE,
   // so tell it to self-extract instead. Harmless outside containers.
@@ -79,6 +85,19 @@ function writeLog(name, steps) {
 const blockers = [];
 const daemonSteps = [];
 if (!args.has('--skip-daemon')) {
+  daemonSteps.push(runStep('cargo', [
+    'build',
+    '--manifest-path',
+    irohManifest,
+    '--target-dir',
+    irohTargetDirectory,
+    '--locked',
+    '--release',
+    '--jobs',
+    irohCargoBuildJobs
+  ], { env: { ...packageBuildEnv, CARGO_BUILD_JOBS: irohCargoBuildJobs } }));
+}
+if (!args.has('--skip-daemon') && daemonSteps.every((step) => step.exitCode === 0)) {
   // Swift 6.1 Linux libswiftObservation.so references swift::threading::fatal which
   // is missing from the shared libswiftCore.so (present only in the static archive).
   // --allow-shlib-undefined lets the link complete; runtime uses matching 6.1 libs.
@@ -109,6 +128,7 @@ for (const step of daemonSteps) {
 }
 
 const daemonBuildPassed = daemonSteps.every((step) => step.exitCode === 0);
+const irohNativeReady = fs.existsSync(irohNativeLibrary);
 const daemonReady = daemonBuildPassed && fs.existsSync(daemonBinary);
 if (!daemonReady) {
   blockers.push({
@@ -119,9 +139,18 @@ if (!daemonReady) {
     log: 'logs/daemon-build.log'
   });
 }
+if (!irohNativeReady) {
+  blockers.push({
+    kind: 'missing-iroh-native-artifact',
+    message: args.has('--skip-daemon')
+      ? `Required Linux iroh runtime is missing at ${relative(irohNativeLibrary)} (stage it when using --skip-daemon).`
+      : 'Required Linux iroh UniFFI runtime was not produced before the Swift daemon build.',
+    log: 'logs/daemon-build.log'
+  });
+}
 
 const buildSteps = [];
-if (!args.has('--skip-tauri') && daemonReady) {
+if (!args.has('--skip-tauri') && daemonReady && irohNativeReady) {
   // Never let an artifact from an earlier architecture/version satisfy this shard.
   fs.rmSync(path.join(appDir, 'src-tauri/target/release/bundle'), { recursive: true, force: true });
   const packageCommands = [

@@ -51,6 +51,7 @@ const expectedInstallPaths = {
   daemonBinary: '/usr/bin/openburnbar-daemon',
   swiftRuntime: '/usr/lib/openburnbar/swift',
   nativeRuntime: '/usr/lib/openburnbar/native',
+  irohNativeLibrary: '/usr/lib/openburnbar/native/libopenburnbar_iroh.so',
   computerUsePolkitPolicy: '/usr/share/polkit-1/actions/com.openburnbar.computer-use.policy'
 };
 for (const [key, expected] of Object.entries(expectedInstallPaths)) {
@@ -101,6 +102,14 @@ if (desktopPackage.scripts?.['pretauri:build'] !== 'node ../../scripts/linux-por
 const releaseBuilder = fs.readFileSync(path.join(repoRoot, 'scripts/linux-port/build-linux-release.mjs'), 'utf8');
 if (!releaseBuilder.includes('embed-linux-appimage-payload.mjs')) {
   failures.push('release build must inject the staged native payload into the base AppImage');
+}
+const aurPkgbuild = fs.readFileSync(path.join(repoRoot, 'packaging/linux/aur/PKGBUILD'), 'utf8');
+if (!aurPkgbuild.includes('--appimage-extract usr/lib/openburnbar/native/libopenburnbar_iroh.so')
+    || !aurPkgbuild.includes('/usr/lib/openburnbar/native/libopenburnbar_iroh.so')) {
+  failures.push('AUR must install the Linux iroh runtime from the checksum-pinned AppImage');
+}
+if (/libopenburnbar_iroh\.so::https?:/u.test(aurPkgbuild)) {
+  failures.push('AUR must not introduce an independent iroh runtime download');
 }
 const canonicalLauncher = fs.readFileSync(path.join(repoRoot, 'packaging/linux/openburnbar-daemon-launch.sh'));
 const aurLauncher = fs.readFileSync(path.join(repoRoot, 'packaging/linux/aur/openburnbar-daemon-launch'));

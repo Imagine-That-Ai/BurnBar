@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import {
+  resolveIrohNativeLibrary,
   resolveSqlcipherLibDir,
   resolveSwiftRuntimeDir,
   stageLinuxPackagePayload
@@ -16,6 +17,9 @@ test('runtime discovery honors explicit architecture-local directories', () => {
   fs.mkdirSync(swift, { recursive: true });
   fs.mkdirSync(sqlcipher, { recursive: true });
   fs.writeFileSync(path.join(sqlcipher, 'libsqlcipher.so.0'), 'runtime');
+  const iroh = path.join(root, 'iroh');
+  fs.mkdirSync(iroh);
+  fs.writeFileSync(path.join(iroh, 'libopenburnbar_iroh.so'), 'iroh');
 
   assert.equal(
     resolveSwiftRuntimeDir({ env: { OPENBURNBAR_SWIFT_LIB_DIR: swift }, targetInfo: { paths: {} } }),
@@ -24,6 +28,10 @@ test('runtime discovery honors explicit architecture-local directories', () => {
   assert.equal(
     resolveSqlcipherLibDir({ env: { OPENBURNBAR_SQLCIPHER_PREFIX: path.join(root, 'sqlcipher') } }),
     sqlcipher
+  );
+  assert.equal(
+    resolveIrohNativeLibrary({ env: { OPENBURNBAR_LINUX_IROH_LIBRARY_DIR: iroh } }),
+    path.join(iroh, 'libopenburnbar_iroh.so')
   );
   fs.rmSync(root, { recursive: true, force: true });
 });
@@ -36,6 +44,7 @@ test('payload staging copies daemon, Swift tree, and SQLCipher SONAME', () => {
   const browserRequirements = path.join(root, 'browser-runtime-requirements.json');
   const swift = path.join(root, 'swift-source');
   const sqlcipher = path.join(root, 'sqlcipher-source');
+  const iroh = path.join(root, 'libopenburnbar_iroh.so');
   const payload = path.join(root, 'payload');
   fs.writeFileSync(daemon, '#!/bin/sh\nexit 0\n');
   fs.writeFileSync(bridge, 'bridge');
@@ -47,6 +56,7 @@ test('payload staging copies daemon, Swift tree, and SQLCipher SONAME', () => {
   fs.mkdirSync(sqlcipher);
   fs.writeFileSync(path.join(sqlcipher, 'libsqlcipher.so.0'), 'sqlcipher');
   fs.writeFileSync(path.join(sqlcipher, 'libsqlcipher.so'), 'sqlcipher');
+  fs.writeFileSync(iroh, 'iroh');
 
   const report = stageLinuxPackagePayload({
     daemonBinary: daemon,
@@ -56,6 +66,7 @@ test('payload staging copies daemon, Swift tree, and SQLCipher SONAME', () => {
     payloadRoot: payload,
     swiftRuntimeDir: swift,
     sqlcipherLibDir: sqlcipher,
+    irohNativeLibrary: iroh,
     probe: false
   });
 
@@ -63,6 +74,8 @@ test('payload staging copies daemon, Swift tree, and SQLCipher SONAME', () => {
   assert.equal(fs.readFileSync(path.join(report.swiftRuntime, 'libswiftCore.so'), 'utf8'), 'swift');
   assert.equal(fs.readFileSync(path.join(report.nativeRuntime, 'libsqlcipher.so.0'), 'utf8'), 'sqlcipher');
   assert.deepEqual(report.sqlcipherFiles, ['libsqlcipher.so', 'libsqlcipher.so.0']);
+  assert.equal(fs.readFileSync(report.irohNativeLibrary, 'utf8'), 'iroh');
+  assert.equal(fs.statSync(report.irohNativeLibrary).mode & 0o777, 0o644);
   assert.equal(fs.readFileSync(report.playwrightBridge, 'utf8'), 'bridge');
   assert.equal(fs.statSync(report.playwrightBridge).mode & 0o777, 0o644);
   assert.equal(fs.statSync(report.browserRuntimeProbe).mode & 0o777, 0o755);
@@ -78,6 +91,7 @@ test('payload staging rejects SQLCipher trees without the required SONAME', () =
   const browserRequirements = path.join(root, 'requirements');
   const swift = path.join(root, 'swift');
   const sqlcipher = path.join(root, 'sqlcipher');
+  const iroh = path.join(root, 'libopenburnbar_iroh.so');
   fs.writeFileSync(daemon, 'daemon');
   fs.writeFileSync(bridge, 'bridge');
   fs.writeFileSync(browserProbe, 'probe');
@@ -85,6 +99,7 @@ test('payload staging rejects SQLCipher trees without the required SONAME', () =
   fs.mkdirSync(swift);
   fs.mkdirSync(sqlcipher);
   fs.writeFileSync(path.join(sqlcipher, 'libsqlcipher.so'), 'sqlcipher');
+  fs.writeFileSync(iroh, 'iroh');
 
   assert.throws(() => stageLinuxPackagePayload({
     daemonBinary: daemon,
@@ -94,7 +109,15 @@ test('payload staging rejects SQLCipher trees without the required SONAME', () =
     payloadRoot: path.join(root, 'payload'),
     swiftRuntimeDir: swift,
     sqlcipherLibDir: sqlcipher,
+    irohNativeLibrary: iroh,
     probe: false
   }), /missing required SONAME/);
   fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('Linux package staging fails closed without the iroh native runtime', () => {
+  assert.throws(
+    () => resolveIrohNativeLibrary({ env: {} }),
+    /OPENBURNBAR_LINUX_IROH_LIBRARY_DIR is required/
+  );
 });

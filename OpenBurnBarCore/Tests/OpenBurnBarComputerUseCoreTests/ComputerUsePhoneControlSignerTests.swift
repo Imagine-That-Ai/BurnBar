@@ -135,6 +135,21 @@ final class ComputerUsePhoneControlSignerTests: XCTestCase {
         }
     }
 
+    func testSessionGrantChallengeRejectsMalformedDeviceIdentifiersBeforeIntentComparison() throws {
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_100)
+        var malformedPhone = sessionGrantChallenge()
+        malformedPhone.phoneViewerNodeId = ""
+        XCTAssertThrowsError(try signer.validateSessionGrantChallenge(malformedPhone, now: now)) {
+            XCTAssertEqual($0 as? ComputerUsePhoneControlSigner.SessionGrantChallengeValidationError, .malformedSession)
+        }
+
+        var malformedHost = sessionGrantChallenge()
+        malformedHost.macHostNodeId = String(repeating: "h", count: 513)
+        XCTAssertThrowsError(try signer.validateSessionGrantChallenge(malformedHost, now: now)) {
+            XCTAssertEqual($0 as? ComputerUsePhoneControlSigner.SessionGrantChallengeValidationError, .malformedSession)
+        }
+    }
+
     func testDesktopOwnerAuthorizationRequirementIsCanonicalAndWireCompatible() throws {
         let withoutOwnerAuthorization = ComputerUseSessionStartRequest(
             mode: ComputerUseMode.browser.rawValue,

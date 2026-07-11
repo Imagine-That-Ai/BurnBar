@@ -90,6 +90,12 @@ for (const artifact of closure.artifacts ?? []) {
       'usr/lib/openburnbar/native/libsqlcipher.so.0',
       'deb package missing SQLCipher runtime at /usr/lib/openburnbar/native'
     );
+    assertContains(
+      'assert deb contains iroh runtime under usr/lib/openburnbar/native',
+      contents.stdout,
+      'usr/lib/openburnbar/native/libopenburnbar_iroh.so',
+      'deb package missing iroh runtime at /usr/lib/openburnbar/native'
+    );
     // Prefer sudo when non-root (guest packaging smoke).
     const dpkgInstall = runStep('sudo', ['dpkg', '-i', full]);
     if (dpkgInstall.exitCode !== 0) {
@@ -136,6 +142,12 @@ for (const artifact of closure.artifacts ?? []) {
       listing.stdout,
       '/usr/lib/openburnbar/native/libsqlcipher.so.0',
       'rpm package missing SQLCipher runtime at /usr/lib/openburnbar/native'
+    );
+    assertContains(
+      'assert rpm contains iroh runtime under /usr/lib/openburnbar/native',
+      listing.stdout,
+      '/usr/lib/openburnbar/native/libopenburnbar_iroh.so',
+      'rpm package missing iroh runtime at /usr/lib/openburnbar/native'
     );
     const rpmInstall = runStep('sudo', ['rpm', '-i', '--nodeps', '--force', full]);
     if (rpmInstall.exitCode !== 0) {
@@ -186,7 +198,8 @@ for (const artifact of closure.artifacts ?? []) {
         'usr/bin/openburnbar-daemon',
         'usr/libexec/openburnbar-daemon-launch',
         'usr/lib/openburnbar/swift',
-        'usr/lib/openburnbar/native/libsqlcipher.so.0'
+        'usr/lib/openburnbar/native/libsqlcipher.so.0',
+        'usr/lib/openburnbar/native/libopenburnbar_iroh.so'
       ]) {
         const present = fs.existsSync(path.join(appDir, requiredPath));
         steps.push({

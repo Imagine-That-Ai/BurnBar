@@ -530,10 +530,7 @@ private suspend fun handleRemoteUnlockMirrorRetry(binding: PairedMacControlsEffe
     val name = pairedMacRequesterDisplayName()
     binding.onStatusMessageChange("Confirm this Android to unlock your Mac.")
     runCatching {
-        targetCoordinator.requestMirror(
-            requesterDisplayName = name,
-            remoteUnlockSession = buildRemoteUnlockSession(context, targetCoordinator, name),
-        )
+        sendRemoteUnlockMirrorRequest(context, targetCoordinator, name)
     }.onSuccess { retryRequestID ->
         binding.onPendingRequestIDChange(retryRequestID)
         binding.onStatusMessageChange("Remote Unlock request sent.")
