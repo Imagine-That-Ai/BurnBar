@@ -723,6 +723,28 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertEqual(publishCalls.read(), 1)
     }
 
+    func test_agentToolBroker_targetedPanicAndGlobalRevocationFailureReportsFailure() async {
+        let panicCalls = OpenBurnBarCore.Locked(0)
+        let publishCalls = OpenBurnBarCore.Locked(0)
+
+        let outcome = await AgentToolBroker.revokeDaemonBrowserSession(
+            sessionID: "session-1",
+            publishRevocation: {
+                publishCalls.withLock { $0 += 1 }
+                throw NSError(domain: "AgentToolBrokerTests", code: 2)
+            },
+            panicHalt: { sessionID in
+                panicCalls.withLock { $0 += 1 }
+                XCTAssertEqual(sessionID, "session-1")
+                throw NSError(domain: "AgentToolBrokerTests", code: 1)
+            }
+        )
+
+        XCTAssertEqual(outcome, .failed)
+        XCTAssertEqual(panicCalls.read(), 1)
+        XCTAssertEqual(publishCalls.read(), 1)
+    }
+
     func test_agentToolBroker_directRegistryRevocationImmediatelyDeniesBroker() async throws {
         let workspace = FileManager.default.temporaryDirectory
             .appendingPathComponent("agent-tool-broker-revoke-\(UUID().uuidString)", isDirectory: true)
