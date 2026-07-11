@@ -162,8 +162,8 @@ class BurnBarApplication : Application() {
         runCatching { SentryPrivacyInit.install(applicationContext) }
             .onFailure { Log.w("BurnBar", "Sentry privacy scrubber install failed: ${it.message}") }
         FirebaseApp.initializeApp(this)
-        installComputerUseSessionGrantReceiver()
         installAppCheckProvider()
+        installComputerUseSessionGrantReceiver()
         // F2/F7/F10: land remote kill-switch values so the default-ON
         // protection flags can be remotely disabled (the flags default ON via
         // the source-aware reader; this makes the override reachable). iOS
