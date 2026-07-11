@@ -4,110 +4,182 @@ using Microsoft.Data.Sqlite;
 
 namespace OpenBurnBar.Storage;
 
+/// <summary>Writable projection for parser-produced local conversations.</summary>
+public sealed record ConversationWriteRecord
+{
+    public required string Id { get; init; }
+    public required string Provider { get; init; }
+    public required string SessionId { get; init; }
+    public required string ProjectName { get; init; }
+    public required string InferredTaskTitle { get; init; }
+    public required string FullText { get; init; }
+    public string? IndexedAt { get; init; }
+    public long MessageCount { get; init; }
+    public string? WorkingDirectory { get; init; }
+}
+
 /// <summary>
-/// Idempotent encrypted conversation upsert used by the Windows log-ingestion runtime.
-/// The FTS triggers are installed on both fresh and pre-existing Windows databases.
+/// Atomic Windows peer of the macOS conversation upsert. Uses UPDATE-style
+/// conflict handling so the external-content FTS table does not accumulate the
+/// orphan rows historically caused by INSERT OR REPLACE.
 /// </summary>
 public static class ConversationWriteSeam
 {
-    private static readonly string[] FtsTriggerStatements =
+    /// <summary>Compatibility entry point for existing storage callers.</summary>
+    public static int WriteConversations(
+        SqliteConnection connection,
+        IReadOnlyList<ConversationRecord> records)
     {
-        """
-        CREATE TRIGGER IF NOT EXISTS conversations_ai AFTER INSERT ON conversations BEGIN
-            INSERT INTO conversations_fts(rowid, fullText, inferredTaskTitle)
-            VALUES (new.rowid, new.fullText, new.inferredTaskTitle);
-        END
-        """,
-        """
-        CREATE TRIGGER IF NOT EXISTS conversations_ad AFTER DELETE ON conversations BEGIN
-            INSERT INTO conversations_fts(conversations_fts, rowid, fullText, inferredTaskTitle)
-            VALUES ('delete', old.rowid, old.fullText, old.inferredTaskTitle);
-        END
-        """,
-        """
-        CREATE TRIGGER IF NOT EXISTS conversations_au AFTER UPDATE ON conversations BEGIN
-            INSERT INTO conversations_fts(conversations_fts, rowid, fullText, inferredTaskTitle)
-            VALUES ('delete', old.rowid, old.fullText, old.inferredTaskTitle);
-            INSERT INTO conversations_fts(rowid, fullText, inferredTaskTitle)
-            VALUES (new.rowid, new.fullText, new.inferredTaskTitle);
-        END
-        """,
-    };
+        ArgumentNullException.ThrowIfNull(records);
+        var writable = new ConversationWriteRecord[records.Count];
+        for (int index = 0; index < records.Count; index++)
+        {
+            ConversationRecord record = records[index];
+            writable[index] = new ConversationWriteRecord
+            {
+                Id = record.Id,
+                Provider = record.Provider,
+                SessionId = record.SessionId,
+                ProjectName = record.ProjectName,
+                InferredTaskTitle = record.InferredTaskTitle,
+                FullText = record.FullText,
+                IndexedAt = record.IndexedAt,
+                MessageCount = record.MessageCount,
+            };
+        }
+        return WriteConversationBatch(connection, writable);
+    }
 
-    public static int WriteConversations(SqliteConnection connection, IReadOnlyList<ConversationRecord> records)
+    public static int WriteConversationBatch(
+        SqliteConnection connection,
+        IEnumerable<ConversationWriteRecord> records)
     {
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(records);
-        if (records.Count == 0)
-        {
-            return 0;
-        }
 
         using var transaction = connection.BeginTransaction();
-        bool needsFtsRebuild = !TriggerExists(connection, transaction, "conversations_ai");
-        foreach (string statement in FtsTriggerStatements)
+        int affected = WriteConversationBatch(connection, transaction, records);
+        transaction.Commit();
+        return affected;
+    }
+
+    internal static int WriteConversationBatch(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        IEnumerable<ConversationWriteRecord> records)
+    {
+        EnsureFtsTriggers(connection, transaction);
+
+        int affected = 0;
+        foreach (ConversationWriteRecord record in records)
         {
-            using var trigger = connection.CreateCommand();
-            trigger.Transaction = transaction;
-            trigger.CommandText = statement;
-            trigger.ExecuteNonQuery();
+            affected += WriteConversation(connection, transaction, record);
+        }
+        return affected;
+    }
+
+    private static int WriteConversation(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        ConversationWriteRecord record)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
+            INSERT INTO conversations (
+                id, provider, sessionId, projectName, inferredTaskTitle,
+                fullText, indexedAt, messageCount, deletedAt, workingDirectory
+            ) VALUES (
+                $id, $provider, $sessionId, $projectName, $inferredTaskTitle,
+                $fullText, $indexedAt, $messageCount, NULL, $workingDirectory
+            )
+            ON CONFLICT(id) DO UPDATE SET
+                provider = excluded.provider,
+                sessionId = excluded.sessionId,
+                projectName = excluded.projectName,
+                inferredTaskTitle = excluded.inferredTaskTitle,
+                fullText = excluded.fullText,
+                indexedAt = excluded.indexedAt,
+                messageCount = excluded.messageCount,
+                deletedAt = NULL,
+                workingDirectory = excluded.workingDirectory
+            """;
+        Bind(command, "$id", record.Id);
+        Bind(command, "$provider", record.Provider);
+        Bind(command, "$sessionId", record.SessionId);
+        Bind(command, "$projectName", record.ProjectName);
+        Bind(command, "$inferredTaskTitle", record.InferredTaskTitle);
+        Bind(command, "$fullText", record.FullText);
+        Bind(command, "$indexedAt", (object?)record.IndexedAt ?? DBNull.Value);
+        Bind(command, "$messageCount", record.MessageCount);
+        Bind(command, "$workingDirectory", (object?)record.WorkingDirectory ?? DBNull.Value);
+        return command.ExecuteNonQuery();
+    }
+
+    private static void EnsureFtsTriggers(
+        SqliteConnection connection,
+        SqliteTransaction transaction)
+    {
+        bool needsRebuild = !TriggerExists(connection, transaction, "conversations_ai");
+        string[] statements =
+        [
+            """
+            CREATE TRIGGER IF NOT EXISTS conversations_ai AFTER INSERT ON conversations BEGIN
+                INSERT INTO conversations_fts(rowid, inferredTaskTitle, fullText)
+                VALUES (new.rowid, new.inferredTaskTitle, new.fullText);
+            END
+            """,
+            """
+            CREATE TRIGGER IF NOT EXISTS conversations_ad AFTER DELETE ON conversations BEGIN
+                INSERT INTO conversations_fts(conversations_fts, rowid, inferredTaskTitle, fullText)
+                VALUES ('delete', old.rowid, old.inferredTaskTitle, old.fullText);
+            END
+            """,
+            """
+            CREATE TRIGGER IF NOT EXISTS conversations_au AFTER UPDATE ON conversations BEGIN
+                INSERT INTO conversations_fts(conversations_fts, rowid, inferredTaskTitle, fullText)
+                VALUES ('delete', old.rowid, old.inferredTaskTitle, old.fullText);
+                INSERT INTO conversations_fts(rowid, inferredTaskTitle, fullText)
+                VALUES (new.rowid, new.inferredTaskTitle, new.fullText);
+            END
+            """,
+        ];
+
+        foreach (string statement in statements)
+        {
+            using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = statement;
+            command.ExecuteNonQuery();
         }
 
-        if (needsFtsRebuild)
+        if (needsRebuild)
         {
             using var rebuild = connection.CreateCommand();
             rebuild.Transaction = transaction;
             rebuild.CommandText = "INSERT INTO conversations_fts(conversations_fts) VALUES ('rebuild')";
             rebuild.ExecuteNonQuery();
         }
-
-        int affected = 0;
-        foreach (ConversationRecord record in records)
-        {
-            using var command = connection.CreateCommand();
-            command.Transaction = transaction;
-            command.CommandText =
-                """
-                INSERT INTO conversations (
-                    id, provider, sessionId, projectName, inferredTaskTitle,
-                    fullText, indexedAt, messageCount, deletedAt, workingDirectory
-                ) VALUES (
-                    $id, $provider, $sessionId, $projectName, $inferredTaskTitle,
-                    $fullText, $indexedAt, $messageCount, NULL, $workingDirectory
-                )
-                ON CONFLICT(id) DO UPDATE SET
-                    provider = excluded.provider,
-                    sessionId = excluded.sessionId,
-                    projectName = excluded.projectName,
-                    inferredTaskTitle = excluded.inferredTaskTitle,
-                    fullText = excluded.fullText,
-                    indexedAt = excluded.indexedAt,
-                    messageCount = excluded.messageCount,
-                    deletedAt = NULL,
-                    workingDirectory = excluded.workingDirectory
-                """;
-            command.Parameters.AddWithValue("$id", record.Id);
-            command.Parameters.AddWithValue("$provider", record.Provider);
-            command.Parameters.AddWithValue("$sessionId", record.SessionId);
-            command.Parameters.AddWithValue("$projectName", record.ProjectName);
-            command.Parameters.AddWithValue("$inferredTaskTitle", record.InferredTaskTitle);
-            command.Parameters.AddWithValue("$fullText", record.FullText);
-            command.Parameters.AddWithValue("$indexedAt", (object?)record.IndexedAt ?? DBNull.Value);
-            command.Parameters.AddWithValue("$messageCount", record.MessageCount);
-            command.Parameters.AddWithValue("$workingDirectory", DBNull.Value);
-            affected += command.ExecuteNonQuery();
-        }
-
-        transaction.Commit();
-        return affected;
     }
 
-    private static bool TriggerExists(SqliteConnection connection, SqliteTransaction transaction, string name)
+    private static bool TriggerExists(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string name)
     {
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = $name LIMIT 1";
-        command.Parameters.AddWithValue("$name", name);
+        Bind(command, "$name", name);
         return command.ExecuteScalar() is not null;
+    }
+
+    private static void Bind(SqliteCommand command, string name, object value)
+    {
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = name;
+        parameter.Value = value;
+        command.Parameters.Add(parameter);
     }
 }

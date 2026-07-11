@@ -43,11 +43,10 @@ public sealed partial class SystemPermissionsStepPage : Page
                 : WindowsStorageDevHost.Status.RecoveryState?.Message ?? "Storage has not initialized.",
             storageReady);
 
-        string profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        var discovery = new WindowsUsageLogDiscovery(profile, appData);
-        bool logsDetected = discovery.WatchRoots.Count > 0;
-        bool logsReadable = discovery.WatchRoots.All(CanEnumerate);
+        WindowsUsagePaths usagePaths = WindowsUsagePaths.ForCurrentUser();
+        string[] detectedRoots = usagePaths.WatchDirectories.Where(Directory.Exists).ToArray();
+        bool logsDetected = detectedRoots.Length > 0;
+        bool logsReadable = detectedRoots.All(CanEnumerate);
         AddRow(
             "Agent log access",
             logsDetected ? (logsReadable ? "Ready" : "Access blocked") : "No providers detected",

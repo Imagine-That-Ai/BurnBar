@@ -5,7 +5,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using OpenBurnBar.App.Theme;
-using OpenBurnBar.App.Storage;
+using OpenBurnBar.App.UsageRuntime;
 using Windows.UI;
 
 namespace OpenBurnBar.App.Onboarding;
@@ -82,7 +82,9 @@ public sealed partial class ScanStepPage : Page
             {
                 Text = Model.IsScanning
                     ? "Scanning..."
-                    : WindowsUsageRuntimeHost.Snapshot.HasData ? "Indexed" : "No usage yet",
+                    : App.Current.UsageRuntime?.State.Snapshot.Usages.Count > 0
+                        ? "Indexed"
+                        : "No usage yet",
                 FontSize = 11,
                 Opacity = 0.55,
                 VerticalAlignment = VerticalAlignment.Center,
@@ -115,7 +117,10 @@ public sealed partial class ScanStepPage : Page
         Model.IsScanning = true;
         try
         {
-            await WindowsUsageRuntimeHost.ScanAsync();
+            if (App.Current.UsageRuntime is { } runtime)
+            {
+                await runtime.ScanAsync(UsageScanReason.Manual);
+            }
         }
         catch (System.Exception ex)
         {
