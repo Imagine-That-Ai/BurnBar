@@ -228,7 +228,11 @@ export class FirestoreEnrollmentStore implements EnrollmentStore {
       const ref = this.firestore.collection(this.collection).doc(documentId(uid, deviceId));
       const snapshot = await transaction.get(ref);
       const existing = snapshot.data() as EnrollmentRecord | undefined;
-      if (existing !== undefined && !existing.active && existing.activationBlob === undefined && existing.registrationLeaseToken === leaseToken) transaction.delete(ref);
+      if (existing !== undefined
+          && !enrollmentRevoked(existing)
+          && !existing.active
+          && existing.activationBlob === undefined
+          && existing.registrationLeaseToken === leaseToken) transaction.delete(ref);
     });
   }
   async deletePending(uid: string, deviceId: string, agentId: string): Promise<void> {
@@ -236,7 +240,10 @@ export class FirestoreEnrollmentStore implements EnrollmentStore {
       const ref = this.firestore.collection(this.collection).doc(documentId(uid, deviceId));
       const snapshot = await transaction.get(ref);
       const existing = snapshot.data() as EnrollmentRecord | undefined;
-      if (existing !== undefined && !existing.active && existing.agentId === agentId) transaction.delete(ref);
+      if (existing !== undefined
+          && !enrollmentRevoked(existing)
+          && !existing.active
+          && existing.agentId === agentId) transaction.delete(ref);
     });
   }
   async claimActivation(uid: string, deviceId: string, nowMillis: number, leaseMillis: number): Promise<

@@ -44,6 +44,11 @@ const EXPECTED_GUARDS: Array<{
     actionKind: "self_hosted_quota_account_connect",
   },
   { exportedName: "updateProviderAccount", file: "providerAccounts.ts", actionKind: "provider_account_update" },
+  {
+    exportedName: "revokeLinuxAttestationEnrollment",
+    file: "linuxAttestationAdmin.ts",
+    actionKind: "linux_attestation_enrollment_revoke",
+  },
   { exportedName: "revokeRemoteMcpClient", file: "remoteMcp.ts", actionKind: "remote_mcp_grant_revoke" },
   {
     exportedName: "deleteHostedQuotaCredentials",

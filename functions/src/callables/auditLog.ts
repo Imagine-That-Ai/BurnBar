@@ -33,7 +33,7 @@
  *      `anchoredSeq` without invalidating a Bitcoin-confirmed timestamp.
  */
 
-import { Timestamp } from "firebase-admin/firestore";
+import { Timestamp, type Transaction } from "firebase-admin/firestore";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
 
 import { getConfig } from "../config.js";
@@ -70,9 +70,23 @@ export interface AuditEventCore {
   prevHash: string;
 }
 
-interface AuditEvent extends AuditEventCore {
+export interface AuditEvent extends AuditEventCore {
   hash: string;
 }
+
+export interface AuditedMutationDecision<T> {
+  value: T;
+  /** Absent only when the transaction is a genuine read-only no-op. */
+  apply?: (transaction: AuditTransactionWriter, auditEvent: AuditEvent) => void;
+}
+
+export interface AuditedMutationResult<T> {
+  value: T;
+  auditEvent?: AuditEvent;
+}
+
+type AuditTransactionReader = Pick<Transaction, "get">;
+type AuditTransactionWriter = Pick<Transaction, "create" | "delete" | "set" | "update">;
 
 /**
  * Deterministic JSON used as the hash-chain payload. Keys are emitted in a fixed
@@ -119,24 +133,25 @@ export interface AuditHead {
 }
 
 /**
- * Append one event to the user's tamper-evident audit chain inside a
- * transaction (so concurrent appends can't fork the chain) and advance
- * `audit_meta/head` in the SAME transaction, so a tail delete leaves
- * `head.maxSeq` pointing past the surviving rows (a detectable gap). Returns the
- * committed event including its hash + seq.
- *
- * This function THROWS on failure. Best-effort callers (non-irreversible
- * actions) wrap it in try/catch; irreversible actions must instead use
- * {@link appendAuditEventRequired}, which refuses the action when the audit
- * write fails.
+ * Run a domain mutation and its required audit append in one transaction.
+ * The callback receives a read-only transaction view and returns deferred
+ * writes. Omitting `apply` is therefore structurally read-only and is valid
+ * only for a genuine no-op such as an idempotent retry. Any applied domain or
+ * audit failure aborts both writes.
  */
-export async function appendAuditEvent(
+export async function runAuditedMutationRequired<T>(
   uid: string,
   event: { actor: string; action: string; domain: string },
-): Promise<AuditEvent> {
+  mutation: (transaction: AuditTransactionReader) => Promise<AuditedMutationDecision<T>>,
+): Promise<AuditedMutationResult<T>> {
   const collection = db.collection(`users/${uid}/${AUDIT_LOG_COLLECTION}`);
   const headRef = auditHeadRef(uid);
   return db.runTransaction(async (tx) => {
+    const reader = Object.freeze({ get: tx.get.bind(tx) }) as AuditTransactionReader;
+    const decision = await mutation(reader);
+    if (!decision.apply) {
+      return { value: decision.value };
+    }
     const tailSnap = await tx.get(collection.orderBy("seq", "desc").limit(1));
     const tail = tailSnap.docs[0]?.data();
     const prevSeq = typeof tail?.seq === "number" ? tail.seq : -1;
@@ -157,6 +172,13 @@ export async function appendAuditEvent(
       schemaVersion: AUDIT_LOG_SCHEMA_VERSION,
       createdAt: Timestamp.now(),
     };
+    const writer = Object.freeze({
+      create: tx.create.bind(tx),
+      delete: tx.delete.bind(tx),
+      set: tx.set.bind(tx),
+      update: tx.update.bind(tx),
+    }) as AuditTransactionWriter;
+    decision.apply(writer, { ...core, hash });
     tx.set(collection.doc(auditDocID(seq)), stripUndefinedObject(doc));
     // Same-transaction head advance: monotonic length pin for truncation detection.
     tx.set(
@@ -164,8 +186,23 @@ export async function appendAuditEvent(
       { maxSeq: seq, headHash: hash, schemaVersion: AUDIT_LOG_SCHEMA_VERSION, updatedAt: Timestamp.now() },
       { merge: true },
     );
-    return { ...core, hash };
+    return { value: decision.value, auditEvent: { ...core, hash } };
   });
+}
+
+/** Append one event and advance the tamper-evident chain head atomically. */
+export async function appendAuditEvent(
+  uid: string,
+  event: { actor: string; action: string; domain: string },
+): Promise<AuditEvent> {
+  const result = await runAuditedMutationRequired(uid, event, async () => ({
+    value: undefined,
+    apply: () => undefined,
+  }));
+  if (!result.auditEvent) {
+    throw new Error("Required audit append completed without an audit event.");
+  }
+  return result.auditEvent;
 }
 
 /**
@@ -354,6 +391,7 @@ export const AUDIT_ACTIONS = {
   panicRevoke: "access.revoke_all",
   browserEscrowRegister: "escrow.browser_register",
   highRiskOwnerAction: "security.high_risk_owner_action",
+  linuxAttestationRevoke: "linux_attestation.revoke",
 } as const;
 
 /** Resolve a stable actor label for audit events from the callable request. */

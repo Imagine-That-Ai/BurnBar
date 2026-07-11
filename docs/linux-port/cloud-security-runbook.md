@@ -155,9 +155,14 @@ measured-boot logs, manifest digest mismatch, and invalid quote output all fail
 closed before upload or mint, and no installed or production parity is claimed.
 
 The source verifier and Functions mint path reject inactive, revoked, and
-identity-mutated enrollment records before signing or minting. Production still
-requires remote enrollment activation, deployed revocation administration and
-audit evidence, real physical-TPM nonce-qualified quote vectors, UEFI
+identity-mutated enrollment records before signing or minting. A high-risk
+owner callable now creates the enrollment tombstone before facade materialization,
+durably revokes the deterministic ticket slot, clears pending leases,
+terminalizes the slot-bound ticket, and commits the revocation with its
+tamper-evident completion audit event in one transaction. Enrollment ticket
+issuance and stale facade workers reject those markers. Production still requires remote
+enrollment activation, deployed revocation execution and production audit
+evidence, real physical-TPM nonce-qualified quote vectors, UEFI
 measured-boot policy, IMA PCR 10 and full measurement-log verification, and the
 deployed remote verifier.
 Complete IMA logs must use the digest-bound ingress receipt and stay within the
@@ -334,9 +339,9 @@ Do not claim high-risk production Linux cloud availability until all are present
 
 - a dedicated real Firebase Web app ID and production allow-list entry;
 - deployed root-owned broker with broker-managed AK initialization, remote
-  enrollment activation, revocation administration/audit, real nonce-qualified quote vectors,
-  release/package measurement, UEFI measured-boot policy, and IMA measurement
-  verification where required;
+  enrollment activation, deployed revocation execution and production audit
+  evidence, real nonce-qualified quote vectors, release/package measurement,
+  UEFI measured-boot policy, and IMA measurement verification where required;
 - deployed signed-verdict verifier with pinned identity and operational key
   rotation, outage, denial, and audit behavior;
 - signed release/provenance binding and revocation for replaced candidates;
@@ -360,7 +365,10 @@ Run the source contract and service suites from the repository root:
 ```bash
 node --test scripts/linux-port/linux-attestation-contract.test.mjs
 npm run build --prefix functions
-npm run test:unit --prefix functions -- src/__tests__/linuxAttestationClientBridge.test.ts
+npm run test:unit --prefix functions -- \
+  src/__tests__/linuxAttestationClientBridge.test.ts \
+  src/__tests__/linuxAttestationRevocation.test.ts \
+  src/__tests__/bola/linuxAttestation.bola.test.ts
 npm test --prefix services/linux-attestation-facade
 docker run --rm -v "$PWD:/workspace" -w /workspace \
   openburnbar-linux-toolchain:mission-001 \
@@ -370,8 +378,9 @@ docker run --rm -v "$PWD:/workspace" -w /workspace \
 ```
 
 These commands prove source behavior only. They do not replace the physical-TPM,
-installed-package, verifier deployment, revocation administration/audit, and
-desktop-matrix evidence required for production acceptance.
+installed-package, verifier deployment, deployed revocation operation,
+production audit, and desktop-matrix evidence required for production
+acceptance.
 
 1. Issue one challenge and verify its raw nonce is absent from Firestore while
    the SHA-256 hash, complete binding, five-minute expiry, and 24-hour TTL marker

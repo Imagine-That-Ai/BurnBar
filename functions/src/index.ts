@@ -145,6 +145,7 @@ export {
   issueLinuxAttestationUploadTicket,
   mintLinuxAppCheckToken,
 } from "./callables/linuxAppCheck.js";
+export { revokeLinuxAttestationEnrollment } from "./callables/linuxAttestationAdmin.js";
 export { mintWindowsAppCheckToken } from "./callables/windowsAppCheck.js";
 export {
   registerPasskey,

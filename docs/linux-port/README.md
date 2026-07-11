@@ -23,12 +23,15 @@ environment-certified parity:
 - The Linux App Check challenge/verifier/daemon-client boundary plus the
   fail-closed root broker transport, per-request kernel credential binding,
   signed installed-file manifest, default-disabled activation gate, active-user
-  daemon upgrade recovery, and native deb/rpm lifecycle are implemented in
-  source. The broker deliberately returns `attestation_unsupported`; the real
-  Firebase Web app, TPM/IMA backend,
-  enrollment/revocation verifier, deployment, and installed matrix remain
-  blocked. Linux stays `linux_lower_trust`, and this is not production
-  attestation proof.
+  daemon upgrade recovery, native deb/rpm lifecycle, broker-owned AK
+  initialization/rotation, PCR-bound `tpm2_quote` collection, sealed
+  IMA/measured-boot evidence descriptors, verifier/mint revocation gates, and a
+  high-risk owner revocation callable with pre-materialization enrollment/slot
+  tombstones and an atomic tamper-evident audit event are implemented in source.
+  The real Firebase Web app, remote enrollment
+  activation, deployed ingress/verifier/revocation operation, physical TPM/IMA
+  vectors, production audit evidence, and installed matrix remain blocked.
+  Linux stays `linux_lower_trust`, and this is not production attestation proof.
 - For the CMUX-synthesized implementation plan, see
   [`FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md`](FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md).
 - The 2026-07-05 release notes below are historical context and should not be

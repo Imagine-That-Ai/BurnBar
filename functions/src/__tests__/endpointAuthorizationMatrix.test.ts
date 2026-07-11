@@ -98,7 +98,7 @@ describe("endpoint authorization matrix", () => {
     expect(byPolicy.get("linux-low-risk")).toHaveLength(29);
     expect(byPolicy.get("desktop-attestation-binding")).toEqual(["bindAppCheckAttestation"]);
     expect(byPolicy.get("desktop-nonce-bootstrap")).toEqual(["issueHighRiskActionNonce"]);
-    expect(byPolicy.get("desktop-trusted-device-step-up")).toHaveLength(14);
+    expect(byPolicy.get("desktop-trusted-device-step-up")).toHaveLength(15);
     expect(byPolicy.get("deny")).toHaveLength(73);
   });
 

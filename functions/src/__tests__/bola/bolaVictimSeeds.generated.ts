@@ -2044,6 +2044,23 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
       },
     },
   ],
+  revokeLinuxAttestationEnrollment: [
+    {
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
   revokePiAgentConnection: [
     {
       path: "users/__BOB_UID__/pi_agent_pairings/bob-pair",

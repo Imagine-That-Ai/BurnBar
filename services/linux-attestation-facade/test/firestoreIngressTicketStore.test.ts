@@ -326,7 +326,9 @@ describe("FirestoreIngressTicketStore", () => {
     const enrollment = candidate();
     firestore.values.set(TICKET_PATH, enrollmentTicket(enrollment));
     firestore.values.set(enrollmentPath(enrollment), {
-      ...enrollment,
+      uid: enrollment.uid,
+      deviceId: enrollment.deviceId,
+      active: false,
       revokedAtMillis: NOW,
       revokedReason: "operator_revoke",
     } as unknown as Record<string, unknown>);
@@ -361,6 +363,36 @@ describe("FirestoreIngressTicketStore", () => {
 });
 
 describe("Firestore ingress state adapters", () => {
+  it("never deletes a revoked pending-enrollment tombstone during stale-worker cleanup", async () => {
+    const firestore = new MemoryFirestore();
+    const enrollment = candidate();
+    const path = enrollmentPath(enrollment);
+    firestore.values.set(path, {
+      ...enrollment,
+      registrationLeaseToken: "registration-lease",
+      registrationLeaseExpiresAtMillis: NOW + 10_000,
+      activationLeaseToken: "activation-lease",
+      activationLeaseExpiresAtMillis: NOW + 10_000,
+      revokedAtMillis: NOW,
+      revokedReason: "suspected_compromise",
+    } as unknown as Record<string, unknown>);
+
+    const enrollmentStore = new FirestoreEnrollmentStore(firestore as unknown as Firestore);
+    await enrollmentStore.releaseRegistration(UID, enrollment.deviceId, "registration-lease");
+    await enrollmentStore.deletePending(UID, enrollment.deviceId, enrollment.agentId);
+
+    const ingressStore = new FirestoreIngressTicketStore(firestore as unknown as Firestore);
+    await ingressStore.terminalizePendingEnrollment(
+      UID,
+      enrollment.deviceId,
+      enrollment.agentId,
+      "activation-lease",
+    );
+
+    assert.equal(firestore.values.get(path)?.revokedReason, "suspected_compromise");
+    assert.equal(firestore.values.get(path)?.revokedAtMillis, NOW);
+  });
+
   it("admits at most three concurrent upload body attempts, including receipt retries", async () => {
     const firestore = new MemoryFirestore();
     const binding = uploadBinding();

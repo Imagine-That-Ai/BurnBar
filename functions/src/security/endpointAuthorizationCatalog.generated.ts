@@ -2756,6 +2756,35 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     lowerTrustDesktopPolicy: "deny",
   },
   {
+    exportedName: "revokeLinuxAttestationEnrollment",
+    trigger: "callable",
+    authMethod: "Firebase Auth, App Check, fresh high-risk nonce, and trusted-device action proof",
+    appCheck: "required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: ["deviceId"],
+    ownershipCheck:
+      "handler scopes the AK-derived deviceId to request.auth.uid, validates the deterministic slot and ticket binding, and atomically preserves durable enrollment/slot tombstones with the audit-chain completion event",
+    handlerModule: "callables/linuxAttestationAdmin.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/linuxAttestation.bola.test.ts",
+        test: "revokeLinuxAttestationEnrollment rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["revokeLinuxAttestationEnrollment"],
+        expectedOutcome: "no-side-effect",
+      },
+      {
+        file: "functions/src/__tests__/highRiskOwnerActionCallableGuards.test.ts",
+        test: "revokeLinuxAttestationEnrollment calls enforceHighRiskOwnerAction with actionKind",
+        kind: "static-high-risk-wiring",
+        covers: ["revokeLinuxAttestationEnrollment"],
+      },
+    ],
+    highRiskComputerUse: true,
+    actionKind: "linux_attestation_enrollment_revoke",
+    lowerTrustDesktopPolicy: "desktop-trusted-device-step-up",
+  },
+  {
     exportedName: "revokePiAgentConnection",
     trigger: "callable",
     authMethod: "Firebase Auth with callable-level ownership checks",

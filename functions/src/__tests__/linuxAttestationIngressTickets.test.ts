@@ -20,6 +20,7 @@ import {
   LINUX_ATTESTATION_TICKET_WIRE_PREFIX,
   __testing__,
   linuxAttestationTicketIssuanceProjection,
+  linuxAttestationEnrollmentTicketSlotId,
   linuxAttestationTicketSecretHash,
   linuxEnrollmentTicketClaimFingerprint,
   linuxUploadTicketClaimFingerprint,
@@ -570,6 +571,24 @@ describe("Linux attestation ingress ticket contract", () => {
     ]);
     expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
     expect(outcomes.filter((outcome) => outcome.status === "rejected")).toHaveLength(1);
+  });
+
+  it("refuses enrollment ticket issuance for a durably revoked device slot", async () => {
+    const store = new MemoryFirestore();
+    const input = enrollmentRequest(7);
+    const slotId = linuxAttestationEnrollmentTicketSlotId(input.deviceId);
+    store.docs.set(`users/${UID}/linux_attestation_enrollment_ticket_slots/${slotId}`, {
+      schemaVersion: 1,
+      purpose: "enrollment_begin",
+      deviceId: input.deviceId,
+      revokedAtMillis: NOW,
+      revokedReason: "device_lost",
+    });
+
+    await expect(authority(store).issueEnrollment(input)).rejects.toSatisfy(
+      (error: unknown) => errorCode(error) === "failed-precondition",
+    );
+    expect([...store.docs.keys()].filter((path) => path.includes("linux_attestation_ingress_tickets"))).toEqual([]);
   });
 
   it("does not partially persist ticket or quota state when the transaction fails", async () => {

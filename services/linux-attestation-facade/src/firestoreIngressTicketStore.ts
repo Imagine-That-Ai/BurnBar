@@ -254,8 +254,8 @@ export class FirestoreIngressTicketStore implements IngressTicketStore {
       if (attemptCount >= maxAttempts) {
         transaction.update(ticketRef, { status: "terminal", terminalAt: Timestamp.fromMillis(nowMillis) });
         if (existing !== undefined
-            && !existing.active
             && !enrollmentRevoked(existing)
+            && !existing.active
             && existing.beginTicketId === ticket.ticketId) transaction.delete(enrollmentRef);
         return { kind: "attempts_exhausted" as const };
       }
@@ -371,14 +371,20 @@ export class FirestoreIngressTicketStore implements IngressTicketStore {
           claimLeaseToken: FieldValue.delete(),
           claimLeaseExpiresAtMillis: FieldValue.delete(),
         });
-        if (enrollment !== undefined && !enrollment.active && enrollment.beginTicketId === ticketId) transaction.delete(enrollmentRef);
+        if (enrollment !== undefined
+            && !enrollmentRevoked(enrollment)
+            && !enrollment.active
+            && enrollment.beginTicketId === ticketId) transaction.delete(enrollmentRef);
       } else {
         transaction.update(ticketRef, {
           status: "issued",
           claimLeaseToken: FieldValue.delete(),
           claimLeaseExpiresAtMillis: FieldValue.delete(),
         });
-        if (enrollment !== undefined && !enrollment.active && enrollment.beginTicketId === ticketId) {
+        if (enrollment !== undefined
+            && !enrollmentRevoked(enrollment)
+            && !enrollment.active
+            && enrollment.beginTicketId === ticketId) {
           const retryable = { ...enrollment };
           delete retryable.registrationLeaseToken;
           delete retryable.registrationLeaseExpiresAtMillis;
@@ -394,6 +400,7 @@ export class FirestoreIngressTicketStore implements IngressTicketStore {
       const enrollmentSnapshot = await transaction.get(enrollmentRef);
       const enrollment = enrollmentSnapshot.data() as EnrollmentRecord | undefined;
       if (enrollment === undefined
+          || enrollmentRevoked(enrollment)
           || enrollment.active
           || enrollment.agentId !== agentId
           || enrollment.activationLeaseToken !== activationLeaseToken) return;

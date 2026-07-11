@@ -20,6 +20,7 @@ type HighRiskOwnerActionKind =
   | "self_hosted_quota_account_connect"
   | "provider_account_update"
   | "remote_mcp_grant_revoke"
+  | "linux_attestation_enrollment_revoke"
   | "hosted_quota_credential_delete"
   | "hermes_pairing_complete"
   | "pi_agent_pairing_complete";
