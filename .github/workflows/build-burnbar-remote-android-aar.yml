@@ -129,6 +129,24 @@ jobs:
               exit 1;
             }
 
+      - name: Upload rebuilt AAR after parity failure
+        if: failure()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: burnbar-remote-aar-parity-failure
+          path: Vendor/burnbar-remote.aar
+          if-no-files-found: error
+          retention-days: 2
+
+      - name: Upload rebuilt Kotlin bindings after parity failure
+        if: failure()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: burnbar-remote-kotlin-bindings-parity-failure
+          path: android/burnbar-remote/src/main/java/uniffi/burnbar_remote
+          if-no-files-found: error
+          retention-days: 2
+
       - name: Build host UniFFI library for JVM smoke
         run: cargo build -p burnbar-remote-ffi
         working-directory: crates/burnbar-remote
