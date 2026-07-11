@@ -61,11 +61,7 @@ def parse_dependencies(output: str) -> list[str]:
 
 def is_system_library(name: str) -> bool:
     lowered = name.casefold()
-    return (
-        lowered in SYSTEM_LIBRARIES
-        or lowered.startswith("api-ms-win-")
-        or lowered.startswith("ext-ms-win-")
-    )
+    return lowered in SYSTEM_LIBRARIES or lowered.startswith("api-ms-win-") or lowered.startswith("ext-ms-win-")
 
 
 def find_case_insensitive(name: str, search_paths: list[Path]) -> Path | None:
@@ -131,10 +127,7 @@ def stage(
                 continue
             resolved = find_case_insensitive(dependency, ordered_paths)
             if resolved is None:
-                raise ValueError(
-                    f"could not resolve non-system dependency {dependency} "
-                    f"required by {source.name}"
-                )
+                raise ValueError(f"could not resolve non-system dependency {dependency} required by {source.name}")
             queued.add(key)
             queue.append(resolved)
 
@@ -169,11 +162,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    environment_paths = [
-        Path(value)
-        for value in os.environ.get("PATH", "").split(os.pathsep)
-        if value
-    ]
+    environment_paths = [Path(value) for value in os.environ.get("PATH", "").split(os.pathsep) if value]
     try:
         manifest = stage(
             args.engine,
@@ -184,10 +173,7 @@ def main() -> int:
     except (OSError, subprocess.CalledProcessError, ValueError) as error:
         print(f"stage-swift-runtime: {error}", file=sys.stderr)
         return 1
-    print(
-        f"stage-swift-runtime: staged {len(manifest['files'])} DLLs "
-        f"to {args.destination}"
-    )
+    print(f"stage-swift-runtime: staged {len(manifest['files'])} DLLs to {args.destination}")
     return 0
 
 

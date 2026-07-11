@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import Foundation
+import OpenBurnBarKernel
 
 /// Paths supplied by the Windows host. Keeping discovery outside the parser engine
 /// lets packaged, portable, and test hosts use the same parser implementation.
@@ -371,22 +372,17 @@ public enum OBBCAbiUsageScanError: Error, CustomStringConvertible, Equatable {
     }
 }
 
-private final class OBBCAbiUsageScanOutcome<T>: @unchecked Sendable {
-    private let lock = NSLock()
-    private var outcome: Result<T, Error>?
+private final class OBBCAbiUsageScanOutcome<T: Sendable>: Sendable {
+    private let outcome = Locked<Result<T, Error>?>(nil)
 
     func store(_ value: Result<T, Error>) {
-        lock.lock()
-        defer { lock.unlock() }
-        outcome = value
+        outcome.write(value)
     }
 
     func take() throws -> T {
-        lock.lock()
-        defer { lock.unlock() }
-        guard let outcome else {
+        guard let result = outcome.read() else {
             throw OBBCAbiUsageScanError.invalidRequest
         }
-        return try outcome.get()
+        return try result.get()
     }
 }
