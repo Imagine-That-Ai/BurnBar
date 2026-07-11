@@ -45,26 +45,38 @@ data class EscrowDeviceTrustRevocationResult(
     val cloudVaultRotationRewrappedStorageBlobs: Int = 0,
 )
 
+internal suspend fun <T> callBoundToExpectedUid(expectedUid: String, currentUidProvider: () -> String, operation: suspend () -> T): T {
+    check(currentUidProvider() == expectedUid) {
+        "The signed-in account changed during this Computer Use security action."
+    }
+    val result = operation()
+    check(currentUidProvider() == expectedUid) {
+        "The signed-in account changed during this Computer Use security action."
+    }
+    return result
+}
+
 /**
  * WS4 Android client for App Check attestation binding and escrow device trust callables.
  */
 class ComputerUseSecurityCallableClient(
     private val functions: FirebaseFunctions = Firebase.functions("us-central1"),
-) {
+) : IrohControllerRouteCallables {
     private val relaySenderProofProtocolVersion = "3"
 
-    suspend fun bindAppCheckAttestation() {
-        requireAuthenticatedUser()
+    suspend fun bindAppCheckAttestation(expectedUid: String? = null) {
+        val boundUid = requireAuthenticatedUser(expectedUid)
         functions.getHttpsCallable("bindAppCheckAttestation").call(emptyMap<String, Any>()).await()
-        refreshAuthClaimsAfterBind()
+        requireAuthenticatedUser(boundUid)
+        refreshAuthClaimsAfterBind(boundUid)
     }
 
     /**
      * Fetch a single-use, short-lived nonce to attach to a high-risk action,
      * providing replay resistance on top of the 30-day attestation binding.
      */
-    suspend fun issueHighRiskActionNonce(): String {
-        requireAuthenticatedUser()
+    suspend fun issueHighRiskActionNonce(expectedUid: String? = null): String {
+        val boundUid = requireAuthenticatedUser(expectedUid)
         val result =
             functions.getHttpsCallable("issueHighRiskActionNonce")
                 .call(emptyMap<String, Any>())
@@ -72,6 +84,7 @@ class ComputerUseSecurityCallableClient(
         val map = result.getData() as? Map<*, *> ?: error("Could not obtain a high-risk action nonce.")
         val nonce = map["nonce"] as? String
         check(!nonce.isNullOrEmpty()) { "Could not obtain a high-risk action nonce." }
+        requireAuthenticatedUser(boundUid)
         return nonce
     }
 
@@ -213,15 +226,20 @@ class ComputerUseSecurityCallableClient(
     }
 
     suspend fun publishPhoneControlAuthority(authority: PhoneControlAuthorityDoc) {
-        requireAuthenticatedUser()
-        bindAppCheckAttestation()
-        val nonce = issueHighRiskActionNonce()
+        publishPhoneControlAuthority(expectedUid = requireAuthenticatedUser(), authority = authority)
+    }
+
+    override suspend fun publishPhoneControlAuthority(expectedUid: String, authority: PhoneControlAuthorityDoc) {
+        requireAuthenticatedUser(expectedUid)
+        bindAppCheckAttestation(expectedUid)
+        val nonce = issueHighRiskActionNonce(expectedUid)
         // F2: legacy publishes stay byte-identical (no keyKind field); an
         // SE-P256 identity sends the discriminator the server persists as
         // `signingKeyKind` (schemaVersion 3).
         val payload =
             buildMap<String, Any> {
                 put("deviceId", authority.deviceId)
+                put("expectedUid", expectedUid)
                 put("connectionId", authority.connectionId)
                 put("peerNodeId", authority.peerNodeId)
                 put("publicKeyBase64", authority.publicKeyBase64)
@@ -230,11 +248,104 @@ class ComputerUseSecurityCallableClient(
                 put("nonce", nonce)
                 authority.keyKind?.let { put("keyKind", it) }
             }
-        val result =
-            functions.getHttpsCallable("publishPhoneControlAuthority")
-                .call(payload)
-                .await()
+        val result = callBoundToExpectedUid(expectedUid, { requireAuthenticatedUser() }) {
+            functions.getHttpsCallable("publishPhoneControlAuthority").call(payload).await()
+        }
         requireOk(result.getData(), "Phone-control authority publication failed.")
+    }
+
+    override suspend fun issueIrohControllerRouteChallenge(
+        expectedUid: String,
+        sourceDeviceId: String,
+        connectionId: String,
+        authorityPeerNodeId: String,
+        transportNodeId: String,
+    ): IrohControllerRouteChallenge {
+        requireAuthenticatedUser(expectedUid)
+        bindAppCheckAttestation(expectedUid)
+        val nonce = issueHighRiskActionNonce(expectedUid)
+        val result = callBoundToExpectedUid(expectedUid, { requireAuthenticatedUser() }) {
+            functions.getHttpsCallable("issueIrohControllerRouteChallenge")
+                .call(
+                    mapOf(
+                        "expectedUid" to expectedUid,
+                        "sourceDeviceId" to sourceDeviceId,
+                        "connectionId" to connectionId,
+                        "authorityPeerNodeId" to authorityPeerNodeId,
+                        "transportNodeId" to transportNodeId,
+                        "nonce" to nonce,
+                    ),
+                ).await()
+        }
+        val data = result.getData() as? Map<*, *> ?: error("Controller-route challenge issuance failed.")
+        return IrohControllerRouteChallenge(
+            challengeId = data.requiredString("challengeId", "Controller-route challenge issuance failed."),
+            canonicalPayloadBase64 = data.requiredString("canonicalPayloadBase64", "Controller-route challenge issuance failed."),
+            signatureAlgorithm = data.requiredString("signatureAlgorithm", "Controller-route challenge issuance failed."),
+            registrationGeneration = data.requiredLong("registrationGeneration", "Controller-route challenge issuance failed."),
+            issuedAtMillis = data.requiredLong("issuedAtMillis", "Controller-route challenge issuance failed."),
+            expiresAtMillis = data.requiredLong("expiresAtMillis", "Controller-route challenge issuance failed."),
+        )
+    }
+
+    override suspend fun registerIrohControllerRoute(
+        expectedUid: String,
+        challengeId: String,
+        transportSignatureBase64: String,
+        authoritySignatureBase64: String,
+    ): IrohControllerRouteRegistration {
+        requireAuthenticatedUser(expectedUid)
+        val result = callBoundToExpectedUid(expectedUid, { requireAuthenticatedUser() }) {
+            functions.getHttpsCallable("registerIrohControllerRoute")
+                .call(
+                    mapOf(
+                        "expectedUid" to expectedUid,
+                        "challengeId" to challengeId,
+                        "transportSignatureBase64" to transportSignatureBase64,
+                        "authoritySignatureBase64" to authoritySignatureBase64,
+                    ),
+                )
+                .await()
+        }
+        val data = requireOk(result.getData(), "Controller-route registration failed.")
+        return IrohControllerRouteRegistration(
+            connectionId = data.requiredString("connectionId", "Controller-route registration failed."),
+            sourceDeviceId = data.requiredString("sourceDeviceId", "Controller-route registration failed."),
+            transportNodeId = data.requiredString("transportNodeId", "Controller-route registration failed."),
+            authorityPeerNodeId = data.requiredString("authorityPeerNodeId", "Controller-route registration failed."),
+            generation = data.requiredLong("generation", "Controller-route registration failed."),
+            expiresAtMillis = data.requiredLong("expiresAtMillis", "Controller-route registration failed."),
+        )
+    }
+
+    override suspend fun revokeIrohControllerRoute(expectedUid: String, sourceDeviceId: String, connectionId: String): IrohControllerRouteRevocation {
+        requireAuthenticatedUser(expectedUid)
+        bindAppCheckAttestation(expectedUid)
+        val nonce = issueHighRiskActionNonce(expectedUid)
+        val result = callBoundToExpectedUid(expectedUid, { requireAuthenticatedUser() }) {
+            functions.getHttpsCallable("revokeIrohControllerRoute")
+                .call(
+                    mapOf(
+                        "expectedUid" to expectedUid,
+                        "sourceDeviceId" to sourceDeviceId,
+                        "connectionId" to connectionId,
+                        "nonce" to nonce,
+                    ),
+                )
+                .await()
+        }
+        val data = requireOk(result.getData(), "Controller-route revocation failed.")
+        val revokedConnectionId = data.requiredString("connectionId", "Controller-route revocation failed.")
+        val revokedSourceDeviceId = data.requiredString("sourceDeviceId", "Controller-route revocation failed.")
+        val generation = data.requiredLong("generation", "Controller-route revocation failed.")
+        check(revokedConnectionId == connectionId && revokedSourceDeviceId == sourceDeviceId && generation > 0L) {
+            "Controller-route revocation failed."
+        }
+        return IrohControllerRouteRevocation(
+            connectionId = revokedConnectionId,
+            sourceDeviceId = revokedSourceDeviceId,
+            generation = generation,
+        )
     }
 
     suspend fun publishRelaySenderKey(request: RelaySenderKeyPublishRequest) {
@@ -446,17 +557,24 @@ class ComputerUseSecurityCallableClient(
         )
     }
 
-    private suspend fun refreshAuthClaimsAfterBind() {
+    private suspend fun refreshAuthClaimsAfterBind(expectedUid: String) {
         val user =
             FirebaseAuth.getInstance().currentUser
                 ?: error("Sign in before performing this Computer Use security action.")
+        check(!user.isAnonymous && user.uid == expectedUid) {
+            "The signed-in account changed during this Computer Use security action."
+        }
         user.getIdToken(true).await()
+        requireAuthenticatedUser(expectedUid)
     }
 
-    private fun requireAuthenticatedUser(): String {
+    private fun requireAuthenticatedUser(expectedUid: String? = null): String {
         val user = FirebaseAuth.getInstance().currentUser
         check(user != null && !user.isAnonymous) {
             "Sign in before performing this Computer Use security action."
+        }
+        check(expectedUid == null || user.uid == expectedUid) {
+            "The signed-in account changed during this Computer Use security action."
         }
         return user.uid
     }
@@ -470,5 +588,16 @@ class ComputerUseSecurityCallableClient(
         val map = data as? Map<*, *> ?: error(failureMessage)
         check(map["ok"] == true) { failureMessage }
         return map
+    }
+
+    private fun Map<*, *>.requiredString(key: String, failureMessage: String): String =
+        (this[key] as? String)?.takeIf { it.isNotBlank() } ?: error(failureMessage)
+
+    private fun Map<*, *>.requiredLong(key: String, failureMessage: String): Long {
+        val value = this[key] as? Number ?: error(failureMessage)
+        val asDouble = value.toDouble()
+        val asLong = value.toLong()
+        check(asDouble.isFinite() && asDouble == asLong.toDouble()) { failureMessage }
+        return asLong
     }
 }
