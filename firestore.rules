@@ -3615,7 +3615,7 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Iroh transport pairing public keys. The Mac writes one singleton
+    // Iroh transport pairing public keys. A trusted macOS/Linux host publishes one singleton
     // document per host role (today: `host`) containing the base64-encoded
     // 32-byte Ed25519 public half of the pairing key. iOS clients read this
     // value to verify `iroh_pairing/*` signatures before dialing. Schema lives
@@ -3629,10 +3629,10 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
-    // Iroh transport pairing records. Mac publishes; iOS reads + verifies the
+    // Iroh transport pairing records. A trusted macOS/Linux host publishes; mobile reads + verifies the
     // Ed25519 signature using `iroh_pairing_keys/host.publicKeyBase64` before
     // dialing the signed NodeAddr material. Schema lives in `functions/src/types.ts`
-    // (`IrohPairingRecordDoc`); the Mac is the sole writer.
+    // (`IrohPairingRecordDoc`); Admin SDK callables are the sole writers.
     match /users/{userId}/iroh_pairing/{connectionId} {
       allow read: if ownsUserNamespace(userId);
       // The signed host pairing record is a remote-control trust root. Clients
@@ -3758,15 +3758,23 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
-    // Mobile iroh QUIC NodeId allow-list entries. This is intentionally
+    // Server-verified mobile iroh QUIC NodeId routes. This is intentionally
     // separate from phone-control `controllers/*`: the Mac's inbound policy
     // checks the QUIC peer NodeId surfaced by iroh, while phone-control
-    // controller IDs are derived from app-layer signing keys. Clients publish
-    // through `publishIrohPeerNodeId`, which verifies App Check, nonce
-    // freshness, trusted native mobile escrow state, and the existing pairing.
-    match /users/{userId}/iroh_pairing/{connectionId}/iroh_controllers/{irohPeerNodeId} {
+    // controller IDs are derived from app-layer signing keys. Clients register
+    // through the challenge/response callables, which verify App Check, a
+    // trusted native mobile escrow device, the pairing-bound authority, and an
+    // Ed25519 proof made by the private key behind transportNodeId.
+    match /users/{userId}/iroh_pairing/{connectionId}/controller_routes/{sourceDeviceId} {
       allow read: if ownsUserNamespace(userId);
       allow create, update, delete: if false;
+    }
+
+    // Single-use proof-of-possession challenges are callable-only. They contain
+    // no private key material, but denying client reads prevents one client from
+    // harvesting another controller's live signable challenge.
+    match /users/{userId}/iroh_controller_route_challenges/{challengeId} {
+      allow read, create, update, delete: if false;
     }
 
     // Mobile/Android sender keys for authenticated relay request envelopes.

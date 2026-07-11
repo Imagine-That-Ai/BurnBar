@@ -32,10 +32,10 @@ Linux is a distinct, permanently lower-assurance principal:
   operations still require a trusted-device step-up and a fresh, single-use
   high-risk nonce.
 - Every callable is classified in the generated endpoint authorization catalog
-  and enforced centrally before its handler runs. Linux is admitted to 29
-  audited low-risk operations, two attestation/nonce prerequisites, and 14
+  and enforced centrally before its handler runs. Linux is admitted to 30
+  audited low-risk operations, two attestation/nonce prerequisites, and 15
   mutations that already require nonce consumption, trusted-device action
-  proof, and mandatory audit persistence. The other 73 App Check-required
+  proof, and mandatory audit persistence. The other 76 App Check-required
   callables reject Linux by default; unknown app IDs and missing catalog rows
   also fail closed.
 - Standard browser trust is an exact-ID registry, not a `:web:` syntax

@@ -10,3 +10,36 @@ public struct FirestoreIrohPairingDoc: Codable, Sendable, Equatable {
     public var expiresAt: String
     public var platform: String?
 }
+
+public struct FirestoreIrohControllerRouteDoc: Codable, Sendable, Equatable {
+    public var connectionId: String
+    public var sourceDeviceId: String
+    public var transportNodeId: String
+    public var authorityPeerNodeId: String
+    public var authorityPublicKeySHA256: String
+    public var status: String
+    public var generation: Int64
+    public var registeredAtMillis: Int64
+    public var expiresAtMillis: Int64
+    public var revokedAtMillis: Int64?
+    public var schemaVersion: Int64
+    public var updatedAt: String
+}
+
+public struct FirestoreIrohControllerRouteChallengeDoc: Codable, Sendable, Equatable {
+    public var challengeId: String
+    public var challengeNonce: String
+    public var connectionId: String
+    public var sourceDeviceId: String
+    public var transportNodeId: String
+    public var authorityPeerNodeId: String
+    public var expectedPriorGeneration: Int64
+    public var registrationGeneration: Int64
+    public var canonicalPayloadBase64: String
+    public var issuedAtMillis: Int64
+    public var expiresAtMillis: Int64
+    public var status: String
+    public var consumedAtMillis: Int64?
+    public var schemaVersion: Int64
+    public var expireAt: String
+}

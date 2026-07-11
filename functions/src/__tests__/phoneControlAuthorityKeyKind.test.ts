@@ -658,6 +658,15 @@ describe("F2 revokeEscrowDeviceTrust atomic clear + receipt", () => {
       publicKeyBase64: key.base64,
     });
     publishedPeerNodeId = key.peerNodeId;
+    store.set(`users/${UID}/iroh_pairing/${CONN}/controller_routes/${DEVICE}`, {
+      connectionId: CONN,
+      sourceDeviceId: DEVICE,
+      transportNodeId: "a".repeat(52),
+      authorityPeerNodeId: key.peerNodeId,
+      status: "active",
+      generation: 4,
+      expiresAtMillis: Date.now() + 60_000,
+    });
   });
 
   it("deletes the controller record, clears the grant authority, and emits a receipt", async () => {
@@ -686,6 +695,10 @@ describe("F2 revokeEscrowDeviceTrust atomic clear + receipt", () => {
     // Atomic clear: the controller record and grant authority are gone.
     expect(store.has(`users/${UID}/iroh_pairing/${CONN}/controllers/${peerNodeId}`)).toBe(false);
     expect(store.has(`users/${UID}/agent_grant_authorities/${DEVICE}`)).toBe(false);
+    expect(store.get(`users/${UID}/iroh_pairing/${CONN}/controller_routes/${DEVICE}`)).toMatchObject({
+      status: "revoked",
+      generation: 5,
+    });
     // Device itself is flipped to revoked.
     expect(store.get(`users/${UID}/escrow_devices/${DEVICE}`)?.trustState).toBe("revoked");
     expect(store.get(`users/${UID}/cloud_vault_key_wrappers/wrap-phone`)?.status).toBe("revoked");

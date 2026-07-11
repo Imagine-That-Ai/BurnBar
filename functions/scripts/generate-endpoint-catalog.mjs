@@ -44,6 +44,7 @@ const LOWER_TRUST_DESKTOP_POLICY_OVERRIDES = {
   getEncryptedSessionBlobDownloadUrl: "linux-low-risk",
   getHermesGatewayAttachmentDownloadUrl: "linux-low-risk",
   getProfileAvatarDownloadUrl: "linux-low-risk",
+  resolveActiveIrohControllerRoutes: "linux-low-risk",
   issueHighRiskActionNonce: "desktop-nonce-bootstrap",
   listEncryptedProjectMemorySnapshots: "linux-low-risk",
   listHermesConnections: "linux-low-risk",
@@ -102,6 +103,87 @@ const LOWER_TRUST_HANDLER_MODULE_OVERRIDES = {
 
 /** Endpoint-specific overrides merged onto scaffold defaults during regeneration. */
 const CATALOG_OVERRIDES = {
+  issueIrohControllerRouteChallenge: {
+    authMethod: "Firebase Auth, App Check, Cloud Pro entitlement, and a single-use high-risk nonce",
+    appCheck: "required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: ["sourceDeviceId", "connectionId", "authorityPeerNodeId", "transportNodeId"],
+    ownershipCheck:
+      "handler scopes every document path to request.auth.uid and transactionally joins the signed pairing, trusted host, sole trusted controller device, and key-derived controller authority before issuing a one-minute challenge",
+    handlerModule: "callables/irohControllerRouteCallables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/irohControllerRouteCallables.test.ts",
+        test: "issue challenge scopes every lookup to request.auth.uid",
+        kind: "runtime-cross-user",
+        covers: ["issueIrohControllerRouteChallenge"],
+        expectedOutcome: "throws",
+        expectedCode: "failed-precondition",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  registerIrohControllerRoute: {
+    authMethod:
+      "Firebase Auth, App Check, Cloud Pro entitlement, and a live single-use iroh Ed25519 possession challenge",
+    appCheck: "required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: ["challengeId"],
+    ownershipCheck:
+      "handler loads the challenge only below request.auth.uid, verifies its transport-key signature, then revalidates the same-user trust graph before atomically consuming it and rotating the route generation",
+    handlerModule: "callables/irohControllerRouteCallables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/irohControllerRouteCallables.test.ts",
+        test: "registration cannot consume a cross-user challenge",
+        kind: "runtime-cross-user",
+        covers: ["registerIrohControllerRoute"],
+        expectedOutcome: "throws",
+        expectedCode: "failed-precondition",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  revokeIrohControllerRoute: {
+    authMethod: "Firebase Auth, App Check, a single-use high-risk nonce, and the trusted sole controller device",
+    appCheck: "required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: ["sourceDeviceId", "connectionId"],
+    ownershipCheck:
+      "handler derives the tenant from request.auth.uid and only advances the generation of the route bound to the pairing's sole trusted controller device",
+    handlerModule: "callables/irohControllerRouteCallables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/irohControllerRouteCallables.test.ts",
+        test: "revocation cannot mutate a cross-user route",
+        kind: "runtime-cross-user",
+        covers: ["revokeIrohControllerRoute"],
+        expectedOutcome: "throws",
+        expectedCode: "failed-precondition",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  resolveActiveIrohControllerRoutes: {
+    authMethod: "Firebase Auth, App Check, and Cloud Pro entitlement; read-only fail-closed trust-graph resolution",
+    appCheck: "required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: ["connectionId"],
+    ownershipCheck:
+      "handler reads only request.auth.uid paths and returns one route only after revalidating pairing freshness/signature, host and controller trust, exact authority derivation, route generation, TTL, and revocation state",
+    handlerModule: "callables/irohControllerRouteCallables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/irohControllerRouteCallables.test.ts",
+        test: "resolution cannot read a cross-user route",
+        kind: "runtime-cross-user",
+        covers: ["resolveActiveIrohControllerRoutes"],
+        expectedOutcome: "throws",
+        expectedCode: "failed-precondition",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
   issueLinuxAppCheckChallenge: {
     trigger: "callable",
     authMethod:
@@ -128,8 +210,7 @@ const CATALOG_OVERRIDES = {
   },
   issueLinuxAttestationEnrollmentTicket: {
     trigger: "callable",
-    authMethod:
-      "Firebase Auth; issues a UID/device/material-bound Linux registrar ticket before App Check bootstrap",
+    authMethod: "Firebase Auth; issues a UID/device/material-bound Linux registrar ticket before App Check bootstrap",
     appCheck: "not-required",
     publicJustification:
       "TPM enrollment precedes the first App Check token. Firebase Auth, exact material digests, per-user quotas, a five-minute hash-only ticket, and the production mint kill switch gate it.",
@@ -176,7 +257,8 @@ const CATALOG_OVERRIDES = {
   },
   mintLinuxAppCheckToken: {
     trigger: "callable",
-    authMethod: "Firebase Auth; lower-trust Linux attestation-gated App Check token mint (no App Check on the bootstrap path)",
+    authMethod:
+      "Firebase Auth; lower-trust Linux attestation-gated App Check token mint (no App Check on the bootstrap path)",
     appCheck: "not-required",
     publicJustification:
       "Bootstrap mints a lower-trust Linux App Check token, so it cannot itself require one. A durable single-use challenge and pinned signed-verdict verifier gate production minting.",
@@ -703,8 +785,7 @@ const merged = names.map((exportedName) => {
   const override = CATALOG_OVERRIDES[exportedName];
   const entry = override ? { ...base, ...override, exportedName } : base;
   const lowerTrustDesktopPolicy =
-    LOWER_TRUST_DESKTOP_POLICY_OVERRIDES[exportedName] ??
-    (entry.appCheck === "required" ? "deny" : "not-applicable");
+    LOWER_TRUST_DESKTOP_POLICY_OVERRIDES[exportedName] ?? (entry.appCheck === "required" ? "deny" : "not-applicable");
   const handlerModule = LOWER_TRUST_HANDLER_MODULE_OVERRIDES[exportedName] ?? entry.handlerModule;
   return { ...entry, ...(handlerModule ? { handlerModule } : {}), lowerTrustDesktopPolicy };
 });
