@@ -223,14 +223,36 @@ NOTIFYCAPS
   if kill -0 "$app_pid" 2>/dev/null; then
     notification_existing_alive=true
   fi
+  notification_active_window_id=""
+  notification_focus_matches=false
+  for _ in $(seq 1 80); do
+    notification_active_window_id="$(xdotool getactivewindow 2>/dev/null || true)"
+    if [[ -n "$notification_active_window_id" && "$notification_active_window_id" == "$window_id" ]]; then
+      notification_focus_matches=true
+      break
+    fi
+    sleep 0.1
+  done
   node - \
     "$out_dir/native-notification-relaunch-route.json" \
     "$out_dir/native-notification-action-result.json" \
     "$out_dir/native-notification-response-result.json" \
     "$notification_existing_alive" \
-    "$notification_window_count" <<'NOTIFYROUTE'
+    "$notification_window_count" \
+    "$notification_focus_matches" \
+    "$notification_active_window_id" \
+    "$window_id" <<'NOTIFYROUTE'
 const fs = require('fs');
-const [outPath, actionPath, responsePath, aliveText, windowCountText] = process.argv.slice(2);
+const [
+  outPath,
+  actionPath,
+  responsePath,
+  aliveText,
+  windowCountText,
+  focusMatchesText,
+  activeWindowId,
+  appWindowId
+] = process.argv.slice(2);
 const action = JSON.parse(fs.readFileSync(actionPath, 'utf8'));
 const response = JSON.parse(fs.readFileSync(responsePath, 'utf8'));
 const windowCount = Number(windowCountText);
@@ -241,9 +263,12 @@ const payload = {
     response.passed === true &&
     aliveText === 'true' &&
     windowCount >= 1 &&
+    focusMatchesText === 'true' &&
     action.route === 'chat' &&
     action.action === 'open-chat',
-  focusedExistingWindow: aliveText === 'true' && windowCount >= 1,
+  focusedExistingWindow: focusMatchesText === 'true',
+  activeWindowId,
+  appWindowId,
   route: action.route,
   action: action.action,
   notificationId: action.notificationId,
