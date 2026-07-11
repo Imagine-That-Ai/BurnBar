@@ -8,6 +8,7 @@ import { policy } from "./helpers.js";
 const evidence = {
   agentId: "00000000-0000-8000-8000-000000000000",
   akTpmBase64: "YWstdHBtMmI=",
+  ekTpmBase64: "ZWstdHBtMmI=",
   tpmEkPem: "-----BEGIN PUBLIC KEY-----\nZWstdGVzdA==\n-----END PUBLIC KEY-----\n",
   quoteAttestationBase64: "YXR0ZXN0",
   quoteSignatureBase64: "c2lnbmF0dXJl",
@@ -30,12 +31,12 @@ describe("Keylime 7.14.3 v2.5 compatibility", () => {
         quote: "rYXR0ZXN0:c2lnbmF0dXJl:cGNyLWJsb2I=",
         hash_alg: "sha256",
         tpm_ak: evidence.akTpmBase64,
-        tpm_ek: evidence.tpmEkPem,
+        tpm_ek: evidence.ekTpmBase64,
         tpm_policy: JSON.stringify(policy.tpmPolicy),
         runtime_policy: JSON.stringify(policy.runtimePolicy),
         mb_policy: JSON.stringify(policy.measuredBootPolicy),
         ima_measurement_list: evidence.imaMeasurementList.toString("ascii"),
-        mb_log: evidence.measuredBootLog.toString("base64"),
+        mb_list: evidence.measuredBootLog.toString("base64"),
       },
     });
     assert.deepEqual(buildKeylimeRegistrarRequest("Y2VydA==", "ZWs=", "YWs="), { ekcert: "Y2VydA==", ek_tpm: "ZWs=", aik_tpm: "YWs=" });

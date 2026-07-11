@@ -391,7 +391,16 @@ function normalizeBoundedEvidence(evidence: unknown): unknown {
   if (!encoded || Buffer.byteLength(encoded) > MAX_EVIDENCE_BYTES) {
     throw linuxAttestationError("malformed");
   }
-  return JSON.parse(encoded) as unknown;
+  const normalized = JSON.parse(encoded) as unknown;
+  if (normalized == null || typeof normalized !== "object" || Array.isArray(normalized)) return normalized;
+  const source = normalized as Record<string, unknown>;
+  const quote = source.quote ?? source.evidence;
+  const evidenceBundle = source.evidenceBundle;
+  const upload = source.upload;
+  if (quote && evidenceBundle && upload && typeof quote === "object" && !Array.isArray(quote)) {
+    return { schemaVersion: 1, quote, evidenceBundle, upload };
+  }
+  return normalized;
 }
 
 function abortable<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {

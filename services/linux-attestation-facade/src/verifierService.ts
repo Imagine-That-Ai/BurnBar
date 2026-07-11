@@ -56,6 +56,7 @@ export class VerifierService {
       const result = await this.keylime.verify({
         agentId: enrollment.agentId,
         akTpmBase64: enrollment.akTpmBase64,
+        ekTpmBase64: enrollment.ekTpmBase64,
         tpmEkPem: enrollment.tpmEkPem,
         quoteAttestationBase64: request.evidence.quote.quoteAttestationBase64,
         quoteSignatureBase64: request.evidence.quote.quoteSignatureBase64,

@@ -104,6 +104,7 @@ export interface PolicyStore {
 export interface KeylimeEvidenceInput {
   agentId: string;
   akTpmBase64: string;
+  ekTpmBase64: string;
   tpmEkPem: string;
   quoteAttestationBase64: string;
   quoteSignatureBase64: string;

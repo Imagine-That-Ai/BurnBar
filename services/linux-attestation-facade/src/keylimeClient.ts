@@ -22,7 +22,7 @@ export interface KeylimeTpmVerifyData {
   runtime_policy: string;
   mb_policy: string;
   ima_measurement_list: string;
-  mb_log: string;
+  mb_list: string;
 }
 
 export interface KeylimeTpmVerifyRequest {
@@ -73,12 +73,12 @@ export function buildKeylimeTpmVerifyRequest(evidence: KeylimeEvidenceInput, pol
       quote: `r${evidence.quoteAttestationBase64}:${evidence.quoteSignatureBase64}:${evidence.quotePcrValuesBase64}`,
       hash_alg: evidence.pcrBank,
       tpm_ak: evidence.akTpmBase64,
-      tpm_ek: evidence.tpmEkPem,
+      tpm_ek: evidence.ekTpmBase64,
       tpm_policy: JSON.stringify(policy.tpmPolicy),
       runtime_policy: JSON.stringify(policy.runtimePolicy),
       mb_policy: JSON.stringify(policy.measuredBootPolicy),
       ima_measurement_list: imaText(evidence.imaMeasurementList),
-      mb_log: evidence.measuredBootLog.toString("base64"),
+      mb_list: evidence.measuredBootLog.toString("base64"),
     },
   };
 }
@@ -112,7 +112,7 @@ export class KeylimeClient implements KeylimeVerifier, RegistrarClient {
   }
 
   async activate(agentId: string, activationProof: string): Promise<void> {
-    await this.call("PUT", `/v2.5/agents/${encodeURIComponent(agentId)}/activate`, { auth_tag: activationProof });
+    this.resultEnvelope(await this.call("PUT", `/v2.5/agents/${encodeURIComponent(agentId)}/activate`, { auth_tag: activationProof }));
   }
 
   async verify(evidence: KeylimeEvidenceInput, policy: AttestationPolicy): Promise<KeylimeResult> {
