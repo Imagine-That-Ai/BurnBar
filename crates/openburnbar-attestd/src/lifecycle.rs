@@ -1,5 +1,6 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
+use std::os::fd::AsRawFd;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -69,6 +70,7 @@ fn initialize_tpm_ak_at(
     now_millis: i64,
 ) -> Result<AkLifecycleReceipt, BrokerError> {
     ensure_private_state_dir(&config.state_dir)?;
+    let _state_lock = acquire_state_lock(&config.state_dir)?;
     let enrollment_state_path = config.state_dir.join(ENROLLMENT_STATE_FILE);
     let ak_context_path = config.state_dir.join(AK_CONTEXT_FILE);
     if !config.rotate
@@ -216,10 +218,12 @@ fn ensure_private_state_dir(path: &Path) -> Result<(), BrokerError> {
     if !path.is_absolute() {
         return Err(lifecycle_failed());
     }
-    if !path_exists_no_follow(path)? {
+    let created = !path_exists_no_follow(path)?;
+    if created {
         fs::create_dir_all(path).map_err(|_| lifecycle_failed())?;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700))
+            .map_err(|_| lifecycle_failed())?;
     }
-    fs::set_permissions(path, fs::Permissions::from_mode(0o700)).map_err(|_| lifecycle_failed())?;
     let metadata = fs::symlink_metadata(path).map_err(|_| lifecycle_failed())?;
     if !metadata.file_type().is_dir()
         || metadata.file_type().is_symlink()
@@ -230,6 +234,42 @@ fn ensure_private_state_dir(path: &Path) -> Result<(), BrokerError> {
         return Err(lifecycle_failed());
     }
     Ok(())
+}
+
+#[expect(
+    unsafe_code,
+    reason = "POSIX flock has no safe std wrapper and is required for cross-process AK serialization"
+)]
+fn acquire_state_lock(state_dir: &Path) -> Result<File, BrokerError> {
+    let path = state_dir.join(".initialize-ak.lock");
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .mode(0o600)
+        .custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW)
+        .open(path)
+        .map_err(|_| lifecycle_failed())?;
+    let metadata = file.metadata().map_err(|_| lifecycle_failed())?;
+    if !metadata.file_type().is_file()
+        || metadata.uid() != 0
+        || metadata.gid() != 0
+        || metadata.mode() & 0o7777 != 0o600
+        || metadata.nlink() != 1
+    {
+        return Err(lifecycle_failed());
+    }
+    // SAFETY: flock accepts any valid open descriptor. `file` remains alive for
+    // the entire initialization transaction and releases the lock on drop.
+    let result = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+    if result != 0 {
+        return Err(BrokerError::new(
+            ErrorCode::InvalidRequest,
+            "TPM2 AK lifecycle initialization is already running",
+            true,
+        ));
+    }
+    Ok(file)
 }
 
 fn path_exists_no_follow(path: &Path) -> Result<bool, BrokerError> {
@@ -426,6 +466,33 @@ printf '%s' ak-qualified-name > "$qname"
             ..config
         };
         assert!(initialize_tpm_ak_at(&rotated, 1_900_000_000_002).is_ok());
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn existing_state_directory_is_rejected_without_chmod_side_effect(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let root = temp_test_dir("attestd-ak-state-mode")?;
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o755))?;
+        assert!(ensure_private_state_dir(&root).is_err());
+        assert_eq!(fs::metadata(&root)?.permissions().mode() & 0o777, 0o755);
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn state_lock_rejects_concurrent_initialization() -> Result<(), Box<dyn std::error::Error>> {
+        // SAFETY: geteuid has no preconditions.
+        if unsafe { libc::geteuid() } != 0 {
+            return Ok(());
+        }
+        let root = temp_test_dir("attestd-ak-state-lock")?;
+        let first = acquire_state_lock(&root)?;
+        let second = acquire_state_lock(&root);
+        assert!(second.is_err());
+        drop(first);
+        assert!(acquire_state_lock(&root).is_ok());
         fs::remove_dir_all(root)?;
         Ok(())
     }
