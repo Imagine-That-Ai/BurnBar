@@ -768,8 +768,7 @@ let firstPartyTargetsBase: [Target] = [
             dependencies: [
                 "OpenBurnBarCore",
                 "OpenBurnBarFirestoreModels",
-                "OpenBurnBarLinuxSecurity",
-                swiftTestingDependency
+                "OpenBurnBarLinuxSecurity"
             ] + swiftTestingAppleDependencies,
             exclude: openBurnBarCoreTestExcludes
                 + openBurnBarCorePlaceholderExcludes
@@ -835,9 +834,8 @@ let firstPartyTargetsBase: [Target] = [
             dependencies: [
                 "OpenBurnBarComputerUseCore",
                 "OpenBurnBarCore",
-                "OpenBurnBarMedia",
-                swiftTestingDependency
-            ],
+                "OpenBurnBarMedia"
+            ] + swiftTestingAppleDependencies,
             exclude: computerUseCoreTestExcludes + legacyLinuxTestExcludes(targetPath: "Tests/OpenBurnBarComputerUseCoreTests"),
             sources: computerUseCoreOffAppleTestSources,
             resources: [
