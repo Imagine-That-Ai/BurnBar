@@ -47,7 +47,11 @@ function actionQuotaDelta(data: DocumentData): QuotaDelta {
   const rejected = status === "denied" || status === "rejected" || status === "error";
   const browser = toolKind.startsWith("browser_");
   const system = toolKind.startsWith("mac_input_") || toolKind === "mac_inspect_accessibility";
-  const phone = stringField(data, "approvedBy") === "phone";
+  // Phone approval is not the same thing as direct phone control. Hosted
+  // browser actions can be approved from the phone but still consume the
+  // hosted Computer Use cap; only the Mac-input lane gets the local-control
+  // exemption.
+  const phone = stringField(data, "approvedBy") === "phone" && toolKind.startsWith("mac_input_");
 
   if (browser && executed) delta.browserActionsExecuted = 1;
   if (browser && rejected) delta.browserActionsRejected = 1;

@@ -78,8 +78,21 @@ describe("computer use immediate metering", () => {
     ).toMatchObject({
       browserActionsExecuted: 1,
       browserActionsRejected: 0,
-      phoneControlIntentsExecuted: 1,
+      phoneControlIntentsExecuted: 0,
       visionModelSpendUSD: 0.25,
+    });
+  });
+
+  it("counts phone-approved Mac input as direct phone control", () => {
+    expect(
+      __testing__.actionQuotaDelta({
+        status: "executed",
+        toolKind: "mac_input_click",
+        approvedBy: "phone",
+      }),
+    ).toMatchObject({
+      systemActionsExecuted: 1,
+      phoneControlIntentsExecuted: 1,
     });
   });
 

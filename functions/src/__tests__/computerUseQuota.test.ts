@@ -41,8 +41,8 @@ describe("computer use quota recompute", () => {
 
     expect(counters.browserActionsExecuted).toBe(1);
     expect(counters.systemActionsRejected).toBe(1);
-    expect(counters.phoneControlIntentsExecuted).toBe(1);
-    expect(counters.phoneControlIntentsRejected).toBe(1);
+    expect(counters.phoneControlIntentsExecuted).toBe(0);
+    expect(counters.phoneControlIntentsRejected).toBe(0);
     expect(counters.visionModelSpendUSD).toBe(25.25);
   });
 

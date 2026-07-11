@@ -52,7 +52,9 @@ function recordActionCounters(counters: ComputerUseQuotaUsageDoc, action: Docume
   const toolKind = stringField(action, "toolKind") ?? "";
   const isBrowser = toolKind.startsWith("browser_");
   const isSystem = toolKind.startsWith("mac_input_") || toolKind === "mac_inspect_accessibility";
-  const isPhone = stringField(action, "approvedBy") === "phone";
+  // A phone approver does not turn hosted browser work into exempt direct
+  // phone control. Only the Mac-input lane is excluded from metered usage.
+  const isPhone = stringField(action, "approvedBy") === "phone" && toolKind.startsWith("mac_input_");
   const status = stringField(action, "status");
 
   if (status === "executed") {
