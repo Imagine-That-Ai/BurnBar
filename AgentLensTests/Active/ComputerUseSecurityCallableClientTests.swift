@@ -6,6 +6,89 @@ import OpenBurnBarSignalCore
 @testable import OpenBurnBar
 
 final class ComputerUseSecurityCallableClientTests: XCTestCase {
+    func testParsesOneFreshActiveIrohControllerRoute() throws {
+        let now: Int64 = 1_700_000_000_000
+        let hexNodeId = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+        let routes = try ComputerUseSecurityCallableClient.parseActiveIrohControllerRoutes(
+            [
+                "uid": "user-1",
+                "connectionId": "connection-1",
+                "resolvedAtMillis": NSNumber(value: now),
+                "routes": [[
+                    "connectionId": "connection-1",
+                    "sourceDeviceId": "ios-device-1",
+                    "transportNodeId": hexNodeId,
+                    "authorityPeerNodeId": "ios-phone-authority-1",
+                    "generation": NSNumber(value: 4),
+                    "registeredAtMillis": NSNumber(value: now - 1_000),
+                    "expiresAtMillis": NSNumber(value: now + 60_000)
+                ]]
+            ],
+            expectedUID: "user-1",
+            expectedConnectionId: "connection-1",
+            nowMillis: now
+        )
+
+        XCTAssertEqual(routes.count, 1)
+        XCTAssertEqual(routes[0].transportNodeId, hexNodeId)
+        XCTAssertEqual(routes[0].authorityPeerNodeId, "ios-phone-authority-1")
+        XCTAssertEqual(routes[0].generation, 4)
+    }
+
+    func testRejectsAmbiguousStaleOrMismatchedIrohControllerRouteResponse() {
+        let now: Int64 = 1_700_000_000_000
+        let route: [String: Any] = [
+            "connectionId": "connection-1",
+            "sourceDeviceId": "ios-device-1",
+            "transportNodeId": String(repeating: "a", count: 64),
+            "authorityPeerNodeId": "ios-phone-authority-1",
+            "generation": 1,
+            "registeredAtMillis": now - 1_000,
+            "expiresAtMillis": now + 60_000
+        ]
+        let invalidResponses: [[String: Any]] = [
+            ["uid": "user-other", "connectionId": "connection-1", "resolvedAtMillis": now, "routes": [route]],
+            ["uid": "user-1", "connectionId": "connection-1", "resolvedAtMillis": now, "routes": [route, route]],
+            ["uid": "user-1", "connectionId": "connection-1", "resolvedAtMillis": now - 60_001, "routes": [route]],
+            ["uid": "user-1", "connectionId": "connection-other", "resolvedAtMillis": now, "routes": [route]],
+            [
+                "uid": "user-1",
+                "connectionId": "connection-1",
+                "resolvedAtMillis": now,
+                "routes": [route.merging(["generation": NSNumber(value: 1.5)]) { _, replacement in replacement }]
+            ],
+            [
+                "uid": "user-1",
+                "connectionId": "connection-1",
+                "resolvedAtMillis": now,
+                "routes": [route.merging(["generation": true]) { _, replacement in replacement }]
+            ],
+            [
+                "uid": "user-1",
+                "connectionId": "connection-1",
+                "resolvedAtMillis": now,
+                "routes": [[
+                    "connectionId": "connection-1",
+                    "sourceDeviceId": "ios-device-1",
+                    "transportNodeId": String(repeating: "a", count: 64),
+                    "authorityPeerNodeId": "ios-phone-authority-1",
+                    "generation": 1,
+                    "registeredAtMillis": now - 1_000,
+                    "expiresAtMillis": now
+                ]]
+            ]
+        ]
+
+        for response in invalidResponses {
+            XCTAssertThrowsError(try ComputerUseSecurityCallableClient.parseActiveIrohControllerRoutes(
+                response,
+                expectedUID: "user-1",
+                expectedConnectionId: "connection-1",
+                nowMillis: now
+            ))
+        }
+    }
+
     func testProviderAccountSubjectIdSanitizesOwnerActionSubject() {
         XCTAssertEqual(
             ComputerUseSecurityCallableClient.providerAccountSubjectId(
