@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+
+if [ -d /run/systemd/system ]; then
+  systemctl daemon-reload
+fi
+
+# RPM has no Debian-style purge transaction. Normal removal deliberately keeps
+# /var/lib/openburnbar-attestd; operators may run the packaged purge helper
+# immediately before rpm -e with --confirm-device-identity-destruction when
+# destruction of the sealed identity is wanted.

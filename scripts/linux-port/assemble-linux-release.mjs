@@ -4,7 +4,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   fileSize,
-  gitInfo,
   manifestPath,
   readJson,
   reanchorEvidenceDir,
@@ -23,12 +22,44 @@ import {
 
 const versionIndex = process.argv.indexOf('--version');
 const channelIndex = process.argv.indexOf('--channel');
+const privateKeyFileIndex = process.argv.indexOf('--private-key-file');
 const version = versionIndex >= 0 ? process.argv[versionIndex + 1]?.trim() : null;
 const channel = channelIndex >= 0 ? process.argv[channelIndex + 1]?.trim() : 'prerelease';
+const privateKeyFile = privateKeyFileIndex >= 0
+  ? process.argv[privateKeyFileIndex + 1]?.trim()
+  : null;
+const privateKeyStdin = process.argv.includes('--private-key-stdin');
+const signingKeyEnvironmentName = 'OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM';
+if (Object.hasOwn(process.env, signingKeyEnvironmentName)) {
+  console.error(`${signingKeyEnvironmentName} is forbidden for release assembly; pass the key only by --private-key-stdin or --private-key-file.`);
+  process.exit(1);
+}
+if (Boolean(privateKeyFile) === privateKeyStdin) {
+  console.error('exactly one of --private-key-stdin or --private-key-file is required for release assembly.');
+  process.exit(1);
+}
+const {
+  OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM: _excludedSigningKey,
+  OPENBURNBAR_LINUX_RELEASE_SIGNING_KEY_FILE: _excludedReleaseKeyPath,
+  OPENBURNBAR_LINUX_INSTALLED_MANIFEST_KEY_FILE: _excludedManifestKeyPath,
+  ...nonSigningEnvironment
+} = process.env;
+const privateKeyPath = privateKeyFile ? path.resolve(privateKeyFile) : null;
+if (privateKeyPath) {
+  try {
+    const keyStat = fs.lstatSync(privateKeyPath);
+    if (!keyStat.isFile() || keyStat.isSymbolicLink() || (keyStat.mode & 0o077) !== 0) {
+      throw new Error('unsafe key file');
+    }
+  } catch {
+    console.error('release private key file must be a regular file with no group or other permissions.');
+    process.exit(1);
+  }
+}
 const outDir = path.resolve(process.env.OPENBURNBAR_LINUX_RELEASE_OUT ?? path.join(repoRoot, '.linux-release'));
 const shardsDir = path.resolve(process.env.OPENBURNBAR_LINUX_SHARDS_DIR ?? path.join(repoRoot, '.linux-shards'));
 const manifest = readJson(manifestPath);
-const rawGit = gitInfo();
+const rawGit = gitInfoWithEnvironment(nonSigningEnvironment);
 const generatedPrefixes = [relative(outDir), relative(shardsDir), relative(reanchorEvidenceDir)]
   .filter((value) => value && !value.startsWith('..'))
   .map((value) => `${value.replace(/\/$/, '')}/`);
@@ -194,14 +225,14 @@ const source = runStep('git', [
   `--prefix=OpenBurnBar-${version}/`,
   `--output=${sourceFile}`,
   git.commit
-]);
+], { env: nonSigningEnvironment });
 if (source.exitCode !== 0) blockers.push({ kind: 'source-archive', message: 'Commit-bound source archive generation failed.' });
 writeLog(path.join(logsDir, 'source-archive.log'), [source]);
 
 const sbomFile = path.join(sidecarsDir, `OpenBurnBar-${version}-linux.spdx.json`);
 const vexFile = path.join(sidecarsDir, `OpenBurnBar-${version}-linux.openvex.json`);
-const sbom = runStep('python3', ['scripts/generate-sbom.py', '--version', version ?? '', '--repo-root', repoRoot, '--output', sbomFile]);
-const vex = runStep('python3', ['scripts/supply-chain/generate-vex.py', '--sbom', sbomFile, '--output', vexFile, '--product-version', version ?? '']);
+const sbom = runStep('python3', ['scripts/generate-sbom.py', '--version', version ?? '', '--repo-root', repoRoot, '--output', sbomFile], { env: nonSigningEnvironment });
+const vex = runStep('python3', ['scripts/supply-chain/generate-vex.py', '--sbom', sbomFile, '--output', vexFile, '--product-version', version ?? ''], { env: nonSigningEnvironment });
 writeLog(path.join(logsDir, 'supply-chain-sidecars.log'), [sbom, vex]);
 if (sbom.exitCode !== 0 || !fs.existsSync(sbomFile)) blockers.push({ kind: 'sbom', message: 'SPDX SBOM generation failed.' });
 if (vex.exitCode !== 0 || !fs.existsSync(vexFile)) blockers.push({ kind: 'vex', message: 'OpenVEX generation failed.' });
@@ -218,22 +249,25 @@ if (fs.existsSync(paritySource)) {
   blockers.push({ kind: 'parity-attestation', message: 'Current release-head parity attestation is missing.' });
 }
 
-const privateKeyPem = process.env.OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM;
-let privateKey = null;
+// Load signing material only after the last build/metadata subprocess exits.
+// No child process is spawned below this boundary.
+let privateKey;
 try {
-  privateKey = privateKeyPem ? crypto.createPrivateKey(privateKeyPem) : null;
-  if (!privateKey || privateKey.asymmetricKeyType !== 'ed25519') throw new Error('Ed25519 key required');
-} catch (error) {
-  blockers.push({ kind: 'signing-credentials', message: 'A valid Ed25519 release private key is required.', error: String(error) });
+  const privateKeyPem = privateKeyStdin
+    ? fs.readFileSync(0, 'utf8').trim()
+    : fs.readFileSync(privateKeyPath, 'utf8').trim();
+  privateKey = crypto.createPrivateKey(privateKeyPem);
+  if (privateKey.asymmetricKeyType !== 'ed25519') throw new Error('Ed25519 key required');
+} catch {
+  console.error('a valid Ed25519 release private key is required by stdin or regular file.');
+  process.exit(1);
 }
 
 const signatures = [];
-if (privateKey) {
-  for (const artifact of artifacts) {
-    const signatureFile = path.join(sidecarsDir, `${path.basename(artifact.file)}.ed25519.sig`);
-    fs.writeFileSync(signatureFile, crypto.sign(null, fs.readFileSync(path.join(repoRoot, artifact.file)), privateKey));
-    signatures.push({ artifact: artifact.file, signature: relative(signatureFile), algorithm: 'Ed25519' });
-  }
+for (const artifact of artifacts) {
+  const signatureFile = path.join(sidecarsDir, `${path.basename(artifact.file)}.ed25519.sig`);
+  fs.writeFileSync(signatureFile, crypto.sign(null, fs.readFileSync(path.join(repoRoot, artifact.file)), privateKey));
+  signatures.push({ artifact: artifact.file, signature: relative(signatureFile), algorithm: 'Ed25519' });
 }
 
 const publishedAt = new Date().toISOString();
@@ -271,9 +305,7 @@ for (const failure of validateFeedDocument(feed)) {
 const feedFile = path.join(outDir, manifest.updateMetadata.draftName);
 writeJson(feedFile, feed);
 const feedSignatureFile = path.join(sidecarsDir, feedSignatureName);
-if (privateKey) {
-  fs.writeFileSync(feedSignatureFile, crypto.sign(null, fs.readFileSync(feedFile), privateKey));
-}
+fs.writeFileSync(feedSignatureFile, crypto.sign(null, fs.readFileSync(feedFile), privateKey));
 
 const metadata = Object.entries(manifest.tailMetadata).map(([kind, file]) => ({
   kind,
@@ -405,4 +437,25 @@ function writeLog(file, steps) {
     step.stderr
   ].join('\n')).join('\n\n');
   fs.writeFileSync(file, `${body}\n`, 'utf8');
+}
+
+function gitInfoWithEnvironment(environment) {
+  const commitStep = runStep('git', ['rev-parse', 'HEAD'], { env: environment });
+  const branchStep = runStep('git', ['branch', '--show-current'], { env: environment });
+  const statusStep = runStep('git', ['status', '--porcelain=v1'], { env: environment });
+  const remoteStep = runStep('git', ['remote', 'get-url', 'origin'], { env: environment });
+  const commit = commitStep.stdout.trim() || environment.OPENBURNBAR_GIT_COMMIT || 'unknown';
+  const branch = branchStep.stdout.trim() || environment.OPENBURNBAR_GIT_BRANCH || 'unknown';
+  const status = statusStep.exitCode === 0
+    ? statusStep.stdout.split('\n').filter(Boolean)
+    : ['git-status-unavailable'];
+  const remote = remoteStep.stdout.trim() || environment.OPENBURNBAR_GIT_REMOTE || 'unknown';
+  return {
+    commit,
+    branch,
+    remote,
+    dirty: status.length > 0,
+    dirtyEntries: status,
+    gitAvailable: commitStep.exitCode === 0 && statusStep.exitCode === 0
+  };
 }

@@ -6,9 +6,13 @@ function valid() {
   return {
     pr: [
       'bash scripts/linux-port/run-linux-native-tests.sh',
+      'crates/openburnbar-attestd/**',
       'verify-linux-release.test.mjs',
       'assemble-linux-release.test.mjs',
+      'build-linux-release-boundary.test.mjs',
+      'build-native-linux-packages-boundary.test.mjs',
       'linux-package-session.test.mjs',
+      'linux-native-signing-receipt.test.mjs',
       'render-parity-ledger.mjs --check',
       'npm ci --prefix scripts/linux-port --ignore-scripts',
       'macos-matched-performance',
@@ -41,12 +45,14 @@ function valid() {
       'architecture: x86_64',
       'runner: ubuntu-24.04',
       '--architecture-shard',
+      '--prepare-only',
+      '--private-key-stdin',
+      '--finalize-only',
       'previous_version',
       'linux-desktop-session.sh',
       'verify-linux-package-update-rollback.sh',
       'finalize-linux-architecture-session.mjs',
       'linux-release-shard-${{ matrix.architecture }}',
-      'assemble-linux-release.mjs',
       'merge-multiple: false',
       "-o -name 'latest-linux.json'",
       'OPENBURNBAR_R2_CUSTOM_DOMAIN: downloads.burnbar.ai',
@@ -54,7 +60,9 @@ function valid() {
       'https://downloads.burnbar.ai/latest-linux.json',
       'Resolve and validate Linux release version',
       'Assert native runner architecture',
-      'Build native architecture artifacts',
+      'Build unsigned native architecture inputs',
+      'Sign installed manifests and build native packages',
+      'Finalize native architecture artifacts without signing key',
       'Native package inspection/install/uninstall smoke',
       'Run package-owned desktop, daemon, accessibility, tray, and route session',
       'Verify native package update, rollback, and data preservation',
@@ -62,6 +70,10 @@ function valid() {
       'Download native architecture shards',
       'Verify product parity at release HEAD',
       'Assemble signed two-architecture closure and feed',
+      'unset OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM',
+      'printf signing_key',
+      'assemble-linux-release.mjs',
+      '--private-key-stdin',
       'Pre-attestation Linux release verification',
       'Attest Linux release sidecars and packages',
       'Final Linux release verification',
@@ -79,7 +91,10 @@ function valid() {
       'timeout 900 swift test',
       'run_xctest_case',
       'Executed 1 test',
-      'cargo test --manifest-path apps/linux-desktop/src-tauri/Cargo.toml --locked'
+      'cargo test --manifest-path apps/linux-desktop/src-tauri/Cargo.toml --locked',
+      'RUSTUP_TOOLCHAIN=1.94.0',
+      'cargo test --manifest-path crates/openburnbar-attestd/Cargo.toml --locked',
+      'cargo clippy --manifest-path crates/openburnbar-attestd/Cargo.toml'
     ].join('\n'),
     rustBridge: [
       'gateway_probe',
@@ -169,6 +184,28 @@ test('release closure publication cannot omit source, parity, bundles, or public
   assert.equal(verifyLinuxWorkflowWiring(input).passed, false);
 });
 
+test('installed-manifest signing key cannot enter the build container environment', () => {
+  const input = valid();
+  input.release += '\ndocker run -e OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM builder';
+  const result = verifyLinuxWorkflowWiring(input);
+  assert.equal(result.passed, false);
+  assert.ok(result.failures.some((failure) => /signing key/.test(failure)));
+});
+
+test('aggregate signer must scrub the key environment and use stdin custody', () => {
+  const missingScrub = valid();
+  missingScrub.release = missingScrub.release.replace('unset OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM', '');
+  assert.equal(verifyLinuxWorkflowWiring(missingScrub).passed, false);
+
+  const missingAggregateStdin = valid();
+  const first = missingAggregateStdin.release.indexOf('--private-key-stdin');
+  const second = missingAggregateStdin.release.indexOf('--private-key-stdin', first + 1);
+  missingAggregateStdin.release = `${missingAggregateStdin.release.slice(0, second)}${missingAggregateStdin.release.slice(second + '--private-key-stdin'.length)}`;
+  const result = verifyLinuxWorkflowWiring(missingAggregateStdin);
+  assert.equal(result.passed, false);
+  assert.ok(result.failures.some((failure) => /aggregate release signers/u.test(failure)));
+});
+
 test('architecture matrix, aggregate closure, and feed publication cannot be removed', () => {
   for (const marker of [
     'architecture: aarch64',
@@ -194,6 +231,26 @@ test('package lifecycle finalizer regression suite cannot be removed', () => {
   const input = valid();
   input.pr = input.pr.replace('linux-package-session.test.mjs', '');
   assert.equal(verifyLinuxWorkflowWiring(input).passed, false);
+});
+
+test('native signing phase-boundary and receipt suites cannot be removed', () => {
+  for (const marker of [
+    'build-linux-release-boundary.test.mjs',
+    'build-native-linux-packages-boundary.test.mjs',
+    'linux-native-signing-receipt.test.mjs'
+  ]) {
+    const input = valid();
+    input.pr = input.pr.replace(marker, '');
+    assert.equal(verifyLinuxWorkflowWiring(input).passed, false, marker);
+  }
+});
+
+test('attestation broker changes must trigger the Linux PR gate', () => {
+  const input = valid();
+  input.pr = input.pr.replace('crates/openburnbar-attestd/**', '');
+  const result = verifyLinuxWorkflowWiring(input);
+  assert.equal(result.passed, false);
+  assert.ok(result.failures.some((failure) => /attestation broker path trigger/.test(failure)));
 });
 
 test('clean-checkout docs dependency install cannot be removed', () => {

@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "product": "OpenBurnBar",
+  "appId": "dev.openburnbar.OpenBurnBar",
+  "packageVersion": "@PACKAGE_VERSION@",
+  "gitCommit": "@GIT_COMMIT@",
+  "packageArchitecture": "@PACKAGE_ARCHITECTURE@",
+  "packageFormat": "@PACKAGE_FORMAT@",
+  "packageName": "open-burn-bar",
+  "policyId": "openburnbar-linux-tpm2-ima-v1",
+  "brokerProtocolVersion": 1,
+  "installedFilesRootSha256": "@INSTALLED_FILES_ROOT_SHA256@",
+  "authorizedClients": [
+    {
+      "role": "daemon",
+      "path": "/usr/bin/openburnbar-daemon",
+      "sha256": "@OPENBURNBAR_DAEMON_SHA256@",
+      "ownerUid": 0,
+      "ownerGid": 0,
+      "mode": 493
+    }
+  ],
+  "files": [
+    {
+      "path": "/usr/bin/openburnbar-daemon",
+      "type": "file",
+      "sha256": "@OPENBURNBAR_DAEMON_SHA256@",
+      "size": 0,
+      "mode": "0755",
+      "uid": 0,
+      "gid": 0
+    }
+  ]
+}

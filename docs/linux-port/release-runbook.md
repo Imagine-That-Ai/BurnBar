@@ -38,23 +38,57 @@ Required package artifacts:
 Build locally:
 
 ```bash
-OPENBURNBAR_LINUX_RELEASE_OUT="$PWD/.linux-shard" \
-  node scripts/linux-port/build-linux-release.mjs \
-  --architecture-shard --version 1.2.3
-OPENBURNBAR_LINUX_RELEASE_OUT="$PWD/.linux-shard" \
-  node scripts/linux-port/smoke-linux-packages.mjs --architecture-shard
+set -euo pipefail
+: "${OPENBURNBAR_LINUX_INSTALLED_MANIFEST_KEY_FILE:?set this to an operator-readable Ed25519 PEM file}"
+case "$(stat -c '%a' "$OPENBURNBAR_LINUX_INSTALLED_MANIFEST_KEY_FILE")" in
+  400|600) ;;
+  *) echo "installed-manifest signing key must have mode 0400 or 0600" >&2; exit 1 ;;
+esac
+unset OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM
+
+export OPENBURNBAR_LINUX_RELEASE_OUT="$PWD/.linux-shard"
+version=1.2.3
+
+node scripts/linux-port/build-linux-release.mjs \
+  --architecture-shard --prepare-only --version "$version"
+
+node scripts/linux-port/build-native-linux-packages.mjs \
+  --private-key-stdin --version "$version" \
+  < "$OPENBURNBAR_LINUX_INSTALLED_MANIFEST_KEY_FILE"
+
+node scripts/linux-port/build-linux-release.mjs \
+  --architecture-shard --finalize-only --version "$version"
+
+node scripts/linux-port/smoke-linux-packages.mjs --architecture-shard
 ```
 
-Run that pair on native aarch64 and x86_64 hosts. CI uploads each hash-bound
+`build-linux-release.mjs` intentionally has no one-pass mode. Prepare rejects
+the signing-key environment variable, builds all Swift, Cargo, npm, Tauri, and
+AppImage inputs with a scrubbed environment, and writes a commit/version/
+architecture/hash-bound `architecture-preparation.json`. Only the dedicated
+native-package signer receives the key, through stdin or `--private-key-file`;
+it does not export key bytes to `dpkg-deb`, `tar`, or `rpmbuild`. The preparation
+receipt contains a canonical root over every generated binary, runtime tree,
+source asset, and lifecycle script. The signer verifies that root before key
+loading, remeasures it after deb/rpm construction, verifies the extracted final
+RPM payload, and emits a signed receipt over both package hashes. Finalize also
+rejects the key environment variable and refuses a missing, failed, stale,
+mutated, substituted, or unauthentic preparation/package receipt. This ordering
+is a security boundary, not an optional local optimization.
+
+Run that sequence on native aarch64 and x86_64 hosts. CI uploads each hash-bound
 `architecture-closure.json` and native smoke result, downloads both into
 `.linux-shards/`, then runs:
 
 ```bash
+set -euo pipefail
+: "${OPENBURNBAR_LINUX_INSTALLED_MANIFEST_KEY_FILE:?set this to the Ed25519 PEM file}"
+unset OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM
 OPENBURNBAR_LINUX_SHARDS_DIR="$PWD/.linux-shards" \
 OPENBURNBAR_LINUX_RELEASE_OUT="$PWD/.linux-release" \
-OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM="..." \
-  node scripts/linux-port/assemble-linux-release.mjs \
-  --version 1.2.3 --channel prerelease
+node scripts/linux-port/assemble-linux-release.mjs \
+  --private-key-stdin --version 1.2.3 --channel prerelease \
+  < "$OPENBURNBAR_LINUX_INSTALLED_MANIFEST_KEY_FILE"
 ```
 
 The assembler is the only owner of the schema-3 package closure, checksums,
@@ -112,10 +146,15 @@ evidence for every declared package channel.
 
 ## Signatures and provenance
 
-Local signing verifier support is implemented with Ed25519 detached signatures
-when `OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM` is present. GitHub release CI
-must additionally produce keyless Sigstore/cosign bundles with `id-token: write`
-and identity:
+Installed-file manifests require an Ed25519 signature during the isolated
+native-package signer phase above. Never export
+`OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM` while running build preparation or
+finalization; both commands reject it. Aggregate release/feed detached signing
+is a later assembler-only credential boundary using the same stdin/file-only
+custody rule; the assembler rejects the legacy key environment and scrubs all
+Git, SBOM, and VEX child-process environments. GitHub release CI must
+additionally produce keyless Sigstore/cosign bundles with `id-token: write` and
+identity:
 
 ```text
 https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-release.yml@refs/tags/linux-v<version>

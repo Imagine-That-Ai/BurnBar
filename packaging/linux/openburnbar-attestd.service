@@ -1,0 +1,56 @@
+[Unit]
+Description=OpenBurnBar hardware attestation broker
+Documentation=https://github.com/Imagine-That-Ai/BurnBar
+Requires=openburnbar-attestd.socket
+After=openburnbar-attestd.socket
+ConditionPathIsExecutable=/usr/libexec/openburnbar-attestd
+StartLimitIntervalSec=30s
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/openburnbar-attestd \
+  --socket-fd 3 \
+  --state-dir /var/lib/openburnbar-attestd \
+  --manifest /usr/share/openburnbar/attestation/installed-manifest.json \
+  --manifest-signature /usr/share/openburnbar/attestation/installed-manifest.json.sig \
+  --public-key /usr/share/openburnbar/attestation/release-ed25519.pub.pem
+Restart=on-failure
+RestartSec=2s
+TimeoutStopSec=15s
+StateDirectory=openburnbar-attestd
+StateDirectoryMode=0700
+UMask=0077
+
+# The service intentionally remains root so it can read the TPM and inspect the
+# exact /proc/<peer-pid>/exe selected from per-packet SCM_CREDENTIALS. Do not add ProtectProc,
+# ProcSubset=pid, or a private PID namespace: each would break peer validation.
+NoNewPrivileges=true
+# CAP_SYS_PTRACE is required for ptrace-gated /proc/<non-root-pid>/exe reads.
+# The broker does not trace or mutate the peer; it opens and hashes only the
+# kernel-selected executable for the SCM_CREDENTIALS PID.
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_SYS_PTRACE
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RemoveIPC=true
+KeyringMode=private
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+DevicePolicy=closed
+DeviceAllow=/dev/tpmrm0 rw
+DeviceAllow=/dev/tpm0 rw

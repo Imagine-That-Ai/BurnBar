@@ -267,6 +267,18 @@ main() {
 
     CARGO_BUILD_JOBS="${OPENBURNBAR_LINUX_CARGO_BUILD_JOBS:-1}" \
         cargo test --manifest-path apps/linux-desktop/src-tauri/Cargo.toml --locked
+
+    RUSTUP_TOOLCHAIN=1.94.0 \
+        CARGO_BUILD_JOBS="${OPENBURNBAR_LINUX_CARGO_BUILD_JOBS:-1}" \
+        cargo test --manifest-path crates/openburnbar-attestd/Cargo.toml --locked
+    RUSTUP_TOOLCHAIN=1.94.0 \
+        CARGO_BUILD_JOBS="${OPENBURNBAR_LINUX_CARGO_BUILD_JOBS:-1}" \
+        cargo clippy --manifest-path crates/openburnbar-attestd/Cargo.toml \
+        --locked --all-targets -- -D warnings
+
+    OPENBURNBAR_REQUIRE_REAL_RPM_TOOLS=1 \
+        node --test --test-name-pattern='real RPM assembly preserves' \
+        scripts/linux-port/native-linux-packager.test.mjs
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then

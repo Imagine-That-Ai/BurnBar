@@ -24,40 +24,9 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["appimage"],
     "icon": ["icons/icon.png"],
     "linux": {
-      "deb": {
-        "depends": ["libsecret-tools"],
-        "recommends": ["gnome-keyring | libkf5wallet-bin | libkf6wallet-bin"],
-        "files": {
-          "/usr/bin/openburnbar-daemon": "target/openburnbar-package-payload/openburnbar-daemon",
-          "/usr/lib/openburnbar/swift": "target/openburnbar-package-payload/swift",
-          "/usr/lib/openburnbar/native": "target/openburnbar-package-payload/native",
-          "/usr/libexec/openburnbar-daemon-launch": "../../../packaging/linux/openburnbar-daemon-launch.sh",
-          "/usr/lib/systemd/user/openburnbar-daemon.service": "../../../packaging/linux/openburnbar-daemon.service",
-          "/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop": "../../../packaging/linux/openburnbar.desktop",
-          "/usr/share/applications/dev.openburnbar.OpenBurnBar.SafeMode.desktop": "../../../packaging/linux/openburnbar-safe-mode.desktop",
-          "/usr/share/openburnbar/autostart/openburnbar.desktop": "../../../packaging/linux/autostart/openburnbar.desktop",
-          "/usr/share/doc/openburnbar/daemon.env.example": "../../../packaging/linux/daemon.env.example",
-          "/usr/share/doc/openburnbar/systemd/custom-xdg.conf.example": "../../../packaging/linux/systemd/openburnbar-daemon.service.d/custom-xdg.conf.example"
-        }
-      },
-      "rpm": {
-        "depends": ["libsecret"],
-        "files": {
-          "/usr/bin/openburnbar-daemon": "target/openburnbar-package-payload/openburnbar-daemon",
-          "/usr/lib/openburnbar/swift": "target/openburnbar-package-payload/swift",
-          "/usr/lib/openburnbar/native": "target/openburnbar-package-payload/native",
-          "/usr/libexec/openburnbar-daemon-launch": "../../../packaging/linux/openburnbar-daemon-launch.sh",
-          "/usr/lib/systemd/user/openburnbar-daemon.service": "../../../packaging/linux/openburnbar-daemon.service",
-          "/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop": "../../../packaging/linux/openburnbar.desktop",
-          "/usr/share/applications/dev.openburnbar.OpenBurnBar.SafeMode.desktop": "../../../packaging/linux/openburnbar-safe-mode.desktop",
-          "/usr/share/openburnbar/autostart/openburnbar.desktop": "../../../packaging/linux/autostart/openburnbar.desktop",
-          "/usr/share/doc/openburnbar/daemon.env.example": "../../../packaging/linux/daemon.env.example",
-          "/usr/share/doc/openburnbar/systemd/custom-xdg.conf.example": "../../../packaging/linux/systemd/openburnbar-daemon.service.d/custom-xdg.conf.example"
-        }
-      },
       "appimage": {
         "files": {
           "/usr/libexec/openburnbar-daemon-launch": "../../../packaging/linux/openburnbar-daemon-launch.sh",

@@ -8,6 +8,12 @@ import {
   repoRoot,
   writeJson
 } from './lib/linux-release-common.mjs';
+import {
+  NATIVE_GENERATED_PACKAGE_INPUT_PATHS,
+  NATIVE_PACKAGE_ASSET_PATHS,
+  NATIVE_PACKAGE_LIFECYCLE_PATHS,
+  NATIVE_SIGNER_INPUT_PATHS
+} from './lib/linux-native-signing-receipt.mjs';
 
 const manifest = readJson(manifestPath);
 const failures = [];
@@ -49,35 +55,54 @@ if (!manifest.installPaths?.daemonLaunch) {
 const expectedInstallPaths = {
   daemonBinary: '/usr/bin/openburnbar-daemon',
   swiftRuntime: '/usr/lib/openburnbar/swift',
-  nativeRuntime: '/usr/lib/openburnbar/native'
+  nativeRuntime: '/usr/lib/openburnbar/native',
+  attestationBroker: '/usr/libexec/openburnbar-attestd',
+  attestationActivationReady: '/usr/libexec/openburnbar-attestd-activation-ready',
+  restartActiveUserDaemons: '/usr/libexec/openburnbar-restart-active-user-daemons',
+  attestationSystemService: '/usr/lib/systemd/system/openburnbar-attestd.service',
+  attestationSystemSocket: '/usr/lib/systemd/system/openburnbar-attestd.socket',
+  attestationSocket: '/run/openburnbar/attestd.sock',
+  attestationInstalledManifest: '/usr/share/openburnbar/attestation/installed-manifest.json',
+  attestationInstalledManifestSignature: '/usr/share/openburnbar/attestation/installed-manifest.json.sig',
+  attestationReleasePublicKey: '/usr/share/openburnbar/attestation/release-ed25519.pub.pem'
 };
 for (const [key, expected] of Object.entries(expectedInstallPaths)) {
   if (manifest.installPaths?.[key] !== expected) {
     failures.push(`manifest.installPaths.${key} must be ${expected}`);
   }
 }
+if (manifest.rootAttestationBroker?.defaultActivation !== 'disabled-until-enrolled-and-rollout-enabled') {
+  failures.push('root attestation broker must remain disabled until enrollment and rollout gates pass');
+}
+if (!(manifest.rootAttestationBroker?.peerAuthorization ?? []).some((entry) =>
+  entry.includes('SCM_CREDENTIALS') && entry.includes('SOCK_SEQPACKET'))) {
+  failures.push('root attestation broker must bind authorization to per-request SCM_CREDENTIALS');
+}
 
 const tauri = readJson(path.join(repoRoot, 'apps/linux-desktop/src-tauri/tauri.conf.json'));
-const packageSources = {
-  '/usr/bin/openburnbar-daemon': 'target/openburnbar-package-payload/openburnbar-daemon',
-  '/usr/lib/openburnbar/swift': 'target/openburnbar-package-payload/swift',
-  '/usr/lib/openburnbar/native': 'target/openburnbar-package-payload/native'
-};
+if (JSON.stringify(tauri.bundle?.targets) !== JSON.stringify(['appimage'])) {
+  failures.push('Tauri must build AppImage only; native dpkg/rpmbuild own privileged package lifecycle');
+}
 for (const packageType of ['deb', 'rpm']) {
-  const files = tauri.bundle?.linux?.[packageType]?.files ?? {};
-  for (const [destination, source] of Object.entries(packageSources)) {
-    if (files[destination] !== source) {
-      failures.push(`${packageType} must package ${source} at ${destination}`);
-    }
+  if (tauri.bundle?.linux?.[packageType]) {
+    failures.push(`Tauri ${packageType} configuration must be absent; native package builder owns ${packageType}`);
   }
-  if (!files['/usr/share/openburnbar/autostart/openburnbar.desktop']) {
-    failures.push(`${packageType} must package the canonical XDG autostart reference`);
+  const expectedBuilder = packageType === 'deb' ? 'native-dpkg' : 'native-rpmbuild';
+  if (manifest.packageBuilders?.[packageType] !== expectedBuilder) {
+    failures.push(`manifest.packageBuilders.${packageType} must be ${expectedBuilder}`);
   }
 }
 const appImageFiles = tauri.bundle?.linux?.appimage?.files ?? {};
-for (const destination of Object.keys(packageSources)) {
+for (const destination of [
+  '/usr/bin/openburnbar-daemon',
+  '/usr/lib/openburnbar/swift',
+  '/usr/lib/openburnbar/native',
+  '/usr/libexec/openburnbar-attestd',
+  '/usr/lib/systemd/system/openburnbar-attestd.service',
+  '/usr/lib/systemd/system/openburnbar-attestd.socket'
+]) {
   if (appImageFiles[destination]) {
-    failures.push(`appimage payload ${destination} must be injected after linuxdeploy to avoid custom-file collisions`);
+    failures.push(`AppImage must not contain privileged attestation payload ${destination}`);
   }
 }
 for (const destination of [
@@ -87,12 +112,6 @@ for (const destination of [
 ]) {
   if (!appImageFiles[destination]) failures.push(`appimage must package ${destination}`);
 }
-if (!tauri.bundle?.linux?.deb?.depends?.includes('libsecret-tools')) {
-  failures.push('deb package must depend on libsecret-tools');
-}
-if (!tauri.bundle?.linux?.rpm?.depends?.includes('libsecret')) {
-  failures.push('rpm package must depend on libsecret');
-}
 const desktopPackage = readJson(path.join(repoRoot, 'apps/linux-desktop/package.json'));
 if (desktopPackage.scripts?.['pretauri:build'] !== 'node ../../scripts/linux-port/prepare-linux-package-payload.mjs') {
   failures.push('tauri build must stage and runtime-probe the native Linux package payload');
@@ -100,6 +119,51 @@ if (desktopPackage.scripts?.['pretauri:build'] !== 'node ../../scripts/linux-por
 const releaseBuilder = fs.readFileSync(path.join(repoRoot, 'scripts/linux-port/build-linux-release.mjs'), 'utf8');
 if (!releaseBuilder.includes('embed-linux-appimage-payload.mjs')) {
   failures.push('release build must inject the staged native payload into the base AppImage');
+}
+for (const requiredSource of [
+  'crates/openburnbar-attestd/Cargo.toml',
+  "'--bundles', 'appimage'",
+  '--prepare-only',
+  '--finalize-only'
+]) {
+  if (!releaseBuilder.includes(requiredSource)) {
+    failures.push(`release build is missing native attestation/package wiring: ${requiredSource}`);
+  }
+}
+if (releaseBuilder.includes('build-native-linux-packages.mjs')) {
+  failures.push('release build must not invoke the signing-capable native package builder');
+}
+if (releaseBuilder.includes("'--bundles', 'deb,rpm,appimage'")) {
+  failures.push('release build must not delegate deb/rpm lifecycle to Tauri');
+}
+const nativeBuilder = fs.readFileSync(path.join(repoRoot, 'scripts/linux-port/build-native-linux-packages.mjs'), 'utf8');
+for (const requiredContract of [
+  'NATIVE_GENERATED_PACKAGE_INPUT_PATHS',
+  'NATIVE_PACKAGE_ASSET_PATHS',
+  'NATIVE_PACKAGE_LIFECYCLE_PATHS',
+  'measureNativeSignerInputs',
+  'signNativePackageSigningReceipt',
+  'OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM'
+]) {
+  if (!nativeBuilder.includes(requiredContract)) failures.push(`native package builder missing ${requiredContract}`);
+}
+const canonicalSignerInputs = [
+  ...Object.values(NATIVE_GENERATED_PACKAGE_INPUT_PATHS),
+  ...Object.values(NATIVE_PACKAGE_ASSET_PATHS),
+  ...Object.values(NATIVE_PACKAGE_LIFECYCLE_PATHS.deb),
+  ...Object.values(NATIVE_PACKAGE_LIFECYCLE_PATHS.rpm)
+];
+if (JSON.stringify(NATIVE_SIGNER_INPUT_PATHS) !== JSON.stringify(canonicalSignerInputs)) {
+  failures.push('native signer input inventory must derive exactly from generated inputs, assets, and lifecycle scripts');
+}
+for (const relativePath of [
+  ...Object.values(NATIVE_PACKAGE_ASSET_PATHS),
+  ...Object.values(NATIVE_PACKAGE_LIFECYCLE_PATHS.deb),
+  ...Object.values(NATIVE_PACKAGE_LIFECYCLE_PATHS.rpm)
+]) {
+  if (!fs.existsSync(path.join(repoRoot, relativePath))) {
+    failures.push(`native signer source input is missing: ${relativePath}`);
+  }
 }
 const canonicalLauncher = fs.readFileSync(path.join(repoRoot, 'packaging/linux/openburnbar-daemon-launch.sh'));
 const aurLauncher = fs.readFileSync(path.join(repoRoot, 'packaging/linux/aur/openburnbar-daemon-launch'));

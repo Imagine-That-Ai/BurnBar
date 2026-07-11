@@ -19,9 +19,11 @@ test('release manifest declares native credential dependencies and Flatpak block
 });
 
 test('all package recipes carry the primary credential backend contract', () => {
-  const tauri = JSON.parse(read('apps/linux-desktop/src-tauri/tauri.conf.json'));
-  assert.ok(tauri.bundle.linux.deb.depends.includes('libsecret-tools'));
-  assert.ok(tauri.bundle.linux.rpm.depends.includes('libsecret'));
+  const nativePackager = read('scripts/linux-port/lib/native-linux-packager.mjs');
+  assert.match(nativePackager, /Depends:[^\n]*libsecret-tools/);
+  assert.match(nativePackager, /Requires:[^\n]*libsecret/);
+  assert.match(nativePackager, /Requires:[^\n]*webkit2gtk4\.1/);
+  assert.match(nativePackager, /Requires:[^\n]*libayatana-appindicator-gtk3/);
 
   const pkgbuild = read('packaging/linux/aur/PKGBUILD');
   assert.match(pkgbuild, /depends=\([^\n]*"libsecret"/);

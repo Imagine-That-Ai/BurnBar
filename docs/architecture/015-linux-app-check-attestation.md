@@ -75,14 +75,49 @@ Linux is a distinct, permanently lower-assurance principal:
 - `LINUX_APP_CHECK_MINT_ENABLED` defaults to false. Mock attestation remains
   limited to existing test/emulator policy and is forced off in production.
 
-The production evidence producer is a separate privileged component. The target
-design is a root-owned `openburnbar-attestd` broker that enrolls a TPM 2.0
-attestation key, obtains a nonce-qualified quote, verifies the package/release
-identity, and supplies UEFI measured-boot evidence plus IMA PCR 10 and its
-measurement log where policy requires it. A remote verifier evaluates that
-evidence and returns the signed decision consumed by Functions. This source
-packet defines the boundary but does **not** implement or deploy that broker or
-verifier.
+The production evidence producer is a separate privileged component. A first
+broker foundation now ships in source for native deb/rpm packages:
+
+- `openburnbar-attestd.socket` owns `/run/openburnbar/attestd.sock` when the
+  attestation rollout is eligible. Fresh installs keep the socket disabled and
+  stopped; package hooks activate it only when private root-owned TPM enrollment
+  state and the explicit root-owned rollout marker both pass. The root service
+  is network denied and systemd sandboxed without hiding the peer PID
+  information needed for authorization.
+- Each complete bounded `SOCK_SEQPACKET` request carries kernel-supplied
+  `SCM_CREDENTIALS`; the broker never trusts connection-time identity. It pins
+  `/proc/<sender-pid>/exe`, requires the exact root-owned daemon inode, and
+  verifies its SHA-256 digest against a release-signed installed manifest whose
+  canonical file root is recomputed. The protocol is versioned, length prefixed,
+  bounded to 64 KiB, deadline limited, rate limited, one request per connection,
+  and served through a bounded worker queue.
+- Native package assembly generates a canonical complete installed-file
+  inventory, signs it with the pinned Linux release Ed25519 key, and installs
+  the manifest, detached signature, public key, broker, activation gate,
+  active-user daemon upgrade recovery helper, and lifecycle units. Upgrades
+  reload and `try-restart` only daemon services that were already active.
+  The inventory root sorts each NUL-delimited record by unsigned UTF-8 bytes
+  before joining records with LF and hashing the result with SHA-256; packager
+  and broker share a cross-language golden vector for this exact encoding. A
+  canonical preparation root covers every generated binary, runtime tree,
+  package asset, and lifecycle script. The isolated signer remeasures that root
+  before and after native package construction, verifies the final extracted
+  RPM payload, and signs a receipt binding the preparation digest to the exact
+  deb/rpm hashes. Finalization remeasures and verifies the receipt before it can
+  emit a zero-blocker architecture shard.
+  AppImage, Flatpak, AUR, source builds, containers, and WSL do not receive the
+  privileged broker.
+- The broker backend currently returns the typed permanent result
+  `attestation_unsupported`. It has no mock or software fallback, and the
+  daemon production factory remains unavailable.
+
+The next implementation stage enrolls a TPM 2.0 attestation key, obtains a
+nonce-qualified quote, verifies the package/release identity, and supplies UEFI
+measured-boot evidence plus IMA PCR 10. A remote verifier must evaluate that
+evidence and return the signed decision consumed by Functions. Because normal
+IMA logs can exceed the Functions 512 KiB evidence limit, complete logs will be
+uploaded to a bounded short-lived verifier endpoint and represented in the mint
+request by a single-use digest-bound receipt; logs must never be truncated.
 
 ## Supported Environments
 
@@ -92,7 +127,7 @@ candidate and the following minimum evidence:
 | Environment | Intended production posture | Current status |
 |---|---|---|
 | Physical TPM 2.0, Secure Boot and measured boot enabled, supported deb/rpm repository install | Eligible after broker enrollment, package/release verification, quote and IMA policy pass | Blocked |
-| Physical TPM 2.0 with supported AppImage install | Eligible only after an immutable release identity and update provenance policy are defined and verified | Blocked |
+| Physical TPM 2.0 with AppImage install | Local product only; AppImage cannot own the privileged broker lifecycle under the current policy | Unsupported |
 | Generic VM or vTPM | Local product remains usable; protected cloud mutations unavailable unless a separately approved VM trust policy is introduced | Unsupported |
 | No TPM, disabled Secure Boot, source build, container, WSL, Flatpak, or Snap | Local product remains usable; no production App Check minting | Unsupported |
 | Emulator/test fixture with the explicit mock policy | Automated verification only; never production evidence | Test only |
@@ -108,9 +143,10 @@ binding, verifier key pinning, bounded failure behavior, and a daemon-only token
 boundary. The Functions and daemon source can be reviewed and tested before the
 privileged Linux broker is introduced.
 
-It does not establish production host integrity. A real Firebase Web app ID,
-root broker, TPM/IMA verifier and enrollment service, signed release policy,
-revocation behavior, deployment, and installed matrix proof are still required.
+It does not establish production host integrity. The broker transport,
+release-signed installed manifest, and native package lifecycle are implemented,
+but a real Firebase Web app ID, TPM/IMA backend, verifier and enrollment
+service, revocation behavior, deployment, and installed matrix proof are still required.
 Until those exist, protected cloud operations remain unavailable and Linux stays
 `linux_lower_trust`.
 

@@ -5,6 +5,11 @@
   "linuxDesktopPackage": "apps/linux-desktop",
   "primaryArtifact": "appimage",
   "requiredArtifacts": ["appimage", "deb", "rpm", "daemon"],
+  "packageBuilders": {
+    "appimage": "tauri",
+    "deb": "native-dpkg",
+    "rpm": "native-rpmbuild"
+  },
   "supportedArchitectures": ["aarch64", "x86_64"],
   "releaseTagPrefix": "linux-v",
   "signing": {
@@ -22,7 +27,20 @@
     "systemdUserService": "packaging/linux/openburnbar-daemon.service",
     "daemonLaunchScript": "packaging/linux/openburnbar-daemon-launch.sh",
     "daemonEnvExample": "packaging/linux/daemon.env.example",
-    "customXdgDropInExample": "packaging/linux/systemd/openburnbar-daemon.service.d/custom-xdg.conf.example"
+    "customXdgDropInExample": "packaging/linux/systemd/openburnbar-daemon.service.d/custom-xdg.conf.example",
+    "attestationSystemService": "packaging/linux/openburnbar-attestd.service",
+    "attestationSystemSocket": "packaging/linux/openburnbar-attestd.socket",
+    "attestationManifestSchema": "packaging/linux/attestation/openburnbar-installed-manifest.schema.json",
+    "attestationManifestTemplate": "packaging/linux/attestation/openburnbar-installed-manifest.template.json",
+    "attestationDebianPostinst": "packaging/linux/debian/openburnbar-attestd.postinst",
+    "attestationDebianPrerm": "packaging/linux/debian/openburnbar-attestd.prerm",
+    "attestationDebianPostrm": "packaging/linux/debian/openburnbar-attestd.postrm",
+    "attestationRpmPost": "packaging/linux/rpm/openburnbar-attestd.post",
+    "attestationRpmPreun": "packaging/linux/rpm/openburnbar-attestd.preun",
+    "attestationRpmPostun": "packaging/linux/rpm/openburnbar-attestd.postun",
+    "attestationRpmPurgeHelper": "packaging/linux/openburnbar-attestd-purge-state",
+    "attestationActivationReady": "packaging/linux/openburnbar-attestd-activation-ready",
+    "restartActiveUserDaemons": "packaging/linux/openburnbar-restart-active-user-daemons"
   },
   "installPaths": {
     "daemonLaunch": "/usr/libexec/openburnbar-daemon-launch",
@@ -30,7 +48,36 @@
     "swiftRuntime": "/usr/lib/openburnbar/swift",
     "nativeRuntime": "/usr/lib/openburnbar/native",
     "systemdUserService": "/usr/lib/systemd/user/openburnbar-daemon.service",
-    "desktopEntry": "/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop"
+    "desktopEntry": "/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop",
+    "attestationBroker": "/usr/libexec/openburnbar-attestd",
+    "attestationActivationReady": "/usr/libexec/openburnbar-attestd-activation-ready",
+    "restartActiveUserDaemons": "/usr/libexec/openburnbar-restart-active-user-daemons",
+    "attestationSystemService": "/usr/lib/systemd/system/openburnbar-attestd.service",
+    "attestationSystemSocket": "/usr/lib/systemd/system/openburnbar-attestd.socket",
+    "attestationSocket": "/run/openburnbar/attestd.sock",
+    "attestationState": "/var/lib/openburnbar-attestd",
+    "attestationInstalledManifest": "/usr/share/openburnbar/attestation/installed-manifest.json",
+    "attestationInstalledManifestSignature": "/usr/share/openburnbar/attestation/installed-manifest.json.sig",
+    "attestationReleasePublicKey": "/usr/share/openburnbar/attestation/release-ed25519.pub.pem"
+  },
+  "rootAttestationBroker": {
+    "productionPackages": ["deb", "rpm"],
+    "socketActivation": true,
+    "defaultActivation": "disabled-until-enrolled-and-rollout-enabled",
+    "socketMode": "0666",
+    "peerAuthorization": [
+      "SCM_CREDENTIALS pid and uid attached to the complete SOCK_SEQPACKET request",
+      "open /proc/<pid>/exe identity without path re-resolution",
+      "root-owned mode-0755 executable",
+      "SHA-256 match in the release-signed installed manifest"
+    ],
+    "networkAccess": "denied",
+    "normalRemovalPreservesState": true,
+    "unsupportedPackages": {
+      "appimage": "Cannot install the privileged broker, system socket, signed installed-file manifest, or lifecycle hooks.",
+      "flatpak": "The sandbox cannot install or authenticate a host root broker.",
+      "aur": "The current AUR package is AppImage-backed and has no reviewed privileged broker lifecycle."
+    }
   },
   "credentialStorage": {
     "requiredCommand": "secret-tool",

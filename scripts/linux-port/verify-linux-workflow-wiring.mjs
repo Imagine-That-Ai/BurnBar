@@ -33,6 +33,9 @@ export function verifyLinuxWorkflowWiring(input) {
     'architecture: x86_64',
     'runner: ubuntu-24.04',
     '--architecture-shard',
+    '--prepare-only',
+    '--private-key-stdin',
+    '--finalize-only',
     'previous_version',
     'linux-desktop-session.sh',
     'verify-linux-package-update-rollback.sh',
@@ -45,10 +48,30 @@ export function verifyLinuxWorkflowWiring(input) {
     'upload-linux-downloads-r2.sh',
     'https://downloads.burnbar.ai/latest-linux.json'
   ]) requireText(input.release, marker, 'two-architecture release closure');
+  requireText(input.release, 'unset OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM', 'signer environment scrub');
+  const privateKeyStdinUses = input.release.match(/--private-key-stdin/g)?.length ?? 0;
+  if (privateKeyStdinUses < 2) {
+    failures.push('both native-package and aggregate release signers must use --private-key-stdin.');
+  }
+  const aggregateStart = input.release.indexOf('Assemble signed two-architecture closure and feed');
+  const aggregateEnd = input.release.indexOf('Pre-attestation Linux release verification', aggregateStart + 1);
+  const aggregateSigner = aggregateStart >= 0 && aggregateEnd > aggregateStart
+    ? input.release.slice(aggregateStart, aggregateEnd)
+    : '';
+  for (const marker of [
+    'unset OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM',
+    'printf',
+    'assemble-linux-release.mjs',
+    '--private-key-stdin'
+  ]) requireText(aggregateSigner, marker, 'aggregate signer custody');
   requireText(input.pr, 'bash scripts/linux-port/run-linux-native-tests.sh', 'PR native behavior gate');
+  requireText(input.pr, 'crates/openburnbar-attestd/**', 'PR attestation broker path trigger');
   requireText(input.pr, 'verify-linux-release.test.mjs', 'PR release mutation suite');
   requireText(input.pr, 'assemble-linux-release.test.mjs', 'PR architecture assembly mutation suite');
+  requireText(input.pr, 'build-linux-release-boundary.test.mjs', 'PR release phase-boundary suite');
+  requireText(input.pr, 'build-native-linux-packages-boundary.test.mjs', 'PR native signer custody suite');
   requireText(input.pr, 'linux-package-session.test.mjs', 'PR package lifecycle session suite');
+  requireText(input.pr, 'linux-native-signing-receipt.test.mjs', 'PR signed package receipt suite');
   requireText(input.pr, 'render-parity-ledger.mjs --check', 'PR Markdown drift gate');
   requireText(input.pr, 'npm ci --prefix scripts/linux-port --ignore-scripts', 'PR Linux docs tool install');
   requireText(input.nightly, 'npm ci --prefix scripts/linux-port --ignore-scripts', 'nightly Linux docs tool install');
@@ -76,7 +99,10 @@ export function verifyLinuxWorkflowWiring(input) {
     'timeout 900 swift test',
     'run_xctest_case',
     'Executed 1 test',
-    'cargo test --manifest-path apps/linux-desktop/src-tauri/Cargo.toml --locked'
+    'cargo test --manifest-path apps/linux-desktop/src-tauri/Cargo.toml --locked',
+    'RUSTUP_TOOLCHAIN=1.94.0',
+    'cargo test --manifest-path crates/openburnbar-attestd/Cargo.toml --locked',
+    'cargo clippy --manifest-path crates/openburnbar-attestd/Cargo.toml'
   ]) requireText(input.nativeTests, command, 'native test runner');
   for (const command of [
     'gateway_probe',
@@ -134,7 +160,9 @@ export function verifyLinuxWorkflowWiring(input) {
   requireOrder(input.release, [
     'Resolve and validate Linux release version',
     'Assert native runner architecture',
-    'Build native architecture artifacts',
+    'Build unsigned native architecture inputs',
+    'Sign installed manifests and build native packages',
+    'Finalize native architecture artifacts without signing key',
     'Native package inspection/install/uninstall smoke',
     'Run package-owned desktop, daemon, accessibility, tray, and route session',
     'Verify native package update, rollback, and data preservation',
@@ -159,6 +187,9 @@ export function verifyLinuxWorkflowWiring(input) {
   }
   if (/openburnbar-linux-ed25519\.pub\.pem[^\n]*\|\|\s*true/.test(input.release)) {
     failures.push('release public-key publication may not swallow copy failures.');
+  }
+  if (input.release.includes('-e OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM')) {
+    failures.push('the installed-manifest signing key must not enter the build container environment.');
   }
   if (input.pr.includes('mission-001-release') || input.nightly.includes('mission-001-release')) {
     failures.push('PR/nightly workflows may not write or upload sealed mission-001 evidence.');

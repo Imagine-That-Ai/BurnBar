@@ -1,0 +1,59 @@
+#!/bin/sh
+set -eu
+
+SOCKET_UNIT=openburnbar-attestd.socket
+SERVICE_UNIT=openburnbar-attestd.service
+ACTIVATION_READY=/usr/libexec/openburnbar-attestd-activation-ready
+RECOVER_USER_DAEMONS=/usr/libexec/openburnbar-restart-active-user-daemons
+
+case "${1:-}" in
+  configure)
+    install -d -o root -g root -m 0700 /var/lib/openburnbar-attestd
+
+    attestation_ready=false
+    if [ -x "$ACTIVATION_READY" ] && "$ACTIVATION_READY"; then
+      attestation_ready=true
+    fi
+
+    if [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then
+      systemctl --system daemon-reload
+    fi
+
+    if [ "$attestation_ready" = true ]; then
+      if command -v deb-systemd-helper >/dev/null 2>&1; then
+        deb-systemd-helper unmask "$SOCKET_UNIT" >/dev/null || true
+        deb-systemd-helper enable "$SOCKET_UNIT" >/dev/null || true
+      fi
+      if [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then
+        systemctl --system enable "$SOCKET_UNIT" >/dev/null
+        systemctl --system restart "$SOCKET_UNIT"
+        if [ -n "${2:-}" ] && systemctl --system is-active --quiet "$SERVICE_UNIT"; then
+          systemctl --system restart "$SERVICE_UNIT"
+        fi
+      fi
+    else
+      if command -v deb-systemd-helper >/dev/null 2>&1; then
+        deb-systemd-helper disable "$SOCKET_UNIT" >/dev/null || true
+      fi
+      if command -v systemctl >/dev/null 2>&1; then
+        systemctl --system disable "$SOCKET_UNIT" >/dev/null 2>&1 || true
+        if [ -d /run/systemd/system ]; then
+          systemctl --system stop "$SERVICE_UNIT" "$SOCKET_UNIT" >/dev/null 2>&1 || true
+        fi
+      fi
+    fi
+
+    if [ -n "${2:-}" ]; then
+      if [ -x "$RECOVER_USER_DAEMONS" ]; then
+        "$RECOVER_USER_DAEMONS" ||
+          echo "openburnbar: one or more active user daemons could not be recovered" >&2
+      else
+        echo "openburnbar: user-daemon recovery helper is missing" >&2
+      fi
+    fi
+    ;;
+  abort-upgrade|abort-remove|abort-deconfigure)
+    ;;
+esac
+
+exit 0

@@ -20,6 +20,8 @@ node -e 'console.log(JSON.stringify({ nodeSmoke: true, platform: process.platfor
 echo "== rust-cargo =="
 rustc --version
 cargo --version
+test "$(rustc +1.94.0 --version | awk '{print $2}')" = "1.94.0"
+cargo +1.94.0 clippy --version
 tmp_cargo="$(mktemp -d)"
 tmp_sqlcipher_db="$(mktemp /tmp/openburnbar-sqlcipher-fts5.XXXXXX.db)"
 tmp_sqlcipher_wrong_out="$(mktemp /tmp/openburnbar-sqlcipher-wrong.XXXXXX.out)"
@@ -129,13 +131,15 @@ python3 -c 'import pyatspi; print("python3-pyatspi=import-ok")'
 dpkg-query -W -f='xfce4-sntray-plugin=${Version}\n' xfce4-sntray-plugin
 dpkg-query -W -f='ayatana-indicator-application=${Version}\n' ayatana-indicator-application
 dpkg-query -W -f='libkf5wallet-dev=${Version}\n' libkf5wallet-dev
-test -f /usr/lib/aarch64-linux-gnu/cmake/KF5Wallet/KF5WalletConfig.cmake
+test -f "/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/cmake/KF5Wallet/KF5WalletConfig.cmake"
 
 echo "== package-signing-tools =="
 dpkg-deb --version | head -n 1
 dpkg-buildpackage --version | head -n 1
 fakeroot --version
 rpmbuild --version
+command -v rpm2cpio
+cpio --version | head -n 1
 mksquashfs -version | head -n 1
 gpg --version | head -n 1
 patchelf --version

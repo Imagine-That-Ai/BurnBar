@@ -52,11 +52,30 @@ expiry, binds cached state to the Firebase UID plus session generation, and
 keeps the raw App Check token in memory only. The renderer receives at most a
 redacted unavailable/acquiring/ready status and expiry.
 
-This source packet does not produce trustworthy platform evidence. Production
-still requires a root-owned `openburnbar-attestd`, TPM 2.0 key enrollment and
-nonce-qualified quote, signed package/release verification, UEFI measured-boot
-policy, IMA PCR 10 and measurement-log verification where required, and the
-deployed remote verifier. See
+The source now includes a root-owned `openburnbar-attestd` transport for native
+deb/rpm packages. Each complete `SOCK_SEQPACKET` request carries
+kernel-supplied `SCM_CREDENTIALS`; the broker pins that sender's
+`/proc/<pid>/exe` inode and verifies its digest against a release-signed complete
+installed-file manifest before accepting the bounded request. Package install,
+upgrade, normal removal, explicit state purge, and active user-daemon upgrade
+recovery own the lifecycle. Fresh installs keep the root socket disabled and
+stopped; activation requires private root-owned enrollment state plus an exact
+root-owned rollout marker. AppImage and sandboxed/source channels do not install
+the broker. The installed-files root uses unsigned UTF-8 byte ordering for its
+NUL-delimited records, covered by one shared JS/Rust golden vector. Release
+preparation measures every native signer input; the isolated signer remeasures
+before and after packaging and emits a signed receipt over the exact deb/rpm
+hashes; finalization verifies that receipt and current inputs. RPM construction
+also extracts the final artifact and checks every signed payload record, which
+prevents rpmbuild post-processing from invalidating daemon authorization. The
+current backend always returns `attestation_unsupported`, so
+this still does not produce trustworthy platform evidence.
+
+Production still requires TPM 2.0 key enrollment and nonce-qualified quotes,
+UEFI measured-boot policy, IMA PCR 10 and full measurement-log verification,
+revocation, and the deployed remote verifier. Full IMA logs must use a bounded,
+short-lived verifier upload receipt rather than exceeding the Functions 512 KiB
+limit or being truncated. See
 [`ADR 015`](../architecture/015-linux-app-check-attestation.md).
 
 ## Configuration
@@ -100,7 +119,7 @@ is accepted.
 | Environment | Production App Check policy | Current state |
 |---|---|---|
 | Physical TPM 2.0, Secure Boot/measured boot enabled, supported repository-installed deb/rpm | Intended first supported tier after broker, verifier, enrollment, package, revocation, and installed tests pass | Blocked |
-| Physical TPM 2.0, supported AppImage | Requires a separately verified immutable release/update identity | Blocked |
+| Physical TPM 2.0, AppImage | No privileged broker lifecycle under the current policy | Unsupported |
 | Generic VM or vTPM | Local workflows only unless a separate VM trust policy is approved | Unsupported |
 | No TPM or Secure Boot off | Local workflows only; protected cloud mutations unavailable | Unsupported |
 | Source build, container, WSL, Flatpak, or Snap | No production App Check minting under the current policy | Unsupported |

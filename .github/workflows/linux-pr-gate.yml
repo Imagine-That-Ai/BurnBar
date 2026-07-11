@@ -7,6 +7,7 @@ on:
     paths:
       - ".github/workflows/linux-*.yml"
       - "apps/linux-desktop/**"
+      - "crates/openburnbar-attestd/**"
       - "docs/linux-port/**"
       - "packaging/linux/**"
       - "schemas/linux-runtime-capability-manifest.schema.json"
@@ -107,8 +108,13 @@ jobs:
         run: >
           node --test
           scripts/linux-port/assemble-linux-release.test.mjs
+          scripts/linux-port/build-linux-release-boundary.test.mjs
+          scripts/linux-port/build-native-linux-packages-boundary.test.mjs
           scripts/linux-port/linux-package-session.test.mjs
+          scripts/linux-port/linux-native-signing-receipt.test.mjs
           scripts/linux-port/prepare-linux-package-payload.test.mjs
+          scripts/linux-port/native-linux-packager.test.mjs
+          packaging/linux/openburnbar-attestd-packaging.test.mjs
           scripts/linux-port/credential-storage-contract.test.mjs
           scripts/linux-port/verify-linux-release.test.mjs
           scripts/linux-port/resolve-linux-release-version.test.mjs
