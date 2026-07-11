@@ -219,6 +219,10 @@ struct HermesSquareRoot: View {
     // MARK: Body
 
     var body: some View {
+        navigationContent
+    }
+
+    private var lifecycleContent: some View {
         ZStack(alignment: .top) {
             squareBackground
             squareContent
@@ -279,6 +283,10 @@ struct HermesSquareRoot: View {
             searchReindexTask = nil
             mercuryPeerSource.stop()
         }
+    }
+
+    private var modalContent: some View {
+        lifecycleContent
         .sheet(isPresented: $isShowingDiscover) {
             discoverDrawerSheet
         }
@@ -310,28 +318,15 @@ struct HermesSquareRoot: View {
         }
         .confirmationDialog(
             "Manage Mission",
-            isPresented: Binding(
-                get: { missionForActionSheet != nil },
-                set: { if !$0 { missionForActionSheet = nil } }
-            ),
+            isPresented: missionActionSheetPresentation,
             titleVisibility: .visible
         ) {
             Button("Cancel & Dismiss", role: .destructive) {
-                if let mission = missionForActionSheet {
-                    let mid = mission.id
-                    Task {
-                        await missionHost.cancelMission(id: mid)
-                        missionHost.dismissMission(id: mid)
-                    }
-                }
-                missionForActionSheet = nil
+                cancelAndDismissSelectedMission()
             }
 
             Button("Just Dismiss", role: .none) {
-                if let mission = missionForActionSheet {
-                    missionHost.dismissMission(id: mission.id)
-                }
-                missionForActionSheet = nil
+                dismissSelectedMission()
             }
 
             Button("Keep Running", role: .cancel) {
@@ -342,6 +337,10 @@ struct HermesSquareRoot: View {
                 Text("Manage mission \"\(mission.title)\". Aborting will stop the processes on the Mac immediately.")
             }
         }
+    }
+
+    private var navigationContent: some View {
+        modalContent
         .navigationDestination(item: $navTarget) { target in
             switch target {
             case .thread(let id):
@@ -372,6 +371,28 @@ struct HermesSquareRoot: View {
                 )
             }
         }
+    }
+
+    private var missionActionSheetPresentation: Binding<Bool> {
+        Binding(
+            get: { missionForActionSheet != nil },
+            set: { if !$0 { missionForActionSheet = nil } }
+        )
+    }
+
+    private func cancelAndDismissSelectedMission() {
+        guard let mission = missionForActionSheet else { return }
+        missionForActionSheet = nil
+        Task {
+            await missionHost.cancelMission(id: mission.id)
+            missionHost.dismissMission(id: mission.id)
+        }
+    }
+
+    private func dismissSelectedMission() {
+        guard let mission = missionForActionSheet else { return }
+        missionHost.dismissMission(id: mission.id)
+        missionForActionSheet = nil
     }
 
     // MARK: Subviews
