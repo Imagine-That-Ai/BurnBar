@@ -10,8 +10,13 @@ public static class RuntimeDataMode
 {
     public static bool SampleModeEnabled => IsTruthy(Environment.GetEnvironmentVariable("OPENBURNBAR_SAMPLE_MODE"));
 
-    public static string EmptyStateDetail(string configuredSource) =>
-        SampleModeEnabled
+    /// <summary>
+    /// Empty-state copy for missing configured data.
+    /// When <paramref name="hasLiveData"/> is true under sample mode (fail-closed hybrid),
+    /// do <b>not</b> claim demo data is labeled — fabricated payloads were withheld.
+    /// </summary>
+    public static string EmptyStateDetail(string configuredSource, bool hasLiveData = false) =>
+        SampleModeEnabled && !hasLiveData
             ? "Sample mode is enabled. Demo data is labeled and should not be treated as live usage."
             : $"Connect {configuredSource} in Settings → Data Sources, or launch with OPENBURNBAR_SAMPLE_MODE=1 for a labeled demo.";
 

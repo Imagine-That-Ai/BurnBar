@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.IO;
 using System.Text.Json;
 using System.Threading;
@@ -39,13 +40,26 @@ internal static class Program
         Directory.CreateDirectory(output);
         string appExe = AppExeResolver.Resolve(repoRoot, options.AppExe);
         IReadOnlyList<UiHarnessRoute> manifest = DefaultRouteCatalog.Select(options.RouteKeys);
+        IReadOnlyList<UiCertificationScenario> scenarios;
+        try
+        {
+            scenarios = CertificationScenarioCatalog.Select(options.CertificationProfile);
+        }
+        catch (ArgumentException ex)
+        {
+            Console.Error.WriteLine(ex.Message);
+            return 2;
+        }
+
         File.WriteAllText(Path.Combine(output, "route-manifest.json"), JsonSerializer.Serialize(manifest, JsonOptions));
+        File.WriteAllText(Path.Combine(output, "certification-scenarios.json"), JsonSerializer.Serialize(scenarios, JsonOptions));
 
         var notes = new List<string>
         {
             "Runs in a throwaway OPENBURNBAR_AUTOMATION_PROFILE_ROOT per route; no production user profile is touched.",
             "Route captures use the app route-smoke RenderTargetBitmap path; the semantic main-window probe also emits an external window screenshot.",
             "Input route evidence is classifier proof, not synthetic secure input dispatch; non-bypassable actions remain ViGEm/driver-gated.",
+            $"Certification profile: {options.CertificationProfile}.",
         };
 
         using var cts = new CancellationTokenSource();
@@ -58,18 +72,39 @@ internal static class Program
         var routes = new List<RouteSmokeEvidence>();
         var runner = new RouteSmokeRunner(appExe, output, options.TimeoutMilliseconds);
         bool cancellationRequested = false;
-        foreach (UiHarnessRoute route in manifest)
+        foreach (UiCertificationScenario scenario in scenarios)
         {
-            Console.WriteLine($"[route] {route.Key}");
-            try
+            if (!scenario.RunsRouteSmoke)
             {
-                routes.Add(await runner.RunAsync(route, cts.Token).ConfigureAwait(false));
+                notes.Add($"Scenario {scenario.Key} contributed manifest and input-contract evidence without launching route smoke.");
+                continue;
             }
-            catch (OperationCanceledException) when (cts.IsCancellationRequested)
+
+            IReadOnlyList<UiHarnessRoute> scenarioRoutes = SelectScenarioRoutes(manifest, scenario);
+            if (scenarioRoutes.Count == 0)
             {
-                cancellationRequested = true;
-                notes.Add("Run cancelled by operator request; partial evidence was written.");
-                routes.Add(CancelledRoute(route));
+                notes.Add($"Scenario {scenario.Key} has no selected routes; it contributed manifest evidence only.");
+                continue;
+            }
+
+            foreach (UiHarnessRoute route in scenarioRoutes)
+            {
+                Console.WriteLine($"[route] {scenario.Key}/{route.Key}");
+                try
+                {
+                    routes.Add(await runner.RunAsync(route, scenario, cts.Token).ConfigureAwait(false));
+                }
+                catch (OperationCanceledException) when (cts.IsCancellationRequested)
+                {
+                    cancellationRequested = true;
+                    notes.Add("Run cancelled by operator request; partial evidence was written.");
+                    routes.Add(CancelledRoute(route, scenario));
+                    break;
+                }
+            }
+
+            if (cancellationRequested)
+            {
                 break;
             }
         }
@@ -108,6 +143,8 @@ internal static class Program
             RepoRoot: repoRoot,
             AppExe: appExe,
             OutputDirectory: output,
+            CertificationProfile: options.CertificationProfile,
+            Scenarios: scenarios,
             Manifest: manifest,
             Routes: routes,
             SemanticProbe: semanticProbe,
@@ -133,8 +170,32 @@ internal static class Program
         return summary.Verdict == HarnessVerdict.Pass ? 0 : 1;
     }
 
-    private static RouteSmokeEvidence CancelledRoute(UiHarnessRoute route) =>
+    private static IReadOnlyList<UiHarnessRoute> SelectScenarioRoutes(
+        IReadOnlyList<UiHarnessRoute> selectedManifest,
+        UiCertificationScenario scenario)
+    {
+        if (scenario.RouteKeys.Count == 0)
+        {
+            return selectedManifest;
+        }
+
+        var selected = selectedManifest.ToDictionary(route => route.Key, StringComparer.OrdinalIgnoreCase);
+        var routes = new List<UiHarnessRoute>();
+        foreach (string key in scenario.RouteKeys)
+        {
+            if (selected.TryGetValue(key, out UiHarnessRoute? route))
+            {
+                routes.Add(route);
+            }
+        }
+
+        return routes;
+    }
+
+    private static RouteSmokeEvidence CancelledRoute(UiHarnessRoute route, UiCertificationScenario scenario) =>
         new(
+            scenario.Key,
+            scenario.Title,
             route.Key,
             HarnessVerdict.Fail,
             ExitCode: 130,
@@ -147,6 +208,9 @@ internal static class Program
             LumaStdDev: 0,
             ElapsedMs: 0,
             Message: "Route smoke probe was cancelled by operator request.",
+            scenario.AppearanceMode,
+            scenario.ReduceTransparency,
+            scenario.DpiScalePercent,
             ExpectedAutomationId: route.ExpectedAutomationId,
             ExpectedAutomationIdFound: false);
 

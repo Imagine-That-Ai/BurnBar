@@ -16,6 +16,7 @@ internal sealed class HarnessOptions
     public IReadOnlyList<string>? RouteKeys { get; private init; }
     public int TimeoutMilliseconds { get; private init; } = 12_000;
     public bool SkipSemanticProbe { get; private init; }
+    public string CertificationProfile { get; private init; } = "baseline";
 
     public static HarnessOptions Parse(string[] args)
     {
@@ -51,6 +52,10 @@ internal sealed class HarnessOptions
             {
                 options = WithTimeout(options, parsed);
             }
+            else if (Is(token, "--certification-profile") && TryValue(args, ref i, out string? profile))
+            {
+                options = WithCertificationProfile(options, profile);
+            }
             else if (Is(token, "--skip-semantic-probe"))
             {
                 options = WithSkipSemanticProbe(options);
@@ -72,6 +77,7 @@ internal sealed class HarnessOptions
         RouteKeys = options.RouteKeys,
         TimeoutMilliseconds = options.TimeoutMilliseconds,
         SkipSemanticProbe = options.SkipSemanticProbe,
+        CertificationProfile = options.CertificationProfile,
     };
 
     private static HarnessOptions WithAppExe(HarnessOptions options, string value) => new()
@@ -82,6 +88,7 @@ internal sealed class HarnessOptions
         RouteKeys = options.RouteKeys,
         TimeoutMilliseconds = options.TimeoutMilliseconds,
         SkipSemanticProbe = options.SkipSemanticProbe,
+        CertificationProfile = options.CertificationProfile,
     };
 
     private static HarnessOptions WithOutput(HarnessOptions options, string value) => new()
@@ -92,6 +99,7 @@ internal sealed class HarnessOptions
         RouteKeys = options.RouteKeys,
         TimeoutMilliseconds = options.TimeoutMilliseconds,
         SkipSemanticProbe = options.SkipSemanticProbe,
+        CertificationProfile = options.CertificationProfile,
     };
 
     private static HarnessOptions WithRoutes(HarnessOptions options, IReadOnlyList<string> value) => new()
@@ -102,6 +110,7 @@ internal sealed class HarnessOptions
         RouteKeys = value,
         TimeoutMilliseconds = options.TimeoutMilliseconds,
         SkipSemanticProbe = options.SkipSemanticProbe,
+        CertificationProfile = options.CertificationProfile,
     };
 
     private static HarnessOptions WithTimeout(HarnessOptions options, int value) => new()
@@ -112,6 +121,18 @@ internal sealed class HarnessOptions
         RouteKeys = options.RouteKeys,
         TimeoutMilliseconds = value,
         SkipSemanticProbe = options.SkipSemanticProbe,
+        CertificationProfile = options.CertificationProfile,
+    };
+
+    private static HarnessOptions WithCertificationProfile(HarnessOptions options, string value) => new()
+    {
+        RepoRoot = options.RepoRoot,
+        AppExe = options.AppExe,
+        OutputDirectory = options.OutputDirectory,
+        RouteKeys = options.RouteKeys,
+        TimeoutMilliseconds = options.TimeoutMilliseconds,
+        SkipSemanticProbe = options.SkipSemanticProbe,
+        CertificationProfile = string.IsNullOrWhiteSpace(value) ? "baseline" : value.Trim(),
     };
 
     private static HarnessOptions WithSkipSemanticProbe(HarnessOptions options) => new()
@@ -122,6 +143,7 @@ internal sealed class HarnessOptions
         RouteKeys = options.RouteKeys,
         TimeoutMilliseconds = options.TimeoutMilliseconds,
         SkipSemanticProbe = true,
+        CertificationProfile = options.CertificationProfile,
     };
 
     public static string Usage =>
@@ -137,6 +159,7 @@ internal sealed class HarnessOptions
           --routes <a,b,c>            Comma-separated route keys. Defaults to all supported routes.
           --route <key>               Add one route key; may be repeated.
           --timeout-ms <number>       Per-route process timeout. Defaults to 12000.
+          --certification-profile <p> Scenario profile: baseline, accessibility, or all. Defaults to baseline.
           --skip-semantic-probe       Skip persistent main-window UIA/capture probe.
         """;
 

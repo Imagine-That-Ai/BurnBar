@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using Microsoft.Data.Sqlite;
 
 namespace OpenBurnBar.Storage;
@@ -13,6 +14,67 @@ namespace OpenBurnBar.Storage;
 /// </summary>
 public static class TokenUsageReadSeam
 {
+    /// <summary>Load the live dashboard/tray aggregate in one bounded set of indexed queries.</summary>
+    public static TokenUsageAggregateSnapshot LoadAggregateSnapshot(
+        SqliteConnection connection,
+        DateTimeOffset? now = null)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        DateTimeOffset utcNow = (now ?? DateTimeOffset.UtcNow).ToUniversalTime();
+        DateTimeOffset today = new(utcNow.Year, utcNow.Month, utcNow.Day, 0, 0, 0, TimeSpan.Zero);
+        DateTimeOffset week = today.AddDays(-6);
+        DateTimeOffset month = new(utcNow.Year, utcNow.Month, 1, 0, 0, 0, TimeSpan.Zero);
+
+        double todayCost = SumCostSince(connection, today);
+        double weekCost = SumCostSince(connection, week);
+        double monthCost = SumCostSince(connection, month);
+        long totalTokens = SumLong(connection, "SELECT COALESCE(SUM(totalTokens), 0) FROM token_usage");
+        int sessionCount = checked((int)Math.Min(int.MaxValue, SumLong(
+            connection,
+            "SELECT COUNT(DISTINCT sessionId) FROM token_usage")));
+        DateTimeOffset? lastActivity = ReadLastActivity(connection);
+
+        var daily = new double[7];
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                """
+                SELECT substr(createdAt, 1, 10), COALESCE(SUM(cost), 0)
+                FROM token_usage
+                WHERE createdAt >= $start
+                GROUP BY substr(createdAt, 1, 10)
+                """;
+            command.Parameters.AddWithValue("$start", FormatTimestamp(week));
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                if (DateTimeOffset.TryParse(
+                        reader.GetString(0),
+                        CultureInfo.InvariantCulture,
+                        DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                        out DateTimeOffset day))
+                {
+                    int index = (int)(day.Date - week.Date).TotalDays;
+                    if (index >= 0 && index < daily.Length)
+                    {
+                        daily[index] = reader.GetDouble(1);
+                    }
+                }
+            }
+        }
+
+        return new TokenUsageAggregateSnapshot(
+            todayCost,
+            weekCost,
+            monthCost,
+            totalTokens,
+            sessionCount,
+            lastActivity,
+            daily,
+            LoadGroupRows(connection, "provider", "provider", 12),
+            LoadGroupRows(connection, "model", "provider", 20));
+    }
+
     /// <summary>Total <c>cost</c> for rows whose <c>createdAt</c> falls in the current UTC calendar month.</summary>
     public static double SumCostCurrentUtcMonth(SqliteConnection connection)
     {
@@ -120,4 +182,87 @@ public static class TokenUsageReadSeam
             ParentRequestID = reader.IsDBNull(26) ? null : reader.GetString(26),
         };
     }
+
+    private static double SumCostSince(SqliteConnection connection, DateTimeOffset start)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COALESCE(SUM(cost), 0) FROM token_usage WHERE createdAt >= $start";
+        command.Parameters.AddWithValue("$start", FormatTimestamp(start));
+        object? scalar = command.ExecuteScalar();
+        return scalar is null or DBNull ? 0 : Convert.ToDouble(scalar, CultureInfo.InvariantCulture);
+    }
+
+    private static long SumLong(SqliteConnection connection, string sql)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        object? scalar = command.ExecuteScalar();
+        return scalar is null or DBNull ? 0 : Convert.ToInt64(scalar, CultureInfo.InvariantCulture);
+    }
+
+    private static DateTimeOffset? ReadLastActivity(SqliteConnection connection)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT MAX(createdAt) FROM token_usage";
+        object? value = command.ExecuteScalar();
+        if (value is not string text)
+        {
+            return null;
+        }
+
+        return DateTimeOffset.TryParse(
+            text,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+            out DateTimeOffset parsed)
+            ? parsed
+            : null;
+    }
+
+    private static IReadOnlyList<TokenUsageAggregateRow> LoadGroupRows(
+        SqliteConnection connection,
+        string idColumn,
+        string providerColumn,
+        int limit)
+    {
+        string safeId = idColumn == "model" ? "model" : "provider";
+        string safeProvider = providerColumn == "provider" ? "provider" : "provider";
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT {safeId}, {safeProvider}, COALESCE(SUM(cost), 0),
+                   COALESCE(SUM(totalTokens), 0), COUNT(DISTINCT sessionId)
+            FROM token_usage
+            WHERE {safeId} <> ''
+            GROUP BY {safeId}, {safeProvider}
+            ORDER BY SUM(cost) DESC, SUM(totalTokens) DESC
+            LIMIT $limit
+            """;
+        command.Parameters.AddWithValue("$limit", limit);
+        var rows = new List<TokenUsageAggregateRow>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            string id = reader.GetString(0);
+            string provider = reader.GetString(1);
+            rows.Add(new TokenUsageAggregateRow(
+                id,
+                DisplayName(id),
+                provider,
+                reader.GetDouble(2),
+                reader.GetInt64(3),
+                reader.GetInt32(4)));
+        }
+
+        return rows;
+    }
+
+    private static string DisplayName(string value) => string.Join(
+        " ",
+        value.Split(new[] { '-', '_', '.' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(part => part.Length == 0
+                ? part
+                : char.ToUpperInvariant(part[0]) + part.Substring(1)));
+
+    private static string FormatTimestamp(DateTimeOffset value) =>
+        value.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture);
 }

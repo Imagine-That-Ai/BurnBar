@@ -167,7 +167,11 @@ public static class SqlCipherConnection
     /// </summary>
     public static bool FileIsEncrypted(string path)
     {
-        using var stream = System.IO.File.OpenRead(path);
+        using var stream = new System.IO.FileStream(
+            path,
+            System.IO.FileMode.Open,
+            System.IO.FileAccess.Read,
+            System.IO.FileShare.ReadWrite | System.IO.FileShare.Delete);
         Span<byte> header = stackalloc byte[16];
         int read = stream.Read(header);
         if (read < 16)

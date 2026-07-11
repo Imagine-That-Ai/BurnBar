@@ -5,14 +5,13 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using OpenBurnBar.App.Theme;
+using OpenBurnBar.App.Storage;
 using Windows.UI;
 
 namespace OpenBurnBar.App.Onboarding;
 
 /// <summary>Scanning step. Windows peer of <c>OnboardingScanView.swift</c>: a per-provider
-/// parser-health readout plus a busy indicator while the aggregator refreshes. The live
-/// parser-health source is wired when the Windows usage aggregator lands; this step
-/// reflects <see cref="OnboardingWizardModel.IsScanning"/>.</summary>
+/// parser-health readout plus a busy indicator while the live usage runtime refreshes.</summary>
 public sealed partial class ScanStepPage : Page
 {
     private OnboardingContext? _context;
@@ -25,7 +24,7 @@ public sealed partial class ScanStepPage : Page
 
     private OnboardingWizardModel? Model => _context?.Model;
 
-    protected override void OnNavigatedTo(NavigationEventArgs e)
+    protected override async void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
         _context = e.Parameter as OnboardingContext;
@@ -37,6 +36,7 @@ public sealed partial class ScanStepPage : Page
         BuildRows();
         Model.PropertyChanged += OnModelChanged;
         SyncBusy();
+        await RunScanAsync();
     }
 
     private void BuildRows()
@@ -80,7 +80,9 @@ public sealed partial class ScanStepPage : Page
 
             var status = new TextBlock
             {
-                Text = "Scanning…",
+                Text = Model.IsScanning
+                    ? "Scanning..."
+                    : WindowsUsageRuntimeHost.Snapshot.HasData ? "Indexed" : "No usage yet",
                 FontSize = 11,
                 Opacity = 0.55,
                 VerticalAlignment = VerticalAlignment.Center,
@@ -105,6 +107,25 @@ public sealed partial class ScanStepPage : Page
         bool scanning = Model?.IsScanning ?? false;
         BusyRow.Visibility = scanning ? Visibility.Visible : Visibility.Collapsed;
         BusyRing.IsActive = scanning;
+    }
+
+    private async System.Threading.Tasks.Task RunScanAsync()
+    {
+        if (Model is null) return;
+        Model.IsScanning = true;
+        try
+        {
+            await WindowsUsageRuntimeHost.ScanAsync();
+        }
+        catch (System.Exception ex)
+        {
+            OpenBurnBar.App.Diagnostics.AppDiagnostics.LogException("onboarding.usage-scan", ex);
+        }
+        finally
+        {
+            Model.IsScanning = false;
+            BuildRows();
+        }
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)

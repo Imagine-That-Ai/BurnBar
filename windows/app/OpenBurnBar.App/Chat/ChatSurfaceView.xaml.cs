@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Specialized;
+using System.Linq;
+using System.Runtime.InteropServices.WindowsRuntime;
+using System.Text;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -7,6 +10,8 @@ using Microsoft.UI.Xaml.Input;
 using OpenBurnBar.App.Diagnostics;
 using OpenBurnBar.App.Pretext;
 using OpenBurnBar.Pretext;
+using Windows.ApplicationModel.DataTransfer;
+using Windows.Storage;
 using Windows.System;
 
 namespace OpenBurnBar.App.Chat;
@@ -114,5 +119,91 @@ public sealed partial class ChatSurfaceView : UserControl
             e.Handled = true;
             ViewModel.SendCommand.Execute(null);
         }
+    }
+
+    private void OnInputDragOver(object sender, DragEventArgs e)
+    {
+        DataPackageView data = e.DataView;
+        if (data.Contains(StandardDataFormats.StorageItems) || data.Contains(StandardDataFormats.Text))
+        {
+            e.AcceptedOperation = DataPackageOperation.Copy;
+        }
+    }
+
+    private async void OnInputDrop(object sender, DragEventArgs e)
+    {
+        try
+        {
+            bool staged = await TryStageDataPackageAsync(e.DataView, stageShortText: true).ConfigureAwait(true);
+            e.Handled = staged;
+        }
+        catch (Exception ex)
+        {
+            AppDiagnostics.LogException("chat.attachment.drop", ex);
+        }
+    }
+
+    private async void OnInputPaste(object sender, TextControlPasteEventArgs e)
+    {
+        try
+        {
+            bool staged = await TryStageDataPackageAsync(Clipboard.GetContent(), stageShortText: false).ConfigureAwait(true);
+            e.Handled = staged;
+        }
+        catch (Exception ex)
+        {
+            AppDiagnostics.LogException("chat.attachment.paste", ex);
+        }
+    }
+
+    private async Task<bool> TryStageDataPackageAsync(DataPackageView data, bool stageShortText)
+    {
+        if (data.Contains(StandardDataFormats.StorageItems))
+        {
+            var items = await data.GetStorageItemsAsync().AsTask().ConfigureAwait(true);
+            var staged = false;
+            foreach (IStorageItem item in items.OfType<StorageFile>())
+            {
+                if (!string.IsNullOrWhiteSpace(item.Path))
+                {
+                    ViewModel.StageAttachmentFromFile(item.Path);
+                    staged = true;
+                }
+            }
+
+            if (staged)
+            {
+                return true;
+            }
+        }
+
+        if (!data.Contains(StandardDataFormats.Text))
+        {
+            return false;
+        }
+
+        string text = await data.GetTextAsync().AsTask().ConfigureAwait(true);
+        if (string.IsNullOrEmpty(text))
+        {
+            return false;
+        }
+
+        if (!stageShortText && Encoding.UTF8.GetByteCount(text) <= WindowsChatAttachmentStager.TextPreviewBytes)
+        {
+            return false;
+        }
+
+        ViewModel.StagePastedText(text);
+        return true;
+    }
+
+    private void OnApproveChatExecutable(object sender, RoutedEventArgs e)
+    {
+        ViewModel.ApproveExecutablePath(ExecutablePathBox.Text);
+    }
+
+    private void OnRotateChatExecutable(object sender, RoutedEventArgs e)
+    {
+        ViewModel.RotateExecutablePath(ExecutablePathBox.Text);
     }
 }

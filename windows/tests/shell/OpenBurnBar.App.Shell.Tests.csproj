@@ -35,9 +35,14 @@
     <Compile Include="../../app/OpenBurnBar.App/Shell/AutomationLaunchOptions.cs" />
     <Compile Include="../../app/OpenBurnBar.App/Shell/CommandLineParts.cs" />
     <Compile Include="../../app/OpenBurnBar.App/Shell/RouteSmokeOptions.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Shell/NavDestination.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Shell/SurfaceRouteMap.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Shell/WindowsActivationRouter.cs" />
     <Compile Include="AppStatePersistenceTests.cs" />
     <Compile Include="AutomationLaunchOptionsTests.cs" />
     <Compile Include="RouteSmokeOptionsTests.cs" />
+    <Compile Include="NavCatalogTests.cs" />
+    <Compile Include="WindowsActivationRouterTests.cs" />
   </ItemGroup>
 
 </Project>

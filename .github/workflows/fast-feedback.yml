@@ -1100,6 +1100,31 @@ jobs:
       - name: Verify Windows storage architecture (WPD-0005 honesty)
         run: bash scripts/ci/verify-windows-storage-architecture.sh
 
+  # ── Windows parity ledger (Phase 0 anti-false-green gate) ───────────────────
+  # The machine-readable macOS↔Windows ledger rejects non-approved states, Real
+  # rows without tests/evidence, fake production paths, and unmapped primary routes.
+  windows-parity-ledger:
+    name: Windows parity ledger (Phase 0)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PyYAML for ledger scanner
+        run: python3 -m pip install --user 'pyyaml>=6,<7'
+
+      - name: Self-test the Windows parity ledger gate
+        run: bash scripts/ci/verify-windows-parity-ledger.test.sh
+
+      - name: Verify Windows parity ledger honesty
+        run: bash scripts/ci/verify-windows-parity-ledger.sh
+
   # ── Functions critical correctness (money + compliance; merge-blocking) ─────
   # The App Store JWS verifier, billing/tier rollups, tier COGS, cloud-pro
   # allowance, and account-deletion harnesses guard revenue and compliance. They
@@ -1234,6 +1259,7 @@ jobs:
       - no-suppressions
       - twin-basenames
       - windows-storage-architecture
+      - windows-parity-ledger
       - debt-budgets
       - functions-correctness
     runs-on: ubuntu-latest

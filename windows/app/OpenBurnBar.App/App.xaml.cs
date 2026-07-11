@@ -1,10 +1,15 @@
 using System;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Microsoft.Windows.AppLifecycle;
 using System.Threading.Tasks;
 using OpenBurnBar.App.Shell;
 using OpenBurnBar.App.Theme;
 using OpenBurnBar.App.CloudSync;
+using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Diagnostics;
+using OpenBurnBar.App.Settings.Winui;
+using OpenBurnBar.App.Storage;
 using OpenBurnBar.App.Tray;
 
 namespace OpenBurnBar.App;
@@ -30,7 +35,9 @@ public partial class App : Application
     private TrayIcon? _tray;
     private MainWindow? _mainWindow;
     private FlyoutWindow? _flyout;
+    private DispatcherQueue? _dispatcherQueue;
     private bool _hotkeyRegistered;
+    private bool _activationRegistered;
 
     public App()
     {
@@ -42,11 +49,34 @@ public partial class App : Application
     /// <summary>The single running app instance (WinUI has no typed Application.Current).</summary>
     public static new App Current => (App)Application.Current;
 
-    protected override void OnLaunched(LaunchActivatedEventArgs args)
+    protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
+        _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
         var automation = AutomationLaunchOptions.Parse(args.Arguments) ?? AutomationLaunchOptions.Parse(Environment.CommandLine);
         automation?.ApplyEnvironment();
         AppDiagnostics.LogEvent("launch", args.Arguments ?? string.Empty);
+        try
+        {
+            ReleaseConfigurationGuard.ThrowIfPlaintextCredentialEnvironmentPresent();
+            _ = AppConfiguration.Current.SecurityState;
+        }
+        catch (SecretStoreException ex)
+        {
+            AppDiagnostics.LogException("configuration.security", ex);
+            throw;
+        }
+        var storageStatus = WindowsStorageDevHost.InitializeRuntime();
+        if (!storageStatus.IsReady && storageStatus.RecoveryState is { } recovery)
+        {
+            AppDiagnostics.LogEvent("storage.recovery-required", $"{recovery.Kind}: {recovery.Title}");
+        }
+
+        if (storageStatus.IsReady)
+        {
+            _ = WindowsUsageRuntimeHost.StartAsync();
+        }
+        WindowsUpdateService.Configure(WindowsSettingsComposition.SharedPersistence);
+        _ = WindowsUpdateService.RunAutomaticCheckIfDueAsync(WindowsSettingsComposition.SharedPersistence);
         WinAppCloudSyncHost.ConfigureFromAppConfiguration();
         Quota.Acquisition.Windows.WindowsQuotaAcquisitionHost.ConfigureDefault();
 
@@ -54,6 +84,7 @@ public partial class App : Application
         LiquidGlassEnvironment.Current = new LiquidGlassEnvironment(new RegistryLiquidGlassPreferenceStore());
 
         _state = new AppStatePersistence();
+        automation?.ApplyStateSeed(_state);
         _theme = new ThemeService(_state);
         automation?.WriteLaunchMarker();
 
@@ -64,6 +95,7 @@ public partial class App : Application
             return;
         }
 
+        RegisterActivationRouting();
         if (automation?.MainWindow == true)
         {
             ShowMainWindow();
@@ -84,6 +116,11 @@ public partial class App : Application
             onOpenMainWindow: ShowMainWindow,
             onExit: ExitApp);
         _tray.Show();
+
+        WindowsActivationRequest initialActivation = WindowsActivationRouter.FromAppLifecycleArguments(
+            AppInstance.GetCurrent().GetActivatedEventArgs().Kind.ToString(),
+            AppInstance.GetCurrent().GetActivatedEventArgs().Data);
+        HandleActivation(initialActivation, isInitialLaunch: true);
     }
 
     private void StartRouteSmoke(RouteSmokeOptions smoke)
@@ -93,6 +130,42 @@ public partial class App : Application
         _mainWindow.Activate();
         _mainWindow.Shell.Navigate(smoke.RouteKey);
         _ = RouteSmokeHost.CaptureAndExitAsync(_mainWindow, smoke);
+    }
+
+    private void RegisterActivationRouting()
+    {
+        if (_activationRegistered)
+        {
+            return;
+        }
+
+        AppInstance.GetCurrent().Activated += (_, args) =>
+        {
+            WindowsActivationRequest request = WindowsActivationRouter.FromAppLifecycleArguments(
+                args.Kind.ToString(),
+                args.Data);
+            (_dispatcherQueue ?? DispatcherQueue.GetForCurrentThread())
+                .TryEnqueue(() => HandleActivation(request, isInitialLaunch: false));
+        };
+        _activationRegistered = true;
+    }
+
+    private void HandleActivation(WindowsActivationRequest request, bool isInitialLaunch)
+    {
+        WindowsActivationRoute? route = WindowsActivationRouter.Resolve(request);
+        AppDiagnostics.LogEvent(
+            "activation.route",
+            $"{request.Kind} initial={isInitialLaunch} route={route?.RouteKey ?? "tray"} raw={request.Raw ?? string.Empty}");
+        if (route is null)
+        {
+            return;
+        }
+
+        if (route.OpensMainWindow)
+        {
+            ShowMainWindow();
+            _mainWindow?.Shell.Navigate(route.RouteKey);
+        }
     }
 
     /// <summary>Open the full main window from the flyout's "Open full window" action.</summary>
@@ -163,6 +236,7 @@ public partial class App : Application
         _tray = null;
         _flyout?.Close();
         _mainWindow?.Close();
+        _ = WindowsUsageRuntimeHost.StopAsync();
         Exit();
     }
 

@@ -34,6 +34,20 @@ public enum ChatTranscriptPieceKind
     ToolResult,
 }
 
+public sealed record ChatAttachmentRecord(
+    string Id,
+    string Kind,
+    string DisplayName,
+    string MimeType,
+    long ByteSize,
+    string WorkspaceRelativePath,
+    string? ExtractedTextPreview = null,
+    bool IsMissing = false)
+{
+    public static ChatAttachmentRecord ReferenceOnly(string id) =>
+        new(id, "generic", id, "application/octet-stream", 0, string.Empty, null, IsMissing: true);
+}
+
 /// One ordered transcript segment (peer of Swift `ChatTranscriptPiece`).
 /// Prose for Text/Reasoning/Refusal; tool label (Read, Bash, …) for tool events.
 public sealed class ChatTranscriptPiece
@@ -75,9 +89,11 @@ public sealed class ChatMessageRecord
 
     public List<ChatTranscriptPiece> TranscriptPieces { get; set; }
 
-    /// Attachment identifiers staged with this message. The portable streaming
-    /// state machine does not need the bytes — only that they round-trip on the
-    /// user turn — so the byte payload stays in the WinUI/storage layer.
+    /// Attachment references staged with this message. Bytes stay in the
+    /// WinUI/storage layer; metadata round-trips so missing files can be
+    /// surfaced after restart instead of corrupting history.
+    public IReadOnlyList<ChatAttachmentRecord> Attachments { get; }
+
     public IReadOnlyList<string> AttachmentIds { get; }
 
     public ChatMessageRecord(
@@ -87,7 +103,8 @@ public sealed class ChatMessageRecord
         DateTimeOffset? timestamp = null,
         string? cliUsed = null,
         List<ChatTranscriptPiece>? transcriptPieces = null,
-        IReadOnlyList<string>? attachmentIds = null)
+        IReadOnlyList<string>? attachmentIds = null,
+        IReadOnlyList<ChatAttachmentRecord>? attachments = null)
     {
         Id = id ?? Guid.NewGuid().ToString();
         Role = role;
@@ -95,7 +112,10 @@ public sealed class ChatMessageRecord
         Timestamp = timestamp ?? DateTimeOffset.UtcNow;
         CliUsed = cliUsed;
         TranscriptPieces = transcriptPieces ?? new List<ChatTranscriptPiece>();
-        AttachmentIds = attachmentIds ?? Array.Empty<string>();
+        Attachments = attachments
+            ?? AttachmentRecordsFromIds(attachmentIds)
+            ?? Array.Empty<ChatAttachmentRecord>();
+        AttachmentIds = AttachmentIdsFromRecords(Attachments);
     }
 
     /// Pieces for display; legacy rows synthesize a single text piece from
@@ -154,6 +174,38 @@ public sealed class ChatMessageRecord
         {
             pieces.Add(new ChatTranscriptPiece(kind, chunk));
         }
+    }
+
+    private static IReadOnlyList<ChatAttachmentRecord>? AttachmentRecordsFromIds(IReadOnlyList<string>? ids)
+    {
+        if (ids is null || ids.Count == 0)
+        {
+            return null;
+        }
+
+        var records = new ChatAttachmentRecord[ids.Count];
+        for (var i = 0; i < ids.Count; i++)
+        {
+            records[i] = ChatAttachmentRecord.ReferenceOnly(ids[i]);
+        }
+
+        return records;
+    }
+
+    private static IReadOnlyList<string> AttachmentIdsFromRecords(IReadOnlyList<ChatAttachmentRecord> records)
+    {
+        if (records.Count == 0)
+        {
+            return Array.Empty<string>();
+        }
+
+        var ids = new string[records.Count];
+        for (var i = 0; i < records.Count; i++)
+        {
+            ids[i] = records[i].Id;
+        }
+
+        return ids;
     }
 }
 

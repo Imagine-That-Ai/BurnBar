@@ -12,9 +12,9 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
+    AutomationProperties.AutomationId="RouteRoot.dataControlCenter"
     RequestedTheme="Dark"
-    Background="{StaticResource PensieveColorInkBaseBrush}"
-    AutomationProperties.AutomationId="RouteRoot.dataControlCenter">
+    Background="{StaticResource PensieveColorInkBaseBrush}">
 
     <local:DataControlCenterView x:Name="Workbench" />
 </Page>

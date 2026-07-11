@@ -7,7 +7,9 @@ using OpenBurnBar.App.Dashboard.EasterEgg;
 using OpenBurnBar.App.Dashboard.Layout;
 using OpenBurnBar.App.Dashboard.Layouts;
 using OpenBurnBar.App.Presentation.Dashboard;
+using OpenBurnBar.App.Storage;
 using OpenBurnBar.App.Theme;
+using OpenBurnBar.Storage;
 using Windows.UI.ViewManagement;
 
 namespace OpenBurnBar.App.Dashboard;
@@ -91,6 +93,7 @@ public sealed partial class DashboardPage : Page
         }
 
         LiquidGlassEnvironment.PreferencesChanged += OnGlassPreferencesChanged;
+        WindowsUsageRuntimeHost.SnapshotChanged += OnUsageSnapshotChanged;
         ActualThemeChanged += OnActualThemeChanged;
 
         LoadCommandSnapshot();
@@ -100,12 +103,9 @@ public sealed partial class DashboardPage : Page
 
     private void LoadCommandSnapshot()
     {
-        // Sample-mode fills the Command rail the same way macOS sample usage fills
-        // dashboardProviderSummaries. Live SQLCipher aggregation lands with the
-        // usage-window seam; until then empty is honest when sample mode is off.
         _commandSnapshot = RuntimeDataMode.SampleModeEnabled
             ? DashboardCommandSampleData.Snapshot()
-            : DashboardCommandSnapshot.Empty;
+            : WindowsUsageRuntimeHost.DashboardSnapshot();
         CommandSidebar.ApplySnapshot(_commandSnapshot);
         ApplyDetailChrome();
     }
@@ -308,6 +308,7 @@ public sealed partial class DashboardPage : Page
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         LiquidGlassEnvironment.PreferencesChanged -= OnGlassPreferencesChanged;
+        WindowsUsageRuntimeHost.SnapshotChanged -= OnUsageSnapshotChanged;
         ActualThemeChanged -= OnActualThemeChanged;
         _controller.EventPresented -= OnEventPresented;
         Switcher.LayoutChanged -= OnLayoutChanged;
@@ -329,4 +330,7 @@ public sealed partial class DashboardPage : Page
 
         _backdrop?.Dispose();
     }
+
+    private void OnUsageSnapshotChanged(object? sender, TokenUsageAggregateSnapshot snapshot) =>
+        DispatcherQueue.TryEnqueue(LoadCommandSnapshot);
 }

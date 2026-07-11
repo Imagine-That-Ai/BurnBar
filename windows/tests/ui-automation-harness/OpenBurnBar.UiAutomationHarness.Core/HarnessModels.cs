@@ -21,7 +21,26 @@ public static class UiHarnessRouteDefaults
     public static string ExpectedAutomationId(string routeKey) => $"RouteRoot.{routeKey}";
 }
 
+public sealed record UiCertificationScenario(
+    string Key,
+    string Title,
+    string Category,
+    IReadOnlyList<string> RouteKeys,
+    string? AppearanceMode,
+    bool? ReduceTransparency,
+    int? DpiScalePercent,
+    bool RequiresScreenshots,
+    bool RequiresUiAutomation,
+    bool RequiresKeyboardOnly,
+    bool RequiresNarratorProtocol,
+    string Acceptance)
+{
+    public bool RunsRouteSmoke { get; init; } = true;
+}
+
 public sealed record RouteSmokeEvidence(
+    string ScenarioKey,
+    string ScenarioTitle,
     string RouteKey,
     HarnessVerdict Verdict,
     int ExitCode,
@@ -34,8 +53,16 @@ public sealed record RouteSmokeEvidence(
     double LumaStdDev,
     double ElapsedMs,
     string? Message,
+    string? AppearanceMode,
+    bool? ReduceTransparency,
+    int? DpiScalePercent,
     string ExpectedAutomationId,
-    bool ExpectedAutomationIdFound);
+    bool ExpectedAutomationIdFound)
+{
+    public int? ActualDpiScalePercent { get; init; }
+
+    public bool DpiScaleMatches { get; init; } = true;
+}
 
 public sealed record SemanticProbeEvidence(
     HarnessVerdict Verdict,
@@ -60,6 +87,8 @@ public sealed record UiHarnessRunSummary(
     string RepoRoot,
     string AppExe,
     string OutputDirectory,
+    string CertificationProfile,
+    IReadOnlyList<UiCertificationScenario> Scenarios,
     IReadOnlyList<UiHarnessRoute> Manifest,
     IReadOnlyList<RouteSmokeEvidence> Routes,
     SemanticProbeEvidence? SemanticProbe,
