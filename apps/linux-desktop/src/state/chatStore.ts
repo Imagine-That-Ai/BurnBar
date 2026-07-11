@@ -463,6 +463,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     const selectedBackend = backendFromThread(thread, get().backend);
     set({
       selectedThreadId: id,
+      messages: [],
       messagesLoading: true,
       backend: selectedBackend,
       modelLabel: modelLabelForThread(thread, selectedBackend),
