@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { ingressConfig } from "../src/config.js";
+import { ingressConfig, verifierConfig } from "../src/config.js";
 
 const environmentKeys = [
   "GOOGLE_CLOUD_PROJECT",
@@ -8,14 +8,22 @@ const environmentKeys = [
   "KEYLIME_MTLS_CERT_FILE",
   "KEYLIME_MTLS_KEY_FILE",
   "KEYLIME_REGISTRAR_URL",
+  "KEYLIME_VERIFIER_URL",
   "EVIDENCE_BUCKET",
+  "VERIFIER_OIDC_AUDIENCE",
+  "VERIFIER_CALLER_SERVICE_ACCOUNT",
+  "KMS_SIGNING_KEY_VERSION",
+  "VERDICT_ISSUER",
+  "VERDICT_AUDIENCE",
   "EVIDENCE_MAX_BYTES",
   "UPLOAD_MAX_ATTEMPTS",
   "KEYLIME_TIMEOUT_MILLIS",
   "ENROLLMENT_LEASE_MILLIS",
   "ACTIVATION_LEASE_MILLIS",
 ] as const;
-const originalEnvironment = new Map(environmentKeys.map(key => [key, process.env[key]]));
+const originalEnvironment = new Map(
+  environmentKeys.map((key) => [key, process.env[key]]),
+);
 
 afterEach(() => {
   for (const key of environmentKeys) {
@@ -36,6 +44,24 @@ function configureIngress(): void {
   });
 }
 
+function configureVerifier(): void {
+  Object.assign(process.env, {
+    GOOGLE_CLOUD_PROJECT: "project",
+    KEYLIME_MTLS_CA_FILE: "/secrets/ca",
+    KEYLIME_MTLS_CERT_FILE: "/secrets/cert",
+    KEYLIME_MTLS_KEY_FILE: "/secrets/key",
+    KEYLIME_VERIFIER_URL: "https://keylime-verifier.internal",
+    EVIDENCE_BUCKET: "evidence",
+    VERIFIER_OIDC_AUDIENCE: "https://verifier.internal",
+    VERIFIER_CALLER_SERVICE_ACCOUNT:
+      "functions@example.iam.gserviceaccount.com",
+    KMS_SIGNING_KEY_VERSION:
+      "projects/p/locations/global/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1",
+    VERDICT_ISSUER: "https://attestation.openburnbar.com",
+    VERDICT_AUDIENCE: "openburnbar-functions",
+  });
+}
+
 describe("ingressConfig", () => {
   it("defaults the enrollment lease beyond the Keylime timeout", () => {
     configureIngress();
@@ -48,7 +74,10 @@ describe("ingressConfig", () => {
   it("fails startup when activation can be reclaimed during mutation reconciliation", () => {
     configureIngress();
     process.env.ACTIVATION_LEASE_MILLIS = "90000";
-    assert.throws(() => ingressConfig(), /must exceed twice KEYLIME_TIMEOUT_MILLIS/);
+    assert.throws(
+      () => ingressConfig(),
+      /must exceed twice KEYLIME_TIMEOUT_MILLIS/,
+    );
   });
 
   it("fails startup when enrollment can be reclaimed before Keylime times out", () => {
@@ -62,5 +91,13 @@ describe("ingressConfig", () => {
     configureIngress();
     process.env.EVIDENCE_MAX_BYTES = String(16 * 1024 * 1024 + 1);
     assert.throws(() => ingressConfig(), /EVIDENCE_MAX_BYTES/);
+  });
+});
+
+describe("verifierConfig", () => {
+  it("keeps verifier reads on the same 16 MiB descriptor contract as ingress", () => {
+    configureVerifier();
+    process.env.EVIDENCE_MAX_BYTES = String(16 * 1024 * 1024 + 1);
+    assert.throws(() => verifierConfig(), /EVIDENCE_MAX_BYTES/);
   });
 });

@@ -104,8 +104,13 @@ test('broker and ingress evidence limits accept exactly 16 MiB and reject one by
   const facadeConfig = fs.readFileSync('services/linux-attestation-facade/src/config.ts', 'utf8');
   assert.match(
     facadeConfig,
-    /evidenceMaxBytes:\s*positive\("EVIDENCE_MAX_BYTES",\s*16\s*\*\s*1024\s*\*\s*1024,\s*16\s*\*\s*1024\s*\*\s*1024\)/u,
+    /evidenceMaxBytes:\s*positive\(\s*"EVIDENCE_MAX_BYTES",\s*16\s*\*\s*1024\s*\*\s*1024,\s*16\s*\*\s*1024\s*\*\s*1024,\s*\)/u,
     'public ingress evidence limit drifted'
+  );
+  assert.match(
+    facadeConfig,
+    /evidenceMaxBytes\s*>\s*16\s*\*\s*1024\s*\*\s*1024/u,
+    'verifier hard evidence limit drifted'
   );
 });
 

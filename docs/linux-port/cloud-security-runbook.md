@@ -130,20 +130,22 @@ installed-file manifest before accepting the bounded request. Package install,
 upgrade, normal removal, explicit state purge, and active user-daemon upgrade
 recovery own the lifecycle. Fresh installs keep the root socket disabled and
 stopped; activation requires private root-owned enrollment state plus an exact
-root-owned rollout marker. AppImage and sandboxed/source channels do not install
-the broker. The installed-files root uses unsigned UTF-8 byte ordering for its
+root-owned rollout marker. The broker now parses that private state, verifies
+the AK-bound `ak-sha256:*` device ID, and returns the installed release/device
+binding only when the state file is root-owned, root-group, non-symlinked, and
+mode `0400` or `0600`. AppImage and sandboxed/source channels do not install the
+broker. The installed-files root uses unsigned UTF-8 byte ordering for its
 NUL-delimited records, covered by one shared JS/Rust golden vector. Release
 preparation measures every native signer input; the isolated signer remeasures
 before and after packaging and emits a signed receipt over the exact deb/rpm
 hashes; finalization verifies that receipt and current inputs. RPM construction
 also extracts the final artifact and checks every signed payload record, which
 prevents rpmbuild post-processing from invalidating daemon authorization. The
-current backend always returns `attestation_unsupported`, so
-this still does not produce trustworthy platform evidence. The source-level
-client bridge does not change that posture: broker TPM/IMA production evidence
-and enrollment are still unsupported, the composed production path fails closed
-at the broker before upload or mint, and no installed or production parity is
-claimed.
+current backend still returns `attestation_unsupported` for quote collection, so
+this does not produce trustworthy platform evidence. The source-level client
+bridge does not change that posture: broker TPM/IMA production evidence
+collection remains unsupported, the composed production path fails closed at the
+broker before upload or mint, and no installed or production parity is claimed.
 
 Production still requires TPM 2.0 key enrollment and nonce-qualified quotes,
 UEFI measured-boot policy, IMA PCR 10 and full measurement-log verification,

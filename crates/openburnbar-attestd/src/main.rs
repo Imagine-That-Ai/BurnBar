@@ -44,7 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     use std::sync::{mpsc, Arc, Mutex};
     use std::time::Duration;
 
-    use openburnbar_attestd::backend::UnsupportedAttestationBackend;
+    use openburnbar_attestd::backend::TpmImaAttestationBackend;
     use openburnbar_attestd::config::Config;
     use openburnbar_attestd::error::{BrokerError, ErrorCode};
     use openburnbar_attestd::linux::{systemd_listener, ProcPeerAuthorizer, SeqpacketConnection};
@@ -64,7 +64,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             config.manifest_signature,
             config.public_key,
         )?,
-        UnsupportedAttestationBackend,
+        TpmImaAttestationBackend::new(config.state_dir)?,
         PerUidRateLimiter::new(4, Duration::from_secs(60))?,
     ));
 

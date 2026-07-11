@@ -124,9 +124,11 @@ Linux is a distinct, permanently lower-assurance principal:
   token, App Check token, quote, descriptor, and upload receipt out of durable
   state. Account changes invalidate acquisition and cached state. The renderer
   may receive redacted availability and expiry status, never token material.
-  Enrollment and the real TPM/IMA evidence backend remain unimplemented, so the
-  production factory composes this bridge but the broker fails closed as
-  unsupported before any upload or mint can occur.
+  The broker now loads private root-owned enrollment state to describe the
+  installed release/device binding, but real TPM quote collection and complete
+  TPM/IMA evidence production remain unimplemented. The production factory
+  composes this bridge but the broker still fails closed as unsupported before
+  any upload or mint can occur.
 - `LINUX_APP_CHECK_MINT_ENABLED` defaults to false. Mock attestation remains
   limited to existing test/emulator policy and is forced off in production.
 
@@ -162,7 +164,13 @@ broker foundation now ships in source for native deb/rpm packages:
   emit a zero-blocker architecture shard.
   AppImage, Flatpak, AUR, source builds, containers, and WSL do not receive the
   privileged broker.
-- The broker backend currently returns the typed permanent result
+- The broker backend reads `/var/lib/openburnbar-attestd/tpm-enrollment.json`
+  only when it is a non-symlink, root-owned, root-group, single-link regular
+  file with mode `0400` or `0600`. The exact JSON state is
+  `schemaVersion`, `deviceId`, `agentId`, `akTpmBase64`, `ekTpmBase64`,
+  `ekCertificateBase64`, and `enrolledAtMillis`; the broker recomputes
+  `ak-sha256:<sha256(decoded akTpmBase64)>` before returning a binding. The
+  attest operation still returns the typed permanent result
   `attestation_unsupported`. It has no mock or software fallback, and the
   daemon production factory remains unavailable.
 
@@ -170,9 +178,9 @@ Executable hashing is not yet sufficient production client authentication.
 `SCM_CREDENTIALS` fixes the sender PID for a packet, but a process can queue a
 packet and then `exec` the signed daemon before `/proc/<pid>/exe` is inspected;
 same-user loader or process injection also cannot be excluded by an inode hash.
-This is non-exploitable while the socket is disabled and the unsupported
-backend is hard-wired, but it is a High activation blocker. A production backend
-must first add root-controlled daemon launch provenance in a non-user-overridable
+This is non-exploitable while the socket is disabled and attest remains
+unsupported, but it is a High activation blocker. A production backend must
+first add root-controlled daemon launch provenance in a non-user-overridable
 cgroup, sanitized loader state and disabled dumpability, pidfd/cgroup/executable
 revalidation, and a broker-issued per-connection nonce before accepting the
 second request packet. The verifier policy must also cover executable and mmap
@@ -183,12 +191,13 @@ an equivalent credential-aware cap so unauthenticated idle local connections
 cannot exhaust all broker workers before per-UID request limiting runs.
 
 The next implementation stage adds broker-managed TPM 2.0 attestation-key
-enrollment, obtains a nonce-qualified quote, verifies the package/release
-identity, and supplies UEFI measured-boot evidence plus IMA PCR 10. A remote
-verifier must evaluate that evidence and return the signed decision consumed by
-Functions. Complete logs must use the digest-bound ingress receipt and stay
-within the current 16 MiB upload contract; logs must never be truncated. A
-larger limit requires a separately designed direct-to-object-storage protocol.
+creation/rotation, Keylime enrollment-state installation, nonce-qualified quote
+collection, package/release verification, and UEFI measured-boot evidence plus
+IMA PCR 10. A remote verifier must evaluate that evidence and return the signed
+decision consumed by Functions. Complete logs must use the digest-bound ingress
+receipt and stay within the current 16 MiB upload contract; logs must never be
+truncated. A larger limit requires a separately designed direct-to-object-storage
+protocol.
 
 ## Supported Environments
 
@@ -215,9 +224,10 @@ boundary. The Functions and daemon source can be reviewed and tested before the
 privileged Linux broker is introduced.
 
 It does not establish production host integrity. The broker transport,
-release-signed installed manifest, and native package lifecycle are implemented,
-but a real Firebase Web app ID, TPM/IMA backend, verifier and enrollment
-service, revocation behavior, deployment, and installed matrix proof are still required.
+release-signed installed manifest, native package lifecycle, and local
+enrollment-state binding are implemented, but a real Firebase Web app ID,
+TPM/IMA quote collection, verifier and enrollment deployment, revocation
+behavior, and installed matrix proof are still required.
 Until those exist, protected cloud operations remain unavailable and Linux stays
 `linux_lower_trust`.
 

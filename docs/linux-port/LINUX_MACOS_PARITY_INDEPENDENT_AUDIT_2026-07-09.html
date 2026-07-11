@@ -314,7 +314,7 @@ recomputed roots, per-request kernel credentials plus exact peer executable
 authorization, bounded workers and local IPC, package-owned
 install/update/remove hooks, active user-daemon upgrade recovery, and an explicit
 destructive purge path. AppImage remains intentionally ineligible for host
-attestation. A real Firebase Web app ID, TPM enrollment and quote backend,
+attestation. A real Firebase Web app ID, TPM quote backend,
 complete IMA evidence, pinned remote verifier/revocation deployment, public
 ingress deployment, negative vectors, and installed Linux matrix are still
 missing, so protected cloud operations, membership/billing, cloud sync, and
@@ -454,8 +454,8 @@ exercised in installed packages.</li>
 </tr>
 <tr>
 <td>Linux App Check</td>
-<td>Durable five-minute challenge, atomic replay defense, pinned signed-verdict boundary, fixed 30-minute TTL, daemon memory-only acquisition/cache, hash-only ticket reservation, exact ingress claim, streamed evidence upload, receipt-native mint evidence, and the root broker/native deb-rpm packaging foundation are source-implemented; mint kill switch defaults off</td>
-<td>Provision the Firebase Web app; implement real TPM enrollment/quotes, complete IMA evidence and remote verification/revocation, deploy ingress/verifier, run negative vectors, and certify the installed matrix; Linux remains <code>linux_lower_trust</code></td>
+<td>Durable five-minute challenge, atomic replay defense, pinned signed-verdict boundary, fixed 30-minute TTL, daemon memory-only acquisition/cache, hash-only ticket reservation, exact ingress claim, streamed evidence upload, receipt-native mint evidence, root broker/native deb-rpm packaging, root-owned enrollment-state binding, and the 16 MiB evidence ceiling are source-implemented; mint kill switch defaults off</td>
+<td>Provision the Firebase Web app; implement real TPM quote collection, complete IMA evidence and remote verification/revocation, deploy ingress/verifier, run negative vectors, and certify the installed matrix; Linux remains <code>linux_lower_trust</code></td>
 </tr>
 <tr>
 <td>Packaging</td>
@@ -2112,8 +2112,8 @@ queueing, locked keyring, and redaction.</li>
 <tr>
 <td>LNX-APPCHECK-001</td>
 <td>Source daemon bridge and root-broker foundation implemented; production blocked</td>
-<td>Five-minute Firestore challenge, atomic replay consumption, exact signed-verdict binding, fixed 30-minute token TTL, kill switch default off, account-bound daemon memory cache, hash-only upload-ticket reservation, exact ingress claim, streamed evidence PUT, receipt-native mint evidence, root <code>openburnbar-attestd</code>, signed installed manifest, exact peer authorization, systemd socket activation, native deb/rpm lifecycle, and AppImage exclusion</td>
-<td>Real Firebase Web app ID, TPM enrollment and quotes, complete IMA evidence, pinned remote verifier and revocation, ingress/verifier deployment, negative vectors, and exact-candidate GNOME/KDE/headless installed matrix</td>
+<td>Five-minute Firestore challenge, atomic replay consumption, exact signed-verdict binding, fixed 30-minute token TTL, kill switch default off, account-bound daemon memory cache, hash-only upload-ticket reservation, exact ingress claim, streamed evidence PUT, receipt-native mint evidence, root <code>openburnbar-attestd</code>, signed installed manifest, exact peer authorization, private root-owned AK-bound enrollment-state binding, systemd socket activation, native deb/rpm lifecycle, AppImage exclusion, and the 16 MiB descriptor ceiling</td>
+<td>Real Firebase Web app ID, TPM quote collection, complete IMA evidence, pinned remote verifier and revocation, ingress/verifier deployment, negative vectors, and exact-candidate GNOME/KDE/headless installed matrix</td>
 </tr>
 <tr>
 <td>LNX-NATIVE-001</td>
@@ -2348,7 +2348,7 @@ accepted together.</p>
 <tr>
 <td>LNX-APPCHECK-001</td>
 <td>LNX-AUTH-DEPLOY-001, LNX-CAP-001</td>
-<td>The lower-trust model, durable challenge/replay store, pinned signed-verdict seam, fixed 30-minute mint, default-off kill switch, daemon memory-only client, hash-only upload-ticket reservation, exact ingress claim, streamed evidence PUT, receipt-native mint evidence, and root broker/native deb-rpm lifecycle are source-implemented; provision the real Firebase Web app, add TPM enrollment/quotes and complete IMA evidence, deploy the pinned ingress/verifier/revocation services, and enforce installed-environment capability policy</td>
+<td>The lower-trust model, durable challenge/replay store, pinned signed-verdict seam, fixed 30-minute mint, default-off kill switch, daemon memory-only client, hash-only upload-ticket reservation, exact ingress claim, streamed evidence PUT, receipt-native mint evidence, root broker/native deb-rpm lifecycle, private AK-bound enrollment-state binding, and 16 MiB descriptor ceiling are source-implemented; provision the real Firebase Web app, add TPM quote collection and complete IMA evidence, deploy the pinned ingress/verifier/revocation services, and enforce installed-environment capability policy</td>
 <td>ADR 015, Functions/daemon/broker negative vectors, TPM quote and complete IMA-log vectors or short-lived upload receipts, replay/revocation/clock-skew/offline tests, server decision logs, release measurements, direct Firestore/Storage surface inventory, and GNOME/KDE/headless capability results</td>
 <td>Keep <code>LINUX_APP_CHECK_MINT_ENABLED=false</code> and remove the Linux app ID from the allow-list; Functions deny immediately, direct Firebase-product access drains within the fixed 30-minute token TTL, and local account/SQLite workflows continue</td>
 <td>Forged, replayed, expired, revoked, wrong-user/app/device/version/architecture/release/policy attestations fail; valid supported physical-TPM environments renew without renderer/log/disk token exposure; unsupported hosts fail before action</td>
@@ -2749,13 +2749,15 @@ package-owned daemon through a signed complete installed manifest,
 per-request <code>SCM_CREDENTIALS</code>, inode/owner/mode/hash checks, a recomputed
 inventory root, bounded socket-activated workers, and per-UID rate limits.
 Fresh installs keep the privileged socket disabled until enrollment and an
-explicit rollout marker exist. Native deb/rpm packages own lifecycle hooks,
-active user-daemon upgrade recovery, and state preservation. Their prepare,
-isolated-signing, and finalize phases bind a canonical complete signer-input
-root to a signed exact-package receipt; final RPM extraction rejects payload
-mutation by rpmbuild. AppImage is explicitly ineligible, and destructive
-identity purge requires an explicit confirmation flag.</li>
-<li><input disabled="" type="checkbox"> Provision the real Firebase Web app ID; implement TPM enrollment and
+explicit rollout marker exist. The broker parses the private root-owned
+enrollment state and returns a binding only when the AK TPM blob hashes to
+the enrolled <code>ak-sha256:*</code> device ID. Native deb/rpm packages own lifecycle
+hooks, active user-daemon upgrade recovery, and state preservation. Their
+prepare, isolated-signing, and finalize phases bind a canonical complete
+signer-input root to a signed exact-package receipt; final RPM extraction
+rejects payload mutation by rpmbuild. AppImage is explicitly ineligible, and
+destructive identity purge requires an explicit confirmation flag.</li>
+<li><input disabled="" type="checkbox"> Provision the real Firebase Web app ID; implement TPM quote collection and
 PCR-bound quotes, complete IMA evidence delivery, revocation, public ingress
 deployment, and the pinned remote verifier; pass
 forgery/replay/expiry/wrong-binding/outage vectors and the exact-candidate
