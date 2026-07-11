@@ -93,7 +93,7 @@
     "eslint": "9.39.4",
     "eslint-config-prettier": "10.1.8",
     "firebase": "12.14.0",
-    "firebase-tools": "15.22.4",
+    "firebase-tools": "15.23.0",
     "knip": "5.88.1",
     "prettier": "3.8.3",
     "typescript": "^5.9.3",
