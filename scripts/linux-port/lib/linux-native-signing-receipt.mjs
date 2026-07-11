@@ -161,16 +161,13 @@ export function validatePreparationForSigner({
 export function validateSignedPackageArtifacts(repoRoot, receipt, discoveredArtifacts) {
   for (const packageRow of receipt.packages) {
     const packagePath = resolveRepositoryPath(repoRoot, packageRow.file);
-    let stat;
+    let bytes;
     try {
-      stat = fs.lstatSync(packagePath);
+      bytes = readStableRegularFile(packagePath);
     } catch {
       throw new Error(`signed native package changed or is missing: ${packageRow.type}`);
     }
-    if (!stat.isFile()
-        || stat.isSymbolicLink()
-        || stat.size !== packageRow.size
-        || sha256File(packagePath) !== packageRow.sha256) {
+    if (bytes.length !== packageRow.size || sha256Bytes(bytes) !== packageRow.sha256) {
       throw new Error(`signed native package changed or is missing: ${packageRow.type}`);
     }
   }
@@ -181,6 +178,29 @@ export function validateSignedPackageArtifacts(repoRoot, receipt, discoveredArti
         packageRow.type === artifact.type
           && resolveRepositoryPath(repoRoot, packageRow.file) === path.resolve(artifact.file)))) {
     throw new Error('discovered deb/rpm artifacts do not exactly match the signed package receipt');
+  }
+}
+
+function readStableRegularFile(file) {
+  const noFollow = fs.constants.O_NOFOLLOW ?? 0;
+  const descriptor = fs.openSync(file, fs.constants.O_RDONLY | noFollow);
+  try {
+    const before = fs.fstatSync(descriptor);
+    if (!before.isFile() || before.isSymbolicLink()) {
+      throw new Error('package is not a regular file');
+    }
+    const bytes = fs.readFileSync(descriptor);
+    const after = fs.fstatSync(descriptor);
+    if (before.dev !== after.dev
+        || before.ino !== after.ino
+        || before.size !== after.size
+        || before.mtimeMs !== after.mtimeMs
+        || before.ctimeMs !== after.ctimeMs) {
+      throw new Error('package changed while it was being read');
+    }
+    return bytes;
+  } finally {
+    fs.closeSync(descriptor);
   }
 }
 

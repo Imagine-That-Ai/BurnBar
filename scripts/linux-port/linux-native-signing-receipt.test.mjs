@@ -226,30 +226,43 @@ test('final package validation rejects stale, substituted, or extra native artif
   const rpm = path.join(root, 'bundle/OpenBurnBar.rpm');
   fs.writeFileSync(deb, 'deb-payload');
   fs.writeFileSync(rpm, 'rpm-payload');
+  const debBytes = fs.readFileSync(deb);
+  const rpmBytes = fs.readFileSync(rpm);
   const receipt = createNativePackageSigningReceipt({
     ...receiptOptions(),
     packages: [
       {
         type: 'deb',
         file: 'bundle/OpenBurnBar.deb',
-        size: fs.statSync(deb).size,
-        sha256: crypto.createHash('sha256').update(fs.readFileSync(deb)).digest('hex'),
+        size: debBytes.length,
+        sha256: crypto.createHash('sha256').update(debBytes).digest('hex'),
         installedManifestDigestSha256: '05'.repeat(32)
       },
       {
         type: 'rpm',
         file: 'bundle/OpenBurnBar.rpm',
-        size: fs.statSync(rpm).size,
-        sha256: crypto.createHash('sha256').update(fs.readFileSync(rpm)).digest('hex'),
+        size: rpmBytes.length,
+        sha256: crypto.createHash('sha256').update(rpmBytes).digest('hex'),
         installedManifestDigestSha256: '07'.repeat(32)
       }
     ]
   });
   const discovered = [{ type: 'deb', file: deb }, { type: 'rpm', file: rpm }];
   assert.doesNotThrow(() => validateSignedPackageArtifacts(root, receipt, discovered));
-  fs.appendFileSync(deb, '-substituted');
-  assert.throws(() => validateSignedPackageArtifacts(root, receipt, discovered), /changed or is missing: deb/);
-  fs.writeFileSync(deb, 'deb-payload');
+  const changedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-native-package-changed-'));
+  fs.mkdirSync(path.join(changedRoot, 'bundle'));
+  const changedDeb = path.join(changedRoot, 'bundle/OpenBurnBar.deb');
+  const changedRpm = path.join(changedRoot, 'bundle/OpenBurnBar.rpm');
+  fs.writeFileSync(changedDeb, '-substituted');
+  fs.writeFileSync(changedRpm, rpmBytes);
+  assert.throws(
+    () => validateSignedPackageArtifacts(changedRoot, receipt, [
+      { type: 'deb', file: changedDeb },
+      { type: 'rpm', file: changedRpm }
+    ]),
+    /changed or is missing: deb/
+  );
+  fs.rmSync(changedRoot, { recursive: true, force: true });
   assert.throws(
     () => validateSignedPackageArtifacts(root, receipt, [...discovered, { type: 'rpm', file: rpm }]),
     /do not exactly match/
