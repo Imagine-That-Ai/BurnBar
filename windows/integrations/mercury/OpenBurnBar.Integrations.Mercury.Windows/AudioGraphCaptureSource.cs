@@ -23,93 +23,173 @@ namespace OpenBurnBar.Integrations.Mercury.Windows;
 /// </summary>
 public sealed class AudioGraphCaptureSource : IAudioCaptureSource
 {
+    private readonly SemaphoreSlim _frameGate = new(1, 1);
     private AudioGraph? _graph;
     private AudioDeviceInputNode? _inputNode;
     private AudioFrameOutputNode? _outputNode;
+    private CancellationTokenSource? _captureCancellation;
     private Func<CapturedFrame, ValueTask>? _onFrame;
     private ulong _quantumCounter;
+    private bool _disposed;
 
     public bool IsMuted { get; set; }
 
+    public Exception? LastError { get; private set; }
+
     public async Task StartAsync(Func<CapturedFrame, ValueTask> onFrame, CancellationToken cancellationToken = default)
     {
-        _onFrame = onFrame ?? throw new ArgumentNullException(nameof(onFrame));
-
-        var settings = new AudioGraphSettings(AudioRenderCategory.Communications)
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(onFrame);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_graph is not null)
         {
-            QuantumSizeSelectionMode = QuantumSizeSelectionMode.LowestLatency,
-        };
-
-        var graphResult = await AudioGraph.CreateAsync(settings);
-        if (graphResult.Status != AudioGraphCreationStatus.Success)
-        {
-            throw new InvalidOperationException($"AudioGraph creation failed: {graphResult.Status}");
+            throw new InvalidOperationException("Audio capture is already running.");
         }
 
-        _graph = graphResult.Graph;
-        _outputNode = _graph.CreateFrameOutputNode();
+        _onFrame = onFrame;
+        LastError = null;
+        _captureCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-        var inputResult = await _graph.CreateDeviceInputNodeAsync(MediaCategory.Communications);
-        if (inputResult.Status != AudioDeviceNodeCreationStatus.Success)
+        try
         {
-            throw new InvalidOperationException($"audio input node creation failed: {inputResult.Status}");
+            var settings = new AudioGraphSettings(AudioRenderCategory.Communications)
+            {
+                QuantumSizeSelectionMode = QuantumSizeSelectionMode.LowestLatency,
+            };
+
+            var graphResult = await AudioGraph.CreateAsync(settings);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (graphResult.Status != AudioGraphCreationStatus.Success)
+            {
+                throw new InvalidOperationException($"AudioGraph creation failed: {graphResult.Status}");
+            }
+
+            _graph = graphResult.Graph;
+            _outputNode = _graph.CreateFrameOutputNode();
+
+            var inputResult = await _graph.CreateDeviceInputNodeAsync(MediaCategory.Communications);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (inputResult.Status != AudioDeviceNodeCreationStatus.Success)
+            {
+                throw new InvalidOperationException($"audio input node creation failed: {inputResult.Status}");
+            }
+
+            _inputNode = inputResult.DeviceInputNode;
+            _inputNode.AddOutgoingConnection(_outputNode);
+
+            _graph.QuantumStarted += OnQuantumStarted;
+            _graph.Start();
         }
-
-        _inputNode = inputResult.DeviceInputNode;
-        _inputNode.AddOutgoingConnection(_outputNode);
-
-        _graph.QuantumStarted += OnQuantumStarted;
-        _graph.Start();
+        catch
+        {
+            await StopAsync().ConfigureAwait(false);
+            throw;
+        }
     }
 
-    private void OnQuantumStarted(AudioGraph sender, object args)
+    private async void OnQuantumStarted(AudioGraph sender, object args)
     {
         var handler = _onFrame;
         var output = _outputNode;
-        if (handler is null || output is null)
+        var captureCancellation = _captureCancellation;
+        if (handler is null || output is null || captureCancellation is null || !_frameGate.Wait(0))
         {
             return;
         }
 
-        using var frame = output.GetFrame();
-        var pcm = DrainFrameToPcm(frame);
-        _quantumCounter++;
-        var timestamp = (ulong)(_quantumCounter * 10); // ~10ms quanta at low latency
-        _ = handler(new CapturedFrame(pcm, width: 0, height: 0, presentationTimestampMillis: timestamp));
+        try
+        {
+            captureCancellation.Token.ThrowIfCancellationRequested();
+            using var frame = output.GetFrame();
+            byte[] pcm = DrainFrameToPcm(frame);
+            if (pcm.Length == 0)
+            {
+                return;
+            }
+
+            _quantumCounter++;
+            ulong timestamp = _quantumCounter * 10;
+            await handler(new CapturedFrame(
+                pcm,
+                width: 0,
+                height: 0,
+                presentationTimestampMillis: timestamp)).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (captureCancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            LastError = ex;
+        }
+        finally
+        {
+            _frameGate.Release();
+        }
     }
 
     /// <summary>
     /// Copy the interleaved float PCM out of the audio frame's buffer. The exact
-    /// unsafe buffer readback (IMemoryBufferByteAccess) is completed on the
-    /// Windows dev host; the seam is here so the portable pipeline compiles.
+    /// IMemoryBufferByteAccess exposes the locked WinRT buffer without fabricating
+    /// zero-filled samples.
     /// </summary>
     private static byte[] DrainFrameToPcm(global::Windows.Media.AudioFrame frame)
     {
         using var buffer = frame.LockBuffer(global::Windows.Media.AudioBufferAccessMode.Read);
-        var length = (int)buffer.Length;
-        return new byte[Math.Max(0, length)];
+        return WindowsMediaBufferReader.ReadAudioBuffer(buffer);
     }
 
-    public Task StopAsync()
+    public async Task StopAsync()
     {
+        Exception? stopError = null;
+        _captureCancellation?.Cancel();
         if (_graph is not null)
         {
             _graph.QuantumStarted -= OnQuantumStarted;
-            _graph.Stop();
+            try
+            {
+                _graph.Stop();
+            }
+            catch (Exception ex)
+            {
+                stopError = ex;
+            }
         }
 
-        _inputNode?.Dispose();
-        _inputNode = null;
-        _outputNode?.Dispose();
-        _outputNode = null;
-        _graph?.Dispose();
-        _graph = null;
+        await _frameGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            _inputNode?.Dispose();
+            _inputNode = null;
+            _outputNode?.Dispose();
+            _outputNode = null;
+            _graph?.Dispose();
+            _graph = null;
+        }
+        finally
+        {
+            _frameGate.Release();
+        }
+
+        _captureCancellation?.Dispose();
+        _captureCancellation = null;
         _onFrame = null;
-        return Task.CompletedTask;
+
+        if (stopError is not null)
+        {
+            throw stopError;
+        }
     }
 
     public async ValueTask DisposeAsync()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
         await StopAsync().ConfigureAwait(false);
+        _disposed = true;
+        _frameGate.Dispose();
     }
 }

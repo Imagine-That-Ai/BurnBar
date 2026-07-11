@@ -20,21 +20,17 @@ namespace OpenBurnBar.Integrations.Mercury.Windows;
 /// </summary>
 public sealed class MediaFoundationVideoEncoder : IVideoEncoder
 {
-    private VideoEncoderConfiguration? _configuration;
-    private VideoEncodingProperties? _encodingProperties;
-    private Func<MediaFrame, ValueTask>? _onEncoded;
-    private uint _gopId;
-    private uint _frameIndex;
     private int _targetBitsPerSecond;
 
     public Task StartAsync(VideoEncoderConfiguration configuration, Func<MediaFrame, ValueTask> onEncoded, CancellationToken cancellationToken = default)
     {
-        _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
-        _onEncoded = onEncoded ?? throw new ArgumentNullException(nameof(onEncoded));
+        ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(onEncoded);
+        cancellationToken.ThrowIfCancellationRequested();
         _targetBitsPerSecond = configuration.TargetBitsPerSecond;
-
-        _encodingProperties = BuildEncodingProperties(configuration);
-        return Task.CompletedTask;
+        _ = BuildEncodingProperties(configuration);
+        throw new PlatformNotSupportedException(
+            "Mercury Media Foundation transport encoding is unavailable until the MFT sample I/O path is host-certified.");
     }
 
     /// <summary>
@@ -55,51 +51,20 @@ public sealed class MediaFoundationVideoEncoder : IVideoEncoder
 
     public ValueTask EncodeAsync(CapturedFrame frame)
     {
-        var handler = _onEncoded;
-        if (handler is null)
-        {
-            return ValueTask.CompletedTask;
-        }
-
-        // The real MFT ProcessInput/ProcessOutput loop runs on the Windows dev
-        // host; here we frame the encode boundary so the portable session
-        // pipeline can be exercised. Keyframe cadence tracks the configured GOP.
-        var keyframeInterval = Math.Max(1, (int)Math.Round((_configuration?.KeyframeIntervalSeconds ?? 2.0) * (_configuration?.FrameRate ?? 30)));
-        var isKeyframe = _frameIndex % keyframeInterval == 0;
-        if (isKeyframe && _frameIndex != 0)
-        {
-            _gopId++;
-            _frameIndex = 0;
-        }
-
-        var flags = isKeyframe ? MediaFrameFlags.Keyframe : MediaFrameFlags.None;
-        var mediaFrame = new MediaFrame(
-            MediaFrameKind.VideoNal,
-            flags,
-            gopId: _gopId,
-            frameIndex: _frameIndex,
-            presentationTimestampMillis: frame.PresentationTimestampMillis,
-            cursor: frame.Cursor,
-            payload: Array.Empty<byte>());
-        _frameIndex++;
-        return handler(mediaFrame);
+        _ = frame;
+        return ValueTask.FromException(new PlatformNotSupportedException(
+            "Mercury Media Foundation transport encoding is unavailable until the MFT sample I/O path is host-certified."));
     }
 
     public void SetTargetBitsPerSecond(int bitsPerSecond)
     {
         _targetBitsPerSecond = bitsPerSecond;
-        if (_encodingProperties is not null)
-        {
-            _encodingProperties.Bitrate = (uint)Math.Max(0, bitsPerSecond);
-        }
     }
 
     public int TargetBitsPerSecond => _targetBitsPerSecond;
 
     public Task StopAsync()
     {
-        _onEncoded = null;
-        _encodingProperties = null;
         return Task.CompletedTask;
     }
 

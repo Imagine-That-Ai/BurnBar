@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.Mercury.Capture.HostHarness</RootNamespace>
+    <AssemblyName>OpenBurnBar.Mercury.Capture.HostHarness</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../integrations/mercury/OpenBurnBar.Integrations.Mercury/OpenBurnBar.Integrations.Mercury.csproj" />
+    <ProjectReference Include="../../../integrations/mercury/OpenBurnBar.Integrations.Mercury.Windows/OpenBurnBar.Integrations.Mercury.Windows.csproj" />
+  </ItemGroup>
+
+</Project>

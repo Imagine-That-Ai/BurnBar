@@ -24,100 +24,169 @@ public sealed class GraphicsCaptureScreenSource : IScreenCaptureSource
 {
     private readonly Func<GraphicsCaptureItem> _itemFactory;
     private readonly IDirect3DDevice _device;
+    private readonly bool _ownsDevice;
+    private readonly SemaphoreSlim _frameGate = new(1, 1);
 
     private Direct3D11CaptureFramePool? _framePool;
     private GraphicsCaptureSession? _session;
+    private GraphicsCaptureItem? _captureItem;
+    private CancellationTokenSource? _captureCancellation;
     private Func<CapturedFrame, ValueTask>? _onFrame;
-    private ulong _frameCounter;
+    private bool _disposed;
 
-    public GraphicsCaptureScreenSource(IDirect3DDevice device, Func<GraphicsCaptureItem> itemFactory)
+    public GraphicsCaptureScreenSource(
+        IDirect3DDevice device,
+        Func<GraphicsCaptureItem> itemFactory,
+        bool ownsDevice = false)
     {
         _device = device ?? throw new ArgumentNullException(nameof(device));
         _itemFactory = itemFactory ?? throw new ArgumentNullException(nameof(itemFactory));
+        _ownsDevice = ownsDevice;
     }
 
-    public Task StartAsync(ScreenCaptureConfiguration configuration, Func<CapturedFrame, ValueTask> onFrame, CancellationToken cancellationToken = default)
+    public static GraphicsCaptureScreenSource CreateForWindow(IntPtr window)
     {
+        IDirect3DDevice device = WindowsGraphicsCaptureResources.CreateDirect3DDevice();
+        return new GraphicsCaptureScreenSource(
+            device,
+            () => WindowsGraphicsCaptureResources.CreateItemForWindow(window),
+            ownsDevice: true);
+    }
+
+    public Exception? LastError { get; private set; }
+
+    public async Task StartAsync(ScreenCaptureConfiguration configuration, Func<CapturedFrame, ValueTask> onFrame, CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         if (configuration is null)
         {
             throw new ArgumentNullException(nameof(configuration));
         }
 
-        _onFrame = onFrame ?? throw new ArgumentNullException(nameof(onFrame));
-
-        var item = _itemFactory();
-        var size = item.Size;
-        _framePool = Direct3D11CaptureFramePool.Create(
-            _device,
-            DirectXPixelFormat.B8G8R8A8UIntNormalized,
-            numberOfBuffers: 2,
-            size);
-        _framePool.FrameArrived += OnFrameArrived;
-
-        _session = _framePool.CreateCaptureSession(item);
-        // IsCursorCaptureEnabled requires Windows 10.0.19041+; guard so the
-        // adapter still starts on the 17763 floor (parity: the cursor toggle is
-        // best-effort on the mirror path).
-        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
+        ArgumentNullException.ThrowIfNull(onFrame);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_session is not null)
         {
-            _session.IsCursorCaptureEnabled = configuration.CaptureCursor;
+            throw new InvalidOperationException("Screen capture is already running.");
         }
 
-        _session.StartCapture();
-        return Task.CompletedTask;
+        if (!GraphicsCaptureSession.IsSupported())
+        {
+            throw new PlatformNotSupportedException("Windows Graphics Capture is unavailable on this host.");
+        }
+
+        try
+        {
+            _onFrame = onFrame;
+            LastError = null;
+            _captureCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            _captureItem = _itemFactory();
+            var size = _captureItem.Size;
+            _framePool = Direct3D11CaptureFramePool.CreateFreeThreaded(
+                _device,
+                DirectXPixelFormat.B8G8R8A8UIntNormalized,
+                numberOfBuffers: 2,
+                size);
+            _framePool.FrameArrived += OnFrameArrived;
+
+            _session = _framePool.CreateCaptureSession(_captureItem);
+            // IsCursorCaptureEnabled requires Windows 10.0.19041+; guard so the
+            // adapter still starts on the 17763 floor.
+            if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
+            {
+                _session.IsCursorCaptureEnabled = configuration.CaptureCursor;
+            }
+
+            _session.StartCapture();
+        }
+        catch
+        {
+            await StopAsync().ConfigureAwait(false);
+            throw;
+        }
     }
 
-    private void OnFrameArrived(Direct3D11CaptureFramePool sender, object args)
+    private async void OnFrameArrived(Direct3D11CaptureFramePool sender, object args)
     {
         var handler = _onFrame;
-        if (handler is null)
+        var captureCancellation = _captureCancellation;
+        if (handler is null || captureCancellation is null || !_frameGate.Wait(0))
         {
             return;
         }
 
-        using var frame = sender.TryGetNextFrame();
-        if (frame is null)
+        try
         {
-            return;
+            using var frame = sender.TryGetNextFrame();
+            if (frame is null)
+            {
+                return;
+            }
+
+            SoftwareBitmapBytes pixels = await WindowsMediaBufferReader
+                .ReadSurfaceBgraAsync(frame.Surface, captureCancellation.Token)
+                .ConfigureAwait(false);
+            ulong timestamp = checked((ulong)Math.Max(0, frame.SystemRelativeTime.TotalMilliseconds));
+            await handler(new CapturedFrame(
+                pixels.Bytes,
+                pixels.Width,
+                pixels.Height,
+                timestamp)).ConfigureAwait(false);
         }
-
-        var width = frame.ContentSize.Width;
-        var height = frame.ContentSize.Height;
-        var pixels = CopySurfaceToBgra(frame.Surface, width, height);
-        var timestamp = (ulong)frame.SystemRelativeTime.TotalMilliseconds;
-        _frameCounter++;
-
-        _ = handler(new CapturedFrame(pixels, width, height, timestamp));
+        catch (OperationCanceledException) when (captureCancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            LastError = ex;
+        }
+        finally
+        {
+            _frameGate.Release();
+        }
     }
 
-    /// <summary>
-    /// Copy the captured Direct3D surface to a CPU-side BGRA buffer. The concrete
-    /// staging-texture readback is filled in on the Windows dev host (it needs the
-    /// D3D11 device context); the seam is here so the portable pipeline compiles.
-    /// </summary>
-    private static byte[] CopySurfaceToBgra(IDirect3DSurface surface, int width, int height)
+    public async Task StopAsync()
     {
-        _ = surface;
-        return new byte[Math.Max(0, width) * Math.Max(0, height) * 4];
-    }
-
-    public Task StopAsync()
-    {
-        _session?.Dispose();
-        _session = null;
+        _captureCancellation?.Cancel();
         if (_framePool is not null)
         {
             _framePool.FrameArrived -= OnFrameArrived;
-            _framePool.Dispose();
-            _framePool = null;
         }
 
+        await _frameGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            _session?.Dispose();
+            _session = null;
+            _captureItem = null;
+            _framePool?.Dispose();
+            _framePool = null;
+        }
+        finally
+        {
+            _frameGate.Release();
+        }
+
+        _captureCancellation?.Dispose();
+        _captureCancellation = null;
         _onFrame = null;
-        return Task.CompletedTask;
     }
 
     public async ValueTask DisposeAsync()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
         await StopAsync().ConfigureAwait(false);
+        _disposed = true;
+        if (_ownsDevice)
+        {
+            (_device as IDisposable)?.Dispose();
+        }
+
+        _frameGate.Dispose();
     }
 }

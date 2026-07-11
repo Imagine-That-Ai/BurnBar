@@ -21,97 +21,181 @@ namespace OpenBurnBar.Integrations.Mercury.Windows;
 public sealed class MediaCaptureCameraSource : ICameraCaptureSource
 {
     private readonly Func<MediaCapture> _mediaCaptureFactory;
+    private readonly SemaphoreSlim _frameGate = new(1, 1);
 
     private MediaCapture? _mediaCapture;
     private MediaFrameReader? _frameReader;
+    private CancellationTokenSource? _captureCancellation;
     private Func<CapturedFrame, ValueTask>? _onFrame;
+    private bool _disposed;
 
     public MediaCaptureCameraSource(Func<MediaCapture>? mediaCaptureFactory = null)
     {
         _mediaCaptureFactory = mediaCaptureFactory ?? (() => new MediaCapture());
     }
 
+    public Exception? LastError { get; private set; }
+
     public async Task StartAsync(Func<CapturedFrame, ValueTask> onFrame, CancellationToken cancellationToken = default)
     {
-        _onFrame = onFrame ?? throw new ArgumentNullException(nameof(onFrame));
-
-        _mediaCapture = _mediaCaptureFactory();
-        await _mediaCapture.InitializeAsync(new MediaCaptureInitializationSettings
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(onFrame);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_mediaCapture is not null)
         {
-            StreamingCaptureMode = StreamingCaptureMode.Video,
-            MemoryPreference = MediaCaptureMemoryPreference.Cpu,
-        });
+            throw new InvalidOperationException("Camera capture is already running.");
+        }
 
-        MediaFrameSource? colorSource = null;
-        foreach (var source in _mediaCapture.FrameSources.Values)
+        _onFrame = onFrame;
+        LastError = null;
+        _captureCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        try
         {
-            if (source.Info.SourceKind == MediaFrameSourceKind.Color)
+            _mediaCapture = _mediaCaptureFactory();
+            await _mediaCapture.InitializeAsync(new MediaCaptureInitializationSettings
             {
-                colorSource = source;
-                break;
+                StreamingCaptureMode = StreamingCaptureMode.Video,
+                MemoryPreference = MediaCaptureMemoryPreference.Cpu,
+            });
+            cancellationToken.ThrowIfCancellationRequested();
+
+            MediaFrameSource? colorSource = null;
+            foreach (var source in _mediaCapture.FrameSources.Values)
+            {
+                if (source.Info.SourceKind == MediaFrameSourceKind.Color)
+                {
+                    colorSource = source;
+                    break;
+                }
+            }
+
+            if (colorSource is null)
+            {
+                throw new InvalidOperationException("No color camera frame source is available.");
+            }
+
+            _frameReader = await _mediaCapture.CreateFrameReaderAsync(colorSource);
+            _frameReader.FrameArrived += OnFrameArrived;
+            MediaFrameReaderStartStatus startStatus = await _frameReader.StartAsync();
+            cancellationToken.ThrowIfCancellationRequested();
+            if (startStatus != MediaFrameReaderStartStatus.Success)
+            {
+                throw new InvalidOperationException($"Camera frame reader failed to start: {startStatus}");
             }
         }
-
-        if (colorSource is null)
+        catch
         {
-            throw new InvalidOperationException("no color camera frame source available");
+            await StopAsync().ConfigureAwait(false);
+            throw;
         }
-
-        _frameReader = await _mediaCapture.CreateFrameReaderAsync(colorSource);
-        _frameReader.FrameArrived += OnFrameArrived;
-        await _frameReader.StartAsync();
     }
 
-    private void OnFrameArrived(MediaFrameReader sender, MediaFrameArrivedEventArgs args)
+    private async void OnFrameArrived(MediaFrameReader sender, MediaFrameArrivedEventArgs args)
     {
         var handler = _onFrame;
-        if (handler is null)
+        var captureCancellation = _captureCancellation;
+        if (handler is null || captureCancellation is null || !_frameGate.Wait(0))
         {
             return;
         }
 
-        using var reference = sender.TryAcquireLatestFrame();
-        var videoFrame = reference?.VideoMediaFrame;
-        if (videoFrame is null)
+        try
         {
-            return;
+            using var reference = sender.TryAcquireLatestFrame();
+            var videoFrame = reference?.VideoMediaFrame;
+            if (videoFrame is null)
+            {
+                return;
+            }
+
+            SoftwareBitmapBytes pixels;
+            if (videoFrame.SoftwareBitmap is not null)
+            {
+                pixels = WindowsMediaBufferReader.ReadBitmapBgra(videoFrame.SoftwareBitmap);
+            }
+            else if (videoFrame.Direct3DSurface is not null)
+            {
+                pixels = await WindowsMediaBufferReader
+                    .ReadSurfaceBgraAsync(videoFrame.Direct3DSurface, captureCancellation.Token)
+                    .ConfigureAwait(false);
+            }
+            else
+            {
+                throw new InvalidOperationException("Camera frame has neither CPU bitmap nor Direct3D surface data.");
+            }
+
+            ulong timestamp = checked((ulong)Math.Max(
+                0,
+                reference!.SystemRelativeTime.GetValueOrDefault().TotalMilliseconds));
+            await handler(new CapturedFrame(
+                pixels.Bytes,
+                pixels.Width,
+                pixels.Height,
+                timestamp)).ConfigureAwait(false);
         }
-
-        var width = videoFrame.SoftwareBitmap?.PixelWidth ?? 0;
-        var height = videoFrame.SoftwareBitmap?.PixelHeight ?? 0;
-        var pixels = CopyBitmapToBgra(videoFrame, width, height);
-        var timestamp = (ulong)reference!.SystemRelativeTime.GetValueOrDefault().TotalMilliseconds;
-        _ = handler(new CapturedFrame(pixels, width, height, timestamp));
-    }
-
-    /// <summary>
-    /// Copy the camera frame's SoftwareBitmap to a CPU-side BGRA buffer. The exact
-    /// bitmap copy-out is completed on the Windows dev host; the seam is here so
-    /// the portable pipeline compiles.
-    /// </summary>
-    private static byte[] CopyBitmapToBgra(VideoMediaFrame videoFrame, int width, int height)
-    {
-        _ = videoFrame;
-        return new byte[Math.Max(0, width) * Math.Max(0, height) * 4];
+        catch (OperationCanceledException) when (captureCancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            LastError = ex;
+        }
+        finally
+        {
+            _frameGate.Release();
+        }
     }
 
     public async Task StopAsync()
     {
+        Exception? stopError = null;
+        _captureCancellation?.Cancel();
         if (_frameReader is not null)
         {
             _frameReader.FrameArrived -= OnFrameArrived;
-            await _frameReader.StopAsync();
-            _frameReader.Dispose();
-            _frameReader = null;
+            try
+            {
+                await _frameReader.StopAsync();
+            }
+            catch (Exception ex)
+            {
+                stopError = ex;
+            }
         }
 
-        _mediaCapture?.Dispose();
-        _mediaCapture = null;
+        await _frameGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            _frameReader?.Dispose();
+            _frameReader = null;
+            _mediaCapture?.Dispose();
+            _mediaCapture = null;
+        }
+        finally
+        {
+            _frameGate.Release();
+        }
+
+        _captureCancellation?.Dispose();
+        _captureCancellation = null;
         _onFrame = null;
+
+        if (stopError is not null)
+        {
+            throw stopError;
+        }
     }
 
     public async ValueTask DisposeAsync()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
         await StopAsync().ConfigureAwait(false);
+        _disposed = true;
+        _frameGate.Dispose();
     }
 }

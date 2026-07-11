@@ -19,8 +19,10 @@
       • File-transfer quarantine, Mark-of-the-Web, Microsoft Defender scanning,
         approval-gated promotion, and immutable outbound snapshots have an ARM64
         Windows host harness and evidence runner.
-      • Capture, MediaFoundation, WASAPI, camera, and WNS adapters are type-checked
-        against the Windows SDK projection ref pack but remain runtime-deferred.
+      • WGC, AudioGraph, and MediaCapture copy real bounded buffers; the WGC path
+        has a nonblank-pixel ARM64 host harness and evidence runner.
+      • MediaFoundation sample I/O, physical mic/camera devices, calls, WNS, and
+        cross-device RFB remain runtime-deferred and visibly unavailable.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>

@@ -31,10 +31,10 @@ Implements the seam interfaces over WinRT projections:
 
 | Adapter | File | API | macOS parity source |
 |---------|------|-----|---------------------|
-| Screen mirror | `GraphicsCaptureScreenSource.cs` | Windows.Graphics.Capture | `ScreenCapturePipeline.swift` |
-| Audio capture | `AudioGraphCaptureSource.cs` | Windows.Media.Audio (WASAPI) | `MicrophoneCapturePipeline.swift` |
-| Camera | `MediaCaptureCameraSource.cs` | Windows.Media.Capture | `CameraCapturePipeline.swift` |
-| Video encode | `MediaFoundationVideoEncoder.cs` | Windows.Media (MediaFoundation) | `VideoEncoder.swift` |
+| Screen mirror | `GraphicsCaptureScreenSource.cs`, `WindowsMediaBufferReader.cs` | Windows.Graphics.Capture → real BGRA readback | `ScreenCapturePipeline.swift` |
+| Audio capture | `AudioGraphCaptureSource.cs`, `WindowsMediaBufferReader.cs` | Windows.Media.Audio (WASAPI) → real PCM readback | `MicrophoneCapturePipeline.swift` |
+| Camera | `MediaCaptureCameraSource.cs`, `WindowsMediaBufferReader.cs` | Windows.Media.Capture → real BGRA readback | `CameraCapturePipeline.swift` |
+| Video encode | `MediaFoundationVideoEncoder.cs` | MediaFoundation configuration; transport encode fails closed pending MFT sample I/O | `VideoEncoder.swift` |
 | VoIP wake | `WindowsWnsVoipPushTrigger.cs` | Windows.Networking.PushNotifications (WNS raw push) | `VoIPCallTrigger.swift` (APNs) |
 | Inbound file origin | `WindowsAttachmentOriginMarker.cs` | NTFS `Zone.Identifier` (MOTW) | macOS quarantine xattr |
 | Inbound threat scan | `WindowsDefenderThreatScanner.cs` | Microsoft Defender `MpCmdRun` custom scan | macOS malware/quarantine gate |
@@ -62,6 +62,9 @@ Implements the seam interfaces over WinRT projections:
   non-clean scan result remain quarantined. Defender scans are serialized, use
   `-DisableRemediation`, and terminate the scanner process on timeout or cancellation so scanning
   cannot mutate or outlive the quarantine decision.
+- **No fabricated media.** WGC, AudioGraph, and MediaCapture callbacks copy actual Windows buffers
+  with a 256 MiB per-frame ceiling and a one-frame in-flight gate. The unfinished Media Foundation
+  transport encoder throws rather than emitting an empty `VideoNal` payload.
 
 ## Verification ceiling (honest)
 
@@ -69,7 +72,8 @@ Implements the seam interfaces over WinRT projections:
   the Windows adapter compiles Roslyn-clean against the Windows SDK projection ref pack
   (`EnableWindowsTargeting=true`, 0 errors).
 - **Windows-host evidence:** file-transfer MOTW/Defender/promotion evidence is emitted by
-  `scripts/windows-port/run-mercury-file-transfer-host-evidence.ps1`.
-- **Windows dev-host / CI deferred:** actual capture / encode / WNS delivery — the WinRT APIs have
-  no macOS runtime. The device-touching leaves (D3D surface readback, audio buffer drain, MFT
-  sample loop) are marked as dev-host seams in the adapter source.
+  `scripts/windows-port/run-mercury-file-transfer-host-evidence.ps1`; nonblank WGC buffer evidence
+  is emitted by `scripts/windows-port/run-mercury-capture-host-evidence.ps1`.
+- **Windows dev-host / CI deferred:** physical microphone/camera device proof, Media Foundation
+  sample I/O, calls, WNS delivery, and cross-device RFB. The unfinished encoder is explicitly
+  fail-closed and the Windows Media settings surface discloses these boundaries.

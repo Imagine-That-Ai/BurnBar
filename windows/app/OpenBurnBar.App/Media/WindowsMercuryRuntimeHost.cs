@@ -65,9 +65,9 @@ internal sealed class WindowsMercuryRuntimeHost : IMediaRuntimeStatusProvider
         QuarantinedFileCount: _runtime.QuarantinedFileCount,
         SnapshotDirectory: _runtime.SnapshotDirectory,
         DownloadDirectory: _runtime.DownloadDirectory,
-        ScreenShareStatus: "Unavailable: capture-to-transport encoding is not yet certified.",
-        MicrophoneStatus: "Unavailable: audio-to-transport encoding is not yet certified.",
-        CameraStatus: "Unavailable: camera-to-transport encoding is not yet certified.");
+        ScreenShareStatus: "Unavailable: WGC readback is implemented; capture-to-transport encoding is not yet certified.",
+        MicrophoneStatus: "Unavailable: PCM readback is implemented; audio transport and device certification remain open.",
+        CameraStatus: "Unavailable: bitmap readback is implemented; camera transport and device certification remain open.");
 
     public bool OpenDownloadFolder()
     {
