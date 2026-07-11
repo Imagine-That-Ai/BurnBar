@@ -971,6 +971,10 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
+    #[allow(
+        unsafe_code,
+        reason = "test-only root privilege check for private TPM state"
+    )]
     fn attest_collects_tpm_quote_and_sealed_bundle() -> Result<(), Box<dyn std::error::Error>> {
         use crate::linux::validate_evidence_bundle_fd;
         use std::fs;

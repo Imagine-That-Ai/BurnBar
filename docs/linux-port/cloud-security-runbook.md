@@ -130,13 +130,18 @@ installed-file manifest before accepting the bounded request. Package install,
 upgrade, normal removal, explicit state purge, and active user-daemon upgrade
 recovery own the lifecycle. Fresh installs keep the root socket disabled and
 stopped; activation requires private root-owned enrollment state, a private
-root-owned `ak.ctx` quote context, and an exact root-owned rollout marker. The
-broker now parses that private state, verifies the AK-bound `ak-sha256:*`
-device ID, returns the installed release/device binding only when the state file
-is root-owned, root-group, non-symlinked, and mode `0400` or `0600`, invokes the
-packaged `/usr/bin/tpm2_quote` collector with the broker-derived qualifying
-data, and builds one sealed evidence descriptor from complete IMA measurements,
-the measured-boot log, the installed manifest, and its detached signature.
+root-owned serialized `ak.ctx` handle, and an exact root-owned rollout marker. The
+broker now has an explicit `initialize-ak` mode that uses
+`/usr/bin/tpm2_createak` followed by `/usr/bin/tpm2_evictcontrol` to persist the
+AK and save its serialized handle from root-owned EK material, writes canonical
+enrollment state, and refuses accidental overwrite without `--rotate`. The
+serve path parses that private state, verifies the
+AK-bound `ak-sha256:*` device ID, returns the installed release/device binding
+only when the state file is root-owned, root-group, non-symlinked, and mode
+`0400` or `0600`, invokes the packaged `/usr/bin/tpm2_quote` collector with the
+broker-derived qualifying data, and builds one sealed evidence descriptor from
+complete IMA measurements, the measured-boot log, the installed manifest, and
+its detached signature.
 AppImage and sandboxed/source channels do not install the broker. The
 installed-files root uses unsigned UTF-8 byte ordering for its
 NUL-delimited records, covered by one shared JS/Rust golden vector. Release
@@ -146,11 +151,11 @@ hashes; finalization verifies that receipt and current inputs. RPM construction
 also extracts the final artifact and checks every signed payload record, which
 prevents rpmbuild post-processing from invalidating daemon authorization. This
 is still source-level broker evidence only. Missing enrollment, missing
-`ak.ctx`, missing `tpm2-tools`, unavailable TPM devices, unavailable IMA or
+serialized `ak.ctx`, missing `tpm2-tools`, unavailable TPM devices, unavailable IMA or
 measured-boot logs, manifest digest mismatch, and invalid quote output all fail
 closed before upload or mint, and no installed or production parity is claimed.
 
-Production still requires broker-managed TPM 2.0 key enrollment and revocation,
+Production still requires remote enrollment activation, server-side revocation,
 real physical-TPM nonce-qualified quote vectors, UEFI measured-boot policy, IMA
 PCR 10 and full measurement-log verification, and the deployed remote verifier.
 Complete IMA logs must use the digest-bound ingress receipt and stay within the
@@ -326,10 +331,10 @@ after durable local commit.
 Do not claim high-risk production Linux cloud availability until all are present:
 
 - a dedicated real Firebase Web app ID and production allow-list entry;
-- deployed root-owned broker with broker-managed TPM 2.0
-  enrollment/revocation, real nonce-qualified quote vectors, release/package
-  measurement, UEFI measured-boot policy, and IMA measurement verification
-  where required;
+- deployed root-owned broker with broker-managed AK initialization, remote
+  enrollment activation/revocation, real nonce-qualified quote vectors,
+  release/package measurement, UEFI measured-boot policy, and IMA measurement
+  verification where required;
 - deployed signed-verdict verifier with pinned identity and operational key
   rotation, outage, denial, and audit behavior;
 - signed release/provenance binding and revocation for replaced candidates;

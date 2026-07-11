@@ -45,8 +45,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     use std::time::Duration;
 
     use openburnbar_attestd::backend::TpmImaAttestationBackend;
-    use openburnbar_attestd::config::Config;
+    use openburnbar_attestd::config::BrokerCommand;
     use openburnbar_attestd::error::{BrokerError, ErrorCode};
+    use openburnbar_attestd::lifecycle::initialize_tpm_ak;
     use openburnbar_attestd::linux::{systemd_listener, ProcPeerAuthorizer, SeqpacketConnection};
     use openburnbar_attestd::rate_limit::PerUidRateLimiter;
     use openburnbar_attestd::server::{Broker, DEFAULT_IO_DEADLINE};
@@ -55,7 +56,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     const WORKER_COUNT: usize = 4;
     const QUEUE_CAPACITY: usize = 16;
 
-    let config = Config::from_args(std::env::args().skip(1))?;
+    let config = match BrokerCommand::from_args(std::env::args().skip(1))? {
+        BrokerCommand::Serve(config) => config,
+        BrokerCommand::InitializeAk(config) => {
+            let receipt = initialize_tpm_ak(&config)?;
+            println!("{}", serde_json::to_string(&receipt)?);
+            return Ok(());
+        }
+    };
     let listener = systemd_listener(config.socket_fd)?;
     let broker = Arc::new(Broker::new(
         ProcPeerAuthorizer::new(
