@@ -34,7 +34,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     private let pairingKeyStore: IrohPairingKeyStore
     private let directory: any IrohPairingDirectory
     private let publicKeyPublisher: IrohPairingPublicKeyPublishing
-    private let inboundPeerPolicyLoader: @Sendable (String, String) async -> IrohInboundPeerPolicy
+    private let inboundPeerPolicyLoader: @Sendable (String, String) async -> IrohInboundPeerPolicyLoadResult
     private let transportFactory: @MainActor (HermesIrohRelayHostClient) -> any IrohRelayTransport
     private let urlSession: URLSession
     private let auditLogger: any IrohTransportAuditLogging
@@ -42,6 +42,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     private var acceptTask: Task<Void, Never>?
     private var heartbeatTask: Task<Void, Never>?
     private var recoveryTask: Task<Void, Never>?
+    private var authStateListenerHandle: AuthStateDidChangeListenerHandle?
     private var acceptLoopHealthy = false
     private var heartbeatHealthy = false
     /// Mercury media dispatcher (Phase 1b). Set by the host owner so the
@@ -87,7 +88,22 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     private var readyConnectionID: String?
     private var publishedIdentity: IrohEndpointIdentity?
     private var inboundPeerPolicy = IrohInboundPeerPolicy(allowedPeerNodeIds: [])
+    private var policyLoadRequestEpoch: UInt64 = 0
+    private var lastAuthoritativePolicyLoadAt: Date?
+    private var missRefreshTask: Task<Void, Never>?
+    private var lastAllowlistMissRefreshAt: Date?
+    private struct ServeAuthorization: Sendable, Equatable {
+        let remotePeerNodeId: String
+        let generation: UInt64
+        let expiresAtMillis: Int64
+    }
+    private var serveAuthorizations: [UUID: ServeAuthorization] = [:]
+    private var serveStreams: [UUID: any IrohRelayStream] = [:]
+    private var routeExpiryTask: Task<Void, Never>?
     private let pairingPublishInterval: TimeInterval
+    private let now: @Sendable () -> Date
+    private let missRefreshMinimumPolicyAge: TimeInterval
+    private let missRefreshBudgetInterval: TimeInterval
     /// How many times teardown re-attempts a failed pairing-record revoke before
     /// it gives up and logs an error. A swallowed revoke leaves the host's
     /// `iroh_pairing/*` doc live in Firestore advertising a NodeId that is no
@@ -108,6 +124,14 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     private var rejectedPeerLastSeen: [String: Date] = [:]
     private static let rejectedPeerCooldown: TimeInterval = 5
     private static let rejectedPeerTableCap = 1024
+
+    nonisolated static func shouldStopForAuthenticatedUserChange(
+        readyUID: String?,
+        authenticatedUID: String?
+    ) -> Bool {
+        guard let readyUID else { return false }
+        return authenticatedUID != readyUID
+    }
 
     // nonisolated: a pure error-classification helper (no actor state) used from
     // both isolated and nonisolated async retry/accept paths.
@@ -192,11 +216,14 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         directory: (any IrohPairingDirectory)? = nil,
         publicKeyPublisher: IrohPairingPublicKeyPublishing = IrohPairingPublicKeyPublisher.shared,
         auditLogger: any IrohTransportAuditLogging = FirestoreIrohAuditLogger.shared,
-        inboundPeerPolicyLoader: @escaping @Sendable (String, String) async -> IrohInboundPeerPolicy = { uid, connectionID in
-            await FirestoreIrohInboundPeerAllowlist.load(uid: uid, connectionId: connectionID)
+        inboundPeerPolicyLoader: @escaping @Sendable (String, String) async -> IrohInboundPeerPolicyLoadResult = { uid, connectionID in
+            await CallableIrohControllerRouteDirectory.load(uid: uid, connectionId: connectionID)
         },
         urlSession: URLSession = .shared,
         pairingPublishInterval: TimeInterval = 60,
+        now: @escaping @Sendable () -> Date = Date.init,
+        missRefreshMinimumPolicyAge: TimeInterval = 0.5,
+        missRefreshBudgetInterval: TimeInterval = 15,
         revokeRetryAttempts: Int = 3,
         revokeRetrySleep: @escaping @Sendable (UInt64) async -> Void = { nanos in
             try? await Task.sleep(nanoseconds: nanos) // try?-ok(cancellation only; backoff between revoke retries)
@@ -219,6 +246,9 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         self.inboundPeerPolicyLoader = inboundPeerPolicyLoader
         self.urlSession = urlSession
         self.pairingPublishInterval = pairingPublishInterval
+        self.now = now
+        self.missRefreshMinimumPolicyAge = max(0, missRefreshMinimumPolicyAge)
+        self.missRefreshBudgetInterval = max(1, missRefreshBudgetInterval)
         self.revokeRetryAttempts = max(1, revokeRetryAttempts)
         self.revokeRetrySleep = revokeRetrySleep
         self.transportFactory = transportFactory
@@ -305,7 +335,9 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
 
             readyUID = uid
             readyConnectionID = connectionID
-            inboundPeerPolicy = await inboundPeerPolicyLoader(uid, connectionID)
+            installAuthStateListener()
+            await refreshInboundPeerPolicy(uid: uid, connectionID: connectionID)
+            lastAllowlistMissRefreshAt = nil
             acceptLoopHealthy = true
             heartbeatHealthy = true
 
@@ -317,8 +349,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                     try? await Task.sleep(nanoseconds: UInt64(pairingPublishInterval * 1_000_000_000)) // try?-ok(cancellation only)
                     await self?.refreshPairingRecord(uid: uid, connectionID: connectionID)
                     if let self {
-                        self.inboundPeerPolicy = await self.inboundPeerPolicyLoader(uid, connectionID)
-                        await self.purgeStreamsForDeallowlistedPeers()
+                        await self.refreshInboundPeerPolicy(uid: uid, connectionID: connectionID)
                     }
                 }
             }
@@ -335,18 +366,29 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     }
 
     func stop() {
+        if let authStateListenerHandle {
+            Auth.auth().removeStateDidChangeListener(authStateListenerHandle)
+            self.authStateListenerHandle = nil
+        }
         acceptTask?.cancel()
         acceptTask = nil
         heartbeatTask?.cancel()
         heartbeatTask = nil
         recoveryTask?.cancel()
         recoveryTask = nil
+        missRefreshTask?.cancel()
+        missRefreshTask = nil
+        routeExpiryTask?.cancel()
+        routeExpiryTask = nil
         acceptLoopHealthy = false
         heartbeatHealthy = false
         for task in serveTasks.values {
             task.cancel()
         }
         serveTasks.removeAll()
+        serveAuthorizations.removeAll()
+        let streamsToClose = Array(serveStreams.values)
+        serveStreams.removeAll()
 
         let transportToStop = transport
         let uid = readyUID
@@ -355,6 +397,10 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         transport = nil
         readyUID = nil
         readyConnectionID = nil
+        policyLoadRequestEpoch &+= 1
+        inboundPeerPolicy = IrohInboundPeerPolicy(routeBindings: [])
+        lastAuthoritativePolicyLoadAt = nil
+        lastAllowlistMissRefreshAt = nil
         let revokedNodeId = publishedIdentity?.nodeId
         publishedIdentity = nil
 
@@ -364,6 +410,9 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
             // RR-18 — drain the per-peer teardown index through the same
             // cancel-all path `stop()` already runs over `serveTasks`.
             await serveTaskTeardownRegistry.cancelAll()
+            for stream in streamsToClose {
+                await stream.close()
+            }
             if let transportToStop {
                 await transportToStop.shutdown()
             }
@@ -391,6 +440,22 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         }
     }
 
+    private func installAuthStateListener() {
+        guard authStateListenerHandle == nil, FirebaseApp.app() != nil else { return }
+        authStateListenerHandle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
+            let authenticatedUID = user?.uid
+            Task { @MainActor [weak self] in
+                guard let self,
+                      Self.shouldStopForAuthenticatedUserChange(
+                          readyUID: self.readyUID,
+                          authenticatedUID: authenticatedUID
+                      ) else { return }
+                AppLogger.network.info("hermes_iroh_relay_stopping_after_auth_change")
+                self.stop()
+            }
+        }
+    }
+
     private func acceptLoop(
         transport: any IrohRelayTransport,
         uid: String,
@@ -400,7 +465,32 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         while !Task.isCancelled {
             do {
                 let stream = try await transport.accept(timeout: 30)
-                if !inboundPeerPolicy.allows(remotePeerNodeId: stream.remotePeerNodeId) {
+                var admissionMillis = currentTimeMillis
+                var admittedBinding = inboundPeerPolicy.binding(
+                    for: stream.remotePeerNodeId,
+                    atMillis: admissionMillis
+                )
+                var isAdmitted = inboundPeerPolicy.allows(
+                    remotePeerNodeId: stream.remotePeerNodeId,
+                    atMillis: admissionMillis
+                )
+                if !isAdmitted {
+                    isAdmitted = await refreshInboundPeerPolicyAfterMiss(
+                       uid: uid,
+                       connectionID: connectionID,
+                       remotePeerNodeId: stream.remotePeerNodeId
+                    )
+                    admissionMillis = currentTimeMillis
+                    admittedBinding = inboundPeerPolicy.binding(
+                        for: stream.remotePeerNodeId,
+                        atMillis: admissionMillis
+                    )
+                    isAdmitted = isAdmitted && inboundPeerPolicy.allows(
+                        remotePeerNodeId: stream.remotePeerNodeId,
+                        atMillis: admissionMillis
+                    )
+                }
+                if !isAdmitted {
                     // remediation(handshake-before-allowlist DoS amplifier): close
                     // the rejected stream immediately, and only emit the audit
                     // record when this source has not been rejected within the
@@ -443,6 +533,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                 let serveID = UUID()
                 let task = Task { [weak self, auditLogger] in
                     let start = Date()
+                    var transferredStreamOwnership = false
                     await auditLogger.record(
                         event: .streamOpened,
                         uid: uid,
@@ -457,6 +548,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                             uid: uid,
                             connectionID: connectionID
                         )
+                        transferredStreamOwnership = disposition == .transferredStreamOwnership
                         let rtt = Int(Date().timeIntervalSince(start) * 1000)
                         await auditLogger.record(
                             event: .streamClosed,
@@ -480,9 +572,21 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                         )
                         await stream.close()
                     }
-                    await self?.releaseServeTask(serveID)
+                    await self?.releaseServeTask(
+                        serveID,
+                        retainStreamAuthorization: transferredStreamOwnership
+                    )
                 }
                 serveTasks[serveID] = task
+                serveStreams[serveID] = stream
+                if let admittedBinding {
+                    serveAuthorizations[serveID] = ServeAuthorization(
+                        remotePeerNodeId: admittedBinding.transportNodeId,
+                        generation: admittedBinding.generation,
+                        expiresAtMillis: admittedBinding.expiresAtMillis
+                    )
+                    scheduleNextRouteExpiry()
+                }
                 // RR-18 — mirror the task into the per-peer teardown index so a
                 // mid-stream de-allowlist can cancel just this peer's tasks.
                 let remotePeerNodeId = stream.remotePeerNodeId
@@ -538,8 +642,16 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         )
     }
 
-    private func releaseServeTask(_ id: UUID) async {
+    private func releaseServeTask(
+        _ id: UUID,
+        retainStreamAuthorization: Bool
+    ) async {
         serveTasks.removeValue(forKey: id)
+        if !retainStreamAuthorization {
+            serveStreams.removeValue(forKey: id)
+            serveAuthorizations.removeValue(forKey: id)
+        }
+        scheduleNextRouteExpiry()
         await serveTaskTeardownRegistry.release(serveID: id)
     }
 
@@ -570,6 +682,162 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         return true
     }
 
+    func refreshInboundPeerPolicyAfterMiss(
+        uid: String,
+        connectionID: String,
+        remotePeerNodeId: String?
+    ) async -> Bool {
+        if isInboundPeerAllowed(remotePeerNodeId: remotePeerNodeId) {
+            return true
+        }
+        if let missRefreshTask {
+            await missRefreshTask.value
+            return isInboundPeerAllowed(remotePeerNodeId: remotePeerNodeId)
+        }
+
+        let requestTime = now()
+        if let lastAuthoritativePolicyLoadAt,
+           requestTime.timeIntervalSince(lastAuthoritativePolicyLoadAt) < missRefreshMinimumPolicyAge {
+            return false
+        }
+        if let lastAllowlistMissRefreshAt,
+           requestTime.timeIntervalSince(lastAllowlistMissRefreshAt) < missRefreshBudgetInterval {
+            return false
+        }
+        // Charge the budget before the cloud request starts. Failed requests
+        // consume the same budget as successful ones so an unauthenticated
+        // source cannot turn callable outages into an unbounded retry loop.
+        lastAllowlistMissRefreshAt = requestTime
+        let task = Task<Void, Never> { @MainActor [weak self] in
+            guard let self else { return }
+            await self.refreshInboundPeerPolicy(uid: uid, connectionID: connectionID)
+        }
+        missRefreshTask = task
+        await task.value
+        missRefreshTask = nil
+        return isInboundPeerAllowed(remotePeerNodeId: remotePeerNodeId)
+    }
+
+    /// Starts one directory request and applies it only if no newer request was
+    /// launched while it was suspended. Main-actor serialization alone is not
+    /// enough here because actor methods are reentrant across `await`: without
+    /// the epoch check, a delayed old success can overwrite a newer empty
+    /// response that revoked every route.
+    @discardableResult
+    func refreshInboundPeerPolicy(uid: String, connectionID: String) async -> Bool {
+        policyLoadRequestEpoch &+= 1
+        let requestEpoch = policyLoadRequestEpoch
+        let result = await inboundPeerPolicyLoader(uid, connectionID)
+        guard requestEpoch == policyLoadRequestEpoch,
+              readyUID == uid,
+              readyConnectionID == connectionID else {
+            return false
+        }
+
+        switch result {
+        case .authoritative(let policy):
+            let atMillis = currentTimeMillis
+            let invalidatedServeIDs = Set(serveAuthorizations.compactMap { serveID, authorization in
+                guard let currentBinding = policy.binding(
+                    for: authorization.remotePeerNodeId,
+                    atMillis: atMillis
+                ), currentBinding.generation == authorization.generation,
+                   currentBinding.expiresAtMillis == authorization.expiresAtMillis else {
+                    return serveID
+                }
+                return nil
+            })
+            inboundPeerPolicy = policy
+            lastAuthoritativePolicyLoadAt = now()
+            let invalidatedPeers = await closeServeTasks(ids: invalidatedServeIDs)
+            await purgeStreamsForDeallowlistedPeers(additionallyDisallowedPeerNodeIds: invalidatedPeers)
+            scheduleNextRouteExpiry()
+            return true
+        case .transientFailure:
+            // Retain only the last server-verified policy. Its signed route
+            // expiries remain authoritative locally and are enforced even when
+            // the callable is unavailable.
+            await enforceInboundPeerExpiry(atMillis: currentTimeMillis)
+            return false
+        }
+    }
+
+    func isInboundPeerAllowed(remotePeerNodeId: String?, atMillis: Int64? = nil) -> Bool {
+        inboundPeerPolicy.allows(
+            remotePeerNodeId: remotePeerNodeId,
+            atMillis: atMillis ?? currentTimeMillis
+        )
+    }
+
+    var activeAuthorizedStreamCount: Int {
+        serveAuthorizations.count
+    }
+
+    /// Exact local expiry enforcement for already-established privileged
+    /// streams. The timer calls this at the earliest active lease expiry; the
+    /// internal surface also makes clock-driven tests deterministic.
+    func enforceInboundPeerExpiry(atMillis: Int64) async {
+        let expiredServeIDs = Set(serveAuthorizations.compactMap { serveID, authorization in
+            authorization.expiresAtMillis <= atMillis ? serveID : nil
+        })
+        let expiredPeers = await closeServeTasks(ids: expiredServeIDs)
+        if !expiredPeers.isEmpty {
+            await purgeMediaControlStreams(disallowing: expiredPeers)
+        }
+        scheduleNextRouteExpiry()
+    }
+
+    private var currentTimeMillis: Int64 {
+        Int64(now().timeIntervalSince1970 * 1_000)
+    }
+
+    private func scheduleNextRouteExpiry() {
+        routeExpiryTask?.cancel()
+        routeExpiryTask = nil
+        guard let expiresAtMillis = serveAuthorizations.values.map(\.expiresAtMillis).min() else {
+            return
+        }
+        let delayMillis = max(0, expiresAtMillis - currentTimeMillis)
+        routeExpiryTask = Task<Void, Never> { @MainActor [weak self] in
+            if delayMillis > 0 {
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(delayMillis) * 1_000_000)
+                } catch {
+                    return
+                }
+            }
+            guard !Task.isCancelled else { return }
+            await self?.enforceInboundPeerExpiry(atMillis: expiresAtMillis)
+        }
+    }
+
+    private func closeServeTasks(ids: Set<UUID>) async -> Set<String> {
+        var peerNodeIds = Set<String>()
+        for serveID in ids {
+            if let authorization = serveAuthorizations.removeValue(forKey: serveID) {
+                peerNodeIds.insert(authorization.remotePeerNodeId)
+            }
+            serveTasks.removeValue(forKey: serveID)?.cancel()
+            if let stream = serveStreams.removeValue(forKey: serveID) {
+                await stream.close()
+            }
+            await serveTaskTeardownRegistry.release(serveID: serveID)
+        }
+        return peerNodeIds
+    }
+
+    private func purgeMediaControlStreams(disallowing peerNodeIds: Set<String>) async {
+        guard let registry = mediaControlStreamRegistry else { return }
+        let isAllowed: MediaInboundPeerAllowChecker = { remotePeerNodeId in
+            guard let remotePeerNodeId,
+                  let canonical = IrohNodeIdNormalization.canonicalTransportNodeId(remotePeerNodeId) else {
+                return false
+            }
+            return !peerNodeIds.contains(canonical)
+        }
+        _ = await registry.purgeStreamsNotAllowed(by: isAllowed)
+    }
+
     /// RR-18 — tear down any serve task or persistent media-control stream whose
     /// remote peer is no longer in the freshly-refreshed inbound allowlist.
     /// Called from the heartbeat right after `inboundPeerPolicy` is reloaded, so
@@ -577,12 +845,26 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     /// within one heartbeat instead of keeping them until natural close. The
     /// allow-checker captures the policy by value (it is `Sendable`), so the
     /// actor registries never reach back into `@MainActor` state.
-    private func purgeStreamsForDeallowlistedPeers() async {
+    private func purgeStreamsForDeallowlistedPeers(
+        additionallyDisallowedPeerNodeIds: Set<String> = []
+    ) async {
         let policy = inboundPeerPolicy
-        let isAllowed: MediaInboundPeerAllowChecker = { policy.allows(remotePeerNodeId: $0) }
+        let atMillis = currentTimeMillis
+        let isAllowed: MediaInboundPeerAllowChecker = { remotePeerNodeId in
+            guard let remotePeerNodeId,
+                  let canonical = IrohNodeIdNormalization.canonicalTransportNodeId(remotePeerNodeId),
+                  !additionallyDisallowedPeerNodeIds.contains(canonical) else {
+                return false
+            }
+            return policy.allows(remotePeerNodeId: canonical, atMillis: atMillis)
+        }
         let cancelledServeIDs = await serveTaskTeardownRegistry.cancelTasks(notAllowedBy: isAllowed)
         for serveID in cancelledServeIDs {
             serveTasks.removeValue(forKey: serveID)
+            serveAuthorizations.removeValue(forKey: serveID)
+            if let stream = serveStreams.removeValue(forKey: serveID) {
+                await stream.close()
+            }
         }
         if let registry = mediaControlStreamRegistry {
             let purgedPeerNodeIds = await registry.purgeStreamsNotAllowed(by: isAllowed)
@@ -596,6 +878,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                 "hermes_iroh_relay_inbound_peer_purged serveTasks=\(cancelledServeIDs.count) controlStreams=0"
             )
         }
+        scheduleNextRouteExpiry()
     }
 
     private func refreshPairingRecord(uid: String, connectionID: String) async {
@@ -652,15 +935,29 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         acceptTask = nil
         heartbeatTask?.cancel()
         heartbeatTask = nil
+        missRefreshTask?.cancel()
+        missRefreshTask = nil
+        routeExpiryTask?.cancel()
+        routeExpiryTask = nil
         for task in serveTasks.values {
             task.cancel()
         }
         serveTasks.removeAll()
+        serveAuthorizations.removeAll()
+        let streamsToClose = Array(serveStreams.values)
+        serveStreams.removeAll()
         // RR-18 — same cancel-all teardown for the per-peer index.
         await serveTaskTeardownRegistry.cancelAll()
+        for stream in streamsToClose {
+            await stream.close()
+        }
         self.transport = nil
         readyUID = nil
         readyConnectionID = nil
+        policyLoadRequestEpoch &+= 1
+        inboundPeerPolicy = IrohInboundPeerPolicy(routeBindings: [])
+        lastAuthoritativePolicyLoadAt = nil
+        lastAllowlistMissRefreshAt = nil
         publishedIdentity = nil
 
         if let transportToStop {

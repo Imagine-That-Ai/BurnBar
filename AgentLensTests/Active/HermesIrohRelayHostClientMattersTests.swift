@@ -3,10 +3,14 @@ import OpenBurnBarCore
 import OpenBurnBarIrohRelay
 @testable import OpenBurnBar
 
-/// Focused coverage for the `try?` revoke-swallow sites in
-/// `HermesIrohRelayHostClient` that were judged to MATTER:
+/// Focused security and lifecycle coverage for `HermesIrohRelayHostClient`:
 ///
-/// - `stop()` (was L270) and `handleAcceptLoopTerminated` (was L519) each
+/// - stale directory responses cannot undo a newer authoritative revoke;
+/// - transient callable failures retain only unexpired verified routes;
+/// - established serve and transferred media-control streams close at route
+///   expiry or generation replacement;
+/// - unauthenticated misses share one bounded discovery refresh;
+/// - `stop()` and `handleAcceptLoopTerminated` each previously
 ///   tore down the host and called `try? await directory.revoke(...)`. A
 ///   swallowed revoke leaves the host's `iroh_pairing/*` doc live in Firestore,
 ///   advertising a NodeId that no longer accepts streams — a fail-OPEN: a peer
@@ -17,12 +21,276 @@ import OpenBurnBarIrohRelay
 /// revoke) and logs loudly if every attempt fails (so the divergence is at
 /// least observable instead of silently swallowed).
 ///
-/// These tests drive that one shared revoke path directly through the injected
-/// directory + sleep seams, and also assert the end-to-end teardown contract:
-/// after `stop()` / accept-loop termination the pairing record is gone.
+/// The tests use injected loaders, clocks, transports, and sleep seams so the
+/// concurrency and expiry contracts remain deterministic.
 final class HermesIrohRelayHostClientMattersTests: XCTestCase {
     private let uid = "uid-revoke"
     private let connectionID = "connection-revoke"
+
+    func test_authChangeStopsOnlyAnActiveHostOwnedByAnotherUser() {
+        XCTAssertFalse(HermesIrohRelayHostClient.shouldStopForAuthenticatedUserChange(
+            readyUID: nil,
+            authenticatedUID: "uid-a"
+        ))
+        XCTAssertFalse(HermesIrohRelayHostClient.shouldStopForAuthenticatedUserChange(
+            readyUID: "uid-a",
+            authenticatedUID: "uid-a"
+        ))
+        XCTAssertTrue(HermesIrohRelayHostClient.shouldStopForAuthenticatedUserChange(
+            readyUID: "uid-a",
+            authenticatedUID: "uid-b"
+        ))
+        XCTAssertTrue(HermesIrohRelayHostClient.shouldStopForAuthenticatedUserChange(
+            readyUID: "uid-a",
+            authenticatedUID: nil
+        ))
+    }
+
+    @MainActor
+    func test_allowlistMissRefreshesOnceAndAdmitsNewServerRoute() async throws {
+        let nodeId = String(repeating: "a", count: 64)
+        let nowMillis = Int64(Date().timeIntervalSince1970 * 1_000)
+        let binding = try XCTUnwrap(IrohControllerRouteBinding(
+            sourceDeviceId: "ios-device-1",
+            transportNodeId: nodeId,
+            authorityPeerNodeId: "ios-authority-1",
+            generation: 1,
+            registeredAtMillis: nowMillis - 1_000,
+            expiresAtMillis: nowMillis + 60_000
+        ))
+        let loader = SequencedInboundPolicyLoader(policies: [
+            IrohInboundPeerPolicy(routeBindings: []),
+            IrohInboundPeerPolicy(routeBindings: [binding])
+        ])
+        let client = makeClient(
+            directory: InMemoryIrohPairingDirectory(),
+            inboundPeerPolicyLoader: { uid, connectionID in
+                .authoritative(await loader.load(uid: uid, connectionID: connectionID))
+            },
+            missRefreshMinimumPolicyAge: 0
+        )
+
+        let started = await client.start(uid: uid, connectionID: connectionID)
+        XCTAssertTrue(started)
+        let admittedAfterRefresh = await client.refreshInboundPeerPolicyAfterMiss(
+            uid: uid,
+            connectionID: connectionID,
+            remotePeerNodeId: nodeId
+        )
+        XCTAssertTrue(admittedAfterRefresh)
+        let secondMissAdmitted = await client.refreshInboundPeerPolicyAfterMiss(
+            uid: uid,
+            connectionID: connectionID,
+            remotePeerNodeId: String(repeating: "b", count: 64)
+        )
+        XCTAssertFalse(secondMissAdmitted)
+        let loadCallCount = await loader.callCount
+        XCTAssertEqual(loadCallCount, 2)
+        client.stop()
+    }
+
+    @MainActor
+    func test_delayedOlderSuccessCannotOverwriteNewerAuthoritativeRevoke() async throws {
+        let nodeId = String(repeating: "a", count: 64)
+        let nowMillis = Int64(Date().timeIntervalSince1970 * 1_000)
+        let allowed = IrohInboundPeerPolicy(routeBindings: [try makeBinding(
+            nodeId: nodeId,
+            generation: 1,
+            registeredAtMillis: nowMillis - 1_000,
+            expiresAtMillis: nowMillis + 60_000
+        )])
+        let loader = ControlledInboundPolicyLoader(immediate: [
+            0: .authoritative(allowed),
+            2: .authoritative(IrohInboundPeerPolicy(routeBindings: []))
+        ])
+        let client = makeClient(
+            directory: InMemoryIrohPairingDirectory(),
+            inboundPeerPolicyLoader: { uid, connectionID in
+                await loader.load(uid: uid, connectionID: connectionID)
+            }
+        )
+        let started = await client.start(uid: uid, connectionID: connectionID)
+        XCTAssertTrue(started)
+
+        async let delayedOld = client.refreshInboundPeerPolicy(uid: uid, connectionID: connectionID)
+        try await waitUntil { await loader.callCount == 2 }
+        async let newerRevoke = client.refreshInboundPeerPolicy(uid: uid, connectionID: connectionID)
+        let didApplyRevoke = await newerRevoke
+        XCTAssertTrue(didApplyRevoke)
+        await loader.resolve(callIndex: 1, with: .authoritative(allowed))
+        let didApplyDelayedOld = await delayedOld
+        XCTAssertFalse(didApplyDelayedOld, "Superseded response must not be applied")
+        XCTAssertFalse(client.isInboundPeerAllowed(remotePeerNodeId: nodeId))
+        client.stop()
+    }
+
+    @MainActor
+    func test_transientFailureRetainsVerifiedPolicyOnlyUntilSignedExpiry() async throws {
+        let clock = LockedHostTestClock(date: Date(timeIntervalSince1970: 10))
+        let nodeId = String(repeating: "b", count: 64)
+        let policy = IrohInboundPeerPolicy(routeBindings: [try makeBinding(
+            nodeId: nodeId,
+            generation: 4,
+            registeredAtMillis: 9_000,
+            expiresAtMillis: 11_000
+        )])
+        let loader = ControlledInboundPolicyLoader(immediate: [
+            0: .authoritative(policy),
+            1: .transientFailure
+        ])
+        let client = makeClient(
+            directory: InMemoryIrohPairingDirectory(),
+            inboundPeerPolicyLoader: { uid, connectionID in
+                await loader.load(uid: uid, connectionID: connectionID)
+            },
+            now: { clock.now }
+        )
+        let started = await client.start(uid: uid, connectionID: connectionID)
+        XCTAssertTrue(started)
+
+        clock.set(Date(timeIntervalSince1970: 10.5))
+        let didApplyTransientFailure = await client.refreshInboundPeerPolicy(uid: uid, connectionID: connectionID)
+        XCTAssertFalse(didApplyTransientFailure)
+        XCTAssertTrue(client.isInboundPeerAllowed(remotePeerNodeId: nodeId, atMillis: 10_999))
+        XCTAssertFalse(client.isInboundPeerAllowed(remotePeerNodeId: nodeId, atMillis: 11_000))
+        client.stop()
+    }
+
+    @MainActor
+    func test_establishedStreamClosesAtExactRouteExpiry() async throws {
+        let nodeId = String(repeating: "c", count: 64)
+        let nowMillis = Int64(Date().timeIntervalSince1970 * 1_000)
+        let stream = BlockingHostTestStream(
+            remotePeerNodeId: nodeId,
+            frames: [
+                HermesRealtimeRelayFrame(
+                    type: .mediaClassify,
+                    uid: uid,
+                    connectionId: connectionID,
+                    media: HermesRealtimeRelayMediaPayload(streamClass: "media.control")
+                )
+            ]
+        )
+        let transport = SingleInboundStreamTransport(stream: stream)
+        let registrar = HostMediaControlRegistrarRecorder()
+        let policy = IrohInboundPeerPolicy(routeBindings: [try makeBinding(
+            nodeId: nodeId,
+            generation: 7,
+            registeredAtMillis: nowMillis - 1_000,
+            expiresAtMillis: nowMillis + 60_000
+        )])
+        let client = makeClient(
+            directory: InMemoryIrohPairingDirectory(),
+            inboundPeerPolicyLoader: { _, _ in .authoritative(policy) },
+            transportFactory: { _ in transport }
+        )
+        client.mediaControlRegistrar = { stream, uid, connectionID in
+            await registrar.record(stream: stream, uid: uid, connectionID: connectionID)
+        }
+        let started = await client.start(uid: uid, connectionID: connectionID)
+        XCTAssertTrue(started)
+        try await waitUntil { await registrar.registrationCount == 1 }
+        try await waitUntil { client.activeAuthorizedStreamCount == 1 }
+
+        await client.enforceInboundPeerExpiry(atMillis: nowMillis + 60_000)
+        try await waitUntil { await stream.isClosed }
+        client.stop()
+    }
+
+    @MainActor
+    func test_generationReplacementClosesStreamAuthorizedByOldGeneration() async throws {
+        let nodeId = String(repeating: "d", count: 64)
+        let nowMillis = Int64(Date().timeIntervalSince1970 * 1_000)
+        let oldPolicy = IrohInboundPeerPolicy(routeBindings: [try makeBinding(
+            nodeId: nodeId,
+            generation: 1,
+            registeredAtMillis: nowMillis - 1_000,
+            expiresAtMillis: nowMillis + 60_000
+        )])
+        let replacementPolicy = IrohInboundPeerPolicy(routeBindings: [try makeBinding(
+            nodeId: nodeId,
+            generation: 2,
+            registeredAtMillis: nowMillis,
+            expiresAtMillis: nowMillis + 120_000
+        )])
+        let loader = ControlledInboundPolicyLoader(immediate: [
+            0: .authoritative(oldPolicy),
+            1: .authoritative(replacementPolicy)
+        ])
+        let stream = BlockingHostTestStream(remotePeerNodeId: nodeId)
+        let transport = SingleInboundStreamTransport(stream: stream)
+        let client = makeClient(
+            directory: InMemoryIrohPairingDirectory(),
+            inboundPeerPolicyLoader: { uid, connectionID in
+                await loader.load(uid: uid, connectionID: connectionID)
+            },
+            transportFactory: { _ in transport }
+        )
+        let started = await client.start(uid: uid, connectionID: connectionID)
+        XCTAssertTrue(started)
+        try await waitUntil { client.activeAuthorizedStreamCount == 1 }
+
+        let didApplyReplacement = await client.refreshInboundPeerPolicy(uid: uid, connectionID: connectionID)
+        XCTAssertTrue(didApplyReplacement)
+        try await waitUntil { await stream.isClosed }
+        XCTAssertTrue(client.isInboundPeerAllowed(remotePeerNodeId: nodeId))
+        client.stop()
+    }
+
+    @MainActor
+    func test_missRefreshCoalescesConcurrentCallersAndChargesRateBudget() async throws {
+        let clock = LockedHostTestClock(date: Date(timeIntervalSince1970: 20))
+        let nodeId = String(repeating: "e", count: 64)
+        let policy = IrohInboundPeerPolicy(routeBindings: [try makeBinding(
+            nodeId: nodeId,
+            generation: 1,
+            registeredAtMillis: 19_000,
+            expiresAtMillis: 80_000
+        )])
+        let loader = ControlledInboundPolicyLoader(immediate: [
+            0: .authoritative(IrohInboundPeerPolicy(routeBindings: []))
+        ])
+        let client = makeClient(
+            directory: InMemoryIrohPairingDirectory(),
+            inboundPeerPolicyLoader: { uid, connectionID in
+                await loader.load(uid: uid, connectionID: connectionID)
+            },
+            now: { clock.now },
+            missRefreshMinimumPolicyAge: 0,
+            missRefreshBudgetInterval: 30
+        )
+        let started = await client.start(uid: uid, connectionID: connectionID)
+        XCTAssertTrue(started)
+
+        async let first = client.refreshInboundPeerPolicyAfterMiss(
+            uid: uid,
+            connectionID: connectionID,
+            remotePeerNodeId: nodeId
+        )
+        async let second = client.refreshInboundPeerPolicyAfterMiss(
+            uid: uid,
+            connectionID: connectionID,
+            remotePeerNodeId: nodeId
+        )
+        try await waitUntil { await loader.callCount == 2 }
+        await loader.resolve(callIndex: 1, with: .authoritative(policy))
+        let firstAdmitted = await first
+        let secondAdmitted = await second
+        XCTAssertTrue(firstAdmitted)
+        XCTAssertTrue(secondAdmitted)
+        let callsAfterCoalescing = await loader.callCount
+        XCTAssertEqual(callsAfterCoalescing, 2, "Concurrent misses must share one callable load")
+
+        let rejectedWithinBudget = await client.refreshInboundPeerPolicyAfterMiss(
+            uid: uid,
+            connectionID: connectionID,
+            remotePeerNodeId: String(repeating: "f", count: 64)
+        )
+        XCTAssertFalse(rejectedWithinBudget)
+        let callsAfterBudgetedMiss = await loader.callCount
+        XCTAssertEqual(callsAfterBudgetedMiss, 2, "Miss budget must suppress repeated cloud loads")
+        client.stop()
+    }
 
     // MARK: - revokePairingRecord retry contract
 
@@ -185,6 +453,12 @@ final class HermesIrohRelayHostClientMattersTests: XCTestCase {
     @MainActor
     private func makeClient(
         directory: any IrohPairingDirectory,
+        inboundPeerPolicyLoader: @escaping @Sendable (String, String) async -> IrohInboundPeerPolicyLoadResult = { _, _ in
+            .authoritative(IrohInboundPeerPolicy(allowedPeerNodeIds: []))
+        },
+        now: @escaping @Sendable () -> Date = Date.init,
+        missRefreshMinimumPolicyAge: TimeInterval = 0.5,
+        missRefreshBudgetInterval: TimeInterval = 15,
         transportFactory: (@MainActor (HermesIrohRelayHostClient) -> any IrohRelayTransport)? = nil
     ) -> HermesIrohRelayHostClient {
         let suiteName = "hermes.iroh.host.matters.\(UUID().uuidString)"
@@ -202,15 +476,32 @@ final class HermesIrohRelayHostClientMattersTests: XCTestCase {
             directory: directory,
             publicKeyPublisher: NoopIrohPairingPublicKeyPublisher(),
             auditLogger: NoopIrohTransportAuditLogger(),
-            inboundPeerPolicyLoader: { _, _ in
-                IrohInboundPeerPolicy(allowedPeerNodeIds: [])
-            },
+            inboundPeerPolicyLoader: inboundPeerPolicyLoader,
             pairingPublishInterval: 3_600,
+            now: now,
+            missRefreshMinimumPolicyAge: missRefreshMinimumPolicyAge,
+            missRefreshBudgetInterval: missRefreshBudgetInterval,
             revokeRetryAttempts: 3,
             // Collapse backoff so retries run instantly under test.
             revokeRetrySleep: { _ in },
             transportFactory: transportFactory ?? { _ in StubIrohRelayTransport(nodeId: "node-default") }
         )
+    }
+
+    private func makeBinding(
+        nodeId: String,
+        generation: UInt64,
+        registeredAtMillis: Int64,
+        expiresAtMillis: Int64
+    ) throws -> IrohControllerRouteBinding {
+        try XCTUnwrap(IrohControllerRouteBinding(
+            sourceDeviceId: "ios-device-1",
+            transportNodeId: nodeId,
+            authorityPeerNodeId: "ios-authority-1",
+            generation: generation,
+            registeredAtMillis: registeredAtMillis,
+            expiresAtMillis: expiresAtMillis
+        ))
     }
 
     /// The directory fakes never inspect the signature, so a plainly-constructed
@@ -228,7 +519,142 @@ final class HermesIrohRelayHostClientMattersTests: XCTestCase {
     }
 }
 
+private actor SequencedInboundPolicyLoader {
+    private var policies: [IrohInboundPeerPolicy]
+    private(set) var callCount = 0
+
+    init(policies: [IrohInboundPeerPolicy]) {
+        self.policies = policies
+    }
+
+    func load(uid _: String, connectionID _: String) -> IrohInboundPeerPolicy {
+        callCount += 1
+        guard !policies.isEmpty else {
+            return IrohInboundPeerPolicy(routeBindings: [])
+        }
+        return policies.removeFirst()
+    }
+}
+
+private actor ControlledInboundPolicyLoader {
+    private var immediate: [Int: IrohInboundPeerPolicyLoadResult]
+    private var continuations: [Int: CheckedContinuation<IrohInboundPeerPolicyLoadResult, Never>] = [:]
+    private(set) var callCount = 0
+
+    init(immediate: [Int: IrohInboundPeerPolicyLoadResult]) {
+        self.immediate = immediate
+    }
+
+    func load(uid _: String, connectionID _: String) async -> IrohInboundPeerPolicyLoadResult {
+        let callIndex = callCount
+        callCount += 1
+        if let result = immediate.removeValue(forKey: callIndex) {
+            return result
+        }
+        return await withCheckedContinuation { continuation in
+            continuations[callIndex] = continuation
+        }
+    }
+
+    func resolve(callIndex: Int, with result: IrohInboundPeerPolicyLoadResult) {
+        continuations.removeValue(forKey: callIndex)?.resume(returning: result)
+    }
+}
+
+private final class LockedHostTestClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var date: Date
+
+    init(date: Date) {
+        self.date = date
+    }
+
+    var now: Date {
+        lock.withLock { date }
+    }
+
+    func set(_ date: Date) {
+        lock.withLock { self.date = date }
+    }
+}
+
 // MARK: - Test doubles
+
+private actor BlockingHostTestStream: IrohRelayStream {
+    nonisolated let remotePeerNodeId: String?
+    private var frames: [HermesRealtimeRelayFrame]
+    private var closed = false
+
+    init(remotePeerNodeId: String, frames: [HermesRealtimeRelayFrame] = []) {
+        self.remotePeerNodeId = remotePeerNodeId
+        self.frames = frames
+    }
+
+    var isClosed: Bool { closed }
+
+    func send(_ frame: HermesRealtimeRelayFrame) async throws {}
+
+    func receive() async throws -> HermesRealtimeRelayFrame? {
+        if !frames.isEmpty {
+            return frames.removeFirst()
+        }
+        while !closed, !Task.isCancelled {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        return nil
+    }
+
+    func close() async {
+        closed = true
+    }
+}
+
+private actor HostMediaControlRegistrarRecorder {
+    private(set) var registrationCount = 0
+
+    func record(stream _: any IrohRelayStream, uid _: String, connectionID _: String) {
+        registrationCount += 1
+    }
+}
+
+private actor SingleInboundStreamTransport: IrohRelayTransport {
+    nonisolated let identity = IrohEndpointIdentity(
+        nodeId: "host-node",
+        rawPublicKey: Data(repeating: 0xAC, count: 32),
+        relayURL: "https://relay.example/",
+        directAddresses: []
+    )
+    private let stream: BlockingHostTestStream
+    private var delivered = false
+    private(set) var acceptCount = 0
+    private var stopped = false
+
+    init(stream: BlockingHostTestStream) {
+        self.stream = stream
+    }
+
+    func start() async throws -> IrohEndpointIdentity { identity }
+
+    func connect(to target: IrohDialTarget, timeout: TimeInterval) async throws -> any IrohRelayStream {
+        throw IrohRelayTransportError.endpointNotReady
+    }
+
+    func accept(timeout: TimeInterval) async throws -> any IrohRelayStream {
+        acceptCount += 1
+        if !delivered {
+            delivered = true
+            return stream
+        }
+        while !stopped, !Task.isCancelled {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        throw IrohRelayTransportError.shutdown
+    }
+
+    func shutdown() async {
+        stopped = true
+    }
+}
 
 /// Directory that fails `revoke` a configurable number of times before letting
 /// it succeed, counting every attempt. Backed by an in-memory store so the
@@ -355,7 +781,7 @@ private actor NoopIrohTransportAuditLogger: IrohTransportAuditLogging {
 }
 
 private func waitUntil(
-    timeout: TimeInterval,
+    timeout: TimeInterval = 2,
     pollInterval: UInt64 = 50_000_000,
     condition: () async throws -> Bool
 ) async throws {
