@@ -1,0 +1,387 @@
+  Determining projects to restore...
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.TextExpansion/OpenBurnBar.App.TextExpansion.csproj (in 172 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/pal/ipc/OpenBurnBar.Pal.Ipc.csproj (in 172 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/chat/process-helper/OpenBurnBar.Chat.ProcessTestHelper.csproj (in 172 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/crates/burnbar-remote/bindings/csharp/BurnBarRemote.Ffi/BurnBarRemote.Ffi.csproj (in 173 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/integrations/homeassistant/OpenBurnBar.Integrations.HomeAssistant.Net/OpenBurnBar.Integrations.HomeAssistant.Net.csproj (in 173 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/integrations/smarthub/OpenBurnBar.Integrations.SmartHub/OpenBurnBar.Integrations.SmartHub.csproj (in 164 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.Settings/OpenBurnBar.App.Settings.csproj (in 164 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/packaging/updater/OpenBurnBar.Updater.Generator/OpenBurnBar.Updater.Generator.csproj (in 187 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.ManagedAgentRuntime/OpenBurnBar.App.ManagedAgentRuntime.csproj (in 0.6 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.Presentation/OpenBurnBar.App.Presentation.csproj (in 191 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.Configuration/OpenBurnBar.App.Configuration.csproj (in 0.8 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.Settings.ViewModels/OpenBurnBar.App.Settings.ViewModels.csproj (in 192 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.Dashboard/OpenBurnBar.App.Dashboard.csproj (in 2 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.Pet/OpenBurnBar.App.Pet.csproj (in 190 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.MemorySearch/OpenBurnBar.App.MemorySearch.csproj (in 6 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.Quota.Acquisition.Windows/OpenBurnBar.App.Quota.Acquisition.Windows.csproj (in 191 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.CursorConnector/OpenBurnBar.App.CursorConnector.csproj (in 2 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.Quota.Acquisition/OpenBurnBar.App.Quota.Acquisition.csproj (in 197 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.CloudSync/OpenBurnBar.App.CloudSync.csproj (in 3 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/crates/openburnbar-iroh/bindings/csharp/OpenBurnBarIroh.Ffi/OpenBurnBarIroh.Ffi.csproj (in 0.7 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/cloudsync/appcheck/OpenBurnBar.CloudSync.AppCheck.Windows/OpenBurnBar.CloudSync.AppCheck.Windows.csproj (in 8 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/cloudsync/appcheck/OpenBurnBar.CloudSync.AppCheck.Net/OpenBurnBar.CloudSync.AppCheck.Net.csproj (in 7 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/settings/OpenBurnBar.App.Settings.Tests/OpenBurnBar.App.Settings.Tests.csproj (in 208 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/cloudsync/appcheck/OpenBurnBar.CloudSync.AppCheck/OpenBurnBar.CloudSync.AppCheck.csproj (in 10 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.UsageRuntime/OpenBurnBar.App.UsageRuntime.csproj (in 2 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/integrations-cast/OpenBurnBar.Integrations.Cast.Tests.csproj (in 7 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/input/OpenBurnBar.Pal.Input.Tests.csproj (in 8 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/computeruse/OpenBurnBar.ComputerUse.Tests.csproj (in 210 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/updater/OpenBurnBar.Updater.Tests.csproj (in 2 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/ipc/OpenBurnBar.Pal.Ipc.Tests.csproj (in 209 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/ui-automation-harness/OpenBurnBar.UiAutomationHarness.Core/OpenBurnBar.UiAutomationHarness.Core.csproj (in 0.5 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/engine-binding/OpenBurnBar.EngineBinding.Tests.csproj (in 207 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/onboarding/OpenBurnBar.App.Onboarding.Tests.csproj (in 211 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/insights/OpenBurnBar.App.Insights.Runtime.Tests.csproj (in 12 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/theme/OpenBurnBar.App.Theme.Tests.csproj (in 2 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/particles/OpenBurnBar.Particles/OpenBurnBar.Particles.csproj (in 0.6 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/pal/overlay/OpenBurnBar.Pal.Overlay.csproj (in 0.5 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/memory-search/OpenBurnBar.App.MemorySearch.Tests/OpenBurnBar.App.MemorySearch.Tests.csproj (in 2 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/mercury/OpenBurnBar.Integrations.Mercury.Tests.csproj (in 1 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/particles/OpenBurnBar.Particles.PerfHarness/OpenBurnBar.Particles.PerfHarness.csproj (in 1 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj (in 3 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/integrations/OpenBurnBar.Integrations.Tests/OpenBurnBar.Integrations.Tests.csproj (in 31 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/pet/OpenBurnBar.App.Pet.Tests.csproj (in 3 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/managed-agent-runtime/OpenBurnBar.App.ManagedAgentRuntime.Tests.csproj (in 1 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/native/OpenBurnBar.Native/OpenBurnBar.Native.csproj (in 1 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/pretext/OpenBurnBar.Pretext.Tests/OpenBurnBar.Pretext.Tests.csproj (in 1 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/quota-acquisition/OpenBurnBar.App.Quota.Acquisition.Tests.csproj (in 3 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/packaging/updater/OpenBurnBar.Updater.Core/OpenBurnBar.Updater.Core.csproj (in 0.8 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/native/OpenBurnBar.Native.Tests.csproj (in 2 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/presentation/OpenBurnBar.App.Presentation.Tests.csproj (in 4 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/native/OpenBurnBar.Native.Iroh/OpenBurnBar.Native.Iroh.csproj (in 0.9 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/ui-automation-harness/OpenBurnBar.UiAutomationHarness/OpenBurnBar.UiAutomationHarness.csproj (in 33 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/native/OpenBurnBar.Native.BurnBarRemote/OpenBurnBar.Native.BurnBarRemote.csproj (in 1 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/dist/OpenBurnBar.Dist.UpdateFeed/OpenBurnBar.Dist.UpdateFeed.csproj (in 0.9 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/dist/OpenBurnBar.Dist.UpdateFeed.Tool/OpenBurnBar.Dist.UpdateFeed.Tool.csproj (in 0.9 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/dist/OpenBurnBar.Dist.Hardening/OpenBurnBar.Dist.Hardening.csproj (in 0.5 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/pal/input-windows/OpenBurnBar.Pal.Input.Windows.csproj (in 6 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/integrations/mercury/OpenBurnBar.Integrations.Mercury/OpenBurnBar.Integrations.Mercury.csproj (in 0.8 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/integrations/mercury/OpenBurnBar.Integrations.Mercury.Windows/OpenBurnBar.Integrations.Mercury.Windows.csproj (in 1 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/ui-automation/OpenBurnBar.UiAutomationHarness.Tests.csproj (in 47 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/pal/input/OpenBurnBar.Pal.Input.csproj (in 1 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/dist/OpenBurnBar.Dist.Tests.csproj (in 8 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/integrations/smarthub/OpenBurnBar.Integrations.SmartHub.Net/OpenBurnBar.Integrations.SmartHub.Net.csproj (in 1 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/configuration/OpenBurnBar.App.Configuration.Tests.csproj (in 8 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/integrations/homeassistant/OpenBurnBar.Integrations.HomeAssistant/OpenBurnBar.Integrations.HomeAssistant.csproj (in 0.8 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/integrations/cast/OpenBurnBar.Integrations.Cast/OpenBurnBar.Integrations.Cast.csproj (in 0.5 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/integrations/cast/OpenBurnBar.Integrations.Cast.Windows/OpenBurnBar.Integrations.Cast.Windows.csproj (in 2 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/dashboard/OpenBurnBar.App.Dashboard.Tests.csproj (in 10 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/packaging/updater/OpenBurnBar.Updater.Windows/OpenBurnBar.Updater.Windows.csproj (in 2 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/pal/ipc-windows/OpenBurnBar.Pal.Ipc.Windows.csproj (in 9 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/computeruse/OpenBurnBar.ComputerUse.Core/OpenBurnBar.ComputerUse.Core.csproj (in 1 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/usage-runtime/OpenBurnBar.App.UsageRuntime.Tests.csproj (in 12 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/computeruse/OpenBurnBar.ComputerUse.Windows/OpenBurnBar.ComputerUse.Windows.csproj (in 2 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/cloudsync/OpenBurnBar.CloudSync.Crypto/OpenBurnBar.CloudSync.Crypto.csproj (in 8 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/cloudsync/OpenBurnBar.CloudSync/OpenBurnBar.CloudSync.csproj (in 10 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/cursor-connector/OpenBurnBar.App.CursorConnector.Tests.csproj (in 10 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/cloudsync/OpenBurnBar.CloudSync.Crypto.Tests.csproj (in 2 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/components/OpenBurnBar.App.Components.Tests.csproj (in 2 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/shell/OpenBurnBar.App.Shell.Tests.csproj (in 9 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/cloudsync-appcheck/OpenBurnBar.CloudSync.AppCheck.Tests.csproj (in 2 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/cloudsync/OpenBurnBar.CloudSync.Tests/OpenBurnBar.CloudSync.Tests.csproj (in 1 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/storage/OpenBurnBar.App.Storage.Tests.csproj (in 12 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/pretext/OpenBurnBar.Pretext/OpenBurnBar.Pretext.csproj (in 0.7 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/chat/OpenBurnBar.App.Chat.Runtime.Tests.csproj (in 3 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/storage/OpenBurnBar.Storage/OpenBurnBar.Storage.csproj (in 9 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/storage/OpenBurnBar.Storage.Tests/OpenBurnBar.Storage.Tests.csproj (in 3 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/text-expansion/OpenBurnBar.App.TextExpansion.Tests/OpenBurnBar.App.TextExpansion.Tests.csproj (in 21 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/settings/OpenBurnBar.App.Settings.ViewModels.Tests/OpenBurnBar.App.Settings.ViewModels.Tests.csproj (in 22 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/cloudsync-app/OpenBurnBar.App.CloudSync.Tests.csproj (in 3 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/storage/OpenBurnBar.Storage.SessionLogs/OpenBurnBar.Storage.SessionLogs.csproj (in 7 ms).
+  Restored /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App/OpenBurnBar.App.csproj (in 250 ms).
+  OpenBurnBar.Pal.Ipc -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/pal/ipc/bin/Release/net10.0/OpenBurnBar.Pal.Ipc.dll
+  OpenBurnBar.Pal.Ipc -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/pal/ipc/bin/Release/net8.0/OpenBurnBar.Pal.Ipc.dll
+  OpenBurnBar.CloudSync.AppCheck -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/cloudsync/appcheck/OpenBurnBar.CloudSync.AppCheck/bin/Release/net8.0/OpenBurnBar.CloudSync.AppCheck.dll
+  OpenBurnBar.CloudSync.Crypto -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/cloudsync/OpenBurnBar.CloudSync.Crypto/bin/Release/net8.0/OpenBurnBar.CloudSync.Crypto.dll
+  OpenBurnBar.App.Dashboard -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.Dashboard/bin/Release/net8.0/OpenBurnBar.App.Dashboard.dll
+  OpenBurnBar.EngineBinding.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/engine-binding/bin/Release/net10.0/OpenBurnBar.EngineBinding.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/engine-binding/bin/Release/net10.0/OpenBurnBar.EngineBinding.Tests.dll (.NETCoreApp,Version=v10.0)
+  OpenBurnBar.Native -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/native/OpenBurnBar.Native/bin/Release/net8.0/OpenBurnBar.Native.dll
+  OpenBurnBar.App.Theme.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/theme/bin/Release/net10.0/OpenBurnBar.App.Theme.Tests.dll
+  OpenBurnBar.Integrations.SmartHub -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/integrations/smarthub/OpenBurnBar.Integrations.SmartHub/bin/Release/net8.0/OpenBurnBar.Integrations.SmartHub.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/theme/bin/Release/net10.0/OpenBurnBar.App.Theme.Tests.dll (.NETCoreApp,Version=v10.0)
+  OpenBurnBar.Pretext -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/pretext/OpenBurnBar.Pretext/bin/Release/net8.0/OpenBurnBar.Pretext.dll
+  OpenBurnBar.ComputerUse.Core -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/computeruse/OpenBurnBar.ComputerUse.Core/bin/Release/net8.0/OpenBurnBar.ComputerUse.Core.dll
+A total of 1 test files matched the specified pattern.
+  OpenBurnBar.Pal.Input -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/pal/input/bin/Release/net8.0/OpenBurnBar.Pal.Input.dll
+  OpenBurnBar.CloudSync -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/cloudsync/OpenBurnBar.CloudSync/bin/Release/net8.0/OpenBurnBar.CloudSync.dll
+  OpenBurnBar.Storage -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/storage/OpenBurnBar.Storage/bin/Release/net8.0/OpenBurnBar.Storage.dll
+  OpenBurnBar.App.Settings -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.Settings/bin/Release/net8.0/OpenBurnBar.App.Settings.dll
+A total of 1 test files matched the specified pattern.
+  OpenBurnBar.App.Shell.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/shell/bin/Release/net10.0/OpenBurnBar.App.Shell.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/shell/bin/Release/net10.0/OpenBurnBar.App.Shell.Tests.dll (.NETCoreApp,Version=v10.0)
+  OpenBurnBar.App.Onboarding.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/onboarding/bin/Release/net10.0/OpenBurnBar.App.Onboarding.Tests.dll
+  OpenBurnBar.Storage -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/storage/OpenBurnBar.Storage/bin/Release/net10.0/OpenBurnBar.Storage.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/onboarding/bin/Release/net10.0/OpenBurnBar.App.Onboarding.Tests.dll (.NETCoreApp,Version=v10.0)
+  OpenBurnBar.App.ManagedAgentRuntime -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.ManagedAgentRuntime/bin/Release/net8.0/OpenBurnBar.App.ManagedAgentRuntime.dll
+  OpenBurnBar.App.Configuration -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.Configuration/bin/Release/net8.0/OpenBurnBar.App.Configuration.dll
+  OpenBurnBarIroh.Ffi -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/crates/openburnbar-iroh/bindings/csharp/OpenBurnBarIroh.Ffi/bin/Debug/net8.0/OpenBurnBarIroh.Ffi.dll
+  OpenBurnBar.App.Components.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/components/bin/Release/net10.0/OpenBurnBar.App.Components.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/components/bin/Release/net10.0/OpenBurnBar.App.Components.Tests.dll (.NETCoreApp,Version=v10.0)
+  OpenBurnBar.Pal.Ipc.Windows -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/pal/ipc-windows/bin/Release/net10.0/OpenBurnBar.Pal.Ipc.Windows.dll
+  OpenBurnBar.App.Settings.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/settings/OpenBurnBar.App.Settings.Tests/bin/Release/net10.0/OpenBurnBar.App.Settings.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/settings/OpenBurnBar.App.Settings.Tests/bin/Release/net10.0/OpenBurnBar.App.Settings.Tests.dll (.NETCoreApp,Version=v10.0)
+  OpenBurnBar.Integrations.HomeAssistant -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/integrations/homeassistant/OpenBurnBar.Integrations.HomeAssistant/bin/Release/net8.0/OpenBurnBar.Integrations.HomeAssistant.dll
+A total of 1 test files matched the specified pattern.
+A total of 1 test files matched the specified pattern.
+  OpenBurnBar.UiAutomationHarness.Core -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/ui-automation-harness/OpenBurnBar.UiAutomationHarness.Core/bin/Release/net8.0/OpenBurnBar.UiAutomationHarness.Core.dll
+A total of 1 test files matched the specified pattern.
+  OpenBurnBar.App.Configuration.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/configuration/bin/Release/net10.0/OpenBurnBar.App.Configuration.Tests.dll
+A total of 1 test files matched the specified pattern.
+  OpenBurnBar.Integrations.HomeAssistant.Net -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/integrations/homeassistant/OpenBurnBar.Integrations.HomeAssistant.Net/bin/Release/net10.0/OpenBurnBar.Integrations.HomeAssistant.Net.dll
+  OpenBurnBar.CloudSync.AppCheck.Net -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/cloudsync/appcheck/OpenBurnBar.CloudSync.AppCheck.Net/bin/Release/net10.0/OpenBurnBar.CloudSync.AppCheck.Net.dll
+  OpenBurnBar.Pal.Overlay -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/pal/overlay/bin/Release/net8.0/OpenBurnBar.Pal.Overlay.dll
+  OpenBurnBar.Integrations.SmartHub.Net -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/integrations/smarthub/OpenBurnBar.Integrations.SmartHub.Net/bin/Release/net10.0/OpenBurnBar.Integrations.SmartHub.Net.dll
+  OpenBurnBar.Pal.Ipc.Windows -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/pal/ipc-windows/bin/Release/net8.0/OpenBurnBar.Pal.Ipc.Windows.dll
+  OpenBurnBar.CloudSync.Crypto.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/cloudsync/bin/Release/net10.0/OpenBurnBar.CloudSync.Crypto.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/cloudsync/bin/Release/net10.0/OpenBurnBar.CloudSync.Crypto.Tests.dll (.NETCoreApp,Version=v10.0)
+  OpenBurnBar.Storage.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/storage/OpenBurnBar.Storage.Tests/bin/Release/net10.0/OpenBurnBar.Storage.Tests.dll
+  OpenBurnBar.App.TextExpansion -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.TextExpansion/bin/Release/net8.0/OpenBurnBar.App.TextExpansion.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/storage/OpenBurnBar.Storage.Tests/bin/Release/net10.0/OpenBurnBar.Storage.Tests.dll (.NETCoreApp,Version=v10.0)
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+  OpenBurnBar.ComputerUse.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/computeruse/bin/Release/net10.0/OpenBurnBar.ComputerUse.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/computeruse/bin/Release/net10.0/OpenBurnBar.ComputerUse.Tests.dll (.NETCoreApp,Version=v10.0)
+  OpenBurnBar.UiAutomationHarness.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/ui-automation/bin/Release/net10.0/OpenBurnBar.UiAutomationHarness.Tests.dll
+
+Passed!  - Failed:     0, Passed:     3, Skipped:     0, Total:     3, Duration: 20 ms - OpenBurnBar.EngineBinding.Tests.dll (net10.0)
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/ui-automation/bin/Release/net10.0/OpenBurnBar.UiAutomationHarness.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+A total of 1 test files matched the specified pattern.
+  OpenBurnBar.App.Presentation -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.Presentation/bin/Release/net8.0/OpenBurnBar.App.Presentation.dll
+A total of 1 test files matched the specified pattern.
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    70, Skipped:     0, Total:    70, Duration: 179 ms - OpenBurnBar.App.Theme.Tests.dll (net10.0)
+  OpenBurnBar.Pal.Ipc.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/ipc/bin/Release/net10.0/OpenBurnBar.Pal.Ipc.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/ipc/bin/Release/net10.0/OpenBurnBar.Pal.Ipc.Tests.dll (.NETCoreApp,Version=v10.0)
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+  OpenBurnBar.App.Quota.Acquisition -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.Quota.Acquisition/bin/Release/net8.0/OpenBurnBar.App.Quota.Acquisition.dll
+  OpenBurnBar.App.Pet -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.Pet/bin/Release/net8.0/OpenBurnBar.App.Pet.dll
+
+Passed!  - Failed:     0, Passed:    49, Skipped:     0, Total:    49, Duration: 133 ms - OpenBurnBar.App.Shell.Tests.dll (net10.0)
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+A total of 1 test files matched the specified pattern.
+
+Passed!  - Failed:     0, Passed:    75, Skipped:     0, Total:    75, Duration: 182 ms - OpenBurnBar.App.Settings.Tests.dll (net10.0)
+
+Passed!  - Failed:     0, Passed:    77, Skipped:     0, Total:    77, Duration: 264 ms - OpenBurnBar.App.Onboarding.Tests.dll (net10.0)
+  OpenBurnBar.App.Insights.Runtime.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/insights/bin/Release/net10.0/OpenBurnBar.App.Insights.Runtime.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/insights/bin/Release/net10.0/OpenBurnBar.App.Insights.Runtime.Tests.dll (.NETCoreApp,Version=v10.0)
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+  OpenBurnBar.App.Dashboard.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/dashboard/bin/Release/net10.0/OpenBurnBar.App.Dashboard.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/dashboard/bin/Release/net10.0/OpenBurnBar.App.Dashboard.Tests.dll (.NETCoreApp,Version=v10.0)
+
+Passed!  - Failed:     0, Passed:   181, Skipped:     0, Total:   181, Duration: 635 ms - OpenBurnBar.App.Components.Tests.dll (net10.0)
+  OpenBurnBar.App.CursorConnector -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.CursorConnector/bin/Release/net8.0/OpenBurnBar.App.CursorConnector.dll
+A total of 1 test files matched the specified pattern.
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    45, Skipped:     0, Total:    45, Duration: 218 ms - OpenBurnBar.CloudSync.Crypto.Tests.dll (net10.0)
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    10, Skipped:     0, Total:    10, Duration: 60 ms - OpenBurnBar.UiAutomationHarness.Tests.dll (net10.0)
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:   111, Skipped:     0, Total:   111, Duration: 202 ms - OpenBurnBar.ComputerUse.Tests.dll (net10.0)
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+  OpenBurnBar.Pretext.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/pretext/OpenBurnBar.Pretext.Tests/bin/Release/net10.0/OpenBurnBar.Pretext.Tests.dll
+
+Passed!  - Failed:     0, Passed:    20, Skipped:     0, Total:    20, Duration: 68 ms - OpenBurnBar.Pal.Ipc.Tests.dll (net10.0)
+  OpenBurnBar.Updater.Core -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/packaging/updater/OpenBurnBar.Updater.Core/bin/Release/net8.0/OpenBurnBar.Updater.Core.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/pretext/OpenBurnBar.Pretext.Tests/bin/Release/net10.0/OpenBurnBar.Pretext.Tests.dll (.NETCoreApp,Version=v10.0)
+  OpenBurnBar.App.CursorConnector.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/cursor-connector/bin/Release/net10.0/OpenBurnBar.App.CursorConnector.Tests.dll
+  OpenBurnBar.App.Storage.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/storage/bin/Release/net10.0/OpenBurnBar.App.Storage.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/cursor-connector/bin/Release/net10.0/OpenBurnBar.App.CursorConnector.Tests.dll (.NETCoreApp,Version=v10.0)
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/storage/bin/Release/net10.0/OpenBurnBar.App.Storage.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+  OpenBurnBar.Chat.ProcessTestHelper -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/chat/process-helper/bin/Debug/net10.0/OpenBurnBar.Chat.ProcessTestHelper.dll
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+A total of 1 test files matched the specified pattern.
+
+Passed!  - Failed:     0, Passed:    15, Skipped:     0, Total:    15, Duration: 48 ms - OpenBurnBar.App.Insights.Runtime.Tests.dll (net10.0)
+A total of 1 test files matched the specified pattern.
+  OpenBurnBar.App.Quota.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/quota/bin/Release/net10.0/OpenBurnBar.App.Quota.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/quota/bin/Release/net10.0/OpenBurnBar.App.Quota.Tests.dll (.NETCoreApp,Version=v10.0)
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    75, Skipped:     0, Total:    75, Duration: 184 ms - OpenBurnBar.App.Dashboard.Tests.dll (net10.0)
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:00.45]     OpenBurnBar.Pretext.Tests.MetricParityHarnessTests.Live_webview2_matches_mac_golden_within_tolerance [SKIP]
+  Skipped OpenBurnBar.Pretext.Tests.MetricParityHarnessTests.Live_webview2_matches_mac_golden_within_tolerance [1 ms]
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    38, Skipped:     1, Total:    39, Duration: 92 ms - OpenBurnBar.Pretext.Tests.dll (net10.0)
+  OpenBurnBar.Integrations.Cast -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/integrations/cast/OpenBurnBar.Integrations.Cast/bin/Release/net8.0/OpenBurnBar.Integrations.Cast.dll
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+  OpenBurnBar.Dist.Hardening -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/dist/OpenBurnBar.Dist.Hardening/bin/Release/net8.0/OpenBurnBar.Dist.Hardening.dll
+  OpenBurnBar.App.Settings.ViewModels -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.Settings.ViewModels/bin/Release/net8.0/OpenBurnBar.App.Settings.ViewModels.dll
+
+Passed!  - Failed:     0, Passed:    94, Skipped:     0, Total:    94, Duration: 199 ms - OpenBurnBar.App.CursorConnector.Tests.dll (net10.0)
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    21, Skipped:     0, Total:    21, Duration: 71 ms - OpenBurnBar.App.Quota.Tests.dll (net10.0)
+  OpenBurnBar.CloudSync.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/cloudsync/OpenBurnBar.CloudSync.Tests/bin/Release/net10.0/OpenBurnBar.CloudSync.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/cloudsync/OpenBurnBar.CloudSync.Tests/bin/Release/net10.0/OpenBurnBar.CloudSync.Tests.dll (.NETCoreApp,Version=v10.0)
+  OpenBurnBar.Updater.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/updater/bin/Release/net10.0/OpenBurnBar.Updater.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/updater/bin/Release/net10.0/OpenBurnBar.Updater.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+A total of 1 test files matched the specified pattern.
+  OpenBurnBar.App.Settings.ViewModels.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/settings/OpenBurnBar.App.Settings.ViewModels.Tests/bin/Release/net10.0/OpenBurnBar.App.Settings.ViewModels.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/settings/OpenBurnBar.App.Settings.ViewModels.Tests/bin/Release/net10.0/OpenBurnBar.App.Settings.ViewModels.Tests.dll (.NETCoreApp,Version=v10.0)
+  OpenBurnBar.Storage.SessionLogs -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/storage/OpenBurnBar.Storage.SessionLogs/bin/Release/net10.0/OpenBurnBar.Storage.SessionLogs.dll
+  OpenBurnBar.Pal.Input.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/input/bin/Release/net10.0/OpenBurnBar.Pal.Input.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/input/bin/Release/net10.0/OpenBurnBar.Pal.Input.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    94, Skipped:     0, Total:    94, Duration: 313 ms - OpenBurnBar.Updater.Tests.dll (net10.0)
+
+Passed!  - Failed:     0, Passed:   113, Skipped:     0, Total:   113, Duration: 351 ms - OpenBurnBar.CloudSync.Tests.dll (net10.0)
+  OpenBurnBar.Dist.UpdateFeed -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/dist/OpenBurnBar.Dist.UpdateFeed/bin/Release/net8.0/OpenBurnBar.Dist.UpdateFeed.dll
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:   128, Skipped:     0, Total:   128, Duration: 221 ms - OpenBurnBar.App.Settings.ViewModels.Tests.dll (net10.0)
+
+Passed!  - Failed:     0, Passed:    66, Skipped:     0, Total:    66, Duration: 120 ms - OpenBurnBar.Pal.Input.Tests.dll (net10.0)
+  OpenBurnBar.App.Chat.Runtime.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/chat/bin/Release/net10.0/OpenBurnBar.App.Chat.Runtime.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/chat/bin/Release/net10.0/OpenBurnBar.App.Chat.Runtime.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    21, Skipped:     0, Total:    21, Duration: 699 ms - OpenBurnBar.App.Chat.Runtime.Tests.dll (net10.0)
+  BurnBarRemote.Ffi -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/crates/burnbar-remote/bindings/csharp/BurnBarRemote.Ffi/bin/Debug/net8.0/BurnBarRemote.Ffi.dll
+  OpenBurnBar.Integrations.Mercury -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/integrations/mercury/OpenBurnBar.Integrations.Mercury/bin/Release/net8.0/OpenBurnBar.Integrations.Mercury.dll
+  OpenBurnBar.Dist.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/dist/bin/Release/net10.0/OpenBurnBar.Dist.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/dist/bin/Release/net10.0/OpenBurnBar.Dist.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+  OpenBurnBar.Integrations.Mercury.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/mercury/bin/Release/net10.0/OpenBurnBar.Integrations.Mercury.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/mercury/bin/Release/net10.0/OpenBurnBar.Integrations.Mercury.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    97, Skipped:     0, Total:    97, Duration: 225 ms - OpenBurnBar.Dist.Tests.dll (net10.0)
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:   152, Skipped:     0, Total:   152, Duration: 244 ms - OpenBurnBar.Integrations.Mercury.Tests.dll (net10.0)
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    21, Skipped:     0, Total:    21, Duration: 12 s - OpenBurnBar.Storage.Tests.dll (net10.0)
+  OpenBurnBar.App.UsageRuntime -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.UsageRuntime/bin/Release/net8.0/OpenBurnBar.App.UsageRuntime.dll
+  OpenBurnBar.CloudSync.AppCheck.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/cloudsync-appcheck/bin/Release/net10.0/OpenBurnBar.CloudSync.AppCheck.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/cloudsync-appcheck/bin/Release/net10.0/OpenBurnBar.CloudSync.AppCheck.Tests.dll (.NETCoreApp,Version=v10.0)
+  OpenBurnBar.App.Presentation.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/presentation/bin/Release/net10.0/OpenBurnBar.App.Presentation.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/presentation/bin/Release/net10.0/OpenBurnBar.App.Presentation.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    55, Skipped:     0, Total:    55, Duration: 114 ms - OpenBurnBar.CloudSync.AppCheck.Tests.dll (net10.0)
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    18, Skipped:     0, Total:    18, Duration: 18 s - OpenBurnBar.App.Storage.Tests.dll (net10.0)
+  OpenBurnBar.App.TextExpansion.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/text-expansion/OpenBurnBar.App.TextExpansion.Tests/bin/Release/net10.0/OpenBurnBar.App.TextExpansion.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/text-expansion/OpenBurnBar.App.TextExpansion.Tests/bin/Release/net10.0/OpenBurnBar.App.TextExpansion.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:   742, Skipped:     0, Total:   742, Duration: 8 s - OpenBurnBar.App.Presentation.Tests.dll (net10.0)
+  OpenBurnBar.Integrations.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/integrations/OpenBurnBar.Integrations.Tests/bin/Release/net10.0/OpenBurnBar.Integrations.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/integrations/OpenBurnBar.Integrations.Tests/bin/Release/net10.0/OpenBurnBar.Integrations.Tests.dll (.NETCoreApp,Version=v10.0)
+  OpenBurnBar.App.UsageRuntime.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/usage-runtime/bin/Release/net10.0/OpenBurnBar.App.UsageRuntime.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/usage-runtime/bin/Release/net10.0/OpenBurnBar.App.UsageRuntime.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:   163, Skipped:     0, Total:   163, Duration: 226 ms - OpenBurnBar.Integrations.Tests.dll (net10.0)
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    82, Skipped:     0, Total:    82, Duration: 1 s - OpenBurnBar.App.TextExpansion.Tests.dll (net10.0)
+  OpenBurnBar.App.ManagedAgentRuntime.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/managed-agent-runtime/bin/Release/net10.0/OpenBurnBar.App.ManagedAgentRuntime.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/managed-agent-runtime/bin/Release/net10.0/OpenBurnBar.App.ManagedAgentRuntime.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:     6, Skipped:     0, Total:     6, Duration: 1 s - OpenBurnBar.App.UsageRuntime.Tests.dll (net10.0)
+  OpenBurnBar.App.Pet.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/pet/bin/Release/net10.0/OpenBurnBar.App.Pet.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/pet/bin/Release/net10.0/OpenBurnBar.App.Pet.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    97, Skipped:     0, Total:    97, Duration: 116 ms - OpenBurnBar.App.ManagedAgentRuntime.Tests.dll (net10.0)
+  OpenBurnBar.Integrations.Cast.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/integrations-cast/bin/Release/net10.0/OpenBurnBar.Integrations.Cast.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/integrations-cast/bin/Release/net10.0/OpenBurnBar.Integrations.Cast.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    74, Skipped:     0, Total:    74, Duration: 77 ms - OpenBurnBar.App.Pet.Tests.dll (net10.0)
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    79, Skipped:     0, Total:    79, Duration: 99 ms - OpenBurnBar.Integrations.Cast.Tests.dll (net10.0)
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/configuration/bin/Release/net10.0/OpenBurnBar.App.Configuration.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    35, Skipped:     0, Total:    35, Duration: 102 ms - OpenBurnBar.App.Configuration.Tests.dll (net10.0)
+  OpenBurnBar.Native.Iroh -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/native/OpenBurnBar.Native.Iroh/bin/Release/net8.0/OpenBurnBar.Native.Iroh.dll
+  OpenBurnBar.Native.BurnBarRemote -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/native/OpenBurnBar.Native.BurnBarRemote/bin/Release/net8.0/OpenBurnBar.Native.BurnBarRemote.dll
+  OpenBurnBar.App.CloudSync -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.CloudSync/bin/Release/net8.0/OpenBurnBar.App.CloudSync.dll
+  OpenBurnBar.App.Quota.Acquisition.Windows -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.Quota.Acquisition.Windows/bin/Release/net8.0/OpenBurnBar.App.Quota.Acquisition.Windows.dll
+  OpenBurnBar.App.MemorySearch -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.MemorySearch/bin/Release/net8.0/OpenBurnBar.App.MemorySearch.dll
+  OpenBurnBar.App.CloudSync.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/cloudsync-app/bin/Release/net10.0/OpenBurnBar.App.CloudSync.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/cloudsync-app/bin/Release/net10.0/OpenBurnBar.App.CloudSync.Tests.dll (.NETCoreApp,Version=v10.0)
+  OpenBurnBar.App.MemorySearch.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/memory-search/OpenBurnBar.App.MemorySearch.Tests/bin/Release/net10.0/OpenBurnBar.App.MemorySearch.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/memory-search/OpenBurnBar.App.MemorySearch.Tests/bin/Release/net10.0/OpenBurnBar.App.MemorySearch.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:   138, Skipped:     0, Total:   138, Duration: 159 ms - OpenBurnBar.App.MemorySearch.Tests.dll (net10.0)
+  OpenBurnBar.App.Quota.Acquisition.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/quota-acquisition/bin/Release/net10.0/OpenBurnBar.App.Quota.Acquisition.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/quota-acquisition/bin/Release/net10.0/OpenBurnBar.App.Quota.Acquisition.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    59, Skipped:     0, Total:    59, Duration: 544 ms - OpenBurnBar.App.CloudSync.Tests.dll (net10.0)
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    57, Skipped:     0, Total:    57, Duration: 290 ms - OpenBurnBar.App.Quota.Acquisition.Tests.dll (net10.0)
+  OpenBurnBar.Native.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/native/bin/Release/net10.0/OpenBurnBar.Native.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/native/bin/Release/net10.0/OpenBurnBar.Native.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:00.11]     OpenBurnBar.Native.Tests.IrohLoopbackTests.ParseBlobTicket_RejectsGarbage_WithTheTypedError [SKIP]
+[xUnit.net 00:00:00.12]     OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.Readiness_ReportsTheGen2Protocol [SKIP]
+[xUnit.net 00:00:00.12]     OpenBurnBar.Native.Tests.IrohLoopbackTests.ProtocolVersion_IsTheV1TheMacPeerSpeaks [SKIP]
+[xUnit.net 00:00:00.12]     OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.QualityController_UpdatesThroughTheStatefulObjectPath [SKIP]
+[xUnit.net 00:00:00.12]     OpenBurnBar.Native.Tests.IrohLoopbackTests.AuxiliaryAlpns_AreNonEmpty_AndDistinct [SKIP]
+[xUnit.net 00:00:00.12]     OpenBurnBar.Native.Tests.IrohLoopbackTests.OpenBurnBarAlpn_MatchesThePinnedConstant [SKIP]
+  Skipped OpenBurnBar.Native.Tests.IrohLoopbackTests.ParseBlobTicket_RejectsGarbage_WithTheTypedError [1 ms]
+  Skipped OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.Readiness_ReportsTheGen2Protocol [1 ms]
+  Skipped OpenBurnBar.Native.Tests.IrohLoopbackTests.ProtocolVersion_IsTheV1TheMacPeerSpeaks [1 ms]
+  Skipped OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.QualityController_UpdatesThroughTheStatefulObjectPath [1 ms]
+  Skipped OpenBurnBar.Native.Tests.IrohLoopbackTests.AuxiliaryAlpns_AreNonEmpty_AndDistinct [1 ms]
+  Skipped OpenBurnBar.Native.Tests.IrohLoopbackTests.OpenBurnBarAlpn_MatchesThePinnedConstant [1 ms]
+[xUnit.net 00:00:00.14]     OpenBurnBar.Native.Tests.IrohLoopbackTests.GenerateSecretKeyMaterial_Returns32FreshBytes [SKIP]
+[xUnit.net 00:00:00.14]     OpenBurnBar.Native.Tests.IrohLoopbackTests.EndpointHandle_RejectsAnInvalidSecretKey [SKIP]
+[xUnit.net 00:00:00.14]     OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.DecodeQualityDecision_Truncated_ThrowsTheTypedError [SKIP]
+[xUnit.net 00:00:00.14]     OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.DecodeQualityDecision_OfTheGolden_ReturnsTheOriginal [SKIP]
+[xUnit.net 00:00:00.15]     OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.ModeRequiresPermission_MatchesTheEnginePolicyTable [SKIP]
+[xUnit.net 00:00:00.15]     OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.EncodeQualityDecision_MatchesTheCommittedGolden_AndFiresCallbacksInOrder [SKIP]
+[xUnit.net 00:00:00.15]     OpenBurnBar.Native.Tests.IrohLoopbackTests.EndpointHandle_Identity_BeforeBootstrap_ThrowsTheTypedError [SKIP]
+  Skipped OpenBurnBar.Native.Tests.IrohLoopbackTests.GenerateSecretKeyMaterial_Returns32FreshBytes [1 ms]
+  Skipped OpenBurnBar.Native.Tests.IrohLoopbackTests.EndpointHandle_RejectsAnInvalidSecretKey [1 ms]
+  Skipped OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.DecodeQualityDecision_Truncated_ThrowsTheTypedError [1 ms]
+  Skipped OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.DecodeQualityDecision_OfTheGolden_ReturnsTheOriginal [1 ms]
+  Skipped OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.ModeRequiresPermission_MatchesTheEnginePolicyTable [1 ms]
+  Skipped OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.EncodeQualityDecision_MatchesTheCommittedGolden_AndFiresCallbacksInOrder [1 ms]
+  Skipped OpenBurnBar.Native.Tests.IrohLoopbackTests.EndpointHandle_Identity_BeforeBootstrap_ThrowsTheTypedError [1 ms]
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    15, Skipped:    13, Total:    28, Duration: 59 ms - OpenBurnBar.Native.Tests.dll (net10.0)
