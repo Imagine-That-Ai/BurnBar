@@ -80,7 +80,7 @@
 
 **Resolver ground truth:** every `NavCatalog.All` key + auxiliary `elderWand` maps through `SurfaceRouteMap` → `SurfacePageResolver`. **`database` → `DatabasePage`**, **`projects` → `ProjectsPage`** (product pages, not stubs). Unknown keys fall through to `SurfaceStubPage`. Product logical names are fail-closed completeness-checked at resolver load.
 
-**H8 integrations** (Mercury, Cast/SmartHub, Home Assistant, text expansion, CursorConnector, DailyDigest, settings S1–S2 tabs) are ledger rows **Real** — `mercury-media`, `cast-smarthub`, `home-assistant`, `text-expansion`, `cursor-connector`, `daily-digest-notifications`, `settings-s1-s2-tabs` — see `f1_coverage_register` and `docs/windows-port/evidence/f1-h8/integrations-live-cores.md`.
+**H8 integrations** (Mercury, Cast/SmartHub, Home Assistant, text expansion, CursorConnector, DailyDigest, settings S1–S2 tabs) are ledger rows **Real** — `mercury-media`, `cast-smarthub`, `home-assistant`, `text-expansion`, `cursor-connector`, `daily-digest-notifications`, `settings-s1-s2-tabs` — see `f1_coverage_register` and `docs/windows-port/evidence/f1-h8/integrations-live-cores.md`. Mercury's file-transfer safety path additionally has exact-candidate ARM64 host proof under `docs/windows-port/evidence/h2-host/mercury-file-transfer/`; capture, encode, calls, WNS, and cross-device RFB remain outside that claim.
 
 ---
 
@@ -120,7 +120,7 @@
 | **SBOM / Sigstore** | A | Release pipeline | Windows release job (keyless attest) | `release.yml` pattern / `openburnbar-release-windows.yml` | **Unsigned rehearsal proven** (371 SPDX packages; 7/7 attestations verified); signed release remains blocked | G5 receipt `evidence/f1-dist/ci-run-84585a2b1a.json` |
 | **Integrations: Cast** | B | `Services/Cast/` | `OpenBurnBar.Integrations.Cast.Tests` | Protocol + mDNS tests | **Unit parity** | W9 |
 | **Integrations: Home Assistant** | B | `Services/HomeAssistant/` | `OpenBurnBar.Integrations.Tests` | Client + mapper tests | **Unit parity** | W9 |
-| **Integrations: Mercury** | B | AVFoundation pipeline | RFB + media codec port | `OpenBurnBar.Integrations.Mercury.Tests` | **Protocol tests**; AV G4 | W9 |
+| **Integrations: Mercury** | B | AVFoundation pipeline | RFB/media codec core + composed safe file transfer | `OpenBurnBar.Integrations.Mercury.Tests` + ARM64 host harness | **File transfer host-proven**; capture/encode/calls/WNS remain G4 | W9; `evidence/h2-host/mercury-file-transfer/` |
 | **Pet / glTF** | B | SceneKit + `.glb` | `WebView2PetGltfHost` + overlay | `OpenBurnBar.App.Pet.Tests` | **Behavior + overlay tests** | G4 |
 | **Theme / glass** | B | `LiquidGlass.swift` | Mica/Acrylic shim | `OpenBurnBar.App.Theme.Tests` | **Transparency contract** | Accepted drift §4 R7 |
 | **mDNS / SmartHub** | B | Bonjour | DNS-SD seam | `MdnsAdvertisementTests` in integrations | **Partial** | W1 PAL |
