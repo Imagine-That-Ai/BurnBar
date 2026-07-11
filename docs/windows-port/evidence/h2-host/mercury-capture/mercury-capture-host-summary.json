@@ -1,0 +1,46 @@
+{
+  "Passed": true,
+  "GeneratedAtUtc": "2026-07-11T00:42:46.0930656+00:00",
+  "MachineName": "WINDOWS-ARM64-HOST",
+  "OsVersion": "Microsoft Windows NT 10.0.26200.0",
+  "OsArchitecture": "Arm64",
+  "ProcessArchitecture": "Arm64",
+  "Framework": ".NET 10.0.9",
+  "CaptureWidth": 962,
+  "CaptureHeight": 632,
+  "CaptureBytes": 2431936,
+  "CaptureSha256": "d5b2f7ce3e55a20d2544624a7ebe73c489f42802363c0b2d3cc3fabe26e7b837",
+  "CapturePngSha256": "b7d935ef772aab70450de9c2792ec135a3fa47373c015fb2fa642fbe329c8d0c",
+  "Checks": [
+    {
+      "Name": "wgc-positive-dimensions",
+      "Passed": true,
+      "Detail": "width=962; height=632"
+    },
+    {
+      "Name": "wgc-bgra-length",
+      "Passed": true,
+      "Detail": "bytes=2431936; expected=2431936"
+    },
+    {
+      "Name": "wgc-nonblank-pixels",
+      "Passed": true,
+      "Detail": "distinct=67; lumaRange=230; nonZeroRgb=20267"
+    },
+    {
+      "Name": "wgc-no-adapter-error",
+      "Passed": true,
+      "Detail": "none"
+    },
+    {
+      "Name": "wgc-png-written",
+      "Passed": true,
+      "Detail": "bytes=17287"
+    },
+    {
+      "Name": "uncertified-encoder-fails-closed",
+      "Passed": true,
+      "Detail": "denied=True"
+    }
+  ]
+}

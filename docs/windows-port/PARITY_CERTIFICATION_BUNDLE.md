@@ -80,7 +80,7 @@
 
 **Resolver ground truth:** every `NavCatalog.All` key + auxiliary `elderWand` maps through `SurfaceRouteMap` → `SurfacePageResolver`. **`database` → `DatabasePage`**, **`projects` → `ProjectsPage`** (product pages, not stubs). Unknown keys fall through to `SurfaceStubPage`. Product logical names are fail-closed completeness-checked at resolver load.
 
-**H8 integrations** (Mercury, Cast/SmartHub, Home Assistant, text expansion, CursorConnector, DailyDigest, settings S1–S2 tabs) are ledger rows **Real** — `mercury-media`, `cast-smarthub`, `home-assistant`, `text-expansion`, `cursor-connector`, `daily-digest-notifications`, `settings-s1-s2-tabs` — see `f1_coverage_register` and `docs/windows-port/evidence/f1-h8/integrations-live-cores.md`. Mercury's file-transfer safety path additionally has exact-candidate ARM64 host proof under `docs/windows-port/evidence/h2-host/mercury-file-transfer/`; capture, encode, calls, WNS, and cross-device RFB remain outside that claim.
+**H8 integrations** (Mercury, Cast/SmartHub, Home Assistant, text expansion, CursorConnector, DailyDigest, settings S1–S2 tabs) are ledger rows **Real** — `mercury-media`, `cast-smarthub`, `home-assistant`, `text-expansion`, `cursor-connector`, `daily-digest-notifications`, `settings-s1-s2-tabs` — see `f1_coverage_register` and `docs/windows-port/evidence/f1-h8/integrations-live-cores.md`. Mercury's file-transfer safety path and WGC BGRA readback additionally have exact-candidate ARM64 host proof under `docs/windows-port/evidence/h2-host/mercury-file-transfer/` and `docs/windows-port/evidence/h2-host/mercury-capture/`; physical microphone/camera capture, encode, calls, WNS, and cross-device RFB remain outside those claims.
 
 ---
 

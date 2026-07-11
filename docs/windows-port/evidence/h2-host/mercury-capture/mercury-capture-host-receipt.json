@@ -1,0 +1,41 @@
+{
+  "schema": "openburnbar.windows.mercury-capture-host-evidence.v1",
+  "generatedAtUtc": "2026-07-11T00:42:46.3750901Z",
+  "status": "passed",
+  "source": {
+    "branch": "codex/windows-certification-mercury-capture",
+    "commit": "c0f9c8fdfcf5a3d746aced99c5c3745aa0984cc1",
+    "commitDate": "2026-07-10T19:30:55-05:00",
+    "parentCommits": [
+      "92f412123ab8bf8f8b6e19324fed8fa93156db4a"
+    ],
+    "ref": "c0f9c8fdfc",
+    "tree": "0447f037a6158217afc481103f70129fa27f0ea9"
+  },
+  "candidateManifestSha256": "318bc0c318e4d4f2932ed614eb4498cb82f1de2a0c28438981f3a44a0fd6b10c",
+  "sessionId": 1,
+  "osArchitecture": "ARM 64-bit Processor",
+  "systemType": "ARM64-based PC",
+  "processArchitecture": "Arm64",
+  "app": {
+    "fileName": "OpenBurnBar.App.exe",
+    "sha256": "e324e68be79ea4e8185e7049e3a416139a26905d732066d94a5813feae92f2d3",
+    "size": 260096
+  },
+  "hostSummary": {
+    "fileName": "host/mercury-capture-host-summary.json",
+    "sha256": "6ad2195dfe790672e2d734929f1ea42b3427aa51ceee6a6ce1b50824c92e8eb8",
+    "checks": 6,
+    "passed": true,
+    "captureSha256": "d5b2f7ce3e55a20d2544624a7ebe73c489f42802363c0b2d3cc3fabe26e7b837",
+    "rawSha256": "f256e813197a324cf54dd9360e4ddce287d1d2cde3024c55601f7bc34b661005",
+    "privacyRedaction": "MachineName replaced in committed summary"
+  },
+  "wgcCapture": {
+    "fileName": "host/mercury-capture-wgc.png",
+    "sha256": "b7d935ef772aab70450de9c2792ec135a3fa47373c015fb2fa642fbe329c8d0c",
+    "size": 17287,
+    "width": 962,
+    "height": 632
+  }
+}

@@ -532,21 +532,25 @@ rows:
   macos_route: media
   macos_capability: Mercury media plane
   windows_route: media
-  windows_capability: Mercury core + Windows file-transfer safety runtime; capture/encode/WNS disclosed unavailable
+  windows_capability: Mercury core + file-transfer safety runtime + real WGC BGRA readback; encode/calls/WNS disclosed unavailable
   status: Real
   evidence:
   - docs/windows-port/evidence/f1-h8/integrations-live-cores.md
   - docs/windows-port/evidence/h2-host/mercury-file-transfer/README.md
+  - docs/windows-port/evidence/h2-host/mercury-capture/README.md
   tests:
   - windows/tests/mercury
   - windows/tests/mercury-file-transfer-host
+  - windows/tests/mercury-capture-host
   blocking_paths:
   - windows/integrations/mercury/OpenBurnBar.Integrations.Mercury/Sessions/MediaSessionStateMachine.cs
   - windows/integrations/mercury/OpenBurnBar.Integrations.Mercury/Budget/MediaCapabilityGate.cs
   - windows/integrations/mercury/OpenBurnBar.Integrations.Mercury/FileTransfer/InboundFileQuarantineService.cs
   - windows/integrations/mercury/OpenBurnBar.Integrations.Mercury.Windows/WindowsMercuryFileTransferRuntime.cs
+  - windows/integrations/mercury/OpenBurnBar.Integrations.Mercury.Windows/GraphicsCaptureScreenSource.cs
+  - windows/integrations/mercury/OpenBurnBar.Integrations.Mercury.Windows/WindowsMediaBufferReader.cs
   owner_lane: wave-h8-integrations
-  notes: Production core and file-transfer safety runtime Real with exact-candidate ARM64 host proof; capture/encode/calls/WNS remain unavailable pending separate certification.
+  notes: Production core, file-transfer safety, and WGC BGRA readback Real with exact-candidate ARM64 host proof; physical microphone/camera, encode, calls, WNS, and cross-device RFB remain unavailable pending separate certification.
 - id: cast-smarthub
   macos_route: cast
   macos_capability: Cast / SmartHub discovery

@@ -1,0 +1,23 @@
+{
+  "schema": "openburnbar.windows.candidate-import-verification.v1",
+  "verifiedAt": "2026-07-11T00:37:16.4001753Z",
+  "destinationRoot": "C:\\mcapc0f9",
+  "manifestPath": "C:\\Users\\Public\\candidate-c0f9c8fdfcf5-run\\openburnbar-candidate-c0f9c8fdfcf5.manifest.json",
+  "manifestSha256": "318bc0c318e4d4f2932ed614eb4498cb82f1de2a0c28438981f3a44a0fd6b10c",
+  "archivePath": "C:\\Users\\Public\\candidate-c0f9c8fdfcf5-run\\openburnbar-candidate-c0f9c8fdfcf5.tar.gz",
+  "archiveSha256": "e6952e4ed34bea2b9598f9d7ed167e1d2f78d9e576172de23aeab61ce0993c0e",
+  "source": {
+    "branch": "codex/windows-certification-mercury-capture",
+    "commit": "c0f9c8fdfcf5a3d746aced99c5c3745aa0984cc1",
+    "commitDate": "2026-07-10T19:30:55-05:00",
+    "parentCommits": [
+      "92f412123ab8bf8f8b6e19324fed8fa93156db4a"
+    ],
+    "ref": "c0f9c8fdfc",
+    "tree": "0447f037a6158217afc481103f70129fa27f0ea9"
+  },
+  "checkedFiles": 10290,
+  "expectedFiles": 10290,
+  "mismatches": [],
+  "status": "passed"
+}
