@@ -40,6 +40,14 @@
       "scratchPath": ".build-linux-swift-tests/core"
     },
     {
+      "id": "computer-use-linux",
+      "packagePath": "OpenBurnBarCore",
+      "target": "OpenBurnBarComputerUseCoreTests",
+      "filter": "OpenBurnBarComputerUseCoreTests",
+      "minimumExecutedTests": 8,
+      "scratchPath": ".build-linux-swift-tests/core"
+    },
+    {
       "id": "daemon-linux",
       "packagePath": "OpenBurnBarDaemon",
       "target": "OpenBurnBarDaemonLinuxGatewayTests",
