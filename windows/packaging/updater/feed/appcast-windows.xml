@@ -12,7 +12,7 @@
       <sparkle:shortVersionString>1.4.2</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>10.0.19041</sparkle:minimumSystemVersion>
       <sparkle:releaseNotesLink>https://dl.openburnbar.app/windows/release-metadata.json</sparkle:releaseNotesLink>
-      <enclosure url="https://dl.openburnbar.app/windows/OpenBurnBar-Setup-1.4.2.msix" length="620" type="application/msix" sparkle:sha256="d6371904a44a6934b22cbec9eae64095dfa7ad1a1de8e4cddd859cad089487b4" sparkle:edSignature="ifEH/TU94s2RpLwotSM0VaAV2dFaHZkMMFQyAOEj+NbEfl1+8NQ4jRLQ8A/swq4ktPui02Y6xLKzZ6cTgz25Bg==" />
+      <enclosure url="https://dl.openburnbar.app/windows/OpenBurnBar-Setup-1.4.2.msix" length="620" type="application/msix" sparkle:sha256="d6371904a44a6934b22cbec9eae64095dfa7ad1a1de8e4cddd859cad089487b4" sparkle:edSignature="CeJUyVxW/f1k4Uzh6KxTpsPecebBWyp3tPqmyeiEM8e6N6Ll/KwY8D2mZBumYwe2IlTc1h8XNY8GyTxVxq8nAw==" />
     </item>
   </channel>
 </rss>

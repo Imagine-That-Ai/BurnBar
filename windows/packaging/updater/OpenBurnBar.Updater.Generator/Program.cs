@@ -1,5 +1,5 @@
 // Release-side Windows appcast generator — the mirror of
-// scripts/generate-macos-appcast.mjs. Signs the artifact BYTES with the pinned
+// scripts/generate-macos-appcast.mjs. Signs a canonical update descriptor with the pinned
 // Ed25519 PRIVATE seed and emits appcast XML + latest-windows.json.
 //
 // Usage:
@@ -47,7 +47,7 @@ internal static class Program
                 PackageName = options.GetValueOrDefault("package") ?? Path.GetFileName(artifactPath),
                 Length = artifactBytes.LongLength,
                 Sha256 = Sha256Digest.HexOf(artifactBytes),
-                EdSignatureBase64 = keyPair.SignBase64(artifactBytes),
+                EdSignatureBase64 = string.Empty,
                 Critical = options.ContainsKey("critical"),
                 MinimumSystemVersion =
                     options.GetValueOrDefault("min-system-version") ?? "10.0.19041",
@@ -59,10 +59,16 @@ internal static class Program
                 CreatedAt = options.GetValueOrDefault("created-at"),
             };
 
+            var signedDescriptor = descriptor with
+            {
+                EdSignatureBase64 = keyPair.SignBase64(
+                    UpdateDescriptorCanonicalizer.CanonicalBytes(descriptor)),
+            };
+
             var appcastOut = Require(options, "appcast-out");
             var jsonOut = Require(options, "json-out");
-            File.WriteAllText(appcastOut, AppcastFeedWriter.Write(descriptor));
-            File.WriteAllText(jsonOut, JsonFeedWriter.Write(descriptor));
+            File.WriteAllText(appcastOut, AppcastFeedWriter.Write(signedDescriptor));
+            File.WriteAllText(jsonOut, JsonFeedWriter.Write(signedDescriptor));
             VerifyGeneratedFeed(
                 appcastOut,
                 FeedFormat.Appcast,
@@ -76,8 +82,8 @@ internal static class Program
 
             Console.Error.WriteLine(
                 $"generate-windows-appcast: wrote {appcastOut} + {jsonOut} " +
-                $"(version={descriptor.Version} length={descriptor.Length} " +
-                $"sha256={descriptor.Sha256} pinnedKey={keyPair.PublicKeyBase64} " +
+                $"(version={signedDescriptor.Version} length={signedDescriptor.Length} " +
+                $"sha256={signedDescriptor.Sha256} pinnedKey={keyPair.PublicKeyBase64} " +
                 "verified=appcast,json)");
             return 0;
         }

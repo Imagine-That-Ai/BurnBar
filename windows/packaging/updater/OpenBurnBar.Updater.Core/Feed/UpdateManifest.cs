@@ -36,7 +36,7 @@ public sealed record UpdateManifest
     /// appcast custom <c>sparkle:sha256</c>).</summary>
     public string? Sha256 { get; init; }
 
-    /// <summary>Base64 Ed25519 signature over the artifact BYTES
+    /// <summary>Base64 Ed25519 signature over the canonical update descriptor
     /// (appcast enclosure <c>sparkle:edSignature</c>, JSON
     /// <c>edSignature</c>) — the value the PINNED key must verify.</summary>
     public string? EdSignatureBase64 { get; init; }
@@ -48,6 +48,9 @@ public sealed record UpdateManifest
     /// <summary>Minimum OS version this build supports
     /// (<c>sparkle:minimumSystemVersion</c>), e.g. "10.0.19041".</summary>
     public string? MinimumSystemVersion { get; init; }
+
+    /// <summary>The distribution channel bound by JSON feeds; appcast feeds default to direct-download.</summary>
+    public string Channel { get; init; } = "direct-download";
 
     /// <summary>URL of the human-readable release notes
     /// (<c>sparkle:releaseNotesLink</c>).</summary>

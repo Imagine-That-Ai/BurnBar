@@ -20,8 +20,9 @@ internal static class FeedTestData
         byte[] artifact,
         string version = "1.4.2",
         string build = "1420",
-        bool critical = false) =>
-        new()
+        bool critical = false)
+    {
+        var unsigned = new UpdateReleaseDescriptor
         {
             Version = version,
             Build = build,
@@ -30,13 +31,20 @@ internal static class FeedTestData
             PackageName = "OpenBurnBar-Setup-" + version + ".msix",
             Length = artifact.LongLength,
             Sha256 = Sha256Digest.HexOf(artifact),
-            EdSignatureBase64 = signer.SignBase64(artifact),
+            EdSignatureBase64 = string.Empty,
             Critical = critical,
             MinimumSystemVersion = "10.0.19041",
             ReleaseNotesUrl = "https://dl.openburnbar.app/windows/release-metadata.json",
             AppcastUrl = "https://dl.openburnbar.app/windows/appcast-windows.xml",
             Commit = "0000000000000000000000000000000000000000",
         };
+
+        return unsigned with
+        {
+            EdSignatureBase64 = signer.SignBase64(
+                UpdateDescriptorCanonicalizer.CanonicalBytes(unsigned)),
+        };
+    }
 
     internal static string Write(FeedFormat format, UpdateReleaseDescriptor descriptor) =>
         format == FeedFormat.Appcast

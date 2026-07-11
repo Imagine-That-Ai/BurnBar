@@ -7,7 +7,7 @@
   "createdAt": "2026-07-04T00:00:00Z",
   "critical": false,
   "downloadUrl": "https://dl.openburnbar.app/windows/OpenBurnBar-Setup-1.4.2.msix",
-  "edSignature": "ifEH/TU94s2RpLwotSM0VaAV2dFaHZkMMFQyAOEj+NbEfl1+8NQ4jRLQ8A/swq4ktPui02Y6xLKzZ6cTgz25Bg==",
+  "edSignature": "CeJUyVxW/f1k4Uzh6KxTpsPecebBWyp3tPqmyeiEM8e6N6Ll/KwY8D2mZBumYwe2IlTc1h8XNY8GyTxVxq8nAw==",
   "length": 620,
   "minimumSystemVersion": "10.0.19041",
   "package": "OpenBurnBar-Setup-1.4.2.msix",

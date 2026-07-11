@@ -2,7 +2,7 @@
 //
 // This is the mirror of the arguments scripts/generate-macos-appcast.mjs takes.
 // The release pipeline (a Windows runner + the W0 signing key, CI-deferred)
-// computes the artifact length + SHA-256, signs the artifact bytes with the
+// computes the artifact length + SHA-256, signs the canonical update descriptor with the
 // PINNED Ed25519 PRIVATE key, and fills this in; the writers below serialize it
 // to the two feed encodings. The tests use it to build a real signed feed and
 // prove the full generate -> parse -> pin-verify round trip end to end.
@@ -33,7 +33,7 @@ public sealed record UpdateReleaseDescriptor
     /// <summary>Lowercase-hex SHA-256 of the artifact bytes.</summary>
     public required string Sha256 { get; init; }
 
-    /// <summary>Base64 Ed25519 signature over the artifact bytes (pinned key).</summary>
+    /// <summary>Base64 Ed25519 signature over the canonical update descriptor (pinned key).</summary>
     public required string EdSignatureBase64 { get; init; }
 
     /// <summary>MIME type of the enclosure; MSIX defaults below.</summary>

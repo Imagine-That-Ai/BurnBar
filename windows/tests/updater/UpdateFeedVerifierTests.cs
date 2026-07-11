@@ -85,6 +85,38 @@ public sealed class UpdateFeedVerifierTests
         Assert.Equal(RejectionReason.SignatureInvalid, decision.Reason);
     }
 
+
+    [Theory]
+    [InlineData(FeedFormat.Appcast)]
+    [InlineData(FeedFormat.Json)]
+    public void SignedArtifactCannotBeReboundToNewerMetadata(FeedFormat format)
+    {
+        var pinnedKey = Ed25519UpdateKeyPair.Generate();
+        var honest = FeedTestData.Descriptor(
+            pinnedKey,
+            FeedTestData.Artifact,
+            version: "1.4.2");
+        var tampered = honest with
+        {
+            Version = "99.99.99",
+            Build = "999999",
+            DownloadUrl = "https://attacker.example/OpenBurnBar-Setup-99.99.99.msix",
+            PackageName = "OpenBurnBar-Setup-99.99.99.msix",
+            Critical = true,
+        };
+        var feed = FeedTestData.Write(format, tampered);
+
+        var decision = VerifierFor(pinnedKey).Decide(
+            feed,
+            format,
+            UpdateVersion.Parse("2.0.0"),
+            FeedTestData.Artifact);
+
+        Assert.Equal(UpdateStatus.Rejected, decision.Status);
+        Assert.Equal(RejectionReason.SignatureInvalid, decision.Reason);
+        Assert.False(decision.ShouldInstall);
+    }
+
     [Fact]
     public void WrongKeyIsRejected()
     {

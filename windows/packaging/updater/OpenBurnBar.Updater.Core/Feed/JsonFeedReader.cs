@@ -62,6 +62,7 @@ public static class JsonFeedReader
                     ReadString(root, "edSignature") ?? ReadString(root, "sparkleEdSignature"),
                 Critical = ReadBool(root, "critical"),
                 MinimumSystemVersion = ReadString(root, "minimumSystemVersion"),
+                Channel = ReadString(root, "channel") ?? "direct-download",
                 ReleaseNotesUrl = ReadString(root, "releaseNotesUrl"),
                 PubDate = ReadString(root, "pubDate") ?? ReadString(root, "createdAt"),
             };

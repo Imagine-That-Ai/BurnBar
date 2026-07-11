@@ -12,14 +12,14 @@ certificate**.
 | File | Role |
 |------|------|
 | [`appcast-windows.xml`](appcast-windows.xml) | The Sparkle/WinSparkle appcast (RSS 2.0 + `sparkle:` namespace). The `<enclosure>` carries `url` / `length` / `type` / `sparkle:sha256` / `sparkle:edSignature`. WinSparkle 0.8+ verifies `sparkle:edSignature` natively against the pinned EdDSA key. |
-| [`latest-windows.json`](latest-windows.json) | The JSON companion (mirror of `latest-macos.json`): `version` / `build` / `downloadUrl` / `length` / `sha256` / `edSignature` / `critical` / `minimumSystemVersion` / `releaseNotesUrl`. Drives the direct-download JSON channel + the custom in-app updater. |
+| [`latest-windows.json`](latest-windows.json) | The JSON companion (mirror of `latest-macos.json`): `version` / `build` / `downloadUrl` / `length` / `sha256` / `edSignature` / `critical` / `channel` / `minimumSystemVersion` / `releaseNotesUrl`. Drives the direct-download JSON channel + the custom in-app updater. |
 | [`pinned-update-key.pub`](pinned-update-key.pub) | The base64 raw (32-byte) Ed25519 **public** key the client pins. **This one is the throwaway DEV/sample pin**; the production pin is injected at build time from the W0 secret. |
 | [`sample-artifact.txt`](sample-artifact.txt) | A deterministic stand-in for the installer artifact so the committed sample feed carries a **real** signature + SHA-256 over concrete bytes. |
 
 ## What the Ed25519 signature covers (the R19 crux)
 
 `sparkle:edSignature` / `edSignature` is a base64 Ed25519 (RFC 8032) signature
-over the **raw bytes of the download artifact** — exactly Sparkle's semantics.
+over a canonical descriptor that binds the advertised version, build, download URL, length, SHA-256, critical flag, channel, minimum system version, and release-notes URL.
 The client
 ([`OpenBurnBar.Updater.Core`](../OpenBurnBar.Updater.Core)) refuses to install
 unless, in order:
@@ -29,14 +29,14 @@ unless, in order:
    (older ⇒ **downgrade-blocked**; equal ⇒ up-to-date),
 3. the downloaded artifact's **byte length** matches,
 4. its **SHA-256** matches, and
-5. its **Ed25519 signature verifies against the pinned key**.
+5. the feed's **Ed25519 signature verifies against the pinned key** over that canonical descriptor.
 
 The pinned key is **independent of the Authenticode certificate**. An attacker
 who tampers the feed transport, swaps the artifact, or even re-signs the
 installer with a valid Authenticode certificate still cannot forge step 5. The
 SHA-256 check is a cheap fail-fast that does **not** weaken this: rewriting the
 feed's `sha256` to match a malicious payload does not let the attacker forge the
-Ed25519 signature over that payload (proven by
+Ed25519 signature over a descriptor for that payload (proven by
 `UpdateFeedVerifierTests.SignatureBeatsRewrittenSha256`).
 
 ## Regenerating the sample

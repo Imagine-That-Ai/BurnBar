@@ -138,6 +138,17 @@ public readonly struct UpdateVersion : IComparable<UpdateVersion>, IEquatable<Up
         return hash.ToHashCode();
     }
 
+    public string ToNormalizedString()
+    {
+        var components = new string[NormalizedComponentCount];
+        for (var i = 0; i < NormalizedComponentCount; i++)
+        {
+            components[i] = ComponentAt(i).ToString(CultureInfo.InvariantCulture);
+        }
+
+        return string.Join(".", components);
+    }
+
     public override string ToString() => Raw ?? "0.0.0.0";
 
     public static bool operator ==(UpdateVersion left, UpdateVersion right) => left.Equals(right);

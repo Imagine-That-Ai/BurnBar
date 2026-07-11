@@ -4,7 +4,8 @@
 // FAIL-CLOSED at every branch: it installs iff (1) the feed parses, (2) its
 // version is dotted-numeric and strictly newer than the installed build, (3)
 // the downloaded artifact's byte length matches, (4) its SHA-256 matches, and
-// (5) its Ed25519 signature verifies against the PINNED public key. ANY other
+// (5) its Ed25519 signature verifies the canonical update descriptor against
+// the PINNED public key. ANY other
 // path returns UpToDate / DowngradeBlocked / Rejected — never an install.
 //
 // The pinned key is Ed25519 and INDEPENDENT of the Authenticode signing
@@ -14,7 +15,7 @@
 // cannot pass step (5) without the pinned feed private key. The SHA-256 check
 // is a cheap fail-fast that does NOT weaken this — rewriting the feed's sha256
 // to match a malicious payload does not let the attacker forge the Ed25519
-// signature over that payload (proven by the SignatureBeatsRewrittenSha256
+// signature over a descriptor for that payload (proven by the SignatureBeatsRewrittenSha256
 // test).
 //
 // The two stages are exposed separately so the host can parse the feed, decide
@@ -28,7 +29,7 @@ using OpenBurnBar.Updater.Core.Versioning;
 
 namespace OpenBurnBar.Updater.Core.Verification;
 
-/// <summary>Parses a feed, blocks downgrades, and pin-verifies the artifact.</summary>
+/// <summary>Parses a feed, blocks downgrades, and pin-verifies the signed descriptor and artifact.</summary>
 public sealed class UpdateFeedVerifier
 {
     private readonly IUpdateSignatureVerifier _pinnedVerifier;
@@ -97,7 +98,7 @@ public sealed class UpdateFeedVerifier
     /// <summary>
     /// Stage 2 — verify a downloaded artifact against a candidate manifest:
     /// signature present, length matches, SHA-256 matches, and the Ed25519
-    /// signature verifies against the PINNED key. The signature check is the
+    /// signature verifies the canonical descriptor against the PINNED key. The signature check is the
     /// authoritative gate; the others are fail-fast integrity checks that run
     /// first.
     /// </summary>
@@ -125,6 +126,16 @@ public sealed class UpdateFeedVerifier
             return ArtifactVerification.Fail(RejectionReason.Sha256Mismatch);
         }
 
+        byte[] signedDescriptor;
+        try
+        {
+            signedDescriptor = UpdateDescriptorCanonicalizer.CanonicalBytes(manifest);
+        }
+        catch (FormatException)
+        {
+            return ArtifactVerification.Fail(RejectionReason.SignatureInvalid);
+        }
+
         byte[] signature;
         try
         {
@@ -135,7 +146,7 @@ public sealed class UpdateFeedVerifier
             return ArtifactVerification.Fail(RejectionReason.SignatureInvalid);
         }
 
-        if (!_pinnedVerifier.Verify(artifactBytes, signature))
+        if (!_pinnedVerifier.Verify(signedDescriptor, signature))
         {
             return ArtifactVerification.Fail(RejectionReason.SignatureInvalid);
         }
