@@ -39,8 +39,10 @@ minted token's SHA-256 hash and verifier receipt under a challenge-derived
 `users/{uid}/linux_app_check_sessions/{sessionHash}` document. Firestore Rules deny client
 access to both collections.
 
-The remote verifier call is exact HTTPS with redirects refused, a ten-second
-timeout, bounded evidence and response bodies, and a pinned Ed25519 public key.
+The remote verifier call is exact HTTPS with redirects refused, a sixty-second
+end-to-end authentication/request timeout, bounded evidence and response bodies,
+and a pinned Ed25519 public key. The verifier lease must exceed that budget so a
+lost response can be recovered from the identical cached result.
 The signed verdict must match the configured key ID, issuer, audience, policy,
 challenge hash, UID, app, device, version, architecture, release digest,
 attestation kind, timestamps, and `linux_lower_trust` class.
@@ -90,6 +92,7 @@ Functions production configuration:
 | `APP_CHECK_STANDARD_WEB_APP_IDS` | Exact production website/console Firebase Web app IDs only; disjoint from every current or retired desktop ID |
 | `LINUX_APP_CHECK_POLICY_ID` | Versioned attestation policy; default source value is `openburnbar-linux-tpm2-ima-v1` |
 | `LINUX_APP_CHECK_VERIFIER_URL` | Exact HTTPS remote verifier endpoint |
+| `LINUX_APP_CHECK_VERIFIER_OIDC_AUDIENCE` | Exact verifier HTTPS origin (for example `https://verifier-abc-uc.a.run.app`); distinct from the signed-verdict audience |
 | `LINUX_APP_CHECK_VERIFIER_PUBLIC_KEY_BASE64` | DER/SPKI Ed25519 public key, base64 encoded |
 | `LINUX_APP_CHECK_VERIFIER_KEY_ID` | Exact active verifier signing-key ID |
 | `LINUX_APP_CHECK_VERIFIER_ISSUER` | Exact signed-verdict issuer |
@@ -97,6 +100,13 @@ Functions production configuration:
 | `ENFORCE_APP_CHECK` | `true` in production |
 | `REQUIRE_HIGH_RISK_NONCE` | `true` in production |
 | `ALLOW_MOCK_APP_CHECK_ATTESTATION` | Must remain false; production config forces it off |
+
+The Functions runtime service account must have `roles/run.invoker` on the
+private verifier service. Functions obtains a Google-signed ID token for
+`LINUX_APP_CHECK_VERIFIER_OIDC_AUDIENCE`; configuration fails closed unless that
+audience is the exact origin of `LINUX_APP_CHECK_VERIFIER_URL`. Do not reuse
+`LINUX_APP_CHECK_VERIFIER_AUDIENCE`: that value is embedded in and checked on
+the verifier's signed application verdict, not the Cloud Run transport token.
 
 Daemon endpoint overrides are deployment/test controls only:
 

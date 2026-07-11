@@ -20,6 +20,7 @@ const {
   mockMac,
   assertProductionPolicyConfigured,
   assertProductionAppIDAllowlisted,
+  runtimePolicy,
   MOCK_ATTESTATION_KIND,
 } = __testing__;
 
@@ -394,6 +395,7 @@ describe("Linux App Check durable challenge boundary", () => {
       appId: "1:123456:web:abcdef",
       policyId: "policy",
       verifierURL: new URL("https://verifier.example.test/verify"),
+      verifierOIDCAudience: "https://verifier.example.test",
       verifierPublicKeyBase64: "configured",
       verifierKeyID: "key-1",
       verifierIssuer: "issuer",
@@ -401,6 +403,34 @@ describe("Linux App Check durable challenge boundary", () => {
     };
     expect(() => assertProductionAppIDAllowlisted(completePolicy, [])).toThrow(/not operator-allowlisted/i);
     expect(() => assertProductionAppIDAllowlisted(completePolicy, [completePolicy.appId])).not.toThrow();
+    expect(() =>
+      assertProductionPolicyConfigured({
+        ...completePolicy,
+        verifierOIDCAudience: "https://different-verifier.example.test",
+      }),
+    ).toThrow(/OIDC audience.*exactly match/i);
+  });
+
+  it("accepts only a fixed HTTPS verifier endpoint from runtime configuration", () => {
+    expect(
+      runtimePolicy({
+        LINUX_APP_CHECK_VERIFIER_URL: "http://verifier.example.test/verify",
+        LINUX_APP_CHECK_VERIFIER_OIDC_AUDIENCE: "http://verifier.example.test",
+      }).verifierURL,
+    ).toBeUndefined();
+    expect(
+      runtimePolicy({
+        LINUX_APP_CHECK_VERIFIER_URL: "https://verifier.example.test/verify?redirect=other",
+        LINUX_APP_CHECK_VERIFIER_OIDC_AUDIENCE: "https://verifier.example.test",
+      }).verifierURL,
+    ).toBeUndefined();
+
+    const policy = runtimePolicy({
+      LINUX_APP_CHECK_VERIFIER_URL: "https://verifier.example.test/verify",
+      LINUX_APP_CHECK_VERIFIER_OIDC_AUDIENCE: "https://verifier.example.test",
+    });
+    expect(policy.verifierURL?.href).toBe("https://verifier.example.test/verify");
+    expect(policy.verifierOIDCAudience).toBe("https://verifier.example.test");
   });
 
   it("registers mock verification only when explicitly allowed", () => {

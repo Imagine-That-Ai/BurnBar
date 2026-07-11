@@ -32,6 +32,7 @@ import {
   type LinuxAttestationChallengeStore,
   type LinuxAttestationDecision,
   type LinuxAttestationVerifier,
+  type LinuxVerifierIdentityTokenProvider,
 } from "../security/linuxAttestation.js";
 import { parseCallableInput } from "../validation/callableSchema.js";
 import { checkPublicHttpEndpointRateLimit } from "./publicRateLimit.js";
@@ -48,6 +49,7 @@ interface LinuxAppCheckRuntimePolicy {
   appId: string;
   policyId: string;
   verifierURL?: URL;
+  verifierOIDCAudience?: string;
   verifierPublicKeyBase64?: string;
   verifierKeyID?: string;
   verifierIssuer?: string;
@@ -119,7 +121,15 @@ function runtimePolicy(environment: NodeJS.ProcessEnv = process.env): LinuxAppCh
   if (rawURL) {
     try {
       const parsed = new URL(rawURL);
-      if (parsed.protocol === "https:") verifierURL = parsed;
+      if (
+        parsed.protocol === "https:" &&
+        parsed.username === "" &&
+        parsed.password === "" &&
+        parsed.search === "" &&
+        parsed.hash === ""
+      ) {
+        verifierURL = parsed;
+      }
     } catch {
       verifierURL = undefined;
     }
@@ -129,6 +139,7 @@ function runtimePolicy(environment: NodeJS.ProcessEnv = process.env): LinuxAppCh
     appId: config.linuxAppCheckAppID,
     policyId: environment.LINUX_APP_CHECK_POLICY_ID?.trim() || LINUX_ATTESTATION_POLICY_DEFAULT,
     verifierURL,
+    verifierOIDCAudience: environment.LINUX_APP_CHECK_VERIFIER_OIDC_AUDIENCE?.trim(),
     verifierPublicKeyBase64: environment.LINUX_APP_CHECK_VERIFIER_PUBLIC_KEY_BASE64?.trim(),
     verifierKeyID: environment.LINUX_APP_CHECK_VERIFIER_KEY_ID?.trim(),
     verifierIssuer: environment.LINUX_APP_CHECK_VERIFIER_ISSUER?.trim(),
@@ -145,12 +156,19 @@ function assertProductionPolicyConfigured(policy: LinuxAppCheckRuntimePolicy): v
   }
   if (
     !policy.verifierURL ||
+    !policy.verifierOIDCAudience ||
     !policy.verifierPublicKeyBase64 ||
     !policy.verifierKeyID ||
     !policy.verifierIssuer ||
     !policy.verifierAudience
   ) {
     throw new HttpsError("failed-precondition", "Linux production App Check verifier configuration is incomplete.");
+  }
+  if (policy.verifierOIDCAudience !== policy.verifierURL.origin) {
+    throw new HttpsError(
+      "failed-precondition",
+      "Linux verifier OIDC audience must exactly match the configured verifier HTTPS origin.",
+    );
   }
 }
 
@@ -165,6 +183,7 @@ function buildLinuxAttestationVerifiers(options: {
   allowMock: boolean;
   policy: LinuxAppCheckRuntimePolicy;
   mockSharedSecret?: string;
+  identityTokenProvider?: LinuxVerifierIdentityTokenProvider;
 }): Map<string, LinuxAttestationVerifier> {
   const result = new Map<string, LinuxAttestationVerifier>();
   if (options.allowMock) {
@@ -176,10 +195,12 @@ function buildLinuxAttestationVerifiers(options: {
       LINUX_ATTESTATION_KIND,
       new RemoteSignedLinuxAttestationVerifier({
         endpoint: options.policy.verifierURL!,
+        oidcAudience: options.policy.verifierOIDCAudience!,
         publicKeyBase64: options.policy.verifierPublicKeyBase64!,
         keyId: options.policy.verifierKeyID!,
         issuer: options.policy.verifierIssuer!,
         audience: options.policy.verifierAudience!,
+        identityTokenProvider: options.identityTokenProvider,
       }),
     );
   }

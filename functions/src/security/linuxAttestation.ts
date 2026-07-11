@@ -2,6 +2,7 @@ import { createHash, createPublicKey, randomBytes, verify as verifySignature } f
 
 import { Timestamp, type Firestore } from "firebase-admin/firestore";
 import { HttpsError } from "firebase-functions/v2/https";
+import { GoogleAuth } from "google-auth-library";
 
 import { providerFetch } from "../providers/httpClient.js";
 
@@ -18,8 +19,10 @@ const MAX_ARCHITECTURE_LENGTH = 24;
 const MAX_POLICY_ID_LENGTH = 160;
 const MAX_EVIDENCE_BYTES = 512 * 1024;
 const MAX_VERDICT_BYTES = 64 * 1024;
+const VERIFIER_REQUEST_TIMEOUT_MS = 60_000;
 const SHA256_HEX = /^[a-f0-9]{64}$/u;
 const SAFE_LABEL = /^[A-Za-z0-9._:+-]+$/u;
+const BEARER_ID_TOKEN = /^Bearer [A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/u;
 
 export type LinuxAttestationRejectReason =
   | "malformed"
@@ -85,6 +88,48 @@ export interface LinuxAttestationVerifier {
     evidence: unknown;
     nowMillis: number;
   }): Promise<LinuxAttestationDecision>;
+}
+
+export interface LinuxVerifierIdentityTokenProvider {
+  getAuthorizationHeader(): Promise<string>;
+}
+
+interface GoogleIdTokenAuthFactory {
+  getIdTokenClient(targetAudience: string): Promise<{
+    getRequestHeaders(): Promise<{ get(name: string): unknown }>;
+  }>;
+}
+
+export class GoogleCloudRunIdentityTokenProvider implements LinuxVerifierIdentityTokenProvider {
+  private clientPromise?: ReturnType<GoogleIdTokenAuthFactory["getIdTokenClient"]>;
+
+  constructor(
+    private readonly targetAudience: string,
+    private readonly auth: GoogleIdTokenAuthFactory = new GoogleAuth(),
+  ) {}
+
+  private async client(): Promise<Awaited<ReturnType<GoogleIdTokenAuthFactory["getIdTokenClient"]>>> {
+    const existing = this.clientPromise;
+    if (existing) return existing;
+
+    const pending = this.auth.getIdTokenClient(this.targetAudience);
+    this.clientPromise = pending;
+    try {
+      return await pending;
+    } catch (error) {
+      if (this.clientPromise === pending) this.clientPromise = undefined;
+      throw error;
+    }
+  }
+
+  async getAuthorizationHeader(): Promise<string> {
+    const headers = await (await this.client()).getRequestHeaders();
+    const authorization = headers.get("authorization");
+    if (typeof authorization !== "string" || !BEARER_ID_TOKEN.test(authorization)) {
+      throw new Error("Google identity token client returned a malformed authorization header.");
+    }
+    return authorization;
+  }
 }
 
 export function sha256Hex(value: string | Buffer): string {
@@ -349,6 +394,28 @@ function normalizeBoundedEvidence(evidence: unknown): unknown {
   return JSON.parse(encoded) as unknown;
 }
 
+function abortable<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const handleAbort = (): void => reject(signal.reason);
+    signal.addEventListener("abort", handleAbort, { once: true });
+    if (signal.aborted) {
+      handleAbort();
+      return;
+    }
+    operation.then(
+      (value) => {
+        signal.removeEventListener("abort", handleAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", handleAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
 function parseSignedVerdict(body: Buffer): SignedLinuxVerdictEnvelope {
   if (body.length === 0 || body.length > MAX_VERDICT_BYTES) throw linuxAttestationError("verdict_invalid");
   try {
@@ -400,16 +467,31 @@ function assertValidSignedVerdict(
 export class RemoteSignedLinuxAttestationVerifier implements LinuxAttestationVerifier {
   readonly kind = LINUX_ATTESTATION_KIND;
   private readonly publicKey: ReturnType<typeof createPublicKey>;
+  private readonly identityTokenProvider: LinuxVerifierIdentityTokenProvider;
+  private readonly endpoint: URL;
 
   constructor(
     private readonly configuration: {
       endpoint: URL;
+      oidcAudience: string;
       publicKeyBase64: string;
       keyId: string;
       issuer: string;
       audience: string;
+      identityTokenProvider?: LinuxVerifierIdentityTokenProvider;
     },
   ) {
+    const endpoint = new URL(configuration.endpoint.href);
+    if (
+      endpoint.protocol !== "https:" ||
+      endpoint.username !== "" ||
+      endpoint.password !== "" ||
+      endpoint.search !== "" ||
+      endpoint.hash !== "" ||
+      configuration.oidcAudience !== endpoint.origin
+    ) {
+      throw linuxAttestationError("verifier_unconfigured");
+    }
     try {
       this.publicKey = createPublicKey({
         key: Buffer.from(configuration.publicKeyBase64, "base64"),
@@ -420,6 +502,9 @@ export class RemoteSignedLinuxAttestationVerifier implements LinuxAttestationVer
     } catch {
       throw linuxAttestationError("verifier_unconfigured");
     }
+    this.endpoint = endpoint;
+    this.identityTokenProvider =
+      configuration.identityTokenProvider ?? new GoogleCloudRunIdentityTokenProvider(configuration.oidcAudience);
   }
 
   async verify(input: {
@@ -428,14 +513,26 @@ export class RemoteSignedLinuxAttestationVerifier implements LinuxAttestationVer
     nowMillis: number;
   }): Promise<LinuxAttestationDecision> {
     const evidence = normalizeBoundedEvidence(input.evidence);
+    const requestSignal = AbortSignal.timeout(VERIFIER_REQUEST_TIMEOUT_MS);
+    let authorization: string;
+    try {
+      authorization = await abortable(this.identityTokenProvider.getAuthorizationHeader(), requestSignal);
+      if (!BEARER_ID_TOKEN.test(authorization)) throw new Error("malformed identity token");
+    } catch {
+      throw linuxAttestationError("verifier_unavailable");
+    }
     let response: Response;
     try {
-      response = await providerFetch("linux-attestation", "verify", this.configuration.endpoint, {
+      response = await providerFetch("linux-attestation", "verify", this.endpoint, {
         method: "POST",
-        headers: { "content-type": "application/json", "cache-control": "no-store" },
+        headers: {
+          Authorization: authorization,
+          "content-type": "application/json",
+          "cache-control": "no-store",
+        },
         body: JSON.stringify({ challenge: input.challenge, evidence }),
         redirect: "error",
-        signal: AbortSignal.timeout(10_000),
+        signal: requestSignal,
       });
     } catch {
       throw linuxAttestationError("verifier_unavailable");
@@ -467,6 +564,7 @@ export const __testing__ = {
   canonicalVerdict,
   exactDecisionBinding,
   readBoundedResponse,
+  abortable,
   linuxAttestationError,
   parseStoredChallenge,
 };
