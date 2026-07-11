@@ -23,7 +23,7 @@ async function boot(): Promise<void> {
 
   // First run lands on the onboarding wizard unless a deep link is present.
   const ob = readOnboarding();
-  if ((!ob.completed && !location.hash) || hadDeepLink) {
+  if (location.hash !== '#/onboarding') {
     location.hash = '#/onboarding';
     useShellStore.getState().syncRouteFromHash();
   }
