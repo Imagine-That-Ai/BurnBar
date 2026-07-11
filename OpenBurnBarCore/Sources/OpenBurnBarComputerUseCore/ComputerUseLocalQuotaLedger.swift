@@ -98,8 +98,13 @@ public final class ComputerUseLocalQuotaLedger: @unchecked Sendable {
             supportDirectory = (appData ?? fileManager.homeDirectoryForCurrentUser)
                 .appendingPathComponent("OpenBurnBar", isDirectory: true)
             #else
-            supportDirectory = fileManager.homeDirectoryForCurrentUser
-                .appendingPathComponent("Library/Application Support/OpenBurnBar", isDirectory: true)
+            let applicationSupport = fileManager.urls(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask
+            ).first ?? URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+                .appendingPathComponent("Library/Application Support", isDirectory: true)
+            supportDirectory = applicationSupport
+                .appendingPathComponent("OpenBurnBar", isDirectory: true)
             #endif
         }
         return supportDirectory

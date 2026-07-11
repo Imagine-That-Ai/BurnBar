@@ -14,6 +14,39 @@ final class ComputerUseLocalQuotaLedgerTests: XCTestCase {
         try? FileManager.default.removeItem(at: directory)
     }
 
+    func testDefaultDirectoryUsesApplicationSupportHierarchy() {
+        let directory = ComputerUseLocalQuotaLedger.defaultDirectory(environment: [:])
+
+        #if os(macOS) || os(iOS) || os(tvOS) || os(visionOS)
+        let applicationSupport = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first!
+        XCTAssertEqual(
+            directory,
+            applicationSupport
+                .appendingPathComponent("OpenBurnBar", isDirectory: true)
+                .appendingPathComponent("computer-use", isDirectory: true)
+                .appendingPathComponent("quota-ledger", isDirectory: true)
+        )
+        #else
+        XCTAssertEqual(Array(directory.pathComponents.suffix(3)), ["OpenBurnBar", "computer-use", "quota-ledger"])
+        #endif
+    }
+
+    func testSupportDirectoryOverrideTakesPrecedence() {
+        let directory = ComputerUseLocalQuotaLedger.defaultDirectory(environment: [
+            "OPENBURNBAR_DAEMON_SUPPORT_DIR": "/custom/openburnbar"
+        ])
+
+        XCTAssertEqual(
+            directory,
+            URL(fileURLWithPath: "/custom/openburnbar", isDirectory: true)
+                .appendingPathComponent("computer-use", isDirectory: true)
+                .appendingPathComponent("quota-ledger", isDirectory: true)
+        )
+    }
+
     func testActionReservationIsDurableAndIdempotent() throws {
         let date = Date(timeIntervalSince1970: 1_784_000_000)
         let first = ComputerUseLocalQuotaLedger(directory: directory)
