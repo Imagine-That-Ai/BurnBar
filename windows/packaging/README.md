@@ -4,7 +4,7 @@ The distribution manifests for the Windows port. These mirror the macOS release
 pipeline's channel set (see [`docs/WINDOWS_PORT_MASTER_PLAN.md`](../../docs/WINDOWS_PORT_MASTER_PLAN.md)
 §9.11–9.12): **MSIX + portable zip; winget + Chocolatey**, with auto-update from the
 **Ed25519-pinned** release feed (parity with macOS Sparkle; the feed key is pinned
-**independent** of the Authenticode/Trusted-Signing certificate).
+**independent** of the Authenticode/Artifact Signing certificate).
 
 | Path | Channel | What it is |
 |------|---------|------------|
@@ -39,13 +39,12 @@ consistency) of the three winget files; JSON parse of the portable layout. SOFT 
 + portable layout, NuGet-core XSD validation of the nuspec, and `pwsh` parse of the
 PowerShell scripts.
 
-## Deferred release finishing (honest ceiling)
+## Release finishing gates
 
 The unsigned workflow-dispatch rehearsal builds x64 + ARM64 portable and MSIX artifacts on a
-Windows runner. The following remain gated on the W0 procurement item (Azure Trusted Signing
-certificate/profile, Store account, winget publisher — Alberto, calendar-bound):
+Windows runner. The following remain gated on release-time credentials and publisher-channel access:
 
-- **Actual Authenticode signing + timestamp** (Azure Trusted Signing). `<Identity Publisher>`
+- **Actual Authenticode signing + timestamp** (Azure Artifact Signing). `<Identity Publisher>`
   must equal the signing certificate subject before the first signed release; the unsigned
   rehearsal intentionally retains the reviewed placeholder publisher.
 - **Real artifact hashes**: the winget `InstallerSha256` (per arch), the winget

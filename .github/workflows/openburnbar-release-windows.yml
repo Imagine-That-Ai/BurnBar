@@ -4,7 +4,7 @@ name: OpenBurnBar Windows Release
 # the macOS release (.github/workflows/release.yml) — build → sign → package → sign the update
 # feed → SBOM + OpenVEX + Sigstore provenance — adapted to Windows:
 #
-#   • CODE SIGNING is Authenticode via Azure Trusted Signing (the mac notarize/staple analog).
+#   • CODE SIGNING is Authenticode via Azure Artifact Signing (the mac notarize/staple analog).
 #     IMPORTANT: Authenticode has NO staple analog. macOS staples a notarization ticket onto the
 #     artifact after the fact; Authenticode instead embeds an RFC-3161 countersignature at SIGN
 #     time (so the signature stays valid after the cert expires) — there is nothing to staple
@@ -17,11 +17,11 @@ name: OpenBurnBar Windows Release
 #     (cosign attest-blob) provenance over every Windows artifact.
 #
 # CEILING (honest): the real MSIX/EXE build + Authenticode signing + Store/winget submission need
-# a Windows runner AND the W0 Trusted-Signing tenant + code-signing cert (procurement — Alberto).
-# Those steps are gated on the WINDOWS_CODESIGN_* / WINDOWS_UPDATE_SIGNING_KEY secrets and emit a
-# clear "deferred" warning when unset, so the pipeline is a faithful, actionlint-clean production
-# workflow that no-ops the cert-dependent steps until W0 lands. The portable security kernel is
-# proven on every run by the `portable-verify` job (real `dotnet test` + a signer round-trip).
+# a Windows runner AND the Azure Artifact Signing profile + update-feed key. These are gated on
+# the WINDOWS_CODESIGN_* / WINDOWS_UPDATE_SIGNING_KEY secrets and fail closed for real release
+# tags. Manual unsigned dry-runs can still stop at the signing boundary. The portable security
+# kernel is proven on every run by the `portable-verify` job (real `dotnet test` + a signer
+# round-trip).
 #
 # TRIGGER: a `windows-v*` tag (the manifest version must be bumped first — the portable-verify job
 # enforces version consistency at tag time) or a manual dispatch.
@@ -226,12 +226,12 @@ jobs:
               -o "publish/$rid"
           done
 
-      - name: Authenticode sign (Azure Trusted Signing — no staple analog)
+      - name: Authenticode sign (Azure Artifact Signing — no staple analog)
         if: steps.config.outputs.codesign == 'true'
-        uses: azure/trusted-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
         with:
           endpoint: ${{ secrets.WINDOWS_CODESIGN_ENDPOINT }}
-          trusted-signing-account-name: ${{ secrets.WINDOWS_CODESIGN_ACCOUNT_NAME }}
+          signing-account-name: ${{ secrets.WINDOWS_CODESIGN_ACCOUNT_NAME }}
           certificate-profile-name: ${{ secrets.WINDOWS_CODESIGN_CERT_PROFILE_NAME }}
           files-folder: ${{ github.workspace }}/publish
           files-folder-filter: exe,dll
@@ -276,12 +276,12 @@ jobs:
             ( cd artifacts && sha256sum "$(basename "$output")" >> "checksums-windows-v${VERSION}.txt" )
           done
 
-      - name: Authenticode sign the MSIX (Azure Trusted Signing)
+      - name: Authenticode sign the MSIX (Azure Artifact Signing)
         if: steps.config.outputs.codesign == 'true'
-        uses: azure/trusted-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
         with:
           endpoint: ${{ secrets.WINDOWS_CODESIGN_ENDPOINT }}
-          trusted-signing-account-name: ${{ secrets.WINDOWS_CODESIGN_ACCOUNT_NAME }}
+          signing-account-name: ${{ secrets.WINDOWS_CODESIGN_ACCOUNT_NAME }}
           certificate-profile-name: ${{ secrets.WINDOWS_CODESIGN_CERT_PROFILE_NAME }}
           files-folder: ${{ github.workspace }}/artifacts
           files-folder-filter: msix

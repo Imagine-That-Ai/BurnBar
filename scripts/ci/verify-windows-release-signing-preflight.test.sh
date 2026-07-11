@@ -65,7 +65,7 @@ run_case 0 complete env "${base_env[@]}" "$VERIFY"
 assert_output_contains complete "codesign=true"
 assert_output_contains complete "updatekey=true"
 
-run_case 1 identity-validation-pending env \
+run_case 1 certificate-profile-missing env \
   WINDOWS_CODESIGN_ENDPOINT=https://eus.codesigning.azure.net/ \
   WINDOWS_CODESIGN_ACCOUNT_NAME=openburnbarwin202607 \
   WINDOWS_CODESIGN_AZURE_TENANT_ID=tenant-id \
@@ -75,8 +75,8 @@ run_case 1 identity-validation-pending env \
   GITHUB_REF_TYPE=branch \
   GITHUB_REF_NAME=main \
   "$VERIFY"
-assert_log_contains identity-validation-pending "identity validation pending"
-assert_log_contains identity-validation-pending "WINDOWS_CODESIGN_CERT_PROFILE_NAME"
+assert_log_contains certificate-profile-missing "certificate profile is not configured"
+assert_log_contains certificate-profile-missing "WINDOWS_CODESIGN_CERT_PROFILE_NAME"
 
 run_case 1 update-key-missing env \
   WINDOWS_CODESIGN_ENDPOINT=https://eus.codesigning.azure.net/ \

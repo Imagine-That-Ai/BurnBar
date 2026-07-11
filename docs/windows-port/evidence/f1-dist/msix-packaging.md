@@ -17,6 +17,6 @@ verified cryptographically against GitHub Actions OIDC and the public
 transparency log.
 
 **Operational residual:** this is an explicitly unsigned rehearsal, not a
-release. Azure Trusted Signing / Authenticode, RFC 3161 timestamps, the pinned
+release. Azure Artifact Signing / Authenticode, RFC 3161 timestamps, the pinned
 Ed25519 production update feed, clean install/update/rollback on physical x64
 and ARM64 devices, and Store/winget/Chocolatey publication remain open gates.
