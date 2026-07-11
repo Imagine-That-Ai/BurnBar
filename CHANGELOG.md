@@ -27,6 +27,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Linux App Check source foundation** - adds an authenticated two-step custom
+  provider boundary with a durable two-minute Firestore challenge, hashed nonce
+  storage, atomic single-use replay defense, exact user/app/device/version/
+  architecture/release/policy binding, a bounded HTTPS verifier call, and a
+  pinned Ed25519 signed verdict. Successful decisions mint a server-selected
+  30-minute token, retain only its SHA-256 hash and verifier receipt, and remain
+  `linux_lower_trust`. The daemon coalesces acquisition and keeps account-bound
+  token state in memory only. Production minting defaults off and remains
+  blocked on a real Firebase Web app ID, root-owned TPM/IMA broker and verifier,
+  deployment, revocation, and installed Linux matrix certification.
 - **Linux provider external login** - adds daemon-owned, registry-validated
   start/status/cancel flows for Codex and Claude Code browser login. The Linux
   settings UI now reports installed/connected state, opens the trusted CLI in an

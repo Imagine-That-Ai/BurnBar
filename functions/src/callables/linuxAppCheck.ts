@@ -1,256 +1,394 @@
 /**
- * @fileoverview mintLinuxAppCheckToken — lower-trust Linux desktop App Check bootstrap.
+ * Linux Firebase App Check custom-provider bootstrap.
  *
- * Linux cannot use Apple App Attest or Android Play Integrity. The bootstrap
- * path therefore exchanges a platform attestation for a Firebase App Check token
- * minted by Admin SDK. The only verifier implemented here is a non-production
- * fixture verifier; production registers no mock verifier and therefore fails
- * closed until a real distro/package/hardware attestation verifier is configured.
+ * Production minting is disabled by default. When enabled, the client must
+ * first obtain a durable, UID-bound challenge and present evidence accepted by
+ * the pinned remote TPM/IMA verifier. The mock verifier is test/emulator only.
  */
 
 import { createHash, timingSafeEqual } from "node:crypto";
 
+import { getAppCheck, type AppCheckToken, type AppCheckTokenOptions } from "firebase-admin/app-check";
+import { Timestamp } from "firebase-admin/firestore";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
-import { getAppCheck } from "firebase-admin/app-check";
-import type { AppCheckToken, AppCheckTokenOptions } from "firebase-admin/app-check";
 
+import { db } from "../adminRuntime.js";
 import { assertAuth } from "../auth.js";
-import { getConfig, isAppCheckAppIdAllowed } from "../config.js";
-import { isRecord } from "../guards.js";
+import { getConfig, isAppCheckAppIdAllowed, PLACEHOLDER_LINUX_APP_CHECK_APP_ID } from "../config.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
-import { checkPublicHttpEndpointRateLimit } from "./publicRateLimit.js";
+import {
+  FirestoreLinuxAttestationChallengeStore,
+  LINUX_APP_CHECK_TOKEN_TTL_MS,
+  LINUX_ATTESTATION_KIND,
+  LINUX_ATTESTATION_POLICY_DEFAULT,
+  RemoteSignedLinuxAttestationVerifier,
+  assertChallengeBinding,
+  parseLinuxAttestationBinding,
+  parseLinuxAttestationEvidence,
+  sha256Hex,
+  type LinuxAttestationBinding,
+  type LinuxAttestationChallenge,
+  type LinuxAttestationChallengeStore,
+  type LinuxAttestationDecision,
+  type LinuxAttestationVerifier,
+} from "../security/linuxAttestation.js";
 import { parseCallableInput } from "../validation/callableSchema.js";
+import { checkPublicHttpEndpointRateLimit } from "./publicRateLimit.js";
 
 const MOCK_ATTESTATION_KIND = "mock" as const;
-const MOCK_ATTESTATION_DOMAIN = "openburnbar.appcheck.linux.mock.v1";
+const MOCK_ATTESTATION_DOMAIN = "openburnbar.appcheck.linux.mock.v2";
 const MOCK_ATTESTATION_SHARED_SECRET = "openburnbar-linux-appcheck-mock-fixture-secret";
-const MOCK_ATTESTATION_MAX_AGE_MS = 5 * 60 * 1000;
-const MOCK_ATTESTATION_CLOCK_SKEW_MS = 60 * 1000;
-const DEFAULT_MINT_TTL_MS = 30 * 60 * 1000;
-const MIN_MINT_TTL_MS = 30 * 60 * 1000;
-const MAX_MINT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const MIN_NONCE_LENGTH = 16;
-const MAX_NONCE_LENGTH = 256;
+const REAL_FIREBASE_WEB_APP_ID = /^1:[0-9]+:web:[A-Za-z0-9]+$/u;
 
-export interface LinuxAttestationClaim {
-  kind: string;
+export type AppCheckTokenMinter = (appId: string, options?: AppCheckTokenOptions) => Promise<AppCheckToken>;
+
+interface LinuxAppCheckRuntimePolicy {
+  mintEnabled: boolean;
   appId: string;
-  nonce: string;
-  issuedAtMs: number;
+  policyId: string;
+  verifierURL?: URL;
+  verifierPublicKeyBase64?: string;
+  verifierKeyID?: string;
+  verifierIssuer?: string;
+  verifierAudience?: string;
+}
+
+interface MockEvidence {
   mac: string;
 }
 
-type AttestationRejectReason =
-  | "malformed"
-  | "app_id_not_expected"
-  | "stale"
-  | "forged"
-  | "replayed";
-
-type VerifyResult = { ok: true; appId: string } | { ok: false; reason: AttestationRejectReason };
-
-export interface LinuxAttestationVerifier {
-  readonly kind: string;
-  verify(claim: LinuxAttestationClaim, nowMillis: number): VerifyResult;
-}
-
-function signMockAttestation(input: {
-  appId: string;
-  nonce: string;
-  issuedAtMs: number;
-  secret?: string;
-}): string {
-  const secret = input.secret ?? MOCK_ATTESTATION_SHARED_SECRET;
-  const payload = `${MOCK_ATTESTATION_DOMAIN}|${input.appId}|${input.nonce}|${input.issuedAtMs}|${secret}`;
+function mockMac(challenge: LinuxAttestationChallenge, secret = MOCK_ATTESTATION_SHARED_SECRET): string {
+  const payload = [
+    MOCK_ATTESTATION_DOMAIN,
+    challenge.uid,
+    challenge.appId,
+    challenge.deviceId,
+    challenge.appVersion,
+    challenge.architecture,
+    challenge.releaseDigestSha256,
+    challenge.policyId,
+    challenge.challengeId,
+    challenge.challenge,
+    secret,
+  ].join("|");
   return createHash("sha256").update(payload).digest("hex");
 }
 
-function macsEqual(a: string, b: string): boolean {
-  if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) return false;
+function constantTimeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
   return timingSafeEqual(Buffer.from(a), Buffer.from(b));
 }
 
 class MockLinuxAttestationVerifier implements LinuxAttestationVerifier {
   readonly kind = MOCK_ATTESTATION_KIND;
 
-  constructor(
-    private readonly expectedAppId: string,
-    private readonly sharedSecret: string = MOCK_ATTESTATION_SHARED_SECRET,
-    private readonly consumedNonces: Set<string> = new Set<string>(),
-  ) {}
+  constructor(private readonly sharedSecret = MOCK_ATTESTATION_SHARED_SECRET) {}
 
-  verify(claim: LinuxAttestationClaim, nowMillis: number): VerifyResult {
-    if (
-      typeof claim.appId !== "string" ||
-      claim.appId.length === 0 ||
-      typeof claim.nonce !== "string" ||
-      claim.nonce.length < MIN_NONCE_LENGTH ||
-      claim.nonce.length > MAX_NONCE_LENGTH ||
-      typeof claim.issuedAtMs !== "number" ||
-      !Number.isFinite(claim.issuedAtMs) ||
-      typeof claim.mac !== "string"
-    ) {
-      return { ok: false, reason: "malformed" };
+  async verify(input: {
+    challenge: LinuxAttestationChallenge;
+    evidence: unknown;
+    nowMillis: number;
+  }): Promise<LinuxAttestationDecision> {
+    const raw = input.evidence as Partial<MockEvidence> | null;
+    const mac = raw && typeof raw.mac === "string" ? raw.mac : "";
+    if (!constantTimeEqual(mac, mockMac(input.challenge, this.sharedSecret))) {
+      throw new HttpsError("unauthenticated", "Linux fixture attestation signature did not verify.");
     }
-    if (claim.appId !== this.expectedAppId) return { ok: false, reason: "app_id_not_expected" };
-    const age = nowMillis - claim.issuedAtMs;
-    if (age > MOCK_ATTESTATION_MAX_AGE_MS || age < -MOCK_ATTESTATION_CLOCK_SKEW_MS) {
-      return { ok: false, reason: "stale" };
+    return {
+      uid: input.challenge.uid,
+      appId: input.challenge.appId,
+      deviceId: input.challenge.deviceId,
+      appVersion: input.challenge.appVersion,
+      architecture: input.challenge.architecture,
+      releaseDigestSha256: input.challenge.releaseDigestSha256,
+      policyId: input.challenge.policyId,
+      attestationKind: input.challenge.attestationKind,
+      trustClass: "linux_lower_trust",
+      verifierReceiptHash: sha256Hex(`mock|${input.challenge.challengeId}|${mac}`),
+      attestedAtMillis: input.nowMillis,
+      expiresAtMillis: input.challenge.expiresAtMillis,
+    };
+  }
+}
+
+function runtimePolicy(environment: NodeJS.ProcessEnv = process.env): LinuxAppCheckRuntimePolicy {
+  const config = getConfig();
+  const rawURL = environment.LINUX_APP_CHECK_VERIFIER_URL?.trim();
+  let verifierURL: URL | undefined;
+  if (rawURL) {
+    try {
+      const parsed = new URL(rawURL);
+      if (parsed.protocol === "https:") verifierURL = parsed;
+    } catch {
+      verifierURL = undefined;
     }
-    const expectedMac = signMockAttestation({
-      appId: claim.appId,
-      nonce: claim.nonce,
-      issuedAtMs: claim.issuedAtMs,
-      secret: this.sharedSecret,
-    });
-    if (!macsEqual(expectedMac, claim.mac)) return { ok: false, reason: "forged" };
-    if (this.consumedNonces.has(claim.nonce)) return { ok: false, reason: "replayed" };
-    this.consumedNonces.add(claim.nonce);
-    return { ok: true, appId: claim.appId };
   }
-}
-
-function buildLinuxAttestationVerifiers(opts: {
-  allowMock: boolean;
-  expectedAppId: string;
-  sharedSecret?: string;
-  replayStore?: Set<string>;
-}): Map<string, LinuxAttestationVerifier> {
-  const verifiers = new Map<string, LinuxAttestationVerifier>();
-  if (opts.allowMock) {
-    verifiers.set(
-      MOCK_ATTESTATION_KIND,
-      new MockLinuxAttestationVerifier(opts.expectedAppId, opts.sharedSecret, opts.replayStore),
-    );
-  }
-  return verifiers;
-}
-
-function rejectReasonToError(reason: AttestationRejectReason): HttpsError {
-  switch (reason) {
-    case "malformed":
-      return new HttpsError("invalid-argument", "The attestation claim is malformed.");
-    case "app_id_not_expected":
-      return new HttpsError("permission-denied", "The attestation is bound to an unexpected Linux app id.");
-    case "stale":
-      return new HttpsError("unauthenticated", "The attestation is stale; request a fresh one.");
-    case "forged":
-      return new HttpsError("unauthenticated", "The attestation signature did not verify.");
-    case "replayed":
-      return new HttpsError("unauthenticated", "The attestation nonce was already used.");
-  }
-}
-
-function parseAttestationClaim(raw: unknown): LinuxAttestationClaim {
-  if (!isRecord(raw)) throw new HttpsError("invalid-argument", "An attestation claim is required.");
   return {
-    kind: typeof raw.kind === "string" ? raw.kind : "",
-    appId: typeof raw.appId === "string" ? raw.appId : "",
-    nonce: typeof raw.nonce === "string" ? raw.nonce : "",
-    issuedAtMs: typeof raw.issuedAtMs === "number" ? raw.issuedAtMs : Number.NaN,
-    mac: typeof raw.mac === "string" ? raw.mac : "",
+    mintEnabled: environment.LINUX_APP_CHECK_MINT_ENABLED?.trim().toLowerCase() === "true",
+    appId: config.linuxAppCheckAppID,
+    policyId: environment.LINUX_APP_CHECK_POLICY_ID?.trim() || LINUX_ATTESTATION_POLICY_DEFAULT,
+    verifierURL,
+    verifierPublicKeyBase64: environment.LINUX_APP_CHECK_VERIFIER_PUBLIC_KEY_BASE64?.trim(),
+    verifierKeyID: environment.LINUX_APP_CHECK_VERIFIER_KEY_ID?.trim(),
+    verifierIssuer: environment.LINUX_APP_CHECK_VERIFIER_ISSUER?.trim(),
+    verifierAudience: environment.LINUX_APP_CHECK_VERIFIER_AUDIENCE?.trim(),
   };
 }
 
-function clampTtl(raw: unknown): number {
-  if (typeof raw !== "number" || !Number.isFinite(raw)) return DEFAULT_MINT_TTL_MS;
-  return Math.min(MAX_MINT_TTL_MS, Math.max(MIN_MINT_TTL_MS, Math.floor(raw)));
+function assertProductionPolicyConfigured(policy: LinuxAppCheckRuntimePolicy): void {
+  if (!policy.mintEnabled) {
+    throw new HttpsError("failed-precondition", "Linux production App Check minting is disabled.");
+  }
+  if (policy.appId === PLACEHOLDER_LINUX_APP_CHECK_APP_ID || !REAL_FIREBASE_WEB_APP_ID.test(policy.appId)) {
+    throw new HttpsError("failed-precondition", "A dedicated Firebase Web app id is required for Linux App Check.");
+  }
+  if (
+    !policy.verifierURL ||
+    !policy.verifierPublicKeyBase64 ||
+    !policy.verifierKeyID ||
+    !policy.verifierIssuer ||
+    !policy.verifierAudience
+  ) {
+    throw new HttpsError("failed-precondition", "Linux production App Check verifier configuration is incomplete.");
+  }
 }
 
-export type AppCheckTokenMinter = (appId: string, options?: AppCheckTokenOptions) => Promise<AppCheckToken>;
+function assertProductionAppIDAllowlisted(policy: LinuxAppCheckRuntimePolicy, allowedAppIDs: string[]): void {
+  assertProductionPolicyConfigured(policy);
+  if (!isAppCheckAppIdAllowed(policy.appId, { allowedAppCheckAppIDs: allowedAppIDs })) {
+    throw new HttpsError("failed-precondition", "The Linux Firebase app id is not operator-allowlisted.");
+  }
+}
+
+function buildLinuxAttestationVerifiers(options: {
+  allowMock: boolean;
+  policy: LinuxAppCheckRuntimePolicy;
+  mockSharedSecret?: string;
+}): Map<string, LinuxAttestationVerifier> {
+  const result = new Map<string, LinuxAttestationVerifier>();
+  if (options.allowMock) {
+    result.set(MOCK_ATTESTATION_KIND, new MockLinuxAttestationVerifier(options.mockSharedSecret));
+  }
+  if (options.policy.mintEnabled) {
+    assertProductionPolicyConfigured(options.policy);
+    result.set(
+      LINUX_ATTESTATION_KIND,
+      new RemoteSignedLinuxAttestationVerifier({
+        endpoint: options.policy.verifierURL!,
+        publicKeyBase64: options.policy.verifierPublicKeyBase64!,
+        keyId: options.policy.verifierKeyID!,
+        issuer: options.policy.verifierIssuer!,
+        audience: options.policy.verifierAudience!,
+      }),
+    );
+  }
+  return result;
+}
+
+interface IssueLinuxChallengeParams {
+  binding: LinuxAttestationBinding;
+  store: LinuxAttestationChallengeStore;
+  nowMillis: number;
+}
+
+async function issueLinuxAppCheckChallengeCore(params: IssueLinuxChallengeParams): Promise<LinuxAttestationChallenge> {
+  return params.store.create(params.binding, params.nowMillis);
+}
 
 interface MintLinuxAppCheckParams {
-  claim: unknown;
+  uid: string;
+  rawEvidence: unknown;
+  store: LinuxAttestationChallengeStore;
   verifiers: Map<string, LinuxAttestationVerifier>;
   allowedAppIDs: string[];
   createToken: AppCheckTokenMinter;
+  recordSession: (
+    decision: LinuxAttestationDecision,
+    sessionID: string,
+    tokenHash: string,
+    expiresAtMillis: number,
+  ) => Promise<void>;
   nowMillis: number;
-  ttlMillis?: number;
+  currentTimeMillis?: () => number;
 }
 
 interface MintLinuxAppCheckResult {
   appCheckToken: string;
-  ttlMillis: number;
+  issuedAtMillis: number;
+  expireTimeMillis: number;
   appId: string;
+  trustClass: "linux_lower_trust";
 }
 
 async function mintLinuxAppCheckTokenCore(params: MintLinuxAppCheckParams): Promise<MintLinuxAppCheckResult> {
-  const claim = parseAttestationClaim(params.claim);
-  const verifier = params.verifiers.get(claim.kind);
-  if (!verifier) {
-    throw new HttpsError("permission-denied", "No registered Linux App Check attestation verifier accepted this claim.");
+  const currentTimeMillis = params.currentTimeMillis ?? (() => params.nowMillis);
+  const evidence = parseLinuxAttestationEvidence(params.rawEvidence);
+  const stored = await params.store.load(params.uid, evidence.challengeId);
+  if (!stored || stored.uid !== params.uid) {
+    throw new HttpsError(
+      "permission-denied",
+      "Linux attestation challenge is missing or does not belong to this account.",
+    );
   }
-
-  const result = verifier.verify(claim, params.nowMillis);
-  if (!result.ok) throw rejectReasonToError(result.reason);
-  if (!isAppCheckAppIdAllowed(result.appId, { allowedAppCheckAppIDs: params.allowedAppIDs })) {
+  const challenge = {
+    ...assertChallengeBinding(stored, evidence.challenge, params.nowMillis),
+    challengeId: evidence.challengeId,
+  };
+  if (challenge.attestationKind !== evidence.kind) {
+    throw new HttpsError("permission-denied", "Linux attestation kind does not match the challenge.");
+  }
+  const verifier = params.verifiers.get(evidence.kind);
+  if (!verifier) {
+    throw new HttpsError("permission-denied", "No configured Linux attestation verifier accepted this evidence kind.");
+  }
+  const decision = await verifier.verify({ challenge, evidence: evidence.evidence, nowMillis: params.nowMillis });
+  const verifiedAtMillis = currentTimeMillis();
+  if (
+    decision.uid !== params.uid ||
+    decision.appId !== challenge.appId ||
+    decision.deviceId !== challenge.deviceId ||
+    decision.appVersion !== challenge.appVersion ||
+    decision.architecture !== challenge.architecture ||
+    decision.releaseDigestSha256 !== challenge.releaseDigestSha256 ||
+    decision.policyId !== challenge.policyId ||
+    decision.attestationKind !== challenge.attestationKind ||
+    decision.trustClass !== "linux_lower_trust" ||
+    challenge.expiresAtMillis < verifiedAtMillis ||
+    decision.expiresAtMillis < verifiedAtMillis ||
+    decision.attestedAtMillis > verifiedAtMillis + 60_000
+  ) {
+    throw new HttpsError("permission-denied", "Linux attestation verifier returned a mismatched identity binding.");
+  }
+  if (!isAppCheckAppIdAllowed(decision.appId, { allowedAppCheckAppIDs: params.allowedAppIDs })) {
     throw new HttpsError("permission-denied", "Linux App Check app id is not allowlisted.");
   }
 
-  const ttlMillis = clampTtl(params.ttlMillis);
-  const token = await params.createToken(result.appId, { ttlMillis });
-  return { appCheckToken: token.token, ttlMillis: token.ttlMillis, appId: result.appId };
+  await params.store.consume(params.uid, evidence.challengeId, sha256Hex(evidence.challenge), verifiedAtMillis);
+  const issuedAtMillis = currentTimeMillis();
+  const minted = await params.createToken(decision.appId, { ttlMillis: LINUX_APP_CHECK_TOKEN_TTL_MS });
+  if (!minted.token || minted.ttlMillis !== LINUX_APP_CHECK_TOKEN_TTL_MS) {
+    throw new HttpsError("internal", "Firebase App Check returned an unexpected token lifetime.");
+  }
+  const expireTimeMillis = issuedAtMillis + LINUX_APP_CHECK_TOKEN_TTL_MS;
+  const sessionID = sha256Hex(`${params.uid}|${evidence.challengeId}|${decision.verifierReceiptHash}`);
+  await params.recordSession(decision, sessionID, sha256Hex(minted.token), expireTimeMillis);
+  return {
+    appCheckToken: minted.token,
+    issuedAtMillis,
+    expireTimeMillis,
+    appId: decision.appId,
+    trustClass: "linux_lower_trust",
+  };
 }
+
+const defaultCreateToken: AppCheckTokenMinter = (appId, options) => getAppCheck().createToken(appId, options);
+const challengeStore = new FirestoreLinuxAttestationChallengeStore(db);
+
+async function recordLinuxAttestationSession(
+  decision: LinuxAttestationDecision,
+  sessionID: string,
+  tokenHash: string,
+  expiresAtMillis: number,
+): Promise<void> {
+  await db.doc(`users/${decision.uid}/linux_app_check_sessions/${sessionID}`).create({
+    protocolVersion: 1,
+    appId: decision.appId,
+    deviceId: decision.deviceId,
+    appVersion: decision.appVersion,
+    architecture: decision.architecture,
+    releaseDigestSha256: decision.releaseDigestSha256,
+    policyId: decision.policyId,
+    attestationKind: decision.attestationKind,
+    trustClass: decision.trustClass,
+    verifierReceiptHash: decision.verifierReceiptHash,
+    tokenHashSha256: tokenHash,
+    attestedAtMillis: decision.attestedAtMillis,
+    expiresAtMillis,
+    createdAt: Timestamp.fromMillis(decision.attestedAtMillis),
+    expireAt: Timestamp.fromMillis(expiresAtMillis),
+  });
+}
+
+export const issueLinuxAppCheckChallenge = onCall(
+  { region: FUNCTIONS_REGION, enforceAppCheck: false, maxInstances: 20 },
+  wrapCallableHandler("issueLinuxAppCheckChallenge", async (request: CallableRequest<Record<string, unknown>>) => {
+    assertAuth(request);
+    const uid = request.auth!.uid;
+    await checkPublicHttpEndpointRateLimit("issueLinuxAppCheckChallenge", uid);
+    const config = getConfig();
+    const policy = runtimePolicy();
+    const requestedKind = typeof request.data?.attestationKind === "string" ? request.data.attestationKind : "";
+    const mockRequested = requestedKind === MOCK_ATTESTATION_KIND && config.allowMockAppCheckAttestation;
+    if (!mockRequested) assertProductionAppIDAllowlisted(policy, config.allowedAppCheckAppIDs);
+    const binding = parseLinuxAttestationBinding(request.data, {
+      uid,
+      appId: policy.appId,
+      policyId: policy.policyId,
+    });
+    if (binding.attestationKind !== (mockRequested ? MOCK_ATTESTATION_KIND : LINUX_ATTESTATION_KIND)) {
+      throw new HttpsError("permission-denied", "Linux attestation kind is not enabled by the server policy.");
+    }
+    const result = await issueLinuxAppCheckChallengeCore({ binding, store: challengeStore, nowMillis: Date.now() });
+    return {
+      challengeId: result.challengeId,
+      challenge: result.challenge,
+      expiresAtMillis: result.expiresAtMillis,
+      appId: result.appId,
+      policyId: result.policyId,
+      protocolVersion: result.protocolVersion,
+    };
+  }),
+);
+
+export const mintLinuxAppCheckToken = onCall(
+  { region: FUNCTIONS_REGION, enforceAppCheck: false, maxInstances: 20 },
+  wrapCallableHandler("mintLinuxAppCheckToken", async (request: CallableRequest<{ attestation?: unknown }>) => {
+    assertAuth(request);
+    const uid = request.auth!.uid;
+    await checkPublicHttpEndpointRateLimit("mintLinuxAppCheckToken", uid);
+    parseCallableInput("mintLinuxAppCheckToken", {}, request.data);
+    if (request.data?.attestation === undefined) {
+      throw new HttpsError("invalid-argument", "mintLinuxAppCheckToken: attestation is required.");
+    }
+    const config = getConfig();
+    const policy = runtimePolicy();
+    if (!config.allowMockAppCheckAttestation) {
+      assertProductionAppIDAllowlisted(policy, config.allowedAppCheckAppIDs);
+    }
+    const result = await mintLinuxAppCheckTokenCore({
+      uid,
+      rawEvidence: request.data.attestation,
+      store: challengeStore,
+      verifiers: buildLinuxAttestationVerifiers({
+        allowMock: config.allowMockAppCheckAttestation,
+        policy,
+      }),
+      allowedAppIDs: config.allowedAppCheckAppIDs,
+      createToken: defaultCreateToken,
+      recordSession: recordLinuxAttestationSession,
+      nowMillis: Date.now(),
+      currentTimeMillis: Date.now,
+    });
+    logInfo({
+      event: "callable_info",
+      message: "linux_app_check_token_minted",
+      app_id: result.appId,
+      ttl_millis: LINUX_APP_CHECK_TOKEN_TTL_MS,
+      trust_class: result.trustClass,
+    });
+    return { ok: true, ...result };
+  }),
+);
 
 export const __testing__ = {
   MockLinuxAttestationVerifier,
   buildLinuxAttestationVerifiers,
+  issueLinuxAppCheckChallengeCore,
   mintLinuxAppCheckTokenCore,
-  signMockAttestation,
+  mockMac,
+  runtimePolicy,
+  assertProductionPolicyConfigured,
+  assertProductionAppIDAllowlisted,
   MOCK_ATTESTATION_KIND,
-  MOCK_ATTESTATION_MAX_AGE_MS,
-  DEFAULT_MINT_TTL_MS,
-  makeReplayStore: (): Set<string> => new Set<string>(),
 };
-
-const moduleReplayStore = new Set<string>();
-const defaultCreateToken: AppCheckTokenMinter = (appId, options) => getAppCheck().createToken(appId, options);
-
-export const mintLinuxAppCheckToken = onCall(
-  {
-    region: FUNCTIONS_REGION,
-    enforceAppCheck: false,
-    maxInstances: 20,
-  },
-  wrapCallableHandler(
-    "mintLinuxAppCheckToken",
-    async (request: CallableRequest<{ attestation?: unknown; ttlMillis?: unknown }>) => {
-      const uid = request.auth?.uid;
-      if (!uid) throw new HttpsError("unauthenticated", "Sign in before requesting a Linux App Check token.");
-      assertAuth(request);
-      await checkPublicHttpEndpointRateLimit("mintLinuxAppCheckToken", uid);
-
-      const input = parseCallableInput("mintLinuxAppCheckToken", {
-        ttlMillis: { optional: true, parse: (v: unknown): number | undefined => typeof v === "number" ? v : undefined },
-      }, request.data);
-      if (request.data?.attestation === undefined) {
-        throw new HttpsError("invalid-argument", "mintLinuxAppCheckToken: attestation is required.");
-      }
-
-      const config = getConfig();
-      const result = await mintLinuxAppCheckTokenCore({
-        claim: request.data?.attestation,
-        verifiers: buildLinuxAttestationVerifiers({
-          allowMock: config.allowMockAppCheckAttestation,
-          expectedAppId: config.linuxAppCheckAppID,
-          replayStore: moduleReplayStore,
-        }),
-        allowedAppIDs: config.allowedAppCheckAppIDs,
-        createToken: defaultCreateToken,
-        nowMillis: Date.now(),
-        ttlMillis: typeof input.ttlMillis === "number" ? input.ttlMillis : undefined,
-      });
-
-      logInfo({
-        event: "callable_info",
-        message: "linux_app_check_token_minted",
-        app_id: result.appId,
-        ttl_millis: result.ttlMillis,
-        trust_class: "linux_lower_trust",
-      });
-
-      return { ok: true, ...result, trustClass: "linux_lower_trust" };
-    },
-  ),
-);

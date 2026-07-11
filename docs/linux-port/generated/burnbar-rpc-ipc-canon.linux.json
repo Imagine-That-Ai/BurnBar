@@ -1,6 +1,6 @@
 {
   "generatedBy": "tools/ipc/generate-burnbarrpc-canon.mjs",
-  "methodCount": 123,
+  "methodCount": 124,
   "methods": [
     {
       "id": "approval.respond",
@@ -140,6 +140,16 @@
       "owner": "OpenBurnBarDaemon",
       "params": "BurnBarRPCRequestEnvelope",
       "result": "BurnBarCatalogResponse",
+      "error": "BurnBarRPCError"
+    },
+    {
+      "id": "daemon.cloud.app_check.status",
+      "caseName": "linuxAppCheckStatus",
+      "domain": "account",
+      "capability": "account",
+      "owner": "OpenBurnBarDaemon",
+      "params": "BurnBarRPCRequestEnvelope",
+      "result": "BurnBarLinuxAppCheckStatusResponse",
       "error": "BurnBarRPCError"
     },
     {

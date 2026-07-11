@@ -49,7 +49,8 @@ enum BurnBarDaemonSocketRPCCoverage {
         .accountDeviceAuthStart,
         .accountDeviceAuthPoll,
         .accountDeviceAuthCancel,
-        .accountSignOut
+        .accountSignOut,
+        .linuxAppCheckStatus
     ]
 
     static let membership: Set<BurnBarRPCMethod> = [

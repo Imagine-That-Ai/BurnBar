@@ -15,9 +15,16 @@ extension BurnBarDaemonServer {
                 protocolVersion: BurnBarProtocolVersion.current,
                 result: await accountService.status()
             ))
+        case .linuxAppCheckStatus:
+            let request = try decoder.decode(BurnBarRPCRequestEnvelope.self, from: requestData)
+            return encode(BurnBarRPCResponseEnvelope(
+                id: request.id,
+                protocolVersion: BurnBarProtocolVersion.current,
+                result: await linuxAppCheckService.redactedStatusResponse()
+            ))
         case .accountDeviceAuthStart:
             let request = try decoder.decode(BurnBarRPCRequestEnvelope.self, from: requestData)
-            return await accountResponse(id: request.id) {
+            return await accountResponse(id: request.id, invalidatesAppCheck: true) {
                 try await accountService.startDeviceAuthorization()
             }
         case .accountDeviceAuthPoll:
@@ -25,7 +32,7 @@ extension BurnBarDaemonServer {
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarAccountFlowRequest>.self,
                 from: requestData
             )
-            return await accountResponse(id: request.id) {
+            return await accountResponse(id: request.id, invalidatesAppCheck: true) {
                 try await accountService.pollDeviceAuthorization(flowID: request.params.flowID)
             }
         case .accountDeviceAuthCancel:
@@ -33,12 +40,12 @@ extension BurnBarDaemonServer {
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarAccountFlowRequest>.self,
                 from: requestData
             )
-            return await accountResponse(id: request.id) {
+            return await accountResponse(id: request.id, invalidatesAppCheck: true) {
                 try await accountService.cancelDeviceAuthorization(flowID: request.params.flowID)
             }
         case .accountSignOut:
             let request = try decoder.decode(BurnBarRPCRequestEnvelope.self, from: requestData)
-            return await accountResponse(id: request.id) {
+            return await accountResponse(id: request.id, invalidatesAppCheck: true) {
                 try await accountService.signOut()
             }
         default:
@@ -48,8 +55,12 @@ extension BurnBarDaemonServer {
 
     private func accountResponse(
         id: String,
+        invalidatesAppCheck: Bool = false,
         operation: () async throws -> BurnBarAccountStatusResponse
     ) async -> Data {
+        if invalidatesAppCheck {
+            await linuxAppCheckService.invalidate()
+        }
         do {
             return encode(BurnBarRPCResponseEnvelope(
                 id: id,

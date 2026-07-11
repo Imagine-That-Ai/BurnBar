@@ -33,16 +33,41 @@ function exportedNames() {
 
 /** Endpoint-specific overrides merged onto scaffold defaults during regeneration. */
 const CATALOG_OVERRIDES = {
+  issueLinuxAppCheckChallenge: {
+    trigger: "callable",
+    authMethod:
+      "Firebase Auth; issues a durable UID-bound Linux attestation challenge (no App Check on the bootstrap path)",
+    appCheck: "not-required",
+    publicJustification:
+      "Bootstrap precedes the first App Check token. Firebase Auth, UID rate limiting, production mint kill switch, server-owned bindings, and a durable two-minute challenge gate it.",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "handler derives uid from request.auth.uid; challenge path and app/policy ids are server-derived while the client supplies only bounded device and release metadata",
+    handlerModule: "callables/linuxAppCheck.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: ["issueLinuxAppCheckChallenge"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
   mintLinuxAppCheckToken: {
     trigger: "callable",
     authMethod: "Firebase Auth; lower-trust Linux attestation-gated App Check token mint (no App Check on the bootstrap path)",
     appCheck: "not-required",
     publicJustification:
-      "Bootstrap that MINTS a lower-trust Linux App Check token, so it cannot itself require one (chicken-and-egg). Gated by a Linux platform attestation verifier instead; under production config no mock verifier is registered so only a real Linux verifier can mint.",
+      "Bootstrap mints a lower-trust Linux App Check token, so it cannot itself require one. A durable single-use challenge and pinned signed-verdict verifier gate production minting.",
     tenantSource: "request.auth.uid",
     objectIdsFromClient: [],
     ownershipCheck:
       "handler derives uid from request.auth.uid only; the minted Linux App Check app id comes from the server config allowlist, never client-supplied tenant object ids",
+    handlerModule: "callables/linuxAppCheck.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/authOnly.bola.test.ts",

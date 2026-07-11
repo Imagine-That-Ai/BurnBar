@@ -4847,6 +4847,17 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Linux App Check challenges and verifier receipts are Admin-SDK-only.
+    // Direct client reads would disclose attestation metadata; direct writes
+    // would let a client forge or revive a consumed challenge.
+    match /users/{userId}/linux_app_check_challenges/{challengeId} {
+      allow read, write: if false;
+    }
+
+    match /users/{userId}/linux_app_check_sessions/{sessionId} {
+      allow read, write: if false;
+    }
+
     // --- Public HTTP / approval rate limits (server-only) ---
     match /public_rate_limits/{limitId} {
       allow read, write: if false;

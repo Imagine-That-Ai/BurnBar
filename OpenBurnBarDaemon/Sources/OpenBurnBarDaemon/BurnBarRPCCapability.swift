@@ -78,7 +78,7 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
              .quotaSignalsRecent, .perfMeasure:
             return .observability
         case .accountStatus, .accountDeviceAuthStart, .accountDeviceAuthPoll,
-             .accountDeviceAuthCancel, .accountSignOut:
+             .accountDeviceAuthCancel, .accountSignOut, .linuxAppCheckStatus:
             return .account
         case .membershipStatus, .membershipCheckoutURL, .membershipRestore:
             return .membership
