@@ -17,17 +17,19 @@ public sealed class FileTransferSecurityTests
     {
         using var sandbox = new Sandbox();
         string source = sandbox.PathFor("draft.txt");
+        string snapshots = sandbox.PathFor("snapshots");
         byte[] original = "immutable outbound"u8.ToArray();
         File.WriteAllBytes(source, original);
 
         OutboundFileSnapshot snapshot = new OutboundFileSnapshotService()
-            .Create(source, sandbox.PathFor("snapshots"));
+            .Create(source, snapshots);
         File.WriteAllText(source, "mutated source");
 
         Assert.Equal(original, File.ReadAllBytes(snapshot.SnapshotPath));
         Assert.Equal(Sha256(original), snapshot.Sha256Hex);
         Assert.StartsWith(snapshot.Sha256Hex + "-draft.txt", Path.GetFileName(snapshot.SnapshotPath), StringComparison.Ordinal);
         Assert.True(File.GetAttributes(snapshot.SnapshotPath).HasFlag(FileAttributes.ReadOnly));
+        Assert.Empty(Directory.EnumerateFiles(snapshots, ".snapshot-*.tmp"));
     }
 
     [Fact]

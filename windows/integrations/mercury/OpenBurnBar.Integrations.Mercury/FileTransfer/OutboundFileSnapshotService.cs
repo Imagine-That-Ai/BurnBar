@@ -158,52 +158,56 @@ public sealed class OutboundFileSnapshotService
         string hash;
         try
         {
-            using Stream source = streamFactory();
-            if (source.CanSeek)
+            using (Stream source = streamFactory())
             {
-                expectedLength = source.Length;
-                if (expectedLength > _maxBytes)
+                if (source.CanSeek)
                 {
-                    throw new OutboundSnapshotException(OutboundSnapshotError.SourceTooLarge, "Outbound file exceeds the transfer size limit.");
-                }
-            }
-
-            using var destination = new FileStream(
-                temporary,
-                FileMode.CreateNew,
-                FileAccess.Write,
-                FileShare.None,
-                BufferBytes,
-                FileOptions.SequentialScan | FileOptions.WriteThrough);
-            using var hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-            var buffer = new byte[BufferBytes];
-            int read;
-            while ((read = source.Read(buffer, 0, buffer.Length)) > 0)
-            {
-                copied = checked(copied + read);
-                if (copied > _maxBytes)
-                {
-                    throw new OutboundSnapshotException(OutboundSnapshotError.SourceTooLarge, "Outbound file exceeds the transfer size limit.");
+                    expectedLength = source.Length;
+                    if (expectedLength > _maxBytes)
+                    {
+                        throw new OutboundSnapshotException(OutboundSnapshotError.SourceTooLarge, "Outbound file exceeds the transfer size limit.");
+                    }
                 }
 
-                destination.Write(buffer, 0, read);
-                hasher.AppendData(buffer, 0, read);
-            }
+                using (var destination = new FileStream(
+                    temporary,
+                    FileMode.CreateNew,
+                    FileAccess.Write,
+                    FileShare.None,
+                    BufferBytes,
+                    FileOptions.SequentialScan | FileOptions.WriteThrough))
+                using (var hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
+                {
+                    var buffer = new byte[BufferBytes];
+                    int read;
+                    while ((read = source.Read(buffer, 0, buffer.Length)) > 0)
+                    {
+                        copied = checked(copied + read);
+                        if (copied > _maxBytes)
+                        {
+                            throw new OutboundSnapshotException(OutboundSnapshotError.SourceTooLarge, "Outbound file exceeds the transfer size limit.");
+                        }
 
-            destination.Flush(flushToDisk: true);
-            hash = Convert.ToHexString(hasher.GetHashAndReset()).ToLowerInvariant();
+                        destination.Write(buffer, 0, read);
+                        hasher.AppendData(buffer, 0, read);
+                    }
 
-            if (expectedLength >= 0 && copied != expectedLength)
-            {
-                throw new OutboundSnapshotException(OutboundSnapshotError.SourceChanged, "Outbound file changed while it was being snapshotted.");
-            }
+                    destination.Flush(flushToDisk: true);
+                    hash = Convert.ToHexString(hasher.GetHashAndReset()).ToLowerInvariant();
+                }
 
-            if (sourceMetadata is not null)
-            {
-                sourceMetadata.Refresh();
-                if (sourceMetadata.Length != expectedLength || sourceMetadata.LastWriteTimeUtc != sourceWriteUtc)
+                if (expectedLength >= 0 && copied != expectedLength)
                 {
                     throw new OutboundSnapshotException(OutboundSnapshotError.SourceChanged, "Outbound file changed while it was being snapshotted.");
+                }
+
+                if (sourceMetadata is not null)
+                {
+                    sourceMetadata.Refresh();
+                    if (sourceMetadata.Length != expectedLength || sourceMetadata.LastWriteTimeUtc != sourceWriteUtc)
+                    {
+                        throw new OutboundSnapshotException(OutboundSnapshotError.SourceChanged, "Outbound file changed while it was being snapshotted.");
+                    }
                 }
             }
 
