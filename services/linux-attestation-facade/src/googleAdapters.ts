@@ -9,7 +9,7 @@ import { PublicError } from "./errors.js";
 import type { AttestationChallenge, SignedVerdictEnvelope } from "./contracts.js";
 import type { AttestationPolicy, EnrollmentRecord, EnrollmentStore, EvidenceObjectStore, PolicyStore, ServiceAuthenticator, UploadRecord, UploadStateStore, UserAuthenticator } from "./ports.js";
 import { exactKeys, object, sha256Hex, string } from "./validation.js";
-import { sameEnrollmentIdentity } from "./enrollment.js";
+import { enrollmentRevoked, isActiveEnrollment, sameEnrollmentIdentity } from "./enrollment.js";
 
 export class FirebaseUserAuthenticator implements UserAuthenticator {
   constructor(private readonly auth: Auth) {}
@@ -199,7 +199,7 @@ export class FirestoreEnrollmentStore implements EnrollmentStore {
       const snapshot = await transaction.get(ref);
       const existing = snapshot.data() as EnrollmentRecord | undefined;
       if (existing !== undefined) {
-        if (existing.active || !sameEnrollmentIdentity(existing, record)) throw new PublicError(409, "conflict", "Enrollment state changed");
+        if (enrollmentRevoked(existing) || existing.active || !sameEnrollmentIdentity(existing, record)) throw new PublicError(409, "conflict", "Enrollment state changed");
         if (existing.activationBlob !== undefined) return { kind: "cached" as const, record: existing };
         if ((existing.registrationLeaseExpiresAtMillis ?? 0) > nowMillis) return { kind: "busy" as const };
       }
@@ -215,7 +215,7 @@ export class FirestoreEnrollmentStore implements EnrollmentStore {
       const ref = this.firestore.collection(this.collection).doc(documentId(uid, deviceId));
       const snapshot = await transaction.get(ref);
       const existing = snapshot.data() as EnrollmentRecord | undefined;
-      if (existing === undefined || existing.active || existing.registrationLeaseToken !== leaseToken || existing.activationBlob !== undefined) throw new PublicError(409, "conflict", "Enrollment state changed");
+      if (existing === undefined || enrollmentRevoked(existing) || existing.active || existing.registrationLeaseToken !== leaseToken || existing.activationBlob !== undefined) throw new PublicError(409, "conflict", "Enrollment state changed");
       const completed: EnrollmentRecord = { ...existing, activationBlob };
       delete completed.registrationLeaseToken;
       delete completed.registrationLeaseExpiresAtMillis;
@@ -251,6 +251,7 @@ export class FirestoreEnrollmentStore implements EnrollmentStore {
       if (!snapshot.exists || existing?.uid !== uid || existing.deviceId !== deviceId) {
         throw new PublicError(409, "conflict", "Enrollment is not pending");
       }
+      if (enrollmentRevoked(existing)) throw new PublicError(409, "conflict", "Enrollment state changed");
       if (existing.active) return { kind: "cached" as const };
       if (existing.activationBlob === undefined) throw new PublicError(409, "conflict", "Enrollment is not pending");
       if ((existing.activationLeaseExpiresAtMillis ?? 0) > nowMillis) return { kind: "busy" as const };
@@ -269,7 +270,7 @@ export class FirestoreEnrollmentStore implements EnrollmentStore {
       const ref = this.firestore.collection(this.collection).doc(documentId(uid, deviceId));
       const snapshot = await transaction.get(ref);
       const data = snapshot.data() as EnrollmentRecord | undefined;
-      if (!snapshot.exists || data?.uid !== uid || data.deviceId !== deviceId || data.agentId !== agentId || data.active || data.activationBlob === undefined || data.activationLeaseToken !== leaseToken) {
+      if (!snapshot.exists || data?.uid !== uid || data.deviceId !== deviceId || data.agentId !== agentId || enrollmentRevoked(data) || data.active || data.activationBlob === undefined || data.activationLeaseToken !== leaseToken) {
         throw new PublicError(409, "conflict", "Enrollment state changed");
       }
       transaction.update(ref, {
@@ -288,6 +289,7 @@ export class FirestoreEnrollmentStore implements EnrollmentStore {
       if (!snapshot.exists
           || data?.uid !== uid
           || data.deviceId !== deviceId
+          || enrollmentRevoked(data)
           || data.active
           || data.activationBlob === undefined
           || data.activationLeaseToken !== leaseToken) {
@@ -311,7 +313,7 @@ export class FirestoreEnrollmentStore implements EnrollmentStore {
   async requireActive(uid: string, deviceId: string): Promise<EnrollmentRecord> {
     const snapshot = await this.firestore.collection(this.collection).doc(documentId(uid, deviceId)).get();
     const data = snapshot.data() as EnrollmentRecord | undefined;
-    if (!snapshot.exists || data?.active !== true || data.uid !== uid || data.deviceId !== deviceId || typeof data.akTpmBase64 !== "string" || data.akTpmBase64.length === 0) {
+    if (!snapshot.exists || !isActiveEnrollment(data, uid, deviceId)) {
       throw new PublicError(403, "verification_failed", "Device attestation was not accepted");
     }
     return data;

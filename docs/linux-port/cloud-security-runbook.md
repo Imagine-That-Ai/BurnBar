@@ -154,9 +154,12 @@ is still source-level broker evidence only. Missing enrollment, missing
 measured-boot logs, manifest digest mismatch, and invalid quote output all fail
 closed before upload or mint, and no installed or production parity is claimed.
 
-Production still requires remote enrollment activation, server-side revocation,
-real physical-TPM nonce-qualified quote vectors, UEFI measured-boot policy, IMA
-PCR 10 and full measurement-log verification, and the deployed remote verifier.
+The source verifier and Functions mint path reject inactive, revoked, and
+identity-mutated enrollment records before signing or minting. Production still
+requires remote enrollment activation, deployed revocation administration and
+audit evidence, real physical-TPM nonce-qualified quote vectors, UEFI
+measured-boot policy, IMA PCR 10 and full measurement-log verification, and the
+deployed remote verifier.
 Complete IMA logs must use the digest-bound ingress receipt and stay within the
 current 16 MiB upload contract; they must never be truncated. A larger limit
 requires a separately designed direct-to-object-storage protocol. See
@@ -331,7 +334,7 @@ Do not claim high-risk production Linux cloud availability until all are present
 
 - a dedicated real Firebase Web app ID and production allow-list entry;
 - deployed root-owned broker with broker-managed AK initialization, remote
-  enrollment activation/revocation, real nonce-qualified quote vectors,
+  enrollment activation, revocation administration/audit, real nonce-qualified quote vectors,
   release/package measurement, UEFI measured-boot policy, and IMA measurement
   verification where required;
 - deployed signed-verdict verifier with pinned identity and operational key
@@ -367,8 +370,8 @@ docker run --rm -v "$PWD:/workspace" -w /workspace \
 ```
 
 These commands prove source behavior only. They do not replace the physical-TPM,
-installed-package, verifier deployment, revocation, and desktop-matrix evidence
-required for production acceptance.
+installed-package, verifier deployment, revocation administration/audit, and
+desktop-matrix evidence required for production acceptance.
 
 1. Issue one challenge and verify its raw nonce is absent from Firestore while
    the SHA-256 hash, complete binding, five-minute expiry, and 24-hour TTL marker

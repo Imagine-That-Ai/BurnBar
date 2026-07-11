@@ -131,9 +131,12 @@ Linux is a distinct, permanently lower-assurance principal:
   private root-owned state, validates the private `ak.ctx` quote context,
   invokes `/usr/bin/tpm2_quote` with the broker-derived qualifying data, and
   returns a sealed descriptor containing IMA measurements, measured-boot log,
-  installed manifest, and manifest signature. The production factory composes
-  this bridge, but production remains blocked until real enrollment activation,
-  verifier deployment, revocation, and installed-candidate matrix evidence
+  installed manifest, and manifest signature. The verifier and Functions mint
+  path now re-read the root-owned enrollment record and reject inactive,
+  revoked, or identity-mutated devices before signing a verdict or consuming a
+  challenge. The production factory composes this bridge, but production remains
+  blocked until real enrollment activation, deployed verifier/revocation
+  operations, physical TPM/IMA vectors, and installed-candidate matrix evidence
   exist.
 - `LINUX_APP_CHECK_MINT_ENABLED` defaults to false. Mock attestation remains
   limited to existing test/emulator policy and is forced off in production.
@@ -204,8 +207,8 @@ Connection admission must also move ahead of the bounded worker queue or apply
 an equivalent credential-aware cap so unauthenticated idle local connections
 cannot exhaust all broker workers before per-UID request limiting runs.
 
-The next implementation stage adds Keylime enrollment-state activation,
-server-side revocation, package/release verification, hardened launch
+The next implementation stage adds remote Keylime enrollment-state activation,
+revocation administration/audit, package/release verification, hardened launch
 provenance, hardware quote vectors, and verifier-side UEFI measured-boot plus
 IMA PCR 10 policy evaluation. A remote verifier must evaluate that evidence and
 return the signed decision consumed by Functions. Complete logs must use the
@@ -240,9 +243,11 @@ privileged Linux broker is introduced.
 It does not establish production host integrity. The broker transport,
 release-signed installed manifest, native package lifecycle, and local
 AK lifecycle initializer, enrollment-state binding, TPM quote collector, and
-sealed evidence descriptor are implemented, but a real Firebase Web app ID,
-hardware enrollment activation, verifier deployment, revocation behavior,
-physical TPM/IMA vectors, and installed matrix proof are still required.
+sealed evidence descriptor are implemented, and source verifier/mint paths now
+reject revoked or mutated enrollment records, but a real Firebase Web app ID,
+hardware enrollment activation, verifier deployment, revocation administration
+and audit evidence, physical TPM/IMA vectors, and installed matrix proof are
+still required.
 Until those exist, protected cloud operations remain unavailable and Linux stays
 `linux_lower_trust`.
 

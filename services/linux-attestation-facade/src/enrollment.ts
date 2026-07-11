@@ -39,3 +39,23 @@ export function sameEnrollmentIdentity(left: EnrollmentRecord, right: Enrollment
     && left.ekCertificateBase64 === right.ekCertificateBase64
     && left.tpmEkPem === right.tpmEkPem;
 }
+
+export function enrollmentRevoked(record: EnrollmentRecord): boolean {
+  return typeof record.revokedAtMillis === "number"
+    || record.revokedAt != null
+    || (typeof record.revokedReason === "string" && record.revokedReason.length > 0)
+    || (typeof record.revocationReason === "string" && record.revocationReason.length > 0);
+}
+
+export function isActiveEnrollment(record: EnrollmentRecord | undefined, uid: string, deviceId: string): record is EnrollmentRecord {
+  return record?.active === true
+    && record.uid === uid
+    && record.deviceId === deviceId
+    && typeof record.agentId === "string"
+    && record.agentId.length > 0
+    && typeof record.akTpmBase64 === "string"
+    && record.akTpmBase64.length > 0
+    && typeof record.tpmEkPem === "string"
+    && record.tpmEkPem.length > 0
+    && !enrollmentRevoked(record);
+}

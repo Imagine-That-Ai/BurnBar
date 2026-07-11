@@ -1,7 +1,8 @@
 import { PublicError } from "./errors.js";
-import type { Clock, EnrollmentStore, EvidenceObjectStore, KeylimeVerifier, PolicyStore, UploadRecord, UploadStateStore, VerdictSigner } from "./ports.js";
+import type { Clock, EnrollmentRecord, EnrollmentStore, EvidenceObjectStore, KeylimeVerifier, PolicyStore, UploadRecord, UploadStateStore, VerdictSigner } from "./ports.js";
 import type { SignedVerdict, SignedVerdictEnvelope, VerifyRequest } from "./contracts.js";
 import { canonicalVerdict, quoteQualifyingDataSha256 } from "./contracts.js";
+import { sameEnrollmentIdentity } from "./enrollment.js";
 import { parseEvidenceBundle, verifyInstalledManifest } from "./evidenceBundle.js";
 import { sha256 } from "./validation.js";
 
@@ -12,6 +13,12 @@ export interface VerifierServiceOptions {
   verdictTtlMillis: number;
   verificationLeaseMillis: number;
   maxClockSkewMillis: number;
+}
+
+function assertEnrollmentUnchanged(initial: EnrollmentRecord, latest: EnrollmentRecord): void {
+  if (!sameEnrollmentIdentity(initial, latest)) {
+    throw new PublicError(403, "verification_failed", "Device attestation was not accepted");
+  }
 }
 
 export class VerifierService {
@@ -69,6 +76,7 @@ export class VerifierService {
       if (!result.valid) {
         throw new PublicError(403, "verification_failed", "Device attestation was not accepted");
       }
+      assertEnrollmentUnchanged(enrollment, await this.enrollments.requireActive(request.challenge.uid, request.challenge.deviceId));
       const attestedAtMillis = this.clock.nowMillis();
       if (request.challenge.expiresAtMillis <= attestedAtMillis) {
         throw new PublicError(400, "bad_request", "Attestation challenge has expired");

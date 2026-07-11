@@ -19,6 +19,7 @@ import { logInfo, wrapCallableHandler } from "../logging.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import {
   FirestoreLinuxAttestationChallengeStore,
+  FirestoreLinuxAttestationEnrollmentTrustStore,
   LINUX_APP_CHECK_TOKEN_TTL_MS,
   LINUX_ATTESTATION_KIND,
   LINUX_ATTESTATION_POLICY_DEFAULT,
@@ -31,6 +32,7 @@ import {
   type LinuxAttestationChallenge,
   type LinuxAttestationChallengeStore,
   type LinuxAttestationDecision,
+  type LinuxAttestationEnrollmentTrustStore,
   type LinuxAttestationVerifier,
   type LinuxVerifierIdentityTokenProvider,
 } from "../security/linuxAttestation.js";
@@ -227,6 +229,7 @@ interface MintLinuxAppCheckParams {
   rawEvidence: unknown;
   store: LinuxAttestationChallengeStore;
   verifiers: Map<string, LinuxAttestationVerifier>;
+  enrollmentTrustStore?: LinuxAttestationEnrollmentTrustStore;
   allowedAppIDs: string[];
   createToken: AppCheckTokenMinter;
   recordSession: (
@@ -289,6 +292,12 @@ async function mintLinuxAppCheckTokenCore(params: MintLinuxAppCheckParams): Prom
   if (!isAppCheckAppIdAllowed(decision.appId, { allowedAppCheckAppIDs: params.allowedAppIDs })) {
     throw new HttpsError("permission-denied", "Linux App Check app id is not allowlisted.");
   }
+  if (decision.attestationKind === LINUX_ATTESTATION_KIND) {
+    if (!params.enrollmentTrustStore) {
+      throw new HttpsError("failed-precondition", "Linux enrollment trust store is not configured.");
+    }
+    await params.enrollmentTrustStore.requireActive(params.uid, decision.deviceId);
+  }
 
   await params.store.consume(params.uid, evidence.challengeId, sha256Hex(evidence.challenge), verifiedAtMillis);
   const issuedAtMillis = currentTimeMillis();
@@ -310,6 +319,7 @@ async function mintLinuxAppCheckTokenCore(params: MintLinuxAppCheckParams): Prom
 
 const defaultCreateToken: AppCheckTokenMinter = (appId, options) => getAppCheck().createToken(appId, options);
 const challengeStore = new FirestoreLinuxAttestationChallengeStore(db);
+const enrollmentTrustStore = new FirestoreLinuxAttestationEnrollmentTrustStore(db);
 const ticketAuthority = new FirestoreLinuxAttestationTicketAuthority(db);
 
 async function recordLinuxAttestationSession(
@@ -391,6 +401,7 @@ export const mintLinuxAppCheckToken = onCall(
         allowMock: config.allowMockAppCheckAttestation,
         policy,
       }),
+      enrollmentTrustStore,
       allowedAppIDs: config.allowedAppCheckAppIDs,
       createToken: defaultCreateToken,
       recordSession: recordLinuxAttestationSession,
