@@ -231,6 +231,7 @@ pub fn systemd_listener(socket_fd: i32) -> Result<SeqpacketListener, BrokerError
     // SAFETY: systemd's socket activation ABI transfers ownership of descriptor 3
     // to this process when LISTEN_PID matches and LISTEN_FDS is exactly one. The
     // descriptor is converted once and OwnedFd becomes its sole owner.
+    // reason: Unsafe libc boundary is justified by the adjacent SAFETY invariant.
     #[allow(
         unsafe_code,
         reason = "systemd socket activation requires adopting inherited fd 3"
@@ -244,6 +245,7 @@ impl SeqpacketListener {
         let accepted = loop {
             // SAFETY: self.fd is a valid listening AF_UNIX SOCK_SEQPACKET descriptor;
             // null address pointers request no peer pathname, and accept4 returns a new fd.
+            // reason: Unsafe libc boundary is justified by the adjacent SAFETY invariant.
             #[allow(
                 unsafe_code,
                 reason = "accepting a systemd-owned SOCK_SEQPACKET listener requires accept4"
@@ -270,6 +272,7 @@ impl SeqpacketListener {
         };
         // SAFETY: accept4 returned a new owned descriptor and this is its only
         // conversion to OwnedFd, ensuring every later error closes it automatically.
+        // reason: Unsafe libc boundary is justified by the adjacent SAFETY invariant.
         #[allow(unsafe_code, reason = "accept4 returns an owned file descriptor")]
         let fd = unsafe { OwnedFd::from_raw_fd(accepted) };
         set_pass_credentials(fd.as_raw_fd())?;
@@ -292,6 +295,7 @@ impl SeqpacketConnection {
         };
         // SAFETY: zero is a valid initial state for msghdr; all pointer-bearing
         // fields used by recvmsg are populated immediately below with live buffers.
+        // reason: Unsafe libc boundary is justified by the adjacent SAFETY invariant.
         #[allow(
             unsafe_code,
             reason = "recvmsg requires a zero-initialized platform msghdr"
@@ -303,6 +307,7 @@ impl SeqpacketConnection {
         message.msg_controllen = std::mem::size_of_val(&control);
         // SAFETY: message references writable buffers valid for the duration of the
         // call, and self owns a connected SOCK_SEQPACKET descriptor.
+        // reason: Unsafe libc boundary is justified by the adjacent SAFETY invariant.
         #[allow(
             unsafe_code,
             reason = "SCM_CREDENTIALS is available only through recvmsg ancillary data"
@@ -347,6 +352,7 @@ impl SeqpacketConnection {
         }
         // SAFETY: packet is a live readable buffer and self owns a connected
         // SOCK_SEQPACKET descriptor. MSG_NOSIGNAL prevents a peer-close signal.
+        // reason: Unsafe libc boundary is justified by the adjacent SAFETY invariant.
         #[allow(
             unsafe_code,
             reason = "sending one atomic SOCK_SEQPACKET record requires send"
@@ -374,6 +380,7 @@ fn packet_credentials(message: &libc::msghdr) -> Result<PeerCredentials, BrokerE
     let mut found = None;
     // SAFETY: message was populated by a successful recvmsg call and its control
     // buffer remains live. CMSG_* traverses only headers within msg_controllen.
+    // reason: Unsafe libc boundary is justified by the adjacent SAFETY invariant.
     #[allow(
         unsafe_code,
         reason = "parsing SCM_CREDENTIALS requires libc CMSG traversal"
@@ -411,6 +418,7 @@ fn validate_socket_type(fd: i32) -> Result<(), BrokerError> {
     let mut length = std::mem::size_of::<i32>() as libc::socklen_t;
     // SAFETY: socket_type and length point to initialized writable storage and fd
     // is the inherited descriptor being validated before ownership conversion.
+    // reason: Unsafe libc boundary is justified by the adjacent SAFETY invariant.
     #[allow(
         unsafe_code,
         reason = "validating SOCK_SEQPACKET requires getsockopt SO_TYPE"
@@ -433,6 +441,7 @@ fn validate_socket_type(fd: i32) -> Result<(), BrokerError> {
     length = std::mem::size_of::<i32>() as libc::socklen_t;
     // SAFETY: accepting and length are initialized writable storage, and fd is
     // still the validated inherited socket descriptor.
+    // reason: Unsafe libc boundary is justified by the adjacent SAFETY invariant.
     #[allow(
         unsafe_code,
         reason = "validating the inherited listener requires getsockopt SO_ACCEPTCONN"
@@ -448,6 +457,7 @@ fn validate_socket_type(fd: i32) -> Result<(), BrokerError> {
     };
     // SAFETY: zero is a valid initial sockaddr_storage representation and
     // getsockname populates at most the supplied storage length.
+    // reason: Unsafe libc boundary is justified by the adjacent SAFETY invariant.
     #[allow(
         unsafe_code,
         reason = "validating AF_UNIX requires getsockname on the inherited descriptor"
@@ -456,6 +466,7 @@ fn validate_socket_type(fd: i32) -> Result<(), BrokerError> {
     let mut address_length = std::mem::size_of::<libc::sockaddr_storage>() as libc::socklen_t;
     // SAFETY: address and address_length point to initialized writable storage
     // sized for every socket address family.
+    // reason: Unsafe libc boundary is justified by the adjacent SAFETY invariant.
     #[allow(
         unsafe_code,
         reason = "validating AF_UNIX requires getsockname on the inherited descriptor"
@@ -483,6 +494,7 @@ fn set_pass_credentials(fd: i32) -> Result<(), BrokerError> {
     let enabled = 1_i32;
     // SAFETY: enabled points to an initialized i32 of the supplied length and fd
     // is a live Unix socket owned by this process or awaiting ownership conversion.
+    // reason: Unsafe libc boundary is justified by the adjacent SAFETY invariant.
     #[allow(
         unsafe_code,
         reason = "enabling per-packet SCM_CREDENTIALS requires setsockopt SO_PASSCRED"
@@ -516,6 +528,7 @@ fn set_socket_timeout(fd: i32, option: i32, deadline: Duration) -> Result<(), Br
     };
     // SAFETY: timeout points to an initialized timeval of the supplied length and
     // fd is a live connected Unix socket.
+    // reason: Unsafe libc boundary is justified by the adjacent SAFETY invariant.
     #[allow(
         unsafe_code,
         reason = "setting bounded socket I/O deadlines requires setsockopt"
@@ -937,6 +950,7 @@ mod tests {
         let mut descriptors = [-1_i32; 2];
         // SAFETY: descriptors points to storage for exactly two fds; AF_UNIX
         // SOCK_SEQPACKET socketpair initializes both on success.
+        // reason: Unsafe libc boundary is justified by the adjacent SAFETY invariant.
         #[allow(
             unsafe_code,
             reason = "the kernel credential regression requires a real SOCK_SEQPACKET pair"
@@ -953,9 +967,11 @@ mod tests {
             return Err(std::io::Error::last_os_error().into());
         }
         // SAFETY: socketpair returned two new owned fds and each is converted once.
+        // reason: Unsafe libc boundary is justified by the adjacent SAFETY invariant.
         #[allow(unsafe_code, reason = "socketpair returns two owned file descriptors")]
         let receiver_fd = unsafe { OwnedFd::from_raw_fd(descriptors[0]) };
         // SAFETY: same socketpair ownership invariant for the sender endpoint.
+        // reason: Unsafe libc boundary is justified by the adjacent SAFETY invariant.
         #[allow(unsafe_code, reason = "socketpair returns two owned file descriptors")]
         let sender_fd = unsafe { OwnedFd::from_raw_fd(descriptors[1]) };
         set_pass_credentials(receiver_fd.as_raw_fd())?;
@@ -966,6 +982,7 @@ mod tests {
         // SAFETY: after fork the child performs only async-signal-safe send and
         // _exit calls. The inherited sender fd is deliberately shared so this test
         // proves SCM_CREDENTIALS follows the packet writer, not socket creator.
+        // reason: Unsafe libc boundary is justified by the adjacent SAFETY invariant.
         #[allow(
             unsafe_code,
             reason = "fork is required to prove credentials bind to the actual packet writer"
@@ -977,6 +994,7 @@ mod tests {
         if child == 0 {
             // SAFETY: request remains valid in the forked address space; sender_raw
             // names the inherited connected endpoint, and _exit runs unconditionally.
+            // reason: Unsafe libc boundary is justified by the adjacent SAFETY invariant.
             #[allow(
                 unsafe_code,
                 reason = "child sends a static packet and exits without running Rust destructors"
@@ -995,6 +1013,7 @@ mod tests {
         let received = receiver.receive_request()?;
         let mut status = 0_i32;
         // SAFETY: child is the positive PID returned by fork and status is writable.
+        // reason: Unsafe libc boundary is justified by the adjacent SAFETY invariant.
         #[allow(
             unsafe_code,
             reason = "the credential regression must reap its forked child deterministically"
@@ -1005,6 +1024,7 @@ mod tests {
         assert_eq!(received.bytes, request);
         assert_eq!(received.credentials.pid, u32::try_from(child)?);
         // SAFETY: getuid/getgid have no preconditions and return the current IDs.
+        // reason: Unsafe libc boundary is justified by the adjacent SAFETY invariant.
         #[allow(
             unsafe_code,
             reason = "comparing SCM_CREDENTIALS to the current real IDs requires getuid/getgid"
