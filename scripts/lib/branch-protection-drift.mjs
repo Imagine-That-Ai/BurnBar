@@ -82,7 +82,7 @@ export function canonicalizeLive({ classic = null, ruleset = null } = {}) {
 
   // When a ruleset is present, verify the ruleset-owned governance fields on
   // that ruleset surface. Classic protection is still accepted when no ruleset
-  // is present, which matches the current solo-maintainer repo configuration.
+  // is present, which matches the current repo configuration.
   const rulesetActive = rulesetView.present && rulesetView.enforcementActive;
   const governanceView = rulesetView.present ? rulesetView : classicView;
 
@@ -266,9 +266,9 @@ function canonicalRulesetRequiredStatusRule(rule) {
 function aggregatePullRequestRules(rules) {
   if (rules.length === 0) return null;
   return {
-    // Count drift is dangerous in both directions for this repo: adding a review
-    // requirement deadlocks solo-maintainer automation; dropping one would be a
-    // security regression if the source of truth ever requires reviews again.
+    // Count drift is dangerous in both directions for this repo: extra rules can
+    // deadlock automation, while dropping the required review is a security
+    // regression against the source-of-truth policy.
     requiredApprovingReviewCount: Math.max(
       ...rules.map((rule) => rule.requiredApprovingReviewCount),
     ),

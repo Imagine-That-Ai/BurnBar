@@ -12,26 +12,25 @@ Related: [`docs/GOVERNANCE.md`](../docs/GOVERNANCE.md),
 
 ## Current Contract
 
-BurnBar is intentionally solo-maintainer automation friendly. The hard merge gates are:
+BurnBar's production branch is protected by mandatory peer-review and freshness controls.
+The hard merge gates are:
 
-- required status checks;
+- strict up-to-date required status checks (`required_status_checks.strict: true`);
+- one approving review;
+- required CODEOWNER review;
+- stale-review dismissal on push;
+- approval of the latest push;
 - required conversation resolution;
+- no pull-request review bypass allowances;
 - no force pushes;
 - no branch deletion;
 - exact-head merge discipline in the automation lane.
 
-The following must not be reintroduced as permanent blockers for the daily maintainer lane unless the
-owner intentionally changes the contract again:
-
-- strict up-to-date status checks (`required_status_checks.strict`);
-- required approving reviews;
-- required CODEOWNER reviews;
-- required last-push approval;
-- stale-review dismissal as a merge blocker.
-
-That is why the current desired file has `required_status_checks.strict: false` and a
-`required_pull_request_reviews` object whose count/booleans are all non-blocking. Keeping the review
-object present makes drift explicit without making self-approval a required gate.
+These controls protect production-impacting surfaces such as Firebase rules, release workflows,
+cloud functions, billing, and privileged daemon/transport code from landing without an independent
+review. Temporary break-glass for an unavailable reviewer must follow
+[`docs/SOLO_OPERATOR_POLICY.md`](../docs/SOLO_OPERATOR_POLICY.md); it must not be encoded as the
+permanent desired branch-protection state.
 
 ## Live Surface
 
@@ -51,8 +50,8 @@ automation did not verify bypass actors or enforcement.
 ## Required Status Checks
 
 `required_status_checks.contexts` contains the exact check-run names currently required by GitHub for
-PRs into `main`. These names were read from live branch protection on 2026-07-08 after the
-solo-maintainer `strict: false` decision.
+PRs into `main`. These names were read from live branch protection on 2026-07-08 and must
+remain paired with the strict branch-protection contract.
 
 Keep the JSON and live GitHub protection in sync:
 
@@ -103,8 +102,7 @@ not exposed to PRs.
 The drift check fails closed on:
 
 - required-check set differences in either direction;
-- strict status checks being enabled when this file says false, or disabled if this file is changed
-  back to true;
+- strict status checks being disabled;
 - required review/CODEOWNER/last-push/stale-review settings differing from this file;
 - conversation resolution disabled;
 - admin enforcement disabled;
