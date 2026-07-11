@@ -268,6 +268,13 @@ public sealed class InboundFileQuarantineService
         }
         string destination = UniqueDestination(file.DestinationDirectory, file.DisplayName);
         File.SetAttributes(file.QuarantinePath, FileAttributes.Normal);
+        if (!_originMarker.HasInternetOrigin(file.QuarantinePath))
+        {
+            File.SetAttributes(file.QuarantinePath, File.GetAttributes(file.QuarantinePath) | FileAttributes.ReadOnly);
+            throw new InboundQuarantineException(
+                InboundQuarantineError.QuarantineFileChanged,
+                "Quarantined file lost its Internet origin marker immediately before promotion.");
+        }
         try
         {
             File.Move(file.QuarantinePath, destination, overwrite: false);

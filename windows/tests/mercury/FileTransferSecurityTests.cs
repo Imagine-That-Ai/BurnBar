@@ -169,6 +169,26 @@ public sealed class FileTransferSecurityTests
     }
 
     [Fact]
+    public async Task OriginMarkRemovedImmediatelyBeforeMoveFailsClosed()
+    {
+        using var sandbox = new Sandbox();
+        FileTransferPlan plan = FileTransferChunker.Chunk("verified inbound"u8.ToArray(), 701, fileName: "report.txt");
+        var marker = new FakeMarker(FileOriginMarkStatus.Marked) { LoseOriginAfterFirstCheck = true };
+        var service = new InboundFileQuarantineService(marker, new FakeScanner(FileThreatScanStatus.Clean));
+        QuarantinedInboundFile quarantined = await service.QuarantineAsync(
+            plan.Manifest,
+            plan.Chunks,
+            sandbox.PathFor("downloads"),
+            "peer-node-1");
+
+        InboundQuarantineException error = Assert.Throws<InboundQuarantineException>(
+            () => service.ApproveAndPromote(quarantined));
+
+        Assert.Equal(InboundQuarantineError.QuarantineFileChanged, error.Error);
+        Assert.True(File.Exists(quarantined.QuarantinePath));
+    }
+
+    [Fact]
     public async Task QuarantineCollisionPreservesExistingFile()
     {
         using var sandbox = new Sandbox();
@@ -329,6 +349,10 @@ public sealed class FileTransferSecurityTests
 
         public bool IsMarked { get; set; } = status == FileOriginMarkStatus.Marked;
 
+        public bool LoseOriginAfterFirstCheck { get; init; }
+
+        private int _originChecks;
+
         public ValueTask<FileOriginMarkResult> MarkInternetOriginAsync(
             string filePath,
             string sourcePeerHash,
@@ -338,7 +362,11 @@ public sealed class FileTransferSecurityTests
             return ValueTask.FromResult(new FileOriginMarkResult(status, "fake-marker", status.ToString()));
         }
 
-        public bool HasInternetOrigin(string filePath) => IsMarked;
+        public bool HasInternetOrigin(string filePath)
+        {
+            _originChecks++;
+            return IsMarked && (!LoseOriginAfterFirstCheck || _originChecks == 1);
+        }
     }
 
     private sealed class FakeScanner(FileThreatScanStatus status, bool isAvailable = true) : IInboundFileThreatScanner
