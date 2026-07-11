@@ -114,10 +114,10 @@
 | **PAL: IPC** | B | Unix socket + codesign | Named pipe + signed-nonce handshake | `OpenBurnBar.Pal.Ipc.Tests` (20/20 cited HANDOFF) | **Proven** | `design/0004-named-pipe-peer-auth.md`; B1 `windows/b1-conpty-cli-stream` |
 | **PAL: ConPTY** | B | `openpty` | `ConPtySession` | IPC Windows project + runbook `CONPTY-019-dev-host-runbook.md` | **Harness built** | B1 in flight |
 | **PAL: input / CU policy** | B | CGEvent / AX | `SendInput` + UIA (advisory per R17) | `OpenBurnBar.Pal.Input.Tests` | **Policy tests**; G4 for full loop | Phase 4 |
-| **Distribution: MSIX** | B | DMG + notarize | MSIX + Authenticode | `openburnbar-release-windows.yml`, `pr-windows-dist.yml` | **Pipeline authored** | **#1255** (E2 MSIX) |
+| **Distribution: MSIX** | B | DMG + notarize | MSIX + Authenticode | `openburnbar-release-windows.yml`, `pr-windows-dist.yml` | **Unsigned x64/ARM64 package rehearsal proven**; signed install remains blocked | **#1255** (E2 MSIX); run **29125738592** |
 | **Distribution: update feed** | A | Ed25519 appcast | Pinned Ed25519 feed verifier | `OpenBurnBar.Updater.Tests`, `OpenBurnBar.Dist.Tests` | **Verifier tests green** | R19; dist tests |
 | **Distribution: winget/choco** | B | Homebrew cask | winget + Chocolatey manifests | Release workflow + §6 W0 | **Pending** external publisher | W0 Alberto |
-| **SBOM / Sigstore** | A | Release pipeline | Windows release job (keyless attest) | `release.yml` pattern / `openburnbar-release-windows.yml` | **Blocked** (pipeline present — not Real until signed release evidence in §5) | G5 bundle |
+| **SBOM / Sigstore** | A | Release pipeline | Windows release job (keyless attest) | `release.yml` pattern / `openburnbar-release-windows.yml` | **Unsigned rehearsal proven** (371 SPDX packages; 7/7 attestations verified); signed release remains blocked | G5 receipt `evidence/f1-dist/ci-run-84585a2b1a.json` |
 | **Integrations: Cast** | B | `Services/Cast/` | `OpenBurnBar.Integrations.Cast.Tests` | Protocol + mDNS tests | **Unit parity** | W9 |
 | **Integrations: Home Assistant** | B | `Services/HomeAssistant/` | `OpenBurnBar.Integrations.Tests` | Client + mapper tests | **Unit parity** | W9 |
 | **Integrations: Mercury** | B | AVFoundation pipeline | RFB + media codec port | `OpenBurnBar.Integrations.Mercury.Tests` | **Protocol tests**; AV G4 | W9 |
@@ -165,7 +165,7 @@ Each row: **(a)** screenshot — Win11 Pro pass; **(b)** test/command; **(c)** a
 
 | Flow / surface | Screenshot (Win11 Pro) | Automated evidence | Drift |
 |----------------|------------------------|--------------------|-------|
-| Cold install signed MSIX | _(blocked — Win11 Pro pass pending; also W0 signing cert)_ | `openburnbar-release-windows.yml` run ID + installer SHA256 in release notes | D10 |
+| Cold install signed MSIX | _(blocked — Win11 Pro pass pending; also W0 signing cert)_ | Unsigned package/provenance rehearsal [run 29125738592](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29125738592); signed install still required; receipt `docs/windows-port/evidence/f1-dist/ci-run-84585a2b1a.json` | D10 |
 | Auto-update from Ed25519 feed | _(blocked — Win11 Pro pass pending)_ | `OpenBurnBar.Updater.Tests` + recorded feed apply log | — |
 | Tray → flyout → main window | _(blocked — Win11 Pro pass pending)_ | `DEV_HOST_RUNBOOK.md` / validation pass script | — |
 | Dashboard populated | _(blocked — Win11 Pro pass pending)_ | `dotnet test windows/tests/dashboard` | D1 |
@@ -186,7 +186,7 @@ Each row: **(a)** screenshot — Win11 Pro pass; **(b)** test/command; **(c)** a
 | IPC handshake 20/20 | _(no screenshot)_ | `dotnet test windows/tests/ipc`; evidence `docs/windows-port/evidence/pal/ipc-handshake.md` | — |
 | UIA accessibility profile | ARM64 UTM exact-candidate receipt: `docs/windows-port/evidence/accessibility-certification/host-run-d8fc567556.json` (`25 / 25` route/scenario captures, 26 screenshots, semantic UIA pass, measured 100% DPI) | `dotnet test windows/tests/ui-automation/OpenBurnBar.UiAutomationHarness.Tests.csproj --configuration Debug` (`10` passed); full bundle SHA-256 `ea53024c64534edc3fe6a731c2a9b501b0a5c04d80d74f755b15654fbe728275` | D1 |
 | `pr-windows-full` green | _(CI link)_ | GitHub Actions run URL on `windows-latest` | D3 |
-| SBOM + Sigstore attestation | _(artifact link)_ | Release workflow attestation bundle | D10 |
+| SBOM + Sigstore attestation | _(no screenshot)_ | Unsigned rehearsal [run 29125738592](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29125738592): SPDX 2.3 with 371 packages / 370 dependencies and 7/7 cryptographically verified bundles; signed-release rerun remains required | D10 |
 | Crash-free 30 min session | _(blocked — Win11 Pro pass pending)_ | ETW/WER-free session log from validation pass | — |
 | TPM App Check E2E | _(blocked — Win11 Pro pass pending; R14 / TONIGHT_PUNCHLIST C2)_ | Callable success with minted token | D2 |
 

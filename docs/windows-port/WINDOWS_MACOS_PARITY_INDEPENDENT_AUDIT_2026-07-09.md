@@ -59,6 +59,29 @@ coverage. It does not replace the remaining physical-device Narrator protocol,
 150%/200% DPI sweeps, high-contrast OS theme validation, or manual keyboard
 certification required before a parity release claim.
 
+## Distribution Rehearsal Update - 2026-07-10
+
+Exact candidate `84585a2b1a` completed the explicitly unsigned Windows release
+path in [run 29125738592](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29125738592).
+The Windows runner published self-contained x64 and ARM64 applications, created
+both portable ZIPs and versioned MSIX packages through Windows SDK MakeAppx,
+and uploaded a four-file checksum manifest. The supply-chain job expanded the
+packages before inventory, produced an SPDX 2.3 SBOM with 371 packages / 370
+dependency packages, generated OpenVEX, and created seven keyless Sigstore
+attestations.
+
+Independent download verification reconciled every release hash, both PE
+machine codes, both MSIX architecture/version/executable contracts, all seven
+predicate-to-artifact bindings, and all seven Sigstore bundles against the
+workflow identity, commit, ref, repository, GitHub Actions OIDC issuer, and
+transparency log. The compact receipt is
+`docs/windows-port/evidence/f1-dist/ci-run-84585a2b1a.json`.
+
+This proves the unsigned build/package/provenance lane, not signed distribution.
+Authenticode and RFC 3161 timestamping, the production Ed25519 update feed,
+physical-device install/update/rollback, and Store/winget/Chocolatey publication
+remain open. No artifact from this rehearsal is a public release candidate.
+
 ## Executive Summary
 
 Windows is a substantial code port, but it is not at macOS product parity or

@@ -33,6 +33,59 @@ assert.match(
   /GITHUB_REF_TYPE:-\}" == "tag"/,
   "version consistency must enforce current Homebrew cask on tag builds",
 );
+assert.ok(
+  versionConsistency.includes("OPENBURNBAR_EXPECTED_VERSION"),
+  "version consistency must reject a requested release version that differs from project.yml",
+);
+
+const windowsReleaseWorkflow = read(".github/workflows/openburnbar-release-windows.yml");
+assert.match(
+  windowsReleaseWorkflow,
+  /OPENBURNBAR_EXPECTED_VERSION: \$\{\{ needs\.resolve-release\.outputs\.version \}\}/,
+  "Windows release workflow must bind the resolved release version to the repo version gate",
+);
+assert.match(
+  windowsReleaseWorkflow,
+  /OPENBURNBAR_REQUIRE_CURRENT_WINDOWS_VERSION: \$\{\{ github\.event_name == 'workflow_dispatch' && github\.event\.inputs\.allow_unsigned == 'true' && '0' \|\| '1' \}\}/,
+  "only an explicit unsigned Windows rehearsal may defer the Windows manifest version",
+);
+assert.match(
+  windowsReleaseWorkflow,
+  /Windows Kits\\10\\bin\\\*\\x64\\makeappx\.exe/,
+  "Windows release workflow must locate MakeAppx from the installed Windows SDK",
+);
+assert.match(
+  windowsReleaseWorkflow,
+  /windows\/packaging\/msix\/New-MsixPackage\.ps1/,
+  "Windows release workflow must package the already-published app through the reviewed MSIX script",
+);
+assert.ok(
+  windowsReleaseWorkflow.includes('predicate.write_text(json.dumps(payload'),
+  "Windows release attestations must generate a per-artifact Sigstore predicate",
+);
+assert.ok(
+  windowsReleaseWorkflow.includes('--predicate "$predicate"'),
+  "Windows release attestations must generate and pass a per-artifact Sigstore predicate",
+);
+assert.match(
+  windowsReleaseWorkflow,
+  /unzip -q "\$archive" -d "sbom-input\/\$\{name\}"[\s\S]*path: sbom-input/,
+  "Windows SBOM generation must inventory expanded package contents",
+);
+assert.ok(
+  windowsReleaseWorkflow.includes("SBOM contains no dependency packages after expanding Windows artifacts"),
+  "Windows SBOM generation must fail closed when package dependencies are absent",
+);
+assert.match(
+  read("windows/packaging/msix/New-MsixPackage.ps1"),
+  /SetAttribute\("Version", "\$Version\.0"\)[\s\S]*SetAttribute\("ProcessorArchitecture", \$Architecture\)/,
+  "MSIX staging must stamp the resolved version and target architecture into the package identity",
+);
+assert.match(
+  read("windows/packaging/msix/New-MsixPackage.ps1"),
+  /\$executableAttribute\.Value/,
+  "MSIX staging must validate the executable attribute value, not its serialized XML form",
+);
 
 const firebaseRules = read("scripts/ci/deploy-firebase-rules-releases.mjs");
 assert.ok(

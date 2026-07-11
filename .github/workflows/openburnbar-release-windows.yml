@@ -139,14 +139,21 @@ jobs:
       - name: Lint packaging props (well-formed XML)
         run: |
           set -euo pipefail
-          for f in windows/dist/props/OpenBurnBar.Windows.Hardening.props \
-                   windows/dist/props/OpenBurnBar.Windows.NativeHardening.props; do
-            xmllint --noout "$f"
-          done
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+
+          for file_name in (
+              "windows/dist/props/OpenBurnBar.Windows.Hardening.props",
+              "windows/dist/props/OpenBurnBar.Windows.NativeHardening.props",
+          ):
+              ET.parse(file_name)
+              print(f"xml parse OK: {file_name}")
+          PY
 
       - name: Enforce version consistency at release time
         env:
-          OPENBURNBAR_REQUIRE_CURRENT_WINDOWS_VERSION: "1"
+          OPENBURNBAR_EXPECTED_VERSION: ${{ needs.resolve-release.outputs.version }}
+          OPENBURNBAR_REQUIRE_CURRENT_WINDOWS_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.allow_unsigned == 'true' && '0' || '1' }}
         run: bash scripts/verify-version-consistency.sh
 
   # ── Windows runner: build + Authenticode sign + sign the update feed ────────
@@ -174,6 +181,22 @@ jobs:
           dotnet-version: |
             8.0.x
             10.0.x
+
+      - name: Locate MakeAppx
+        id: makeappx
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $makeappx = Get-ChildItem `
+            "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\makeappx.exe" `
+            -ErrorAction SilentlyContinue |
+            Sort-Object { [version]$_.Directory.Parent.Name } -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $makeappx) {
+            throw "MakeAppx.exe is missing from the Windows SDK on this runner."
+          }
+          "path=$makeappx" >> $env:GITHUB_OUTPUT
+          "MakeAppx: $makeappx"
 
       - name: Preflight signing configuration
         id: config
@@ -235,32 +258,22 @@ jobs:
           echo "Checksums:"
           cat "artifacts/checksums-windows-v${VERSION}.txt"
 
-      - name: Build MSIX (WAP packaging project — Store + sideload channel)
+      - name: Build MSIX (MakeAppx — Store + sideload channel)
         # The MSIX is the Store + sideload channel; the portable zip above is the
         # direct-download / winget / Chocolatey channel. Both ship from the SAME
         # app binaries (the WAP project references the app as its entry point;
         # the app keeps WindowsPackageType=None so the portable build is unchanged).
         run: |
           set -euo pipefail
-          wap="windows/packaging/msix/OpenBurnBar.Packaging.wapproj"
-          for plat in x64 ARM64; do
-            dotnet build "$wap" -c Release -p:Platform="$plat" \
-              -p:AppxPackageSigningEnabled=false \
-              -p:AppxBundle=Never -p:AppxBundlePlatforms="$plat" \
-              -p:Configuration=Release -p:AppxSymbolPackageEnabled=true \
-              -o "msix/$plat"
-          done
-          # Collect the .msix into artifacts (MakeAppx output naming includes the
-          # version + platform; glob it).
-          mkdir -p artifacts
-          for plat in x64 ARM64; do
-            msix="$(find msix/$plat -name "*.msix" 2>/dev/null | head -1 || true)"
-            if [[ -z "$msix" ]]; then
-              echo "::warning::No .msix produced for $plat (WAP build may need the Windows-only DesktopBridge targets)."
-              continue
-            fi
-            cp "$msix" "artifacts/OpenBurnBar-${VERSION}-${plat}.msix"
-            ( cd artifacts && sha256sum "OpenBurnBar-${VERSION}-${plat}.msix" >> "checksums-windows-v${VERSION}.txt" )
+          makeappx='${{ steps.makeappx.outputs.path }}'
+          for rid in win-x64 win-arm64; do
+            arch="x64"
+            [[ "$rid" == "win-arm64" ]] && arch="arm64"
+            output="artifacts/OpenBurnBar-${VERSION}-${arch}.msix"
+            pwsh -NoProfile -NonInteractive -File windows/packaging/msix/New-MsixPackage.ps1 \
+              -PublishDir "publish/$rid" -Architecture "$arch" -Version "$VERSION" \
+              -OutputPath "$output" -MakeAppxPath "$makeappx"
+            ( cd artifacts && sha256sum "$(basename "$output")" >> "checksums-windows-v${VERSION}.txt" )
           done
 
       - name: Authenticode sign the MSIX (Azure Trusted Signing)
@@ -348,15 +361,49 @@ jobs:
           name: windows-release-v${{ needs.resolve-release.outputs.version }}
           path: artifacts
 
+      - name: Expand packages for dependency inventory
+        run: |
+          set -euo pipefail
+          mkdir -p sbom-input
+          shopt -s nullglob
+          archives=(artifacts/*.zip artifacts/*.msix)
+          if [[ "${#archives[@]}" -eq 0 ]]; then
+            echo "::error::No Windows packages are available for SBOM generation."
+            exit 1
+          fi
+          for archive in "${archives[@]}"; do
+            name="$(basename "$archive")"
+            unzip -q "$archive" -d "sbom-input/${name}"
+          done
+
       - name: Generate SBOM (SPDX) over the Windows artifacts
         id: sbom
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
-          path: artifacts
+          path: sbom-input
           format: spdx-json
           output-file: "sbom-windows-v${{ needs.resolve-release.outputs.version }}.spdx.json"
           upload-artifact: false
           upload-release-assets: false
+
+      - name: Validate SBOM contains package dependencies
+        run: |
+          python3 - "sbom-windows-v${VERSION}.spdx.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          sbom = json.loads(path.read_text(encoding="utf-8"))
+          packages = sbom.get("packages", [])
+          dependency_packages = [
+              package for package in packages
+              if package.get("primaryPackagePurpose") != "FILE"
+          ]
+          if not dependency_packages:
+              raise SystemExit("SBOM contains no dependency packages after expanding Windows artifacts")
+          print(f"SBOM dependency packages: {len(dependency_packages)}")
+          PY
 
       - name: Generate OpenVEX sidecar
         id: vex
@@ -391,8 +438,44 @@ jobs:
             fi
             local safe
             safe="$(basename "$path" | tr -c 'A-Za-z0-9._-' '_')"
+            local predicate="$prov/${safe}.predicate.json"
+            python3 - "$path" "$predicate" <<'PY'
+          import hashlib
+          import json
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          artifact = Path(sys.argv[1])
+          predicate = Path(sys.argv[2])
+          commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          payload = {
+              "schemaVersion": 1,
+              "predicateType": os.environ["PREDICATE_TYPE"],
+              "artifact": {
+                  "fileName": artifact.name,
+                  "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
+                  "sizeBytes": artifact.stat().st_size,
+              },
+              "release": {
+                  "version": os.environ["VERSION"],
+                  "commit": commit,
+                  "repository": os.environ.get("GITHUB_REPOSITORY", ""),
+                  "ref": os.environ.get("GITHUB_REF", ""),
+                  "workflow": os.environ.get("GITHUB_WORKFLOW", ""),
+                  "runID": os.environ.get("GITHUB_RUN_ID", ""),
+                  "runAttempt": os.environ.get("GITHUB_RUN_ATTEMPT", ""),
+              },
+              "runner": {
+                  "environment": os.environ.get("GITHUB_ACTIONS", "") == "true" and "github-hosted" or "local",
+              },
+          }
+          predicate.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
             cosign attest-blob --yes \
               --type "$PREDICATE_TYPE" \
+              --predicate "$predicate" \
               --bundle "$prov/${safe}.sigstore.json" \
               "$path"
             if [[ ! -s "$prov/${safe}.sigstore.json" ]]; then

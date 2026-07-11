@@ -20,11 +20,19 @@ releases: real tags must have Azure Trusted Signing plus the pinned update-feed 
 1. **resolve-release** — derive `X.Y.Z` from the tag/input.
 2. **portable-verify** *(ubuntu, always runs)* — the security kernel proof: `dotnet test` over
    `windows/tests/dist`, an end-to-end signer round-trip (good pin verifies, wrong pin fails
-   closed), `xmllint` on the props, and `verify-version-consistency.sh` with
-   `OPENBURNBAR_REQUIRE_CURRENT_WINDOWS_VERSION=1`.
-3. **build-sign** *(windows-latest)* — `dotnet publish` the WinUI app for `win-x64` + `win-arm64`,
-   **Authenticode-sign** via Azure Trusted Signing, package zips + checksums, then **sign the
-   update feed** with the pinned Ed25519 key and self-verify it.
+   closed), dependency-free XML parsing on the props, and `verify-version-consistency.sh`. The
+   resolved release version must always equal the repo marketing version. Tag and signed manual
+   releases also require the Windows app manifest to match; explicit unsigned rehearsals retain
+   the documented deferred manifest version so they can prove the build/package boundary before
+   the first Windows release bump.
+3. **build-sign** *(windows-latest)* — `dotnet publish` the unpackaged WinUI app for `win-x64` +
+   `win-arm64`, then stage those exact outputs through `New-MsixPackage.ps1` + the Windows SDK's
+   `MakeAppx`. The script stamps the resolved version and processor architecture into the package
+   identity before building x64 + ARM64 MSIX files. CI then **Authenticode-signs** via Azure
+   Trusted Signing, packages zips + checksums, and **signs the update feed** with the pinned
+   Ed25519 key and self-verifies it. The WAP project remains the Visual Studio authoring wrapper;
+   release CI packages the already-proven unpackaged outputs directly so WAP globals cannot change
+   the app build contract.
 4. **supply-chain** *(ubuntu)* — SPDX **SBOM** over the artifacts, **OpenVEX** sidecar, and keyless
    **Sigstore** (`cosign attest-blob`) provenance over every artifact.
 
