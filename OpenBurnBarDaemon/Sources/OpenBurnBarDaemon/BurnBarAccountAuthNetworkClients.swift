@@ -4,6 +4,7 @@ import OpenBurnBarLinuxSecurity
 #endif
 import Foundation
 
+// AUDIT: Foundation owns delegate callback concurrency; this delegate is stateless. sendable-allowlist: foundation-sdk-shim
 final class BurnBarNoRedirectSessionDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     static func redirectedRequest(
         for _: HTTPURLResponse,

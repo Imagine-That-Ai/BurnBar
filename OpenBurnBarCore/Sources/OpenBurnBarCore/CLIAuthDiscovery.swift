@@ -691,6 +691,7 @@ public enum CLIAuthDiscovery {
         return json
     }
 
+    // AUDIT: one reader task mutates each capture before immutable publication. sendable-allowlist: single-threaded-vector-builder
     private final class CommandOutputCapture: @unchecked Sendable {
         private(set) var data = Data()
 

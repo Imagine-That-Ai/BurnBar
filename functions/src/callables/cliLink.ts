@@ -33,19 +33,9 @@ import {
 import { resolveCliLinkFirebaseWebAPIKey } from "./cliLinkFirebaseConfig.js";
 
 export interface CliLinkSessionDoc {
-  deviceSecretHash?: string;
-  deviceSecretVerifierHash?: string;
-  userCode: string;
-  expiresAt: Timestamp;
-  status: CliLinkSessionStatus;
-  purpose: CliLinkPurpose;
-  clientType?: string;
-  displayName?: string;
-  credentialDelivery?: CliLinkCredentialDelivery;
-  credentialEnvelope?: CliLinkCredentialEnvelope;
-  approvalClaimUid?: string;
-  approvalClaimID?: string;
-  approvalClaimedAt?: Timestamp;
+  deviceSecretHash?: string; deviceSecretVerifierHash?: string; userCode: string; expiresAt: Timestamp;
+  status: CliLinkSessionStatus; purpose: CliLinkPurpose; clientType?: string; displayName?: string;
+  credentialDelivery?: CliLinkCredentialDelivery; credentialEnvelope?: CliLinkCredentialEnvelope; approvalClaimUid?: string; approvalClaimID?: string; approvalClaimedAt?: Timestamp;
 }
 
 export type CliLinkPurpose = "remote_mcp" | "desktop_auth";

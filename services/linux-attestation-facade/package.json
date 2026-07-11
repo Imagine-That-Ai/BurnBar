@@ -2,6 +2,7 @@
   "name": "@openburnbar/linux-attestation-facade",
   "version": "0.1.0",
   "private": true,
+  "license": "AGPL-3.0-only",
   "type": "module",
   "engines": {
     "node": "22.x"
@@ -16,17 +17,17 @@
   "dependencies": {
     "@google-cloud/kms": "5.5.1",
     "@google-cloud/storage": "7.21.0",
-    "firebase-admin": "14.1.0",
-    "google-auth-library": "10.9.0"
+    "firebase-admin": "13.10.0",
+    "google-auth-library": "10.6.2"
   },
   "devDependencies": {
     "@eslint/js": "9.39.4",
-    "@types/node": "24.6.0",
+    "@types/node": "^24.6.0",
     "ajv": "8.20.0",
     "eslint": "9.39.4",
     "globals": "17.6.0",
     "tsx": "4.21.0",
-    "typescript": "5.9.3",
+    "typescript": "^5.9.3",
     "typescript-eslint": "8.60.1"
   },
   "overrides": {

@@ -34,6 +34,7 @@ enum BurnBarLinuxAttestationIngressClientError: Error, Equatable, Sendable {
     }
 }
 
+// AUDIT: Foundation owns delegate callbacks; mutable request state is lock-confined. sendable-allowlist: foundation-sdk-shim
 private final class BurnBarLinuxAppCheckBoundedDataDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     private let maximumBytes: Int
     private let taskLock = NSLock()

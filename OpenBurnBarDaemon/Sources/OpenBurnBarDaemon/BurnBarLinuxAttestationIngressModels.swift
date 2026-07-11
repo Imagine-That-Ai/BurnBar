@@ -23,6 +23,7 @@ struct BurnBarLinuxAttestationTicketCredential: Sendable, CustomStringConvertibl
     let secretHashSHA256: String
     private let secret: SecretStorage
 
+    // AUDIT: every mutation is serialized by the private lock. sendable-allowlist: internal-lock-snapshot-store
     private final class SecretStorage: @unchecked Sendable, CustomStringConvertible, CustomDebugStringConvertible {
         private let lock = NSLock()
         private var bytes: Data

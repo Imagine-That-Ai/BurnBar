@@ -535,7 +535,11 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "escrow_envelopes",
       "escrow_audit_events",
       "account_recovery_methods",
-      "roaming_profile"
+      "roaming_profile",
+      "linux_app_check_challenges",
+      "linux_app_check_sessions",
+      "linux_attestation_enrollment_ticket_slots",
+      "linux_attestation_ingress_tickets"
     ],
     "storagePaths": [],
     "countSource": "escrow_devices",

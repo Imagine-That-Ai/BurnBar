@@ -28,6 +28,7 @@ struct BurnBarLinuxAttestationEvidenceBundleMetadata: Codable, Equatable, Sendab
     let sha256: String
 }
 
+// AUDIT: the owned descriptor lifecycle is serialized by the private lock. sendable-allowlist: process-handle
 final class BurnBarLinuxAttestationEvidenceDescriptor: @unchecked Sendable {
     let metadata: BurnBarLinuxAttestationEvidenceBundleMetadata
     private let lock = NSLock()
@@ -77,7 +78,7 @@ struct BurnBarLinuxAttestationBrokerResult: Sendable {
     let evidenceDescriptor: BurnBarLinuxAttestationEvidenceDescriptor
 }
 
-struct BurnBarLinuxAttestationBrokerPacket: @unchecked Sendable {
+struct BurnBarLinuxAttestationBrokerPacket: Sendable {
     let payload: Data
     let descriptors: [Int32]
 }
