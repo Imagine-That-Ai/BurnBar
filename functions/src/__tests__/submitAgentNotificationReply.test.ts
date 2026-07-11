@@ -118,7 +118,7 @@ const runSubmitAgentNotificationReply = callableRunner(submitAgentNotificationRe
 function authedRequest(data: Record<string, unknown>) {
   return {
     auth: { uid: "u1", token: {} },
-    app: { appId: "test-app" },
+    app: { appId: "1:1234567890:ios:openburnbar-test" },
     rawRequest: { headers: {} },
     data,
   };

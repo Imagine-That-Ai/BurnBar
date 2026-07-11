@@ -16,10 +16,10 @@ import { FieldValue, type DocumentData, type DocumentSnapshot, type Transaction 
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
 
 import { getConfig } from "../config.js";
-import { enforceAuthAndAppCheck } from "../auth.js";
 import {
   APP_CHECK_ATTESTATION_MAX_AGE_MS,
   bindAppCheckAttestationForUid,
+  enforceAppCheckAttestationBindingCallable,
   enforceHighRiskComputerUseCallable,
   enforceHighRiskComputerUseCallableWithNonce,
   issueHighRiskNonceForUid,
@@ -55,7 +55,7 @@ export const bindAppCheckAttestation = onCall(
   wrapCallableHandler("bindAppCheckAttestation", async (request: CallableRequest) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before binding App Check attestation.");
-    enforceAuthAndAppCheck(request, uid);
+    enforceAppCheckAttestationBindingCallable(request, uid);
     const appId = readAppIdFromCallableRequest(request);
     if (!appId) {
       throw new HttpsError("unauthenticated", "App Check attestation is required.");

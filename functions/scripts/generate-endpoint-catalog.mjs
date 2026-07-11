@@ -31,6 +31,73 @@ function exportedNames() {
   return [...new Set(names)].sort((a, b) => a.localeCompare(b));
 }
 
+const LOWER_TRUST_DESKTOP_POLICY_OVERRIDES = {
+  beginEncryptedSessionBlobUpload: "linux-low-risk",
+  bindAppCheckAttestation: "desktop-attestation-binding",
+  claimSignalPrekeyBundle: "linux-low-risk",
+  commitEncryptedProjectMemorySnapshot: "linux-low-risk",
+  commitEncryptedSearchIndexBatch: "linux-low-risk",
+  commitKnowledgeBatch: "linux-low-risk",
+  getAuditLog: "linux-low-risk",
+  getDataDomainUsage: "linux-low-risk",
+  getEncryptedProjectMemorySnapshot: "linux-low-risk",
+  getEncryptedSessionBlobDownloadUrl: "linux-low-risk",
+  getHermesGatewayAttachmentDownloadUrl: "linux-low-risk",
+  getProfileAvatarDownloadUrl: "linux-low-risk",
+  issueHighRiskActionNonce: "desktop-nonce-bootstrap",
+  listEncryptedProjectMemorySnapshots: "linux-low-risk",
+  listHermesConnections: "linux-low-risk",
+  listHermesGatewayClients: "linux-low-risk",
+  listKnowledgeRepos: "linux-low-risk",
+  listPendingCloudVaultRotationRequirements: "linux-low-risk",
+  listPiAgentConnections: "linux-low-risk",
+  publishSignalPrekeyBundle: "linux-low-risk",
+  queryConversations: "linux-low-risk",
+  recordSignalRotation: "linux-low-risk",
+  recordSignalSession: "linux-low-risk",
+  scanLegacyPlaintextArtifacts: "linux-low-risk",
+  searchEncryptedConversationIndex: "linux-low-risk",
+  searchKnowledge: "linux-low-risk",
+  searchStreams: "linux-low-risk",
+  signalActivationReadiness: "linux-low-risk",
+  signalPrekeyWatermark: "linux-low-risk",
+  uploadProviderQuotaSnapshot: "linux-low-risk",
+  verifyAuditLog: "linux-low-risk",
+  approveHermesGatewayDeviceGrant: "desktop-trusted-device-step-up",
+  completeHermesPairing: "desktop-trusted-device-step-up",
+  completePiAgentPairing: "desktop-trusted-device-step-up",
+  connectHostedQuotaAccount: "desktop-trusted-device-step-up",
+  connectProviderAccount: "desktop-trusted-device-step-up",
+  connectProviderCredential: "desktop-trusted-device-step-up",
+  connectSelfHostedQuotaAccount: "desktop-trusted-device-step-up",
+  deleteHostedQuotaCredentials: "desktop-trusted-device-step-up",
+  deleteProviderAccount: "desktop-trusted-device-step-up",
+  deleteUserCloudData: "desktop-trusted-device-step-up",
+  exportUserData: "desktop-trusted-device-step-up",
+  revokeAllAccess: "desktop-trusted-device-step-up",
+  revokeRemoteMcpClient: "desktop-trusted-device-step-up",
+  updateProviderAccount: "desktop-trusted-device-step-up",
+};
+
+const LOWER_TRUST_HANDLER_MODULE_OVERRIDES = {
+  bindAppCheckAttestation: "callables/escrowDeviceCallables.ts",
+  issueHighRiskActionNonce: "callables/escrowDeviceCallables.ts",
+  approveHermesGatewayDeviceGrant: "callables/hermesGatewayApprove.ts",
+  completeHermesPairing: "callables/hermes.ts",
+  completePiAgentPairing: "callables/piAgent.ts",
+  connectHostedQuotaAccount: "callables/providerAccounts.ts",
+  connectProviderAccount: "callables/providerAccounts.ts",
+  connectProviderCredential: "callables/providerAccounts.ts",
+  connectSelfHostedQuotaAccount: "callables/providerAccounts.ts",
+  deleteHostedQuotaCredentials: "callables/providerAccounts.ts",
+  deleteProviderAccount: "callables/providerAccounts.ts",
+  deleteUserCloudData: "callables/providerAccounts.ts",
+  exportUserData: "callables/dataExport.ts",
+  revokeAllAccess: "callables/panic.ts",
+  revokeRemoteMcpClient: "callables/remoteMcp.ts",
+  updateProviderAccount: "callables/providerAccounts.ts",
+};
+
 /** Endpoint-specific overrides merged onto scaffold defaults during regeneration. */
 const CATALOG_OVERRIDES = {
   issueLinuxAppCheckChallenge: {
@@ -153,6 +220,27 @@ const CATALOG_OVERRIDES = {
         test: "webhook flags only repos bound to the GitHub installation in the signed payload",
         kind: "runtime-cross-user",
         covers: ["onKnowledgeRepoPush"],
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  registerDevicePushEndpoint: {
+    trigger: "callable",
+    authMethod: "Firebase Auth with callable-level ownership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: ["deviceId"],
+    ownershipCheck:
+      "handler derives uid from request.auth.uid, requires users/{uid}/escrow_devices/{deviceId} to be trusted, and writes only users/{uid}/devices/{deviceId}",
+    handlerModule: "callables/devicePushRegistration.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/devicePushRegistration.bola.test.ts",
+        test: "registerDevicePushEndpoint rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["registerDevicePushEndpoint"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
       },
     ],
     highRiskComputerUse: false,
@@ -536,7 +624,12 @@ const priorByName = Object.fromEntries(prior.map((row) => [row.exportedName, row
 const merged = names.map((exportedName) => {
   const base = priorByName[exportedName] ?? defaultEntry(exportedName);
   const override = CATALOG_OVERRIDES[exportedName];
-  return override ? { ...base, ...override, exportedName } : base;
+  const entry = override ? { ...base, ...override, exportedName } : base;
+  const lowerTrustDesktopPolicy =
+    LOWER_TRUST_DESKTOP_POLICY_OVERRIDES[exportedName] ??
+    (entry.appCheck === "required" ? "deny" : "not-applicable");
+  const handlerModule = LOWER_TRUST_HANDLER_MODULE_OVERRIDES[exportedName] ?? entry.handlerModule;
+  return { ...entry, ...(handlerModule ? { handlerModule } : {}), lowerTrustDesktopPolicy };
 });
 
 const header = `/** AUTO-GENERATED by scripts/generate-endpoint-catalog.mjs — do not hand-edit rows. */

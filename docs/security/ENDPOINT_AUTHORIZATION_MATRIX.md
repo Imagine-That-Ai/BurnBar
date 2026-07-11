@@ -7,10 +7,35 @@ Each exported Cloud Function declares:
 - trigger type (`callable`, `http`, `firestore-trigger`, `scheduled`, `provider-webhook`, `task-queue`)
 - authentication method
 - App Check posture
+- lower-trust desktop policy
 - tenant source
 - client-controlled object identifiers
 - ownership check
 - typed `bolaCoverage[]` references (not legacy `negativeBolaTest` strings)
+
+## Lower-trust desktop policy
+
+Every App Check-required callable is classified independently of Firebase's
+token-validity decision. `wrapCallableHandler` enforces this catalog entry before
+the handler runs, so a valid custom Linux or Windows App Check token is not an
+authorization grant by itself. Unclassified app IDs and missing catalog rows
+fail closed. Standard browser trust is also explicit: only IDs in
+`APP_CHECK_STANDARD_WEB_APP_IDS` classify as Web reCAPTCHA principals. A generic
+Firebase `:web:` ID is never promoted by syntax alone.
+
+| Policy | Meaning |
+| --- | --- |
+| `deny` | Apple, Android, and Web App Check only; lower-trust desktop tokens are rejected. |
+| `linux-low-risk` | Linux may enter an audited owner-scoped encrypted/read-only/bounded operation. Windows remains denied. |
+| `desktop-attestation-binding` | Linux or Windows may bind the live App Check ID to the authenticated principal. |
+| `desktop-nonce-bootstrap` | Linux or Windows may request the single-use nonce required by the later step-up. |
+| `desktop-trusted-device-step-up` | Linux or Windows may enter only a source-wired handler whose exact `enforceHighRiskOwnerAction` action kind is catalog-validated; the shared helper runtime-tests nonce consumption, trusted-device proof, and fail-closed audit persistence. |
+| `not-applicable` | The endpoint does not require App Check, such as a platform trigger or the authenticated token-mint bootstrap. |
+
+The current Linux surface contains 29 low-risk callables, 14 trusted-device
+step-up callables, two prerequisites, and 73 deny-by-default callables. Change
+those sets only through `LOWER_TRUST_DESKTOP_POLICY_OVERRIDES` in the generator;
+the matrix and AST source-wiring tests enforce their cardinality and invariants.
 
 ## BOLA coverage kinds
 

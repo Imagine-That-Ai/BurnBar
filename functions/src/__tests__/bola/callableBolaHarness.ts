@@ -18,6 +18,7 @@ export const BOLA_STRICT_CODE_ENDPOINTS = new Set([
 
 export const ALICE_UID = "alice-bola-uid";
 export const BOB_UID = "bob-bola-uid";
+export const TEST_APP_CHECK_APP_ID = "1:1234567890:ios:openburnbar-test";
 
 /** Probe payload: supplies every client-controlled id the matrix tracks. */
 function bolaCrossUserData(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -80,7 +81,7 @@ type TestCallableRequest<T extends Record<string, unknown>> = {
 export function callableRequest<T extends Record<string, unknown>>(uid: string, data: T): TestCallableRequest<T> {
   return {
     auth: { uid, token: {} },
-    app: { appId: "openburnbar-test" },
+    app: { appId: TEST_APP_CHECK_APP_ID },
     rawRequest: { headers: {} },
     data,
   };

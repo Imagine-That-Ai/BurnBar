@@ -22,6 +22,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "anchorAuditLogHeads",
@@ -40,6 +41,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "approveEscrowDeviceTrust",
@@ -61,6 +63,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "approveHermesGatewayDeviceGrant",
@@ -70,7 +73,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["clientId", "attachmentId"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "callables/hermesGateway.ts",
+    handlerModule: "callables/hermesGatewayApprove.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/hermesGateway.bola.test.ts",
@@ -89,6 +92,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     ],
     highRiskComputerUse: true,
     actionKind: "hermes_gateway_device_grant_approve",
+    lowerTrustDesktopPolicy: "desktop-trusted-device-step-up",
   },
   {
     exportedName: "appStoreServerNotificationsV2",
@@ -109,6 +113,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     publicJustification:
       "Provider webhook endpoints are internet-facing by design and authenticated by provider signatures.",
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "backfillPrivacyPlaintext",
@@ -129,6 +134,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "backfillPrivacyPlaintextScheduled",
@@ -147,6 +153,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "backfillProviderAccountDeviceLinks",
@@ -167,6 +174,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "backfillProviderAccountDeviceLinksScheduled",
@@ -185,6 +193,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "beginEncryptedSessionBlobUpload",
@@ -206,6 +215,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "linux-low-risk",
   },
   {
     exportedName: "beginEntitlementBinding",
@@ -226,6 +236,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "beginPasskeyAssertion",
@@ -246,6 +257,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "bindAppCheckAttestation",
@@ -266,6 +278,8 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "desktop-attestation-binding",
+    handlerModule: "callables/escrowDeviceCallables.ts",
   },
   {
     exportedName: "burnBarHermesGateway",
@@ -287,6 +301,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "cancelCredentialTransfer",
@@ -309,6 +324,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "claimSignalPrekeyBundle",
@@ -330,6 +346,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "linux-low-risk",
   },
   {
     exportedName: "commitEncryptedProjectMemorySnapshot",
@@ -351,6 +368,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "linux-low-risk",
   },
   {
     exportedName: "commitEncryptedSearchIndexBatch",
@@ -372,6 +390,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "linux-low-risk",
   },
   {
     exportedName: "commitKnowledgeBatch",
@@ -393,6 +412,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "linux-low-risk",
   },
   {
     exportedName: "completeCliLink",
@@ -415,6 +435,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "completeCredentialTransfer",
@@ -437,6 +458,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "completeHermesPairing",
@@ -446,7 +468,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["pairingId", "code", "sessionId"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "callables/cliLink.ts",
+    handlerModule: "callables/hermes.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/pairing.bola.test.ts",
@@ -465,6 +487,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     ],
     highRiskComputerUse: true,
     actionKind: "hermes_pairing_complete",
+    lowerTrustDesktopPolicy: "desktop-trusted-device-step-up",
   },
   {
     exportedName: "completePiAgentPairing",
@@ -474,7 +497,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["pairingId", "code", "sessionId"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "callables/cliLink.ts",
+    handlerModule: "callables/piAgent.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/pairing.bola.test.ts",
@@ -493,6 +516,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     ],
     highRiskComputerUse: true,
     actionKind: "pi_agent_pairing_complete",
+    lowerTrustDesktopPolicy: "desktop-trusted-device-step-up",
   },
   {
     exportedName: "computeTierCogsDaily",
@@ -511,6 +535,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "configureKnowledgeSource",
@@ -532,6 +557,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "confirmRecovery",
@@ -553,6 +579,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "connectHostedQuotaAccount",
@@ -581,6 +608,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     ],
     highRiskComputerUse: true,
     actionKind: "hosted_quota_account_connect",
+    lowerTrustDesktopPolicy: "desktop-trusted-device-step-up",
   },
   {
     exportedName: "connectKnowledgeRepo",
@@ -602,6 +630,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "connectProviderAccount",
@@ -630,6 +659,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     ],
     highRiskComputerUse: true,
     actionKind: "provider_account_connect",
+    lowerTrustDesktopPolicy: "desktop-trusted-device-step-up",
   },
   {
     exportedName: "connectProviderCredential",
@@ -657,6 +687,8 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     ],
     highRiskComputerUse: true,
     actionKind: "provider_credential_connect",
+    lowerTrustDesktopPolicy: "desktop-trusted-device-step-up",
+    handlerModule: "callables/providerAccounts.ts",
   },
   {
     exportedName: "connectSelfHostedQuotaAccount",
@@ -685,6 +717,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     ],
     highRiskComputerUse: true,
     actionKind: "self_hosted_quota_account_connect",
+    lowerTrustDesktopPolicy: "desktop-trusted-device-step-up",
   },
   {
     exportedName: "consumeCredentialTransfer",
@@ -707,6 +740,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "createCredentialTransfer",
@@ -728,6 +762,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "createHermesPairing",
@@ -749,6 +784,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "createPiAgentPairing",
@@ -770,6 +806,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "createStripeBurnBarProCheckoutSession",
@@ -790,6 +827,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "createStripeBurnBarProPortalSession",
@@ -810,6 +848,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "deleteDomainData",
@@ -830,6 +869,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "deleteEncryptedProjectMemorySnapshot",
@@ -851,6 +891,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "deleteHostedQuotaCredentials",
@@ -879,6 +920,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     ],
     highRiskComputerUse: true,
     actionKind: "hosted_quota_credential_delete",
+    lowerTrustDesktopPolicy: "desktop-trusted-device-step-up",
   },
   {
     exportedName: "deleteKnowledgeSource",
@@ -900,6 +942,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "deleteProviderAccount",
@@ -928,6 +971,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     ],
     highRiskComputerUse: true,
     actionKind: "provider_account_delete",
+    lowerTrustDesktopPolicy: "desktop-trusted-device-step-up",
   },
   {
     exportedName: "deleteProviderCredential",
@@ -948,6 +992,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "deleteUserCloudData",
@@ -975,6 +1020,8 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     ],
     highRiskComputerUse: true,
     actionKind: "user_cloud_data_delete",
+    lowerTrustDesktopPolicy: "desktop-trusted-device-step-up",
+    handlerModule: "callables/providerAccounts.ts",
   },
   {
     exportedName: "detectStalePendingCloudVaultRotations",
@@ -993,6 +1040,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "disconnectKnowledgeRepo",
@@ -1014,6 +1062,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "enqueueHermesGatewayEvent",
@@ -1035,6 +1084,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "evaluateComputerUseBudget",
@@ -1053,6 +1103,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "evaluateMediaBudget",
@@ -1071,6 +1122,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "exportUserData",
@@ -1098,6 +1150,8 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     ],
     highRiskComputerUse: true,
     actionKind: "data_export",
+    lowerTrustDesktopPolicy: "desktop-trusted-device-step-up",
+    handlerModule: "callables/dataExport.ts",
   },
   {
     exportedName: "getAuditLog",
@@ -1118,6 +1172,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "linux-low-risk",
   },
   {
     exportedName: "getDataDomainUsage",
@@ -1138,6 +1193,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "linux-low-risk",
   },
   {
     exportedName: "getEncryptedProjectMemorySnapshot",
@@ -1159,6 +1215,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "linux-low-risk",
   },
   {
     exportedName: "getEncryptedSessionBlobDownloadUrl",
@@ -1180,6 +1237,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "linux-low-risk",
   },
   {
     exportedName: "getHermesGatewayAttachmentDownloadUrl",
@@ -1201,6 +1259,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "linux-low-risk",
   },
   {
     exportedName: "getProfileAvatarDownloadUrl",
@@ -1221,6 +1280,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "linux-low-risk",
   },
   {
     exportedName: "grantMediaGrandfather",
@@ -1241,6 +1301,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "healthCheck",
@@ -1260,6 +1321,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     ],
     publicJustification: "Read-only health endpoints expose no user objects.",
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "healthLive",
@@ -1279,6 +1341,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     ],
     publicJustification: "Read-only health endpoints expose no user objects.",
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "healthReady",
@@ -1298,6 +1361,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     ],
     publicJustification: "Read-only health endpoints expose no user objects.",
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "insightsHostedAnswer",
@@ -1318,6 +1382,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "issueHighRiskActionNonce",
@@ -1338,6 +1403,8 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "desktop-nonce-bootstrap",
+    handlerModule: "callables/escrowDeviceCallables.ts",
   },
   {
     exportedName: "issueLinuxAppCheckChallenge",
@@ -1363,6 +1430,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     highRiskComputerUse: false,
     publicJustification:
       "Bootstrap precedes the first App Check token. Firebase Auth, UID rate limiting, production mint kill switch, server-owned bindings, and a durable two-minute challenge gate it.",
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "issueRemoteMcpGrant",
@@ -1383,6 +1451,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "latestRouterRundown",
@@ -1405,6 +1474,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     publicJustification:
       "Public read-only router rundown JSON for the website; no tenant objects are exposed, and every request is bounded by checkPublicHttpEndpointRateLimit plus cache/maxInstances controls.",
     handlerModule: "routerRundown.ts",
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "listEncryptedProjectMemorySnapshots",
@@ -1425,6 +1495,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "linux-low-risk",
   },
   {
     exportedName: "listHermesConnections",
@@ -1445,6 +1516,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "linux-low-risk",
   },
   {
     exportedName: "listHermesGatewayClients",
@@ -1465,6 +1537,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "linux-low-risk",
   },
   {
     exportedName: "listKnowledgeRepos",
@@ -1485,6 +1558,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "linux-low-risk",
   },
   {
     exportedName: "listPendingCloudVaultRotationRequirements",
@@ -1505,6 +1579,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "linux-low-risk",
   },
   {
     exportedName: "listPiAgentConnections",
@@ -1525,6 +1600,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "linux-low-risk",
   },
   {
     exportedName: "listRecovery",
@@ -1545,6 +1621,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "markIrohAuditEventRollupEligible",
@@ -1563,6 +1640,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "mintLinuxAppCheckToken",
@@ -1588,6 +1666,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     highRiskComputerUse: false,
     publicJustification:
       "Bootstrap mints a lower-trust Linux App Check token, so it cannot itself require one. A durable single-use challenge and pinned signed-verdict verifier gate production minting.",
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "mintWindowsAppCheckToken",
@@ -1612,6 +1691,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     highRiskComputerUse: false,
     publicJustification:
       "Bootstrap that MINTS an App Check token, so it cannot itself require one (chicken-and-egg). Gated by a platform attestation verifier instead; under production config no mock verifier is registered so only AC-013's real verifier can mint.",
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "onCliSessionAgentReplyNotification",
@@ -1630,6 +1710,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "onKnowledgeRepoPush",
@@ -1652,6 +1733,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     publicJustification:
       "Public GitHub webhook ingress is authenticated by provider HMAC before any repo mapping or writes occur.",
     handlerModule: "callables/knowledgeSync.ts",
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "onMobileAssistantAgentReplyNotification",
@@ -1670,6 +1752,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "onUsageWritten",
@@ -1688,6 +1771,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "performElderWandHostedSearch",
@@ -1709,6 +1793,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "pollCliLink",
@@ -1731,6 +1816,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "publishAgentGrantAuthority",
@@ -1752,6 +1838,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "publishIrohPairingPublicKey",
@@ -1773,6 +1860,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "publishIrohPairingRecord",
@@ -1794,6 +1882,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "publishPhoneControlAuthority",
@@ -1815,6 +1904,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "publishRelaySenderKey",
@@ -1836,6 +1926,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "publishSignalPrekeyBundle",
@@ -1857,6 +1948,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "linux-low-risk",
   },
   {
     exportedName: "purgeKnowledgeMemory",
@@ -1877,6 +1969,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "purgeLegacyKnowledgeVectors",
@@ -1897,6 +1990,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "purgeLegacyKnowledgeVectorsScheduled",
@@ -1915,6 +2009,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "queryConversations",
@@ -1936,6 +2031,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "linux-low-risk",
   },
   {
     exportedName: "queueAgentCapabilityGrantRequest",
@@ -1957,6 +2053,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "reapHermesGatewayApprovals",
@@ -1975,6 +2072,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "rebuildRollups",
@@ -1993,6 +2091,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "rebuildUsageRollups",
@@ -2013,6 +2112,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "recomputeComputerUseQuotaUsage",
@@ -2031,6 +2131,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "recomputeMediaQuotaUsage",
@@ -2049,6 +2150,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "reconcileHostedEntitlementsDaily",
@@ -2067,6 +2169,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "reconcileKnowledgeMemoryDaily",
@@ -2085,6 +2188,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "recordSignalRotation",
@@ -2106,6 +2210,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "linux-low-risk",
   },
   {
     exportedName: "recordSignalSession",
@@ -2127,6 +2232,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "linux-low-risk",
   },
   {
     exportedName: "refreshAllProviderQuotas",
@@ -2145,6 +2251,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "refreshModelLandscapeBenchmarks",
@@ -2163,6 +2270,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "refreshProviderAccountQuota",
@@ -2184,6 +2292,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "refreshProviderQuota",
@@ -2204,6 +2313,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "registerBrowserEscrowDevice",
@@ -2224,6 +2334,30 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
+  },
+  {
+    exportedName: "registerDevicePushEndpoint",
+    trigger: "callable",
+    authMethod: "Firebase Auth with callable-level ownership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: ["deviceId"],
+    ownershipCheck:
+      "handler derives uid from request.auth.uid, requires users/{uid}/escrow_devices/{deviceId} to be trusted, and writes only users/{uid}/devices/{deviceId}",
+    handlerModule: "callables/devicePushRegistration.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/devicePushRegistration.bola.test.ts",
+        test: "registerDevicePushEndpoint rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["registerDevicePushEndpoint"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+    highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "registerEscrowDevice",
@@ -2245,6 +2379,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "registerPasskey",
@@ -2265,6 +2400,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "requestKnowledgeResync",
@@ -2285,6 +2421,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "reserveAgentControlActionBudget",
@@ -2305,6 +2442,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "reserveFlooRelayBudget",
@@ -2325,6 +2463,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "respondHermesGatewayApproval",
@@ -2346,6 +2485,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "respondMissionApproval",
@@ -2367,6 +2507,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "restoreHostedQuotaEntitlement",
@@ -2387,6 +2528,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "retryStuckAgentReplyEvents",
@@ -2405,6 +2547,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "retryStuckFcmPushes",
@@ -2423,6 +2566,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "retryStuckVoIPPushes",
@@ -2441,6 +2585,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "revokeAllAccess",
@@ -2468,6 +2613,8 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     ],
     highRiskComputerUse: true,
     actionKind: "revoke_all_access",
+    lowerTrustDesktopPolicy: "desktop-trusted-device-step-up",
+    handlerModule: "callables/panic.ts",
   },
   {
     exportedName: "revokeEscrowDeviceTrust",
@@ -2489,6 +2636,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "revokeHermesConnection",
@@ -2510,6 +2658,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "revokeHermesGatewayClient",
@@ -2531,6 +2680,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "revokeIrohPairingRecord",
@@ -2552,6 +2702,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "revokePiAgentConnection",
@@ -2573,6 +2724,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "revokeProviderAccountDeviceLink",
@@ -2593,6 +2745,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "revokeRemoteMcpClient",
@@ -2620,6 +2773,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     ],
     highRiskComputerUse: true,
     actionKind: "remote_mcp_grant_revoke",
+    lowerTrustDesktopPolicy: "desktop-trusted-device-step-up",
   },
   {
     exportedName: "rollupComputerUseDaily",
@@ -2638,6 +2792,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "rollupIrohTransportDaily",
@@ -2656,6 +2811,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "rollupMediaSessionDaily",
@@ -2674,6 +2830,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "rollupUserRebuild",
@@ -2694,6 +2851,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "rotateCloudVaultKey",
@@ -2715,6 +2873,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "rotateHermesGatewayClientToken",
@@ -2736,6 +2895,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "scanLegacyPlaintextArtifacts",
@@ -2758,6 +2918,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "linux-low-risk",
   },
   {
     exportedName: "searchEncryptedConversationIndex",
@@ -2779,6 +2940,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "linux-low-risk",
   },
   {
     exportedName: "searchKnowledge",
@@ -2799,6 +2961,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "linux-low-risk",
   },
   {
     exportedName: "searchStreams",
@@ -2819,6 +2982,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "linux-low-risk",
   },
   {
     exportedName: "seedAndroidDemoAccount",
@@ -2839,6 +3003,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "sendFcmOutbound",
@@ -2858,6 +3023,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "sendVoIPOutbound",
@@ -2877,6 +3043,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "setHermesGatewayOversightMode",
@@ -2898,6 +3065,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "setupRecovery",
@@ -2918,6 +3086,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "signalActivationReadiness",
@@ -2938,6 +3107,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "linux-low-risk",
   },
   {
     exportedName: "signalPrekeyWatermark",
@@ -2959,6 +3129,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "linux-low-risk",
   },
   {
     exportedName: "startCliLink",
@@ -2980,6 +3151,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "stripeBurnBarProWebhook",
@@ -3000,6 +3172,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     publicJustification:
       "Provider webhook endpoints are internet-facing by design and authenticated by provider signatures.",
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "not-applicable",
   },
   {
     exportedName: "submitAgentNotificationReply",
@@ -3021,6 +3194,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "triggerVoIPCall",
@@ -3042,6 +3216,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "updateHermesConnectionStatus",
@@ -3063,6 +3238,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "updatePiAgentConnectionStatus",
@@ -3084,6 +3260,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "updateProviderAccount",
@@ -3112,6 +3289,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     ],
     highRiskComputerUse: true,
     actionKind: "provider_account_update",
+    lowerTrustDesktopPolicy: "desktop-trusted-device-step-up",
   },
   {
     exportedName: "uploadProviderQuotaSnapshot",
@@ -3133,6 +3311,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "linux-low-risk",
   },
   {
     exportedName: "validateMediaPurchase",
@@ -3153,6 +3332,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "validateOpenTimestampsProof",
@@ -3174,6 +3354,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "verifyAuditLog",
@@ -3194,6 +3375,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "linux-low-risk",
   },
   {
     exportedName: "verifyCloudProTopUp",
@@ -3214,6 +3396,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "verifyGooglePlayBurnBarProSubscription",
@@ -3234,6 +3417,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "verifyGooglePlayCloudProTopUp",
@@ -3254,6 +3438,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "verifyHostedQuotaEntitlement",
@@ -3274,6 +3459,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "verifyPasskeyAssertion",
@@ -3294,6 +3480,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
   {
     exportedName: "verifyPasskeyRegistration",
@@ -3314,5 +3501,6 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+    lowerTrustDesktopPolicy: "deny",
   },
 ] as EndpointAuthorizationEntry[];

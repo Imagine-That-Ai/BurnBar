@@ -25,11 +25,20 @@ export type BolaCoverageRef = {
   expectedCode?: BolaExpectedCode;
 };
 
+export type LowerTrustDesktopPolicy =
+  | "not-applicable"
+  | "deny"
+  | "linux-low-risk"
+  | "desktop-attestation-binding"
+  | "desktop-nonce-bootstrap"
+  | "desktop-trusted-device-step-up";
+
 export type EndpointAuthorizationEntry = {
   exportedName: string;
   trigger: EndpointTrigger;
   authMethod: string;
   appCheck: "required" | "not-applicable" | "not-required";
+  lowerTrustDesktopPolicy: LowerTrustDesktopPolicy;
   tenantSource: string;
   objectIdsFromClient: string[];
   ownershipCheck: string;

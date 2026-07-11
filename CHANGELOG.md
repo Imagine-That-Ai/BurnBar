@@ -37,6 +37,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   token state in memory only. Production minting defaults off and remains
   blocked on a real Firebase Web app ID, root-owned TPM/IMA broker and verifier,
   deployment, revocation, and installed Linux matrix certification.
+- **Linux App Check endpoint authorization** - classifies every exported Cloud
+  Function in the generated security catalog and enforces the classification in
+  the shared callable wrapper before handler execution. Linux is explicitly
+  admitted to 29 audited low-risk operations, two attestation/nonce
+  prerequisites, and 14 nonce plus trusted-device step-up mutations; 73
+  App Check-required callables deny it by default. Unknown App Check IDs and
+  uncataloged callable names fail closed. The production website/console ID is
+  now explicitly registered for standard Web trust, desktop ID rotation cannot
+  inherit that trust, and the previously unindexed push-registration callable
+  is deployed with deny-by-default policy and cross-tenant coverage.
 - **Linux provider external login** - adds daemon-owned, registry-validated
   start/status/cancel flows for Codex and Claude Code browser login. The Linux
   settings UI now reports installed/connected state, opens the trusted CLI in an

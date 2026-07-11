@@ -14,6 +14,7 @@ export { recomputeMediaQuotaUsage } from "./mediaQuota.js";
 export { rollupMediaSessionDaily } from "./mediaMonitoring.js";
 export { grantMediaGrandfather, validateMediaPurchase } from "./callables/mediaSku.js";
 export { triggerVoIPCall } from "./callables/voipPush.js";
+export { registerDevicePushEndpoint } from "./callables/devicePushRegistration.js";
 export { evaluateMediaBudget } from "./mediaBudget.js";
 export { evaluateComputerUseBudget } from "./computerUseBudget.js";
 export { computeTierCogsDaily } from "./tierCogs.js";

@@ -10,6 +10,8 @@ from pathlib import Path
 src = Path("functions/src")
 exports: list[tuple[str, str]] = []
 for path in sorted(src.rglob("*.ts")):
+    if "__tests__" in path.parts:
+        continue
     text = path.read_text()
     for m in re.finditer(r"export const (\w+) = onCall\(", text):
         exports.append((m.group(1), str(path)))

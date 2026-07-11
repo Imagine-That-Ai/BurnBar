@@ -120,6 +120,7 @@ jobs:
         run: |
           npm ci --prefix functions
           npm run build --prefix functions
+          npm --prefix functions exec -- vitest run src/__tests__/appCheckProductionRegistry.test.ts
           bash scripts/ci/verify-callable-logging.sh
           bash scripts/ci/verify-resilience-wiring.sh
           node scripts/ci/check-callable-validation.mjs

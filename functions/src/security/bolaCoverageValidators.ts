@@ -1,6 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import ts from "typescript";
+
 import type { BolaCoverageRef, EndpointAuthorizationEntry } from "./bolaCoverageTypes.js";
 
 const REPO_ROOT_FROM_FUNCTIONS = resolve(__dirname, "../../..");
@@ -379,6 +381,135 @@ function validateHandlerUserNamespaceBinding(entry: EndpointAuthorizationEntry, 
   return errors;
 }
 
+function exportedHandlerInitializer(handlerSource: string, exportedName: string): ts.Expression | undefined {
+  const file = ts.createSourceFile("handler.ts", handlerSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  for (const statement of file.statements) {
+    if (!ts.isVariableStatement(statement)) continue;
+    if (!statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (ts.isIdentifier(declaration.name) && declaration.name.text === exportedName) {
+        return declaration.initializer;
+      }
+    }
+  }
+  return undefined;
+}
+
+function propertyNameText(name: ts.PropertyName): string | undefined {
+  if (ts.isIdentifier(name) || ts.isStringLiteralLike(name)) return name.text;
+  return undefined;
+}
+
+function objectLiteralHasProperty(
+  expression: ts.Expression,
+  propertyName: string,
+  valueMatches: (value: ts.Expression) => boolean,
+): boolean {
+  if (!ts.isObjectLiteralExpression(expression)) return false;
+  return expression.properties.some(
+    (property) =>
+      ts.isPropertyAssignment(property) &&
+      propertyNameText(property.name) === propertyName &&
+      valueMatches(property.initializer),
+  );
+}
+
+function initializerHasGuardCall(
+  initializer: ts.Expression,
+  guardName: string,
+  callMatches: (call: ts.CallExpression) => boolean = () => true,
+): boolean {
+  let found = false;
+  const visit = (node: ts.Node): void => {
+    if (found) return;
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === guardName &&
+      callMatches(node)
+    ) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(initializer);
+  return found;
+}
+
+function validateLowerTrustDesktopPolicy(
+  entry: EndpointAuthorizationEntry,
+  repoRoot: string = REPO_ROOT_FROM_FUNCTIONS,
+): string[] {
+  const policy = entry.lowerTrustDesktopPolicy;
+  if (entry.appCheck !== "required") {
+    return policy === "not-applicable"
+      ? []
+      : [`${entry.exportedName}: non-App-Check endpoint must use lowerTrustDesktopPolicy=not-applicable`];
+  }
+  if (policy === "not-applicable") {
+    return [`${entry.exportedName}: App Check-required endpoint must declare a lower-trust desktop policy`];
+  }
+  if (policy === "deny") return [];
+  if (policy === "linux-low-risk") {
+    return entry.highRiskComputerUse
+      ? [`${entry.exportedName}: linux-low-risk endpoint cannot be marked highRiskComputerUse`]
+      : [];
+  }
+  if (!entry.handlerModule) {
+    return [`${entry.exportedName}: lower-trust exception requires an explicit handlerModule`];
+  }
+
+  const handlerPath = resolve(repoRoot, "functions/src", entry.handlerModule);
+  if (!existsSync(handlerPath)) {
+    return [`${entry.exportedName}: lower-trust exception handler is missing: ${entry.handlerModule}`];
+  }
+  const handlerSource = readFileSync(handlerPath, "utf8");
+  const initializer = exportedHandlerInitializer(handlerSource, entry.exportedName);
+  if (!initializer) {
+    return [`${entry.exportedName}: lower-trust exception must resolve to a direct exported handler`];
+  }
+
+  switch (policy) {
+    case "desktop-attestation-binding":
+      return initializerHasGuardCall(initializer, "enforceAppCheckAttestationBindingCallable")
+        ? []
+        : [`${entry.exportedName}: attestation binding policy requires enforceAppCheckAttestationBindingCallable`];
+    case "desktop-nonce-bootstrap":
+      return initializerHasGuardCall(initializer, "enforceHighRiskComputerUseCallable", (call) =>
+        call.arguments.some((argument) =>
+          objectLiteralHasProperty(
+            argument,
+            "allowLowerTrustDesktop",
+            (value) => value.kind === ts.SyntaxKind.TrueKeyword,
+          ),
+        ),
+      )
+        ? []
+        : [`${entry.exportedName}: nonce bootstrap policy requires the explicit lower-trust high-risk guard`];
+    case "desktop-trusted-device-step-up": {
+      if (!entry.highRiskComputerUse || !entry.actionKind) {
+        return [`${entry.exportedName}: trusted-device step-up requires highRiskComputerUse and actionKind`];
+      }
+      return initializerHasGuardCall(initializer, "enforceHighRiskOwnerAction", (call) =>
+        call.arguments.some((argument) =>
+          objectLiteralHasProperty(
+            argument,
+            "actionKind",
+            (value) => ts.isStringLiteralLike(value) && value.text === entry.actionKind,
+          ),
+        ),
+      )
+        ? []
+        : [
+            `${entry.exportedName}: trusted-device step-up handler must call enforceHighRiskOwnerAction with actionKind ${entry.actionKind}`,
+          ];
+    }
+    default:
+      return [`${entry.exportedName}: unsupported lower-trust desktop policy ${policy}`];
+  }
+}
+
 function validateBolaCoverageRef(
   entry: EndpointAuthorizationEntry,
   ref: BolaCoverageRef,
@@ -453,6 +584,8 @@ export function validateEndpointBolaCoverage(
   repoRoot: string = REPO_ROOT_FROM_FUNCTIONS,
 ): string[] {
   const errors: string[] = [];
+
+  errors.push(...validateLowerTrustDesktopPolicy(entry, repoRoot));
 
   if (entry.bolaCoverage.length === 0) {
     errors.push(`${entry.exportedName}: bolaCoverage must not be empty`);

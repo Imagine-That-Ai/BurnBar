@@ -38,6 +38,7 @@ function syntheticEntry(): EndpointAuthorizationEntry {
     trigger: "callable",
     authMethod: "Firebase Auth with callable-level ownership checks",
     appCheck: "required",
+    lowerTrustDesktopPolicy: "deny",
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["documentId"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
@@ -62,6 +63,7 @@ function syntheticProviderWebhookEntry(): EndpointAuthorizationEntry {
     trigger: "provider-webhook",
     authMethod: "provider HMAC signature",
     appCheck: "not-applicable",
+    lowerTrustDesktopPolicy: "not-applicable",
     tenantSource: "provider-signed payload mapped server-side",
     objectIdsFromClient: [],
     ownershipCheck: "handler verifies provider signature before mapping payload fields",
@@ -75,6 +77,15 @@ function syntheticProviderWebhookEntry(): EndpointAuthorizationEntry {
     ],
     highRiskComputerUse: false,
     publicJustification: "Provider webhooks are internet-facing and authenticated by provider signatures.",
+  };
+}
+
+function syntheticStepUpEntry(): EndpointAuthorizationEntry {
+  return {
+    ...syntheticEntry(),
+    lowerTrustDesktopPolicy: "desktop-trusted-device-step-up",
+    highRiskComputerUse: true,
+    actionKind: "provider_account_delete",
   };
 }
 
@@ -232,6 +243,93 @@ export async function run(request) {
     tempRoots.push(repoRoot);
 
     expect(validateEndpointBolaCoverage(syntheticEntry(), repoRoot)).toEqual([]);
+  });
+
+  it("rejects trusted-device step-up proof located only in a sibling export", () => {
+    const repoRoot = writeSyntheticRepo(`
+export const siblingEndpoint = onCall({}, async (request) => {
+  await enforceHighRiskOwnerAction(request, request.auth.uid, {
+    actionKind: "provider_account_delete",
+    subjectId: "sibling",
+  });
+});
+
+export const syntheticEndpoint = onCall({}, async (request) => {
+  return { uid: request.auth.uid };
+});
+`);
+    tempRoots.push(repoRoot);
+
+    expect(validateEndpointBolaCoverage(syntheticStepUpEntry(), repoRoot)).toContainEqual(
+      expect.stringContaining(
+        "trusted-device step-up handler must call enforceHighRiskOwnerAction with actionKind provider_account_delete",
+      ),
+    );
+  });
+
+  it("rejects trusted-device step-up proof with the wrong action kind", () => {
+    const repoRoot = writeSyntheticRepo(`
+export const syntheticEndpoint = onCall({}, async (request) => {
+  await enforceHighRiskOwnerAction(request, request.auth.uid, {
+    actionKind: "provider_account_connect",
+    subjectId: "synthetic",
+  });
+  return { uid: request.auth.uid };
+});
+`);
+    tempRoots.push(repoRoot);
+
+    expect(validateEndpointBolaCoverage(syntheticStepUpEntry(), repoRoot)).toContainEqual(
+      expect.stringContaining(
+        "trusted-device step-up handler must call enforceHighRiskOwnerAction with actionKind provider_account_delete",
+      ),
+    );
+  });
+
+  it("rejects commented and string step-up guard decoys inside the correct export", () => {
+    const repoRoot = writeSyntheticRepo(`
+export const syntheticEndpoint = onCall({}, async () => {
+  // enforceHighRiskOwnerAction(request, request.auth.uid, { actionKind: "provider_account_delete" });
+  return "enforceHighRiskOwnerAction actionKind: provider_account_delete";
+});
+`);
+    tempRoots.push(repoRoot);
+
+    expect(validateEndpointBolaCoverage(syntheticStepUpEntry(), repoRoot)).toContainEqual(
+      expect.stringContaining(
+        "trusted-device step-up handler must call enforceHighRiskOwnerAction with actionKind provider_account_delete",
+      ),
+    );
+  });
+
+  it("rejects commented attestation-binding guard decoys", () => {
+    const repoRoot = writeSyntheticRepo(`
+export const syntheticEndpoint = onCall({}, async () => {
+  // enforceAppCheckAttestationBindingCallable(request, request.auth.uid);
+  return "enforceAppCheckAttestationBindingCallable(request)";
+});
+`);
+    tempRoots.push(repoRoot);
+    const entry = { ...syntheticEntry(), lowerTrustDesktopPolicy: "desktop-attestation-binding" } as const;
+
+    expect(validateEndpointBolaCoverage(entry, repoRoot)).toContainEqual(
+      expect.stringContaining("attestation binding policy requires enforceAppCheckAttestationBindingCallable"),
+    );
+  });
+
+  it("rejects commented nonce-bootstrap guard and option decoys", () => {
+    const repoRoot = writeSyntheticRepo(`
+export const syntheticEndpoint = onCall({}, async () => {
+  // enforceHighRiskComputerUseCallable(request, request.auth.uid, { allowLowerTrustDesktop: true });
+  return "enforceHighRiskComputerUseCallable allowLowerTrustDesktop: true";
+});
+`);
+    tempRoots.push(repoRoot);
+    const entry = { ...syntheticEntry(), lowerTrustDesktopPolicy: "desktop-nonce-bootstrap" } as const;
+
+    expect(validateEndpointBolaCoverage(entry, repoRoot)).toContainEqual(
+      expect.stringContaining("nonce bootstrap policy requires the explicit lower-trust high-risk guard"),
+    );
   });
 
   it("allows client-supplied user namespace only when an explicit ownership guard is present", () => {

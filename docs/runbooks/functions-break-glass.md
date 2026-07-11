@@ -47,8 +47,20 @@ gh issue create \
   --label "P0 - Critical" --label "area: infra" \
   --body "Incident: <one line>. Commit: ${COMMIT}. Operator: $(git config user.name). Preflight bypassed: <which gate and why>."
 
-# 2. Build + deploy functions only (no hosting, no rules).
+# 2. Materialize the same reviewed runtime config as the normal deploy lane,
+# then build + deploy functions only (no hosting, no rules). Preserve any local
+# file and restore it on exit.
+ENV_FILE=functions/.env.burnbar
+PROD_CONFIG=functions/.env.burnbar.production
+BACKUP=$(mktemp)
+HAD_ENV=false
+if [[ -f "$ENV_FILE" ]]; then cp "$ENV_FILE" "$BACKUP"; HAD_ENV=true; fi
+cleanup() { if [[ "$HAD_ENV" == true ]]; then cp "$BACKUP" "$ENV_FILE"; else rm -f "$ENV_FILE"; fi; rm -f "$BACKUP"; }
+trap cleanup EXIT
+test -f "$PROD_CONFIG"
+cp "$PROD_CONFIG" "$ENV_FILE"
 npm ci --prefix functions && npm run build --prefix functions
+npm --prefix functions exec -- vitest run src/__tests__/appCheckProductionRegistry.test.ts
 npx firebase-tools deploy --only functions --project burnbar
 
 # 3. Verify the deploy took.
