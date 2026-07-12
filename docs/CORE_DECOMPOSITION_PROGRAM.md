@@ -185,26 +185,26 @@ Every packet ends as `MERGED`, `CLOSED`, or `OPEN_WITH_NAMED_BLOCKER`. Full card
 `plans/core-decomposition/packets/`; the lane-ordered pull queue is
 `plans/core-decomposition/QUEUE.md`.
 
-Wave-1 state after the S0-repair follow-up: the four systemic defects are fixed on
-`core-decomp/s0-scaffold`, so all wave-1 packets are QUEUED FOR WAVE-1B (re-runnable
-once #1559 merges with the repair). P-06 already has an open PR (#1561, Pretext) that
-is `OPEN_WITH_NAMED_BLOCKER` — stacked on #1559; it re-runs green against the seeded
-Pretext ceiling (5 files / 850 LOC) once the base merges. (PR #1560 is the unrelated
-`ratchet-repair/mission-splitbrain-1550` ratchet, NOT a decomposition packet.)
+Wave-1 state after the S0-repair follow-up: the four systemic defects PLUS the wave-1b
+card defects (FIX-5 CloudVaultCrypto path-pin sweep, FIX-6 Insights dependency-inversion
+re-slice, P-02 daemon staging-machinery scope) are fixed on `core-decomp/s0-scaffold`.
+P-06 (Pretext) has MERGED into the scaffold via #1561; P-01/#1573, P-03/#1576, P-05/#1580,
+P-07/#1579 are PR_OPEN; the remaining move packets are QUEUED-WAVE1C. (PR #1560 is the
+unrelated `ratchet-repair/mission-splitbrain-1550` ratchet, NOT a decomposition packet.)
 
 | Packet | Slice | Target | Lane | Card | STATE |
 |---|---|---|---|---|---|
-| P-01 | S1 | OpenBurnBarSQLiteReader | B | full | QUEUED-WAVE1B (was named-blocker on marker ceiling — FIXED) |
-| P-02 | S2 | Kernel resources (catalog+PII+ops staging) | Integrator | full | QUEUED-WAVE1B |
-| P-03 | S3 | root contracts → Kernel (SearchContracts re-sliced to P-14) | D | full | QUEUED-WAVE1B |
-| P-04a | S4 | SharedModels pure → Kernel | D | full | QUEUED-WAVE1B |
-| P-04b | S4 | SharedModels crypto chains → Kernel | D | full | QUEUED-WAVE1B |
-| P-05 | S9 | OpenBurnBarHermes | D | full | QUEUED-WAVE1B |
-| P-06 | S10 | OpenBurnBarPretext (+resources manifest edit) | D | full | PR_OPEN #1561 (OPEN_WITH_NAMED_BLOCKER on #1559) |
-| P-07 | S11 | OpenBurnBarTextExpansion | A | full | QUEUED-WAVE1B |
-| P-08 | S12 | Insights — Services core engine | C | full | QUEUED-WAVE1B |
-| P-09 | S12 | Insights — Services remainder | C | full | QUEUED-WAVE1B |
-| P-10 | S12 | Insights — SharedModels + AgentInsights models | C | full | QUEUED-WAVE1B |
+| P-01 | S1 | OpenBurnBarSQLiteReader | B | full | PR_OPEN #1573 (was named-blocker on marker ceiling — FIXED) |
+| P-02 | S2 | Kernel resources (catalog+PII+ops staging) | Integrator | full | QUEUED-WAVE1C |
+| P-03 | S3 | root contracts → Kernel (SearchContracts re-sliced to P-14) | D | full | PR_OPEN #1576 |
+| P-04a | S4 | SharedModels pure → Kernel | D | full | QUEUED-WAVE1C |
+| P-04b | S4 | SharedModels crypto chains → Kernel | D | full | QUEUED-WAVE1C |
+| P-05 | S9 | OpenBurnBarHermes | D | full | PR_OPEN #1580 |
+| P-06 | S10 | OpenBurnBarPretext (+resources manifest edit) | D | full | MERGED into scaffold via #1561 |
+| P-07 | S11 | OpenBurnBarTextExpansion | A | full | PR_OPEN #1579 |
+| P-08 | S12 | Insights — Services core engine (+AgentInsightsBundleAssembler, FIX-6) | C | full | QUEUED-WAVE1C |
+| P-09 | S12 | Insights — Services remainder | C | full | QUEUED-WAVE1C |
+| P-10 | S12 | Insights — SharedModels + AgentInsights models (FIX-6 re-slice) | C | full | QUEUED-WAVE1C |
 | P-11 | S5 | MissionGroupContracts + MissionConsoleTypes inversion → Kernel | A | draft | QUEUED |
 | P-12 | S6 | OpenBurnBarLogParsers | B | draft | QUEUED |
 | P-13 | S7 | OpenBurnBarQuota | C | draft | QUEUED |
@@ -263,6 +263,53 @@ PR #1559. Executors of wave-1b must internalize these:
    could NOT precede them into the Kernel via P-03. It was re-sliced OUT of P-03 (now 6
    files) INTO P-14/VectorKit (with its definers). P-04a/P-04b passed the same
    symbol-closure re-check (CloudVaultCrypto's only `Pensieve` mentions are doc comments).
+
+5. **Path-pin pre-flights must sweep CI gate scripts + CODEOWNERS, and card
+   "expected NONE" claims must be machine-derived, not assumed.** P-04a's card claimed
+   the moved SharedModels had ZERO path-pins; a machine sweep (`git grep -n <path> --
+   .github scripts packages tools CODEOWNERS .swiftlint.yml project.yml`) proved
+   `CloudVaultCrypto.swift`'s exact old path is hard-pinned in FOUR files / 8 sites:
+   `.github/CODEOWNERS` (security ownership), `scripts/ci/verify-codeowners-security-trees.sh`
+   (`REQUIRED_RULES` does EXACT string equality vs a CODEOWNERS pattern — moves in
+   lockstep with the CODEOWNERS line), `scripts/ci/write_burnbar_source_provenance.py`
+   (hashed provenance manifest — entry must be a real file), and
+   `scripts/privacy/scan-chat-cloud-plaintext.mjs` (5 `assertIncludes(<path>, …)` calls
+   that `readFileSync` the path — ENOENT crashes the scanner). The other 11 SharedModels
+   had genuinely zero pins — but only a sweep, not an assumption, can tell them apart. A
+   path-pin card that says "NONE" without a committed grep is a false-green. Security-owned
+   files move their CODEOWNERS line in the SAME PR (ownership follows the file) and flag it
+   for Alberto/security review.
+
+6. **Staging-machinery edits must be located by CALL GRAPH, not by the constant's
+   location.** P-02's card scoped the daemon Kernel-bundle staging to
+   `OpenBurnBarDaemonManager.swift` because the `resourceBundleName` constant lives there —
+   but that file only holds the constant + an error string. The REAL staging is a
+   name-constant → resolver → copy-loop chain across THREE files:
+   `OpenBurnBarDaemonManager.swift` (constant/error),
+   `OpenBurnBarDaemonBinaryResolver.resolveResourceBundle(...)` (the six-candidate-dir
+   locator), and `OpenBurnBarDaemonManager+Lifecycle.swift` (the actual `copyItem` +
+   `fileExists` guard). Staging a SECOND bundle IN ADDITION to the Core bundle (never
+   instead of) requires editing all three (new constant, parallel resolver, second copy
+   block) — found by following the constant's readers, not by grepping its declaration
+   site. Same lesson as FIX-5: derive scope from the code graph, not from where a name
+   happens to be defined.
+
+7. **Dependency inversion inside a same-target split needs a symbol-closure re-run
+   AFTER the re-slice, not just before.** P-10 (Insights models) and P-08 (Insights
+   engine) both land in `OpenBurnBarInsights` with P-10 first, yet two P-10 files
+   referenced engine symbols P-08 moves later:
+   `AgentInsights/AgentInsightsBundleAssembler.swift` (→ `InsightDataSnapshot`/
+   `InsightUsageRow`/`InsightSessionRow` in `InsightDataSource.swift`) and
+   `SharedModels/Insights/InsightAnalysis.swift` (→ the `InsightProviderFamily` enum in
+   `InsightProviderFamilyCatalog.swift`). Flipping the order fails (P-08 hard-depends on
+   ~30 P-10 model types — `InsightDigest`×94, `InsightWidgetData`×58, …). The fix moves
+   the assembler P-10→P-08 (its remaining refs land in P-10 first) and extracts the pure
+   `InsightProviderFamily`/`Entry` types into a P-10 model file (leaving the engine-coupled
+   catalog logic in P-08). Both cards then re-ran the closure grep to ZERO residual
+   cross-half refs. A whole-file move could not close `InsightAnalysis.swift` (its
+   `InsightConfidence`/`InsightAnalysisResult`/… are referenced by Verdict/Bundle files
+   that STAY in P-10), so the minimal cut was a 1-symbol source extraction — proving the
+   re-slice must be validated by grep in BOTH directions, per packet, after the change.
 
 Gate/lane/CI hardening shipped with the repair (Codex PR #1559 threads): the umbrella
 regex now matches `@testable import OpenBurnBarCore` (and `@_exported`/`@_spi(...)`

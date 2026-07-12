@@ -10,6 +10,18 @@ this packet then adds the 23 root engine files. `Services/Insights/Share/Insight
 STAYS in Core (it is AppKit/UIKit → goes to OpenBurnBarUI at S14). Verified zero
 LogParser/Views/Quota refs (compile-confirmed).
 
+**S0-repair FIX-6 (dependency-inversion re-slice, 2026-07-12).** This packet ALSO absorbs
+`AgentInsights/AgentInsightsBundleAssembler.swift`, moved OUT of P-10 because it references
+`InsightDataSnapshot`/`InsightUsageRow`/`InsightSessionRow` (defined in this packet's
+`Services/Insights/InsightDataSource.swift`). Its other refs — `AgentInsightsBundle`,
+`AgentInsightsScope` — land in P-10 (which merges FIRST), so the assembler is
+dependency-closed here. Correspondingly, P-10's executor extracts the pure
+`InsightProviderFamily` enum + `InsightProviderFamilyEntry` struct into a P-10 model file;
+this packet moves the TRIMMED `InsightProviderFamilyCatalog.swift` (the catalog logic that
+needs `InsightCatalogModel`/`InsightModelCatalog`), and its `InsightProviderFamily` /
+`InsightProviderFamilyEntry` references now resolve to the P-10 model file (P-10 merged
+first). Do NOT re-add those two extracted types here.
+
 ## Scope — the ONLY files you may touch
 
 ### git mv list
@@ -26,6 +38,16 @@ each source exists, then run them. Do NOT move the subdirectories here (P-09 own
 Adapters/Cadence/Trace/Verdict; Share stays in Core).
 Remove `OpenBurnBarInsights/ModuleMarker.swift` only in P-10 (the first Insights packet
 to land); if P-10 already removed it, skip.
+
+PLUS one AgentInsights file re-sliced from P-10 (FIX-6):
+```
+git mv OpenBurnBarCore/Sources/OpenBurnBarCore/AgentInsights/AgentInsightsBundleAssembler.swift OpenBurnBarCore/Sources/OpenBurnBarInsights/AgentInsights/AgentInsightsBundleAssembler.swift
+```
+(24 files total: 23 Services/Insights root engine files + AgentInsightsBundleAssembler.swift.)
+`InsightProviderFamilyCatalog.swift` is among the 23 root files it moves, but by the time
+P-08 runs, P-10 has ALREADY extracted `InsightProviderFamily`/`InsightProviderFamilyEntry`
+out of it into a P-10 model file — so move the trimmed file as-is; do NOT re-add those two
+types.
 
 ### Allowed edit files
 - `OpenBurnBarCore/Package.swift` — the `"Services/Insights"` entry in
@@ -51,8 +73,10 @@ None. `@_exported import OpenBurnBarInsights` (Apple-guarded) exists in
   Never `import OpenBurnBarCore`. Enumerate every added line in the PR body.
 - **AE-TESTABLE**: add `@testable import OpenBurnBarInsights` beneath the existing
   `@testable import OpenBurnBarCore` in any Core test reaching an INTERNAL symbol of a
-  moved engine file. Anticipated: `Insights/InsightMissionApprovalPolicyTests.swift`.
-  Add ONLY where compile fails; enumerate each in the PR body.
+  moved engine file. Anticipated: `Insights/InsightMissionApprovalPolicyTests.swift`,
+  and (FIX-6) `Insights/AgentInsightsBundleAssemblerTests.swift` — it references
+  `AgentInsightsBundleAssembler`, `InsightUsageRow`, `InsightDataSnapshot` (all in this
+  packet now). Add ONLY where compile fails; enumerate each in the PR body.
 
 ## Forbidden actions
 Standard. Do NOT move `Share/InsightShareCardRenderer.swift`. Do NOT move the
@@ -61,14 +85,27 @@ subdirectories.
 ## Enumerated semantic edits
 TO-ENUMERATE-AT-WAVE: compile-driven `public` additions if the engine exposed types to
 Core that were `internal` (cap 3; if more, STOP — not dependency-closed). Plus the
-AE-IMPORT / AE-TESTABLE lines above (enumerate the concrete files at execution).
+AE-IMPORT / AE-TESTABLE lines above (enumerate the concrete files at execution). NO
+`InsightProviderFamily`/`InsightProviderFamilyEntry` decls are added here — P-10 owns them
+now (FIX-6); this packet's `InsightProviderFamilyCatalog.swift` only KEEPS the catalog
+enum + its `InsightCatalogModel`/`InsightModelCatalog` engine logic.
 
 ## Pre-flight checks
 1. Path-pin grep of `Services/Insights` over the automation roots → expected NONE (verified at S0).
-2. Bundle.module grep over the 23 files → EMPTY (Insights engine does not use Bundle.module).
+2. Bundle.module grep over the 24 files (23 engine + AgentInsightsBundleAssembler.swift) →
+   EMPTY (neither the Insights engine nor the assembler uses Bundle.module).
 3. Platform-conditional: the `"Services/Insights"` exclude covers the subtree — see
    Allowed edits for the deletion-ordering rule.
 4. Not a CANON packet.
+5. **Symbol-closure re-check (FIX-6, re-run after the re-slice — machine-derived
+   2026-07-12).** With P-10 merged first, every ref in `AgentInsightsBundleAssembler.swift`
+   (`InsightDataSnapshot`/`InsightUsageRow`/`InsightSessionRow` → this packet's
+   `InsightDataSource.swift`; `AgentInsightsBundle`/`AgentInsightsScope`/`InsightAnalysisResult`/
+   `InsightMissionCandidate`/`InsightAnalysisAuditEntry`/`InsightCanvas` → P-10) resolves;
+   and the trimmed `InsightProviderFamilyCatalog.swift`'s `InsightProviderFamily`/
+   `InsightProviderFamilyEntry` refs resolve to the P-10 model file. P-08 is
+   dependency-closed. If any ref is unresolved after P-10 → STOP (P-10 didn't land the
+   extraction).
 
 ## Local validation
 V1 `swift build --target OpenBurnBarInsights` · V2 Core build · V3 PURE (engine is
@@ -79,4 +116,7 @@ confirm the boundary build still succeeds WITHOUT this target) · V11 scope.
 ## PR body / Acceptance
 Title: "P-08: move Services/Insights core engine into OpenBurnBarInsights". Invariants:
 Apple-only target, InsightShareCardRenderer stays in Core, zero call-site changes,
-`InsightMissionApprovalPolicy` now UI-free (daemon-linkable for M4/M5). A1–A6.
+`InsightMissionApprovalPolicy` now UI-free (daemon-linkable for M4/M5),
+`AgentInsightsBundleAssembler.swift` re-sliced in from P-10 (FIX-6),
+`InsightProviderFamily`/`Entry` owned by P-10. A1–A6. Enumerate the FIX-6 closure grep +
+the AgentInsightsBundleAssembler move in the PR body.

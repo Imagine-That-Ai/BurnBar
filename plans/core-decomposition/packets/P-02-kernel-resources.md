@@ -31,10 +31,39 @@ because the SVGs + Pretext remain.
 - `OpenBurnBarCore/Package.swift` — add `resources: [.process("Resources")]` to the
   `OpenBurnBarKernel` target (it has none today). Do NOT remove Core's `resources`
   block (SVGs + Pretext remain). No target/product/dependency changes.
-- `AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonManager.swift` — daemon
-  installer: ADD staging of `OpenBurnBarCore_OpenBurnBarKernel.bundle` alongside the
-  existing `OpenBurnBarCore_OpenBurnBarCore.bundle` (keep staging the old bundle too —
-  SVGs + Pretext still live there). Enumerate the exact staging block from the file.
+- **Daemon bundle-staging machinery (three files — located by CALL GRAPH, not by the
+  constant's location).** The constant + error string in `OpenBurnBarDaemonManager.swift`
+  are NOT where the staging happens; the real machinery is a name-constant → resolver →
+  copy-loop chain across THREE files. To stage the new Kernel bundle IN ADDITION to the
+  existing Core bundle (never instead of it), edit ALL THREE:
+  - `AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonManager.swift` — the
+    `resourceBundleName` constant (line ~685: `"OpenBurnBarCore_OpenBurnBarCore.bundle"`)
+    and the `.daemonResourceBundleUnavailable` error string (line ~253, which names the
+    old bundle). ADD a sibling constant `kernelResourceBundleName =
+    "OpenBurnBarCore_OpenBurnBarKernel.bundle"` (leave `resourceBundleName` unchanged so
+    the Core bundle keeps staging); the error string may name both bundles. Do NOT rename
+    the existing constant.
+  - `AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonBinaryResolver.swift` — the
+    LOCATOR `resolveResourceBundle(nearBinaryURL:appBundleURL:fileManager:)` (lines
+    ~99–122) searches the six candidate dirs for `OpenBurnBarDaemonManager.resourceBundleName`
+    (+ its legacy alias). ADD a parallel resolver (or generalize this one to take a
+    bundle-name argument) that locates `kernelResourceBundleName` across the SAME six
+    candidate roots; keep the existing Core-bundle resolver behavior intact.
+  - `AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonManager+Lifecycle.swift` — the
+    ACTUAL COPY happens here (lines ~229–248): it computes `installedBundleURL` from
+    `Self.resourceBundleName`, resolves the source via
+    `OpenBurnBarDaemonBinaryResolver.resolveResourceBundle(...)`, copies it next to the
+    installed daemon binary, then guards `fileExists` (throwing
+    `.daemonResourceBundleUnavailable`). ADD a SECOND copy+guard block right after the
+    existing one that stages `kernelResourceBundleName` via the new resolver into
+    `paths.daemonDirectory`. Do NOT remove or alter the existing Core-bundle copy block
+    (SVGs + Pretext still ship in the Core bundle).
+  Note (test surface, NOT in this docs-only scope but flag in the PR body):
+  `AgentLensTests/Active/OpenBurnBarDaemonManagerTests.swift` asserts the Core bundle is
+  staged via `OpenBurnBarDaemonManager.resourceBundleName` (lines ~379/437/461/533) and
+  exercises `resolveResourceBundle` (lines ~1446+). Those stay green (Core bundle
+  unchanged); an optional new assertion for the Kernel bundle is an executor addition,
+  not a required edit.
 - `.github/workflows/release.yml` (lines ~1150–1151) — ADD `DAEMON_RESOURCE_BUNDLE`/
   `DAEMON_HELPER_RESOURCE_BUNDLE` handling for `OpenBurnBarCore_OpenBurnBarKernel.bundle`
   next to the existing `OpenBurnBarCore_OpenBurnBarCore.bundle` lines. Keep the old.
@@ -98,7 +127,9 @@ via `KernelReexport.swift`. Do NOT edit it.
 
 ## PR body template
 Title: "P-02: move catalog loader + PII gate (+resources) into OpenBurnBarKernel"
-- Packet + sha; review map (2 swift + 2 json mv, 1 manifest resources edit, 6 ops/tool edits).
+- Packet + sha; review map (2 swift + 2 json mv, 1 manifest resources edit, 3 daemon
+  staging-machinery edits [Manager constant/error, BinaryResolver locator, +Lifecycle
+  copy block], 3 release/CI ops edits, 2 MCP tool py + 1 test path edit).
 - Invariants: Kernel gains its own bundle; Core keeps staging the old bundle (SVGs+Pretext remain); zero call-site changes.
 - Validation matrix + release-smoke result.
 - Known risks: Bundle.module resolution in daemon test contexts (MemorySecretPIIGate fallback) — V4 + smoke catch it.
@@ -106,5 +137,7 @@ Title: "P-02: move catalog loader + PII gate (+resources) into OpenBurnBarKernel
 
 ## Acceptance criteria
 A1–A6 per template. A3 exception: this packet IS allowed to edit the enumerated ops
-files + the two tools/openburnbar-mcp py files (integrator packet). project.yml/pbxproj
-still forbidden.
+files (release.yml + the two build/smoke scripts), the three daemon staging-machinery
+files (`OpenBurnBarDaemonManager.swift`, `OpenBurnBarDaemonBinaryResolver.swift`,
+`OpenBurnBarDaemonManager+Lifecycle.swift`), and the two tools/openburnbar-mcp py files
+(+ test_ministry.py path) — integrator packet. project.yml/pbxproj still forbidden.

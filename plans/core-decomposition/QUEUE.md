@@ -11,25 +11,26 @@ Full cards: P-01…P-10. Draft cards (enumerate mv lists at wave start): P-11…
 
 **S0-repair status (2026-07-12):** the four wave-1 systemic defects (marker-size sibling
 ceilings, missing cross-module AE-IMPORT policy, missing AE-TESTABLE policy, P-03
-SearchContracts closure) are FIXED on `core-decomp/s0-scaffold` + the six Codex threads
-on PR #1559 are resolved. All wave-1 packets are re-runnable as **wave-1b** once #1559
-merges. See docs/CORE_DECOMPOSITION_PROGRAM.md "Wave-1 learnings" and "Standard
-Allowed-edit classes" (AE-IMPORT / AE-TESTABLE — now verbatim in every move packet).
+SearchContracts closure) plus the wave-1b card defects (FIX-5 path-pin sweep, FIX-6
+Insights dependency-inversion re-slice, P-02 staging-machinery scope) are FIXED on
+`core-decomp/s0-scaffold` (PR #1559 threads resolved). See
+docs/CORE_DECOMPOSITION_PROGRAM.md "Wave-1 learnings" and "Standard Allowed-edit classes"
+(AE-IMPORT / AE-TESTABLE — verbatim in every move packet).
 
-## Wave 1b (parallel after the repaired S0 / #1559 merges)
+## Wave 1c (parallel after the repaired cards land on scaffold)
 | Lane | Packet | Card | STATE | Notes |
 |---|---|---|---|---|
-| B | P-01 SQLiteReader | full | QUEUED-WAVE1B | K3 fix; unblocks P-12/P-13. Was the marker-ceiling named blocker → FIXED (SQLiteReader planned 3/450) |
-| Integrator | P-02 Kernel resources | full | QUEUED-WAVE1B | ops-file bundle staging; unblocks P-12 |
-| D | P-03 root contracts → Kernel | full | QUEUED-WAVE1B | 6 files (SearchContracts re-sliced to P-14); canon stays green |
-| D | P-04a SharedModels pure → Kernel | full | QUEUED-WAVE1B | after P-03 in lane D; symbol-closure re-checked |
-| D | P-04b SharedModels crypto → Kernel | full | QUEUED-WAVE1B | after P-04a (needs CloudVaultCrypto) |
-| D | P-05 Hermes | full | QUEUED-WAVE1B | adds `import OpenBurnBarKernel` to HermesAtomNavigator (AE-IMPORT) |
-| D | P-06 Pretext | full | **PR_OPEN #1561** (OPEN_WITH_NAMED_BLOCKER on #1559) | resources manifest edit; re-runs green vs Pretext planned 5/850 |
-| C | P-10 Insights models | full | QUEUED-WAVE1B | lands before P-08/P-09 |
-| C | P-08 Insights Services core | full | QUEUED-WAVE1B | after P-10 |
-| C | P-09 Insights Services remainder | full | QUEUED-WAVE1B | after P-08 |
-| A | P-07 TextExpansion | full | QUEUED-WAVE1B | ui-purity --update; lane A serial |
+| B | P-01 SQLiteReader | full | PR_OPEN #1573 | K3 fix; unblocks P-12/P-13. Was the marker-ceiling named blocker → FIXED (SQLiteReader planned 3/450) |
+| Integrator | P-02 Kernel resources | full | QUEUED-WAVE1C | daemon staging-machinery (3 files: Manager constant/error, BinaryResolver locator, +Lifecycle copy) + release/CI/MCP edits; stage Kernel bundle IN ADDITION to Core bundle; unblocks P-12 |
+| D | P-03 root contracts → Kernel | full | PR_OPEN #1576 | 6 files (SearchContracts re-sliced to P-14); canon stays green |
+| D | P-04a SharedModels pure → Kernel | full | QUEUED-WAVE1C | after P-03 in lane D; CloudVaultCrypto path-pins (CODEOWNERS + 3 CI gates) FIX-5 — flag CODEOWNERS for security review |
+| D | P-04b SharedModels crypto → Kernel | full | QUEUED-WAVE1C | after P-04a (needs CloudVaultCrypto) |
+| D | P-05 Hermes | full | PR_OPEN #1580 | adds `import OpenBurnBarKernel` to HermesAtomNavigator (AE-IMPORT) |
+| D | P-06 Pretext | full | **MERGED into scaffold via #1561** | resources manifest edit; re-ran green vs Pretext planned 5/850 |
+| C | P-10 Insights models | full | QUEUED-WAVE1C | lands before P-08/P-09; FIX-6: AgentInsightsBundleAssembler re-sliced to P-08, extracts InsightProviderFamily/Entry to P-10 |
+| C | P-08 Insights Services core | full | QUEUED-WAVE1C | after P-10; FIX-6: absorbs AgentInsightsBundleAssembler (24 files) |
+| C | P-09 Insights Services remainder | full | QUEUED-WAVE1C | after P-08 |
+| A | P-07 TextExpansion | full | PR_OPEN #1579 | ui-purity --update; lane A serial |
 
 ## Wave 2 (after their deps merge)
 | Lane | Packet | Card | DEPENDS-ON |
