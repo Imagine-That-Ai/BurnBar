@@ -24,9 +24,6 @@
       ],
       "cleanUrls": true,
       "trailingSlash": false,
-      "i18n": {
-        "root": "/"
-      },
       "predeploy": [
         "npm --prefix website run verify"
       ],
@@ -325,10 +322,6 @@
             "functionId": "pollCliLink",
             "region": "us-central1"
           }
-        },
-        {
-          "source": "**",
-          "destination": "/404.html"
         }
       ]
     },

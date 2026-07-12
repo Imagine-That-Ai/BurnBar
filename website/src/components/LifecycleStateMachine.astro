@@ -30,12 +30,11 @@
   <div class="sim-controls glass-pane">
     <div class="sim-controls__group">
       <span class="sim-controls__label mono">SCENARIO:</span>
-      <div class="sim-tabs" role="tablist">
+      <div class="sim-tabs" role="group" aria-label="Simulation scenario">
         <button
           class="sim-tab is-active"
           id="btn-scenario-loop"
-          role="tab"
-          aria-selected="true"
+          aria-pressed="true"
           data-scenario="loop"
         >
           <span class="sim-tab__dot healthy"></span>
@@ -44,8 +43,7 @@
         <button
           class="sim-tab"
           id="btn-scenario-outage"
-          role="tab"
-          aria-selected="false"
+          aria-pressed="false"
           data-scenario="outage"
         >
           <span class="sim-tab__dot rate"></span>
@@ -54,8 +52,7 @@
         <button
           class="sim-tab"
           id="btn-scenario-auth"
-          role="tab"
-          aria-selected="false"
+          aria-pressed="false"
           data-scenario="auth"
         >
           <span class="sim-tab__dot auth"></span>
@@ -65,7 +62,7 @@
     </div>
 
     <div class="sim-controls__actions">
-      <button class="sim-action btn-play" id="btn-play-pause" aria-label="Pause Simulation">
+      <button class="sim-action btn-play" id="btn-play-pause">
         <svg class="icon-pause" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
           <rect x="4" y="4" width="6" height="16" rx="1"></rect>
           <rect x="14" y="4" width="6" height="16" rx="1"></rect>
@@ -579,7 +576,7 @@
     <aside class="lcsm__legend" aria-label="Interactive Lifecycle Legend">
       <h3 class="lcsm__legendh mono">eight states</h3>
       <ul class="lcsm__list">
-        <li class="legend-card is-active" data-card="healthy">
+        <li class="legend-card is-active" data-card="healthy" role="button" tabindex="0" aria-pressed="true">
           <span class="legend-card__indicator healthy"></span>
           <div class="legend-card__body">
             <div class="legend-card__header">
@@ -590,7 +587,7 @@
           </div>
         </li>
 
-        <li class="legend-card" data-card="pressure">
+        <li class="legend-card" data-card="pressure" role="button" tabindex="0" aria-pressed="false">
           <span class="legend-card__indicator pressure"></span>
           <div class="legend-card__body">
             <div class="legend-card__header">
@@ -601,7 +598,7 @@
           </div>
         </li>
 
-        <li class="legend-card" data-card="cooling-down">
+        <li class="legend-card" data-card="cooling-down" role="button" tabindex="0" aria-pressed="false">
           <span class="legend-card__indicator cooling-down"></span>
           <div class="legend-card__body">
             <div class="legend-card__header">
@@ -612,7 +609,7 @@
           </div>
         </li>
 
-        <li class="legend-card" data-card="rate-limited">
+        <li class="legend-card" data-card="rate-limited" role="button" tabindex="0" aria-pressed="false">
           <span class="legend-card__indicator rate-limited"></span>
           <div class="legend-card__body">
             <div class="legend-card__header">
@@ -623,7 +620,7 @@
           </div>
         </li>
 
-        <li class="legend-card" data-card="exhausted">
+        <li class="legend-card" data-card="exhausted" role="button" tabindex="0" aria-pressed="false">
           <span class="legend-card__indicator exhausted"></span>
           <div class="legend-card__body">
             <div class="legend-card__header">
@@ -634,7 +631,7 @@
           </div>
         </li>
 
-        <li class="legend-card" data-card="auth-failed">
+        <li class="legend-card" data-card="auth-failed" role="button" tabindex="0" aria-pressed="false">
           <span class="legend-card__indicator auth-failed"></span>
           <div class="legend-card__body">
             <div class="legend-card__header">
@@ -645,7 +642,7 @@
           </div>
         </li>
 
-        <li class="legend-card" data-card="disabled">
+        <li class="legend-card" data-card="disabled" role="button" tabindex="0" aria-pressed="false">
           <span class="legend-card__indicator disabled"></span>
           <div class="legend-card__body">
             <div class="legend-card__header">
@@ -658,7 +655,7 @@
           </div>
         </li>
 
-        <li class="legend-card" data-card="unknown">
+        <li class="legend-card" data-card="unknown" role="button" tabindex="0" aria-pressed="false">
           <span class="legend-card__indicator unknown"></span>
           <div class="legend-card__body">
             <div class="legend-card__header">
@@ -683,7 +680,7 @@
       <div class="console__title mono">BURNBAR ROUTER CONTROL SIMULATOR v1.0.4</div>
       <div class="console__status mono" id="console-status">ONLINE</div>
     </div>
-    <div class="console__body" id="console-body">
+    <div class="console__body" id="console-body" aria-hidden="true">
       <!-- Logs will print dynamically here -->
     </div>
   </div>
@@ -1222,7 +1219,7 @@
       if (!tab) return;
       const isSelect = tab.getAttribute("data-scenario") === scenId;
       tab.classList.toggle("is-active", isSelect);
-      tab.setAttribute("aria-selected", isSelect ? "true" : "false");
+      tab.setAttribute("aria-pressed", isSelect ? "true" : "false");
     });
 
     init(true);
@@ -1277,11 +1274,22 @@
     });
   });
 
-  // Bidirectional interaction: Click Legend Cards to trigger manual override
+  // Bidirectional interaction: Click Legend Cards to trigger manual override.
+  // Cards are role="button" + tabindex="0", so Enter/Space must activate too.
   document.querySelectorAll(".legend-card").forEach((card) => {
+    card.addEventListener("keydown", (event) => {
+      const key = (event as KeyboardEvent).key;
+      if (key === "Enter" || key === " ") {
+        event.preventDefault();
+        (card as HTMLElement).click();
+      }
+    });
     card.addEventListener("click", () => {
       const stateId = card.getAttribute("data-card");
       if (!stateId || isTransitioning) return;
+      document
+        .querySelectorAll(".legend-card")
+        .forEach((c) => c.setAttribute("aria-pressed", c === card ? "true" : "false"));
 
       // Pause regular scenario loop
       if (isPlaying) {
@@ -1541,8 +1549,12 @@
     height: 3px;
     background: rgba(255, 255, 255, 0.15);
     border-radius: 2px;
-    outline: none;
+    outline: none; /* replaced by :focus-visible ring below */
     cursor: pointer;
+  }
+  .speed-range:focus-visible {
+    outline: 2px solid var(--ember-bright);
+    outline-offset: 3px;
   }
   .speed-range::-webkit-slider-thumb {
     -webkit-appearance: none;
