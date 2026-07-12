@@ -170,7 +170,11 @@ CREATE TABLE search_chunks (
   text               TEXT NOT NULL,
   contentHash        TEXT,
   createdAt          TEXT NOT NULL,
-  updatedAt          TEXT NOT NULL
+  updatedAt          TEXT NOT NULL,
+  -- Added by v55_search_chunks_fts_rowid (ALTER TABLE appends it last): maps
+  -- each chunk to its FTS5 rowid so deletes target the rowid instead of
+  -- full-scanning the UNINDEXED (chunkID, documentID) FTS columns.
+  ftsRowid           INTEGER
 );
 
 -- The current local-search FTS shape is chunk/document oriented:
