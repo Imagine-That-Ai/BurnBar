@@ -1,7 +1,7 @@
 ---
 import BaseLayout from "@layouts/BaseLayout.astro";
 import { SITE } from "@data/site";
-const updated = "June 5, 2026";
+const updated = "July 11, 2026";
 const paidTiers = SITE.pricing.tiers.filter((tier) => tier.priceMonthlyUSD !== "0");
 ---
 
@@ -86,9 +86,10 @@ const paidTiers = SITE.pricing.tiers.filter((tier) => tier.priceMonthlyUSD !== "
       <h2>4. Acceptable use</h2>
       <p>
         You agree not to: (a) attempt to circumvent the entitlement model or rate limits; (b) use
-        OpenBurnBar's hosted infrastructure to relay traffic that doesn't belong to you; (c)
-        reverse-engineer the JWS verification or App Check chain; (d) use OpenBurnBar to violate any
-        provider's terms of service for the credentials you connect.
+        OpenBurnBar's hosted infrastructure to relay traffic that doesn't belong to you; (c) forge
+        or spoof JWS receipts or App Check attestations against the hosted service (the client code
+        is AGPL — reading it is the point); (d) use OpenBurnBar to violate any provider's terms of
+        service for the credentials you connect.
       </p>
 
       <h2>5. Trust boundaries</h2>

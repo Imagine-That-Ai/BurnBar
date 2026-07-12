@@ -12,7 +12,7 @@ const year = new Date().getFullYear();
         <Brandmark size={32} />
         <p class="muted">
           A local-first developer tool that watches AI coding agents. <br />
-          macOS · iPhone · iPad · daemon · CLI · editor.
+          macOS · iPhone · iPad · Android · Linux · daemon · CLI · editor.
         </p>
         <p class="site-footer__entity mono">
           © {year}
@@ -22,7 +22,7 @@ const year = new Date().getFullYear();
       </div>
 
       <div>
-        <h5>Product</h5>
+        <span class="site-footer__colhead" role="presentation">Product</span>
         <ul>
           {
             NAV_FOOTER.product.map((item) => (
@@ -35,7 +35,7 @@ const year = new Date().getFullYear();
       </div>
 
       <div>
-        <h5>Trust</h5>
+        <span class="site-footer__colhead" role="presentation">Trust</span>
         <ul>
           {
             NAV_FOOTER.trust.map((item) => (
@@ -48,7 +48,7 @@ const year = new Date().getFullYear();
       </div>
 
       <div>
-        <h5>Build</h5>
+        <span class="site-footer__colhead" role="presentation">Build</span>
         <ul>
           {
             NAV_FOOTER.build.map((item) => (
@@ -127,7 +127,8 @@ const year = new Date().getFullYear();
     margin-top: var(--s-3);
     line-height: 1.5;
   }
-  .site-footer h5 {
+  .site-footer .site-footer__colhead {
+    display: block;
     font-family: var(--font-mono);
     font-size: var(--t-caption);
     text-transform: uppercase;

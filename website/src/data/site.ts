@@ -6,7 +6,7 @@ export const SITE = {
   domain: "burnbar.ai",
   url: "https://burnbar.ai",
   description:
-    "A local-first developer tool that watches AI coding agents — tokens burned, dollars spent, quota left — across Claude Code, Codex, Cursor, Copilot, Factory and more. macOS app, iOS companion, daemon, CLI, editor extension.",
+    "A local-first tool that watches AI coding agents — tokens burned, dollars spent, quota left — across Claude Code, Codex, Cursor, Copilot, and more.",
   twitter: "",
   github: "https://github.com/Imagine-That-Ai/BurnBar",
   releasesUrl: "https://github.com/Imagine-That-Ai/BurnBar/releases",
@@ -161,7 +161,7 @@ export const NAV_FOOTER = {
     { href: "/faq", label: "FAQ" }
   ],
   trust: [
-    { href: "/trust?v=20260607", label: "Open & secure" },
+    { href: "/trust", label: "Open & secure" },
     { href: "/privacy", label: "Privacy model" },
     { href: "/privacy#data-domains", label: "What we can see" },
     { href: "/security", label: "Security model" },

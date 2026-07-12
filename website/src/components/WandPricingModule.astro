@@ -189,26 +189,29 @@ const wandModes = [
 
     <!-- ── Tier cap ladder ── -->
     <div class="wand-ladder" role="table" aria-label="The Wand parallel worker cap by tier">
-      <div class="wand-ladder__row wand-ladder__row--head">
-        <span class="wand-ladder__cell wand-ladder__cell--head mono">Tier</span>
-        <span class="wand-ladder__cell wand-ladder__cell--head mono">Parallel workers per cast</span
-        >
-        <span class="wand-ladder__cell wand-ladder__cell--head mono">Visual</span>
+      <div class="wand-ladder__row wand-ladder__row--head" role="row">
+        <span class="wand-ladder__cell wand-ladder__cell--head mono" role="columnheader">Tier</span>
+        <span class="wand-ladder__cell wand-ladder__cell--head mono" role="columnheader">
+          Parallel workers per cast
+        </span>
+        <span class="wand-ladder__cell wand-ladder__cell--head mono" role="columnheader">
+          Visual
+        </span>
       </div>
       {
         ladder.map(({ tier, cap, accent, capCopy }) => (
-          <div class="wand-ladder__row" data-accent={accent}>
-            <span class="wand-ladder__cell wand-ladder__cell--tier">
+          <div class="wand-ladder__row" data-accent={accent} role="row">
+            <span class="wand-ladder__cell wand-ladder__cell--tier" role="cell">
               <span class="wand-ladder__tier-name">{tier.shortName}</span>
               <span class="wand-ladder__tier-price mono">
                 {tier.priceMonthlyUSD === "0" ? "Free" : `$${tier.priceMonthlyUSD}/mo`}
               </span>
             </span>
-            <span class="wand-ladder__cell wand-ladder__cell--cap mono">
+            <span class="wand-ladder__cell wand-ladder__cell--cap mono" role="cell">
               <span>{cap}</span>
               <span class="wand-ladder__cap-copy">{capCopy}</span>
             </span>
-            <span class="wand-ladder__cell wand-ladder__cell--viz">
+            <span class="wand-ladder__cell wand-ladder__cell--viz" role="cell">
               <span class="wand-ladder__dots" aria-hidden="true">
                 {Array.from({ length: cap }, () => (
                   <span class="wand-ladder__dot" />
@@ -274,7 +277,7 @@ const wandModes = [
     <div class="wand-cta">
       <div class="wand-cta__inner">
         <div class="wand-cta__copy">
-          <h3 class="wand-cta__h">Go wider with Cloud Pro</h3>
+          <h3 class="wand-cta__h">Go wider with Cloud Pro or Ultra</h3>
           <p class="wand-cta__p">
             Cloud can cast 3 agents at once. Cloud Pro opens 8; Ultra opens 16. More parallel
             attempts means more model diversity and faster convergence. Your model tokens still come
