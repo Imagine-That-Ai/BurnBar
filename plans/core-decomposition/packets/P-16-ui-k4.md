@@ -15,8 +15,18 @@ SHARED template; each sub-packet gets its own PR in lane A, in order.
 | P-16b | `Views/Substrate/` (35) | 35 | 9,377 |
 | P-16c | `Views/Insights/` (38) | 38 | 6,002 |
 | P-16d | `Views/MissionControl/` (12, minus MissionConsoleTypes already moved in P-11) | 11 | ~4k |
-| P-16e | `Views/Cards/` (2) + `Views/Square/` (1) | 3 | 1,097 |
+| P-16e | `Views/Cards/` (1) + `Views/Square/` (1) | 2 | ~0.8k |
 | P-16f | UI SharedModels + renderers | ~13 | ~2k |
+
+> **P-04a convergence note (2026-07-12).** P-04a already moved two files this card
+> previously listed: (1) `Views/Cards/CardEnvelope.swift` — the full Foundation-only
+> `CardEnvelope` enum — moved to `OpenBurnBarKernel/SharedModels/CardEnvelope.swift`
+> (it is a pure wire model; only its renderer `CardEnvelopeView.swift` remains under
+> `Views/Cards/`, so P-16e is now 1 Cards file, not 2). (2) The Foundation-pure `RGBA`
+> value type was extracted into `OpenBurnBarKernel/SharedModels/RGBA.swift`; Core's
+> `SharedModels/RGBA.swift` now holds ONLY the `#if canImport(SwiftUI)` `.color` bridge
+> + color-math extensions, so P-16f still moves `SharedModels/RGBA.swift` (bridge-only
+> now) but must NOT move the `RGBA` struct definition (already in the Kernel).
 
 P-16f (UI SharedModels): `UIModeTheme.swift`, `AgentInsights/AgentInsightsViewModel.swift`,
 `Services/Insights/Share/InsightShareCardRenderer.swift`, `SharedModels/{ThemePrimitives,
