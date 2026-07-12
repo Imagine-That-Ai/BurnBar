@@ -112,22 +112,24 @@ const DEVICE_SCAN_EXTENSIONS = new Set([
 const DEVICE_IDENTIFIER_PATTERNS = [
   {
     kind: "physical iOS CoreDevice identifier",
-    context: /\b(?:iPhone|iPad|iOS|CoreDevice|devicectl|physical device|Device|deviceId|device)\b/i,
+    context:
+      /\b(?:iPhone|iPad|iOS|CoreDevice|devicectl|physical device|Device|deviceId|device)\b/i,
     token: /\b[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}\b/i,
   },
   {
     kind: "physical iOS CoreDevice identifier",
     pattern:
-      /\b(?:id=|--device\s+|Device:\s*|["']device(?:Id)?["']\s*:\s*["'])([0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})\b/i,
+      /(?:\bid=|\b--device\s+|\bDevice:\s*|["']device(?:Id)?["']\s*:\s*["'])([0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})\b/i,
   },
   {
     kind: "physical iOS USB UDID",
-    context: /\b(?:iPhone|iPad|iOS|USB|UDID|ios-deploy|Device|deviceId|device)\b/i,
+    context:
+      /\b(?:iPhone|iPad|iOS|USB|UDID|ios-deploy|Device|deviceId|device)\b/i,
     token: /\b[0-9A-F]{8}-[0-9A-F]{16}\b/i,
   },
   {
     kind: "physical iOS USB UDID",
-    pattern: /\b(?:id=|--device\s+)([0-9A-F]{8}-[0-9A-F]{16})\b/i,
+    pattern: /(?:\bid=|\b--device\s+)([0-9A-F]{8}-[0-9A-F]{16})\b/i,
   },
   {
     kind: "physical Android serial",
@@ -142,6 +144,39 @@ const DEVICE_IDENTIFIER_PATTERNS = [
     pattern: /\b(?:Physical Android|Samsung Android)\s+([A-Z0-9]{10,})\b/,
   },
 ];
+
+function contextualDeviceTokenMatches(line, context, token) {
+  if (!context.test(line) || !token.test(line)) return false;
+
+  let parsed;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return true;
+  }
+
+  const recordMatches = (value) => {
+    if (typeof value === "string") {
+      return context.test(value) && token.test(value);
+    }
+    if (Array.isArray(value)) {
+      const directValues = value.filter((entry) => typeof entry === "string").join(" ");
+      if (context.test(directValues) && token.test(directValues)) return true;
+      return value.some(recordMatches);
+    }
+    if (value !== null && typeof value === "object") {
+      const directFields = Object.entries(value)
+        .filter(([, entry]) => typeof entry === "string")
+        .map(([key, entry]) => `${key} ${entry}`)
+        .join(" ");
+      if (context.test(directFields) && token.test(directFields)) return true;
+      return Object.values(value).some(recordMatches);
+    }
+    return false;
+  };
+
+  return recordMatches(parsed);
+}
 
 const failures = [];
 const fail = (invariant, msg) => failures.push(`  ✗ [${invariant}] ${msg}`);
@@ -705,7 +740,7 @@ for (const root of PERSONAL_DEVICE_SCAN_ROOTS) {
               .replace(match[1] ?? match[0], "<redacted-device-id>")
               .trim();
           }
-        } else if (context.test(line) && token.test(line)) {
+        } else if (contextualDeviceTokenMatches(line, context, token)) {
           redacted = line.replace(token, "<redacted-device-id>").trim();
         }
         if (redacted === null) continue;

@@ -422,6 +422,32 @@ expect(
   0,
 );
 
+expect(
+  "I7 — minified manifest screenshot UUID is not a device id",
+  buildTree((f) => {
+    f["docs/candidate.manifest.json"] = JSON.stringify({
+      files: [
+        { path: "docs/device-guide.md" },
+        { path: `screenshots/01_${IOS_COREDEVICE_SAMPLE}_ipad.png` },
+      ],
+    });
+    return f;
+  }),
+  0,
+);
+
+expect(
+  "I7 — minified iPhone device record still fails",
+  buildTree((f) => {
+    f["docs/device-record.json"] = JSON.stringify({
+      device: "iPhone",
+      udid: IOS_COREDEVICE_SAMPLE,
+    });
+    return f;
+  }),
+  1,
+);
+
 // Misconfiguration: invalid indexes JSON must exit 2 (fail-closed, not crash to 0).
 expect(
   "invalid firestore.indexes.json exits 2",
