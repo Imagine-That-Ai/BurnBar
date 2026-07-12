@@ -1,0 +1,20 @@
+﻿[
+    "run",
+    "--no-build",
+    "--project",
+    "C:\\candidate-7c36229823-rehearsal4\\windows\\tests\\ui-automation-harness\\OpenBurnBar.UiAutomationHarness\\OpenBurnBar.UiAutomationHarness.csproj",
+    "--configuration",
+    "Debug",
+    "-p:Platform=ARM64",
+    "--",
+    "--repo-root",
+    "C:\\candidate-7c36229823-rehearsal4",
+    "--app-exe",
+    "C:\\candidate-7c36229823-rehearsal4\\windows\\app\\OpenBurnBar.App\\bin\\ARM64\\Debug\\net8.0-windows10.0.19041.0\\OpenBurnBar.App.exe",
+    "--output",
+    "C:\\Users\\Public\\external-cert-rehearsal-7c36229823-runner-v11\\ui-automation",
+    "--timeout-ms",
+    "12000",
+    "--certification-profile",
+    "all"
+]
