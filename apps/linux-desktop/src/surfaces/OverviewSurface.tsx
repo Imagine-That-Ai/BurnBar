@@ -71,6 +71,14 @@ export function OverviewSurface() {
     hasSummary: !!summary
   });
 
+  const shellState = resolveOverviewShellState({
+    offlineNoBridge,
+    daemonOffline,
+    error,
+    busy,
+    hasSummary: !!summary
+  });
+
   const providerRows = useMemo(() => {
     const mix = insights?.providerMix ?? [];
     const total = fixtureMode ? 680.94 : summary?.todayCostUsd ?? 0;
@@ -146,6 +154,13 @@ export function OverviewSurface() {
       </DashboardLayoutShell>
 
       <p className="overview-provenance muted" role="status">
+        Layout: {DASHBOARD_LAYOUT_META[layout].displayName}
+        {DASHBOARD_LAYOUT_META[layout].isKernelForward ? ' · kernel-forward' : ''}
+        {' · '}
+        shell: {shellState}
+        {' · '}
+        content: atelier-shared
+        {' · '}
         Data source: {fixtureMode ? 'fixture transcript' : bridge ? 'live daemon' : 'unavailable'} ·{' '}
         <button type="button" className="overview-reconnect-link" disabled={healthBusy} onClick={reconnect}>
           {healthBusy ? 'Reconnecting…' : 'Reconnect'}

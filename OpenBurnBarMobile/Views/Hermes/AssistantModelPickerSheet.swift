@@ -598,6 +598,7 @@ struct AssistantModelPickerSheet: View {
              .antigravityModelCatalog,
              .claudeModelCatalog,
              .cursorAgentProfile,
+             .cursorAgentModelCatalog,
              .codexModelCatalog,
              .grokModelCatalog,
              .ollamaLocalCatalog,

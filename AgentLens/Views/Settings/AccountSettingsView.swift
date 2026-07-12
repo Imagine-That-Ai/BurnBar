@@ -20,8 +20,9 @@ struct AccountSettingsView: View {
     let onLinkGitHub: () async throws -> Void
     let onUpgradeToPremium: () -> Void
     let onDeleteAccount: () async throws -> Void
-    let onSignOut: () -> Void
+    let onSignOut: () throws -> Void
 
+    @StateObject private var entitlement = MacCloudEntitlementStore.shared
     @State private var showDeleteConfirmation = false
     @State private var showEmailLinkSheet = false
     @State private var emailMode: EmailAuthMode = .signIn
@@ -41,6 +42,13 @@ struct AccountSettingsView: View {
                         accountHeaderView(user)
                     } else {
                         anonymousHeaderView
+                    }
+
+                    // Auth/account errors surface here so link, sign-out, and
+                    // delete failures are visible in both the anonymous and
+                    // signed-in layouts.
+                    if let authError {
+                        authErrorBanner(authError)
                     }
 
                     // Sign-in methods section
@@ -68,6 +76,7 @@ struct AccountSettingsView: View {
             emailLinkSheet
         }
         .onAppear {
+            entitlement.start()
             Analytics.shared.track(.screenViewed, ["surface": "account"])
         }
         .alert("Delete Account?", isPresented: $showDeleteConfirmation) {
@@ -97,6 +106,18 @@ struct AccountSettingsView: View {
     }
 
     // MARK: - Subviews
+
+    @ViewBuilder
+    private func authErrorBanner(_ message: String) -> some View {
+        Text(message)
+            .font(DesignSystem.Typography.caption)
+            .foregroundStyle(DesignSystem.Colors.error)
+            .padding(DesignSystem.Spacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(DesignSystem.Colors.error.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+            .accessibilityIdentifier("account.authError")
+    }
 
     @ViewBuilder
     private func accountHeaderView(_ user: User) -> some View {
@@ -200,16 +221,6 @@ struct AccountSettingsView: View {
                     .padding(DesignSystem.Spacing.md)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(DesignSystem.Colors.warning.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
-            }
-
-            if let authError {
-                Text(authError)
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.error)
-                    .padding(DesignSystem.Spacing.md)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(DesignSystem.Colors.error.opacity(0.12))
                     .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
             }
 
@@ -319,19 +330,25 @@ struct AccountSettingsView: View {
                 linkedAccountRow(
                     logo: .apple,
                     title: "Apple ID",
-                    isLinked: currentUser?.providerData.contains { $0.providerID == "apple.com" } ?? false
+                    isLinked: currentUser?.providerData.contains { $0.providerID == "apple.com" } ?? false,
+                    provider: .apple,
+                    linkAction: onLinkApple
                 )
                 Divider().background(DesignSystem.Colors.border)
                 linkedAccountRow(
                     logo: .google,
                     title: "Google",
-                    isLinked: currentUser?.providerData.contains { $0.providerID == "google.com" } ?? false
+                    isLinked: currentUser?.providerData.contains { $0.providerID == "google.com" } ?? false,
+                    provider: .google,
+                    linkAction: onLinkGoogle
                 )
                 Divider().background(DesignSystem.Colors.border)
                 linkedAccountRow(
                     logo: .github,
                     title: "GitHub",
-                    isLinked: currentUser?.providerData.contains { $0.providerID == "github.com" } ?? false
+                    isLinked: currentUser?.providerData.contains { $0.providerID == "github.com" } ?? false,
+                    provider: .github,
+                    linkAction: onLinkGitHub
                 )
             }
             .background(DesignSystem.Colors.surface)
@@ -342,7 +359,13 @@ struct AccountSettingsView: View {
     }
 
     @ViewBuilder
-    private func linkedAccountRow(logo: AuthProviderLogo, title: String, isLinked: Bool) -> some View {
+    private func linkedAccountRow(
+        logo: AuthProviderLogo,
+        title: String,
+        isLinked: Bool,
+        provider: AuthProviderAction,
+        linkAction: @escaping () async throws -> Void
+    ) -> some View {
         HStack(spacing: DesignSystem.Spacing.md) {
             AuthProviderLogoView(logo: logo, size: 28)
 
@@ -360,10 +383,27 @@ struct AccountSettingsView: View {
                         .font(DesignSystem.Typography.tiny)
                 }
                 .foregroundStyle(DesignSystem.Colors.success)
-            } else {
-                Button("Link") { }
-                    .buttonStyle(.bordered)
+            } else if activeAuthProvider == provider {
+                ProgressView()
                     .controlSize(.small)
+            } else {
+                Button("Link") {
+                    guard isFirebaseAvailable else { return }
+                    authError = nil
+                    activeAuthProvider = provider
+                    Task {
+                        do {
+                            try await linkAction()
+                        } catch {
+                            authError = AccountManager.userFacingAuthErrorMessage(error)
+                        }
+                        activeAuthProvider = nil
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(!isFirebaseAvailable || activeAuthProvider != nil)
+                .accessibilityLabel("Link \(title)")
             }
         }
         .padding(DesignSystem.Spacing.md)
@@ -383,7 +423,7 @@ struct AccountSettingsView: View {
                     planRow(layout: .stacked)
                 }
 
-                Text("OpenBurnBar Cloud Monthly is an optional 1 month auto-renewable subscription billed by Apple.")
+                Text("BurnBar Cloud, Cloud Pro, and Cloud Ultra are optional auto-renewable subscriptions billed through the App Store.")
                     .font(DesignSystem.Typography.tiny)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
 
@@ -409,9 +449,32 @@ struct AccountSettingsView: View {
         case stacked
     }
 
+    private var planTitle: String {
+        switch entitlement.currentTier {
+        case .free: return "Free Plan"
+        case .cloud: return "BurnBar Cloud"
+        case .pro: return "Cloud Pro"
+        case .ultra: return "Cloud Ultra"
+        }
+    }
+
+    private var planBenefit: String {
+        switch entitlement.currentTier {
+        case .free:
+            return "Local tracking on this Mac — upgrade for encrypted sync and cloud search"
+        case .cloud:
+            return "Hosted quota refresh, encrypted backup, cloud search, and remote relay"
+        case .pro:
+            return "Everything in Cloud, plus Floo phone-to-Mac control and Agent Control"
+        case .ultra:
+            return "Everything in Pro, plus 10× private agent memory"
+        }
+    }
+
     @ViewBuilder
     private func planRow(layout: PlanRowLayout) -> some View {
-        let upgradeButton = Button("Upgrade") { onUpgradeToPremium() }
+        let isFreeTier = entitlement.currentTier == .free
+        let upgradeButton = Button(isFreeTier ? "Upgrade" : "Manage") { onUpgradeToPremium() }
             .buttonStyle(.borderedProminent)
             .tint(DesignSystem.Colors.blaze)
 
@@ -428,7 +491,7 @@ struct AccountSettingsView: View {
 
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
                 HStack {
-                    Text("Free Plan")
+                    Text(planTitle)
                         .font(DesignSystem.Typography.body)
                         .fontWeight(.semibold)
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
@@ -443,7 +506,7 @@ struct AccountSettingsView: View {
                         .fixedSize()
                 }
 
-                Text("50 summaries per month")
+                Text(planBenefit)
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
                     .lineLimit(1)
@@ -471,8 +534,13 @@ struct AccountSettingsView: View {
         VStack(spacing: DesignSystem.Spacing.sm) {
             if !isAnonymous {
                 Button("Sign Out") {
-                    Analytics.shared.track(.authSignedOut)
-                    onSignOut()
+                    authError = nil
+                    do {
+                        try onSignOut()
+                        Analytics.shared.track(.authSignedOut)
+                    } catch {
+                        authError = AccountManager.userFacingAuthErrorMessage(error)
+                    }
                 }
                     .buttonStyle(.bordered)
                     .frame(maxWidth: .infinity)

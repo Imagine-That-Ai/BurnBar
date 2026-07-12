@@ -1,4 +1,4 @@
-# OpenBurnBar Windows Port — Master Handoff (2026-07-03)
+# OpenBurnBar Windows Port — Historical Handoff (2026-07-03)
 
 > **⚠️ SUPERSEDED FOR PARITY STATUS (2026-07-09):** Production-parity status is **only**
 > [`WINDOWS_PARITY_LEDGER.yml`](WINDOWS_PARITY_LEDGER.yml) (closed set: Real / Substituted /

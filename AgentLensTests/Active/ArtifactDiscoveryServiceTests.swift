@@ -49,6 +49,53 @@ final class ArtifactDiscoveryServiceTests: XCTestCase {
         XCTAssertEqual(health?.status, .healthy)
     }
 
+    func test_discovery_skipsUnchangedFilesBySignature_withoutLosingDeletionSweep() async throws {
+        let fileManager = FileManager.default
+        let sandbox = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? fileManager.removeItem(at: sandbox) }
+        try fileManager.createDirectory(at: sandbox, withIntermediateDirectories: true)
+
+        let root = sandbox.appendingPathComponent("root", isDirectory: true)
+        try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+        try writeDiscoveryFixture("# Skill\nDo this.", to: root.appendingPathComponent("SKILL.md"))
+        let agentsURL = root.appendingPathComponent("AGENTS.md")
+        try writeDiscoveryFixture("# Agent\nv1", to: agentsURL)
+
+        let store = try makeDiscoveryInMemoryStore()
+        let settings = StubArtifactDiscoverySettings(
+            artifactDiscoveryEnabled: true,
+            artifactDiscoveryRegisteredRoots: [root.path]
+        )
+        let service = ArtifactDiscoveryService(dataStore: store, settingsProvider: settings, fileManager: fileManager)
+
+        let first = try await service.discoverAndIngest()
+        XCTAssertEqual(first.insertedArtifacts, 2)
+
+        // Second sweep with untouched files: the (mtime, size) gate must
+        // report both as unchanged without re-reading or re-queuing jobs.
+        let second = try await service.discoverAndIngest()
+        XCTAssertEqual(second.discoveredArtifacts, 2)
+        XCTAssertEqual(second.unchangedArtifacts, 2)
+        XCTAssertEqual(second.insertedArtifacts, 0)
+        XCTAssertEqual(second.updatedArtifacts, 0)
+        XCTAssertEqual(second.deletedArtifacts, 0)
+        XCTAssertEqual(second.queuedJobs, 0)
+
+        // A modified file must break the signature gate and re-project.
+        // Backdating-safe: rewrite content of a different size.
+        try writeDiscoveryFixture("# Agent\nv2 with more content", to: agentsURL)
+        let third = try await service.discoverAndIngest()
+        XCTAssertEqual(third.updatedArtifacts, 1)
+        XCTAssertEqual(third.unchangedArtifacts, 1)
+
+        // The skip path still feeds the deletion sweep: removing a file that
+        // was previously skipped must still mark it deleted.
+        try fileManager.removeItem(at: agentsURL)
+        let fourth = try await service.discoverAndIngest()
+        XCTAssertEqual(fourth.deletedArtifacts, 1)
+        XCTAssertEqual(fourth.unchangedArtifacts, 1)
+    }
+
     func test_discovery_marksMissingArtifactsDeleted_andQueuesPurge() async throws {
         let fileManager = FileManager.default
         let sandbox = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
