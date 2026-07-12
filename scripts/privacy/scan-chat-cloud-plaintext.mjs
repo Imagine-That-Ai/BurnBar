@@ -632,6 +632,18 @@ for (const field of [
     `"${field}"`,
     `validCliAgentMissionRequest allowlist must exclude plaintext field ${field}`,
   );
+  // The keys().hasOnly([...]) allowlist was extracted into a dedicated
+  // validCliAgentMissionRequestKeys() helper. The body of
+  // validCliAgentMissionRequest() only delegates to it, so the preamble
+  // slice above would never see a forbidden field even if the helper
+  // allowed one. Anchor a second assertion to the helper's own body.
+  assertSectionNotIncludes(
+    "firestore.rules",
+    "function validCliAgentMissionRequestKeys()",
+    "function validCliAgentMissionRequest()",
+    `"${field}"`,
+    `validCliAgentMissionRequestKeys allowlist must exclude plaintext field ${field}`,
+  );
 }
 
 assertRulesRejectFields("match /events/{eventId}", [
