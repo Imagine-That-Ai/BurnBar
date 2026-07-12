@@ -298,6 +298,30 @@ describe('ChatSurface', () => {
     await waitFor(() => expect(screen.getByText('Stream stopped. 3')).toBeTruthy());
   });
 
+  it('keeps the draft and blocks sends while a turn is still composing', async () => {
+    const list = fixtureSessionList();
+    useShellStore.setState({
+      bridge: mockBridge({ chatThreadList: async () => chatThreadsFromSessions(list) }),
+      fixtureMode: true,
+      bridgeReady: true
+    });
+    render(<ChatSurface />);
+    await waitFor(() => expect(screen.getByRole('log')).toBeTruthy());
+    act(() => {
+      useChatStore.setState({ streamPhase: 'composing' });
+    });
+    const composer = screen.getByLabelText(/Message composer/i) as HTMLTextAreaElement;
+    fireEvent.change(composer, { target: { value: 'second message' } });
+    expect(screen.getByRole('button', { name: /Send message/i })).toHaveProperty('disabled', true);
+    fireEvent.keyDown(composer, { key: 'Enter' });
+    // The store's composing guard drops sends, so the Composer must not have
+    // cleared the draft — otherwise the user's text is silently lost.
+    expect(composer.value).toBe('second message');
+    expect(
+      useChatStore.getState().messages.some((message) => message.text === 'second message')
+    ).toBe(false);
+  });
+
   it('uses backend-specific composer placeholder for Codex', async () => {
     const list = fixtureSessionList();
     useShellStore.setState({

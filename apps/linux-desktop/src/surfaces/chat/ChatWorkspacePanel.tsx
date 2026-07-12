@@ -31,6 +31,8 @@ export type ChatWorkspacePanelProps = {
   streamError: string | null;
   composerDisabled: boolean;
   composerDisabledReason: string;
+  /** True while a send is composing (persisting + probing) before streaming. */
+  composerBusy: boolean;
   onSendMessage: (text: string) => void;
   onStopStreaming: () => void;
   mainFallback?: ReactNode;
@@ -59,6 +61,7 @@ export function ChatWorkspacePanel({
   streamError,
   composerDisabled,
   composerDisabledReason,
+  composerBusy,
   onSendMessage,
   onStopStreaming,
   mainFallback
@@ -110,6 +113,7 @@ export function ChatWorkspacePanel({
             disabled={composerDisabled}
             disabledReason={composerDisabledReason}
             streaming={streaming}
+            busy={composerBusy}
             onSend={onSendMessage}
             onStop={onStopStreaming}
           />

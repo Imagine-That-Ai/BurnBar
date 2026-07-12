@@ -87,6 +87,10 @@ export function ChatSurface() {
     sharedFeaturesAvailable,
     streaming,
     streamError,
+    // The store guards sends during 'composing' (persist + gateway probe) but
+    // the Composer clears the draft before calling onSend — surface the phase
+    // so an Enter in that window cannot silently drop the user's text.
+    composerBusy: streamPhase === 'composing',
     onSendMessage: (text: string) => void sendMessage(text),
     onStopStreaming: stopStreaming
   };
