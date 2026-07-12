@@ -57,8 +57,9 @@ const source = {
   commitSha: git(["rev-parse", "HEAD"]),
   dirtyTree: git(["status", "--porcelain"]).length > 0,
 };
+const runtimePlatform = platform();
 const host = describeLocalCertificationHost({
-  platform: platform(),
+  platform: runtimePlatform,
   release: release(),
   architecture: process.arch,
   cpuModel: cpus()[0]?.model ?? "unknown",
@@ -67,7 +68,7 @@ const host = describeLocalCertificationHost({
 const device = host.device;
 const artifact = {
   name: "source-checkout",
-  architecture: `${platform()}-${process.arch}`,
+  architecture: `${runtimePlatform}-${process.arch}`,
   availability: "not-applicable",
   sha256: null,
   workflowRunId: "not-applicable-local",
@@ -127,7 +128,16 @@ const commands = [
   {
     name: "windows-solution-aggregate",
     file: "dotnet",
-    args: ["test", "windows/OpenBurnBar.sln", "--configuration", "Release", "--nologo", "-p:EnableWindowsTargeting=true", "--blame-hang-timeout", "60s"],
+    args: [
+      "test",
+      "windows/OpenBurnBar.sln",
+      "--configuration",
+      "Release",
+      "--nologo",
+      "-p:EnableWindowsTargeting=true",
+      "--blame-hang-timeout",
+      runtimePlatform === "win32" ? "600s" : "60s",
+    ],
     timeoutMs: 900000,
   },
 ];
@@ -147,7 +157,7 @@ const testProjects = walk(join(repoRoot, "windows"))
   .map((path) => relative(repoRoot, path).replaceAll("\\", "/"))
   .filter((path) => !path.includes("/ui-automation-harness/OpenBurnBar.UiAutomationHarness.csproj"))
   .sort();
-const windowsNativeColdSpike = platform() === "win32";
+const windowsNativeColdSpike = runtimePlatform === "win32";
 for (const project of testProjects) {
   const isColdNativeSpike = project === "windows/tests/b0-spike/OpenBurnBar.B0Spike.Tests.csproj";
   commands.push({

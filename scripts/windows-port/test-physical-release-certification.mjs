@@ -62,12 +62,13 @@ assert.match(
   script,
   /Get-Sha256 \$sourcePath[\s\S]*Supplemental evidence hash mismatch[\s\S]*Copy-Item -LiteralPath \$sourcePath/,
 );
-assert.match(localRunner, /const windowsNativeColdSpike = platform\(\) === "win32"/);
+assert.match(localRunner, /const runtimePlatform = platform\(\)/);
+assert.match(localRunner, /const windowsNativeColdSpike = runtimePlatform === "win32"/);
 assert.match(localRunner, /isColdNativeSpike \? \(windowsNativeColdSpike \? "600s" : "180s"\) : "60s"/);
 assert.match(localRunner, /isColdNativeSpike \? \(windowsNativeColdSpike \? 900000 : 360000\) : 180000/);
 assert.match(
   localRunner,
-  /windows\/OpenBurnBar\.sln[\s\S]*--blame-hang-timeout", "60s"[\s\S]*timeoutMs: 900000/,
+  /windows\/OpenBurnBar\.sln[\s\S]*--blame-hang-timeout",[\s\S]*runtimePlatform === "win32" \? "600s" : "60s"[\s\S]*timeoutMs: 900000/,
 );
 assert.match(localRunner, /PYTHONUTF8: process\.env\.PYTHONUTF8 \?\? "1"/);
 
