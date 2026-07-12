@@ -78,6 +78,39 @@ export function verifyLinuxWorkflowWiring(input) {
   );
   requireText(input.pr, 'render-parity-ledger.mjs --check', 'PR Markdown drift gate');
   for (const command of [
+    'npm ci --prefix scripts/linux-port --ignore-scripts',
+    'attest-product-requirement.test.mjs',
+    'github-artifact-provenance.test.mjs',
+    'live-installed-product-evidence.test.mjs',
+    'run-linux-matrix-harness.test.mjs',
+    'run-product-requirement-validator.test.mjs',
+    'resolve-product-evidence-run.test.mjs'
+  ]) requireText(input.pr, command, 'PR product evidence gate');
+  for (const marker of [
+    'id-token: write',
+    'attestations: write',
+    'artifact-metadata: write',
+    'ref: ${{ github.sha }}',
+    'resolve-product-evidence-run.mjs',
+    'RELEASE_RUN_ID: ${{ inputs.release_run_id }}',
+    'TARGET_HEAD: ${{ github.sha }}',
+    '--run-id "$RELEASE_RUN_ID"',
+    '--target-head "$TARGET_HEAD"',
+    'artifact-ids: ${{ steps.evidence.outputs.artifact_id }}',
+    'run-product-requirement-validator.mjs',
+    'uses: actions/attest@',
+    '.sigstore.jsonl',
+    'if-no-files-found: error'
+  ]) requireText(input.productParityWorkflow, marker, 'product parity evidence workflow');
+  if (/--run-id\s+['"]?\$\{\{\s*inputs\.release_run_id/u.test(input.productParityWorkflow)) {
+    failures.push('product parity workflow may not interpolate release_run_id directly into shell.');
+  }
+  for (const marker of [
+    'npm ci --prefix scripts/linux-port --ignore-scripts',
+    'Generate current-HEAD product parity attestations',
+    'attest-product-requirement.mjs --requirement "P-${number}"'
+  ]) requireText(input.release, marker, 'release product evidence generation');
+  for (const command of [
     'macos-matched-performance',
     'run-matched-performance.mjs',
     '--profile pr',
@@ -168,6 +201,7 @@ export function verifyLinuxWorkflowWiring(input) {
     'Verify native package update, rollback, and data preservation',
     'Finalize commit-bound architecture session',
     'Download native architecture shards',
+    'Generate current-HEAD product parity attestations',
     'Verify product parity at release HEAD',
     'Assemble signed two-architecture closure and feed',
     'Pre-attestation Linux release verification',
@@ -230,6 +264,7 @@ function main() {
   const read = (rel) => fs.readFileSync(path.join(repoRoot, rel), 'utf8');
   const result = verifyLinuxWorkflowWiring({
     pr: read('.github/workflows/linux-pr-gate.yml'),
+    productParityWorkflow: read('.github/workflows/linux-product-parity.yml'),
     nightly: read('.github/workflows/linux-nightly.yml'),
     release: read('.github/workflows/linux-release.yml'),
     makefile: read('Makefile'),

@@ -5,6 +5,7 @@
  * installed-package proof, and accessibility proof all agree with the live host.
  */
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import {
@@ -15,6 +16,7 @@ import {
   runStep,
   writeJson
 } from './lib/linux-release-common.mjs';
+import { createEnvironmentCoverageReport } from './lib/environment-coverage-report.mjs';
 
 function argumentValue(name) {
   const index = process.argv.indexOf(name);
@@ -125,11 +127,27 @@ function addEvidenceCheck(id, environmentName) {
     return null;
   }
   try {
+    const realRoot = fs.realpathSync(repoRoot);
+    const realEvidence = fs.realpathSync(absolute);
+    const relative = path.relative(realRoot, realEvidence);
+    if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+      addCheck(id, false, `evidence file must be inside the repository: ${absolute}`);
+      return null;
+    }
+    if (fs.lstatSync(absolute).isSymbolicLink() || !fs.statSync(realEvidence).isFile()) {
+      addCheck(id, false, `evidence file must be a regular non-symlink file: ${absolute}`);
+      return null;
+    }
     const evidence = readJson(absolute);
-    const commit = evidence.git?.commit ?? evidence.commit ?? null;
+    const commit = evidence.targetHead ?? evidence.git?.commit ?? evidence.commit ?? null;
     const passed = evidence.passed === true && commit === git.commit;
     addCheck(id, passed, passed ? path.relative(repoRoot, absolute) : `passed=${evidence.passed} commit=${commit ?? 'missing'}`);
-    return { path: path.relative(repoRoot, absolute), passed: evidence.passed === true, commit };
+    return {
+      path: relative.split(path.sep).join('/'),
+      sha256: crypto.createHash('sha256').update(fs.readFileSync(realEvidence)).digest('hex'),
+      passed: evidence.passed === true,
+      commit
+    };
   } catch (error) {
     addCheck(id, false, `invalid JSON: ${error.message}`);
     return null;
@@ -138,29 +156,20 @@ function addEvidenceCheck(id, environmentName) {
 
 const installedEvidence = addEvidenceCheck('installed-package-evidence', 'OPENBURNBAR_LINUX_INSTALLED_EVIDENCE');
 const accessibilityEvidence = addEvidenceCheck('installed-accessibility-evidence', 'OPENBURNBAR_LINUX_ACCESSIBILITY_EVIDENCE');
-const blocked = checks
-  .filter((check) => !check.passed)
-  .map((check) => ({
-    capability: check.id,
-    status: 'blocked',
-    platformReason: check.detail,
-    recordedAt: new Date().toISOString()
-  }));
-
+if (installedEvidence?.path && installedEvidence.path === accessibilityEvidence?.path) {
+  addCheck('distinct-evidence-artifacts', false, 'installed-package and accessibility evidence must be distinct files');
+}
 const generatedAt = new Date().toISOString();
-const report = {
-  schemaVersion: 1,
+const report = createEnvironmentCoverageReport({
   generatedAt,
   environmentId: requestedEnvironment,
-  status: blocked.length === 0 ? 'ready' : 'blocked',
   git,
   declared: expected,
   detected,
-  evidenceInputs: { installedEvidence, accessibilityEvidence },
   checks,
-  blocked,
-  note: 'Ready means this exact clean checkout passed installed-package and accessibility evidence on the declared live desktop.'
-};
+  installedEvidence,
+  accessibilityEvidence
+});
 
 const defaultOut = requestedEnvironment
   ? path.join(repoRoot, 'docs/linux-port/evidence/product-parity/environments', `${requestedEnvironment}.json`)
@@ -169,5 +178,5 @@ const outFile = path.resolve(process.env.OPENBURNBAR_LINUX_MATRIX_OUT ?? default
 fs.mkdirSync(path.dirname(outFile), { recursive: true });
 writeJson(outFile, report);
 
-console.log(JSON.stringify({ outFile: path.relative(repoRoot, outFile), passed: blocked.length === 0, report }, null, 2));
-process.exit(requestedEnvironment && blocked.length > 0 ? 1 : 0);
+console.log(JSON.stringify({ outFile: path.relative(repoRoot, outFile), passed: report.status === 'passed', report }, null, 2));
+process.exit(requestedEnvironment && report.status !== 'passed' ? 1 : 0);

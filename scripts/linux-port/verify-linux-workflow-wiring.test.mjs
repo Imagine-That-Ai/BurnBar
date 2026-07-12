@@ -17,12 +17,35 @@ function valid() {
       'scripts/linux-port/aur-browser-runtime-packaging.test.mjs',
       'scripts/linux-port/embed-linux-appimage-payload.test.mjs',
       'render-parity-ledger.mjs --check',
+      'npm ci --prefix scripts/linux-port --ignore-scripts',
+      'attest-product-requirement.test.mjs',
+      'github-artifact-provenance.test.mjs',
+      'live-installed-product-evidence.test.mjs',
+      'run-linux-matrix-harness.test.mjs',
+      'run-product-requirement-validator.test.mjs',
+      'resolve-product-evidence-run.test.mjs',
       'macos-matched-performance',
       'run-matched-performance.mjs',
       '--profile pr',
       'matched-performance-contract.test.mjs',
       'perf-budget-contract.test.mjs',
       'linux-parity-macos-performance-pr'
+    ].join('\n'),
+    productParityWorkflow: [
+      'id-token: write',
+      'attestations: write',
+      'artifact-metadata: write',
+      'ref: ${{ github.sha }}',
+      'resolve-product-evidence-run.mjs',
+      'RELEASE_RUN_ID: ${{ inputs.release_run_id }}',
+      'TARGET_HEAD: ${{ github.sha }}',
+      '--run-id "$RELEASE_RUN_ID"',
+      '--target-head "$TARGET_HEAD"',
+      'artifact-ids: ${{ steps.evidence.outputs.artifact_id }}',
+      'run-product-requirement-validator.mjs',
+      'uses: actions/attest@',
+      '.sigstore.jsonl',
+      'if-no-files-found: error'
     ].join('\n'),
     nightly: [
       'OPENBURNBAR_LINUX_EVIDENCE_OUT',
@@ -64,6 +87,7 @@ function valid() {
       'OPENBURNBAR_R2_CUSTOM_DOMAIN: downloads.burnbar.ai',
       'upload-linux-downloads-r2.sh',
       'https://downloads.burnbar.ai/latest-linux.json',
+      'npm ci --prefix scripts/linux-port --ignore-scripts',
       'Resolve and validate Linux release version',
       'Assert native runner architecture',
       'Prepare unsigned native architecture artifacts',
@@ -75,6 +99,8 @@ function valid() {
       'Verify native package update, rollback, and data preservation',
       'Finalize commit-bound architecture session',
       'Download native architecture shards',
+      'Generate current-HEAD product parity attestations',
+      'attest-product-requirement.mjs --requirement "P-${number}"',
       'Verify product parity at release HEAD',
       'Assemble signed two-architecture closure and feed',
       'Pre-attestation Linux release verification',
@@ -143,6 +169,57 @@ function valid() {
 
 test('complete fail-closed workflow wiring passes', () => {
   assert.deepEqual(verifyLinuxWorkflowWiring(valid()), { passed: true, failures: [] });
+});
+
+test('product evidence dependency install and mutation suites are mandatory in the PR gate', () => {
+  for (const marker of [
+    'npm ci --prefix scripts/linux-port --ignore-scripts',
+    'attest-product-requirement.test.mjs',
+    'github-artifact-provenance.test.mjs',
+    'run-linux-matrix-harness.test.mjs',
+    'run-product-requirement-validator.test.mjs'
+  ]) {
+    const input = valid();
+    input.pr = input.pr.replace(marker, 'removed');
+    assert.equal(verifyLinuxWorkflowWiring(input).passed, false, marker);
+  }
+});
+
+test('product evidence producer identity and immutable artifact wiring fail closed independently', () => {
+  for (const marker of [
+    'id-token: write',
+    'ref: ${{ github.sha }}',
+    '--run-id "$RELEASE_RUN_ID"',
+    '--target-head "$TARGET_HEAD"',
+    'artifact-ids: ${{ steps.evidence.outputs.artifact_id }}',
+    'uses: actions/attest@',
+    '.sigstore.jsonl'
+  ]) {
+    const input = valid();
+    input.productParityWorkflow = input.productParityWorkflow.replace(marker, 'removed');
+    assert.equal(verifyLinuxWorkflowWiring(input).passed, false, marker);
+  }
+});
+
+test('free-form release run input cannot be interpolated directly into shell', () => {
+  const input = valid();
+  input.productParityWorkflow += "\n--run-id '${{ inputs.release_run_id }}'";
+  const result = verifyLinuxWorkflowWiring(input);
+  assert.equal(result.passed, false);
+  assert.match(result.failures.join('\n'), /release_run_id directly into shell/u);
+});
+
+test('release must generate current-HEAD attestations before strict parity validation', () => {
+  const missing = valid();
+  missing.release = missing.release.replace('attest-product-requirement.mjs --requirement "P-${number}"', 'removed');
+  assert.equal(verifyLinuxWorkflowWiring(missing).passed, false);
+
+  const reordered = valid();
+  reordered.release = reordered.release.replace(
+    'Generate current-HEAD product parity attestations\nattest-product-requirement.mjs --requirement "P-${number}"\nVerify product parity at release HEAD',
+    'Verify product parity at release HEAD\nattest-product-requirement.mjs --requirement "P-${number}"\nGenerate current-HEAD product parity attestations'
+  );
+  assert.equal(verifyLinuxWorkflowWiring(reordered).passed, false);
 });
 
 test('removing any native behavior or process-isolation command fails', () => {

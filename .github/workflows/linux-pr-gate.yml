@@ -67,7 +67,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: apps/linux-desktop/package-lock.json
+          cache-dependency-path: |
+            apps/linux-desktop/package-lock.json
+            scripts/linux-port/package-lock.json
+
+      - name: Install Linux evidence contract dependencies
+        run: npm ci --prefix scripts/linux-port --ignore-scripts
 
       - name: Validate Linux release config
         run: node scripts/linux-port/validate-linux-release-config.mjs
@@ -95,6 +100,11 @@ jobs:
       - name: Linux parity ledger unit tests
         run: >
           node --test
+          scripts/linux-port/attest-product-requirement.test.mjs
+          scripts/linux-port/github-artifact-provenance.test.mjs
+          scripts/linux-port/live-installed-product-evidence.test.mjs
+          scripts/linux-port/run-linux-matrix-harness.test.mjs
+          scripts/linux-port/run-product-requirement-validator.test.mjs
           scripts/linux-port/validate-parity-ledger.test.mjs
           scripts/linux-port/render-parity-ledger.test.mjs
 
@@ -120,6 +130,7 @@ jobs:
           node scripts/linux-port/verify-linux-workflow-wiring.mjs
           node --test \
             scripts/linux-port/verify-linux-workflow-wiring.test.mjs \
+            scripts/linux-port/resolve-product-evidence-run.test.mjs \
             scripts/linux-port/runtime-capability-contract.test.mjs \
             scripts/linux-port/accessibility-harness-contract.test.mjs \
             scripts/linux-port/run-linux-native-tests.test.mjs \

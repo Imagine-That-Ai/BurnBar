@@ -291,12 +291,24 @@ jobs:
         with:
           node-version: 22
 
+      - name: Install Linux evidence contract dependencies
+        run: npm ci --prefix scripts/linux-port --ignore-scripts
+
       - name: Download native architecture shards
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
         with:
           pattern: linux-release-shard-*
           path: ${{ env.OPENBURNBAR_LINUX_SHARDS_DIR }}
           merge-multiple: false
+
+      - name: Generate current-HEAD product parity attestations
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for number in $(seq -w 1 40); do
+            node scripts/linux-port/attest-product-requirement.mjs --requirement "P-${number}"
+          done
 
       - name: Verify product parity at release HEAD
         run: |
