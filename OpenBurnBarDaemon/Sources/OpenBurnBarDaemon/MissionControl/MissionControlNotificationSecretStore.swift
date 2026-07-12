@@ -3,6 +3,9 @@ import Foundation
 import LocalAuthentication
 #endif
 import OpenBurnBarCore
+#if os(Linux)
+import OpenBurnBarLinuxSecurity
+#endif
 #if canImport(Security)
 import Security
 #endif
@@ -38,10 +41,24 @@ public struct BurnBarNotificationKeychainSecretStore: BurnBarNotificationSecretS
     private static let telegramBotTokenAccount = "mission-control.telegram.bot-token"
 
     private let service: String
+#if os(Linux)
+    private let linuxSecretCustodian: LinuxSecretCustodian
+    private var linuxTelegramBotTokenID: String { "\(service):\(Self.telegramBotTokenAccount)" }
+#endif
 
+#if os(Linux)
+    public init(
+        service: String = Self.defaultService,
+        linuxSecretCustodian: LinuxSecretCustodian = LinuxSecretStoreFactory.production()
+    ) {
+        self.service = service
+        self.linuxSecretCustodian = linuxSecretCustodian
+    }
+#else
     public init(service: String = Self.defaultService) {
         self.service = service
     }
+#endif
 
     public func telegramBotToken() throws -> String? {
 #if canImport(Security) && canImport(LocalAuthentication)
@@ -73,6 +90,16 @@ public struct BurnBarNotificationKeychainSecretStore: BurnBarNotificationSecretS
         let decoded = String(data: data, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return decoded?.isEmpty == false ? decoded : nil
+#elseif os(Linux)
+        do {
+            return try linuxSecretCustodian.requireHighValueSecret(
+                id: linuxTelegramBotTokenID,
+                secretClass: .connectorCredential
+            ).secret
+        } catch let error as LinuxSecretStoreError {
+            guard case .missingSecret = error else { throw error }
+            return nil
+        }
 #else
         return nil
 #endif
@@ -121,6 +148,20 @@ public struct BurnBarNotificationKeychainSecretStore: BurnBarNotificationSecretS
         guard addStatus == errSecSuccess else {
             throw NSError(domain: NSOSStatusErrorDomain, code: Int(addStatus))
         }
+#elseif os(Linux)
+        let trimmed = token?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let trimmed, trimmed.isEmpty == false else {
+            try linuxSecretCustodian.deleteHighValueSecret(
+                id: linuxTelegramBotTokenID,
+                secretClass: .connectorCredential
+            )
+            return
+        }
+        _ = try linuxSecretCustodian.storeHighValueSecret(
+            trimmed,
+            id: linuxTelegramBotTokenID,
+            secretClass: .connectorCredential
+        )
 #else
         throw NSError(
             domain: "BurnBarNotificationKeychainSecretStore",

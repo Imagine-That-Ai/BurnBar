@@ -45,6 +45,28 @@ final class LinuxNativeSecretStoreWiringTests: XCTestCase {
         XCTAssertNil(deletedProviderSecret)
         XCTAssertNil(deletedConnectorSecret)
     }
+
+    func testNotificationStoreUsesLinuxSecretCustodianForCRUD() throws {
+        let backend = MutableLinuxSecretBackend()
+        let store = BurnBarNotificationKeychainSecretStore(
+            service: "com.openburnbar.test.notifications",
+            linuxSecretCustodian: LinuxSecretCustodian(backends: [backend])
+        )
+
+        XCTAssertNil(try store.telegramBotToken())
+        try store.setTelegramBotToken("  telegram-token  ")
+
+        XCTAssertEqual(try store.telegramBotToken(), "telegram-token")
+        XCTAssertEqual(
+            backend.secretClass(
+                for: "com.openburnbar.test.notifications:mission-control.telegram.bot-token"
+            ),
+            .connectorCredential
+        )
+
+        try store.setTelegramBotToken(nil)
+        XCTAssertNil(try store.telegramBotToken())
+    }
 }
 
 private final class MutableLinuxSecretBackend: LinuxSecretStoreBackend, @unchecked Sendable {
