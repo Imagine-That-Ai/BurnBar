@@ -10,9 +10,13 @@ import {
   captureLiveRuntimeCapabilities,
   verifyLiveInstalledProduct
 } from './lib/live-installed-product-evidence.mjs';
-import { validateProductFeatureProofClosure } from './lib/product-feature-proof.mjs';
+import {
+  RELEASE_ONLY_REQUIREMENTS,
+  validateProductFeatureProofClosure
+} from './lib/product-feature-proof.mjs';
 import {
   REQUIREMENT_RELEASE_CLOSURE_SCHEMA_VERSION,
+  environmentPackage,
   validateAggregateDocument
 } from './lib/product-proof-closure.mjs';
 
@@ -37,7 +41,14 @@ const RUNTIME_CAPABILITY_CATALOG_PATH = 'packaging/linux/runtime-capability-cata
 const INPUT_ROOT = 'docs/linux-port/evidence/product-parity-inputs';
 const RECEIPT_ROOT = 'docs/linux-port/evidence/validator-receipts';
 const VALIDATOR_ROOT = 'scripts/linux-port/product-validators';
-const REQUIRED_FLAGS = ['--requirement', '--environment', '--release-closure', '--output'];
+const REQUIRED_FLAGS = [
+  '--requirement',
+  '--environment',
+  '--release-closure',
+  '--candidate-run-id',
+  '--candidate-artifact-digest',
+  '--output'
+];
 const RECEIPT_FIELDS = [
   'schemaVersion',
   'requirementId',
@@ -243,10 +254,20 @@ export function parseArguments(argv) {
     index += 1;
   }
   for (const flag of REQUIRED_FLAGS) if (!parsed.has(flag)) throw new Error(`${flag} is required`);
+  const candidateRunId = parsed.get('--candidate-run-id');
+  const candidateArtifactDigest = parsed.get('--candidate-artifact-digest');
+  if (!/^[1-9][0-9]*$/u.test(candidateRunId) || !Number.isSafeInteger(Number(candidateRunId))) {
+    throw new Error('--candidate-run-id must be a positive canonical safe integer');
+  }
+  if (!/^sha256:[a-f0-9]{64}$/u.test(candidateArtifactDigest)) {
+    throw new Error('--candidate-artifact-digest must be a lowercase SHA-256 artifact digest');
+  }
   return {
     requirementId: parsed.get('--requirement'),
     environmentId: parsed.get('--environment'),
     releaseClosurePath: parsed.get('--release-closure'),
+    candidateRunId,
+    candidateArtifactDigest,
     outputPath: parsed.get('--output')
   };
 }
@@ -615,7 +636,21 @@ function closureRecordsByType(closure, types) {
   return closure.artifacts.filter((record) => types.has(String(record?.type ?? '').toLowerCase()));
 }
 
-export function deriveReleaseSubjects(repoRoot, releaseClosurePath, requirementId, targetHead, expectedEnvironment) {
+function expectedMaterializedFeaturePath(releaseClosurePath, index, proof) {
+  const role = proof.role.replace(/[^a-z0-9-]/gu, '-');
+  const basename = path.posix.basename(proof.path).replace(/[^A-Za-z0-9._-]/gu, '_');
+  return `${path.posix.dirname(releaseClosurePath)}/release-subjects/${String(index).padStart(2, '0')}-${role}-${basename}`;
+}
+
+export function deriveReleaseSubjects(
+  repoRoot,
+  releaseClosurePath,
+  requirementId,
+  targetHead,
+  expectedEnvironment,
+  expectedCandidate,
+  options = {}
+) {
   const closureSource = readJson(repoRoot, releaseClosurePath, 'release closure');
   if (!artifactIsRequirementOwned(closureSource.path, requirementId)) {
     throw new Error(`release closure must be under ${artifactRoot(requirementId)}`);
@@ -624,13 +659,12 @@ export function deriveReleaseSubjects(repoRoot, releaseClosurePath, requirementI
   if (closure === null || typeof closure !== 'object' || Array.isArray(closure)) {
     throw new Error('release closure must be an object');
   }
-  if (!Number.isInteger(closure.schemaVersion) || closure.schemaVersion < 1) {
-    throw new Error('release closure must have a positive integer schemaVersion');
-  }
-  const canonicalMaterializedClosure = closure.requirementId !== undefined
-    || closure.environmentId !== undefined || closure.status !== undefined;
-  if (canonicalMaterializedClosure && closure.schemaVersion !== REQUIREMENT_RELEASE_CLOSURE_SCHEMA_VERSION) {
-    throw new Error(`canonical release closure schemaVersion must be ${REQUIREMENT_RELEASE_CLOSURE_SCHEMA_VERSION}`);
+  const currentSchema = closure.schemaVersion === REQUIREMENT_RELEASE_CLOSURE_SCHEMA_VERSION;
+  const allowLegacyReleaseFixture = closure.schemaVersion === 1
+    && options.allowLegacyReleaseClosureFixture === true
+    && RELEASE_ONLY_REQUIREMENTS.includes(requirementId);
+  if (!currentSchema && !allowLegacyReleaseFixture) {
+    throw new Error(`release closure schemaVersion must be ${REQUIREMENT_RELEASE_CLOSURE_SCHEMA_VERSION}`);
   }
   const closureTarget = closure.targetHead ?? closure.targetCommit ?? closure.git?.commit;
   const closureSourceCommit = closure.sourceCommit ?? closure.source?.commit ?? closure.git?.commit;
@@ -645,6 +679,23 @@ export function deriveReleaseSubjects(repoRoot, releaseClosurePath, requirementI
       || !/^sha256:[a-f0-9]{64}$/u.test(closure.candidate.artifactDigest ?? '')
       || !SHA256_PATTERN.test(closure.candidate.productProofClosureSha256 ?? '')) {
     throw new Error('release closure candidate binding is invalid');
+  }
+  if (closure.candidate.runId !== expectedCandidate.runId
+      || closure.candidate.artifactDigest !== expectedCandidate.artifactDigest) {
+    throw new Error('release closure candidate does not match the independently resolved evidence artifact');
+  }
+  if (currentSchema) {
+    const expectedPackage = environmentPackage(expectedEnvironment.id);
+    if (closure.requirementId !== requirementId) {
+      throw new Error('release closure requirementId does not match the invocation');
+    }
+    if (closure.environmentId !== expectedEnvironment.id) {
+      throw new Error('release closure environmentId does not match the invocation');
+    }
+    if (closure.status !== 'passed') throw new Error('release closure status is not passed');
+    if (JSON.stringify(closure.selectedPackage) !== JSON.stringify(expectedPackage)) {
+      throw new Error('release closure selectedPackage does not match the invoked environment');
+    }
   }
 
   const packageRecords = normalizedRecords(closure.packages, 'release closure packages')
@@ -675,7 +726,8 @@ export function deriveReleaseSubjects(repoRoot, releaseClosurePath, requirementI
     )
     : [];
   let featureProof = null;
-  if (closure.schemaVersion >= REQUIREMENT_RELEASE_CLOSURE_SCHEMA_VERSION) {
+  const featureSubjects = [];
+  if (currentSchema) {
     const inputRoot = path.dirname(closureSource.absolute);
     const aggregateSnapshot = readFileSnapshot(
       repoRoot,
@@ -701,8 +753,8 @@ export function deriveReleaseSubjects(repoRoot, releaseClosurePath, requirementI
       aggregateSnapshot,
       requirementId,
       environmentId: expectedEnvironment.id,
-      candidateRunId: closure.candidate.runId,
-      candidateArtifactDigest: closure.candidate.artifactDigest
+      candidateRunId: expectedCandidate.runId,
+      candidateArtifactDigest: expectedCandidate.artifactDigest
     });
     if (featureProof === null) {
       if (closure.featureProofClosure !== undefined || featureRows.length > 0) {
@@ -724,12 +776,32 @@ export function deriveReleaseSubjects(repoRoot, releaseClosurePath, requirementI
       if (byRole.size !== featureProof.proofs.length) {
         throw new Error('release closure feature proof set does not match the registered closure');
       }
-      for (const { proof, snapshot } of featureProof.proofs) {
+      for (const [index, { proof, snapshot }] of featureProof.proofs.entries()) {
         const materialized = byRole.get(proof.role);
         if (materialized?.sha256 !== snapshot.sha256 || materialized?.size !== snapshot.size
             || materialized?.mediaType !== proof.mediaType) {
           throw new Error(`${proof.role} materialized feature proof does not match its immutable closure`);
         }
+        const expectedPath = expectedMaterializedFeaturePath(closureSource.path, index, proof);
+        if (materialized.path !== expectedPath) {
+          throw new Error(`${proof.role} materialized feature proof path is not canonical`);
+        }
+        const subject = validateSubjectRecord(
+          repoRoot,
+          materialized,
+          `${proof.role} materialized feature proof`,
+          requirementId
+        );
+        if (subject.bytes.length !== snapshot.size
+            || !subject.bytes.equals(snapshot.bytes)) {
+          throw new Error(`${proof.role} materialized feature proof bytes do not match its immutable closure`);
+        }
+        featureSubjects.push({
+          role: proof.role,
+          mediaType: proof.mediaType,
+          path: subject.path,
+          sha256: subject.sha256
+        });
       }
     }
   } else if (closure.featureProofClosure !== undefined || featureRows.length > 0) {
@@ -762,7 +834,7 @@ export function deriveReleaseSubjects(repoRoot, releaseClosurePath, requirementI
   if (!packages[0].path.endsWith(expectedPackageSuffix)) {
     throw new Error(`installed package artifact must end in ${expectedPackageSuffix}`);
   }
-  const all = [release, packageManifest, packageManifestSignature, ...packages];
+  const all = [release, packageManifest, packageManifestSignature, ...packages, ...featureSubjects];
   const paths = new Set();
   for (const subject of all) {
     if (paths.has(subject.path)) throw new Error(`release closure repeats subject path: ${subject.path}`);
@@ -778,7 +850,8 @@ export function deriveReleaseSubjects(repoRoot, releaseClosurePath, requirementI
     runtimes: [],
     all,
     installedManifest,
-    featureProof
+    featureProof,
+    featureSubjects
   };
 }
 
@@ -888,7 +961,14 @@ function defaultRepoRoot() {
 
 export async function runProductRequirementValidator(options) {
   const repoRoot = fs.realpathSync(options.repoRoot);
-  const { requirementId, environmentId, releaseClosurePath, outputPath } = options;
+  const {
+    requirementId,
+    environmentId,
+    releaseClosurePath,
+    candidateRunId,
+    candidateArtifactDigest,
+    outputPath
+  } = options;
   const { checkId, environment } = loadRequirementContract(repoRoot, requirementId, environmentId);
   const expectedOutput = canonicalOutputPath(requirementId, checkId, environmentId);
   if (outputPath !== expectedOutput) throw new Error(`--output must be exactly ${expectedOutput}`);
@@ -906,7 +986,9 @@ export async function runProductRequirementValidator(options) {
       releaseClosurePath,
       requirementId,
       targetHead,
-      environment
+      environment,
+      { runId: candidateRunId, artifactDigest: candidateArtifactDigest },
+      { allowLegacyReleaseClosureFixture: options.allowLegacyReleaseClosureFixture === true }
     );
     const installProbe = options.liveInstallProbe ?? ((probeOptions) => verifyLiveInstalledProduct(probeOptions));
     const liveInstall = await installProbe({
@@ -1006,6 +1088,9 @@ export async function runProductRequirementValidator(options) {
           sha256: subjects.packageManifestSignature.sha256
         }),
         packages: Object.freeze(subjects.packages.map(({ path: subjectPath, sha256 }) => Object.freeze({ path: subjectPath, sha256 }))),
+        features: Object.freeze(subjects.featureSubjects.map(({ role, mediaType, path: subjectPath, sha256 }) =>
+          Object.freeze({ role, mediaType, path: subjectPath, sha256 })
+        )),
         runtimes: Object.freeze(subjects.runtimes.map(({ path: subjectPath, sha256 }) => Object.freeze({ path: subjectPath, sha256 }))),
         installation: Object.freeze(subjects.installation.map(({ path: subjectPath, sha256 }) => Object.freeze({ path: subjectPath, sha256 }))),
         environment: Object.freeze({ path: liveEnvironmentSubject.path, sha256: liveEnvironmentSubject.sha256 })

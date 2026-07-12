@@ -114,13 +114,14 @@ export function resolveProductEvidenceRun(options, api = ghApi) {
   const artifacts = api(
     `repos/${EVIDENCE_POLICY.repository}/actions/runs/${options.runId}/artifacts?name=${EVIDENCE_POLICY.artifactName}&per_page=100`
   );
-  return validateArtifactResponse(artifacts, { ...options, repositoryId });
+  return { runId: options.runId, ...validateArtifactResponse(artifacts, { ...options, repositoryId }) };
 }
 
 export function main(argv = process.argv.slice(2), api = ghApi, outputFile = process.env.GITHUB_OUTPUT) {
   const options = parseArguments(argv);
   const result = resolveProductEvidenceRun(options, api);
   if (!outputFile) throw new Error('GITHUB_OUTPUT is required');
+  appendOutput(outputFile, 'run_id', result.runId);
   appendOutput(outputFile, 'artifact_id', result.artifactId);
   appendOutput(outputFile, 'artifact_digest', result.artifactDigest);
   return result;

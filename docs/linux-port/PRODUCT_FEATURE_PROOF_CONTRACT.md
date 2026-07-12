@@ -20,8 +20,12 @@ alone.
    requirement, support environment, source commit, release version, candidate run, candidate
    artifact digest, aggregate product closure, and snapshotted registry.
 5. `prepare-product-requirement-input.mjs` revalidates the complete binding and copies the exact
-   subjects into the requirement-owned release closure. The validator runner repeats this check
-   before executing a requirement module, so post-materialization mutation fails closed.
+   subjects into deterministic paths under the requirement-owned release closure. The validator
+   runner independently receives the trusted run ID and artifact digest from the GitHub resolver,
+   requires the current schema, checks the requirement, environment, and selected package itself,
+   and byte-compares every materialized feature subject with its immutable source before importing
+   a requirement module. Those subjects are mandatory in the validator result, so replacement
+   before or during validation fails closed.
 6. Only the substantive `P-XX.mjs` validator may interpret the captured artifacts and return a
    passed receipt. Feature closure status is deliberately `collected`; it has no `passed` field.
 

@@ -18,8 +18,14 @@ const SOURCE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 const INSTALLED_SCHEMA = 'packaging/linux/attestation/openburnbar-installed-manifest.schema.json';
 const RUNTIME_SCHEMA = 'schemas/linux-runtime-capability-manifest.schema.json';
 const RUNTIME_CATALOG = 'packaging/linux/runtime-capability-catalog.json';
+const FEATURE_SCHEMAS = [
+  'schemas/linux-product-feature-proof-registry.schema.json',
+  'schemas/linux-product-feature-proof-registration.schema.json',
+  'schemas/linux-product-feature-proof-closure.schema.json'
+];
 const CANDIDATE_RUN_ID = '12345';
 const CANDIDATE_ARTIFACT_DIGEST = `sha256:${'e'.repeat(64)}`;
+const RELEASE_ONLY_REQUIREMENTS_FOR_TEST = new Set(['P-01', 'P-03', 'P-04', 'P-37']);
 
 function write(root, relativePath, contents) {
   const absolute = path.join(root, relativePath);
@@ -65,6 +71,7 @@ function validValidatorModule() {
     context.subjects.packageManifest,
     context.subjects.packageManifestSignature,
     ...context.subjects.packages,
+    ...context.subjects.features.map(({ path, sha256 }) => ({ path, sha256 })),
     ...context.subjects.runtimes,
     ...context.subjects.installation,
     context.subjects.environment
@@ -87,9 +94,14 @@ function createRepository(options = {}) {
   git(root, ['config', 'user.name', 'OpenBurnBar Test']);
   git(root, ['config', 'user.email', 'test@openburnbar.invalid']);
   writeJson(root, 'docs/linux-port/product-parity-requirements.json', requirementManifest());
-  for (const relativePath of [INSTALLED_SCHEMA, RUNTIME_SCHEMA, RUNTIME_CATALOG]) {
+  for (const relativePath of [INSTALLED_SCHEMA, RUNTIME_SCHEMA, RUNTIME_CATALOG, ...FEATURE_SCHEMAS]) {
     write(root, relativePath, fs.readFileSync(path.join(SOURCE_ROOT, relativePath)));
   }
+  writeJson(root, 'docs/linux-port/product-feature-proof-registry.json', options.featureRegistry ?? {
+    schemaVersion: 1,
+    id: 'openburnbar-linux-product-feature-proof-registry-v1',
+    requirements: []
+  });
   write(root, 'tracked-anchor.txt', 'clean\n');
   for (const [requirementId, source] of Object.entries(options.validators ?? {})) {
     write(root, `scripts/linux-port/product-validators/${requirementId}.mjs`, source);
@@ -217,6 +229,168 @@ function writeEvidence(root, requirementId, head, options = {}) {
   return { paths, closure, manifest, runtime };
 }
 
+function record(root, relativePath, includeSize = false) {
+  const absolute = path.join(root, relativePath);
+  return {
+    path: relativePath,
+    sha256: sha256(absolute),
+    ...(includeSize ? { size: fs.statSync(absolute).size } : {})
+  };
+}
+
+function featureRegistry(requirementId = 'P-02') {
+  return {
+    schemaVersion: 1,
+    id: 'openburnbar-linux-product-feature-proof-registry-v1',
+    requirements: [{
+      requirementId,
+      artifacts: [{
+        role: 'feature.parity-report',
+        mediaType: 'application/json',
+        maxBytes: 4096
+      }]
+    }]
+  };
+}
+
+function writeRegisteredFeatureEvidence(root, head) {
+  const requirementId = 'P-02';
+  const evidence = writeEvidence(root, requirementId, head);
+  const { paths } = evidence;
+  const registryPath = `${paths.directory}/.linux-release/sidecars/product-feature-proof-registry.json`;
+  write(root, registryPath, fs.readFileSync(path.join(root, 'docs/linux-port/product-feature-proof-registry.json')));
+  const registryAggregateRecord = {
+    path: 'sidecars/product-feature-proof-registry.json',
+    sha256: sha256(path.join(root, registryPath)),
+    size: fs.statSync(path.join(root, registryPath)).size
+  };
+  const releaseTypes = ['appimage', 'daemon', 'deb', 'rpm'];
+  const architectures = ['aarch64', 'x86_64'];
+  const placeholder = { path: 'unused', sha256: 'a'.repeat(64) };
+  const aggregate = {
+    schemaVersion: 2,
+    stage: 'candidate',
+    status: 'passed',
+    targetHead: head,
+    sourceCommit: head,
+    version: '1.2.3',
+    git: { dirty: false },
+    architectures,
+    supportEnvironments: CANONICAL_ENVIRONMENT_IDS,
+    releaseArtifacts: releaseTypes.flatMap((type) => architectures.map((architecture) => ({
+      type,
+      architecture,
+      artifact: placeholder,
+      detachedSignature: placeholder,
+      sigstore: placeholder
+    }))),
+    packages: ['deb', 'rpm'].flatMap((format) => architectures.map((architecture) => ({
+      format,
+      architecture,
+      artifact: placeholder,
+      installedManifest: placeholder,
+      installedManifestSignature: placeholder
+    }))),
+    featureProofRegistry: registryAggregateRecord,
+    proofs: [{ role: 'fixture' }],
+    blockers: []
+  };
+  const aggregatePath = `${paths.directory}/.linux-release/product-proof-closure.json`;
+  writeJson(root, aggregatePath, aggregate);
+  const featureSourcePath = `${paths.directory}/feature-artifacts/parity-report.json`;
+  writeJson(root, featureSourcePath, { passed: true, requirementId, environmentId: ENVIRONMENT });
+  const featureClosurePath = `${paths.directory}/feature-proof-closure.json`;
+  const featureClosure = {
+    schemaVersion: 1,
+    targetHead: head,
+    sourceCommit: head,
+    status: 'collected',
+    requirementId,
+    environmentId: ENVIRONMENT,
+    version: '1.2.3',
+    candidate: {
+      runId: CANDIDATE_RUN_ID,
+      artifactDigest: CANDIDATE_ARTIFACT_DIGEST,
+      productProofClosureSha256: sha256(path.join(root, aggregatePath))
+    },
+    registry: record(root, registryPath, true),
+    proofs: [{
+      role: 'feature.parity-report',
+      mediaType: 'application/json',
+      ...record(root, featureSourcePath, true)
+    }],
+    blockers: []
+  };
+  writeJson(root, featureClosurePath, featureClosure);
+  const materializedPath = `${paths.directory}/release-subjects/00-feature-parity-report-parity-report.json`;
+  write(root, materializedPath, fs.readFileSync(path.join(root, featureSourcePath)));
+  const closure = {
+    schemaVersion: 3,
+    targetHead: head,
+    sourceCommit: head,
+    status: 'passed',
+    requirementId,
+    environmentId: ENVIRONMENT,
+    version: '1.2.3',
+    architectures,
+    supportEnvironments: CANONICAL_ENVIRONMENT_IDS,
+    selectedPackage: { architecture: 'x86_64', format: 'deb' },
+    candidate: {
+      runId: CANDIDATE_RUN_ID,
+      artifactDigest: CANDIDATE_ARTIFACT_DIGEST,
+      productProofClosureSha256: sha256(path.join(root, aggregatePath))
+    },
+    featureProofClosure: record(root, featureClosurePath, true),
+    packageManifest: evidence.closure.packageManifest,
+    packageManifestSignature: evidence.closure.packageManifestSignature,
+    packages: evidence.closure.packages,
+    proofs: [{
+      role: 'feature.parity-report',
+      mediaType: 'application/json',
+      evidenceClass: 'feature',
+      ...record(root, materializedPath, true)
+    }],
+    blockers: []
+  };
+  writeJson(root, paths.closure, closure);
+  return {
+    ...evidence,
+    aggregatePath,
+    featureClosurePath,
+    featureSourcePath,
+    materializedPath,
+    featureClosure,
+    closure
+  };
+}
+
+function featureValidatorModule({ mutate = false } = {}) {
+  return `import fs from 'node:fs';
+import path from 'node:path';
+export async function validateProductRequirement(context) {
+  ${mutate ? "fs.writeFileSync(path.join(context.repoRoot, context.subjects.features[0].path), 'substituted-after-dispatch\\n');" : ''}
+  const artifacts = [
+    context.subjects.release,
+    context.subjects.packageManifest,
+    context.subjects.packageManifestSignature,
+    ...context.subjects.packages,
+    ...context.subjects.features.map(({ path, sha256 }) => ({ path, sha256 })),
+    ...context.subjects.runtimes,
+    ...context.subjects.installation,
+    context.subjects.environment
+  ];
+  return {
+    schemaVersion: 1,
+    requirementId: context.requirementId,
+    checkId: context.checkId,
+    environmentId: context.environmentId,
+    targetHead: context.targetHead,
+    status: 'passed',
+    artifacts
+  };
+}\n`;
+}
+
 function validHostProbe(expected, installedManifest) {
   return {
     schemaVersion: 1,
@@ -305,16 +479,29 @@ function dispatch(argv, root, options = {}) {
     hostProbe: validHostProbe,
     liveInstallProbe: validLiveInstallProbe,
     runtimeProbe: validRuntimeProbe,
+    allowLegacyReleaseClosureFixture: true,
     ...options
   });
 }
 
-function args(requirementId, releaseClosurePath = evidencePaths(requirementId).closure, outputPath = null) {
+function productionDispatch(argv, root, options = {}) {
+  return dispatch(argv, root, { ...options, allowLegacyReleaseClosureFixture: false });
+}
+
+function args(
+  requirementId,
+  releaseClosurePath = evidencePaths(requirementId).closure,
+  outputPath = null,
+  candidateRunId = CANDIDATE_RUN_ID,
+  candidateArtifactDigest = CANDIDATE_ARTIFACT_DIGEST
+) {
   const checkId = `${requirementId.toLowerCase()}.test`;
   return [
     '--requirement', requirementId,
     '--environment', ENVIRONMENT,
     '--release-closure', releaseClosurePath,
+    '--candidate-run-id', candidateRunId,
+    '--candidate-artifact-digest', candidateArtifactDigest,
     '--output', outputPath ?? canonicalOutputPath(requirementId, checkId, ENVIRONMENT)
   ];
 }
@@ -323,7 +510,7 @@ async function rejectsWithMessage(action, pattern) {
   await assert.rejects(action, pattern);
 }
 
-test('all 40 canonical requirements fail closed while their owned validator modules are absent', async (t) => {
+test('only explicit release-owned legacy fixtures reach missing validators; all other legacy closures fail first', async (t) => {
   const { root, head } = createRepository();
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   for (const requirementId of CANONICAL_REQUIREMENT_IDS) writeEvidence(root, requirementId, head);
@@ -331,7 +518,9 @@ test('all 40 canonical requirements fail closed while their owned validator modu
   for (const requirementId of CANONICAL_REQUIREMENT_IDS) {
     await rejectsWithMessage(
       () => dispatch(args(requirementId), root),
-      new RegExp(`${requirementId} validator module does not exist`)
+      RELEASE_ONLY_REQUIREMENTS_FOR_TEST.has(requirementId)
+        ? new RegExp(`${requirementId} validator module does not exist`)
+        : /release closure schemaVersion must be 3/u
     );
     const output = canonicalOutputPath(requirementId, `${requirementId.toLowerCase()}.test`, ENVIRONMENT);
     assert.equal(fs.existsSync(path.join(root, output)), false, `${requirementId} must not leave a receipt`);
@@ -392,6 +581,10 @@ test('canonical schema-3 closures require the immutable aggregate and registry b
   t.after(() => fs.rmSync(repository.root, { recursive: true, force: true }));
   const evidence = writeEvidence(repository.root, 'P-01', repository.head);
   evidence.closure.schemaVersion = 3;
+  evidence.closure.requirementId = 'P-01';
+  evidence.closure.environmentId = ENVIRONMENT;
+  evidence.closure.status = 'passed';
+  evidence.closure.selectedPackage = { architecture: 'x86_64', format: 'deb' };
   writeJson(repository.root, evidence.paths.closure, evidence.closure);
   await rejectsWithMessage(
     () => dispatch(args('P-01'), repository.root),
@@ -410,8 +603,141 @@ test('canonical materialized closures cannot downgrade the release closure schem
   writeJson(repository.root, evidence.paths.closure, evidence.closure);
   await rejectsWithMessage(
     () => dispatch(args('P-01'), repository.root),
-    /canonical release closure schemaVersion must be 3/u
+    /release closure schemaVersion must be 3/u
   );
+});
+
+test('marker stripping cannot downgrade a production release closure to legacy schema', async (t) => {
+  const repository = createRepository({ validators: { 'P-01': validValidatorModule() } });
+  t.after(() => fs.rmSync(repository.root, { recursive: true, force: true }));
+  const evidence = writeEvidence(repository.root, 'P-01', repository.head);
+  evidence.closure.schemaVersion = 1;
+  for (const field of ['requirementId', 'environmentId', 'status', 'selectedPackage', 'featureProofClosure', 'proofs']) {
+    delete evidence.closure[field];
+  }
+  writeJson(repository.root, evidence.paths.closure, evidence.closure);
+  await rejectsWithMessage(
+    () => productionDispatch(args('P-01'), repository.root),
+    /release closure schemaVersion must be 3/u
+  );
+});
+
+test('legacy compatibility rejects future schemas and every non-release requirement', async (t) => {
+  for (const [requirementId, schemaVersion] of [['P-01', 4], ['P-02', 1]]) {
+    await t.test(`${requirementId} schema ${schemaVersion}`, async (subtest) => {
+      const repository = createRepository({ validators: { [requirementId]: validValidatorModule() } });
+      subtest.after(() => fs.rmSync(repository.root, { recursive: true, force: true }));
+      const evidence = writeEvidence(repository.root, requirementId, repository.head);
+      evidence.closure.schemaVersion = schemaVersion;
+      writeJson(repository.root, evidence.paths.closure, evidence.closure);
+      await rejectsWithMessage(
+        () => dispatch(args(requirementId), repository.root),
+        /release closure schemaVersion must be 3/u
+      );
+    });
+  }
+});
+
+test('dispatcher binds registered feature proof bytes and path into validator-required subjects', async (t) => {
+  const repository = createRepository({
+    featureRegistry: featureRegistry(),
+    validators: { 'P-02': featureValidatorModule() }
+  });
+  t.after(() => fs.rmSync(repository.root, { recursive: true, force: true }));
+  const evidence = writeRegisteredFeatureEvidence(repository.root, repository.head);
+  const result = await productionDispatch(args('P-02'), repository.root);
+  assert.ok(result.receipt.artifacts.some((artifact) =>
+    artifact.path === evidence.materializedPath
+      && artifact.sha256 === sha256(path.join(repository.root, evidence.materializedPath))
+  ));
+});
+
+test('dispatcher rejects materialized feature path and byte substitutions', async (t) => {
+  for (const mutation of ['path', 'bytes']) {
+    await t.test(mutation, async (subtest) => {
+      const repository = createRepository({
+        featureRegistry: featureRegistry(),
+        validators: { 'P-02': featureValidatorModule() }
+      });
+      subtest.after(() => fs.rmSync(repository.root, { recursive: true, force: true }));
+      const evidence = writeRegisteredFeatureEvidence(repository.root, repository.head);
+      const row = evidence.closure.proofs[0];
+      if (mutation === 'path') {
+        const substitutedPath = `${evidence.paths.directory}/release-subjects/substituted.json`;
+        write(repository.root, substitutedPath, fs.readFileSync(path.join(repository.root, evidence.materializedPath)));
+        row.path = substitutedPath;
+      } else {
+        writeJson(repository.root, evidence.materializedPath, { passed: false, substituted: true });
+        Object.assign(row, record(repository.root, evidence.materializedPath, true));
+      }
+      writeJson(repository.root, evidence.paths.closure, evidence.closure);
+      await rejectsWithMessage(
+        () => productionDispatch(args('P-02'), repository.root),
+        mutation === 'path' ? /materialized feature proof path is not canonical/u : /does not match its immutable closure/u
+      );
+    });
+  }
+});
+
+test('dispatcher detects registered feature mutation after validator import and removes stale output', async (t) => {
+  const repository = createRepository({
+    featureRegistry: featureRegistry(),
+    validators: { 'P-02': featureValidatorModule({ mutate: true }) }
+  });
+  t.after(() => fs.rmSync(repository.root, { recursive: true, force: true }));
+  writeRegisteredFeatureEvidence(repository.root, repository.head);
+  await rejectsWithMessage(
+    () => productionDispatch(args('P-02'), repository.root),
+    /validator result artifact hash mismatch/u
+  );
+  assert.equal(
+    fs.existsSync(path.join(repository.root, canonicalOutputPath('P-02', 'p-02.test', ENVIRONMENT))),
+    false
+  );
+});
+
+test('joint release and feature candidate substitution cannot replace trusted resolver provenance', async (t) => {
+  const repository = createRepository({
+    featureRegistry: featureRegistry(),
+    validators: { 'P-02': featureValidatorModule() }
+  });
+  t.after(() => fs.rmSync(repository.root, { recursive: true, force: true }));
+  const evidence = writeRegisteredFeatureEvidence(repository.root, repository.head);
+  const substituted = {
+    runId: '99999',
+    artifactDigest: `sha256:${'9'.repeat(64)}`,
+    productProofClosureSha256: evidence.closure.candidate.productProofClosureSha256
+  };
+  evidence.featureClosure.candidate = substituted;
+  writeJson(repository.root, evidence.featureClosurePath, evidence.featureClosure);
+  evidence.closure.candidate = substituted;
+  evidence.closure.featureProofClosure = record(repository.root, evidence.featureClosurePath, true);
+  writeJson(repository.root, evidence.paths.closure, evidence.closure);
+  await rejectsWithMessage(
+    () => productionDispatch(args('P-02'), repository.root),
+    /candidate does not match the independently resolved evidence artifact/u
+  );
+});
+
+test('dispatcher rejects canonical closure identity mismatches before validator import', async (t) => {
+  const mutations = [
+    ['requirementId', (closure) => { closure.requirementId = 'P-03'; }, /requirementId does not match/u],
+    ['environmentId', (closure) => { closure.environmentId = CANONICAL_ENVIRONMENT_IDS[1]; }, /environmentId does not match/u],
+    ['selectedPackage', (closure) => { closure.selectedPackage.architecture = 'aarch64'; }, /selectedPackage does not match/u]
+  ];
+  for (const [name, mutate, pattern] of mutations) {
+    await t.test(name, async (subtest) => {
+      const repository = createRepository({
+        featureRegistry: featureRegistry(),
+        validators: { 'P-02': featureValidatorModule() }
+      });
+      subtest.after(() => fs.rmSync(repository.root, { recursive: true, force: true }));
+      const evidence = writeRegisteredFeatureEvidence(repository.root, repository.head);
+      mutate(evidence.closure);
+      writeJson(repository.root, evidence.paths.closure, evidence.closure);
+      await rejectsWithMessage(() => productionDispatch(args('P-02'), repository.root), pattern);
+    });
+  }
 });
 
 test('live environment probe rejects every mismatched identity dimension', async (t) => {

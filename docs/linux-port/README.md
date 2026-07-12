@@ -96,7 +96,12 @@ JSON file is never promotion evidence.
 
 `run-product-requirement-validator.mjs` dispatches only to a deterministic
 `scripts/linux-port/product-validators/P-XX.mjs` module and deletes stale output
-on every failure. Requirement-specific validators exist for P-01 release
+on every failure. Its required candidate run and artifact-digest inputs come
+from the trusted GitHub evidence resolver; closure-provided provenance cannot
+replace them. Current release closures must directly match the invoked
+requirement, environment, and selected package, and registered materialized
+feature subjects are byte-validated and required in the validator result.
+Requirement-specific validators exist for P-01 release
 integrity, P-03 installed runtime, P-04 architecture reach, and P-37 Linux
 matrix coverage. The other 36 modules remain intentionally absent until their
 installed-product acceptance packets land. Source availability is not a parity

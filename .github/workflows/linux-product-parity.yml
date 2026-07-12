@@ -123,9 +123,9 @@ jobs:
         env:
           REQUIREMENT_ID: ${{ inputs.requirement }}
           ENVIRONMENT_ID: ${{ inputs.environment }}
-          TARGET_HEAD: ${{ github.sha }}
-          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          CANDIDATE_RUN_ID: ${{ steps.evidence.outputs.run_id }}
           CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}
+          TARGET_HEAD: ${{ github.sha }}
         run: |
           set -euo pipefail
           input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"
@@ -143,7 +143,7 @@ jobs:
           REQUIREMENT_ID: ${{ inputs.requirement }}
           ENVIRONMENT_ID: ${{ inputs.environment }}
           TARGET_HEAD: ${{ github.sha }}
-          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          CANDIDATE_RUN_ID: ${{ steps.evidence.outputs.run_id }}
           CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}
         run: |
           set -euo pipefail
@@ -162,6 +162,8 @@ jobs:
         env:
           REQUIREMENT_ID: ${{ inputs.requirement }}
           ENVIRONMENT_ID: ${{ inputs.environment }}
+          CANDIDATE_RUN_ID: ${{ steps.evidence.outputs.run_id }}
+          CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}
         run: |
           set -euo pipefail
           area="$(node -e 'const m=require("./docs/linux-port/product-parity-requirements.json"); const r=m.requirements.find(x=>x.id===process.argv[1]); if(!r)process.exit(1); process.stdout.write(r.area)' "$REQUIREMENT_ID")"
@@ -171,6 +173,8 @@ jobs:
             --requirement "$REQUIREMENT_ID" \
             --environment "$ENVIRONMENT_ID" \
             --release-closure "docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}/release-closure.json" \
+            --candidate-run-id "$CANDIDATE_RUN_ID" \
+            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST" \
             --output "$receipt"
           printf 'receipt=%s\n' "$receipt" >> "$GITHUB_OUTPUT"
 

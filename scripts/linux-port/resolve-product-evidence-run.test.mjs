@@ -58,8 +58,12 @@ test('canonical trusted run and immutable artifact resolve to GitHub outputs', (
     return calls.length === 1 ? validRun() : validArtifacts();
   };
   const result = main(['--run-id', RUN_ID, '--target-head', HEAD], api, output);
-  assert.deepEqual(result, { artifactId: '8189285431', artifactDigest: `sha256:${'b'.repeat(64)}` });
-  assert.match(fs.readFileSync(output, 'utf8'), /artifact_id=8189285431\nartifact_digest=sha256:/u);
+  assert.deepEqual(result, {
+    runId: RUN_ID,
+    artifactId: '8189285431',
+    artifactDigest: `sha256:${'b'.repeat(64)}`
+  });
+  assert.match(fs.readFileSync(output, 'utf8'), new RegExp(`run_id=${RUN_ID}\\nartifact_id=8189285431\\nartifact_digest=sha256:`));
   assert.deepEqual(calls, [
     `repos/${EVIDENCE_POLICY.repository}/actions/runs/${RUN_ID}`,
     `repos/${EVIDENCE_POLICY.repository}/actions/runs/${RUN_ID}/artifacts?name=${EVIDENCE_POLICY.artifactName}&per_page=100`
