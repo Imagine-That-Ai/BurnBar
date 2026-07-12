@@ -1,0 +1,87 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Tests for the native shim (windows/native/): the hardened locator/loader,
+    the graceful NotSupported surface, the generated-binding API shape — all of
+    which run on ANY host with no Rust build — plus loopback tests that drive a
+    real FFI round-trip through the generated C# bindings whenever the
+    natively-built cdylibs ARE present (macOS dev host after `cargo build`;
+    Windows once a cargo step feeds this lane). Loopback tests skip — never
+    fail — when the cdylibs are absent, so the pr-windows-full suite stays
+    green without a Rust toolchain.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.Native.Tests</RootNamespace>
+
+    <!-- Cargo target dirs holding locally built cdylibs (debug profile, same
+         defaults as the crate-side binding tests). Override with
+         -p:BurnBarRemoteNativeDir=… / -p:IrohNativeDir=… -->
+    <BurnBarRemoteNativeDir Condition="'$(BurnBarRemoteNativeDir)' == ''">$(MSBuildProjectDirectory)/../../../crates/burnbar-remote/target/debug</BurnBarRemoteNativeDir>
+    <IrohNativeDir Condition="'$(IrohNativeDir)' == ''">$(MSBuildProjectDirectory)/../../../crates/openburnbar-iroh/target/debug</IrohNativeDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../native/OpenBurnBar.Native/OpenBurnBar.Native.csproj" />
+    <ProjectReference Include="../../native/OpenBurnBar.Native.BurnBarRemote/OpenBurnBar.Native.BurnBarRemote.csproj" />
+    <ProjectReference Include="../../native/OpenBurnBar.Native.Iroh/OpenBurnBar.Native.Iroh.csproj" />
+  </ItemGroup>
+
+  <!-- The committed golden wire vector shared with the Rust unit tests and the
+       crate-side C# round-trip — the loopback asserts byte-parity against it
+       through the windows/native shim path. -->
+  <ItemGroup>
+    <None Include="../../../crates/burnbar-remote/burnbar-remote-ffi/tests/golden/quality_decision_v1.wire">
+      <Link>quality_decision_v1.wire</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- Locally built cdylibs, copied next to the test binary WHEN PRESENT so the
+       hardened resolver finds them in AppContext.BaseDirectory. Guarded by
+       Exists() so a host without a Rust build still compiles + runs (loopback
+       tests then skip). OS-conditioned per platform file name. -->
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <None Include="$(BurnBarRemoteNativeDir)/libburnbar_remote.dylib" Condition="Exists('$(BurnBarRemoteNativeDir)/libburnbar_remote.dylib')">
+      <Link>libburnbar_remote.dylib</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="$(IrohNativeDir)/libopenburnbar_iroh.dylib" Condition="Exists('$(IrohNativeDir)/libopenburnbar_iroh.dylib')">
+      <Link>libopenburnbar_iroh.dylib</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+    <None Include="$(BurnBarRemoteNativeDir)/libburnbar_remote.so" Condition="Exists('$(BurnBarRemoteNativeDir)/libburnbar_remote.so')">
+      <Link>libburnbar_remote.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="$(IrohNativeDir)/libopenburnbar_iroh.so" Condition="Exists('$(IrohNativeDir)/libopenburnbar_iroh.so')">
+      <Link>libopenburnbar_iroh.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <None Include="$(BurnBarRemoteNativeDir)/burnbar_remote.dll" Condition="Exists('$(BurnBarRemoteNativeDir)/burnbar_remote.dll')">
+      <Link>burnbar_remote.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="$(IrohNativeDir)/openburnbar_iroh.dll" Condition="Exists('$(IrohNativeDir)/openburnbar_iroh.dll')">
+      <Link>openburnbar_iroh.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

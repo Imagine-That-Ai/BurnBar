@@ -1,0 +1,130 @@
+:root {
+  /* ── Liquid Glass material system ────────────────────────────────────────
+   * Shared vocabulary for translucent, layered chrome across the Linux shell.
+   * Tuned to match macOS DesignSystem dark + LiquidGlass.swift fallbacks:
+   * cool slate canvas (GitHub/Xcode lineage), frosted ultra-thin plates,
+   * monochrome interactive glass, brand accents only on meaning.
+   */
+
+  /* macOS DesignSystem.Colors dark surface ramp (cool slate) */
+  --macos-bg: #0d1117;
+  --macos-surface: #161b22;
+  --macos-surface-elevated: #1f2630;
+  --macos-border: #30363d;
+  --macos-border-subtle: #21262d;
+  --macos-text: #e6edf3;
+  --macos-text-secondary: #8b949e;
+  --macos-text-muted: #6e7681;
+  --macos-hermes-mercury: #c8bfb5;
+  --macos-hermes-aureate: #d4aa3c;
+  --macos-user-stroke: #8b7fe8;
+  --macos-assistant-stroke: #fa5053;
+  --macos-ember: #fa5053;
+  --macos-amber: #ffa800;
+  --macos-whimsy: #8b7fe8;
+
+  /* Prefer macOS cool slate over editorial ink for the shell canvas */
+  --color-ink-void: var(--macos-bg);
+  --color-ink-base: var(--macos-bg);
+  --color-ink-elevated: var(--macos-surface);
+  --color-text-bright: #ffffff;
+  --color-text-base: color-mix(in srgb, var(--macos-text) 92%, transparent);
+  --color-text-mute: var(--macos-text-secondary);
+  --color-text-dim: var(--macos-text-muted);
+  --color-glass-bg: color-mix(in srgb, var(--macos-surface) 55%, transparent);
+  --color-glass-bg-elevated: color-mix(in srgb, var(--macos-surface-elevated) 62%, transparent);
+  --color-glass-line: color-mix(in srgb, var(--macos-border) 70%, transparent);
+  --color-glass-line-bright: color-mix(in srgb, #ffffff 15%, transparent);
+  --color-frost-veil: color-mix(in srgb, var(--macos-text) 8%, transparent);
+  --color-frost-line: color-mix(in srgb, #ffffff 10%, transparent);
+  --color-mercury-wash: color-mix(in srgb, var(--macos-hermes-mercury) 8%, transparent);
+  --color-mercury-core: var(--macos-hermes-mercury);
+  --color-mercury-bright: #f4f6fb;
+  --color-mercury-deep: #8b94a8;
+
+  /* blur / saturation — macOS ultraThinMaterial approximation */
+  --glass-blur-sm: 12px;
+  --glass-blur-md: 22px;
+  --glass-blur-lg: 32px;
+  --glass-blur-xl: 40px;
+  --glass-saturate: 165%;
+  --glass-saturate-high: 185%;
+
+  /* tint plates */
+  --glass-tint-base: color-mix(in srgb, var(--macos-surface) 48%, transparent);
+  --glass-tint-elevated: color-mix(in srgb, var(--macos-surface-elevated) 55%, transparent);
+  --glass-tint-sunken: color-mix(in srgb, var(--macos-bg) 42%, transparent);
+  --glass-tint-clear: color-mix(in srgb, var(--macos-surface) 28%, transparent);
+  --glass-tint-interactive: color-mix(in srgb, var(--macos-surface-elevated) 38%, transparent);
+
+  /* strokes */
+  --glass-stroke: color-mix(in srgb, var(--macos-border) 65%, transparent);
+  --glass-stroke-bright: color-mix(in srgb, #ffffff 18%, transparent);
+  --glass-stroke-frost: color-mix(in srgb, #ffffff 12%, transparent);
+
+  /* inner / outer light */
+  --glass-inner-light: inset 0 1px 0 color-mix(in srgb, #ffffff 12%, transparent);
+  --glass-inner-glow: inset 0 1px 0 color-mix(in srgb, var(--macos-hermes-mercury) 14%, transparent);
+  --glass-specular: linear-gradient(
+    155deg,
+    color-mix(in srgb, #ffffff 10%, transparent),
+    transparent 42%,
+    color-mix(in srgb, var(--color-brass-core) 3%, transparent)
+  );
+
+  --glass-shadow-sm: 0 4px 16px color-mix(in srgb, #000 32%, transparent);
+  --glass-shadow-md: 0 10px 32px color-mix(in srgb, #000 38%, transparent);
+  --glass-shadow-lg: 0 18px 52px color-mix(in srgb, #000 44%, transparent);
+
+  /* radius — continuous-ish */
+  --glass-radius-sm: 8px;
+  --glass-radius-md: 14px;
+  --glass-radius-lg: 20px;
+  --glass-radius-xl: 24px;
+  --glass-radius-pill: 999px;
+
+  /* composed material recipes (background + filter + shadow) */
+  --glass-toolbar: var(--glass-tint-base);
+  --glass-toolbar-stroke: var(--glass-stroke);
+  --glass-toolbar-blur: blur(var(--glass-blur-lg)) saturate(var(--glass-saturate-high));
+  --glass-toolbar-shadow: var(--glass-shadow-sm), var(--glass-inner-light);
+
+  --glass-card: var(--glass-tint-elevated);
+  --glass-card-stroke: var(--glass-stroke);
+  --glass-card-blur: blur(var(--glass-blur-md)) saturate(var(--glass-saturate));
+  --glass-card-shadow: var(--glass-shadow-sm), var(--glass-inner-light);
+
+  --glass-pill: var(--glass-tint-clear);
+  --glass-pill-stroke: color-mix(in srgb, var(--glass-stroke) 70%, transparent);
+  --glass-pill-blur: blur(var(--glass-blur-sm)) saturate(var(--glass-saturate));
+  --glass-pill-shadow: var(--glass-inner-light);
+
+  --glass-panel: var(--glass-tint-base);
+  --glass-panel-stroke: var(--glass-stroke);
+  --glass-panel-blur: blur(var(--glass-blur-md)) saturate(var(--glass-saturate));
+  --glass-panel-shadow: var(--glass-shadow-sm), var(--glass-inner-light);
+
+  --glass-input: color-mix(in srgb, var(--macos-bg) 55%, transparent);
+  --glass-input-stroke: var(--glass-stroke);
+  --glass-input-focus: color-mix(in srgb, var(--color-brass-core) 45%, var(--glass-stroke));
+
+  --glass-alert-info: color-mix(in srgb, var(--color-tier-end-to-end) 10%, var(--glass-tint-elevated));
+  --glass-alert-warning: color-mix(in srgb, var(--color-tier-server-readable) 10%, var(--glass-tint-elevated));
+  --glass-alert-error: color-mix(in srgb, var(--color-seal-crimson) 10%, var(--glass-tint-elevated));
+
+  --glass-transition:
+    background 160ms var(--motion-ease-standard),
+    border-color 160ms var(--motion-ease-standard),
+    box-shadow 160ms var(--motion-ease-standard),
+    color 160ms var(--motion-ease-standard);
+}
+
+/* Aurora skin keeps cool cyan identity but still on slate canvas */
+:root[data-skin='aurora'] {
+  --macos-bg: #040610;
+  --macos-surface: #0c1220;
+  --macos-surface-elevated: #141c2e;
+  --color-ink-void: #040610;
+  --color-ink-base: #040610;
+  --color-ink-elevated: #0c1220;
+}

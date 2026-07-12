@@ -1,0 +1,166 @@
+{
+  "generatedAt": "2026-07-08T03:19:09.875Z",
+  "method": "onboardingStore-state-machine-plus-copy-review",
+  "linuxPermissionPathPrivacyCopy": {
+    "daemonServiceSetup": "AF_UNIX daemon/socket path copy plus openburnbar-cli service foreground guidance.",
+    "secretStoreTrust": "Secret Service/KWallet and headless passphrase copy.",
+    "providerLogPaths": "Provider XDG log path privacy copy.",
+    "cloudLowerTrustIdentity": "Linux cloud identity is lower-trust and local SQLite stays canonical while signed out.",
+    "portalCaptureInputPermissions": "Wayland portal consent copy for capture/input, with retry after denial.",
+    "trayDesktopLimitations": "Ayatana/AppIndicator and desktop-environment limitation copy.",
+    "updates": "Package-channel and restart guidance are shown before update checks.",
+    "privacyChoices": "Telemetry/local-only/privacy choices are explicit; provider paths are opt-in."
+  },
+  "skipRetryResume": [
+    {
+      "action": "first-run",
+      "persistedState": {
+        "completed": false,
+        "step": 0,
+        "skippedSteps": []
+      },
+      "expected": "Wizard starts at daemon/socket setup and does not silently grant Linux permissions."
+    },
+    {
+      "action": "retry-check",
+      "persistedState": {
+        "completed": false,
+        "step": 0,
+        "skippedSteps": []
+      },
+      "expected": "Retry probes daemon health, shows visible status feedback, and does not advance or lose the current step."
+    },
+    {
+      "action": "skip-step",
+      "persistedState": {
+        "completed": false,
+        "step": 1,
+        "skippedSteps": [
+          0
+        ]
+      },
+      "expected": "Skip records the skipped daemon step and resumes at Secret Service setup."
+    },
+    {
+      "action": "restart-resume",
+      "persistedState": {
+        "completed": false,
+        "step": 1,
+        "skippedSteps": [
+          0
+        ]
+      },
+      "expected": "A fresh app session reads localStorage and resumes the incomplete wizard."
+    },
+    {
+      "action": "complete",
+      "persistedState": {
+        "completed": true,
+        "step": 7,
+        "skippedSteps": [
+          0
+        ]
+      },
+      "expected": "Completion is persisted and the wizard renders a completed state before later launches open the dashboard."
+    }
+  ],
+  "stateProbe": {
+    "initial": {
+      "completed": false,
+      "step": 0,
+      "skippedSteps": [],
+      "daemonAck": false,
+      "secretStoreAck": false,
+      "portalAck": false,
+      "trayLimitAck": false
+    },
+    "retry": {
+      "completed": false,
+      "step": 0,
+      "skippedSteps": [],
+      "daemonAck": false,
+      "secretStoreAck": false,
+      "portalAck": false,
+      "trayLimitAck": false
+    },
+    "skipped": {
+      "completed": false,
+      "step": 1,
+      "skippedSteps": [
+        0
+      ],
+      "daemonAck": false,
+      "secretStoreAck": false,
+      "portalAck": false,
+      "trayLimitAck": false
+    },
+    "resumed": {
+      "completed": false,
+      "step": 1,
+      "skippedSteps": [
+        0
+      ],
+      "daemonAck": false,
+      "secretStoreAck": false,
+      "portalAck": false,
+      "trayLimitAck": false
+    }
+  },
+  "deniedRetryCases": [
+    {
+      "id": "secret-store-unavailable",
+      "userVisibleFeedback": "Secret Service locked or unavailable.",
+      "retryOrRecovery": "Unlock GNOME Keyring/KWallet or configure the headless passphrase file."
+    },
+    {
+      "id": "permission-denied",
+      "userVisibleFeedback": "Provider path permission denied.",
+      "retryOrRecovery": "Grant read access only to selected XDG/provider session directories."
+    },
+    {
+      "id": "onboarding-incomplete",
+      "userVisibleFeedback": "First-run wizard blocks dashboard until Continue or Skip.",
+      "retryOrRecovery": "Complete onboarding or enable daemon fixture for host smoke."
+    }
+  ],
+  "accessibility": {
+    "route": "onboarding",
+    "landmarks": [
+      "a.skip-link[href=\"#main\"]",
+      "nav[aria-label=\"Primary\"]",
+      "main#main",
+      "#route-title"
+    ]
+  },
+  "restartResumeProof": {
+    "storageKey": "openburnbar.linux.onboarding.v1",
+    "beforeRestart": {
+      "completed": false,
+      "step": 1,
+      "skippedSteps": [
+        0
+      ],
+      "daemonAck": false,
+      "secretStoreAck": false,
+      "portalAck": false,
+      "trayLimitAck": false
+    },
+    "afterRestart": {
+      "completed": false,
+      "step": 1,
+      "skippedSteps": [
+        0
+      ],
+      "daemonAck": false,
+      "secretStoreAck": false,
+      "portalAck": false,
+      "trayLimitAck": false
+    },
+    "resumedSameStep": true
+  },
+  "packagedScreenshots": [
+    "screenshot-route-onboarding.png",
+    "screenshot-linux-desktop-first-run.png"
+  ],
+  "docsCopyReview": "Onboarding route copy is in src/onboardingSteps.ts ONBOARDING_STEPS and uses Linux-specific permission/path/privacy wording."
+}

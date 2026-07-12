@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Portable cloud-sync composition + memory feed for the WinUI app (WS-B4).
+    net8.0, no WinUI — unit-tested on macOS via windows/tests/cloudsync-app.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.App.CloudSync</RootNamespace>
+    <AssemblyName>OpenBurnBar.App.CloudSync</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenBurnBar.App.Presentation\OpenBurnBar.App.Presentation.csproj" />
+    <ProjectReference Include="..\OpenBurnBar.App.Configuration\OpenBurnBar.App.Configuration.csproj" />
+    <ProjectReference Include="..\..\cloudsync\OpenBurnBar.CloudSync\OpenBurnBar.CloudSync.csproj" />
+    <ProjectReference Include="..\..\cloudsync\OpenBurnBar.CloudSync.Crypto\OpenBurnBar.CloudSync.Crypto.csproj" />
+    <ProjectReference Include="..\..\cloudsync\appcheck\OpenBurnBar.CloudSync.AppCheck\OpenBurnBar.CloudSync.AppCheck.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -258,6 +258,24 @@ final class CursorConnectorTests: XCTestCase {
         XCTAssertFalse(script.contains("/usr/bin/security"))
     }
 
+    func test_proxyScriptPrunesStalePerClientRateLimitState() {
+        let script = CursorConnectorManager.proxyScript()
+
+        XCTAssertTrue(script.contains("MAX_TRACKED_CLIENTS = 4096"))
+        XCTAssertTrue(script.contains("def _remember_client_entries(state, client_ip, entries, window_start):"))
+        XCTAssertTrue(script.contains("state.pop(client_ip, None)"))
+        XCTAssertTrue(script.contains("while len(state) > MAX_TRACKED_CLIENTS:"))
+    }
+
+    func test_proxyScriptPreservesExplicitZeroAuthFailureLimit() {
+        let script = CursorConnectorManager.proxyScript()
+
+        XCTAssertTrue(script.contains("def _int_config(config, name, default):"))
+        XCTAssertTrue(script.contains("if raw_value is None:"))
+        XCTAssertTrue(script.contains("AUTH_FAIL_LIMIT = _int_config(CONFIG, \"auth_fail_limit\", 20)"))
+        XCTAssertFalse(script.contains("auth_fail_limit\", 20) or 20"))
+    }
+
     func test_keychainStoreDisablesSystemPromptsForBackgroundReads() throws {
         let security = RecordingSecurityKeychainOperations()
         let backend = SecurityKeychainStoreBackend(security: security)
@@ -368,6 +386,109 @@ final class CursorConnectorTests: XCTestCase {
             secondModelStatus,
             429,
             "Authenticated API requests should still consume and enforce the configured tunnel quota."
+        )
+    }
+
+    func test_proxyScript_usesCfConnectingIPForIndependentRateLimitsAndCapsAuthFailures() async throws {
+        let directory = try makeTemporaryHome()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let scriptURL = directory.appendingPathComponent("cursor_connector_proxy.py")
+        let configURL = directory.appendingPathComponent("cursor_connector_proxy_config.json")
+        let usageLogURL = directory.appendingPathComponent("usage.jsonl")
+        let port = try availableLoopbackPort()
+        let bearerToken = "test-token-\(UUID().uuidString)"
+
+        try CursorConnectorManager.proxyScript().write(to: scriptURL, atomically: true, encoding: .utf8)
+        let config: [String: Any] = [
+            "port": port,
+            "session_token": "session-token",
+            "tunnel_rotation_token": bearerToken,
+            "secret_broker_url": "",
+            "secret_broker_token": "",
+            "rate_limit_requests": 1,
+            "rate_limit_window": 60,
+            "auth_fail_limit": 2,
+            "usage_log": usageLogURL.path,
+            "routes": [
+                "glm-5": [
+                    "provider": "zai",
+                    "base_url": "https://example.invalid/v1",
+                    "route_id": "route-zai"
+                ]
+            ]
+        ]
+        try JSONSerialization.data(withJSONObject: config, options: [.prettyPrinted, .sortedKeys])
+            .write(to: configURL, options: .atomic)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        process.arguments = [scriptURL.path, configURL.path]
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = output
+        try process.run()
+        defer {
+            process.terminate()
+            process.waitUntilExit()
+        }
+
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.timeoutIntervalForRequest = 2
+        let session = URLSession(configuration: sessionConfig)
+        defer { session.invalidateAndCancel() }
+        let baseURL = try XCTUnwrap(URL(string: "http://127.0.0.1:\(port)"))
+        try await waitForProxyHealth(baseURL: baseURL, session: session)
+
+        let authHeaders = ["Authorization": "Bearer \(bearerToken)"]
+        let cfOneHeaders = authHeaders.merging(["Cf-Connecting-IP": "198.51.100.10"], uniquingKeysWith: { _, new in new })
+        let cfTwoHeaders = authHeaders.merging(["Cf-Connecting-IP": "198.51.100.11"], uniquingKeysWith: { _, new in new })
+
+        let firstClientStatus = try await proxyResponseStatus(
+            baseURL.appendingPathComponent("v1/models"),
+            headers: cfOneHeaders,
+            session: session
+        )
+        XCTAssertEqual(firstClientStatus, 200)
+
+        let secondClientStatus = try await proxyResponseStatus(
+            baseURL.appendingPathComponent("v1/models"),
+            headers: cfTwoHeaders,
+            session: session
+        )
+        XCTAssertEqual(
+            secondClientStatus,
+            200,
+            "Distinct Cf-Connecting-IP identities must have independent request buckets."
+        )
+
+        let firstClientSecondStatus = try await proxyResponseStatus(
+            baseURL.appendingPathComponent("v1/models"),
+            headers: cfOneHeaders,
+            session: session
+        )
+        XCTAssertEqual(firstClientSecondStatus, 429)
+
+        let badHeaders = ["Authorization": "Bearer definitely-wrong"]
+        let firstAuthFailStatus = try await proxyResponseStatus(
+            baseURL.appendingPathComponent("v1/models"),
+            headers: badHeaders,
+            session: session
+        )
+        XCTAssertEqual(firstAuthFailStatus, 401)
+
+        let secondAuthFailStatus = try await proxyResponseStatus(
+            baseURL.appendingPathComponent("v1/models"),
+            headers: badHeaders,
+            session: session
+        )
+        XCTAssertEqual(secondAuthFailStatus, 401)
+
+        let malformedAuthorization = Array("Bearer definitely-wrong-".utf8) + [0xff]
+        let thirdAuthFailStatus = try rawProxyResponseStatus(port: port, authorizationBytes: malformedAuthorization)
+        XCTAssertEqual(
+            thirdAuthFailStatus,
+            429,
+            "Malformed non-ASCII bearer headers should count as auth failures instead of aborting compare_digest."
         )
     }
 
@@ -515,7 +636,7 @@ final class CursorConnectorTests: XCTestCase {
     private func waitForProxyHealth(baseURL: URL, session: URLSession) async throws {
         let healthURL = baseURL.appendingPathComponent("health")
         var lastError: Error?
-        for _ in 0..<50 {
+        for _ in 0..<150 {
             do {
                 if try await proxyResponseStatus(healthURL, session: session) == 200 {
                     return
@@ -539,6 +660,62 @@ final class CursorConnectorTests: XCTestCase {
         }
         let (_, response) = try await session.data(for: request)
         return try XCTUnwrap(response as? HTTPURLResponse).statusCode
+    }
+
+    private func rawProxyResponseStatus(port: Int, authorizationBytes: [UInt8]) throws -> Int {
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+        }
+        defer { close(fd) }
+
+        var timeout = timeval(tv_sec: 2, tv_usec: 0)
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = in_port_t(port).bigEndian
+        address.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
+
+        let connectResult = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        guard connectResult == 0 else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+        }
+
+        var request = Data()
+        request.append(Data("GET /v1/models HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\nAuthorization: ".utf8))
+        request.append(contentsOf: authorizationBytes)
+        request.append(Data("\r\n\r\n".utf8))
+        let bytesSent = request.withUnsafeBytes { rawBuffer in
+            Darwin.send(fd, rawBuffer.baseAddress, rawBuffer.count, 0)
+        }
+        guard bytesSent == request.count else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+        }
+
+        var response = Data()
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while true {
+            let count = buffer.withUnsafeMutableBytes { rawBuffer in
+                Darwin.recv(fd, rawBuffer.baseAddress, rawBuffer.count, 0)
+            }
+            if count > 0 {
+                response.append(contentsOf: buffer.prefix(count))
+            } else {
+                break
+            }
+        }
+
+        let responseText = String(decoding: response, as: UTF8.self)
+        let statusLine = try XCTUnwrap(responseText.components(separatedBy: "\r\n").first)
+        let parts = statusLine.split(separator: " ")
+        return try XCTUnwrap(Int(parts[1]))
     }
 }
 

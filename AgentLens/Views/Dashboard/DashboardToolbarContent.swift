@@ -1,71 +1,69 @@
 import AppKit
+import OpenBurnBarCore
 import SwiftUI
 
-// MARK: - Toolbar Content
+// MARK: - Command Deck Toolbar
 //
-// The live macOS toolbar for the dashboard. Refined into a unified ember
-// "Burn Rail" by composing `BurnBarTopRail.swift` primitives:
+// A single ~52pt bar replacing the old toolbar + tab-card strip.
 //
-//   [identity]      back · 🔥 OpenBurnBar · Agents/Models
-//   [principal]     route name + state caption pill (BurnRailWorkspaceContextPill)
-//   [primary]       time range · #/$ · BURN hero · actions
-//
-// The BURN hero replaces the flat metric badge with a live pulse dot, delta
-// chip, sparkline, and a numeric-content-transition headline, all from the
-// existing BurnRail primitive set.
+//   [navigation]    back · 🔥 OpenBurnBar · section switcher · ⌘K hint
+//   [principal]     (empty — the section menu already names the route)
+//   [primaryAction] BURN hero (range + unit in popover) · ⋯ overflow
 
 extension DashboardView {
 
     @ToolbarContentBuilder
     var toolbarContent: some ToolbarContent {
 
-        // MARK: Identity (back + flame + view mode)
-        ToolbarItem(placement: .navigation) {
-            BurnRailIdentitySection(
-                viewMode: Binding(
-                    get: { BurnRailViewMode(fromDashboard: viewMode) },
-                    set: { newValue in
-                        viewMode = newValue.toDashboardViewMode
-                    }
-                ),
-                canGoBack: canGoBack,
-                onBack: { goBack() }
-            )
-            .onChange(of: viewMode) { _, _ in
-                withAnimation(DesignSystem.Animation.standard) {
-                    routeHistory.removeAll()
-                    mainRoute = .overview
+        // MARK: Navigation — back · brand · section switcher · ⌘K hint
+
+        ToolbarItemGroup(placement: .navigation) {
+            if canGoBack {
+                Button(action: goBack) {
+                    Image(systemName: "chevron.backward")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
                 }
+                .help(backButtonHelpText)
             }
-        }
 
-        // MARK: Workspace context (route + state caption)
-        ToolbarItem(placement: .principal) {
-            BurnRailWorkspaceContextPill(
-                routeName: workspaceContext.routeName,
-                stateCaption: workspaceContext.stateCaption,
-                helpText: workspaceContext.helpText
+            BurnRailBrandMark()
+
+            DashboardSectionSwitcher(
+                currentRoute: mainRoute,
+                activeChatBackend: chatController.chatBackend,
+                pendingMemoryCount: pendingMemoryReviewCount,
+                onNavigate: { route in
+                    withAnimation(DesignSystem.Animation.standard) {
+                        navigate(to: route)
+                    }
+                }
             )
-            .frame(minWidth: 160, idealWidth: 320, maxWidth: 420)
-            .layoutPriority(-1)
+
+            Button {
+                showCommandPalette = true
+            } label: {
+                ShortcutChip(keys: ["\u{2318}", "K"])
+            }
+            .buttonStyle(.plain)
+            .help("Command Palette (\u{2318}K)")
         }
 
-        // MARK: Filters · Telemetry · Actions
+        // MARK: Primary — BURN hero (with range/unit popover) · overflow
+
         ToolbarItemGroup(placement: .primaryAction) {
-            BurnRailTimeRangeMenuChip(
-                selected: Binding(
-                    get: { selectedTimeRange },
-                    set: { selectedTimeRange = $0 }
-                )
-            )
+            commandDeckHero
 
-            BurnRailUnitToggle(
-                unit: Binding(
-                    get: { BurnRailUnit(fromUsageMode: settingsManager.usageDisplayMode) },
-                    set: { settingsManager.usageDisplayMode = $0.toUsageDisplayMode }
-                )
-            )
+            commandDeckOverflow
+        }
+    }
 
+    // MARK: - BURN hero with range + unit popover
+
+    private var commandDeckHero: some View {
+        Button {
+            showHeroPopover.toggle()
+        } label: {
             BurnRailTelemetryHero(
                 telemetry: BurnRailTelemetry(
                     headlineValue: settingsManager.formatUsageMetric(
@@ -78,147 +76,149 @@ extension DashboardView {
                     isLive: burnRailIsLive
                 )
             )
-
-            BurnRailActionsSection(
-                isScanning: isScanning,
-                onImport: runScan,
-                onRecount: runRecount
-            )
-
-            BurnRailAppearanceQuickMenu(
-                settingsManager: settingsManager,
-                onOpenAppearanceSettings: { showingSettings = true }
-            )
-
-            BurnRailSettingsButton(onSettings: { showingSettings = true })
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: $showHeroPopover, arrowEdge: .bottom) {
+            commandDeckHeroPopover
+                .frame(width: 240)
         }
     }
 
-    // MARK: - Workspace context resolver
+    private var commandDeckHeroPopover: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            Text("Time Range")
+                .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                .tracking(1.0)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
 
-    fileprivate struct ResolvedWorkspaceContext {
-        let routeName: String
-        let stateCaption: String
-        let helpText: String
+            VStack(spacing: 2) {
+                ForEach(TimeRange.allCases) { range in
+                    let isSelected = selectedTimeRange == range
+                    Button {
+                        selectedTimeRange = range
+                        Analytics.shared.track(.dashboardTimeRangeChanged, ["time_range": .string(range.rawValue)])
+                    } label: {
+                        HStack {
+                            if isSelected {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(DesignSystem.Colors.ember)
+                            }
+                            Text(range.displayName)
+                                .font(.system(size: 12, weight: isSelected ? .semibold : .regular, design: .rounded))
+                                .foregroundStyle(isSelected ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textSecondary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(isSelected ? DesignSystem.Colors.ember.opacity(0.1) : Color.clear)
+                        )
+                        .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            Divider().opacity(0.4)
+
+            HStack {
+                Text("Unit")
+                    .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                    .tracking(1.0)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                Spacer()
+                BurnRailUnitToggle(
+                    unit: Binding(
+                        get: { BurnRailUnit(fromUsageMode: settingsManager.usageDisplayMode) },
+                        set: {
+                            settingsManager.usageDisplayMode = $0.toUsageDisplayMode
+                            Analytics.shared.track(.dashboardUnitToggled, ["unit": .string($0.toUsageDisplayMode.rawValue)])
+                        }
+                    )
+                )
+            }
+        }
+        .padding(DesignSystem.Spacing.md)
     }
 
-    fileprivate var workspaceContext: ResolvedWorkspaceContext {
-        switch mainRoute {
-        case .overview:
-            let active = activeProviderCount
-            let sessions = dashboardUsageWindow.sessionCount
-            let providerLabel = active == 1 ? "provider" : "providers"
-            return ResolvedWorkspaceContext(
-                routeName: "Overview",
-                stateCaption: "\(active) \(providerLabel) · \(sessions.formatted()) sessions in window",
-                helpText: "All providers + models in the current time window."
-            )
-        case .insights:
-            return ResolvedWorkspaceContext(
-                routeName: "Insights",
-                stateCaption: "Editorial brief · anomalies · recommendations",
-                helpText: "Generated findings from your tracked usage."
-            )
-        case .database:
-            return ResolvedWorkspaceContext(
-                routeName: "Database",
-                stateCaption: "\(dataStore.totalUsageSessionCount.formatted()) sessions indexed",
-                helpText: "Browse every tracked session row by row."
-            )
-        case .projects:
-            return ResolvedWorkspaceContext(
-                routeName: "Projects",
-                stateCaption: "Grouped by project · memory + citations",
-                helpText: "Sessions and findings clustered by project root."
-            )
-        case .missions:
-            return ResolvedWorkspaceContext(
-                routeName: "Missions",
-                stateCaption: "Active runs · tasks · approvals",
-                helpText: "Daemon mission console."
-            )
-        case .sessionLogs:
-            return ResolvedWorkspaceContext(
-                routeName: "Session Logs",
-                stateCaption: "Indexed conversations · ask the corpus",
-                helpText: "Full-text indexed conversations."
-            )
-        case .memoryReview:
-            return ResolvedWorkspaceContext(
-                routeName: "Memory",
-                stateCaption: "Review what OpenBurnBar learned",
-                helpText: "Approve or reject extracted memories before they can be used."
-            )
-        case .chat:
-            return ResolvedWorkspaceContext(
-                routeName: "Chat",
-                stateCaption: chatController.chatBackend == .hermes
-                    ? "Hermes · multi-turn memory"
-                    : "Local Index · per-turn retrieval",
-                helpText: "Full-canvas chat workspace."
-            )
-        case .quota:
-            return ResolvedWorkspaceContext(
-                routeName: "Quota",
-                stateCaption: quotaContextCaption,
-                helpText: "Subscription Vault — every connected provider's quota."
-            )
-        case .provider(let provider):
-            let snap = quotaService.snapshot(for: provider)
-            let bucket = snap?.primaryDisplayableBucket
-            let caption: String = bucket.map { "\($0.label): \($0.remainingText) left" }
-                ?? snap?.summaryText
-                ?? "Drill into per-provider spend"
-            return ResolvedWorkspaceContext(
-                routeName: provider.displayName,
-                stateCaption: caption,
-                helpText: "Provider deep dive."
-            )
-        case .model(let modelName):
-            return ResolvedWorkspaceContext(
-                routeName: modelName,
-                stateCaption: "Model deep dive",
-                helpText: "Per-model breakdown."
-            )
-        }
-    }
+    // MARK: - Overflow menu (Appearance · Import · Recount · Settings)
 
-    private var quotaContextCaption: String {
-        let active = quotaService.snapshotsByProvider.values.filter { $0.hasDisplayableQuotaSignal }
-        let total = active.count
-        guard total > 0 else { return "No active plans — connect one in Settings" }
-        let nearEdge = active.filter { ($0.primaryDisplayableBucket?.progressFraction ?? 0) >= 0.74 }.count
-        let nextReset = active
-            .compactMap { $0.primaryDisplayableBucket?.resetsAt }
-            .filter { $0 > Date() }
-            .min()
-        var parts: [String] = ["\(total) plan\(total == 1 ? "" : "s")"]
-        if nearEdge > 0 {
-            parts.append("\(nearEdge) near edge")
+    private var commandDeckOverflow: some View {
+        Menu {
+            Section("Appearance") {
+                ForEach(AppearanceMode.allCases, id: \.self) { mode in
+                    Button {
+                        settingsManager.appearanceMode = mode
+                    } label: {
+                        if settingsManager.appearanceMode == mode {
+                            Label(mode.quickMenuLabel, systemImage: "checkmark")
+                        } else {
+                            Text(mode.quickMenuLabel)
+                        }
+                    }
+                }
+            }
+
+            Section("App Skin") {
+                ForEach(AppSkin.allCases, id: \.self) { skin in
+                    Button {
+                        settingsManager.appearanceSkin = skin
+                    } label: {
+                        if settingsManager.appearanceSkin == skin {
+                            Label(skin.quickMenuLabel, systemImage: "checkmark")
+                        } else {
+                            Text(skin.quickMenuLabel)
+                        }
+                    }
+                }
+            }
+
+            Section {
+                Button("Import Sessions") { runScan() }
+                    .disabled(isScanning)
+
+                Button("Recount Totals") { runRecount() }
+                    .disabled(!canRunRecount)
+
+                Divider()
+
+                Button("Settings…") { showingSettings = true }
+                    .accessibilityIdentifier(OBBAccessibilityID.dashboardSettingsButton)
+            }
+        } label: {
+            HStack(spacing: 4) {
+                if isScanning {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.ember)
+                } else {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                }
+            }
+            .frame(width: 28, height: 24)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(DesignSystem.Colors.surface.opacity(0.4))
+            )
+            .accessibilityIdentifier(OBBAccessibilityID.dashboardOverflowButton)
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(DesignSystem.Colors.border.opacity(0.4), lineWidth: 0.5)
+            )
+            .contentShape(Capsule(style: .continuous))
         }
-        if let next = nextReset {
-            parts.append("next reset \(next.formatted(.relative(presentation: .numeric)))")
-        }
-        return parts.joined(separator: " · ")
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("More actions")
     }
 }
 
-// MARK: - Enum bridges (DashboardViewMode ↔ BurnRailViewMode, UsageDisplayMode ↔ BurnRailUnit)
-
-private extension BurnRailViewMode {
-    init(fromDashboard mode: DashboardViewMode) {
-        switch mode {
-        case .agents: self = .agents
-        case .models: self = .models
-        }
-    }
-    var toDashboardViewMode: DashboardViewMode {
-        switch self {
-        case .agents: return .agents
-        case .models: return .models
-        }
-    }
-}
+// MARK: - Enum bridges (UsageDisplayMode ↔ BurnRailUnit)
 
 private extension BurnRailUnit {
     init(fromUsageMode mode: UsageDisplayMode) {

@@ -170,6 +170,12 @@ final class OpenBurnBarAuthoringReplayGoldenTests: XCTestCase {
                 summarizeAuthoringCase(name: "refine-agent-doc", draft: refineAgent)
             ]
         )
+        XCTAssertEqual(snapshot.cases.map(\.name), [
+            "draft-skill",
+            "refine-skill",
+            "draft-agent-doc",
+            "refine-agent-doc"
+        ])
         try OpenBurnBarReplayGoldens.assertGolden(snapshot, fixtureFile: "authoring-draft-refine-grounding.json")
     }
 

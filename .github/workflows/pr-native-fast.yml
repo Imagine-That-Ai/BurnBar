@@ -166,10 +166,35 @@ jobs:
       # Reuses scripts/test-openburnbar-swift.sh, which prepares the libsignal
       # FFI then runs `swift test` (build + unit) on OpenBurnBarCore and
       # OpenBurnBarDaemon. This is the SwiftPM-level compile+unit gate the task
-      # requires on PRs. Coverage is left off here (fast feedback); the post-
-      # merge Swift Core lane keeps the coverage + diff-coverage gates.
+      # requires on PRs. Coverage is enabled here because this is the merge-
+      # blocking lane that owns package-source diff coverage.
       - name: Build + test OpenBurnBarCore and OpenBurnBarDaemon (SwiftPM)
-        run: ./scripts/test-openburnbar-swift.sh
+        run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-swift.sh
+
+      - name: Extract package coverage lines
+        if: github.event_name == 'pull_request'
+        run: ./scripts/extract-package-coverage-lines.sh > "$GITHUB_WORKSPACE/openburnbar-package-coverage-lines.json"
+
+      - name: Enforce package diff coverage
+        if: github.event_name == 'pull_request'
+        env:
+          DIFF_COVERAGE_SCOPE: packages
+          DIFF_COVERAGE_OUTPUT: ${{ github.workspace }}/openburnbar-package-diff-coverage.json
+        run: |
+          set -euo pipefail
+          ./scripts/diff-coverage-self-test.sh
+          git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
+          ./scripts/diff-coverage.sh origin/main '' '' "$GITHUB_WORKSPACE/openburnbar-package-coverage-lines.json"
+
+      - name: Upload package coverage evidence
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: pr-package-coverage
+          path: |
+            openburnbar-package-coverage-lines.json
+            openburnbar-package-diff-coverage.json
+          if-no-files-found: error
 
   # ── PR-GATED: XcodeGen pbxproj drift gate ──────────────────────────────────
   # remediation(ci-xcodegen-drift): no workflow regenerated the project and

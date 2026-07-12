@@ -165,7 +165,14 @@ protocol DataVaultServicing: AnyObject {
 final class FunctionsDataVaultService: DataVaultServicing {
     static let shared = FunctionsDataVaultService()
 
-    private let functions = Functions.functions(region: "us-central1")
+    // Deferred so merely constructing the service (e.g. as a default
+    // dependency of `HostedQuotaSubscriptionStore`) never touches Firebase.
+    // `Functions.functions(region:)` traps when no `FirebaseApp` is configured,
+    // which is the intended "auth-disabled" degrade path for OSS/test checkouts
+    // and screenshot mode. Lazy init keeps production behavior identical (the
+    // callable is created on first real use, by which point Firebase is
+    // configured) while letting the service exist unused without crashing.
+    private lazy var functions = Functions.functions(region: "us-central1")
     private let preparedPayloadProvider: () -> [[String: Any]]
 
     /// `preparedPayloadProvider` supplies already-cloaked/sealed Pensieve
@@ -318,6 +325,12 @@ enum PensieveCommitQueueDrainer {
             }
             return payload
         }
+    }
+}
+
+extension FunctionsDataVaultService: HostedQuotaTierReading {
+    func fetchHostedQuotaTier() async throws -> String? {
+        try await getDataDomainUsage().tier
     }
 }
 

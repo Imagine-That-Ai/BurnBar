@@ -69,8 +69,14 @@ struct AssistantTileBridgeView: View {
             return "Antigravity runs through OpenBurnBar on your Mac. Pair your Mac to start a session here."
         case .grok:
             return "Grok Build runs through OpenBurnBar on your Mac. Pair your Mac to start a session here."
-        case .cursorAgent, .openClaude:
+        case .cursorAgent:
             return "Cursor Agent runs through OpenBurnBar on your Mac. Pair your Mac to start a session here."
+        case .junie:
+            return "Junie runs through OpenBurnBar on your Mac. Pair your Mac to start a session here."
+        case .openClaude:
+            return "OpenClaude runs through OpenBurnBar on your Mac. Pair your Mac to start a session here."
+        case .omp:
+            return "OMP runs through OpenBurnBar on your Mac. Pair your Mac to start a session here."
         case .hermes, .pi:
             return ""
         }

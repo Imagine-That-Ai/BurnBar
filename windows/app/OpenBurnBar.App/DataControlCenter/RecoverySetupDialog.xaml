@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Windows render of the recovery setup sheet (AgentLens/Views/Settings/DataControlCenter/
+  DataControlCenterActions.swift · RecoverySetupSheet). Forced before zero-knowledge mode: register
+  a raw recovery key OR a split-knowledge recovery contact (Apple ADP pattern), and confirm existing
+  methods. A ContentDialog is the Windows analog of the macOS .sheet. Binds to the portable
+  DataControlCenterViewModel; the recovery-KEY crypto envelope is wired on the dev host (the
+  CloudVault key-wrap seam), so this dialog passes the raw key through for that step.
+-->
+<ContentDialog
+    x:Class="OpenBurnBar.App.DataControlCenter.RecoverySetupDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:dcc="using:OpenBurnBar.App.Presentation.DataControlCenter"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="Set up recovery"
+    PrimaryButtonText="Register method"
+    CloseButtonText="Done"
+    DefaultButton="Primary"
+    Background="{StaticResource PensieveColorGlassBgElevatedBrush}">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="14" MinWidth="440">
+            <TextBlock TextWrapping="Wrap" FontSize="12"
+                       Foreground="{StaticResource PensieveColorTextBaseBrush}"
+                       Text="Required before end-to-end encrypted mode. If you lose every trusted device, this is the only way back to your sealed data — BurnBar cannot recover it for you." />
+
+            <StackPanel Orientation="Horizontal" Spacing="16">
+                <RadioButton x:Name="MethodKey" Content="Recovery key" GroupName="Method"
+                             IsChecked="True" Checked="OnMethodChanged" />
+                <RadioButton x:Name="MethodContact" Content="Recovery contact" GroupName="Method"
+                             Checked="OnMethodChanged" />
+            </StackPanel>
+
+            <!-- Recovery key form -->
+            <StackPanel x:Name="KeyForm" Spacing="6">
+                <TextBlock Text="RECOVERY KEY" FontSize="10" FontWeight="SemiBold"
+                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                <TextBox x:Name="RecoveryKeyBox" PlaceholderText="recovery key"
+                         FontFamily="Cascadia Mono, Consolas" TextChanged="OnFormChanged" />
+                <TextBlock Text="Write this down and store it somewhere only you can reach. We never see it."
+                           FontSize="11" TextWrapping="Wrap"
+                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+            </StackPanel>
+
+            <!-- Recovery contact form -->
+            <StackPanel x:Name="ContactForm" Spacing="6" Visibility="Collapsed">
+                <TextBlock Text="RECOVERY CONTACT" FontSize="10" FontWeight="SemiBold"
+                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                <TextBox x:Name="ContactLabelBox" PlaceholderText="Contact label (e.g. &quot;Mom's PC&quot;)"
+                         TextChanged="OnFormChanged" />
+                <TextBox x:Name="ContactEmailBox" PlaceholderText="Contact email" TextChanged="OnFormChanged" />
+                <TextBlock Text="A split-knowledge contact holds one half of your recovery secret. They can help you recover, but cannot read your data alone."
+                           FontSize="11" TextWrapping="Wrap"
+                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+            </StackPanel>
+
+            <!-- Existing methods -->
+            <StackPanel x:Name="ExistingGroup" Spacing="8" Visibility="Collapsed">
+                <TextBlock Text="YOUR RECOVERY METHODS" FontSize="10" FontWeight="SemiBold"
+                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                <ItemsRepeater x:Name="ExistingList">
+                    <ItemsRepeater.Layout>
+                        <StackLayout Spacing="6" />
+                    </ItemsRepeater.Layout>
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate x:DataType="dcc:RecoveryMethod">
+                            <Grid ColumnSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Grid.Column="0" Glyph="&#xE192;" FontSize="14"
+                                          Foreground="{StaticResource PensieveColorBrassCoreBrush}" />
+                                <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="12"
+                                           Text="{x:Bind Kind}"
+                                           Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                                <TextBlock Grid.Column="2" VerticalAlignment="Center" FontSize="10" FontWeight="SemiBold"
+                                           Text="{x:Bind Confirmed}"
+                                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
+            </StackPanel>
+
+            <TextBlock x:Name="ErrorText" FontSize="11" TextWrapping="Wrap" Visibility="Collapsed"
+                       Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
+        </StackPanel>
+    </ScrollViewer>
+</ContentDialog>

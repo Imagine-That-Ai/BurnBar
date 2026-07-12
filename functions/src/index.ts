@@ -20,6 +20,12 @@ export { computeTierCogsDaily } from "./tierCogs.js";
 export { reserveAgentControlActionBudget, reserveFlooRelayBudget } from "./cloudProAllowance.js";
 export { performElderWandHostedSearch } from "./elderWandHostedSearch.js";
 export { recomputeComputerUseQuotaUsage } from "./computerUseQuota.js";
+export {
+  meterComputerUseAction,
+  meterComputerUseSessionStart,
+  meterComputerUseSessionCompletion,
+} from "./computerUseMetering.js";
+export { reconcileAccountErasures } from "./accountDeletionReconciler.js";
 export { rollupComputerUseDaily } from "./computerUseMonitoring.js";
 export { validateOpenTimestampsProof } from "./computerUseOpenTimestamps.js";
 export { sendVoIPOutbound, retryStuckVoIPPushes } from "./apnsSender.js";
@@ -138,6 +144,8 @@ export {
 export { revokeAllAccess } from "./callables/panic.js";
 export { getAuditLog, verifyAuditLog } from "./callables/auditLog.js";
 export { registerBrowserEscrowDevice } from "./callables/webAppCheck.js";
+export { mintLinuxAppCheckToken } from "./callables/linuxAppCheck.js";
+export { mintWindowsAppCheckToken } from "./callables/windowsAppCheck.js";
 export {
   registerPasskey,
   verifyPasskeyRegistration,

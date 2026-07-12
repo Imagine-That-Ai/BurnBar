@@ -64,6 +64,7 @@
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
     "check:region-literals": "node ../scripts/ci/check-region-literals.mjs",
+    "check:callable-validation": "node ../scripts/ci/check-callable-validation.mjs",
     "test:unit": "vitest run --reporter=verbose",
     "test:unit:coverage": "vitest run --reporter=verbose --reporter=json --coverage",
     "test:integration": "FUNCTIONS_EMULATOR=true vitest run --testPathPattern=integration"
@@ -92,7 +93,7 @@
     "eslint": "9.39.4",
     "eslint-config-prettier": "10.1.8",
     "firebase": "12.14.0",
-    "firebase-tools": "15.22.1",
+    "firebase-tools": "15.23.0",
     "knip": "5.88.1",
     "prettier": "3.8.3",
     "typescript": "^5.9.3",
@@ -102,9 +103,11 @@
     "@tootallnate/once": "^3.0.1",
     "fast-xml-builder": "^1.2.0",
     "js-yaml": "^4.2.0",
+    "morgan": "1.11.0",
     "uuid": "11.1.1",
     "@opentelemetry/core": "2.8.0",
-    "hono": "4.12.25"
+    "hono": "4.12.25",
+    "morgan": "1.11.0"
   },
   "private": true,
   "license": "AGPL-3.0-only"

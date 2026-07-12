@@ -1,0 +1,2 @@
+{"role":"user","content":"Implement the Augment parser contract test.","timestamp":"2025-07-01T00:00:00Z"}
+{"role":"assistant","content":"Done — usage recorded.","model":"claude-sonnet-4-20250514","usage":{"input_tokens":200,"output_tokens":80,"cache_creation_input_tokens":0,"cache_read_input_tokens":0},"timestamp":"2025-07-01T00:00:05Z"}

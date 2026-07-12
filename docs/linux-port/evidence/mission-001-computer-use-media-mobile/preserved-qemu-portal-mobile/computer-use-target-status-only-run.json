@@ -1,0 +1,131 @@
+{
+  "generatedAt": "2026-07-04T15:02:32.276Z",
+  "evidenceRun": {
+    "runId": "cu-evidence-20260704T150232268Z-57295",
+    "startedAt": "2026-07-04T15:02:32.268Z",
+    "generatedAt": "2026-07-04T15:02:32.276Z",
+    "outDir": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426",
+    "freshDirectoryRequired": false,
+    "reusedDirectoryExplicitlyAllowed": true,
+    "staleStatusRowsIgnored": true,
+    "sourcePaths": {
+      "mobileImport": {
+        "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/mobile-live-surface-probe-import.json",
+        "exists": true,
+        "sizeBytes": 2309,
+        "modifiedAt": "2026-07-04T15:02:32.271Z"
+      },
+      "targetStatus": {
+        "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/computer-use-target-status.json",
+        "exists": true,
+        "sizeBytes": 20700,
+        "modifiedAt": "2026-07-04T15:02:32.277Z"
+      },
+      "portal": {
+        "summary": {
+          "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/portal-evidence-summary.json",
+          "exists": true,
+          "sizeBytes": 6757,
+          "modifiedAt": "2026-07-04T14:31:03.044Z"
+        },
+        "lifecycle": {
+          "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/portal-lifecycle.jsonl",
+          "exists": true,
+          "sizeBytes": 1949,
+          "modifiedAt": "2026-07-04T14:30:42.545Z"
+        },
+        "pipeWireFrame": {
+          "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/approved-pipewire-frame.png",
+          "exists": true,
+          "sizeBytes": 808726,
+          "modifiedAt": "2026-07-04T14:30:57.234Z"
+        },
+        "captureLog": {
+          "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/portal-capture-log.txt",
+          "exists": true,
+          "sizeBytes": 1465,
+          "modifiedAt": "2026-07-04T14:24:29.964Z"
+        },
+        "portalFrontendLog": {
+          "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/xdg-portal.log",
+          "exists": true,
+          "sizeBytes": 1911,
+          "modifiedAt": "2026-07-04T14:30:43.773Z"
+        },
+        "portalBackendLog": {
+          "path": "/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426/xdg-portal-wlr.log",
+          "exists": true,
+          "sizeBytes": 161,
+          "modifiedAt": "2026-07-04T14:30:44.378Z"
+        }
+      }
+    }
+  },
+  "targetStatusOnly": true,
+  "mobileLiveImport": {
+    "generatedAt": "2026-07-04T15:02:32.270Z",
+    "target": "VAL-MOBILE-001",
+    "enabled": true,
+    "imported": true,
+    "passed": true,
+    "sourceProbePath": "/private/tmp/openburnbar-cu-evidence-portal-20260704-1054/mobile-live-surface-probe.json",
+    "sourceRawPath": "/private/tmp/openburnbar-cu-evidence-portal-20260704-1054/mobile-live-surface-probe.raw.json",
+    "sourceScreenshotPath": "/private/tmp/openburnbar-cu-evidence-portal-20260704-1054/mobile-simulator-live-probe.png",
+    "sourceProbeSha256": "ef35bc478d758f27170a3043dd981ef10c6bb191560be68cc1065b68acfda46f",
+    "sourceRawSha256": "6a733b4b0ae04eb8abbb4b39a813bccf896253e9c577c7e03dcaad9bf9f63a81",
+    "sourceScreenshotSha256": "77004610c492faa3d8a070d38f6d37f2b728faf0b1f3289559949c9182e3c3e5",
+    "sourceGeneratedAt": "2026-07-04T12:33:14.105Z",
+    "exchangeCount": 12,
+    "observedScenarios": [
+      "additive-wire-diff",
+      "approval-approve",
+      "approval-deny",
+      "approval-request",
+      "backward-compatible-close",
+      "control-input-intent",
+      "media-control-viewer-frame",
+      "media-screen-frame",
+      "pairing-auth-ack",
+      "pairing-auth-request",
+      "panic-halt",
+      "trust-downgrade"
+    ],
+    "observedFrameTypes": [
+      "control.approval.request",
+      "control.approval.response.approve",
+      "control.approval.response.deny",
+      "control.input.intent",
+      "control.panic.halt",
+      "control.trust.downgrade",
+      "media.control.viewer.frame",
+      "media.screen.frame",
+      "pairing.auth.accepted",
+      "pairing.auth.request",
+      "session.close.compatible",
+      "wire.diff.additive.linuxCapabilityMetadata"
+    ],
+    "checks": {
+      "sourceProbePassed": true,
+      "liveTranscriptProduced": true,
+      "liveSurfaceAvailable": true,
+      "linuxPeerStarted": true,
+      "simulatorOrDeviceUsed": true,
+      "exchangeCountMatches": true,
+      "requiredScenarioSet": true,
+      "requiredFrameTypes": true,
+      "pairingAuthObserved": true,
+      "approvalFlowObserved": true,
+      "approvalDenyObserved": true,
+      "panicFlowObserved": true,
+      "trustDowngradeObserved": true,
+      "mediaControlViewerFramesObserved": true,
+      "backwardCompatibleWireDiffObserved": true,
+      "openUrlCommandsSucceeded": true,
+      "mobileUserAgentObserved": true,
+      "linuxCapabilityMetadataObserved": true,
+      "screenshotPresent": true
+    },
+    "blockers": []
+  },
+  "note": "Explicit status-only synthesis over existing raw artifacts. The default fresh output-directory guard remains enabled unless OB_CU_ALLOW_REUSED_OUT=1 is set."
+}

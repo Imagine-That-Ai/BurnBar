@@ -33,7 +33,7 @@ struct ContextPack: Equatable, Sendable {
 
 /// A single session entry in a context pack, with its inclusion reason.
 struct ContextPackSession: Equatable, Sendable, Identifiable {
-    let id: String          // ConversationRecord.id
+    let id: String          // OpenBurnBarCore.ConversationRecord.id
     let provider: String    // AgentProvider.rawValue
     let sessionId: String
     let projectName: String
@@ -114,14 +114,14 @@ enum ContextPackService {
     ///
     /// Pipeline: dedupe → rank → cap sessions → enforce char budget → assemble.
     static func assemble(
-        candidates: [ConversationRecord],
+        candidates: [OpenBurnBarCore.ConversationRecord],
         params: ContextPackAssemblyParams = ContextPackAssemblyParams()
     ) -> ContextPack {
         // Step 1: Dedupe by stable session identity
         let deduped = dedupeSessions(candidates)
 
         // Step 2: Compute rank scores
-        let scored = deduped.map { record -> (ConversationRecord, Double, String) in
+        let scored = deduped.map { record -> (OpenBurnBarCore.ConversationRecord, Double, String) in
             let (score, reason) = computeRank(
                 record: record,
                 anchorProject: params.anchorProject,
@@ -216,8 +216,8 @@ enum ContextPackService {
     // MARK: - Deduplication
 
     /// Deduplicates sessions by stable identity (provider + sessionId), keeping the most recent.
-    static func dedupeSessions(_ records: [ConversationRecord]) -> [ConversationRecord] {
-        var best: [String: ConversationRecord] = [:]
+    static func dedupeSessions(_ records: [OpenBurnBarCore.ConversationRecord]) -> [OpenBurnBarCore.ConversationRecord] {
+        var best: [String: OpenBurnBarCore.ConversationRecord] = [:]
         for record in records {
             // Build stable key from provider and sessionId
             let stableKey = "\(record.provider.rawValue):\(record.sessionId)"
@@ -242,7 +242,7 @@ enum ContextPackService {
 
     /// Computes a rank score and human-readable reason label for a session.
     static func computeRank(
-        record: ConversationRecord,
+        record: OpenBurnBarCore.ConversationRecord,
         anchorProject: String?,
         referenceDate: Date = Date()
     ) -> (score: Double, reason: String) {
@@ -290,7 +290,7 @@ enum ContextPackService {
     /// Deterministic tie-break sort key for ordering equal-scored sessions.
     /// Priority: endTime desc → startTime desc → indexedAt desc → stable ID asc.
     /// Uses zero-padded numeric strings so string comparison preserves numeric order.
-    static func tieBreakKey(_ record: ConversationRecord) -> String {
+    static func tieBreakKey(_ record: OpenBurnBarCore.ConversationRecord) -> String {
         let end = record.endTime?.timeIntervalSince1970 ?? 0
         let start = record.startTime?.timeIntervalSince1970 ?? 0
         let indexed = record.indexedAt.timeIntervalSince1970
@@ -347,7 +347,7 @@ enum ContextPackService {
     // MARK: - Session Body Builder
 
     /// Builds the shared body text for a single session entry.
-    static func buildSessionBody(_ record: ConversationRecord) -> String {
+    static func buildSessionBody(_ record: OpenBurnBarCore.ConversationRecord) -> String {
         var lines: [String] = []
 
         // Title
@@ -446,7 +446,7 @@ enum ProjectMemoryService {
     static func assemble(
         projectSlug: String,
         projectDisplayName: String,
-        conversations: [ConversationRecord],
+        conversations: [OpenBurnBarCore.ConversationRecord],
         usages: [TokenUsage],
         referenceDate: Date = Date()
     ) -> ProjectMemorySnapshot {
@@ -601,7 +601,7 @@ enum ProjectMemoryService {
         let visuals: [ProjectMemoryVisual]
     }
 
-    private static func ordered(conversations: [ConversationRecord]) -> [ConversationRecord] {
+    private static func ordered(conversations: [OpenBurnBarCore.ConversationRecord]) -> [OpenBurnBarCore.ConversationRecord] {
         let sorted = conversations.sorted { lhs, rhs in
             let lhsTime = lhs.endTime ?? lhs.startTime ?? lhs.indexedAt
             let rhsTime = rhs.endTime ?? rhs.startTime ?? rhs.indexedAt
@@ -611,7 +611,7 @@ enum ProjectMemoryService {
             return lhs.id < rhs.id
         }
         var seen = Set<String>()
-        var deduped: [ConversationRecord] = []
+        var deduped: [OpenBurnBarCore.ConversationRecord] = []
         deduped.reserveCapacity(sorted.count)
         for conversation in sorted where seen.insert(conversation.id).inserted {
             deduped.append(conversation)
@@ -674,7 +674,7 @@ enum ProjectMemoryService {
         return lines.joined(separator: "\n")
     }
 
-    private static func recentWorkBody(from conversations: [ConversationRecord]) -> String {
+    private static func recentWorkBody(from conversations: [OpenBurnBarCore.ConversationRecord]) -> String {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
@@ -690,7 +690,7 @@ enum ProjectMemoryService {
         return lines.joined(separator: "\n")
     }
 
-    private static func decisionsBody(from conversations: [ConversationRecord]) -> String {
+    private static func decisionsBody(from conversations: [OpenBurnBarCore.ConversationRecord]) -> String {
         let decisionLines = conversations
             .compactMap { conversation -> String? in
                 let summary = conversation.summary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -704,7 +704,7 @@ enum ProjectMemoryService {
         return decisionLines.joined(separator: "\n")
     }
 
-    private static func architectureBody(from conversations: [ConversationRecord]) -> String {
+    private static func architectureBody(from conversations: [OpenBurnBarCore.ConversationRecord]) -> String {
         var fileFrequency: [String: Int] = [:]
         for conversation in conversations {
             for file in conversation.keyFiles {
@@ -735,7 +735,7 @@ enum ProjectMemoryService {
         }.joined(separator: "\n")
     }
 
-    private static func risksBody(from conversations: [ConversationRecord]) -> String {
+    private static func risksBody(from conversations: [OpenBurnBarCore.ConversationRecord]) -> String {
         let keywords = ["todo", "fixme", "blocked", "risk", "warning", "follow up", "regression", "rollback", "unknown"]
         var riskLines: [String] = []
         for conversation in conversations.prefix(12) {
@@ -749,7 +749,7 @@ enum ProjectMemoryService {
         return Array(riskLines.prefix(6)).joined(separator: "\n")
     }
 
-    private static func citation(from conversation: ConversationRecord) -> ProjectMemoryCitation {
+    private static func citation(from conversation: OpenBurnBarCore.ConversationRecord) -> ProjectMemoryCitation {
         let snippetSource = conversation.summary?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
             ? (conversation.summary ?? "")
             : (conversation.lastAssistantMessage.isEmpty ? conversation.fullText : conversation.lastAssistantMessage)
@@ -763,7 +763,7 @@ enum ProjectMemoryService {
         )
     }
 
-    private static func preferredTitle(for conversation: ConversationRecord) -> String {
+    private static func preferredTitle(for conversation: OpenBurnBarCore.ConversationRecord) -> String {
         let summaryTitle = conversation.summaryTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if summaryTitle.isEmpty == false { return summaryTitle }
         let inferred = conversation.inferredTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -774,7 +774,7 @@ enum ProjectMemoryService {
     private static func buildVisuals(
         projectName: String,
         usages: [TokenUsage],
-        conversations: [ConversationRecord],
+        conversations: [OpenBurnBarCore.ConversationRecord],
         keyFiles: [String]
     ) -> [ProjectMemoryVisual] {
         var visuals: [ProjectMemoryVisual] = []

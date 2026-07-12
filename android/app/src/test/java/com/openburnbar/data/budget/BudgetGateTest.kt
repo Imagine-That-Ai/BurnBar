@@ -8,6 +8,7 @@ import com.openburnbar.data.models.BudgetGateDecision
 import com.openburnbar.data.models.BudgetRule
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -81,6 +82,7 @@ class BudgetGateTest {
             )
 
         every { dao.getCredentialRules(any(), any()) } returns emptyList()
+        every { dao.getOrganizationRules(any(), any(), any(), any()) } returns emptyList()
         every { dao.getProjectRules(any()) } returns emptyList()
         every { dao.getGlobalRules() } returns listOf(ruleEntity)
 
@@ -98,5 +100,88 @@ class BudgetGateTest {
         every { dao.getGlobalSpend(any(), any()) } returns 9.5
         val resultBlock = gate.evaluate(credential, estimatedCost = 1.0)
         assertEquals(BudgetGateDecision.Kind.BLOCK, resultBlock.decision)
+    }
+
+    @Test
+    fun testOrganizationRuleBlocksAccountLabelOverBudgetRequest() = runBlocking {
+        val dao = mockk<BudgetDatabaseAccess>()
+        val gate = BudgetGate(dao, warningThreshold = 0.8)
+
+        val credential =
+            BudgetCredentialIdentity(
+                providerID = "openai",
+                slotID = "acct-123",
+                displayLabel = "OpenAI Team",
+                billingMode = BudgetBillingMode.PER_USAGE,
+                providerAccountID = "acct-123",
+                providerAccountLabel = "OpenAI Team",
+            )
+
+        val orgRule =
+            BudgetRuleEntity(
+                id = "org-rule-1",
+                scope = "organization",
+                identifier = "OpenAI Team",
+                amountUSD = 10.0,
+                period = "month",
+                behavior = "warnThenBlock",
+                createdAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis(),
+                isEnabled = true,
+            )
+
+        every { dao.getCredentialRules("openai", "acct-123") } returns emptyList()
+        every { dao.getOrganizationRules("acct-123", "OpenAI Team", "acct-123", "OpenAI Team") } returns listOf(orgRule)
+        every { dao.getGlobalRules() } returns emptyList()
+        every { dao.getOrganizationSpend(any(), any(), "OpenAI Team") } returns 9.25
+
+        val result = gate.evaluate(credential, estimatedCost = 1.0)
+
+        assertEquals(BudgetGateDecision.Kind.BLOCK, result.decision)
+        assertEquals("org-rule-1", result.rule?.id)
+        assertEquals(9.25, result.used, 0.0)
+        assertEquals(10.0, result.limit, 0.0)
+        verify { dao.getOrganizationSpend(any(), any(), "OpenAI Team") }
+    }
+
+    @Test
+    fun testOrganizationRuleMatchesWhenAccountFieldsAreEmptyStrings() = runBlocking {
+        val dao = mockk<BudgetDatabaseAccess>()
+        val gate = BudgetGate(dao, warningThreshold = 0.8)
+
+        val credential =
+            BudgetCredentialIdentity(
+                providerID = "openai",
+                slotID = "runtime-slot",
+                displayLabel = "OpenAI Compatible Gateway",
+                billingMode = BudgetBillingMode.PER_USAGE,
+                providerAccountID = "",
+                providerAccountLabel = "",
+            )
+
+        val orgRule =
+            BudgetRuleEntity(
+                id = "org-rule-blank-account",
+                scope = "organization",
+                identifier = "OpenAI Team",
+                amountUSD = 10.0,
+                period = "month",
+                behavior = "warnThenBlock",
+                createdAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis(),
+                isEnabled = true,
+            )
+
+        every { dao.getCredentialRules("openai", "runtime-slot") } returns emptyList()
+        every { dao.getOrganizationRules("runtime-slot", "OpenAI Compatible Gateway", "", "") } returns listOf(orgRule)
+        every { dao.getGlobalRules() } returns emptyList()
+        every { dao.getOrganizationSpend(any(), any(), "OpenAI Team") } returns 9.25
+
+        val result = gate.evaluate(credential, estimatedCost = 1.0)
+
+        assertEquals(BudgetGateDecision.Kind.BLOCK, result.decision)
+        assertEquals("org-rule-blank-account", result.rule?.id)
+        verify { dao.getOrganizationRules("runtime-slot", "OpenAI Compatible Gateway", "", "") }
+        verify { dao.getOrganizationSpend(any(), any(), "OpenAI Team") }
     }
 }

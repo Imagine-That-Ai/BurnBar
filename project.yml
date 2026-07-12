@@ -13,8 +13,8 @@ settings:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
     ENABLE_PREVIEWS: YES
-    MARKETING_VERSION: "1.0.23"
-    CURRENT_PROJECT_VERSION: 63
+    MARKETING_VERSION: "1.0.29"
+    CURRENT_PROJECT_VERSION: 69
     CODE_SIGN_STYLE: Automatic
     INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.utilities"
     INFOPLIST_KEY_LSUIElement: true
@@ -38,7 +38,12 @@ packages:
     exactVersion: 4.16.0
   Firebase:
     url: https://github.com/firebase/firebase-ios-sdk
-    from: "11.0.0"
+    # 12.x bundles the iOS 27-compatible gRPC; 11.15/grpc-1.69 SIGBUSes in
+    # BoringSSL (OPENSSL_cleanse) the first time Firestore opens its TLS
+    # channel on iOS 27, which forced a Firestore-network kill switch on
+    # mobile (AppDelegate.disableFirestoreNetworkOnIncompatibleOSIfNeeded).
+    # Keep >= 12 so that shim never has to come back.
+    from: "12.15.0"
   GoogleSignIn:
     url: https://github.com/google/GoogleSignIn-iOS
     from: "8.0.0"
@@ -47,7 +52,10 @@ packages:
     from: "8.0.0"
   AmplitudeSwift:
     url: https://github.com/amplitude/Amplitude-Swift
-    from: "1.17.3"
+    from: "1.18.6"
+  AmplitudeCore:
+    url: https://github.com/amplitude/AmplitudeCore-Swift.git
+    from: "1.4.8"
   GLTFKit2:
     url: https://github.com/warrenm/GLTFKit2
     from: "0.5.15"
@@ -62,6 +70,16 @@ packages:
     from: "1.18.0"
 
 schemes:
+  OpenBurnBarUITests:
+    build:
+      targets:
+        OpenBurnBar: all
+        OpenBurnBarUITests: test
+    test:
+      config: Debug
+      targets:
+        - OpenBurnBarUITests
+
   OpenBurnBarMobileUnitTests:
     build:
       targets:
@@ -96,6 +114,15 @@ targets:
               # IMPORTANT: Replace YOUR_CLIENT_ID_SUFFIX with your actual reversed Firebase client ID suffix.
               # Obtain from: GoogleService-Info.plist -> REVERSED_CLIENT_ID
               - com.googleusercontent.apps.YOUR_CLIENT_ID_SUFFIX
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: ai.burnbar.chat-thread
+            UTTypeDescription: OpenBurnBar Chat Thread
+            UTTypeConformsTo:
+              - public.data
+          - UTTypeIdentifier: ai.burnbar.chat-pane
+            UTTypeDescription: OpenBurnBar Chat Pane
+            UTTypeConformsTo:
+              - public.data
         NSBonjourServices:
           - _googlecast._tcp
           - _http._tcp
@@ -112,6 +139,8 @@ targets:
           SWIFT_IS_CURRENT_EXECUTOR_LEGACY_MODE_OVERRIDE: legacy
         NSLocalNetworkUsageDescription: OpenBurnBar uses the local network to connect this Mac to your trusted iPhone, iPad, Android devices, and local smart displays for pairing, Hermes relay, Mercury media sessions, and screen sharing.
         NSAppleEventsUsageDescription: OpenBurnBar may send Apple Events to apps you approve--such as Cursor, Safari, Google Chrome, and Finder--during Computer Use runs so agents can verify Automation permission and operate only the apps you authorize. Every action is recorded in a tamper-evident audit log.
+        NSCameraUsageDescription: OpenBurnBar uses the camera only when you start a trusted Mercury video call or run the camera check in Media & Sharing settings.
+        NSMicrophoneUsageDescription: OpenBurnBar uses the microphone only when you start a trusted Mercury audio or video call or run the microphone check in Media & Sharing settings.
     sources:
       - path: AgentLens
         excludes:
@@ -417,6 +446,8 @@ targets:
         product: Sentry
       - package: AmplitudeSwift
         product: AmplitudeSwift
+      - package: AmplitudeCore
+        product: AmplitudeCoreFramework
       - package: GLTFKit2
         product: GLTFKit2
       - package: DracoSwift
@@ -437,6 +468,7 @@ targets:
         SKIP_INSTALL: true
         GCC_PREPROCESSOR_DEFINITIONS: "$(inherited) SQLITE_HAS_CODEC=1"
         OTHER_CFLAGS: "$(inherited) -DSQLITE_HAS_CODEC"
+        OTHER_SWIFT_FLAGS: "$(inherited) -Xcc -fmodule-map-file=$(SRCROOT)/OpenBurnBarCore/Sources/Czlib/module.modulemap"
     preBuildScripts:
       - name: Dedupe GRDB Link File Entries (Xcode 16)
         script: |
@@ -469,6 +501,9 @@ targets:
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
         link: false
+      - package: OpenBurnBarCore
+        product: OpenBurnBarLinuxSecurity
+        link: false
       - package: GRDB
         product: GRDB
       - package: SQLCipher
@@ -497,6 +532,8 @@ targets:
         product: OpenBurnBarCore
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
+      - package: OpenBurnBarCore
+        product: OpenBurnBarLinuxSecurity
 
   OpenBurnBarPrivilegedInputExecution:
     type: tool
@@ -514,8 +551,6 @@ targets:
         SKIP_INSTALL: true
     dependencies:
       - target: OpenBurnBarRemoteAccessAgentCore
-      - package: OpenBurnBarCore
-        product: OpenBurnBarComputerUseCore
 
   OpenBurnBarVirtualHIDBridge:
     type: tool
@@ -533,8 +568,6 @@ targets:
         SKIP_INSTALL: true
     dependencies:
       - target: OpenBurnBarRemoteAccessAgentCore
-      - package: OpenBurnBarCore
-        product: OpenBurnBarComputerUseCore
       - sdk: SystemConfiguration.framework
 
   OpenBurnBarPrivilegedInputKillSwitchWatchdog:
@@ -563,10 +596,10 @@ targets:
       base:
         PRODUCT_NAME: OpenBurnBarRemoteAccessAgentCore
         SKIP_INSTALL: true
+        OTHER_SWIFT_FLAGS: "$(inherited) -Xcc -fmodule-map-file=$(SRCROOT)/OpenBurnBarCore/Sources/Czlib/module.modulemap"
     dependencies:
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
-        link: false
       - sdk: CoreGraphics.framework
       - sdk: IOKit.framework
       - sdk: Security.framework
@@ -593,6 +626,8 @@ targets:
       - path: tools/app-store-connect/asc-api.js
         buildPhase: resources
       - path: tools/openburnbar-mcp/eligible_providers.json
+        buildPhase: resources
+      - path: tests/fixtures/llm-safe-wrap/llm-safe-wrap-vectors.json
         buildPhase: resources
       - path: AgentLensTests/Active/Parsers/Fixtures/Grok/sample-session/summary.json
         buildPhase: resources
@@ -674,6 +709,25 @@ targets:
       - package: SnapshotTesting
         product: SnapshotTesting
 
+  OpenBurnBarUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: OpenBurnBarUITests
+        excludes:
+          - "**/.DS_Store"
+      - path: AgentLens/Support/AccessibilityIdentifiers.swift
+    settings:
+      base:
+        SWIFT_VERSION: "5.10"
+        PRODUCT_NAME: OpenBurnBarUITests
+        PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.uitests
+        TEST_TARGET_NAME: OpenBurnBar
+        SWIFT_ENABLE_EXPLICIT_MODULES: NO
+    dependencies:
+      - target: OpenBurnBar
+
   OpenBurnBarDaemonTests:
     type: bundle.unit-test
     platform: macOS
@@ -695,6 +749,8 @@ targets:
         product: OpenBurnBarCore
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
+      - package: OpenBurnBarCore
+        product: OpenBurnBarLinuxSecurity
 
   OpenBurnBarMobile:
     type: application
@@ -724,12 +780,29 @@ targets:
       - path: AgentLens/Resources/KernelBackdrop
         type: folder
         buildPhase: resources
+    preBuildScripts:
+      - name: Guard source-built gRPC (iOS 27 Firestore crash)
+        script: |
+          # The prebuilt grpc-binary SIGSEGVs in BoringSSL (OPENSSL_cleanse via
+          # ssl_cert_dup -> create_tsi_ssl_handshaker) the first time Firestore
+          # opens its TLS channel on iOS 27 — verified on-device 2026-07-03 with
+          # Firebase 12.15/grpc-binary 1.69.1. Firestore MUST be built from
+          # source (grpc-ios + BoringSSL-SwiftPM): resolve packages with
+          # FIREBASE_SOURCE_FIRESTORE=1 in the environment. This tripwire turns
+          # a silent runtime crash into a build error when the graph regresses.
+          # See docs/FIREBASE_IOS27_GRPC.md.
+          resolved="$SRCROOT/OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+          if [ -f "$resolved" ] && grep -q '"grpc-binary"' "$resolved"; then
+            echo "error: Package graph resolved with prebuilt grpc-binary, which crashes Firestore on iOS 27. Re-resolve with FIREBASE_SOURCE_FIRESTORE=1 (see docs/FIREBASE_IOS27_GRPC.md)."
+            exit 1
+          fi
+        basedOnDependencyAnalysis: false
     settings:
       base:
         PRODUCT_NAME: OpenBurnBarMobile
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app
         MARKETING_VERSION: "1.0.2"
-        CURRENT_PROJECT_VERSION: 81
+        CURRENT_PROJECT_VERSION: 82
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES: YES
@@ -743,6 +816,7 @@ targets:
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: OpenBurnBar uses speech recognition only while you hold the voice command control to turn your spoken command into text.
         INFOPLIST_KEY_NSPhotoLibraryUsageDescription: OpenBurnBar accesses selected photo library items only when you choose Photo Library to attach media to a Hermes chat.
         INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription: OpenBurnBar saves received media to your photo library only when you choose Save.
+        INFOPLIST_KEY_NSFaceIDUsageDescription: OpenBurnBar uses Face ID only to confirm it's you before this iPhone sends remote input -- like typing or unlocking -- to your trusted Mac during a Mercury session.
         INFOPLIST_KEY_NSMotionUsageDescription: OpenBurnBar reads device motion only to adapt the mobile dashboard while you are using the app.
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: OpenBurnBar uses the local network to connect this iPhone or iPad to your trusted Mac for pairing, Hermes relay, and media sessions.
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: true
@@ -901,6 +975,7 @@ targets:
         NSSpeechRecognitionUsageDescription: OpenBurnBar uses speech recognition only while you hold the voice command control to turn your spoken command into text.
         NSPhotoLibraryUsageDescription: OpenBurnBar accesses selected photo library items only when you choose Photo Library to attach media to a Hermes chat.
         NSPhotoLibraryAddUsageDescription: OpenBurnBar saves received media to your photo library only when you choose Save.
+        NSFaceIDUsageDescription: OpenBurnBar uses Face ID only to confirm it's you before this iPhone sends remote input -- like typing or unlocking -- to your trusted Mac during a Mercury session.
         NSMotionUsageDescription: OpenBurnBar reads device motion only to adapt the mobile dashboard while you are using the app.
         NSLocalNetworkUsageDescription: OpenBurnBar uses the local network to connect this iPhone or iPad to your trusted Mac for pairing, Hermes relay, and media sessions.
         GIDClientID: 246956661961-h48alif674cr67ojj4li9og8gbcjinbv.apps.googleusercontent.com
@@ -937,6 +1012,8 @@ targets:
         product: OpenBurnBarSignalCore
       - package: AmplitudeSwift
         product: AmplitudeSwift
+      - package: AmplitudeCore
+        product: AmplitudeCoreFramework
       - package: Firebase
         product: FirebaseAuth
       - package: Firebase
@@ -1020,7 +1097,7 @@ targets:
         PRODUCT_NAME: OpenBurnBarWidget
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.widget
         MARKETING_VERSION: "1.0.2"
-        CURRENT_PROJECT_VERSION: 81
+        CURRENT_PROJECT_VERSION: 82
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: OpenBurnBarWidget/Resources/OpenBurnBarWidget.entitlements
@@ -1049,6 +1126,8 @@ targets:
         product: OpenBurnBarAnalytics
       - package: AmplitudeSwift
         product: AmplitudeSwift
+      - package: AmplitudeCore
+        product: AmplitudeCoreFramework
 
   OpenBurnBarKeyboard:
     type: app-extension
@@ -1063,7 +1142,7 @@ targets:
         PRODUCT_NAME: OpenBurnBarKeyboard
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.keyboard
         MARKETING_VERSION: "1.0.2"
-        CURRENT_PROJECT_VERSION: 81
+        CURRENT_PROJECT_VERSION: 82
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: OpenBurnBarKeyboard/Resources/OpenBurnBarKeyboard.entitlements
@@ -1098,3 +1177,5 @@ targets:
         product: OpenBurnBarAnalytics
       - package: AmplitudeSwift
         product: AmplitudeSwift
+      - package: AmplitudeCore
+        product: AmplitudeCoreFramework

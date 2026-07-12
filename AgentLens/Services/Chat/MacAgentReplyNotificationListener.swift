@@ -225,6 +225,9 @@ final class MacAgentReplyNotificationListener: NSObject {
     func start(chatController: ChatSessionController, accountManager: AccountManager) {
         self.chatController = chatController
         self.accountManager = accountManager
+        let center = UNUserNotificationCenter.current()
+        center.delegate = self
+        center.setNotificationCategories([Self.agentReplyCategory])
         guard Self.hasConfiguredFirebaseApp else {
             listener?.remove()
             listener = nil
@@ -237,10 +240,6 @@ final class MacAgentReplyNotificationListener: NSObject {
             return
         }
         started = true
-
-        let center = UNUserNotificationCenter.current()
-        center.delegate = self
-        center.setNotificationCategories([Self.agentReplyCategory])
         Task { await requestNotificationAuthorization() }
 
         authHandle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
@@ -558,6 +557,17 @@ extension MacAgentReplyNotificationListener: UNUserNotificationCenterDelegate {
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
+        let userInfo = response.notification.request.content.userInfo
+        if agentReplyNotificationString(userInfo["type"]) == "pane_completion",
+           let paneRaw = agentReplyNotificationString(userInfo["pane_id"]),
+           let tabRaw = agentReplyNotificationString(userInfo["tab_id"]),
+           let paneID = UUID(uuidString: paneRaw),
+           let tabID = UUID(uuidString: tabRaw) {
+            await MainActor.run {
+                ChatPaneAlertCenter.paneCompletionTapHandler?(paneID, tabID)
+            }
+            return
+        }
         let payload = MacAgentReplyNotificationPayload(userInfo: response.notification.request.content.userInfo)
         let resolved = await resolvedPayloadForPush(payload)
         let actionIdentifier = response.actionIdentifier

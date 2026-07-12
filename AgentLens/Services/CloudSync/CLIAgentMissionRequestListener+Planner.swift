@@ -25,6 +25,8 @@ enum CLIAgentMissionRuntimePlanner {
                 return CLIAgentMissionBackend(chatBackend: .openclaw)
             case "openclaude", "open-claude":
                 return CLIAgentMissionBackend(chatBackend: .openClaude)
+            case "omp", "ohmypi", "oh-my-pi", "oh my pi":
+                return CLIAgentMissionBackend(chatBackend: .omp)
             case "droid", "factory", "factory-droid", "factorydroid":
                 return CLIAgentMissionBackend(chatBackend: .droid)
             case "forge", "forge-dev", "forgedev":
@@ -52,11 +54,11 @@ enum CLIAgentMissionRuntimePlanner {
 
         switch missionKind {
         case "diligence", "security":
-            return CLIAgentMissionBackend(chatBackend: firstEnabled([.claude, .codex, .hermes, .piAgent, .openclaw, .droid, .forge, .antigravity, .cursorAgent]) ?? .codex)
+            return CLIAgentMissionBackend(chatBackend: firstEnabled([.claude, .codex, .hermes, .piAgent, .openclaw, .droid, .forge, .antigravity, .cursorAgent, .junie]) ?? .codex)
         case "creative", "accretive", "ui_improvement", "custom":
-            return CLIAgentMissionBackend(chatBackend: firstEnabled([.openclaw, .antigravity, .cursorAgent, .codex, .hermes, .piAgent, .claude, .forge, .droid]) ?? .hermes)
+            return CLIAgentMissionBackend(chatBackend: firstEnabled([.openclaw, .antigravity, .cursorAgent, .codex, .hermes, .piAgent, .claude, .forge, .droid, .junie]) ?? .hermes)
         case "debt", "modernization", "provider_routing", "cost_efficiency", "project_focus":
-            return CLIAgentMissionBackend(chatBackend: firstEnabled([.codex, .claude, .hermes, .piAgent, .openclaw, .droid, .forge, .antigravity, .cursorAgent]) ?? .codex)
+            return CLIAgentMissionBackend(chatBackend: firstEnabled([.codex, .claude, .hermes, .piAgent, .openclaw, .droid, .forge, .antigravity, .cursorAgent, .junie]) ?? .codex)
         default:
             return CLIAgentMissionBackend(chatBackend: enabledBackends.first ?? .codex)
         }
@@ -138,7 +140,7 @@ enum CLIAgentMissionRuntimePlanner {
             switch chatBackend {
             case .hermes:
                 return false
-            case .codex, .claude, .openclaw, .piAgent, .droid, .forge, .antigravity, .cursorAgent, .openClaude:
+            case .codex, .claude, .openclaw, .piAgent, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie:
                 return true
             }
         }
@@ -202,6 +204,38 @@ enum CLIAgentMissionRuntimePlanner {
                     modelCommand
                 ],
                 extraEnvironment: env
+            )
+        case ChatBackendID.omp.rawValue:
+            let commandsAllowed = (data["commandsAllowed"] as? Bool) ?? false
+            let fileEditsAllowed = (data["fileEditsAllowed"] as? Bool) ?? false
+            var arguments = [
+                "-p",
+                hostPrompt,
+                "--mode",
+                "json",
+                "--no-session"
+            ]
+            if commandsAllowed || fileEditsAllowed {
+                var tools = ["read", "grep", "glob", "lsp"]
+                if commandsAllowed {
+                    tools.append("bash")
+                }
+                if fileEditsAllowed {
+                    tools += ["edit", "write"]
+                }
+                let dedupedTools = (Array(NSOrderedSet(array: tools)) as? [String] ?? tools)
+                    .joined(separator: ",")
+                arguments += ["--tools", dedupedTools, "--auto-approve"]
+            } else {
+                arguments.append("--no-tools")
+            }
+            if let requestedModelID {
+                arguments += ["--model", requestedModelID]
+            }
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "omp",
+                arguments: arguments,
+                extraEnvironment: [:]
             )
         case ChatBackendID.openClaude.rawValue:
             let commandsAllowed = (data["commandsAllowed"] as? Bool) ?? false
@@ -292,7 +326,7 @@ enum CLIAgentMissionRuntimePlanner {
         case ChatBackendID.cursorAgent.rawValue:
             return CLIAgentMissionDirectLaunchPlan(
                 executableName: "cursor-agent",
-                arguments: CLIArgumentBuilder.cursorAgentArguments(prompt: hostPrompt),
+                arguments: CLIArgumentBuilder.cursorAgentArguments(prompt: hostPrompt, model: requestedModelID ?? ""),
                 extraEnvironment: [:]
             )
         case "opencode":
@@ -387,6 +421,17 @@ enum CLIAgentMissionRuntimePlanner {
                 ),
                 extraEnvironment: [:]
             )
+        case ChatBackendID.junie.rawValue:
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "junie",
+                arguments: CLIArgumentBuilder.junieArguments(
+                    prompt: hostPrompt,
+                    model: requestedModelID ?? "",
+                    workspaceDirectory: workingDirectory,
+                    capabilityGrant: grant
+                ),
+                extraEnvironment: [:]
+            )
         case ChatBackendID.forge.rawValue:
             return CLIAgentMissionDirectLaunchPlan(
                 executableName: "forge",
@@ -412,13 +457,14 @@ enum CLIAgentMissionRuntimePlanner {
             return CLIAgentMissionDirectLaunchPlan(
                 executableName: "cursor-agent",
                 arguments: CLIArgumentBuilder.cursorAgentArguments(
-                    prompt: hostPrompt,
+                    prompt: hostPrompt, model: requestedModelID ?? "",
                     workspaceDirectory: workingDirectory,
                     capabilityGrant: grant
                 ),
                 extraEnvironment: [:]
             )
         case ChatBackendID.openClaude.rawValue,
+            ChatBackendID.omp.rawValue,
             ChatBackendID.hermes.rawValue,
             ChatBackendID.piAgent.rawValue,
             "opencode",
@@ -459,23 +505,27 @@ enum CLIAgentMissionRuntimePlanner {
             case .claude: return .claude
             case .openclaw: return .openClaw
             case .openClaude: return .openClaude
+            case .omp: return .omp
             case .droid: return .droid
             case .forge: return .forge
             case .antigravity: return .antigravity
             case .cursorAgent: return .cursorAgent
             case .hermes: return .hermes
             case .piAgent: return .pi
+            case .junie: return .junie
             }
         }
         switch backend.rawValue {
         case "openclaw", "open-claw": return .openClaw
         case "openclaude", "open-claude": return .openClaude
+        case "omp", "ohmypi", "oh-my-pi", "oh my pi": return .omp
         case "droid", "factory": return .droid
         case "forge": return .forge
         case "antigravity", "agy", "google-antigravity": return .antigravity
         case "cursor-agent", "cursoragent": return .cursorAgent
         case "grok", "grok-build", "xai", "grok-agent": return .grok
         case "pi", "piagent", "pi-agent": return .pi
+        case "junie", "jetbrains-junie", "jetbrainsjunie", "jetbrains junie": return .junie
         default: return .codex
         }
     }

@@ -17,7 +17,7 @@ final class CLILaunchAdapterExecutableResolutionTests: XCTestCase {
         super.tearDown()
     }
 
-    func testResolveExecutableRejectsCodexUserWritableFallbacks() throws {
+    func testResolveExecutableAllowsPinnedCodexHomeInstallButRejectsAmbientFallbacks() throws {
         let fileManager = FileManager.default
         let tempHome = fileManager.temporaryDirectory
             .appendingPathComponent("openburnbar-cli-resolution-\(UUID().uuidString)", isDirectory: true)
@@ -56,12 +56,11 @@ final class CLILaunchAdapterExecutableResolutionTests: XCTestCase {
         }
         CLILaunchAdapter.clearExecutableResolutionCache()
 
-        if let resolvedPath = CLILaunchAdapter.resolveExecutable(for: .codex)?.path {
-            XCTAssertFalse(
-                [localBinPath.path, activeNVMPath.path, newerBrokenNVMPath.path].contains(resolvedPath),
-                "Codex resolution must not choose user-writable PATH or version-manager candidates."
-            )
-        }
+        XCTAssertEqual(CLILaunchAdapter.resolveExecutable(for: .codex)?.path, localBinPath.path)
+        XCTAssertFalse(
+            [activeNVMPath.path, newerBrokenNVMPath.path].contains(CLILaunchAdapter.resolveExecutable(for: .codex)?.path ?? ""),
+            "Codex resolution must not choose ambient version-manager candidates."
+        )
     }
 
     func testCodexSearchPolicyExcludesAmbientUserManagedDirectories() {
@@ -75,11 +74,34 @@ final class CLILaunchAdapterExecutableResolutionTests: XCTestCase {
             for: .claude,
             homeDirectory: home
         ).contains("\(home)/.local/bin"))
-        XCTAssertFalse(CLILaunchAdapter.trustedExecutableSearchDirectories(
+        let trustedDirectories = CLILaunchAdapter.trustedExecutableSearchDirectories(
             for: .codex,
             environment: ["PATH": "\(home)/.local/bin:\(home)/.nvm/versions/node/v20/bin"],
             homeDirectory: home
-        ).contains(where: { $0.hasPrefix(home) }))
+        )
+        XCTAssertTrue(trustedDirectories.contains("\(home)/.local/bin"))
+        XCTAssertTrue(trustedDirectories.contains("\(home)/.codex/bin"))
+        XCTAssertFalse(trustedDirectories.contains("\(home)/.nvm/versions/node/v20/bin"))
+    }
+
+    func testJunieSearchPolicyIncludesJunieManagedBinDirectory() {
+        let home = "/tmp/openburnbar-cli-resolution-home"
+        let trustedDirectories = CLILaunchAdapter.trustedExecutableSearchDirectories(
+            for: .junie,
+            environment: [:],
+            homeDirectory: home
+        )
+
+        XCTAssertTrue(SwitcherCLIProfileType.junie.trustedExecutablePaths.contains("$HOME/.junie/bin/junie"))
+        XCTAssertTrue(trustedDirectories.contains("\(home)/.junie/bin"))
+    }
+
+    func testCLILaunchErrorUsesLocalizedDescriptions() {
+        let error: Error = CLILaunchError.executableNotFound(.codex)
+        XCTAssertEqual(
+            error.localizedDescription,
+            "Codex executable not found. Install Codex to use CLI profile switching."
+        )
     }
 
     func testPinnedCodexResolutionDoesNotInvokeLoginShell() throws {

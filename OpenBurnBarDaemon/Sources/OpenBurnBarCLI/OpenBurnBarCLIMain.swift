@@ -1,5 +1,10 @@
 import OpenBurnBarDaemon
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 
 @main
 struct BurnBarCLIExecutable {
@@ -9,8 +14,7 @@ struct BurnBarCLIExecutable {
             arguments: arguments,
             invokedExecutablePath: CommandLine.arguments.first
         ) {
-            let stream = result.writesToStandardError ? stderr : stdout
-            fputs(result.output + "\n", stream)
+            writeLine(result.output, toStandardError: result.writesToStandardError)
             exit(result.exitCode)
         }
 
@@ -18,7 +22,22 @@ struct BurnBarCLIExecutable {
         let socketAuthToken = environment["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]
             ?? environment["BURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]
         let socketURL = BurnBarCLISocketClient.resolvedSocketURL(environment: environment)
-        let runner = BurnBarCLIRunner(client: BurnBarCLISocketClient(socketURL: socketURL, authToken: socketAuthToken))
+        let client = BurnBarCLISocketClient(socketURL: socketURL, authToken: socketAuthToken)
+
+        if BurnBarCLIRunner.shouldUseHealthFastPath(
+            arguments: arguments,
+            invokedExecutablePath: CommandLine.arguments.first
+        ) {
+            do {
+                writeLine(BurnBarCLIHealthFormatter.format(try client.health()))
+                exit(EXIT_SUCCESS)
+            } catch {
+                writeLine(Self.message(for: error), toStandardError: true)
+                exit(EXIT_FAILURE)
+            }
+        }
+
+        let runner = BurnBarCLIRunner(client: client)
         let exitCode: Int32
 
         do {
@@ -27,14 +46,24 @@ struct BurnBarCLIExecutable {
                 invokedExecutablePath: CommandLine.arguments.first
             )
             if let output = result.output, !output.isEmpty {
-                fputs(output + "\n", stdout)
+                writeLine(output)
             }
             exitCode = result.exitCode
         } catch {
-            fputs((error.localizedDescription.isEmpty ? String(describing: error) : error.localizedDescription) + "\n", stderr)
+            writeLine(Self.message(for: error), toStandardError: true)
             exitCode = EXIT_FAILURE
         }
 
         exit(exitCode)
+    }
+
+    private static func message(for error: any Error) -> String {
+        error.localizedDescription.isEmpty ? String(describing: error) : error.localizedDescription
+    }
+
+    private static func writeLine(_ text: String, toStandardError: Bool = false) {
+        let data = Data((text + "\n").utf8)
+        let handle = toStandardError ? FileHandle.standardError : FileHandle.standardOutput
+        try? handle.write(contentsOf: data)
     }
 }

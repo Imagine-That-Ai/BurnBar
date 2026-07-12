@@ -11,7 +11,7 @@ struct KernelCatalogEntry: Identifiable, Hashable {
     let label: String
 }
 
-/// The 30 bundled kernels, in registry order. Hardcoded (rather than read back
+/// The 31 bundled kernels, in registry order. Hardcoded (rather than read back
 /// from `window.__kernels`) so the picker renders instantly and offline. Keep
 /// in sync with the engine's `KERNEL_META`.
 enum KernelCatalog {
@@ -48,7 +48,8 @@ enum KernelCatalog {
         KernelCatalogEntry(id: "storm-signal", label: "Tempest"),
         KernelCatalogEntry(id: "origami", label: "Origami"),
         KernelCatalogEntry(id: "ink-diffusion", label: "Ink Diffusion"),
-        KernelCatalogEntry(id: "petroleum-sheen", label: "Petroleum Sheen")
+        KernelCatalogEntry(id: "petroleum-sheen", label: "Petroleum Sheen"),
+        KernelCatalogEntry(id: "boids", label: "Boids")
     ]
 
     /// Whether `id` names a real kernel; guards the JS bridge against junk.
@@ -88,6 +89,9 @@ struct KernelBackdropView: NSViewRepresentable {
 
         context.coordinator.requestedKernel = resolvedKernelID
         context.coordinator.requestedTheme = themeName(for: colorScheme)
+        webView.onWindowChange = { [weak coordinator = context.coordinator] in
+            coordinator?.hostWindowChanged(for: $0)
+        }
         context.coordinator.load(initialKernel: resolvedKernelID, into: webView)
         return webView
     }
@@ -101,6 +105,8 @@ struct KernelBackdropView: NSViewRepresentable {
     }
 
     static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
+        coordinator.detachOcclusionObserver()
+        (webView as? NonInteractiveWebView)?.onWindowChange = nil
         webView.navigationDelegate = nil
         webView.stopLoading()
     }
@@ -120,6 +126,60 @@ struct KernelBackdropView: NSViewRepresentable {
         var requestedKernel: String = KernelCatalog.defaultID
         var requestedTheme: String = "dark"
         private var isLoaded = false
+        private weak var observedWebView: WKWebView?
+        private var occlusionObserver: NSObjectProtocol?
+        /// Last state pushed to JS, so occlusion churn doesn't spam evaluateJavaScript.
+        private var lastReportedActive: Bool?
+
+        // MARK: Occlusion → render-loop gating
+        //
+        // `document.hidden` inside the WKWebView never flips when the hosting
+        // window is merely covered by another window, minimized, or the app is
+        // hidden — so without this bridge the WebGL loop burns GPU/CPU behind
+        // fully occluded windows. Mirror the window's occlusion state into the
+        // bundle's `window.__setBackdropActive` hook (a full rAF stop/start).
+
+        func hostWindowChanged(for webView: WKWebView) {
+            observedWebView = webView
+            detachOcclusionObserver()
+            guard let window = webView.window else {
+                // Detached from any window: nothing can be seen; pause.
+                pushBackdropActive(false, to: webView)
+                return
+            }
+            occlusionObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didChangeOcclusionStateNotification,
+                object: window,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.syncOcclusionState() }
+            }
+            syncOcclusionState()
+        }
+
+        func detachOcclusionObserver() {
+            if let observer = occlusionObserver {
+                NotificationCenter.default.removeObserver(observer)
+                occlusionObserver = nil
+            }
+        }
+
+        private func syncOcclusionState() {
+            guard let webView = observedWebView else { return }
+            let visible = webView.window?.occlusionState.contains(.visible) ?? false
+            pushBackdropActive(visible, to: webView)
+        }
+
+        private func pushBackdropActive(_ active: Bool, to webView: WKWebView) {
+            guard lastReportedActive != active else { return }
+            lastReportedActive = active
+            // Optional-call: before the bundle mounts this is a harmless no-op;
+            // `didFinish` re-syncs the real state once the bridge exists.
+            let flag = active ? "true" : "false"
+            webView.evaluateJavaScript(
+                "window.__setBackdropActive && window.__setBackdropActive(\(flag));"
+            )
+        }
 
         func load(initialKernel: String, into webView: WKWebView) {
             guard
@@ -156,6 +216,10 @@ struct KernelBackdropView: NSViewRepresentable {
             // `window.__backdropReady === true`, so poll briefly before driving.
             evaluateSetTheme(requestedTheme, on: webView)
             evaluateSetKernel(requestedKernel, on: webView)
+            // Re-push the occlusion state now that the bridge is (about to be)
+            // live — the pre-load push was a no-op if the bundle wasn't mounted.
+            lastReportedActive = nil
+            hostWindowChanged(for: webView)
         }
 
         private func evaluateSetKernel(_ kernel: String, on webView: WKWebView) {
@@ -192,8 +256,17 @@ struct KernelBackdropView: NSViewRepresentable {
 /// A `WKWebView` that is invisible to the hit-testing system, so the backdrop
 /// never steals clicks from the dashboard content composited above it.
 private final class NonInteractiveWebView: WKWebView {
+    /// Fires whenever the view (re)attaches to a window, so the coordinator
+    /// can re-bind its occlusion observer to the right `NSWindow`.
+    var onWindowChange: ((WKWebView) -> Void)?
+
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
     override var acceptsFirstResponder: Bool { false }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        onWindowChange?(self)
+    }
 }
 
 /// Shared `@AppStorage` keys for the kernel backdrop so the renderer and the

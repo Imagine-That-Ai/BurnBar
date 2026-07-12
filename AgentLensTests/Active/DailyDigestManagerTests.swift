@@ -85,14 +85,14 @@ final class DailyDigestManagerTests: XCTestCase {
 
         // Then
         let request = mockNotificationCenter.addedRequests.first
-        XCTAssertEqual(request?.identifier, OpenBurnBarIdentity.dailyDigestNotificationIdentifier)
+        XCTAssertEqual(request?.identifier, OpenBurnBar.OpenBurnBarIdentity.dailyDigestNotificationIdentifier)
     }
 
     func test_scheduleDigest_removesPendingNotifications() throws {
         // Given
         let store = try DataStore.makeInMemoryForTesting()
         mockNotificationCenter.pendingRequests = [
-            UNNotificationRequest(identifier: OpenBurnBarIdentity.dailyDigestNotificationIdentifier, content: UNMutableNotificationContent(), trigger: nil),
+            UNNotificationRequest(identifier: OpenBurnBar.OpenBurnBarIdentity.dailyDigestNotificationIdentifier, content: UNMutableNotificationContent(), trigger: nil),
             UNNotificationRequest(identifier: "legacy-id-1", content: UNMutableNotificationContent(), trigger: nil)
         ]
 
@@ -101,7 +101,7 @@ final class DailyDigestManagerTests: XCTestCase {
 
         // Then - old requests should be removed
         // The manager should have called removePendingNotificationRequests
-        XCTAssertTrue(mockNotificationCenter.removedIdentifiers.contains(OpenBurnBarIdentity.dailyDigestNotificationIdentifier))
+        XCTAssertTrue(mockNotificationCenter.removedIdentifiers.contains(OpenBurnBar.OpenBurnBarIdentity.dailyDigestNotificationIdentifier))
     }
 
     func test_scheduleDigest_includesLegacyIdentifiers() throws {
@@ -112,7 +112,7 @@ final class DailyDigestManagerTests: XCTestCase {
         manager.scheduleDigest(from: store)
 
         // Then - legacy identifiers should be removed
-        for legacyId in OpenBurnBarIdentity.legacyDailyDigestNotificationIdentifiers {
+        for legacyId in OpenBurnBar.OpenBurnBarIdentity.legacyDailyDigestNotificationIdentifiers {
             XCTAssertTrue(mockNotificationCenter.removedIdentifiers.contains(legacyId))
         }
     }
@@ -126,7 +126,7 @@ final class DailyDigestManagerTests: XCTestCase {
 
         // Then
         let request = mockNotificationCenter.addedRequests.first
-        XCTAssertEqual(request?.content.title, "\(OpenBurnBarIdentity.productName) Daily Digest")
+        XCTAssertEqual(request?.content.title, "\(OpenBurnBar.OpenBurnBarIdentity.productName) Daily Digest")
     }
 
     func test_scheduleDigest_notificationContent_hasDefaultSound() throws {
@@ -201,14 +201,14 @@ final class DailyDigestManagerTests: XCTestCase {
     func test_cancelDigest_removesNotification() {
         // Given
         mockNotificationCenter.pendingRequests = [
-            UNNotificationRequest(identifier: OpenBurnBarIdentity.dailyDigestNotificationIdentifier, content: UNMutableNotificationContent(), trigger: nil)
+            UNNotificationRequest(identifier: OpenBurnBar.OpenBurnBarIdentity.dailyDigestNotificationIdentifier, content: UNMutableNotificationContent(), trigger: nil)
         ]
 
         // When
         manager.cancelDigest()
 
         // Then
-        XCTAssertTrue(mockNotificationCenter.removedIdentifiers.contains(OpenBurnBarIdentity.dailyDigestNotificationIdentifier))
+        XCTAssertTrue(mockNotificationCenter.removedIdentifiers.contains(OpenBurnBar.OpenBurnBarIdentity.dailyDigestNotificationIdentifier))
     }
 
     func test_cancelDigest_removesLegacyIdentifiers() {
@@ -222,7 +222,7 @@ final class DailyDigestManagerTests: XCTestCase {
         manager.cancelDigest()
 
         // Then
-        for legacyId in OpenBurnBarIdentity.legacyDailyDigestNotificationIdentifiers {
+        for legacyId in OpenBurnBar.OpenBurnBarIdentity.legacyDailyDigestNotificationIdentifiers {
             XCTAssertTrue(mockNotificationCenter.removedIdentifiers.contains(legacyId))
         }
     }
@@ -250,21 +250,21 @@ final class DailyDigestManagerTests: XCTestCase {
         manager.cancelDigest()
 
         // Then - scheduled request should be removed
-        XCTAssertTrue(mockNotificationCenter.removedIdentifiers.contains(OpenBurnBarIdentity.dailyDigestNotificationIdentifier))
+        XCTAssertTrue(mockNotificationCenter.removedIdentifiers.contains(OpenBurnBar.OpenBurnBarIdentity.dailyDigestNotificationIdentifier))
     }
 
     func test_reschedule_replacesExistingNotification() throws {
         // Given
         let store = try DataStore.makeInMemoryForTesting()
         mockNotificationCenter.pendingRequests = [
-            UNNotificationRequest(identifier: OpenBurnBarIdentity.dailyDigestNotificationIdentifier, content: UNMutableNotificationContent(), trigger: nil)
+            UNNotificationRequest(identifier: OpenBurnBar.OpenBurnBarIdentity.dailyDigestNotificationIdentifier, content: UNMutableNotificationContent(), trigger: nil)
         ]
 
         // When - reschedule
         manager.scheduleDigest(from: store, at: 10)
 
         // Then - old notification should be removed
-        XCTAssertTrue(mockNotificationCenter.removedIdentifiers.contains(OpenBurnBarIdentity.dailyDigestNotificationIdentifier))
+        XCTAssertTrue(mockNotificationCenter.removedIdentifiers.contains(OpenBurnBar.OpenBurnBarIdentity.dailyDigestNotificationIdentifier))
         // And new notification should be added
         XCTAssertFalse(mockNotificationCenter.addedRequests.isEmpty)
     }
@@ -363,10 +363,12 @@ final class DailyDigestManagerTests: XCTestCase {
             )
         }
         store.replaceUsages(usages)
+        XCTAssertEqual(usages.count, 100)
 
         measure {
             manager.scheduleDigest(from: store)
         }
+        XCTAssertFalse(mockNotificationCenter.addedRequests.isEmpty)
     }
 }
 

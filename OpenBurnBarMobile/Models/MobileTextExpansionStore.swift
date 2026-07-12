@@ -5,10 +5,13 @@ import Observation
 import FirebaseAuth
 import FirebaseFirestore
 import UIKit
+import os.log
 
 @MainActor
 @Observable
 final class MobileTextExpansionStore {
+    private static let log = Logger(subsystem: "com.openburnbar.app", category: "MobileTextExpansionStore")
+
     private(set) var snippets: [TextExpansionSnippet] = []
     var statusMessage: String?
     private var syncTask: Task<Void, Never>?
@@ -34,6 +37,9 @@ final class MobileTextExpansionStore {
         do {
             snippets = try TextExpansionSnapshotStore.read(from: url).snippets
         } catch {
+            // A missing snapshot is normal on first launch; a corrupt one is a
+            // real read failure — log it, cloud sync repopulates either way.
+            Self.log.warning("load: snapshot read failed, starting empty: \(error.localizedDescription, privacy: .public)")
             snippets = []
         }
         ingestInbox()

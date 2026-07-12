@@ -1,0 +1,650 @@
+name: OpenBurnBar Windows Release
+
+# Windows direct-download release pipeline (Phase 5 · signed distribution). Mirrors the SHAPE of
+# the macOS release (.github/workflows/release.yml) — build → sign → package → sign the update
+# feed → SBOM + OpenVEX + Sigstore provenance — adapted to Windows:
+#
+#   • CODE SIGNING is Authenticode via Azure Artifact Signing (the mac notarize/staple analog).
+#     IMPORTANT: Authenticode has NO staple analog. macOS staples a notarization ticket onto the
+#     artifact after the fact; Authenticode instead embeds an RFC-3161 countersignature at SIGN
+#     time (so the signature stays valid after the cert expires) — there is nothing to staple
+#     later. This workflow therefore signs+timestamps in one step and never "staples".
+#   • The UPDATE FEED is authenticated by a PINNED Ed25519 key (WINDOWS_UPDATE_SIGNING_KEY),
+#     INDEPENDENT of the Authenticode cert — the exact mac model where the Sparkle EdDSA key is
+#     independent of the Developer-ID cert. A compromised Authenticode cert alone cannot ship an
+#     update; the feed entry must also verify under the pinned key.
+#   • SUPPLY CHAIN mirrors mac: an SPDX SBOM + an OpenVEX sidecar + keyless Sigstore
+#     (cosign attest-blob) provenance over every Windows artifact.
+#
+# CEILING (honest): the real MSIX/EXE build + Authenticode signing + Store/winget submission need
+# a Windows runner AND the Azure Artifact Signing profile + update-feed key. These are gated on
+# the WINDOWS_CODESIGN_* / WINDOWS_UPDATE_SIGNING_KEY secrets and fail closed for real release
+# tags. Manual unsigned dry-runs can still stop at the signing boundary. The portable security
+# kernel is proven on every run by the `portable-verify` job (real `dotnet test` + a signer
+# round-trip).
+#
+# TRIGGER: a `windows-v*` tag (the manifest version must be bumped first — the portable-verify job
+# enforces version consistency at tag time) or a manual dispatch.
+
+on:
+  push:
+    tags:
+      - "windows-v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (e.g. 1.0.28) — required for manual dispatch."
+        required: false
+        default: ""
+      allow_unsigned:
+        description: "Manual validation only: build unsigned artifacts up to the signing boundary. Ignored for windows-v* tag releases."
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: openburnbar-windows-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+
+jobs:
+  # ── Resolve the release version from the tag or the dispatch input ──────────
+  resolve-release:
+    name: Resolve release version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Resolve version
+        id: version
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ "${REF_TYPE}" == "tag" && "${REF_NAME}" == windows-v* ]]; then
+            version="${REF_NAME#windows-v}"
+          elif [[ -n "${INPUT_VERSION}" ]]; then
+            version="${INPUT_VERSION}"
+          else
+            echo "::error::No version: push a windows-v* tag or pass the version dispatch input."
+            exit 1
+          fi
+          if ! [[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version '${version}' is not X.Y.Z."
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Resolved release version: ${version}"
+
+  # ── Always-run: prove the portable security kernel (test + signer round-trip) ─
+  portable-verify:
+    name: Verify distribution core
+    needs: resolve-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Run distribution-core unit tests
+        run: dotnet test windows/tests/dist/OpenBurnBar.Dist.Tests.csproj -c Release --nologo
+
+      - name: Signer round-trip (good pin verifies, wrong pin fails closed)
+        run: |
+          set -euo pipefail
+          tool="windows/dist/OpenBurnBar.Dist.UpdateFeed.Tool/OpenBurnBar.Dist.UpdateFeed.Tool.csproj"
+          work="$(mktemp -d)"
+          dotnet run --project "$tool" -c Release -- gen-key > "$work/keys.json"
+          pub="$(python3 -c "import json;print(json.load(open('$work/keys.json'))['publicKeyBase64'])")"
+          priv="$(python3 -c "import json;print(json.load(open('$work/keys.json'))['privateKeyBase64'])")"
+          export OBB_SEED="$priv"
+          sha="$(python3 -c "import hashlib;print(hashlib.sha256(b'ci-artifact').hexdigest())")"
+          dotnet run --project "$tool" -c Release -- sign-entry \
+            --version "${{ needs.resolve-release.outputs.version }}" --platform win-x64 --channel stable \
+            --url "https://dl.openburnbar.dev/x.zip" --size 100 --sha256 "$sha" \
+            --min-os-build 17763 --published-at "2026-01-01T00:00:00Z" \
+            --private-key-env OBB_SEED --out "$work/entry.json"
+          dotnet run --project "$tool" -c Release -- build-feed --entry "$work/entry.json" --out "$work/feed.json"
+          dotnet run --project "$tool" -c Release -- verify-feed --feed "$work/feed.json" --pinned-public-base64 "$pub"
+          wrong="$(dotnet run --project "$tool" -c Release -- gen-key | python3 -c "import json,sys;print(json.load(sys.stdin)['publicKeyBase64'])")"
+          set +e
+          dotnet run --project "$tool" -c Release -- verify-feed --feed "$work/feed.json" --pinned-public-base64 "$wrong"
+          rc=$?
+          set -e
+          if [[ "$rc" -eq 0 ]]; then
+            echo "::error::Feed verification under a wrong pinned key unexpectedly SUCCEEDED."
+            exit 1
+          fi
+          echo "Wrong-pin verification correctly failed closed (exit $rc)."
+
+      - name: Lint packaging props (well-formed XML)
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+
+          for file_name in (
+              "windows/dist/props/OpenBurnBar.Windows.Hardening.props",
+              "windows/dist/props/OpenBurnBar.Windows.NativeHardening.props",
+          ):
+              ET.parse(file_name)
+              print(f"xml parse OK: {file_name}")
+          PY
+
+      - name: Enforce version consistency at release time
+        env:
+          OPENBURNBAR_EXPECTED_VERSION: ${{ needs.resolve-release.outputs.version }}
+          OPENBURNBAR_REQUIRE_CURRENT_WINDOWS_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.allow_unsigned == 'true' && '0' || '1' }}
+        run: bash scripts/verify-version-consistency.sh
+
+  native-engine:
+    name: Build native parser engine
+    uses: ./.github/workflows/openburnbar-engine-windows.yml
+
+  # ── Windows runner: build + Authenticode sign + sign the update feed ────────
+  build-sign:
+    name: Build + Authenticode sign
+    needs:
+      - resolve-release
+      - portable-verify
+      - native-engine
+    runs-on: windows-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ needs.resolve-release.outputs.version }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Locate Windows SDK packaging tools
+        id: packaging-tools
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $makeappx = Get-ChildItem `
+            "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\makeappx.exe" `
+            -ErrorAction SilentlyContinue |
+            Sort-Object { [version]$_.Directory.Parent.Name } -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $makeappx) {
+            throw "MakeAppx.exe is missing from the Windows SDK on this runner."
+          }
+          $makepri = Get-ChildItem `
+            "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\makepri.exe" `
+            -ErrorAction SilentlyContinue |
+            Sort-Object { [version]$_.Directory.Parent.Name } -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $makepri) {
+            throw "MakePri.exe is missing from the Windows SDK on this runner."
+          }
+          "makeappx=$makeappx" >> $env:GITHUB_OUTPUT
+          "makepri=$makepri" >> $env:GITHUB_OUTPUT
+          "MakeAppx: $makeappx"
+          "MakePri: $makepri"
+
+      - name: Download x64 native engine bundle
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: openburnbar-native-engine-win-x64
+          path: windows/native-engine/win-x64
+
+      - name: Download ARM64 native engine bundle
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: openburnbar-native-engine-win-arm64
+          path: windows/native-engine/win-arm64
+
+      - name: Preflight signing configuration
+        id: config
+        env:
+          WINDOWS_RELEASE_ALLOW_UNSIGNED: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.allow_unsigned == 'true' && '1' || '0' }}
+          WINDOWS_CODESIGN_ENDPOINT: ${{ secrets.WINDOWS_CODESIGN_ENDPOINT }}
+          WINDOWS_CODESIGN_ACCOUNT_NAME: ${{ secrets.WINDOWS_CODESIGN_ACCOUNT_NAME }}
+          WINDOWS_CODESIGN_CERT_PROFILE_NAME: ${{ secrets.WINDOWS_CODESIGN_CERT_PROFILE_NAME }}
+          WINDOWS_CODESIGN_AZURE_TENANT_ID: ${{ secrets.WINDOWS_CODESIGN_AZURE_TENANT_ID }}
+          WINDOWS_CODESIGN_AZURE_CLIENT_ID: ${{ secrets.WINDOWS_CODESIGN_AZURE_CLIENT_ID }}
+          WINDOWS_CODESIGN_AZURE_CLIENT_SECRET: ${{ secrets.WINDOWS_CODESIGN_AZURE_CLIENT_SECRET }}
+          WINDOWS_UPDATE_SIGNING_KEY: ${{ secrets.WINDOWS_UPDATE_SIGNING_KEY }}
+          WINDOWS_UPDATE_PUBLIC_KEY: ${{ vars.WINDOWS_UPDATE_PUBLIC_KEY }}
+        run: bash scripts/ci/verify-windows-release-signing-preflight.sh
+
+      - name: Run updater unit tests against committed sample pin
+        run: dotnet test windows/tests/updater/OpenBurnBar.Updater.Tests.csproj -c Release
+
+      - name: Publish WinUI app (win-x64 + win-arm64)
+        # Real build. Unproven until WINUI-017 lands the full WinUI toolchain build; this only
+        # runs on a windows-v* tag, which is not cut until the app builds green.
+        env:
+          WINDOWS_UPDATE_PUBLIC_KEY: ${{ vars.WINDOWS_UPDATE_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          app="windows/app/OpenBurnBar.App/OpenBurnBar.App.csproj"
+          pin="windows/packaging/updater/feed/pinned-update-key.pub"
+          printf '%s\n' "$WINDOWS_UPDATE_PUBLIC_KEY" > "$pin"
+          for rid in win-x64 win-arm64; do
+            plat="x64"
+            [[ "$rid" == "win-arm64" ]] && plat="ARM64"
+            dotnet publish "$app" -c Release -r "$rid" --self-contained true \
+              -p:Platform="$plat" -p:WindowsPackageType=None \
+              -p:Version="$VERSION" -p:AssemblyVersion="${VERSION}.0" \
+              -p:FileVersion="${VERSION}.0" -p:InformationalVersion="$VERSION" \
+              -p:OpenBurnBarNativeEngineDirectory="$GITHUB_WORKSPACE/windows/native-engine/$rid" \
+              -p:OpenBurnBarRequireNativeEngine=true \
+              -o "publish/$rid"
+          done
+
+      - name: Authenticode sign (Azure Artifact Signing — no staple analog)
+        if: steps.config.outputs.codesign == 'true'
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          endpoint: ${{ secrets.WINDOWS_CODESIGN_ENDPOINT }}
+          signing-account-name: ${{ secrets.WINDOWS_CODESIGN_ACCOUNT_NAME }}
+          certificate-profile-name: ${{ secrets.WINDOWS_CODESIGN_CERT_PROFILE_NAME }}
+          azure-tenant-id: ${{ secrets.WINDOWS_CODESIGN_AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.WINDOWS_CODESIGN_AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.WINDOWS_CODESIGN_AZURE_CLIENT_SECRET }}
+          files-folder: ${{ github.workspace }}/publish
+          files-folder-filter: OpenBurnBar*.exe,OpenBurnBar*.dll
+          files-folder-recurse: true
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Verify portable Authenticode signatures
+        if: steps.config.outputs.codesign == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $expectedPublisher = "CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US"
+          $signedFiles = @()
+          foreach ($rid in @("win-x64", "win-arm64")) {
+            $publishRoot = Join-Path $env:GITHUB_WORKSPACE "publish/$rid"
+            if (-not (Test-Path -LiteralPath $publishRoot)) {
+              throw "Publish root is missing: publish/$rid"
+            }
+            $signedFiles += Get-ChildItem -Path $publishRoot -Recurse -File |
+              Where-Object { $_.Name -like "OpenBurnBar*.exe" -or $_.Name -like "OpenBurnBar*.dll" }
+          }
+
+          if ($signedFiles.Count -lt 2) {
+            throw "Expected OpenBurnBar-owned portable binaries to verify; found $($signedFiles.Count)."
+          }
+
+          foreach ($file in $signedFiles) {
+            $relativePath = [System.IO.Path]::GetRelativePath($env:GITHUB_WORKSPACE, $file.FullName)
+            $signature = Get-AuthenticodeSignature -FilePath $file.FullName
+            if ($signature.Status -ne "Valid") {
+              throw "Portable Authenticode signature is $($signature.Status): $relativePath"
+            }
+            if (-not $signature.SignerCertificate -or $signature.SignerCertificate.Subject -cne $expectedPublisher) {
+              throw "Portable Authenticode signer is not ${expectedPublisher}: $relativePath :: $($signature.SignerCertificate.Subject)"
+            }
+            if (-not $signature.TimeStamperCertificate) {
+              throw "Portable Authenticode signature is missing an RFC 3161 timestamp: $relativePath"
+            }
+            Write-Host "Portable Authenticode valid: $relativePath :: $($signature.SignerCertificate.Subject)"
+          }
+
+      - name: Package zips + checksums
+        id: package
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          : > "artifacts/checksums-windows-v${VERSION}.txt"
+          for rid in win-x64 win-arm64; do
+            zip="artifacts/OpenBurnBar-${VERSION}-${rid}.zip"
+            ( cd "publish/$rid" && 7z a -tzip -bd "../../$zip" . >/dev/null )
+            ( cd artifacts && sha256sum "OpenBurnBar-${VERSION}-${rid}.zip" >> "checksums-windows-v${VERSION}.txt" )
+          done
+
+      - name: Build MSIX (MakeAppx — Store + sideload channel)
+        # The MSIX is the Store + sideload channel; the portable zip above is the
+        # direct-download / winget / Chocolatey channel. Both ship from the SAME
+        # app binaries (the WAP project references the app as its entry point;
+        # the app keeps WindowsPackageType=None so the portable build is unchanged).
+        run: |
+          set -euo pipefail
+          makeappx='${{ steps.packaging-tools.outputs.makeappx }}'
+          makepri='${{ steps.packaging-tools.outputs.makepri }}'
+          publisher="CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US"
+          for rid in win-x64 win-arm64; do
+            arch="x64"
+            [[ "$rid" == "win-arm64" ]] && arch="arm64"
+            output="artifacts/OpenBurnBar-${VERSION}-${arch}.msix"
+            pwsh -NoProfile -NonInteractive -File windows/packaging/msix/New-MsixPackage.ps1 \
+              -PublishDir "publish/$rid" -Architecture "$arch" -Version "$VERSION" \
+              -OutputPath "$output" -MakeAppxPath "$makeappx" -MakePriPath "$makepri" \
+              -Publisher "$publisher"
+          done
+
+      - name: Authenticode sign the MSIX (Azure Artifact Signing)
+        if: steps.config.outputs.codesign == 'true'
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          endpoint: ${{ secrets.WINDOWS_CODESIGN_ENDPOINT }}
+          signing-account-name: ${{ secrets.WINDOWS_CODESIGN_ACCOUNT_NAME }}
+          certificate-profile-name: ${{ secrets.WINDOWS_CODESIGN_CERT_PROFILE_NAME }}
+          azure-tenant-id: ${{ secrets.WINDOWS_CODESIGN_AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.WINDOWS_CODESIGN_AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.WINDOWS_CODESIGN_AZURE_CLIENT_SECRET }}
+          files-folder: ${{ github.workspace }}/artifacts
+          files-folder-filter: msix
+          files-folder-recurse: false
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Verify MSIX Authenticode signatures
+        if: steps.config.outputs.codesign == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $expectedPublisher = "CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US"
+          $expectedPackages = @(
+            "artifacts/OpenBurnBar-${env:VERSION}-x64.msix",
+            "artifacts/OpenBurnBar-${env:VERSION}-arm64.msix"
+          )
+
+          foreach ($relativePath in $expectedPackages) {
+            $path = Join-Path $env:GITHUB_WORKSPACE $relativePath
+            if (-not (Test-Path -LiteralPath $path)) {
+              throw "Expected signed MSIX package is missing: $relativePath"
+            }
+
+            $signature = Get-AuthenticodeSignature -FilePath $path
+            if ($signature.Status -ne "Valid") {
+              throw "MSIX Authenticode signature is $($signature.Status): $relativePath"
+            }
+            if (-not $signature.SignerCertificate -or $signature.SignerCertificate.Subject -cne $expectedPublisher) {
+              throw "MSIX Authenticode signer is not ${expectedPublisher}: $relativePath :: $($signature.SignerCertificate.Subject)"
+            }
+            if (-not $signature.TimeStamperCertificate) {
+              throw "MSIX Authenticode signature is missing an RFC 3161 timestamp: $relativePath"
+            }
+            Write-Host "MSIX Authenticode valid: $relativePath :: $($signature.SignerCertificate.Subject)"
+          }
+
+      - name: Exercise signed x64 MSIX install and sustained-launch lifecycle
+        if: steps.config.outputs.codesign == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $expectedPublisher = "CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US"
+          $packagePath = Join-Path $env:GITHUB_WORKSPACE "artifacts/OpenBurnBar-${env:VERSION}-x64.msix"
+          $receiptPath = Join-Path $env:GITHUB_WORKSPACE "artifacts/signed-x64-msix-lifecycle.json"
+          & windows/packaging/msix/Test-SignedMsixLifecycle.ps1 `
+            -PackagePath $packagePath `
+            -ExpectedVersion "${env:VERSION}.0" `
+            -ExpectedArchitecture X64 `
+            -ExpectedPublisher $expectedPublisher `
+            -ReceiptPath $receiptPath `
+            -HoldSeconds 20
+
+      - name: Finalize checksums after signing
+        run: |
+          set -euo pipefail
+          checksum_file="checksums-windows-v${VERSION}.txt"
+          : > "artifacts/${checksum_file}"
+          for file in \
+            "OpenBurnBar-${VERSION}-win-x64.zip" \
+            "OpenBurnBar-${VERSION}-win-arm64.zip" \
+            "OpenBurnBar-${VERSION}-x64.msix" \
+            "OpenBurnBar-${VERSION}-arm64.msix"; do
+            ( cd artifacts && sha256sum "$file" >> "$checksum_file" )
+          done
+          echo "Checksums:"
+          cat "artifacts/${checksum_file}"
+
+      - name: Sign the update feed (pinned Ed25519, independent of Authenticode)
+        if: steps.config.outputs.updatekey == 'true'
+        env:
+          WINDOWS_UPDATE_SIGNING_KEY: ${{ secrets.WINDOWS_UPDATE_SIGNING_KEY }}
+          WINDOWS_UPDATE_PUBLIC_KEY: ${{ vars.WINDOWS_UPDATE_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          tool="windows/dist/OpenBurnBar.Dist.UpdateFeed.Tool/OpenBurnBar.Dist.UpdateFeed.Tool.csproj"
+          # Recover the pinned public key from the private seed (for the self-verify + to confirm
+          # it equals the value pinned into the app).
+          pub="$(dotnet run --project "$tool" -c Release -- derive-pubkey --private-key-env WINDOWS_UPDATE_SIGNING_KEY)"
+          if [[ "$pub" != "$WINDOWS_UPDATE_PUBLIC_KEY" ]]; then
+            echo "::error::WINDOWS_UPDATE_SIGNING_KEY does not derive to repo variable WINDOWS_UPDATE_PUBLIC_KEY; rotate them together before releasing."
+            exit 1
+          fi
+          entries=""
+          for rid in win-x64 win-arm64; do
+            zip="artifacts/OpenBurnBar-${VERSION}-${rid}.zip"
+            sha="$(sha256sum "$zip" | awk '{print $1}')"
+            size="$(wc -c < "$zip" | tr -d ' ')"
+            out="artifacts/entry-${rid}.json"
+            dotnet run --project "$tool" -c Release -- sign-entry \
+              --version "${VERSION}" --platform "${rid}" --channel stable \
+              --url "https://dl.openburnbar.dev/OpenBurnBar-${VERSION}-${rid}.zip" \
+              --size "${size}" --sha256 "${sha}" --min-os-build 17763 \
+              --private-key-env WINDOWS_UPDATE_SIGNING_KEY --out "${out}"
+            entries="${entries:+${entries},}${out}"
+          done
+          dotnet run --project "$tool" -c Release -- build-feed --entry "${entries}" --out "artifacts/windows-update-feed-v${VERSION}.json"
+          # Self-verify the feed under the pinned key — the SAME code path the shipped app runs.
+          dotnet run --project "$tool" -c Release -- verify-feed \
+            --feed "artifacts/windows-update-feed-v${VERSION}.json" --pinned-public-base64 "$pub"
+
+          appcast_generator="windows/packaging/updater/OpenBurnBar.Updater.Generator/OpenBurnBar.Updater.Generator.csproj"
+          dotnet run --project "$appcast_generator" -c Release -- \
+            --version "${VERSION}" \
+            --build "${VERSION}" \
+            --bundle-id com.openburnbar.app \
+            --artifact "artifacts/OpenBurnBar-${VERSION}-x64.msix" \
+            --download-url "https://dl.openburnbar.app/windows/OpenBurnBar-${VERSION}-x64.msix" \
+            --appcast-url "https://dl.openburnbar.app/windows/appcast-windows.xml" \
+            --ed-seed-base64-env WINDOWS_UPDATE_SIGNING_KEY \
+            --appcast-out artifacts/appcast-windows.xml \
+            --json-out artifacts/latest-windows.json \
+            --release-notes-url "https://dl.openburnbar.app/windows/release-metadata.json" \
+            --commit "${GITHUB_SHA}" \
+            --created-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --pub-date "$(date -u '+%a, %d %b %Y %H:%M:%S GMT')"
+
+      - name: Upload Windows release artifacts
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: windows-release-v${{ needs.resolve-release.outputs.version }}
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 7
+
+  # ── Supply chain: SBOM (SPDX) + OpenVEX + keyless Sigstore over the artifacts ─
+  supply-chain:
+    name: SBOM + OpenVEX + Sigstore
+    needs:
+      - resolve-release
+      - build-sign
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write # keyless Sigstore (cosign attest-blob)
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ needs.resolve-release.outputs.version }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Download Windows release artifacts
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: windows-release-v${{ needs.resolve-release.outputs.version }}
+          path: artifacts
+
+      - name: Expand packages for dependency inventory
+        run: |
+          set -euo pipefail
+          mkdir -p sbom-input
+          shopt -s nullglob
+          archives=(artifacts/*.zip artifacts/*.msix)
+          if [[ "${#archives[@]}" -eq 0 ]]; then
+            echo "::error::No Windows packages are available for SBOM generation."
+            exit 1
+          fi
+          for archive in "${archives[@]}"; do
+            name="$(basename "$archive")"
+            unzip -q "$archive" -d "sbom-input/${name}"
+          done
+
+      - name: Generate SBOM (SPDX) over the Windows artifacts
+        id: sbom
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          path: sbom-input
+          format: spdx-json
+          output-file: "sbom-windows-v${{ needs.resolve-release.outputs.version }}.spdx.json"
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Validate SBOM contains package dependencies
+        run: |
+          python3 - "sbom-windows-v${VERSION}.spdx.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          sbom = json.loads(path.read_text(encoding="utf-8"))
+          packages = sbom.get("packages", [])
+          dependency_packages = [
+              package for package in packages
+              if package.get("primaryPackagePurpose") != "FILE"
+          ]
+          if not dependency_packages:
+              raise SystemExit("SBOM contains no dependency packages after expanding Windows artifacts")
+          print(f"SBOM dependency packages: {len(dependency_packages)}")
+          PY
+
+      - name: Generate OpenVEX sidecar
+        id: vex
+        run: |
+          set -euo pipefail
+          sbom="sbom-windows-v${VERSION}.spdx.json"
+          vex="openburnbar-windows-v${VERSION}.vex.json"
+          python3 scripts/supply-chain/generate-vex.py \
+            --sbom "$sbom" \
+            --output "$vex" \
+            --product-version "$VERSION"
+          echo "vex=$vex" >> "$GITHUB_OUTPUT"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2 (node24-native)
+
+      - name: Sigstore blob attestations over every artifact
+        env:
+          PREDICATE_TYPE: "https://openburnbar.dev/attestations/windows-release-artifact/v1"
+        run: |
+          set -euo pipefail
+          sbom="sbom-windows-v${VERSION}.spdx.json"
+          vex="openburnbar-windows-v${VERSION}.vex.json"
+          prov="provenance-windows-v${VERSION}"
+          mkdir -p "$prov"
+
+          attest() {
+            local path="$1"
+            if [[ ! -f "$path" ]]; then
+              echo "::error::Provenance artifact missing: $path"
+              exit 1
+            fi
+            local safe
+            safe="$(basename "$path" | tr -c 'A-Za-z0-9._-' '_')"
+            local predicate="$prov/${safe}.predicate.json"
+            python3 - "$path" "$predicate" <<'PY'
+          import hashlib
+          import json
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          artifact = Path(sys.argv[1])
+          predicate = Path(sys.argv[2])
+          commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          payload = {
+              "schemaVersion": 1,
+              "predicateType": os.environ["PREDICATE_TYPE"],
+              "artifact": {
+                  "fileName": artifact.name,
+                  "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
+                  "sizeBytes": artifact.stat().st_size,
+              },
+              "release": {
+                  "version": os.environ["VERSION"],
+                  "commit": commit,
+                  "repository": os.environ.get("GITHUB_REPOSITORY", ""),
+                  "ref": os.environ.get("GITHUB_REF", ""),
+                  "workflow": os.environ.get("GITHUB_WORKFLOW", ""),
+                  "runID": os.environ.get("GITHUB_RUN_ID", ""),
+                  "runAttempt": os.environ.get("GITHUB_RUN_ATTEMPT", ""),
+              },
+              "runner": {
+                  "environment": os.environ.get("GITHUB_ACTIONS", "") == "true" and "github-hosted" or "local",
+              },
+          }
+          predicate.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+            cosign attest-blob --yes \
+              --type "$PREDICATE_TYPE" \
+              --predicate "$predicate" \
+              --bundle "$prov/${safe}.sigstore.json" \
+              "$path"
+            if [[ ! -s "$prov/${safe}.sigstore.json" ]]; then
+              echo "::error::cosign did not write a Sigstore bundle for $path"
+              exit 1
+            fi
+          }
+
+          attest "$sbom"
+          attest "$vex"
+          for f in artifacts/*; do
+            [[ -f "$f" ]] && attest "$f"
+          done
+
+      - name: Upload provenance bundle
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: windows-provenance-v${{ needs.resolve-release.outputs.version }}
+          path: |
+            sbom-windows-v${{ needs.resolve-release.outputs.version }}.spdx.json
+            openburnbar-windows-v${{ needs.resolve-release.outputs.version }}.vex.json
+            provenance-windows-v${{ needs.resolve-release.outputs.version }}/
+          if-no-files-found: error
+          retention-days: 7

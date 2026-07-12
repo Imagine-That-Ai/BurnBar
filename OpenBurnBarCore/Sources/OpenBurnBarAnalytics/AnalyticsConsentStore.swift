@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(Combine)
+import Combine
+#endif
 
 /// Tri-state analytics consent — the spine of the opt-in analytics system,
 /// ported from `AgentLens/Services/Analytics/AnalyticsConsentStore.swift`.
@@ -33,15 +36,21 @@ public enum AnalyticsConsentStorage {
 }
 
 @MainActor
-public final class AnalyticsConsentStore: ObservableObject {
+public final class AnalyticsConsentStore {
     /// Convenience re-exports of the shared storage coordinates (kept here so call
     /// sites that already say `AnalyticsConsentStore.appGroupIdentifier` keep working).
     public static let appGroupIdentifier = AnalyticsConsentStorage.appGroupIdentifier
     public static let key = AnalyticsConsentStorage.key
 
+#if canImport(Combine)
     @Published public private(set) var consent: AnalyticsConsent {
         didSet { defaults.set(consent.rawValue, forKey: Self.key) }
     }
+#else
+    public private(set) var consent: AnalyticsConsent {
+        didSet { defaults.set(consent.rawValue, forKey: Self.key) }
+    }
+#endif
 
     private let defaults: UserDefaults
 
@@ -76,6 +85,10 @@ public final class AnalyticsConsentStore: ObservableObject {
     /// Revoke = decline. Stops all future sends; flushes nothing.
     public func revoke() { consent = .declined }
 }
+
+#if canImport(Combine)
+extension AnalyticsConsentStore: ObservableObject {}
+#endif
 
 /// Read-only consent gate for the **widget and keyboard extensions**. They run in
 /// separate processes and must never construct the full `@MainActor`

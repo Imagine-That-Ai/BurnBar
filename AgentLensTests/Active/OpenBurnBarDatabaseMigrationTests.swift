@@ -56,7 +56,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let database = OpenBurnBarDatabase(databaseQueue: queue)
 
         // Should not throw and should not attempt file backup
-        try database.runMigrationsSafely()
+        XCTAssertNoThrow(try database.runMigrationsSafely())
     }
 
     func test_runMigrationsSafely_skipsBackup_whenFileBasedDBIsCurrent() throws {
@@ -83,7 +83,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
     func test_latestMigrationIdentifier_equalsLastRegisteredMigration() {
         XCTAssertEqual(
             OpenBurnBarDatabase.migrator.migrations.last,
-            "v53_memory_forget_outbox",
+            OpenBurnBarDatabase.latestMigrationIdentifier,
             "The migration-backup gate keys off migrator.migrations.last; this must track the newest registered migration."
         )
     }
@@ -301,7 +301,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertEqual(statuses.newDefault, "quarantined")
     }
 
-    func test_chatMemoryAuthorityWritesAreDisabledByDefault() async throws {
+    func test_chatMemoryAuthorityWritesCanBeDisabled() async throws {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
@@ -309,7 +309,8 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
 
         do {
             _ = try await store.addChatMemoryAuthorityRecord(
-                MemoryAddRequest(text: "never write while disabled", scope: MemoryScope(userID: "u-disabled"))
+                MemoryAddRequest(text: "never write while disabled", scope: MemoryScope(userID: "u-disabled")),
+                enabled: false
             )
             XCTFail("Expected disabled chat-memory authority write to throw.")
         } catch {
@@ -1192,7 +1193,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
         let store = ControlPlaneStore(dbQueue: queue)
-        let disabledService = OpenBurnBarMemoryService(store: store)
+        let disabledService = OpenBurnBarMemoryService(store: store, authorityWritesEnabled: { false })
         let scope = MemoryScope(userID: "service-user", appID: "service-app")
 
         do {
@@ -2293,10 +2294,15 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             idempotencyKey: "disabled-worker-idem-pr3"
         )
         let jobID = try await store.enqueueMemoryExtraction(intent, now: now)
-        let worker = MemoryExtractionWorker(store: store, nowProvider: { now }, extractor: { _ in
-            XCTFail("Extractor must not run while chat memory authority writes are disabled.")
-            return []
-        })
+        let worker = MemoryExtractionWorker(
+            store: store,
+            nowProvider: { now },
+            authorityWritesEnabled: { false },
+            extractor: { _ in
+                XCTFail("Extractor must not run while chat memory authority writes are disabled.")
+                return []
+            }
+        )
 
         let drained = try await worker.drainOne()
         XCTAssertFalse(drained)

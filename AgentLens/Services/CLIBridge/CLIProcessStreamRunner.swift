@@ -89,6 +89,36 @@ struct CLIProcessStreamRunner: Sendable {
         }
     }
 
+    func runJunie(
+        executable: String,
+        prompt: String,
+        model: String,
+        workspaceDirectory: URL? = nil,
+        capabilityGrant: AgentCapabilityGrant? = nil,
+        grantStillActive: (@Sendable () async -> Bool)? = nil,
+        continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation
+    ) async {
+        var parser = GenericCLIJSONOrTextParser()
+        await runProcess(
+            invocation: CLIProcessInvocation(
+                executable: executable,
+                arguments: CLIArgumentBuilder.junieArguments(
+                    prompt: prompt,
+                    model: model,
+                    workspaceDirectory: workspaceDirectory,
+                    capabilityGrant: capabilityGrant
+                ),
+                environment: CLIExecutableResolver.agentProcessEnvironment(executablePath: executable),
+                workingDirectory: workspaceDirectory ?? FileManager.default.homeDirectoryForCurrentUser,
+                cliType: .junie
+            ),
+            grantStillActive: grantStillActive,
+            continuation: continuation
+        ) { line in
+            (parser.events(fromLine: line), nil, false)
+        }
+    }
+
     func runForge(
         executable: String,
         prompt: String,
@@ -147,9 +177,40 @@ struct CLIProcessStreamRunner: Sendable {
         }
     }
 
+    func runOMP(
+        executable: String,
+        prompt: String,
+        model: String,
+        workspaceDirectory: URL? = nil,
+        capabilityGrant: AgentCapabilityGrant? = nil,
+        grantStillActive: (@Sendable () async -> Bool)? = nil,
+        continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation
+    ) async {
+        var parser = GenericCLIJSONOrTextParser()
+        await runProcess(
+            invocation: CLIProcessInvocation(
+                executable: executable,
+                arguments: CLIArgumentBuilder.ompArguments(
+                    prompt: prompt,
+                    model: model,
+                    workspaceDirectory: workspaceDirectory,
+                    capabilityGrant: capabilityGrant
+                ),
+                environment: CLIExecutableResolver.agentProcessEnvironment(executablePath: executable),
+                workingDirectory: workspaceDirectory ?? FileManager.default.homeDirectoryForCurrentUser,
+                cliType: .omp
+            ),
+            grantStillActive: grantStillActive,
+            continuation: continuation
+        ) { line in
+            (parser.events(fromLine: line), nil, false)
+        }
+    }
+
     func runCursorAgent(
         executable: String,
         prompt: String,
+        model: String = "",
         workspaceDirectory: URL? = nil,
         capabilityGrant: AgentCapabilityGrant? = nil,
         grantStillActive: (@Sendable () async -> Bool)? = nil,
@@ -161,6 +222,7 @@ struct CLIProcessStreamRunner: Sendable {
                 executable: executable,
                 arguments: CLIArgumentBuilder.cursorAgentArguments(
                     prompt: prompt,
+                    model: model,
                     workspaceDirectory: workspaceDirectory,
                     capabilityGrant: capabilityGrant
                 ),
@@ -201,7 +263,7 @@ struct CLIProcessStreamRunner: Sendable {
         )
         let provider = Self.agentProvider(for: invocation.cliType)
 
-        let processToken = await runtime.registerRunningProcess(process)
+        let processToken = await runtime.registerRunningProcess(process, launched: false)
         continuation.onTermination = { [runtime] _ in
             Task {
                 await runtime.cancelRunningProcess(token: processToken)
@@ -231,6 +293,16 @@ struct CLIProcessStreamRunner: Sendable {
         do {
             try Task.checkCancellation()
             try process.run()
+            if await runtime.markProcessLaunched(token: processToken) == false {
+                // A cancel/revocation arrived in the pre-launch window; the
+                // coordinator could not terminate an unlaunched Process, so
+                // honor the request now that it is running.
+                process.terminate()
+                process.waitUntilExit()
+                grantPollTask?.cancel()
+                continuation.finish(throwing: CancellationError())
+                return
+            }
             if let provider {
                 await MainActor.run {
                     PixelClockAgentStatusStore.shared.markRunning(provider: provider)
@@ -297,6 +369,18 @@ struct CLIProcessStreamRunner: Sendable {
             } // cov:ignore -- nonfatal-log
         }
 
+        // The quota/terminate break paths SIGTERM the child; a CLI that
+        // ignores SIGTERM would otherwise pin this cooperative-pool thread in
+        // waitUntilExit forever. Give it a bounded grace period, then SIGKILL.
+        if process.isRunning {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+            while process.isRunning, ContinuousClock.now < deadline {
+                try? await Task.sleep(nanoseconds: 100_000_000) // try?-ok(bounded exit-grace poll)
+            }
+            if process.isRunning {
+                kill(process.processIdentifier, SIGKILL)
+            }
+        }
         process.waitUntilExit()
         grantPollTask?.cancel()
         stderrTask.cancel()
@@ -358,12 +442,16 @@ struct CLIProcessStreamRunner: Sendable {
             return .xAI
         case .cursorAgent:
             return .cursorAgent
+        case .omp:
+            return .omp
         case .gemini:
             return .geminiCLI
         case .kimi:
             return .kimi
         case .pi:
             return .piAgent
+        case .junie:
+            return .junie
         }
     }
 

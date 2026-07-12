@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The Insights template gallery (Phase 3 · W7). An adaptive grid of stamp-from-the-shelf canvas
+  templates — the Windows render of AgentLens/Views/Insights/InsightsTemplateGalleryView.swift.
+  Cards bind directly to the portable OpenBurnBar.App.Presentation.Insights.InsightCanvasTemplate
+  records; picking one raises TemplateSelected so the page can stamp + show the canvas.
+-->
+<UserControl
+    x:Class="OpenBurnBar.App.Insights.TemplateGalleryView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:OpenBurnBar.App.Insights"
+    xmlns:ins="using:OpenBurnBar.App.Presentation.Insights"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid RowSpacing="12" Padding="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Spacing="4">
+            <TextBlock Text="Start from a template"
+                       FontSize="20"
+                       FontWeight="SemiBold"
+                       Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+            <TextBlock Text="Eight canvas layouts. Stamp one to see live usage KPIs when the SQLCipher database is connected — otherwise honest empty states (sample mode is opt-in)."
+                       FontSize="12"
+                       TextWrapping="Wrap"
+                       Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+        </StackPanel>
+
+        <GridView x:Name="Gallery"
+                  Grid.Row="1"
+                  SelectionMode="Single"
+                  IsItemClickEnabled="True"
+                  ItemClick="OnTemplateClick"
+                  Padding="0,4,0,20">
+            <GridView.ItemContainerStyle>
+                <Style TargetType="GridViewItem">
+                    <Setter Property="Margin" Value="0,0,12,12" />
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                </Style>
+            </GridView.ItemContainerStyle>
+            <GridView.ItemTemplate>
+                <DataTemplate x:DataType="ins:InsightCanvasTemplate">
+                    <Border Width="240"
+                            Height="132"
+                            Padding="16"
+                            CornerRadius="{StaticResource PensieveRadiusLgCorner}"
+                            Background="{StaticResource PensieveColorGlassBgBrush}"
+                            BorderBrush="{StaticResource OBBStrokeBrush}"
+                            BorderThickness="1">
+                        <Grid RowSpacing="6">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <Grid Grid.Row="0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Grid.Column="0"
+                                          FontFamily="Segoe MDL2 Assets"
+                                          FontSize="18"
+                                          Glyph="{x:Bind Glyph}"
+                                          Foreground="{StaticResource OBBAccentBrush}" />
+                                <TextBlock Grid.Column="2"
+                                           VerticalAlignment="Center"
+                                           FontSize="10"
+                                           Foreground="{StaticResource PensieveColorTextMuteBrush}"
+                                           Text="{x:Bind local:InsightViewFormat.WidgetCount(WidgetCount)}" />
+                            </Grid>
+                            <TextBlock Grid.Row="1"
+                                       Text="{x:Bind Title}"
+                                       FontSize="14"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                            <TextBlock Grid.Row="2"
+                                       Text="{x:Bind Summary}"
+                                       FontSize="11"
+                                       TextWrapping="Wrap"
+                                       MaxLines="3"
+                                       TextTrimming="CharacterEllipsis"
+                                       Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </GridView.ItemTemplate>
+        </GridView>
+    </Grid>
+</UserControl>

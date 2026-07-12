@@ -23,7 +23,10 @@ final class OllamaUsageProbe: ProviderUsageAPI, Sendable {
     }
 
     func validate() async throws -> Bool {
-        let url = URL(string: "\(baseURL)/api/tags")!
+        guard let url = URL(string: "\(baseURL)/api/tags") else {
+            // Injected base URL is malformed — the probe simply reports "not reachable".
+            return false
+        }
         var request = URLRequest(url: url)
         request.timeoutInterval = 5
         if let apiKey, !apiKey.isEmpty {

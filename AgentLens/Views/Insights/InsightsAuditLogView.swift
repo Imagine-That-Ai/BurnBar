@@ -14,6 +14,8 @@ struct InsightsAuditLogView: View {
     @State private var entries: [InsightAuditLog.Entry] = []
     @State private var isLoading = true
     @State private var loadError: String?
+    @State private var showClearConfirmation = false
+    @State private var clearError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
@@ -24,6 +26,32 @@ struct InsightsAuditLogView: View {
         .frame(width: 680, height: 520)
         .background(UnifiedDesignSystem.Colors.background)
         .task { await load() }
+        .alert("Clear Audit Log?", isPresented: $showClearConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Clear", role: .destructive) {
+                Task { await clear() }
+            }
+        } message: {
+            Text("This permanently removes all \(entries.count) recorded investigations. This cannot be undone.")
+        }
+        .alert("Couldn’t Clear Audit Log", isPresented: Binding(
+            get: { clearError != nil },
+            set: { if !$0 { clearError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(clearError ?? "")
+        }
+    }
+
+    private func clear() async {
+        do {
+            try await auditLog.clear()
+            Analytics.shared.track(.insightsAuditlogCleared, ["entries_cleared_bucket": .string(AnalyticsBuckets.count(entries.count))])
+        } catch {
+            clearError = error.localizedDescription
+        }
+        await load()
     }
 
     private var header: some View {
@@ -37,11 +65,7 @@ struct InsightsAuditLogView: View {
             }
             Spacer()
             Button("Clear", role: .destructive) {
-                Analytics.shared.track(.insightsAuditlogCleared, ["entries_cleared_bucket": .string(AnalyticsBuckets.count(entries.count))])
-                Task {
-                    try? await auditLog.clear()
-                    await load()
-                }
+                showClearConfirmation = true
             }
             .disabled(entries.isEmpty)
             Button("Close") { isPresented = false }

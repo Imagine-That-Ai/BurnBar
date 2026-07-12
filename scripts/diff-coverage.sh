@@ -85,7 +85,11 @@ fi
 
 if [[ -z "$lines_json" && "$scope" != "packages" && -d "$repo_root/.derived-data/OpenBurnBar_TestCoverage.xcresult" ]]; then
   lines_json="$tmp_root/openburnbar-diff-coverage-lines.json"
-  "$scripts_dir/extract-coverage-lines.sh" "$repo_root/.derived-data/OpenBurnBar_TestCoverage.xcresult" > "$lines_json" 2>/dev/null || lines_json=""
+  if ! "$scripts_dir/extract-coverage-lines.sh" \
+      "$repo_root/.derived-data/OpenBurnBar_TestCoverage.xcresult" > "$lines_json"; then
+    echo '::error::Failed to extract per-line app coverage from the xcresult.' >&2
+    exit 1
+  fi
 fi
 
 if [[ -z "$package_lines_json" && "$scope" != "app" ]]; then
@@ -124,8 +128,8 @@ fi
 
 # Evidence requirements per scope. A lane that cannot see is not allowed to
 # judge — and is never allowed to silently pass.
-if [[ "$scope" == "app" && ! -f "${coverage_json:-}" ]]; then
-  echo '::error::No app coverage data found. Run app tests with OPENBURNBAR_ENABLE_COVERAGE=YES first.' >&2
+if [[ "$scope" == "app" && ! -f "${lines_json:-}" ]]; then
+  echo '::error::No per-line app coverage data found. Run app tests with OPENBURNBAR_ENABLE_COVERAGE=YES and extract-coverage-lines.sh first.' >&2
   exit 1
 fi
 if [[ "$scope" == "packages" && ! -f "${package_lines_json:-}" ]]; then
@@ -283,6 +287,77 @@ COVERAGE_ALLOWLIST = {
         "the changed observer/fetch side effects are AppKit/Firebase runtime "
         "glue that requires integration coverage."
     ),
+    "AgentLens/Services/AccountManager.swift": (
+        "Live FirebaseAuth/GoogleSignIn account-deletion wrapper. The "
+        "server-authoritative erasure contract, local sign-out failure "
+        "semantics, Firebase config parsing, and keychain identifier decisions "
+        "are covered by AccountManagerMattersTests and SwitcherCLIAuthCoordinatorTests; "
+        "the app wrapper requires authenticated Firebase integration coverage."
+    ),
+    "AgentLens/Services/ComputerUse/ComputerUseBudgetStatusStore.swift": (
+        "Live FirebaseAuth/Firestore listener and server-read lifecycle. "
+        "ComputerUseBudgetStatusStoreTests cover scalar payload preservation, "
+        "budget provenance, cached/server snapshot handling, fail-closed "
+        "permission behavior, quota authoritative-zero semantics, and UTC day "
+        "keys; live listener startup requires Firebase integration coverage."
+    ),
+    "AgentLens/Services/ComputerUse/ComputerUseCloudMeteringService.swift": (
+        "Firestore metering adapter for privacy-safe Computer Use headers. "
+        "ComputerUseCloudMeteringServiceTests cover write paths, merge "
+        "semantics, stable action IDs, bounded denial metadata, invalid user "
+        "rejection, privacy filtering, and session-end counters; live delivery "
+        "requires Firebase integration coverage."
+    ),
+    "AgentLens/Services/ComputerUse/ComputerUseFirestoreGateway.swift": (
+        "The live gateway is the single Firebase singleton adapter. "
+        "ComputerUseBudgetStatusStoreTests cover supported scalar conversion, "
+        "NSNumber kind preservation, mutating payload writes, and Firestore "
+        "value export; live snapshot listeners and server reads require "
+        "Firebase emulator/integration coverage."
+    ),
+    "AgentLens/Services/ComputerUse/ComputerUseSessionCoordinator+Approvals.swift": (
+        "Mac Computer Use approval orchestration spans AppKit approval UI, "
+        "local quota ledger reservation, audit evidence capture, and async "
+        "cloud metering. PhoneControlReceiverTests, "
+        "ComputerUseSetTrustModeDowngradeOnlyTests, ComputerUseLocalQuotaLedger "
+        "package tests, and ComputerUseCloudMeteringServiceTests cover the "
+        "deterministic policy and metering contracts; the live AppKit/AX path "
+        "requires integration coverage."
+    ),
+    "AgentLens/Services/ComputerUse/ComputerUseSessionCoordinator.swift": (
+        "Process-scoped Mac Computer Use coordinator bootstrap and teardown "
+        "touch AppKit, AX, control-frame receivers, SystemPermissionMonitor, "
+        "focus-follow, and fire-and-forget cloud metering. The downgrade-only "
+        "trust rule, phone-control handling, quota ledger contracts, and "
+        "metering payloads are covered by focused unit/package tests; live "
+        "receiver wiring requires integration coverage."
+    ),
+    "AgentLens/Services/MacCloudEntitlementStore.swift": (
+        "Live Firebase/StoreKit entitlement source reconciler. "
+        "MacMediaCapabilityGateTests and EntitlementArbitrationTests cover "
+        "server document parsing, StoreKit precedence, lapsed entitlement "
+        "handling, app-account-token binding, and fail-closed states; live "
+        "Firebase/StoreKit refresh loops require integration coverage."
+    ),
+    "AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonManager+ComputerUse.swift": (
+        "Live app-to-daemon Computer Use RPC and capability-state publisher. "
+        "OpenBurnBarDaemon package tests cover daemon-side Computer Use RPC "
+        "contracts/capabilities, OpenBurnBarCore tests cover capability-state "
+        "contracts, and app tests cover the injected manager composition; "
+        "socket RPC plus Firebase/Auth aggregation requires integration coverage."
+    ),
+    "AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonManager.swift": (
+        "Manager composition defaults for Computer Use stores and metering. "
+        "OpenBurnBarDaemonManagerTests cover injected composition and daemon "
+        "manager behavior; default singleton-backed constructor lines require "
+        "the app runtime to line-hit."
+    ),
+    "AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonSocketClient.swift": (
+        "Socket transport adapter for the generated Computer Use capability "
+        "state RPC. BurnBarRPC contract/canon tests and daemon RPC tests own "
+        "method shape and response decoding; the app socket call requires a "
+        "live daemon socket integration test."
+    ),
     "AgentLens/Theme/LiquidGlass.swift": (
         "NSVisualEffectView bridge for macOS visual polish. The constructed "
         "view properties are asserted by LiquidGlassTransparencyTests; "
@@ -427,6 +502,14 @@ def is_structural_swift_line(text):
     if not stripped:
         return True
     if stripped in {"{", "}", "};", "],", "]", "),", ")"}:
+        return True
+    if stripped in {"#else", "#endif"} or stripped.startswith((
+        "#if ",
+        "#elseif ",
+        "#warning",
+        "#error",
+        "#sourceLocation",
+    )):
         return True
     if stripped.startswith("//") or stripped.startswith("/*") or stripped.startswith("*"):
         return True
@@ -770,15 +853,27 @@ for rel_path in gated_files:
         method = f"line_level({line_source})"
         exc = 0
         hit = 0
+        unmeasured = []
         for ln in changed_lines:
             key = str(ln)
             if key not in line_cov:
+                unmeasured.append(ln)
                 continue
             exc += 1
             if line_cov[key]:
                 hit += 1
+        if scope == "app" and unmeasured:
+            # The app lane is line-truth only. Missing counters for genuinely
+            # executable changed lines are uncovered; structural declarations
+            # remain outside the denominator because LLVM emits no counters.
+            unmeasured = filter_structural_swift_lines(rel_path, unmeasured)
+            exc += len(unmeasured)
+            if unmeasured:
+                method = f"line_level({line_source})+missing_line_evidence"
     else:
-        cov_item = file_map_by_path.get(rel_path) or file_map_by_base.get(os.path.basename(rel_path))
+        cov_item = None if scope == "app" else (
+            file_map_by_path.get(rel_path) or file_map_by_base.get(os.path.basename(rel_path))
+        )
         if not cov_item:
             changed_lines = filter_structural_swift_lines(rel_path, changed_lines)
             if not changed_lines:

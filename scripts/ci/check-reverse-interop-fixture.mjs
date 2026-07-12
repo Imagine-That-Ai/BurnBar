@@ -3,7 +3,8 @@
  * Phase 2.5 — structural + byte-identity gate for the committed cross-device Signal fixtures.
  *
  * Covers two families:
- *   G1  the reverse-direction interop fixture (android-alice-to-swift-bob.json) — 3 copies,
+ *   G1  the reverse-direction interop fixture (android-alice-to-swift-bob.json) — 4 copies
+ *       (TS root, Kotlin, Swift, + the Windows KAT copy — VAL-P0-HARNESS-026),
  *       structurally validated (the Swift + Android suites decrypt it);
  *   G6  the transport-binding AAD vector (transport-binding-aad-vectors.json) — 2 copies that the
  *       harness [A2]/[D] + the Swift/Android parity tests consume.
@@ -51,7 +52,7 @@ function requireByteIdenticalCopies(label, copies) {
   return JSON.parse(readFileSync(resolve(REPO, copies[0]), "utf8"));
 }
 
-// ---- G1: reverse-direction interop fixture (3 copies + structure) -----------
+// ---- G1: reverse-direction interop fixture (4 copies + structure) -----------
 const REVERSE_REQUIRED_KEYS = [
   "schema",
   "direction",
@@ -73,10 +74,16 @@ const REVERSE_REQUIRED_KEYS = [
   "secondCiphertextB64",
   "secondExpectedPlaintext",
 ];
+// Four byte-identical copies: the shared/TS root, the Kotlin (Android) test
+// resource, the Swift (OpenBurnBarCore) test resource, and the Windows KAT copy
+// (VAL-P0-HARNESS-026). The Windows libsignal-interop lane consumes the 4th copy;
+// pinning byte-identity across ALL FOUR here keeps the Windows port's KAT from
+// silently drifting from the three shipped platforms.
 const reverse = requireByteIdenticalCopies("reverse interop fixture", [
   "tests/fixtures/signal-interop/android-alice-to-swift-bob.json",
   "android/app/src/test/resources/signal-interop/android-alice-to-swift-bob.json",
   "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/Fixtures/android-alice-to-swift-bob.json",
+  "windows/tests/signal-interop/android-alice-to-swift-bob.json",
 ]);
 if (reverse) {
   for (const key of REVERSE_REQUIRED_KEYS) {

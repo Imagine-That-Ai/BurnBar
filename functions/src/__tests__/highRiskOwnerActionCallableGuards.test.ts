@@ -79,4 +79,13 @@ describe("highRiskOwnerAction callable guards — source wiring", () => {
       expect(matches?.length ?? 0, actionKind).toBe(1);
     }
   });
+
+  it("allows account-erasure retries only through the server-only nonterminal audit check", () => {
+    const source = readCallableSource("providerAccounts.ts");
+    expect(source).toContain("const resumeExistingIntent = await isAccountErasureResumable(db, uid)");
+    expect(source).toContain("if (!resumeExistingIntent)");
+    expect(source).toContain("await enforceHighRiskOwnerAction(request, uid");
+    expect(source).toContain("await auth.revokeRefreshTokens(targetUID)");
+    expect(source).toContain("resumeExistingIntent,");
+  });
 });

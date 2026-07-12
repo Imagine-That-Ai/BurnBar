@@ -17,6 +17,7 @@ typealias TokenUsage = OpenBurnBarCore.TokenUsage
 typealias UsageProvenanceMethod = OpenBurnBarCore.UsageProvenanceMethod
 typealias UsageProvenanceConfidence = OpenBurnBarCore.UsageProvenanceConfidence
 typealias UsageSource = OpenBurnBarCore.UsageSource
+typealias EscrowDeviceTrustState = OpenBurnBarCore.EscrowDeviceTrustState
 
 // MARK: - Provider Support Level (Mac-only)
 
@@ -48,51 +49,9 @@ enum DataConfidence {
 /// and how it grades the resulting token data. The mobile target doesn't
 /// watch local logs, so these accessors only ship on macOS.
 extension AgentProvider {
-    /// Filesystem directory where the provider writes session logs the
-    /// macOS file watcher can scrape. Some providers (e.g. `.openAI`) have
-    /// no local logs at all — they reuse another path so the file watcher's
-    /// exhaustive switch never crashes; the `filePattern` for those entries
-    /// pins a non-matching glob so no files are ever read.
-    var logDirectory: String {
-        switch self {
-        case .factory: return "~/.factory/sessions"
-        case .claudeCode: return "~/.claude/projects"
-        case .copilot: return "~/.copilot/session-state"
-        case .aider: return "~/.aider"
-        case .cursor: return "~/.cursor/ai-tracking"
-        // OpenAI is an org-billing identity (refreshed via API), not a local
-        // log source. Reuse the Codex log dir so the file watcher's switch
-        // doesn't crash when an OpenAI account row is iterated; the parser
-        // never matches files under it because the OpenAI adapter pulls
-        // remotely instead of parsing local logs.
-        case .openAI, .deepSeek: return "~/.codex"
-        case .codex: return "~/.codex"
-        case .openCode: return "~/.local/share/opencode"
-        case .zai: return "~/.factory/sessions"
-        case .minimax: return "~/.factory/sessions"
-        case .kimi: return "~/.kimi/sessions"
-        case .cline: return "~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/tasks"
-        case .kiloCode: return "~/Library/Application Support/Code/User/globalStorage/kilocode.kilo-code/tasks"
-        case .rooCode: return "~/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks"
-        case .forgeDev: return "~/.forge/sessions"
-        case .augment: return "~/Library/Application Support/Code/User/globalStorage/augment.vscode-augment"
-        case .hermes: return "~/.hermes/sessions"
-        case .piAgent: return "~/.pi/sessions"
-        case .geminiCLI: return "~/.gemini/tmp"
-        case .antigravity: return "~/.gemini/antigravity-cli"
-        case .cursorAgent: return "~/.cursor-agent/sessions"
-        case .goose: return "~/.local/share/goose/sessions"
-        case .openClaw: return "~/.openclaw/sessions"
-        case .openClaude: return "~/.openclaude/sessions"
-        case .ollama: return "~/.ollama/logs"
-        case .windsurf: return "~/Library/Application Support/Windsurf - Next/User/globalStorage"
-        case .warp: return "~/Library/Application Support/dev.warp.Warp-Stable"
-        case .xAI: return "~/.grok/sessions"
-        // MiMo quota is refreshed via Token Plan API; no local log directory.
-        case .mimo: return "~/.codex"
-        case .openBurnBar: return "~/.codex"
-        }
-    }
+    // `logDirectory` + `logDirectoryMacForm` moved to OpenBurnBarCore
+    // (SharedModels/AgentProvider+LogDirectory.swift) for the Windows-port G2
+    // parser lift; consumed here via `import OpenBurnBarCore`.
 
     /// Glob pattern paired with `logDirectory` that the file watcher uses
     /// to discover session log files for the provider.
@@ -123,19 +82,21 @@ extension AgentProvider {
         case .goose: return "sessions.db"
         case .openClaw: return "*.jsonl"
         case .openClaude: return "*.jsonl"
+        case .omp: return "*.jsonl"
         case .ollama: return "server*.log"
         case .windsurf: return "state.vscdb"
         case .warp: return "warp_network*.log"
         case .xAI: return "summary.json"
         case .mimo: return "mimo-no-local-logs"
         case .openBurnBar: return "openburnbar-no-local-logs"
+        case .junie: return "*.jsonl"
         }
     }
 
     /// How well the macOS app supports this provider's local data.
     var supportLevel: ProviderSupportLevel {
         switch self {
-        case .factory, .claudeCode, .codex, .openCode, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .antigravity, .goose, .xAI, .cursorAgent, .openClaude:
+        case .factory, .claudeCode, .codex, .openCode, .omp, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .antigravity, .goose, .xAI, .cursorAgent, .openClaude, .junie:
             return .supported
         // OpenAI is supported via the official org usage endpoint — no log
         // parsing, but exact aggregate counts.
@@ -154,7 +115,7 @@ extension AgentProvider {
     /// provider's local artifacts.
     var dataConfidence: DataConfidence {
         switch self {
-        case .factory, .claudeCode, .codex, .openCode, .kimi, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .antigravity, .goose, .openClaw, .piAgent, .xAI, .cursorAgent, .openClaude:
+        case .factory, .claudeCode, .codex, .openCode, .omp, .kimi, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .antigravity, .goose, .openClaw, .piAgent, .xAI, .cursorAgent, .openClaude, .junie:
             return .exact
         // OpenAI exposes exact tokens-used per org via the usage API.
         case .openAI, .deepSeek, .openBurnBar:

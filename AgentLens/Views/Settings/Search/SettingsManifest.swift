@@ -20,6 +20,53 @@ enum SettingsManifest {
     static let all: [SettingsItem] = baseItems + providerItems
 
     private static let baseItems: [SettingsItem] = [
+        // MARK: Home
+
+        SettingsItem(
+            id: "home.overview",
+            tab: .home,
+            pageRoute: .homeRoot,
+            anchorID: SettingsAnchor.homeOverview,
+            title: "Settings Home",
+            subtitle: "System health, quick actions, and attention items",
+            keywords: ["home", "overview", "dashboard", "status", "health", "summary", "start", "welcome"]
+        ),
+
+        // MARK: Model Proxy (unified local gateway + routing + models)
+
+        SettingsItem(
+            id: "modelProxy.overview",
+            tab: .modelProxy,
+            pageRoute: .modelProxyRoot,
+            anchorID: SettingsAnchor.modelProxyOverview,
+            title: "Model Proxy",
+            subtitle: "Local OpenAI-compatible gateway — expose models to Cursor, VS Code, any client",
+            keywords: [
+                "proxy", "gateway", "endpoint", "hydrant", "openai", "v1/models",
+                "local", "server", "api", "cursor", "vscode", "vs code", "client",
+                "expose", "route", "models", "catalog"
+            ],
+            logoProviders: [.claudeCode, .openAI, .codex]
+        ),
+        SettingsItem(
+            id: "modelProxy.endpoint",
+            tab: .modelProxy,
+            pageRoute: .modelProxyRoot,
+            anchorID: SettingsAnchor.modelProxyEndpoint,
+            title: "Gateway Endpoint",
+            subtitle: "The host:port the local gateway listens on",
+            keywords: ["endpoint", "host", "port", "address", "url", "gateway", "proxy"]
+        ),
+        SettingsItem(
+            id: "modelProxy.routing",
+            tab: .modelProxy,
+            pageRoute: .modelProxyRoot,
+            anchorID: SettingsAnchor.modelProxyRouting,
+            title: "Routing Strategy",
+            subtitle: "How requests pick a model when the exact name isn't available",
+            keywords: ["routing", "strategy", "failover", "fallback", "provider", "family", "exact", "model"]
+        ),
+
         SettingsItem(
             id: "dataPrivacy.controlCenter.inventory",
             tab: .dataPrivacy,
@@ -812,6 +859,10 @@ enum SettingsManifest {
     /// UI. Coverage tests compare this against `all` so search cannot index a
     /// setting that has no scroll target.
     static let visibleAnchorIDs: Set<String> = Set([
+        SettingsAnchor.homeOverview,
+        SettingsAnchor.modelProxyOverview,
+        SettingsAnchor.modelProxyEndpoint,
+        SettingsAnchor.modelProxyRouting,
         SettingsAnchor.operatorWizard,
         SettingsAnchor.appearanceTheme,
         SettingsAnchor.appearanceSkin,

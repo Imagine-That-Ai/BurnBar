@@ -1,4 +1,5 @@
 import Foundation
+import os.log
 import FirebaseFirestore
 import FirebaseAuth
 import FirebaseCore
@@ -12,6 +13,7 @@ import OpenBurnBarCore
 
 @Observable @MainActor
 final class SmartHubStore {
+    private static let log = Logger(subsystem: "com.openburnbar.app", category: "SmartHubStore")
     private static let liveBridgeMaxAge: TimeInterval = 60
 
     enum CastState: Equatable {
@@ -290,6 +292,7 @@ final class SmartHubStore {
             }
         } catch {
             // Offline / not signed in — local picker already updated.
+            Self.log.error("updateTimePeriod failed to persist smart_hub_config write: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -307,6 +310,7 @@ final class SmartHubStore {
             _ = try? await publishPixelClockAction(type: "pixel_clock_update_config", pixelClock: pixelClock)
         } catch {
             // Offline / not signed in — leave optimistic state to caller-owned UI.
+            Self.log.error("updatePixelClockConfig failed to persist smart_hub_config write: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -341,6 +345,7 @@ final class SmartHubStore {
             _ = try? await publishNestHubAction(type: "nest_hub_update_display_config", display: display)
         } catch {
             // Offline — the optimistic in-memory update keeps the UI fresh.
+            Self.log.error("updateDisplayConfig failed to persist smart_hub_config write: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -360,6 +365,7 @@ final class SmartHubStore {
             _ = try? await publishNestHubAction(type: "nest_hub_update_order", display: nil, extra: ["displayOrder": order.kinds.map(\.rawValue)])
         } catch {
             // Offline — local order stays put until the next load() reconciles.
+            Self.log.error("updateDisplayOrder failed to persist smart_hub_config write: \(error.localizedDescription, privacy: .public)")
         }
     }
 

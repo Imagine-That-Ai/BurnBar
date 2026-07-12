@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import Observation
+import OpenBurnBarCore
 import OpenBurnBarMedia
 
 struct DataStoreStartupFailure: Identifiable, Equatable {
@@ -14,7 +15,7 @@ struct DataStoreStartupFailure: Identifiable, Equatable {
 
     static func make(
         error: Error,
-        paths: OpenBurnBarAppPaths = .live(),
+        paths: OpenBurnBarCore.OpenBurnBarAppPaths = .live(),
         occurredAt: Date = Date(),
         archiveURL: URL? = nil,
         id: UUID = UUID()
@@ -50,7 +51,7 @@ struct DataStoreStartupFailure: Identifiable, Equatable {
 
     var diagnostics: String {
         var lines = [
-            "\(OpenBurnBarIdentity.productName) could not open its local database.",
+            "\(OpenBurnBarCore.OpenBurnBarIdentity.productName) could not open its local database.",
             "Occurred: \(Self.formatDiagnosticsDate(occurredAt))",
             "Error: \(errorSummary)",
             "Details: \(technicalDetails)",
@@ -82,7 +83,7 @@ enum OpenBurnBarStartupRecovery {
     static let minimumAutomaticUsageRefreshInterval: TimeInterval = 15 * 60
 
     static func archiveDatabaseSidecars(
-        paths: OpenBurnBarAppPaths = .live(),
+        paths: OpenBurnBarCore.OpenBurnBarAppPaths = .live(),
         fileManager: FileManager = .default,
         now: Date = Date()
     ) throws -> DataStoreRecoveryArchiveResult {
@@ -140,7 +141,7 @@ enum OpenBurnBarStartupRecovery {
     }
 
     private static func uniqueArchiveDirectory(
-        paths: OpenBurnBarAppPaths,
+        paths: OpenBurnBarCore.OpenBurnBarAppPaths,
         fileManager: FileManager,
         timestamp: String
     ) throws -> URL {
@@ -219,13 +220,11 @@ final class OpenBurnBarRuntimeContext {
 
     /// The `@MainActor` scheduler that drains the extraction outbox (PR-D2). Owned here
     /// so the start-site (`startLiveServicesIfNeeded`) and the post-commit drain hook
-    /// (`ChatSessionController`) share one engine. The whole feature ships OFF: the combined
-    /// kill switch (`memoryExtractionEnabled`) DEFAULTS FALSE because user consent (G0) is
-    /// off until opt-in, so out of the box nothing reads transcripts or calls the LLM; and
-    /// durable writes additionally require the human-owned go-live flag
-    /// (`chatMemoryAuthorityWritesEnabledByDefault`, default FALSE), AND-ed in the worker's
-    /// authority closure (PR-D FIX #1). Either lever off keeps the subsystem dormant out of
-    /// the box; this engine flips nothing on.
+    /// (`ChatSessionController`) share one engine. The combined kill switch
+    /// (`memoryExtractionEnabled`) defaults false because user consent (G0) is off until
+    /// opt-in, so out of the box nothing reads transcripts or calls the LLM. Durable writes
+    /// are additionally AND-ed with `chatMemoryAuthorityWritesEnabledByDefault` in the
+    /// worker's authority closure (PR-D FIX #1).
     var memoryExtractionEngine: MemoryExtractionEngine?
 
     /// PR-E2 approved-memory cloud-replication scheduler over the SAME shared store as the
@@ -486,6 +485,7 @@ final class OpenBurnBarRuntimeContext {
 
     #if canImport(AppKit) && !DISTRIBUTION_MAS
     func startComputerUseServices(relayHostService explicitRelayHostService: HermesRelayHostService? = nil) {
+        // cov:ignore-start -- live app bootstrap wiring; runtime controller behavior is covered by Computer Use coordinator and daemon manager tests.
         let controller: ComputerUseRuntimeController
         if let existing = computerUseRuntimeController {
             controller = existing
@@ -493,6 +493,7 @@ final class OpenBurnBarRuntimeContext {
             controller = ComputerUseRuntimeController(
                 accountManager: accountManager,
                 settingsManager: settingsManager,
+                daemonManager: daemonManager,
                 relayHostService: explicitRelayHostService ?? hermesRelayHostService,
                 chatController: chatController
             )
@@ -508,6 +509,7 @@ final class OpenBurnBarRuntimeContext {
         #if DEBUG
         controller.startE2EProofSessionIfRequested()
         #endif
+        // cov:ignore-end
     }
     #endif
 

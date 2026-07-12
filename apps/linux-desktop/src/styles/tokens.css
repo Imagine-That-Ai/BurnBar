@@ -1,0 +1,14 @@
+/**
+ * Generated core tokens come from @openburnbar/design-tokens.
+ * Linux-only semantic aliases live below the import.
+ */
+
+@import '@openburnbar/design-tokens/css/pensieve.css';
+
+:root {
+  --ds-skin: editorial;
+  --ds-accent-gradient: linear-gradient(135deg, var(--color-brass-core), var(--color-brass-bright));
+  --color-skin-aurora-core: var(--color-tier-end-to-end);
+  --color-skin-aurora-bright: color-mix(in srgb, var(--color-tier-end-to-end) 55%, var(--color-mercury-bright));
+  --color-skin-aurora-violet: color-mix(in srgb, var(--color-tier-end-to-end) 35%, var(--color-mercury-deep));
+}

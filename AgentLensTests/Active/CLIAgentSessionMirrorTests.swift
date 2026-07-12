@@ -467,6 +467,17 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
             ).chatBackend,
             .forge
         )
+        for alias in ["omp", "ohmypi", "oh-my-pi", "oh my pi"] {
+            XCTAssertEqual(
+                CLIAgentMissionRuntimePlanner.resolve(
+                    requestedRuntime: alias,
+                    missionKind: "custom",
+                    enabledBackends: enabled
+                ).chatBackend,
+                .omp,
+                "alias \(alias)"
+            )
+        }
 
         let opencode = CLIAgentMissionRuntimePlanner.resolve(
             requestedRuntime: "opencode",
@@ -496,7 +507,106 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         XCTAssertEqual(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "droid"), .droid)
         XCTAssertEqual(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "factory-droid"), .droid)
         XCTAssertEqual(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "forge"), .forge)
+        XCTAssertEqual(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "omp"), .omp)
+        XCTAssertEqual(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "ohmypi"), .omp)
+        XCTAssertEqual(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "oh-my-pi"), .omp)
+        XCTAssertEqual(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "oh my pi"), .omp)
         XCTAssertNil(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "unknown"))
+    }
+
+    func test_cursorAgentModelCatalog_usesPrimaryProbe() async throws {
+        let (discovery, root) = try makeCursorAgentCatalogDiscovery(script: """
+        #!/bin/sh
+        if [ "$1" = "models" ]; then
+          printf '%s\n' 'Available models' 'gpt-5.4-high - GPT-5.4 High' 'Tip: done'
+          exit 0
+        fi
+        exit 9
+        """)
+        defer { removeCursorAgentCatalogFixture(at: root) }
+
+        let response = try await discovery.modelCatalog(
+            for: CLIRuntimeModelCatalogRequest(runtime: AssistantRuntimeID.cursorAgent.rawValue)
+        )
+
+        XCTAssertEqual(response.options.map(\.modelID), ["gpt-5.4-high"])
+        XCTAssertEqual(response.options.map(\.source), [.cursorAgentModelCatalog])
+    }
+
+    func test_cursorAgentModelCatalog_usesFallbackAfterPrimaryProbeFails() async throws {
+        let (discovery, root) = try makeCursorAgentCatalogDiscovery(script: """
+        #!/bin/sh
+        if [ "$1" = "models" ]; then
+          echo 'primary failed' >&2
+          exit 7
+        fi
+        if [ "$1" = "--list-models" ]; then
+          printf '%s\n' 'Available models' 'claude-opus-4-8-high - Opus 4.8 High' 'Tip: done'
+          exit 0
+        fi
+        exit 9
+        """)
+        defer { removeCursorAgentCatalogFixture(at: root) }
+
+        let response = try await discovery.modelCatalog(
+            for: CLIRuntimeModelCatalogRequest(runtime: AssistantRuntimeID.cursorAgent.rawValue)
+        )
+
+        XCTAssertEqual(response.options.map(\.modelID), ["claude-opus-4-8-high"])
+        XCTAssertEqual(response.options.map(\.source), [.cursorAgentModelCatalog])
+    }
+
+    func test_cursorAgentModelCatalog_usesDefaultProfileAfterBothProbesFail() async throws {
+        let (discovery, root) = try makeCursorAgentCatalogDiscovery(script: """
+        #!/bin/sh
+        echo "probe $1 failed" >&2
+        exit 7
+        """)
+        defer { removeCursorAgentCatalogFixture(at: root) }
+
+        let response = try await discovery.modelCatalog(
+            for: CLIRuntimeModelCatalogRequest(runtime: AssistantRuntimeID.cursorAgent.rawValue)
+        )
+
+        XCTAssertEqual(response.options.count, 1)
+        XCTAssertEqual(response.options.first?.modelID, "")
+        XCTAssertEqual(response.options.first?.source, .cursorAgentProfile)
+    }
+
+    private func makeCursorAgentCatalogDiscovery(
+        script: String
+    ) throws -> (CLIRuntimeModelCatalogDiscovery, URL) {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-cursor-catalog-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let executable = root.appendingPathComponent("cursor-agent")
+        try script.write(to: executable, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: executable.path
+        )
+        CLIExecutableResolver.clearCache()
+        let rootPath = root.path
+        let resolver = CLIExecutableResolver(
+            environmentProvider: {
+                ["PATH": rootPath, "SHELL": "/openburnbar-nonexistent-shell"]
+            },
+            homeDirectoryProvider: { rootPath }
+        )
+        return (
+            CLIRuntimeModelCatalogDiscovery(
+                resolver: resolver,
+                gatewayProvider: {
+                    RoutingClientGateway(host: "127.0.0.1", port: 8317, authToken: "")
+                }
+            ),
+            root
+        )
+    }
+
+    private func removeCursorAgentCatalogFixture(at root: URL) {
+        CLIExecutableResolver.clearCache()
+        try? FileManager.default.removeItem(at: root)
     }
 
     private func posixPermissions(at url: URL) throws -> Int {
@@ -703,6 +813,55 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         let toolsIndex = try XCTUnwrap(plan.arguments.firstIndex(of: "--tools"))
         XCTAssertEqual(plan.arguments[toolsIndex + 1], "")
         XCTAssertTrue(plan.arguments.joined(separator: "\n").contains(hostilePrompt))
+    }
+
+    func test_missionRuntimePlanner_usesDirectArgumentsForOMPWithHostPromptImmediatelyAfterDashP() throws {
+        let hostilePrompt = #"Read "$HOME"; rm -rf /tmp/should-not-run"#
+        let backend = CLIAgentMissionBackend(chatBackend: .omp)
+        let plan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.directLaunchPlan(
+            title: "OMP direct mission",
+            prompt: hostilePrompt,
+            backend: backend,
+            data: [
+                "approvalMode": "read_only",
+                "commandsAllowed": false,
+                "fileEditsAllowed": false
+            ]
+        ))
+
+        XCTAssertEqual(plan.executableName, "omp")
+        XCTAssertEqual(plan.extraEnvironment, [:])
+        XCTAssertFalse(plan.arguments.contains("-lc"))
+        let promptIndex = try XCTUnwrap(plan.arguments.firstIndex(of: "-p"))
+        let hostPrompt = plan.arguments[promptIndex + 1]
+        XCTAssertNotEqual(hostPrompt, "--mode")
+        XCTAssertTrue(hostPrompt.contains("OpenBurnBar Mission Control"))
+        XCTAssertTrue(hostPrompt.contains(hostilePrompt))
+        XCTAssertEqual(Array(plan.arguments[promptIndex...promptIndex + 4]), ["-p", hostPrompt, "--mode", "json", "--no-session"])
+        XCTAssertTrue(plan.arguments.contains("--no-tools"))
+    }
+
+    func test_missionRuntimePlanner_passesRequestedModelToOMPDirectCLI() throws {
+        let backend = CLIAgentMissionBackend(chatBackend: .omp)
+        let plan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.directLaunchPlan(
+            title: "OMP selected model mission",
+            prompt: "Use the phone-selected model.",
+            backend: backend,
+            data: [
+                "requestedModelID": "anthropic/claude-sonnet-4",
+                "approvalMode": "read_only",
+                "commandsAllowed": true,
+                "fileEditsAllowed": false
+            ]
+        ))
+
+        let promptIndex = try XCTUnwrap(plan.arguments.firstIndex(of: "-p"))
+        XCTAssertNotEqual(plan.arguments[promptIndex + 1], "--mode")
+        let modelIndex = try XCTUnwrap(plan.arguments.firstIndex(of: "--model"))
+        XCTAssertEqual(plan.arguments[modelIndex + 1], "anthropic/claude-sonnet-4")
+        let toolsIndex = try XCTUnwrap(plan.arguments.firstIndex(of: "--tools"))
+        XCTAssertTrue(plan.arguments[toolsIndex + 1].contains("bash"))
+        XCTAssertFalse(plan.arguments[toolsIndex + 1].contains("edit"))
     }
 
     func test_missionRuntimePlanner_passesRequestedModelToPiDirectCLI() throws {
@@ -969,6 +1128,7 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
             (.codex, "codex"),
             (.claude, "claude"),
             (.droid, "droid"),
+            (.junie, "junie"),
             (.forge, "forge"),
             (.antigravity, "agy"),
             (.cursorAgent, "cursor-agent")

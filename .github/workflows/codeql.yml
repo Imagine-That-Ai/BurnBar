@@ -43,6 +43,12 @@ jobs:
     # macOS, but the matrix-level runner is set per-job to keep the matrix
     # simple. Per-language overrides handled below via `runs-on: ${{ matrix.runner }}`.
     runs-on: ${{ matrix.runner }}
+    env:
+      # Keep package resolution on the source-built Firestore graph — the
+      # prebuilt grpc-binary path is unsafe on iOS 27/Xcode 27 and its package
+      # graph triggers the SwiftPM "INTERNAL ERROR: Uncaught exception" crash
+      # class (same mitigation as release.yml, 05f158ea3f).
+      FIREBASE_SOURCE_FIRESTORE: "1"
     # Swift CodeQL builds the full app/daemon graph plus Signal FFI on hosted
     # macOS runners. The June 2026 main proof run hit the previous 90-minute cap
     # during the traced Swift build, after JS/TS, Python, and Java/Kotlin had
@@ -112,7 +118,7 @@ jobs:
 
       - name: Set up JDK 21 for Android CodeQL
         if: matrix.language == 'java-kotlin'
-        uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287 # v5.3.0 (node24-native)
+        uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.3.0 (node24-native)
         with:
           distribution: temurin
           java-version: "21"
@@ -164,20 +170,34 @@ jobs:
       # can trace the compiler. Runs after init (so CodeQL hooks the build)
       # and only on the swift matrix entry. Disable code signing because
       # macOS-15 GitHub runners don't have signing identities.
+      # Retried once because Xcode 27 SwiftPM can crash with "INTERNAL ERROR:
+      # Uncaught exception" during the package-graph action even after a clean
+      # resolve (same transient class release.yml classifies and retries,
+      # 64c7341fbe). The retry stays inside one step so the CodeQL tracer
+      # observes whichever attempt compiles.
       - name: Build Swift (CodeQL)
         if: matrix.language == 'swift'
         run: |
-          xcodebuild -project OpenBurnBar.xcodeproj \
-            -scheme OpenBurnBar \
-            -configuration Debug \
-            -destination 'platform=macOS,arch=x86_64' \
-            -derivedDataPath .codeql-derived-data \
-            ARCHS=x86_64 \
-            ONLY_ACTIVE_ARCH=YES \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            SWIFT_ENABLE_EXPLICIT_MODULES=NO \
-            build
+          for attempt in 1 2; do
+            if xcodebuild -project OpenBurnBar.xcodeproj \
+              -scheme OpenBurnBar \
+              -configuration Debug \
+              -destination 'platform=macOS,arch=x86_64' \
+              -derivedDataPath .codeql-derived-data \
+              ARCHS=x86_64 \
+              ONLY_ACTIVE_ARCH=YES \
+              CODE_SIGNING_ALLOWED=NO \
+              CODE_SIGNING_REQUIRED=NO \
+              SWIFT_ENABLE_EXPLICIT_MODULES=NO \
+              build; then
+              exit 0
+            fi
+            if [ "$attempt" = "2" ]; then
+              exit 1
+            fi
+            echo "xcodebuild failed (attempt ${attempt}); retrying the traced build once."
+            sleep 20
+          done
 
       - name: Build Android (CodeQL)
         if: matrix.language == 'java-kotlin'

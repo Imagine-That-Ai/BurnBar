@@ -1,0 +1,21 @@
+# Windows (MSVC) build configuration for `openburnbar-iroh`.
+#
+# The supported Windows build targets for this crate are the two `-pc-windows-msvc`
+# triples below. They are exercised by `.github/workflows/build-iroh-windows.yml`
+# (native `windows-latest` MSVC) and are the Windows half of the
+# macOS + iOS + Android + Windows target set. Rationale, and why this crate does
+# NOT force the target via `[build] target` or pin it in `rust-toolchain.toml`,
+# is recorded in `docs/windows-port/decisions/0002-rust-windows-msvc-targets.md`.
+#
+#   x86_64-pc-windows-msvc    Windows 10/11 on x64
+#   aarch64-pc-windows-msvc   Windows 11 on ARM64 (build-only on x64 CI hosts)
+#
+# From this macOS workspace the cross-compile attempt runs through cargo-xwin
+# (`cargo xwin build --target x86_64-pc-windows-msvc`); see the decision note for
+# the recorded outcome. The aliases below only *name* the targets — none forces a
+# target onto a plain `cargo build`/`cargo test`, so the shipping macOS/iOS/Android
+# iroh lanes build exactly as before.
+[alias]
+build-win-x64 = "build --target x86_64-pc-windows-msvc"
+build-win-arm64 = "build --target aarch64-pc-windows-msvc"
+test-win-x64 = "test --target x86_64-pc-windows-msvc"

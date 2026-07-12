@@ -1,0 +1,327 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Windows render of the macOS full-canvas Chat surface
+  (AgentLens/Views/Chat/ChatMessagesStream.swift + HermesAtomComponents.swift).
+  The atom-router: an ItemsRepeater of message view-models, each dispatched by
+  role to a user or assistant bubble; assistant bubbles fan their transcript out
+  into per-row templates — a Pretext-measured StreamingBubble for prose (with
+  inline atom chips / mentions / code) and the LANDED UnifiedToolCallAccordion for
+  tool groups, with the Hermes thinking droplets filling the pre-first-token gap.
+
+  Binds to ChatSurfaceViewModel, which wraps the PORTABLE, unit-tested
+  ChatSessionStateMachine (idle → streaming → tool_use → tool_result → done, stop,
+  regenerate). Designed to be hosted as the "chat" destination in the AppShell
+  NavigationView.
+-->
+<UserControl
+    x:Class="OpenBurnBar.App.Chat.ChatSurfaceView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:OpenBurnBar.App.Chat"
+    xmlns:comp="using:OpenBurnBar.App.Components"
+    xmlns:conv="using:OpenBurnBar.App.Converters"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    AutomationProperties.AutomationId="chat.surface"
+    AutomationProperties.Name="Chat">
+
+    <UserControl.Resources>
+        <!-- Bool→Visibility converters (declared per-view, matching the landed pattern). -->
+        <conv:BoolToVisibilityConverter x:Key="BoolToVisibility" />
+        <conv:NegatedBoolToVisibilityConverter x:Key="NegatedBoolToVisibility" />
+
+        <!-- Prose row: optional reasoning/refusal label + Pretext-measured bubble. -->
+        <DataTemplate x:Key="ProseRowTemplate" x:DataType="local:ChatProseRow">
+            <StackPanel Orientation="Vertical" Spacing="2" Margin="0,2,0,2">
+                <TextBlock Text="{x:Bind Label}"
+                           Visibility="{x:Bind HasLabel, Converter={StaticResource BoolToVisibility}}"
+                           FontSize="11"
+                           FontWeight="SemiBold"
+                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                <local:StreamingBubble Runs="{x:Bind Runs}" />
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- Tool row: the landed collapsible accordion. -->
+        <DataTemplate x:Key="ToolRowTemplate" x:DataType="local:ChatToolRow">
+            <comp:UnifiedToolCallAccordion Calls="{x:Bind Calls}" Margin="0,4,0,4" />
+        </DataTemplate>
+
+        <local:ChatRowTemplateSelector x:Key="RowSelector"
+                                        Prose="{StaticResource ProseRowTemplate}"
+                                        Tool="{StaticResource ToolRowTemplate}" />
+
+        <!-- User bubble: right-aligned brass-tinted card. -->
+        <DataTemplate x:Key="UserMessageTemplate" x:DataType="local:ChatMessageViewModel">
+            <Grid Margin="0,6,0,6" HorizontalAlignment="Right" MaxWidth="560">
+                <Border Padding="14,10"
+                        CornerRadius="14,14,4,14"
+                        Background="{StaticResource PensieveColorBrassDeepBrush}">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="{x:Bind UserText}"
+                                   TextWrapping="Wrap"
+                                   Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                        <TextBlock Text="{x:Bind AttachmentSummary}"
+                                   Visibility="{x:Bind HasAttachments, Converter={StaticResource BoolToVisibility}}"
+                                   TextWrapping="Wrap"
+                                   FontSize="11"
+                                   Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </DataTemplate>
+
+        <!-- Assistant bubble: thinking droplets + fanned-out rows. -->
+        <DataTemplate x:Key="AssistantMessageTemplate" x:DataType="local:ChatMessageViewModel">
+            <Grid Margin="0,6,0,6" HorizontalAlignment="Left" MaxWidth="620">
+                <Border Padding="14,10"
+                        CornerRadius="14,14,14,4"
+                        Background="{StaticResource PensieveColorGlassBgBrush}"
+                        BorderThickness="1"
+                        BorderBrush="{StaticResource PensieveColorGlassLineBrush}">
+                    <StackPanel Orientation="Vertical" Spacing="4">
+                        <TextBlock Text="{x:Bind CliUsed}"
+                                   Visibility="{x:Bind HasBadge, Converter={StaticResource BoolToVisibility}}"
+                                   FontSize="10"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource PensieveColorMercuryCoreBrush}" />
+                        <local:HermesThinkingView
+                            Visibility="{x:Bind ShowThinking, Converter={StaticResource BoolToVisibility}, Mode=OneWay}" />
+                        <ItemsRepeater ItemsSource="{x:Bind Rows}"
+                                       ItemTemplate="{StaticResource RowSelector}" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </DataTemplate>
+
+        <local:ChatMessageTemplateSelector x:Key="MessageSelector"
+                                           User="{StaticResource UserMessageTemplate}"
+                                           Assistant="{StaticResource AssistantMessageTemplate}" />
+    </UserControl.Resources>
+
+    <Grid Padding="20,16" RowSpacing="12" Background="Transparent">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+            <FontIcon Glyph="&#xE8BD;" FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                      FontSize="18" Foreground="{StaticResource PensieveColorMercuryCoreBrush}" />
+            <TextBlock Text="Chat" FontSize="22" FontWeight="SemiBold"
+                       Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+        </StackPanel>
+
+        <!-- Messages (the atom-router) -->
+        <Grid Grid.Row="1">
+            <StackPanel HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="8"
+                        Padding="24"
+                        AutomationProperties.AutomationId="chat.emptyState"
+                        Visibility="{x:Bind ViewModel.ShowEmptyState, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
+                <FontIcon Glyph="&#xE8BD;" FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                          FontSize="32" Foreground="{StaticResource PensieveColorMercuryCoreBrush}" />
+                <TextBlock Text="Chat is ready for a configured backend"
+                           FontSize="16"
+                           FontWeight="SemiBold"
+                           HorizontalAlignment="Center"
+                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                <TextBlock Text="Connect the Hermes/CLI bridge in Settings → Data Sources, or enable OPENBURNBAR_SAMPLE_MODE=1 for a labeled scripted demo."
+                           TextWrapping="Wrap"
+                           MaxWidth="520"
+                           TextAlignment="Center"
+                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+            </StackPanel>
+
+            <StackPanel HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="10"
+                        Padding="24"
+                        MaxWidth="620"
+                        Visibility="{x:Bind ViewModel.HasHistoryDegradedState, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
+                <FontIcon Glyph="&#xE783;" FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                          FontSize="32" Foreground="{StaticResource PensieveColorMercuryCoreBrush}" />
+                <TextBlock Text="{x:Bind ViewModel.HistoryStateTitle, Mode=OneWay}"
+                           FontSize="16"
+                           FontWeight="SemiBold"
+                           HorizontalAlignment="Center"
+                           AutomationProperties.AutomationId="chat.history.degraded"
+                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                <TextBlock Text="{x:Bind ViewModel.HistoryStateMessage, Mode=OneWay}"
+                           TextWrapping="Wrap"
+                           TextAlignment="Center"
+                           AutomationProperties.AutomationId="chat.history.message"
+                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                    <Button Content="Retry"
+                            Command="{x:Bind ViewModel.RetryHistoryCommand}"
+                            AutomationProperties.AutomationId="chat.history.retry"
+                            AutomationProperties.Name="Retry chat history"
+                            Visibility="{x:Bind ViewModel.CanRetryHistory, Converter={StaticResource BoolToVisibility}, Mode=OneWay}" />
+                    <Button Content="Restart recovery"
+                            Command="{x:Bind ViewModel.RestartRecoveryCommand}"
+                            AutomationProperties.AutomationId="chat.history.restartRecovery"
+                            AutomationProperties.Name="Restart chat history recovery"
+                            Visibility="{x:Bind ViewModel.CanRestartHistory, Converter={StaticResource BoolToVisibility}, Mode=OneWay}" />
+                </StackPanel>
+            </StackPanel>
+
+            <ScrollViewer x:Name="MessageScroller"
+                          AutomationProperties.AutomationId="chat.messages"
+                          AutomationProperties.Name="Chat messages"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollMode="Disabled"
+                          Visibility="{x:Bind ViewModel.ShowMessageList, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
+                <ItemsRepeater x:Name="MessagesRepeater"
+                               ItemsSource="{x:Bind ViewModel.Messages}"
+                               ItemTemplate="{StaticResource MessageSelector}" />
+            </ScrollViewer>
+        </Grid>
+
+        <!-- Composer -->
+        <StackPanel Grid.Row="2" Spacing="8">
+            <Border Padding="10,8"
+                    CornerRadius="8"
+                    BorderThickness="1"
+                    BorderBrush="{StaticResource PensieveColorGlassLineBrush}"
+                    Background="{StaticResource PensieveColorGlassBgBrush}"
+                    Visibility="{x:Bind ViewModel.ShowExecutableControls, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="{x:Bind ViewModel.ExecutableSetupTitle, Mode=OneWay}"
+                               FontWeight="SemiBold"
+                               TextWrapping="Wrap"
+                               AutomationProperties.AutomationId="chat.executable.setup"
+                               Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                    <TextBlock Text="{x:Bind ViewModel.ExecutableSetupMessage, Mode=OneWay}"
+                               TextWrapping="Wrap"
+                               AutomationProperties.AutomationId="chat.executable.setupMessage"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    <TextBlock Text="{x:Bind ViewModel.ApprovedExecutableSummary, Mode=OneWay}"
+                               Visibility="{x:Bind ViewModel.HasApprovedExecutable, Converter={StaticResource BoolToVisibility}, Mode=OneWay}"
+                               TextWrapping="Wrap"
+                               FontSize="11"
+                               AutomationProperties.AutomationId="chat.executable.summary"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox x:Name="ExecutablePathBox"
+                                 Grid.Column="0"
+                                 AutomationProperties.AutomationId="chat.executable.path"
+                                 AutomationProperties.Name="Chat executable path"
+                                 PlaceholderText="C:\Program Files\Claude\claude.exe" />
+                        <Button Grid.Column="1"
+                                Content="Approve"
+                                AutomationProperties.AutomationId="chat.executable.approve"
+                                AutomationProperties.Name="Approve chat executable"
+                                Click="OnApproveChatExecutable" />
+                        <Button Grid.Column="2"
+                                Content="Rotate"
+                                AutomationProperties.AutomationId="chat.executable.rotate"
+                                AutomationProperties.Name="Rotate chat executable"
+                                Click="OnRotateChatExecutable"
+                                Visibility="{x:Bind ViewModel.HasApprovedExecutable, Converter={StaticResource BoolToVisibility}, Mode=OneWay}" />
+                        <Button Grid.Column="3"
+                                Content="Remove"
+                                AutomationProperties.AutomationId="chat.executable.remove"
+                                AutomationProperties.Name="Remove chat executable"
+                                Command="{x:Bind ViewModel.RemoveApprovedExecutableCommand}"
+                                Visibility="{x:Bind ViewModel.HasApprovedExecutable, Converter={StaticResource BoolToVisibility}, Mode=OneWay}" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+            <Border Padding="10,8"
+                    CornerRadius="8"
+                    BorderThickness="1"
+                    BorderBrush="{StaticResource PensieveColorGlassLineBrush}"
+                    Background="{StaticResource PensieveColorGlassBgBrush}"
+                    AutomationProperties.AutomationId="chat.failure"
+                    Visibility="{x:Bind ViewModel.HasFailure, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
+                <TextBlock Text="{x:Bind ViewModel.FailureText, Mode=OneWay}"
+                           TextWrapping="Wrap"
+                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+            </Border>
+            <Border Padding="10,8"
+                    CornerRadius="8"
+                    BorderThickness="1"
+                    BorderBrush="{StaticResource PensieveColorGlassLineBrush}"
+                    Background="{StaticResource PensieveColorGlassBgBrush}"
+                    AutomationProperties.AutomationId="chat.persistence.warning"
+                    Visibility="{x:Bind ViewModel.HasPersistenceWarning, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
+                <TextBlock Text="{x:Bind ViewModel.PersistenceWarning, Mode=OneWay}"
+                           TextWrapping="Wrap"
+                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+            </Border>
+
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.ColumnSpan="3"
+                           Text="{x:Bind ViewModel.PendingAttachmentSummary, Mode=OneWay}"
+                           Visibility="{x:Bind ViewModel.HasPendingAttachments, Converter={StaticResource BoolToVisibility}, Mode=OneWay}"
+                           TextWrapping="Wrap"
+                           FontSize="11"
+                           AutomationProperties.AutomationId="chat.attachments.pending"
+                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+
+                <TextBox x:Name="InputBox" Grid.Row="1" Grid.Column="0"
+                         PlaceholderText="Message OpenBurnBar…"
+                         AutomationProperties.AutomationId="chat.input"
+                         AutomationProperties.Name="Message OpenBurnBar"
+                         Text="{x:Bind ViewModel.InputText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         AcceptsReturn="False"
+                         AllowDrop="True"
+                         DragOver="OnInputDragOver"
+                         Drop="OnInputDrop"
+                         Paste="OnInputPaste"
+                         KeyDown="OnInputKeyDown" />
+
+                <Button x:Name="RegenerateButton" Grid.Row="1" Grid.Column="1"
+                        Command="{x:Bind ViewModel.RegenerateCommand}"
+                        AutomationProperties.AutomationId="chat.regenerate"
+                        AutomationProperties.Name="Regenerate last response"
+                        ToolTipService.ToolTip="Regenerate last response">
+                    <FontIcon Glyph="&#xE72C;" FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="14" />
+                </Button>
+
+                <Button x:Name="SendButton" Grid.Row="1" Grid.Column="2"
+                        Command="{x:Bind ViewModel.SendCommand}"
+                        AutomationProperties.AutomationId="chat.send"
+                        AutomationProperties.Name="Send message"
+                        Visibility="{x:Bind ViewModel.IsStreaming, Converter={StaticResource NegatedBoolToVisibility}, Mode=OneWay}"
+                        Style="{StaticResource AccentButtonStyle}">
+                    <FontIcon Glyph="&#xE724;" FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="14" />
+                </Button>
+
+                <Button x:Name="StopButton" Grid.Row="1" Grid.Column="2"
+                        Command="{x:Bind ViewModel.StopCommand}"
+                        AutomationProperties.AutomationId="chat.stop"
+                        AutomationProperties.Name="Stop generating"
+                        Visibility="{x:Bind ViewModel.IsStreaming, Converter={StaticResource BoolToVisibility}, Mode=OneWay}"
+                        ToolTipService.ToolTip="Stop generating">
+                    <FontIcon Glyph="&#xE71A;" FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="14" />
+                </Button>
+            </Grid>
+        </StackPanel>
+
+        <!-- Optional offscreen Pretext measurement host. Created in code only when WebView2 is enabled. -->
+        <Grid x:Name="PretextHost" Grid.Row="0" Width="0" Height="0"
+              Visibility="Collapsed" IsHitTestVisible="False" />
+    </Grid>
+</UserControl>

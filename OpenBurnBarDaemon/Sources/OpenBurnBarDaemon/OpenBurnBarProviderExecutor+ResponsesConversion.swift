@@ -1,7 +1,5 @@
 import OpenBurnBarCore
 import Foundation
-import LocalAuthentication
-import Security
 
 // OpenAI Responses API <-> Chat Completions request/response/stream conversion.
 // Extracted from OpenBurnBarProviderExecutor.swift (god-type decomposition) — same module, same isolation, verbatim.
@@ -512,6 +510,7 @@ extension BurnBarOpenAICompatibleProviderExecutor {
         return BurnBarProviderProxyResponse(
             statusCode: 200,
             contentType: "text/event-stream",
+            headers: chatResponse.headers,
             body: sse,
             usage: chatResponse.usage
         )

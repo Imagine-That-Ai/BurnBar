@@ -1,0 +1,2 @@
+✓ check-no-suppressions: no unjustified suppressions or baselines.
+  allowlist: 11 artifact path(s), 23 scoped source file(s)

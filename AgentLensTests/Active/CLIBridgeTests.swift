@@ -38,6 +38,9 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertEqual(exe("grok"), "grok")
         XCTAssertEqual(exe("openclaw"), "openclaw")
         XCTAssertEqual(exe("openclaude"), "openclaude")
+        XCTAssertEqual(exe("omp"), "omp")
+        XCTAssertEqual(exe("ohmypi"), "omp")
+        XCTAssertEqual(exe("oh-my-pi"), "omp")
         XCTAssertEqual(exe("hermes"), "hermes")
         XCTAssertEqual(exe("pi"), "pi")
         XCTAssertEqual(exe("ollama"), "zsh")
@@ -336,6 +339,36 @@ final class CLIBridgeTests: XCTestCase {
 
         XCTAssertEqual(value(after: "--auto", in: args), "medium")
         XCTAssertNil(value(after: "--disabled-tools", in: args))
+    }
+
+    func test_cliArgumentBuilder_ompArguments_placePromptImmediatelyAfterDashP() throws {
+        let prompt = "Mission packet body"
+        let args = CLIArgumentBuilder.ompArguments(prompt: prompt)
+
+        let promptFlagIndex = try XCTUnwrap(args.firstIndex(of: "-p"))
+        XCTAssertEqual(args[promptFlagIndex + 1], prompt)
+        XCTAssertEqual(Array(args.prefix(4)), ["-p", prompt, "--mode", "json"])
+        XCTAssertTrue(args.contains("--no-session"))
+    }
+
+    func test_cliArgumentBuilder_ompArguments_readOnlyGrantUsesNoTools() {
+        let args = CLIArgumentBuilder.ompArguments(prompt: "read only")
+        XCTAssertTrue(args.contains("--no-tools"))
+        XCTAssertFalse(args.contains("--tools"))
+        XCTAssertFalse(args.contains("--auto-approve"))
+    }
+
+    func test_cliArgumentBuilder_ompArguments_shellGrantIncludesBashTool() throws {
+        let grant = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .omp,
+            threadID: "thread-omp",
+            capabilities: [.shell, .workspaceRead]
+        )
+        let args = CLIArgumentBuilder.ompArguments(prompt: "run", capabilityGrant: grant)
+        let toolsIndex = try XCTUnwrap(args.firstIndex(of: "--tools"))
+        let tools = args[toolsIndex + 1]
+        XCTAssertTrue(tools.contains("bash"))
+        XCTAssertTrue(args.contains("--auto-approve"))
     }
 
     // MARK: - Forge Arguments Tests
@@ -661,6 +694,93 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertEqual(payload["reason"] as? String, "desktop grant was revoked")
     }
 
+    func test_agentToolBroker_targetedPanicHaltDoesNotPublishGlobalRevocation() async {
+        let publishCalls = OpenBurnBarCore.Locked(0)
+
+        let outcome = await AgentToolBroker.revokeDaemonBrowserSession(
+            sessionID: "session-1",
+            publishRevocation: { publishCalls.withLock { $0 += 1 } },
+            panicHalt: { _ in }
+        )
+
+        XCTAssertEqual(outcome, .panicHalted)
+        XCTAssertEqual(publishCalls.read(), 0)
+    }
+
+    func test_agentToolBroker_targetedPanicFailureFallsBackToGlobalRevocation() async {
+        let publishCalls = OpenBurnBarCore.Locked(0)
+
+        let outcome = await AgentToolBroker.revokeDaemonBrowserSession(
+            sessionID: "session-1",
+            publishRevocation: { publishCalls.withLock { $0 += 1 } },
+            panicHalt: { sessionID in
+                XCTAssertEqual(sessionID, "session-1")
+                throw NSError(domain: "AgentToolBrokerTests", code: 1)
+            }
+        )
+
+        XCTAssertEqual(outcome, .statePublished)
+        XCTAssertEqual(publishCalls.read(), 1)
+    }
+
+    func test_agentToolBroker_targetedPanicAndGlobalRevocationFailureReportsFailure() async {
+        let panicCalls = OpenBurnBarCore.Locked(0)
+        let publishCalls = OpenBurnBarCore.Locked(0)
+
+        let outcome = await AgentToolBroker.revokeDaemonBrowserSession(
+            sessionID: "session-1",
+            publishRevocation: {
+                publishCalls.withLock { $0 += 1 }
+                throw NSError(domain: "AgentToolBrokerTests", code: 2)
+            },
+            panicHalt: { sessionID in
+                panicCalls.withLock { $0 += 1 }
+                XCTAssertEqual(sessionID, "session-1")
+                throw NSError(domain: "AgentToolBrokerTests", code: 1)
+            }
+        )
+
+        XCTAssertEqual(outcome, .failed)
+        XCTAssertEqual(panicCalls.read(), 1)
+        XCTAssertEqual(publishCalls.read(), 1)
+    }
+
+    func test_agentToolBroker_directRegistryRevocationImmediatelyDeniesBroker() async throws {
+        let workspace = FileManager.default.temporaryDirectory
+            .appendingPathComponent("agent-tool-broker-revoke-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: workspace) }
+        try Data("must-not-be-read".utf8).write(to: workspace.appendingPathComponent("secret.txt"))
+
+        let threadID = "direct-revoke-\(UUID().uuidString)"
+        let broker = AgentToolBroker(
+            grant: AgentCapabilityGrant.sessionGrant(
+                runtimeID: .hermes,
+                threadID: threadID,
+                capabilities: [.workspaceRead],
+                now: Date(),
+                duration: 60
+            ),
+            workspaceURL: workspace
+        )
+
+        let revokedCount = await AgentToolBroker.revokeDaemonBrowserSessions(
+            runtimeID: .hermes,
+            threadID: threadID
+        )
+        let result = await broker.invokeOpenAITool(
+            name: "workspace_read_file",
+            arguments: #"{"path":"secret.txt"}"#,
+            callID: "call-after-revoke",
+            runID: "run-after-revoke"
+        )
+        let payload = try jsonPayload(from: result)
+
+        XCTAssertEqual(revokedCount, 1)
+        XCTAssertEqual(payload["status"] as? String, "denied")
+        XCTAssertEqual(payload["reason"] as? String, "desktop grant was revoked")
+    }
+
     func test_agentToolBroker_shellRunDrainsLargeOutput() async throws {
         let workspace = FileManager.default.temporaryDirectory
             .appendingPathComponent("agent-tool-broker-\(UUID().uuidString)", isDirectory: true)
@@ -827,6 +947,52 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertEqual(resolved, "hermes-agent")
     }
 
+    func test_chatSessionController_resolvedHermesModelSelection_fallsBackToCanonicalAliasWhenNothingResolvable() {
+        // The build #1020 dead-end: no panel selection, no override, no family,
+        // and /v1/models unreadable (unset API key), so there is no gateway
+        // default either. The resolution must yield the canonical "hermes"
+        // alias so the send reaches the gateway and surfaces its real error
+        // instead of the local "No eligible route for Hermes" gate.
+        let resolved = ChatSessionController.resolvedHermesModelSelection(
+            panelSelection: "",
+            settingsOverride: "",
+            selectedFamily: nil,
+            advertisedModels: [],
+            gatewayDefault: nil
+        )
+
+        XCTAssertEqual(resolved, ChatSessionController.hermesCanonicalModelAlias)
+        XCTAssertEqual(resolved, "hermes")
+    }
+
+    func test_chatSessionController_resolvedHermesModelSelection_preservesSelectedFamilyWhenCatalogUnreadable() {
+        // Codex review (PR #1133): a user who picked a family from the strip
+        // must keep their provider when /v1/models is unreadable — the gateway
+        // routes canonical family names directly, so falling to the "hermes"
+        // alias would silently reroute them to the gateway's default agent.
+        let resolved = ChatSessionController.resolvedHermesModelSelection(
+            panelSelection: "",
+            settingsOverride: "",
+            selectedFamily: .claude,
+            advertisedModels: [],
+            gatewayDefault: nil
+        )
+
+        XCTAssertEqual(resolved, "claude")
+    }
+
+    func test_chatSessionController_resolvedHermesModelSelection_preservesOverrideFamilyWhenCatalogUnreadable() {
+        let resolved = ChatSessionController.resolvedHermesModelSelection(
+            panelSelection: "",
+            settingsOverride: "zai",
+            selectedFamily: nil,
+            advertisedModels: [],
+            gatewayDefault: nil
+        )
+
+        XCTAssertEqual(resolved, "zai")
+    }
+
     func test_openAICompatibleModelProbe_modelsRequestCarriesGatewayRelayTimeoutAndBearer() throws {
         let request = try XCTUnwrap(OpenAICompatibleModelProbe.modelsRequest(
             baseURL: URL(string: "http://127.0.0.1:8317/")!,
@@ -900,10 +1066,116 @@ final class CLIBridgeTests: XCTestCase {
     }
 
     func test_selectedModelRoutingError_hermesEmptySelectionStillBlocks() {
+        // Defense-in-depth for direct callers only: `resolvedHermesModelSelection`
+        // can no longer produce "" for Hermes (it falls back to the canonical
+        // alias), so the shipped send path never hits this branch.
         XCTAssertEqual(
             ChatSessionController.selectedModelRoutingError(backend: .hermes, selectedModel: "", liveModels: []),
             "No eligible route for Hermes. Add or enable an account/provider that serves this model."
         )
+    }
+
+    func test_openAICompatibleModelProbe_isAuthRejectedStatus() {
+        XCTAssertTrue(OpenAICompatibleModelProbe.isAuthRejectedStatus(401))
+        XCTAssertTrue(OpenAICompatibleModelProbe.isAuthRejectedStatus(403))
+        for status in [200, 204, 404, 429, 500, 503] {
+            XCTAssertFalse(OpenAICompatibleModelProbe.isAuthRejectedStatus(status), "HTTP \(status) is not an auth rejection")
+        }
+    }
+
+    func test_gatewayClient_appendsAuthGuidanceOnlyForAuthStatuses() {
+        let guided = OpenAICompatibleChatGatewayClient.appendingAuthGuidanceIfNeeded(
+            "HTTP 401: Invalid API key", statusCode: 401
+        )
+        XCTAssertTrue(guided.contains("Settings → Chat Gateway"), "401 must point at the settings fix")
+        XCTAssertTrue(guided.hasPrefix("HTTP 401: Invalid API key"), "the gateway's own message stays first")
+        XCTAssertEqual(
+            OpenAICompatibleChatGatewayClient.appendingAuthGuidanceIfNeeded("HTTP 500: boom", statusCode: 500),
+            "HTTP 500: boom"
+        )
+    }
+
+    func test_hermesAuthRejectedMessage_tailoredToPresentedKey() {
+        let settingsCase = ChatSessionController.hermesAuthRejectedMessage(settingsTokenPresent: true, envKeyPresent: true)
+        XCTAssertTrue(settingsCase.contains("Bearer Token"), "explicit settings token: fix it in Settings")
+
+        let envCase = ChatSessionController.hermesAuthRejectedMessage(settingsTokenPresent: false, envKeyPresent: true)
+        XCTAssertTrue(envCase.contains("older key"), "env fallback rejected: the gateway needs a restart with the current key")
+        XCTAssertTrue(envCase.contains("Open Hermes + Gateway"))
+
+        let nothingCase = ChatSessionController.hermesAuthRejectedMessage(settingsTokenPresent: false, envKeyPresent: false)
+        XCTAssertTrue(nothingCase.contains("Paste API_SERVER_KEY"), "no key anywhere: tell the user exactly what to paste where")
+    }
+
+    func test_resolvedHermesBearerToken_settingsTokenAlwaysWins() {
+        XCTAssertEqual(
+            ChatSessionController.resolvedHermesBearerToken(
+                settingsToken: "  explicit-token  ",
+                envFallbackKey: "env-key",
+                baseURL: URL(string: "http://127.0.0.1:8642")!
+            ),
+            "explicit-token"
+        )
+    }
+
+    func test_resolvedHermesBearerToken_reusesEnvKeyForLoopbackGateway() {
+        // Build #1020 regression: Settings has no bearer token while the local
+        // hermes-agent requires API_SERVER_KEY. The chat path must reuse the
+        // .env key exactly like HermesRuntimeLauncher does for status checks.
+        for host in ["127.0.0.1", "localhost"] {
+            XCTAssertEqual(
+                ChatSessionController.resolvedHermesBearerToken(
+                    settingsToken: "",
+                    envFallbackKey: "env-key",
+                    baseURL: URL(string: "http://\(host):8642")!
+                ),
+                "env-key",
+                "loopback host \(host) must reuse the local API_SERVER_KEY"
+            )
+        }
+    }
+
+    func test_resolvedHermesBearerToken_neverSendsEnvKeyOffMachine() {
+        XCTAssertNil(ChatSessionController.resolvedHermesBearerToken(
+            settingsToken: "",
+            envFallbackKey: "env-key",
+            baseURL: URL(string: "https://hermes.example.com:8642")!
+        ))
+        XCTAssertNil(ChatSessionController.resolvedHermesBearerToken(
+            settingsToken: "",
+            envFallbackKey: "env-key",
+            baseURL: URL(string: "http://user:pass@127.0.0.1:8642")!
+        ))
+    }
+
+    func test_resolvedHermesBearerToken_nilWhenNothingConfigured() {
+        XCTAssertNil(ChatSessionController.resolvedHermesBearerToken(
+            settingsToken: "   ",
+            envFallbackKey: nil,
+            baseURL: URL(string: "http://127.0.0.1:8642")!
+        ))
+    }
+
+    func test_selectedModelRoutingError_hermesCanonicalAliasAlwaysEligible() {
+        // The gateway routes its self alias to its default agent but never
+        // advertises it in /v1/models, so the alias must bypass catalog
+        // verification for both the unread and the populated catalog.
+        XCTAssertNil(ChatSessionController.selectedModelRoutingError(
+            backend: .hermes,
+            selectedModel: ChatSessionController.hermesCanonicalModelAlias,
+            liveModels: []
+        ))
+        let populated = [
+            OpenAICompatibleAdvertisedModel(
+                id: "hermes-agent", displayName: "Hermes Agent",
+                providerID: "hermes", providerName: "Hermes", routeEligible: true
+            )
+        ]
+        XCTAssertNil(ChatSessionController.selectedModelRoutingError(
+            backend: .hermes,
+            selectedModel: ChatSessionController.hermesCanonicalModelAlias,
+            liveModels: populated
+        ))
     }
 
     func test_selectedModelRoutingError_openClawEmptyCatalogStillVerifies() {
@@ -1336,6 +1608,41 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertFalse(process.isRunning)
     }
 
+    // Process.terminate() raises an uncatchable NSInvalidArgumentException on a
+    // never-launched Process. Cancels that land between registration and
+    // process.run() must be deferred and reported via markProcessLaunched.
+    func test_streamRuntime_preLaunchCancel_isDeferredUntilMarkLaunched() async throws {
+        let runtime = CLIBridgeStreamRuntimeCoordinator()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        process.arguments = ["5"]
+
+        let token = await runtime.registerRunningProcess(process, launched: false)
+        await runtime.cancelRunningProcess(token: token)
+
+        try process.run()
+        let accepted = await runtime.markProcessLaunched(token: token)
+        XCTAssertFalse(accepted, "pre-launch cancellation must be reported at launch time")
+        process.terminate()
+        process.waitUntilExit()
+    }
+
+    func test_streamRuntime_markProcessLaunched_acceptsWhenNoCancelArrived() async throws {
+        let runtime = CLIBridgeStreamRuntimeCoordinator()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        process.arguments = ["5"]
+        let token = await runtime.registerRunningProcess(process, launched: false)
+        try process.run()
+
+        let accepted = await runtime.markProcessLaunched(token: token)
+        XCTAssertTrue(accepted, "launch must be accepted when no cancel arrived")
+
+        await runtime.cancelRunningProcess(token: token)
+        process.waitUntilExit()
+        XCTAssertFalse(process.isRunning, "post-launch cancel must still terminate the process")
+    }
+
     func test_streamRuntime_cancelHTTPStreamTask_cancelsMatchingTokenOnly() async {
         let runtime = CLIBridgeStreamRuntimeCoordinator()
         let streamID = await runtime.nextHTTPStreamID()
@@ -1377,7 +1684,7 @@ final class CLIBridgeTests: XCTestCase {
         }
         defer { CLILaunchAdapter.executableResolver = nil }
 
-        let attempts = Locked<[CLIProfileStreamAttempt]>([])
+        let attempts = OpenBurnBarCore.Locked<[CLIProfileStreamAttempt]>([])
         let runner = CLIProfileStreamFailoverRunner(
             runtime: CLIBridgeStreamRuntimeCoordinator(),
             profileStore: store,
@@ -1440,7 +1747,7 @@ final class CLIBridgeTests: XCTestCase {
         }
         defer { CLILaunchAdapter.executableResolver = nil }
 
-        let attempts = Locked<[CLIProfileStreamAttempt]>([])
+        let attempts = OpenBurnBarCore.Locked<[CLIProfileStreamAttempt]>([])
         let runner = CLIProfileStreamFailoverRunner(
             runtime: CLIBridgeStreamRuntimeCoordinator(),
             profileStore: store,
@@ -1504,7 +1811,7 @@ final class CLIBridgeTests: XCTestCase {
         }
         defer { CLILaunchAdapter.executableResolver = nil }
 
-        let attempts = Locked<[CLIProfileStreamAttempt]>([])
+        let attempts = OpenBurnBarCore.Locked<[CLIProfileStreamAttempt]>([])
         let runner = CLIProfileStreamFailoverRunner(
             runtime: CLIBridgeStreamRuntimeCoordinator(),
             profileStore: store,
@@ -2080,7 +2387,7 @@ private func realpathString(_ url: URL) -> String {
 }
 
 private final class CLIBridgeNetworkTrapURLProtocol: URLProtocol, @unchecked Sendable {
-    private static let requestCountBox = Locked(0)
+    private static let requestCountBox = OpenBurnBarCore.Locked(0)
 
     static var requestCount: Int {
         requestCountBox.read()

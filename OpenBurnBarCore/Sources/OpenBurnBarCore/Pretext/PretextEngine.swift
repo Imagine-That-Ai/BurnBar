@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import Foundation
 import WebKit
 import OSLog
@@ -461,3 +462,5 @@ private final class BridgeHandler: NSObject, WKScriptMessageHandler {
         }
     }
 }
+
+#endif

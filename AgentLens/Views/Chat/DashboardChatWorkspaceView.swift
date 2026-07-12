@@ -1,6 +1,9 @@
 import SwiftUI
 import OpenBurnBarCore
 import UniformTypeIdentifiers
+#if canImport(AppKit)
+import AppKit
+#endif
 
 /// Full-canvas chat experience, modeled after Claude.ai and ChatGPT.
 ///
@@ -43,6 +46,7 @@ struct DashboardChatWorkspaceView: View {
     /// The pane-tiling workspace for the right-side viewer. Built lazily on first appear
     /// from the persisted layout (or a single primary pane bound to `controller`).
     @State private var workspace: PaneWorkspaceModel?
+    @State private var alertCenter = ChatPaneAlertCenter()
 
     private let railWidth: CGFloat = 260
 
@@ -74,11 +78,14 @@ struct DashboardChatWorkspaceView: View {
 
                 Group {
                     if let workspace {
-                        PaneWorkspaceView(
-                            workspace: workspace,
-                            settingsManager: settingsManager,
-                            onJumpToConversation: onOpenConversationJump
-                        )
+                        VStack(spacing: 0) {
+                            ConversationTabStrip(workspace: workspace)
+                            PaneWorkspaceView(
+                                workspace: workspace,
+                                settingsManager: settingsManager,
+                                onJumpToConversation: onOpenConversationJump
+                            )
+                        }
                     } else {
                         Color.clear
                     }
@@ -92,12 +99,18 @@ struct DashboardChatWorkspaceView: View {
             PretextEngine.shared.start()
         }
         .onAppear {
-            if workspace == nil {
-                workspace = PaneWorkspaceModel.restore(
-                    primaryController: controller,
-                    dataStore: dataStore,
-                    settingsManager: settingsManager
-                )
+            let paneWorkspace = workspace ?? PaneWorkspaceModel.shared(
+                primaryController: controller,
+                dataStore: dataStore,
+                settingsManager: settingsManager,
+                alertCenter: alertCenter
+            )
+            workspace = paneWorkspace
+            ChatPaneAlertCenter.paneCompletionTapHandler = { paneID, tabID in
+                #if canImport(AppKit)
+                NSApp.activate(ignoringOtherApps: true)
+                #endif
+                paneWorkspace.focusPane(paneID, inTab: tabID)
             }
             controller.refreshHistory()
         }
@@ -120,7 +133,7 @@ struct DashboardChatWorkspaceView: View {
             }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("This starts a new chat. Previous Burn Bar chats stay in History.")
+            Text("This starts a new chat. Previous BurnBar chats stay in History.")
         }
         .hermesRuntimeGate(
             controller: activeController,
@@ -133,7 +146,7 @@ struct DashboardChatWorkspaceView: View {
     /// the workspace is built), so global setting changes reach all panes.
     private func forEachController(_ body: (ChatSessionController) -> Void) {
         if let workspace {
-            workspace.leaves.forEach { body($0.controller) }
+            workspace.allLeaves.forEach { body($0.controller) }
         } else {
             body(controller)
         }
@@ -205,13 +218,17 @@ struct DashboardChatWorkspaceView: View {
                             ChatHistoryRow(
                                 thread: thread,
                                 isActive: thread.id == activeController.activeThreadID,
-                                isOpenInPane: workspace?.boundThreadIDs.contains(thread.id) ?? false,
+                                paneBadge: railBadge(for: thread.id),
                                 accent: activeController.chatBackend == .hermes
                                     ? DesignSystem.Colors.hermesAureate
                                     : DesignSystem.Colors.whimsy,
-                                onSelect: { activeController.openHistoryThread(thread.id) }
+                                onSelect: { openThreadInActivePane(thread.id) }
                             )
                             .draggable(PaneThreadDropPayload(threadID: thread.id))
+                            .contextMenu {
+                                Button("Open in Active Pane") { openThreadInActivePane(thread.id) }
+                                Button("Open in New Tab") { workspace?.newTab(bindingThreadID: thread.id) }
+                            }
                         }
                     }
                 }
@@ -220,5 +237,19 @@ struct DashboardChatWorkspaceView: View {
             Spacer(minLength: 0)
         }
         .padding(DesignSystem.Spacing.md)
+    }
+
+    private func openThreadInActivePane(_ threadID: String) {
+        if let workspace {
+            workspace.bind(threadID: threadID, toLeaf: workspace.activeLeafID)
+        } else {
+            activeController.openHistoryThread(threadID)
+        }
+    }
+
+    private func railBadge(for threadID: String) -> ChatHistoryRow.PaneRailBadge {
+        if workspace?.unseenThreadIDs.contains(threadID) == true { return .unseen }
+        if workspace?.boundThreadIDs.contains(threadID) == true { return .openInPane }
+        return .none
     }
 }

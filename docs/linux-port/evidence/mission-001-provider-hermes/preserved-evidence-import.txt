@@ -1,0 +1,3 @@
+preserved_provider_hermes_evidence=disabled
+imported=none
+reason=V20 requires fresh active-checkout provider/data/Hermes artifacts and rejects stale imported rows.

@@ -85,6 +85,13 @@ private val builtInQuads: Map<AssistantRuntimeID, AgentBuiltInQuad> =
                 capabilities = macCliCapabilities,
                 transport = AgentDispatchTransport.MacRelay("cursorAgent"),
             ),
+        AssistantRuntimeID.JUNIE to
+            AgentBuiltInQuad(
+                paletteHex = "48E054",
+                tagline = "JetBrains Junie via your Mac.",
+                capabilities = macCliCapabilities,
+                transport = AgentDispatchTransport.MacRelay("junie"),
+            ),
     )
 
 internal fun agentBuiltInQuad(runtime: AssistantRuntimeID): AgentBuiltInQuad = builtInQuads.getValue(runtime)

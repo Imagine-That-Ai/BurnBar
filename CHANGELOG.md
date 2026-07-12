@@ -7,6 +7,300 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Junie (JetBrains) integration
+
+- **First-class Junie CLI agent and provider**: Fully added JetBrains `junie`
+  as a first-class local agent provider at parity with Droid/Codex/Claude.
+  Implemented `JunieParser` to read `~/.junie/sessions/index.jsonl` and
+  per-session `events.jsonl`/`state.json` (explicit usage buckets when present,
+  character-estimate fallback otherwise, per-row provenance confidence), with
+  disk-cache signatures, project mapping via the session index, and pricing via
+  the shared model catalog. Included official Junie branding (JetBrains green
+  `#48E054`, `JunieLogo` vector mark in the macOS and iOS asset catalogs), the
+  `junie` CLI switcher/launch profile (`~/.local/bin/junie`, `JUNIE_HOME`,
+  `JUNIE_API_KEY`), conservative auth discovery off `~/.junie` (sessions or API
+  key — the config dir alone is created before sign-in), chat backend + stream
+  runner routing (`junie --task`), onboarding scan/add support, daemon
+  resume-handoff target, mission-planner fallback membership, and mobile
+  runtime/tile/transcript surfaces. Junie mirrors Droid's posture: mirrored +
+  archived to mobile, handoff-only (not native-resume eligible).
+
+### Added
+
+- **Launch-readiness hardening** — added durable account-erasure barriers,
+  resumable oldest-first reconciliation with poison-record quarantine, and
+  privacy-safe retained audit receipts across Functions, Firestore, and Storage.
+- **Computer Use quota enforcement and telemetry** — added a locked local
+  app/daemon quota ledger, replay-safe reservations, privacy-safe cloud headers,
+  transactional aggregation, and monotonic reconciliation. Cloud aggregates are
+  explicitly operational telemetry, not authoritative billing evidence.
+- **Cross-platform proof gates** — added real Android, Windows, and Linux test
+  floors; non-vacuous diff coverage and duplication checks; deployment trust
+  fixtures; migration rollback contracts; and repair-loop provenance controls.
+- **Linux daemon event subscription authority** - replaces one-shot terminal
+  subscription fixtures with bounded daemon-owned start/resume/stop state,
+  monotonic cursors, restart recovery, cancellation tombstones, strict scope
+  validation, and explicit degraded-pull metadata. The packaged shell now owns
+  one lifecycle-aware data supervisor with offline pause, bounded backoff,
+  foreground/background cadence, shutdown cancellation, and coalesced refresh
+  of the mounted route.
+- **Daemon-owned Linux onboarding authority** - replaces browser-local completion
+  with atomic daemon state and typed snapshot/action/reset RPCs. Required steps
+  cannot be skipped or executed out of order; Linux verifies the daemon,
+  performs an ephemeral Secret Service/KWallet round trip, checks writable XDG
+  storage, persists privacy choices, supports retry/resume/reset, and rejects
+  malformed or forged completion in both Swift and TypeScript decoders.
+- **Round-4 performance sweep** — state-of-the-art throughput, latency,
+  memory, and energy improvements across macOS and iOS with no feature or
+  visual changes:
+  - **ParserDiskCache binary plist** (A1): switched from pretty-printed
+    JSON to binary plist with dual-read fallback for backward
+    compatibility. ~3–5× faster encoding, ~2–3× smaller cache files.
+  - **SearchQueryCache bounded LRU + metrics** (A2): replaced unbounded
+    dictionary with bounded LRU cache (256 entries) with eviction and
+    observability via `OpenBurnBarMetrics`.
+  - **Daemon connection back-pressure** (A3): capped simultaneously
+    in-flight connection handlers via `BurnBarConnectionGate` to prevent
+    FD exhaustion under load.
+  - **Single-scan SQL occurrence counts** (A4): collapsed N full-table
+    scans into one for `countOccurrencesInConversationFullText`.
+  - **SearchService hydration JOIN collapse** (A5): merged two DB
+    round-trips (chunks + documents) into a single JOIN query.
+  - **iOS TrendAtlasCard memoization** (A6): cached digest/insights
+    recomputation behind input-hash check via `DigestCacheStore`.
+  - **iOS HermesSquareRoot rollback cache** (A7): hoisted filter+sort
+    out of `body` into a `.onChange`-rebuilt `@State` cache.
+  - **Incremental HNSW delta segments** (B1): LSM-tree "base + delta"
+    overlay (`BurnBarVectorIndexDeltaOverlay`) eliminates full O(n log n)
+    HNSW rebuilds on every projection cycle; bounded delta with
+    compaction threshold. The overlay is wired into
+    `VectorSemanticCandidateProvider`'s snapshot lifecycle — when chunks
+    are added/updated/deleted, a delta is computed via a cheap metadata
+    scan (`fetchChunkEmbeddingKeys`) plus an O(k) vector fetch for only
+    the changed chunkIDs, avoiding the full rebuild. Compaction triggers
+    when changes exceed `max(2000, baseSize / 5)`. Delta metrics are
+    surfaced in `SemanticRetrievalHealthDetails`.
+  - **Streaming Claude JSONL bounded accumulator** (B2): replaced O(n²)
+    string concatenation with array-based join-once-at-finalize and 1 MB
+    `maxFullTextBytes` cap; added `maxLineBytes` guard to
+    `BufferedLineSequence` for pathological inputs.
+  - **SQL-side credential scan pre-filter** (B3): `INSTR`-based WHERE
+    clauses skip conversations without credential indicators before
+    loading `fullText` into Swift memory.
+- **Linux Computer Use input and panic lane** — Linux daemon-owned `system`
+  sessions now wire a native input dispatcher, preferring AT-SPI2 for
+  Wayland-accessibility clicks and X11/XTEST via `xdotool` as an explicit
+  degraded fallback, with missing adapters failing closed. Added
+  `openburnbar-cli computer-use panic-halt --session-id '*' --source hotkey`
+  and packaged Linux shell global emergency shortcut registration as
+  daemon-backed panic paths that trip the
+  `$XDG_RUNTIME_DIR/openburnbar/privileged-input-kill` flag before session
+  teardown.
+- **Linux dual-architecture release closure** - builds aarch64 and x86_64
+  AppImage/deb/rpm/daemon shards on native GitHub runners, aggregates only
+  matching clean-commit shards, requires the full eight-artifact matrix, and
+  binds checksums, Ed25519 signatures, source, SBOM, VEX, provenance, parity,
+  Sigstore attestations, and the signed update feed before publication. Every
+  native package now embeds the architecture-matched daemon plus Swift and
+  SQLCipher runtimes and executes that packaged payload during shard smoke.
+- **Linux signed update availability** - adds a native Tauri update verifier
+  with a pinned Ed25519 public key and fingerprint, strict signed-feed schema,
+  semantic-version/channel/architecture checks, bounded HTTPS fetching, and
+  first-party artifact URL validation. The Updates surface now distinguishes
+  current, available, offline, and rejected metadata states while keeping
+  installation and rollback under the owning Linux package manager.
+- **Linux accessibility evidence gate** - audits every desktop route plus
+  degraded capability states with axe, captures live AT-SPI names, roles,
+  states, and actions from the installed package, and requires Orca discovery,
+  keyboard focus traversal, and zoom evidence before accessibility proof can
+  pass.
+- **Linux daemon chat gateway parity** — the Linux HTTP gateway now serves
+  `POST /v1/chat/completions` through the shared provider router, relays
+  OpenAI-compatible SSE streams, and records gateway usage events with cache
+  read/creation token fields when providers report them.
+- **Mission fan-out synthesis now launches Phase B second-stage missions** —
+  tapping Synthesize on a completed fan-out group queues a sealed, read-only
+  Hermes synthesizer mission with the child results as input, then records the
+  queued synthesizer request in the group merge summary.
+- **Settings overhaul — "Command Bridge"** — completely redesigned the Settings
+  sidebar and navigation for discoverability:
+  - **Sectioned sidebar**: the flat 14-tab list is now grouped into labeled
+    sections (Agents & Models, Look & Feel, Account & Sync, System, More) with
+    Home above as the default landing page.
+  - **Home overview**: mission-control landing with live status grid (Daemon,
+    Model Proxy, Accounts, Hermes, Cloud Sync, Indexing), an attention strip
+    for items needing action, and task cards for the most common destinations
+    (Accounts, Model Proxy, Appearance, Text Expansion, Cloud, Data & Privacy).
+  - **Model Proxy as first-class tab**: the local OpenAI-compatible gateway is
+    no longer buried under Daemon. New `ModelProxySettingsView` with a
+    status-first hero (on/off + copyable endpoint + model/provider counts),
+    routing strategy, live model catalog, and plumbing behind Advanced.
+  - **Settings Copilot**: search-or-ask command bar. Tier 1 = instant manifest
+    search (unchanged engine). Tier 2 = agentic: asks the question through
+    `CLIBridge.chat()` with a system prompt carrying the action grammar and
+    live settings state. Proposed changes render as confirm chips — nothing
+    mutates until confirmed. Secrets are never writable through the registry.
+    Falls back gracefully when no CLI backend is detected.
+  - **Daemon rebranded to "Engine Room"** for clarity.
+  - All legacy deep links, routes, and anchors resolve via the existing alias
+    machinery — no saved link 404s.
+  - Covered by `SettingsActionRegistryTests` (20 cases),
+    `SettingsCopilotControllerTests` (14 cases), and
+    `SettingsHomeAndSectionTests` (16 cases).
+- **OMP provider parity** — added Oh My Pi (`omp`) as a first-class local CLI
+  provider across Mac chat, direct mission launch, mobile relay/catalog
+  surfaces, provider identity, and quota refresh. OpenBurnBar now reads
+  redacted OMP usage via `omp usage --json --redact` and documents the provider
+  in `docs/PROVIDERS.md`.
+- **Chat workspace tiling (cmux/tmux-style) is now live in the dashboard.** The
+  chat window mounts the pane workspace, so `⌘D` splits the active pane right,
+  `⌘⇧D` splits it down, and `⌘W` closes a pane (the last pane falls through to
+  the standard window close). Dragging a chat chip from the thread rail onto a
+  pane now *suggests* where it will land: dropping in the center loads the
+  conversation into that pane, while dropping on an edge opens it in a brand-new
+  split pane on that side. Thread rows show an "open in a pane" hint, and the top
+  toolbar hides its duplicate engine pickers while tiled (each pane carries its
+  own). `AgentLens/Views/Chat/PaneWorkspace/*` + `DashboardChatWorkspaceView`.
+- **Command Deck top-chrome redesign** — collapses ~146pt of stacked chrome
+  (toolbar + tab-card strip) into one ~52pt bar with a ⌘K command palette for
+  section fuzzy-filter + session search, and ⌘1–⌘7 section shortcuts.
+- **Nest Hub Speak Now** — makes `/voice-refresh` queue a real bridge-page
+  announcement event instead of acknowledging a no-op, so the rendered smart
+  display can pulse and speak the current provider summary on its next poll.
+
+### Fixed
+
+- **macOS StoreKit entitlement resolution** — `MacCloudEntitlementStore` now
+  reads StoreKit 2 current entitlements and transaction updates, maps the same
+  Cloud / Cloud Pro / Cloud Ultra SKUs as iOS, and uses locally verified
+  entitlements only when the cloud entitlement document is absent.
+
+### Fixed
+
+- **iPhone Call Mac action** — replaces the Mercury Live Sheet follow-up stub
+  with real `media.call.invite` signaling over the live paired-Mac control
+  stream, shows pending/ack status on iPhone, and keeps the Mac wake path scoped
+  to the existing PushKit/FCM callable for Mac-originated calls.
+
+- **Recount cloud usage duplication** - makes Mac usage IDs deterministic across
+  Recount reparses, removes stale same-device Firestore usage docs, and reports
+  the full cloud-sync batch total to analytics.
+
+## [1.0.29] - 2026-07-05
+
+### Added
+
+- **Latest-main macOS release cut** - advances the direct-download release to
+  `1.0.29` from `origin/main` commit `1b62ec42bd`, including the Windows
+  parity integration merge, the post-merge Windsurf/Windows/AAR fixes, Command
+  Bridge settings IA, Model Proxy tab, and Command Deck top-chrome redesign.
+- **Fresh TestFlight build line** - bumps the iOS, widget, and keyboard build
+  number to `82` while keeping the approved iOS marketing version at `1.0.2`,
+  giving App Store Connect a unique upload for the newest source cut.
+- **Android release metadata** - bumps the Android release bundle to
+  `versionCode` 39 / `versionName` `1.0.29` so Google Play metadata remains
+  aligned with the same release source.
+
+### Fixed
+
+- **iOS 27 mobile stability** - carries the Firebase source-built gRPC guard,
+  Firestore cloud-sync repair, edge-to-edge backdrop fixes, Face ID usage
+  description, and Mercury mirror consent/session stability fixes into the
+  mobile release line.
+- **Cloud sync resilience** - keeps one bad escrow entry from killing all usage
+  uploads and binds usage project-name seals to their document AAD context.
+
+## [1.0.28] - 2026-07-03
+
+### Fixed
+
+- **Cloud device presence** - publishes the Mac sync heartbeat before encrypted
+  usage uploads can block, so signed-in iPhones can see the Mac as recently
+  active instead of "last seen: never."
+- **Mobile sync health fallback** - lets iOS build the Mac sync status from the
+  device registry when the richer `sync_status` document has not landed yet.
+- **Release signing workflow** - exports the Developer ID app provisioning
+  profile path before decoding it in GitHub Actions, preventing the notarized
+  DMG job from failing before signing.
+- **Android release metadata** - bumps the Android release bundle to
+  `versionCode` 38 / `versionName` `1.0.28` so Google Play receives the same
+  source cut as the macOS sync hotfix.
+
+## [1.0.27] - 2026-07-03
+
+### Fixed
+
+- **Direct-download Firebase Auth Keychain access** — signs the notarized
+  Developer ID app with the `4Y367DF25B.com.openburnbar.app` Keychain access
+  group and embeds the matching all-devices Mac App Direct provisioning profile,
+  so the downloaded app can open the Firebase Auth account page without the
+  macOS Keychain error banner.
+- **Release signing guardrails** — makes the macOS website-release builder,
+  GitHub release workflow, and public download trust gate fail if the app is
+  missing the direct-download provisioning profile, application identifier,
+  team identifier, or Firebase Auth Keychain group.
+- **Android release metadata** — bumps the Android release bundle to
+  `versionCode` 37 / `versionName` `1.0.27` so Google Play receives the same
+  source cut as the macOS hotfix.
+
+## [1.0.26] - 2026-07-02
+
+### Added
+
+- **Tabbed Chat pane workspaces** — extends the cmux-style Chat tiling surface
+  with multiple conversation tabs, tab restore/reopen, per-tab names/colors,
+  per-pane names/colors, pane zoom, pane-to-tab moves, drag-to-swap panes, and
+  rail indicators that distinguish open panes from hidden panes with completed
+  background replies. Completion alerts now route through local notifications
+  and focus the relevant pane when tapped. The workspace persists via a v2
+  snapshot while still migrating the original v1 tiling layout.
+
+### Fixed
+
+- **Dashboard chat launch stability** — hardens the shared CLI launch path used
+  by the dashboard and popover so Claude, Hermes, and Codex chat replies keep
+  working when the search-index projection backlog is unavailable or the pinned
+  executable needs localized recovery messaging.
+- **Hermes fallback chat** — lets Hermes chat recover without a configured
+  bearer token and turns key rejection into a self-healing, actionable prompt
+  instead of a dead chat pane.
+- **Release download link** — keeps the public website's macOS fallback download
+  pinned to the smoke-proven GitHub Release asset while the updater feed remains
+  owned by the promoted release.
+- **Android release metadata** — bumps the Android release bundle to
+  `versionCode` 36 / `versionName` `1.0.26` so Google Play receives the same
+  source cut as the macOS release.
+
+## [1.0.25] - 2026-07-02
+
+### Fixed
+
+- **Release publish job** — replaces the macOS publish step's Bash 4-only
+  `mapfile` usage with Bash 3.2-compatible provenance collection, so the
+  already-built, signed, notarized, and smoke-tested artifacts can be uploaded
+  from GitHub's hosted macOS runners.
+- **Current-main release cut** — moves the public release forward from the
+  smoke-proven `v1.0.24` tag to the newest `main` state, including the Computer
+  Use downgrade-only trust clamp and the committed remediation tracker.
+- **Android release metadata** — bumps the Android release bundle to
+  `versionCode` 35 / `versionName` `1.0.25` so Google Play receives the same
+  release cut as the macOS publish retry.
+
+## [1.0.24] - 2026-07-02
+
+### Fixed
+
+- **Release smoke health check** — retries the public release from the newest
+  `main` cut after `v1.0.23` built and notarized successfully but failed the
+  packaged DMG smoke test. The signed `OpenBurnBarCLI health` command now uses
+  the daemon socket client directly for the exact health probe instead of
+  constructing the full CLI runner and opening the default profile store first,
+  preventing the smoke harness from hanging before it can verify the packaged
+  daemon.
+- **Android release metadata** — bumps the Android release bundle to
+  `versionCode` 34 / `versionName` `1.0.24` so Google Play receives the same
+  release cut as the macOS retry.
+
 ## [1.0.23] - 2026-07-01
 
 ### Fixed

@@ -1,0 +1,12 @@
+{
+  "authURLHost" : "auth.openburnbar.test",
+  "callbackCodeAccepted" : true,
+  "inaccessibleBrowserState" : "external_browser_unavailable_error_surface",
+  "loopbackBind" : "127.0.0.1:48175",
+  "pkceMethod" : "S256",
+  "signOutLocalSessionCleared" : true,
+  "signOutRemoteRevocationAttempted" : true,
+  "stateMismatchRejected" : true,
+  "tokenCustodyBackend" : "secret-service",
+  "tokenCustodyTrustLevel" : "secret_service"
+}

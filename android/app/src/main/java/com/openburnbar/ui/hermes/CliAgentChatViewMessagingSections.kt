@@ -520,6 +520,7 @@ internal fun providerFor(runtime: AssistantRuntimeID): AgentProvider = when (run
     AssistantRuntimeID.ANTIGRAVITY -> AgentProvider.ANTIGRAVITY
     AssistantRuntimeID.GROK -> AgentProvider.XAI
     AssistantRuntimeID.CURSOR_AGENT -> AgentProvider.CURSOR
+    AssistantRuntimeID.JUNIE -> AgentProvider.JUNIE
     AssistantRuntimeID.HERMES -> AgentProvider.HERMES
     AssistantRuntimeID.PI -> AgentProvider.HERMES
 }
@@ -533,6 +534,7 @@ internal fun readyTagline(runtime: AssistantRuntimeID): String = when (runtime) 
     AssistantRuntimeID.ANTIGRAVITY -> "Antigravity is wired to your Mac. Ask it to inspect, plan, or work in your repo."
     AssistantRuntimeID.GROK -> "Grok is wired to your Mac. Ask it to inspect, explain, or implement in your repo."
     AssistantRuntimeID.CURSOR_AGENT -> "Cursor Agent is wired to your Mac. Ask it to work in the current workspace."
+    AssistantRuntimeID.JUNIE -> "Junie is wired to your Mac. Ask it to inspect, plan, or work in your repo."
     AssistantRuntimeID.HERMES, AssistantRuntimeID.PI -> "Ready when you are."
 }
 
@@ -592,6 +594,13 @@ internal fun quickPromptsFor(runtime: AssistantRuntimeID): List<String> = when (
             "Review my last change",
             "Plan the next edit",
             "Find failing tests",
+        )
+    AssistantRuntimeID.JUNIE ->
+        listOf(
+            "Inspect the current repo",
+            "Plan an implementation",
+            "Review this change",
+            "Explain this error",
         )
     else -> emptyList()
 }

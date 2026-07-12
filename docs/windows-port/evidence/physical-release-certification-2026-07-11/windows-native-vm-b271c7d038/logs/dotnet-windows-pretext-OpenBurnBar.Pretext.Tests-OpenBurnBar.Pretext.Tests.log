@@ -1,0 +1,11 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  OpenBurnBar.Pretext -> C:\candidate-7e346b2c7d\windows\pretext\OpenBurnBar.Pretext\bin\Release\net8.0\OpenBurnBar.Pretext.dll
+  OpenBurnBar.Pretext.Tests -> C:\candidate-7e346b2c7d\windows\pretext\OpenBurnBar.Pretext.Tests\bin\Release\net10.0\OpenBurnBar.Pretext.Tests.dll
+Test run for C:\candidate-7e346b2c7d\windows\pretext\OpenBurnBar.Pretext.Tests\bin\Release\net10.0\OpenBurnBar.Pretext.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:00.69]     OpenBurnBar.Pretext.Tests.MetricParityHarnessTests.Live_webview2_matches_mac_golden_within_tolerance [SKIP]
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+  Skipped OpenBurnBar.Pretext.Tests.MetricParityHarnessTests.Live_webview2_matches_mac_golden_within_tolerance [1 ms]
+
+Passed!  - Failed:     0, Passed:    38, Skipped:     1, Total:    39, Duration: 375 ms - OpenBurnBar.Pretext.Tests.dll (net10.0)

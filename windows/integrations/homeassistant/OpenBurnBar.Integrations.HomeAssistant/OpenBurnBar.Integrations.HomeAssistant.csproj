@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Portable Home Assistant integration core for the OpenBurnBar Windows port
+    (Phase 4 · integrations lane). This is the DEPENDENCY-FREE half of the HA
+    Smart-Display recovery integration: the REST message model, the granular
+    response/error mapping, the entity-state -> MediaPlayer projection + Cast
+    detection heuristics, the webhook-id CSPRNG-alphabet generator, the recovery
+    config + URL normalizer, the blueprint installer (deep link + embedded YAML),
+    and the token-store + config-store seams behind injectable interfaces.
+
+    It has NO WinUI / Windows / HttpClient dependency on purpose — the SAME managed
+    assembly is:
+      * referenced by the Windows integration adapter
+        (OpenBurnBar.Integrations.HomeAssistant.Net), which plugs a real
+        System.Net.Http transport into the portable HomeAssistantClient, AND
+      * unit-tested on the macOS authoring host today via `dotnet test`
+        (windows/tests/integrations), driving the client through a FAKE transport
+        fed by recorded HA response fixtures — exactly the portable-core pattern
+        already proven by OpenBurnBar.Pal.Ipc (VAL-P0-CONPTY-018) and the storage
+        seam (VAL-P0-DB-010).
+
+    Parity sources (macOS):
+      * AgentLens/Services/HomeAssistant/HomeAssistantClient.swift
+          -> Rest/HomeAssistantClient.cs + Rest/HomeAssistantResponseMapper.cs
+             + Rest/HomeAssistantStateProjection.cs + Models/*.cs
+      * AgentLens/Services/HomeAssistant/HomeAssistantConfig.swift
+          -> HomeAssistantConfig.cs + HomeAssistantUrlNormalizer.cs
+      * AgentLens/Services/HomeAssistant/HomeAssistantConfigStore.swift
+          -> Stores/HomeAssistantConfigStore.cs (+ IKeyValueStore seam)
+      * AgentLens/Services/HomeAssistant/HomeAssistantTokenStore.swift
+          -> Stores/HomeAssistantTokenStore.cs (ISecretStore seam)
+      * AgentLens/Services/HomeAssistant/HomeAssistantWebhookID.swift
+          -> HomeAssistantWebhookId.cs
+      * AgentLens/Services/HomeAssistant/HomeAssistantBlueprintInstaller.swift
+          -> HomeAssistantBlueprintInstaller.cs
+
+    Targets net8.0 so a net8.0-windows WinUI app can reference it, while the
+    net10.0 adapter + test projects reference it too (a lower TFM is consumable by
+    a higher one). System.Text.Json is in-box; zero external package references.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.Integrations.HomeAssistant</RootNamespace>
+    <AssemblyName>OpenBurnBar.Integrations.HomeAssistant</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\app\OpenBurnBar.App.Configuration\OpenBurnBar.App.Configuration.csproj" />
+  </ItemGroup>
+
+</Project>

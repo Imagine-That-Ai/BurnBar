@@ -1,0 +1,4 @@
+module COpenBurnBarMediaCapture [system] {
+  header "openburnbar_media_capture.h"
+  export *
+}

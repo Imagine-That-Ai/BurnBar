@@ -10,7 +10,9 @@ var swiftSettings: [SwiftSetting] = [
     .define("GRDBCIPHER"),
 ]
 var cSettings: [CSetting] = []
-var dependencies: [PackageDescription.Package.Dependency] = [
+let useSystemSQLCipher = ProcessInfo.processInfo.environment["OPENBURNBAR_USE_SYSTEM_SQLCIPHER"] == "1"
+    || ProcessInfo.processInfo.environment["OPENBURNBAR_SQLCIPHER_PREFIX"] != nil
+var dependencies: [PackageDescription.Package.Dependency] = useSystemSQLCipher ? [] : [
     .package(url: "https://github.com/sqlcipher/SQLCipher.swift.git", exact: "4.16.0"),
 ]
 
@@ -49,10 +51,19 @@ let package = Package(
     ],
     dependencies: dependencies,
     targets: [
-        .systemLibrary(name: "CSQLite"),
+        .systemLibrary(
+            name: "CSQLite",
+            pkgConfig: "sqlcipher",
+            providers: [
+                .apt(["libsqlcipher-dev"]),
+                .brew(["sqlcipher"])
+            ]
+        ),
         .target(
             name: "GRDB",
-            dependencies: [
+            dependencies: useSystemSQLCipher ? [
+                "CSQLite",
+            ] : [
                 "CSQLite",
                 .product(name: "SQLCipher", package: "SQLCipher.swift"),
             ],

@@ -7,6 +7,8 @@
     "src/analytics/service.ts",
     "src/webview/panel.js",
     "src/webview/workspace.js",
+    "test/cursorSmoke/runSmoke.mjs",
+    "test/extensionHost/runTest.mjs",
     "test/extensionHost/suite/index.ts",
     "test/extensionHost/suite/localWorkspace.integration.ts",
     "test/extensionHost/suite/workspaceModes.integration.ts",
@@ -16,12 +18,14 @@
     ".dependency-cruiser.cjs",
     "src/**/*.ts",
     "src/webview/*.js",
+    "test/**/*.mjs",
     "test/**/*.ts"
   ],
   "ignore": [
     ".build/**",
     ".vscode-test/**",
     "dist/**",
-    "node_modules/**"
+    "node_modules/**",
+    "src/generated/burnbar-rpc-ipc-canon.generated.ts"
   ]
 }

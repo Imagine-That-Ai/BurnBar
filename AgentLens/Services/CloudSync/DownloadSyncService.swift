@@ -289,6 +289,17 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
         if let timestamp = value as? Timestamp {
             return timestamp.dateValue()
         }
+        if let string = value as? String {
+            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return nil }
+
+            let formatter = ISO8601DateFormatter()
+            if let date = formatter.date(from: trimmed) {
+                return date
+            }
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            return formatter.date(from: trimmed)
+        }
         return value as? Date
     }
 
@@ -364,7 +375,7 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
                 guard let remoteDeviceId = data["deviceId"] as? String, remoteDeviceId != localDeviceId,
                       let rawProvider = data["provider"] as? String, let provider = AgentProvider(rawValue: rawProvider),
                       let sessionId = data["sessionId"] as? String,
-                      let id = UUID(uuidString: data["id"] as? String ?? doc.documentID) else { continue }
+                      UUID(uuidString: data["id"] as? String ?? doc.documentID) != nil else { continue }
 
                 let startTime = (data["startTime"] as? Timestamp)?.dateValue() ?? Date()
                 let reasoning = data["reasoningTokens"] as? Int ?? 0
@@ -374,8 +385,21 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
                 let providerAccountSource = (data["providerAccountSource"] as? String)
                     .flatMap { ProviderAccountStorageScope(rawValue: $0) }
 
+                // Partition the local row id by origin device: local rows hash
+                // their identity with sourceDeviceId == nil, so preserving the
+                // uploaded id verbatim can collide on the primary key when two
+                // devices saw the same provider/session/model/account. The
+                // conflict-key upsert in insertRemoteUsage still dedupes
+                // re-downloads (and preserves ids of rows stored earlier).
+                let localRowID = TokenUsage.deterministicID(
+                    provider: provider,
+                    sessionId: sessionId,
+                    model: data["model"] as? String ?? "unknown",
+                    sourceDeviceId: remoteDeviceId,
+                    providerAccountID: data["providerAccountID"] as? String
+                )
                 let usage = TokenUsage(
-                    id: id, provider: provider, sessionId: sessionId,
+                    id: localRowID, provider: provider, sessionId: sessionId,
                     projectName: CloudVaultCrypto.openSealedProjectName(from: data, keyData: usageVaultKey?.keyData) ?? "",
                     model: data["model"] as? String ?? "unknown",
                     inputTokens: data["inputTokens"] as? Int ?? 0,
@@ -510,8 +534,8 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
                 let id = data["id"] as? String ?? doc.documentID
                 let stableId = "\(remoteDeviceId):\(id)"
                 let deviceName = nameMap[remoteDeviceId] ?? remoteDeviceId
-                let sourceTypeRaw = data["sourceType"] as? String ?? ConversationSourceType.providerLog.rawValue
-                let record = ConversationRecord(
+                let sourceTypeRaw = data["sourceType"] as? String ?? OpenBurnBarCore.ConversationSourceType.providerLog.rawValue
+                let record = OpenBurnBarCore.ConversationRecord(
                     id: stableId, provider: provider, sessionId: sessionId,
                     projectName: privatePayload.projectName,
                     startTime: (data["startTime"] as? Timestamp)?.dateValue(),
@@ -532,7 +556,7 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
                     summaryTitle: privatePayload.summaryTitle,
                     summaryProvider: privatePayload.summaryProvider,
                     summaryModel: privatePayload.summaryModel,
-                    sourceType: ConversationSourceType(rawValue: sourceTypeRaw) ?? .providerLog,
+                    sourceType: OpenBurnBarCore.ConversationSourceType(rawValue: sourceTypeRaw) ?? .providerLog,
                     sourceDeviceId: remoteDeviceId, sourceDeviceName: deviceName, isRemote: true,
                     // Honor a remote tombstone: if device A soft-deleted this
                     // conversation, carry `deletedAt` through so the local copy is

@@ -140,6 +140,7 @@ enum DesignSystem {
             case .goose:      return Color(hex: "0D9488")
             case .openClaw:   return Color(hex: "FF6B6B")
             case .openClaude: return Color(hex: "D97757")
+            case .omp: return Color(hex: "EC4899")
             case .ollama:     return Color(hex: "6B7280")
             case .windsurf:   return Color(hex: "06B6D4")
             case .warp:       return Color(hex: "DDE4EA")
@@ -147,6 +148,7 @@ enum DesignSystem {
             case .mimo:       return Color(hex: "FF6900")
             case .cursorAgent: return Color(hex: "00E5FF")
             case .openBurnBar: return Colors.ember
+            case .junie:      return Color(hex: "48E054")
             }
         }
 
@@ -176,6 +178,7 @@ enum DesignSystem {
             case .goose:      return Color(hex: "2DD4BF")
             case .openClaw:   return Color(hex: "F472B6")
             case .openClaude: return Color(hex: "E8855F")
+            case .omp: return Color(hex: "F472B6")
             case .ollama:     return Color(hex: "9CA3AF")
             case .windsurf:   return Color(hex: "22D3EE")
             case .warp:       return Color(hex: "111111")
@@ -183,6 +186,7 @@ enum DesignSystem {
             case .mimo:       return Color(hex: "FF8533")
             case .cursorAgent: return Color(hex: "33ECFF")
             case .openBurnBar: return Color(hex: "FF7578")
+            case .junie:      return Color(hex: "6FE87F")
             }
         }
 

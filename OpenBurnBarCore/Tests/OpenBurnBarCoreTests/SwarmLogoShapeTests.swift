@@ -89,7 +89,9 @@ final class SwarmLogoShapeTests: XCTestCase {
         XCTAssertTrue(SwarmFormationMode.providerLogoGroups.contains([.factory, .claudeCode]))
         XCTAssertTrue(SwarmFormationMode.providerLogoGroups.contains([.codex, .openCode]))
         XCTAssertTrue(SwarmFormationMode.providerLogoGroups.contains([.openClaw, .openClaude]))
-        XCTAssertTrue(SwarmFormationMode.providerLogoGroups.contains([.hermes, .geminiCLI]))
+        XCTAssertTrue(SwarmFormationMode.providerLogoGroups.contains([.omp, .hermes]))
+        XCTAssertTrue(SwarmFormationMode.providerLogoGroups.contains([.geminiCLI, .junie]))
+        XCTAssertTrue(SwarmFormationMode.providerLogoGroups.contains([.antigravity, .openAI]))
         XCTAssertTrue(SwarmFormationMode.providerLogoGroups.allSatisfy { $0.count <= 2 })
     }
 
@@ -248,6 +250,17 @@ final class SwarmLogoShapeTests: XCTestCase {
             center.y + topBitmapRow.y * scale,
             center.y + bottomBitmapRow.y * scale,
             "Top image row must render at a smaller Canvas Y (higher on screen) than the bottom row."
+        )
+    }
+
+    func testLaunchBurnBarLogoTopBitmapRowRendersAboveBottomRow() {
+        let topBitmapRow = BurnBarLogoFormationGeometry.logoPoint(nx: 0.5, ny: 0)
+        let bottomBitmapRow = BurnBarLogoFormationGeometry.logoPoint(nx: 0.5, ny: 1)
+
+        XCTAssertLessThan(
+            topBitmapRow.y,
+            bottomBitmapRow.y,
+            "Top AppLogo pixels must render above bottom pixels so the splash logo is upright."
         )
     }
 

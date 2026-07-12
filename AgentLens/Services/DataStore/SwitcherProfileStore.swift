@@ -411,12 +411,12 @@ public final class SwitcherProfileStore: Sendable {
     public func update(_ record: SwitcherProfileRecord) throws -> SwitcherProfileRecord {
         try dbQueue.write { db in
             // Verify profile exists
-            let existing = try Row.fetchOne(db, sql: "SELECT sortKey, createdAt FROM switcher_profiles WHERE id = ?", arguments: [record.id])
-            guard existing != nil else {
+            guard let existing = try Row.fetchOne(db, sql: "SELECT sortKey, createdAt FROM switcher_profiles WHERE id = ?", arguments: [record.id]) else {
+                AppLogger.dataStore.error("switcher_profile_update_not_found", metadata: ["id": record.id])
                 throw SwitcherProfileStoreError.profileNotFound(record.id)
             }
-            let sortKey: Int = existing!["sortKey"]
-            let createdAt: Date = Self.parseDateValue(existing!["createdAt"]) ?? Date()
+            let sortKey: Int = existing["sortKey"]
+            let createdAt: Date = Self.parseDateValue(existing["createdAt"]) ?? Date()
 
             let now = Date()
             try db.execute(

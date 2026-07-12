@@ -68,7 +68,7 @@ final class ConversationTombstoneGCService: CloudSyncDomain, Sendable {
         let deviceId = gate.account.deviceId
         let cutoff = now().addingTimeInterval(-max(retentionWindow, 0))
 
-        let expired: [ConversationRecord]
+        let expired: [OpenBurnBarCore.ConversationRecord]
         do {
             expired = try await context.dataStore.fetchExpiredConversationTombstones(before: cutoff, limit: 200)
         } catch {
@@ -107,7 +107,7 @@ final class ConversationTombstoneGCService: CloudSyncDomain, Sendable {
     }
 
     /// Removes every cloud artifact backing a single tombstoned conversation.
-    private func purgeRemoteArtifacts(record: ConversationRecord, uid: String, localDeviceId: String) async throws {
+    private func purgeRemoteArtifacts(record: OpenBurnBarCore.ConversationRecord, uid: String, localDeviceId: String) async throws {
         // Remote rows are keyed by their origin device; local rows by this device.
         let manifestDeviceId = record.sourceDeviceId ?? localDeviceId
         let docId = SessionLogSyncService.cloudDocumentID(deviceId: manifestDeviceId, record: record)

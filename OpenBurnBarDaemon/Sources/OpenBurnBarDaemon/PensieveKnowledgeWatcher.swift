@@ -82,6 +82,10 @@ public final class PensieveKnowledgeWatcher: Sendable {
 
     private let gate = PensieveWatcherGate()
     private let workQueue = DispatchQueue(label: "com.openburnbar.daemon.pensieve.watch", qos: .utility)
+    /// Upper bound on the process-lifetime `enqueuedVectorIDs` dedupe set
+    /// (~64k ids ≈ a few MB). Past this the set resets wholesale; the server
+    /// is idempotent, so the only cost is one redundant re-enqueue per chunk.
+    private static let enqueuedVectorIDsCap = 65_536
     // All mutable state is confined to `workQueue`; an OSAllocatedUnfairLock makes
     // that confinement compiler-verified (and closes the off-queue read race on the
     // public status vars), so the watcher is plainly Sendable.
@@ -92,6 +96,8 @@ public final class PensieveKnowledgeWatcher: Sendable {
         var backstopTimer: DispatchSourceTimer?
         /// vectorId set already enqueued this process run — avoids re-writing
         /// unchanged chunks (the server is idempotent too, but this trims IO).
+        /// Bounded by `enqueuedVectorIDsCap` so a long-lived daemon can't grow
+        /// it without limit.
         var enqueuedVectorIDs = Set<String>()
         var lastEnqueueDate: Date?
         var lastEnqueuedCount = 0
@@ -261,6 +267,14 @@ public final class PensieveKnowledgeWatcher: Sendable {
             }
             guard !novelVectors.isEmpty else { continue }
             state.withLockUnchecked { state in
+                // Bound the process-lifetime dedupe set: on a daemon that runs
+                // for weeks over an active repo it otherwise grows without
+                // limit (~100 B per id). Clearing is safe — the server is
+                // idempotent, so the cost of a reset is one redundant
+                // re-enqueue per chunk, not corruption.
+                if state.enqueuedVectorIDs.count > Self.enqueuedVectorIDsCap {
+                    state.enqueuedVectorIDs.removeAll(keepingCapacity: true)
+                }
                 for vector in novelVectors { state.enqueuedVectorIDs.insert(vector.vectorId) }
             }
 

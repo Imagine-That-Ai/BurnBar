@@ -95,8 +95,12 @@ public actor BurnBarGatewayModelHealthStore {
         error: Error
     ) {
         guard let providerError = error as? BurnBarProviderExecutorError,
-              case .upstreamError(let statusCode, let body) = providerError,
-              let duration = Self.blockDuration(statusCode: statusCode, body: body, route: route) else {
+              let statusAndBody = providerError.upstreamStatusAndBody,
+              let duration = Self.blockDuration(
+                  statusCode: statusAndBody.statusCode,
+                  body: statusAndBody.body,
+                  route: route
+              ) else {
             return
         }
 
@@ -105,8 +109,8 @@ public actor BurnBarGatewayModelHealthStore {
         let accountLabel = route.credentialSlotLabel ?? route.providerDisplayName
         let message = Self.routeFailureMessage(
             modelID: modelID,
-            statusCode: statusCode,
-            body: body,
+            statusCode: statusAndBody.statusCode,
+            body: statusAndBody.body,
             route: route
         )
         let record = BurnBarGatewayModelHealthRecord(
@@ -115,7 +119,7 @@ public actor BurnBarGatewayModelHealthStore {
             accountID: accountID,
             accountLabel: accountLabel,
             formatFamily: formatFamily,
-            statusCode: statusCode,
+            statusCode: statusAndBody.statusCode,
             message: message,
             failedAt: now,
             blockedUntil: now.addingTimeInterval(duration)

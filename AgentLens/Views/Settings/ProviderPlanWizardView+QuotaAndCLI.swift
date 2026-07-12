@@ -624,6 +624,10 @@ extension ProviderPlanWizardView {
             return .kimi
         case .pi:
             return AgentProvider.piAgent.providerID
+        case .junie:
+            return AgentProvider.junie.providerID
+        case .omp:
+            return AgentProvider.omp.providerID
         }
     }
 }

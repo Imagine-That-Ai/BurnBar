@@ -9,20 +9,20 @@
 #   scripts/rollback-migration.sh --inspect
 #
 # What it does:
-#   --list      List all migrations and their rollback safety classification
-#   --inspect   Open an interactive sqlite3 session against a backup of the DB
-#   <version>   Show revert SQL for the specified migration
+#   --list      List all migrations and their transaction/retry/rollback contract
+#   --inspect   Create a quiesced, checksummed SQLCipher database bundle
+#   <version>   Show forensic rollback notes for the specified migration
 #
 # This script does NOT auto-execute revert SQL. It shows the SQL and
 # requires human confirmation before any destructive operation.
 #
 # Database location:
-#   ~/Library/Application Support/OpenBurnBar/OpenBurnBar.sqlite
+#   ~/Library/Application Support/OpenBurnBar/openburnbar.sqlite
 
-set -uo pipefail
+set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DB_PATH="$HOME/Library/Application Support/OpenBurnBar/OpenBurnBar.sqlite"
+DB_PATH="$HOME/Library/Application Support/OpenBurnBar/openburnbar.sqlite"
 DB_BACKUP_DIR="$HOME/Library/Application Support/OpenBurnBar/backups"
 
 # Colors
@@ -39,59 +39,72 @@ info()    { echo -e "${BOLD}$1${NC}"; }
 
 # ── Migration catalog ───────────────────────────────────────────────────
 #
-# Format: "name|safety|description"
-# Safety: "safe-rerun" (idempotent) or "manual" (needs careful revert)
+# Format: "name|transaction|retry|rollback|description"
+#
+# `atomic|unapplied-only|backup-restore` means GRDB owns the transaction,
+# automatic retry is supported only when the migration identifier was not
+# committed, and the supported rollback is restoration of the keyed backup.
+# This deliberately does not claim that ALTER TABLE or data rewrites are
+# intrinsically idempotent or that OpenBurnBar ships tested down migrations.
 #
 # This catalog must be kept in sync with OpenBurnBarDatabase.swift.
 
 MIGRATIONS=(
-  "v1_initial|safe-rerun|Initial schema creation — all core tables"
-  "v2_sync|manual|Cloud sync tracking columns"
-  "v3_conversations|manual|Conversation model and FTS"
-  "v4_summaries|safe-rerun|Summary tables"
-  "v5_fts_rebuild|safe-rerun|Full FTS index rebuild"
-  "v6_fts_standalone_triggers|safe-rerun|Standalone FTS triggers"
-  "v7_conversation_cloud_sync|manual|Conversation cloud sync metadata"
-  "v8_chat_transcript_pieces|safe-rerun|Chat transcript pieces table"
-  "v9_source_type|manual|Source type column addition"
-  "v10_log_synced_at|safe-rerun|Log sync timestamp column"
-  "v11_auto_summary_metadata|safe-rerun|Auto-summary metadata columns"
-  "v12_token_usage_dedupe_unique_session_model|manual|Token usage dedup with unique session+model constraint"
-  "v13_backfill_claude_usage_timestamps|safe-rerun|Backfill Claude usage timestamps"
-  "v14_local_search_substrate|manual|Local search substrate (FTS5 + semantic)"
-  "v15_source_artifact_registry|manual|Source artifact registry table"
-  "v16_shared_artifact_sync_state|safe-rerun|Shared artifact sync state columns"
-  "v17_shared_artifact_permissions_and_audit|manual|Shared artifact permissions and audit"
-  "v18_summary_attempt_tracking|safe-rerun|Summary attempt tracking"
-  "v19_conversation_fts_trigger_fix|safe-rerun|Conversation FTS trigger fix"
-  "v20_chat_threads|manual|Chat threads table"
-  "v21_multifield_fts|manual|Multi-field FTS content"
-  "v22_cross_device_sync|safe-rerun|Cross-device sync columns"
-  "v23_device_hardware_model|safe-rerun|Device hardware model column"
-  "v24_repair_custom_icon_column|safe-rerun|Repair custom icon column"
-  "v25_operating_action_history|manual|Operating action history table"
-  "v26_controller_runtime_cache|safe-rerun|Controller runtime cache table"
-  "v27_token_usage_reasoning_source|safe-rerun|Token usage reasoning source column"
-  "v28_token_usage_provenance|manual|Token usage provenance tracking"
-  "v29_parser_checkpoints|safe-rerun|Parser checkpoint store"
-  "v30_remote_sync_watermarks|safe-rerun|Remote sync watermark store"
-  "v31_chunk_content_hash|safe-rerun|Chunk content hash column"
-  "v32_switcher_profiles|manual|Switcher profiles table"
-  "v33_backfill_cursors|safe-rerun|Cursor backfill migration"
-  "v34_vector_index_snapshots|manual|Vector index snapshot tracking"
-  "v35_provider_accounts|manual|Provider accounts table and token usage account attribution"
-  "v36_repair_kimi_request_id_models|manual|Repair Kimi request-id models and duplicate cache accounting"
-  "v37_token_usage_performance_indexes|safe-rerun|Token usage performance indexes"
-  "v38_chat_message_attachments|manual|Chat message attachments JSON column"
-  "v39_project_memory_snapshots|manual|Project memory snapshot table"
-  "v40_reprice_gpt55_cached_input|safe-rerun|Reprice GPT-5.5 cached input rows"
-  "v41_reprice_openai_family_cached_input|safe-rerun|Reprice OpenAI-family cached input rows"
-  "v42_budget_rules_and_events|safe-rerun|Budget rules and budget events tables"
-  "v43_text_expansion_snippets|safe-rerun|Text expansion snippets table and active-trigger index"
-  "v44_repair_token_accounting_duplicates|manual|Delete duplicated token accounting rows"
-  "v45_conversation_working_directory|safe-rerun|Conversation working directory column"
-  "v46_drain_target_per_provider|safe-rerun|Per-provider switcher drain target pointer"
-  "v47_conversation_tombstones|safe-rerun|Conversation tombstone and version columns"
+  "v1_initial|atomic|unapplied-only|backup-restore|Initial schema creation — all core tables"
+  "v2_sync|atomic|unapplied-only|backup-restore|Cloud sync tracking columns"
+  "v3_conversations|atomic|unapplied-only|backup-restore|Conversation model and FTS"
+  "v4_summaries|atomic|unapplied-only|backup-restore|Summary tables"
+  "v5_fts_rebuild|atomic|unapplied-only|backup-restore|Full FTS index rebuild"
+  "v6_fts_standalone_triggers|atomic|unapplied-only|backup-restore|Standalone FTS triggers"
+  "v7_conversation_cloud_sync|atomic|unapplied-only|backup-restore|Conversation cloud sync metadata"
+  "v8_chat_transcript_pieces|atomic|unapplied-only|backup-restore|Chat transcript pieces table"
+  "v9_source_type|atomic|unapplied-only|backup-restore|Source type column addition"
+  "v10_log_synced_at|atomic|unapplied-only|backup-restore|Log sync timestamp column"
+  "v11_auto_summary_metadata|atomic|unapplied-only|backup-restore|Auto-summary metadata columns"
+  "v12_token_usage_dedupe_unique_session_model|atomic|unapplied-only|backup-restore|Token usage dedup with unique session+model constraint"
+  "v13_backfill_claude_usage_timestamps|atomic|unapplied-only|backup-restore|Backfill Claude usage timestamps"
+  "v14_local_search_substrate|atomic|unapplied-only|backup-restore|Local search substrate (FTS5 + semantic)"
+  "v15_source_artifact_registry|atomic|unapplied-only|backup-restore|Source artifact registry table"
+  "v16_shared_artifact_sync_state|atomic|unapplied-only|backup-restore|Shared artifact sync state columns"
+  "v17_shared_artifact_permissions_and_audit|atomic|unapplied-only|backup-restore|Shared artifact permissions and audit"
+  "v18_summary_attempt_tracking|atomic|unapplied-only|backup-restore|Summary attempt tracking"
+  "v19_conversation_fts_trigger_fix|atomic|unapplied-only|backup-restore|Conversation FTS trigger fix"
+  "v20_chat_threads|atomic|unapplied-only|backup-restore|Chat threads table"
+  "v21_multifield_fts|atomic|unapplied-only|backup-restore|Multi-field FTS content"
+  "v22_cross_device_sync|atomic|unapplied-only|backup-restore|Cross-device sync columns"
+  "v23_device_hardware_model|atomic|unapplied-only|backup-restore|Device hardware model column"
+  "v24_repair_custom_icon_column|atomic|unapplied-only|backup-restore|Repair custom icon column"
+  "v25_operating_action_history|atomic|unapplied-only|backup-restore|Operating action history table"
+  "v26_controller_runtime_cache|atomic|unapplied-only|backup-restore|Controller runtime cache table"
+  "v27_token_usage_reasoning_source|atomic|unapplied-only|backup-restore|Token usage reasoning source column"
+  "v28_token_usage_provenance|atomic|unapplied-only|backup-restore|Token usage provenance tracking"
+  "v29_parser_checkpoints|atomic|unapplied-only|backup-restore|Parser checkpoint store"
+  "v30_remote_sync_watermarks|atomic|unapplied-only|backup-restore|Remote sync watermark store"
+  "v31_chunk_content_hash|atomic|unapplied-only|backup-restore|Chunk content hash column"
+  "v32_switcher_profiles|atomic|unapplied-only|backup-restore|Switcher profiles table"
+  "v33_backfill_cursors|atomic|unapplied-only|backup-restore|Cursor backfill migration"
+  "v34_vector_index_snapshots|atomic|unapplied-only|backup-restore|Vector index snapshot tracking"
+  "v35_provider_accounts|atomic|unapplied-only|backup-restore|Provider accounts table and token usage account attribution"
+  "v36_repair_kimi_request_id_models|atomic|unapplied-only|backup-restore|Repair Kimi request-id models and duplicate cache accounting"
+  "v37_token_usage_performance_indexes|atomic|unapplied-only|backup-restore|Token usage performance indexes"
+  "v38_chat_message_attachments|atomic|unapplied-only|backup-restore|Chat message attachments JSON column"
+  "v39_project_memory_snapshots|atomic|unapplied-only|backup-restore|Project memory snapshot table"
+  "v40_reprice_gpt55_cached_input|atomic|unapplied-only|backup-restore|Reprice GPT-5.5 cached input rows"
+  "v41_reprice_openai_family_cached_input|atomic|unapplied-only|backup-restore|Reprice OpenAI-family cached input rows"
+  "v42_budget_rules_and_events|atomic|unapplied-only|backup-restore|Budget rules and budget events tables"
+  "v43_text_expansion_snippets|atomic|unapplied-only|backup-restore|Text expansion snippets table and active-trigger index"
+  "v44_repair_token_accounting_duplicates|atomic|unapplied-only|backup-restore|Delete duplicated token accounting rows"
+  "v45_conversation_working_directory|atomic|unapplied-only|backup-restore|Conversation working directory column"
+  "v46_drain_target_per_provider|atomic|unapplied-only|backup-restore|Per-provider switcher drain target pointer"
+  "v47_conversation_tombstones|atomic|unapplied-only|backup-restore|Conversation tombstone and version columns"
+  "v48_conversation_fts_orphan_repair|atomic|unapplied-only|backup-restore|Repair orphaned conversation FTS rows"
+  "v49_token_usage_parent_request_id|atomic|unapplied-only|backup-restore|Fusion parent request attribution column and index"
+  "v50_project_code_memory_schema|atomic|unapplied-only|backup-restore|Project Code Memory tables and indexes"
+  "v51a_drop_body_fts|atomic|unapplied-only|backup-restore|Drop obsolete body-only agent memory FTS table"
+  "v51_chat_memory_authority|atomic|unapplied-only|backup-restore|Chat memory authority metadata, jobs, and tombstones"
+  "v52_memory_extraction_job_intent_and_lease|atomic|unapplied-only|backup-restore|Memory extraction intent and lease columns"
+  "v53_memory_forget_outbox|atomic|unapplied-only|backup-restore|User-scoped memory forget replication outbox"
+  "v54_provider_quota_snapshots|atomic|unapplied-only|backup-restore|Durable provider quota snapshot cache"
 )
 
 # ── Commands ─────────────────────────────────────────────────────────────
@@ -100,29 +113,31 @@ cmd_list() {
   echo ""
   info "OpenBurnBar Database Migration Catalog"
   echo ""
-  printf "%-4s %-48s %-12s %s\n" " #" "Migration" "Safety" "Description"
-  printf "%-4s %-48s %-12s %s\n" "---" "----------------------------------------------" "----------" "-----------"
+  printf "%-4s %-46s %-8s %-15s %-16s %s\n" " #" "Migration" "Txn" "Retry" "Rollback" "Description"
+  printf "%-4s %-46s %-8s %-15s %-16s %s\n" "---" "--------------------------------------------" "------" "-------------" "--------------" "-----------"
 
   local idx=0
   for entry in "${MIGRATIONS[@]}"; do
     idx=$((idx + 1))
     name="$(echo "$entry" | cut -d'|' -f1)"
-    safety="$(echo "$entry" | cut -d'|' -f2)"
-    desc="$(echo "$entry" | cut -d'|' -f3)"
-    printf "%-4s %-48s %-12s %s\n" "$idx" "$name" "$safety" "$desc"
+    transaction="$(echo "$entry" | cut -d'|' -f2)"
+    retry="$(echo "$entry" | cut -d'|' -f3)"
+    rollback="$(echo "$entry" | cut -d'|' -f4)"
+    desc="$(echo "$entry" | cut -d'|' -f5)"
+    printf "%-4s %-46s %-8s %-15s %-16s %s\n" "$idx" "$name" "$transaction" "$retry" "$rollback" "$desc"
   done
 
   echo ""
-  echo "Safety classifications:"
-  echo "  safe-rerun  — Migration is idempotent; safe to re-run after a partial failure"
-  echo "  manual      — Requires careful revert; data loss possible if dropped"
+  echo "Migration contract:"
+  echo "  atomic          — GRDB commits the migration body and identifier together"
+  echo "  unapplied-only  — retry only when the identifier is absent after rollback"
+  echo "  backup-restore  — no supported down migration; restore the keyed backup"
   echo ""
   echo "Database: $DB_PATH"
-  if [[ -f "$DB_PATH" ]]; then
-    current_version="$(sqlite3 "$DB_PATH" "SELECT MAX(identifier) FROM grdb_migrations" 2>/dev/null || echo 'unknown')"
-    echo "Current migration: $current_version"
-  else
+  if [[ ! -f "$DB_PATH" ]]; then
     echo "Database not found at expected path."
+  else
+    echo "The migration state is encrypted; read it through the running app's diagnostics."
   fi
 }
 
@@ -133,45 +148,83 @@ cmd_inspect() {
     exit 1
   fi
 
+  command -v lsof >/dev/null 2>&1 || {
+    error "lsof is required to prove the database is quiesced"
+    exit 1
+  }
+  command -v shasum >/dev/null 2>&1 || {
+    error "shasum is required to seal the inspection bundle"
+    exit 1
+  }
+  command -v cmp >/dev/null 2>&1 || {
+    error "cmp is required to prove the source stayed stable during the copy"
+    exit 1
+  }
+
+  local database_files=("$DB_PATH")
+  for sidecar in "$DB_PATH-wal" "$DB_PATH-shm"; do
+    if [[ -e "$sidecar" ]]; then
+      database_files+=("$sidecar")
+    fi
+  done
+  if lsof -t -- "${database_files[@]}" >/dev/null 2>&1; then
+    error "OpenBurnBar or another process still has the database open"
+    echo "  Quit OpenBurnBar and all database tools, then retry." >&2
+    exit 1
+  fi
+
+  umask 077
   mkdir -p "$DB_BACKUP_DIR"
-  BACKUP_NAME="OpenBurnBar-rollback-$(date +%Y%m%d-%H%M%S).sqlite"
+  BACKUP_NAME="openburnbar-rollback-$(date +%Y%m%d-%H%M%S).bundle"
   BACKUP_PATH="$DB_BACKUP_DIR/$BACKUP_NAME"
+  mkdir "$BACKUP_PATH"
 
-  echo "Creating timestamped backup..."
-  cp "$DB_PATH" "$BACKUP_PATH"
-  success "Backup created: $BACKUP_PATH"
+  echo "Creating quiesced SQLCipher inspection bundle..."
+  for source in "${database_files[@]}"; do
+    if [[ -f "$source" ]]; then
+      cp -p "$source" "$BACKUP_PATH/$(basename "$source")"
+    fi
+  done
 
-  echo ""
-  echo "Current database state:"
-  echo "  Path: $DB_PATH"
-  echo "  Size: $(du -h "$DB_PATH" | cut -f1)"
+  if lsof -t -- "${database_files[@]}" >/dev/null 2>&1; then
+    mv "$BACKUP_PATH" "$BACKUP_PATH.invalid-open-race"
+    error "A process opened the database during the copy; the bundle was quarantined"
+    exit 1
+  fi
 
-  current_version="$(sqlite3 "$DB_PATH" "SELECT MAX(identifier) FROM grdb_migrations" 2>/dev/null || echo 'unknown')"
-  echo "  Applied migrations: $(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM grdb_migrations" 2>/dev/null || echo '?')"
-  echo "  Latest migration: $current_version"
+  for source in "$DB_PATH" "$DB_PATH-wal" "$DB_PATH-shm"; do
+    destination="$BACKUP_PATH/$(basename "$source")"
+    source_changed=0
+    if [[ -e "$source" && ! -e "$destination" ]] || [[ ! -e "$source" && -e "$destination" ]]; then
+      source_changed=1
+    elif [[ -e "$source" ]] && ! cmp -s "$source" "$destination"; then
+      source_changed=1
+    fi
+    if [[ "$source_changed" -eq 1 ]]; then
+      mv "$BACKUP_PATH" "$BACKUP_PATH.invalid-source-changed"
+      error "The database changed during the copy; the bundle was quarantined"
+      exit 1
+    fi
+  done
 
-  integrity="$(sqlite3 "$DB_PATH" "PRAGMA integrity_check" 2>/dev/null || echo 'failed')"
-  echo "  Integrity: $integrity"
-  echo ""
-
-  echo "Opening interactive sqlite3 session against backup..."
-  echo "  Use '.tables' to list tables, '.schema TABLE' for DDL."
-  echo "  The backup is at: $BACKUP_PATH"
-  echo "  Your LIVE database is at: $DB_PATH"
-  echo ""
-  echo "Type 'exit' or Ctrl-D to exit."
-  echo ""
-
-  sqlite3 "$BACKUP_PATH"
+  (
+    cd "$BACKUP_PATH"
+    shasum -a 256 ./* > SHA256SUMS
+  )
+  chmod -R go-rwx "$BACKUP_PATH"
+  success "Inspection bundle created: $BACKUP_PATH"
+  echo "  Includes the encrypted database and every present WAL/SHM sidecar."
+  echo "  Stock sqlite3 cannot inspect SQLCipher ciphertext and is intentionally not invoked."
+  echo "  Validate or restore this bundle only through OpenBurnBar's keyed GRDB recovery path."
 }
 
-get_safety() {
+get_contract() {
   local target="$1"
   for entry in "${MIGRATIONS[@]}"; do
     name="$(echo "$entry" | cut -d'|' -f1)"
     # Support both full name (v34_vector_index_snapshots) and short prefix (v34)
     if [[ "$name" == "$target" || "$name" == "${target}_"* ]]; then
-      echo "$(echo "$entry" | cut -d'|' -f2)"
+      echo "$entry" | cut -d'|' -f2-4
       return 0
     fi
   done
@@ -184,7 +237,7 @@ get_desc() {
   for entry in "${MIGRATIONS[@]}"; do
     name="$(echo "$entry" | cut -d'|' -f1)"
     if [[ "$name" == "$target" || "$name" == "${target}_"* ]]; then
-      echo "$(echo "$entry" | cut -d'|' -f3)"
+      echo "$entry" | cut -d'|' -f5
       return 0
     fi
   done
@@ -227,97 +280,91 @@ cmd_revert() {
     exit 1
   fi
 
-  safety="$(get_safety "$target")"
+  contract="$(get_contract "$target")"
   desc="$(get_desc "$target")"
 
   echo ""
   info "Rollback Information for $full_name"
   echo ""
   echo "  Description: $desc"
-  echo "  Safety:       $safety"
+  echo "  Contract:    $contract"
   echo ""
 
-  if [[ "$safety" == "safe-rerun" ]]; then
-    echo "  This migration is classified as safe-rerun."
-    echo "  If a partial failure occurred, you can re-launch the app and"
-    echo "  the migration will be re-attempted from where it left off."
-    echo ""
-    echo "  Recommended action: re-launch OpenBurnBar and let GRDB re-run the migration."
-  else
-    echo "  This migration is classified as manual."
-    echo "  Reverting requires careful SQL and may cause data loss."
-    echo ""
+  echo "  Automatic retry is supported only if GRDB did not commit this"
+  echo "  migration identifier. The supported rollback is restoration of"
+  echo "  the keyed pre-migration backup; no down migration is certified."
+  echo ""
 
-    # Show migration-specific revert hints
-    case "$full_name" in
+  # Show migration-specific forensic hints. These are not certified down migrations.
+  case "$full_name" in
       v2_sync)
-        echo "  Suggested revert SQL:"
+        echo "  Forensic SQL notes:"
         echo "    -- Remove cloud sync columns (requires SQLite 3.35.0+ for DROP COLUMN)"
         echo "    -- ALTER TABLE token_usage DROP COLUMN synced_at;"
         ;;
       v3_conversations)
-        echo "  Suggested revert SQL:"
+        echo "  Forensic SQL notes:"
         echo "    -- DROP TABLE IF EXISTS message_fts;"
         echo "    -- DROP TABLE IF EXISTS messages;"
         echo "    -- DROP TABLE IF EXISTS conversations;"
         echo "    -- CAUTION: This destroys all conversation data"
         ;;
       v7_conversation_cloud_sync)
-        echo "  Suggested revert SQL:"
+        echo "  Forensic SQL notes:"
         echo "    -- ALTER TABLE conversations DROP COLUMN cloud_sync_version;"
         ;;
       v9_source_type)
-        echo "  Suggested revert SQL:"
+        echo "  Forensic SQL notes:"
         echo "    -- ALTER TABLE source_artifacts DROP COLUMN source_type;"
         ;;
       v12_token_usage_dedupe_unique_session_model)
-        echo "  Suggested revert SQL:"
+        echo "  Forensic SQL notes:"
         echo "    -- Requires table rebuild in SQLite to drop UNIQUE constraint"
         ;;
       v14_local_search_substrate)
-        echo "  Suggested revert SQL:"
+        echo "  Forensic SQL notes:"
         echo "    -- DROP TABLE IF EXISTS search_chunks;"
         echo "    -- DROP TABLE IF EXISTS chunk_embeddings;"
         echo "    -- CAUTION: Destroys all search index data"
         ;;
       v15_source_artifact_registry)
-        echo "  Suggested revert SQL:"
+        echo "  Forensic SQL notes:"
         echo "    -- DROP TABLE IF EXISTS source_artifacts;"
         echo "    -- CAUTION: Destroys artifact registry"
         ;;
       v17_shared_artifact_permissions_and_audit)
-        echo "  Suggested revert SQL:"
+        echo "  Forensic SQL notes:"
         echo "    -- DROP TABLE IF EXISTS shared_artifact_permissions;"
         echo "    -- DROP TABLE IF EXISTS shared_artifact_audit_log;"
         ;;
       v20_chat_threads)
-        echo "  Suggested revert SQL:"
+        echo "  Forensic SQL notes:"
         echo "    -- DROP TABLE IF EXISTS chat_threads;"
         echo "    -- DROP TABLE IF EXISTS chat_messages;"
         ;;
       v21_multifield_fts)
-        echo "  Suggested revert SQL:"
+        echo "  Forensic SQL notes:"
         echo "    -- Requires FTS rebuild after column changes"
         ;;
       v25_operating_action_history)
-        echo "  Suggested revert SQL:"
+        echo "  Forensic SQL notes:"
         echo "    -- DROP TABLE IF EXISTS operating_actions;"
         ;;
       v28_token_usage_provenance)
-        echo "  Suggested revert SQL:"
+        echo "  Forensic SQL notes:"
         echo "    -- ALTER TABLE token_usage DROP COLUMN provenance;"
         ;;
       v32_switcher_profiles)
-        echo "  Suggested revert SQL:"
+        echo "  Forensic SQL notes:"
         echo "    -- DROP TABLE IF EXISTS switcher_profiles;"
         echo "    -- DROP TABLE IF EXISTS switcher_profile_account_assignments;"
         ;;
       v34_vector_index_snapshots)
-        echo "  Suggested revert SQL:"
+        echo "  Forensic SQL notes:"
         echo "    -- DROP TABLE IF EXISTS vector_index_snapshots;"
         ;;
       v35_provider_accounts)
-        echo "  Suggested revert SQL:"
+        echo "  Forensic SQL notes:"
         echo "    -- DROP INDEX IF EXISTS token_usage_account_time_idx;"
         echo "    -- DROP INDEX IF EXISTS token_usage_provider_account_idx;"
         echo "    -- DROP INDEX IF EXISTS token_usage_unique_session_model_device_account_idx;"
@@ -327,52 +374,52 @@ cmd_revert() {
         echo "    -- CAUTION: Dropping provider_accounts removes local account labels and routing state."
         ;;
       v36_repair_kimi_request_id_models)
-        echo "  Suggested revert SQL:"
+        echo "  Forensic SQL notes:"
         echo "    -- No lossless SQL revert: this migration deletes duplicate legacy rows"
         echo "    -- and normalizes Kimi request-id model names in place."
         echo "    -- Restore from the timestamped backup created before migration if needed."
         ;;
       v38_chat_message_attachments)
-        echo "  Suggested revert SQL:"
+        echo "  Forensic SQL notes:"
         echo "    -- ALTER TABLE chat_messages DROP COLUMN attachmentsJSON;"
         ;;
       v39_project_memory_snapshots)
-        echo "  Suggested revert SQL:"
+        echo "  Forensic SQL notes:"
         echo "    -- DROP TABLE IF EXISTS project_memory_snapshots;"
         echo "    -- CAUTION: Destroys local generated project memory snapshots."
         ;;
       v44_repair_token_accounting_duplicates)
-        echo "  Suggested revert SQL:"
+        echo "  Forensic SQL notes:"
         echo "    -- No lossless SQL revert: this migration deletes duplicated token rows."
         echo "    -- Restore from backup if duplicate rows must be recovered."
         ;;
-      *)
-        echo "  No pre-written revert SQL is available for this migration."
-        echo "  Review the migration source in OpenBurnBarDatabase.swift to understand"
-        echo "  what DDL changes were made and craft appropriate revert SQL."
-        ;;
-    esac
-  fi
+    *)
+      echo "  No forensic SQL notes are available for this migration."
+      echo "  Review the migration source and restore the keyed backup if rollback is required."
+      ;;
+  esac
 
   echo ""
   echo "────────────────────────────────────────────────────────────"
   echo ""
   warn "DO NOT execute revert SQL directly against your live database."
-  echo "  1. Create a backup first (use --inspect)"
-  echo "  2. Test revert SQL against the backup"
-  echo "  3. Only then apply to the live database"
+  echo "  1. Quit OpenBurnBar and create a sealed bundle with --inspect"
+  echo "  2. Use the app's keyed GRDB recovery path to validate or restore"
+  echo "  3. Treat the SQL above as forensic guidance, not an executable down migration"
   echo ""
-  echo "  To create a timestamped backup and open an interactive session:"
+  echo "  To create a quiesced, checksummed SQLCipher bundle:"
   echo "    scripts/rollback-migration.sh --inspect"
 
   echo ""
   echo "Migration source (from OpenBurnBarDatabase.swift):"
   echo "────────────────────────────────────────────────────────────"
-  db_file="$REPO_ROOT/AgentLens/Services/DataStore/OpenBurnBarDatabase.swift"
-  if [[ -f "$db_file" ]]; then
+  db_file="$(grep -RIlF "registerMigration(\"$full_name\"" \
+    "$REPO_ROOT/AgentLens/Services/DataStore" --include='*.swift' | head -1)"
+  if [[ -n "$db_file" && -f "$db_file" ]]; then
+    echo "  $db_file"
     awk "/migrator\.registerMigration\(\"$full_name\"/,/^\s*\}/" "$db_file" | head -60
   else
-    echo "  (Source file not found at expected path)"
+    echo "  (Migration source file not found)"
   fi
 }
 
@@ -380,9 +427,9 @@ cmd_revert() {
 
 if [[ $# -lt 1 ]]; then
   echo "Usage: $0 [--list|--inspect|<migration_version>]" >&2
-  echo "  --list      List all migrations with safety classifications" >&2
-  echo "  --inspect   Create backup + interactive sqlite3 session" >&2
-  echo "  v##         Show revert SQL and migration source for a version" >&2
+  echo "  --list      List all migration contracts" >&2
+  echo "  --inspect   Create a quiesced SQLCipher bundle" >&2
+  echo "  v##         Show forensic rollback notes and migration source" >&2
   exit 1
 fi
 
@@ -399,13 +446,12 @@ case "$1" in
     echo "OpenBurnBar database migration rollback helper."
     echo ""
     echo "Commands:"
-    echo "  --list      List all migrations with safety classifications"
-    echo "  --inspect   Create backup + open interactive sqlite3 session"
-    echo "  <version>   Show revert SQL for a specific migration (e.g. v33)"
+    echo "  --list      List all migration contracts"
+    echo "  --inspect   Create a quiesced, checksummed SQLCipher bundle"
+    echo "  <version>   Show forensic rollback notes for a migration (e.g. v33)"
     echo ""
-    echo "Safety classifications:"
-    echo "  safe-rerun  Migration is idempotent; can be re-run safely"
-    echo "  manual      Requires careful revert; data loss possible"
+    echo "Migration contract:"
+    echo "  atomic|unapplied-only|backup-restore"
     echo ""
     echo "Database: $DB_PATH"
     ;;

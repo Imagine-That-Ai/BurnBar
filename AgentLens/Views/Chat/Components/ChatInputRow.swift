@@ -19,11 +19,13 @@ struct ChatInputRow: View {
         case .hermes: return "Ask Hermes\u{2026}"
         case .openclaw: return "Ask OpenClaw\u{2026}"
         case .openClaude: return "Ask OpenClaude…"
+        case .omp: return "Ask OMP…"
         case .piAgent: return "Ask Pi\u{2026}"
         case .droid: return "Ask Droid\u{2026}"
         case .forge: return "Ask Forge\u{2026}"
         case .antigravity: return "Ask Antigravity\u{2026}"
         case .cursorAgent: return "Ask Cursor Agent\u{2026}"
+        case .junie: return "Ask Junie\u{2026}"
         }
     }
 
@@ -45,6 +47,34 @@ struct ChatInputRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
+            // Mid-stream failures leave a partial assistant bubble behind;
+            // without this banner the truncated reply is indistinguishable
+            // from a completed one.
+            if let streamError = controller.streamError, !controller.isStreaming {
+                HStack(alignment: .firstTextBaseline, spacing: DesignSystem.Spacing.xs) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(DesignSystem.Colors.error)
+                    Text("Response interrupted: \(streamError)")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.error)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                    Button {
+                        controller.streamError = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Dismiss error")
+                }
+                .padding(DesignSystem.Spacing.sm)
+                .background(DesignSystem.Colors.error.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
+                .accessibilityElement(children: .combine)
+            }
             if controller.lastRetrievalHadNoEvidence, !controller.isStreaming {
                 Text("No indexed excerpts matched your last question\u{2014}try \u{201c}Search indexed sessions\u{201d}, enable indexing in Settings, or rephrase.")
                     .font(DesignSystem.Typography.tiny)

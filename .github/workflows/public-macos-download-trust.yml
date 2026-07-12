@@ -41,7 +41,7 @@ jobs:
             if grep -qx 'website/src/data/site.ts' "$changed_paths"; then
               changed=true
             fi
-            if grep -Eq '^(\.github/workflows/public-macos-download-trust\.yml|scripts/ci/verify-public-macos-download-trust\.sh|scripts/ci/verify-apple-release-firebase-config\.sh|scripts/ci/verify-apple-release-firebase-config\.test\.sh|scripts/ci/verify-apple-appcheck-release-artifact\.sh)$' "$changed_paths"; then
+            if grep -Eq '^(\.github/workflows/public-macos-download-trust\.yml|scripts/ci/verify-public-macos-download-trust\.sh|scripts/ci/verify-public-macos-download-trust\.test\.sh|scripts/ci/verify-apple-release-firebase-config\.sh|scripts/ci/verify-apple-release-firebase-config\.test\.sh|scripts/ci/verify-apple-appcheck-release-artifact\.sh)$' "$changed_paths"; then
               gate_changed=true
             fi
           elif [[ "$EVENT_NAME" == "push" ]]; then
@@ -53,7 +53,7 @@ jobs:
               if grep -qx 'website/src/data/site.ts' "$changed_paths"; then
                 changed=true
               fi
-              if grep -Eq '^(\.github/workflows/public-macos-download-trust\.yml|scripts/ci/verify-public-macos-download-trust\.sh|scripts/ci/verify-apple-release-firebase-config\.sh|scripts/ci/verify-apple-release-firebase-config\.test\.sh|scripts/ci/verify-apple-appcheck-release-artifact\.sh)$' "$changed_paths"; then
+              if grep -Eq '^(\.github/workflows/public-macos-download-trust\.yml|scripts/ci/verify-public-macos-download-trust\.sh|scripts/ci/verify-public-macos-download-trust\.test\.sh|scripts/ci/verify-apple-release-firebase-config\.sh|scripts/ci/verify-apple-release-firebase-config\.test\.sh|scripts/ci/verify-apple-appcheck-release-artifact\.sh)$' "$changed_paths"; then
                 gate_changed=true
               fi
             fi
@@ -72,6 +72,9 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
+      - name: Install SITE parser dependency
+        run: npm ci --prefix website --ignore-scripts
+
       - name: Verify public macOS trust gate scripts
         run: |
           set -euo pipefail
@@ -79,7 +82,9 @@ jobs:
           bash -n scripts/ci/verify-apple-release-firebase-config.sh
           bash -n scripts/ci/verify-apple-release-firebase-config.test.sh
           bash -n scripts/ci/verify-apple-appcheck-release-artifact.sh
+          bash -n scripts/ci/verify-public-macos-download-trust.test.sh
           bash scripts/ci/verify-apple-release-firebase-config.test.sh
+          bash scripts/ci/verify-public-macos-download-trust.test.sh
 
   verify-public-macos-download-trust:
     needs: detect-public-macos-download-change
@@ -88,6 +93,9 @@ jobs:
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Install SITE parser dependency
+        run: npm ci --prefix website --ignore-scripts
 
       - name: Verify exact public macOS DMG trust chain
         run: bash scripts/ci/verify-public-macos-download-trust.sh

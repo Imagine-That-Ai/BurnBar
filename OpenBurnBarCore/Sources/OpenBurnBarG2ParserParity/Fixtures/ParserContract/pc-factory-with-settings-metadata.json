@@ -1,0 +1,8 @@
+{
+  "model": "glm-4",
+  "usage": {
+    "input_tokens": 800,
+    "output_tokens": 400
+  },
+  "created_at": "2025-07-01T00:00:00Z"
+}

@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    macOS-runnable parity tests for the Liquid-Glass transparency preference math
+    and the pure KernelBackdrop catalog/bridge (Phase 3 · W6 · W6-DS-GLASS + reskin).
+    Links dependency-free sources from the WinUI app (System-only, no WinUI) so the
+    shipped code is driven on this host via `dotnet test`.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Pure math + preference store + kernel catalog/bridge (no WinUI). -->
+    <Compile Include="../../app/OpenBurnBar.App/Theme/LiquidGlassTransparency.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Theme/LiquidGlassPreferenceStore.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Dashboard/KernelCatalog.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Dashboard/KernelBackdropBridge.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Dashboard/KernelBackdropSelection.cs" />
+    <Compile Include="LiquidGlassTransparencyTests.cs" />
+    <Compile Include="LiquidGlassPreferenceStoreTests.cs" />
+    <Compile Include="KernelBackdropBridgeTests.cs" />
+    <Compile Include="KernelBackdropSelectionTests.cs" />
+    <Compile Include="KernelCatalogTests.cs" />
+  </ItemGroup>
+
+</Project>

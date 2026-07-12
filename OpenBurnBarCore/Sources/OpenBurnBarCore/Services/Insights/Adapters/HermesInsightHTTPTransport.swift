@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// Reusable HTTP transport that talks to a Hermes relay over the
 /// OpenAI-compatible `POST /v1/chat/completions` grammar.

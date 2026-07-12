@@ -1,0 +1,73 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Portable Memory + Search core (Phase 3 · Windows port · memory-search lane).
+
+    This is the Windows peer of the macOS semantic-search + memory-extraction engine:
+      Search:
+        AgentLens/Services/Search/VectorSearch/VectorSemanticProvider.swift  (cosine top-k)
+        AgentLens/Services/Search/VectorSearch/VectorIndexTypes.swift        (vector types)
+        AgentLens/Services/Search/SearchService+Ranking.swift                (score fusion / RRF)
+        AgentLens/Services/Search/Embedding/EmbeddingProviderProtocol.swift  (embedding seam)
+        AgentLens/Services/Search/Embedding/DeterministicEmbeddingProviders.swift (hash embed)
+        AgentLens/Services/Search/RetrievalHealthService.swift               (health status math)
+      Memory:
+        AgentLens/Services/Memory/MemoryExtractionPromptBuilder.swift        (prompt template)
+        AgentLens/Services/Memory/MemoryExtractionPolicy.swift               (accept/reject rules)
+        AgentLens/Services/Memory/MemoryRecallBudget.swift                   (recall budget math)
+        AgentLens/Services/Memory/MemoryExtractionParser.swift               (LLM response parse)
+        AgentLens/Services/Memory/MemoryExtractionLLMClient.swift            (LLM seam)
+        OpenBurnBarCore/.../Memory/MemorySecretPIIGate.swift                 (secret/PII gate)
+
+    It targets plain net8.0 — NO Windows TFM, zero P/Invoke, zero UI framework, zero
+    network client — on purpose: the SAME managed assembly the WinUI shell
+    (net8.0-windows) links is unit-tested on the macOS authoring host today
+    (`dotnet test`). Mirrors the already-proven OpenBurnBar.App.TextExpansion /
+    OpenBurnBar.App.Settings portable-core pattern: a higher-runtime test project
+    (net10.0) references this net8.0 library, and the WinUI app references it too.
+
+    The REAL embedding + memory-extraction NETWORK calls (OpenAI embeddings, the
+    Claude/OpenAI memory-extraction LLM) are the OS/network adapter and are explicitly
+    DEFERRED to bucket B. They plug in behind the seams defined here:
+      • IEmbeddingProvider          — text -> float[] embedding (network in prod)
+      • ICrossEncoderScorer         — (query, candidate) -> relevance score (network in prod)
+      • IMemoryExtractionLlmClient  — prompt -> raw completion JSON (network in prod)
+      • the injected clock (Func&lt;DateTimeOffset&gt;) — deadlines / staleness windows
+    Everything above those seams — cosine/dot similarity, top-k ranking, score fusion,
+    the deterministic hash embedding, retrieval-health status classification, the
+    prompt template, the accept/reject policy, the recall-budget math, the response
+    parser, and the secret/PII gate — is PORTABLE and carries real xUnit coverage in
+    windows/tests/memory-search/.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.App.MemorySearch</RootNamespace>
+    <AssemblyName>OpenBurnBar.App.MemorySearch</AssemblyName>
+    <!--
+      Lets the net8.0 library be RESTORED/BUILT by the net10.0 SDK on macOS without
+      a Windows targeting pack. It is a pure managed library, so no Windows facet
+      is needed; this simply keeps tooling quiet on the authoring host.
+    -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Link (do NOT duplicate) the committed secret/PII corpus as an embedded resource so the gate
+      loads the SAME bytes the macOS/daemon gate loads — single source of truth,
+      OpenBurnBarCore/Sources/OpenBurnBarCore/Resources/secret-pattern-corpus.json. It is text (JSON),
+      so it does not trip the no-tracked-binaries tripwire, and it lives outside windows/ so it is not
+      counted by the Windows tree-size budget. MemoryGateCorpus.LoadEmbedded resolves it by the
+      LogicalName suffix.
+    -->
+    <EmbeddedResource Include="../../../OpenBurnBarCore/Sources/OpenBurnBarCore/Resources/secret-pattern-corpus.json">
+      <LogicalName>OpenBurnBar.App.MemorySearch.secret-pattern-corpus.json</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+</Project>

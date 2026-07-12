@@ -135,6 +135,8 @@ struct SwitcherOnboardingScanAddStep: View {
                     case .gemini: cliKind = .geminiCLI
                     case .kimi: cliKind = .kimiCLI
                     case .pi: cliKind = .piCLI
+                    case .junie: cliKind = .junieCLI
+                    case .omp: cliKind = .ompCLI
                     }
                     guard enforceCap(for: cliKind) else { return }
                     withAnimation(DesignSystem.Animation.snappy) {
@@ -395,6 +397,28 @@ struct SwitcherOnboardingScanAddStep: View {
                 ) {
                     await connectDifferentCLI(.pi)
                 }
+
+            case .junieCLI:
+                differentAccountButton(
+                    title: "Connect Junie",
+                    subtitle: "Verify an existing Junie profile or add a Junie API key",
+                    icon: "key.fill",
+                    color: Color(hex: "48E054"),
+                    isLoading: connectingCLIType == .junie
+                ) {
+                    await connectJunieProfile()
+                }
+
+            case .ompCLI:
+                differentAccountButton(
+                    title: "Connect OMP",
+                    subtitle: "Verify the local OMP CLI profile on this Mac",
+                    icon: "command",
+                    color: Color(hex: "EC4899"),
+                    isLoading: connectingCLIType == .omp
+                ) {
+                    await connectDifferentCLI(.omp)
+                }
             }
         }
     }
@@ -456,6 +480,8 @@ struct SwitcherOnboardingScanAddStep: View {
         case (.gemini, .geminiCLI): return true
         case (.kimi, .kimiCLI): return true
         case (.pi, .piCLI): return true
+        case (.junie, .junieCLI): return true
+        case (.omp, .ompCLI): return true
         default: return false
         }
     }
@@ -558,7 +584,7 @@ struct SwitcherOnboardingScanAddStep: View {
 
     private func signInIdentity(_ identity: DiscoveredIdentity) {
         switch identity.source {
-        case .codex, .claudeCode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi:
+        case .codex, .claudeCode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie:
             if let cliType = identity.source.cliType {
                 Task { await connectDifferentCLI(cliType) }
             }
@@ -577,7 +603,7 @@ struct SwitcherOnboardingScanAddStep: View {
             Task { await signInDifferentGoogle() }
         case .safari:
             Task { await signInDifferentApple() }
-        case .codex, .claudeCode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi:
+        case .codex, .claudeCode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie:
             if let cliType = identity.source.cliType {
                 Task { await connectDifferentCLI(cliType) }
             }
@@ -604,6 +630,8 @@ struct SwitcherOnboardingScanAddStep: View {
         case .gemini: return .geminiCLI
         case .kimi: return .kimiCLI
         case .pi: return .piCLI
+        case .junie: return .junieCLI
+        case .omp: return .ompCLI
         }
     }
 
@@ -646,6 +674,10 @@ struct SwitcherOnboardingScanAddStep: View {
             kind = .kimiCLI
         case .pi:
             kind = .piCLI
+        case .junie:
+            kind = .junieCLI
+        case .omp:
+            kind = .ompCLI
         }
 
         guard enforceCap(for: kind) else { return }
@@ -660,6 +692,21 @@ struct SwitcherOnboardingScanAddStep: View {
                 capMessage = "Connected \(profile.displayName) as \(profile.cliMetadata?.accountDescription ?? "a verified account"). Add another if you want a deeper reserve."
             }
         }
+    }
+
+    private func connectJunieProfile() async {
+        if let identity = discoveryService.discoveredIdentities.first(where: { identity in
+            if case .junie = identity.source {
+                return identity.authState == .authenticated || identity.authState == .apiKeyPresent
+            }
+            return false
+        }) {
+            addIdentity(identity)
+            return
+        }
+
+        selectedCLIType = .junie
+        showAPIKeySheet = true
     }
 }
 
@@ -754,9 +801,10 @@ private struct APIKeyEntrySheet: View {
 private extension APIKeyEntrySheet {
     var cliTypes: [SwitcherCLIProfileType] {
         var types: [SwitcherCLIProfileType] = []
-        types.reserveCapacity(3)
+        types.reserveCapacity(4)
         types.append(.codex)
         types.append(.claude)
+        types.append(.junie)
         types.append(.opencode)
         return types
     }
@@ -873,7 +921,7 @@ private struct IdentityCard: View {
             return "Signed in with a different Google account?"
         case .safari:
             return "Use a different Apple ID?"
-        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi:
+        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie:
             return "Connect another account for this provider?"
         }
     }
@@ -935,6 +983,14 @@ private struct IdentityCard: View {
             Image(systemName: "terminal.fill")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(Color(hex: "7C3AED"))
+        case .junie:
+            Image(systemName: "terminal.fill")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color(hex: "48E054"))
+        case .omp:
+            Image(systemName: "command")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color(hex: "EC4899"))
         }
     }
 
@@ -1226,7 +1282,7 @@ private extension DiscoveredIdentity {
                 return "Not installed"
             }
 
-        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi:
+        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie:
             switch authState {
             case .authenticated:
                 return "Logged in"
@@ -1255,11 +1311,13 @@ private extension DiscoveredIdentity {
         case .droid(let executablePath, let configDirectory),
              .forge(let executablePath, let configDirectory),
              .antigravity(let executablePath, let configDirectory),
+             .omp(let executablePath, let configDirectory),
              .grok(let executablePath, let configDirectory),
              .cursorAgent(let executablePath, let configDirectory),
              .gemini(let executablePath, let configDirectory),
              .kimi(let executablePath, let configDirectory),
-             .pi(let executablePath, let configDirectory):
+             .pi(let executablePath, let configDirectory),
+             .junie(let executablePath, let configDirectory):
             return normalized(executablePath) ?? normalized(configDirectory) ?? subtitle
         }
     }

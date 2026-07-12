@@ -1,0 +1,371 @@
+{
+  "generatedAt": "2026-07-08T03:19:09.874Z",
+  "method": "app-route-accessibility-contract-plus-packaged-at-spi-snapshot",
+  "automatedScan": [
+    {
+      "id": "landmarks",
+      "target": "nav[aria-label=\"Primary\"], main#main",
+      "result": "pass",
+      "evidence": "Primary navigation and main landmark are stable across all registered routes."
+    },
+    {
+      "id": "skip-link",
+      "target": "a.skip-link[href=\"#main\"]",
+      "result": "pass",
+      "evidence": "First keyboard stop can bypass the route list and focus #main."
+    },
+    {
+      "id": "current-page",
+      "target": "button.nav-link[aria-current=\"page\"]",
+      "result": "pass",
+      "evidence": "Exactly one active route button exposes aria-current=page after hash navigation."
+    },
+    {
+      "id": "status-live-copy",
+      "target": ".status-pill[role=\"status\"]",
+      "result": "pass",
+      "evidence": "Daemon health, reconnect, and degraded states are announced as status copy."
+    },
+    {
+      "id": "contrast",
+      "target": "token pair --color-text-bright / --color-ink-void",
+      "result": "pass",
+      "evidence": "Contrast ratio 20.36:1 exceeds WCAG AA."
+    },
+    {
+      "id": "reduced-motion",
+      "target": "body.reduced-motion *",
+      "result": "pass",
+      "evidence": "CSS disables animation and transition under prefers-reduced-motion."
+    }
+  ],
+  "keyboardTranscript": [
+    {
+      "action": "Tab",
+      "target": ".skip-link",
+      "expected": "Skip to content receives focus"
+    },
+    {
+      "action": "Activate",
+      "target": ".skip-link",
+      "expected": "Focus moves to #main landmark"
+    },
+    {
+      "action": "Tab",
+      "target": ".nav-link[aria-current=\"page\"]",
+      "expected": "Current route exposed to assistive tech"
+    },
+    {
+      "action": "Keyboard activate nav",
+      "target": "button.nav-link:overview",
+      "route": "overview",
+      "expected": "Route Overview becomes aria-current=page"
+    },
+    {
+      "action": "Keyboard activate nav",
+      "target": "button.nav-link:insights",
+      "route": "insights",
+      "expected": "Route Insights becomes aria-current=page"
+    },
+    {
+      "action": "Keyboard activate nav",
+      "target": "button.nav-link:database",
+      "route": "database",
+      "expected": "Route Database becomes aria-current=page"
+    },
+    {
+      "action": "Keyboard activate nav",
+      "target": "button.nav-link:providers",
+      "route": "providers",
+      "expected": "Route Providers & models becomes aria-current=page"
+    },
+    {
+      "action": "Tab",
+      "target": ".status-pill[role=status]",
+      "expected": "Daemon status announced as live region"
+    }
+  ],
+  "accessibilityTree": {
+    "source": "routeAccessibilitySnapshots plus packaged accessibility-tree-linux-desktop.txt",
+    "routeCount": 16,
+    "routes": [
+      {
+        "route": "overview",
+        "landmarks": [
+          "a.skip-link[href=\"#main\"]",
+          "nav[aria-label=\"Primary\"]",
+          "main#main",
+          "#route-title"
+        ],
+        "keyboardPath": [
+          "Tab to skip link",
+          "Activate skip link",
+          "Tab to active route",
+          "Enter route button"
+        ],
+        "activeNav": "button.nav-link[aria-current=\"page\"]:overview"
+      },
+      {
+        "route": "insights",
+        "landmarks": [
+          "a.skip-link[href=\"#main\"]",
+          "nav[aria-label=\"Primary\"]",
+          "main#main",
+          "#route-title"
+        ],
+        "keyboardPath": [
+          "Tab to skip link",
+          "Activate skip link",
+          "Tab to active route",
+          "Enter route button"
+        ],
+        "activeNav": "button.nav-link[aria-current=\"page\"]:insights"
+      },
+      {
+        "route": "database",
+        "landmarks": [
+          "a.skip-link[href=\"#main\"]",
+          "nav[aria-label=\"Primary\"]",
+          "main#main",
+          "#route-title"
+        ],
+        "keyboardPath": [
+          "Tab to skip link",
+          "Activate skip link",
+          "Tab to active route",
+          "Enter route button"
+        ],
+        "activeNav": "button.nav-link[aria-current=\"page\"]:database"
+      },
+      {
+        "route": "providers",
+        "landmarks": [
+          "a.skip-link[href=\"#main\"]",
+          "nav[aria-label=\"Primary\"]",
+          "main#main",
+          "#route-title"
+        ],
+        "keyboardPath": [
+          "Tab to skip link",
+          "Activate skip link",
+          "Tab to active route",
+          "Enter route button"
+        ],
+        "activeNav": "button.nav-link[aria-current=\"page\"]:providers"
+      },
+      {
+        "route": "projects",
+        "landmarks": [
+          "a.skip-link[href=\"#main\"]",
+          "nav[aria-label=\"Primary\"]",
+          "main#main",
+          "#route-title"
+        ],
+        "keyboardPath": [
+          "Tab to skip link",
+          "Activate skip link",
+          "Tab to active route",
+          "Enter route button"
+        ],
+        "activeNav": "button.nav-link[aria-current=\"page\"]:projects"
+      },
+      {
+        "route": "missions",
+        "landmarks": [
+          "a.skip-link[href=\"#main\"]",
+          "nav[aria-label=\"Primary\"]",
+          "main#main",
+          "#route-title"
+        ],
+        "keyboardPath": [
+          "Tab to skip link",
+          "Activate skip link",
+          "Tab to active route",
+          "Enter route button"
+        ],
+        "activeNav": "button.nav-link[aria-current=\"page\"]:missions"
+      },
+      {
+        "route": "activity",
+        "landmarks": [
+          "a.skip-link[href=\"#main\"]",
+          "nav[aria-label=\"Primary\"]",
+          "main#main",
+          "#route-title"
+        ],
+        "keyboardPath": [
+          "Tab to skip link",
+          "Activate skip link",
+          "Tab to active route",
+          "Enter route button"
+        ],
+        "activeNav": "button.nav-link[aria-current=\"page\"]:activity"
+      },
+      {
+        "route": "chat",
+        "landmarks": [
+          "a.skip-link[href=\"#main\"]",
+          "nav[aria-label=\"Primary\"]",
+          "main#main",
+          "#route-title"
+        ],
+        "keyboardPath": [
+          "Tab to skip link",
+          "Activate skip link",
+          "Tab to active route",
+          "Enter route button"
+        ],
+        "activeNav": "button.nav-link[aria-current=\"page\"]:chat"
+      },
+      {
+        "route": "memory",
+        "landmarks": [
+          "a.skip-link[href=\"#main\"]",
+          "nav[aria-label=\"Primary\"]",
+          "main#main",
+          "#route-title"
+        ],
+        "keyboardPath": [
+          "Tab to skip link",
+          "Activate skip link",
+          "Tab to active route",
+          "Enter route button"
+        ],
+        "activeNav": "button.nav-link[aria-current=\"page\"]:memory"
+      },
+      {
+        "route": "settings",
+        "landmarks": [
+          "a.skip-link[href=\"#main\"]",
+          "nav[aria-label=\"Primary\"]",
+          "main#main",
+          "#route-title"
+        ],
+        "keyboardPath": [
+          "Tab to skip link",
+          "Activate skip link",
+          "Tab to active route",
+          "Enter route button"
+        ],
+        "activeNav": "button.nav-link[aria-current=\"page\"]:settings"
+      },
+      {
+        "route": "account",
+        "landmarks": [
+          "a.skip-link[href=\"#main\"]",
+          "nav[aria-label=\"Primary\"]",
+          "main#main",
+          "#route-title"
+        ],
+        "keyboardPath": [
+          "Tab to skip link",
+          "Activate skip link",
+          "Tab to active route",
+          "Enter route button"
+        ],
+        "activeNav": "button.nav-link[aria-current=\"page\"]:account"
+      },
+      {
+        "route": "updates",
+        "landmarks": [
+          "a.skip-link[href=\"#main\"]",
+          "nav[aria-label=\"Primary\"]",
+          "main#main",
+          "#route-title"
+        ],
+        "keyboardPath": [
+          "Tab to skip link",
+          "Activate skip link",
+          "Tab to active route",
+          "Enter route button"
+        ],
+        "activeNav": "button.nav-link[aria-current=\"page\"]:updates"
+      },
+      {
+        "route": "support",
+        "landmarks": [
+          "a.skip-link[href=\"#main\"]",
+          "nav[aria-label=\"Primary\"]",
+          "main#main",
+          "#route-title"
+        ],
+        "keyboardPath": [
+          "Tab to skip link",
+          "Activate skip link",
+          "Tab to active route",
+          "Enter route button"
+        ],
+        "activeNav": "button.nav-link[aria-current=\"page\"]:support"
+      },
+      {
+        "route": "onboarding",
+        "landmarks": [
+          "a.skip-link[href=\"#main\"]",
+          "nav[aria-label=\"Primary\"]",
+          "main#main",
+          "#route-title"
+        ],
+        "keyboardPath": [
+          "Tab to skip link",
+          "Activate skip link",
+          "Tab to active route",
+          "Enter route button"
+        ],
+        "activeNav": "button.nav-link[aria-current=\"page\"]:onboarding"
+      },
+      {
+        "route": "pet",
+        "landmarks": [
+          "a.skip-link[href=\"#main\"]",
+          "nav[aria-label=\"Primary\"]",
+          "main#main",
+          "#route-title"
+        ],
+        "keyboardPath": [
+          "Tab to skip link",
+          "Activate skip link",
+          "Tab to active route",
+          "Enter route button"
+        ],
+        "activeNav": "button.nav-link[aria-current=\"page\"]:pet"
+      },
+      {
+        "route": "text-expansion",
+        "landmarks": [
+          "a.skip-link[href=\"#main\"]",
+          "nav[aria-label=\"Primary\"]",
+          "main#main",
+          "#route-title"
+        ],
+        "keyboardPath": [
+          "Tab to skip link",
+          "Activate skip link",
+          "Tab to active route",
+          "Enter route button"
+        ],
+        "activeNav": "button.nav-link[aria-current=\"page\"]:text-expansion"
+      }
+    ]
+  },
+  "contrast": [
+    {
+      "pair": "bright text / ink void",
+      "foreground": "#ffffff",
+      "background": "#050508",
+      "ratio": 20.36
+    },
+    {
+      "pair": "brass focus / black text",
+      "foreground": "#000000",
+      "background": "#fa6b06",
+      "ratio": 7.17
+    },
+    {
+      "pair": "aurora accent / ink void",
+      "foreground": "#3cd6c0",
+      "background": "#040610",
+      "ratio": 11.14
+    }
+  ],
+  "unresolvedBlockers": []
+}

@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 public enum BurnBarPersistentVectorIndexError: LocalizedError {
@@ -128,9 +127,26 @@ public enum BurnBarPersistentVectorIndexKeyCodec {
         return mapping
     }
 
+    /// Round-4 perf sweep (B1 integration): allocate a single deterministic
+    /// key for `chunkID` that does not collide with any key in `existingKeys`.
+    /// Used by the delta overlay to assign keys to newly-added chunks without
+    /// rehashing the entire base mapping. The scheme is identical to
+    /// `makeMapping`'s per-chunkID loop: try `stableKey(salt=0)`, and if it
+    /// collides, increment `salt` until a free key is found.
+    public static func key(for chunkID: String, avoiding existingKeys: Set<UInt64>) -> UInt64 {
+        var salt: UInt64 = 0
+        while true {
+            let candidate = stableKey(for: chunkID, salt: salt)
+            if !existingKeys.contains(candidate) {
+                return candidate
+            }
+            salt &+= 1
+        }
+    }
+
     private static func stableKey(for chunkID: String, salt: UInt64) -> UInt64 {
         let payload = Data((salt == 0 ? chunkID : "\(salt):\(chunkID)").utf8)
-        let digest = SHA256.hash(data: payload)
+        let digest = PlatformCrypto.sha256(payload)
         let key = digest.prefix(8).reduce(UInt64.zero) { partial, byte in
             (partial << 8) | UInt64(byte)
         }
@@ -225,6 +241,26 @@ public final class BurnBarPersistentVectorIndexSnapshot: Sendable {
             }
             return BurnBarSemanticCandidate(chunkID: chunkID, score: Double(pair.1), rank: index + 1)
         }
+    }
+
+    /// Round-4 perf sweep: raw key-level search for delta overlay merge.
+    /// Returns (keys, scores) without resolving to chunkIDs. The caller
+    /// merges with delta results and then resolves via `keyToChunkIDMapping`.
+    public func searchKeys(for query: [Float], limit: Int) throws -> (keys: [UInt64], scores: [Float]) {
+        guard query.count == manifest.dimensions else {
+            throw BurnBarPersistentVectorIndexError.invalidVectorDimensions(
+                expected: manifest.dimensions,
+                actual: query.count
+            )
+        }
+        let prepared = preparedVector(query, metric: manifest.distanceMetric)
+        return try index.search(vector: prepared, limit: limit)
+    }
+
+    /// Round-4 perf sweep: the full key → chunkID mapping. Used by the delta
+    /// overlay to resolve delta-appended keys that aren't in the base snapshot.
+    public var keyToChunkIDMapping: [UInt64: String] {
+        chunkIDByKey
     }
 }
 

@@ -1,0 +1,5 @@
+# .NET build outputs for the burnbar-remote C# binding + round-trip tests.
+# The generated binding (BurnBarRemote.Ffi/generated/) IS committed; build
+# artifacts, restored packages, and the copied native cdylib are not.
+bin/
+obj/

@@ -6,6 +6,8 @@ import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
 
+import { rulesSourceForDeploy } from "./firebase-rules-source.mjs";
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const project = process.env.FIREBASE_PROJECT || process.argv[2] || "burnbar";
 
@@ -17,6 +19,30 @@ function sleep(ms) {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+function firebaseRulesErrorMessage(error) {
+  const messages = [];
+  let cursor = error;
+  while (cursor) {
+    if (typeof cursor.message === "string") messages.push(cursor.message);
+    if (typeof cursor.code === "string") messages.push(cursor.code);
+    cursor = cursor.cause;
+  }
+  return messages.join(" ");
+}
+
+export function isRetryableFirebaseRulesApiError(error) {
+  if (
+    error?.status === 408 ||
+    error?.status === 429 ||
+    (typeof error?.status === "number" && error.status >= 500)
+  ) {
+    return true;
+  }
+  return /fetch failed|UND_ERR_CONNECT_TIMEOUT|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND/i.test(
+    firebaseRulesErrorMessage(error),
+  );
 }
 
 function accessToken() {
@@ -37,24 +63,47 @@ function accessToken() {
 }
 
 async function firebaseRulesJson(path, token, init = {}) {
-  const response = await fetch(`https://firebaserules.googleapis.com/v1/${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      "X-Goog-User-Project": process.env.GOOGLE_CLOUD_QUOTA_PROJECT || project,
-      ...init.headers,
-    },
-  });
-  const body = await response.text();
-  if (!response.ok) {
-    const error = new Error(
-      `Firebase Rules API ${init.method || "GET"} ${path} failed: ${response.status} ${body}`,
-    );
-    error.status = response.status;
-    throw error;
+  const method = init.method || "GET";
+  const delaysMs = [0, 1_000, 3_000, 7_000, 15_000];
+  for (let attempt = 0; attempt < delaysMs.length; attempt += 1) {
+    if (delaysMs[attempt] > 0) await sleep(delaysMs[attempt]);
+    try {
+      const response = await fetch(
+        `https://firebaserules.googleapis.com/v1/${path}`,
+        {
+          ...init,
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+            "X-Goog-User-Project":
+              process.env.GOOGLE_CLOUD_QUOTA_PROJECT || project,
+            ...init.headers,
+          },
+        },
+      );
+      const body = await response.text();
+      if (!response.ok) {
+        const error = new Error(
+          `Firebase Rules API ${method} ${path} failed: ${response.status} ${body}`,
+        );
+        error.status = response.status;
+        throw error;
+      }
+      return JSON.parse(body || "{}");
+    } catch (error) {
+      if (
+        !isRetryableFirebaseRulesApiError(error) ||
+        attempt === delaysMs.length - 1
+      ) {
+        throw error;
+      }
+      const nextDelayMs = delaysMs[attempt + 1];
+      console.warn(
+        `Firebase Rules API ${method} ${path} failed transiently; retrying in ${nextDelayMs}ms`,
+      );
+    }
   }
-  return JSON.parse(body || "{}");
+  throw new Error(`unreachable Firebase Rules API retry state: ${method} ${path}`);
 }
 
 async function releasePathsForStorage(token) {
@@ -81,7 +130,6 @@ async function releasePathsForStorage(token) {
 }
 
 async function createRuleset(token, fileName, content) {
-  const contentHash = sha256(content.trimEnd());
   const ruleset = await firebaseRulesJson(`projects/${project}/rulesets`, token, {
     method: "POST",
     body: JSON.stringify({
@@ -100,7 +148,64 @@ async function createRuleset(token, fileName, content) {
       `Firebase Rules API create ruleset response omitted name for ${fileName}`,
     );
   }
-  return { contentHash, rulesetName: ruleset.name };
+  return { rulesetName: ruleset.name };
+}
+
+export function rulesetFileContentHash(ruleset, fileName) {
+  const files = ruleset?.source?.files;
+  if (!Array.isArray(files)) return null;
+  const file = files.find((candidate) => candidate?.name === fileName);
+  if (typeof file?.content !== "string") return null;
+  return sha256(file.content.trimEnd());
+}
+
+export async function releasesNeedingRulesetDeploy({
+  releaseNames,
+  desiredContentHash,
+  fileName,
+  fetchResource,
+}) {
+  const staleReleaseNames = [];
+  const rulesetHashCache = new Map();
+  let unchangedReleaseCount = 0;
+
+  for (const releaseName of releaseNames) {
+    let release;
+    try {
+      release = await fetchResource(releaseName);
+    } catch (error) {
+      if (error?.status !== 404) throw error;
+      staleReleaseNames.push(releaseName);
+      continue;
+    }
+
+    const rulesetName = release?.rulesetName;
+    if (typeof rulesetName !== "string" || rulesetName.length === 0) {
+      staleReleaseNames.push(releaseName);
+      continue;
+    }
+
+    if (!rulesetHashCache.has(rulesetName)) {
+      try {
+        const ruleset = await fetchResource(rulesetName);
+        rulesetHashCache.set(
+          rulesetName,
+          rulesetFileContentHash(ruleset, fileName),
+        );
+      } catch (error) {
+        if (error?.status !== 404) throw error;
+        rulesetHashCache.set(rulesetName, null);
+      }
+    }
+
+    if (rulesetHashCache.get(rulesetName) === desiredContentHash) {
+      unchangedReleaseCount += 1;
+    } else {
+      staleReleaseNames.push(releaseName);
+    }
+  }
+
+  return { staleReleaseNames, unchangedReleaseCount };
 }
 
 function isRulesetPropagationError(error) {
@@ -182,8 +287,9 @@ export function buildReleasePatchRequest(releaseName, rulesetName) {
   const update = buildReleaseUpdate(releaseName, rulesetName);
   return {
     method: "PATCH",
-    // Match firebase-tools' Rules API PATCH shape: the live API rejects an
-    // update mask here and accepts the nested release payload.
+    // Match firebase-tools' production request shape. The Rules API only
+    // honors rulesetName on PATCH; supplying updateMask currently causes the
+    // backend to reject an otherwise valid release update with INVALID_ARGUMENT.
     body: JSON.stringify({
       release: update,
     }),
@@ -207,18 +313,31 @@ async function verifyRelease(token, releaseName, rulesetName) {
 }
 
 async function deployRulesFile(token, fileName, releaseNames) {
-  const content = readFileSync(resolve(repoRoot, fileName), "utf8");
-  const { contentHash, rulesetName } = await createRuleset(
-    token,
-    fileName,
-    content,
-  );
-  for (const releaseName of releaseNames) {
+  const source = readFileSync(resolve(repoRoot, fileName), "utf8");
+  const content = rulesSourceForDeploy(fileName, source);
+  const contentHash = sha256(content.trimEnd());
+  const { staleReleaseNames, unchangedReleaseCount } =
+    await releasesNeedingRulesetDeploy({
+      releaseNames,
+      desiredContentHash: contentHash,
+      fileName,
+      fetchResource: (path) => firebaseRulesJson(path, token),
+    });
+
+  if (staleReleaseNames.length === 0) {
+    console.log(
+      `firebase rules release unchanged project=${project} file=${fileName} releases=${releaseNames.length} rules=${contentHash}`,
+    );
+    return;
+  }
+
+  const { rulesetName } = await createRuleset(token, fileName, content);
+  for (const releaseName of staleReleaseNames) {
     await patchRelease(token, releaseName, rulesetName);
     await verifyRelease(token, releaseName, rulesetName);
   }
   console.log(
-    `firebase rules release deployed project=${project} file=${fileName} releases=${releaseNames.length} ruleset=${rulesetName} rules=${contentHash}`,
+    `firebase rules release deployed project=${project} file=${fileName} releases=${releaseNames.length} updated=${staleReleaseNames.length} unchanged=${unchangedReleaseCount} ruleset=${rulesetName} rules=${contentHash}`,
   );
 }
 

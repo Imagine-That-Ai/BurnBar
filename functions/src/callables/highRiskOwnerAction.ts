@@ -1,10 +1,11 @@
 import { HttpsError, type CallableRequest } from "firebase-functions/v2/https";
 
 import { enforceHighRiskComputerUseCallableWithNonce } from "../appCheckAttestation.js";
+import { appendAuditEventRequired, auditActorLabel, AUDIT_ACTIONS } from "./auditLog.js";
 import { requireTrustedDeviceActionProof } from "./computerUseSecurity.js";
 import { boundedTrimmedString } from "./shared.js";
 
-const HIGH_RISK_OWNER_ACTION_PLATFORMS = new Set(["macOS", "iOS", "iPadOS", "Android"]);
+const HIGH_RISK_OWNER_ACTION_PLATFORMS = new Set(["macOS", "iOS", "iPadOS", "Android", "Linux"]);
 
 type HighRiskOwnerActionKind =
   | "data_export"
@@ -35,7 +36,9 @@ export async function enforceHighRiskOwnerAction(
 ): Promise<void> {
   const data = recordFromUnknown(request.data);
   const nonce = boundedTrimmedString(data.nonce, "nonce", 256, true);
-  const { nonceConsumed } = await enforceHighRiskComputerUseCallableWithNonce(request, uid, nonce);
+  const { nonceConsumed } = await enforceHighRiskComputerUseCallableWithNonce(request, uid, nonce, {
+    allowLowerTrustDesktop: true,
+  });
   if (!nonceConsumed) {
     throw new HttpsError(
       "failed-precondition",
@@ -55,6 +58,12 @@ export async function enforceHighRiskOwnerAction(
     nonce,
     proofRaw: data.actionProof,
     allowedPlatforms: HIGH_RISK_OWNER_ACTION_PLATFORMS,
+  });
+
+  await appendAuditEventRequired(uid, {
+    actor: auditActorLabel(request),
+    action: AUDIT_ACTIONS.highRiskOwnerAction,
+    domain: `${options.actionKind}:${subjectId}`,
   });
 }
 

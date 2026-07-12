@@ -24,6 +24,8 @@ type PublicHttpEndpointName =
   | "healthLive"
   | "healthReady"
   | "latestRouterRundown"
+  | "mintLinuxAppCheckToken"
+  | "mintWindowsAppCheckToken"
   | "pollCliLink"
   | "startCliLink";
 
@@ -56,6 +58,10 @@ const PUBLIC_HTTP_ENDPOINT_LIMITS: Record<PublicHttpEndpointName, { windowSecond
   healthLive: { windowSeconds: 60, maxAttempts: 60 },
   healthReady: { windowSeconds: 60, maxAttempts: 30 },
   latestRouterRundown: { windowSeconds: 60, maxAttempts: 60 },
+  // Device-attestation token mint: Linux/Windows AppCheck bootstrap. 20/hour
+  // per IP — same posture as startCliLink since each mints a session-scoped token.
+  mintLinuxAppCheckToken: { windowSeconds: 3600, maxAttempts: 20 },
+  mintWindowsAppCheckToken: { windowSeconds: 3600, maxAttempts: 20 },
   pollCliLink: { windowSeconds: 60, maxAttempts: 60 },
   // Device-enrollment bootstrap: keep the historical 20/hour ceiling from the
   // shared `cli_link_start` action; it is tighter than poll (60/min) because
@@ -75,6 +81,19 @@ const HERMES_GATEWAY_BEARER_LIMITS: Record<
   hermes_gateway_message_send: { windowSeconds: 60, maxAttempts: 120 },
   hermes_gateway_attachment_init: { windowSeconds: 600, maxAttempts: 20 },
   hermes_gateway_event_enqueue: { windowSeconds: 60, maxAttempts: 120 },
+};
+
+// Owner-funded hosted Intelligence Brief (OpenRouter). The Pro paywall gates
+// access but does not bound per-account request volume, and each call bills
+// input tokens to the owner's OpenRouter budget. A short burst window plus a
+// daily ceiling keeps a single Pro account from draining that budget with
+// looped calls, while leaving normal interactive Q&A unthrottled. Keyed per
+// uid so the limit follows the account, not a device/IP.
+type HostedInsightsRateLimitAction = "insights_hosted_answer_burst" | "insights_hosted_answer_daily";
+
+const HOSTED_INSIGHTS_LIMITS: Record<HostedInsightsRateLimitAction, { windowSeconds: number; maxAttempts: number }> = {
+  insights_hosted_answer_burst: { windowSeconds: 60, maxAttempts: 10 },
+  insights_hosted_answer_daily: { windowSeconds: 86_400, maxAttempts: 200 },
 };
 
 function rateLimitDocId(keyMaterial: string, action: string): string {
@@ -137,6 +156,25 @@ export async function checkPublicHttpRateLimit(keyMaterial: string, action: Publ
   await incrementRateLimit(rateLimitDocId(keyMaterial, action), action, limit);
 }
 
+/**
+ * Per-user rate limit for the owner-funded hosted Intelligence Brief callable
+ * (`insightsHostedAnswer`). Enforces both a short burst window and a daily
+ * ceiling so a single Pro account cannot loop calls to drain the owner's
+ * OpenRouter budget. Throws `resource-exhausted` when either bound is hit.
+ */
+export async function checkHostedInsightsAnswerRateLimit(uid: string): Promise<void> {
+  await incrementRateLimit(
+    rateLimitDocId(uid, "insights_hosted_answer_burst"),
+    "insights_hosted_answer_burst",
+    HOSTED_INSIGHTS_LIMITS.insights_hosted_answer_burst,
+  );
+  await incrementRateLimit(
+    rateLimitDocId(uid, "insights_hosted_answer_daily"),
+    "insights_hosted_answer_daily",
+    HOSTED_INSIGHTS_LIMITS.insights_hosted_answer_daily,
+  );
+}
+
 export async function checkHermesGatewayBearerRateLimit(
   uid: string,
   clientId: string,
@@ -196,14 +234,14 @@ export function isPublicRateLimitExceeded(err: unknown): boolean {
  * Declared set of public HTTPS endpoints with product-layer rate limits.
  * Used by the static inventory test to ensure every public endpoint is bounded.
  */
-export const RATE_LIMITED_PUBLIC_HTTP_ENDPOINTS: ReadonlyArray<PublicHttpEndpointName> = Object.freeze(
-  [
-    "burnBarHermesGateway",
-    "healthCheck",
-    "healthLive",
-    "healthReady",
-    "latestRouterRundown",
-    "pollCliLink",
-    "startCliLink",
-  ],
-);
+export const RATE_LIMITED_PUBLIC_HTTP_ENDPOINTS: ReadonlyArray<PublicHttpEndpointName> = Object.freeze([
+  "burnBarHermesGateway",
+  "healthCheck",
+  "healthLive",
+  "healthReady",
+  "latestRouterRundown",
+  "mintLinuxAppCheckToken",
+  "mintWindowsAppCheckToken",
+  "pollCliLink",
+  "startCliLink",
+]);

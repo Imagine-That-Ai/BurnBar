@@ -43,6 +43,7 @@ enum class MobileBackdropKernel(
     ORIGAMI("origami", "Origami", "Warm kozo paper with quiet folded, cut, washed, and quilled marks.", MobileBackdropKernelFamily.PAPER),
     INK_DIFFUSION("ink-diffusion", "Ink Diffusion", "Ink wicks into wet fiber and separates into spectral halos.", MobileBackdropKernelFamily.MARBLE),
     PETROLEUM_SHEEN("petroleum-sheen", "Petroleum Sheen", "Thin-film oil-slick rainbows drift over deep water.", MobileBackdropKernelFamily.MARBLE),
+    BOIDS("boids", "Boids", "A living murmuration — hundreds of birds flocking as one.", MobileBackdropKernelFamily.CONSTELLATION),
     ;
 
     companion object {

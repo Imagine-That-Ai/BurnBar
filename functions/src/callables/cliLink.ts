@@ -13,8 +13,8 @@ import { enforceHighRiskComputerUseCallableWithNonce } from "../appCheckAttestat
 import {
   assertActiveBurnBarProEntitlement,
   REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64,
-  REMOTE_MCP_TOKEN_HMAC_SECRET,
 } from "./shared.js";
+import { remoteMcpTokenHmacSecretValueForRuntime, remoteMcpTokenSigningSecrets } from "./remoteMcpSigningSecrets.js";
 import { issueRemoteMcpGrantForSignedInUser } from "../remoteMcpOAuth.js";
 import { getConfig } from "../config.js";
 import { isSha256Hex, safeEqualHex } from "../hermesGateway.js";
@@ -373,7 +373,7 @@ export const completeCliLink = onCall(
     region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
-    secrets: [REMOTE_MCP_TOKEN_HMAC_SECRET, REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64],
+    secrets: remoteMcpTokenSigningSecrets(),
   },
   wrapCallableHandler("completeCliLink", async (request: CallableRequest<{ userCode?: unknown; nonce?: unknown }>) => {
     const uid = request.auth?.uid;
@@ -383,7 +383,7 @@ export const completeCliLink = onCall(
     await assertCloudFeatureNotSuspended(db, uid, "remote_mcp");
     await assertActiveBurnBarProEntitlement(uid);
 
-    const tokenSecret = REMOTE_MCP_TOKEN_HMAC_SECRET.value();
+    const tokenSecret = remoteMcpTokenHmacSecretValueForRuntime();
     const tokenEd25519PrivateKeyBase64PEM = REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64.value();
     if (!tokenSecret && !tokenEd25519PrivateKeyBase64PEM) {
       throw new HttpsError("failed-precondition", "Remote MCP token signing secret is not configured.");
@@ -447,6 +447,7 @@ export const completeCliLink = onCall(
     // only its locally-held delivery private key can open the returned envelope.
     await sessionRef.update({
       status: "approved",
+      ownerUid: uid,
       credentialEnvelope,
       accessToken: FieldValue.delete(),
       refreshToken: FieldValue.delete(),

@@ -5,6 +5,19 @@ struct CLIFallbackQuotaStatus: Sendable {
     let fiveHourRemainingPercent: Double?
     let weeklyRemainingPercent: Double?
     let statusMessage: String?
+    let hardBlocksLaunch: Bool
+
+    init(
+        fiveHourRemainingPercent: Double?,
+        weeklyRemainingPercent: Double?,
+        statusMessage: String?,
+        hardBlocksLaunch: Bool = false
+    ) {
+        self.fiveHourRemainingPercent = fiveHourRemainingPercent
+        self.weeklyRemainingPercent = weeklyRemainingPercent
+        self.statusMessage = statusMessage
+        self.hardBlocksLaunch = hardBlocksLaunch
+    }
 }
 
 struct SwitcherCLIFallbackPlanner: CLIFallbackPlanning {
@@ -55,7 +68,9 @@ struct SwitcherCLIFallbackPlanner: CLIFallbackPlanning {
         }
 
         if let quotaStatus = await quotaLookup(profile),
-           isDepleted(quotaStatus.fiveHourRemainingPercent) || isDepleted(quotaStatus.weeklyRemainingPercent) {
+           quotaStatus.hardBlocksLaunch
+            || isDepleted(quotaStatus.fiveHourRemainingPercent)
+            || isDepleted(quotaStatus.weeklyRemainingPercent) {
             let reason = quotaStatus.statusMessage
                 ?? "\(profile.displayName) has no remaining quota in the current provider window."
             return .quotaExhausted(reason: reason)
@@ -103,6 +118,10 @@ struct SwitcherCLIFallbackPlanner: CLIFallbackPlanning {
             return .kimi
         case .pi:
             return .piAgent
+        case .junie:
+            return .junie
+        case .omp:
+            return .omp
         }
     }
 

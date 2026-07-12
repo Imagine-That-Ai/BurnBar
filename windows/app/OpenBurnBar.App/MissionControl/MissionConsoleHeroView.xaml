@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Windows render of MissionConsoleHero (OpenBurnBarCore/.../MissionControl/MissionConsoleHero.swift).
+  The console's top strip: the hero gauge, an editorial eyebrow + headline + subtitle, a mercury
+  hairline, and a mono meta strip (in-flight / queued / burn / runtimes). Binds to the portable
+  MissionConsoleViewModel; the gauge Configuration is pushed in code-behind.
+-->
+<UserControl
+    x:Class="OpenBurnBar.App.MissionControl.MissionConsoleHeroView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:OpenBurnBar.App.MissionControl"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Padding="24,18" RowSpacing="12" Background="{StaticResource PensieveColorGlassBgBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Gauge + editorial block + close -->
+        <Grid Grid.Row="0" ColumnSpacing="16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <local:MissionFabGaugeView x:Name="Gauge" Grid.Column="0" VerticalAlignment="Top" />
+
+            <StackPanel Grid.Column="1" Spacing="4">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="12" Glyph="&#xE7C1;"
+                              Foreground="{StaticResource OBBAccentBrush}" VerticalAlignment="Center" />
+                    <TextBlock Text="MISSION · CONTROL"
+                               FontFamily="{StaticResource OBBMonoFontFamily}"
+                               FontSize="12"
+                               FontWeight="Bold"
+                               Foreground="{StaticResource PensieveColorTextBaseBrush}"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+
+                <TextBlock Text="{x:Bind ViewModel.HeroHeadline, Mode=OneWay}"
+                           FontSize="30"
+                           FontWeight="Bold"
+                           TextWrapping="Wrap"
+                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+
+                <TextBlock Text="{x:Bind ViewModel.HeroSubtitle, Mode=OneWay}"
+                           FontSize="13"
+                           TextWrapping="Wrap"
+                           Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+            </StackPanel>
+
+            <Button Grid.Column="2"
+                    x:Name="CloseButton"
+                    VerticalAlignment="Top"
+                    Style="{StaticResource LiquidGlassCircleButtonStyle}"
+                    Click="CloseButton_Click"
+                    Visibility="Collapsed"
+                    ToolTipService.ToolTip="Close Mission Console">
+                <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="13" Glyph="&#xE711;" />
+            </Button>
+        </Grid>
+
+        <!-- Mercury hairline -->
+        <Border Grid.Row="1" Height="1" Background="{StaticResource PensieveColorGlassLineBrush}" Opacity="0.6" />
+
+        <!-- Mono meta strip -->
+        <ScrollViewer Grid.Row="2"
+                      HorizontalScrollMode="Auto"
+                      HorizontalScrollBarVisibility="Hidden"
+                      VerticalScrollMode="Disabled"
+                      VerticalScrollBarVisibility="Disabled">
+            <StackPanel Orientation="Horizontal" Spacing="24">
+                <StackPanel Spacing="2">
+                    <TextBlock Text="IN FLIGHT" FontFamily="{StaticResource OBBMonoFontFamily}" FontSize="11"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    <TextBlock Text="{x:Bind ViewModel.InFlightLabel, Mode=OneWay}"
+                               FontFamily="{StaticResource OBBMonoFontFamily}" FontSize="15"
+                               Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
+                </StackPanel>
+                <StackPanel Spacing="2">
+                    <TextBlock Text="QUEUED" FontFamily="{StaticResource OBBMonoFontFamily}" FontSize="11"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    <TextBlock Text="{x:Bind ViewModel.QueuedLabel, Mode=OneWay}"
+                               FontFamily="{StaticResource OBBMonoFontFamily}" FontSize="15"
+                               Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                </StackPanel>
+                <StackPanel Spacing="2">
+                    <TextBlock Text="BURN / HR" FontFamily="{StaticResource OBBMonoFontFamily}" FontSize="11"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    <TextBlock Text="{x:Bind ViewModel.BurnPerHourLabel, Mode=OneWay}"
+                               FontFamily="{StaticResource OBBMonoFontFamily}" FontSize="15"
+                               Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                </StackPanel>
+                <StackPanel Spacing="2">
+                    <TextBlock Text="BURN TODAY" FontFamily="{StaticResource OBBMonoFontFamily}" FontSize="11"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    <TextBlock Text="{x:Bind ViewModel.BurnTodayLabel, Mode=OneWay}"
+                               FontFamily="{StaticResource OBBMonoFontFamily}" FontSize="15"
+                               Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                </StackPanel>
+                <StackPanel Spacing="2">
+                    <TextBlock Text="RUNTIMES" FontFamily="{StaticResource OBBMonoFontFamily}" FontSize="11"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    <TextBlock Text="{x:Bind ViewModel.RuntimesLabel, Mode=OneWay}"
+                               FontFamily="{StaticResource OBBMonoFontFamily}" FontSize="15"
+                               Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

@@ -62,30 +62,32 @@ final class ProviderAccountSyncService: Sendable {
             "isDefault": account.isDefault,
             "sortKey": account.sortKey,
             "schemaVersion": account.schemaVersion,
-            "createdAt": Timestamp(date: account.createdAt),
-            "updatedAt": Timestamp(date: account.updatedAt),
-            "syncedAt": FieldValue.serverTimestamp()
+            "createdAt": iso8601String(account.createdAt),
+            "updatedAt": iso8601String(account.updatedAt)
         ]
         if let identityHint = account.identityHint {
             result["identityHint"] = identityHint
         }
         if let sourceDeviceID = account.sourceDeviceID ?? fallbackSourceDeviceID(for: account, deviceId: deviceId) {
             result["sourceDeviceID"] = sourceDeviceID
-            result["deviceId"] = sourceDeviceID
         }
         if let linkedSwitcherProfileID = account.linkedSwitcherProfileID {
             result["linkedSwitcherProfileID"] = linkedSwitcherProfileID
         }
         if let lastValidatedAt = account.lastValidatedAt {
-            result["lastValidatedAt"] = Timestamp(date: lastValidatedAt)
+            result["lastValidatedAt"] = iso8601String(lastValidatedAt)
         }
         if let lastRefreshAt = account.lastRefreshAt {
-            result["lastRefreshAt"] = Timestamp(date: lastRefreshAt)
+            result["lastRefreshAt"] = iso8601String(lastRefreshAt)
         }
         if let lastErrorCode = account.lastErrorCode {
             result["lastErrorCode"] = lastErrorCode
         }
         return result
+    }
+
+    private nonisolated func iso8601String(_ date: Date) -> String {
+        ISO8601DateFormatter().string(from: date)
     }
 
     private func fallbackSourceDeviceID(for account: ProviderAccountDoc, deviceId: String) -> String? {
@@ -162,15 +164,15 @@ final class QuotaSnapshotSyncService: Sendable {
     private func encodeSnapshot(_ snapshot: ProviderQuotaSnapshot, deviceId: String) -> [String: Any] {
         let sourceID = normalizedSourceID(snapshot, fallback: deviceId)
         var result: [String: Any] = [
-            "provider": snapshot.provider.persistedToken,
+            "provider": (AgentProvider.fromProviderID(snapshot.providerID) ?? AgentProvider(rawValue: snapshot.provider))?.persistedToken ?? snapshot.provider,
             "providerID": snapshot.providerID.rawValue,
             "sourceKind": snapshot.sourceKind.rawValue,
             "sourceId": sourceID,
             "sourceID": sourceID,
-            "source": snapshot.provider.displayName,
+            "source": (AgentProvider.fromProviderID(snapshot.providerID) ?? AgentProvider(rawValue: snapshot.provider))?.displayName ?? snapshot.provider,
             "fetchedAt": Timestamp(date: snapshot.fetchedAt),
             "confidence": snapshot.confidence.rawValue,
-            "statusMessage": snapshot.statusMessage,
+            "statusMessage": snapshot.statusMessage ?? "",
             "buckets": snapshot.displayableQuotaBuckets.map(encodeBucket),
             "schemaVersion": snapshot.schemaVersion,
             "updatedAt": FieldValue.serverTimestamp()

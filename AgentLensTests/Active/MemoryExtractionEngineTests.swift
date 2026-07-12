@@ -22,8 +22,8 @@ import OpenBurnBarCore
 //      through `drainNext`); `mostRecentFailedMemoryExtractionJob` is that seam.
 //   #7 Provider order is forced local-only regardless of the user's summary order.
 //
-// The whole feature ships OFF; these tests force the gates ON explicitly to exercise the
-// dormant machinery, mirroring the PR-D1 extractor tests.
+// User consent still ships off; these tests force the relevant gates explicitly to exercise
+// the worker machinery, mirroring the PR-D1 extractor tests.
 @MainActor
 final class MemoryExtractionEngineTests: XCTestCase {
 

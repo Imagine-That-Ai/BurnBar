@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "description": "Claude Code ~/.claude/projects directory-name encoding vectors. POSIX rows marked captured=true were read from the `cwd` field inside real session JSONL files on a live macOS install and verified byte-for-byte against their directory names (encode(cwd) == dirName held for 26/27 sessions; the outlier was a JSONL copied across directories). Windows/UNC rows are modeled from the same algorithm (replace [^A-Za-z0-9] with '-') and are marked captured=false pending a real Windows capture in VAL-P0-PATH-022.",
+  "generatedBy": "VAL-P0-PATH-021 (Zenith worker) from ~/.claude/projects on macOS",
+  "fixtures": [
+    {
+      "encodedDirectoryName": "-Users-albertonunez-Documents-Developer-BurnBar",
+      "sourcePath": "/Users/albertonunez/Documents/Developer/BurnBar",
+      "style": "posix",
+      "captured": true,
+      "note": "Real macOS session cwd. Clean path — round-trips exactly."
+    },
+    {
+      "encodedDirectoryName": "-Users-albertonunez--hermes-hermes-agent",
+      "sourcePath": "/Users/albertonunez/.hermes/hermes-agent",
+      "style": "posix",
+      "captured": true,
+      "note": "Real macOS session cwd. `/.hermes` collapses to `--` (both `/` and `.` -> `-`); `hermes-agent` keeps its literal hyphen. Lossy: decode cannot tell `.` from `/` from `-`."
+    },
+    {
+      "encodedDirectoryName": "-private-var-folders-dp-my0vtv691tb7sm48kktgry2w0000gn-T-claude-obb-smoke-0fO1CJ",
+      "sourcePath": "/private/var/folders/dp/my0vtv691tb7sm48kktgry2w0000gn/T/claude-obb-smoke-0fO1CJ",
+      "style": "posix",
+      "captured": true,
+      "note": "Real macOS session cwd (a /private/var temp dir). Mixed-case components preserved."
+    },
+    {
+      "encodedDirectoryName": "-Users-alberto-Library-Application-Support-OpenBurnBar",
+      "sourcePath": "/Users/alberto/Library/Application Support/OpenBurnBar",
+      "style": "posix",
+      "captured": false,
+      "note": "Modeled from the observed `Application Support` directory on macOS. Space -> `-`; lossy."
+    },
+    {
+      "encodedDirectoryName": "-Users-alberto-Imagine-That-Ai-App-2-0",
+      "sourcePath": "/Users/alberto/Imagine That Ai App 2.0",
+      "style": "posix",
+      "captured": false,
+      "note": "Modeled. Spaces and the `.` in `2.0` all become `-`; lossy."
+    },
+    {
+      "encodedDirectoryName": "C--Users-Alice-project",
+      "sourcePath": "C:\\Users\\Alice\\project",
+      "style": "windows",
+      "captured": false,
+      "note": "PENDING VAL-P0-PATH-022. Modeled drive-prefixed form: drive `C`, then `:` and `\\` both -> `-` giving `C--`."
+    },
+    {
+      "encodedDirectoryName": "D--Work-my-project",
+      "sourcePath": "D:\\Work\\my project",
+      "style": "windows",
+      "captured": false,
+      "note": "PENDING VAL-P0-PATH-022. Non-C drive letter + a space in a component (`my project` -> `my-project`); lossy."
+    },
+    {
+      "encodedDirectoryName": "Z--src-App-2-0",
+      "sourcePath": "Z:\\src\\App.2.0",
+      "style": "windows",
+      "captured": false,
+      "note": "PENDING VAL-P0-PATH-022. Non-C drive letter + dots in a component (`App.2.0` -> `App-2-0`); lossy."
+    },
+    {
+      "encodedDirectoryName": "--fileserver-team-project",
+      "sourcePath": "\\\\fileserver\\team\\project",
+      "style": "windows",
+      "captured": false,
+      "note": "PENDING VAL-P0-PATH-022. UNC form: leading `\\\\` -> `--`. Ambiguous with a POSIX `/.fileserver/...` path when decoded under `.auto` — pass an explicit style to disambiguate."
+    },
+    {
+      "encodedDirectoryName": "C--Users-Jos--proyecto",
+      "sourcePath": "C:\\Users\\José\\proyecto",
+      "style": "windows",
+      "captured": false,
+      "note": "PENDING VAL-P0-PATH-022. Non-ASCII: `é` is not [A-Za-z0-9] so it becomes `-` (`José` -> `Jos-`); destroyed by the encoding and unrecoverable on decode."
+    }
+  ]
+}

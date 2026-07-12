@@ -8,13 +8,10 @@ import Foundation
 // runaway model, or a large backlog can never push the feature past a safe envelope.
 //
 // All values are deliberately conservative: memory extraction is a background,
-// best-effort enrichment, not a foreground task the user waits on. The feature ships
-// OFF: durable writes require BOTH `settingsManager.memoryExtractionEnabled` (the G4
-// gate, default TRUE) AND the human-owned go-live flag
-// `ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault` (static, default FALSE)
-// — the engine AND-s the two in the worker's authority closure (PR-D FIX #1). Because the
-// go-live flag defaults false, nothing is persisted out of the box even when extraction is
-// enabled; these rails only matter once a human flips that flag on.
+// best-effort enrichment, not a foreground task the user waits on. Durable writes require
+// BOTH `settingsManager.memoryExtractionEnabled` (consent + user toggle + fleet gate) AND
+// `ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault` through the worker's
+// authority closure (PR-D FIX #1).
 enum MemoryExtractionPolicy {
     /// Upper bound on transcript characters fed to the model per job (input-side
     /// bound). Smaller than summaries: a single thread's recent turns, not a backlog.
@@ -32,6 +29,11 @@ enum MemoryExtractionPolicy {
     /// (possibly paid) cloud calls in one tick; the remainder is picked up on the next
     /// scheduled drain. Mirrors `AutoSummaryPolicy.maxBatchSize`.
     static let maxJobsPerPump = 8
+
+    /// Delay before a bounded pump schedules its own follow-up after hitting the job
+    /// ceiling or deadline. Keeps each pump bounded while allowing persisted startup
+    /// backlog to drain without waiting for an unrelated future chat commit.
+    static let continuationDelay: TimeInterval = 1
 
     /// Per-pump wall-clock deadline (PR-D2 must-fix #6). The pump stops claiming new
     /// jobs once this elapses, even if `maxJobsPerPump` is not reached, so a slow
@@ -109,8 +111,18 @@ private final class WeakMemoryExtractionKillSwitch {
 }
 
 @MainActor
+private final class WeakMemoryExtractionDrainLauncher {
+    weak var value: MemoryExtractionEngine?
+
+    init(_ value: MemoryExtractionEngine) {
+        self.value = value
+    }
+}
+
+@MainActor
 enum MemoryExtractionKillSwitchRegistry {
     private static var switches: [WeakMemoryExtractionKillSwitch] = []
+    private static var drainLaunchers: [WeakMemoryExtractionDrainLauncher] = []
 
     static func register(_ killSwitch: MemoryExtractionKillSwitch, initiallyAllowed: Bool) {
         switches.removeAll { $0.value == nil }
@@ -118,10 +130,20 @@ enum MemoryExtractionKillSwitchRegistry {
         killSwitch.set(initiallyAllowed)
     }
 
+    static func registerDrainLauncher(_ engine: MemoryExtractionEngine) {
+        drainLaunchers.removeAll { $0.value == nil }
+        drainLaunchers.append(WeakMemoryExtractionDrainLauncher(engine))
+    }
+
     static func setAll(_ allowed: Bool) {
         switches.removeAll { $0.value == nil }
         for entry in switches {
             entry.value?.set(allowed)
+        }
+        guard allowed else { return }
+        drainLaunchers.removeAll { $0.value == nil }
+        for entry in drainLaunchers {
+            entry.value?.launchDrain()
         }
     }
 }

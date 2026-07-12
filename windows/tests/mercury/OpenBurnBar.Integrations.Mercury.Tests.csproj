@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    macOS-runnable tests for the portable Mercury media-pipeline logic
+    (Phase 4 · Mercury lane). Runs today via `dotnet test` on the authoring host,
+    the SAME assembly that ships on Windows. Mirrors the proven
+    presentation/storage/particles/dashboard test pattern (net10.0, xUnit).
+
+    Coverage:
+      • MediaPacketCodecTests        — byte-exact media-frame framing (header layout,
+        cursor extension, truncation / too-large / unknown-kind errors, round-trip).
+      • RfbProtocolTests             — RFB handshake (banner, client version, security-type
+        selection), ServerInit parse, key/pointer event byte-exact builders,
+        FramebufferUpdate request + header + rectangle + full RAW parse.
+      • RfbArdAuthTests              — Apple-ARD credential-block layout (byte-exact),
+        AES-128-ECB round-trip + known vector, DH modexp cross-checked vs BigInteger,
+        big-endian fixed-width serialization.
+      • MediaStreamClassTests        — feature bucketing + phase availability.
+      • MediaBudgetTests             — envelope presets, allowsSession, level wire parse.
+      • MediaCapabilityEvaluatorTests — the consent/budget/kill-switch/daily/session/
+        concurrent admission invariant, fail-closed ordering (R17).
+      • MediaBudgetStatusStoreTests  — fail-closed effective status (RR-9): cold-start
+        conservative-closed, permission-denied hold, transient promote, parse, rehydrate.
+      • MercuryConsentStoreTests     — mirror auto-accept grant ledger: peer-bound
+        auto-accept, TTL prune, remember-toggle gating, revoke, fail-closed encode.
+      • MediaSessionStateMachineTests — phase transitions, restartability, denial routing,
+        viewer fan-out, mid-session admission recheck.
+      • FileTransferTests            — chunk/reassemble in-order + out-of-order, missing /
+        duplicate / wrong-transfer / out-of-range handling, hash-mismatch tamper detection,
+        wire-frame round-trip through the media packet codec.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../integrations/mercury/OpenBurnBar.Integrations.Mercury/OpenBurnBar.Integrations.Mercury.csproj" />
+  </ItemGroup>
+
+</Project>

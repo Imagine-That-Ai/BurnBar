@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+  OpenBurnBar — MSIX package manifest (Phase 5 / W10 distribution).
+
+  This is the PACKAGED (MSIX) variant of the WinUI 3 shell. The PRIMARY channel
+  stays the UNPACKAGED build (windows/app/OpenBurnBar.App, WindowsPackageType=None)
+  shipped as a direct-download portable zip + winget; this manifest adds the MSIX
+  channel (package identity, capabilities, protocol/file/startup/toast extensions).
+
+  Parity map — this manifest mirrors the macOS app's identity surface:
+    • macOS bundle id  com.openburnbar.app     → MSIX Identity Name/Publisher below
+    • CFBundleURLSchemes: openburnbar           → windows.protocol  (openburnbar://)
+    • UTExportedTypeDeclarations chat-thread     → windows.fileTypeAssociation (.burnbarchat)
+    • UTExportedTypeDeclarations chat-pane       → windows.fileTypeAssociation (.burnbarpane)
+    • SMAppService / login-item autolaunch       → windows.startupTask
+    • NSUserNotification / toasts                 → windows.toastNotificationActivation
+
+  BUILD CEILING (honest): actual MSIX pack + Authenticode/Artifact Signing signature
+  need a Windows runner + the Azure Artifact Signing profile. The <Identity Publisher>
+  below MUST equal the signing certificate's Subject at sign time, or the package is
+  rejected. AUTO-UPDATE is NOT wired to App-Installer here on purpose: OpenBurnBar
+  auto-updates from the Ed25519-PINNED release feed (parity with macOS Sparkle),
+  independent of the Authenticode cert — that updater lives in the app/PAL, not this
+  manifest. Well-formedness is checked on macOS via xmllint; the full AppxManifest
+  XSD gate runs on the Windows dev host / CI (MakeAppx / MSBuild).
+-->
+
+<Package
+    xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+    xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+    xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+    xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
+    xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+    xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+    IgnorableNamespaces="uap uap3 uap5 desktop rescap">
+
+  <!--
+    Identity — the stable package identity.
+      • Name       : reverse-DNS-free unique id (Publisher.Product convention).
+      • Publisher  : The direct-download signing subject. MUST match the Authenticode /
+                     Azure Artifact Signing certificate Subject exactly at sign time. For
+                     a Microsoft Store submission the Store assigns its own reserved
+                     Name + Publisher (CN=<StorePublisherId>) — swap both then.
+      • Version    : Major.Minor.Build.Revision. Seeded at the Windows-port pre-release
+                     0.1.0.0 (macOS MARKETING_VERSION is 1.0.28); the release pipeline
+                     stamps the shipping version. Revision is reserved 0 for Store.
+      • ProcessorArchitecture: the WAP project rebuilds this manifest per platform
+                     (x86 / x64 / arm64); x64 is the template default and is overridden
+                     by $(Platform) during pack.
+  -->
+  <Identity
+      Name="ImagineThat.OpenBurnBar"
+      Publisher="CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US"
+      Version="0.1.0.0"
+      ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>OpenBurnBar</DisplayName>
+    <PublisherDisplayName>Imagine That</PublisherDisplayName>
+    <Logo>Images\StoreLogo.png</Logo>
+    <Description>Watch, steer, and remember every coding-agent session — one bar for Claude, Codex, Cursor, and more.</Description>
+  </Properties>
+
+  <Dependencies>
+    <!--
+      Desktop family floor 10.0.17763.0 (1809) mirrors the app csproj
+      TargetPlatformMinVersion; MaxVersionTested tracks the 19041 (2004) SDK the
+      app targets (net8.0-windows10.0.19041.0).
+    -->
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.19041.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-US" />
+  </Resources>
+
+  <Applications>
+    <Application
+        Id="OpenBurnBar"
+        Executable="OpenBurnBar.App.exe"
+        EntryPoint="Windows.FullTrustApplication">
+
+      <uap:VisualElements
+          DisplayName="OpenBurnBar"
+          Description="Watch, steer, and remember every coding-agent session — one bar for Claude, Codex, Cursor, and more."
+          BackgroundColor="transparent"
+          Square150x150Logo="Images\Square150x150Logo.png"
+          Square44x44Logo="Images\Square44x44Logo.png">
+        <uap:DefaultTile
+            ShortName="OpenBurnBar"
+            Square71x71Logo="Images\SmallTile.png"
+            Square310x310Logo="Images\LargeTile.png"
+            Wide310x150Logo="Images\Wide310x150Logo.png">
+          <uap:ShowNameOnTiles>
+            <uap:ShowOn Tile="square150x150Logo" />
+            <uap:ShowOn Tile="wide310x150Logo" />
+          </uap:ShowNameOnTiles>
+        </uap:DefaultTile>
+      </uap:VisualElements>
+
+      <Extensions>
+
+        <!--
+          Deep-link protocol — parity with macOS CFBundleURLSchemes "openburnbar".
+          openburnbar://... activation routes to the running instance (single-instance
+          in the PAL) or cold-launches the shell.
+        -->
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="openburnbar">
+            <uap:Logo>Images\Square44x44Logo.png</uap:Logo>
+            <uap:DisplayName>OpenBurnBar Deep Link</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+
+        <!--
+          File associations — Windows mapping of the macOS exported UTTypes
+          (ai.burnbar.chat-thread / ai.burnbar.chat-pane, both public.data). These are
+          the on-disk export formats for a chat thread / a saved pane; double-clicking
+          one launches OpenBurnBar with the file as an activation argument.
+        -->
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap3:FileTypeAssociation Name="burnbarchat">
+            <uap:DisplayName>OpenBurnBar Chat Thread</uap:DisplayName>
+            <uap:Logo>Images\Square44x44Logo.png</uap:Logo>
+            <uap:SupportedFileTypes>
+              <uap:FileType ContentType="application/vnd.openburnbar.chat-thread+json">.burnbarchat</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap3:FileTypeAssociation>
+        </uap:Extension>
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap3:FileTypeAssociation Name="burnbarpane">
+            <uap:DisplayName>OpenBurnBar Chat Pane</uap:DisplayName>
+            <uap:Logo>Images\Square44x44Logo.png</uap:Logo>
+            <uap:SupportedFileTypes>
+              <uap:FileType ContentType="application/vnd.openburnbar.chat-pane+json">.burnbarpane</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap3:FileTypeAssociation>
+        </uap:Extension>
+
+        <!--
+          Launch-at-login — parity with macOS SMAppService / login item. Ships DISABLED
+          (Enabled="false"); the Settings "Launch at startup" toggle flips it via
+          StartupTask.RequestEnableAsync at runtime. TaskId is the stable handle the
+          app queries.
+        -->
+        <uap5:Extension
+            Category="windows.startupTask"
+            Executable="OpenBurnBar.App.exe"
+            EntryPoint="Windows.FullTrustApplication">
+          <uap5:StartupTask
+              TaskId="OpenBurnBarAutoLaunch"
+              Enabled="false"
+              DisplayName="OpenBurnBar" />
+        </uap5:Extension>
+
+        <!--
+          Toast activation — lets background/tray toasts (session-finished, quota,
+          update-ready) reactivate the app with their argument payload. The
+          ToastActivatorCLSID is stable and MUST match the COM activator the app
+          registers (INotificationActivationCallback). The tray icon itself is a
+          runtime Shell_NotifyIcon surface (no manifest node); this extension only
+          wires the notification-activation COM path the tray/toast layer uses.
+        -->
+        <desktop:Extension Category="windows.toastNotificationActivation">
+          <desktop:ToastNotificationActivation ToastActivatorCLSID="A5F63116-99CD-4EED-AAE4-80EAA3634CC7" />
+        </desktop:Extension>
+
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!--
+      Full-trust Win32 desktop app (ConPTY, SendInput/ViGEm, UIAutomation, named-pipe
+      IPC, TPM/CNG, SQLCipher) — the non-negotiable capability for the desktop shell.
+    -->
+    <rescap:Capability Name="runFullTrust" />
+    <!-- Cloud sync + Ed25519-pinned update feed + provider APIs (outbound internet). -->
+    <Capability Name="internetClient" />
+    <!--
+      Local-network pairing / Hermes relay / Mercury media / Google Cast discovery —
+      parity with macOS NSLocalNetworkUsageDescription + NSBonjourServices. Inbound +
+      outbound on public and private networks.
+    -->
+    <Capability Name="internetClientServer" />
+    <Capability Name="privateNetworkClientServer" />
+    <!--
+      Programmatic screen capture (Windows.Graphics.Capture) for Mercury screen-share
+      + Computer-Use observation without the interactive picker. Restricted capability;
+      allowed for direct/winget/self-signed sideload, and requires a justification for
+      a Store submission. Borderless capture (graphicsCaptureWithoutBorder) is NOT
+      declared — add it only if/when borderless capture ships and Store approval is
+      secured.
+    -->
+    <rescap:Capability Name="graphicsCaptureProgrammatic" />
+  </Capabilities>
+
+</Package>

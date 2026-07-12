@@ -14,19 +14,46 @@ final class BudgetEnforcement {
     private var gate: BudgetGate?
     private var notificationCenter: BudgetNotificationCenter?
     private var forecast: BudgetForecast?
+    private var configuredUserID: String?
 
     private init() {}
 
     /// Wire the gate built at App startup. Safe to call multiple times — the latest gate
-    /// wins (handy when a sign-out flow rebuilds the database queue).
-    func configure(gate: BudgetGate, notifications: BudgetNotificationCenter? = nil, forecast: BudgetForecast? = nil) {
+    /// wins (handy when a sign-out flow rebuilds the database queue or the signed-in user changes).
+    func configure(
+        userID: String? = nil,
+        gate: BudgetGate,
+        notifications: BudgetNotificationCenter? = nil,
+        forecast: BudgetForecast? = nil
+    ) {
         self.gate = gate
         self.notificationCenter = notifications
         self.forecast = forecast
+        self.configuredUserID = userID
         notifications?.requestAuthorizationIfNeeded()
     }
 
     var isConfigured: Bool { gate != nil }
+
+    func isConfigured(forUserID userID: String) -> Bool {
+        gate != nil && configuredUserID == userID
+    }
+
+    func resetIfConfiguredForDifferentUser(_ userID: String) {
+        guard gate != nil, configuredUserID != userID else { return }
+        reset()
+    }
+
+    func resetForTesting() {
+        reset()
+    }
+
+    private func reset() {
+        gate = nil
+        notificationCenter = nil
+        forecast = nil
+        configuredUserID = nil
+    }
 
     /// Exposed for views that want live forecast projections.
     var forecastService: BudgetForecast? { forecast }
@@ -61,7 +88,7 @@ final class BudgetEnforcement {
         var activeBlocks: [String] = []
         let now = Date()
         for rule in rules.prefix(8) {
-            let used = (try? await gate.ledgerSpend(forRule: rule, reference: now)) ?? 0
+            let used = (try? await gate.ledgerSpend(forRule: rule, reference: now)) ?? rule.amountUSD
             let limit = rule.amountUSD
             let percent = limit > 0 ? Int((used / limit) * 100) : 0
             let label = rule.displayLabel
@@ -132,7 +159,13 @@ final class BudgetEnforcement {
 /// raw secret never leaves the call frame; the resulting slot ID lines up with what the
 /// usage row would store under `providerAccountID`.
 enum MobileCredentialIdentity {
-    static func make(providerHint: String, bearerToken: String?, displayLabel: String) -> BudgetCredentialIdentity {
+    static func make(
+        providerHint: String,
+        bearerToken: String?,
+        displayLabel: String,
+        providerAccountID: String? = nil,
+        providerAccountLabel: String? = nil
+    ) -> BudgetCredentialIdentity {
         let secret = bearerToken ?? ""
         let mode = BudgetCredentialIdentity.billingMode(forSecretPrefix: secret)
         let slotID = secret.isEmpty ? "default" : hashedSlotID(secret)
@@ -140,6 +173,8 @@ enum MobileCredentialIdentity {
             providerID: providerHint,
             slotID: slotID,
             displayLabel: displayLabel,
+            providerAccountID: providerAccountID,
+            providerAccountLabel: providerAccountLabel,
             billingMode: mode
         )
     }

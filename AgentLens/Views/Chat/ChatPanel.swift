@@ -48,8 +48,10 @@ struct ChatPanel: View {
         Group {
             if controller.isMinimized {
                 minimizedPill
+                    .accessibilityIdentifier(OBBAccessibilityID.chatPanelMinimized)
             } else {
                 expandedPanel
+                    .accessibilityIdentifier(OBBAccessibilityID.chatPanel)
             }
         }
         .environment(\.hermesAtomNavigator, atomRouter)
@@ -139,7 +141,7 @@ struct ChatPanel: View {
             }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("This starts a new chat. Previous Burn Bar chats stay in History.")
+            Text("This starts a new chat. Previous BurnBar chats stay in History.")
         }
         .confirmationDialog("Open Hermes?", isPresented: $showHermesRuntimePrompt) {
             Button("Open Hermes + Gateway") {
@@ -204,6 +206,8 @@ struct ChatPanel: View {
         await controller.probeHermesAvailability()
         if controller.hermesAvailable {
             controller.setChatBackend(.hermes)
+        } else {
+            controller.streamError = "Hermes launched but its gateway at \(resolvedHermesGatewayBaseURL.absoluteString) still isn't responding. Check the gateway URL and bearer token in Settings → Agents, then try again."
         }
     }
 
@@ -950,6 +954,8 @@ struct ChatPanel: View {
         case .antigravity: return "Ask Antigravity\u{2026}"
         case .cursorAgent: return "Ask Cursor Agent\u{2026}"
         case .openClaude: return "Ask OpenClaude\u{2026}"
+        case .omp: return "Ask OMP\u{2026}"
+        case .junie: return "Ask Junie\u{2026}"
         }
     }
 

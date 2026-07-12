@@ -53,15 +53,15 @@ public enum CLILaunchAdapter {
         didSet { executableResolutionCache.write([:]) }
     }
     // nonisolated(unsafe): test-only injection seam, set during single-threaded test setup; reads are effectively immutable in production.
-    nonisolated(unsafe) static var homeDirectoryProvider: () -> String = { FileManager.default.homeDirectoryForCurrentUser.path } {
+    nonisolated(unsafe) static var homeDirectoryProvider: () -> String = { NSHomeDirectory() } {
         didSet { executableResolutionCache.write([:]) }
     }
 
     // MARK: - Allowlisted Environment Variables
 
-    /// Environment variables that are allowlisted for CLI profile launching.
-    /// These are considered safe as they only affect basic OS behavior,
-    /// not authentication, credentials, or security boundaries.
+    /// Environment variables that may be passed by explicit CLI profile metadata.
+    /// Credentials belong here only when profile-scoped; the ambient baseline below
+    /// must stay free of API keys and tokens.
     ///
     /// NOTE: Values are NOT stored - only the keys. Values are resolved at launch
     /// from the current process environment.
@@ -95,8 +95,13 @@ public enum CLILaunchAdapter {
         "ANTIGRAVITY_HOME",
         "GEMINI_HOME",
         "CURSOR_AGENT_HOME",
-        "CURSOR_AGENT_CONFIG_PATH"
+        "CURSOR_AGENT_CONFIG_PATH",
+        "JUNIE_API_KEY"
     ]
+
+    private static let baselineEnvKeys: Set<String> = allowlistedEnvKeys.subtracting([
+        "JUNIE_API_KEY"
+    ])
 
     // MARK: - Additional Arguments Allowlist
 
@@ -338,6 +343,7 @@ public enum CLILaunchAdapter {
             "\(homeDirectory)/.gemini/bin",
             "\(homeDirectory)/.kimi/bin",
             "\(homeDirectory)/.pi/bin",
+            "\(homeDirectory)/.junie/bin",
             "\(homeDirectory)/.cargo/bin",
             "\(homeDirectory)/.npm-global/bin",
             "\(homeDirectory)/.bun/bin",
@@ -551,7 +557,7 @@ public enum CLILaunchAdapter {
         }
 
         // Verify it's within user's home or a known safe location
-        let homeDir = fileManager.homeDirectoryForCurrentUser.path
+        let homeDir = NSHomeDirectory()
         let isInsideHome = trimmed.hasPrefix(homeDir)
         let isInTemp = trimmed.hasPrefix(NSTemporaryDirectory())
         let isInVar = trimmed.hasPrefix("/var/folders/")
@@ -623,6 +629,14 @@ public enum CLILaunchAdapter {
         return allowlistedEnvKeys.contains(key)
     }
 
+    /// Returns true only for keys that are safe in the cross-CLI ambient baseline.
+    /// Profile-scoped credentials such as `JUNIE_API_KEY` may be accepted by
+    /// `filterAllowlistedEnvironment` but must not leak through child-process
+    /// baselines for unrelated agents.
+    public static func isBaselineEnvKeyAllowlisted(_ key: String) -> Bool {
+        return baselineEnvKeys.contains(key)
+    }
+
     /// Filters environment variables to only allowlisted keys.
     /// Values are taken from the current process environment.
     public static func filterAllowlistedEnvironment(
@@ -657,7 +671,7 @@ public enum CLILaunchAdapter {
     ) -> [String: String] {
         var result: [String: String] = [:]
 
-        for key in allowlistedEnvKeys {
+        for key in baselineEnvKeys {
             if let value = baseEnv[key] {
                 let sanitized = sanitizeEnvValue(value)
                 if !sanitized.isEmpty {
@@ -782,7 +796,10 @@ public enum CLILaunchAdapter {
         }
 
         // Build environment - only allowlisted keys
-        var env = filterAllowlistedEnvironment(keys: metadata.envKeysToPass)
+        var env = filterAllowlistedEnvironment(
+            keys: metadata.envKeysToPass,
+            baseEnv: environmentProvider()
+        )
         if let configDirectory = metadata.configDirectory?.trimmingCharacters(in: .whitespacesAndNewlines),
            !configDirectory.isEmpty {
             for configEnvKey in configEnvironmentKeys(for: cliType) {
@@ -817,6 +834,10 @@ public enum CLILaunchAdapter {
             return ["KIMI_HOME", "KIMI_API_KEY", "MOONSHOT_API_KEY"]
         case .pi:
             return ["PI_HOME", "PI_CONFIG_HOME"]
+        case .junie:
+            return ["JUNIE_HOME"]
+        case .omp:
+            return ["OMP_HOME", "OMP_CONFIG_HOME"]
         }
     }
 }
@@ -825,7 +846,7 @@ public enum CLILaunchAdapter {
 
 /// Typed errors for CLI launch failures.
 /// All errors are actionable and provide clear remediation guidance.
-public enum CLILaunchError: Error, Equatable, Sendable {
+public enum CLILaunchError: LocalizedError, Equatable, Sendable {
     case executableNotFound(SwitcherCLIProfileType)
     case profileNotFound(String)
     case profileTypeMismatch(expected: SwitcherCLIProfileType, actual: SwitcherCLIProfileType?)

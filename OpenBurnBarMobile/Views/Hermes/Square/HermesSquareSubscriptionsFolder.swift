@@ -64,7 +64,7 @@ struct HermesSquareSubscriptionsFolder: View {
                 .font(.callout)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(DesignSystemColors.textSecondary)
-            Text("Platform-enforced cap: \(AgentTier.subscriptionMonthlyBudget) deliveries / agent / month by default.")
+            Text("Subscribed topics are saved to your account and can be muted or removed here. Scheduled deliveries to your inbox aren't live yet.")
                 .font(.caption)
                 .foregroundStyle(DesignSystemColors.textMuted)
                 .padding(.top, 4)

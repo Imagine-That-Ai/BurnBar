@@ -1,8 +1,10 @@
 import FirebaseAuth
 import FirebaseCore
 @preconcurrency import FirebaseFirestore
+import FirebaseFunctions
 import Foundation
 import OpenBurnBarCore
+import os.log
 import Security
 import UIKit
 
@@ -57,6 +59,7 @@ enum CloudDeviceActivityDateResolver {
 /// Reads Firestore, manages device trust state, handles encrypted credential import.
 @MainActor
 final class LiveCloudReader: CloudReader {
+    private static let log = Logger(subsystem: "com.openburnbar.mobile", category: "LiveCloudReader")
     private var db: Firestore { Firestore.firestore() }
     private let firestore: FirestoreRepository
 
@@ -82,6 +85,7 @@ final class LiveCloudReader: CloudReader {
 
             let macDeviceId: String?
             let macName: String
+            let macLastSeen: Date?
             if let macDoc = devicesSnap.documents.max(by: { lhs, rhs in
                 let left = CloudDeviceActivityDateResolver.date(from: lhs.data()) ?? .distantPast
                 let right = CloudDeviceActivityDateResolver.date(from: rhs.data()) ?? .distantPast
@@ -90,9 +94,11 @@ final class LiveCloudReader: CloudReader {
                 let d = macDoc.data()
                 macDeviceId = d["deviceId"] as? String ?? macDoc.documentID
                 macName = d["deviceName"] as? String ?? "Mac"
+                macLastSeen = CloudDeviceActivityDateResolver.date(from: d)
             } else {
                 macDeviceId = nil
                 macName = "Mac"
+                macLastSeen = nil
             }
 
             let syncStatusCollection = db.collection("users/\(uid)/sync_status")
@@ -102,7 +108,15 @@ final class LiveCloudReader: CloudReader {
                     return Self.syncStatusSnapshot(
                         deviceID: macDeviceId,
                         displayName: macName,
-                        data: doc.data()
+                        data: doc.data(),
+                        fallbackLastSeen: macLastSeen
+                    )
+                } else if let macLastSeen {
+                    return Self.syncStatusSnapshot(
+                        deviceID: macDeviceId,
+                        displayName: macName,
+                        data: nil,
+                        fallbackLastSeen: macLastSeen
                     )
                 }
             }
@@ -132,10 +146,12 @@ final class LiveCloudReader: CloudReader {
         deviceID: String,
         displayName: String,
         data: [String: Any]?,
+        fallbackLastSeen: Date? = nil,
         readAt: Date = Date()
     ) -> CloudSyncStatusSnapshot {
         let lastPublished = (data?["lastSyncAt"] as? Timestamp)?.dateValue()
             ?? (data?["updatedAt"] as? Timestamp)?.dateValue()
+            ?? fallbackLastSeen
         let lastError = data?["lastError"] as? String
 
         return CloudSyncStatusSnapshot(
@@ -243,6 +259,9 @@ final class LiveCloudReader: CloudReader {
                 .getDocument()
             return snapshot.data()?["publicKeyData"] as? String
         } catch {
+            // nil just hides the key material in the device list; log so a systematic
+            // read failure (rules, offline) doesn't masquerade as "no key published".
+            Self.log.warning("escrow public key fetch failed device=\(deviceId, privacy: .public) v=\(keyVersion, privacy: .public): \(String(describing: error), privacy: .public)")
             return nil
         }
     }
@@ -339,6 +358,7 @@ final class LiveCloudReader: CloudReader {
 
 @MainActor
 final class LiveDeviceTrustGateway: DeviceTrustGateway {
+    private static let log = Logger(subsystem: "com.openburnbar.mobile", category: "LiveDeviceTrustGateway")
     private var db: Firestore { Firestore.firestore() }
     private var uid: String? {
         guard FirebaseApp.app() != nil else { return nil }
@@ -379,6 +399,14 @@ final class LiveDeviceTrustGateway: DeviceTrustGateway {
             )
         } catch {
             // Registration may already exist; ignore failed-precondition for trusted devices.
+            // Anything else (offline, auth, server bug) means the device never shows up in
+            // Settings → Devices — surface it instead of swallowing every error here.
+            let nsError = error as NSError
+            let isExpectedPrecondition = nsError.domain == FunctionsErrorDomain
+                && FunctionsErrorCode(rawValue: nsError.code) == .failedPrecondition
+            if !isExpectedPrecondition {
+                Self.log.error("registerEscrowDevice failed device=\(self.deviceId, privacy: .public): \(String(describing: error), privacy: .public)")
+            }
         }
         if let keypair {
             try? await db.collection("users").document(uid)
@@ -399,9 +427,9 @@ final class LiveDeviceTrustGateway: DeviceTrustGateway {
     }
 
     func bootstrapApproveSelf() async throws {
-        guard uid != nil else { throw CloudGatewayError.classified(.notAuthenticated) }
+        guard let uid else { throw CloudGatewayError.classified(.notAuthenticated) }
         await registerSelfIfNeeded()
-        let ref = db.collection("users").document(uid!).collection("escrow_devices")
+        let ref = db.collection("users").document(uid).collection("escrow_devices")
         let others = try await ref.whereField("trustState", isEqualTo: EscrowDeviceTrustState.trusted.rawValue).getDocuments()
         guard others.documents.isEmpty else {
             throw CloudGatewayError.classified(.other(message: "Another trusted device already exists. Approve from that device."))

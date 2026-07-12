@@ -19,6 +19,7 @@ import type {
 } from "./types.js";
 import { getConfig } from "./config.js";
 import { hostedQuotaRunnerRefreshEndpoint, hostedQuotaRunnerToken } from "./hostedRunnerConfig.js";
+import { emitQuotaSnapshotWritten, quotaAccountRefreshMetadata } from "./quotaSnapshotMetadata.js";
 import { resilientFetch } from "./resilienceHelpers.js";
 import { retrieveCredential } from "./secrets.js";
 import {
@@ -51,7 +52,7 @@ const { isActiveEntitlement } = entitlementsPackage;
 
 /** Schema version for quota snapshot documents. */
 const QUOTA_SCHEMA_VERSION = 2;
-const HOSTED_RUNNER_PROVIDERS = new Set<Provider>(["codex"]);
+const HOSTED_RUNNER_PROVIDERS = new Set<Provider>(["codex", "claude-code"]);
 
 type QuotaWriteData = object;
 
@@ -201,8 +202,10 @@ export async function refreshUserProviderQuota(
       status: "connected",
       lastRefreshAt: now,
       lastErrorCode: null,
+      ...quotaAccountRefreshMetadata(snapshot, new Date(now)),
     });
   });
+  emitQuotaSnapshotWritten(snapshot, new Date(now));
 
   return snapshot;
 }
@@ -292,8 +295,10 @@ export async function refreshUserProviderAccountQuota(
       lastRefreshAt: now,
       lastErrorCode: null,
       updatedAt: now,
+      ...quotaAccountRefreshMetadata(snapshot, new Date(now)),
     });
   });
+  emitQuotaSnapshotWritten(snapshot, new Date(now));
 
   return snapshot;
 }
@@ -321,8 +326,10 @@ async function refreshHostedQuotaAccount(
         lastRefreshAt: now,
         lastErrorCode: null,
         updatedAt: now,
+        ...quotaAccountRefreshMetadata(snapshot, new Date(now)),
       });
     });
+    emitQuotaSnapshotWritten(snapshot, new Date(now));
     return snapshot;
   } catch (err) {
     await db.doc(`users/${uid}/provider_accounts/${account.id}`).update({
@@ -520,9 +527,6 @@ function sanitizeResetsAt(value: unknown): QuotaBucket["resetsAt"] | undefined {
   if (typeof value === "string") {
     return trimmedString(value, undefined, 64);
   }
-  // firebase-admin Timestamp has a `.toDate()` method; duck-type rather
-  // than import the runtime class at module load (this file is shared
-  // between Cloud Functions and other consumers).
   if (isTimestampWithToDate(value)) {
     return value.toDate().toISOString();
   }
@@ -578,32 +582,14 @@ function numberField(raw: unknown): number {
 }
 
 function safeDocSegment(raw: string): string {
-  return (
-    raw
-      .toLowerCase()
-      .replace(/[^a-z0-9_-]/g, "-")
-      .replace(/-+/g, "-")
-      .replace(/^-|-$/g, "") || "hosted"
-  );
+  return raw.toLowerCase().replace(/[^a-z0-9_-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "hosted";
 }
 
 function isSecretLikeKey(key: string): boolean {
   const lower = key.toLowerCase();
-  return (
-    lower.includes("token") ||
-    lower.includes("secret") ||
-    lower.includes("authorization") ||
-    lower.includes("credential") ||
-    lower.includes("cookie") ||
-    lower.includes("password")
-  );
+  return ["token", "secret", "authorization", "credential", "cookie", "password"].some((term) => lower.includes(term));
 }
 
 export const __testing__ = {
   normalizeRunnerSnapshot,
-  sanitizeBuckets,
-  safeDocSegment,
 };
-// Claude Code is supported via the hosted runner when a credential is
-// provided — the runner writes the auth data and runs `claude /usage`.
-HOSTED_RUNNER_PROVIDERS.add("claude-code");

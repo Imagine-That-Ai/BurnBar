@@ -25,7 +25,7 @@ enum ProviderQuotaPersistenceLoadResult<Value> {
 }
 
 struct ProviderQuotaSnapshotStore {
-    let appPaths: OpenBurnBarAppPaths
+    let appPaths: OpenBurnBarCore.OpenBurnBarAppPaths
     let fileManager: FileManager
 
     func loadPersistedSnapshots() -> ProviderQuotaPersistenceLoadResult<(snapshots: [AgentProvider: ProviderQuotaSnapshot], accountSnapshots: [String: ProviderQuotaSnapshot], lastFetch: Date?)> {
@@ -38,12 +38,15 @@ struct ProviderQuotaSnapshotStore {
             decoder.dateDecodingStrategy = .iso8601
             let snapshots = try decoder.decode([ProviderQuotaSnapshot].self, from: data)
             let dict = snapshots.filter(Self.isProviderLevelSnapshot).reduce(into: [AgentProvider: ProviderQuotaSnapshot]()) { result, snapshot in
-                guard let existing = result[snapshot.provider] else {
-                    result[snapshot.provider] = snapshot
+                // Filter out snapshots whose provider string doesn't map to a known
+                // AgentProvider — drop rather than crash or mislabel as .unknown.
+                guard let provider = snapshot.quotaProvider ?? AgentProvider(rawValue: snapshot.provider) else { return }
+                guard let existing = result[provider] else {
+                    result[provider] = snapshot
                     return
                 }
                 if snapshot.fetchedAt > existing.fetchedAt {
-                    result[snapshot.provider] = snapshot
+                    result[provider] = snapshot
                 }
             }
             let accountSnapshots = Dictionary(
@@ -84,11 +87,13 @@ struct ProviderQuotaSnapshotStore {
                     .values
             )
             let data = try encoder.encode(
-                snapshots.sorted {
-                    if $0.provider.displayName != $1.provider.displayName {
-                        return $0.provider.displayName < $1.provider.displayName
+                snapshots.sorted { lhs, rhs in
+                    let lhsName = lhs.quotaProvider?.displayName ?? lhs.provider
+                    let rhsName = rhs.quotaProvider?.displayName ?? rhs.provider
+                    if lhsName != rhsName {
+                        return lhsName < rhsName
                     }
-                    return Self.accountSnapshotKey($0) < Self.accountSnapshotKey($1)
+                    return Self.accountSnapshotKey(lhs) < Self.accountSnapshotKey(rhs)
                 }
             )
             try data.write(to: appPaths.providerQuotaSnapshotsURL, options: .atomic)
@@ -341,3 +346,7 @@ struct ProviderQuotaSnapshotStore {
         return values?.contentModificationDate
     }
 }
+
+// Reference type with internal synchronization; safe to share across actors.
+// sendable-allowlist: internal-lock-snapshot-store
+extension ProviderQuotaSnapshotStore: @unchecked Sendable, ProviderQuotaSnapshotPersisting {}

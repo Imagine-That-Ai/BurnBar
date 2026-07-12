@@ -14,10 +14,6 @@ import OpenBurnBarCore
 // should continue to work via the typealias in DataStore.swift.
 // TODO(1.0): Remove the DataStore typealias and update all import sites.
 
-enum DataStoreLegacyChatThread {
-    static let id = "openburnbar-chat-legacy"
-}
-
 @Observable
 @MainActor
 final class DataStoreCoordinator {
@@ -350,8 +346,8 @@ final class DataStoreCoordinator {
     }
 
     convenience init() throws {
-        let appDir = try OpenBurnBarMigration.prepareSupportDirectory()
-        let dbPath = appDir.appendingPathComponent(OpenBurnBarIdentity.databaseFileName).path
+        let appDir = try OpenBurnBarCore.OpenBurnBarMigration.prepareSupportDirectory()
+        let dbPath = appDir.appendingPathComponent(OpenBurnBarCore.OpenBurnBarIdentity.databaseFileName).path
         // DatabasePool enables concurrent reads (WAL mode) for read-heavy workloads
         // like dashboard aggregation and search queries. Writes remain serialized.
         let openResult = try Self.makeDatabaseOpenResult(path: dbPath)

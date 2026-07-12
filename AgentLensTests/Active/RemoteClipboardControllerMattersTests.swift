@@ -117,8 +117,11 @@ final class RemoteClipboardControllerMattersTests: XCTestCase {
 
     /// The default (production) construction path must keep compiling against the real
     /// `RemoteUnlockCredentialKeyStore` seam — guards the injectable-init signature.
-    func testDefaultControllerConstructs() {
-        _ = RemoteUnlockCredentialController()
+    func testDefaultControllerConstructs_smokeNoCrash() {
+        // Smoke test by intent: construction wires private framework-backed
+        // clipboard dependencies and only exposes success by not trapping.
+        let controller = RemoteUnlockCredentialController()
+        XCTAssertNotNil(controller, "Default (production) init must yield a usable controller")
     }
 
     func testRemoteUnlockCredentialRequiresActiveSessionAttestationBeforeDecrypting() async throws {

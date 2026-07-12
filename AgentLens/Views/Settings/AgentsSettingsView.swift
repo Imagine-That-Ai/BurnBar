@@ -1005,6 +1005,7 @@ private struct QuotaPopoverProviderVisibilityRow: View {
         .onHover { isHovered = $0 }
         .animation(DesignSystem.Animation.snappy, value: isHovered)
         .accessibilityLabel("\(provider.displayName) quota in popover")
+        .accessibilityIdentifier(OBBAccessibilityID.providersRow(provider.providerID.rawValue))
     }
 
     private var connectionDotBackdrop: Color {

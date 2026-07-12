@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 /// Source kind for a Pensieve knowledge chunk. Matches the server `SOURCE_KINDS`
@@ -184,7 +183,7 @@ public enum PensieveKnowledgeChunker {
     }
 
     public static func sha256Hex(_ text: String) -> String {
-        SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
+        PlatformCrypto.sha256Hex(Data(text.utf8))
     }
 
     // MARK: - Prepare a batch
@@ -237,7 +236,7 @@ public enum PensieveKnowledgeChunker {
             let dedupHash = try CloudVaultCrypto.pensieveDedupHash(trimmed, keyData: vaultKey)
             guard seen.insert(dedupHash).inserted else { continue }
 
-            let cloaked = PensieveVectorCloak.embedAndCloak(
+            let cloaked = try PensieveVectorCloak.embedAndCloak(
                 trimmed,
                 vaultKey: vaultKey,
                 isQuery: false,

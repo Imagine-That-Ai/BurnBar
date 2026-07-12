@@ -1,0 +1,74 @@
+name: Windows Candidate Evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_ref:
+        description: "Candidate ref to export and verify"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-candidate-evidence-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  x64-foundation-evidence:
+    name: x64 foundation evidence
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Check out candidate
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          ref: ${{ github.event.inputs.candidate_ref || github.ref }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Export history-independent candidate
+        run: |
+          node --test scripts/windows-port/export-candidate.test.mjs
+          node scripts/windows-port/export-candidate.mjs --output-dir "$env:RUNNER_TEMP\candidate-export"
+
+      - name: Import and verify candidate in disposable checkout
+        run: |
+          $summary = Get-Content -Raw "$env:RUNNER_TEMP\candidate-export\export-summary.json" | ConvertFrom-Json
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/windows-port/import-candidate.ps1 `
+            -ArchivePath $summary.archivePath `
+            -ManifestPath $summary.manifestPath `
+            -DestinationRoot "$env:RUNNER_TEMP\BurnBar-candidate" `
+            -CleanDestination `
+            -VerificationOutputPath "$env:RUNNER_TEMP\candidate-export\candidate-import-verification.json"
+
+      - name: Run current-candidate foundation evidence
+        run: |
+          $summary = Get-Content -Raw "$env:RUNNER_TEMP\candidate-export\export-summary.json" | ConvertFrom-Json
+          pwsh -NoProfile -ExecutionPolicy Bypass -File "$env:RUNNER_TEMP\BurnBar-candidate\scripts\windows-port\run-candidate-evidence.ps1" `
+            -RepoRoot "$env:RUNNER_TEMP\BurnBar-candidate" `
+            -ManifestPath $summary.manifestPath `
+            -OutputDir "$env:RUNNER_TEMP\windows-candidate-evidence\x64" `
+            -Platform x64
+
+      - name: Upload candidate export and host evidence
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: windows-candidate-evidence-x64
+          path: |
+            ${{ runner.temp }}\candidate-export\
+            ${{ runner.temp }}\windows-candidate-evidence\
+          if-no-files-found: warn

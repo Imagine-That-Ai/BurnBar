@@ -1,0 +1,3 @@
+command=rg -n "findJournalEvent|journalEvent\([0-9]|checkpointEvent\([0-9]|cliEvent\([0-9]|seq:\s*[0-9]|observedScenarios\s*=\s*expected|observed\s*=\s*expected|payload\.scenarios|fixed literal|kind.*occurrence|occurrence.*kind" scripts/linux-port/run-provider-hermes-canonical-oracles.mjs scripts/linux-port/run-provider-hermes-evidence.sh
+exit_code=1
+result=no weak fixed-sequence patterns matched

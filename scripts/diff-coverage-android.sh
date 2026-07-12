@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # Diff coverage gate for Android Kotlin changes.
 #
-# Uses JaCoCo XML reports from Gradle test tasks when present.
-# Falls back to requiring tests exist for changed files (no silent pass).
+# Uses JaCoCo XML reports from Gradle test tasks. Production changes never
+# fall back to test-file presence because presence is not coverage evidence.
 #
 # Usage:
 #   diff-coverage-android.sh <base-ref>
 
 set -euo pipefail
 
-repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+default_root="$(cd "$(dirname "$0")/.." && pwd)"
+repo_root="${OPENBURNBAR_COVERAGE_REPO_ROOT:-$default_root}"
 cd "$repo_root"
 
 base_ref="${1:-origin/main}"
@@ -29,98 +30,22 @@ JSON
 )"
 export ANDROID_DIFF_COVERAGE_ALLOWLIST_JSON
 
-changed_files="$(git diff --name-only "$base_ref" HEAD -- '*.kt' 2>/dev/null || true)"
+changed_files="$(git diff --name-only --diff-filter=ACMR "$base_ref" HEAD -- '*.kt' 2>/dev/null || true)"
 if [[ -z "$changed_files" ]]; then
     echo '{"diffCoverage":{"percent":100.0,"passed":true,"changedFiles":0,"surface":"android","method":"no_kotlin_changes"}}'
     exit 0
 fi
 
-jacoco_xml="$repo_root/android/app/build/reports/jacoco/testDebugUnitTest/jacocoTestReport.xml"
-if [[ ! -f "$jacoco_xml" ]]; then
-    echo "::warning::JaCoCo report not found at $jacoco_xml — run ./scripts/test-openburnbar-android.sh first." >&2
-    echo "::warning::Android diff coverage using changed-file test presence gate." >&2
-    # Require that changed production files have corresponding test files or are in test dirs
-    python3 - "$base_ref" "$repo_root" "$threshold" <<'PY'
-import os
-import json
-import subprocess
-import sys
-
-base_ref, repo_root, threshold = sys.argv[1], sys.argv[2], int(sys.argv[3])
-allowlist = json.loads(os.environ.get("ANDROID_DIFF_COVERAGE_ALLOWLIST_JSON") or "{}")
-for path, reason in allowlist.items():
-    if not isinstance(reason, str) or not reason.strip():
-        print(f"::error::Android coverage allowlist entry {path!r} has no reason.", file=sys.stderr)
-        sys.exit(1)
-
-changed = subprocess.check_output(
-    ["git", "diff", "--name-only", base_ref, "HEAD", "--", "*.kt"],
-    cwd=repo_root,
-    text=True,
-).splitlines()
-prod = [p for p in changed if "/src/main/" in p and not p.endswith("BuildConfig.kt")]
-# android/macrobenchmark is on-device benchmark tooling (instrumented-only module, no JVM unit-test source set).
-prod = [p for p in prod if not p.startswith("android/macrobenchmark/")]
-if not prod:
-    print('{"diffCoverage":{"percent":100.0,"passed":true,"surface":"android","method":"test_only_changes"}}')
-    sys.exit(0)
-
-waived = [
-    {"file": path, "method": "allowlist_waiver", "reason": allowlist[path]}
-    for path in prod
-    if path in allowlist
-]
-prod = [p for p in prod if p not in allowlist]
-
-def has_test_evidence(path):
-    base = os.path.splitext(os.path.basename(path))[0]
-    candidates = [
-        path.replace("/src/main/", "/src/test/").replace(".kt", "Test.kt"),
-        path.replace("/src/main/", "/src/androidTest/").replace(".kt", "InstrumentedTest.kt"),
-        f"android/app/src/test/java/com/openburnbar/data/domains/{base}Test.kt",
-        f"android/app/src/androidTest/java/com/openburnbar/data/domains/{base}InstrumentedTest.kt",
-    ]
-    # The Android in-tree data-domain copy is generated from the shared registry.
-    # Its semantic guard lives with the generator, not in android/src/test.
-    if path == "android/app/src/main/java/com/openburnbar/data/domains/DataDomains.kt":
-        candidates.append("packages/data-domains/registry.test.mjs")
-    return any(os.path.isfile(os.path.join(repo_root, candidate)) for candidate in candidates)
-
-missing = [p for p in prod if not has_test_evidence(p)]
-if missing:
-    print(json.dumps({
-        "diffCoverage": {
-            "percent": 0.0,
-            "passed": False,
-            "surface": "android",
-            "method": "jacoco_missing_test_presence",
-            "changedFiles": len(prod),
-            "missingTestsFor": missing[:20],
-        },
-        "waived": waived,
-    }))
-    sys.exit(1)
-
-print(json.dumps({
-    "diffCoverage": {
-        "percent": 100.0,
-        "passed": True,
-        "surface": "android",
-        "method": "test_file_presence",
-        "changedFiles": len(prod),
-    },
-    "waived": waived,
-}))
-sys.exit(0)
-PY
-    # The presence-gate verdict is authoritative when no JaCoCo report exists;
-    # set -e already aborted above on a failed gate, so reaching here is a pass.
-    # Outside CI (no JaCoCo), fail-closed so the gameable presence path is not
-    # used as a local-dev escape hatch. Closes OPUS-F-011.
-    if [[ -z "${CI:-}" ]]; then
-      echo "::warning::Android diff-coverage fell back to presence-based check outside CI. Set CI=1 or generate JaCoCo reports for real line evidence."
-    fi
+production_changed="$(printf '%s\n' "$changed_files" | awk '/\/src\/main\// && $0 !~ /^android\/macrobenchmark\//')"
+if [[ -z "$production_changed" ]]; then
+    echo '{"diffCoverage":{"percent":100.0,"passed":true,"changedFiles":0,"surface":"android","method":"no_production_kotlin"}}'
     exit 0
+fi
+
+jacoco_xml="${ANDROID_JACOCO_XML:-$repo_root/android/app/build/reports/jacoco/testDebugUnitTest/jacocoTestReport.xml}"
+if [[ ! -f "$jacoco_xml" ]]; then
+    echo "::error::JaCoCo report not found at $jacoco_xml. Run :app:jacocoTestReport before gating production Kotlin changes." >&2
+    exit 1
 fi
 
 export BASE_REF="$base_ref"
@@ -146,7 +71,7 @@ for path, reason in allowlist.items():
         raise SystemExit(1)
 
 changed = subprocess.check_output(
-    ["git", "diff", "--name-only", base_ref, "HEAD", "--", "*.kt"],
+    ["git", "diff", "--name-only", "--diff-filter=ACMR", base_ref, "HEAD", "--", "*.kt"],
     cwd=repo_root,
     text=True,
 ).splitlines()
@@ -171,35 +96,18 @@ for rel_path in changed:
         coverage_candidates.append(rel_path)
 changed = coverage_candidates
 
-test_evidence_details = []
-coverage_changed = []
-for rel_path in changed:
-    if (
-        rel_path == "android/app/src/main/java/com/openburnbar/data/domains/DataDomains.kt"
-        and os.path.isfile(os.path.join(repo_root, "packages/data-domains/registry.test.mjs"))
-    ):
-        test_evidence_details.append({
-            "file": rel_path,
-            "executableLines": 0,
-            "coveredLines": 0,
-            "percent": 100.0,
-            "method": "test_file_presence",
-        })
-    else:
-        coverage_changed.append(rel_path)
-changed = coverage_changed
 if not changed:
     print(json.dumps({
         "diffCoverage": {
             "percent": 100.0,
             "threshold": threshold,
             "passed": True,
-            "changedFiles": len(test_evidence_details),
+            "changedFiles": 0,
             "changedLines": 0,
             "surface": "android",
-            "method": "test_file_presence",
+            "method": "all_changes_waived",
         },
-        "details": test_evidence_details,
+        "details": [],
         "waived": waived,
     }, indent=2))
     raise SystemExit(0)
@@ -231,11 +139,18 @@ for line in git_output.splitlines():
 tree = ET.parse(jacoco_xml)
 root = tree.getroot()
 
-# Build line coverage map: sourcefile name -> {line: covered}
+# Build a package-qualified coverage map. JaCoCo sourcefile names are not
+# unique: different packages and modules routinely contain Foo.kt. The
+# package/name key must resolve to exactly one changed repo path.
 coverage = {}
 for package in root.iter("package"):
+    package_name = (package.get("name") or "").strip("/")
     for sf in package.iter("sourcefile"):
         name = sf.get("name")
+        key = f"{package_name}/{name}" if package_name else name
+        if key in coverage:
+            print(f"::error::JaCoCo contains duplicate source identity {key!r}.")
+            raise SystemExit(1)
         lines = {}
         for line_el in sf.iter("line"):
             ln = int(line_el.get("nr"))
@@ -243,40 +158,68 @@ for package in root.iter("package"):
             ci = int(line_el.get("ci", "0"))
             if mi + ci > 0:
                 lines[ln] = ci > 0
-        coverage[name] = lines
+        coverage[key] = lines
 
-# Gate floor: a file whose diff touches fewer than DIFF_COVERAGE_ANDROID_MIN_
-# GATED_LINES executable lines (default 10) is REPORTED but not gated. The
-# 80% bar exists so new logic ships with tests; declaration-touch diffs
-# (constant renames, import shuffles — e.g. the 2026-06-11 VAL_ sweep: 58
-# files, 1-6 executable lines each) carry no new logic, and their coverage
-# status is exactly whatever it was before the touch. Floor-skipped files are
-# listed under belowGateFloor in the verdict — visible, never hidden — and
-# any file at or above the floor is held to the full threshold.
-gate_floor = int(os.environ.get("DIFF_COVERAGE_ANDROID_MIN_GATED_LINES", "10"))
+def source_identity(rel_path):
+    match = re.search(r"/src/main/(?:java|kotlin)/(.*)$", rel_path)
+    return match.group(1) if match else None
+
+changed_by_identity = {}
+for rel_path in changed:
+    identity = source_identity(rel_path)
+    if not identity:
+        print(f"::error::Cannot derive Kotlin source identity from {rel_path!r}.")
+        raise SystemExit(1)
+    changed_by_identity.setdefault(identity, []).append(rel_path)
+
+ambiguous = {
+    identity: paths
+    for identity, paths in changed_by_identity.items()
+    if len(paths) != 1
+}
+if ambiguous:
+    print("::error::JaCoCo source identities map to multiple changed repo paths: " + json.dumps(ambiguous, sort_keys=True))
+    raise SystemExit(1)
 
 total_exc = 0
 total_hit = 0
 details = []
-below_floor = []
+missing_evidence = []
 for rel_path in changed:
-    base = os.path.basename(rel_path)
-    line_cov = coverage.get(base, {})
-    exc = sum(1 for ln in set(file_blocks.get(rel_path, [])) if ln in line_cov)
-    hit = sum(1 for ln in set(file_blocks.get(rel_path, [])) if line_cov.get(ln))
-    pct = round(hit * 100.0 / exc, 2) if exc > 0 else 0.0
-    entry = {"file": rel_path, "executableLines": exc, "coveredLines": hit, "percent": pct}
-    if exc > 0 and exc < gate_floor:
-        below_floor.append(entry)
+    identity = source_identity(rel_path)
+    line_cov = coverage.get(identity)
+    changed_lines = set(file_blocks.get(rel_path, []))
+    if line_cov is None:
+        missing_evidence.append(rel_path)
+        details.append({
+            "file": rel_path,
+            "executableLines": 0,
+            "coveredLines": 0,
+            "percent": 0.0,
+            "method": "no_jacoco_source",
+            "sourceIdentity": identity,
+        })
         continue
+    exc = sum(1 for ln in changed_lines if ln in line_cov)
+    hit = sum(1 for ln in changed_lines if line_cov.get(ln))
+    pct = round(hit * 100.0 / exc, 2) if exc > 0 else 0.0
+    entry = {
+        "file": rel_path,
+        "executableLines": exc,
+        "coveredLines": hit,
+        "percent": pct,
+        "method": "jacoco_line_intersection",
+        "sourceIdentity": identity,
+    }
+    if changed_lines and exc == 0:
+        entry["method"] = "no_changed_line_evidence"
+        missing_evidence.append(rel_path)
     total_exc += exc
     total_hit += hit
-    if file_blocks.get(rel_path):
-        details.append(entry)
-details.extend(test_evidence_details)
+    details.append(entry)
 
 total_pct = 0.0 if total_exc <= 0 else round(total_hit * 100.0 / total_exc, 2)
-passed = total_exc <= 0 or total_pct >= threshold
+passed = not missing_evidence and total_exc > 0 and total_pct >= threshold
 print(json.dumps({
     "diffCoverage": {
         "percent": total_pct,
@@ -284,15 +227,14 @@ print(json.dumps({
         "passed": passed,
         "changedFiles": len(details),
         "changedLines": total_exc,
-        "gateFloorLines": gate_floor,
-        "belowGateFloorFiles": len(below_floor),
+        "missingEvidenceFiles": len(missing_evidence),
         "surface": "android",
         "method": "jacoco_line_intersection",
     },
     "details": details,
-    "belowGateFloor": below_floor,
+    "missingEvidence": missing_evidence,
     "waived": waived,
 }, indent=2))
-if not passed and total_exc > 0:
+if not passed:
     raise SystemExit(1)
 PY

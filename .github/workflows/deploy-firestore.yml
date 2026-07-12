@@ -18,6 +18,10 @@ on:
       - "scripts/ci/check-firestore-deploy-drift.mjs"
       - "scripts/ci/deploy-firebase-rules-releases.mjs"
       - "functions/scripts/test-firestore-rules.mjs"
+      - "firestore-rules-tests/package.json"
+      - "firestore-rules-tests/package-lock.json"
+      - "firestore-rules-tests/storage-rules.test.js"
+      - "scripts/ci/test-storage-rules.sh"
   schedule:
     - cron: "15 11 * * 1"
   workflow_dispatch:
@@ -52,7 +56,7 @@ jobs:
           cache: npm
           cache-dependency-path: functions/package-lock.json
 
-      - uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287 # v5.3.0 (node24-native)
+      - uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.3.0 (node24-native)
         with:
           java-version: "21"
           distribution: temurin
@@ -62,6 +66,9 @@ jobs:
 
       - name: Run Firestore rules emulator tests
         run: npm --prefix functions run test:firestore-rules
+
+      - name: Run Storage rules emulator tests
+        run: bash scripts/ci/test-storage-rules.sh
 
       - name: Prepare Firebase deploy config and CLI before auth
         run: |
@@ -104,7 +111,7 @@ jobs:
             exit 1
           fi
           "$FIREBASE_TOOLS_BIN" deploy \
-            --only firestore:indexes \
+            --only firestore:indexes,storage \
             --project "$FIREBASE_PROJECT" \
             --config "$FIREBASE_FIRESTORE_CI_CONFIG" \
             --non-interactive
@@ -112,6 +119,53 @@ jobs:
 
       - name: Drift check deployed Firestore rules and indexes
         run: node scripts/ci/check-firestore-deploy-drift.mjs "$FIREBASE_PROJECT"
+
+      - name: Verify live App Check enforcement
+        env:
+          OPENBURNBAR_FIREBASE_PROJECT: ${{ env.FIREBASE_PROJECT }}
+        run: |
+          set -euo pipefail
+          python3 - "$OPENBURNBAR_FIREBASE_PROJECT" <<'PY'
+          import json
+          import subprocess
+          import sys
+          import urllib.request
+
+          project = sys.argv[1]
+          project_number = subprocess.check_output(
+              ["gcloud", "projects", "describe", project, "--format=value(projectNumber)"],
+              text=True,
+          ).strip()
+          token = subprocess.check_output(
+              ["gcloud", "auth", "print-access-token"],
+              text=True,
+          ).strip()
+          if not project_number or not token:
+              raise SystemExit("App Check verification could not resolve project credentials")
+
+          expected = ("firestore.googleapis.com", "firebasestorage.googleapis.com")
+          failures = []
+          for service in expected:
+              url = (
+                  "https://firebaseappcheck.googleapis.com/v1beta/"
+                  f"projects/{project_number}/services/{service}"
+              )
+              request = urllib.request.Request(
+                  url,
+                  headers={
+                      "Authorization": f"Bearer {token}",
+                      "X-Goog-User-Project": project,
+                  },
+              )
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  payload = json.load(response)
+              mode = payload.get("enforcementMode")
+              print(json.dumps({"project": project, "service": service, "enforcementMode": mode}))
+              if mode != "ENFORCED":
+                  failures.append(f"{service}={mode or '<unset>'}")
+          if failures:
+              raise SystemExit("App Check is not enforced: " + ", ".join(failures))
+          PY
 
       # run-09 F-RR09-001 / F-RR09-007: prove every declared ttl:true override is
       # actually a LIVE Firestore TTL policy (ephemeral uid+token docs must

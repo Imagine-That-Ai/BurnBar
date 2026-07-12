@@ -163,7 +163,7 @@ struct SubscriptionCard: View {
 
             Spacer()
 
-            QuotaSourceBadge(source: entry.snapshot.source, confidence: entry.snapshot.confidence)
+            QuotaSourceBadge(source: entry.snapshot.sourceKind, confidence: entry.snapshot.confidence)
         }
     }
 
@@ -221,7 +221,7 @@ struct SubscriptionCard: View {
 
                 if visibleDisplayableBuckets.isEmpty {
                     Text(entry.allDisplayableBuckets.isEmpty
-                         ? entry.snapshot.statusMessage
+                         ? (entry.snapshot.statusMessage ?? "")
                          : "No quota bars selected. Use Show all buckets to restore them.")
                         .font(DesignSystem.Typography.caption)
                         .foregroundStyle(DesignSystem.Colors.textSecondary)
@@ -422,7 +422,7 @@ struct SubscriptionCard: View {
             }
 
             if entry.allDisplayableBuckets.isEmpty {
-                Text(entry.snapshot.statusMessage)
+                Text(entry.snapshot.statusMessage ?? "")
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
             } else {

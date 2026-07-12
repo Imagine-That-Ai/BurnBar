@@ -16,6 +16,7 @@
 | **Cursor** | `CursorQuotaAdapter.swift` | `.estimated` | `GET cursor.com/api/usage-summary` | Included usage, limits, and USD spent |
 | **Cursor Agent CLI**| `CursorAgentParser.swift` | `.exact` | `~/.cursor-agent/sessions/` (`transcript.jsonl`, `summary.json`, `*.jsonl`) | Local session tokens; exact token limits |
 | **Factory** | `FactoryQuotaAdapter.swift` | `.exact` / `.estimated` | `POST app.factory.ai/api/...` | Plan tier, rolling usage, and lane metrics |
+| **Junie (JetBrains)** | `JunieParser.swift` | `.exact` / `.estimated` | `~/.junie/sessions/index.jsonl` + `<sessionId>/events.jsonl` (+ live latches in `~/.junie/processes/*.json`) | Local session tokens (explicit usage buckets when present, character-estimate fallback otherwise); no vendor quota API |
 | **MiniMax** | `MiniMaxQuotaAdapter.swift` | `.exact` | `GET minimax.io coding-plan remains` | Remaining quota counts per model |
 | **MiMo (Xiaomi)**| `MimoQuotaAdapter.swift` | `.exact` / `.estimated` | `GET token-plan-{cn,sgp,ams}.xiaomimimo.com` | Regional Token Plan remaining credits |
 | **Z.ai** | `ZAIQuotaAdapter.swift` | `.exact` | `GET api.z.ai monitor/usage/quota` | Undocumented monitor limits and MCP usage |
@@ -37,6 +38,8 @@
 | **Windsurf** | _none_ / Local scans | `.unavailable` | Install detection | Visual environment detection only |
 | **Goose** | _none_ / Local scans | `.unavailable` | Install detection | Visual environment detection only |
 | **OpenClaw** | _none_ / Local scans | `.unavailable` | Install detection | Visual environment detection only |
+| **OpenClaude** | `OpenClaudeQuotaAdapter` | `.unavailable` | Install detection / `openclaude` CLI | Spawned Claude Code fork; no usage API or programmatic quota source |
+| **OMP** | `OMPQuotaAdapter` | `.exact` | `omp usage --json --redact` | Oh My Pi local CLI quota reports by provider/account/window |
 | **OpenRouter** | Routed via API key | `.exact` | `GET openrouter.ai/v1/activity` | Per-call exact cost in USD (no quota limits) |
 | **Anthropic** | Admin API key | `.estimated` | `GET api.anthropic.com/v1/organizations` | Org-wide messages usage report (~24h lag) |
 
@@ -73,6 +76,35 @@
 | **Pi Agent** | None | N/A (local file) | N/A | Offline workspace interaction logger |
 | **xAI (Grok)** | API key / Management key | `xai-…` inference key; `xai-mgmt-…` for GrokBuild balance | `Authorization: Bearer {key}` | SuperGrok pacing log + Management API; daemon gateway emits pacing events on routed xAI traffic |
 | **Grok Build CLI** | Local CLI + optional `XAI_API_KEY` | `grok` binary; sessions under `~/.grok/` | OpenBurnBar gateway block in `config.toml` | Switcher profile `Grok Build`; vendor identity stays `AgentProvider.xAI` |
+| **OMP** | Local CLI | `omp` binary | N/A | Uses installed Oh My Pi CLI; OpenBurnBar stores no provider credential |
+
+---
+
+## Ollama Local Endpoints
+
+`ollama-local` supports multiple local or LAN Ollama daemons through
+`ollamaEndpoints` on the provider config:
+
+```json
+{
+  "providerID": "ollama-local",
+  "baseURL": "http://localhost:11434/v1",
+  "ollamaEndpoints": [
+    {"id": "desktop", "label": "Desktop", "baseURL": "http://localhost:11434", "priority": 0, "enabled": true},
+    {"id": "studio", "label": "Studio", "baseURL": "http://studio.local:11434", "priority": 10, "enabled": true}
+  ]
+}
+```
+
+When the array is absent, the daemon synthesizes one enabled `default` endpoint
+from `OLLAMA_HOST`, then the legacy provider base URL with `/v1` stripped, then
+`http://localhost:11434`. Each enabled endpoint becomes its own route slot
+(`credentialSlotID == endpoint.id`), so cooldown on one local daemon does not
+remove the others from routing.
+
+Endpoint `baseURL` values must be `http` or `https`. `apiKeyRef` is optional and
+points at a daemon secret-store key for secured LAN proxies; local Ollama uses an
+empty key by default.
 
 ---
 
@@ -95,6 +127,7 @@
 | Kimi | `GET https://kimi.com/api/v1/user/billing` | HTTP | Kimi BillingService payload returning polled usage logs |
 | Hermes | `~/.hermes/sessions/*.jsonl` | File read | Offline telemetry schemas parsing UI steps, duration, and local models |
 | Pi Agent | `~/.pi/sessions/*.jsonl` | File read | Scrapes conversation tokens and environment properties offline |
+| OMP | `omp usage --json --redact` | Local process | Redacted machine-readable usage reports with provider windows and quota buckets |
 
 ---
 
@@ -119,6 +152,7 @@
 | Kimi | On refresh (polled) | Yes |
 | Hermes | Real-time on automation step | None |
 | Pi Agent | Real-time on workspace transaction | None |
+| OMP | On refresh (polled) | None |
 
 ---
 

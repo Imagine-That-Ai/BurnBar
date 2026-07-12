@@ -1,0 +1,80 @@
+{
+  "generatedAt": "2026-07-08T03:19:09.880Z",
+  "method": "localStorage-store-execution-plus-runtime-source-scan",
+  "deniedBeforeConsent": true,
+  "consent": {
+    "inAppOnly": true,
+    "declinedGlobalCapture": true,
+    "acknowledgedAt": "2026-07-08T03:19:09.879Z"
+  },
+  "crud": {
+    "created": {
+      "id": "a3ed2247-aefa-481a-9b22-9059ee5e5bbc",
+      "title": "Signature",
+      "trigger": ";;sig",
+      "body": "-- OpenBurnBar",
+      "enabled": true,
+      "scope": "in-app",
+      "updatedAt": "2026-07-08T03:19:09.879Z"
+    },
+    "expanded": {
+      "output": "reply -- OpenBurnBar",
+      "applied": "a3ed2247-aefa-481a-9b22-9059ee5e5bbc"
+    },
+    "disabled": {
+      "id": "a3ed2247-aefa-481a-9b22-9059ee5e5bbc",
+      "title": "Signature",
+      "trigger": ";;sig",
+      "body": "-- OpenBurnBar",
+      "enabled": false,
+      "scope": "in-app",
+      "updatedAt": "2026-07-08T03:19:09.880Z"
+    },
+    "disabledProbe": {
+      "output": "reply ;;sig"
+    },
+    "persistedCount": 1,
+    "persistedAfterRestartCount": 1,
+    "persistenceSurvivesRestart": true,
+    "afterDeleteCount": 0
+  },
+  "enabledDisabledBehavior": {
+    "enabledOutput": "reply -- OpenBurnBar",
+    "disabledOutput": "reply ;;sig",
+    "disabledPreservesTrigger": true
+  },
+  "permissionDeniedBehavior": {
+    "deniedBeforeConsent": true,
+    "userVisibleFeedback": "Acknowledge in-app-only expansion before saving snippets."
+  },
+  "packagedScreenshots": [
+    "screenshot-route-text-expansion.png"
+  ],
+  "parityLedgerSubstitution": {
+    "feature": "System-wide text expansion (Wayland)",
+    "macos": "CGEvent session tap + Accessibility",
+    "linux": "In-app expansion only (v1)",
+    "substitution": "Future IME/fcitx/IBus integration with per-DE tests; no evdev/global keylogger in v1."
+  },
+  "unsafeGlobalKeyloggerProof": {
+    "globalCapture": false,
+    "scan": [
+      {
+        "file": "src/surfaces/TextExpansionSurface.tsx",
+        "forbiddenMatches": [],
+        "keydownListeners": 0
+      },
+      {
+        "file": "src/textExpansionStore.ts",
+        "forbiddenMatches": [],
+        "keydownListeners": 0
+      },
+      {
+        "file": "src/textExpansionConsent.ts",
+        "forbiddenMatches": [],
+        "keydownListeners": 0
+      }
+    ],
+    "conclusion": "Runtime text expansion files use explicit in-app buffer substitution and contain no global capture path."
+  }
+}

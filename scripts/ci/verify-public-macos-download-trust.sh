@@ -3,31 +3,86 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-site_config="$repo_root/website/src/data/site.ts"
-
-if [[ "$(uname -s)" != "Darwin" ]]; then
-  echo "::error::Public macOS download trust verification must run on macOS." >&2
-  exit 78
-fi
+site_config="${1:-$repo_root/website/src/data/site.ts}"
 
 if [[ ! -f "$site_config" ]]; then
   echo "::error::SITE config not found at $site_config" >&2
   exit 66
 fi
 
-site_metadata="$(
-  node --input-type=module - "$site_config" <<'NODE'
+read_site_metadata() {
+  OPENBURNBAR_REPO_ROOT="$repo_root" node --input-type=module - "$site_config" <<'NODE'
+import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 const siteConfig = process.argv[2];
-const text = readFileSync(siteConfig, "utf8");
+const source = readFileSync(siteConfig, "utf8");
+const require = createRequire(import.meta.url);
+const repoRoot = process.env.OPENBURNBAR_REPO_ROOT;
+if (!repoRoot) {
+  throw new Error("OPENBURNBAR_REPO_ROOT must be set by the verifier wrapper");
+}
+const ts = require(resolve(repoRoot, "website/node_modules/typescript"));
+const sourceFile = ts.createSourceFile(siteConfig, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+
+function unwrapExpression(expression) {
+  let current = expression;
+  while (
+    ts.isAsExpression(current) ||
+    ts.isTypeAssertionExpression(current) ||
+    ts.isSatisfiesExpression(current) ||
+    ts.isParenthesizedExpression(current)
+  ) {
+    current = current.expression;
+  }
+  return current;
+}
+
+function exportedSiteObject() {
+  for (const statement of sourceFile.statements) {
+    if (!ts.isVariableStatement(statement)) {
+      continue;
+    }
+    const isExported = statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword);
+    if (!isExported) {
+      continue;
+    }
+    for (const declaration of statement.declarationList.declarations) {
+      if (declaration.name.getText(sourceFile) !== "SITE" || !declaration.initializer) {
+        continue;
+      }
+      const initializer = unwrapExpression(declaration.initializer);
+      if (!ts.isObjectLiteralExpression(initializer)) {
+        throw new Error("website/src/data/site.ts must export SITE as a declarative object literal");
+      }
+      return initializer;
+    }
+  }
+  throw new Error("website/src/data/site.ts must export a declarative SITE object");
+}
+
+const siteObject = exportedSiteObject();
+
+function propertyNameText(name) {
+  if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) {
+    return name.text;
+  }
+  return undefined;
+}
 
 function stringField(name) {
-  const match = text.match(new RegExp(`${name}:\\s*"([^"]*)"`));
-  if (!match) {
-    throw new Error(`SITE.${name} was not found`);
+  const property = siteObject.properties.find(
+    (entry) => ts.isPropertyAssignment(entry) && propertyNameText(entry.name) === name,
+  );
+  if (!property) {
+    throw new Error(`SITE.${name} must be a literal string`);
   }
-  return match[1];
+  const value = unwrapExpression(property.initializer);
+  if (!ts.isStringLiteral(value) && !ts.isNoSubstitutionTemplateLiteral(value)) {
+    throw new Error(`SITE.${name} must be a literal string`);
+  }
+  return value.text;
 }
 
 const base = stringField("macDownloadBaseUrl").replace(/\/+$/, "");
@@ -55,7 +110,19 @@ console.log(url.href);
 console.log(expectedVersion);
 console.log(file);
 NODE
-)"
+}
+
+if [[ "${OPENBURNBAR_PRINT_PUBLIC_MACOS_DOWNLOAD_METADATA:-}" == "1" ]]; then
+  read_site_metadata
+  exit 0
+fi
+
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  echo "::error::Public macOS download trust verification must run on macOS." >&2
+  exit 78
+fi
+
+site_metadata="$(read_site_metadata)"
 download_url="$(printf '%s\n' "$site_metadata" | sed -n '1p')"
 expected_version="$(printf '%s\n' "$site_metadata" | sed -n '2p')"
 mac_release_file="$(printf '%s\n' "$site_metadata" | sed -n '3p')"
@@ -158,6 +225,43 @@ fail_gate "App bundle code signature verification" \
 bash "$repo_root/scripts/ci/verify-apple-release-firebase-config.sh" "$app_path"
 bash "$repo_root/scripts/ci/verify-apple-appcheck-release-artifact.sh" "$app_path"
 
+entitlements_plist="$tmpdir/app-entitlements.plist"
+codesign -d --entitlements :- "$app_path" > "$entitlements_plist" 2>/dev/null
+bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$info_plist" 2>/dev/null || true)"
+expected_app_identifier="${expected_team_id}.${bundle_id}"
+actual_app_identifier="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.application-identifier' "$entitlements_plist" 2>/dev/null || true)"
+actual_team_identifier="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.developer.team-identifier' "$entitlements_plist" 2>/dev/null || true)"
+actual_keychain_groups="$(/usr/libexec/PlistBuddy -c 'Print :keychain-access-groups' "$entitlements_plist" 2>/dev/null || true)"
+if [[ "$actual_app_identifier" != "$expected_app_identifier" || "$actual_team_identifier" != "$expected_team_id" ]]; then
+  echo "::error::Public app identity entitlements are wrong: app='${actual_app_identifier:-missing}' team='${actual_team_identifier:-missing}' expected app='$expected_app_identifier' team='$expected_team_id'." >&2
+  exit 1
+fi
+if ! grep -q "$expected_app_identifier" <<<"$actual_keychain_groups"; then
+  echo "::error::Public app is missing Firebase Auth Keychain group $expected_app_identifier." >&2
+  printf '%s\n' "$actual_keychain_groups" >&2
+  exit 1
+fi
+
+embedded_profile="$app_path/Contents/embedded.provisionprofile"
+if [[ ! -f "$embedded_profile" ]]; then
+  echo "::error::Public app is missing embedded MAC_APP_DIRECT provisioning profile." >&2
+  exit 1
+fi
+embedded_profile_plist="$tmpdir/embedded-profile.plist"
+security cms -D -i "$embedded_profile" > "$embedded_profile_plist"
+profile_all_devices="$(/usr/libexec/PlistBuddy -c 'Print :ProvisionsAllDevices' "$embedded_profile_plist" 2>/dev/null || true)"
+profile_app_identifier="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.application-identifier' "$embedded_profile_plist" 2>/dev/null || true)"
+profile_keychain_groups="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:keychain-access-groups' "$embedded_profile_plist" 2>/dev/null || true)"
+if [[ "$profile_all_devices" != "true" || "$profile_app_identifier" != "$expected_app_identifier" ]]; then
+  echo "::error::Embedded profile must be all-devices and authorize $expected_app_identifier; found allDevices='${profile_all_devices:-missing}' app='${profile_app_identifier:-missing}'." >&2
+  exit 1
+fi
+if ! grep -q "${expected_team_id}\\.\\*\\|${expected_app_identifier}" <<<"$profile_keychain_groups"; then
+  echo "::error::Embedded profile does not authorize the $expected_app_identifier Keychain group." >&2
+  printf '%s\n' "$profile_keychain_groups" >&2
+  exit 1
+fi
+
 signature="$(
   codesign -dv --verbose=4 "$app_path" 2>&1 || true
 )"
@@ -180,4 +284,4 @@ fi
 fail_gate "Gatekeeper app execution assessment" \
   spctl -a -vv --type execute "$app_path"
 
-echo "PASS: public macOS download is Developer ID signed by team $expected_team_id, version $expected_version, notarized, stapled, Firebase-configured, App-Check-clean, and Gatekeeper accepted."
+echo "PASS: public macOS download is Developer ID signed by team $expected_team_id, version $expected_version, notarized, stapled, Firebase-configured, App-Check-clean, Firebase-Keychain-profiled, and Gatekeeper accepted."

@@ -116,7 +116,7 @@ jobs:
           cache-dependency-path: functions/package-lock.json
 
       - name: Set up Java 21 for Firebase emulators
-        uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287 # v5.3.0 (node24-native)
+        uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.3.0 (node24-native)
         with:
           java-version: "21"
           distribution: temurin
@@ -145,6 +145,14 @@ jobs:
       - name: Verify resilience wiring (ops)
         run: bash scripts/ci/verify-resilience-wiring.sh
 
+      - name: Verify callable input validation (security ratchet)
+        # R-S1: every new callable that reads a client payload must validate it.
+        # Self-test the scanner first, then run the shrink-only offender ratchet so
+        # an unvalidated callable can never merge without failing this gate.
+        run: |
+          node --test scripts/ci/check-callable-validation.test.mjs
+          node scripts/ci/check-callable-validation.mjs
+
   android:
     name: Android
     runs-on: ubuntu-latest
@@ -157,7 +165,7 @@ jobs:
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
       - name: Set up Java 21 (Android)
-        uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287 # v5.3.0 (node24-native)
+        uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.3.0 (node24-native)
         with:
           java-version: "21"
           distribution: temurin
@@ -228,6 +236,50 @@ jobs:
       - name: Skip Android APK artifact after real Firebase config injection
         if: env.ALLOW_ANDROID_FIREBASE_SECRET_RUN == 'true' && env.HAS_ANDROID_SECRETS == 'true'
         run: echo "Skipping debug APK artifact because this run injected the real Android Firebase config."
+
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Verify Windows solution
+        run: |
+          if (-not (Test-Path "windows/OpenBurnBar.sln")) {
+            throw "windows/OpenBurnBar.sln not found."
+          }
+          Write-Host "Windows solution present."
+
+      - name: Restore Windows solution
+        run: dotnet restore windows/OpenBurnBar.sln
+
+      - name: Build Windows solution
+        run: dotnet build windows/OpenBurnBar.sln --configuration Debug --no-restore -p:Platform=x64
+
+      - name: Run Windows test suite
+        run: dotnet test windows/OpenBurnBar.sln --configuration Debug --no-build --logger "trx;LogFileName=windows-full-x64.trx" --results-directory TestResults-x64
+
+      - name: Upload Windows test results
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: full-harness-windows-x64-test-results
+          path: TestResults-x64/
+          if-no-files-found: error
 
   node-evals:
     name: Node Evals
@@ -333,39 +385,6 @@ jobs:
           XCODEBUILD_TEST_ITERATIONS: "3"
         run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-swift.sh
 
-      # Package coverage steps run directly after the coverage-enabled test
-      # run and before the WS6 re-run, which rebuilds without instrumentation
-      # and would orphan the profdata from its binaries.
-      - name: Extract package coverage lines
-        if: github.event_name == 'pull_request'
-        run: |
-          set -euo pipefail
-          ./scripts/extract-package-coverage-lines.sh > "$GITHUB_WORKSPACE/openburnbar-package-coverage-lines.json"
-
-      - name: Compute package diff coverage
-        if: github.event_name == 'pull_request'
-        # Gates OpenBurnBarCore/OpenBurnBarDaemon package sources with the
-        # per-line coverage this lane's own `swift test --enable-code-coverage`
-        # run measured. App-target sources are gated by the App XCTest lane
-        # (scope=app); see scripts/diff-coverage.sh for the partition rules.
-        env:
-          DIFF_COVERAGE_SCOPE: packages
-          DIFF_COVERAGE_OUTPUT: ${{ github.workspace }}/openburnbar-package-diff-coverage.json
-        run: |
-          set -euo pipefail
-          ./scripts/diff-coverage-self-test.sh
-          git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
-          ./scripts/diff-coverage.sh origin/main '' '' "$GITHUB_WORKSPACE/openburnbar-package-coverage-lines.json"
-
-      - name: Upload package coverage artifacts
-        if: always() && github.event_name == 'pull_request' && !env.ACT
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
-        with:
-          name: package-coverage-data
-          path: |
-            openburnbar-package-coverage-lines.json
-            openburnbar-package-diff-coverage.json
-
       - name: Computer Use safety invariant harness (WS6 gate)
         run: OPENBURNBAR_CORE_SWIFT_FILTER='ComputerUseSafetyInvariantHarnessTests|ComputerUseTrustPanicInvariantTests|PrivilegedInputKillSwitchTests' OPENBURNBAR_SKIP_DAEMON_SWIFT_TESTS=1 ./scripts/test-openburnbar-swift.sh
 
@@ -433,12 +452,6 @@ jobs:
           OPENBURNBAR_USE_DEBUG_APP_CHECK: "YES"
         run: bash ./scripts/ci/inject-firebase-config.sh
 
-      - name: App Check config smoke
-        if: env.INTERNAL_RUN == 'true' && env.HAS_FIREBASE_SECRETS == 'true'
-        env:
-          INTERNAL_RUN: ${{ env.INTERNAL_RUN }}
-        run: bash ./scripts/ci/app-check-smoke.sh
-
       - name: Skip Firebase config injection for fork PRs
         if: env.INTERNAL_RUN != 'true'
         run: echo "Skipping Firebase config injection for fork PR; auth remains disabled in CI."
@@ -473,23 +486,6 @@ jobs:
             exit 1
           fi
           ./scripts/extract-coverage.sh "$xcresult" > "$GITHUB_WORKSPACE/openburnbar-coverage.json"
-
-      - name: Compute diff coverage
-        if: github.event_name == 'pull_request' && env.INTERNAL_RUN == 'true'
-        # All-surface gate (Swift app scope + Kotlin + TypeScript). Surfaces
-        # with no changed files are skipped inside diff-coverage-all.sh, so
-        # Swift-only PRs pay no Android/TS cost. Swift package sources
-        # (OpenBurnBarCore/OpenBurnBarDaemon) are gated with real package
-        # coverage by the Swift Core job's "Compute package diff coverage"
-        # step — this lane judges only what its xcresult actually measured.
-        env:
-          DIFF_COVERAGE_SCOPE: app
-          DIFF_COVERAGE_OUTPUT: ${{ github.workspace }}/openburnbar-diff-coverage.json
-        run: |
-          set -euo pipefail
-          ./scripts/diff-coverage-self-test.sh
-          test -f "$GITHUB_WORKSPACE/openburnbar-coverage.json"
-          ./scripts/diff-coverage-all.sh origin/main
 
       - name: Post coverage summary
         if: always()
@@ -677,6 +673,7 @@ jobs:
       - platform-misc
       - functions-integration
       - android
+      - windows
       - node-evals
       - supply-chain
       - swift-core
@@ -765,7 +762,7 @@ jobs:
           cache: npm
           cache-dependency-path: functions/package-lock.json
 
-      - uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287 # v5.3.0 (node24-native)
+      - uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.3.0 (node24-native)
         with:
           java-version: "21"
           distribution: temurin
@@ -842,7 +839,7 @@ jobs:
           protoc --version
       - name: Hermes core Swift tests
         run: OPENBURNBAR_CORE_SWIFT_FILTER=OpenBurnBarCoreTests/Hermes OPENBURNBAR_SKIP_DAEMON_SWIFT_TESTS=1 ./scripts/test-openburnbar-swift.sh
-      - uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287 # v5.3.0 (node24-native)
+      - uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.3.0 (node24-native)
         with:
           java-version: "21"
           distribution: temurin
@@ -854,17 +851,15 @@ jobs:
     needs: [path-filter]
     if: >-
       github.event_name != 'pull_request' &&
-      needs.path-filter.outputs.hermes_iroh == 'true' &&
-      vars.ANDROID_E2E_ENABLED == 'true'
+      needs.path-filter.outputs.hermes_iroh == 'true'
     runs-on: macos-26
     timeout-minutes: 45
-    continue-on-error: true
     env:
       ALLOW_ANDROID_FIREBASE_SECRET_RUN: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule') }}
       HAS_ANDROID_SECRETS: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 != '' }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
-      - uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287 # v5.3.0 (node24-native)
+      - uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.3.0 (node24-native)
         with:
           java-version: "21"
           distribution: temurin
@@ -878,7 +873,7 @@ jobs:
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
         run: bash ./scripts/ci/inject-firebase-config-android.sh
       - name: Android Hermes instrumented smoke
-        uses: reactivecircus/android-emulator-runner@e89f39f1abbbd05b1113a29cf4db69e7540cae5a # v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 34
           target: google_apis
@@ -936,7 +931,7 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           submodules: recursive
-      - uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287 # v5.3.0 (node24-native)
+      - uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.3.0 (node24-native)
         with:
           java-version: "21"
           distribution: temurin

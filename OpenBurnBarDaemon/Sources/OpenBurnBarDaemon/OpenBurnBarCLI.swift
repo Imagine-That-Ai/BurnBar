@@ -1,6 +1,10 @@
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Foundation
 
 public protocol BurnBarCLIClient: Sendable {
@@ -17,6 +21,17 @@ public protocol BurnBarCLIClient: Sendable {
     func codeWatch(projectPath: String?, maxFiles: Int, maxFileBytes: Int, storageBudgetBytes: Int?, pollIntervalSeconds: Double) throws -> BurnBarProjectCodeWatchProjectResponse
     func codeSearch(query: String, projectPath: String?, limit: Int) throws -> BurnBarProjectCodeSearchResponse
     func codeIndexStatus(projectPath: String?) throws -> BurnBarProjectCodeIndexStatusResponse
+    func attachRunClient(clientID: BurnBarClientID, sessionID: BurnBarSessionID) throws
+    func createRun(_ request: BurnBarRunCreateRequest) throws -> BurnBarRunCreateResponse
+    func listRuns(_ request: BurnBarRunListRequest) throws -> BurnBarRunListResponse
+    func getRun(_ request: BurnBarRunGetRequest) throws -> BurnBarRunDetailResponse
+    func pollRuns(_ request: BurnBarRunPollRequest) throws -> BurnBarRunEventBatch
+    func cancelRun(_ request: BurnBarRunCancelRequest) throws -> BurnBarRunDetailResponse
+    func retryRun(_ request: BurnBarRunRetryRequest) throws -> BurnBarRunDetailResponse
+    func respondToApproval(_ request: BurnBarApprovalRespondRequest) throws -> BurnBarRunDetailResponse
+    func panicHalt(_ request: ComputerUsePanicHaltRequest) throws -> ComputerUsePanicHaltResponse
+    func startSubscription(_ request: BurnBarSubscriptionStartRequest) throws -> BurnBarSubscriptionResponse
+    func resumeSubscription(_ request: BurnBarSubscriptionResumeRequest) throws -> BurnBarSubscriptionResponse
     func runResume(
         sessionID: String,
         targetHarness: String?,
@@ -213,6 +228,132 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
         )
     }
 
+    public func attachRunClient(clientID: BurnBarClientID, sessionID: BurnBarSessionID) throws {
+        let _: BurnBarClientAttachResponse = try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .clientAttach,
+                authToken: authToken,
+                params: BurnBarClientAttachRequest(
+                    clientID: clientID,
+                    sessionID: sessionID,
+                    clientName: "openburnbar-cli",
+                    supportedProtocolVersions: [BurnBarProtocolVersion.current]
+                )
+            )
+        )
+        let _: BurnBarClientArbitrationSnapshot = try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .clientClaimControl,
+                authToken: authToken,
+                params: BurnBarClientClaimControlRequest(
+                    clientID: clientID,
+                    sessionID: sessionID
+                )
+            )
+        )
+    }
+
+    public func createRun(_ request: BurnBarRunCreateRequest) throws -> BurnBarRunCreateResponse {
+        try attachRunClient(clientID: request.clientID, sessionID: request.sessionID)
+        return try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .runCreate,
+                authToken: authToken,
+                params: request
+            )
+        )
+    }
+
+    public func listRuns(_ request: BurnBarRunListRequest) throws -> BurnBarRunListResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .runList,
+                authToken: authToken,
+                params: request
+            )
+        )
+    }
+
+    public func getRun(_ request: BurnBarRunGetRequest) throws -> BurnBarRunDetailResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .runGet,
+                authToken: authToken,
+                params: request
+            )
+        )
+    }
+
+    public func pollRuns(_ request: BurnBarRunPollRequest) throws -> BurnBarRunEventBatch {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .runPoll,
+                authToken: authToken,
+                params: request
+            )
+        )
+    }
+
+    public func cancelRun(_ request: BurnBarRunCancelRequest) throws -> BurnBarRunDetailResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .runCancel,
+                authToken: authToken,
+                params: request
+            )
+        )
+    }
+
+    public func retryRun(_ request: BurnBarRunRetryRequest) throws -> BurnBarRunDetailResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .runRetry,
+                authToken: authToken,
+                params: request
+            )
+        )
+    }
+
+    public func respondToApproval(_ request: BurnBarApprovalRespondRequest) throws -> BurnBarRunDetailResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .approvalRespond,
+                authToken: authToken,
+                params: request
+            )
+        )
+    }
+
+    public func panicHalt(_ request: ComputerUsePanicHaltRequest) throws -> ComputerUsePanicHaltResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .computerUsePanicHalt,
+                authToken: authToken,
+                params: request
+            )
+        )
+    }
+
+    public func startSubscription(_ request: BurnBarSubscriptionStartRequest) throws -> BurnBarSubscriptionResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .subscriptionStart,
+                authToken: authToken,
+                params: request
+            )
+        )
+    }
+
+    public func resumeSubscription(_ request: BurnBarSubscriptionResumeRequest) throws -> BurnBarSubscriptionResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .subscriptionResume,
+                authToken: authToken,
+                params: request
+            )
+        )
+    }
+
     public func runResume(
         sessionID: String,
         targetHarness: String?,
@@ -265,12 +406,18 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
     private func send<Request: Encodable, Response: Codable & Sendable>(
         _ request: Request
     ) throws -> BurnBarRPCResponseEnvelope<Response> {
-        let fileDescriptor = socket(AF_UNIX, SOCK_STREAM, 0)
+        #if canImport(Glibc)
+        let socketType = Int32(SOCK_STREAM.rawValue)
+        #else
+        let socketType = SOCK_STREAM
+        #endif
+        let fileDescriptor = socket(AF_UNIX, socketType, 0)
         guard fileDescriptor != -1 else {
             throw POSIXError(.init(rawValue: errno) ?? .EIO)
         }
         defer { close(fileDescriptor) }
 
+        #if canImport(Darwin)
         var noSigPipe: Int32 = 1
         setsockopt(
             fileDescriptor,
@@ -279,6 +426,7 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
             &noSigPipe,
             socklen_t(MemoryLayout<Int32>.size)
         )
+        #endif
         configureIOTimeouts(for: fileDescriptor)
 
         var address = try socketAddress(for: socketURL.path)
@@ -346,7 +494,9 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
     private func socketAddress(for socketPath: String) throws -> sockaddr_un {
         var address = sockaddr_un()
         address.sun_family = sa_family_t(AF_UNIX)
+        #if canImport(Darwin)
         address.sun_len = UInt8(MemoryLayout<sockaddr_un>.stride)
+        #endif
 
         let pathBytes = Array(socketPath.utf8)
         guard pathBytes.count < MemoryLayout.size(ofValue: address.sun_path) else {
@@ -360,45 +510,6 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
             }
         }
         return address
-    }
-}
-
-public enum BurnBarCLIError: LocalizedError {
-    case invalidCommand(String)
-    case missingArgument(String)
-    case missingExecutablePath
-
-    public var errorDescription: String? {
-        switch self {
-        case .invalidCommand(let command):
-            return "Unsupported OpenBurnBar CLI command '\(command)'."
-        case .missingArgument(let usage):
-            return usage
-        case .missingExecutablePath:
-            return "Could not resolve the currently running OpenBurnBarCLI executable."
-        }
-    }
-}
-
-public struct BurnBarCLIInvocationResult: Equatable, Sendable {
-    public let output: String?
-    public let exitCode: Int32
-
-    public init(output: String?, exitCode: Int32) {
-        self.output = output
-        self.exitCode = exitCode
-    }
-}
-
-public struct BurnBarCLIStartupPreflightResult: Equatable, Sendable {
-    public let output: String
-    public let exitCode: Int32
-    public let writesToStandardError: Bool
-
-    public init(output: String, exitCode: Int32, writesToStandardError: Bool) {
-        self.output = output
-        self.exitCode = exitCode
-        self.writesToStandardError = writesToStandardError
     }
 }
 
@@ -440,6 +551,16 @@ public struct BurnBarCLIRunner {
             return Self.usageText
         case "health":
             return formatHealth(try client.health())
+        case "service":
+            return try runServiceCommand(Array(effectiveArguments.dropFirst()))
+        case "capabilities":
+            return try runCapabilitiesCommand(Array(effectiveArguments.dropFirst()))
+        case "diagnostics":
+            return try runDiagnosticsCommand(Array(effectiveArguments.dropFirst()))
+        case "subscribe":
+            return try runSubscribeCommand(Array(effectiveArguments.dropFirst()))
+        case "subscription-resume":
+            return try runSubscriptionResumeCommand(Array(effectiveArguments.dropFirst()))
         case "controller", "status":
             return formatControllerSummary(try client.controllerSummary(projectSlug: effectiveArguments.dropFirst().first))
         case "questions":
@@ -524,11 +645,17 @@ public struct BurnBarCLIRunner {
             let health = try client.health()
             let status = try client.codeIndexStatus(projectPath: optionValue("--cwd", in: args))
             return formatProjectMemoryHealthcheck(health: health, status: status)
+        case "run":
+            return try runRunCommand(Array(effectiveArguments.dropFirst()))
         case "resume":
             let (response, mode) = try runResumeCommand(effectiveArguments)
             return Self.formatRunResumeResponse(response, mode: mode)
         case "remote-unlock-certification":
             return try handleRemoteUnlockCertification(Array(effectiveArguments.dropFirst()))
+        case "local-peer":
+            return try handleLocalPeerCommand(Array(effectiveArguments.dropFirst()))
+        case "devices":
+            return try handleDevicesCommand(Array(effectiveArguments.dropFirst()))
         default:
             throw BurnBarCLIError.invalidCommand(command)
         }
@@ -558,6 +685,14 @@ public struct BurnBarCLIRunner {
             return BurnBarCLIInvocationResult(output: output, exitCode: EXIT_SUCCESS)
         }
 
+        if effectiveArguments.first == "service",
+           effectiveArguments.dropFirst().first == "restart" {
+            return BurnBarCLIInvocationResult(
+                output: "service_restart=unsupported foreground_daemon=true",
+                exitCode: 69
+            )
+        }
+
         if effectiveArguments.first == "resume" {
             let (response, mode) = try runResumeCommand(effectiveArguments)
             return BurnBarCLIInvocationResult(
@@ -578,7 +713,48 @@ public struct BurnBarCLIRunner {
             return try BurnBarCLIAuditVerify.run(arguments: Array(effectiveArguments.dropFirst()))
         }
 
+        if effectiveArguments.first == "computer-use" {
+            return try runComputerUseCommand(Array(effectiveArguments.dropFirst()))
+        }
+
         return BurnBarCLIInvocationResult(output: try run(arguments: arguments), exitCode: EXIT_SUCCESS)
+    }
+
+    private func runComputerUseCommand(_ arguments: [String]) throws -> BurnBarCLIInvocationResult {
+        guard arguments.first == "panic-halt" else {
+            return try BurnBarCLIComputerUseLiveSurface.run(arguments: arguments)
+        }
+        let sessionId = try requiredOption("--session-id", in: arguments)
+        let source = optionValue("--source", in: arguments) ?? ComputerUsePanicSource.hotkey.rawValue
+        guard ComputerUsePanicSource(rawValue: source) != nil else {
+            throw BurnBarCLIError.missingArgument(
+                "--source must be one of \(ComputerUsePanicSource.allCases.map(\.rawValue).joined(separator: ", "))"
+            )
+        }
+        let response = try client.panicHalt(
+            ComputerUsePanicHaltRequest(sessionId: sessionId, source: source)
+        )
+        if arguments.contains("--json") {
+            return BurnBarCLIInvocationResult(
+                output: try Self.jsonString([
+                    "sessionId": response.sessionId,
+                    "endedAt": Self.formatDate(response.endedAt),
+                    "auditHeadHashHex": response.auditHeadHashHex,
+                    "source": source
+                ]),
+                exitCode: EXIT_SUCCESS
+            )
+        }
+        return BurnBarCLIInvocationResult(
+            output: [
+                "computer_use_panic_halt=accepted",
+                "session_id=\(response.sessionId)",
+                "source=\(source)",
+                "ended_at=\(Self.formatDate(response.endedAt))",
+                "audit_head_hash_hex=\(response.auditHeadHashHex)"
+            ].joined(separator: "\n"),
+            exitCode: EXIT_SUCCESS
+        )
     }
 
     private func runResumeCommand(_ effectiveArguments: [String]) throws -> (BurnBarRunResumeResponse, BurnBarResumeMode) {
@@ -595,6 +771,273 @@ public struct BurnBarCLIRunner {
             mode: mode
         )
         return (response, mode)
+    }
+
+    private func runServiceCommand(_ arguments: [String]) throws -> String {
+        guard let subcommand = arguments.first else {
+            throw BurnBarCLIError.missingArgument("Usage: openburnbar-cli service <status|foreground|restart>")
+        }
+        switch subcommand {
+        case "status", "foreground":
+            let health = try client.health()
+            return [
+                "service=\(subcommand == "foreground" ? "foreground" : "running")",
+                "daemon_version=\(health.daemonVersion)",
+                "protocol=\(health.protocolVersion)",
+                "socket=\(health.socketPath ?? "n/a")",
+                "gateway=\(health.gatewayEnabled ? "enabled" : "disabled")"
+            ].joined(separator: "\n")
+        case "restart":
+            return "service_restart=unsupported foreground_daemon=true"
+        default:
+            throw BurnBarCLIError.invalidCommand("service \(subcommand)")
+        }
+    }
+
+    private func runCapabilitiesCommand(_ arguments: [String]) throws -> String {
+        let capabilities = [
+            "daemon.health",
+            "client.attach",
+            "run.create",
+            "run.list",
+            "run.get",
+            "run.poll",
+            "run.cancel",
+            "run.retry",
+            "approval.respond",
+            "code.index",
+            "code.search",
+            "memory.recall"
+        ]
+        if arguments.contains("--json") {
+            return try Self.jsonString([
+                "schema": "openburnbar.cli.capabilities.v1",
+                "capabilities": capabilities
+            ])
+        }
+        return capabilities.joined(separator: "\n")
+    }
+
+    private func runDiagnosticsCommand(_ arguments: [String]) throws -> String {
+        let outputDirectory = optionValue("--output", in: arguments)
+            ?? FileManager.default.currentDirectoryPath
+        let outputURL = URL(fileURLWithPath: outputDirectory, isDirectory: true)
+        try FileManager.default.createDirectory(at: outputURL, withIntermediateDirectories: true)
+        let health = try client.health()
+        let payload: [String: Any] = [
+            "schema": "openburnbar.cli.diagnostics.v1",
+            "generatedAt": Self.formatDate(Date()),
+            "daemon": [
+                "ok": health.ok,
+                "version": health.daemonVersion,
+                "protocolVersion": health.protocolVersion,
+                "socketPath": health.socketPath ?? NSNull(),
+                "gatewayEnabled": health.gatewayEnabled,
+                "gatewayHost": health.gatewayHost ?? NSNull(),
+                "gatewayPort": health.gatewayPort ?? NSNull()
+            ],
+            "redaction": [
+                "socketAuthToken": "redacted"
+            ]
+        ]
+        let diagnosticsURL = outputURL.appendingPathComponent("diagnostics.json")
+        let data = try JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])
+        try data.write(to: diagnosticsURL, options: [.atomic])
+        return "diagnostics=\(diagnosticsURL.path)"
+    }
+
+    private func runSubscribeCommand(_ arguments: [String]) throws -> String {
+        guard let topic = arguments.first else {
+            throw BurnBarCLIError.missingArgument("Usage: openburnbar-cli subscribe <health|run> [runID]")
+        }
+        let response = try client.startSubscription(BurnBarSubscriptionStartRequest(
+            topic: topic,
+            runID: topic == "run" && arguments.count > 1 ? arguments[1] : nil,
+            requestedSubscriptionID: "cli-\(topic)-\(UUID().uuidString)",
+            clientID: "openburnbar-cli"
+        ))
+        return Self.formatSubscriptionResponse(response)
+    }
+
+    private func runSubscriptionResumeCommand(_ arguments: [String]) throws -> String {
+        guard let subscriptionID = arguments.first, !subscriptionID.hasPrefix("--") else {
+            throw BurnBarCLIError.missingArgument("Usage: openburnbar-cli subscription-resume <subscriptionID> --topic <topic> --after-seq <seq>")
+        }
+        let topic = optionValue("--topic", in: arguments) ?? "health"
+        let afterSeq = Int(optionValue("--after-seq", in: arguments) ?? "0") ?? 0
+        let response = try client.resumeSubscription(BurnBarSubscriptionResumeRequest(
+            subscriptionID: subscriptionID,
+            topic: topic,
+            afterSeq: afterSeq,
+            runID: optionValue("--run-id", in: arguments),
+            clientID: "openburnbar-cli"
+        ))
+        return Self.formatSubscriptionResponse(response)
+    }
+
+    private func runRunCommand(_ arguments: [String]) throws -> String {
+        guard let subcommand = arguments.first else {
+            throw BurnBarCLIError.missingArgument(Self.runUsageText)
+        }
+        let options = Array(arguments.dropFirst())
+        let identifiers = Self.runClientIdentifiers()
+        try client.attachRunClient(clientID: identifiers.clientID, sessionID: identifiers.sessionID)
+
+        switch subcommand {
+        case "create":
+            let prompt = optionValue("--prompt", in: options)
+                ?? positionalArguments(
+                    options,
+                    optionNames: ["--prompt", "--model", "--model-id", "--fail-until-attempt"]
+                ).joined(separator: " ")
+            guard !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw BurnBarCLIError.missingArgument("Usage: openburnbar-cli run create --prompt <text> [--model <model>] [--mock-provider] [--requires-approval] [--fail-until-attempt N]")
+            }
+            var metadata = BurnBarRunCreateMetadata()
+            let failUntilAttempt = Int(optionValue("--fail-until-attempt", in: options) ?? "")
+            if options.contains("--requires-approval") {
+                metadata[.requiresApproval] = .bool(true)
+            }
+            if let failUntilAttempt {
+                metadata[.failUntilAttempt] = .number(Double(failUntilAttempt))
+            }
+            if options.contains("--mock-provider") {
+                metadata[.controllerReview] = .bool(true)
+            }
+            if options.contains("--mock-provider") {
+                metadata["mockProvider"] = .bool(true)
+            }
+            let response = try client.createRun(
+                BurnBarRunCreateRequest(
+                    clientID: identifiers.clientID,
+                    sessionID: identifiers.sessionID,
+                    prompt: prompt,
+                    modelID: optionValue("--model", in: options)
+                        ?? optionValue("--model-id", in: options)
+                        ?? ProcessInfo.processInfo.environment["OPENBURNBAR_RUN_MODEL"]
+                        ?? "gpt-5.5",
+                    metadata: metadata
+                )
+            )
+            return [
+                "run_id=\(response.runID.rawValue)",
+                "phase=\(response.phase.rawValue)",
+                "client_id=\(identifiers.clientID.rawValue)",
+                "session_id=\(identifiers.sessionID.rawValue)"
+            ].joined(separator: "\n")
+        case "list":
+            let response = try client.listRuns(
+                BurnBarRunListRequest(
+                    clientID: identifiers.clientID,
+                    offset: Int(optionValue("--offset", in: options) ?? "") ?? 0,
+                    limit: Int(optionValue("--limit", in: options) ?? "") ?? 50
+                )
+            )
+            return formatRunList(response)
+        case "get":
+            let runID = try Self.requiredPositionalRunID(in: options, usage: "Usage: openburnbar-cli run get <runID>")
+            return formatRunDetail(
+                try client.getRun(BurnBarRunGetRequest(runID: runID, clientID: identifiers.clientID))
+            )
+        case "poll":
+            let runID = try Self.requiredPositionalRunID(in: options, usage: "Usage: openburnbar-cli run poll <runID> [--json]")
+            let response = try client.pollRuns(
+                BurnBarRunPollRequest(
+                    clientID: identifiers.clientID,
+                    sessionID: identifiers.sessionID,
+                    runID: runID,
+                    limit: Int(optionValue("--limit", in: options) ?? "") ?? 50
+                )
+            )
+            return options.contains("--json") ? try formatRunPollJSON(response) : formatRunPoll(response)
+        case "approval":
+            guard let approvalIDValue = options.first, !approvalIDValue.hasPrefix("--") else {
+                throw BurnBarCLIError.missingArgument("Usage: openburnbar-cli run approval <approvalID> --decision approve|reject|cancel [--note text]")
+            }
+            guard let decisionValue = optionValue("--decision", in: options),
+                  let decision = BurnBarApprovalDecision(rawValue: decisionValue) else {
+                throw BurnBarCLIError.missingArgument("Usage: openburnbar-cli run approval <approvalID> --decision approve|reject|cancel [--note text]")
+            }
+            let detail = try client.respondToApproval(
+                BurnBarApprovalRespondRequest(
+                    response: BurnBarApprovalResponse(
+                        approvalID: BurnBarApprovalID(rawValue: approvalIDValue),
+                        clientID: identifiers.clientID,
+                        decision: decision,
+                        note: optionValue("--note", in: options),
+                        respondedAt: Date()
+                    )
+                )
+            )
+            return [
+                "approval_id=\(approvalIDValue)",
+                "decision=\(decision.rawValue)",
+                formatRunDetail(detail)
+            ].joined(separator: "\n")
+        case "cancel":
+            let runID = try Self.requiredPositionalRunID(in: options, usage: "Usage: openburnbar-cli run cancel <runID> [--reason text]")
+            return formatRunDetail(
+                try client.cancelRun(
+                    BurnBarRunCancelRequest(
+                        runID: runID,
+                        clientID: identifiers.clientID,
+                        reason: optionValue("--reason", in: options)
+                    )
+                )
+            )
+        case "retry":
+            let runID = try Self.requiredPositionalRunID(in: options, usage: "Usage: openburnbar-cli run retry <runID>")
+            return formatRunDetail(
+                try client.retryRun(BurnBarRunRetryRequest(runID: runID, clientID: identifiers.clientID))
+            )
+        default:
+            throw BurnBarCLIError.invalidCommand("run \(subcommand)")
+        }
+    }
+
+    private static func runClientIdentifiers() -> (clientID: BurnBarClientID, sessionID: BurnBarSessionID) {
+        let environment = ProcessInfo.processInfo.environment
+        return (
+            BurnBarClientID(rawValue: environment["OPENBURNBAR_RUN_CLIENT_ID"] ?? "openburnbar-cli"),
+            BurnBarSessionID(rawValue: environment["OPENBURNBAR_RUN_SESSION_ID"] ?? "openburnbar-cli-session")
+        )
+    }
+
+    private static func formatSubscriptionResponse(_ response: BurnBarSubscriptionResponse) -> String {
+        var lines = [
+            "subscription_id=\(response.subscriptionID)",
+            "topic=\(response.topic)",
+            "seq=\(response.seq)",
+            "cursor=\(response.cursor)",
+            "first_snapshot=\(response.firstSnapshot)",
+            "degraded_fallback=\(response.degradedFallback)",
+            "degradation_reason=\(response.degradationReason ?? "none")",
+            "backpressure=\(response.backpressure)",
+            "disconnect_detected=\(response.disconnectDetected)",
+            "recovered_after_restart=\(response.recoveredAfterRestart)",
+            "terminal_state_delivered=\(response.terminalStateDelivered)"
+        ]
+        for event in response.events {
+            lines.append("event_seq=\(event.seq) event_kind=\(event.kind) terminal=\(event.terminal)")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private static func requiredPositionalRunID(in arguments: [String], usage: String) throws -> BurnBarRunID {
+        guard let rawValue = arguments.first(where: { !$0.hasPrefix("--") }) else {
+            throw BurnBarCLIError.missingArgument(usage)
+        }
+        return BurnBarRunID(rawValue: rawValue)
+    }
+
+    private static func jsonString(_ object: [String: Any]) throws -> String {
+        let data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
+        return String(data: data, encoding: .utf8) ?? "{}"
+    }
+
+    private static func jsonString(from object: Any) throws -> String {
+        let data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
+        return String(data: data, encoding: .utf8) ?? "{}"
     }
 
     /// Part B1 handoff: dispatches a task into a genuine interactive `claude`
@@ -829,6 +1272,11 @@ public struct BurnBarCLIRunner {
 
     Commands:
       health
+      service <status|foreground|restart>
+      capabilities [--json]
+      diagnostics --output <directory>
+      subscribe <health|run> [runID]
+      subscription-resume <subscriptionID> --topic <topic> --after-seq <seq>
       controller [projectSlug]
       questions [projectSlug]
       followups [projectSlug]
@@ -841,19 +1289,40 @@ public struct BurnBarCLIRunner {
       index [path] [--max-files N] [--max-file-bytes N] [--storage-budget-bytes N] [--watch] [--poll-seconds N]
       config [--cwd path]
       healthcheck [--cwd path]
+      run <create|list|get|poll|approval|cancel|retry> [args]
       resume <sessionId> [--as <harness>] [--model <model>] [--print|--copy|--open|--spawn]
       remote-unlock-certification <status|record-hardware-proof|reset>
       audit-verify <session-directory> [--max-entry-index N] [--skip-opentimestamps]
+      computer-use panic-halt --session-id ID|* [--source hotkey|phone_gesture|mac_lock|remote_config|accessibility_revoked|stalled|revoked] [--json]
+      computer-use live-surface-proof --panic-url URL --media-url URL [--audit-head HASH] [--json]
+      local-peer <browse|advertise-metadata|disabled-state|parse-fixture> [--json] [--timeout SECONDS] [fixture-path]
+      devices <discover|parity|pixel-clock|iot> [args...] [--json]
       exec <codex|claude|opencode|droid|forge|agy> [--profile-id <id>] [args...]
       claude-handoff <dispatch|reconcile|list> [args]
       provider-bootstrap-claude
       install-shell-shims
     """
 
+    private static let runUsageText = """
+    Usage:
+      openburnbar-cli run create --prompt <text> [--model <model>] [--mock-provider] [--requires-approval] [--fail-until-attempt N]
+      openburnbar-cli run list [--limit N] [--offset N]
+      openburnbar-cli run get <runID>
+      openburnbar-cli run poll <runID> [--json]
+      openburnbar-cli run approval <approvalID> --decision approve|reject|cancel [--note text]
+      openburnbar-cli run cancel <runID> [--reason text]
+      openburnbar-cli run retry <runID>
+    """
+
     public static let helpCommands: Set<String> = ["help", "--help", "-h"]
 
     public static let directCommandNames: Set<String> = [
         "health",
+        "service",
+        "capabilities",
+        "diagnostics",
+        "subscribe",
+        "subscription-resume",
         "controller",
         "status",
         "questions",
@@ -867,9 +1336,13 @@ public struct BurnBarCLIRunner {
         "index",
         "config",
         "healthcheck",
+        "run",
         "resume",
         "remote-unlock-certification",
         "audit-verify",
+        "computer-use",
+        "local-peer",
+        "devices",
         "exec",
         "claude-handoff",
         "provider-bootstrap-claude",
@@ -884,6 +1357,20 @@ public struct BurnBarCLIRunner {
     ]
 
     public static let shellShimExecutableNames = Set(SwitcherCLIProfileType.allCases.map(\.executableName))
+
+    public static func shouldUseHealthFastPath(
+        arguments: [String],
+        invokedExecutablePath: String?
+    ) -> Bool {
+        let effectiveArguments = arguments.first == "--" ? Array(arguments.dropFirst()) : arguments
+        guard effectiveArguments == ["health"],
+              let invokedExecutablePath else {
+            return false
+        }
+
+        let executableName = URL(fileURLWithPath: invokedExecutablePath).lastPathComponent
+        return canonicalExecutableNames.contains(executableName)
+    }
 
     public static func startupPreflightResult(
         arguments: [String],
@@ -928,8 +1415,79 @@ public struct BurnBarCLIRunner {
         )
     }
 
+    private func handleLocalPeerCommand(_ arguments: [String]) throws -> String {
+        #if os(Linux)
+        let json = arguments.contains("--json")
+        let timeout = TimeInterval(Int(optionValue("--timeout", in: arguments) ?? "") ?? 3)
+        guard let subcommand = positionalArguments(arguments, optionNames: ["--json", "--timeout"]).first else {
+            throw BurnBarCLIError.missingArgument("Usage: openburnbar-cli local-peer <browse|advertise-metadata|disabled-state|parse-fixture> [--json] [--timeout SECONDS] [fixture-path]")
+        }
+        switch subcommand {
+        case "browse":
+            let peers = try BurnBarLinuxLocalPeerDiscovery.browsePeers(timeoutSeconds: timeout)
+            return try BurnBarLinuxLocalPeerDiscovery.formatPeers(peers, json: json)
+        case "advertise-metadata":
+            let host = ProcessInfo.processInfo.hostName
+            let sample = BurnBarLinuxLocalPeerDiscovery.sanitizedTXT(
+                daemonVersion: BurnBarDaemonVersion.current,
+                protocolVersion: String(BurnBarProtocolVersion.current)
+            )
+            if json {
+                return try Self.jsonString(from: [
+                    "service_type": BurnBarLinuxLocalPeerDiscovery.serviceType,
+                    "instance": BurnBarLinuxLocalPeerDiscovery.resolveInstanceName(hostName: host, suffix: nil),
+                    "txt": sample
+                ])
+            }
+            return sample.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: "\n")
+        case "parse-fixture":
+            let positional = positionalArguments(arguments, optionNames: ["--json", "--timeout"])
+            let fixturePath = positional.dropFirst().first ?? positional.first(where: { $0.hasPrefix("/") || $0.hasPrefix(".") })
+            guard let fixturePath else {
+                throw BurnBarCLIError.missingArgument("Usage: openburnbar-cli local-peer parse-fixture <fixture-path> [--json]")
+            }
+            let fixtureURL = URL(fileURLWithPath: fixturePath)
+            let raw = try String(contentsOf: fixtureURL, encoding: .utf8)
+            let transcript = raw
+                .split(separator: "\n")
+                .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty && !$0.hasPrefix("#") }
+                .joined(separator: "\n")
+            let peers = BurnBarLinuxLocalPeerDiscovery.testing_parseBrowseOutput(transcript)
+            return try BurnBarLinuxLocalPeerDiscovery.formatPeers(peers, json: json)
+        case "disabled-state":
+            let disabled = BurnBarLinuxLocalPeerDiscovery.isDiscoveryDisabled()
+            if json {
+                return try Self.jsonString(["disabled": disabled])
+            }
+            return disabled ? "Local peer discovery disabled." : "Local peer discovery enabled."
+        default:
+            throw BurnBarCLIError.invalidCommand("local-peer \(subcommand)")
+        }
+        #else
+        throw BurnBarCLIError.invalidCommand("local-peer requires Linux")
+        #endif
+    }
+
+    private func handleDevicesCommand(_ arguments: [String]) throws -> String {
+        #if os(Linux)
+        let json = arguments.contains("--json")
+        let positional = positionalArguments(arguments, optionNames: ["--json"])
+        guard let subcommand = positional.first else {
+            throw BurnBarCLIError.missingArgument("Usage: openburnbar-cli devices <discover|parity|pixel-clock|iot> [args...] [--json]")
+        }
+        return try BurnBarLinuxDeviceAdapters.runCLI(
+            subcommand: subcommand,
+            arguments: Array(positional.dropFirst()),
+            json: json
+        )
+        #else
+        throw BurnBarCLIError.invalidCommand("devices requires Linux")
+        #endif
+    }
+
     private func formatHealth(_ response: BurnBarHealthResponse) -> String {
-        "Daemon \(response.daemonVersion) | protocol \(response.protocolVersion) | socket \(response.socketPath ?? "n/a") | ok=\(response.ok)"
+        BurnBarCLIHealthFormatter.format(response)
     }
 
     private func formatControllerSummary(_ summary: BurnBarControllerSummary) -> String {
@@ -1049,6 +1607,132 @@ public struct BurnBarCLIRunner {
             "storage=\(status.storageByteCount)/\(status.storageBudgetBytes) within_budget=\(status.storageWithinBudget)",
             "last_vacuumed_at=\(status.lastVacuumedAt ?? "never")"
         ].joined(separator: "\n")
+    }
+
+    private func formatRunList(_ response: BurnBarRunListResponse) -> String {
+        guard !response.runs.isEmpty else { return "No runs." }
+        return response.runs.map { run in
+            var fields = [
+                "run_id=\(run.runID.rawValue)",
+                "phase=\(run.phase.rawValue)",
+                "session_id=\(run.sessionID.rawValue)",
+                "model=\(run.modelID)"
+            ]
+            if let approvalID = run.activeApprovalID {
+                fields.append("approval_id=\(approvalID.rawValue)")
+            }
+            if let errorMessage = run.errorMessage {
+                fields.append("error=\(errorMessage)")
+            }
+            return fields.joined(separator: " ")
+        }.joined(separator: "\n")
+    }
+
+    private func formatRunDetail(_ response: BurnBarRunDetailResponse) -> String {
+        guard let run = response.run else {
+            return "run_id=missing phase=missing"
+        }
+        var lines = [
+            "run_id=\(run.runID.rawValue)",
+            "phase=\(run.phase.rawValue)",
+            "client_id=\(run.clientID.rawValue)",
+            "session_id=\(run.sessionID.rawValue)",
+            "model=\(run.modelID)"
+        ]
+        if let approvalID = run.activeApprovalID {
+            lines.append("active_approval_id=\(approvalID.rawValue)")
+        }
+        if let approval = response.approvalRequest {
+            lines.append("approval_id=\(approval.approvalID.rawValue)")
+            lines.append("approval_tool=\(approval.tool.rawValue)")
+            lines.append("approval_title=\(approval.title)")
+        }
+        if let pendingToolCall = response.pendingToolCall {
+            lines.append("pending_tool_call=\(pendingToolCall.callID)")
+        }
+        if let errorMessage = run.errorMessage {
+            lines.append("error=\(errorMessage)")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private func formatRunPoll(_ response: BurnBarRunEventBatch) -> String {
+        var lines = response.runs.map { run -> String in
+            var fields = [
+                "run_id=\(run.runID.rawValue)",
+                "phase=\(run.phase.rawValue)",
+                "session_id=\(run.sessionID.rawValue)"
+            ]
+            if let approvalID = run.activeApprovalID {
+                fields.append("approval_id=\(approvalID.rawValue)")
+            }
+            if let errorMessage = run.errorMessage {
+                fields.append("error=\(errorMessage)")
+            }
+            return fields.joined(separator: " ")
+        }
+        lines.append(contentsOf: response.approvals.map { approval in
+            "approval_id=\(approval.approvalID.rawValue) run_id=\(approval.runID.rawValue) tool=\(approval.tool.rawValue) title=\(approval.title)"
+        })
+        if lines.isEmpty {
+            lines.append("No run updates.")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private func formatRunPollJSON(_ response: BurnBarRunEventBatch) throws -> String {
+        let payload: [String: Any] = [
+            "runs": response.runs.map(Self.runJSON),
+            "approvals": response.approvals.map(Self.approvalJSON),
+            "pendingToolCalls": response.pendingToolCalls.map { ["callID": $0.callID] },
+            "arbitration": Self.arbitrationJSON(response.arbitration),
+            "emittedAt": Self.formatDate(response.emittedAt)
+        ]
+        let data = try JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])
+        return String(data: data, encoding: .utf8) ?? "{}"
+    }
+
+    private static func runJSON(_ run: BurnBarRunStateSnapshot) -> [String: Any] {
+        var payload: [String: Any] = [
+            "runID": run.runID.rawValue,
+            "clientID": run.clientID.rawValue,
+            "sessionID": run.sessionID.rawValue,
+            "phase": run.phase.rawValue,
+            "modelID": run.modelID,
+            "updatedAt": formatDate(run.updatedAt)
+        ]
+        if let errorMessage = run.errorMessage {
+            payload["errorMessage"] = errorMessage
+        }
+        if let approvalID = run.activeApprovalID {
+            payload["activeApprovalID"] = approvalID.rawValue
+        }
+        return payload
+    }
+
+    private static func approvalJSON(_ approval: BurnBarApprovalRequest) -> [String: Any] {
+        [
+            "approvalID": approval.approvalID.rawValue,
+            "runID": approval.runID.rawValue,
+            "tool": approval.tool.rawValue,
+            "title": approval.title,
+            "message": approval.message,
+            "requestedAt": formatDate(approval.requestedAt)
+        ]
+    }
+
+    private static func arbitrationJSON(_ arbitration: BurnBarClientArbitrationSnapshot?) -> [String: Any] {
+        guard let arbitration else { return [:] }
+        var payload: [String: Any] = [
+            "attachedClientIDs": arbitration.attachedClientIDs.map(\.rawValue)
+        ]
+        if let activeClientID = arbitration.activeClientID {
+            payload["activeClientID"] = activeClientID.rawValue
+        }
+        if let reason = arbitration.reason {
+            payload["reason"] = reason
+        }
+        return payload
     }
 
     public static func formatRunResumeResponse(_ response: BurnBarRunResumeResponse, mode: BurnBarResumeMode) -> String {
@@ -1197,7 +1881,11 @@ public struct BurnBarCLIRunner {
     }
 
     private static var systemScreenSharingAvailable: Bool {
+        #if canImport(Darwin)
         RemoteUnlockSystemScreenSharingProbe().status().isAvailable
+        #else
+        false
+        #endif
     }
 
     private static func formatDate(_ date: Date) -> String {

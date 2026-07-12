@@ -52,6 +52,10 @@ enum class CliModelSource(
         "Codex live catalog",
         "Discovered from this Mac's Codex CLI model catalog.",
     ),
+    CURSOR_AGENT_MODEL_CATALOG(
+        "Cursor Agent live catalog",
+        "Discovered from this Mac's Cursor Agent CLI model catalog.",
+    ),
     GROK_MODEL_CATALOG(
         "Grok live catalog",
         "Discovered from this Mac's Grok Build CLI model catalog.",
@@ -70,6 +74,7 @@ enum class CliModelSource(
             "antigravityModelCatalog" -> ANTIGRAVITY_MODEL_CATALOG
             "claudeModelCatalog" -> CLAUDE_MODEL_CATALOG
             "cursorAgentProfile" -> CURSOR_AGENT_PROFILE
+            "cursorAgentModelCatalog" -> CURSOR_AGENT_MODEL_CATALOG
             "codexModelCatalog" -> CODEX_MODEL_CATALOG
             "grokModelCatalog" -> GROK_MODEL_CATALOG
             else -> CLI_PROFILE

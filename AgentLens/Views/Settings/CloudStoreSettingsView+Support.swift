@@ -316,9 +316,9 @@ enum MacCloudPricingTier: String, CaseIterable, Identifiable {
     var monthlyProductID: String? {
         switch self {
         case .local: return nil
-        case .cloud:  return "com.openburnbar.pro.monthly"
-        case .pro:    return "com.openburnbar.proMax.v2.monthly"
-        case .ultra:  return "com.openburnbar.ultra.monthly"
+        case .cloud:  return MacCloudStoreKitProductCatalog.cloudMonthlyProductID
+        case .pro:    return MacCloudStoreKitProductCatalog.cloudProMonthlyProductID
+        case .ultra:  return MacCloudStoreKitProductCatalog.cloudUltraMonthlyProductID
         }
     }
 
@@ -335,7 +335,7 @@ enum MacCloudPricingTier: String, CaseIterable, Identifiable {
 
 @MainActor
 final class MacHostedQuotaPurchaseStore: ObservableObject {
-    static let productID = "com.openburnbar.pro.monthly"
+    static let productID = MacCloudStoreKitProductCatalog.cloudMonthlyProductID
 
     /// The monthly subscription product for each paid tier. Live prices are
     /// fetched from StoreKit; the documented fallback amount renders only when
@@ -361,20 +361,7 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
         .ultra: "$599"
     ]
 
-    static let entitlementProductIDs: Set<String> = [
-        "com.openburnbar.hostedQuotaSync.cloud.monthly",
-        "com.openburnbar.hostedQuotaSync.monthly",
-        "com.openburnbar.computerUse.monthly",
-        "com.openburnbar.proMax.bundle.monthly",
-        "com.openburnbar.hostedComputerUseSync.monthly",
-        "com.openburnbar.proMax.monthly",
-        "com.openburnbar.proMax.v2.monthly",
-        "com.openburnbar.proMax.annual",
-        "com.openburnbar.pro.monthly",
-        "com.openburnbar.pro.annual",
-        "com.openburnbar.ultra.monthly",
-        "com.openburnbar.ultra.annual.v2"
-    ]
+    static let entitlementProductIDs = MacCloudStoreKitProductCatalog.entitlementProductIDs
 
     /// The primary (Cloud) product, kept for the legacy single-tier call sites.
     @Published private(set) var product: Product?
@@ -387,7 +374,6 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
     @Published private(set) var purchasingTier: MacCloudPricingTier?
     @Published private(set) var error: String?
 
-    private let functions = Functions.functions(region: "us-central1")
     private var transactionUpdatesTask: Task<Void, Never>?
 
     deinit {
@@ -422,6 +408,9 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
         }
 
         do {
+            guard FirebaseApp.app() != nil else {
+                throw MacHostedQuotaPurchaseError.cloudUnavailable
+            }
             let resolved = tierProducts[tier] ?? product
             var purchaseTarget = resolved?.id == productID ? resolved : nil
             if purchaseTarget == nil {
@@ -433,11 +422,17 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
             }
 
             let signedInUser = Auth.auth().currentUser.flatMap { $0.isAnonymous ? nil : $0 }
-            guard signedInUser != nil else {
+            guard let signedInUser else {
                 throw MacHostedQuotaPurchaseError.signedOutSubscriptionPurchase
             }
+            let appAccountToken = try await mintAppAccountToken(productID: productID)
+            MacStoreKitAppAccountTokenBindingStore.shared.record(
+                appAccountToken: appAccountToken,
+                uid: signedInUser.uid,
+                productID: productID
+            )
             let purchaseOptions: Set<Product.PurchaseOption> = [
-                .appAccountToken(try await mintAppAccountToken(productID: productID))
+                .appAccountToken(appAccountToken)
             ]
 
             let result = try await purchaseTarget.purchase(options: purchaseOptions)
@@ -468,6 +463,10 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
         defer { isLoading = false }
 
         do {
+            guard FirebaseApp.app() != nil else {
+                error = MacHostedQuotaPurchaseError.cloudUnavailable.localizedDescription
+                return
+            }
             try await AppStore.sync()
             guard Auth.auth().currentUser?.isAnonymous == false else {
                 error = "Sign in to OpenBurnBar before restoring purchases so Apple can link OpenBurnBar Cloud to your account."
@@ -524,6 +523,7 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
         do {
             let transaction = try checked(update)
             guard Self.entitlementProductIDs.contains(transaction.productID) else { return }
+            guard FirebaseApp.app() != nil else { return }
             guard Auth.auth().currentUser?.isAnonymous == false else { return }
             try await verifyHostedQuotaEntitlement(
                 signedTransactionJWS: update.jwsRepresentation,
@@ -553,6 +553,7 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
     }
 
     private func mintAppAccountToken(productID: String = MacHostedQuotaPurchaseStore.productID) async throws -> UUID {
+        let functions = try hostedQuotaFunctions()
         let result = try await functions.httpsCallable("beginEntitlementBinding").call([
             "productID": productID,
             "clientPlatform": "macos"
@@ -571,6 +572,7 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
         signedTransactionJWS: String,
         productID: String
     ) async throws {
+        let functions = try hostedQuotaFunctions()
         _ = try await functions.httpsCallable("verifyHostedQuotaEntitlement").call([
             "signedTransactionJWS": signedTransactionJWS,
             "productID": productID
@@ -585,7 +587,15 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
         if let signedTransactionJWS, !signedTransactionJWS.isEmpty {
             payload["signedTransactionJWS"] = signedTransactionJWS
         }
+        let functions = try hostedQuotaFunctions()
         _ = try await functions.httpsCallable("restoreHostedQuotaEntitlement").call(payload)
+    }
+
+    private func hostedQuotaFunctions() throws -> Functions {
+        guard FirebaseApp.app() != nil else {
+            throw MacHostedQuotaPurchaseError.cloudUnavailable
+        }
+        return Functions.functions(region: "us-central1")
     }
 
     private func checked<T>(_ result: VerificationResult<T>) throws -> T {
@@ -597,12 +607,15 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
 }
 
 enum MacHostedQuotaPurchaseError: LocalizedError {
+    case cloudUnavailable
     case productUnavailable
     case invalidBindingToken
     case signedOutSubscriptionPurchase
 
     var errorDescription: String? {
         switch self {
+        case .cloudUnavailable:
+            return "OpenBurnBar Cloud is not configured on this Mac."
         case .productUnavailable:
             return "OpenBurnBar Cloud is not available from the App Store yet. Try again in a moment."
         case .invalidBindingToken:

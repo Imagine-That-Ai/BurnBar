@@ -45,7 +45,7 @@ final class CodexTokenAccountingRegressionTests: XCTestCase {
         let parser = TestableCodexParser(
             fileManager: harness.fileManager,
             codexRoot: harness.rootURL.appendingPathComponent(".codex", isDirectory: true),
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: harness.rootURL.appendingPathComponent("support", isDirectory: true))
+            appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: harness.rootURL.appendingPathComponent("support", isDirectory: true))
         )
 
         let result = try await parser.parse()
@@ -81,7 +81,7 @@ final class CodexTokenAccountingRegressionTests: XCTestCase {
         let parser = TestableCodexParser(
             fileManager: harness.fileManager,
             codexRoot: harness.rootURL.appendingPathComponent(".codex", isDirectory: true),
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: harness.rootURL.appendingPathComponent("support", isDirectory: true))
+            appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: harness.rootURL.appendingPathComponent("support", isDirectory: true))
         )
 
         let result = try await parser.parse()
@@ -116,7 +116,7 @@ final class CodexTokenAccountingRegressionTests: XCTestCase {
         let parser = TestableCodexParser(
             fileManager: harness.fileManager,
             codexRoot: harness.rootURL.appendingPathComponent(".codex", isDirectory: true),
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: harness.rootURL.appendingPathComponent("support", isDirectory: true))
+            appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: harness.rootURL.appendingPathComponent("support", isDirectory: true))
         )
 
         let result = try await parser.parse()

@@ -167,16 +167,16 @@ final class HermesRelayContractTests: XCTestCase {
 
     func testResumeTargetCatalogMatchesLaunchBrief() {
         let targets = CLIAgentResumeTarget.allCases
-        XCTAssertEqual(targets.count, 9)
+        XCTAssertEqual(targets.count, 10)
         // Canonical wire ids must equal the daemon's `normalizeProvider`
         // output so `targetRuntime` round-trips unchanged.
         XCTAssertEqual(
             targets.map(\.wireID),
-            ["claude_code", "codex", "droid", "forge", "antigravity", "grok", "cursor_agent", "opencode", "gemini"]
+            ["claude_code", "codex", "droid", "forge", "antigravity", "grok", "cursor_agent", "opencode", "gemini", "junie"]
         )
         XCTAssertEqual(
             targets.map(\.displayName),
-            ["Claude Code", "Codex", "Droid", "Forge", "Antigravity", "Grok", "Cursor Agent", "OpenCode", "Gemini CLI"]
+            ["Claude Code", "Codex", "Droid", "Forge", "Antigravity", "Grok", "Cursor Agent", "OpenCode", "Gemini CLI", "Junie"]
         )
     }
 
@@ -201,11 +201,13 @@ final class HermesRelayContractTests: XCTestCase {
             .claude: "claude_code",
             .openClaw: "openclaw",
             .openClaude: "openclaude",
+            .omp: "omp",
             .droid: "droid",
             .forge: "forge",
             .antigravity: "antigravity",
             .grok: "grok",
-            .cursorAgent: "cursor_agent"
+            .cursorAgent: "cursor_agent",
+            .junie: "junie"
         ]
         for runtime in CLIAgentRuntime.allCases {
             XCTAssertEqual(runtime.canonicalProviderID, expected[runtime])
@@ -215,10 +217,12 @@ final class HermesRelayContractTests: XCTestCase {
         XCTAssertFalse(CLIAgentRuntime.openClaw.supportsNativeResume)
         XCTAssertFalse(CLIAgentRuntime.openClaude.supportsNativeResume)
         XCTAssertFalse(CLIAgentRuntime.grok.supportsNativeResume)
+        XCTAssertFalse(CLIAgentRuntime.junie.supportsNativeResume)
         // OpenClaw/OpenClaude have no first-class resume target (handoff only).
         XCTAssertNil(CLIAgentRuntime.openClaw.resumeTarget)
         XCTAssertNil(CLIAgentRuntime.openClaude.resumeTarget)
         XCTAssertEqual(CLIAgentRuntime.cursorAgent.resumeTarget, .cursorAgent)
+        XCTAssertEqual(CLIAgentRuntime.junie.resumeTarget, .junie)
     }
 
     func testSessionActionStatusPresentationCopy() {

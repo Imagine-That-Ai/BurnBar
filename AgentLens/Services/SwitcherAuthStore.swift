@@ -15,9 +15,9 @@ import OpenBurnBarCore
 final class SwitcherAuthStore {
     private let keychain: KeychainStore
 
-    static let service = OpenBurnBarIdentity.switcherAuthKeychainService
+    static let service = OpenBurnBarCore.OpenBurnBarIdentity.switcherAuthKeychainService
 
-    init(keychain: KeychainStore = KeychainStore(service: OpenBurnBarIdentity.switcherAuthKeychainService, legacyServices: [])) {
+    init(keychain: KeychainStore = KeychainStore(service: OpenBurnBarCore.OpenBurnBarIdentity.switcherAuthKeychainService, legacyServices: [])) {
         self.keychain = keychain
     }
 

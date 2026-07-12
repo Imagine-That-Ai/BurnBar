@@ -6,9 +6,9 @@ import SwiftUI
 /// The per-theme glass identity for the dashboard sidebar rail.
 ///
 /// "Make the left glass match the aesthetic of each theme it lands on": the
-/// rail is a real Liquid Glass plate that refracts the live backdrop, and this
-/// palette leans that glass toward the active ``DashboardLayout``'s signature
-/// colour so the rail reads as part of that world instead of fixed chrome.
+/// rail is a real Liquid Glass plate that refracts the live backdrop. The
+/// palette now only supplies a rim color; the plate itself stays clear so the
+/// sidebar does not become a colored slab.
 ///
 /// Colours are pulled from the shared `DesignSystem.Colors` brand tokens (so
 /// they flip coherently with skin + light/dark like everything else); the
@@ -29,7 +29,8 @@ struct ThemeGlassPalette {
 
     /// The signature glass for a dashboard layout. Total over every case so the
     /// rail always has an identity — `DashboardLayout.current`'s default
-    /// (`atelier`) carries the ember substrate look shown by default.
+    /// (`atelier`) carries a neutral frosted rail by default so the sidebar
+    /// reads as glass over the live substrate instead of a red brand slab.
     static func glass(for layout: DashboardLayout) -> ThemeGlassPalette {
         let c = DesignSystem.Colors.self
         switch layout {
@@ -79,13 +80,13 @@ struct ThemeGlassPalette {
                 rim: c.blaze
             )
         case .atelier:
-            // The keeper: ember substrate, the default backdrop.
+            // The keeper: neutral Liquid Glass over the default substrate.
             return ThemeGlassPalette(
                 id: layout.rawValue,
-                tint: c.ember,
-                washTop: c.ember,
-                washBottom: c.blaze,
-                rim: c.ember
+                tint: c.frost,
+                washTop: c.textPrimary,
+                washBottom: c.frost,
+                rim: c.frost
             )
         }
     }
@@ -96,13 +97,12 @@ struct ThemeGlassPalette {
 /// The dashboard sidebar's background plate. In the aurora skin it is a real
 /// Liquid Glass plate (macOS 26) that refracts the live backdrop and leans on
 /// the active theme via ``ThemeGlassPalette``; on older systems the glass
-/// adapter falls back to a tinted material. The editorial skin is light-locked
+/// adapter falls back to material. The editorial skin is light-locked
 /// and explicitly glass-free, so it renders a crisp paper surface with a
 /// hairline instead.
 ///
-/// Sampling order matters: the wash and the glass are *siblings* in a `ZStack`
-/// (glass cannot sample its own background), so the later glass child samples
-/// the wash plus the window backdrop behind the rail.
+/// This rail intentionally avoids theme washes and tints: native clear glass
+/// should reveal the live substrate behind the sidebar, not paint over it.
 struct SidebarThemeGlass<S: InsettableShape>: View {
     let layout: DashboardLayout
     let skin: AppSkin
@@ -116,34 +116,33 @@ struct SidebarThemeGlass<S: InsettableShape>: View {
                 .overlay { shape.strokeBorder(DesignSystem.Colors.border, lineWidth: 1) }
         } else {
             let palette = ThemeGlassPalette.glass(for: layout)
-            ZStack {
-                LinearGradient(
-                    colors: [
-                        palette.washTop.opacity(0.18),
-                        .clear,
-                        palette.washBottom.opacity(0.10)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .clipShape(shape)
-
-                // The glass plate. Sits in front of the wash so it samples it.
-                // Tint is present enough to read the theme, light enough to stay
-                // glass (the plate still refracts the live backdrop).
-                Color.clear
-                    .liquidGlassSurface(tint: palette.tint.opacity(0.32), in: shape)
-            }
+            sidebarPlate
             .overlay {
                 shape.strokeBorder(
                     LinearGradient(
-                        colors: [palette.rim.opacity(0.40), palette.rim.opacity(0.05)],
+                        colors: [
+                            Color.white.opacity(0.30),
+                            palette.rim.opacity(0.10),
+                            Color.white.opacity(0.04)
+                        ],
                         startPoint: .top,
                         endPoint: .bottom
                     ),
-                    lineWidth: 1
+                    lineWidth: 0.75
                 )
             }
+        }
+    }
+
+    @ViewBuilder
+    private var sidebarPlate: some View {
+        if #available(macOS 26, *) {
+            Color.clear
+                .liquidGlassEffect(.clear, in: shape)
+        } else {
+            shape
+                .fill(.ultraThinMaterial)
+                .opacity(0.55)
         }
     }
 }

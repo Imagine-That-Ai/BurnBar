@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Windows render of the panic sheet (AgentLens/Views/Settings/DataControlCenter/
+  DataControlCenterActions.swift · PanicRevokeSheet). The PANIC control: aggregates every revoke
+  behind one wax-crimson, double-confirm action (the user types the scope word) so it can never
+  fire by accident. Binds to the portable DataControlCenterViewModel.revokeAllAccess.
+-->
+<ContentDialog
+    x:Class="OpenBurnBar.App.DataControlCenter.PanicRevokeDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="Revoke all access"
+    PrimaryButtonText="Revoke now"
+    CloseButtonText="Cancel"
+    DefaultButton="None"
+    Background="{StaticResource PensieveColorGlassBgElevatedBrush}">
+
+    <StackPanel Spacing="14" MinWidth="440">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+            <FontIcon Glyph="&#xE730;" FontSize="14" Foreground="{StaticResource PensieveColorSealCrimsonBrush}" />
+            <TextBlock Text="PANIC" FontSize="11" FontWeight="Bold"
+                       Foreground="{StaticResource PensieveColorSealCrimsonBrush}" />
+        </StackPanel>
+
+        <StackPanel Orientation="Horizontal" Spacing="16">
+            <RadioButton x:Name="ScopeSync" Content="Sync only" GroupName="Scope"
+                         IsChecked="True" Checked="OnScopeChanged" />
+            <RadioButton x:Name="ScopeAll" Content="Everything" GroupName="Scope" Checked="OnScopeChanged" />
+        </StackPanel>
+
+        <TextBlock x:Name="ScopeExplanation" FontSize="12" TextWrapping="Wrap"
+                   Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+
+        <StackPanel x:Name="ConfirmGroup" Spacing="6">
+            <TextBlock x:Name="ConfirmPrompt" FontSize="11"
+                       Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+            <TextBox x:Name="ConfirmBox" FontFamily="Cascadia Mono, Consolas"
+                     FontWeight="SemiBold" TextChanged="OnConfirmChanged" />
+        </StackPanel>
+
+        <StackPanel x:Name="ResultGroup" Spacing="6" Visibility="Collapsed">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+                <FontIcon Glyph="&#xE73E;" FontSize="13"
+                          Foreground="{StaticResource PensieveColorTierEndToEndBrush}" />
+                <TextBlock Text="Access revoked" FontSize="13" FontWeight="SemiBold"
+                           Foreground="{StaticResource PensieveColorTierEndToEndBrush}" />
+            </StackPanel>
+            <TextBlock x:Name="ResultText" FontSize="11" FontFamily="Cascadia Mono, Consolas"
+                       Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+        </StackPanel>
+
+        <TextBlock x:Name="ErrorText" FontSize="11" TextWrapping="Wrap" Visibility="Collapsed"
+                   Foreground="{StaticResource PensieveColorSealCrimsonBrush}" />
+    </StackPanel>
+</ContentDialog>

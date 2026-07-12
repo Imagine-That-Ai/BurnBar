@@ -209,7 +209,7 @@ final class SwitcherCLIAuthCoordinator {
             return false
         case .opencode:
             return false
-        case .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi:
+        case .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie:
             if case .authenticated = authInfo.authState {
                 return true
             }
@@ -399,7 +399,7 @@ final class SwitcherCLIAuthCoordinator {
             candidates = [["login"], ["auth", "login"]]
         case .claude:
             candidates = [["auth", "login"], ["login"]]
-        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi:
+        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie:
             candidates = []
         }
 
@@ -432,6 +432,10 @@ final class SwitcherCLIAuthCoordinator {
             return ["KIMI_HOME", "KIMI_API_KEY", "MOONSHOT_API_KEY"]
         case .pi:
             return ["PI_HOME", "PI_CONFIG_HOME"]
+        case .junie:
+            return ["JUNIE_HOME"]
+        case .omp:
+            return ["OMP_HOME", "OMP_CONFIG_HOME"]
         }
     }
 
@@ -576,6 +580,10 @@ final class SwitcherCLIAuthCoordinator {
             installHint = "Reinstall Kimi, then retry Add Account."
         case .pi:
             installHint = "Reinstall Pi, then retry Add Account."
+        case .junie:
+            installHint = "Reinstall JetBrains Junie (curl -fsSL https://junie.jetbrains.com/install.sh | bash), then retry Add Account."
+        case .omp:
+            installHint = "Reinstall OMP, then retry Add Account."
         }
 
         let reason: String

@@ -1367,21 +1367,25 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
   },
   {
     exportedName: "latestRouterRundown",
-    trigger: "scheduled",
-    authMethod: "Cloud Scheduler / platform trigger",
+    trigger: "http",
+    authMethod: "public read-only JSON endpoint with product-layer IP rate limit",
     appCheck: "not-applicable",
-    tenantSource: "job-owned collection scans",
+    tenantSource: "public router_rundowns/{latest|date} document; no tenant scope",
     objectIdsFromClient: [],
-    ownershipCheck: "server-side collection filters and per-document uid fields",
+    ownershipCheck:
+      "handler validates the optional date key against a plausible calendar window and reads only public router_rundowns documents",
     bolaCoverage: [
       {
-        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
-        test: "platform triggers are not client-callable",
-        kind: "platform-trigger",
+        file: "functions/src/__tests__/routerRundownEndpoint.test.ts",
+        test: "maps product-layer rate-limit rejection to HTTP 429 before Firestore reads",
+        kind: "not-applicable-public",
         covers: ["latestRouterRundown"],
       },
     ],
     highRiskComputerUse: false,
+    publicJustification:
+      "Public read-only router rundown JSON for the website; no tenant objects are exposed, and every request is bounded by checkPublicHttpEndpointRateLimit plus cache/maxInstances controls.",
+    handlerModule: "routerRundown.ts",
   },
   {
     exportedName: "listEncryptedProjectMemorySnapshots",
@@ -1542,6 +1546,115 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     highRiskComputerUse: false,
   },
   {
+    exportedName: "meterComputerUseAction",
+    trigger: "firestore-trigger",
+    authMethod: "Firebase Functions event trigger (not client-callable)",
+    appCheck: "not-applicable",
+    tenantSource: "users/{uid}/computer_use_actions/{actionId} trigger path",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "trigger derives uid from the Firestore event path and meters only the immutable source document in that user namespace",
+    handlerModule: "computerUseMetering.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
+        covers: ["meterComputerUseAction"],
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  {
+    exportedName: "meterComputerUseSessionCompletion",
+    trigger: "firestore-trigger",
+    authMethod: "Firebase Functions event trigger (not client-callable)",
+    appCheck: "not-applicable",
+    tenantSource: "users/{uid}/computer_use_sessions/{sessionId} trigger path",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "trigger derives uid from the Firestore event path and meters only the source session in that user namespace",
+    handlerModule: "computerUseMetering.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
+        covers: ["meterComputerUseSessionCompletion"],
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  {
+    exportedName: "meterComputerUseSessionStart",
+    trigger: "firestore-trigger",
+    authMethod: "Firebase Functions event trigger (not client-callable)",
+    appCheck: "not-applicable",
+    tenantSource: "users/{uid}/computer_use_sessions/{sessionId} trigger path",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "trigger derives uid from the Firestore event path and meters only the source session in that user namespace",
+    handlerModule: "computerUseMetering.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
+        covers: ["meterComputerUseSessionStart"],
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  {
+    exportedName: "mintLinuxAppCheckToken",
+    trigger: "callable",
+    authMethod:
+      "Firebase Auth; lower-trust Linux attestation-gated App Check token mint (no App Check on the bootstrap path)",
+    appCheck: "not-required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "handler derives uid from request.auth.uid only; the minted Linux App Check app id comes from the server config allowlist, never client-supplied tenant object ids",
+    handlerModule: "callables/shared.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: ["mintLinuxAppCheckToken"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+    publicJustification:
+      "Bootstrap that MINTS a lower-trust Linux App Check token, so it cannot itself require one (chicken-and-egg). Gated by a Linux platform attestation verifier instead; under production config no mock verifier is registered so only a real Linux verifier can mint.",
+  },
+  {
+    exportedName: "mintWindowsAppCheckToken",
+    trigger: "callable",
+    authMethod: "Firebase Auth; attestation-gated App Check token mint (no App Check on the bootstrap path)",
+    appCheck: "not-required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "handler derives uid from request.auth.uid only; the minted App Check app id comes from the server config allowlist, never client-supplied tenant object ids",
+    handlerModule: "callables/shared.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: ["mintWindowsAppCheckToken"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+    publicJustification:
+      "Bootstrap that MINTS an App Check token, so it cannot itself require one (chicken-and-egg). Gated by a platform attestation verifier instead; under production config no mock verifier is registered so only AC-013's real verifier can mint.",
+  },
+  {
     exportedName: "onCliSessionAgentReplyNotification",
     trigger: "firestore-trigger",
     authMethod: "Firestore event trigger",
@@ -1561,21 +1674,25 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
   },
   {
     exportedName: "onKnowledgeRepoPush",
-    trigger: "firestore-trigger",
-    authMethod: "Firestore event trigger",
+    trigger: "provider-webhook",
+    authMethod: "GitHub x-hub-signature-256 HMAC over the raw request body",
     appCheck: "not-applicable",
-    tenantSource: "event document path",
+    tenantSource: "GitHub-signed repository full_name plus installation id mapped server-side to knowledge_repos rows",
     objectIdsFromClient: [],
-    ownershipCheck: "server derives uid/object path from triggering document",
+    ownershipCheck:
+      "handler verifies the GitHub HMAC before reading payload fields, then maps the signed repo and installation id through server-stored match tokens",
     bolaCoverage: [
       {
-        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
-        test: "platform triggers are not client-callable",
-        kind: "platform-trigger",
+        file: "functions/src/__tests__/knowledgeRepoMatchToken.test.ts",
+        test: "webhook flags only repos bound to the GitHub installation in the signed payload",
+        kind: "runtime-cross-user",
         covers: ["onKnowledgeRepoPush"],
       },
     ],
     highRiskComputerUse: false,
+    publicJustification:
+      "Public GitHub webhook ingress is authenticated by provider HMAC before any repo mapping or writes occur.",
+    handlerModule: "callables/knowledgeSync.ts",
   },
   {
     exportedName: "onMobileAssistantAgentReplyNotification",
@@ -1970,6 +2087,26 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
         test: "platform triggers are not client-callable",
         kind: "platform-trigger",
         covers: ["recomputeMediaQuotaUsage"],
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  {
+    exportedName: "reconcileAccountErasures",
+    trigger: "scheduled",
+    authMethod: "Cloud Scheduler / Firebase Functions platform trigger",
+    appCheck: "not-applicable",
+    tenantSource: "server-owned account_erasure_audit receipts",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "scheduled job reads nonterminal server-owned receipts and resumes cleanup using the receipt uid; no client input is accepted",
+    handlerModule: "accountDeletionReconciler.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
+        covers: ["reconcileAccountErasures"],
       },
     ],
     highRiskComputerUse: false,

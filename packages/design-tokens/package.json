@@ -4,6 +4,15 @@
   "private": true,
   "type": "module",
   "description": "'The Pensieve' DTCG design tokens → CSS / Swift / Compose via Style Dictionary v5.",
+  "exports": {
+    "./css/pensieve.css": "./dist/css/pensieve.css",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "tokens",
+    "config.mjs"
+  ],
   "scripts": {
     "build": "node config.mjs",
     "test": "node config.mjs && node --test"

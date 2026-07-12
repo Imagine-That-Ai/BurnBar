@@ -354,36 +354,40 @@ final class AppStoreReviewComplianceTests: XCTestCase {
         XCTAssertEqual(strategy, .debug)
     }
 
-    func testFirestoreNetworkCompatibilityShimTargetsAllIOS27Runtimes() {
-        // iOS 27 faults inside the bundled gRPC/BoringSSL on the first Firestore
-        // TLS connect — on the Simulator AND on physical devices (confirmed by an
-        // on-device crash report). The shim must fire on BOTH until Firebase ships
-        // an iOS-27-compatible gRPC.
-        XCTAssertTrue(
-            AppDelegate.shouldDisableFirestoreNetworkForRuntime(
-                isSimulator: true,
-                operatingSystemVersion: OperatingSystemVersion(majorVersion: 27, minorVersion: 0, patchVersion: 0)
-            )
-        )
-        XCTAssertTrue(
-            AppDelegate.shouldDisableFirestoreNetworkForRuntime(
-                isSimulator: false,
-                operatingSystemVersion: OperatingSystemVersion(majorVersion: 27, minorVersion: 0, patchVersion: 0)
-            )
-        )
-        // Pre-27 runtimes are unaffected (Simulator or device).
-        XCTAssertFalse(
-            AppDelegate.shouldDisableFirestoreNetworkForRuntime(
-                isSimulator: true,
-                operatingSystemVersion: OperatingSystemVersion(majorVersion: 26, minorVersion: 5, patchVersion: 0)
-            )
-        )
-        XCTAssertFalse(
-            AppDelegate.shouldDisableFirestoreNetworkForRuntime(
-                isSimulator: false,
-                operatingSystemVersion: OperatingSystemVersion(majorVersion: 26, minorVersion: 5, patchVersion: 0)
-            )
-        )
+    func testFirestoreNetworkIsNeverDisabledByOSVersionHeuristic() {
+        // The old iOS 27 version gate silently killed every cloud read on iOS 27
+        // ($0.00 burn, "Mac last seen: never", no quota) long after the beta-era
+        // gRPC/BoringSSL fault it worked around was gone. Firestore's network
+        // must now stay ON for every OS version unless the explicit emergency
+        // kill switch is set — never via an OS-version heuristic.
+        for major in [26, 27, 28] {
+            for simulator in [true, false] {
+                XCTAssertFalse(
+                    AppDelegate.shouldDisableFirestoreNetworkForRuntime(
+                        isSimulator: simulator,
+                        operatingSystemVersion: OperatingSystemVersion(majorVersion: major, minorVersion: 0, patchVersion: 0),
+                        killSwitchEnabled: false
+                    ),
+                    "Firestore network must not be disabled on iOS \(major) (simulator: \(simulator)) without the kill switch"
+                )
+            }
+        }
+    }
+
+    func testFirestoreNetworkKillSwitchDisablesEveryRuntime() {
+        // The escape hatch must work everywhere so a future runtime regression
+        // can be mitigated by a support-issued `defaults write`, not an app update.
+        for major in [26, 27, 28] {
+            for simulator in [true, false] {
+                XCTAssertTrue(
+                    AppDelegate.shouldDisableFirestoreNetworkForRuntime(
+                        isSimulator: simulator,
+                        operatingSystemVersion: OperatingSystemVersion(majorVersion: major, minorVersion: 0, patchVersion: 0),
+                        killSwitchEnabled: true
+                    )
+                )
+            }
+        }
     }
 
     func testHostedQuotaStoreKeepsReviewVisibleProductsInLockstepWithAppStoreConnectCatalog() throws {

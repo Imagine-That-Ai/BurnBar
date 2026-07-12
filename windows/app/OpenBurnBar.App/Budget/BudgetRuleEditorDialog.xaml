@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Windows render of the BudgetRuleEditorSheet / BudgetRuleEditorView Form in
+  AgentLens/Views/Settings/BudgetSettingsView.swift. A ContentDialog form: scope-specific
+  identity fields (provider/account or project), a display label, the USD amount, the reset
+  period, the enforcement behavior, and an enabled toggle. Save is gated on the portable
+  BudgetRuleEditorViewModel.CanSave (amount > 0 + required scope field). CommunityToolkit
+  SettingsCard rows; Pensieve tokens for text.
+-->
+<ContentDialog
+    x:Class="OpenBurnBar.App.Budget.BudgetRuleEditorDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:tk="using:CommunityToolkit.WinUI.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="New rule"
+    PrimaryButtonText="Save"
+    CloseButtonText="Cancel"
+    DefaultButton="Primary">
+
+    <ScrollViewer>
+        <StackPanel Spacing="6" MinWidth="380">
+
+            <tk:SettingsCard x:Name="ProviderCard" Header="Provider" Description="anthropic, openai, openrouter, …">
+                <TextBox x:Name="ProviderBox" MinWidth="180" TextChanged="OnFieldChanged" />
+            </tk:SettingsCard>
+
+            <tk:SettingsCard x:Name="AccountCard" Header="Account / key label" Description="Optional — a specific key slot">
+                <TextBox x:Name="AccountBox" MinWidth="180" TextChanged="OnFieldChanged" />
+            </tk:SettingsCard>
+
+            <tk:SettingsCard x:Name="ProjectCard" Header="Project name" Description="Matches the projectName on every usage row">
+                <TextBox x:Name="ProjectBox" MinWidth="180" TextChanged="OnFieldChanged" />
+            </tk:SettingsCard>
+
+            <tk:SettingsCard Header="Display label" Description="Optional — shown in lists and chips">
+                <TextBox x:Name="LabelBox" MinWidth="180" TextChanged="OnFieldChanged" />
+            </tk:SettingsCard>
+
+            <tk:SettingsCard Header="Amount" Description="Spending ceiling in USD">
+                <NumberBox x:Name="AmountBox"
+                           Minimum="0"
+                           SmallChange="5"
+                           LargeChange="25"
+                           SpinButtonPlacementMode="Compact"
+                           ValueChanged="OnAmountChanged"
+                           MinWidth="140" />
+            </tk:SettingsCard>
+
+            <tk:SettingsCard Header="Period" Description="When the running total resets">
+                <ComboBox x:Name="PeriodBox" SelectionChanged="OnPeriodChanged" MinWidth="140">
+                    <ComboBoxItem Content="Day" />
+                    <ComboBoxItem Content="Week" />
+                    <ComboBoxItem Content="Month" />
+                    <ComboBoxItem Content="All time" />
+                </ComboBox>
+            </tk:SettingsCard>
+
+            <tk:SettingsCard Header="Behavior" Description="What happens at the limit">
+                <ComboBox x:Name="BehaviorBox" SelectionChanged="OnBehaviorChanged" MinWidth="180">
+                    <ComboBoxItem Content="Warn then block" />
+                    <ComboBoxItem Content="Hard block" />
+                    <ComboBoxItem Content="Warn only" />
+                    <ComboBoxItem Content="Block + failover" />
+                </ComboBox>
+            </tk:SettingsCard>
+
+            <tk:SettingsCard x:Name="EnabledCard" Header="Enabled" Description="Turn enforcement on or off">
+                <ToggleSwitch x:Name="EnabledSwitch" Toggled="OnEnabledToggled" />
+            </tk:SettingsCard>
+
+        </StackPanel>
+    </ScrollViewer>
+</ContentDialog>

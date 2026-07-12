@@ -487,6 +487,14 @@ final class SwitcherCLIAuthCoordinatorTests: XCTestCase {
         let keys = coordinator.configEnvironmentKeys(for: .opencode)
         XCTAssertTrue(keys.isEmpty)
     }
+
+    func test_configEnvironmentKeys_forJunieDoesNotExportAPIKeyAsConfigDirectory() {
+        let coordinator = SwitcherCLIAuthCoordinator()
+        let keys = coordinator.configEnvironmentKeys(for: .junie)
+
+        XCTAssertEqual(keys, ["JUNIE_HOME"])
+        XCTAssertFalse(keys.contains("JUNIE_API_KEY"))
+    }
 }
 
 // MARK: - SwitcherCLIFallbackPlanner Tests
@@ -1142,8 +1150,8 @@ final class SwitcherAuthStoreTests: XCTestCase {
 
     func test_deleteCredentials_handlesMissingCredentials() throws {
         let store = makeStore()
-        // Should not throw
-        try store.deleteCredentials(forProfileID: "nonexistent-profile")
+        XCTAssertNoThrow(try store.deleteCredentials(forProfileID: "nonexistent-profile"))
+        XCTAssertNil(store.apiKey(forProfileID: "nonexistent-profile", cliType: .codex))
     }
 
     // MARK: - Keychain Error Handling (try? -> logged do/catch conversion)
@@ -2219,7 +2227,7 @@ final class AccountManagerTests: XCTestCase {
 
         XCTAssertEqual(
             AccountManager.userFacingAuthErrorMessageForTesting(error),
-            "OpenBurnBar couldn't access the macOS Keychain. Unlock this Mac and try again. If this is a local debug build, run it with Keychain Sharing enabled."
+            "OpenBurnBar couldn't access the macOS Keychain. Unlock this Mac and try again. If you installed a local build, rebuild it with Keychain Sharing enabled; otherwise reinstall the latest notarized OpenBurnBar download."
         )
     }
 

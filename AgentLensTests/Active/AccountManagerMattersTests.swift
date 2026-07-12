@@ -17,6 +17,11 @@ import XCTest
 @MainActor
 final class AccountManagerMattersTests: XCTestCase {
 
+    private enum DeletionTestError: Error, Equatable {
+        case server
+        case localSignOut
+    }
+
     private var observedFailures: [Error] = []
 
     override func setUp() {
@@ -53,6 +58,62 @@ final class AccountManagerMattersTests: XCTestCase {
             "BUNDLE_ID": "com.openburnbar.app"
         ]
         return try PropertyListSerialization.data(fromPropertyList: dict, format: .xml, options: 0)
+    }
+
+    // MARK: - Server-authoritative account deletion
+
+    func test_accountDeletion_serverFailurePropagatesWithoutClearingLocalSession() async {
+        var didAttemptLocalSignOut = false
+        var didClearClientState = false
+        var observedLocalFailure: Error?
+
+        do {
+            try await AccountManager.completeServerAuthoritativeAccountDeletion(
+                requestServerErasure: { throw DeletionTestError.server },
+                signOutFirebaseLocally: { didAttemptLocalSignOut = true },
+                clearClientAuthState: { didClearClientState = true },
+                observeLocalSignOutFailure: { observedLocalFailure = $0 }
+            )
+            XCTFail("A server erasure failure must propagate to keep the account retryable.")
+        } catch {
+            XCTAssertEqual(error as? DeletionTestError, .server)
+        }
+
+        XCTAssertFalse(didAttemptLocalSignOut)
+        XCTAssertFalse(didClearClientState)
+        XCTAssertNil(observedLocalFailure)
+    }
+
+    func test_accountDeletion_serverSuccessSignsOutAndClearsClientState() async throws {
+        var didAttemptLocalSignOut = false
+        var didClearClientState = false
+        var observedLocalFailure: Error?
+
+        try await AccountManager.completeServerAuthoritativeAccountDeletion(
+            requestServerErasure: {},
+            signOutFirebaseLocally: { didAttemptLocalSignOut = true },
+            clearClientAuthState: { didClearClientState = true },
+            observeLocalSignOutFailure: { observedLocalFailure = $0 }
+        )
+
+        XCTAssertTrue(didAttemptLocalSignOut)
+        XCTAssertTrue(didClearClientState)
+        XCTAssertNil(observedLocalFailure)
+    }
+
+    func test_accountDeletion_localSignOutFailureDoesNotMisreportCompletedErasure() async throws {
+        var didClearClientState = false
+        var observedLocalFailure: Error?
+
+        try await AccountManager.completeServerAuthoritativeAccountDeletion(
+            requestServerErasure: {},
+            signOutFirebaseLocally: { throw DeletionTestError.localSignOut },
+            clearClientAuthState: { didClearClientState = true },
+            observeLocalSignOutFailure: { observedLocalFailure = $0 }
+        )
+
+        XCTAssertTrue(didClearClientState)
+        XCTAssertEqual(observedLocalFailure as? DeletionTestError, .localSignOut)
     }
 
     // MARK: - Happy path: valid plist yields identifiers

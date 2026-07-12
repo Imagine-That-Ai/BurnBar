@@ -19,14 +19,16 @@ final class Plan2SharedModelsTests: XCTestCase {
         XCTAssertEqual(AssistantRuntimeID.claude.rawValue, "claude")
         XCTAssertEqual(AssistantRuntimeID.openClaw.rawValue, "openclaw")
         XCTAssertEqual(AssistantRuntimeID.openClaude.rawValue, "openclaude")
+        XCTAssertEqual(AssistantRuntimeID.omp.rawValue, "omp")
         XCTAssertEqual(AssistantRuntimeID.droid.rawValue, "droid")
         XCTAssertEqual(AssistantRuntimeID.forge.rawValue, "forge")
         XCTAssertEqual(AssistantRuntimeID.antigravity.rawValue, "antigravity")
         XCTAssertEqual(AssistantRuntimeID.grok.rawValue, "grok")
         XCTAssertEqual(AssistantRuntimeID.cursorAgent.rawValue, "cursorAgent")
+        XCTAssertEqual(AssistantRuntimeID.junie.rawValue, "junie")
         XCTAssertEqual(
             AssistantRuntimeID.allCases,
-            [.hermes, .pi, .codex, .claude, .openClaw, .openClaude, .droid, .forge, .antigravity, .grok, .cursorAgent]
+            [.hermes, .pi, .codex, .claude, .openClaw, .openClaude, .omp, .droid, .forge, .antigravity, .grok, .cursorAgent, .junie]
         )
     }
 

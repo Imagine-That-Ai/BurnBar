@@ -1,6 +1,10 @@
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Foundation
 
 public actor BurnBarDaemonServer {
@@ -9,6 +13,11 @@ public actor BurnBarDaemonServer {
     public let configuration: BurnBarDaemonConfiguration
 
     let logger: BurnBarDaemonLogger
+    /// Round-4 perf sweep: bounded concurrency gate for the accept loop.
+    /// Caps the number of simultaneously in-flight connection handlers to
+    /// prevent FD/memory exhaustion under client bursts. See
+    /// `BurnBarConnectionGate` for the contract.
+    let connectionGate: BurnBarConnectionGate
     /// RR-3: first-party code-signature gate for accepted control-socket peers.
     /// Enforced in production (wired by `OpenBurnBarDaemonMain`); `.disabled` for
     /// in-process tests and unsigned developer builds.
@@ -34,20 +43,29 @@ public actor BurnBarDaemonServer {
     /// first-party Mac app provisions this store via `phoneControlPinProvision` so
     /// the daemon can verify local-auth proofs independently of the app.
     let phoneControlPinStore: DaemonPhoneKeyPinStore?
+    let linuxOnboardingService: BurnBarLinuxOnboardingService
+    let subscriptionService: BurnBarSubscriptionService
     let configStore: BurnBarConfigStore
     let usageRecorder: BurnBarUsageRecorder
     let proxyRouteLogStore: BurnBarProxyRouteLogStore
+    let quotaSignalStore: BurnBarQuotaSignalStore
     let clientRegistry: BurnBarClientRegistry
     let runService: BurnBarRunService
     let toolingProxy: BurnBarToolingProxyService
     let computerUseService: ComputerUseService
+    #if os(Linux)
+    let mediaService: MercuryLinuxMediaSessionController
+    #endif
     let missionControlService: any BurnBarMissionControlServing
+    let membershipService: any BurnBarMembershipServing
     let indexedSearch: BurnBarIndexedSearchService?
     let projectCodeMemory: BurnBarProjectCodeMemoryStore?
     let resumeService: BurnBarResumeService?
     private let gatewayServer: BurnBarHTTPGatewayServer?
     private let rateLimiter: BurnBarRateLimiter?
     private var listenerFileDescriptor: Int32?
+    private var socketOwnership: BurnBarDaemonSocketOwnership?
+    private var boundSocketIdentity: BurnBarSocketIdentity?
     private var acceptLoopTask: Task<Void, Never>?
     private var heartbeatTask: Task<Void, Never>?
     private var oauthRefreshTask: Task<Void, Never>?
@@ -59,31 +77,45 @@ public actor BurnBarDaemonServer {
         configStore: BurnBarConfigStore? = nil,
         usageRecorder: BurnBarUsageRecorder? = nil,
         proxyRouteLogStore: BurnBarProxyRouteLogStore? = nil,
+        quotaSignalStore: BurnBarQuotaSignalStore? = nil,
         clientRegistry: BurnBarClientRegistry? = nil,
         runService: BurnBarRunService? = nil,
         missionControlService: (any BurnBarMissionControlServing)? = nil,
+        membershipService: (any BurnBarMembershipServing)? = nil,
         rateLimiter: BurnBarRateLimiter? = nil,
         peerAuthenticator: BurnBarDaemonPeerAuthenticator = .disabled,
         capabilityProfile: BurnBarPeerCapabilityProfile = .full,
         localAuthProofVerifier: DaemonLocalAuthProofVerifier? = nil,
-        phoneControlPinStore: DaemonPhoneKeyPinStore? = nil
+        phoneControlPinStore: DaemonPhoneKeyPinStore? = nil,
+        linuxOnboardingService: BurnBarLinuxOnboardingService? = nil,
+        subscriptionService: BurnBarSubscriptionService? = nil
     ) {
         self.configuration = configuration
         self.logger = logger
+        self.connectionGate = BurnBarConnectionGate()
         self.peerAuthenticator = peerAuthenticator
         self.capabilityProfile = capabilityProfile
         self.localAuthProofVerifier = localAuthProofVerifier
         self.phoneControlPinStore = phoneControlPinStore
+        self.subscriptionService = subscriptionService ?? BurnBarSubscriptionService(
+            daemonVersion: configuration.daemonVersion
+        )
 
         let resolvedConfigStore = configStore ?? BurnBarConfigStore(
             catalog: configuration.catalog,
             logger: BurnBarDaemonLogger(category: "config-store")
+        )
+        self.linuxOnboardingService = linuxOnboardingService ?? BurnBarLinuxOnboardingService(
+            configStore: resolvedConfigStore
         )
         let resolvedUsageRecorder = usageRecorder ?? BurnBarUsageRecorder(
             logger: BurnBarDaemonLogger(category: "usage-recorder")
         )
         let resolvedProxyRouteLogStore = proxyRouteLogStore ?? BurnBarProxyRouteLogStore(
             logger: BurnBarDaemonLogger(category: "proxy-route-log")
+        )
+        let resolvedQuotaSignalStore = quotaSignalStore ?? BurnBarQuotaSignalStore(
+            logger: BurnBarDaemonLogger(category: "quota-signals")
         )
         let resolvedClientRegistry = clientRegistry ?? BurnBarClientRegistry(
             logger: BurnBarDaemonLogger(category: "client-registry")
@@ -102,6 +134,7 @@ public actor BurnBarDaemonServer {
         self.configStore = resolvedConfigStore
         self.usageRecorder = resolvedUsageRecorder
         self.proxyRouteLogStore = resolvedProxyRouteLogStore
+        self.quotaSignalStore = resolvedQuotaSignalStore
         self.clientRegistry = resolvedClientRegistry
         self.runService = resolvedRunService
         self.toolingProxy = BurnBarToolingProxyService(
@@ -109,6 +142,16 @@ public actor BurnBarDaemonServer {
             browserToolService: resolvedRunService.browserToolService
         )
         self.computerUseService = ComputerUseService()
+        #if os(Linux)
+        let mediaLogger = BurnBarDaemonLogger(category: "linux-media")
+        self.mediaService = MercuryLinuxMediaSessionController(
+            fileTransferService: MercuryLinuxFileTransferFactory.make(logger: mediaLogger),
+            downloadDirectoryProvider: {
+                MercuryLinuxFileTransferFactory.downloadDirectoryURL()
+            },
+            logger: mediaLogger
+        )
+        #endif
         self.rateLimiter = rateLimiter ?? BurnBarRateLimiter(configuration: configuration.socketRateLimit)
         // VAL-DAEMON-011: Wire a concrete execution readiness gate with fail-closed semantics.
         // When gate data is unavailable (no config, no connector plane), the gate returns a failure
@@ -173,6 +216,7 @@ public actor BurnBarDaemonServer {
             },
             executionReadinessGate: executionReadinessGate
         )
+        self.membershipService = membershipService ?? BurnBarMembershipService()
 
         if let path = configuration.indexDatabasePath?.trimmingCharacters(in: .whitespacesAndNewlines),
            path.isEmpty == false,
@@ -242,6 +286,7 @@ public actor BurnBarDaemonServer {
                 configStore: resolvedConfigStore,
                 usageRecorder: resolvedUsageRecorder,
                 proxyRouteLogStore: resolvedProxyRouteLogStore,
+                quotaSignalStore: resolvedQuotaSignalStore,
                 // remediation(B1): production daemon opts into the short-TTL
                 // live model-catalog cache so `/v1/models` and the routing path
                 // stop fanning out live provider HTTP (and spawning Factory's
@@ -281,19 +326,46 @@ public actor BurnBarDaemonServer {
         )
 
         try BurnBarUnixDomainSocket.ensureParentDirectory(for: configuration.socketPath)
-        if let removedType = try BurnBarUnixDomainSocket.removeStaleItemIfPresent(at: configuration.socketPath) {
-            logger.notice(
-                "stale_socket_removed",
-                metadata: [
-                    "socket_path": configuration.socketPath,
-                    "item_type": removedType
-                ]
-            )
+        let ownership = try BurnBarDaemonSocketOwnership.acquire(for: configuration.socketPath)
+        var startupFileDescriptor: Int32?
+        var startupSocketIdentity: BurnBarSocketIdentity?
+        do {
+            if try BurnBarUnixDomainSocket.preparePathForBind(at: configuration.socketPath) {
+                logger.notice(
+                    "stale_socket_removed",
+                    metadata: [
+                        "socket_path": configuration.socketPath,
+                        "item_type": "socket"
+                    ]
+                )
+            }
+
+            let fileDescriptor = try BurnBarUnixDomainSocket.makeListeningSocket(at: configuration.socketPath)
+            startupFileDescriptor = fileDescriptor
+            let identity = try BurnBarUnixDomainSocket.socketIdentity(at: configuration.socketPath)
+            startupSocketIdentity = identity
+            try BurnBarUnixDomainSocket.restrictSocketPermissions(at: configuration.socketPath)
+            listenerFileDescriptor = fileDescriptor
+            socketOwnership = ownership
+            boundSocketIdentity = identity
+        } catch {
+            if let startupFileDescriptor {
+                close(startupFileDescriptor)
+            }
+            if let startupSocketIdentity {
+                _ = try? BurnBarUnixDomainSocket.removeSocket(
+                    at: configuration.socketPath,
+                    ifIdentityMatches: startupSocketIdentity
+                )
+            }
+            ownership.release()
+            throw error
         }
 
-        let fileDescriptor = try BurnBarUnixDomainSocket.makeListeningSocket(at: configuration.socketPath)
-        try BurnBarUnixDomainSocket.restrictSocketPermissions(at: configuration.socketPath)
-        listenerFileDescriptor = fileDescriptor
+        guard let fileDescriptor = listenerFileDescriptor else {
+            ownership.release()
+            throw BurnBarDaemonError.failedToCreateSocket(code: EIO, detail: "listener ownership was not retained")
+        }
 
         do {
             try await configStore.seedDefaultModelVariantsIfNeeded()
@@ -304,10 +376,11 @@ public actor BurnBarDaemonServer {
             )
         }
 
-        acceptLoopTask = Task.detached(priority: .background) { [logger] in
+        acceptLoopTask = Task.detached(priority: .background) { [logger, connectionGate] in
             await Self.runAcceptLoop(
                 server: self,
                 listenerFileDescriptor: fileDescriptor,
+                connectionGate: connectionGate,
                 logger: logger
             )
         }
@@ -318,6 +391,16 @@ public actor BurnBarDaemonServer {
             configStore: configStore,
             logger: logger
         )
+        #if os(Linux)
+        do {
+            try await mediaService.start()
+        } catch {
+            logger.warning(
+                "media_channel_start_failed",
+                metadata: ["error": "\(error)"]
+            )
+        }
+        #endif
         if configuration.startsMissionControlBackgroundLoops {
             await missionControlService.startBackgroundLoops()
         } else {
@@ -392,6 +475,10 @@ public actor BurnBarDaemonServer {
         )
 
         self.listenerFileDescriptor = nil
+        let ownership = socketOwnership
+        socketOwnership = nil
+        let socketIdentity = boundSocketIdentity
+        boundSocketIdentity = nil
         heartbeatTask?.cancel()
         heartbeatTask = nil
         oauthRefreshTask?.cancel()
@@ -400,19 +487,34 @@ public actor BurnBarDaemonServer {
         acceptLoopTask = nil
         acceptTask?.cancel()
 
-        shutdown(listenerFileDescriptor, SHUT_RDWR)
+        shutdown(listenerFileDescriptor, Int32(SHUT_RDWR))
         close(listenerFileDescriptor)
         _ = await acceptTask?.result
 
         do {
-            _ = try BurnBarUnixDomainSocket.removeStaleItemIfPresent(at: configuration.socketPath)
+            if let socketIdentity {
+                let removed = try BurnBarUnixDomainSocket.removeSocket(
+                    at: configuration.socketPath,
+                    ifIdentityMatches: socketIdentity
+                )
+                if removed == false {
+                    logger.warning(
+                        "socket_cleanup_skipped_identity_mismatch",
+                        metadata: ["socket_path": configuration.socketPath]
+                    )
+                }
+            }
         } catch {
             logger.warning(
-                "remove_stale_socket_failed",
+                "remove_owned_socket_failed",
                 metadata: ["socket_path": configuration.socketPath, "error": "\(error)"]
             )
         }
+        ownership?.release()
         await missionControlService.stopBackgroundLoops()
+        #if os(Linux)
+        await mediaService.stop()
+        #endif
 
         // Stop HTTP gateway
         if let gatewayServer {
@@ -545,14 +647,14 @@ public actor BurnBarDaemonServer {
             let request = BurnBarRPCRequestEnvelope(id: incomingRequest.id, method: method, authToken: incomingRequest.authToken)
 
             switch method {
-            case .health, .catalog, .authBootstrap:
+            case .health, .catalog, .authBootstrap, .linuxOnboardingSnapshot:
                 return try await handleLifecycleRPC(
                     method: method,
                     decoder: decoder,
                     request: request,
                     requestData: requestData
                 )
-            case .configGet, .configUpdate,
+            case .configGet, .configUpdate, .linuxOnboardingAction, .linuxOnboardingReset,
                  .providerCredentialSlotUpsert, .providerCredentialSlotRemove,
                  .providerModelVariantUpsert, .providerModelVariantRemove,
                  .providerModelAliasUpsert, .providerModelAliasRemove,
@@ -569,8 +671,16 @@ public actor BurnBarDaemonServer {
                     decoder: decoder,
                     requestData: requestData
                 )
-            case .proxyRouteLogRecent, .proxyRouteLogClear:
+            case .proxyRouteLogRecent, .proxyRouteLogClear,
+                 .quotaSignalsRecent, .quotaSignalsClear,
+                 .perfMeasure:
                 return try await handleObservabilityRPC(
+                    method: method,
+                    decoder: decoder,
+                    requestData: requestData
+                )
+            case .membershipStatus, .membershipCheckoutURL, .membershipRestore:
+                return try await handleMembershipRPC(
                     method: method,
                     decoder: decoder,
                     requestData: requestData
@@ -582,7 +692,8 @@ public actor BurnBarDaemonServer {
                     decoder: decoder,
                     requestData: requestData
                 )
-            case .computerUseSessionStart, .computerUseInvoke,
+            case .computerUseCapabilityStateUpdate,
+                 .computerUseSessionStart, .computerUseInvoke,
                  .computerUseApprovalPending, .computerUseApprovalRespond,
                  .computerUsePanicHalt, .computerUseAuditExport,
                  .phoneControlPinProvision:
@@ -591,13 +702,24 @@ public actor BurnBarDaemonServer {
                     decoder: decoder,
                     requestData: requestData
                 )
+            case .daemonMediaSessionState, .daemonMediaCallAccept,
+                 .daemonMediaCallDecline, .daemonMediaCallEnd,
+                 .daemonMediaCapabilityGet, .daemonMediaStatus,
+                 .daemonMediaFileOfferList, .daemonMediaFileAccept,
+                 .daemonMediaFileDecline, .daemonMediaFileSend:
+                return try await handleMediaRPC(
+                    method: method,
+                    decoder: decoder,
+                    request: request,
+                    requestData: requestData
+                )
             case .controllerSummary, .controllerRuntimeSnapshot,
                  .controllerProjectsList, .controllerProjectGet,
                  .controllerProjectUpsert, .reviewRunRecord,
                  .questionCreate, .questionGet, .questionsList, .questionAnswer,
                  .followupCreate, .followupsList, .followupDone, .followupSnooze, .followupCalendar,
                  .missionCreate, .missionsList, .missionGet, .missionApprove, .missionCancel,
-                 .missionDispatchPacket, .missionRecordResult,
+                 .missionDispatchPacket, .missionRecordResult, .missionAuthorizeRemote,
                  .notificationConfigGet, .notificationConfigUpdate, .notificationHealth, .notificationCommand,
                  .simulatorRun, .simulatorList, .simulatorReplay, .projectionRebuild:
                 return try await handleMissionControlRPC(
@@ -612,6 +734,7 @@ public actor BurnBarDaemonServer {
                     requestData: requestData
                 )
             case .runCreate, .runList, .runGet, .runPoll, .runCancel, .runRetry, .runResume,
+             .subscriptionStart, .subscriptionResume, .subscriptionStop,
                  .workspaceExecuteTool, .workspaceToolResult, .approvalRespond:
                 return try await handleRunWorkspaceApprovalRPC(
                     method: method,
@@ -655,6 +778,7 @@ public actor BurnBarDaemonServer {
     private static func runAcceptLoop(
         server: BurnBarDaemonServer,
         listenerFileDescriptor: Int32,
+        connectionGate: BurnBarConnectionGate,
         logger: BurnBarDaemonLogger
     ) async {
         while !Task.isCancelled {
@@ -676,10 +800,24 @@ public actor BurnBarDaemonServer {
                 continue
             }
 
+            // Round-4 perf sweep: back-pressure. If the gate is at capacity,
+            // close the connection immediately rather than spawning an
+            // unbounded handler. This prevents FD/memory exhaustion under
+            // client bursts; the client's retry is cheap over a local socket.
+            guard connectionGate.tryAcquire() else {
+                close(clientFileDescriptor)
+                logger.warning(
+                    "connection_limit_reached",
+                    metadata: ["max": "\(connectionGate.maxCount)"]
+                )
+                continue
+            }
+
             Task.detached(priority: .utility) { [logger] in
                 await Self.handleClientConnection(
                     server: server,
                     clientFileDescriptor: clientFileDescriptor,
+                    connectionGate: connectionGate,
                     logger: logger
                 )
             }
@@ -689,19 +827,25 @@ public actor BurnBarDaemonServer {
     }
 
     private static func peerPID(for clientFileDescriptor: Int32) -> pid_t? {
+        #if canImport(Darwin)
         var pid: pid_t = 0
         var pidSize = socklen_t(MemoryLayout<pid_t>.size)
         let result = getsockopt(clientFileDescriptor, SOL_LOCAL, LOCAL_PEERPID, &pid, &pidSize)
         return result == 0 ? pid : nil
+        #else
+        return nil
+        #endif
     }
 
     private static func handleClientConnection(
         server: BurnBarDaemonServer,
         clientFileDescriptor: Int32,
+        connectionGate: BurnBarConnectionGate,
         logger: BurnBarDaemonLogger
     ) async {
         defer {
             close(clientFileDescriptor)
+            connectionGate.release()
         }
 
         BurnBarUnixDomainSocket.configureNoSigPipe(for: clientFileDescriptor)
@@ -755,6 +899,59 @@ public actor BurnBarDaemonServer {
     }
 }
 
+private struct BurnBarSocketIdentity: Equatable {
+    let device: dev_t
+    let inode: ino_t
+
+    init(status: stat) {
+        self.device = status.st_dev
+        self.inode = status.st_ino
+    }
+}
+
+private struct BurnBarDaemonSocketOwnership {
+    let lockFileDescriptor: Int32
+
+    static func acquire(for socketPath: String) throws -> BurnBarDaemonSocketOwnership {
+        let lockPath = socketPath + ".lock"
+        let descriptor = open(lockPath, O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW, mode_t(0o600))
+        guard descriptor != -1 else {
+            throw POSIXError(.init(rawValue: errno) ?? .EIO)
+        }
+
+        do {
+            var status = stat()
+            guard fstat(descriptor, &status) == 0 else {
+                throw POSIXError(.init(rawValue: errno) ?? .EIO)
+            }
+            guard status.st_mode & S_IFMT == S_IFREG,
+                  status.st_uid == geteuid(),
+                  status.st_nlink == 1 else {
+                throw BurnBarDaemonError.unexpectedExistingItem(lockPath)
+            }
+            guard fchmod(descriptor, S_IRUSR | S_IWUSR) == 0 else {
+                throw POSIXError(.init(rawValue: errno) ?? .EIO)
+            }
+            guard flock(descriptor, LOCK_EX | LOCK_NB) == 0 else {
+                let code = errno
+                if code == EWOULDBLOCK || code == EAGAIN {
+                    throw BurnBarDaemonError.daemonAlreadyRunning(socketPath)
+                }
+                throw POSIXError(.init(rawValue: code) ?? .EIO)
+            }
+            return BurnBarDaemonSocketOwnership(lockFileDescriptor: descriptor)
+        } catch {
+            close(descriptor)
+            throw error
+        }
+    }
+
+    func release() {
+        _ = flock(lockFileDescriptor, LOCK_UN)
+        close(lockFileDescriptor)
+    }
+}
+
 private enum BurnBarUnixDomainSocket {
     static func ensureParentDirectory(for socketPath: String) throws {
         let socketURL = URL(fileURLWithPath: socketPath)
@@ -771,27 +968,101 @@ private enum BurnBarUnixDomainSocket {
         }
     }
 
-    static func removeStaleItemIfPresent(at socketPath: String) throws -> String? {
+    static func preparePathForBind(at socketPath: String) throws -> Bool {
         var fileStatus = stat()
         let result = lstat(socketPath, &fileStatus)
         if result == -1 {
             if errno == ENOENT {
-                return nil
+                return false
             }
             throw POSIXError(.init(rawValue: errno) ?? .EIO)
         }
 
         let itemType = fileStatus.st_mode & S_IFMT
-        guard itemType == S_IFSOCK || itemType == S_IFREG else {
+        guard itemType == S_IFSOCK else {
             throw BurnBarDaemonError.unexpectedExistingItem(socketPath)
         }
 
-        try FileManager.default.removeItem(atPath: socketPath)
-        return itemType == S_IFSOCK ? "socket" : "file"
+        if try isAcceptingConnections(at: socketPath) {
+            throw BurnBarDaemonError.activeSocketAlreadyExists(socketPath)
+        }
+
+        let originalIdentity = BurnBarSocketIdentity(status: fileStatus)
+        guard try removeSocket(at: socketPath, ifIdentityMatches: originalIdentity) else {
+            throw BurnBarDaemonError.socketPathChanged(socketPath)
+        }
+        return true
+    }
+
+    static func socketIdentity(at socketPath: String) throws -> BurnBarSocketIdentity {
+        var fileStatus = stat()
+        guard lstat(socketPath, &fileStatus) == 0 else {
+            throw POSIXError(.init(rawValue: errno) ?? .EIO)
+        }
+        guard fileStatus.st_mode & S_IFMT == S_IFSOCK else {
+            throw BurnBarDaemonError.unexpectedExistingItem(socketPath)
+        }
+        return BurnBarSocketIdentity(status: fileStatus)
+    }
+
+    static func removeSocket(
+        at socketPath: String,
+        ifIdentityMatches expectedIdentity: BurnBarSocketIdentity
+    ) throws -> Bool {
+        var currentStatus = stat()
+        guard lstat(socketPath, &currentStatus) == 0 else {
+            if errno == ENOENT {
+                return false
+            }
+            throw POSIXError(.init(rawValue: errno) ?? .EIO)
+        }
+        guard currentStatus.st_mode & S_IFMT == S_IFSOCK else {
+            return false
+        }
+        guard BurnBarSocketIdentity(status: currentStatus) == expectedIdentity else {
+            return false
+        }
+        guard unlink(socketPath) == 0 else {
+            throw POSIXError(.init(rawValue: errno) ?? .EIO)
+        }
+        return true
+    }
+
+    static func isAcceptingConnections(at socketPath: String) throws -> Bool {
+        #if canImport(Glibc)
+        let socketType = Int32(SOCK_STREAM.rawValue)
+        #else
+        let socketType = SOCK_STREAM
+        #endif
+        let descriptor = socket(AF_UNIX, socketType, 0)
+        guard descriptor != -1 else {
+            throw POSIXError(.init(rawValue: errno) ?? .EIO)
+        }
+        defer { close(descriptor) }
+
+        var address = try makeSocketAddress(for: socketPath)
+        let result = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { reboundPointer in
+                connect(descriptor, reboundPointer, socklen_t(MemoryLayout<sockaddr_un>.stride))
+            }
+        }
+        if result == 0 {
+            return true
+        }
+        let code = errno
+        if code == ECONNREFUSED || code == ENOENT {
+            return false
+        }
+        throw POSIXError(.init(rawValue: code) ?? .EIO)
     }
 
     static func makeListeningSocket(at socketPath: String) throws -> Int32 {
-        let fileDescriptor = socket(AF_UNIX, SOCK_STREAM, 0)
+        #if canImport(Glibc)
+        let socketType = Int32(SOCK_STREAM.rawValue)
+        #else
+        let socketType = SOCK_STREAM
+        #endif
+        let fileDescriptor = socket(AF_UNIX, socketType, 0)
         guard fileDescriptor != -1 else {
             throw BurnBarDaemonError.failedToCreateSocket(
                 code: errno,
@@ -909,6 +1180,7 @@ private enum BurnBarUnixDomainSocket {
     }
 
     static func configureNoSigPipe(for fileDescriptor: Int32) {
+        #if canImport(Darwin)
         var value: Int32 = 1
         setsockopt(
             fileDescriptor,
@@ -917,6 +1189,9 @@ private enum BurnBarUnixDomainSocket {
             &value,
             socklen_t(MemoryLayout<Int32>.size)
         )
+        #else
+        _ = fileDescriptor
+        #endif
     }
 
     static func configureIOTimeouts(for fileDescriptor: Int32, seconds: Int = 30) {

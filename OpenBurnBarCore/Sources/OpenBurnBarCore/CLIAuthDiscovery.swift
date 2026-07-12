@@ -234,6 +234,21 @@ public enum CLIAuthDiscovery {
                 configDirectory: exists ? configDir : normalizedNonEmpty(configDir),
                 accountDescription: exists ? "Cursor Agent local profile" : nil
             )
+        case .omp:
+            let configDir = normalizedConfigDirectory(
+                configDirectoryOverride,
+                fallback: "\(home)/.omp"
+            )
+            let exists = FileManager.default.fileExists(atPath: configDir)
+            let authState: CLIAuthState = executablePath == nil ? .notInstalled : (exists ? .authenticated(lastRefresh: nil) : .notAuthenticated)
+            return CLIAuthInfo(
+                cliType: cliType,
+                isInstalled: executablePath != nil,
+                executablePath: executablePath,
+                authState: authState,
+                configDirectory: exists ? configDir : normalizedNonEmpty(configDir),
+                accountDescription: exists ? "OMP local profile" : nil
+            )
         case .gemini:
             let configDir = normalizedConfigDirectory(
                 configDirectoryOverride,
@@ -307,6 +322,32 @@ public enum CLIAuthDiscovery {
                 authState: authState,
                 configDirectory: hasConfig ? configDir : normalizedNonEmpty(configDir),
                 accountDescription: hasSessions ? "Grok Build local sessions" : nil
+            )
+        case .junie:
+            let configDir = normalizedConfigDirectory(
+                configDirectoryOverride,
+                fallback: "\(home)/.junie"
+            )
+            let sessionsDir = "\(configDir)/sessions"
+            let hasConfig = FileManager.default.fileExists(atPath: configDir)
+            let hasRecordedSessions = directoryContainsAnyEntry(atPath: sessionsDir)
+            let hasAPIKey = !(ProcessInfo.processInfo.environment["JUNIE_API_KEY"]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+            // `~/.junie` is created on first launch even before sign-in and
+            // credentials live in the macOS Keychain, so only treat recorded
+            // sessions (or an explicit API key) as evidence of a usable login.
+            let authState: CLIAuthState = {
+                if executablePath == nil { return .notInstalled }
+                if hasAPIKey { return .apiKeyPresent }
+                if hasRecordedSessions { return .authenticated(lastRefresh: nil) }
+                return .notAuthenticated
+            }()
+            return CLIAuthInfo(
+                cliType: cliType,
+                isInstalled: executablePath != nil,
+                executablePath: executablePath,
+                authState: authState,
+                configDirectory: hasConfig ? configDir : normalizedNonEmpty(configDir),
+                accountDescription: hasRecordedSessions ? "Junie local sessions" : nil
             )
         }
         #endif
@@ -605,6 +646,25 @@ public enum CLIAuthDiscovery {
 
     private static func normalizedConfigDirectory(_ override: String?, fallback: String) -> String {
         normalizedNonEmpty(override) ?? fallback
+    }
+
+    private static func directoryContainsAnyEntry(atPath path: String) -> Bool {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory),
+              isDirectory.boolValue,
+              let enumerator = FileManager.default.enumerator(
+                at: URL(fileURLWithPath: path, isDirectory: true),
+                includingPropertiesForKeys: [.isRegularFileKey],
+                options: [.skipsHiddenFiles]
+              ) else {
+            return false
+        }
+
+        for case let url as URL in enumerator
+            where (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true {
+            return true
+        }
+        return false
     }
 
     static func parseJWTClaims(from token: String) -> [String: Any]? {

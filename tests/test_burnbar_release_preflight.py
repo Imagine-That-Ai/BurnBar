@@ -155,8 +155,11 @@ def test_release_workflow_uses_bounded_release_critical_app_gate():
     assert "timeout-minutes: 180" not in app_step
     assert "run: ./scripts/test-openburnbar-app.sh" not in body
 
-    assert "source \"$repo_root/scripts/lib/openburnbar-release-app-test-filters.sh\"" in smoke
-    assert 'OPENBURNBAR_APP_TEST_FILTERS="${OPENBURNBAR_APP_TEST_FILTERS:-$(openburnbar_release_app_test_filters_env)}"' in smoke
+    assert 'source "$repo_root/scripts/lib/openburnbar-release-app-test-filters.sh"' in smoke
+    assert (
+        'OPENBURNBAR_APP_TEST_FILTERS="${OPENBURNBAR_APP_TEST_FILTERS:-$(openburnbar_release_app_test_filters_env)}"'
+        in smoke
+    )
 
     for required_filter in (
         "OpenBurnBarTests/DirectDownloadReleaseMetadataTests",
@@ -176,10 +179,13 @@ def test_release_build_and_release_job_has_packaging_headroom():
     build_end = body.index("  smoke-test:")
     build_job = body[build_start:build_end]
 
-    assert "timeout-minutes: 360" in build_job
-    assert "v1.0.16 proved those gates can legitimately run past 180 minutes" in build_job
+    assert "timeout-minutes: 300" in build_job
+    assert "Cold-runner worst case stays well under five hours" in build_job
     assert "Build signed Android release bundle" in build_job
     assert "Notarize and staple DMG" in build_job
+    # Codex P1 on PR #1281: the fail-hard signing-secret check must live in the
+    # environment-bound packaging job, where environment-scoped secrets resolve.
+    assert "Validate strict release secrets" in build_job
 
 
 def test_release_workflow_keeps_quiet_xcode_build_alive():
@@ -193,9 +199,9 @@ def test_release_workflow_keeps_quiet_xcode_build_alive():
     assert "xcodebuild_pid" in app_build_step
     assert "xcodebuild Release .app still running" in app_build_step
     assert "xcodebuild Release .app recent output" in app_build_step
-    assert "tail -n 40 \"$xcodebuild_log\"" in app_build_step
-    assert "tail -n 200 \"$xcodebuild_log\"" in app_build_step
-    assert "wait \"$xcodebuild_pid\"" in app_build_step
+    assert 'tail -n 40 "$xcodebuild_log"' in app_build_step
+    assert 'tail -n 200 "$xcodebuild_log"' in app_build_step
+    assert 'wait "$xcodebuild_pid"' in app_build_step
 
 
 def test_release_workflow_prepares_signal_ffi_before_xcode_release_build():
@@ -210,7 +216,7 @@ def test_release_workflow_prepares_signal_ffi_before_xcode_release_build():
     assert prepare_start < lockfile_index < resolve_index < app_build_index
     assert "SIGNAL_FFI_BUILD_PROFILE: release" in prepare_step
     assert 'SIGNAL_FFI_BUILD_TARGETS: "aarch64-apple-darwin x86_64-apple-darwin"' in prepare_step
-    assert "CARGO_BUILD_JOBS: \"2\"" in prepare_step
+    assert 'CARGO_BUILD_JOBS: "2"' in prepare_step
     assert "bash scripts/lib/prepare-signal-ffi-xcframework.sh" in prepare_step
 
 
@@ -229,19 +235,40 @@ def test_release_workflow_guards_owner_approved_validation_bypass():
     build_end = body.index("  smoke-test:")
     build_job = body[build_start:build_end]
 
-    for step_name in (
-        "- name: Run Swift tests",
-        "- name: Run OpenBurnBar release-critical app tests",
-        "- name: Verify SQLCipher codec in Release configuration",
-        "- name: Run retrieval replay evals",
-        "- name: Run Android unit tests",
+    # The slow validation gates run in parallel lane jobs; every gated step
+    # still honors the owner-approved bypass input, and none of them remain in
+    # the packaging job.
+    for job_header, next_job_header, step_name in (
+        ("  release-swift-gate:", "  release-app-gate:", "- name: Run Swift tests"),
+        (
+            "  release-swift-gate:",
+            "  release-app-gate:",
+            "- name: Run retrieval replay evals",
+        ),
+        (
+            "  release-app-gate:",
+            "  release-sqlcipher-gate:",
+            "- name: Run OpenBurnBar release-critical app tests",
+        ),
+        (
+            "  release-sqlcipher-gate:",
+            "  release-mobile-gate:",
+            "- name: Verify SQLCipher codec in Release configuration",
+        ),
+        (
+            "  release-android-gate:",
+            "  build-and-release:",
+            "- name: Run Android unit tests",
+        ),
     ):
-        step_start = build_job.index(step_name)
-        step_end = build_job.find("\n      - name:", step_start + 1)
+        gate_job = body[body.index(job_header) : body.index(next_job_header)]
+        step_start = gate_job.index(step_name)
+        step_end = gate_job.find("\n      - name:", step_start + 1)
         if step_end == -1:
-            step_end = len(build_job)
-        step = build_job[step_start:step_end]
+            step_end = len(gate_job)
+        step = gate_job[step_start:step_end]
         assert "inputs.run_release_validation_gates" in step
+        assert step_name not in build_job
 
     packaging_start = build_job.index("- name: Build signed Android release bundle")
     packaging_step_end = build_job.find("\n      - name:", packaging_start + 1)
@@ -254,7 +281,7 @@ def test_release_workflow_uses_bounded_release_critical_mobile_gate():
     filters = (ROOT / "scripts/lib/openburnbar-release-mobile-test-filters.sh").read_text(encoding="utf-8")
 
     step_start = body.index("- name: Run OpenBurnBar mobile unit tests")
-    step_end = body.index("- name: Record owner-approved mobile unit test bypass")
+    step_end = body.index("  release-android-gate:")
     mobile_step = body[step_start:step_end]
 
     assert "timeout-minutes: 75" in mobile_step
@@ -281,10 +308,14 @@ def test_release_workflow_bounds_sqlcipher_release_codec_gate():
     body = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
 
     step_start = body.index("- name: Verify SQLCipher codec in Release configuration")
-    step_end = body.index("- name: Run OpenBurnBar mobile unit tests")
+    step_end = body.index("  release-mobile-gate:")
     sqlcipher_step = body[step_start:step_end]
 
-    assert "timeout-minutes: 60" in sqlcipher_step
+    # 130 minutes: the gate legitimately ran 55.9 of its previous 60-minute cap
+    # on a cold runner (v1.0.29) and later overran 75 as well; the cap is a
+    # hang guard, not a quality gate (bumped alongside release.yml in the
+    # SQLCipher gate-timeout extension).
+    assert "timeout-minutes: 130" in sqlcipher_step
     assert "OPENBURNBAR_REQUIRE_SQLCIPHER_CODEC=1 ./scripts/ci/verify-sqlcipher-codec.sh" in sqlcipher_step
 
 
@@ -323,13 +354,33 @@ def test_release_workflow_parallelizes_independent_publish_gates():
     assert "Inject extension Sentry DSN" in build_job
     assert "Build extension" in build_job
 
+    for lane_job in (
+        "  release-preflight:",
+        "  release-swift-gate:",
+        "  release-app-gate:",
+        "  release-sqlcipher-gate:",
+        "  release-mobile-gate:",
+        "  release-android-gate:",
+    ):
+        assert lane_job in body
+
     publish_start = body.index("  publish:")
     verify_start = body.index("  verify-live-update-feed:")
     publish_job = body[publish_start:verify_start]
-    assert (
-        "needs: [build-and-release, smoke-test, release-functions-gate, "
-        "release-extension-gate, release-supply-chain-gate]"
-    ) in publish_job
+    for lane in (
+        "release-preflight",
+        "release-swift-gate",
+        "release-app-gate",
+        "release-sqlcipher-gate",
+        "release-mobile-gate",
+        "release-android-gate",
+        "release-functions-gate",
+        "release-extension-gate",
+        "release-supply-chain-gate",
+        "build-and-release",
+        "smoke-test",
+    ):
+        assert f"      - {lane}\n" in publish_job
 
 
 def test_app_test_wrapper_supports_multiple_normalized_filters():
@@ -349,11 +400,7 @@ def test_app_test_wrapper_supports_multiple_normalized_filters():
         check=True,
     )
 
-    filters = [
-        line
-        for line in result.stdout.splitlines()
-        if line.startswith("OpenBurnBarTests")
-    ]
+    filters = [line for line in result.stdout.splitlines() if line.startswith("OpenBurnBarTests")]
     assert filters == [
         "OpenBurnBarTests/Foo",
         "OpenBurnBarTests/Bar",
@@ -362,13 +409,18 @@ def test_app_test_wrapper_supports_multiple_normalized_filters():
     ]
 
 
-def test_firestore_deploy_uses_supported_firebase_cli_rules_deploy():
+def test_firestore_deploy_matches_firebase_tools_release_patch_shape():
     body = (ROOT / ".github/workflows/deploy-firestore.yml").read_text(encoding="utf-8")
     deployer = (ROOT / "scripts/ci/deploy-firebase-rules-releases.mjs").read_text(encoding="utf-8")
-    assert "--only firestore:indexes" in body
+    assert "--only firestore:indexes,storage" in body
+    assert "firestore:rules" not in body
     assert "deploy-firebase-rules-releases.mjs" in body
-    assert "updateMask:" not in deployer
-    assert "live API rejects an" in deployer
+    assert 'updateMask: "rulesetName"' not in deployer
+    assert "supplying updateMask currently causes" in deployer
+    assert "rulesSourceForDeploy" in deployer
+
+    drift_checker = (ROOT / "scripts/ci/check-firestore-deploy-drift.mjs").read_text(encoding="utf-8")
+    assert "rulesSourceForDeploy" in drift_checker
 
 
 def test_release_uses_keyless_provenance_when_legacy_gpg_is_absent():
@@ -408,7 +460,8 @@ def test_release_uses_keyless_provenance_when_legacy_gpg_is_absent():
     assert 'git merge-base --is-ancestor "$release_commit" origin/main' in body
     assert 'git checkout --detach "$RELEASE_COMMIT"' in body
     assert 'echo "release_commit=$release_commit"' in body
-    assert "RELEASE_REF: ${{ steps.version.outputs.tag_ref }}" in body
+    assert "RELEASE_REF: ${{ needs.release-preflight.outputs.tag_ref }}" in body
+    assert "RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}" in body
     assert '"tag": os.environ["RELEASE_TAG"]' in body
     assert '"commit": release_commit' in body
     assert '"ref": os.environ["RELEASE_REF"]' in body
@@ -545,6 +598,37 @@ def test_release_smoke_uses_packaged_daemon_helper_without_persistent_install_as
     assert "Library/Application Support/OpenBurnBar/openburnbar-daemon.sock" not in workflow
 
 
+def test_local_app_signing_uses_same_privileged_peer_policy_as_release():
+    script = (ROOT / "scripts/sign-openburnbar-local.sh").read_text(encoding="utf-8")
+
+    assert (
+        'sign_path "$APP_BUNDLE/Contents/Helpers/OpenBurnBarDaemon" "runtime,library" "com.openburnbar.daemon"'
+        in script
+    )
+    assert 'sign_path "$APP_BUNDLE/Contents/Helpers/OpenBurnBarCLI" "runtime,library" "com.openburnbar.cli"' in script
+    assert '"com.openburnbar.privileged-input-execution"' in script
+    assert '"com.openburnbar.virtual-hid-bridge"' in script
+    assert '"com.openburnbar.privileged-input-killswitch-watchdog"' in script
+    assert "--options runtime,library" in script
+    assert "assert_peer_signature" in script
+    assert 'assert_peer_signature "$APP_BUNDLE" "com.openburnbar.app"' in script
+    assert 'assert_peer_signature "$APP_BUNDLE/Contents/Helpers/OpenBurnBarDaemon" "com.openburnbar.daemon"' in script
+    assert 'assert_peer_signature "$APP_BUNDLE/Contents/Helpers/OpenBurnBarCLI" "com.openburnbar.cli"' in script
+    assert (
+        "assert_peer_signature \\\n"
+        '  "$APP_BUNDLE/Contents/Helpers/OpenBurnBarPrivilegedInputExecution" \\\n'
+        '  "com.openburnbar.privileged-input-execution"'
+    ) in script
+    assert (
+        'assert_peer_signature "$APP_BUNDLE/Contents/Helpers/OpenBurnBarVirtualHIDBridge" '
+        '"com.openburnbar.virtual-hid-bridge"'
+    ) in script
+    assert 'args+=(--preserve-metadata="$preserve_metadata")' in script
+    assert "--preserve-metadata=entitlements,requirements" in script
+    assert "--preserve-metadata=entitlements,requirements,flags" not in script
+    assert 'codesign --force --sign "$IDENTITY" --timestamp=none "$path"' not in script
+
+
 def test_daemon_token_file_arguments_override_inherited_environment():
     daemon_main = (
         ROOT / "OpenBurnBarDaemon/Sources/OpenBurnBarDaemonExecutable/OpenBurnBarDaemonMain.swift"
@@ -552,7 +636,7 @@ def test_daemon_token_file_arguments_override_inherited_environment():
 
     assert 'var socketAuthToken = environment["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]' in daemon_main
     assert 'var gatewayAuthToken = environment["OPENBURNBAR_GATEWAY_AUTH_TOKEN"]' in daemon_main
-    assert 'gatewayAuthToken = try readTokenFile(arguments[index], argument: argument)' in daemon_main
-    assert 'socketAuthToken = try readTokenFile(arguments[index], argument: argument)' in daemon_main
+    assert "gatewayAuthToken = try readTokenFile(arguments[index], argument: argument)" in daemon_main
+    assert "socketAuthToken = try readTokenFile(arguments[index], argument: argument)" in daemon_main
     assert "if gatewayAuthToken == nil" not in daemon_main
     assert "if socketAuthToken == nil" not in daemon_main

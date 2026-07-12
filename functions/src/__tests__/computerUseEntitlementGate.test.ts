@@ -149,7 +149,7 @@ describe("Computer Use callables require hosted Agent Control entitlement", () =
     await expect(run(callable)).rejects.toMatchObject({
       code: "permission-denied",
     });
-    expect(dbAccesses).toEqual([]);
+    expect(dbAccesses).toEqual([`account_erasure_tombstones/${UID}`]);
   });
 
   it("revokeIrohPairingRecord remains available for cleanup after entitlement expiry", async () => {

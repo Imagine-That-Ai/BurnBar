@@ -36,7 +36,7 @@ actor QuotaRefreshActor {
 
     let keyStore: ProviderAPIKeyStore
     let providerRuntimeKeyStore: KeychainStore
-    let appPaths: OpenBurnBarAppPaths
+    let appPaths: OpenBurnBarCore.OpenBurnBarAppPaths
     let fileManager: FileManager
     let session: URLSession
     let environment: [String: String]
@@ -55,7 +55,7 @@ actor QuotaRefreshActor {
         settingsManager: SettingsManager,
         keyStore: ProviderAPIKeyStore,
         providerRuntimeKeyStore: KeychainStore,
-        appPaths: OpenBurnBarAppPaths,
+        appPaths: OpenBurnBarCore.OpenBurnBarAppPaths,
         fileManager: FileManager,
         session: URLSession,
         environment: [String: String],
@@ -78,6 +78,7 @@ actor QuotaRefreshActor {
         self.adapters = [
             .codex: CodexQuotaAdapter(),
             .openCode: OpenCodeQuotaAdapter(),
+            .omp: OMPQuotaAdapter(),
             .openAI: OpenAIQuotaAdapter(),
             .deepSeek: DeepSeekQuotaAdapter(),
             .claudeCode: ClaudeQuotaAdapter(),
@@ -205,7 +206,10 @@ actor QuotaRefreshActor {
                 }
             },
             claudeCredentialsReader: claudeCredentialsReader,
-            resolvedAPIKeys: resolved.keys
+            resolvedAPIKeys: resolved.keys,
+            secretStore: ProviderQuotaMacPlatform.secretStore,
+            cliExecutor: ProviderQuotaMacPlatform.cliExecutor,
+            quotaLogger: ProviderQuotaMacPlatform.quotaLogger
         )
         return context
     }
@@ -685,6 +689,10 @@ private func defaultSwitcherConfigDirectory(
         return homeDirectoryURL.appendingPathComponent(".kimi", isDirectory: true).path
     case .pi:
         return homeDirectoryURL.appendingPathComponent(".pi", isDirectory: true).path
+    case .junie:
+        return homeDirectoryURL.appendingPathComponent(".junie", isDirectory: true).path
+    case .omp:
+        return homeDirectoryURL.appendingPathComponent(".omp", isDirectory: true).path
     }
 }
 
@@ -735,6 +743,10 @@ private func quotaProvider(for cliType: SwitcherCLIProfileType) -> AgentProvider
         return .kimi
     case .pi:
         return .piAgent
+    case .junie:
+        return .junie
+    case .omp:
+        return .omp
     }
 }
 

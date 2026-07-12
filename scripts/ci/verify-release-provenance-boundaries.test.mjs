@@ -43,7 +43,7 @@ on:
         type: string
         default: ""
 jobs:
-  build-and-release:
+  release-preflight:
     steps:
       - name: Resolve release tag and version
         id: version
@@ -76,33 +76,9 @@ jobs:
           set -euo pipefail
           git checkout --detach "$RELEASE_COMMIT"
           test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
-      - name: Install Sparkle signing tools
-        run: |
-          set -euo pipefail
-          brew install --cask sparkle
-          SPARKLE_CASKROOM="$(brew --prefix)/Caskroom/sparkle"
-          SPARKLE_SIGN_UPDATE="$(
-            find "$SPARKLE_CASKROOM" -name sign_update -type f -print -quit 2>/dev/null || true
-          )"
-          if [[ -z "$SPARKLE_SIGN_UPDATE" ]]; then
-            exit 1
-          fi
-          SPARKLE_CASKROOM_REAL="$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$SPARKLE_CASKROOM")"
-          SPARKLE_SIGN_UPDATE_REAL="$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$SPARKLE_SIGN_UPDATE")"
-          if [[ -L "$SPARKLE_SIGN_UPDATE" ]]; then
-            echo "::error::Sparkle sign_update must be a regular file from the Homebrew cask, not a symlink: $SPARKLE_SIGN_UPDATE"
-            exit 1
-          fi
-          case "$SPARKLE_SIGN_UPDATE_REAL" in
-            "$SPARKLE_CASKROOM_REAL"/*) ;;
-            *)
-              echo "::error::Sparkle sign_update resolved outside the Homebrew Sparkle cask: $SPARKLE_SIGN_UPDATE_REAL"
-              exit 1
-              ;;
-          esac
-          if [[ ! -x "$SPARKLE_SIGN_UPDATE" ]]; then
-            exit 1
-          fi
+
+      - name: Scan publishable tree for secrets
+        run: ./scripts/security/scan-publishable-tree.sh
       - name: BurnBar product release preflight
         run: python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval --expected-release-tag "\${{ steps.version.outputs.tag_name }}"
       - name: Validate mobile unit test bypass reason
@@ -132,6 +108,43 @@ jobs:
             echo "::error::mobile_unit_test_bypass_reason must include a GitHub run/PR URL or 40-character commit SHA for auditability."
             exit 1
           fi
+  build-and-release:
+    needs: release-preflight
+    steps:
+      - name: Check out release tag for packaging
+        env:
+          RELEASE_COMMIT: \${{ needs.release-preflight.outputs.release_commit }}
+        run: |
+          set -euo pipefail
+          git checkout --detach "$RELEASE_COMMIT"
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+      - name: Install Sparkle signing tools
+        run: |
+          set -euo pipefail
+          brew install --cask sparkle
+          SPARKLE_CASKROOM="$(brew --prefix)/Caskroom/sparkle"
+          SPARKLE_SIGN_UPDATE="$(
+            find "$SPARKLE_CASKROOM" -name sign_update -type f -print -quit 2>/dev/null || true
+          )"
+          if [[ -z "$SPARKLE_SIGN_UPDATE" ]]; then
+            exit 1
+          fi
+          SPARKLE_CASKROOM_REAL="$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$SPARKLE_CASKROOM")"
+          SPARKLE_SIGN_UPDATE_REAL="$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$SPARKLE_SIGN_UPDATE")"
+          if [[ -L "$SPARKLE_SIGN_UPDATE" ]]; then
+            echo "::error::Sparkle sign_update must be a regular file from the Homebrew cask, not a symlink: $SPARKLE_SIGN_UPDATE"
+            exit 1
+          fi
+          case "$SPARKLE_SIGN_UPDATE_REAL" in
+            "$SPARKLE_CASKROOM_REAL"/*) ;;
+            *)
+              echo "::error::Sparkle sign_update resolved outside the Homebrew Sparkle cask: $SPARKLE_SIGN_UPDATE_REAL"
+              exit 1
+              ;;
+          esac
+          if [[ ! -x "$SPARKLE_SIGN_UPDATE" ]]; then
+            exit 1
+          fi
       - name: Generate direct-download update feeds
         env:
           DMG_PATH: \${{ steps.dmg.outputs.dmg_path }}
@@ -152,8 +165,8 @@ jobs:
             --latest-name "$(basename "$LATEST_PATH")"
       - name: Sigstore blob attestations (SBOM + VEX + checksums + binaries)
         env:
-          RELEASE_REF: \${{ steps.version.outputs.tag_ref }}
-          RELEASE_COMMIT: \${{ steps.version.outputs.release_commit }}
+          RELEASE_REF: \${{ needs.release-preflight.outputs.tag_ref }}
+          RELEASE_COMMIT: \${{ needs.release-preflight.outputs.release_commit }}
         run: |
           python3 - <<'PY'
           import os
@@ -171,6 +184,18 @@ jobs:
           PY
           cosign attest-blob --yes
   publish:
+    needs:
+      - release-preflight
+      - release-swift-gate
+      - release-app-gate
+      - release-sqlcipher-gate
+      - release-mobile-gate
+      - release-android-gate
+      - release-functions-gate
+      - release-extension-gate
+      - release-supply-chain-gate
+      - build-and-release
+      - smoke-test
     steps:
       - name: Publish release assets
         run: |
@@ -726,8 +751,8 @@ expect(
 expect(
   "release workflow job-level permission override fails",
   GOOD_RELEASE.replace(
-    "  build-and-release:\n    steps:",
-    "  build-and-release:\n    permissions:\n      contents: write\n    steps:",
+    "  build-and-release:\n    needs: release-preflight\n    steps:",
+    "  build-and-release:\n    needs: release-preflight\n    permissions:\n      contents: write\n    steps:",
   ),
   GOOD_SUPPLY_CHAIN,
   1,
@@ -744,10 +769,78 @@ expect(
 );
 
 expect(
+  "release publish Bash 4-only mapfile fails on macOS runner compatibility",
+  GOOD_RELEASE.replace(
+    "if ((${#PROVENANCE_PATHS[@]} == 0)); then",
+    "mapfile -t PROVENANCE_PATHS < <(find \"$RUNNER_TEMP\" -type f -name \"*.sigstore.json\" -print)\n          if ((${#PROVENANCE_PATHS[@]} == 0)); then",
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
   "release publish neutered provenance bundle guard body fails",
   GOOD_RELEASE.replace(
     'if ((${#PROVENANCE_PATHS[@]} == 0)); then\n            echo "::error::Release provenance bundles missing after artifact download."\n            exit 1\n          fi',
     'if ((${#PROVENANCE_PATHS[@]} == 0)); then\n            echo "warning: missing bundles"\n          fi',
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+
+expect(
+  "release attestation env not bound to preflight outputs fails",
+  GOOD_RELEASE.replace(
+    "          RELEASE_REF: ${{ needs.release-preflight.outputs.tag_ref }}\n          RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}",
+    "          RELEASE_REF: ${{ steps.version.outputs.tag_ref }}\n          RELEASE_COMMIT: ${{ steps.version.outputs.release_commit }}",
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "release publish missing a validation lane need fails",
+  GOOD_RELEASE.replace("      - release-swift-gate\n", ""),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "release publish always() lane bypass fails",
+  GOOD_RELEASE.replace(
+    "  publish:\n    needs:",
+    "  publish:\n    if: ${{ always() }}\n    needs:",
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "release packaging job not consuming preflight outputs fails",
+  GOOD_RELEASE.replace(
+    "  build-and-release:\n    needs: release-preflight\n",
+    "  build-and-release:\n",
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "release packaging checkout missing commit equality proof fails",
+  GOOD_RELEASE.replace(
+    '          RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}\n        run: |\n          set -euo pipefail\n          git checkout --detach "$RELEASE_COMMIT"\n          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"',
+    '          RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}\n        run: |\n          set -euo pipefail\n          git checkout --detach "$RELEASE_COMMIT"',
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "release preflight missing publishable-tree secret scan fails",
+  GOOD_RELEASE.replace(
+    "      - name: Scan publishable tree for secrets\n        run: ./scripts/security/scan-publishable-tree.sh\n",
+    "",
   ),
   GOOD_SUPPLY_CHAIN,
   1,

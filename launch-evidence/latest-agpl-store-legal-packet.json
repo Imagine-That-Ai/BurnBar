@@ -1,26 +1,26 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-01T22:30:16Z",
+  "generatedAt": "2026-07-04T23:39:29Z",
   "status": "owner_attested_soft_approval",
   "reviewStatus": "owner_attested_soft_approval",
   "repo": {
     "remote": "origin",
     "ownerRepo": "Imagine-That-Ai/BurnBar",
-    "branch": "release/v1.0.23",
-    "originMain": "157874e912",
-    "releaseTag": "v1.0.23"
+    "branch": "release/v1.0.29-origin-main",
+    "originMain": "8092d19ea1",
+    "releaseTag": "v1.0.29"
   },
-  "purpose": "Owner-attested emergency release evidence for the public macOS direct-download artifact after the website served a stale, untrusted DMG.",
+  "purpose": "Owner-attested emergency release evidence for the public macOS direct-download artifact and App Store/TestFlight lane cut from the latest origin/main release branch after v1.0.28 was superseded by the Windows parity integration merge.",
   "ownerAttestation": {
     "ownerName": "Alberto Nunez",
     "ownerGitHub": "Ajnunezg",
     "ownerRole": "release_owner",
-    "attestedAt": "2026-07-01T22:30:16Z",
+    "attestedAt": "2026-07-04T23:39:29Z",
     "counselName": "Heather Meeker",
     "approvalType": "soft_approval",
-    "emergencyReason": "Publish the fixed signed and notarized macOS direct-download artifact after v1.0.21 wedged in the Apple notarize/staple step and v1.0.22 exposed a missing release-built Signal FFI artifact, so users stop receiving stale-download Gatekeeper, missing-Firebase-auth, menu-bar, and mobile Pulse launch regressions.",
-    "approvalBoundary": "Emergency owner-attested soft approval for the v1.0.23 public macOS direct-download, app-store/TestFlight, Google Play, hosted gateway, and commercial distribution release train while the signed counsel packet is collected.",
-    "ownerStatement": "As release owner, Alberto Nunez attests that Heather Meeker gave soft approval for this release boundary and authorizes the emergency v1.0.23 public release lane.",
+    "emergencyReason": "Publish the newest origin/main signed and notarized macOS direct-download artifact and matching App Store/TestFlight release lane from the post-Windows parity integration commit instead of leaving users on the superseded v1.0.28 release branch.",
+    "approvalBoundary": "Emergency owner-attested soft approval for the v1.0.29 public macOS direct-download, app-store/TestFlight, Google Play, hosted gateway, and commercial distribution release train while the signed counsel packet is collected.",
+    "ownerStatement": "As release owner, Alberto Nunez attests that Heather Meeker gave soft approval for this release boundary and authorizes the emergency v1.0.29 public release lane.",
     "followUpRequired": true
   },
   "scope": [
@@ -59,7 +59,7 @@
     {
       "id": "release_owner_attestation",
       "status": "owner_attested",
-      "command": "python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval --expected-release-tag v1.0.23",
+      "command": "python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval --expected-release-tag v1.0.29",
       "proof": "The emergency release lane validates this structured owner attestation. It does not replace the normal signed external-counsel approval packet."
     },
     {

@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    macOS-runnable unit tests for the shell's persisted UI-chrome state
+    (Phase 3 · W7 · W6-SHELL). Runs on the macOS authoring host today via
+    `dotnet test` — it LINKS the dependency-free
+    ../../app/OpenBurnBar.App/Shell/AppStatePersistence.cs (System.IO +
+    System.Text.Json only, NO WinUI), so the round-trip / defaults / corrupt-file
+    fallback / persisted JSON-schema behavior of the shell state store is asserted
+    off-Windows. The WinUI-bound shell surfaces (AppShell, FlyoutWindow, ThemeService)
+    are Windows-only and are type-checked separately; see the PR's Validation section.
+
+    RouteSmokeOptions is linked the same way (no WinUI) for CLI argument parsing tests.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="../../app/OpenBurnBar.App/Shell/AppStatePersistence.cs" />
+    <Compile Include="../../app/OpenBurnBar.App.Configuration/RuntimePaths.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Shell/AutomationLaunchOptions.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Shell/CommandLineParts.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Shell/RouteSmokeOptions.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Shell/NavDestination.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Shell/SurfaceRouteMap.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Shell/WindowsActivationRouter.cs" />
+    <Compile Include="AppStatePersistenceTests.cs" />
+    <Compile Include="AutomationLaunchOptionsTests.cs" />
+    <Compile Include="RouteSmokeOptionsTests.cs" />
+    <Compile Include="NavCatalogTests.cs" />
+    <Compile Include="WindowsActivationRouterTests.cs" />
+  </ItemGroup>
+
+</Project>

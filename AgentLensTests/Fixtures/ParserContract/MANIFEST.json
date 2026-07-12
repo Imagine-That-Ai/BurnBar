@@ -1,0 +1,471 @@
+{
+  "formatVersion": 1,
+  "description": "Portable, language-neutral parser fixture corpus for the Windows-port parser-output contract (VAL-P0-HARNESS-023 / 024). Each fixture is the exact on-disk bytes a provider writes; a parser laid out per 'layout' must reproduce the rows in parser-output-golden.json. All timestamps are frozen (2025-07-01T00:00:00Z for the formerly-wall-clock fixtures) so the corpus is byte-reproducible.",
+  "golden": "parser-output-golden.json",
+  "contractSpec": "docs/windows-port/PARSER_OUTPUT_CONTRACT.md",
+  "sourceBuilders": "AgentLensTests/Support/ParserIntegrationTestSupport.swift (enum ParserTestFixtures)",
+  "fixtures": [
+    {
+      "id": "claudeCodeSession",
+      "provider": "Claude Code",
+      "parser": "ClaudeCodeParser",
+      "files": [
+        {
+          "role": "primary",
+          "name": "pc-claude-basic-session.jsonl"
+        }
+      ],
+      "layout": {
+        "kind": "claudeCode",
+        "sessionId": "claude-basic-session",
+        "projectDir": "-Users-test-Documents-ParserContract",
+        "relativePath": ".claude/projects/{projectDir}/{sessionId}.jsonl"
+      }
+    },
+    {
+      "id": "claudeCodeMultiTurnSession",
+      "provider": "Claude Code",
+      "parser": "ClaudeCodeParser",
+      "files": [
+        {
+          "role": "primary",
+          "name": "pc-claude-multi-turn.jsonl"
+        }
+      ],
+      "layout": {
+        "kind": "claudeCode",
+        "sessionId": "claude-multi-turn",
+        "projectDir": "-Users-test-Documents-ParserContract",
+        "relativePath": ".claude/projects/{projectDir}/{sessionId}.jsonl"
+      }
+    },
+    {
+      "id": "claudeCodeWithSubagent",
+      "provider": "Claude Code",
+      "parser": "ClaudeCodeParser",
+      "files": [
+        {
+          "role": "primary",
+          "name": "pc-claude-subagent.jsonl"
+        }
+      ],
+      "layout": {
+        "kind": "claudeCode",
+        "sessionId": "claude-subagent",
+        "projectDir": "-Users-test-Documents-ParserContract",
+        "relativePath": ".claude/projects/{projectDir}/{sessionId}.jsonl"
+      }
+    },
+    {
+      "id": "sessionWithMalformedLines",
+      "provider": "Claude Code",
+      "parser": "ClaudeCodeParser",
+      "files": [
+        {
+          "role": "primary",
+          "name": "pc-claude-malformed-lines.jsonl"
+        }
+      ],
+      "layout": {
+        "kind": "claudeCode",
+        "sessionId": "claude-malformed-lines",
+        "projectDir": "-Users-test-Documents-ParserContract",
+        "relativePath": ".claude/projects/{projectDir}/{sessionId}.jsonl"
+      }
+    },
+    {
+      "id": "sessionWithMissingUsage",
+      "provider": "Claude Code",
+      "parser": "ClaudeCodeParser",
+      "files": [
+        {
+          "role": "primary",
+          "name": "pc-claude-missing-usage.jsonl"
+        }
+      ],
+      "layout": {
+        "kind": "claudeCode",
+        "sessionId": "claude-missing-usage",
+        "projectDir": "-Users-test-Documents-ParserContract",
+        "relativePath": ".claude/projects/{projectDir}/{sessionId}.jsonl"
+      }
+    },
+    {
+      "id": "sessionWithCacheTokens",
+      "provider": "Claude Code",
+      "parser": "ClaudeCodeParser",
+      "files": [
+        {
+          "role": "primary",
+          "name": "pc-claude-cache-tokens.jsonl"
+        }
+      ],
+      "layout": {
+        "kind": "claudeCode",
+        "sessionId": "claude-cache-tokens",
+        "projectDir": "-Users-test-Documents-ParserContract",
+        "relativePath": ".claude/projects/{projectDir}/{sessionId}.jsonl"
+      }
+    },
+    {
+      "id": "claudeStreamingSessionWithDuplicateUsage",
+      "provider": "Claude Code",
+      "parser": "ClaudeCodeParser",
+      "files": [
+        {
+          "role": "primary",
+          "name": "pc-claude-streaming-dupe-usage.jsonl"
+        }
+      ],
+      "layout": {
+        "kind": "claudeCode",
+        "sessionId": "claude-streaming-dupe-usage",
+        "projectDir": "-Users-test-Documents-ParserContract",
+        "relativePath": ".claude/projects/{projectDir}/{sessionId}.jsonl"
+      }
+    },
+    {
+      "id": "emptySession",
+      "provider": "Claude Code",
+      "parser": "ClaudeCodeParser",
+      "files": [
+        {
+          "role": "primary",
+          "name": "pc-claude-empty-session.jsonl"
+        }
+      ],
+      "layout": {
+        "kind": "claudeCode",
+        "sessionId": "claude-empty-session",
+        "projectDir": "-Users-test-Documents-ParserContract",
+        "relativePath": ".claude/projects/{projectDir}/{sessionId}.jsonl"
+      }
+    },
+    {
+      "id": "factoryDroidSession",
+      "provider": "Factory",
+      "parser": "FactoryDroidParser",
+      "files": [
+        {
+          "role": "primary",
+          "name": "pc-factory-basic.jsonl"
+        }
+      ],
+      "layout": {
+        "kind": "factory",
+        "sessionId": "factory-basic",
+        "projectDir": "ParserContract",
+        "relativePath": ".factory/sessions/{projectDir}/{sessionId}.jsonl"
+      }
+    },
+    {
+      "id": "factoryDroidSessionWithSettings",
+      "provider": "Factory",
+      "parser": "FactoryDroidParser",
+      "files": [
+        {
+          "role": "primary",
+          "name": "pc-factory-with-settings.jsonl",
+          "layoutName": "{sessionId}.jsonl"
+        },
+        {
+          "role": "settings",
+          "name": "pc-factory-with-settings-settings.json",
+          "layoutName": "{sessionId}.settings.json"
+        },
+        {
+          "role": "metadata",
+          "name": "pc-factory-with-settings-metadata.json",
+          "layoutName": "{sessionId}.metadata.json"
+        }
+      ],
+      "layout": {
+        "kind": "factory",
+        "sessionId": "factory-with-settings",
+        "projectDir": "ParserContract",
+        "relativePath": ".factory/sessions/{projectDir}/"
+      }
+    },
+    {
+      "id": "codexRolloutSession",
+      "provider": "Codex",
+      "parser": "CodexParser",
+      "files": [
+        {
+          "role": "primary",
+          "name": "pc-codex-rollout-session.jsonl"
+        }
+      ],
+      "layout": {
+        "kind": "codex",
+        "threadId": "codex-contract-001",
+        "model": "openai/gpt-5.2-codex",
+        "tokensUsed": 176,
+        "createdAt": 1766577600,
+        "updatedAt": 1766577660,
+        "cwd": "/tmp/OpenBurnBar",
+        "rolloutRelativePath": "sessions/2025/12/24/rollout-2025-12-24T12-00-00.jsonl",
+        "threadsDb": ".codex/state_5.sqlite"
+      }
+    },
+    {
+      "id": "codexRolloutSessionWithLastUsageOnly",
+      "provider": "Codex",
+      "parser": "CodexParser",
+      "files": [
+        {
+          "role": "primary",
+          "name": "pc-codex-last-usage-only.jsonl"
+        }
+      ],
+      "layout": {
+        "kind": "codex",
+        "threadId": "codex-contract-002",
+        "model": "openai/gpt-5.2-codex",
+        "tokensUsed": 176,
+        "createdAt": 1766664000,
+        "updatedAt": 1766664060,
+        "cwd": "/tmp/OpenBurnBar",
+        "rolloutRelativePath": "sessions/2025/12/25/rollout-2025-12-25T12-00-00.jsonl",
+        "threadsDb": ".codex/state_5.sqlite"
+      }
+    },
+    {
+      "id": "codexRolloutSessionWithPartialTokenCountAndDeltas",
+      "provider": "Codex",
+      "parser": "CodexParser",
+      "files": [
+        {
+          "role": "primary",
+          "name": "pc-codex-partial-token-count.jsonl"
+        }
+      ],
+      "layout": {
+        "kind": "codex",
+        "threadId": "codex-contract-003",
+        "model": "openai/gpt-5.2-codex",
+        "tokensUsed": 176,
+        "createdAt": 1766750000,
+        "updatedAt": 1766750060,
+        "cwd": "/tmp/OpenBurnBar",
+        "rolloutRelativePath": "sessions/2025/12/26/rollout-2025-12-26T12-00-00.jsonl",
+        "threadsDb": ".codex/state_5.sqlite"
+      }
+    },
+    {
+      "id": "hermesSessionSnapshot",
+      "provider": "Hermes",
+      "parser": "HermesParser",
+      "files": [
+        {
+          "role": "primary",
+          "name": "pc-hermes-session-snapshot.json"
+        }
+      ],
+      "layout": {
+        "kind": "hermes",
+        "sessionId": "cron_test_001",
+        "profile": "world-director",
+        "relativePath": ".hermes/profiles/{profile}/sessions/session_{sessionId}.json"
+      }
+    },
+    {
+      "id": "hermesToolHeavySessionSnapshot",
+      "provider": "Hermes",
+      "parser": "HermesParser",
+      "files": [
+        {
+          "role": "primary",
+          "name": "pc-hermes-tool-heavy-snapshot.json"
+        }
+      ],
+      "layout": {
+        "kind": "hermes",
+        "sessionId": "cron_tool_heavy_001",
+        "profile": "world-director",
+        "relativePath": ".hermes/profiles/{profile}/sessions/session_{sessionId}.json"
+      }
+    },
+    {
+      "id": "antigravityBasicSession",
+      "provider": "Antigravity",
+      "parser": "AntigravityParser",
+      "files": [
+        {
+          "role": "primary",
+          "name": "pc-antigravity-basic.jsonl"
+        }
+      ],
+      "layout": {
+        "kind": "homeLayout",
+        "relativePath": ".gemini/antigravity-cli/brain/antigravity-contract-1/.system_generated/logs/transcript.jsonl"
+      }
+    },
+    {
+      "id": "augmentBasicSession",
+      "provider": "Augment",
+      "parser": "AugmentParser",
+      "files": [
+        {
+          "role": "primary",
+          "name": "pc-augment-basic.jsonl"
+        }
+      ],
+      "layout": {
+        "kind": "homeLayout",
+        "relativePath": "Library/Application Support/Code/User/globalStorage/augment.vscode-augment/pc-augment-basic.jsonl"
+      }
+    },
+    {
+      "id": "clineBasicTask",
+      "provider": "Cline",
+      "parser": "ClineFormatParser",
+      "files": [
+        {
+          "role": "primary",
+          "name": "pc-cline-basic.json"
+        }
+      ],
+      "layout": {
+        "kind": "homeLayout",
+        "relativePath": "Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/tasks/cline-contract-task-1/api_conversation_history.json"
+      }
+    },
+    {
+      "id": "cursorAgentBasicSession",
+      "provider": "Cursor Agent",
+      "parser": "CursorAgentParser",
+      "files": [
+        {
+          "role": "primary",
+          "name": "pc-cursor-agent-basic.jsonl"
+        }
+      ],
+      "layout": {
+        "kind": "homeLayout",
+        "relativePath": ".cursor-agent/sessions/cursor-agent-contract-1.jsonl"
+      }
+    },
+    {
+      "id": "geminiCLIBasicSession",
+      "provider": "Gemini CLI",
+      "parser": "GeminiCLIParser",
+      "files": [
+        {
+          "role": "primary",
+          "name": "pc-gemini-cli-basic.json"
+        }
+      ],
+      "layout": {
+        "kind": "homeLayout",
+        "relativePath": ".gemini/tmp/project-hash-contract/chats/session-gemini-contract-1.json"
+      }
+    },
+    {
+      "id": "grokBasicSession",
+      "provider": "xAI",
+      "parser": "GrokParser",
+      "files": [
+        {
+          "role": "primary",
+          "name": "pc-grok-summary.json"
+        },
+        {
+          "role": "sidecar",
+          "name": "pc-grok-signals.json"
+        },
+        {
+          "role": "sidecar",
+          "name": "pc-grok-chat-history.jsonl"
+        }
+      ],
+      "layout": {
+        "kind": "homeLayout",
+        "relativePath": ".grok/sessions/tmp-ParserContract/grok-contract-session-1/"
+      }
+    },
+    {
+      "id": "kimiBasicSession",
+      "provider": "Kimi",
+      "parser": "KimiParser",
+      "files": [
+        {
+          "role": "primary",
+          "name": "pc-kimi-context.jsonl"
+        },
+        {
+          "role": "sidecar",
+          "name": "pc-kimi-wire.jsonl"
+        }
+      ],
+      "layout": {
+        "kind": "homeLayout",
+        "relativePath": ".kimi/sessions/workspace-contract/kimi-contract-session-1/"
+      }
+    },
+    {
+      "id": "forgeDevBasicSession",
+      "provider": "Forge",
+      "parser": "ForgeDevParser",
+      "files": [
+        {
+          "role": "sqlite",
+          "name": "pc-forgedev.sqlite"
+        }
+      ],
+      "layout": {
+        "kind": "homeLayout",
+        "relativePath": ".forge/.forge.db"
+      }
+    },
+    {
+      "id": "gooseBasicSession",
+      "provider": "Goose",
+      "parser": "GooseParser",
+      "files": [
+        {
+          "role": "sqlite",
+          "name": "pc-goose.sqlite"
+        }
+      ],
+      "layout": {
+        "kind": "homeLayout",
+        "relativePath": ".goose/sessions/sessions.db"
+      }
+    },
+    {
+      "id": "windsurfBasicSession",
+      "provider": "Windsurf",
+      "parser": "WindsurfParser",
+      "files": [
+        {
+          "role": "sqlite",
+          "name": "pc-windsurf-state.vscdb"
+        },
+        {
+          "role": "sidecar",
+          "name": "pc-windsurf-session.pb"
+        }
+      ],
+      "layout": {
+        "kind": "homeLayout",
+        "relativePath": "Library/Application Support/Windsurf - Next/User/globalStorage/state.vscdb + .codeium/windsurf-next/cascade/pc-windsurf-session.pb"
+      }
+    },
+    {
+      "id": "warpBasicSession",
+      "provider": "Warp",
+      "parser": "WarpParser",
+      "files": [
+        {
+          "role": "primary",
+          "name": "pc-warp-basic.log"
+        }
+      ],
+      "layout": {
+        "kind": "homeLayout",
+        "relativePath": "Library/Application Support/dev.warp.Warp-Stable/warp_network.log"
+      }
+    }
+  ]
+}

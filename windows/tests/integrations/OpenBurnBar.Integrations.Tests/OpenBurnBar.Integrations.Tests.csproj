@@ -1,0 +1,61 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    macOS-runnable tests for the portable integrations layer (Phase 4 · Home
+    Assistant + SmartHub bridge). Runs today via `dotnet test` on the authoring
+    host, the SAME assemblies that ship on Windows. Mirrors the proven
+    storage/presentation/ipc test pattern (net10.0, xUnit).
+
+    Coverage:
+      Home Assistant (portable core, driven through a fake transport fed by
+      RECORDED response fixtures under Fixtures/):
+        * HomeAssistantResponseMapperTests   — probe + ensureSuccess status/error mapping.
+        * HomeAssistantStateProjectionTests   — /api/states decode + media_player
+          projection + Cast detection + best-match + the numeric-supported_features
+          parity quirk.
+        * HomeAssistantClientTests            — probe / validateToken / listMediaPlayers
+          / upsert / callService / webhook round-trips + request assembly + timeout.
+        * HomeAssistantUrlNormalizer/WebhookId/BlueprintInstaller/Config/Store tests.
+      SmartHub bridge (portable core):
+        * BridgeAccessControl / BridgeHttpParser / BridgeStateJson / BridgeRouter /
+          BridgeRuntimeState / SmartHubDisplayConfig / SmartHubTimePeriod tests —
+          the /state.json contract + route dispatch + auth.
+      SmartHub discovery (portable core — the Bonjour record bytes):
+        * DnsName / DnsRecords / DnsMessage / MdnsAdvertisement / Ipv4Subnet tests.
+      Net adapters (net-generic, RUN on this host):
+        * HttpListenerBridgeHostTests         — real HTTP round-trips through the
+          live listener + router on loopback.
+        * HttpClientHomeAssistantTransportTests — HomeAssistantClient over a real
+          HttpClient against an in-process HA stub.
+        * NetworkInterfaceLanEnumeratorTests   — the live interface enumerator smoke.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../integrations/homeassistant/OpenBurnBar.Integrations.HomeAssistant/OpenBurnBar.Integrations.HomeAssistant.csproj" />
+    <ProjectReference Include="../../../integrations/homeassistant/OpenBurnBar.Integrations.HomeAssistant.Net/OpenBurnBar.Integrations.HomeAssistant.Net.csproj" />
+    <ProjectReference Include="../../../integrations/smarthub/OpenBurnBar.Integrations.SmartHub/OpenBurnBar.Integrations.SmartHub.csproj" />
+    <ProjectReference Include="../../../integrations/smarthub/OpenBurnBar.Integrations.SmartHub.Net/OpenBurnBar.Integrations.SmartHub.Net.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Fixtures/**/*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

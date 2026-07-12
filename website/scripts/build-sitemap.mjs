@@ -8,7 +8,9 @@ import { join, relative } from "node:path";
 
 const SITE = "https://burnbar.ai";
 const DIST = new URL("../dist", import.meta.url).pathname;
-const EXCLUDE = ["/404"]; // pages we do not want indexed
+// Pages we do not want indexed: the 404 page and the noindex'd auth-utility
+// surfaces (device linking + Hermes account connect).
+const EXCLUDE = ["/404", "/link", "/hermes/connect"];
 
 const now = new Date().toISOString().slice(0, 10);
 
@@ -56,7 +58,10 @@ const xml = [
   ...routes.map(
     (r) =>
       "  <url>\n" +
-      `    <loc>${SITE}${r === "/" ? "/" : r + "/"}</loc>\n` +
+      // Slash-less URLs: firebase.json sets "trailingSlash": false for the
+      // marketing target, so the slashed form 301-redirects. Sitemap entries
+      // must match the served (and canonical) form exactly.
+      `    <loc>${SITE}${r === "/" ? "/" : r}</loc>\n` +
       `    <lastmod>${now}</lastmod>\n` +
       `    <changefreq>${changefreq(r)}</changefreq>\n` +
       `    <priority>${priority(r).toFixed(2)}</priority>\n` +

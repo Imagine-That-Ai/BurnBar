@@ -1,6 +1,5 @@
-import CryptoKit
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 #if canImport(Security)
 import Security
 #endif
@@ -262,7 +261,7 @@ public struct ControllerKeyPinStore: Sendable {
     }
 
     /// Validate that `advertised` decodes to a genuine 32-byte Ed25519 public key
-    /// and return its canonical base64, or `nil`. Importing through CryptoKit
+    /// and return its canonical base64, or `nil`. importing through PlatformCrypto
     /// rejects wrong-length / off-curve keys so a malformed key fails closed
     /// rather than being pinned.
     static func normalizedEd25519KeyBase64(_ advertised: String) -> String? {
@@ -270,7 +269,7 @@ public struct ControllerKeyPinStore: Sendable {
         guard !trimmed.isEmpty,
               let raw = Data(base64Encoded: trimmed),
               raw.count == 32,
-              (try? Curve25519.Signing.PublicKey(rawRepresentation: raw)) != nil else {
+              (try? PlatformCrypto.ed25519PublicKey(rawRepresentation: raw)) != nil else {
             return nil
         }
         return raw.base64EncodedString()
@@ -346,10 +345,19 @@ extension ControllerKeyPinStore {
     /// Production default: the device Keychain.
     public static func defaultBacking() -> ControllerKeyPinBacking { ControllerKeyKeychainPinBacking() }
 }
+#elseif os(Linux)
+extension ControllerKeyPinStore {
+    /// Linux production default: freedesktop Secret Service, with an encrypted
+    /// 0600 file fallback when no session secret service is available. Never
+    /// silently degrades to in-memory persistence.
+    public static func defaultBacking() -> ControllerKeyPinBacking {
+        LinuxSecretControllerKeyPinBacking(service: LinuxPersistentSecretStore.controllerPinService)
+    }
+}
 #else
 extension ControllerKeyPinStore {
-    /// On platforms without the Security framework (Linux CI) the default backing
-    /// is in-memory; the shipping macOS app always resolves to the Keychain.
+    /// Non-production fallback for platforms without Security or the Linux
+    /// secret backend. Production macOS and Linux resolve above.
     public static func defaultBacking() -> ControllerKeyPinBacking { InMemoryControllerKeyPinBacking() }
 }
 #endif

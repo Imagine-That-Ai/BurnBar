@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Windows render of AgentLens/Views/Chat/ElderWand/ElderWandPresetSection.swift (Phase 3 · W7).
+  Lists the user's saved Elder Wand presets and exposes the lifecycle actions: a save bar that
+  lowers the in-flight edit into a preset (Save / Update), then a per-row menu (Edit, Set as
+  Default, Rename, Delete). Binds the save affordance to the portable ElderWandConfiguratorModel
+  (IsValid / SaveButtonTitle / Name) and the row list to the portable ElderWandPresetListViewModel
+  (Summary / IsActive) — both unit-tested on macOS. Rename + delete use ContentDialogs.
+-->
+<UserControl
+    x:Class="OpenBurnBar.App.ElderWand.ElderWandPresetSection"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:theme="using:OpenBurnBar.App.Theme"
+    xmlns:ew="using:OpenBurnBar.App.Presentation.ElderWand"
+    xmlns:conv="using:OpenBurnBar.App.Converters"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <conv:BoolToVisibilityConverter x:Key="BoolToVisibility" />
+        <conv:ElderWandModelAccentBrushConverter x:Key="ModelAccent" />
+    </UserControl.Resources>
+
+    <StackPanel Spacing="12">
+        <!-- Header -->
+        <StackPanel Spacing="2">
+            <TextBlock Text="Presets"
+                       FontSize="15"
+                       FontWeight="SemiBold"
+                       Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+            <TextBlock Text="The default preset runs when The Elder Wand is on."
+                       FontSize="11"
+                       Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+        </StackPanel>
+
+        <!-- Save bar: name field + Save/Update -->
+        <Grid ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBox Grid.Column="0"
+                     x:Name="NameField"
+                     PlaceholderText="Name this panel"
+                     Text="{x:Bind Editor.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                     Background="{StaticResource PensieveColorGlassBgBrush}"
+                     BorderBrush="{StaticResource OBBStrokeBrush}"
+                     Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+            <Button Grid.Column="1"
+                    Content="{x:Bind Editor.SaveButtonTitle, Mode=OneWay}"
+                    IsEnabled="{x:Bind Editor.IsValid, Mode=OneWay}"
+                    MinWidth="96"
+                    Click="OnSaveClick"
+                    Style="{StaticResource LiquidGlassInteractiveStyle}"
+                    Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+        </Grid>
+
+        <!-- Empty state -->
+        <Border Style="{StaticResource LiquidGlassSurfaceStyle}" theme:LiquidGlass.Surface="True" CornerRadius="{StaticResource PensieveRadiusMdCorner}"
+                Padding="12"
+                Visibility="{x:Bind PresetList.IsEmpty, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+            <TextBlock Text="No saved presets yet. Build a panel above, name it, and save."
+                       FontSize="12"
+                       TextWrapping="Wrap"
+                       Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+        </Border>
+
+        <!-- Saved presets -->
+        <ItemsControl ItemsSource="{x:Bind PresetList.Rows, Mode=OneWay}"
+                      Visibility="{x:Bind PresetList.HasRows, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="ew:ElderWandPresetRow">
+                    <Border Style="{StaticResource LiquidGlassSurfaceStyle}" theme:LiquidGlass.Surface="True" CornerRadius="{StaticResource PensieveRadiusMdCorner}"
+                            Padding="12"
+                            Margin="0,0,0,8">
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <Border Grid.Column="0"
+                                    Width="28"
+                                    Height="28"
+                                    CornerRadius="7"
+                                    Background="#1FFA5053"
+                                    VerticalAlignment="Center">
+                                <FontIcon Glyph="&#xE734;"
+                                          FontSize="14"
+                                          Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
+                            </Border>
+
+                            <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock Text="{x:Bind Name}"
+                                               FontSize="13"
+                                               Foreground="{StaticResource PensieveColorTextBrightBrush}"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <Border CornerRadius="{StaticResource PensieveRadiusPillCorner}"
+                                            Background="#24FA5053"
+                                            Padding="6,1"
+                                            VerticalAlignment="Center"
+                                            Visibility="{x:Bind IsActive, Converter={StaticResource BoolToVisibility}}">
+                                        <TextBlock Text="Default"
+                                                   FontSize="10"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="#FFFA5053" />
+                                    </Border>
+                                </StackPanel>
+                                <TextBlock Text="{x:Bind Summary}"
+                                           FontSize="11"
+                                           Foreground="{StaticResource PensieveColorTextMuteBrush}"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+
+                            <Button Grid.Column="2"
+                                    VerticalAlignment="Center"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Padding="6"
+                                    ToolTipService.ToolTip="Preset actions">
+                                <FontIcon Glyph="&#xE712;"
+                                          FontSize="13"
+                                          Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                                <Button.Flyout>
+                                    <MenuFlyout>
+                                        <MenuFlyoutItem Text="Edit"
+                                                        Tag="{x:Bind}"
+                                                        Click="OnEditClick" />
+                                        <MenuFlyoutItem Text="Set as Default"
+                                                        Tag="{x:Bind}"
+                                                        Click="OnSetDefaultClick"
+                                                        Visibility="{x:Bind IsNotActive, Converter={StaticResource BoolToVisibility}}" />
+                                        <MenuFlyoutItem Text="Rename"
+                                                        Tag="{x:Bind}"
+                                                        Click="OnRenameClick" />
+                                        <MenuFlyoutSeparator />
+                                        <MenuFlyoutItem Text="Delete"
+                                                        Tag="{x:Bind}"
+                                                        Click="OnDeleteClick"
+                                                        Foreground="{StaticResource PensieveColorSealCrimsonBrush}" />
+                                    </MenuFlyout>
+                                </Button.Flyout>
+                            </Button>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </StackPanel>
+</UserControl>

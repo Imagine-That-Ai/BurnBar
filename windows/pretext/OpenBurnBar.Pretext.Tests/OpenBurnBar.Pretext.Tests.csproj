@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    macOS-host unit tests for the portable Pretext bridge (W6-DS-PRETEXT).
+
+    Runs on the macOS authoring host today via `dotnet test`: it exercises the FULL
+    bridge protocol + handle cache + async plumbing + metric-parity harness against
+    an in-memory fake web host (FakePretextWebHost), so no browser is needed. The
+    LIVE Chromium-vs-WebKit measurement (real WebView2 vs the Mac golden) is
+    Windows/dev-host-deferred and marked Skip here (see the design doc, R22).
+
+    Targets net10.0 (the installed runtime) and references the net8.0 library — a
+    higher runtime referencing a lower library is allowed, and the WinUI app
+    (net8.0-windows) can still reference the same library.
+
+    Mirrors windows/tests/ipc/OpenBurnBar.Pal.Ipc.Tests.csproj (net10.0, xUnit) so
+    the toolchain is the one already proven on this host.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../OpenBurnBar.Pretext/OpenBurnBar.Pretext.csproj" />
+  </ItemGroup>
+
+</Project>

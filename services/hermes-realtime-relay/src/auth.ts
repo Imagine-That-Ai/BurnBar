@@ -27,12 +27,21 @@ export type RelayRequest = Pick<IncomingMessage, "headers">;
  */
 export type IdTokenVerifier = (token: string, checkRevoked: boolean) => Promise<{ uid: string }>;
 
+/**
+ * Verifies a Firebase App Check token and returns the decoded app id. Injectable
+ * so the `allowedAppIDs` accept/reject path can be exercised in unit tests
+ * (including the Windows placeholder app id) without a live Firebase project;
+ * production uses the default `getAppCheck().verifyToken` below.
+ */
+export type AppCheckVerifier = (token: string) => Promise<{ appId: string }>;
+
 export interface AuthOptions {
   enforceAppCheck: boolean;
   verifyRevokedIdTokens: boolean;
   entitlementVerifier: EntitlementVerifier;
   allowedAppIDs: string[];
   idTokenVerifier?: IdTokenVerifier;
+  appCheckVerifier?: AppCheckVerifier;
 }
 
 export async function authenticateRequest(
@@ -53,7 +62,9 @@ export async function authenticateRequest(
     if (typeof appCheckToken !== "string" || appCheckToken.length === 0) {
       throw new RelayHttpError(401, "missing_app_check", "Missing Firebase App Check token.");
     }
-    const decodedAppCheck = await getAppCheck().verifyToken(appCheckToken);
+    const verifyAppCheck: AppCheckVerifier =
+      options.appCheckVerifier ?? ((token) => getAppCheck().verifyToken(token));
+    const decodedAppCheck = await verifyAppCheck(appCheckToken);
     appID = decodedAppCheck.appId;
     if (options.allowedAppIDs.length > 0 && !options.allowedAppIDs.includes(decodedAppCheck.appId)) {
       throw new RelayHttpError(403, "app_check_app_denied", "Firebase App Check app is not allowed for Hermes relay.");

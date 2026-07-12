@@ -22,12 +22,20 @@ struct DashboardDepthBackdrop: View {
 
     enum Density { case full, subtle }
 
+    private var exposesDashboardBackdrop: Bool {
+        DashboardLiveBackdropVisibility.exposesContentBackdrop(
+            appearanceSkin: settingsManager.appearanceSkin,
+            useWebsiteBackground: settingsManager.useWebsiteBackground,
+            useKernelBackdrop: useKernelBackdrop
+        )
+    }
+
     var body: some View {
         GeometryReader { geo in
             let w = geo.size.width
             let h = geo.size.height
             ZStack {
-                if settingsManager.useWebsiteBackground || settingsManager.useConstellationBackground || useKernelBackdrop {
+                if exposesDashboardBackdrop {
                     // Let the dynamic swarm / constellation backdrop show
                     // through instead of stacking an opaque plate on top of it.
                     // The tint washes stay off too: over the moving swarm their

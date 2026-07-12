@@ -1,0 +1,11 @@
+{
+  "blocked": [
+    {
+      "capability": "kwallet-query",
+      "status": "blocked",
+      "platformReason": "kwallet-query not on PATH",
+      "recordedAt": "2026-07-09T16:27:17.945Z"
+    }
+  ],
+  "generatedAt": "2026-07-09T16:27:17.945Z"
+}

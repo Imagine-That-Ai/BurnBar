@@ -1,0 +1,9 @@
+Package: open-burn-bar
+Version: 0.1.0
+Architecture: arm64
+Installed-Size: 15679
+Maintainer: OpenBurnBar
+Priority: optional
+Depends: libayatana-appindicator3-1, libwebkit2gtk-4.1-0, libgtk-3-0
+Description: OpenBurnBar Linux desktop shell
+ (none)

@@ -205,11 +205,13 @@ struct CLIAgentTranscriptView: View {
         case .claude:   return Color(hex: "D58A4F")
         case .openClaw: return Color(hex: "6E56CF")
         case .openClaude: return Color(hex: "D97757")
+        case .omp: return Color(hex: "EC4899")
         case .droid:    return Color(hex: "8B5CF6")
         case .forge:    return Color(hex: "F97316")
         case .antigravity: return Color(hex: "6C63FF")
         case .grok: return Color(hex: "E0E0E0")  // Grok monochrome brand — light gray legible in dark mode
         case .cursorAgent: return Color(hex: "00E5FF")
+        case .junie:    return Color(hex: "48E054")
         }
     }
 }
