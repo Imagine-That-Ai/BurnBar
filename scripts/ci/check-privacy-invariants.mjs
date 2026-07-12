@@ -155,27 +155,36 @@ function contextualDeviceTokenMatches(line, context, token) {
     return true;
   }
 
-  const recordMatches = (value) => {
+  // Parent keys carry context for nested records ({"device":{"id":"<uuid>"}}):
+  // the token must match an actual VALUE, but the context regex may be
+  // satisfied by any ancestor key on the path to it.
+  const recordMatches = (value, inheritedContext) => {
     if (typeof value === "string") {
-      return context.test(value) && token.test(value);
+      return context.test(`${inheritedContext} ${value}`) && token.test(value);
     }
     if (Array.isArray(value)) {
       const directValues = value.filter((entry) => typeof entry === "string").join(" ");
-      if (context.test(directValues) && token.test(directValues)) return true;
-      return value.some(recordMatches);
+      if (context.test(`${inheritedContext} ${directValues}`) && token.test(directValues)) {
+        return true;
+      }
+      return value.some((entry) => recordMatches(entry, inheritedContext));
     }
     if (value !== null && typeof value === "object") {
       const directFields = Object.entries(value)
         .filter(([, entry]) => typeof entry === "string")
         .map(([key, entry]) => `${key} ${entry}`)
         .join(" ");
-      if (context.test(directFields) && token.test(directFields)) return true;
-      return Object.values(value).some(recordMatches);
+      if (context.test(`${inheritedContext} ${directFields}`) && token.test(directFields)) {
+        return true;
+      }
+      return Object.entries(value).some(([key, entry]) =>
+        recordMatches(entry, `${inheritedContext} ${key}`),
+      );
     }
     return false;
   };
 
-  return recordMatches(parsed);
+  return recordMatches(parsed, "");
 }
 
 const failures = [];
