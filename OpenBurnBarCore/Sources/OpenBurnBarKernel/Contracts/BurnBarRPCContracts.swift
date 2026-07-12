@@ -175,16 +175,6 @@ public struct BurnBarAuthBootstrapRequest: Codable, Hashable, Sendable {
     }
 }
 
-public struct BurnBarAuthBootstrapResponse: Codable, Hashable, Sendable {
-    public let sessionToken: String
-    public let issuedAt: Date
-
-    public init(sessionToken: String, issuedAt: Date = Date()) {
-        self.sessionToken = sessionToken
-        self.issuedAt = issuedAt
-    }
-}
-
 public struct BurnBarRPCError: Codable, Hashable, Sendable {
     public let code: Int
     public let message: String
@@ -976,14 +966,3 @@ public struct BurnBarProtocolHandshakeRequest: Codable, Hashable, Sendable {
     }
 }
 
-public struct BurnBarProtocolHandshakeResponse: Codable, Hashable, Sendable {
-    public let negotiatedProtocolVersion: Int?
-    public let daemonVersion: String
-    public let compatible: Bool
-
-    public init(negotiatedProtocolVersion: Int?, daemonVersion: String, compatible: Bool) {
-        self.negotiatedProtocolVersion = negotiatedProtocolVersion
-        self.daemonVersion = daemonVersion
-        self.compatible = compatible
-    }
-}
