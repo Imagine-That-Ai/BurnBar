@@ -4,6 +4,22 @@ import OpenBurnBarCore
 @testable import OpenBurnBar
 @MainActor
 final class ArtifactDiscoveryServiceTests: XCTestCase {
+    func test_healthWriteRecoversWhenExistingHealthCannotBeRead() async throws {
+        let store = FailingHealthReadArtifactDiscoveryStore()
+        let settings = StubArtifactDiscoverySettings(
+            artifactDiscoveryEnabled: false,
+            artifactDiscoveryRegisteredRoots: []
+        )
+        let service = ArtifactDiscoveryService(store: store, settingsProvider: settings)
+
+        let report = try await service.discoverAndIngest()
+        let writtenHealth = await store.writtenHealth()
+
+        XCTAssertEqual(report, .disabled)
+        XCTAssertEqual(writtenHealth?.subsystem, .discovery)
+        XCTAssertEqual(writtenHealth?.status, .healthy)
+    }
+
     func test_discovery_staysWithinRegisteredRootsAndKnownPatterns() async throws {
         let fileManager = FileManager.default
         let sandbox = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -130,5 +146,39 @@ final class ArtifactDiscoveryServiceTests: XCTestCase {
 
         let queuedJobs = try await store.fetchProjectionJobs(statuses: [.queued], limit: 20)
         XCTAssertTrue(queuedJobs.contains { $0.jobType == .purge })
+    }
+}
+
+private actor FailingHealthReadArtifactDiscoveryStore: ArtifactDiscoveryDataStoring {
+    private var health: RetrievalHealthRecord?
+
+    func upsertSourceArtifact(_ artifact: SourceArtifactRecord) async throws -> SourceArtifactWriteDisposition {
+        .inserted
+    }
+
+    func fetchSourceArtifacts(
+        includeDeleted: Bool,
+        rootPaths: [String]?,
+        sourceKinds: [SearchSourceKind]
+    ) async throws -> [SourceArtifactRecord] {
+        []
+    }
+
+    func markSourceArtifactDeleted(id: String, deletedAt: Date) async throws -> Bool {
+        false
+    }
+
+    func upsertRetrievalHealth(_ health: RetrievalHealthRecord) async throws {
+        self.health = health
+    }
+
+    func fetchRetrievalHealth() async throws -> [RetrievalHealthRecord] {
+        throw URLError(.cannotOpenFile)
+    }
+
+    func enqueueProjectionJob(_ job: ProjectionJobRecord) async throws {}
+
+    func writtenHealth() -> RetrievalHealthRecord? {
+        health
     }
 }
