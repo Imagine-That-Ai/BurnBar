@@ -136,11 +136,43 @@ export interface DeleteDomainDataResponse {
   domainId: string;
   deleted: { firestoreDocs: number; storageObjects: number };
 }
-export const deleteDomainData = (domainId: string) =>
-  call<{ domainId: string; confirm: true }, DeleteDomainDataResponse>("deleteDomainData", {
-    domainId,
-    confirm: true,
-  });
+
+/**
+ * Shown wherever the console has to explain that per-domain deletion cannot be
+ * completed from the web. Keep in sync with the trusted-device step-up gate on
+ * the `deleteDomainData` callable (functions/src/callables/dataDeletion.ts).
+ */
+export const DOMAIN_DELETE_TRUSTED_DEVICE_MESSAGE =
+  "Deleting this data requires approval from a trusted device. Open BurnBar on one of " +
+  "your trusted devices to complete the deletion — the web console cannot provide the " +
+  "required device proof.";
+
+/**
+ * Server-side, `deleteDomainData` is step-up gated: it demands a fresh
+ * high-risk nonce plus a trusted-device action proof, and this web surface can
+ * produce neither. The console UI therefore never invokes this wrapper (see
+ * DeleteDomainDialog); it stays for typed-contract parity, and any residual
+ * caller gets the actionable trusted-device message instead of the raw
+ * `failed-precondition` gate error.
+ */
+export const deleteDomainData = async (domainId: string): Promise<DeleteDomainDataResponse> => {
+  try {
+    return await call<{ domainId: string; confirm: true }, DeleteDomainDataResponse>(
+      "deleteDomainData",
+      { domainId, confirm: true },
+    );
+  } catch (err) {
+    const code = (err as { code?: unknown }).code;
+    const message = err instanceof Error ? err.message : "";
+    const isStepUpRejection =
+      (code === "functions/failed-precondition" || code === "functions/permission-denied") &&
+      /high-risk|trusted-device|nonce/i.test(message);
+    if (isStepUpRejection) {
+      throw new Error(DOMAIN_DELETE_TRUSTED_DEVICE_MESSAGE);
+    }
+    throw err;
+  }
+};
 
 // ── Recovery (forced before zero-knowledge mode) ────────────────────────────
 export const setupRecovery = (
