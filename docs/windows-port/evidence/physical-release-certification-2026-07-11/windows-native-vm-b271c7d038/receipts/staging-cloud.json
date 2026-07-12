@@ -1,0 +1,61 @@
+{
+  "schema": "openburnbar.windows.release-certification-receipt.v1",
+  "status": "BLOCKED",
+  "gate": "staging-cloud",
+  "target": "staging-cloud",
+  "source": {
+    "commitSha": "b271c7d0387060fb1c040f0047cf0f2ebd8408ac",
+    "dirtyTree": false
+  },
+  "artifact": {
+    "name": "source-checkout",
+    "architecture": "win32-x64",
+    "availability": "not-applicable",
+    "sha256": null,
+    "workflowRunId": "not-applicable-local",
+    "workflowRunUrl": "not-applicable",
+    "signature": {
+      "result": "not-applicable",
+      "identity": "not-applicable"
+    }
+  },
+  "device": {
+    "kind": "windows-native-unattested",
+    "manufacturer": "unattested",
+    "model": "virt-10.0",
+    "architecture": "x64",
+    "osBuild": "win32 10.0.26200",
+    "tpm": "not-inspected",
+    "cpu": "virt-10.0",
+    "ramBytes": 8580235264
+  },
+  "protocol": {
+    "commands": [],
+    "manualSteps": [
+      "No configured staging OAuth/App Check credential names, interactive staging account, Firebase enforcement permission, or physical TPM claim endpoint is available in this session.",
+      "Use staging only with configured OS/CI secret names, complete OAuth PKCE and expiry/revocation/offline/sign-out flows, prove valid/invalid App Check and physical TPM enforcement, run CloudVault/queue/cross-device/leak scans, and attach sanitized receipts."
+    ]
+  },
+  "time": {
+    "startedAtUtc": "2026-07-12T01:22:14.870Z",
+    "endedAtUtc": "2026-07-12T01:40:13.495Z",
+    "durationSeconds": 1078.625
+  },
+  "expected": "The complete physical/live/private-flight protocol passes with exact signed artifact and raw evidence.",
+  "observed": "The required external device, account, permission, or approval is unavailable in this session; no pass is claimed.",
+  "exitCode": null,
+  "evidence": {
+    "files": [
+      {
+        "path": "blockers/staging-cloud.md",
+        "sha256": "c9e9e4d3427ea404550140213f64c711b90639e06c00b0d44c8e925bf1ab5d6b"
+      }
+    ]
+  },
+  "blocker": {
+    "id": "EXT-STAGING-OAUTH-APPCHECK-TPM",
+    "owner": "Alberto",
+    "missing": "No configured staging OAuth/App Check credential names, interactive staging account, Firebase enforcement permission, or physical TPM claim endpoint is available in this session.",
+    "recovery": "Use staging only with configured OS/CI secret names, complete OAuth PKCE and expiry/revocation/offline/sign-out flows, prove valid/invalid App Check and physical TPM enforcement, run CloudVault/queue/cross-device/leak scans, and attach sanitized receipts."
+  }
+}

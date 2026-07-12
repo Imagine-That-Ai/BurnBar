@@ -1,0 +1,61 @@
+{
+  "schema": "openburnbar.windows.release-certification-receipt.v1",
+  "status": "BLOCKED",
+  "gate": "physical-performance-arm64",
+  "target": "physical-performance-arm64",
+  "source": {
+    "commitSha": "b271c7d0387060fb1c040f0047cf0f2ebd8408ac",
+    "dirtyTree": false
+  },
+  "artifact": {
+    "name": "source-checkout",
+    "architecture": "win32-x64",
+    "availability": "not-applicable",
+    "sha256": null,
+    "workflowRunId": "not-applicable-local",
+    "workflowRunUrl": "not-applicable",
+    "signature": {
+      "result": "not-applicable",
+      "identity": "not-applicable"
+    }
+  },
+  "device": {
+    "kind": "windows-native-unattested",
+    "manufacturer": "unattested",
+    "model": "virt-10.0",
+    "architecture": "x64",
+    "osBuild": "win32 10.0.26200",
+    "tpm": "not-inspected",
+    "cpu": "virt-10.0",
+    "ramBytes": 8580235264
+  },
+  "protocol": {
+    "commands": [],
+    "manualSteps": [
+      "A named physical Windows 11 ARM64 device with GPU, display, power, TPM, and signed exact-candidate artifact is not attached to this macOS session; the UTM VM is not physical certification.",
+      "Run run-physical-release-certification.ps1 on the physical ARM64 device with the signed artifact manifest and hardware attestation; capture WPR/ETW, counters, frame pacing, lifecycle, and soak evidence."
+    ]
+  },
+  "time": {
+    "startedAtUtc": "2026-07-12T01:22:14.870Z",
+    "endedAtUtc": "2026-07-12T01:40:13.495Z",
+    "durationSeconds": 1078.625
+  },
+  "expected": "The complete physical/live/private-flight protocol passes with exact signed artifact and raw evidence.",
+  "observed": "The required external device, account, permission, or approval is unavailable in this session; no pass is claimed.",
+  "exitCode": null,
+  "evidence": {
+    "files": [
+      {
+        "path": "blockers/physical-performance-arm64.md",
+        "sha256": "487449f11261d27bba0149bbc5fa14604789cedd3b5827875f49ee55159a14df"
+      }
+    ]
+  },
+  "blocker": {
+    "id": "EXT-PHYSICAL-WINDOWS-ARM64",
+    "owner": "Alberto",
+    "missing": "A named physical Windows 11 ARM64 device with GPU, display, power, TPM, and signed exact-candidate artifact is not attached to this macOS session; the UTM VM is not physical certification.",
+    "recovery": "Run run-physical-release-certification.ps1 on the physical ARM64 device with the signed artifact manifest and hardware attestation; capture WPR/ETW, counters, frame pacing, lifecycle, and soak evidence."
+  }
+}
