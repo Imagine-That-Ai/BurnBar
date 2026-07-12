@@ -1,14 +1,22 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, readFileSync } from "node:fs";
+import { lstatSync, readFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const REQUIRED_RESOURCE_BUNDLE = "OpenBurnBarCore_OpenBurnBarCore.resources";
 const REQUIRED_ENGINE = "OpenBurnBarCoreCAbi.dll";
 
-function sha256(path) {
-  return createHash("sha256").update(readFileSync(path)).digest("hex");
+function snapshotFile(path) {
+  try {
+    const data = readFileSync(path);
+    return {
+      sha256: createHash("sha256").update(data).digest("hex"),
+      sizeBytes: data.byteLength,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function isInside(root, path) {
@@ -28,13 +36,16 @@ export function validateNativeEngineLayout(layoutDirectory) {
   const root = resolve(layoutDirectory);
   const errors = [];
   const manifestPath = join(root, "native-engine-manifest.json");
-  if (!existsSync(manifestPath) || !lstatSync(manifestPath).isFile()) {
+  let manifestText;
+  try {
+    manifestText = readFileSync(manifestPath, "utf8");
+  } catch {
     return { ok: false, errors: ["native-engine-manifest.json is missing"] };
   }
 
   let manifest;
   try {
-    manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    manifest = JSON.parse(manifestText);
   } catch (error) {
     return { ok: false, errors: [`native-engine-manifest.json is invalid JSON: ${error.message}`] };
   }
@@ -63,16 +74,17 @@ export function validateNativeEngineLayout(layoutDirectory) {
       errors.push(`${label} escapes the published layout`);
       continue;
     }
-    if (!existsSync(path) || !lstatSync(path).isFile()) {
+    const snapshot = snapshotFile(path);
+    if (!snapshot) {
       errors.push(`${label} is missing from the published layout: ${pathValue}`);
       continue;
     }
     if (!/^[a-f0-9]{64}$/.test(entry?.sha256 ?? "")) {
       errors.push(`${label} sha256 must be lowercase SHA-256`);
-    } else if (sha256(path) !== entry.sha256) {
+    } else if (snapshot.sha256 !== entry.sha256) {
       errors.push(`${label} sha256 mismatch: ${pathValue}`);
     }
-    if (!Number.isInteger(entry?.sizeBytes) || entry.sizeBytes !== lstatSync(path).size) {
+    if (!Number.isInteger(entry?.sizeBytes) || entry.sizeBytes !== snapshot.sizeBytes) {
       errors.push(`${label} sizeBytes mismatch: ${pathValue}`);
     }
     if (pathValue === REQUIRED_ENGINE) engineEntry = true;
@@ -80,7 +92,13 @@ export function validateNativeEngineLayout(layoutDirectory) {
   }
 
   const resourceDirectory = join(root, REQUIRED_RESOURCE_BUNDLE);
-  if (!existsSync(resourceDirectory) || !lstatSync(resourceDirectory).isDirectory()) {
+  let resourceDirectoryPresent = false;
+  try {
+    resourceDirectoryPresent = lstatSync(resourceDirectory).isDirectory();
+  } catch {
+    resourceDirectoryPresent = false;
+  }
+  if (!resourceDirectoryPresent) {
     errors.push(`${REQUIRED_RESOURCE_BUNDLE} directory is missing`);
   }
   if (!engineEntry) errors.push(`${REQUIRED_ENGINE} is absent from the manifest`);
