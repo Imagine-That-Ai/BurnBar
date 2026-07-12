@@ -134,6 +134,9 @@ export function verifyLinuxWorkflowWiring(input) {
     'CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}',
     'capture-parity-certification-preflight.mjs',
     "if: inputs.requirement == 'P-02'",
+    'Preserve non-promotable P-02 diagnostic evidence',
+    "if: always() && inputs.requirement == 'P-02'",
+    'linux-product-parity-diagnostic-',
     'finalize-product-feature-proof-closure.mjs',
     'prepare-product-requirement-input.mjs',
     'run-product-requirement-validator.mjs',
@@ -149,6 +152,7 @@ export function verifyLinuxWorkflowWiring(input) {
   requireOrder(input.productParityWorkflow, [
     'Download exact-candidate installed evidence',
     'Capture parity certification preflight',
+    'Preserve non-promotable P-02 diagnostic evidence',
     'Finalize registered feature proof closure',
     'Materialize the requirement-owned release closure',
     'Run the registered requirement validator'

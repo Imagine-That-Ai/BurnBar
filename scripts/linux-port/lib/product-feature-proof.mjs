@@ -121,6 +121,21 @@ export function validateFeatureProofRegistry(repoRoot, snapshot) {
       seenRoles.add(artifact.role);
     }
   }
+  const seenCertification = new Set();
+  let previousCertification = '';
+  for (const ownership of document.certification ?? []) {
+    if (!canonicalIds.has(ownership.requirementId)) {
+      throw new Error(`feature proof registry certifies unknown requirement ${ownership.requirementId}`);
+    }
+    if (seenCertification.has(ownership.requirementId)) {
+      throw new Error(`feature proof registry repeats certification ownership for ${ownership.requirementId}`);
+    }
+    if (previousCertification && ownership.requirementId.localeCompare(previousCertification) <= 0) {
+      throw new Error('feature proof registry certification ownership must be sorted by requirementId');
+    }
+    previousCertification = ownership.requirementId;
+    seenCertification.add(ownership.requirementId);
+  }
   return { document, contracts: new Map(document.requirements.map((entry) => [entry.requirementId, entry])) };
 }
 

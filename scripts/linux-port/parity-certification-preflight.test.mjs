@@ -10,6 +10,7 @@ import {
   PARITY_PREFLIGHT_FILENAME,
   PARITY_PREFLIGHT_ROLE,
   REQUIREMENT_IDS,
+  collectCertificationTestExecutions,
   validateParityCertificationPreflight
 } from './lib/parity-certification-preflight.mjs';
 import { SUPPORT_ENVIRONMENTS } from './lib/product-proof-closure.mjs';
@@ -99,8 +100,11 @@ function policies(requirements) {
 
 function registry(complete) {
   const featureRequirements = complete
-    ? REQUIREMENT_IDS.filter((id) => !RELEASE_ONLY.has(id))
+    ? ['P-02', 'P-05', 'P-06']
     : ['P-02'];
+  const certificationIds = complete
+    ? ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-37']
+    : ['P-01', 'P-02', 'P-03', 'P-04', 'P-37'];
   return {
     schemaVersion: 1,
     id: 'openburnbar-linux-product-feature-proof-registry-v1',
@@ -111,7 +115,35 @@ function registry(complete) {
         mediaType: 'application/json',
         maxBytes: 1048576
       }]
-    }))
+    })),
+    certification: certificationIds.map((requirementId) => {
+      const testPath = `scripts/linux-port/ownership-tests/${requirementId}.test.mjs`;
+      const captureProducerPath = RELEASE_ONLY.has(requirementId)
+        ? 'scripts/linux-port/finalize-product-proof-closure.mjs'
+        : requirementId === 'P-02'
+          ? 'scripts/linux-port/capture-parity-certification-preflight.mjs'
+          : `scripts/linux-port/capture-${requirementId.toLowerCase()}.mjs`;
+      return {
+        requirementId,
+        validator: {
+          sourcePath: `scripts/linux-port/product-validators/${requirementId}.mjs`,
+          testPath,
+          mutationTestName: `${requirementId} semantic mutation fails closed`
+        },
+        capture: {
+          producerPath: captureProducerPath,
+          workflowPath: `.github/workflows/${requirementId.toLowerCase()}-capture.yml`,
+          testPath,
+          testName: `${requirementId} capture executes`
+        },
+        materializer: {
+          producerPath: `scripts/linux-port/materialize-${requirementId.toLowerCase()}.mjs`,
+          workflowPath: `.github/workflows/${requirementId.toLowerCase()}-materialize.yml`,
+          testPath,
+          testName: `${requirementId} materializer executes`
+        }
+      };
+    })
   };
 }
 
@@ -124,18 +156,34 @@ function createRepository({ complete = true } = {}) {
   writeJson(root, 'docs/linux-port/product-parity-requirements.json', requirements);
   writeJson(root, 'docs/linux-port/product-parity-evidence-policies.json', policies(requirements));
   writeJson(root, 'docs/linux-port/product-feature-proof-registry.json', registry(complete));
+  write(root, '.gitignore', 'docs/linux-port/evidence/\n');
   for (const schema of [
     'schemas/linux-parity-certification-preflight.schema.json',
     'schemas/linux-product-feature-proof-registry.schema.json'
   ]) write(root, schema, fs.readFileSync(path.join(SOURCE_ROOT, schema)));
-  const validatorIds = complete ? REQUIREMENT_IDS : ['P-01', 'P-02', 'P-03', 'P-04', 'P-37'];
+  const validatorIds = complete
+    ? ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-37']
+    : ['P-01', 'P-02', 'P-03', 'P-04', 'P-37'];
   for (const requirementId of validatorIds) {
     write(root, `scripts/linux-port/product-validators/${requirementId}.mjs`,
-      `import { result, validateRequirementContext } from './lib.mjs';\n`
-      + `export async function validateProductRequirement(context) {\n`
-      + `  const validated = validateRequirementContext(context, ['feature.${requirementId.toLowerCase()}-proof']);\n`
-      + `  if (!validated.proofs.has('feature.${requirementId.toLowerCase()}-proof')) throw new Error('${requirementId} proof is required');\n`
-      + `  return result(context, validated.artifacts);\n}\n`);
+      `export async function validateProductRequirement(context) {\n`
+      + `  if (context.observedRequirement !== '${requirementId}') throw new Error('${requirementId} semantic mutation');\n`
+      + `  return { status: 'passed', requirementId: '${requirementId}' };\n}\n`);
+    const ownership = registry(complete).certification.find((entry) => entry.requirementId === requirementId);
+    write(root, ownership.validator.testPath,
+      `import assert from 'node:assert/strict';\n`
+      + `import test from 'node:test';\n`
+      + `import { validateProductRequirement } from '../product-validators/${requirementId}.mjs';\n`
+      + `test('${ownership.validator.mutationTestName}', async () => {\n`
+      + `  await assert.rejects(() => validateProductRequirement({ observedRequirement: 'substituted' }), /semantic mutation/u);\n`
+      + `});\n`
+      + `test('${ownership.capture.testName}', () => {});\n`
+      + `test('${ownership.materializer.testName}', () => {});\n`);
+    for (const component of ['capture', 'materializer']) {
+      write(root, ownership[component].producerPath, `export const requirement = '${requirementId}';\n`);
+      write(root, ownership[component].workflowPath,
+        `run: node ${ownership[component].producerPath}\n`);
+    }
   }
   write(root, 'scripts/linux-port/run-product-requirement-validator.mjs', 'export const runner = true;\n');
   git(root, ['add', '.']);
@@ -188,6 +236,28 @@ function createRepository({ complete = true } = {}) {
 }
 
 function capture(subject, overrides = {}) {
+  const registryValue = JSON.parse(fs.readFileSync(
+    path.join(subject.root, 'docs/linux-port/product-feature-proof-registry.json'),
+    'utf8'
+  ));
+  const executions = new Map();
+  for (const ownership of registryValue.certification ?? []) {
+    for (const [component, nameField] of [
+      ['validator', 'mutationTestName'], ['capture', 'testName'], ['materializer', 'testName']
+    ]) {
+      const owned = ownership[component];
+      const key = `${owned.testPath}\0${owned[nameField]}`;
+      if (!fs.existsSync(path.join(subject.root, owned.testPath))) continue;
+      executions.set(key, {
+        testPath: owned.testPath,
+        testName: owned[nameField],
+        testSha256: sha256(path.join(subject.root, owned.testPath)),
+        status: 'passed',
+        exitCode: 0,
+        outputSha256: 'c'.repeat(64)
+      });
+    }
+  }
   return captureParityCertificationPreflight({
     repoRoot: subject.root,
     inputRoot: subject.inputRoot,
@@ -195,6 +265,9 @@ function capture(subject, overrides = {}) {
     targetHead: subject.head,
     candidateRunId: RUN_ID,
     candidateArtifactDigest: DIGEST,
+    testExecutions: [...executions.values()].sort((left, right) =>
+      `${left.testPath}:${left.testName}`.localeCompare(`${right.testPath}:${right.testName}`)
+    ),
     ...overrides
   });
 }
@@ -222,6 +295,34 @@ function mutateFeatureRegistry(subject, mutate, { syncCandidate = true } = {}) {
       size: fs.statSync(sidecar).size
     };
   });
+}
+
+function commitMutation(subject, message, { syncCandidate = true, updateAggregateTarget = true } = {}) {
+  git(subject.root, ['add', '.']);
+  git(subject.root, ['commit', '-qm', message]);
+  subject.head = git(subject.root, ['rev-parse', 'HEAD']);
+  if (syncCandidate) {
+    const sidecarRelative = `${subject.inputRelative}/.linux-release/sidecars/product-feature-proof-registry.json`;
+    const sidecar = write(
+      subject.root,
+      sidecarRelative,
+      fs.readFileSync(path.join(subject.root, 'docs/linux-port/product-feature-proof-registry.json'))
+    );
+    mutateJson(subject.root, path.relative(subject.root, subject.aggregatePath), (aggregate) => {
+      aggregate.targetHead = subject.head;
+      aggregate.sourceCommit = subject.head;
+      aggregate.featureProofRegistry = {
+        path: 'sidecars/product-feature-proof-registry.json',
+        sha256: sha256(sidecar),
+        size: fs.statSync(sidecar).size
+      };
+    });
+  } else if (updateAggregateTarget) {
+    mutateJson(subject.root, path.relative(subject.root, subject.aggregatePath), (aggregate) => {
+      aggregate.targetHead = subject.head;
+      aggregate.sourceCommit = subject.head;
+    });
+  }
 }
 
 function record(root, relativePath) {
@@ -306,32 +407,6 @@ function validatorContext(subject, captureResult) {
   };
 }
 
-test('complete isolated inventory captures candidate-bound semantic evidence and P-02 validates it', async (t) => {
-  const subject = createRepository();
-  t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
-  const captured = capture(subject);
-  assert.equal(captured.document.status, 'passed');
-  assert.deepEqual(captured.document.summary, {
-    requirementCount: 40,
-    policyCount: 40,
-    environmentCount: 7,
-    validatorCount: 40,
-    captureCount: 40,
-    materializerCount: 40,
-    readyCount: 40,
-    blockerCount: 0
-  });
-  assert.equal(captured.document.requirements.map((row) => row.requirementId).join(','), REQUIREMENT_IDS.join(','));
-  const registration = JSON.parse(fs.readFileSync(captured.registration, 'utf8'));
-  assert.deepEqual(registration.artifacts, [{
-    role: PARITY_PREFLIGHT_ROLE,
-    path: `feature-artifacts/${PARITY_PREFLIGHT_FILENAME}`
-  }]);
-  const result = await validateProductRequirement(validatorContext(subject, captured));
-  assert.equal(result.status, 'passed');
-  assert.ok(result.artifacts.some((artifact) => artifact.path.includes(PARITY_PREFLIGHT_FILENAME)));
-});
-
 test('current implementation inventory truthfully blocks exactly the 35 unimplemented requirement lanes', async (t) => {
   const subject = createRepository({ complete: false });
   t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
@@ -361,15 +436,29 @@ test('inventory detects every missing, duplicate, reused, invalid, and unsupport
     ['duplicate validator registration', (subject) => mutateJson(subject.root, 'docs/linux-port/product-parity-evidence-policies.json', (value) => {
       const policy = value.policies.find((row) => row.requirementId === 'P-05');
       policy.registeredProducer.sourcePaths.push('scripts/linux-port/product-validators/P-05.mjs');
-    }), 'duplicate-validator'],
-    ['fixture validator', (subject) => write(subject.root, 'scripts/linux-port/product-validators/P-05.mjs',
-      'export async function validateProductRequirement() { return true; } // placeholder\n'), 'fixture-validator'],
-    ['non-substantive validator', (subject) => write(subject.root, 'scripts/linux-port/product-validators/P-05.mjs',
-      'export async function validateProductRequirement(context) { return context; }\n'), 'fixture-validator'],
+    }), 'invalid-policy'],
+    ['declaration without capture producer', (subject) => fs.rmSync(
+      path.join(subject.root, 'scripts/linux-port/capture-p-05.mjs')
+    ), ['invalid-capture', 'unsupported-materializer']],
+    ['declaration without ownership test', (subject) => fs.rmSync(
+      path.join(subject.root, 'scripts/linux-port/ownership-tests/P-05.test.mjs')
+    ), ['invalid-validator', 'invalid-capture', 'unsupported-materializer']],
     ['missing policy', (subject) => mutateJson(subject.root, 'docs/linux-port/product-parity-evidence-policies.json',
       (value) => { value.policies = value.policies.filter((row) => row.requirementId !== 'P-05'); }), 'missing-policy'],
     ['duplicate policy', (subject) => mutateJson(subject.root, 'docs/linux-port/product-parity-evidence-policies.json',
       (value) => { value.policies.push({ ...value.policies.find((row) => row.requirementId === 'P-05') }); }), 'duplicate-policy'],
+    ['weakened artifact root', (subject) => mutateJson(subject.root, 'docs/linux-port/product-parity-evidence-policies.json', (value) => {
+      value.policies.find((row) => row.requirementId === 'P-05').allowedArtifactRoots = ['docs/linux-port/evidence'];
+    }), 'invalid-policy'],
+    ['weakened minimum artifact count', (subject) => mutateJson(subject.root, 'docs/linux-port/product-parity-evidence-policies.json', (value) => {
+      value.policies.find((row) => row.requirementId === 'P-05').minArtifactCount = 0;
+    }), 'invalid-policy'],
+    ['weakened signer workflow', (subject) => mutateJson(subject.root, 'docs/linux-port/product-parity-evidence-policies.json', (value) => {
+      value.policies.find((row) => row.requirementId === 'P-05').registeredProducer.signerWorkflow = 'github.com/example/unsafe.yml';
+    }), 'invalid-policy'],
+    ['incomplete installed subject binding', (subject) => mutateJson(subject.root, 'docs/linux-port/product-parity-evidence-policies.json', (value) => {
+      value.policies.find((row) => row.requirementId === 'P-05').requiredSubjectFields.pop();
+    }), 'invalid-policy'],
     ['missing environment', (subject) => mutateJson(subject.root, 'docs/linux-port/product-parity-requirements.json',
       (value) => { value.minimumSupportMatrix = value.minimumSupportMatrix.filter((row) => row.id !== SUPPORT_ENVIRONMENTS[1]); }), 'missing-environment'],
     ['duplicate environment', (subject) => mutateJson(subject.root, 'docs/linux-port/product-parity-requirements.json',
@@ -392,6 +481,7 @@ test('inventory detects every missing, duplicate, reused, invalid, and unsupport
       const subject = createRepository();
       t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
       mutate(subject);
+      commitMutation(subject, `mutation: ${name}`);
       const captured = capture(subject);
       assert.equal(captured.document.status, 'blocked');
       for (const code of Array.isArray(expectedCodes) ? expectedCodes : [expectedCodes]) {
@@ -401,13 +491,61 @@ test('inventory detects every missing, duplicate, reused, invalid, and unsupport
   }
 });
 
-test('stale HEAD, candidate substitution, and self-referential proof fail closed', async (t) => {
-  await t.test('stale HEAD', () => {
+test('executed semantic mutation ownership rejects a unique no-op validator', (t) => {
+  const subject = createRepository();
+  t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
+  const baseline = collectCertificationTestExecutions(subject.root, subject.head);
+  assert.ok(baseline.every((entry) => entry.status === 'passed'), JSON.stringify(baseline, null, 2));
+  write(subject.root, 'scripts/linux-port/product-validators/P-05.mjs',
+    "export async function validateProductRequirement() { return { status: 'passed' }; }\n");
+  commitMutation(subject, 'replace P-05 with semantic no-op');
+  const mutated = collectCertificationTestExecutions(subject.root, subject.head);
+  const execution = mutated.find((entry) =>
+    entry.testName === 'P-05 semantic mutation fails closed'
+  );
+  assert.equal(execution.status, 'failed');
+  assert.throws(
+    () => captureParityCertificationPreflight({
+      repoRoot: subject.root,
+      inputRoot: subject.inputRoot,
+      environmentId: ENVIRONMENT,
+      targetHead: subject.head,
+      candidateRunId: RUN_ID,
+      candidateArtifactDigest: DIGEST
+    }),
+    /ownership tests failed/u
+  );
+});
+
+test('uncommitted target inventory and validator substitutions cannot affect the commit snapshot', (t) => {
+  const subject = createRepository();
+  t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
+  const baseline = capture(subject);
+  mutateJson(subject.root, 'docs/linux-port/product-parity-requirements.json', (value) => {
+    value.requirements = value.requirements.filter((row) => row.id !== 'P-05');
+  });
+  write(subject.root, 'scripts/linux-port/product-validators/P-05.mjs',
+    "export async function validateProductRequirement() { return { status: 'passed' }; }\n");
+  const recaptured = capture(subject);
+  assert.deepEqual(recaptured.document.summary, baseline.document.summary);
+  assert.equal(
+    recaptured.document.requirements.find((row) => row.requirementId === 'P-05').validator.sha256,
+    baseline.document.requirements.find((row) => row.requirementId === 'P-05').validator.sha256
+  );
+  assert.equal(
+    recaptured.document.requirements.find((row) => row.requirementId === 'P-05').presentCount,
+    1
+  );
+});
+
+test('target snapshots, candidate substitution, and self-referential proof fail closed', async (t) => {
+  await t.test('stale candidate after a new target commit', () => {
     const subject = createRepository();
     t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
-    const captured = capture(subject, { targetHead: 'f'.repeat(40) });
+    write(subject.root, 'target-change.txt', 'new target bytes\n');
+    commitMutation(subject, 'new target', { syncCandidate: false, updateAggregateTarget: false });
+    const captured = capture(subject);
     assert.equal(captured.document.status, 'blocked');
-    assert.ok(captured.document.blockers.some((blocker) => blocker.code === 'stale-target-head'));
     assert.ok(captured.document.blockers.some((blocker) => blocker.code === 'stale-candidate'));
   });
   await t.test('candidate substitution', () => {
@@ -422,12 +560,29 @@ test('stale HEAD, candidate substitution, and self-referential proof fail closed
       candidate: { ...captured.document.candidate, artifactDigest: `sha256:${'c'.repeat(64)}` }
     }), /stale, substituted, or not bound/u);
   });
+  await t.test('unowned test execution', () => {
+    const subject = createRepository();
+    t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
+    const captured = capture(subject);
+    captured.document.testExecutions.push({
+      ...captured.document.testExecutions[0],
+      testName: 'unowned passing test'
+    });
+    assert.throws(() => validateParityCertificationPreflight(captured.document, {
+      repoRoot: subject.root,
+      targetHead: subject.head,
+      environmentId: ENVIRONMENT,
+      materializedProofPath: `${subject.inputRelative}/release-subjects/proof.json`,
+      candidate: captured.document.candidate
+    }), /stale, substituted, or not bound/u);
+  });
   await t.test('stale candidate registry', () => {
     const subject = createRepository();
     t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
     mutateFeatureRegistry(subject, (value) => {
       value.requirements.find((row) => row.requirementId === 'P-05').artifacts[0].maxBytes -= 1;
     }, { syncCandidate: false });
+    commitMutation(subject, 'mutate target registry', { syncCandidate: false });
     const captured = capture(subject);
     assert.equal(captured.document.status, 'blocked');
     assert.ok(captured.document.blockers.some((blocker) => blocker.code === 'stale-candidate-registry'));

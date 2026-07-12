@@ -12,5 +12,107 @@
         }
       ]
     }
+  ],
+  "certification": [
+    {
+      "requirementId": "P-01",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-01.mjs",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "mutationTestName": "P-01 independently rejects a release artifact with a substituted detached signature"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/finalize-product-proof-closure.mjs",
+        "workflowPath": ".github/workflows/linux-release.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "finalizer rejects blockers, missing manifests, and signature mutation"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/prepare-product-requirement-input.mjs",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "materializer rejects wrong HEAD, unsupported requirements, Arch, and mutated aggregate subjects"
+      }
+    },
+    {
+      "requirementId": "P-02",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-02.mjs",
+        "testPath": "scripts/linux-port/parity-certification-preflight.test.mjs",
+        "mutationTestName": "current implementation inventory truthfully blocks exactly the 35 unimplemented requirement lanes"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-parity-certification-preflight.mjs",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/parity-certification-preflight.test.mjs",
+        "testName": "inventory detects every missing, duplicate, reused, invalid, and unsupported ownership gap"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "feature closure finalization rejects missing, extra, duplicate, symlinked, and oversized artifacts"
+      }
+    },
+    {
+      "requirementId": "P-03",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-03.mjs",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "mutationTestName": "P-03 rejects a live daemon protocol that drifts from the signed package manifest"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/finalize-product-proof-closure.mjs",
+        "workflowPath": ".github/workflows/linux-release.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "finalizer rejects blockers, missing manifests, and signature mutation"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/prepare-product-requirement-input.mjs",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "materializer rejects wrong HEAD, unsupported requirements, Arch, and mutated aggregate subjects"
+      }
+    },
+    {
+      "requirementId": "P-04",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-04.mjs",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "mutationTestName": "P-04 rejects architecture smoke evidence missing a release architecture"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/finalize-product-proof-closure.mjs",
+        "workflowPath": ".github/workflows/linux-release.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "finalizer rejects blockers, missing manifests, and signature mutation"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/prepare-product-requirement-input.mjs",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "materializer rejects wrong HEAD, unsupported requirements, Arch, and mutated aggregate subjects"
+      }
+    },
+    {
+      "requirementId": "P-37",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-37.mjs",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "mutationTestName": "P-37 rejects a failed architecture smoke proof"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/finalize-product-proof-closure.mjs",
+        "workflowPath": ".github/workflows/linux-release.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "finalizer rejects blockers, missing manifests, and signature mutation"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/prepare-product-requirement-input.mjs",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "materializer rejects wrong HEAD, unsupported requirements, Arch, and mutated aggregate subjects"
+      }
+    }
   ]
 }

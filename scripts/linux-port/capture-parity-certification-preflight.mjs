@@ -6,6 +6,7 @@ import {
   PARITY_PREFLIGHT_FILENAME,
   PARITY_PREFLIGHT_ROLE,
   buildParityCertificationPreflight,
+  collectCertificationTestExecutions,
   validateParityCertificationPreflightSchema
 } from './lib/parity-certification-preflight.mjs';
 import { atomicWriteJson } from './lib/product-proof-closure.mjs';
@@ -44,7 +45,17 @@ export function captureParityCertificationPreflight(options) {
   const registration = path.join(inputRoot, 'feature-proof-registration.json');
   fs.rmSync(output, { force: true });
   fs.rmSync(registration, { force: true });
-  const document = buildParityCertificationPreflight({ ...options, repoRoot, inputRoot });
+  const testExecutions = options.testExecutions
+    ?? collectCertificationTestExecutions(repoRoot, options.targetHead);
+  if (testExecutions.some((entry) => entry.status !== 'passed')) {
+    throw new Error('one or more candidate-bound certification ownership tests failed');
+  }
+  const document = buildParityCertificationPreflight({
+    ...options,
+    repoRoot,
+    inputRoot,
+    testExecutions
+  });
   validateParityCertificationPreflightSchema(repoRoot, document);
   atomicWriteJson(output, document);
   atomicWriteJson(registration, {

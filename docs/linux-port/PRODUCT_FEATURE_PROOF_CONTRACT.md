@@ -57,6 +57,14 @@ ownership. It detects missing and duplicate rows, reused validator bytes or capt
 implementations, stale candidate bindings, unsupported materializers, and self-reference.
 
 Collection deliberately succeeds with `status: blocked` so the missing ownership is preserved as
-evidence. The P-02 validator recomputes and validates the inventory and can pass only when every one
-of the 40 rows is substantive and ready. The repository currently has five ready rows and 35 named
-blockers; no generic module or hand-authored passed JSON may satisfy them.
+evidence. The workflow uploads that JSON immediately as a clearly named, non-promotable diagnostic
+artifact even when later validation fails. It is not a validator receipt, is not attested, and
+cannot satisfy promotion.
+
+Readiness is declared in the candidate-bound feature registry and requires an exact validator
+source, semantic mutation test, capture producer and workflow, and materializer producer and
+workflow. Capture executes every registered ownership test against the target commit and records
+the exact test-source and output hashes. The P-02 validator recomputes and validates the inventory
+and can pass only when every one of the 40 rows has executable, passing ownership. A role, policy,
+or hand-authored passed JSON by itself cannot satisfy a lane. The repository currently has five
+ready rows and 35 named blockers.

@@ -495,6 +495,48 @@ test('P-03 rejects duplicate architecture lifecycle rows', async (t) => {
   await assert.rejects(() => validateP03(context), /cover both release architectures/u);
 });
 
+test('P-04 rejects architecture smoke evidence missing a release architecture', async (t) => {
+  const fixture = createReleaseFixture();
+  t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }));
+  finalizeProductProofClosure({ repoRoot: fixture.root, outputDir: fixture.output, targetHead: HEAD });
+  const inputRoot = stageAggregate(fixture, 'P-04');
+  const { closure } = prepareProductRequirementInput({
+    requirementId: 'P-04', environmentId: ENVIRONMENT, inputRoot, targetHead: HEAD,
+    candidateRunId: CANDIDATE_RUN_ID, candidateArtifactDigest: CANDIDATE_ARTIFACT_DIGEST,
+    repoRoot: fixture.root
+  });
+  const smoke = closure.proofs.find((proof) => proof.role === 'architecture-smoke');
+  const smokeFile = path.join(fixture.root, smoke.path);
+  const document = JSON.parse(fs.readFileSync(smokeFile, 'utf8'));
+  document.architectures = [{ architecture: 'x86_64' }];
+  writeJson(smokeFile, document);
+  smoke.sha256 = sha256(smokeFile);
+  writeJson(path.join(inputRoot, 'release-closure.json'), closure);
+  const context = validatorContext(fixture, 'P-04', closure, 'p-04.architecture-reach');
+  await assert.rejects(() => validateP04(context), /does not cover aarch64/u);
+});
+
+test('P-37 rejects a failed architecture smoke proof', async (t) => {
+  const fixture = createReleaseFixture();
+  t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }));
+  finalizeProductProofClosure({ repoRoot: fixture.root, outputDir: fixture.output, targetHead: HEAD });
+  const inputRoot = stageAggregate(fixture, 'P-37');
+  const { closure } = prepareProductRequirementInput({
+    requirementId: 'P-37', environmentId: ENVIRONMENT, inputRoot, targetHead: HEAD,
+    candidateRunId: CANDIDATE_RUN_ID, candidateArtifactDigest: CANDIDATE_ARTIFACT_DIGEST,
+    repoRoot: fixture.root
+  });
+  const smoke = closure.proofs.find((proof) => proof.role === 'architecture-smoke');
+  const smokeFile = path.join(fixture.root, smoke.path);
+  const document = JSON.parse(fs.readFileSync(smokeFile, 'utf8'));
+  document.passed = false;
+  writeJson(smokeFile, document);
+  smoke.sha256 = sha256(smokeFile);
+  writeJson(path.join(inputRoot, 'release-closure.json'), closure);
+  const context = validatorContext(fixture, 'P-37', closure, 'p-37.linux-matrix');
+  await assert.rejects(() => validateP37(context), /architecture-smoke proof is not passed/u);
+});
+
 function stagePassedPromotionEvidence(fixture) {
   const parityPath = path.join(fixture.root, 'docs/linux-port/evidence/mission-002-reanchor/parity-ledger-validation.json');
   const environments = [

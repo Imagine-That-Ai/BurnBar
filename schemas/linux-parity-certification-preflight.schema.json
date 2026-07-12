@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": [
     "schemaVersion", "targetHead", "sourceCommit", "status", "requirementId",
-    "environmentId", "proofPath", "candidate", "sources", "environments",
+    "environmentId", "proofPath", "candidate", "sources", "testExecutions", "environments",
     "requirements", "summary", "blockers"
   ],
   "properties": {
@@ -36,6 +36,10 @@
         "policyManifest": { "$ref": "#/$defs/source" },
         "featureRegistry": { "$ref": "#/$defs/source" }
       }
+    },
+    "testExecutions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/testExecution" }
     },
     "environments": {
       "type": "array",
@@ -97,11 +101,19 @@
     "component": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["status", "path", "sha256"],
+      "required": ["status", "path", "sha256", "testPath", "testName", "testSha256"],
       "properties": {
         "status": { "enum": ["ready", "missing", "duplicate", "invalid", "fixture", "reused"] },
         "path": { "type": ["string", "null"] },
         "sha256": {
+          "oneOf": [
+            { "$ref": "#/$defs/sha256" },
+            { "type": "null" }
+          ]
+        },
+        "testPath": { "type": ["string", "null"] },
+        "testName": { "type": ["string", "null"] },
+        "testSha256": {
           "oneOf": [
             { "$ref": "#/$defs/sha256" },
             { "type": "null" }
@@ -122,20 +134,41 @@
     "capture": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["status", "kind", "roles"],
+      "required": ["status", "kind", "roles", "producerPath", "workflowPath", "testPath", "testName"],
       "properties": {
         "status": { "enum": ["ready", "missing", "duplicate", "invalid", "reused"] },
         "kind": { "enum": ["release", "feature", "none"] },
-        "roles": { "type": "array", "items": { "type": "string" } }
+        "roles": { "type": "array", "items": { "type": "string" } },
+        "producerPath": { "type": ["string", "null"] },
+        "workflowPath": { "type": ["string", "null"] },
+        "testPath": { "type": ["string", "null"] },
+        "testName": { "type": ["string", "null"] }
       }
     },
     "materializer": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["status", "kind"],
+      "required": ["status", "kind", "producerPath", "workflowPath", "testPath", "testName"],
       "properties": {
         "status": { "enum": ["ready", "unsupported"] },
-        "kind": { "enum": ["release", "feature", "none"] }
+        "kind": { "enum": ["release", "feature", "none"] },
+        "producerPath": { "type": ["string", "null"] },
+        "workflowPath": { "type": ["string", "null"] },
+        "testPath": { "type": ["string", "null"] },
+        "testName": { "type": ["string", "null"] }
+      }
+    },
+    "testExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["testPath", "testName", "testSha256", "status", "exitCode", "outputSha256"],
+      "properties": {
+        "testPath": { "type": "string", "minLength": 1 },
+        "testName": { "type": "string", "minLength": 1 },
+        "testSha256": { "$ref": "#/$defs/sha256" },
+        "status": { "enum": ["passed", "failed"] },
+        "exitCode": { "type": "integer", "minimum": 0 },
+        "outputSha256": { "$ref": "#/$defs/sha256" }
       }
     },
     "requirement": {

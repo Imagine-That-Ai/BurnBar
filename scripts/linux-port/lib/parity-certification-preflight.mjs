@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import Ajv2020 from 'ajv/dist/2020.js';
@@ -13,6 +14,10 @@ import {
   MAX_FEATURE_PROOF_ARTIFACT_BYTES,
   MAX_FEATURE_PROOF_CONTRACT_BYTES
 } from './product-feature-proof.mjs';
+import {
+  validatePolicyManifest,
+  validateRequirementsManifest
+} from './product-requirement-attestation.mjs';
 
 export const PARITY_PREFLIGHT_SCHEMA_PATH = 'schemas/linux-parity-certification-preflight.schema.json';
 export const PARITY_PREFLIGHT_ROLE = 'feature.parity-certification-preflight';
@@ -25,10 +30,10 @@ const REQUIREMENTS_PATH = 'docs/linux-port/product-parity-requirements.json';
 const POLICIES_PATH = 'docs/linux-port/product-parity-evidence-policies.json';
 const REGISTRY_PATH = 'docs/linux-port/product-feature-proof-registry.json';
 const VALIDATOR_ROOT = 'scripts/linux-port/product-validators';
-const FIXTURE_PATTERN = /\b(?:fixture|placeholder|stub|todo)\b/iu;
 const RUN_ID = /^[1-9][0-9]*$/u;
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const HEAD = /^[a-f0-9]{40,64}$/u;
+const COMMIT_SNAPSHOT_CACHE = new Map();
 
 function parseJson(snapshot, label) {
   try {
@@ -42,13 +47,6 @@ function sourceRecord(snapshot) {
   return { path: snapshot.path, sha256: snapshot.sha256 };
 }
 
-function sameStringSet(actual, expected) {
-  return Array.isArray(actual)
-    && actual.length === expected.length
-    && new Set(actual).size === expected.length
-    && expected.every((entry) => actual.includes(entry));
-}
-
 function currentHead(repoRoot) {
   const result = spawnSync('git', ['rev-parse', '--verify', 'HEAD'], {
     cwd: repoRoot,
@@ -58,64 +56,46 @@ function currentHead(repoRoot) {
   return result.stdout.trim();
 }
 
-function validatorComponent(repoRoot, requirementId) {
-  const validatorPath = `${VALIDATOR_ROOT}/${requirementId}.mjs`;
-  const absolute = path.join(repoRoot, validatorPath);
-  let stat;
-  try {
-    stat = fs.lstatSync(absolute);
-  } catch (error) {
-    if (error.code === 'ENOENT') return { status: 'missing', path: null, sha256: null };
-    throw error;
+function commitSnapshot(repoRoot, targetHead, relativePath, label, optional = false) {
+  const cacheKey = `${repoRoot}\0${targetHead}\0${relativePath}`;
+  if (COMMIT_SNAPSHOT_CACHE.has(cacheKey)) return COMMIT_SNAPSHOT_CACHE.get(cacheKey);
+  const tree = spawnSync('git', ['ls-tree', '-z', targetHead, '--', relativePath], {
+    cwd: repoRoot,
+    encoding: 'buffer'
+  });
+  if (tree.status !== 0) throw new Error(`git tree lookup failed for ${label}`);
+  if (tree.stdout.length === 0) {
+    if (optional) {
+      COMMIT_SNAPSHOT_CACHE.set(cacheKey, null);
+      return null;
+    }
+    throw new Error(`${label} is missing from target commit ${targetHead}`);
   }
-  if (!stat.isFile() || stat.isSymbolicLink()) {
-    return { status: 'invalid', path: validatorPath, sha256: null };
+  const entry = tree.stdout.toString('utf8').replace(/\0$/u, '');
+  const match = /^(100644|100755) blob [a-f0-9]+\t(.+)$/u.exec(entry);
+  if (!match || match[2] !== relativePath) {
+    if (optional) return null;
+    throw new Error(`${label} must be a regular target-commit blob`);
   }
-  let snapshot;
-  try {
-    snapshot = readRegularSnapshot(repoRoot, validatorPath, `${requirementId} validator`);
-  } catch {
-    return { status: 'invalid', path: validatorPath, sha256: null };
-  }
-  const bytes = snapshot.bytes;
-  const sha256 = snapshot.sha256;
-  const source = bytes.toString('utf8');
-  if (!/export\s+async\s+function\s+validateProductRequirement\s*\(/u.test(source)) {
-    return { status: 'invalid', path: validatorPath, sha256 };
-  }
-  if (FIXTURE_PATTERN.test(source)
-      || !/validateRequirementContext\s*\(/u.test(source)
-      || !/\bresult\s*\(/u.test(source)) {
-    return { status: 'fixture', path: validatorPath, sha256 };
-  }
-  return { status: 'ready', path: validatorPath, sha256 };
+  const shown = spawnSync('git', ['show', `${targetHead}:${relativePath}`], {
+    cwd: repoRoot,
+    encoding: 'buffer',
+    maxBuffer: 64 * 1024 * 1024
+  });
+  if (shown.status !== 0) throw new Error(`git blob read failed for ${label}`);
+  const snapshot = {
+    path: relativePath,
+    bytes: shown.stdout,
+    sha256: cryptoHash(shown.stdout),
+    size: shown.stdout.length
+  };
+  if (COMMIT_SNAPSHOT_CACHE.size > 4096) COMMIT_SNAPSHOT_CACHE.clear();
+  COMMIT_SNAPSHOT_CACHE.set(cacheKey, snapshot);
+  return snapshot;
 }
 
-function policyStatus(policy, requirementId, area) {
-  if (!policy) return 'missing';
-  const checkId = `${requirementId.toLowerCase()}.${area}`;
-  const producer = policy.registeredProducer;
-  const validatorPath = `${VALIDATOR_ROOT}/${requirementId}.mjs`;
-  const expectedCommand = [
-    'node scripts/linux-port/run-product-requirement-validator.mjs',
-    `--requirement ${requirementId}`,
-    '--environment {environment}',
-    `--release-closure docs/linux-port/evidence/product-parity-inputs/${requirementId}/{environment}/release-closure.json`,
-    `--output docs/linux-port/evidence/validator-receipts/${requirementId}/{checkId}/{environment}.json`
-  ].join(' ');
-  return policy.requirementId === requirementId
-    && policy.requiredCheckIds?.length === 1
-    && policy.requiredCheckIds[0] === checkId
-    && sameStringSet(policy.requiredEnvironmentIds, SUPPORT_ENVIRONMENTS)
-    && producer?.id === 'openburnbar-linux-product-validator'
-    && producer.version === 1
-    && producer.commandTemplate === expectedCommand
-    && sameStringSet(producer.sourcePaths, [
-      'scripts/linux-port/run-product-requirement-validator.mjs',
-      validatorPath
-    ])
-    ? 'ready'
-    : 'invalid';
+function cryptoHash(bytes) {
+  return crypto.createHash('sha256').update(bytes).digest('hex');
 }
 
 function addBlocker(blockers, code, subject, detail) {
@@ -132,13 +112,149 @@ function reportSourcePath(inputRoot, repoRoot) {
   return path.relative(repoRoot, absolute).split(path.sep).join('/');
 }
 
+function certificationRows(registry) {
+  return Array.isArray(registry.certification) ? registry.certification : [];
+}
+
+function executionKey(testPath, testName) {
+  return `${testPath}\0${testName}`;
+}
+
+function ownershipExecutions(registry) {
+  const entries = new Map();
+  for (const ownership of certificationRows(registry)) {
+    for (const component of ['validator', 'capture', 'materializer']) {
+      const value = ownership?.[component];
+      const testName = component === 'validator' ? value?.mutationTestName : value?.testName;
+      if (typeof value?.testPath !== 'string' || typeof testName !== 'string') continue;
+      entries.set(executionKey(value.testPath, testName), {
+        testPath: value.testPath,
+        testName
+      });
+    }
+  }
+  return [...entries.values()].sort((left, right) =>
+    executionKey(left.testPath, left.testName).localeCompare(executionKey(right.testPath, right.testName))
+  );
+}
+
+function validateExecutionInventory(registry, testExecutions, blockers) {
+  const expected = new Set(ownershipExecutions(registry).map((entry) =>
+    executionKey(entry.testPath, entry.testName)
+  ));
+  const counts = new Map();
+  for (const entry of testExecutions) {
+    const key = executionKey(entry?.testPath, entry?.testName);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+    if (!expected.has(key)) {
+      addBlocker(blockers, 'unexpected-test-execution', entry?.testPath ?? '<missing>',
+        'test execution is not owned by the candidate registry');
+    }
+  }
+  for (const entry of ownershipExecutions(registry)) {
+    const count = counts.get(executionKey(entry.testPath, entry.testName)) ?? 0;
+    if (count !== 1) {
+      addBlocker(blockers, count === 0 ? 'missing-test-execution' : 'duplicate-test-execution',
+        entry.testPath, `${entry.testName} occurs ${count} times`);
+    }
+  }
+}
+
+function requireTargetWorktree(repoRoot, targetHead) {
+  if (currentHead(repoRoot) !== targetHead) throw new Error('test execution requires the exact target HEAD');
+  for (const args of [['diff', '--quiet', targetHead, '--'], ['diff', '--cached', '--quiet', targetHead, '--']]) {
+    const result = spawnSync('git', args, { cwd: repoRoot });
+    if (result.status !== 0) throw new Error('test execution requires target-controlled tracked bytes');
+  }
+}
+
+export function collectCertificationTestExecutions(repoRoot, targetHead) {
+  const repository = fs.realpathSync(repoRoot);
+  requireTargetWorktree(repository, targetHead);
+  const registrySnapshot = commitSnapshot(repository, targetHead, REGISTRY_PATH, 'feature proof registry');
+  const registry = parseJson(registrySnapshot, 'feature proof registry');
+  const executions = [];
+  const byPath = Map.groupBy(ownershipExecutions(registry), (entry) => entry.testPath);
+  const childEnvironment = { ...process.env, OPENBURNBAR_PARITY_PREFLIGHT_OWNERSHIP_TEST: '1' };
+  delete childEnvironment.NODE_TEST_CONTEXT;
+  for (const [testPath, entries] of byPath) {
+    const testSnapshot = commitSnapshot(repository, targetHead, testPath, `${testPath} ownership test`);
+    const result = spawnSync(process.execPath, ['--test', testPath], {
+      cwd: repository,
+      encoding: 'utf8',
+      maxBuffer: 16 * 1024 * 1024,
+      env: childEnvironment
+    });
+    const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
+    for (const entry of entries) {
+      const escapedName = entry.testName.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+      const namedTestPassed = new RegExp(`^ok [0-9]+ - ${escapedName}$`, 'mu').test(output);
+      const passed = result.status === 0 && namedTestPassed && /# fail 0/u.test(output);
+      executions.push({
+        testPath,
+        testName: entry.testName,
+        testSha256: testSnapshot.sha256,
+        status: passed ? 'passed' : 'failed',
+        exitCode: Number.isInteger(result.status) ? result.status : 1,
+        outputSha256: cryptoHash(Buffer.from(output))
+      });
+    }
+  }
+  return executions.sort((left, right) =>
+    executionKey(left.testPath, left.testName).localeCompare(executionKey(right.testPath, right.testName))
+  );
+}
+
+function ownedSource(repoRoot, targetHead, relativePath, label) {
+  if (typeof relativePath !== 'string') return null;
+  return commitSnapshot(repoRoot, targetHead, relativePath, label, true);
+}
+
+function executionReady(testExecutions, targetHead, testPath, testName, testSnapshot) {
+  if (!testSnapshot) return false;
+  const rows = testExecutions.filter((entry) =>
+    entry?.testPath === testPath && entry?.testName === testName
+  );
+  return rows.length === 1
+    && rows[0].status === 'passed'
+    && rows[0].exitCode === 0
+    && rows[0].testSha256 === testSnapshot.sha256
+    && HEAD.test(targetHead);
+}
+
+function componentOwnershipStatus({
+  repoRoot, targetHead, ownership, component, testExecutions, expectedProducerPath
+}) {
+  if (!ownership || typeof ownership !== 'object') {
+    return {
+      status: 'missing', producerPath: null, workflowPath: null, testPath: null, testName: null
+    };
+  }
+  const producer = ownedSource(repoRoot, targetHead, ownership.producerPath, `${component} producer`);
+  const workflow = ownedSource(repoRoot, targetHead, ownership.workflowPath, `${component} workflow`);
+  const test = ownedSource(repoRoot, targetHead, ownership.testPath, `${component} test`);
+  const workflowSource = workflow?.bytes.toString('utf8') ?? '';
+  const wired = producer && workflow && test
+    && ownership.producerPath === expectedProducerPath
+    && workflowSource.includes(path.posix.basename(ownership.producerPath))
+    && executionReady(testExecutions, targetHead, ownership.testPath, ownership.testName, test);
+  return {
+    status: wired ? 'ready' : 'invalid',
+    producerPath: ownership.producerPath ?? null,
+    workflowPath: ownership.workflowPath ?? null,
+    testPath: ownership.testPath ?? null,
+    testName: ownership.testName ?? null
+  };
+}
+
 export function buildParityCertificationPreflight({
   repoRoot,
   inputRoot,
   environmentId,
   targetHead,
   candidateRunId,
-  candidateArtifactDigest
+  candidateArtifactDigest,
+  testExecutions = []
 }) {
   const repository = fs.realpathSync(repoRoot);
   const root = fs.realpathSync(inputRoot);
@@ -147,9 +263,9 @@ export function buildParityCertificationPreflight({
       || !DIGEST.test(candidateArtifactDigest ?? '')) {
     throw new Error('canonical target HEAD, candidate run ID, and artifact digest are required');
   }
-  const requirementSnapshot = readRegularSnapshot(repository, REQUIREMENTS_PATH, 'parity requirements manifest');
-  const policySnapshot = readRegularSnapshot(repository, POLICIES_PATH, 'parity evidence policy manifest');
-  const registrySourceSnapshot = readRegularSnapshot(repository, REGISTRY_PATH, 'feature proof registry');
+  const requirementSnapshot = commitSnapshot(repository, targetHead, REQUIREMENTS_PATH, 'parity requirements manifest');
+  const policySnapshot = commitSnapshot(repository, targetHead, POLICIES_PATH, 'parity evidence policy manifest');
+  const registrySourceSnapshot = commitSnapshot(repository, targetHead, REGISTRY_PATH, 'feature proof registry');
   const requirementsManifest = parseJson(requirementSnapshot, 'parity requirements manifest');
   const policyManifest = parseJson(policySnapshot, 'parity evidence policy manifest');
   const aggregateSnapshot = readRegularSnapshot(root, '.linux-release/product-proof-closure.json', 'aggregate product proof closure');
@@ -182,6 +298,23 @@ export function buildParityCertificationPreflight({
     ? requirementsManifest.minimumSupportMatrix : [];
   const observedPolicies = Array.isArray(policyManifest.policies) ? policyManifest.policies : [];
   const observedContracts = Array.isArray(registry.requirements) ? registry.requirements : [];
+  const observedOwnership = certificationRows(registry);
+  validateExecutionInventory(registry, testExecutions, blockers);
+  let canonicalRequirements = null;
+  let canonicalPolicies = false;
+  try {
+    canonicalRequirements = validateRequirementsManifest(requirementsManifest);
+  } catch (error) {
+    addBlocker(blockers, 'invalid-requirements-manifest', 'inventory', error.message);
+  }
+  if (canonicalRequirements) {
+    try {
+      validatePolicyManifest(policyManifest, canonicalRequirements);
+      canonicalPolicies = true;
+    } catch (error) {
+      addBlocker(blockers, 'invalid-policy-manifest', 'inventory', error.message);
+    }
+  }
   for (const row of observedRequirements) {
     if (!REQUIREMENT_IDS.includes(row?.id)) {
       addBlocker(blockers, 'unknown-requirement', String(row?.id ?? '<missing>'), 'requirements manifest contains an unknown row');
@@ -202,6 +335,11 @@ export function buildParityCertificationPreflight({
       addBlocker(blockers, 'unknown-capture', String(contract?.requirementId ?? '<missing>'), 'feature registry contains an unknown requirement');
     }
   }
+  for (const ownership of observedOwnership) {
+    if (!REQUIREMENT_IDS.includes(ownership?.requirementId)) {
+      addBlocker(blockers, 'unknown-ownership', String(ownership?.requirementId ?? '<missing>'), 'certification registry contains an unknown requirement');
+    }
+  }
 
   const environments = SUPPORT_ENVIRONMENTS.map((id) => {
     const presentCount = observedEnvironments.filter((row) => row?.id === id).length;
@@ -216,26 +354,70 @@ export function buildParityCertificationPreflight({
       ? requirementRows[0].area : 'missing';
     const policyRows = observedPolicies.filter((entry) => entry?.requirementId === requirementId);
     const policyState = policyRows.length === 1
-      ? policyStatus(policyRows[0], requirementId, area)
+      ? canonicalPolicies ? 'ready' : 'invalid'
       : policyRows.length === 0 ? 'missing' : 'duplicate';
-    const validator = validatorComponent(repository, requirementId);
     const validatorPath = `${VALIDATOR_ROOT}/${requirementId}.mjs`;
-    const registeredValidatorCount = policyRows.length === 1
-      && Array.isArray(policyRows[0]?.registeredProducer?.sourcePaths)
-      ? policyRows[0].registeredProducer.sourcePaths.filter((sourcePath) => sourcePath === validatorPath).length
-      : 0;
-    if (validator.status === 'ready' && registeredValidatorCount > 1) validator.status = 'duplicate';
+    const ownershipRows = observedOwnership.filter((entry) => entry?.requirementId === requirementId);
+    const ownership = ownershipRows.length === 1 ? ownershipRows[0] : null;
+    const validatorSnapshot = ownedSource(repository, targetHead, validatorPath, `${requirementId} validator`);
+    const validatorTest = ownedSource(
+      repository, targetHead, ownership?.validator?.testPath, `${requirementId} validator mutation test`
+    );
+    const validatorOwned = ownership
+      && ownership.validator?.sourcePath === validatorPath
+      && validatorSnapshot
+      && validatorTest
+      && executionReady(
+        testExecutions,
+        targetHead,
+        ownership.validator.testPath,
+        ownership.validator.mutationTestName,
+        validatorTest
+      );
+    const validator = {
+      status: ownershipRows.length > 1 ? 'duplicate'
+        : !validatorSnapshot || ownershipRows.length === 0 ? 'missing'
+          : validatorOwned ? 'ready' : 'invalid',
+      path: validatorSnapshot ? validatorPath : null,
+      sha256: validatorSnapshot?.sha256 ?? null,
+      testPath: ownership?.validator?.testPath ?? null,
+      testName: ownership?.validator?.mutationTestName ?? null,
+      testSha256: validatorTest?.sha256 ?? null
+    };
     const contracts = observedContracts.filter((entry) => entry?.requirementId === requirementId);
     const releaseRoles = RELEASE_PROOF_ROLES[requirementId] ? [...RELEASE_PROOF_ROLES[requirementId]].sort() : [];
     let capture;
+    const captureOwner = ownershipRows.length === 1
+      ? componentOwnershipStatus({
+        repoRoot: repository,
+        targetHead,
+        ownership: ownership.capture,
+        component: `${requirementId} capture`,
+        testExecutions,
+        expectedProducerPath: releaseRoles.length > 0
+          ? 'scripts/linux-port/finalize-product-proof-closure.mjs'
+          : requirementId === 'P-02'
+            ? 'scripts/linux-port/capture-parity-certification-preflight.mjs'
+            : ownership.capture?.producerPath
+      })
+      : {
+        status: ownershipRows.length > 1 ? 'duplicate' : 'missing',
+        producerPath: null,
+        workflowPath: null,
+        testPath: null,
+        testName: null
+      };
     if (releaseRoles.length > 0) {
-      capture = contracts.length === 0
-        ? { status: 'ready', kind: 'release', roles: releaseRoles }
-        : { status: 'duplicate', kind: 'release', roles: releaseRoles };
+      capture = {
+        ...captureOwner,
+        status: contracts.length > 0 ? 'duplicate' : captureOwner.status,
+        kind: 'release',
+        roles: releaseRoles
+      };
     } else if (contracts.length === 0) {
-      capture = { status: 'missing', kind: 'none', roles: [] };
+      capture = { ...captureOwner, status: 'missing', kind: 'none', roles: [] };
     } else if (contracts.length > 1) {
-      capture = { status: 'duplicate', kind: 'feature', roles: [] };
+      capture = { ...captureOwner, status: 'duplicate', kind: 'feature', roles: [] };
     } else {
       const roles = Array.isArray(contracts[0].artifacts)
         ? contracts[0].artifacts.map((artifact) => artifact?.role).filter((role) => typeof role === 'string') : [];
@@ -251,18 +433,34 @@ export function buildParityCertificationPreflight({
         )
         && totalBytes <= MAX_FEATURE_PROOF_CONTRACT_BYTES
         && (requirementId !== 'P-02' || (roles.length === 1 && roles[0] === PARITY_PREFLIGHT_ROLE));
-      capture = { status: valid ? 'ready' : 'invalid', kind: 'feature', roles: [...roles].sort() };
+      capture = {
+        ...captureOwner,
+        status: valid && captureOwner.status === 'ready' ? 'ready' : 'invalid',
+        kind: 'feature',
+        roles: [...roles].sort()
+      };
     }
-    const materializer = capture.status === 'ready'
-      ? { status: 'ready', kind: capture.kind }
-      : { status: 'unsupported', kind: 'none' };
-    const rowBlockers = [];
+    const materializerOwner = ownershipRows.length === 1
+      ? componentOwnershipStatus({
+        repoRoot: repository,
+        targetHead,
+        ownership: ownership.materializer,
+        component: `${requirementId} materializer`,
+        testExecutions,
+        expectedProducerPath: ownership.materializer?.producerPath
+      })
+      : { status: 'invalid', producerPath: null, workflowPath: null, testPath: null, testName: null };
+    const materializer = capture.status === 'ready' && materializerOwner.status === 'ready'
+      ? { ...materializerOwner, kind: capture.kind }
+      : { ...materializerOwner, status: 'unsupported', kind: 'none' };
+    let rowBlockers = [];
     if (requirementRows.length !== 1) rowBlockers.push(requirementRows.length === 0 ? 'missing-requirement' : 'duplicate-requirement');
     if (policyState !== 'ready') rowBlockers.push(`${policyState}-policy`);
     const validatorCode = componentCode('validator', validator.status);
     if (validatorCode) rowBlockers.push(validatorCode);
     if (capture.status !== 'ready') rowBlockers.push(`${capture.status}-capture`);
     if (materializer.status !== 'ready') rowBlockers.push('unsupported-materializer');
+    rowBlockers = [...new Set(rowBlockers)];
     for (const code of rowBlockers) addBlocker(blockers, code, requirementId, `${requirementId} ${code.replaceAll('-', ' ')}`);
     return {
       requirementId,
@@ -311,7 +509,11 @@ export function buildParityCertificationPreflight({
     if (owners.length < 2) continue;
     for (const row of owners) {
       row.capture.status = 'reused';
-      row.materializer = { status: 'unsupported', kind: 'none' };
+      row.materializer = {
+        ...row.materializer,
+        status: 'unsupported',
+        kind: 'none'
+      };
       row.ready = false;
       row.blockers.push('reused-capture', 'unsupported-materializer');
       addBlocker(blockers, 'reused-capture', row.requirementId, 'feature capture role is reused by another requirement');
@@ -351,7 +553,7 @@ export function buildParityCertificationPreflight({
   return {
     schemaVersion: 1,
     targetHead,
-    sourceCommit: observedHead,
+    sourceCommit: targetHead,
     status: blockers.length === 0 ? 'passed' : 'blocked',
     requirementId: 'P-02',
     environmentId,
@@ -362,6 +564,7 @@ export function buildParityCertificationPreflight({
       productProofClosureSha256: aggregateSnapshot.sha256
     },
     sources,
+    testExecutions,
     environments,
     requirements: rows,
     summary,
@@ -396,7 +599,8 @@ export function validateParityCertificationPreflight(document, expected) {
     environmentId: expected.environmentId,
     targetHead: expected.targetHead,
     candidateRunId: expected.candidate.runId,
-    candidateArtifactDigest: expected.candidate.artifactDigest
+    candidateArtifactDigest: expected.candidate.artifactDigest,
+    testExecutions: document.testExecutions
   });
   if (JSON.stringify(document) !== JSON.stringify(rebuilt)) {
     throw new Error('parity certification preflight is stale, substituted, or not bound to current inventory');

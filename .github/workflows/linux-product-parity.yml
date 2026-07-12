@@ -137,6 +137,17 @@ jobs:
             --candidate-run-id "$CANDIDATE_RUN_ID" \
             --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"
 
+      - name: Preserve non-promotable P-02 diagnostic evidence
+        if: always() && inputs.requirement == 'P-02'
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.6.1
+        with:
+          name: linux-product-parity-diagnostic-${{ github.sha }}-${{ inputs.candidate_run_id }}-${{ inputs.environment }}
+          path: |
+            docs/linux-port/evidence/product-parity-inputs/P-02/${{ inputs.environment }}/feature-artifacts/parity-certification-preflight.json
+            docs/linux-port/evidence/product-parity-inputs/P-02/${{ inputs.environment }}/feature-proof-registration.json
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Finalize registered feature proof closure
         shell: bash
         env:

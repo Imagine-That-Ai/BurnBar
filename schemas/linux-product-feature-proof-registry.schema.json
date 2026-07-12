@@ -11,6 +11,10 @@
     "requirements": {
       "type": "array",
       "items": { "$ref": "#/$defs/requirement" }
+    },
+    "certification": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/certification" }
     }
   },
   "$defs": {
@@ -37,6 +41,46 @@
         "mediaType": { "type": "string", "pattern": "^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$" },
         "maxBytes": { "type": "integer", "minimum": 1, "maximum": 268435456 }
       }
+    },
+    "certification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requirementId", "validator", "capture", "materializer"],
+      "properties": {
+        "requirementId": { "type": "string", "pattern": "^P-(0[1-9]|[1-3][0-9]|40)$" },
+        "validator": { "$ref": "#/$defs/validatorOwnership" },
+        "capture": { "$ref": "#/$defs/componentOwnership" },
+        "materializer": { "$ref": "#/$defs/componentOwnership" }
+      }
+    },
+    "validatorOwnership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourcePath", "testPath", "mutationTestName"],
+      "properties": {
+        "sourcePath": { "$ref": "#/$defs/sourcePath" },
+        "testPath": { "$ref": "#/$defs/testPath" },
+        "mutationTestName": { "type": "string", "minLength": 1 }
+      }
+    },
+    "componentOwnership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["producerPath", "workflowPath", "testPath", "testName"],
+      "properties": {
+        "producerPath": { "$ref": "#/$defs/sourcePath" },
+        "workflowPath": { "type": "string", "pattern": "^\\.github/workflows/[a-z0-9-]+\\.yml$" },
+        "testPath": { "$ref": "#/$defs/testPath" },
+        "testName": { "type": "string", "minLength": 1 }
+      }
+    },
+    "sourcePath": {
+      "type": "string",
+      "pattern": "^scripts/linux-port/[A-Za-z0-9._/-]+\\.mjs$"
+    },
+    "testPath": {
+      "type": "string",
+      "pattern": "^scripts/linux-port/[A-Za-z0-9._/-]+\\.test\\.mjs$"
     }
   }
 }

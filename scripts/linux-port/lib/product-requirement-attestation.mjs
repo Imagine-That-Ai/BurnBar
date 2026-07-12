@@ -213,7 +213,7 @@ export function requireCleanGitHead(repoRoot, allowedUntrackedRoots = []) {
   return targetHead;
 }
 
-function validateRequirementsManifest(value) {
+export function validateRequirementsManifest(value) {
   if (value?.schemaVersion !== 1 || value?.id !== 'openburnbar-linux-macos-parity-v1') {
     throw new Error('requirements manifest has the wrong schemaVersion or id');
   }
