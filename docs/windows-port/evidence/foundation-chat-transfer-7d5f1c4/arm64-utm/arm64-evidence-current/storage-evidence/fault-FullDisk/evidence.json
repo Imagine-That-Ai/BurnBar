@@ -1,0 +1,21 @@
+{
+  "name": "fault-FullDisk",
+  "databasePath": "C:\\WINDOWS\\SystemTemp\\obb-storage-47677deb8ab5459eb160d63ce17f05e6\\openburnbar.sqlite",
+  "databaseExists": false,
+  "encryptedHeader": false,
+  "walExists": false,
+  "shmExists": false,
+  "report": null,
+  "recovery": {
+    "Kind": 5,
+    "Title": "Windows does not have enough disk space to finish storage work.",
+    "Message": "Free disk space and retry. Reset is not offered because valid data may still be present.",
+    "Actions": [
+      0,
+      3
+    ],
+    "DatabasePath": "C:\\WINDOWS\\SystemTemp\\obb-storage-47677deb8ab5459eb160d63ce17f05e6\\openburnbar.sqlite",
+    "JournalPath": "C:\\WINDOWS\\SystemTemp\\obb-storage-47677deb8ab5459eb160d63ce17f05e6\\openburnbar.sqlite.windows-migration-journal.json",
+    "RedactedLogPath": "C:\\WINDOWS\\SystemTemp\\obb-storage-47677deb8ab5459eb160d63ce17f05e6\\openburnbar.sqlite.recovery.log"
+  }
+}

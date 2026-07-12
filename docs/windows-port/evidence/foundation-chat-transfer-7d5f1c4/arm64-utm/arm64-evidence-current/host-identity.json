@@ -1,0 +1,30 @@
+﻿{
+    "schema":  "openburnbar.windows.foundation-host.v1",
+    "capturedAt":  "2026-07-10T02:44:26.4058875Z",
+    "computerName":  "WIN-MIGC91I3AKQ",
+    "osCaption":  "Microsoft Windows 11 Pro",
+    "osVersion":  "10.0.26200",
+    "osArchitecture":  "ARM 64-bit Processor",
+    "manufacturer":  "QEMU",
+    "model":  "QEMU Virtual Machine",
+    "processorArchitecture":  "AMD64",
+    "processArchitecture":  "X64",
+    "platform":  "x64",
+    "repoRoot":  "C:\\candidate7d5f1c4_run",
+    "outputDir":  "C:\\Users\\Public\\openburnbar-candidate-7d5f1c4\\arm64-evidence-current",
+    "dotnet":  "10.0.301",
+    "candidate":  {
+                      "branch":  "codex/windows-macos-parity-audit-implementation",
+                      "commit":  "7d5f1c46df692bb22df8205277b3392595d8b224",
+                      "commitDate":  "2026-07-09T21:32:49-05:00",
+                      "parentCommits":  [
+                                            "9569caf512ea6146b34a77e3b7d2c2be2508da32"
+                                        ],
+                      "ref":  "HEAD",
+                      "tree":  "7f6c988849675f4c4b68619c685ba8311fdf43b3"
+                  },
+    "tpm":  {
+                "present":  false,
+                "error":  "An internal error has occurred within the Trusted Platform Module support program. (Exception from HRESULT: 0x80284001)"
+            }
+}

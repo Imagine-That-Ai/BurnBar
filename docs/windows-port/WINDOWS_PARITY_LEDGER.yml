@@ -1,7 +1,7 @@
 version: 1
 updated: '2026-07-09'
 finish_line: F2_True_1to1
-finish_line_doc: docs/windows-port/WINDOWS_FULL_PARITY_MASTER_PLAN_2026-07-09.md
+finish_line_doc: docs/windows-port/WINDOWS_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md
 schema_id: windows-parity-ledger-v1
 macos_primary_routes:
 - chat

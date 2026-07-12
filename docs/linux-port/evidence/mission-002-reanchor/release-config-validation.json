@@ -1,5 +1,7 @@
 {
-  "generatedAt": "2026-07-09T15:47:46.519Z",
-  "passed": true,
-  "failures": []
+  "generatedAt": "2026-07-09T18:13:07.751Z",
+  "passed": false,
+  "failures": [
+    "website/public/downloads/latest-linux.json must not be checked in before release verification is green"
+  ]
 }

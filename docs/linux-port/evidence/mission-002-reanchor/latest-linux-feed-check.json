@@ -1,20 +1,13 @@
 {
-  "generatedAt": "2026-07-09T18:10:52.704024Z",
-  "url": "file:website/public/downloads/latest-linux.json",
+  "generatedAt": "2026-07-09T18:24:40.144Z",
+  "url": "https://burnbar.ai/latest-linux.json",
   "allowMissing": false,
-  "passed": true,
-  "bodyKind": "json",
-  "failures": [],
-  "warnings": [
-    "Staged local public feed JSON; CDN deploy is separate operator publish"
+  "passed": false,
+  "httpStatus": 200,
+  "contentType": "text/html; charset=utf-8",
+  "bodyKind": "html",
+  "failures": [
+    "latest-linux.json returned HTML (marketing shell) instead of JSON update metadata."
   ],
-  "keys": [
-    "version",
-    "publishedAt",
-    "channel",
-    "notes",
-    "gitCommit",
-    "artifacts",
-    "ed25519"
-  ]
+  "warnings": []
 }

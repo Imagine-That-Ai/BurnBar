@@ -1,0 +1,22 @@
+{
+  "name": "unsupported-schema-recovery",
+  "databasePath": "C:\\WINDOWS\\SystemTemp\\obb-storage-747095cfceff4dd990e1a5a139a12e7b\\openburnbar.sqlite",
+  "databaseExists": true,
+  "encryptedHeader": true,
+  "walExists": true,
+  "shmExists": true,
+  "report": null,
+  "recovery": {
+    "Kind": 4,
+    "Title": "The local database schema is newer than this Windows build.",
+    "Message": "Install a compatible build, or archive/reset this database after exporting diagnostics.",
+    "Actions": [
+      1,
+      2,
+      3
+    ],
+    "DatabasePath": "C:\\WINDOWS\\SystemTemp\\obb-storage-747095cfceff4dd990e1a5a139a12e7b\\openburnbar.sqlite",
+    "JournalPath": "C:\\WINDOWS\\SystemTemp\\obb-storage-747095cfceff4dd990e1a5a139a12e7b\\openburnbar.sqlite.windows-migration-journal.json",
+    "RedactedLogPath": "C:\\WINDOWS\\SystemTemp\\obb-storage-747095cfceff4dd990e1a5a139a12e7b\\openburnbar.sqlite.recovery.log"
+  }
+}

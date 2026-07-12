@@ -1,0 +1,41 @@
+﻿{
+    "status":  "focused-tests-passed",
+    "outputDir":  "C:\\Users\\Public\\openburnbar-candidate-7d5f1c4\\arm64-evidence-current\\chat-evidence",
+    "budgets":  {
+                    "maxCombinedOutputBytes":  33554432,
+                    "maxLogicalRecordBytes":  1048576,
+                    "cancellationTreeAbsentMaxSeconds":  3
+                },
+    "launchPolicy":  {
+                         "requiredLaunchIds":  [
+                                                   "chat.direct-cli",
+                                                   "chat.conpty-cli",
+                                                   "cloud.oauth-browser",
+                                                   "data.swift-engine-interim",
+                                                   "quota.claude-statusline-forwarder"
+                                               ],
+                         "forbiddenEnvironmentNames":  [
+                                                           "OPENAI_API_KEY",
+                                                           "OPENBURNBAR_SQLCIPHER_PATH",
+                                                           "OPENBURNBAR_SQLCIPHER_PASSPHRASE",
+                                                           "WINDOWS_UPDATE_SIGNING_KEY",
+                                                           "DIAGNOSTIC_CANARY_SECRET"
+                                                       ],
+                         "requiredArtifact":  "process-traces/launch-policy-environment-dump.json"
+                     },
+    "requiredHostArtifacts":  [
+                                  "process-traces/launch-policy-environment-dump.json",
+                                  "process-traces/image-argument-vector.json",
+                                  "process-traces/metacharacters-quotes-unicode-newlines-long-payload.json",
+                                  "process-traces/path-substitution-denial.json",
+                                  "process-traces/executable-replacement-denial.json",
+                                  "process-traces/infinite-output-byte-counts.json",
+                                  "process-traces/blocked-stderr-concurrent-drain.json",
+                                  "process-traces/grandchildren-cancellation-process-table.json",
+                                  "ui/oracle-chat-001-differential.json",
+                                  "ui/restart-rehydration-uia.json",
+                                  "ui/attachment-paste-drop-uia.json",
+                                  "storage/encrypted-byte-scan.json"
+                              ],
+    "note":  "Attach the requiredHostArtifacts from Windows UIA/process-trace runners before target promotion."
+}

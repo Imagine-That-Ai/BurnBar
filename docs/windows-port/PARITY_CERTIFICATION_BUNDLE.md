@@ -1,26 +1,20 @@
-# OpenBurnBar Windows — Parity Certification Bundle (G5 evidence)
+# OpenBurnBar Windows — Scoped Parity Evidence Bundle
 
-**Status:** Living evidence ledger for Phase 5 gate **G5** (`docs/WINDOWS_PORT_MASTER_PLAN.md` §7.3).  
-**Role:** Single source of truth for an independent reviewer to decide **GO / FIX** on launch certification — not the gate verdict itself.  
+**Status:** Living evidence index for Phase 5 gate **G5** (`docs/WINDOWS_PORT_MASTER_PLAN.md` §7.3).
+**Role:** Evidence for scoped ledger rows, not a whole-product launch certification.
 **Oracle:** macOS app (`AgentLens/`) + shared contracts (`packages/`, `AgentLensTests/Fixtures/`).  
 **Windows tree:** `windows/` (WinUI shell, PAL, storage, cloudsync, tests, dist).  
-**Related:** `docs/windows-port/HANDOFF.md`, `docs/windows-port/PHASE3_UI_PARITY_PLAN.md`, `docs/WINDOWS_PORT_MASTER_PLAN.md` §10.1.
+**Current full-product audit:** [`WINDOWS_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md`](WINDOWS_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md).
 
-> **How to use this doc.** Each row cites a **test**, **fixture**, **WPD/PR**, or **runbook** artifact. Screenshot cells awaiting Alberto’s **Win11 Pro validation pass** are marked `_(blocked — Win11 Pro pass pending)_` — never as invented image paths (Phase 0 ledger scanner rejects those). Cross-platform snapshot auto-gates are explicitly **not** claimed (`PHASE3_UI_PARITY_PLAN.md` §G3). Canonical production-parity status is [`WINDOWS_PARITY_LEDGER.yml`](WINDOWS_PARITY_LEDGER.yml).
+> **Scope boundary.** Each row cites a test, fixture, WPD/PR, or runbook artifact for a scoped ledger capability. The ledger's 46 `Real` rows do **not** certify a fresh-install, end-to-end Windows product. For current gaps, implementation order, and required real-device proof, use the independent audit above.
 
 ---
 
-## 0. Finish lines: F1 Ship Peer vs F2 True 1:1
+## 0. Scope and Finish Lines
 
-> **Never claim “100% parity” without naming F1 or F2.** **100% parity = F2 True 1:1**
-> (ledger `finish_line: F2_True_1to1`). Canonical execution plan:
-> [`WINDOWS_FULL_PARITY_MASTER_PLAN_2026-07-09.md`](WINDOWS_FULL_PARITY_MASTER_PLAN_2026-07-09.md).
->
-> **Achieved 2026-07-09 under ledger laws:** **46 Real / 0 DeferredApproved / 0 Blocked /
-> 0 Substituted.** F1/F2 column cells below remain historical **exit-criteria** language
-> from plan authoring; **current** production-parity status is only the ledger row + §1
-> Status column (all primary nav **Real**). Operational host steps (Authenticode private
-> key, required GH check flip, physical TPM claim) sit outside the in-repo ledger gate.
+> The ledger retains `finish_line: F2_True_1to1` as its internal scoped status field.
+> It is not evidence that the Windows app has achieved whole-product 1:1 parity.
+> The independent audit is the authoritative full-product remediation plan.
 
 | Area | F1 — Ship Peer **exit criteria** (default) | F2 — True 1:1 **exit criteria** |
 |------|--------------------------------------------|----------------------------------|

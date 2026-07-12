@@ -1,16 +1,27 @@
 {
-  "generatedAt": "2026-07-09T18:11:06.218Z",
+  "generatedAt": "2026-07-09T19:10:19.343Z",
   "allowBlocked": false,
   "git": {
-    "commit": "1e0f0c6e35a979aace55ef7763b8568bafa4cdb4",
+    "commit": "18836ae40ac31885e93865da98235a6661497612",
     "dirtyEntries": [
-      " M docs/linux-port/evidence/mission-002-reanchor/latest-linux.draft.json",
-      " M docs/linux-port/evidence/mission-002-reanchor/package-closure.json",
+      " M docs/WINDOWS_PORT_MASTER_PLAN.md",
+      " M docs/linux-port/evidence/mission-002-reanchor/latest-linux-feed-check.json",
       " M docs/linux-port/evidence/mission-002-reanchor/parity-ledger-validation.json",
+      " M docs/linux-port/evidence/mission-002-reanchor/release-config-validation.json",
       " M docs/linux-port/evidence/mission-002-reanchor/release-verification.json",
-      " M docs/linux-port/evidence/mission-002-reanchor/sidecars/OpenBurnBar-0.1.0-linux.openvex.json",
-      " M docs/linux-port/evidence/mission-002-reanchor/sidecars/OpenBurnBar-0.1.0-linux.provenance-predicate.json",
-      " M docs/linux-port/evidence/mission-002-reanchor/sidecars/OpenBurnBar-0.1.0-linux.spdx.json"
+      " M docs/linux-port/evidence/mission-002-reanchor/sidecars/OpenBurnBar-0.1.0-linux.spdx.json",
+      " M docs/windows-port/HANDOFF.md",
+      " M docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md",
+      " D docs/windows-port/WINDOWS_FULL_PARITY_MASTER_PLAN_2026-07-09.md",
+      " D docs/windows-port/WINDOWS_FULL_PARITY_SCAN_2026-07-09.md",
+      " D docs/windows-port/WINDOWS_MACOS_PARITY_SCAN_2026-07-09.md",
+      " M docs/windows-port/WINDOWS_PARITY_LEDGER.md",
+      " M docs/windows-port/WINDOWS_PARITY_LEDGER.yml",
+      " D docs/windows-port/WINDOWS_PARITY_SCAN_AND_PLAN.md",
+      " D docs/windows-port/WINDOWS_PARITY_STRATEGY_V2.md",
+      " M docs/windows-port/evidence/h2-host/README.md",
+      " M windows/README.md",
+      "?? docs/windows-port/WINDOWS_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md"
     ]
   },
   "semantics": {

@@ -1,0 +1,13 @@
+﻿{
+    "status":  "passed",
+    "archiveLength":  407142228,
+    "archiveSha256":  "65b2a52c700376336acae105c3632af8afb9bea1956092299eaf445e1d41f703",
+    "expectedSha256":  "65b2a52c700376336acae105c3632af8afb9bea1956092299eaf445e1d41f703",
+    "manifestLength":  2438232,
+    "volume":  {
+                   "DriveLetter":  "C",
+                   "SizeRemaining":  10541977600,
+                   "Size":  102851653632
+               },
+    "completedAt":  "2026-07-10T02:35:16.5239469Z"
+}

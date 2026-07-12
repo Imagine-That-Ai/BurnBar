@@ -1,0 +1,7 @@
+﻿{
+    "name":  "chat-storage",
+    "command":  "dotnet test windows\\tests\\storage\\OpenBurnBar.App.Storage.Tests.csproj --no-restore --nologo --logger trx;LogFileName=chat-storage.trx",
+    "exitCode":  0,
+    "log":  "C:\\Users\\Public\\openburnbar-candidate-7d5f1c4\\arm64-evidence-current\\chat-evidence\\chat-storage.log",
+    "completedAt":  "2026-07-10T02:48:14.5831700Z"
+}

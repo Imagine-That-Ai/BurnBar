@@ -157,6 +157,7 @@ public enum CLIRuntimeModelSource: String, Codable, Hashable, Sendable {
     case antigravityModelCatalog
     case claudeModelCatalog
     case cursorAgentProfile
+    case cursorAgentModelCatalog
     case codexModelCatalog
     case grokModelCatalog
     case ollamaLocalCatalog
@@ -184,6 +185,8 @@ public enum CLIRuntimeModelSource: String, Codable, Hashable, Sendable {
             return "Claude Code model catalog"
         case .cursorAgentProfile:
             return "Cursor Agent CLI profile"
+        case .cursorAgentModelCatalog:
+            return "Cursor Agent live catalog"
         case .codexModelCatalog:
             return "Codex live catalog"
         case .grokModelCatalog:
@@ -217,6 +220,8 @@ public enum CLIRuntimeModelSource: String, Codable, Hashable, Sendable {
             return "Cataloged for this Mac's Claude Code CLI auth and quota."
         case .cursorAgentProfile:
             return "Uses this Mac's Cursor Agent CLI auth and quota."
+        case .cursorAgentModelCatalog:
+            return "Discovered from this Mac's Cursor Agent CLI model catalog."
         case .codexModelCatalog:
             return "Discovered from this Mac's Codex CLI model catalog."
         case .grokModelCatalog:
@@ -576,6 +581,52 @@ public enum CLIRuntimeModelCatalog {
         return rows
     }
 
+    public static func parseCursorAgentModels(_ text: String) -> [CLIRuntimeModelOption] {
+        var rows: [CLIRuntimeModelOption] = []
+        var seen = Set<String>()
+        var inModels = false
+
+        for rawLine in text.components(separatedBy: .newlines) {
+            let trimmed = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            if trimmed.lowercased() == "available models" {
+                inModels = true
+                continue
+            }
+            if trimmed.lowercased().hasPrefix("tip:") {
+                break
+            }
+            guard inModels else { continue }
+
+            let match = trimmed.firstMatch(of: /^(\S+)\s+-\s+(.+)$/)
+            guard let match else { continue }
+            let modelID = String(match.output.1)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !modelID.isEmpty, seen.insert(modelID.lowercased()).inserted else { continue }
+
+            let rawDisplay = cleanupDisplayName(String(match.output.2))
+            let display = rawDisplay.isEmpty ? modelID : rawDisplay
+            let providerID = inferredCursorAgentProviderID(modelID: modelID, displayName: display)
+            let providerName = providerID == "cursor"
+                ? "Cursor via Cursor Agent CLI"
+                : "\(OpenBurnBarModelDisplayName.providerLabel(providerID: providerID, providerName: nil) ?? providerID) via Cursor Agent CLI"
+            rows.append(option(
+                modelID,
+                OpenBurnBarModelDisplayName.compose(
+                    modelName: display,
+                    providerName: OpenBurnBarModelDisplayName.providerLabel(providerID: providerID, providerName: nil),
+                    providerID: providerID,
+                    reasoningLevel: "CLI default"
+                ),
+                providerID,
+                providerName,
+                tier: inferredTier(modelID: modelID, displayName: display),
+                source: .cursorAgentModelCatalog
+            ))
+        }
+        return rows
+    }
+
     /// Parses Ollama's `GET /api/tags` JSON into runtime model options.
     ///
     /// Each entry's `name` (e.g. `qwen2.5:3b`, `gpt-oss:120b-cloud`) becomes a
@@ -793,7 +844,8 @@ public enum CLIRuntimeModelCatalog {
 
     private static func cleanupDisplayName(_ raw: String) -> String {
         raw
-            .replacingOccurrences(of: #"\s+\(default\)$"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"\s+\((default|current)\)$"#, with: "", options: [.regularExpression, .caseInsensitive])
+            .replacingOccurrences(of: #"\s+\(NO ZDR\)$"#, with: "", options: [.regularExpression, .caseInsensitive])
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -847,6 +899,17 @@ public enum CLIRuntimeModelCatalog {
             tier: inferredTier(modelID: modelID, displayName: displayName),
             source: .droidCustomModel
         )
+    }
+
+    private static func inferredCursorAgentProviderID(modelID: String, displayName: String) -> String {
+        let haystack = "\(modelID) \(displayName)".lowercased()
+        if haystack.contains("composer") || modelID.lowercased() == "auto" {
+            return "cursor"
+        }
+        if haystack.contains("grok") {
+            return "xai"
+        }
+        return inferredProviderID(modelID: modelID, displayName: displayName)
     }
 
     private static func inferredProviderID(modelID: String, displayName: String) -> String {

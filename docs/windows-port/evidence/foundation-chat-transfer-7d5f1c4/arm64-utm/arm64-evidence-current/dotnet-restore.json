@@ -1,0 +1,7 @@
+﻿{
+    "name":  "dotnet-restore",
+    "command":  "dotnet restore windows\\OpenBurnBar.sln -p:Platform=x64",
+    "exitCode":  0,
+    "log":  "C:\\Users\\Public\\openburnbar-candidate-7d5f1c4\\arm64-evidence-current\\dotnet-restore.log",
+    "completedAt":  "2026-07-10T02:44:33.5419425Z"
+}

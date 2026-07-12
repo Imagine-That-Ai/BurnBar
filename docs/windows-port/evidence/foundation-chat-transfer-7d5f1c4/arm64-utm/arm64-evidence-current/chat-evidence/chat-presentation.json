@@ -1,0 +1,7 @@
+﻿{
+    "name":  "chat-presentation",
+    "command":  "dotnet test windows\\tests\\presentation\\OpenBurnBar.App.Presentation.Tests.csproj --no-restore --nologo --filter FullyQualifiedName~Chat --logger trx;LogFileName=chat-presentation.trx",
+    "exitCode":  0,
+    "log":  "C:\\Users\\Public\\openburnbar-candidate-7d5f1c4\\arm64-evidence-current\\chat-evidence\\chat-presentation.log",
+    "completedAt":  "2026-07-10T02:48:21.4614360Z"
+}

@@ -767,6 +767,7 @@ final class CLIBridge: ObservableObject {
         systemPrompt: String,
         userMessage: String,
         workspaceDirectory: URL? = nil,
+        model: String = "",
         capabilityGrant: AgentCapabilityGrant? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
@@ -783,6 +784,7 @@ final class CLIBridge: ObservableObject {
                 await CLIProcessStreamRunner(runtime: self.streamRuntime).runCursorAgent(
                     executable: executable,
                     prompt: fullPrompt,
+                    model: model,
                     workspaceDirectory: workspaceDirectory,
                     capabilityGrant: capabilityGrant,
                     grantStillActive: Self.spawnedCLIGrantPoll(for: capabilityGrant),

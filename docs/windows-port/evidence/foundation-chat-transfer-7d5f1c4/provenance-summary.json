@@ -1,0 +1,189 @@
+{
+  "generatedAt": "2026-07-10T02:57:58.122Z",
+  "candidate": {
+    "branch": "codex/windows-macos-parity-audit-implementation",
+    "commit": "7d5f1c46df692bb22df8205277b3392595d8b224",
+    "commitDate": "2026-07-09T21:32:49-05:00",
+    "parentCommits": [
+      "9569caf512ea6146b34a77e3b7d2c2be2508da32"
+    ],
+    "ref": "HEAD",
+    "tree": "7f6c988849675f4c4b68619c685ba8311fdf43b3"
+  },
+  "export": {
+    "archiveFileName": "openburnbar-candidate-7d5f1c46df69.tar.gz",
+    "archiveSha256": "65b2a52c700376336acae105c3632af8afb9bea1956092299eaf445e1d41f703",
+    "archiveSize": 407142228,
+    "manifestPayloadSha256": "d9936ad651ba42c043fbcb5f3357f8f4233cdf709f078f1f71c6ccfd169f956e",
+    "fileCount": 10277
+  },
+  "transfer": {
+    "host": "UTM Windows ARM64 guest 84079ADD-AD6D-4270-9B8A-07D499AD3F23",
+    "method": "host Range HTTP server plus Windows Start-BitsTransfer into a fresh guest directory",
+    "status": "passed",
+    "archiveSha256": "65b2a52c700376336acae105c3632af8afb9bea1956092299eaf445e1d41f703",
+    "archiveLength": 407142228,
+    "completedAt": "2026-07-10T02:35:16.5239469Z"
+  },
+  "importVerification": {
+    "status": "passed",
+    "checkedFiles": 10277,
+    "expectedFiles": 10277,
+    "archiveSha256": "65b2a52c700376336acae105c3632af8afb9bea1956092299eaf445e1d41f703",
+    "manifestSha256": "35cd73407d6949ec606e3f7bfc3e0cc617c4ebd9bc5b1c0de0c24793677a933b",
+    "verifiedAt": "2026-07-10T02:41:44.6208987Z"
+  },
+  "arm64Evidence": {
+    "status": "passed",
+    "exitCode": 0,
+    "completedAt": "2026-07-10T02:48:22.3967649Z",
+    "host": {
+      "computerName": "WIN-MIGC91I3AKQ",
+      "osCaption": "Microsoft Windows 11 Pro",
+      "osArchitecture": "ARM 64-bit Processor",
+      "processorArchitecture": "AMD64",
+      "processArchitecture": "X64",
+      "platform": "x64",
+      "dotnet": "10.0.301",
+      "tpm": {
+        "present": false,
+        "error": "An internal error has occurred within the Trusted Platform Module support program. (Exception from HRESULT: 0x80284001)"
+      }
+    },
+    "steps": [
+      {
+        "name": "dotnet-restore",
+        "exitCode": 0,
+        "command": "dotnet restore windows\\OpenBurnBar.sln -p:Platform=x64",
+        "completedAt": "2026-07-10T02:44:33.5419425Z"
+      },
+      {
+        "name": "dotnet-build",
+        "exitCode": 0,
+        "command": "dotnet build windows\\OpenBurnBar.sln --configuration Debug --no-restore -p:Platform=x64",
+        "completedAt": "2026-07-10T02:45:56.3748985Z"
+      },
+      {
+        "name": "configuration-tests",
+        "exitCode": 0,
+        "command": "dotnet test windows\\tests\\configuration\\OpenBurnBar.App.Configuration.Tests.csproj --configuration Debug --no-build --nologo --logger trx;LogFileName=configuration.trx",
+        "completedAt": "2026-07-10T02:46:00.9925457Z"
+      },
+      {
+        "name": "chat-runtime-tests",
+        "exitCode": 0,
+        "command": "dotnet test windows\\tests\\chat\\OpenBurnBar.App.Chat.Runtime.Tests.csproj --configuration Debug --no-build --nologo --logger trx;LogFileName=chat-runtime.trx",
+        "completedAt": "2026-07-10T02:46:04.7552259Z"
+      },
+      {
+        "name": "storage-tests",
+        "exitCode": 0,
+        "command": "dotnet test windows\\tests\\storage\\OpenBurnBar.App.Storage.Tests.csproj --configuration Debug --no-build --nologo --logger trx;LogFileName=storage.trx",
+        "completedAt": "2026-07-10T02:46:27.3785022Z"
+      },
+      {
+        "name": "sqlcipher-storage-tests",
+        "exitCode": 0,
+        "command": "dotnet test windows\\storage\\OpenBurnBar.Storage.Tests\\OpenBurnBar.Storage.Tests.csproj --configuration Debug --no-build --nologo --logger trx;LogFileName=sqlcipher-storage.trx",
+        "completedAt": "2026-07-10T02:46:39.5938075Z"
+      },
+      {
+        "name": "chat-presentation-tests",
+        "exitCode": 0,
+        "command": "dotnet test windows\\tests\\presentation\\OpenBurnBar.App.Presentation.Tests.csproj --configuration Debug --no-build --nologo --filter FullyQualifiedName~Chat --logger trx;LogFileName=chat-presentation.trx",
+        "completedAt": "2026-07-10T02:46:42.4477155Z"
+      },
+      {
+        "name": "storage-evidence",
+        "exitCode": 0,
+        "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\\windows-port\\storage-evidence.ps1 -RepoRoot C:\\candidate7d5f1c4_run -OutputDir C:\\Users\\Public\\openburnbar-candidate-7d5f1c4\\arm64-evidence-current\\storage-evidence",
+        "completedAt": "2026-07-10T02:47:30.9047074Z"
+      },
+      {
+        "name": "chat-evidence",
+        "exitCode": 0,
+        "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\\windows-port\\chat-evidence.ps1 -RepoRoot C:\\candidate7d5f1c4_run -OutputDir C:\\Users\\Public\\openburnbar-candidate-7d5f1c4\\arm64-evidence-current\\chat-evidence",
+        "completedAt": "2026-07-10T02:48:21.6899278Z"
+      }
+    ],
+    "storageStatus": "passed",
+    "storageCases": [
+      "corrupt-archive-reset",
+      "fault-AccessDenied",
+      "fault-FullDisk",
+      "fault-LockedFile",
+      "fresh-install",
+      "generated-db-write-seams",
+      "interrupted-retry",
+      "restart-idempotency",
+      "unsupported-schema-recovery",
+      "wrong-key-recovery"
+    ],
+    "chatStatus": "focused-tests-passed",
+    "chatRequiredHostArtifacts": [
+      "process-traces/launch-policy-environment-dump.json",
+      "process-traces/image-argument-vector.json",
+      "process-traces/metacharacters-quotes-unicode-newlines-long-payload.json",
+      "process-traces/path-substitution-denial.json",
+      "process-traces/executable-replacement-denial.json",
+      "process-traces/infinite-output-byte-counts.json",
+      "process-traces/blocked-stderr-concurrent-drain.json",
+      "process-traces/grandchildren-cancellation-process-table.json",
+      "ui/oracle-chat-001-differential.json",
+      "ui/restart-rehydration-uia.json",
+      "ui/attachment-paste-drop-uia.json",
+      "storage/encrypted-byte-scan.json"
+    ],
+    "artifactSecretScan": "passed"
+  },
+  "githubWindowsFullSuite": {
+    "runId": 29065530129,
+    "status": "completed",
+    "conclusion": "success",
+    "headSha": "7d5f1c46df692bb22df8205277b3392595d8b224",
+    "url": "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29065530129",
+    "artifacts": [
+      "github-windows-full-suite/windows-full-arm64-test-results/windows-full-arm64.trx",
+      "github-windows-full-suite/windows-full-x64-test-results/windows-full-x64.trx"
+    ],
+    "jobs": [
+      {
+        "name": "Detect Windows full-suite changes",
+        "status": "completed",
+        "conclusion": "success",
+        "startedAt": "2026-07-10T02:50:38Z",
+        "completedAt": "2026-07-10T02:51:36Z",
+        "url": "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29065530129/job/86276102935"
+      },
+      {
+        "name": "Windows full suite (ARM64)",
+        "status": "completed",
+        "conclusion": "success",
+        "startedAt": "2026-07-10T02:51:39Z",
+        "completedAt": "2026-07-10T02:56:37Z",
+        "url": "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29065530129/job/86276209823"
+      },
+      {
+        "name": "Windows full suite (x64)",
+        "status": "completed",
+        "conclusion": "success",
+        "startedAt": "2026-07-10T02:51:39Z",
+        "completedAt": "2026-07-10T02:56:23Z",
+        "url": "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29065530129/job/86276209831"
+      },
+      {
+        "name": "PR Windows Full Gate",
+        "status": "completed",
+        "conclusion": "success",
+        "startedAt": "2026-07-10T02:56:40Z",
+        "completedAt": "2026-07-10T02:56:44Z",
+        "url": "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29065530129/job/86276728852"
+      }
+    ]
+  },
+  "knownMissing": [
+    "Windows UI Automation screenshots and UIA trees were not produced in this worker run.",
+    "Process image/path/ArgumentList traces and approve/rotate/remove executable UIA flows remain absent; the chat evidence summary lists requiredHostArtifacts that still need a UIA/process-trace runner.",
+    "No local/native Windows x64 UIA host was available; hosted GitHub x64 is build/test only."
+  ]
+}

@@ -326,7 +326,10 @@ enum CLIAgentMissionRuntimePlanner {
         case ChatBackendID.cursorAgent.rawValue:
             return CLIAgentMissionDirectLaunchPlan(
                 executableName: "cursor-agent",
-                arguments: CLIArgumentBuilder.cursorAgentArguments(prompt: hostPrompt),
+                arguments: CLIArgumentBuilder.cursorAgentArguments(
+                    prompt: hostPrompt,
+                    model: requestedModelID ?? ""
+                ),
                 extraEnvironment: [:]
             )
         case "opencode":
@@ -458,6 +461,7 @@ enum CLIAgentMissionRuntimePlanner {
                 executableName: "cursor-agent",
                 arguments: CLIArgumentBuilder.cursorAgentArguments(
                     prompt: hostPrompt,
+                    model: requestedModelID ?? "",
                     workspaceDirectory: workingDirectory,
                     capabilityGrant: grant
                 ),

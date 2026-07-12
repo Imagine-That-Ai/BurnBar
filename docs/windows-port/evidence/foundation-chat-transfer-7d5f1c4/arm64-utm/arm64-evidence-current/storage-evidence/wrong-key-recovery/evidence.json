@@ -1,0 +1,23 @@
+{
+  "name": "wrong-key-recovery",
+  "databasePath": "C:\\WINDOWS\\SystemTemp\\obb-storage-b64874709ccd4482b98685fa91185bc1\\openburnbar.sqlite",
+  "databaseExists": true,
+  "encryptedHeader": true,
+  "walExists": false,
+  "shmExists": false,
+  "report": null,
+  "recovery": {
+    "Kind": 0,
+    "Title": "The protected storage key does not match this database.",
+    "Message": "Retry after restoring the protected key, or archive and reset the database after confirming data loss.",
+    "Actions": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "DatabasePath": "C:\\WINDOWS\\SystemTemp\\obb-storage-b64874709ccd4482b98685fa91185bc1\\openburnbar.sqlite",
+    "JournalPath": "C:\\WINDOWS\\SystemTemp\\obb-storage-b64874709ccd4482b98685fa91185bc1\\openburnbar.sqlite.windows-migration-journal.json",
+    "RedactedLogPath": "C:\\WINDOWS\\SystemTemp\\obb-storage-b64874709ccd4482b98685fa91185bc1\\openburnbar.sqlite.recovery.log"
+  }
+}
