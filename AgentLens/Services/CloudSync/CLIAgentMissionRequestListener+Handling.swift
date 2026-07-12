@@ -241,19 +241,11 @@ extension CLIAgentMissionRequestListener {
                 requestID: document.documentID
             )
         } catch {
+            // Group-claim STRUCTURAL validation failure (malformed / inconsistent
+            // Wand group document) — a transport-side document-integrity refusal
+            // before any authorization decision. The daemon authorization runs
+            // only on structurally valid, decoded missions below.
             logger.warning("mission id=\(document.documentID, privacy: .public) refused before claim: \(error.localizedDescription, privacy: .public)")
-            let failPrompt = (data["prompt"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-                ?? ""
-            let failRuntime = (data["requestedRuntime"] as? String) ?? "auto"
-            let failModelID = (data["requestedModelID"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-            Task { @MainActor in
-                await MissionRemoteAuthorizationShadow.observe(
-                    missionID: document.documentID, data: data, prompt: failPrompt,
-                    guiDecision: .deny, executorTrustState: "trusted",
-                    requestedRuntime: failRuntime, requestedModelID: failModelID,
-                    requestedFanOutCount: 1
-                )
-            }
             await fail(document: document, message: error.localizedDescription)
             return
         }
@@ -273,27 +265,15 @@ extension CLIAgentMissionRequestListener {
             ((data["events"] as? [Any])?.count ?? 1)
         )
 
+        // Split-brain M4: PREPARE the trusted-executor escrow record (device
+        // claim + pending-Mac registration) but forward its RAW trust state to
+        // the daemon instead of gating on the GUI's own trusted/untrusted
+        // projection — the daemon is the sole allow/approve/deny authority.
         let trustResult = await deviceTrustChecker.prepareAndValidateTrustedExecutor(
             uid: uid,
             deviceID: accountManager.deviceId
         )
-        guard trustResult.isTrusted else {
-            logger.warning("mission id=\(document.documentID, privacy: .public) refused for untrusted Mac device=\(self.accountManager.deviceId, privacy: .public)")
-            let denyPrompt = prompt
-            let denyRuntime = requestedRuntime
-            let denyModelID = requestedModelID
-            let denyFanOut = missionGroupContext?.siblingCount ?? 1
-            let denyData = data
-            Task { @MainActor in
-                await MissionRemoteAuthorizationShadow.observe(
-                    missionID: document.documentID, data: denyData, prompt: denyPrompt,
-                    guiDecision: .deny, executorTrustState: "untrusted",
-                    requestedRuntime: denyRuntime, requestedModelID: denyModelID,
-                    requestedFanOutCount: denyFanOut
-                )
-            }
-            return
-        }
+        let executorTrustState = trustResult.rawTrustState
 
         var backend = resolveBackend(
             requestedRuntime: requestedRuntime,
@@ -321,49 +301,69 @@ extension CLIAgentMissionRequestListener {
             await fail(document: document, message: error.localizedDescription)
             return
         }
-        let willPauseForApproval = await shouldPauseForApproval(document: document, data: data, backend: backend)
-        // Detect terminal GUI denial: when the pause is caused by Mac CLI
-        // assistants being disabled (not a genuine approval pause), the
-        // mission is already failed — the shadow must report `.deny`, not
-        // `.requiresApproval`, so the GUI-vs-daemon divergence is visible.
-        let isTerminalDenial = willPauseForApproval
-            && CLIAgentMissionRuntimePlanner.requiresMacCLIAssistantConsentForRemoteMission(backend: backend)
-            && !settingsManager.cliAssistantAllowed
-        // Validate persona scope BEFORE shadowing an allow: a malformed present
-        // scope causes the GUI to fail closed later, so the shadow must not
-        // emit `.allow` first (it would hide the divergence).
+
+        // Persona scope: a malformed present scope is an execution-side
+        // fail-closed refusal, independent of the daemon's verdict.
         let personaScopeIsMalformed: Bool = {
             guard data["personaScopeJSON"] != nil else { return false }
             return CLIAgentMissionPersonaScopeResolution.resolve(from: data).isRefused
         }()
-        let shadowDecision = personaScopeIsMalformed
-            ? GUIMissionAuthorizationDecision.deny
-            : MissionRemoteAuthorizationShadow.reduceGUIDecision(
-                data: data,
-                willPauseForApproval: willPauseForApproval,
-                isTerminalDenial: isTerminalDenial
-            )
-        // Fire the shadow observation WITHOUT awaiting so processingDocs is
-        // released promptly and approval transitions arriving during the
-        // daemon RPC are not swallowed.
-        Task { @MainActor in
-            await MissionRemoteAuthorizationShadow.observe(
-                missionID: document.documentID, data: data, prompt: prompt,
-                guiDecision: shadowDecision,
-                executorTrustState: "trusted",
-                requestedRuntime: requestedRuntime, requestedModelID: requestedModelID,
-                requestedFanOutCount: missionGroupContext?.siblingCount ?? 1
-            )
-        }
-        if willPauseForApproval {
-            return
-        }
         if personaScopeIsMalformed {
             await fail(
                 document: document,
                 message: "The persona scope attached to this mission could not be read, "
                     + "so it was rejected instead of running with broader permissions. "
                     + "Re-send the mission from your device."
+            )
+            return
+        }
+
+        // The DECISION is the daemon's. Forward the RESOLVED backend runtime and
+        // the GUI-resolved server-signed fan-out cap. Rollback lever
+        // `OBB_MISSION_AUTHORIZE_SHADOW`: `.enforce` (default) obeys the daemon;
+        // `shadow`/`off` disable enforcement → FAIL CLOSED (decision code gone).
+        guard MissionRemoteAuthorizationShadow.mode == .enforce else {
+            logger.warning("mission id=\(document.documentID, privacy: .public) refused: daemon mission authorization is not enforced (OBB_MISSION_AUTHORIZE_SHADOW=\(MissionRemoteAuthorizationShadow.mode.rawValue, privacy: .public)); remote missions fail closed")
+            await fail(
+                document: document,
+                message: "Remote missions require daemon authorization, which is currently disabled on this Mac. "
+                    + "Remove OBB_MISSION_AUTHORIZE_SHADOW (or set it to enforce) to run remote missions."
+            )
+            return
+        }
+        let fanOutCap = try? await resolvedWandFanOutCap(uid: uid)
+        let authorization = await MissionRemoteAuthorizationShadow.authorize(
+            missionID: document.documentID,
+            data: data,
+            prompt: prompt,
+            executorTrustState: executorTrustState,
+            requestedRuntime: backend.rawValue,
+            requestedModelID: requestedModelID,
+            requestedFanOutCount: missionGroupContext?.siblingCount ?? 1,
+            trustedFanOutCap: fanOutCap
+        )
+        switch authorization {
+        case .authorized:
+            break
+        case .requiresApproval:
+            await driveApprovalWriteback(document: document, data: data, backend: backend)
+            return
+        case let .denied(reason, detail):
+            await failDaemonDenied(document: document, backend: backend, reason: reason, detail: detail)
+            return
+        case let .daemonUnreachable(detail):
+            await failDaemonRequired(document: document, detail: detail)
+            return
+        }
+
+        // Execution-side local-privacy gate (NOT remote authorization): this Mac
+        // spawns a CLI assistant only when the operator enabled Mac CLI assistants.
+        if CLIAgentMissionRuntimePlanner.requiresMacCLIAssistantConsentForRemoteMission(backend: backend),
+           !settingsManager.cliAssistantAllowed {
+            await failAfterTrustedClaim(
+                document: document,
+                backend: backend,
+                message: "Mac CLI assistants are off. Enable Mac CLI assistants in Settings -> Privacy & Indexing before this Mac can run remote agent missions."
             )
             return
         }

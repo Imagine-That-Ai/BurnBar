@@ -108,16 +108,15 @@ enum CLIAgentMissionCloudSealer {
 struct CLIAgentMissionDeviceTrustResult: Equatable, Sendable {
     let isTrusted: Bool
     let message: String
+    /// RAW escrow `trustState` forwarded to the daemon (M4). See `MissionRemoteExecutorTrustState`.
+    let rawTrustState: String
 
     static var trusted: CLIAgentMissionDeviceTrustResult {
-        CLIAgentMissionDeviceTrustResult(
-            isTrusted: true,
-            message: "Mac is trusted for mobile mission execution."
-        )
+        CLIAgentMissionDeviceTrustResult(isTrusted: true, message: "Mac is trusted for mobile mission execution.", rawTrustState: EscrowDeviceTrustState.trusted.rawValue)
     }
 
-    static func untrusted(_ message: String) -> CLIAgentMissionDeviceTrustResult {
-        CLIAgentMissionDeviceTrustResult(isTrusted: false, message: message)
+    static func untrusted(_ message: String, rawTrustState: String = MissionRemoteExecutorTrustState.unknown) -> CLIAgentMissionDeviceTrustResult {
+        CLIAgentMissionDeviceTrustResult(isTrusted: false, message: message, rawTrustState: rawTrustState)
     }
 }
 

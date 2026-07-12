@@ -103,42 +103,13 @@ extension CLIAgentMissionRequestListener {
         }
     }
 
-    func shouldPauseForApproval(
-        document: QueryDocumentSnapshot,
-        data: [String: Any],
-        backend: CLIAgentMissionBackend
-    ) async -> Bool {
-        let approvalStatus = ((data["approvalStatus"] as? String) ?? "none").lowercased()
-        let status = ((data["status"] as? String) ?? "pending").lowercased()
-        if approvalStatus == "rejected" || approvalStatus == "canceled" || approvalStatus == "cancelled" {
-            await cancelAfterApprovalDecision(document: document, approvalStatus: approvalStatus)
-            return true
-        }
-        if CLIAgentMissionRuntimePlanner.requiresMacCLIAssistantConsentForRemoteMission(backend: backend),
-           !settingsManager.cliAssistantAllowed {
-            await failAfterTrustedClaim(
-                document: document,
-                backend: backend,
-                message: "Mac CLI assistants are off. Enable Mac CLI assistants in Settings -> Privacy & Indexing before this Mac can run remote agent missions."
-            )
-            return true
-        }
-        if approvalStatus == "approved" {
-            return false
-        }
-        guard missionRequiresApproval(data: data, backend: backend) else {
-            return false
-        }
-        if status == "waiting_for_approval" {
-            return true
-        }
-        await requestApproval(document: document, data: data, backend: backend)
-        return true
-    }
-
-    func missionRequiresApproval(data: [String: Any], backend: CLIAgentMissionBackend) -> Bool {
-        CLIAgentMissionRuntimePlanner.requiresPreDispatchApproval(data: data, backend: backend)
-    }
+    // The allow / requires-approval / deny DECISION (`shouldPauseForApproval`,
+    // `missionRequiresApproval`) moved to the daemon in split-brain M4; the
+    // daemon-driven writeback helpers live in
+    // `MissionRemoteAuthorizationEnforcement.swift` (outside the frozen cluster).
+    // The approval-request writeback (`requestApproval`) and cancellation
+    // writeback (`cancelAfterApprovalDecision`) below stay: they render the
+    // daemon's `.requiresApproval` / `.denied` verdicts into mission state.
 
     func failAfterTrustedClaim(document: QueryDocumentSnapshot, backend: CLIAgentMissionBackend, message: String) async {
         do {

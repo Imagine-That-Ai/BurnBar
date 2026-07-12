@@ -119,19 +119,9 @@ enum CLIAgentMissionRuntimePlanner {
         return raw.flatMap(CLIAgentChatPresentationMode.init(rawValue:)) ?? .nativeChat
     }
 
-    static func requiresPreDispatchApproval(
-        data: [String: Any],
-        backend: CLIAgentMissionBackend
-    ) -> Bool {
-        if InsightMissionApprovalPolicy.requiresPreDispatchApproval(
-            approvalMode: data["approvalMode"] as? String,
-            commandsAllowed: (data["commandsAllowed"] as? Bool) ?? false,
-            fileEditsAllowed: (data["fileEditsAllowed"] as? Bool) ?? false
-        ) {
-            return true
-        }
-        return requiresMacCLIAssistantConsentForRemoteMission(backend: backend)
-    }
+    // The pre-dispatch approval DECISION (`requiresPreDispatchApproval`) moved to
+    // the daemon's `BurnBarRemoteMissionAuthorizationPolicy` (split-brain M4).
+    // Only the execution-side Mac CLI-assistant consent gate remains here.
 
     static func requiresMacCLIAssistantConsentForRemoteMission(
         backend: CLIAgentMissionBackend
@@ -560,8 +550,11 @@ final class LiveCLIAgentMissionDeviceTrustChecker: CLIAgentMissionDeviceTrustChe
 
             try await registerPendingMac(deviceRef: deviceRef, deviceID: deviceID)
             preparedDeviceIDs.insert(deviceID)
-            return .untrusted("This Mac is registered but not approved for mobile mission execution. Approve it in OpenBurnBar Devices and Sync, then launch the mission again.")
+            return .untrusted(
+                "This Mac is registered but not approved for mobile mission execution. Approve it in OpenBurnBar Devices and Sync, then launch the mission again.",
+                rawTrustState: EscrowDeviceTrustState.pending.rawValue)
         } catch {
+            // rawTrustState defaults to unknown (fail closed).
             return .untrusted("Mac trust could not be verified before mission execution: \(error.localizedDescription)")
         }
     }
@@ -593,13 +586,18 @@ final class LiveCLIAgentMissionDeviceTrustChecker: CLIAgentMissionDeviceTrustChe
                     }
                 }
             }
-            return .untrusted("This Mac is not approved for mobile mission execution. Approve it in OpenBurnBar Devices and Sync, then launch the mission again.")
+            // Forward the RAW escrow state (pending/revoked → typed daemon denial;
+            // unrecognized → fail closed as unknown).
+            return .untrusted(
+                "This Mac is not approved for mobile mission execution. Approve it in OpenBurnBar Devices and Sync, then launch the mission again.",
+                rawTrustState: EscrowDeviceTrustState(rawValue: trustState)?.rawValue ?? MissionRemoteExecutorTrustState.unknown)
         }
 
         let platform = (data["platform"] as? String)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
         guard platform?.contains("mac") == true || platform == nil else {
+            // Trusted escrow record but not a macOS executor → fail closed (unknown).
             return .untrusted("The trusted executor record for this device is not a macOS device.")
         }
         return .trusted
