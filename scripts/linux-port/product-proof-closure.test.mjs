@@ -520,25 +520,33 @@ test('materializer rejects wrong HEAD, unsupported requirements, Arch, and mutat
   });
 });
 
-function validatorContext(fixture, requirementId, closure, checkId, mutateRuntime = null) {
-  const root = requirementRoot(fixture.root, requirementId);
+function validatorContext(
+  fixture,
+  requirementId,
+  closure,
+  checkId,
+  mutateRuntime = null,
+  environmentId = ENVIRONMENT
+) {
+  const root = requirementRoot(fixture.root, requirementId, environmentId);
   const relative = (file) => path.relative(fixture.root, file).split(path.sep).join('/');
   const closureFile = path.join(root, 'release-closure.json');
+  const isArch = environmentId.startsWith('arch-');
   const runtime = {
     schemaVersion: 1,
     shellVersion: VERSION,
     daemonVersion: VERSION,
     daemonProtocolVersion: 2,
-    sessionType: 'x11',
-    desktop: 'GNOME',
+    sessionType: isArch ? 'wayland' : 'x11',
+    desktop: isArch ? 'Sway/wlroots' : 'GNOME',
     capabilities: [{ id: 'usage.read' }]
   };
   if (mutateRuntime) mutateRuntime(runtime);
   const runtimeFile = writeJson(path.join(root, 'live-runtime-capabilities.json'), runtime);
   const environmentFile = writeJson(path.join(root, 'live-environment-manifest.json'), {
-    environmentId: ENVIRONMENT,
+    environmentId,
     targetHead: HEAD,
-    architecture: 'x86_64',
+    architecture: environmentId.endsWith('-aarch64') ? 'aarch64' : 'x86_64',
     passed: true
   });
   const manifestFile = path.join(fixture.root, closure.packageManifest.path);
@@ -549,7 +557,7 @@ function validatorContext(fixture, requirementId, closure, checkId, mutateRuntim
     repoRoot: fixture.root,
     requirementId,
     checkId,
-    environmentId: ENVIRONMENT,
+    environmentId,
     targetHead: HEAD,
     releaseClosure: { path: relative(closureFile), sha256: sha256(closureFile), document: closure },
     subjects: {
@@ -590,6 +598,36 @@ test('P-01, P-03, P-04, and P-37 validators enforce their distinct release/runti
     assert.equal(result.status, 'passed');
     assert.ok(result.artifacts.length > 5);
   }
+});
+
+test('P-37 validator accepts the Arch package lifecycle and rejects a cross-format selection', async (t) => {
+  const environmentId = 'arch-sway-wayland-x86_64';
+  const fixture = createReleaseFixture();
+  t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }));
+  finalizeProductProofClosure({ repoRoot: fixture.root, outputDir: fixture.output, targetHead: HEAD });
+  const inputRoot = stageAggregate(fixture, 'P-37', environmentId);
+  const { closure } = prepareProductRequirementInput({
+    requirementId: 'P-37', environmentId, inputRoot, targetHead: HEAD,
+    candidateRunId: CANDIDATE_RUN_ID, candidateArtifactDigest: CANDIDATE_ARTIFACT_DIGEST,
+    repoRoot: fixture.root
+  });
+  const context = validatorContext(
+    fixture,
+    'P-37',
+    closure,
+    'p-37.linux-matrix',
+    null,
+    environmentId
+  );
+  const result = await validateP37(context);
+  assert.equal(result.status, 'passed');
+  assert.deepEqual(closure.selectedPackage, { architecture: 'x86_64', format: 'arch' });
+
+  closure.selectedPackage.format = 'rpm';
+  await assert.rejects(
+    () => validateP37(context),
+    /selected the wrong native package/u
+  );
 });
 
 test('P-03 rejects a live daemon protocol that drifts from the signed package manifest', async (t) => {

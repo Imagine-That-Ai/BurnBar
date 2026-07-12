@@ -3,6 +3,7 @@ import {
   REQUIREMENT_RELEASE_CLOSURE_SCHEMA_VERSION,
   SUPPORT_ENVIRONMENTS,
   assertExactStringSet,
+  environmentPackage,
   readRegularSnapshot
 } from '../lib/product-proof-closure.mjs';
 
@@ -45,10 +46,8 @@ export function validateRequirementContext(context, requiredProofRoles) {
   }
   assertExactStringSet(closure.architectures, RELEASE_ARCHITECTURES, 'release architectures');
   assertExactStringSet(closure.supportEnvironments, SUPPORT_ENVIRONMENTS, 'release support environments');
-  const expectedArchitecture = context.environmentId.endsWith('-aarch64') ? 'aarch64' : 'x86_64';
-  const expectedFormat = context.environmentId.startsWith('ubuntu-') ? 'deb'
-    : context.environmentId.startsWith('fedora-') ? 'rpm' : null;
-  if (expectedFormat === null || closure.selectedPackage?.architecture !== expectedArchitecture
+  const { architecture: expectedArchitecture, format: expectedFormat } = environmentPackage(context.environmentId);
+  if (closure.selectedPackage?.architecture !== expectedArchitecture
       || closure.selectedPackage?.format !== expectedFormat) {
     throw new Error('requirement release closure selected the wrong native package');
   }

@@ -332,15 +332,20 @@ function osMatches(expected, release) {
 }
 
 function runHostCommand(command, args) {
-  const result = spawnSync(command, args, { encoding: 'utf8', timeout: 10_000 });
+  const result = spawnSync(command, args, {
+    encoding: 'utf8',
+    timeout: 10_000,
+    env: { ...process.env, LANG: 'C', LC_ALL: 'C' }
+  });
   if (result.status !== 0) {
     throw new Error(`${command} ${args.join(' ')} failed: ${(result.stderr || result.stdout || 'unknown error').trim()}`);
   }
   return result.stdout.trim();
 }
 
-function queryInstalledPackage(expected, runner = runHostCommand) {
-  if (expected.os === 'Ubuntu 24.04') {
+export function queryInstalledPackage(expected, runner = runHostCommand) {
+  const selected = environmentPackage(expected.id);
+  if (selected.format === 'deb') {
     const output = runner('dpkg-query', [
       '-W',
       '-f=${db:Status-Status}\t${Version}\t${Architecture}',
@@ -349,14 +354,28 @@ function queryInstalledPackage(expected, runner = runHostCommand) {
     const [status, version, architecture] = output.split('\t');
     return { manager: 'dpkg', name: 'open-burn-bar', status, version, architecture: normalizeArchitecture(architecture) };
   }
-  if (expected.os === 'Fedora') {
+  if (selected.format === 'rpm') {
     const output = runner('rpm', ['-q', '--qf', '%{NAME}\t%{VERSION}\t%{ARCH}', 'open-burn-bar']);
     const [name, version, architecture] = output.split('\t');
     return { manager: 'rpm', name, status: 'installed', version, architecture: normalizeArchitecture(architecture) };
   }
-  const output = runner('pacman', ['-Q', 'openburnbar']);
-  const [name, version] = output.split(/\s+/u);
-  return { manager: 'pacman', name, status: 'installed', version, architecture: 'x86_64' };
+  const output = runner('pacman', ['-Qi', 'openburnbar']);
+  const fields = Object.fromEntries(
+    output.split('\n')
+      .map((line) => line.match(/^([^:]+?)\s*:\s*(.*)$/u))
+      .filter(Boolean)
+      .map((match) => [match[1].trim(), match[2].trim()])
+  );
+  if (!fields.Name || !fields.Version || !fields.Architecture) {
+    throw new Error('pacman package metadata is missing Name, Version, or Architecture');
+  }
+  return {
+    manager: 'pacman',
+    name: fields.Name,
+    status: 'installed',
+    version: fields.Version.replace(/-[1-9][0-9]*$/u, ''),
+    architecture: normalizeArchitecture(fields.Architecture)
+  };
 }
 
 function queryLogindSession(runner = runHostCommand) {
@@ -456,7 +475,11 @@ function assertLiveEnvironmentManifest(manifest, expected, installedManifest, ta
       || !Number.isInteger(manifest.logind?.user) || manifest.logind.user < 1) {
     throw new Error('live logind session does not match the support row');
   }
-  if (manifest.package?.version !== installedManifest.packageVersion
+  const selected = environmentPackage(expected.id);
+  const expectedManager = { arch: 'pacman', deb: 'dpkg', rpm: 'rpm' }[selected.format];
+  const expectedName = selected.format === 'arch' ? 'openburnbar' : 'open-burn-bar';
+  if (manifest.package?.manager !== expectedManager || manifest.package?.name !== expectedName
+      || manifest.package?.version !== installedManifest.packageVersion
       || manifest.package?.architecture !== expected.architecture
       || manifest.package?.status !== 'installed') {
     throw new Error('live installed package does not match the signed package manifest');
@@ -534,10 +557,7 @@ function validateInstalledPackageManifest(repoRoot, subject, targetHead, expecte
   if (manifest.packageArchitecture !== expected.architecture) {
     throw new Error('package manifest architecture does not match the support row');
   }
-  const expectedFormat = expected.os === 'Ubuntu 24.04' ? 'deb' : expected.os === 'Fedora' ? 'rpm' : null;
-  if (expectedFormat === null) {
-    throw new Error('Arch product evidence is blocked until the AUR installed-manifest lifecycle is promoted');
-  }
+  const expectedFormat = environmentPackage(expected.id).format;
   if (manifest.packageFormat !== expectedFormat) {
     throw new Error(`package manifest format must be ${expectedFormat} for ${expected.os}`);
   }
@@ -830,7 +850,14 @@ export function deriveReleaseSubjects(
     targetHead,
     expectedEnvironment
   );
-  const expectedPackageSuffix = installedManifest.packageFormat === 'deb' ? '.deb' : '.rpm';
+  const expectedPackageSuffix = {
+    arch: '.pkg.tar.zst',
+    deb: '.deb',
+    rpm: '.rpm'
+  }[installedManifest.packageFormat];
+  if (expectedPackageSuffix === undefined) {
+    throw new Error(`installed package format is unsupported: ${installedManifest.packageFormat}`);
+  }
   if (!packages[0].path.endsWith(expectedPackageSuffix)) {
     throw new Error(`installed package artifact must end in ${expectedPackageSuffix}`);
   }

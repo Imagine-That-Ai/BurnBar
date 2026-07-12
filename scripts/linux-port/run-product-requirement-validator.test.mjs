@@ -10,8 +10,10 @@ import {
   CANONICAL_ENVIRONMENT_IDS,
   CANONICAL_REQUIREMENT_IDS,
   canonicalOutputPath,
-  main
+  main,
+  queryInstalledPackage
 } from './run-product-requirement-validator.mjs';
+import { environmentPackage } from './lib/product-proof-closure.mjs';
 
 const ENVIRONMENT = CANONICAL_ENVIRONMENT_IDS[0];
 const SOURCE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -113,12 +115,14 @@ function createRepository(options = {}) {
 
 function evidencePaths(requirementId, environmentId = ENVIRONMENT) {
   const directory = `docs/linux-port/evidence/product-parity-inputs/${requirementId}/${environmentId}`;
+  const format = environmentPackage(environmentId).format;
+  const extension = format === 'arch' ? 'pkg.tar.zst' : format;
   return {
     directory,
     closure: `${directory}/release-closure.json`,
     manifest: `${directory}/installed-manifest.json`,
     manifestSignature: `${directory}/installed-manifest.json.sig`,
-    package: `${directory}/OpenBurnBar.deb`,
+    package: `${directory}/OpenBurnBar.${extension}`,
     runtime: `${directory}/live-runtime-capabilities.json`,
     runtimeFinal: `${directory}/live-runtime-capabilities-final.json`,
     liveManifest: `${directory}/live-installed-manifest.json`,
@@ -137,7 +141,10 @@ function filesRoot(files) {
 }
 
 function writeEvidence(root, requirementId, head, options = {}) {
-  const paths = evidencePaths(requirementId, options.environmentId);
+  const environmentId = options.environmentId ?? ENVIRONMENT;
+  const environment = requirementManifest().minimumSupportMatrix.find((row) => row.id === environmentId);
+  const selected = environmentPackage(environmentId);
+  const paths = evidencePaths(requirementId, environmentId);
   const files = [
     {
       path: '/usr/bin/openburnbar-daemon',
@@ -165,9 +172,9 @@ function writeEvidence(root, requirementId, head, options = {}) {
     firebaseAppId: '1:123456789:web:abcdef',
     packageVersion: '1.2.3',
     gitCommit: head,
-    packageArchitecture: 'x86_64',
-    packageFormat: 'deb',
-    packageName: 'open-burn-bar',
+    packageArchitecture: selected.architecture,
+    packageFormat: selected.format,
+    packageName: selected.format === 'arch' ? 'openburnbar' : 'open-burn-bar',
     policyId: 'openburnbar-linux-signed-package-inventory-v1',
     brokerProtocolVersion: 2,
     installedFilesRootSha256: filesRoot(files),
@@ -193,8 +200,8 @@ function writeEvidence(root, requirementId, head, options = {}) {
     shellVersion: manifest.packageVersion,
     daemonVersion: manifest.packageVersion,
     daemonProtocolVersion: 1,
-    sessionType: 'x11',
-    desktop: 'GNOME',
+    sessionType: environment.session.toLowerCase(),
+    desktop: environment.desktop,
     capabilities: catalog.capabilities.map((entry) => ({
       id: entry.id,
       domain: entry.domain,
@@ -392,11 +399,17 @@ export async function validateProductRequirement(context) {
 }
 
 function validHostProbe(expected, installedManifest) {
+  const selected = environmentPackage(expected.id);
+  const osIdentity = selected.format === 'deb'
+    ? { id: 'ubuntu', versionId: '24.04' }
+    : selected.format === 'rpm'
+      ? { id: 'fedora', versionId: '43' }
+      : { id: 'arch', versionId: null };
   return {
     schemaVersion: 1,
     environmentId: expected.id,
     platform: 'linux',
-    os: { id: 'ubuntu', versionId: '24.04' },
+    os: osIdentity,
     architecture: expected.architecture,
     kernelRelease: '6.8.0-test',
     logind: {
@@ -419,8 +432,8 @@ function validHostProbe(expected, installedManifest) {
       swaySocket: null
     },
     package: {
-      manager: 'dpkg',
-      name: 'open-burn-bar',
+      manager: { arch: 'pacman', deb: 'dpkg', rpm: 'rpm' }[selected.format],
+      name: selected.format === 'arch' ? 'openburnbar' : 'open-burn-bar',
       status: 'installed',
       version: installedManifest.packageVersion,
       architecture: expected.architecture
@@ -492,17 +505,18 @@ function args(
   requirementId,
   releaseClosurePath = evidencePaths(requirementId).closure,
   outputPath = null,
+  environmentId = ENVIRONMENT,
   candidateRunId = CANDIDATE_RUN_ID,
   candidateArtifactDigest = CANDIDATE_ARTIFACT_DIGEST
 ) {
   const checkId = `${requirementId.toLowerCase()}.test`;
   return [
     '--requirement', requirementId,
-    '--environment', ENVIRONMENT,
+    '--environment', environmentId,
     '--release-closure', releaseClosurePath,
     '--candidate-run-id', candidateRunId,
     '--candidate-artifact-digest', candidateArtifactDigest,
-    '--output', outputPath ?? canonicalOutputPath(requirementId, checkId, ENVIRONMENT)
+    '--output', outputPath ?? canonicalOutputPath(requirementId, checkId, environmentId)
   ];
 }
 
@@ -736,6 +750,98 @@ test('dispatcher rejects canonical closure identity mismatches before validator 
       mutate(evidence.closure);
       writeJson(repository.root, evidence.paths.closure, evidence.closure);
       await rejectsWithMessage(() => productionDispatch(args('P-02'), repository.root), pattern);
+    });
+  }
+});
+
+test('native package probe selects and parses the canonical manager for every support OS', () => {
+  const environments = requirementManifest().minimumSupportMatrix;
+  const cases = [
+    {
+      id: 'ubuntu-24.04-gnome-x11-x86_64',
+      command: 'dpkg-query',
+      output: 'installed\t1.2.3\tamd64',
+      expected: { manager: 'dpkg', name: 'open-burn-bar', status: 'installed', version: '1.2.3', architecture: 'x86_64' }
+    },
+    {
+      id: 'fedora-kde-wayland-aarch64',
+      command: 'rpm',
+      output: 'open-burn-bar\t1.2.3\taarch64',
+      expected: { manager: 'rpm', name: 'open-burn-bar', status: 'installed', version: '1.2.3', architecture: 'aarch64' }
+    },
+    {
+      id: 'arch-sway-wayland-x86_64',
+      command: 'pacman',
+      output: 'Name            : openburnbar\nVersion         : 1.2.3-1\nArchitecture    : x86_64\nDescription     : OpenBurnBar',
+      expected: { manager: 'pacman', name: 'openburnbar', status: 'installed', version: '1.2.3', architecture: 'x86_64' }
+    }
+  ];
+  for (const fixture of cases) {
+    const expectedEnvironment = environments.find((row) => row.id === fixture.id);
+    const calls = [];
+    const actual = queryInstalledPackage(expectedEnvironment, (command, commandArgs) => {
+      calls.push({ command, commandArgs });
+      return fixture.output;
+    });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].command, fixture.command);
+    assert.deepEqual(actual, fixture.expected);
+  }
+  const arch = environments.find((row) => row.id === 'arch-sway-wayland-x86_64');
+  assert.throws(
+    () => queryInstalledPackage(arch, () => 'Name : openburnbar\nVersion : 1.2.3'),
+    /missing Name, Version, or Architecture/u
+  );
+});
+
+test('Arch Sway dispatch binds the signed Arch package and live pacman identity', async (t) => {
+  const environmentId = 'arch-sway-wayland-x86_64';
+  const { root, head } = createRepository({ validators: { 'P-01': validValidatorModule() } });
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const { paths } = writeEvidence(root, 'P-01', head, { environmentId });
+  const result = await dispatch(
+    args('P-01', paths.closure, null, environmentId),
+    root
+  );
+
+  assert.equal(result.receipt.environmentId, environmentId);
+  assert.ok(result.receipt.artifacts.some((artifact) => artifact.path.endsWith('.pkg.tar.zst')));
+  const liveEnvironment = JSON.parse(
+    fs.readFileSync(path.join(root, `${paths.directory}/live-environment-manifest.json`), 'utf8')
+  );
+  assert.deepEqual(liveEnvironment.os, { id: 'arch', versionId: null });
+  assert.equal(liveEnvironment.package.manager, 'pacman');
+  assert.equal(liveEnvironment.package.name, 'openburnbar');
+});
+
+test('Arch dispatch rejects substituted package format and live package manager', async (t) => {
+  const environmentId = 'arch-sway-wayland-x86_64';
+  for (const scenario of ['manifest-format', 'live-manager']) {
+    await t.test(scenario, async (subtest) => {
+      const { root, head } = createRepository({ validators: { 'P-01': validValidatorModule() } });
+      subtest.after(() => fs.rmSync(root, { recursive: true, force: true }));
+      const evidence = writeEvidence(root, 'P-01', head, { environmentId });
+      if (scenario === 'manifest-format') {
+        evidence.manifest.packageFormat = 'rpm';
+        evidence.manifest.packageName = 'open-burn-bar';
+        writeJson(root, evidence.paths.manifest, evidence.manifest);
+        evidence.closure.packageManifest.sha256 = sha256(path.join(root, evidence.paths.manifest));
+        writeJson(root, evidence.paths.closure, evidence.closure);
+        await rejectsWithMessage(
+          () => dispatch(args('P-01', evidence.paths.closure, null, environmentId), root),
+          /package manifest format must be arch/u
+        );
+        return;
+      }
+      const hostProbe = (expected, manifest) => {
+        const result = validHostProbe(expected, manifest);
+        result.package.manager = 'rpm';
+        return result;
+      };
+      await rejectsWithMessage(
+        () => dispatch(args('P-01', evidence.paths.closure, null, environmentId), root, { hostProbe }),
+        /live installed package does not match/u
+      );
     });
   }
 });
