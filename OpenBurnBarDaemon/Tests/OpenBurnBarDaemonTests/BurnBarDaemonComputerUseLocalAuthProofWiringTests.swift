@@ -21,7 +21,9 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
     // MARK: - Helpers
 
     private func makeSocketPath(name: String) -> String {
-        "/tmp/openburnbar-daemon-tests-cu-proof-\(name)-\(UUID().uuidString).sock"
+        let boundedName = String(name.prefix(24))
+        let nonce = String(UUID().uuidString.prefix(8))
+        return "/tmp/obb-cu-\(boundedName)-\(nonce).sock"
     }
 
     private func makeProof(

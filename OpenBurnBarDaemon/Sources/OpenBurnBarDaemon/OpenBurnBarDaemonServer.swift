@@ -158,7 +158,10 @@ public actor BurnBarDaemonServer {
         }
         #else
         _ = linuxCloudCredentialAuthority
-        self.computerUseApprovalAuthorityVerifier = nil
+        // Production macOS callers leave this nil. Retaining an explicitly
+        // injected verifier keeps the transport authority path testable on
+        // non-Linux CI without enabling it by default.
+        self.computerUseApprovalAuthorityVerifier = computerUseApprovalAuthorityVerifier
         self.computerUsePanicAuthorityVerifier = nil
         self.computerUseSessionGrantBroker = computerUseSessionGrantBroker
         self.computerUseSessionGrantMetadataResolver = computerUseSessionGrantMetadataResolver

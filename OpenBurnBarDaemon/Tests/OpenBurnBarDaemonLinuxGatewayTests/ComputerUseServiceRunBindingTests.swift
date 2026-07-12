@@ -148,10 +148,12 @@ final class ComputerUseServiceRunBindingTests: XCTestCase {
         XCTAssertTrue(publishedApprovalIDs.isEmpty)
     }
 
+    #if os(Linux)
     func testNonBrowserSessionCannotReserveAgentRunBinding() async throws {
         let service = ComputerUseService(
             privilegedInputKillSwitchActivator: { _ in },
-            playwrightDriverFactory: { _ in nil }
+            playwrightDriverFactory: { _ in nil },
+            requiresManagedBrowserRunAuthority: true
         )
 
         do {
@@ -166,11 +168,13 @@ final class ComputerUseServiceRunBindingTests: XCTestCase {
             XCTAssertEqual(error, .runBindingUnsupportedMode(ComputerUseMode.system.rawValue))
         }
     }
+    #endif
 
     func testBrowserSessionRequiresRunBinding() async throws {
         let service = ComputerUseService(
             privilegedInputKillSwitchActivator: { _ in },
-            playwrightDriverFactory: { _ in nil }
+            playwrightDriverFactory: { _ in nil },
+            requiresManagedBrowserRunAuthority: true
         )
 
         do {
@@ -197,7 +201,8 @@ final class ComputerUseServiceRunBindingTests: XCTestCase {
             leafKillSwitch: { false },
             playwrightDriverFactory: { _ in nil },
             privilegedInputKillSwitchActivator: { _ in },
-            authorizationRegistry: authorizationRegistry
+            authorizationRegistry: authorizationRegistry,
+            requiresManagedBrowserRunAuthority: true
         )
         let runID = BurnBarRunID(rawValue: "concurrent-run")
         let request = ComputerUseSessionStartRequest(
@@ -283,6 +288,7 @@ final class ComputerUseServiceRunBindingTests: XCTestCase {
             leafKillSwitch: { false },
             playwrightDriverFactory: { _ in nil },
             privilegedInputKillSwitchActivator: { _ in },
+            requiresManagedBrowserRunAuthority: true,
             sessionEndedObserver: { sessionID in
                 await endedSessions.append(sessionID)
             }
@@ -313,7 +319,8 @@ final class ComputerUseServiceRunBindingTests: XCTestCase {
             capabilityStateStore: capabilityStateStore,
             leafKillSwitch: { false },
             playwrightDriverFactory: { _ in nil },
-            privilegedInputKillSwitchActivator: { _ in }
+            privilegedInputKillSwitchActivator: { _ in },
+            requiresManagedBrowserRunAuthority: true
         )
         let runID = BurnBarRunID(rawValue: "expired-run")
         let request = ComputerUseSessionStartRequest(
@@ -355,7 +362,8 @@ final class ComputerUseServiceRunBindingTests: XCTestCase {
             capabilityStateStore: capabilityStateStore,
             leafKillSwitch: { false },
             playwrightDriverFactory: { _ in nil },
-            privilegedInputKillSwitchActivator: { _ in }
+            privilegedInputKillSwitchActivator: { _ in },
+            requiresManagedBrowserRunAuthority: true
         )
         let runID = BurnBarRunID(rawValue: "pending-lifecycle-run")
         let started = try await service.startSession(ComputerUseSessionStartRequest(
@@ -402,7 +410,8 @@ final class ComputerUseServiceRunBindingTests: XCTestCase {
             capabilityStateStore: capabilityStateStore,
             leafKillSwitch: { false },
             playwrightDriverFactory: { _ in nil },
-            privilegedInputKillSwitchActivator: { _ in }
+            privilegedInputKillSwitchActivator: { _ in },
+            requiresManagedBrowserRunAuthority: true
         )
         let runID = BurnBarRunID(rawValue: "run-bound-to-cu")
         let request = ComputerUseSessionStartRequest(
@@ -446,7 +455,8 @@ final class ComputerUseServiceRunBindingTests: XCTestCase {
     func testInvokeForUnboundRunFailsBeforeAnyBrowserDispatch() async throws {
         let service = ComputerUseService(
             privilegedInputKillSwitchActivator: { _ in },
-            playwrightDriverFactory: { _ in nil }
+            playwrightDriverFactory: { _ in nil },
+            requiresManagedBrowserRunAuthority: true
         )
         let runID = BurnBarRunID(rawValue: "unbound-run")
         let invocation = BurnBarToolInvocation(
@@ -476,7 +486,8 @@ final class ComputerUseServiceRunBindingTests: XCTestCase {
             capabilityStateStore: capabilityStateStore,
             leafKillSwitch: { false },
             playwrightDriverFactory: { _ in nil },
-            privilegedInputKillSwitchActivator: { _ in }
+            privilegedInputKillSwitchActivator: { _ in },
+            requiresManagedBrowserRunAuthority: true
         )
         let runID = BurnBarRunID(rawValue: "identity-run")
         let started = try await service.startSession(ComputerUseSessionStartRequest(

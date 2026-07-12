@@ -890,9 +890,12 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
     func testMacDaemonBrowserSessionPreservesDirectAgentToolBrokerLifecycle() async throws {
         let node = try XCTUnwrap(nodeExecutablePath())
         let bridge = try makeEchoBridge(expectedRequestCount: 2)
+        let auditRoot = testAuditBaseDirectory()
+        let capabilityStateStore = try await makeActiveCapabilityStateStore(at: auditRoot)
         let service = ComputerUseService(
-            auditBaseDirectory: testAuditBaseDirectory(),
-            privilegedInputKillSwitchActivator: { _ in },
+            auditBaseDirectory: auditRoot,
+            capabilityStateStore: capabilityStateStore,
+            leafKillSwitch: { false },
             playwrightDriverFactory: { manifest in
                 OpenBurnBarPlaywrightDriver(
                     configuration: OpenBurnBarPlaywrightDriver.Configuration(
@@ -904,7 +907,8 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
                     sessionId: manifest.sessionId,
                     logger: BurnBarDaemonLogger(category: "mac-agent-tool-broker-tests")
                 )
-            }
+            },
+            privilegedInputKillSwitchActivator: { _ in }
         )
 
         let started = try await service.startSession(
@@ -983,6 +987,58 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
         )
     }
     #endif
+
+    private func makeActiveCapabilityStateStore(
+        at root: URL
+    ) async throws -> ComputerUseCapabilityStateStore {
+        let now = Date()
+        let store = ComputerUseCapabilityStateStore(
+            fileURL: root.appendingPathComponent("capability-state.json"),
+            now: { now }
+        )
+        let provenance = ComputerUseAuthorityProvenance(
+            source: .firestoreServer,
+            observedAt: now,
+            updatedAt: now
+        )
+        _ = try await store.update(ComputerUseCapabilityStateSnapshot(
+            publisherInstanceID: "mac-agent-tool-broker-test",
+            revision: 1,
+            generatedAt: now,
+            userID: "mac-test-user",
+            entitlement: ComputerUseEntitlementSnapshot(
+                isActive: true,
+                productId: ComputerUseEntitlementSnapshot.hostedProductID,
+                expireAt: now.addingTimeInterval(3_600),
+                allowsBrowser: true,
+                allowsSystem: true,
+                allowsPhoneControl: true,
+                allowsTrustedScopes: true,
+                allowsAuditExport: true
+            ),
+            entitlementProvenance: provenance,
+            budgetEnvelope: ComputerUseBudgetEnvelope(
+                level: .normal,
+                projectedMonthEndUSD: 0,
+                monthToDateUSD: 0,
+                activeActionsPerRun: 50,
+                activeActionsPerDay: 200,
+                activeSessionsPerDay: 4,
+                perUserDailySpendCeilingUSD: 5,
+                updatedAt: now
+            ),
+            budgetProvenance: provenance,
+            quotaUsage: ComputerUseQuotaUsage(
+                dayKey: String(ISO8601DateFormatter().string(from: now).prefix(10)),
+                updatedAt: now
+            ),
+            quotaProvenance: provenance,
+            concurrentSessionActive: false,
+            killSwitch: false,
+            isComplete: true
+        ))
+        return store
+    }
 
     // MARK: - Audit-before-action (fail-closed reservation)
 
