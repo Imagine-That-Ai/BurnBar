@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { describeLocalCertificationHost } from "./local-certification-host.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const script = readFileSync(join(root, "run-physical-release-certification.ps1"), "utf8");
@@ -63,5 +64,46 @@ assert.match(
 );
 assert.match(localRunner, /isColdNativeSpike \? "180s" : "60s"/);
 assert.match(localRunner, /isColdNativeSpike \? 360000 : 180000/);
+
+const windowsHost = describeLocalCertificationHost({
+  platform: "win32",
+  release: "10.0.26200",
+  architecture: "x64",
+  cpuModel: "Virtual CPU",
+  ramBytes: 8 * 1024 ** 3,
+});
+assert.equal(windowsHost.label, "Windows native host (physicality not attested)");
+assert.equal(windowsHost.evidenceScope, "Windows-native automated evidence");
+assert.deepEqual(windowsHost.device, {
+  kind: "windows-native-unattested",
+  manufacturer: "unattested",
+  model: "Virtual CPU",
+  architecture: "x64",
+  osBuild: "win32 10.0.26200",
+  tpm: "not-inspected",
+  cpu: "Virtual CPU",
+  ramBytes: 8 * 1024 ** 3,
+});
+
+const macHost = describeLocalCertificationHost({
+  platform: "darwin",
+  release: "25.5.0",
+  architecture: "arm64",
+  cpuModel: "Apple M3",
+  ramBytes: 16 * 1024 ** 3,
+});
+assert.equal(macHost.label, "macOS authoring host");
+assert.equal(macHost.device.kind, "macos-authoring-host");
+
+const linuxHost = describeLocalCertificationHost({
+  platform: "linux",
+  release: "6.8.0",
+  architecture: "x64",
+  cpuModel: "Test CPU",
+  ramBytes: 4 * 1024 ** 3,
+});
+assert.equal(linuxHost.label, "linux authoring host");
+assert.equal(linuxHost.device.kind, "linux-authoring-host");
+assert.equal(linuxHost.device.manufacturer, "unattested");
 
 console.log("PASS: physical release-certification runner structural checks");

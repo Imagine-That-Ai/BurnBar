@@ -20,6 +20,7 @@ import {
   writeSha256Sums,
 } from "./validate-release-certification-evidence.mjs";
 import { sanitizeCertificationLog } from "./certification-log-sanitizer.mjs";
+import { describeLocalCertificationHost } from "./local-certification-host.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "../..");
@@ -56,16 +57,14 @@ const source = {
   commitSha: git(["rev-parse", "HEAD"]),
   dirtyTree: git(["status", "--porcelain"]).length > 0,
 };
-const device = {
-  kind: "macos-authoring-host",
-  manufacturer: "Apple",
-  model: cpus()[0]?.model ?? "unknown",
+const host = describeLocalCertificationHost({
+  platform: platform(),
+  release: release(),
   architecture: process.arch,
-  osBuild: `${platform()} ${release()}`,
-  tpm: "not-applicable",
-  cpu: cpus()[0]?.model ?? "unknown",
+  cpuModel: cpus()[0]?.model ?? "unknown",
   ramBytes: totalmem(),
-};
+});
+const device = host.device;
 const artifact = {
   name: "source-checkout",
   architecture: `${platform()}-${process.arch}`,
@@ -220,7 +219,7 @@ function baseReceipt(gate, status, expected, observed, exitCode, protocol, evide
     schema: RECEIPT_SCHEMA,
     status,
     gate,
-    target: gate === "local-automated-checks" ? "portable Windows cores and CI/meta harnesses on macOS authoring host" : gate,
+    target: gate === "local-automated-checks" ? `portable Windows cores and CI/meta harnesses on ${host.label}` : gate,
     source,
     artifact,
     device,
@@ -246,7 +245,7 @@ const failedResults = results.filter((result) => result.exitCode !== 0);
 const localReceipt = baseReceipt(
   "local-automated-checks",
   failedResults.length === 0 ? "PASS" : "FAIL",
-  "Every currently reachable macOS-side Windows portable, packaging, ledger, workflow, and test-project command exits 0.",
+  `Every portable Windows, packaging, ledger, workflow, and test-project command reachable on ${host.label} exits 0.`,
   failedResults.length === 0
     ? `All ${results.length} commands exited 0.`
     : `${failedResults.length} command(s) failed or timed out: ${failedResults.map((result) => result.name).join(", ")}. Full output is retained in logs.`,
@@ -315,8 +314,8 @@ const manifest = {
   source,
   runner: {
     script: "scripts/windows-port/run-local-certification-checks.mjs",
-    host: "macOS authoring host",
-    note: "This bundle records macOS-reachable evidence and external blockers; it does not certify Windows hardware.",
+    host: host.label,
+    note: `This bundle records ${host.evidenceScope} and external blockers; it does not attest physical Windows hardware or satisfy physical/live gates.`,
   },
   overallVerdict: "NO-GO",
   receipts: receiptEntries.map((entry) => ({ path: entry.path, sha256: sha256(join(outputDir, entry.path)) })),
