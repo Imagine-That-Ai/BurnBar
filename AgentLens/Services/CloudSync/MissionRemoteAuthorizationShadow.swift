@@ -266,7 +266,7 @@ enum MissionRemoteAuthorizationShadow {
         // persona-scope resolver already REFUSES malformed present scopes on
         // the execution path, so shadow mode never widens authority by
         // dropping it).
-        return try? decoder.decode(PersonaScopeEnvelope.self, from: payload)
+        return try? decoder.decode(PersonaScopeEnvelope.self, from: payload) // try?-ok(best-effort decode for shadow telemetry; malformed envelope left nil, never widens authority)
     }
 
     // MARK: Divergence emission
@@ -286,7 +286,12 @@ enum MissionRemoteAuthorizationShadow {
             )
         case .daemonStricter, .guiStricter:
             logger.warning(
-                "mission_authorize_shadow DIVERGENCE kind=\(signal.kind.rawValue, privacy: .public) mission=\(signal.missionID, privacy: .public) gui=\(signal.guiDecision.rawValue, privacy: .public) daemon=\(signal.daemonVerdict?.rawValue ?? "nil", privacy: .public) daemonReason=\(signal.daemonDeniedReason?.rawValue ?? "none", privacy: .public) sha=\(signal.promptSHA256, privacy: .public)"
+                "mission_authorize_shadow DIVERGENCE kind=\(signal.kind.rawValue, privacy: .public)"
+                    + " mission=\(signal.missionID, privacy: .public)"
+                    + " gui=\(signal.guiDecision.rawValue, privacy: .public)"
+                    + " daemon=\(signal.daemonVerdict?.rawValue ?? "nil", privacy: .public)"
+                    + " daemonReason=\(signal.daemonDeniedReason?.rawValue ?? "none", privacy: .public)"
+                    + " sha=\(signal.promptSHA256, privacy: .public)"
             )
         }
     }
@@ -362,17 +367,24 @@ enum MissionRemoteAuthorizationShadow {
     /// Reduce the GUI listener's observable outcome, once trust has passed,
     /// onto the comparable verdict lattice:
     ///   - a rejected/cancelled approval handshake → `.deny`
-    ///   - otherwise "would pause for approval / CLI-assistant consent" →
-    ///     `.requiresApproval`
+    ///   - a terminal GUI denial (Mac CLI assistants disabled, backend
+    ///     unavailable) → `.deny` (the mission is already failed, NOT paused
+    ///     for approval; mapping it to `.requiresApproval` would hide a real
+    ///     GUI-vs-daemon divergence in shadow telemetry)
+    ///   - otherwise "would pause for approval" → `.requiresApproval`
     ///   - otherwise (would execute now) → `.allow`
     static func reduceGUIDecision(
         data: [String: Any],
-        willPauseForApproval: Bool
+        willPauseForApproval: Bool,
+        isTerminalDenial: Bool = false
     ) -> GUIMissionAuthorizationDecision {
         let approvalStatus = ((data["approvalStatus"] as? String) ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
         if approvalStatus == "rejected" || approvalStatus == "canceled" || approvalStatus == "cancelled" {
+            return .deny
+        }
+        if isTerminalDenial {
             return .deny
         }
         return willPauseForApproval ? .requiresApproval : .allow
