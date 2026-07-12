@@ -280,14 +280,26 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
                 let output = try await run(executable: executable, arguments: ["models"], timeoutSeconds: 20)
                 discovered.append(contentsOf: CLIRuntimeModelCatalog.parseCursorAgentModels(output))
             } catch {
-                AppLogger.daemon.silentFailure("cursor_agent_models_probe_failed", error: error)
+                AppLogger.chat.silentFailure(
+                    "cursor_agent_model_catalog_probe",
+                    error: error,
+                    context: ["command": "models"]
+                )
             }
             if discovered.isEmpty {
                 do {
-                    let output = try await run(executable: executable, arguments: ["--list-models"], timeoutSeconds: 20)
+                    let output = try await run(
+                        executable: executable,
+                        arguments: ["--list-models"],
+                        timeoutSeconds: 20
+                    )
                     discovered.append(contentsOf: CLIRuntimeModelCatalog.parseCursorAgentModels(output))
                 } catch {
-                    AppLogger.daemon.silentFailure("cursor_agent_list_models_probe_failed", error: error)
+                    AppLogger.chat.silentFailure(
+                        "cursor_agent_model_catalog_probe",
+                        error: error,
+                        context: ["command": "--list-models"]
+                    )
                 }
             }
             let deduplicated = Self.deduplicated(discovered)
@@ -503,7 +515,7 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
 /// Lock-boxed accumulation buffer for `readabilityHandler` callbacks, which
 /// arrive on a background queue while the discovery task polls for exit.
 private final class PipeDrainBuffer: Sendable {
-    private let data = Locked<Data>(Data())
+    private let data = Locked(Data())
 
     func append(_ chunk: Data) {
         guard !chunk.isEmpty else { return }
