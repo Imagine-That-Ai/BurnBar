@@ -219,7 +219,8 @@ sleep 5
         root = MODULE_PATH.parents[2]
         manifest = copy.deepcopy(VERIFIER.load_manifest(root))
         owner = next(
-            suite for suite in manifest["suites"]
+            suite
+            for suite in manifest["suites"]
             if VERIFIER.MINIMUM_LINUX_COVERAGE_FILTERS_BY_SUITE.get(suite["id"], 0) > 1
         )
         owner["linuxCoverageFilters"].pop()

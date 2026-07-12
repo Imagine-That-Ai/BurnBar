@@ -62,7 +62,7 @@ python3 scripts/linux-port/verify_linux_swift_tests.py \
   --root "$ROOT" \
   --results-dir "$RESULTS_DIR"
 
-while IFS=$'\t' read -r suite_id package_path filter minimum scratch_path coverage_owner; do
+while IFS=$'\t' read -r suite_id package_path filter minimum scratch_path; do
   log="$RESULTS_DIR/${suite_id}.log"
   xunit="$RESULTS_DIR/${suite_id}.xml"
   scratch="$SCRATCH_ROOT/$scratch_path"
@@ -116,7 +116,7 @@ manifest = json.load(open(sys.argv[1], encoding="utf-8"))
 for suite in manifest["suites"]:
     print("\t".join(str(suite[key]) for key in (
         "id", "packagePath", "filter", "minimumExecutedTests", "scratchPath"
-    )) + "\t" + str(suite["linuxCoverageOwner"]).lower())
+    )))
 PY
 )
 

@@ -114,9 +114,7 @@ def validate_contract(root: Path, manifest: dict) -> dict:
             elif len(coverage_filters) != len(set(coverage_filters)):
                 failures.append(f"coverage-owning suite {suite_id} contains duplicate linuxCoverageFilters")
             if "minimumLinuxCoverageFilters" in suite:
-                failures.append(
-                    f"coverage-owning suite {suite_id} may not self-attest minimumLinuxCoverageFilters"
-                )
+                failures.append(f"coverage-owning suite {suite_id} may not self-attest minimumLinuxCoverageFilters")
             if minimum_coverage_filters is None:
                 failures.append(f"coverage-owning suite {suite_id} has no pinned coverage-filter floor")
             elif isinstance(coverage_filters, list) and len(coverage_filters) < minimum_coverage_filters:
