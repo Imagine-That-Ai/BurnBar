@@ -122,7 +122,7 @@ final class ParserCheckpointStore: Sendable {
 /// and the checkpoint state for safe resume.
 struct CheckpointAwareParseResult: Sendable {
     let usages: [TokenUsage]
-    let conversations: [ConversationRecord]
+    let conversations: [OpenBurnBarCore.ConversationRecord]
     let checkpointToken: String
     let lastProcessedFilePath: String?
     let processedFiles: [String]
@@ -140,7 +140,7 @@ struct CheckpointAwareParseResult: Sendable {
 
 // MARK: - CheckpointedParserWrapper
 
-/// Wraps a LogParser with checkpoint-aware parsing for safe resume after interruption.
+/// Wraps a OpenBurnBarCore.LogParser with checkpoint-aware parsing for safe resume after interruption.
 ///
 /// The wrapper:
 /// 1. Loads the last checkpoint before parsing
@@ -148,10 +148,10 @@ struct CheckpointAwareParseResult: Sendable {
 /// 3. Advances the checkpoint only after successful commit
 /// 4. Provides safe recovery when cache/checkpoint is corrupted
 final class CheckpointedParserWrapper: Sendable {
-    private let parser: any LogParser
+    private let parser: any OpenBurnBarCore.LogParser
     private let checkpointStore: ParserCheckpointStore
 
-    init(parser: any LogParser, checkpointStore: ParserCheckpointStore) {
+    init(parser: any OpenBurnBarCore.LogParser, checkpointStore: ParserCheckpointStore) {
         self.parser = parser
         self.checkpointStore = checkpointStore
     }
@@ -244,7 +244,7 @@ final class AtomicIngestionTransaction {
     private let provider: AgentProvider
 
     private var usages: [TokenUsage] = []
-    private var conversations: [ConversationRecord] = []
+    private var conversations: [OpenBurnBarCore.ConversationRecord] = []
     private var checkpointToken: String = ""
     private var lastProcessedFilePath: String?
 
@@ -261,7 +261,7 @@ final class AtomicIngestionTransaction {
     /// These are NOT visible until commit() is called.
     func append(
         usages: [TokenUsage],
-        conversations: [ConversationRecord],
+        conversations: [OpenBurnBarCore.ConversationRecord],
         checkpointToken: String,
         lastProcessedFilePath: String?
     ) {

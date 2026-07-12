@@ -1,0 +1,9 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  OpenBurnBar.App.MemorySearch -> /private/tmp/burnbar-cert-a364b9ece8/windows/app/OpenBurnBar.App.MemorySearch/bin/Release/net8.0/OpenBurnBar.App.MemorySearch.dll
+  OpenBurnBar.App.MemorySearch.Tests -> /private/tmp/burnbar-cert-a364b9ece8/windows/tests/memory-search/OpenBurnBar.App.MemorySearch.Tests/bin/Release/net10.0/OpenBurnBar.App.MemorySearch.Tests.dll
+Test run for /private/tmp/burnbar-cert-a364b9ece8/windows/tests/memory-search/OpenBurnBar.App.MemorySearch.Tests/bin/Release/net10.0/OpenBurnBar.App.MemorySearch.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:   138, Skipped:     0, Total:   138, Duration: 111 ms - OpenBurnBar.App.MemorySearch.Tests.dll (net10.0)

@@ -1,0 +1,16 @@
+# C# binding configuration for uniffi-bindgen-cs (Windows port, native shim —
+# windows/native/OpenBurnBar.Native.Iroh). Consumed by
+# `crates/openburnbar-iroh/bindings/csharp/regenerate.sh`, mirroring
+# `crates/burnbar-remote/burnbar-remote-ffi/uniffi.toml` (the binding-path
+# decision is docs/windows-port/decisions/0001-csharp-binding-path.md).
+#
+# `access_modifier = "public"` emits a normal reusable library — the Windows
+# native shim and its loopback tests consume the generated types without an
+# InternalsVisibleTo dance. The C# namespace is left at the tool default
+# (`uniffi.openburnbar_iroh`), matching the Swift/Kotlin generated-binding
+# convention already used for this crate.
+#
+# Only the C# emitter reads this file; the Swift (build-iroh-xcframework.sh
+# helper) and Kotlin lanes ignore `[bindings.csharp]`.
+[bindings.csharp]
+access_modifier = "public"

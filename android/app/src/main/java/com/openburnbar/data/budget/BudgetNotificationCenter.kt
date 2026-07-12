@@ -55,7 +55,7 @@ class BudgetNotificationCenter(private val context: Context) {
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    fun emitWarning(rule: BudgetRuleEntity, used: Double, limit: Double) {
+    fun emitWarning(rule: BudgetRuleEntity) {
         val rulePeriodKey = "${rule.id}_${rule.period}"
         val lastWarningTime = prefs.getLong(rulePeriodKey, 0L)
         val now = System.currentTimeMillis()
@@ -79,7 +79,7 @@ class BudgetNotificationCenter(private val context: Context) {
         )
     }
 
-    fun emitBlock(rule: BudgetRuleEntity, used: Double, limit: Double) {
+    fun emitBlock(rule: BudgetRuleEntity) {
         sendNotification(
             notificationId = rule.id.hashCode() + 2,
         )

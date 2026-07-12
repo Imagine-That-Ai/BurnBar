@@ -1,0 +1,11 @@
+# AX-smoke run transcript
+host: Tikkas-Mac-mini macOS 27.0 arm64
+xcode: Xcode 27.0
+gatekeeper: assessments disabled
+date_utc: 2026-07-09T06:31:56Z
+---
+[cu-click-smoke] AXIsProcessTrusted=true
+[cu-click-smoke] CGPreflightScreenCaptureAccess=false
+[cu-click-smoke] openburnbar AX ready root=true statusItem=false
+[cu-click-smoke] openburnbar app snapshot elements=176, roles=AXApplication|AXGroup|AXMenu|AXMenuBar|AXMenuBarItem|AXMenuItem|AXWindow, texts=About OpenBurnBar|About This Mac|Activity Monitor|Allocations & Leaks|App Store…, 3 updates|Apple|Applications|Arrange|Arrange in Front|AutoFill
+exit_code=0

@@ -5,6 +5,8 @@
 **Not** a cloud-only companion (that is what iOS/Android already are). Windows is a **local log-reading peer**, like the Mac.
 **Shared substrate:** [`DESKTOP_FOUNDATION.md`](DESKTOP_FOUNDATION.md) now owns the cross-desktop engine, IPC, schema, design, release, and parity contracts; this document is the Windows platform delta.
 
+> **Current status and remediation:** This is the original platform architecture plan. For the current source-audited macOS-to-Windows gap register, implementation order, and QA acceptance bar, use [`windows-port/WINDOWS_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md`](windows-port/WINDOWS_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md).
+
 > **The completion bar (from `AGENTS.md`).** This plan ships the *whole* thing: the local-peer engine, every UI
 > surface, computer-use, the daemon, the pet, distribution, and a parity-certification harness that proves it.
 > No "table it for later," no scope-laundering. Where a macOS capability has no Windows analog, this plan defines
@@ -649,7 +651,7 @@ WS = owning workstream.
 | E2EE / Signal | libsignal + HPKE | libsignal-Windows + vectors | A | W2 |
 | P2P relay (Iroh/burnbar-remote) | Rust crates | windows-msvc target | A | W2 |
 | App↔daemon IPC | Unix socket + codesign gate | Hardened named pipe (R16) | B | W1 |
-| Daemon lifecycle | LaunchAgent | Windows Service | B | W1 |
+| Daemon lifecycle | LaunchAgent | **No v1 service — per-capability substitution (WPD-0006)**; Windows Service is the documented revive shape (daemon Linux boundary build) | B/C | W1 |
 | Computer use | ComputerUseCore + Mac glue | SendInput/UIA/WGC/ViGEm (R17) | B (secure-desktop C) | W5 |
 | **Budget rules / enforcement / notifications** | `DataStore/Budget*`, `Views/Settings/BudgetSettingsView` | Port (core product!) | A | W3/W7 |
 | **Mission Control / MissionsLane** | `Views/Dashboard/Missions*`, `CloudSync/CLIAgentMission*` | Port + Firestore dispatch | A/B | W7 |

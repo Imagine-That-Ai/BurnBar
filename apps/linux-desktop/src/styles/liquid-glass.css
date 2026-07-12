@@ -1,0 +1,165 @@
+/* ── Liquid Glass utility surfaces ───────────────────────────────────────────
+ * Reusable material classes that consume liquid-glass-tokens. Use these for
+ * toolbars, cards, pills, panels, inputs, and list rows so every tab reads as
+ * one macOS liquid-glass language instead of flat brass plates.
+ */
+
+/* Passive plate — trays, cards, section shells */
+.glass-toolbar,
+.glass-card,
+.glass-panel,
+.glass-surface,
+.glass-list-row,
+.glass-input,
+.glass-pill,
+.glass-segmented,
+.glass-interactive {
+  transition: var(--glass-transition);
+}
+
+.glass-toolbar {
+  background: var(--glass-toolbar);
+  border: 1px solid var(--glass-toolbar-stroke);
+  backdrop-filter: var(--glass-toolbar-blur);
+  -webkit-backdrop-filter: var(--glass-toolbar-blur);
+  box-shadow: var(--glass-toolbar-shadow);
+}
+
+.glass-card {
+  position: relative;
+  overflow: hidden;
+  background: var(--glass-card);
+  border: 1px solid var(--glass-card-stroke);
+  border-radius: var(--glass-radius-md);
+  backdrop-filter: var(--glass-card-blur);
+  -webkit-backdrop-filter: var(--glass-card-blur);
+  box-shadow: var(--glass-card-shadow);
+}
+
+.glass-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: var(--glass-specular);
+  opacity: 0.9;
+}
+
+.glass-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.glass-panel {
+  background: var(--glass-panel);
+  border: 1px solid var(--glass-panel-stroke);
+  border-radius: var(--glass-radius-md);
+  backdrop-filter: var(--glass-panel-blur);
+  -webkit-backdrop-filter: var(--glass-panel-blur);
+  box-shadow: var(--glass-panel-shadow);
+}
+
+.glass-surface {
+  background: var(--glass-tint-base);
+  border: 1px solid var(--glass-stroke);
+  backdrop-filter: blur(var(--glass-blur-md)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur-md)) saturate(var(--glass-saturate));
+  box-shadow: var(--glass-inner-light);
+}
+
+.glass-pill {
+  background: var(--glass-pill);
+  border: 1px solid var(--glass-pill-stroke);
+  border-radius: var(--glass-radius-pill);
+  backdrop-filter: var(--glass-pill-blur);
+  -webkit-backdrop-filter: var(--glass-pill-blur);
+  box-shadow: var(--glass-pill-shadow);
+}
+
+/* Clickable glass — chips, tabs, segmented items, icon buttons */
+.glass-interactive {
+  background: var(--glass-tint-interactive);
+  border: 1px solid var(--glass-stroke);
+  border-radius: var(--glass-radius-sm);
+  backdrop-filter: blur(var(--glass-blur-sm)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur-sm)) saturate(var(--glass-saturate));
+  box-shadow: var(--glass-inner-light);
+  color: var(--color-text-base);
+  cursor: pointer;
+}
+
+.glass-interactive:hover,
+.glass-interactive:focus-visible {
+  border-color: var(--glass-stroke-bright);
+  background: color-mix(in srgb, var(--color-frost-veil) 70%, var(--glass-tint-interactive));
+  color: var(--color-text-bright);
+  outline: none;
+}
+
+.glass-interactive[aria-pressed='true'],
+.glass-interactive[aria-current='page'],
+.glass-interactive.is-active {
+  color: var(--color-text-bright);
+  border-color: color-mix(in srgb, var(--color-brass-core) 35%, var(--glass-stroke));
+  background: color-mix(in srgb, var(--color-brass-core) 12%, var(--glass-tint-elevated));
+  box-shadow: var(--glass-inner-light), 0 0 16px color-mix(in srgb, var(--color-brass-glow) 18%, transparent);
+}
+
+.glass-segmented {
+  display: grid;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--glass-radius-sm);
+  border: 1px solid var(--glass-stroke);
+  background: color-mix(in srgb, var(--glass-tint-base) 70%, transparent);
+  backdrop-filter: blur(var(--glass-blur-sm)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur-sm)) saturate(var(--glass-saturate));
+  box-shadow: var(--glass-inner-light);
+}
+
+.glass-list-row {
+  background: color-mix(in srgb, var(--glass-tint-clear) 80%, transparent);
+  border: 1px solid var(--glass-stroke);
+  border-radius: var(--glass-radius-sm);
+  backdrop-filter: blur(var(--glass-blur-sm)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur-sm)) saturate(var(--glass-saturate));
+  box-shadow: var(--glass-inner-light);
+}
+
+.glass-list-row:hover {
+  border-color: var(--glass-stroke-bright);
+  background: color-mix(in srgb, var(--color-frost-veil) 55%, transparent);
+}
+
+.glass-input {
+  background: var(--glass-input);
+  border: 1px solid var(--glass-input-stroke);
+  border-radius: var(--glass-radius-sm);
+  color: var(--color-text-base);
+  backdrop-filter: blur(var(--glass-blur-sm)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur-sm)) saturate(var(--glass-saturate));
+  box-shadow: var(--glass-inner-light);
+  transition: var(--glass-transition);
+}
+
+.glass-input:focus,
+.glass-input:focus-visible {
+  outline: none;
+  border-color: var(--glass-input-focus);
+  box-shadow:
+    var(--glass-inner-light),
+    0 0 0 2px color-mix(in srgb, var(--color-brass-core) 22%, transparent);
+}
+
+.glass-focus:focus-visible {
+  outline: none;
+  border-color: var(--glass-stroke-bright);
+  background: var(--color-frost-veil);
+}
+
+/* ── Surface-wide recipe: apply liquid glass to common flat patterns ───────
+ * Surfaces that still set background: var(--color-glass-bg) without blur get
+ * a material upgrade when they also opt into these role classes. Global
+ * upgrades for shared structural classes live in app.css / system.css.
+ */

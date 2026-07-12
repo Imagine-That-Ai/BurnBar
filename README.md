@@ -5,7 +5,7 @@
 
   > A native macOS app that watches your AI coding agents so you don't have to wonder where all your money went.
 
-  **Status:** Commercial launch candidate — macOS `1.0.28` is prepared for Mac App Store review and ships as a Developer ID notarized direct download; iOS `1.0.2` build `81` and the Hosted Quota Sync subscription are in Apple review with manual release enabled.
+  **Status:** Commercial launch candidate — macOS `1.0.29` is prepared for Mac App Store review and ships as a Developer ID notarized direct download; iOS `1.0.2` build `82` and the Hosted Quota Sync subscription are in Apple review with manual release enabled.
 
 </div>
 
@@ -173,6 +173,7 @@ The external launch settings that cannot be inferred from the working tree alone
 |---|---|---|---|---|
 | Claude Code | Supported | `~/.claude/projects/*.jsonl` | Exact | Supported via Claude statusline bridge (5-hour / 7-day %) |
 | Factory (Droid) | Supported | `~/.factory/sessions/*.jsonl` | Exact | Estimated via plan tier + OpenBurnBar-tracked monthly Factory tokens |
+| Junie (JetBrains) | Supported | `~/.junie/sessions/<id>/events.jsonl` + `index.jsonl` | Exact (explicit usage) / Estimated (fallback) | Unavailable (no public quota API) |
 | Codex (OpenAI) | Partial | `~/.codex/state_5.sqlite` + rollout JSONL | Estimated | Supported via the latest local Codex rollout/session rate-limit snapshot |
 | Kimi (Moonshot) | Partial | `~/.kimi/sessions/*.jsonl` | Estimated | Unavailable |
 | Z.ai | Partial | via Factory sessions | Estimated | Supported via official monitor quota endpoints |

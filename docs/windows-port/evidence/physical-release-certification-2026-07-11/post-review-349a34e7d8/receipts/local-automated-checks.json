@@ -1,0 +1,306 @@
+{
+  "schema": "openburnbar.windows.release-certification-receipt.v1",
+  "status": "PASS",
+  "gate": "local-automated-checks",
+  "target": "portable Windows cores and CI/meta harnesses on macOS authoring host",
+  "source": {
+    "commitSha": "349a34e7d86aeec7ab8e0c3b38f061b5887adec1",
+    "dirtyTree": false
+  },
+  "artifact": {
+    "name": "source-checkout",
+    "architecture": "darwin-arm64",
+    "availability": "not-applicable",
+    "sha256": null,
+    "workflowRunId": "not-applicable-local",
+    "workflowRunUrl": "not-applicable",
+    "signature": {
+      "result": "not-applicable",
+      "identity": "not-applicable"
+    }
+  },
+  "device": {
+    "kind": "macos-authoring-host",
+    "manufacturer": "Apple",
+    "model": "Apple M5 Max",
+    "architecture": "arm64",
+    "osBuild": "darwin 27.0.0",
+    "tpm": "not-applicable",
+    "cpu": "Apple M5 Max",
+    "ramBytes": 51539607552
+  },
+  "protocol": {
+    "commands": [
+      "node scripts/windows-port/test-validate-release-certification-evidence.mjs",
+      "node scripts/windows-port/test-physical-release-certification.mjs",
+      "node scripts/test-windows-foundation-host-evidence.mjs",
+      "bash scripts/ci/verify-windows-storage-architecture.sh",
+      "bash windows/packaging/scripts/verify.sh",
+      "bash scripts/ci/verify-windows-parity-ledger.sh",
+      "actionlint .github/workflows/openburnbar-release-windows.yml .github/workflows/pr-windows-full.yml .github/workflows/pr-windows-fast.yml",
+      "bash scripts/ci/check-no-suppressions.sh",
+      "dotnet test windows/OpenBurnBar.sln --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/cloudsync/OpenBurnBar.CloudSync.Tests/OpenBurnBar.CloudSync.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/pretext/OpenBurnBar.Pretext.Tests/OpenBurnBar.Pretext.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/storage/OpenBurnBar.Storage.Tests/OpenBurnBar.Storage.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/b0-spike/OpenBurnBar.B0Spike.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/chat/OpenBurnBar.App.Chat.Runtime.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/ci/OpenBurnBar.Windows.Ci.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/cloudsync-app/OpenBurnBar.App.CloudSync.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/cloudsync-appcheck/OpenBurnBar.CloudSync.AppCheck.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/cloudsync/OpenBurnBar.CloudSync.Crypto.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/components/OpenBurnBar.App.Components.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/computeruse/OpenBurnBar.ComputerUse.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/configuration/OpenBurnBar.App.Configuration.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/cursor-connector/OpenBurnBar.App.CursorConnector.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/dashboard/OpenBurnBar.App.Dashboard.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/dist/OpenBurnBar.Dist.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/engine-binding/OpenBurnBar.EngineBinding.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/input/OpenBurnBar.Pal.Input.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/insights/OpenBurnBar.App.Insights.Runtime.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/integrations-cast/OpenBurnBar.Integrations.Cast.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/integrations/OpenBurnBar.Integrations.Tests/OpenBurnBar.Integrations.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/ipc/OpenBurnBar.Pal.Ipc.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/managed-agent-runtime/OpenBurnBar.App.ManagedAgentRuntime.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/managed-runtime/OpenBurnBar.App.ManagedAgentRuntime.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/memory-search/OpenBurnBar.App.MemorySearch.Tests/OpenBurnBar.App.MemorySearch.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/mercury/OpenBurnBar.Integrations.Mercury.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/missioncontrol/OpenBurnBar.App.MissionControl.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/native/OpenBurnBar.Native.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/onboarding/OpenBurnBar.App.Onboarding.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/pet/OpenBurnBar.App.Pet.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/presentation/OpenBurnBar.App.Presentation.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/quota-acquisition/OpenBurnBar.App.Quota.Acquisition.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/settings/OpenBurnBar.App.Settings.Tests/OpenBurnBar.App.Settings.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/settings/OpenBurnBar.App.Settings.ViewModels.Tests/OpenBurnBar.App.Settings.ViewModels.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/shell/OpenBurnBar.App.Shell.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/storage/OpenBurnBar.App.Storage.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/text-expansion/OpenBurnBar.App.TextExpansion.Tests/OpenBurnBar.App.TextExpansion.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/theme/OpenBurnBar.App.Theme.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/ui-automation/OpenBurnBar.UiAutomationHarness.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/updater/OpenBurnBar.Updater.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s",
+      "dotnet test windows/tests/usage-runtime/OpenBurnBar.App.UsageRuntime.Tests.csproj --configuration Release --nologo -p:EnableWindowsTargeting=true --blame-hang-timeout 60s"
+    ],
+    "manualSteps": [
+      "This receipt is supporting evidence only and cannot certify physical Windows behavior."
+    ]
+  },
+  "time": {
+    "startedAtUtc": "2026-07-11T23:20:21.588Z",
+    "endedAtUtc": "2026-07-11T23:24:19.123Z",
+    "durationSeconds": 237.535
+  },
+  "expected": "Every currently reachable macOS-side Windows portable, packaging, ledger, workflow, and test-project command exits 0.",
+  "observed": "All 50 commands exited 0.",
+  "exitCode": 0,
+  "evidence": {
+    "files": [
+      {
+        "path": "logs/evidence-validator-tests.log",
+        "sha256": "c931098e14f9117d2b1ed9e22feb45311dfb95fdb2d22929749c4a469cf242c3"
+      },
+      {
+        "path": "logs/runner-structural-tests.log",
+        "sha256": "4b48e1a0c0779ca9aa444f8ff2aef882cccb2142e7afc6eb9c74b4f75ab45307"
+      },
+      {
+        "path": "logs/foundation-evidence-validator-tests.log",
+        "sha256": "d3d12f5f194c8523a8880511fb2ad9b54497d1af4f16e5322081cb030ea949ff"
+      },
+      {
+        "path": "logs/windows-storage-architecture.log",
+        "sha256": "912783bff0ea182f4977967b16f72f1d28988ef337089a398f391e57b476fe3c"
+      },
+      {
+        "path": "logs/windows-packaging-verify.log",
+        "sha256": "c4462b5c34a8ee74d7a7ef0c61d1ead60a9f9dd443c55c57ad44d7d0ef9aebf9"
+      },
+      {
+        "path": "logs/windows-parity-ledger.log",
+        "sha256": "c2c1d487e030f95126253b67fd092ce25d1bc99b5ca0e930b796c07955527f24"
+      },
+      {
+        "path": "logs/windows-release-workflow-lint.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "logs/no-suppressions.log",
+        "sha256": "0f521e718f04812f9c7406612ac6d021f0d78beb1b10e326f50b06e41b63837e"
+      },
+      {
+        "path": "logs/windows-solution-aggregate.log",
+        "sha256": "f5c534803e981181cfd4ca235e35596caafb87f95f28ff48403865c49bd0e524"
+      },
+      {
+        "path": "logs/dotnet-windows-cloudsync-OpenBurnBar.CloudSync.Tests-OpenBurnBar.CloudSync.Tests.log",
+        "sha256": "9d91f1be14526e73f8b600d58a77324af90f2e3a939962e482abcb99f850ec72"
+      },
+      {
+        "path": "logs/dotnet-windows-pretext-OpenBurnBar.Pretext.Tests-OpenBurnBar.Pretext.Tests.log",
+        "sha256": "4fd853149eb991b43dbc54ecdcfa79da64534bc8774bd145f458460df352c0d0"
+      },
+      {
+        "path": "logs/dotnet-windows-storage-OpenBurnBar.Storage.Tests-OpenBurnBar.Storage.Tests.log",
+        "sha256": "0a081acbed2a9eff7de76df9f8a45cbb9118c8e76ad7eb751ea0b96040e458cd"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-b0-spike-OpenBurnBar.B0Spike.Tests.log",
+        "sha256": "8314ac3fc21c3bd68edf398c664e5be351f95e3faacb710f8d864f4c43a783cf"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-chat-OpenBurnBar.App.Chat.Runtime.Tests.log",
+        "sha256": "1f64dda984fe342bbc690d846c73b5447ce15efa6b99b87692b6388e884bddab"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-ci-OpenBurnBar.Windows.Ci.Tests.log",
+        "sha256": "0d6ba29f50037c16996723f58a10070b6c601405039dc682fb5d0c1847a71922"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-cloudsync-app-OpenBurnBar.App.CloudSync.Tests.log",
+        "sha256": "f832e8ddbb5b53f76ef40325c462ffafd1c256aaa2deb73b23f96ff7a0bc7a35"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-cloudsync-appcheck-OpenBurnBar.CloudSync.AppCheck.Tests.log",
+        "sha256": "86a6fe332eabe46e2616f20dc0bca0c1c09f8988e9f73cc1ab162e8b5b818f2d"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-cloudsync-OpenBurnBar.CloudSync.Crypto.Tests.log",
+        "sha256": "ab41d85d718f12ab26909be59226b5cb75ca77c2a7e57560db01b7c5ef49f126"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-components-OpenBurnBar.App.Components.Tests.log",
+        "sha256": "91a3cf0c4585c3a8f3db5afce483b3cc947d91fe288b2fc326feb2c6ecc5b8fe"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-computeruse-OpenBurnBar.ComputerUse.Tests.log",
+        "sha256": "cc3b24b1a7a6411573827f107aab89db998ff13137c1e764aabbadbe9c1e7ddf"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-configuration-OpenBurnBar.App.Configuration.Tests.log",
+        "sha256": "6f2f8e475d08d041e92c7f93c3a5c09280bf77a9dc78fd6f60a9263a8acb7641"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-cursor-connector-OpenBurnBar.App.CursorConnector.Tests.log",
+        "sha256": "44c3448fbd5bf393ab510225e9019f842f058e84b3bfca48c97ffb3d6d2464d5"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-dashboard-OpenBurnBar.App.Dashboard.Tests.log",
+        "sha256": "70805041287bac8b5fb591326b2d228cbbf58057e6633f9b641a38534f1670fb"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-dist-OpenBurnBar.Dist.Tests.log",
+        "sha256": "7f1d3c7a076b3e04f141c67007862664b8cf1a4e5257a4704c9bcfe3fe77c8bb"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-engine-binding-OpenBurnBar.EngineBinding.Tests.log",
+        "sha256": "d6aaf0b340cc998e17bf6abc19d58742829992c490d57b61edba6f5e4885b0e8"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-input-OpenBurnBar.Pal.Input.Tests.log",
+        "sha256": "8efeb2c59cfc6256eca79666995a28b2be67bf1045e5c116276b259e775fb491"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-insights-OpenBurnBar.App.Insights.Runtime.Tests.log",
+        "sha256": "3a7edcd1f181bee9c383acc4fbd0f5f9db308529ab60ea6bc71ffa1eabce043d"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-integrations-cast-OpenBurnBar.Integrations.Cast.Tests.log",
+        "sha256": "323866b47e073d013a5e8db392efb32d4565ceb232bd95ca8180e20f14c7ffac"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-integrations-OpenBurnBar.Integrations.Tests-OpenBurnBar.Integrations.Tests.log",
+        "sha256": "d0248434641ff964a178cb32c6d78b7ca52d0b58faea71a544913973a7215433"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-ipc-OpenBurnBar.Pal.Ipc.Tests.log",
+        "sha256": "c55d72ebf88fbd18db8b9c56082c9d01c5d2ad972002dafcf8a0daf23d3d8cb8"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-managed-agent-runtime-OpenBurnBar.App.ManagedAgentRuntime.Tests.log",
+        "sha256": "31c4a3e6439f1b9492917030fe331d204d9f745d956b05964f9a4aa39ffaf017"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-managed-runtime-OpenBurnBar.App.ManagedAgentRuntime.Tests.log",
+        "sha256": "4557f291068ef50a6acb204a8ca223937a9f362e2bfa8ca7c051c47b324e094d"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-memory-search-OpenBurnBar.App.MemorySearch.Tests-OpenBurnBar.App.MemorySearch.Tests.log",
+        "sha256": "fc6762163afdbc24de6593b353992338f7fb08815d179431c593be4f5431d453"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-mercury-OpenBurnBar.Integrations.Mercury.Tests.log",
+        "sha256": "3ceec0a321379309495ec7893f3faa7d52545f6340456d7defb0e9ff51e5a36d"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-missioncontrol-OpenBurnBar.App.MissionControl.Tests.log",
+        "sha256": "c4636292d67c3c8e1c5c86478d3d5c864be82f196058ee86f9003adccae8ee2d"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-native-OpenBurnBar.Native.Tests.log",
+        "sha256": "9ffb0ec03b00cf92078a2ed3818fed98e375095e94e9a499df033acab607d568"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-onboarding-OpenBurnBar.App.Onboarding.Tests.log",
+        "sha256": "72b97e042bfca0694ef3a198abc84712b4ee554d5eb12f6f380f7e2777d991a3"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-pet-OpenBurnBar.App.Pet.Tests.log",
+        "sha256": "27217a4ece90cffba9496988f83a850b232944ff4cd3ac340fee04826bcf2463"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-presentation-OpenBurnBar.App.Presentation.Tests.log",
+        "sha256": "64968b750360f4d8ac219888e8a8b0dfabf162b867b5505d36512abad2986adb"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-quota-acquisition-OpenBurnBar.App.Quota.Acquisition.Tests.log",
+        "sha256": "cf99bfc817416b9c76813cb56e7c04a8c45640891fee0576694df4e68bf7fafc"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-quota-OpenBurnBar.App.Quota.Tests.log",
+        "sha256": "d92100cd4d1030d4c03bfdc9e457a96cf9936ca05b1e13ad8a29db4c23b14105"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-settings-OpenBurnBar.App.Settings.Tests-OpenBurnBar.App.Settings.Tests.log",
+        "sha256": "e5dfff10e75152c1e72c87ec6d319a277e4c387fbe18b71a4031ce6480e841f9"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-settings-OpenBurnBar.App.Settings.ViewModels.Tests-OpenBurnBar.App.Settings.ViewModels.Tests.log",
+        "sha256": "0508cdd9341447ecb17f66de999350b588e080baa9e9d6bc56af60ea85d0e9dd"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-shell-OpenBurnBar.App.Shell.Tests.log",
+        "sha256": "71c680bb78711bb64ea1937326b78f94e990cbcbb0b7a3b992a061e258a58ba4"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-storage-OpenBurnBar.App.Storage.Tests.log",
+        "sha256": "cc0590ea9a509b767574d7390a10b760513cb1a0a70cba62ed9f346659026466"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-text-expansion-OpenBurnBar.App.TextExpansion.Tests-OpenBurnBar.App.TextExpansion.Tests.log",
+        "sha256": "05fa73011c15aeb354a1150d13305124bd7287462de0f0bc683db2b909d29ea9"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-theme-OpenBurnBar.App.Theme.Tests.log",
+        "sha256": "4eea221018d0737bac7c5d715b79d043a4b6e3c6c97b077d5aef8c3f20ccf6a9"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-ui-automation-OpenBurnBar.UiAutomationHarness.Tests.log",
+        "sha256": "5804dbbfbf2aaf95da21682581572ebfeec4eaf64c3f441f919a82d99a4074e0"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-updater-OpenBurnBar.Updater.Tests.log",
+        "sha256": "77a9d974371250611c78450aa50314c624743585c2797e249f0727d595483afe"
+      },
+      {
+        "path": "logs/dotnet-windows-tests-usage-runtime-OpenBurnBar.App.UsageRuntime.Tests.log",
+        "sha256": "a11d74c6dd5c1686483e3aa1dfb3eafc819e4b4526ff007934ea80643925f520"
+      },
+      {
+        "path": "logs/command-summary.json",
+        "sha256": "da5ede422043f1858f1732527b70583be37337a2c0bb10ea46289e4c3d2ea7f5"
+      }
+    ]
+  },
+  "blocker": null
+}

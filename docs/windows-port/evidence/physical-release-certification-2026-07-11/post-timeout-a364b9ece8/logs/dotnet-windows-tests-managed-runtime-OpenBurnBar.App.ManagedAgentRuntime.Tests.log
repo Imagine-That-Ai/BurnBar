@@ -1,0 +1,10 @@
+  Determining projects to restore...
+  Restored /private/tmp/burnbar-cert-a364b9ece8/windows/tests/managed-runtime/OpenBurnBar.App.ManagedAgentRuntime.Tests.csproj (in 136 ms).
+  1 of 2 projects are up-to-date for restore.
+  OpenBurnBar.App.ManagedAgentRuntime -> /private/tmp/burnbar-cert-a364b9ece8/windows/app/OpenBurnBar.App.ManagedAgentRuntime/bin/Release/net8.0/OpenBurnBar.App.ManagedAgentRuntime.dll
+  OpenBurnBar.App.ManagedAgentRuntime.Tests -> /private/tmp/burnbar-cert-a364b9ece8/windows/tests/managed-runtime/bin/Release/net10.0/OpenBurnBar.App.ManagedAgentRuntime.Tests.dll
+Test run for /private/tmp/burnbar-cert-a364b9ece8/windows/tests/managed-runtime/bin/Release/net10.0/OpenBurnBar.App.ManagedAgentRuntime.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:     7, Skipped:     0, Total:     7, Duration: 35 ms - OpenBurnBar.App.ManagedAgentRuntime.Tests.dll (net10.0)

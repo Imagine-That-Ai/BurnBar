@@ -511,9 +511,9 @@ final class InsightsMacEnvironment {
         await refreshSelectedCanvasData()
     }
 
-    func deleteCurrentCanvas() async {
+    func deleteCurrentCanvas() async throws {
         guard let id = selectedCanvasID else { return }
-        try? await store.remove(id: id)
+        try await store.remove(id: id)
         Analytics.shared.track(.insightsCanvasDeleted)
         canvases = await store.allCanvases()
         selectedCanvasID = canvases.first?.id

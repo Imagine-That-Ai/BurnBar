@@ -1,0 +1,60 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    macOS-runnable unit tests for the Windows onboarding-wizard state machine
+    (Phase 3 · W7 · Bucket A). Runs on the macOS authoring host today via
+    `dotnet test` — it LINKS the dependency-free (System-only, NO WinUI) portable
+    core of the wizard so the parity-critical navigation / gating / completion /
+    wrapping-layout / Hermes-reachability logic is asserted against the macOS
+    behavior it was ported from:
+
+      • Onboarding/OnboardingWizardStep.cs — step order + progress fraction.
+      • Onboarding/ChatBackendId.cs         — backend order, raw values, CSV round-trip.
+      • Onboarding/OnboardingWizardModel.cs — the wizard state machine.
+      • Onboarding/FlowLayoutMath.cs        — the wrapping-flow row + centering math.
+      • Onboarding/HermesSetupModel.cs      — the Prepare-Hermes reachability + gating.
+      • Theme/ProviderBrand.cs              — the AgentProviderBrand enum the model uses
+                                              (its #if WINDOWS Color layer is excluded here,
+                                              so this is a bonus off-Windows Roslyn compile).
+
+    The WinUI presentation (OnboardingPage + step Pages + FlowLayoutPanel) is
+    Windows-only and is type-checked separately at the XamlCompiler gate; see the
+    PR's Validation section. Mirrors windows/tests/theme/OpenBurnBar.App.Theme.Tests.csproj
+    (net10.0, xUnit) so the toolchain is the one already proven on this host.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Link the dependency-free portable core directly (no WinUI dependency). -->
+    <Compile Include="../../app/OpenBurnBar.App/Theme/ProviderBrand.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Onboarding/OnboardingWizardStep.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Onboarding/ChatBackendId.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Onboarding/ProviderDisplay.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Onboarding/OnboardingWizardModel.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Onboarding/OnboardingContext.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Onboarding/FlowLayoutMath.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Onboarding/HermesSetupModel.cs" />
+    <!-- The suites. -->
+    <Compile Include="OnboardingWizardModelTests.cs" />
+    <Compile Include="ChatBackendIdTests.cs" />
+    <Compile Include="ProviderDisplayTests.cs" />
+    <Compile Include="FlowLayoutMathTests.cs" />
+    <Compile Include="HermesSetupModelTests.cs" />
+  </ItemGroup>
+
+</Project>

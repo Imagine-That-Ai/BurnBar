@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="OpenBurnBar.App.Quota.QuotaWorkspacePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:OpenBurnBar.App.Quota"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    AutomationProperties.AutomationId="RouteRoot.quota">
+
+    <!--
+      Windows peer of AgentLens/Views/Dashboard/Quota/QuotaWorkspaceView.swift (Bucket C, Quota lane).
+      Composes the constellation hero over a grid of twin-ring QuotaArcDial cards. A tap on any hero
+      orb pivots the workspace to that provider — the dial grid collapses to just its accounts —
+      matching the macOS onOrbTap → displayedEntries filter propagation. Selection lives here
+      exactly as the SwiftUI @State selectedProvider does. In production this page reads configured
+      quota snapshots; explicit sample mode can still seed representative rows.
+    -->
+    <ScrollViewer Background="Transparent">
+        <StackPanel Padding="24"
+                    MaxWidth="1100"
+                    HorizontalAlignment="Stretch"
+                    Spacing="{StaticResource PensieveSpace6}">
+            <local:SubscriptionConstellationHero x:Name="Hero" />
+            <StackPanel x:Name="DialHost" Spacing="{StaticResource PensieveSpace4}" />
+        </StackPanel>
+    </ScrollViewer>
+</Page>

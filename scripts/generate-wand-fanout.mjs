@@ -56,7 +56,7 @@ console.log(`✓ TS manifest → packages/entitlements/lib/wandFanOutGenerated.t
 const swiftPath = join(root, "packages", "entitlements", "lib", "wandFanOutGenerated.swift");
 writeFileSync(swiftPath, `${MARKER}
 // Reference only — the canonical Swift lives in
-// OpenBurnBarCore/Sources/OpenBurnBarCore/Membership/GatedFeature.swift
+// OpenBurnBarCore/Sources/OpenBurnBarKernel/Membership/GatedFeature.swift
 // This file is a drift-detection artifact: run a diff against the Swift
 // source in CI to catch manual edits that diverge from the source of truth.
 enum GeneratedWandFanOut {

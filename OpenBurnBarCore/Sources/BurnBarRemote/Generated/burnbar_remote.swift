@@ -1934,6 +1934,32 @@ public func encodeQualityDecision(decision: RemoteQualityDecision, listener: Wir
             errorHandler: FfiConverterTypeBurnBarRemoteFfiError.lift
         )
 }
+/**
+ * Installs the process-wide `tracing` subscriber that gives the remote stack's
+ * `tracing::info!/warn!/debug!` a destination.
+ *
+ * Before this existed, no crate, Tauri shell, or FFI host installed a
+ * subscriber, so every `tracing` event in `burnbar-remote-*` (e.g. the iroh
+ * endpoint-online / unknown-path-kind logs in `burnbar-remote-network`) was
+ * silently dropped. A UniFFI host (Swift / Kotlin / **C#**) should call this
+ * exactly once at startup; the Tauri Linux shell installs its own equivalent.
+ *
+ * Idempotent and safe to call multiple times or concurrently: it uses
+ * `try_init`, so a second call (or a host that already set a global default)
+ * is a no-op rather than a panic. Verbosity is controlled by the standard
+ * `RUST_LOG` env var (e.g. `RUST_LOG=burnbar_remote=debug`); when unset it
+ * defaults to `info`.
+ *
+ * Returns `true` if this call installed the subscriber, `false` if one was
+ * already present (so the host can log the outcome without treating it as an
+ * error).
+ */
+public func initTracing() -> Bool {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_burnbar_remote_fn_func_init_tracing($0
+    )
+})
+}
 public func remoteModeRequiresPermission(mode: RemoteSessionMode, permission: RemotePermission) -> Bool {
     return try!  FfiConverterBool.lift(try! rustCall() {
     uniffi_burnbar_remote_fn_func_remote_mode_requires_permission(
@@ -1974,6 +2000,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_burnbar_remote_checksum_func_encode_quality_decision() != 16007) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_burnbar_remote_checksum_func_init_tracing() != 39209) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_burnbar_remote_checksum_func_remote_mode_requires_permission() != 62626) {

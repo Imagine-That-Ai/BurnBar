@@ -18,13 +18,13 @@ final class SettingsManager {
     static let shared = SettingsManager()
 
     private static let controllerRuntimeSecrets = KeychainStore(
-        service: OpenBurnBarIdentity.controllerRuntimeKeychainService,
-        legacyServices: OpenBurnBarIdentity.legacyControllerRuntimeKeychainServices
+        service: OpenBurnBarCore.OpenBurnBarIdentity.controllerRuntimeKeychainService,
+        legacyServices: OpenBurnBarCore.OpenBurnBarIdentity.legacyControllerRuntimeKeychainServices
     )
 
     private static let chatGatewaySecrets = KeychainStore(
-        service: OpenBurnBarIdentity.chatGatewayKeychainService,
-        legacyServices: OpenBurnBarIdentity.legacyChatGatewayKeychainServices
+        service: OpenBurnBarCore.OpenBurnBarIdentity.chatGatewayKeychainService,
+        legacyServices: OpenBurnBarCore.OpenBurnBarIdentity.legacyChatGatewayKeychainServices
     )
 
     // MARK: - Domain Stores
@@ -56,6 +56,7 @@ final class SettingsManager {
     let textExpansion: TextExpansionSettings
     let elderWand: ElderWandSettings
     private var computerUseRemoteConfigTask: Task<Void, Never>?
+    private(set) var hasResolvedComputerUseRemoteConfig = false
 
     // MARK: - Init
 
@@ -295,6 +296,7 @@ final class SettingsManager {
         let activeMemoryExtractionEnabled = remoteConfig.configValue(forKey: "memory_extraction_enabled").boolValue
         if fetchResult.1 != nil {
             computerUseKillSwitch = true
+            hasResolvedComputerUseRemoteConfig = true
             mediaKillSwitch = true
             // Preserve opted-in local memory only when the active cached config is
             // not a fleet kill. A previously activated false value remains
@@ -319,6 +321,7 @@ final class SettingsManager {
 
         let killSwitchEnabled = remoteConfig.configValue(forKey: "computer_use_kill_switch").boolValue
         computerUseKillSwitch = killSwitchEnabled
+        hasResolvedComputerUseRemoteConfig = true
         if killSwitchEnabled {
             NotificationCenter.default.post(name: .computerUseRemoteConfigKillSwitchDidFire, object: self)
         }
@@ -593,7 +596,7 @@ final class SettingsManager {
             index.conversationIndexingEnabled = newValue
             if wasEnabled && !newValue {
                 Task.detached(priority: .utility) {
-                    ParserConversationCacheScrubber().scrubKnownParserCaches()
+                    OpenBurnBarCore.ParserConversationCacheScrubber().scrubKnownParserCaches()
                 }
             }
         }

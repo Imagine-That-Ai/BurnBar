@@ -541,7 +541,8 @@ extension AccountSwitcherSettingsView {
             (.cursorAgent, "Cursor Agent", "terminal.fill", Color(hex: "00E5FF")),
             (.gemini, "Gemini CLI", "terminal.fill", Color(hex: "4285F4")),
             (.kimi, "Kimi", "terminal.fill", Color(hex: "6366F1")),
-            (.pi, "Pi", "terminal.fill", Color(hex: "7C3AED"))
+            (.pi, "Pi", "terminal.fill", Color(hex: "7C3AED")),
+            (.junie, "Junie", "terminal.fill", Color(hex: "48E054"))
         ]
 
         var groups: [ProfileGroup] = []
@@ -561,6 +562,7 @@ extension AccountSwitcherSettingsView {
                 case .gemini: "GeminiCLILogo"
                 case .kimi: "KimiLogo"
                 case .pi: "PiAgentLogo"
+                case .junie: "JunieLogo"
                 case .omp: "OMPLogo"
                 }
                 groups.append(ProfileGroup(

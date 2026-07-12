@@ -273,11 +273,45 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
             }
             let deduplicated = Self.deduplicated(discovered)
             options = deduplicated.isEmpty ? try Self.defaultProfileRows(for: runtime) : deduplicated
-        case .cursorAgent, .openClaude:
-            _ = try await executable(named: runtime == .openClaude ? "openclaude" : "cursor-agent")
+        case .cursorAgent:
+            let executable = try await executable(named: "cursor-agent")
+            var discovered: [CLIRuntimeModelOption] = []
+            do {
+                let output = try await run(executable: executable, arguments: ["models"], timeoutSeconds: 20)
+                discovered.append(contentsOf: CLIRuntimeModelCatalog.parseCursorAgentModels(output))
+            } catch {
+                AppLogger.chat.silentFailure(
+                    "cursor_agent_model_catalog_probe",
+                    error: error,
+                    context: ["command": "models"]
+                )
+            }
+            if discovered.isEmpty {
+                do {
+                    let output = try await run(
+                        executable: executable,
+                        arguments: ["--list-models"],
+                        timeoutSeconds: 20
+                    )
+                    discovered.append(contentsOf: CLIRuntimeModelCatalog.parseCursorAgentModels(output))
+                } catch {
+                    AppLogger.chat.silentFailure(
+                        "cursor_agent_model_catalog_probe",
+                        error: error,
+                        context: ["command": "--list-models"]
+                    )
+                }
+            }
+            let deduplicated = Self.deduplicated(discovered)
+            options = deduplicated.isEmpty ? try Self.defaultProfileRows(for: runtime) : deduplicated
+        case .openClaude:
+            _ = try await executable(named: "openclaude")
             options = try Self.defaultProfileRows(for: runtime)
         case .omp:
             _ = try await executable(named: "omp")
+            options = try Self.defaultProfileRows(for: runtime)
+        case .junie:
+            _ = try await executable(named: "junie")
             options = try Self.defaultProfileRows(for: runtime)
         case .hermes, .pi, .openClaw:
             throw CLIRuntimeModelCatalogDiscoveryError.unsupportedRuntime(request.runtime)
@@ -424,6 +458,33 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
         // former detached task was cancellation-immune and reaped by running its
         // orphan to the deadline; the structured version must clean up here.
         defer { if process.isRunning { process.terminate() } }
+
+        // Drain both pipes WHILE the child runs. Reading only after exit
+        // deadlocks any CLI that emits more than the ~64KB pipe buffer: it
+        // blocks on write, never exits, and burns the whole timeout.
+        let stdoutBuffer = PipeDrainBuffer()
+        let stderrBuffer = PipeDrainBuffer()
+        stdout.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if data.isEmpty {
+                handle.readabilityHandler = nil
+            } else {
+                stdoutBuffer.append(data)
+            }
+        }
+        stderr.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if data.isEmpty {
+                handle.readabilityHandler = nil
+            } else {
+                stderrBuffer.append(data)
+            }
+        }
+        defer {
+            stdout.fileHandleForReading.readabilityHandler = nil
+            stderr.fileHandleForReading.readabilityHandler = nil
+        }
+
         let deadline = Date().addingTimeInterval(timeoutSeconds)
         while process.isRunning && Date() < deadline {
             try await Task.sleep(nanoseconds: 50_000_000)
@@ -433,8 +494,13 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
             throw CLIRuntimeModelCatalogDiscoveryError.timeout(URL(fileURLWithPath: executable).lastPathComponent)
         }
 
-        let output = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        let errorOutput = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        // Collect any tail bytes written after the last readability callback.
+        stdout.fileHandleForReading.readabilityHandler = nil
+        stderr.fileHandleForReading.readabilityHandler = nil
+        stdoutBuffer.append(stdout.fileHandleForReading.readDataToEndOfFile())
+        stderrBuffer.append(stderr.fileHandleForReading.readDataToEndOfFile())
+        let output = stdoutBuffer.string()
+        let errorOutput = stderrBuffer.string()
         guard process.terminationStatus == 0 else {
             throw CLIRuntimeModelCatalogDiscoveryError.processFailed(
                 URL(fileURLWithPath: executable).lastPathComponent,
@@ -443,6 +509,21 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
             )
         }
         return output
+    }
+}
+
+/// Lock-boxed accumulation buffer for `readabilityHandler` callbacks, which
+/// arrive on a background queue while the discovery task polls for exit.
+private final class PipeDrainBuffer: Sendable {
+    private let data = Locked(Data())
+
+    func append(_ chunk: Data) {
+        guard !chunk.isEmpty else { return }
+        data.withLock { $0.append(chunk) }
+    }
+
+    func string() -> String {
+        data.withLock { String(data: $0, encoding: .utf8) ?? "" }
     }
 }
 
@@ -501,16 +582,26 @@ final class ChatSessionControllerCLIAgentRelayChatExecutor: CLIAgentRelayChatExe
             throw CLIAgentRelayChatExecutorError.emptyPrompt
         }
 
-        chatController.setChatBackend(backend)
+        // Await the backend switch and thread open before reading `messages`
+        // or sending. The fire-and-forget variants complete later and replace
+        // `activeThreadID`/`messages`, which raced the send and could persist
+        // the reply to the wrong thread or lose it entirely.
+        await chatController.setChatBackendAsync(backend)
         if let modelID = request.modelID?.trimmingCharacters(in: .whitespacesAndNewlines),
            !modelID.isEmpty {
             chatController.setChatModelSelection(modelID, for: backend)
         }
-        chatController.openOrCreateChatThread(id: request.clientThreadID)
+        await chatController.openOrCreateChatThreadAsync(id: request.clientThreadID)
 
         let knownMessageIDs = Set(chatController.messages.map(\.id))
+        // Preserve whatever the Mac user has typed — a phone-relayed send
+        // must not destroy the local composer draft.
+        let preservedDraft = chatController.inputText
         chatController.inputText = prompt
         await chatController.send()
+        if chatController.inputText.isEmpty {
+            chatController.inputText = preservedDraft
+        }
 
         var lastSignature = ""
         var emittedAnyAssistantEvent = false
@@ -520,9 +611,12 @@ final class ChatSessionControllerCLIAgentRelayChatExecutor: CLIAgentRelayChatExe
                let streamingMessage = chatController.messages.first(where: { $0.id == streamingID }) {
                 return streamingMessage
             }
+            // Only messages created by THIS turn qualify. Falling back to any
+            // prior assistant message re-emitted a previous turn's answer as
+            // this turn's `.completed` when the stream produced nothing.
             return chatController.messages.last {
                 $0.role == .assistant && !knownMessageIDs.contains($0.id)
-            } ?? chatController.messages.last(where: { $0.role == .assistant })
+            }
         }
 
         func event(from message: ChatMessageRecord, kind: CLIAgentRelayChatEventKind) -> CLIAgentRelayChatEvent {
@@ -594,6 +688,8 @@ final class ChatSessionControllerCLIAgentRelayChatExecutor: CLIAgentRelayChatExe
             return .antigravity
         case "cursor-agent", "cursoragent", "cursor_agent":
             return .cursorAgent
+        case "junie", "jetbrains-junie", "jetbrainsjunie":
+            return .junie
         case "omp", "ohmypi", "oh-my-pi", "oh my pi":
             return .omp
         default:

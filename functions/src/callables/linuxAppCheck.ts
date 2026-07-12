@@ -20,7 +20,7 @@ import { isRecord } from "../guards.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import { checkPublicHttpEndpointRateLimit } from "./publicRateLimit.js";
-import { optionalBoundedInt, optionalUnknown, parseCallableInput } from "../validation/callableSchema.js";
+import { parseCallableInput } from "../validation/callableSchema.js";
 
 const MOCK_ATTESTATION_KIND = "mock" as const;
 const MOCK_ATTESTATION_DOMAIN = "openburnbar.appcheck.linux.mock.v1";

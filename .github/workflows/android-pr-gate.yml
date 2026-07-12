@@ -1,0 +1,138 @@
+name: Android PR Gate
+
+# Merge-blocking Android floor. The expensive job is path-filtered by a cheap
+# detector, while the aggregate status always runs so this workflow can be a
+# required check without path-filtered pending/skipped ambiguity.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
+    branches: [main]
+    types: [checks_requested]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-pr-gate-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  detect-android-changes:
+    name: Detect Android changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      android: ${{ steps.filter.outputs.android }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 2
+
+      - name: Determine whether Android paths changed
+        id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "${EVENT_NAME}" != "pull_request" ]]; then
+            echo "android=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if git cat-file -e "HEAD^1^{commit}" 2>/dev/null && git cat-file -e "HEAD^2^{commit}" 2>/dev/null; then
+            changed="$(git diff --name-only HEAD^1 HEAD^2)"
+          elif git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null && git cat-file -e "${HEAD_SHA}^{commit}" 2>/dev/null; then
+            changed="$(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}")"
+          else
+            echo "android=true" >> "$GITHUB_OUTPUT"
+            echo "Could not resolve the PR diff; running Android checks fail-safe."
+            exit 0
+          fi
+
+          if printf '%s\n' "${changed}" | grep -Eq '^(android/|scripts/test-openburnbar-android\.sh|scripts/diff-coverage-android(-self-test)?\.sh|scripts/ci/verify-android-16kb-page-size\.sh|\.github/workflows/android-pr-gate\.yml)'; then
+            echo "android=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "android=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  android-build-test:
+    name: Android compile + detekt + unit tests
+    needs: detect-android-changes
+    if: needs.detect-android-changes.outputs.android == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.3.0 (node24-native)
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: gradle
+
+      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1 (node24-native)
+
+      - name: Seed Firebase template
+        run: cp android/app/google-services.json.template android/app/google-services.json
+
+      - name: Compile Android app
+        run: cd android && ./gradlew :app:compileDebugKotlin --no-daemon --stacktrace
+
+      - name: Run detekt
+        run: cd android && ./gradlew :app:detekt --no-daemon --stacktrace
+
+      - name: Run Android unit tests
+        run: ./scripts/test-openburnbar-android.sh
+
+      - name: Generate JaCoCo evidence and enforce diff coverage
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          ./scripts/diff-coverage-android-self-test.sh
+          cd android
+          ./gradlew :app:jacocoTestReport --no-daemon --stacktrace
+          cd ..
+          git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
+          ./scripts/diff-coverage-android.sh origin/main
+
+      - name: Upload Android test and coverage reports
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: android-pr-test-coverage
+          path: |
+            android/app/build/reports/tests/
+            android/app/build/reports/jacoco/
+          if-no-files-found: error
+
+  android-pr-gate:
+    name: Android PR Gate
+    needs: [detect-android-changes, android-build-test]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the applicable Android floor
+        env:
+          DETECT_RESULT: ${{ needs.detect-android-changes.result }}
+          ANDROID_CHANGED: ${{ needs.detect-android-changes.outputs.android }}
+          ANDROID_RESULT: ${{ needs.android-build-test.result }}
+        run: |
+          set -euo pipefail
+          if [[ "${DETECT_RESULT}" != "success" ]]; then
+            echo "::error::Android path detection failed (${DETECT_RESULT})."
+            exit 1
+          fi
+          if [[ "${ANDROID_CHANGED}" == "true" && "${ANDROID_RESULT}" != "success" ]]; then
+            echo "::error::Android checks did not succeed (${ANDROID_RESULT})."
+            exit 1
+          fi
+          if [[ "${ANDROID_CHANGED}" == "false" && "${ANDROID_RESULT}" != "skipped" ]]; then
+            echo "::error::Android checks should skip for a non-Android change (${ANDROID_RESULT})."
+            exit 1
+          fi
+          echo "Android PR floor is satisfied."

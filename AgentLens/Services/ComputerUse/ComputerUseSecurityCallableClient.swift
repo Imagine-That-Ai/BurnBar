@@ -768,26 +768,31 @@ enum ComputerUseSecurityCallableClient {
     }
 
     static func loadOrCreateLocalDeviceId(defaults: UserDefaults = .standard) -> String {
-        OpenBurnBarMigration.migrateUserDefaults()
-        if let stored = defaults.string(forKey: OpenBurnBarIdentity.deviceIDKey), !stored.isEmpty {
+        OpenBurnBarCore.OpenBurnBarMigration.migrateUserDefaults()
+        if let stored = defaults.string(forKey: OpenBurnBarCore.OpenBurnBarIdentity.deviceIDKey), !stored.isEmpty {
             return stored
         }
-        for legacyKey in OpenBurnBarIdentity.legacyDeviceIDKeys {
+        for legacyKey in OpenBurnBarCore.OpenBurnBarIdentity.legacyDeviceIDKeys {
             if let stored = defaults.string(forKey: legacyKey), !stored.isEmpty {
-                defaults.set(stored, forKey: OpenBurnBarIdentity.deviceIDKey)
+                defaults.set(stored, forKey: OpenBurnBarCore.OpenBurnBarIdentity.deviceIDKey)
                 return stored
             }
         }
         let created = UUID().uuidString
-        defaults.set(created, forKey: OpenBurnBarIdentity.deviceIDKey)
+        defaults.set(created, forKey: OpenBurnBarCore.OpenBurnBarIdentity.deviceIDKey)
         return created
     }
 
     /// Sanitizes provider account ids the same way `accountIDFor` does server-side.
     static func providerAccountSubjectId(provider: String, accountID: String?) -> String {
-        let raw = accountID?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-            ? accountID!
-            : "\(provider)_default"
+        let raw: String
+        if let accountID, !accountID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            // Preserve the ORIGINAL (untrimmed) account id; the sanitizer below
+            // collapses and edge-trims the whitespace-derived hyphens.
+            raw = accountID
+        } else {
+            raw = "\(provider)_default"
+        }
         let sanitized = sanitizedProviderAccountSubjectFragment(raw)
         let fallback = sanitizedProviderAccountSubjectFragment("\(provider)_default")
         return sanitized.isEmpty ? fallback : sanitized

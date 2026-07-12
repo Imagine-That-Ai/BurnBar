@@ -131,8 +131,11 @@ final class AppleRemoteDesktopRFBClient: Sendable {
         let serverPublic = RemoteUnlockBigUInt(bigEndian: serverPublicBytes)
 
         var privateBytes = Data(count: keyLength)
-        let randomStatus = privateBytes.withUnsafeMutableBytes { buffer in
-            SecRandomCopyBytes(kSecRandomDefault, keyLength, buffer.bindMemory(to: UInt8.self).baseAddress!)
+        let randomStatus = privateBytes.withUnsafeMutableBytes { buffer -> OSStatus in
+            // baseAddress is nil only for empty buffers; keyLength > 0 is guarded above.
+            // Surface that impossible case as a failed status instead of crashing.
+            guard let base = buffer.bindMemory(to: UInt8.self).baseAddress else { return errSecParam }
+            return SecRandomCopyBytes(kSecRandomDefault, keyLength, base)
         }
         guard randomStatus == errSecSuccess else { throw Failure.cryptographyFailed }
         if privateBytes.allSatisfy({ $0 == 0 }) {
@@ -158,8 +161,11 @@ final class AppleRemoteDesktopRFBClient: Sendable {
 
     private static func credentialBlock(username: String, password: String) throws -> Data {
         var block = Data(count: 128)
-        let randomStatus = block.withUnsafeMutableBytes { buffer in
-            SecRandomCopyBytes(kSecRandomDefault, 128, buffer.bindMemory(to: UInt8.self).baseAddress!)
+        let randomStatus = block.withUnsafeMutableBytes { buffer -> OSStatus in
+            // baseAddress is nil only for empty buffers; the block is a fixed 128 bytes.
+            // Surface that impossible case as a failed status instead of crashing.
+            guard let base = buffer.bindMemory(to: UInt8.self).baseAddress else { return errSecParam }
+            return SecRandomCopyBytes(kSecRandomDefault, 128, base)
         }
         guard randomStatus == errSecSuccess else { throw Failure.cryptographyFailed }
         writeCString(username, into: &block, range: 0..<64)

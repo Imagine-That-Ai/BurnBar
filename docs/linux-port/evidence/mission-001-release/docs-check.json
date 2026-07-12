@@ -1,0 +1,18 @@
+{
+  "generatedAt": "2026-07-10T08:00:17.479Z",
+  "files": [
+    "docs/linux-port/README.md",
+    "docs/linux-port/release-runbook.md",
+    "docs/linux-port/parity-ledger.md",
+    "docs/linux-port/factory-pr-handoff.md",
+    "docs/linux-port/runtime-capabilities.md",
+    "docs/linux-port/accessibility-validation.md",
+    "docs/linux-port/performance-reliability-validation.md",
+    "docs/RELEASE_MACOS.md",
+    "docs/security/SUPPLY_CHAIN_PROVENANCE.md",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "passed": true,
+  "failures": []
+}

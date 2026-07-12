@@ -386,7 +386,7 @@ extension OpenBurnBarDaemonManager {
         try launchAgentPlistStep("validate_installed_binary") {
             try validateDaemonBinary(at: paths.installedBinaryURL)
         }
-        let indexDbPath = OpenBurnBarAppPaths.live(fileManager: dependencies.fileManager).databaseURL.path
+        let indexDbPath = OpenBurnBarCore.OpenBurnBarAppPaths.live(fileManager: dependencies.fileManager).databaseURL.path
         _ = try launchAgentPlistStep("rotate_socket_token") {
             try rotateDaemonSocketAuthToken()
         }

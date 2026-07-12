@@ -1,0 +1,4 @@
++;eth0;IPv4;OpenBurnBar\032Cast;_googlecast._tcp;local
++;lo;IPv4;OpenBurnBar\032Cast;_googlecast._tcp;local
+=;eth0;IPv4;OpenBurnBar\032Cast;_googlecast._tcp;local;4434109eb686.local;172.17.0.2;18082;"md=OpenBurnBar" "id=cast-sim"
+=;lo;IPv4;OpenBurnBar\032Cast;_googlecast._tcp;local;4434109eb686.local;::1;18082;"md=OpenBurnBar" "id=cast-sim"

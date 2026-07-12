@@ -8,6 +8,12 @@
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
                 <ResourceDictionary Source="ms-appx:///Theme/Tokens.xaml" />
+                <!-- Dark Pensieve shell overrides (must follow Tokens, before controls consume them). -->
+                <ResourceDictionary Source="ms-appx:///Theme/PensieveShell.xaml" />
+                <!-- Liquid-Glass vocabulary styles (W6-DS-GLASS chokepoint). -->
+                <ResourceDictionary Source="ms-appx:///Theme/LiquidGlass.xaml" />
+                <!-- Data Control Center shared card + inventory-header chrome (W7). -->
+                <ResourceDictionary Source="ms-appx:///DataControlCenter/DataControlStyles.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>

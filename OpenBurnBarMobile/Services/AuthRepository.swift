@@ -53,6 +53,8 @@ final class AuthRepository {
             actionKind: "user_cloud_data_delete",
             subjectId: uid
         )
+        // The callable has already deleted the Firebase Auth user. This is
+        // local SDK cleanup only, so it must not misreport completed erasure.
         try? auth.signOut()
     }
 

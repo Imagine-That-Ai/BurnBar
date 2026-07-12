@@ -20,7 +20,7 @@ struct DashboardSectionSwitcher: View {
 
     var body: some View {
         Menu {
-            ForEach(Array(DashboardMainRoute.primarySections.enumerated()), id: \.element) { index, route in
+            ForEach(DashboardMainRoute.primarySections, id: \.self) { route in
                 Button {
                     onNavigate(route)
                 } label: {
@@ -37,7 +37,6 @@ struct DashboardSectionSwitcher: View {
                             : route.systemImage(activeChatBackend: activeChatBackend))
                     }
                 }
-                .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
             }
         } label: {
             labelView
@@ -45,7 +44,7 @@ struct DashboardSectionSwitcher: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("Switch section (\u{2318}1\u{2013}\u{2318}7)")
+        .help("Switch section")
     }
 
     private var labelView: some View {

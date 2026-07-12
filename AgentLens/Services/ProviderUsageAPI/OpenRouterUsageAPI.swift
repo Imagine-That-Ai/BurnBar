@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - OpenRouter Usage API
 
@@ -103,7 +104,7 @@ final class OpenRouterUsageAPI: ProviderUsageAPI, Sendable {
         if cost > 0 {
             finalCost = cost
         } else {
-            let pricing = ModelPricing.lookup(model: model)
+            let pricing = OpenBurnBarCore.ModelPricing.lookup(model: model)
             finalCost = pricing.cost(inputTokens: finalInput, outputTokens: finalOutput)
         }
 

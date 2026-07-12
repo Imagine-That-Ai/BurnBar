@@ -407,6 +407,8 @@ struct MobileCloudVaultRotationRewrapWorker {
         do {
             return try CloudVaultCrypto.openText(envelope, keyData: keyData, aadContext: aadContext)
         } catch {
+            // Expected during rotation: the text may be sealed under the other
+            // key — the caller tries new-then-old, so a miss here is routine.
             return nil
         }
     }

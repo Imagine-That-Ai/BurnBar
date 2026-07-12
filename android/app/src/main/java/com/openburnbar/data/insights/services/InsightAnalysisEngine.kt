@@ -376,7 +376,60 @@ object InsightAggregator {
         allowDeepTranscriptEvidencePacks: Boolean = false,
     ): InsightAnalysisContext {
         val digestEvidence = buildInsightEvidenceIndex(digest)
-        val selectedEvidencePacks = mutableListOf<InsightEvidencePack>()
+        val truncated = initialTruncatedSources(digest, includedDataSources, evidencePacks, allowDeepTranscriptEvidencePacks)
+        val selectedEvidencePacks =
+            selectEvidencePacksWithinBudget(
+                digest = digest,
+                digestEvidence = digestEvidence,
+                priorRunSummaries = priorRunSummaries,
+                evidencePacks = evidencePacks,
+                allowDeepTranscriptEvidencePacks = allowDeepTranscriptEvidencePacks,
+                truncated = truncated,
+            )
+        val trimmed =
+            trimContextToBudget(
+                digest = digest,
+                initialEvidence = digestEvidence + selectedEvidencePacks.flatMap { it.evidence },
+                initialPriorRunSummaries = priorRunSummaries,
+                selectedEvidencePacks = selectedEvidencePacks,
+                truncated = truncated,
+            )
+        if (trimmed.encodedBytes > InsightDigest.MAX_ENCODED_BYTES && "base_context" !in truncated) {
+            truncated.add("base_context")
+        }
+        val sources =
+            (includedDataSources + selectedEvidencePacks.flatMap { it.includedDataSources })
+                .distinct()
+                .sorted()
+        val budget =
+            InsightContextBudgetReport(
+                encodedBytes = trimmed.encodedBytes,
+                estimatedPromptTokens = (trimmed.encodedBytes / 4).coerceAtLeast(1),
+                includedDataSources = sources,
+                truncatedDataSources = truncated,
+                truncationSummary =
+                if (truncated.isEmpty()) {
+                    "No truncation."
+                } else {
+                    "Context was budgeted to ${InsightDigest.MAX_ENCODED_BYTES} bytes; " +
+                        "long-tail ${truncated.joinToString()} data was summarized."
+                },
+            )
+        return InsightAnalysisContext(
+            digest = digest,
+            evidenceIndex = trimmed.evidence,
+            budgetReport = budget,
+            priorRunSummaries = trimmed.priorRunSummaries,
+            evidencePacks = selectedEvidencePacks,
+        )
+    }
+
+    private fun initialTruncatedSources(
+        digest: InsightDigest,
+        includedDataSources: List<String>,
+        evidencePacks: List<InsightEvidencePack>,
+        allowDeepTranscriptEvidencePacks: Boolean,
+    ): MutableList<String> {
         val truncated =
             buildList {
                 if (digest.providers.size >= INSIGHT_PROVIDER_TRIM_THRESHOLD && "provider_summaries" in includedDataSources) {
@@ -392,6 +445,18 @@ object InsightAggregator {
         if (!allowDeepTranscriptEvidencePacks && evidencePacks.any { it.deepTranscriptIncluded }) {
             truncated.add("deep_transcript_evidence_packs")
         }
+        return truncated
+    }
+
+    private fun selectEvidencePacksWithinBudget(
+        digest: InsightDigest,
+        digestEvidence: List<InsightEvidence>,
+        priorRunSummaries: List<String>,
+        evidencePacks: List<InsightEvidencePack>,
+        allowDeepTranscriptEvidencePacks: Boolean,
+        truncated: MutableList<String>,
+    ): List<InsightEvidencePack> {
+        val selectedEvidencePacks = mutableListOf<InsightEvidencePack>()
         for (pack in evidencePacks.filter { allowDeepTranscriptEvidencePacks || !it.deepTranscriptIncluded }) {
             val candidatePacks = selectedEvidencePacks + pack
             val candidateEvidence = digestEvidence + candidatePacks.flatMap { it.evidence }
@@ -410,76 +475,59 @@ object InsightAggregator {
                 truncated.add("evidence_packs")
             }
         }
-        var evidence = digestEvidence + selectedEvidencePacks.flatMap { it.evidence }
-        var finalPriorRunSummaries = priorRunSummaries
-        var encodedBytes =
-            encodedBudgetBytes(
-                InsightContextBudgetPayload(
-                    digest = digest,
-                    evidenceIndex = evidence,
-                    priorRunSummaries = finalPriorRunSummaries,
-                    evidencePacks = selectedEvidencePacks,
-                ),
-            )
+        return selectedEvidencePacks
+    }
+
+    private fun trimContextToBudget(
+        digest: InsightDigest,
+        initialEvidence: List<InsightEvidence>,
+        initialPriorRunSummaries: List<String>,
+        selectedEvidencePacks: List<InsightEvidencePack>,
+        truncated: MutableList<String>,
+    ): TrimmedInsightContext {
+        var evidence = initialEvidence
+        var finalPriorRunSummaries = initialPriorRunSummaries
+        var encodedBytes = budgetedBytes(digest, evidence, finalPriorRunSummaries, selectedEvidencePacks)
         while (encodedBytes > InsightDigest.MAX_ENCODED_BYTES && evidence.isNotEmpty()) {
             evidence = evidence.dropLast(1)
             if ("evidence_index" !in truncated) {
                 truncated.add("evidence_index")
             }
-            encodedBytes =
-                encodedBudgetBytes(
-                    InsightContextBudgetPayload(
-                        digest = digest,
-                        evidenceIndex = evidence,
-                        priorRunSummaries = finalPriorRunSummaries,
-                        evidencePacks = selectedEvidencePacks,
-                    ),
-                )
+            encodedBytes = budgetedBytes(digest, evidence, finalPriorRunSummaries, selectedEvidencePacks)
         }
         while (encodedBytes > InsightDigest.MAX_ENCODED_BYTES && finalPriorRunSummaries.isNotEmpty()) {
             finalPriorRunSummaries = finalPriorRunSummaries.dropLast(1)
             if ("prior_run_summaries" !in truncated) {
                 truncated.add("prior_run_summaries")
             }
-            encodedBytes =
-                encodedBudgetBytes(
-                    InsightContextBudgetPayload(
-                        digest = digest,
-                        evidenceIndex = evidence,
-                        priorRunSummaries = finalPriorRunSummaries,
-                        evidencePacks = selectedEvidencePacks,
-                    ),
-                )
+            encodedBytes = budgetedBytes(digest, evidence, finalPriorRunSummaries, selectedEvidencePacks)
         }
-        if (encodedBytes > InsightDigest.MAX_ENCODED_BYTES && "base_context" !in truncated) {
-            truncated.add("base_context")
-        }
-        val sources =
-            (includedDataSources + selectedEvidencePacks.flatMap { it.includedDataSources })
-                .distinct()
-                .sorted()
-        val budget =
-            InsightContextBudgetReport(
-                encodedBytes = encodedBytes,
-                estimatedPromptTokens = (encodedBytes / 4).coerceAtLeast(1),
-                includedDataSources = sources,
-                truncatedDataSources = truncated,
-                truncationSummary =
-                if (truncated.isEmpty()) {
-                    "No truncation."
-                } else {
-                    "Context was budgeted to ${InsightDigest.MAX_ENCODED_BYTES} bytes; " +
-                        "long-tail ${truncated.joinToString()} data was summarized."
-                },
-            )
-        return InsightAnalysisContext(
-            digest = digest,
-            evidenceIndex = evidence,
-            budgetReport = budget,
+        return TrimmedInsightContext(
+            evidence = evidence,
             priorRunSummaries = finalPriorRunSummaries,
-            evidencePacks = selectedEvidencePacks,
+            encodedBytes = encodedBytes,
         )
     }
+
+    private fun budgetedBytes(
+        digest: InsightDigest,
+        evidence: List<InsightEvidence>,
+        priorRunSummaries: List<String>,
+        evidencePacks: List<InsightEvidencePack>,
+    ): Int = encodedBudgetBytes(
+        InsightContextBudgetPayload(
+            digest = digest,
+            evidenceIndex = evidence,
+            priorRunSummaries = priorRunSummaries,
+            evidencePacks = evidencePacks,
+        ),
+    )
+
+    private data class TrimmedInsightContext(
+        val evidence: List<InsightEvidence>,
+        val priorRunSummaries: List<String>,
+        val encodedBytes: Int,
+    )
 
     @Serializable
     private data class InsightContextBudgetPayload(

@@ -155,8 +155,26 @@ enum DatabaseEncryptionService {
 
     // MARK: - Key Management
 
+    /// UI-test builds derive the SQLCipher key from the environment so test runs
+    /// never touch the login Keychain. Ad-hoc re-signed builds are treated as a
+    /// new code identity by the Keychain, which prompts for the login password on
+    /// every launch and makes unattended UI automation impossible. In UI-test
+    /// mode we use a deterministic ephemeral key instead — the store still opens
+    /// encrypted, but no Keychain access (and no prompt) occurs.
+    static func uiTestDatabaseKey() -> String? {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["OPENBURNBAR_UITEST"] == "1" else { return nil }
+        if let provided = environment["OPENBURNBAR_UITEST_DB_KEY"], !provided.isEmpty {
+            return provided
+        }
+        return Data("openburnbar-uitest-db-key-v1".utf8).base64EncodedString()
+    }
+
     /// Returns the stored encryption key if one exists, nil otherwise.
     static func getKey() -> String? {
+        if let testKey = uiTestDatabaseKey() {
+            return testKey
+        }
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

@@ -22,7 +22,7 @@ struct FullRefreshResult: Sendable {
 
 struct SingleProviderResult: Sendable {
     var usages: [TokenUsage] = []
-    var conversations: [ConversationRecord] = []
+    var conversations: [OpenBurnBarCore.ConversationRecord] = []
     var health: ParserHealth = .empty
     var indexedConversationChanges: Int = 0
     var error: String?
@@ -45,7 +45,7 @@ enum RefreshBackgroundWork {
     /// main thread.  `await` it from the main actor; being `nonisolated` it runs
     /// off the main actor (SE-0338).
     static func runFullRefresh(
-        parsers: [AgentProvider: any LogParser],
+        parsers: [AgentProvider: any OpenBurnBarCore.LogParser],
         dataStore: DataStore,
         orchestrator: RefreshOrchestrator,
         existingUsages: [TokenUsage],
@@ -102,7 +102,7 @@ enum RefreshBackgroundWork {
 
     static func runSingleProviderRefresh(
         provider: AgentProvider,
-        parser: any LogParser,
+        parser: any OpenBurnBarCore.LogParser,
         dataStore: DataStore,
         settings: RefreshSettingsSnapshot
     ) async -> SingleProviderResult {
@@ -110,7 +110,7 @@ enum RefreshBackgroundWork {
 
         do {
             let parseResult = try await parser.parse(
-                options: LogParseOptions(includeConversationBodies: settings.conversationIndexingEnabled)
+                options: OpenBurnBarCore.LogParseOptions(includeConversationBodies: settings.conversationIndexingEnabled)
             )
             result.usages = parseResult.usages
             result.conversations = parseResult.conversations
@@ -147,7 +147,7 @@ enum RefreshBackgroundWork {
     /// so this is safe to call from any executor.
     static func writeParserImportHealth(
         parserHealth: [AgentProvider: ParserHealth],
-        parsers: [AgentProvider: any LogParser],
+        parsers: [AgentProvider: any OpenBurnBarCore.LogParser],
         dataStore: DataStore,
         importedUsageCount: Int,
         persistenceError: String?,
@@ -203,6 +203,20 @@ enum RefreshBackgroundWork {
         )
         let detailsData = try JSONEncoder().encode(details)
         let detailsJSON = String(data: detailsData, encoding: .utf8)
+
+        // Same change-gate as InsightEngine.upsertHealthIfChanged: at idle this
+        // row is byte-identical every tick, and rewriting it took the
+        // single-writer queue for nothing.
+        let existing = try await dataStore.fetchRetrievalHealth()
+            .first(where: { $0.subsystem == .parserImport })
+        if let existing,
+           existing.status == status,
+           existing.detailsJSON == detailsJSON,
+           existing.errorCode == errorCode,
+           existing.errorMessage == errorMessage {
+            return
+        }
+
         let now = Date()
         try await dataStore.upsertRetrievalHealth(
             RetrievalHealthRecord(

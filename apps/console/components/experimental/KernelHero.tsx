@@ -21,7 +21,10 @@ export function KernelHero({
       className="relative overflow-hidden rounded-lg"
       style={{ aspectRatio: "16 / 5", border: "1px solid var(--color-glass-line)" }}
     >
-      <LiveKernelCanvas id={id} gateVisibility={false} dprCap={1.5} className="absolute inset-0" />
+      {/* gateVisibility: the hero must pause when scrolled out of view — it
+          was the one canvas on the gallery page that never stopped rendering.
+          Keeps its higher dprCap: pausing is free, sharpness isn't. */}
+      <LiveKernelCanvas id={id} gateVisibility dprCap={1.5} className="absolute inset-0" />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-token-4">
         <div className="font-display text-lg text-white">{label}</div>
         <div className="mt-0.5 max-w-xl text-sm text-white/75">{blurb}</div>

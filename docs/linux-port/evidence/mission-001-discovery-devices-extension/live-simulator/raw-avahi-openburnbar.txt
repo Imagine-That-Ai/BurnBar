@@ -1,0 +1,8 @@
++;eth0;IPv4;OpenBurnBar\032validator;_openburnbar-peer._tcp;local
++;eth0;IPv4;OpenBurnBar\032SmartHub\032Bridge;_openburnbar-peer._tcp;local
++;lo;IPv4;OpenBurnBar\032validator;_openburnbar-peer._tcp;local
++;lo;IPv4;OpenBurnBar\032SmartHub\032Bridge;_openburnbar-peer._tcp;local
+=;eth0;IPv4;OpenBurnBar\032validator;_openburnbar-peer._tcp;local;4434109eb686.local;172.17.0.2;48313;"conflict_attempt=1" "note=quoted\\059semi" "friendly=OpenBurnBar\\032validator" "protocol_version=1" "daemon_version=mission-001-conflict" "transport=unix-domain"
+=;eth0;IPv4;OpenBurnBar\032SmartHub\032Bridge;_openburnbar-peer._tcp;local;4434109eb686.local;172.17.0.2;18084;"friendly=SmartHub\\032Bridge" "protocol_version=1" "daemon_version=smarthub-sim" "transport=http"
+=;lo;IPv4;OpenBurnBar\032validator;_openburnbar-peer._tcp;local;4434109eb686.local;127.0.0.1;48313;"conflict_attempt=1" "note=quoted\\059semi" "friendly=OpenBurnBar\\032validator" "protocol_version=1" "daemon_version=mission-001-conflict" "transport=unix-domain"
+=;lo;IPv4;OpenBurnBar\032SmartHub\032Bridge;_openburnbar-peer._tcp;local;4434109eb686.local;127.0.0.1;18084;"friendly=SmartHub\\032Bridge" "protocol_version=1" "daemon_version=smarthub-sim" "transport=http"

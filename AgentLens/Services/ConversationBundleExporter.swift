@@ -25,7 +25,7 @@ enum ConversationBundleExporter {
     }
 
     /// Codable export record — a flattened, ISO-8601-dated projection of
-    /// `ConversationRecord` plus the resolved transcript body.
+    /// `OpenBurnBarCore.ConversationRecord` plus the resolved transcript body.
     struct ExportedConversation: Codable {
         let id: String
         let provider: String
@@ -62,9 +62,9 @@ enum ConversationBundleExporter {
     /// `bodyProvider` resolves the full transcript for a record (defaults to its
     /// already-loaded `fullText`). Runs file I/O off the main actor.
     static func exportBundle(
-        records: [ConversationRecord],
+        records: [OpenBurnBarCore.ConversationRecord],
         to directory: URL,
-        bodyProvider: @escaping @Sendable (ConversationRecord) async -> String = { $0.fullText }
+        bodyProvider: @escaping @Sendable (OpenBurnBarCore.ConversationRecord) async -> String = { $0.fullText }
     ) async throws -> Result {
         let iso = ISO8601DateFormatter()
         iso.formatOptions = [.withInternetDateTime]
@@ -150,7 +150,7 @@ enum ConversationBundleExporter {
     // MARK: - Markdown rendering
 
     private static func renderMarkdown(
-        record: ConversationRecord,
+        record: OpenBurnBarCore.ConversationRecord,
         title: String,
         body: String,
         iso: ISO8601DateFormatter
@@ -187,7 +187,7 @@ enum ConversationBundleExporter {
 
     // MARK: - Helpers
 
-    private static func displayTitle(for record: ConversationRecord) -> String {
+    private static func displayTitle(for record: OpenBurnBarCore.ConversationRecord) -> String {
         if let summaryTitle = record.summaryTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !summaryTitle.isEmpty {
             return summaryTitle
         }
@@ -204,7 +204,7 @@ enum ConversationBundleExporter {
     }
 
     private static func uniqueMarkdownFilename(
-        for record: ConversationRecord,
+        for record: OpenBurnBarCore.ConversationRecord,
         title: String,
         used: inout Set<String>
     ) -> String {

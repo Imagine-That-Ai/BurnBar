@@ -693,89 +693,91 @@ static class _UniFFILib {
         public IntPtr @onStage;
         public IntPtr @uniffiFree;
     }
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
         _UniFFILib.uniffiCheckApiChecksums();
-        
+
         UniffiCallbackInterfaceWireProgressListener.Register();
         }
 
@@ -821,6 +823,10 @@ static class _UniFFILib {
 
     [DllImport("burnbar_remote", CallingConvention = CallingConvention.Cdecl)]
     public static extern IntPtr uniffi_burnbar_remote_fn_func_encode_quality_decision(RustBuffer @decision,IntPtr @listener
+    );
+
+    [DllImport("burnbar_remote", CallingConvention = CallingConvention.Cdecl)]
+    public static extern sbyte uniffi_burnbar_remote_fn_func_init_tracing(ref UniffiRustCallStatus _uniffi_out_err
     );
 
     [DllImport("burnbar_remote", CallingConvention = CallingConvention.Cdecl)]
@@ -1068,6 +1074,10 @@ static class _UniFFILib {
     );
 
     [DllImport("burnbar_remote", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_burnbar_remote_checksum_func_init_tracing(
+    );
+
+    [DllImport("burnbar_remote", CallingConvention = CallingConvention.Cdecl)]
     public static extern ushort uniffi_burnbar_remote_checksum_func_remote_mode_requires_permission(
     );
 
@@ -1091,7 +1101,7 @@ static class _UniFFILib {
     public static extern uint ffi_burnbar_remote_uniffi_contract_version(
     );
 
-    
+
 
     static void uniffiCheckContractApiVersion() {
         var scaffolding_contract_version = _UniFFILib.ffi_burnbar_remote_uniffi_contract_version();
@@ -1117,6 +1127,12 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_burnbar_remote_checksum_func_encode_quality_decision();
             if (checksum != 16007) {
                 throw new UniffiContractChecksumException($"uniffi.burnbar_remote: uniffi bindings expected function `uniffi_burnbar_remote_checksum_func_encode_quality_decision` checksum `16007`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_burnbar_remote_checksum_func_init_tracing();
+            if (checksum != 39209) {
+                throw new UniffiContractChecksumException($"uniffi.burnbar_remote: uniffi bindings expected function `uniffi_burnbar_remote_checksum_func_init_tracing` checksum `39209`, library returned `{checksum}`");
             }
         }
         {
@@ -1410,7 +1426,7 @@ public class BurnBarRemoteQualityController : IBurnBarRemoteQualityController, I
         GC.SuppressFinalize(this); // Suppress finalization to avoid unnecessary GC overhead.
     }
 
-    private void IncrementCallCounter() 
+    private void IncrementCallCounter()
     {
         // Check and increment the call counter, to keep the object alive.
         // This needs a compare-and-set retry loop in case of concurrent updates.
@@ -1424,7 +1440,7 @@ public class BurnBarRemoteQualityController : IBurnBarRemoteQualityController, I
         } while (Interlocked.CompareExchange(ref _callCounter, count + 1, count) != count);
     }
 
-    private void DecrementCallCounter() 
+    private void DecrementCallCounter()
     {
         // This decrement always matches the increment we performed above.
         if (Interlocked.Decrement(ref _callCounter) == 0) {
@@ -1444,7 +1460,7 @@ public class BurnBarRemoteQualityController : IBurnBarRemoteQualityController, I
     }
 
     internal T CallWithPointer<T>(Func<IntPtr, T> func)
-    {   
+    {
         IncrementCallCounter();
         try {
             return func(CloneRustArcPtr());
@@ -1454,7 +1470,7 @@ public class BurnBarRemoteQualityController : IBurnBarRemoteQualityController, I
         }
     }
 
-    
+
     /// <exception cref="BurnBarRemoteFfiException"></exception>
     public RemoteQualityDecision Update(RemoteControllerInput @input) {
         return CallWithPointer(thisPtr => FfiConverterTypeRemoteQualityDecision.INSTANCE.Lift(
@@ -1462,10 +1478,10 @@ public class BurnBarRemoteQualityController : IBurnBarRemoteQualityController, I
     _UniFFILib.uniffi_burnbar_remote_fn_method_burnbarremotequalitycontroller_update(thisPtr, FfiConverterTypeRemoteControllerInput.INSTANCE.Lower(@input), ref _status)
 )));
     }
-    
-    
 
-    
+
+
+
 }
 class FfiConverterTypeBurnBarRemoteQualityController: FfiConverter<BurnBarRemoteQualityController, IntPtr> {
     public static FfiConverterTypeBurnBarRemoteQualityController INSTANCE = new FfiConverterTypeBurnBarRemoteQualityController();
@@ -1563,7 +1579,7 @@ public class WireProgressListenerImpl : WireProgressListener, IDisposable {
         GC.SuppressFinalize(this); // Suppress finalization to avoid unnecessary GC overhead.
     }
 
-    private void IncrementCallCounter() 
+    private void IncrementCallCounter()
     {
         // Check and increment the call counter, to keep the object alive.
         // This needs a compare-and-set retry loop in case of concurrent updates.
@@ -1577,7 +1593,7 @@ public class WireProgressListenerImpl : WireProgressListener, IDisposable {
         } while (Interlocked.CompareExchange(ref _callCounter, count + 1, count) != count);
     }
 
-    private void DecrementCallCounter() 
+    private void DecrementCallCounter()
     {
         // This decrement always matches the increment we performed above.
         if (Interlocked.Decrement(ref _callCounter) == 0) {
@@ -1597,7 +1613,7 @@ public class WireProgressListenerImpl : WireProgressListener, IDisposable {
     }
 
     internal T CallWithPointer<T>(Func<IntPtr, T> func)
-    {   
+    {
         IncrementCallCounter();
         try {
             return func(CloneRustArcPtr());
@@ -1607,7 +1623,7 @@ public class WireProgressListenerImpl : WireProgressListener, IDisposable {
         }
     }
 
-    
+
     /// <summary>
     /// Called once per encode stage, in order: `"validate"`, `"encode"`,
     /// `"done"`.
@@ -1618,11 +1634,11 @@ public class WireProgressListenerImpl : WireProgressListener, IDisposable {
     _UniFFILib.uniffi_burnbar_remote_fn_method_wireprogresslistener_on_stage(thisPtr, FfiConverterString.INSTANCE.Lower(@stage), ref _status)
 ));
     }
-    
-    
-    
 
-    
+
+
+
+
 }
 class UniffiCallbackInterfaceWireProgressListener {
     static void OnStage(ulong @uniffiHandle,RustBuffer @stage,IntPtr @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err) {
@@ -1708,7 +1724,7 @@ static class UniffiCallbackResponseStatus {
 
 class FfiConverterTypeWireProgressListener: FfiConverter<WireProgressListener, IntPtr> {
     public ConcurrentHandleMap<WireProgressListener> handleMap = new ConcurrentHandleMap<WireProgressListener>();
-    
+
     public static FfiConverterTypeWireProgressListener INSTANCE = new FfiConverterTypeWireProgressListener();
 
 
@@ -1736,12 +1752,12 @@ class FfiConverterTypeWireProgressListener: FfiConverter<WireProgressListener, I
 
 
 public record RemoteControllerInput (
-    RemoteNetworkTelemetry @network, 
-    ulong @decodeTimeMicros, 
-    ulong @renderTimeMicros, 
-    ulong @receivedFrameAgeMicros, 
-    bool @activeControl, 
-    RemoteQualityPreference @preference, 
+    RemoteNetworkTelemetry @network,
+    ulong @decodeTimeMicros,
+    ulong @renderTimeMicros,
+    ulong @receivedFrameAgeMicros,
+    bool @activeControl,
+    RemoteQualityPreference @preference,
     RemoteDimensions @currentDimensions
 ) {
 }
@@ -1786,7 +1802,7 @@ class FfiConverterTypeRemoteControllerInput: FfiConverterRustBuffer<RemoteContro
 
 
 public record RemoteDimensions (
-    uint @width, 
+    uint @width,
     uint @height
 ) {
 }
@@ -1816,13 +1832,13 @@ class FfiConverterTypeRemoteDimensions: FfiConverterRustBuffer<RemoteDimensions>
 
 
 public record RemoteNetworkTelemetry (
-    RemotePathKind @pathKind, 
-    ulong? @rttMicros, 
-    ulong? @jitterMicros, 
-    uint? @packetLossPpm, 
-    uint @sendQueueBytes, 
-    uint @datagramSendBufferSpace, 
-    ulong @droppedMediaDatagrams, 
+    RemotePathKind @pathKind,
+    ulong? @rttMicros,
+    ulong? @jitterMicros,
+    uint? @packetLossPpm,
+    uint @sendQueueBytes,
+    uint @datagramSendBufferSpace,
+    ulong @droppedMediaDatagrams,
     bool @relay
 ) {
 }
@@ -1870,14 +1886,14 @@ class FfiConverterTypeRemoteNetworkTelemetry: FfiConverterRustBuffer<RemoteNetwo
 
 
 public record RemoteQualityDecision (
-    uint @targetBitrateBps, 
-    RemoteDimensions @targetDimensions, 
-    ushort @targetFps, 
-    byte @qpMin, 
-    byte @qpMax, 
-    uint @fecOverheadPpm, 
-    bool @requestKeyframe, 
-    bool @allowFrameDrop, 
+    uint @targetBitrateBps,
+    RemoteDimensions @targetDimensions,
+    ushort @targetFps,
+    byte @qpMin,
+    byte @qpMax,
+    uint @fecOverheadPpm,
+    bool @requestKeyframe,
+    bool @allowFrameDrop,
     bool @cursorOnlyUntilNextDamage
 ) {
 }
@@ -1928,9 +1944,9 @@ class FfiConverterTypeRemoteQualityDecision: FfiConverterRustBuffer<RemoteQualit
 
 
 public record RemoteReadiness (
-    string @protocolVersion, 
-    bool @supportsIrohTransport, 
-    bool @supportsAdaptiveQuality, 
+    string @protocolVersion,
+    bool @supportsIrohTransport,
+    bool @supportsAdaptiveQuality,
     bool @supportsPermissionGate
 ) {
 }
@@ -1972,8 +1988,8 @@ public class BurnBarRemoteFfiException: UniffiException {
     BurnBarRemoteFfiException(String @Message) : base(@Message) {}
 
     // Each variant is a nested class
-    
-    
+
+
     public class InvalidDimensions : BurnBarRemoteFfiException {
         // Members
         public uint @width;
@@ -1981,7 +1997,7 @@ public class BurnBarRemoteFfiException: UniffiException {
 
         // Constructor
         public InvalidDimensions(
-                uint @width, 
+                uint @width,
                 uint @height) : base(
                 "@width" + "=" + @width+ ", " +
                 "@height" + "=" + @height) {
@@ -1991,13 +2007,13 @@ public class BurnBarRemoteFfiException: UniffiException {
             this.@height = @height;
         }
     }
-    
+
     public class ControllerLockPoisoned : BurnBarRemoteFfiException {
         public ControllerLockPoisoned() : base() {}
     }
-    
-    
-    
+
+
+
     public class WireTruncated : BurnBarRemoteFfiException {
         // Members
         public uint @expected;
@@ -2005,7 +2021,7 @@ public class BurnBarRemoteFfiException: UniffiException {
 
         // Constructor
         public WireTruncated(
-                uint @expected, 
+                uint @expected,
                 uint @found) : base(
                 "@expected" + "=" + @expected+ ", " +
                 "@found" + "=" + @found) {
@@ -2015,8 +2031,8 @@ public class BurnBarRemoteFfiException: UniffiException {
             this.@found = @found;
         }
     }
-    
-    
+
+
     public class WireVersionMismatch : BurnBarRemoteFfiException {
         // Members
         public byte @expected;
@@ -2024,7 +2040,7 @@ public class BurnBarRemoteFfiException: UniffiException {
 
         // Constructor
         public WireVersionMismatch(
-                byte @expected, 
+                byte @expected,
                 byte @found) : base(
                 "@expected" + "=" + @expected+ ", " +
                 "@found" + "=" + @found) {
@@ -2034,9 +2050,9 @@ public class BurnBarRemoteFfiException: UniffiException {
             this.@found = @found;
         }
     }
-    
 
-    
+
+
 }
 
 class FfiConverterTypeBurnBarRemoteFfiError : FfiConverterRustBuffer<BurnBarRemoteFfiException>, CallStatusErrorHandler<BurnBarRemoteFfiException> {
@@ -2120,7 +2136,7 @@ class FfiConverterTypeBurnBarRemoteFfiError : FfiConverterRustBuffer<BurnBarRemo
 
 
 public enum RemotePathKind: int {
-    
+
     Direct,
     Relay,
     Mixed,
@@ -2155,7 +2171,7 @@ class FfiConverterTypeRemotePathKind: FfiConverterRustBuffer<RemotePathKind> {
 
 
 public enum RemotePermission: int {
-    
+
     ViewScreen,
     HearAudio,
     InjectInput,
@@ -2195,7 +2211,7 @@ class FfiConverterTypeRemotePermission: FfiConverterRustBuffer<RemotePermission>
 
 
 public enum RemoteQualityPreference: int {
-    
+
     Quality,
     Balanced,
     Responsiveness,
@@ -2230,7 +2246,7 @@ class FfiConverterTypeRemoteQualityPreference: FfiConverterRustBuffer<RemoteQual
 
 
 public enum RemoteSessionMode: int {
-    
+
     ViewOnly,
     Control,
     AgentObserve,
@@ -2347,7 +2363,7 @@ internal static class _UniFFIAsync {
             {
                 task.SetResult(pollResult);
             }
-            else 
+            else
             {
                 throw new InternalException($"Unable to find continuation handle: {continuationHandle}");
             }
@@ -2378,7 +2394,7 @@ internal static class _UniFFIAsync {
     private static async Task PollFuture(IntPtr rustFuture, Action<IntPtr, IntPtr, IntPtr> pollFunc)
     {
         byte pollResult;
-        do 
+        do
         {
             var tcs = new TaskCompletionSource<byte>(TaskCreationOptions.RunContinuationsAsynchronously);
             IntPtr callback = Marshal.GetFunctionPointerForDelegate(UniffiRustFutureContinuationCallback.callback);
@@ -2464,7 +2480,7 @@ public static class BurnbarRemoteMethods {
     /// generates the fallible async signature that FFI-008 also needs.
     /// </summary>
     /// <exception cref="BurnBarRemoteFfiException"></exception>
-   public static async Task<byte[]> EncodeQualityDecision(RemoteQualityDecision @decision, WireProgressListener @listener) 
+   public static async Task<byte[]> EncodeQualityDecision(RemoteQualityDecision @decision, WireProgressListener @listener)
    {
     return await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
@@ -2483,6 +2499,34 @@ public static class BurnbarRemoteMethods {
         FfiConverterTypeBurnBarRemoteFfiError.INSTANCE
     );
    }
+    /// <summary>
+    /// Installs the process-wide `tracing` subscriber that gives the remote stack's
+    /// `tracing::info!/warn!/debug!` a destination.
+    ///
+    /// Before this existed, no crate, Tauri shell, or FFI host installed a
+    /// subscriber, so every `tracing` event in `burnbar-remote-*` (e.g. the iroh
+    /// endpoint-online / unknown-path-kind logs in `burnbar-remote-network`) was
+    /// silently dropped. A UniFFI host (Swift / Kotlin / **C#**) should call this
+    /// exactly once at startup; the Tauri Linux shell installs its own equivalent.
+    ///
+    /// Idempotent and safe to call multiple times or concurrently: it uses
+    /// `try_init`, so a second call (or a host that already set a global default)
+    /// is a no-op rather than a panic. Verbosity is controlled by the standard
+    /// `RUST_LOG` env var (e.g. `RUST_LOG=burnbar_remote=debug`); when unset it
+    /// defaults to `info`.
+    ///
+    /// Returns `true` if this call installed the subscriber, `false` if one was
+    /// already present (so the host can log the outcome without treating it as an
+    /// error).
+    /// </summary>
+    public static bool InitTracing() {
+        return FfiConverterBoolean.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_burnbar_remote_fn_func_init_tracing( ref _status)
+));
+    }
+
+
     public static bool RemoteModeRequiresPermission(RemoteSessionMode @mode, RemotePermission @permission) {
         return FfiConverterBoolean.INSTANCE.Lift(
     _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>

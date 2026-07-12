@@ -514,6 +514,101 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         XCTAssertNil(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "unknown"))
     }
 
+    func test_cursorAgentModelCatalog_usesPrimaryProbe() async throws {
+        let (discovery, root) = try makeCursorAgentCatalogDiscovery(script: """
+        #!/bin/sh
+        if [ "$1" = "models" ]; then
+          printf '%s\n' 'Available models' 'gpt-5.4-high - GPT-5.4 High' 'Tip: done'
+          exit 0
+        fi
+        exit 9
+        """)
+        defer { removeCursorAgentCatalogFixture(at: root) }
+
+        let response = try await discovery.modelCatalog(
+            for: CLIRuntimeModelCatalogRequest(runtime: AssistantRuntimeID.cursorAgent.rawValue)
+        )
+
+        XCTAssertEqual(response.options.map(\.modelID), ["gpt-5.4-high"])
+        XCTAssertEqual(response.options.map(\.source), [.cursorAgentModelCatalog])
+    }
+
+    func test_cursorAgentModelCatalog_usesFallbackAfterPrimaryProbeFails() async throws {
+        let (discovery, root) = try makeCursorAgentCatalogDiscovery(script: """
+        #!/bin/sh
+        if [ "$1" = "models" ]; then
+          echo 'primary failed' >&2
+          exit 7
+        fi
+        if [ "$1" = "--list-models" ]; then
+          printf '%s\n' 'Available models' 'claude-opus-4-8-high - Opus 4.8 High' 'Tip: done'
+          exit 0
+        fi
+        exit 9
+        """)
+        defer { removeCursorAgentCatalogFixture(at: root) }
+
+        let response = try await discovery.modelCatalog(
+            for: CLIRuntimeModelCatalogRequest(runtime: AssistantRuntimeID.cursorAgent.rawValue)
+        )
+
+        XCTAssertEqual(response.options.map(\.modelID), ["claude-opus-4-8-high"])
+        XCTAssertEqual(response.options.map(\.source), [.cursorAgentModelCatalog])
+    }
+
+    func test_cursorAgentModelCatalog_usesDefaultProfileAfterBothProbesFail() async throws {
+        let (discovery, root) = try makeCursorAgentCatalogDiscovery(script: """
+        #!/bin/sh
+        echo "probe $1 failed" >&2
+        exit 7
+        """)
+        defer { removeCursorAgentCatalogFixture(at: root) }
+
+        let response = try await discovery.modelCatalog(
+            for: CLIRuntimeModelCatalogRequest(runtime: AssistantRuntimeID.cursorAgent.rawValue)
+        )
+
+        XCTAssertEqual(response.options.count, 1)
+        XCTAssertEqual(response.options.first?.modelID, "")
+        XCTAssertEqual(response.options.first?.source, .cursorAgentProfile)
+    }
+
+    private func makeCursorAgentCatalogDiscovery(
+        script: String
+    ) throws -> (CLIRuntimeModelCatalogDiscovery, URL) {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-cursor-catalog-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let executable = root.appendingPathComponent("cursor-agent")
+        try script.write(to: executable, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: executable.path
+        )
+        CLIExecutableResolver.clearCache()
+        let rootPath = root.path
+        let resolver = CLIExecutableResolver(
+            environmentProvider: {
+                ["PATH": rootPath, "SHELL": "/openburnbar-nonexistent-shell"]
+            },
+            homeDirectoryProvider: { rootPath }
+        )
+        return (
+            CLIRuntimeModelCatalogDiscovery(
+                resolver: resolver,
+                gatewayProvider: {
+                    RoutingClientGateway(host: "127.0.0.1", port: 8317, authToken: "")
+                }
+            ),
+            root
+        )
+    }
+
+    private func removeCursorAgentCatalogFixture(at root: URL) {
+        CLIExecutableResolver.clearCache()
+        try? FileManager.default.removeItem(at: root)
+    }
+
     private func posixPermissions(at url: URL) throws -> Int {
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
         return (attributes[.posixPermissions] as? NSNumber)?.intValue ?? -1
@@ -1033,6 +1128,7 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
             (.codex, "codex"),
             (.claude, "claude"),
             (.droid, "droid"),
+            (.junie, "junie"),
             (.forge, "forge"),
             (.antigravity, "agy"),
             (.cursorAgent, "cursor-agent")

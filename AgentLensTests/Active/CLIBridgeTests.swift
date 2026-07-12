@@ -730,6 +730,93 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertEqual(payload["reason"] as? String, "desktop grant was revoked")
     }
 
+    func test_agentToolBroker_targetedPanicHaltDoesNotPublishGlobalRevocation() async {
+        let publishCalls = OpenBurnBarCore.Locked(0)
+
+        let outcome = await AgentToolBroker.revokeDaemonBrowserSession(
+            sessionID: "session-1",
+            publishRevocation: { publishCalls.withLock { $0 += 1 } },
+            panicHalt: { _ in }
+        )
+
+        XCTAssertEqual(outcome, .panicHalted)
+        XCTAssertEqual(publishCalls.read(), 0)
+    }
+
+    func test_agentToolBroker_targetedPanicFailureFallsBackToGlobalRevocation() async {
+        let publishCalls = OpenBurnBarCore.Locked(0)
+
+        let outcome = await AgentToolBroker.revokeDaemonBrowserSession(
+            sessionID: "session-1",
+            publishRevocation: { publishCalls.withLock { $0 += 1 } },
+            panicHalt: { sessionID in
+                XCTAssertEqual(sessionID, "session-1")
+                throw NSError(domain: "AgentToolBrokerTests", code: 1)
+            }
+        )
+
+        XCTAssertEqual(outcome, .statePublished)
+        XCTAssertEqual(publishCalls.read(), 1)
+    }
+
+    func test_agentToolBroker_targetedPanicAndGlobalRevocationFailureReportsFailure() async {
+        let panicCalls = OpenBurnBarCore.Locked(0)
+        let publishCalls = OpenBurnBarCore.Locked(0)
+
+        let outcome = await AgentToolBroker.revokeDaemonBrowserSession(
+            sessionID: "session-1",
+            publishRevocation: {
+                publishCalls.withLock { $0 += 1 }
+                throw NSError(domain: "AgentToolBrokerTests", code: 2)
+            },
+            panicHalt: { sessionID in
+                panicCalls.withLock { $0 += 1 }
+                XCTAssertEqual(sessionID, "session-1")
+                throw NSError(domain: "AgentToolBrokerTests", code: 1)
+            }
+        )
+
+        XCTAssertEqual(outcome, .failed)
+        XCTAssertEqual(panicCalls.read(), 1)
+        XCTAssertEqual(publishCalls.read(), 1)
+    }
+
+    func test_agentToolBroker_directRegistryRevocationImmediatelyDeniesBroker() async throws {
+        let workspace = FileManager.default.temporaryDirectory
+            .appendingPathComponent("agent-tool-broker-revoke-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: workspace) }
+        try Data("must-not-be-read".utf8).write(to: workspace.appendingPathComponent("secret.txt"))
+
+        let threadID = "direct-revoke-\(UUID().uuidString)"
+        let broker = AgentToolBroker(
+            grant: AgentCapabilityGrant.sessionGrant(
+                runtimeID: .hermes,
+                threadID: threadID,
+                capabilities: [.workspaceRead],
+                now: Date(),
+                duration: 60
+            ),
+            workspaceURL: workspace
+        )
+
+        let revokedCount = await AgentToolBroker.revokeDaemonBrowserSessions(
+            runtimeID: .hermes,
+            threadID: threadID
+        )
+        let result = await broker.invokeOpenAITool(
+            name: "workspace_read_file",
+            arguments: #"{"path":"secret.txt"}"#,
+            callID: "call-after-revoke",
+            runID: "run-after-revoke"
+        )
+        let payload = try jsonPayload(from: result)
+
+        XCTAssertEqual(revokedCount, 1)
+        XCTAssertEqual(payload["status"] as? String, "denied")
+        XCTAssertEqual(payload["reason"] as? String, "desktop grant was revoked")
+    }
+
     func test_agentToolBroker_shellRunDrainsLargeOutput() async throws {
         let workspace = FileManager.default.temporaryDirectory
             .appendingPathComponent("agent-tool-broker-\(UUID().uuidString)", isDirectory: true)
@@ -1557,6 +1644,41 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertFalse(process.isRunning)
     }
 
+    // Process.terminate() raises an uncatchable NSInvalidArgumentException on a
+    // never-launched Process. Cancels that land between registration and
+    // process.run() must be deferred and reported via markProcessLaunched.
+    func test_streamRuntime_preLaunchCancel_isDeferredUntilMarkLaunched() async throws {
+        let runtime = CLIBridgeStreamRuntimeCoordinator()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        process.arguments = ["5"]
+
+        let token = await runtime.registerRunningProcess(process, launched: false)
+        await runtime.cancelRunningProcess(token: token)
+
+        try process.run()
+        let accepted = await runtime.markProcessLaunched(token: token)
+        XCTAssertFalse(accepted, "pre-launch cancellation must be reported at launch time")
+        process.terminate()
+        process.waitUntilExit()
+    }
+
+    func test_streamRuntime_markProcessLaunched_acceptsWhenNoCancelArrived() async throws {
+        let runtime = CLIBridgeStreamRuntimeCoordinator()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        process.arguments = ["5"]
+        let token = await runtime.registerRunningProcess(process, launched: false)
+        try process.run()
+
+        let accepted = await runtime.markProcessLaunched(token: token)
+        XCTAssertTrue(accepted, "launch must be accepted when no cancel arrived")
+
+        await runtime.cancelRunningProcess(token: token)
+        process.waitUntilExit()
+        XCTAssertFalse(process.isRunning, "post-launch cancel must still terminate the process")
+    }
+
     func test_streamRuntime_cancelHTTPStreamTask_cancelsMatchingTokenOnly() async {
         let runtime = CLIBridgeStreamRuntimeCoordinator()
         let streamID = await runtime.nextHTTPStreamID()
@@ -1598,7 +1720,7 @@ final class CLIBridgeTests: XCTestCase {
         }
         defer { CLILaunchAdapter.executableResolver = nil }
 
-        let attempts = Locked<[CLIProfileStreamAttempt]>([])
+        let attempts = OpenBurnBarCore.Locked<[CLIProfileStreamAttempt]>([])
         let runner = CLIProfileStreamFailoverRunner(
             runtime: CLIBridgeStreamRuntimeCoordinator(),
             profileStore: store,
@@ -1661,7 +1783,7 @@ final class CLIBridgeTests: XCTestCase {
         }
         defer { CLILaunchAdapter.executableResolver = nil }
 
-        let attempts = Locked<[CLIProfileStreamAttempt]>([])
+        let attempts = OpenBurnBarCore.Locked<[CLIProfileStreamAttempt]>([])
         let runner = CLIProfileStreamFailoverRunner(
             runtime: CLIBridgeStreamRuntimeCoordinator(),
             profileStore: store,
@@ -1725,7 +1847,7 @@ final class CLIBridgeTests: XCTestCase {
         }
         defer { CLILaunchAdapter.executableResolver = nil }
 
-        let attempts = Locked<[CLIProfileStreamAttempt]>([])
+        let attempts = OpenBurnBarCore.Locked<[CLIProfileStreamAttempt]>([])
         let runner = CLIProfileStreamFailoverRunner(
             runtime: CLIBridgeStreamRuntimeCoordinator(),
             profileStore: store,
@@ -2301,7 +2423,7 @@ private func realpathString(_ url: URL) -> String {
 }
 
 private final class CLIBridgeNetworkTrapURLProtocol: URLProtocol, @unchecked Sendable {
-    private static let requestCountBox = Locked(0)
+    private static let requestCountBox = OpenBurnBarCore.Locked(0)
 
     static var requestCount: Int {
         requestCountBox.read()

@@ -1,0 +1,61 @@
+{
+  "schema": "openburnbar.windows.release-certification-receipt.v1",
+  "status": "BLOCKED",
+  "gate": "physical-performance-x64",
+  "target": "physical-performance-x64",
+  "source": {
+    "commitSha": "349a34e7d86aeec7ab8e0c3b38f061b5887adec1",
+    "dirtyTree": false
+  },
+  "artifact": {
+    "name": "source-checkout",
+    "architecture": "darwin-arm64",
+    "availability": "not-applicable",
+    "sha256": null,
+    "workflowRunId": "not-applicable-local",
+    "workflowRunUrl": "not-applicable",
+    "signature": {
+      "result": "not-applicable",
+      "identity": "not-applicable"
+    }
+  },
+  "device": {
+    "kind": "macos-authoring-host",
+    "manufacturer": "Apple",
+    "model": "Apple M5 Max",
+    "architecture": "arm64",
+    "osBuild": "darwin 27.0.0",
+    "tpm": "not-applicable",
+    "cpu": "Apple M5 Max",
+    "ramBytes": 51539607552
+  },
+  "protocol": {
+    "commands": [],
+    "manualSteps": [
+      "A named physical Windows 11 x64 device with GPU, display, power, TPM, and signed exact-candidate artifact is not attached to this macOS session.",
+      "Run run-physical-release-certification.ps1 on the physical x64 device with the signed artifact manifest and hardware attestation; capture WPR/ETW, counters, frame pacing, lifecycle, and soak evidence."
+    ]
+  },
+  "time": {
+    "startedAtUtc": "2026-07-11T23:20:21.588Z",
+    "endedAtUtc": "2026-07-11T23:24:19.123Z",
+    "durationSeconds": 237.535
+  },
+  "expected": "The complete physical/live/private-flight protocol passes with exact signed artifact and raw evidence.",
+  "observed": "The required external device, account, permission, or approval is unavailable in this session; no pass is claimed.",
+  "exitCode": null,
+  "evidence": {
+    "files": [
+      {
+        "path": "blockers/physical-performance-x64.md",
+        "sha256": "f1d6d843403f08b4e58d41d955f3fa3f33b4c5670a4e9951666b9fd18c6104ae"
+      }
+    ]
+  },
+  "blocker": {
+    "id": "EXT-PHYSICAL-WINDOWS-X64",
+    "owner": "Alberto",
+    "missing": "A named physical Windows 11 x64 device with GPU, display, power, TPM, and signed exact-candidate artifact is not attached to this macOS session.",
+    "recovery": "Run run-physical-release-certification.ps1 on the physical x64 device with the signed artifact manifest and hardware attestation; capture WPR/ETW, counters, frame pacing, lifecycle, and soak evidence."
+  }
+}

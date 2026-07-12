@@ -23,16 +23,16 @@ final class HermesInventoryImportService {
     private let settingsManager: SettingsManager
     private let cloudSyncService: CloudSyncService?
     private let iCloudMirrorService: ICloudSessionMirrorService?
-    private let parseInventory: @Sendable () async throws -> ParseResult
+    private let parseInventory: @Sendable () async throws -> OpenBurnBarCore.ParseResult
     private let preflight: HermesInventoryImportPreflight
-    private var cachedParseResult: ParseResult?
+    private var cachedParseResult: OpenBurnBarCore.ParseResult?
 
     init(
         dataStore: DataStore,
         settingsManager: SettingsManager,
         cloudSyncService: CloudSyncService? = nil,
         iCloudMirrorService: ICloudSessionMirrorService? = nil,
-        parseInventory: @escaping @Sendable () async throws -> ParseResult = {
+        parseInventory: @escaping @Sendable () async throws -> OpenBurnBarCore.ParseResult = {
             try await HermesParser().parse()
         },
         preflight: HermesInventoryImportPreflight = .live
@@ -85,7 +85,7 @@ final class HermesInventoryImportService {
         phase = .importing
 
         do {
-            let result: ParseResult
+            let result: OpenBurnBarCore.ParseResult
             if let cachedParseResult {
                 result = cachedParseResult
             } else {
@@ -128,7 +128,7 @@ final class HermesInventoryImportService {
         }
     }
 
-    static func summary(for result: ParseResult) -> HermesInventoryImportSummary {
+    static func summary(for result: OpenBurnBarCore.ParseResult) -> HermesInventoryImportSummary {
         let dates = result.conversations.flatMap { [$0.startTime, $0.endTime].compactMap { $0 } }
         let estimatedBytes = result.conversations.reduce(0) { $0 + $1.fullText.utf8.count }
         return HermesInventoryImportSummary(
@@ -155,7 +155,7 @@ final class HermesInventoryImportService {
     }
 
     private static func describe(databaseError error: DatabaseError) -> String {
-        let supportPath = OpenBurnBarAppPaths.live().supportDirectory.path
+        let supportPath = OpenBurnBarCore.OpenBurnBarAppPaths.live().supportDirectory.path
         let extendedCode = error.extendedResultCode.rawValue
         switch error.resultCode {
         case .SQLITE_FULL:
@@ -241,7 +241,7 @@ struct HermesInventoryImportPreflight: Sendable {
         availableCapacityProbe: @escaping @Sendable (URL) throws -> Int64?
     ) -> HermesInventoryImportPreflight {
         HermesInventoryImportPreflight { estimatedTranscriptBytes in
-            let paths = OpenBurnBarAppPaths.live()
+            let paths = OpenBurnBarCore.OpenBurnBarAppPaths.live()
             let supportDir = paths.supportDirectory
 
             let neededBytes = max(

@@ -40,7 +40,11 @@ vi.mock("firebase-admin/firestore", () => ({
 vi.mock("../callables/publicRateLimit.js", () => ({
   checkPublicHttpEndpointRateLimit: vi.fn(),
   clientIpFromHttpRequest: () => "127.0.0.1",
+  isPublicRateLimitExceeded: (err: unknown) =>
+    typeof err === "object" && err !== null && Reflect.get(err, "code") === "resource-exhausted",
 }));
+
+import { checkPublicHttpEndpointRateLimit } from "../callables/publicRateLimit.js";
 
 // An Express/Node-response double sufficient for the firebase-functions
 // onRequest wrapper: the cors middleware (cors:true) reads/sets headers and
@@ -138,13 +142,29 @@ describe("latestRouterRundown cost hardening", () => {
     expect(first._status).toBe(200);
     expect(first._body).toEqual(LATEST_RUNDOWN);
     expect(first.getHeader("cache-control")).toBe("public, max-age=300, s-maxage=300");
+    expect(checkPublicHttpEndpointRateLimit).toHaveBeenCalledWith("latestRouterRundown", "127.0.0.1");
     expect(firestoreReads).toBe(1);
 
     const second = await get(handler);
     expect(second._status).toBe(200);
     expect(second._body).toEqual(LATEST_RUNDOWN);
     expect(second.getHeader("cache-control")).toBe("public, max-age=300, s-maxage=300");
+    expect(checkPublicHttpEndpointRateLimit).toHaveBeenCalledTimes(2);
     expect(firestoreReads).toBe(1);
+  });
+
+  it("maps product-layer rate-limit rejection to HTTP 429 before Firestore reads", async () => {
+    vi.mocked(checkPublicHttpEndpointRateLimit).mockRejectedValueOnce(
+      Object.assign(new Error("slow down"), { code: "resource-exhausted" }),
+    );
+    stored.set("router_rundowns/latest", LATEST_RUNDOWN);
+    const handler = await loadEndpoint();
+
+    const res = await get(handler);
+
+    expect(res._status).toBe(429);
+    expect(res._body).toEqual({ error: "too_many_requests" });
+    expect(firestoreReads).toBe(0);
   });
 
   it("refetches latest after the mutable 60s TTL (scheduled runs overwrite it)", async () => {

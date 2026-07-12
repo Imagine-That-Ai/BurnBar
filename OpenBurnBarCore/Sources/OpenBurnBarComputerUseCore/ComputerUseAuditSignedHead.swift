@@ -1,5 +1,5 @@
 import Foundation
-import CryptoKit
+import OpenBurnBarKernel
 
 /// Terminal audit chain head with an Ed25519 signature for offline verification (WS3).
 public struct ComputerUseAuditSignedHead: Codable, Hashable, Sendable {
@@ -53,10 +53,10 @@ public struct ComputerUseAuditSignedHead: Codable, Hashable, Sendable {
     public func verifySignature() throws -> Bool {
         guard let signature = Data(base64Encoded: signatureEd25519Base64),
               let publicKeyData = Data(base64Encoded: signerPublicKeyEd25519Base64),
-              let publicKey = try? Curve25519.Signing.PublicKey(rawRepresentation: publicKeyData) else {
+              let publicKey = try? PlatformCrypto.ed25519PublicKey(rawRepresentation: publicKeyData) else {
             return false
         }
         let payload = try signingPayload
-        return publicKey.isValidSignature(signature, for: payload)
+        return (try? PlatformCrypto.verifyEd25519Signature(signature, message: payload, publicKey: publicKey)) == true
     }
 }

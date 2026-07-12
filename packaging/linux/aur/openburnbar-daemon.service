@@ -1,0 +1,38 @@
+[Unit]
+Description=OpenBurnBar local daemon
+Documentation=https://github.com/Imagine-That-Ai/BurnBar
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+# Path resolution is delegated to openburnbar-daemon-launch (installed at
+# /usr/libexec/openburnbar-daemon-launch from packaging/linux/openburnbar-daemon-launch.sh)
+# so support dir, token file, and socket share the same XDG contract as the shell:
+#   support = ${XDG_DATA_HOME:-$HOME/.local/share}/openburnbar
+#   socket  = $XDG_RUNTIME_DIR/openburnbar/daemon.sock (or support fallback)
+#   token   = <support>/daemon-socket-auth-token (0600)
+#
+# Custom XDG / support path: see
+# packaging/linux/systemd/openburnbar-daemon.service.d/custom-xdg.conf.example
+RuntimeDirectory=openburnbar
+ExecStart=/usr/libexec/openburnbar-daemon-launch
+Restart=on-failure
+RestartSec=5
+# Peer roots are forced by openburnbar-daemon-launch to the hardened allowlist
+# (/usr/bin:/usr/local/bin:/opt/openburnbar/bin). Values from daemon.env are
+# ignored — EnvironmentFile must never replace PEER_ROOTS with / or $HOME.
+Environment=OPENBURNBAR_DAEMON_LINUX_PEER_ROOTS=/usr/bin:/usr/local/bin:/opt/openburnbar/bin
+# Optional operator overrides for support/socket only — see daemon.env.example.
+# Do NOT put PEER_ROOTS or raw auth tokens in this file.
+EnvironmentFile=-%h/.config/openburnbar/daemon.env
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+# Default XDG locations under $HOME. Custom OPENBURNBAR_DAEMON_SUPPORT_DIR
+# requires a systemd drop-in that extends ReadWritePaths (see custom-xdg.conf.example).
+ReadWritePaths=%h/.local/share/openburnbar %h/.config/openburnbar %h/.cache/openburnbar %t/openburnbar
+
+[Install]
+WantedBy=default.target

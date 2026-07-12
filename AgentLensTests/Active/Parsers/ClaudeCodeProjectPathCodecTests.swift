@@ -1,4 +1,5 @@
 import XCTest
+import OpenBurnBarCore
 @testable import OpenBurnBar
 
 /// Marker so `Bundle(for:)` resolves the `OpenBurnBarTests` resource bundle,
@@ -12,7 +13,7 @@ private final class ClaudeCodePathsBundleMarker {}
 /// invariants, and the capture-fixture schema. All vectors run on macOS.
 final class ClaudeCodeProjectPathCodecTests: XCTestCase {
 
-    private typealias Codec = ClaudeCodeProjectPathCodec
+    private typealias Codec = OpenBurnBarCore.ClaudeCodeProjectPathCodec
 
     // MARK: Encode — ground truth against REAL macOS observations
 

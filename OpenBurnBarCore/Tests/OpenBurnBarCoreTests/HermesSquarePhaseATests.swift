@@ -252,6 +252,15 @@ final class HermesSquarePinnedGridTests: XCTestCase {
         XCTAssertEqual(config.pinnedURIs.count, AssistantRuntimeID.allCases.count)
     }
 
+    func testEmptyJSONUsesSanitizedDefaultPins() {
+        let config = PinnedAgentGridConfig.from(jsonString: "")
+        XCTAssertEqual(config.pinnedURIs.count, PinnedAgentGridConfig.maxSlots)
+        XCTAssertEqual(
+            config.pinnedURIs,
+            Array(PinnedAgentGridConfig.defaultPinnedURIs.prefix(PinnedAgentGridConfig.maxSlots))
+        )
+    }
+
     func testUntouchedLegacyDefaultPinsMigrateToDroidAndForge() {
         let legacy = PinnedAgentGridConfig(
             pinnedURIs: PinnedAgentGridConfig.legacyDefaultPinnedURIsBeforeDroidForge
@@ -259,7 +268,11 @@ final class HermesSquarePinnedGridTests: XCTestCase {
 
         let migrated = legacy.sanitized()
 
-        XCTAssertEqual(migrated.pinnedURIs, PinnedAgentGridConfig.defaultPinnedURIs)
+        XCTAssertEqual(
+            migrated.pinnedURIs,
+            Array(PinnedAgentGridConfig.defaultPinnedURIs.prefix(PinnedAgentGridConfig.maxSlots))
+        )
+        XCTAssertEqual(migrated.pinnedURIs.count, PinnedAgentGridConfig.maxSlots)
         XCTAssertTrue(migrated.pinnedURIs.contains(AgentIdentity.builtInURI(.droid)))
         XCTAssertTrue(migrated.pinnedURIs.contains(AgentIdentity.builtInURI(.forge)))
     }

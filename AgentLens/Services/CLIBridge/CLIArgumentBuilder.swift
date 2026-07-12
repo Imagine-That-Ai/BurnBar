@@ -183,11 +183,16 @@ enum CLIArgumentBuilder {
 
     static func cursorAgentArguments(
         prompt: String,
+        model: String = "",
         workspaceDirectory: URL? = nil,
         capabilityGrant: AgentCapabilityGrant? = nil,
         hasFreshLocalAuthProof: Bool = false
     ) -> [String] {
         var arguments: [String] = []
+        let trimmedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedModel.isEmpty {
+            arguments.append(contentsOf: ["--model", trimmedModel])
+        }
         if let workspaceDirectory {
             arguments.append(contentsOf: ["--add-dir", workspaceDirectory.path])
         }
@@ -198,6 +203,29 @@ enum CLIArgumentBuilder {
         arguments.append(contentsOf: [
             "--print",
             sanitizedPrompt(prompt)
+        ])
+        return arguments
+    }
+
+    static func junieArguments(
+        prompt: String,
+        model: String = "",
+        workspaceDirectory: URL? = nil,
+        capabilityGrant: AgentCapabilityGrant? = nil
+    ) -> [String] {
+        // Junie's project association is its working directory — the stream
+        // runner spawns the process with `workspaceDirectory` as cwd, so no
+        // path flag is needed. `--task` is the documented one-shot form;
+        // `--prompt` opens the interactive TUI and is wrong for relay sends.
+        var arguments: [String] = []
+        let trimmedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedModel.isEmpty == false {
+            arguments.append(contentsOf: ["--model", trimmedModel])
+        }
+        _ = workspaceDirectory
+        arguments.append(contentsOf: [
+            "--task",
+            juniePrompt(prompt, capabilityGrant: capabilityGrant)
         ])
         return arguments
     }
@@ -276,9 +304,40 @@ enum CLIArgumentBuilder {
             return sanitizedPrompt("""
             \(prompt)
 
+            OpenBurnBar remote safety: answer in read-only mode. Do not edit files and do not execute shell commands unless the user grants
+            those capabilities in this thread.
+            """)
+        }
+        let capabilities = capabilityGrant?.capabilities ?? []
+        var constraints: [String] = []
+        if !capabilities.contains(.workspaceWrite) {
+            constraints.append("Do not edit files.")
+        }
+        if !capabilities.contains(.shell) {
+            constraints.append("Do not execute shell commands.")
+        }
+        guard !constraints.isEmpty else {
+            return sanitizedPrompt(prompt)
+        }
+        return sanitizedPrompt("""
+        \(prompt)
+
+        OpenBurnBar remote safety: \(constraints.joined(separator: " "))
+        """)
+    }
+
+    private static func juniePrompt(
+        _ prompt: String,
+        capabilityGrant: AgentCapabilityGrant?
+    ) -> String {
+        guard capabilityGrant?.isActive() == true else {
+            return sanitizedPrompt("""
+            \(prompt)
+
             OpenBurnBar remote safety: answer in read-only mode. Do not edit files and do not execute shell commands unless the user grants those capabilities in this thread.
             """)
         }
+
         let capabilities = capabilityGrant?.capabilities ?? []
         var constraints: [String] = []
         if !capabilities.contains(.workspaceWrite) {
@@ -401,15 +460,31 @@ extension CLIBridge {
 
     nonisolated static func cursorAgentArguments(
         prompt: String,
+        model: String = "",
         workspaceDirectory: URL? = nil,
         capabilityGrant: AgentCapabilityGrant? = nil,
         hasFreshLocalAuthProof: Bool = false
     ) -> [String] {
         CLIArgumentBuilder.cursorAgentArguments(
             prompt: prompt,
+            model: model,
             workspaceDirectory: workspaceDirectory,
             capabilityGrant: capabilityGrant,
             hasFreshLocalAuthProof: hasFreshLocalAuthProof
+        )
+    }
+
+    nonisolated static func junieArguments(
+        prompt: String,
+        model: String = "",
+        workspaceDirectory: URL? = nil,
+        capabilityGrant: AgentCapabilityGrant? = nil
+    ) -> [String] {
+        CLIArgumentBuilder.junieArguments(
+            prompt: prompt,
+            model: model,
+            workspaceDirectory: workspaceDirectory,
+            capabilityGrant: capabilityGrant
         )
     }
 }

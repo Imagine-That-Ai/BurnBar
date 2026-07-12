@@ -1,0 +1,43 @@
+{
+  "cases": [
+    {
+      "directoryReadable": true,
+      "expandedPath": "/tmp/tmp.XoEDUHBpXh/home/.codex",
+      "filePattern": "state_5.sqlite",
+      "logicalPath": "~/.codex",
+      "partialFilePresent": true,
+      "provider": "codex",
+      "sessionIdentityKey": "codex|/tmp/tmp.XoEDUHBpXh/home/.codex",
+      "standardizedPath": "/tmp/tmp.XoEDUHBpXh/home/.codex",
+      "symlink": true,
+      "symlinkTarget": "/tmp/tmp.XoEDUHBpXh/home/real-codex"
+    },
+    {
+      "directoryReadable": true,
+      "expandedPath": "/tmp/tmp.XoEDUHBpXh/home/.claude/projects",
+      "filePattern": "*.jsonl",
+      "logicalPath": "~/.claude/projects",
+      "partialFilePresent": false,
+      "provider": "claudeCode",
+      "sessionIdentityKey": "claudeCode|/tmp/tmp.XoEDUHBpXh/home/.claude/projects",
+      "standardizedPath": "/tmp/tmp.XoEDUHBpXh/home/.claude/projects",
+      "symlink": false,
+      "symlinkTarget": "/tmp/tmp.XoEDUHBpXh/home/.claude/projects"
+    },
+    {
+      "directoryReadable": false,
+      "expandedPath": "/tmp/tmp.XoEDUHBpXh/home/.config/Code/User/globalStorage/saoudrizwan.claude-dev/tasks",
+      "filePattern": "*.json",
+      "logicalPath": "~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/tasks",
+      "partialFilePresent": false,
+      "provider": "cline",
+      "sessionIdentityKey": "cline|/tmp/tmp.XoEDUHBpXh/home/.config/Code/User/globalStorage/saoudrizwan.claude-dev/tasks",
+      "standardizedPath": "/tmp/tmp.XoEDUHBpXh/home/.config/Code/User/globalStorage/saoudrizwan.claude-dev/tasks",
+      "symlink": false,
+      "symlinkTarget": null
+    }
+  ],
+  "notes": "Fixture simulates symlinked ~/.codex, partial sqlite, and chmod 700 tree; session keys use standardized expanded logical paths per AgentProviderLogDiscovery.",
+  "platform": "linux",
+  "schema": "openburnbar-linux-provider-discovery-edge-v1"
+}

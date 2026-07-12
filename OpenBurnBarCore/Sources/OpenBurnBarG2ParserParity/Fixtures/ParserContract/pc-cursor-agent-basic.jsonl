@@ -1,0 +1,5 @@
+{"role":"system","content":"System instructions here.","timestamp":"2025-07-01T00:00:00Z"}
+{"role":"user","content":"Please check the codebase rules.","timestamp":"2025-07-01T00:00:05Z"}
+{"role":"assistant","content":"Sure! Let's do a grep search.","thinking":"Grep is faster here.","tool_calls":[{"name":"grep_search","args":{"Query":"GrokParser"}}],"timestamp":"2025-07-01T00:00:10Z"}
+{"role":"tool","type":"TOOL_OUTPUT","content":"File Path: `file:///path/to/GrokParser.swift`\nLine Content: final class GrokParser","timestamp":"2025-07-01T00:00:15Z"}
+{"role":"assistant","content":"Found the parser definition. It uses .xAI.","timestamp":"2025-07-01T00:00:20Z"}

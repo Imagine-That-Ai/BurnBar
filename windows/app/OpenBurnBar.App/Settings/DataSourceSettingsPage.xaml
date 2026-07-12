@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Data Source — Windows-owned SQLCipher storage and optional Firebase credentials.
+-->
+<Page
+    x:Class="OpenBurnBar.App.Settings.Winui.DataSourceSettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:tk="using:CommunityToolkit.WinUI.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <ScrollViewer Padding="{StaticResource PensieveSpace6Thickness}">
+        <StackPanel Spacing="6" MaxWidth="720" HorizontalAlignment="Left">
+
+            <TextBlock
+                Style="{StaticResource TitleTextBlockStyle}"
+                Foreground="{StaticResource PensieveColorTextBrightBrush}"
+                Text="Data source" />
+            <TextBlock
+                Margin="0,0,0,8"
+                Foreground="{StaticResource PensieveColorTextMuteBrush}"
+                TextWrapping="Wrap"
+                Text="OpenBurnBar provisions encrypted local storage automatically. Non-secret settings are saved to app_config.json; credentials are stored in protected Windows storage." />
+
+            <tk:SettingsCard x:Name="StorageStatusCard" Header="Protected local storage" Description="SQLCipher status and recovery">
+                <StackPanel Spacing="8" MinWidth="320">
+                    <TextBlock x:Name="StorageStatusTitle" FontWeight="SemiBold" TextWrapping="Wrap" />
+                    <TextBlock x:Name="StorageStatusMessage" TextWrapping="Wrap" Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    <TextBlock x:Name="StorageEvidenceText" TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="RetryStorageButton" Content="Retry" Click="OnRetryStorage" Visibility="Collapsed" />
+                        <Button x:Name="ArchiveResetButton" Content="Archive and reset" Click="OnArchiveResetStorage" Visibility="Collapsed" />
+                        <Button x:Name="RevealLogButton" Content="Reveal log" Click="OnRevealLog" Visibility="Collapsed" />
+                    </StackPanel>
+                </StackPanel>
+            </tk:SettingsCard>
+
+            <tk:SettingsCard x:Name="DbPathCard" Header="SQLCipher database" Description="Optional override. Leave blank for the user-owned default profile path.">
+                <StackPanel Spacing="8" MinWidth="280">
+                    <TextBox x:Name="DbPathBox" PlaceholderText="C:\Users\you\AppData\Local\OpenBurnBar\openburnbar.sqlite" />
+                    <Button x:Name="BrowseDbButton" Content="Browse…" Click="OnBrowseDb" HorizontalAlignment="Left" />
+                </StackPanel>
+            </tk:SettingsCard>
+
+            <tk:SettingsCard x:Name="PassphraseCard" Header="Database key" Description="Normally generated and protected automatically. Enter only when importing a known database/key pair.">
+                <PasswordBox x:Name="PassphraseBox" MinWidth="280" PlaceholderText="Leave blank to keep or generate protected key" />
+            </tk:SettingsCard>
+
+            <tk:SettingsCard x:Name="ChatExecutableCard" Header="Chat CLI executable" Description="Protected path and SHA-256 approval for direct chat execution">
+                <StackPanel Spacing="8" MinWidth="320">
+                    <TextBlock x:Name="ChatExecutableStatusTitle" FontWeight="SemiBold" TextWrapping="Wrap" />
+                    <TextBlock x:Name="ChatExecutableStatusMessage" TextWrapping="Wrap" Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    <TextBlock x:Name="ChatExecutableCurrentText" TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    <TextBox x:Name="ChatExecutablePathBox" PlaceholderText="C:\Program Files\Claude\claude.exe" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="ApproveChatExecutableButton" Content="Approve" Click="OnApproveChatExecutable" />
+                        <Button x:Name="RotateChatExecutableButton" Content="Rotate" Click="OnRotateChatExecutable" Visibility="Collapsed" />
+                        <Button x:Name="RemoveChatExecutableButton" Content="Remove" Click="OnRemoveChatExecutable" Visibility="Collapsed" />
+                    </StackPanel>
+                </StackPanel>
+            </tk:SettingsCard>
+
+            <TextBlock
+                Margin="0,10,0,2"
+                Style="{StaticResource BodyStrongTextBlockStyle}"
+                Foreground="{StaticResource PensieveColorTextBaseBrush}"
+                Text="Cloud sync (optional)" />
+
+            <tk:SettingsCard Header="Firebase project" Description="Defaults to openburnbar-dev when empty">
+                <TextBox x:Name="FirebaseProjectBox" MinWidth="280" PlaceholderText="openburnbar-dev" />
+            </tk:SettingsCard>
+
+            <tk:SettingsCard Header="Firebase UID" Description="Your Firebase user id">
+                <TextBox x:Name="FirebaseUidBox" MinWidth="280" />
+            </tk:SettingsCard>
+
+            <tk:SettingsCard Header="Firebase ID token" Description="Leave blank to keep the protected value already configured for this PC">
+                <TextBox x:Name="FirebaseIdTokenBox" MinWidth="280" AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="120" />
+            </tk:SettingsCard>
+
+            <tk:SettingsCard Header="App Check token" Description="Leave blank to keep the protected value already configured for this PC">
+                <TextBox x:Name="AppCheckTokenBox" MinWidth="280" />
+            </tk:SettingsCard>
+
+            <tk:SettingsCard Header="Vault key (Base64)" Description="Leave blank to keep the protected value already configured for this PC">
+                <TextBox x:Name="VaultKeyBox" MinWidth="280" />
+            </tk:SettingsCard>
+
+            <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,12,0,0">
+                <Button x:Name="SaveButton" Content="Save" Style="{StaticResource AccentButtonStyle}" Click="OnSave" />
+                <TextBlock x:Name="StatusLabel" VerticalAlignment="Center" Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+            </StackPanel>
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>

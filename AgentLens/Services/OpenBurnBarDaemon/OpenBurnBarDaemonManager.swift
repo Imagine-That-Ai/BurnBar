@@ -39,7 +39,7 @@ struct OpenBurnBarDaemonRuntimePaths: Hashable {
     /// Resolves the daemon's Application Support root, running the hardening
     /// migration first.
     ///
-    /// `OpenBurnBarMigration.prepareSupportDirectory` does more than hand back a
+    /// `OpenBurnBarCore.OpenBurnBarMigration.prepareSupportDirectory` does more than hand back a
     /// URL: it migrates legacy support directories into the canonical location,
     /// creates the directory with owner-only (`0o700`) permissions, and
     /// re-enforces those permissions on an existing directory. The daemon's
@@ -72,8 +72,8 @@ struct OpenBurnBarDaemonRuntimePaths: Hashable {
 
     static func live(fileManager: FileManager = .default) -> OpenBurnBarDaemonRuntimePaths {
         let supportDirectory = resolveSupportDirectory(
-            prepare: { try OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager) },
-            fallback: { OpenBurnBarAppPaths.live(fileManager: fileManager).supportDirectory }
+            prepare: { try OpenBurnBarCore.OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager) },
+            fallback: { OpenBurnBarCore.OpenBurnBarAppPaths.live(fileManager: fileManager).supportDirectory }
         )
         let daemonDirectory = supportDirectory.appendingPathComponent("daemon", isDirectory: true)
         let homeDirectory = fileManager.homeDirectoryForCurrentUser
@@ -289,16 +289,16 @@ enum OpenBurnBarDaemonManagerError: Error, LocalizedError {
 @MainActor
 final class OpenBurnBarDaemonManager {
     static let shared = OpenBurnBarDaemonManager(settingsManager: .shared)
-    static let daemonSocketAuthTokenAccount = OpenBurnBarIdentity.daemonSocketAuthTokenAccount
+    static let daemonSocketAuthTokenAccount = OpenBurnBarCore.OpenBurnBarIdentity.daemonSocketAuthTokenAccount
     static let controllerRuntimeSecrets = KeychainStore(
-        service: OpenBurnBarIdentity.controllerRuntimeKeychainService,
-        legacyServices: OpenBurnBarIdentity.legacyControllerRuntimeKeychainServices
+        service: OpenBurnBarCore.OpenBurnBarIdentity.controllerRuntimeKeychainService,
+        legacyServices: OpenBurnBarCore.OpenBurnBarIdentity.legacyControllerRuntimeKeychainServices
     )
     static let providerRuntimeSecrets = KeychainStore(
-        service: OpenBurnBarIdentity.cursorConnectorKeychainService,
-        legacyServices: OpenBurnBarIdentity.legacyCursorConnectorKeychainServices
-            + [OpenBurnBarIdentity.providerAPIKeychainService]
-            + OpenBurnBarIdentity.legacyProviderAPIKeychainServices
+        service: OpenBurnBarCore.OpenBurnBarIdentity.cursorConnectorKeychainService,
+        legacyServices: OpenBurnBarCore.OpenBurnBarIdentity.legacyCursorConnectorKeychainServices
+            + [OpenBurnBarCore.OpenBurnBarIdentity.providerAPIKeychainService]
+            + OpenBurnBarCore.OpenBurnBarIdentity.legacyProviderAPIKeychainServices
     )
 
     /// Supervisor configuration exposed for diagnostics / testing.
@@ -309,8 +309,13 @@ final class OpenBurnBarDaemonManager {
     let usageSyncService: OpenBurnBarDaemonUsageSyncService
     let settingsManager: SettingsManager
     let daemonSocketAuthTokenStore: KeychainStore
+    let computerUseBudgetStatusStore: ComputerUseBudgetStatusStore
+    let computerUseQuotaUsageStore: ComputerUseQuotaUsageStore
+    let computerUseCloudMeteringRecorder: any ComputerUseCloudMeteringRecording
     weak var dataStore: DataStore?
     private var uploadPendingUsageAfterImport: (() async -> Void)?
+    let computerUseCapabilityPublisherInstanceID = UUID().uuidString
+    var computerUseCapabilityRevision: UInt64 = 0
 
     var status: OpenBurnBarDaemonStatus = .checking
     var lastError: String?
@@ -335,7 +340,10 @@ final class OpenBurnBarDaemonManager {
         dependencies: OpenBurnBarDaemonDependencies = .live(),
         usageSyncService: OpenBurnBarDaemonUsageSyncService? = nil,
         daemonSocketAuthTokenStore: KeychainStore = OpenBurnBarDaemonManager.controllerRuntimeSecrets,
-        uploadPendingUsageAfterImport: (() async -> Void)? = nil
+        uploadPendingUsageAfterImport: (() async -> Void)? = nil,
+        computerUseBudgetStatusStore: ComputerUseBudgetStatusStore = ComputerUseBudgetStatusStore(),
+        computerUseQuotaUsageStore: ComputerUseQuotaUsageStore = ComputerUseQuotaUsageStore(),
+        computerUseCloudMeteringRecorder: any ComputerUseCloudMeteringRecording = ComputerUseCloudMeteringService()
     ) {
         self.settingsManager = settingsManager
         self.paths = paths
@@ -343,6 +351,9 @@ final class OpenBurnBarDaemonManager {
         self.usageSyncService = usageSyncService ?? OpenBurnBarDaemonUsageSyncService(paths: paths)
         self.daemonSocketAuthTokenStore = daemonSocketAuthTokenStore
         self.uploadPendingUsageAfterImport = uploadPendingUsageAfterImport
+        self.computerUseBudgetStatusStore = computerUseBudgetStatusStore
+        self.computerUseQuotaUsageStore = computerUseQuotaUsageStore
+        self.computerUseCloudMeteringRecorder = computerUseCloudMeteringRecorder
     }
 
     /// Unix socket RPC uses blocking `connect`/`read` loops. Must not run on the main actor or the UI hangs.

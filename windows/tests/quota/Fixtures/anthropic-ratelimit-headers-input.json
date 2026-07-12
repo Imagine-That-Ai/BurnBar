@@ -1,0 +1,14 @@
+{
+  "anthropic-ratelimit-unified-tokens-limit": "220000",
+  "anthropic-ratelimit-unified-tokens-remaining": "132000",
+  "anthropic-ratelimit-unified-tokens-reset": "9000",
+  "anthropic-ratelimit-requests-limit": "1000",
+  "anthropic-ratelimit-requests-remaining": "950",
+  "anthropic-ratelimit-requests-reset": "60",
+  "anthropic-ratelimit-input-tokens-limit": "80000",
+  "anthropic-ratelimit-input-tokens-remaining": "60000",
+  "anthropic-ratelimit-input-tokens-reset": "60",
+  "anthropic-ratelimit-output-tokens-limit": "16000",
+  "anthropic-ratelimit-output-tokens-remaining": "16000",
+  "anthropic-ratelimit-output-tokens-reset": "60"
+}

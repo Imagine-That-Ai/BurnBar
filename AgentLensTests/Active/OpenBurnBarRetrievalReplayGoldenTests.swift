@@ -157,6 +157,7 @@ final class OpenBurnBarRetrievalReplayGoldenTests: XCTestCase {
             semanticErrorCode: semanticHealth?.errorCode,
             degradedModes: degradedModes
         )
+        XCTAssertEqual(snapshot.resultSourceIDs, ["conv-semantic-fallback"])
         try OpenBurnBarReplayGoldens.assertGolden(snapshot, fixtureFile: "retrieval-degraded-fallback.json")
     }
 
@@ -277,6 +278,10 @@ final class OpenBurnBarRetrievalReplayGoldenTests: XCTestCase {
                 resultLimit: 20
             )
         )
+        XCTAssertEqual(sortedUnique(providerFiltered.map(\.sourceID)), ["conv-filter-claude-alpha"])
+        XCTAssertEqual(sortedUnique(artifactTypeFiltered.map(\.sourceID)), ["artifact-filter-skill"])
+        XCTAssertEqual(sortedUnique(sourceFiltered.map(\.sourceID)), ["artifact-filter-skill"])
+        XCTAssertEqual(sortedUnique(conversationSourceFiltered.map(\.sourceID)), ["conv-filter-cli-alpha"])
 
         let snapshot = RetrievalFilterGoldenSnapshot(
             scenario: "filter-correctness",

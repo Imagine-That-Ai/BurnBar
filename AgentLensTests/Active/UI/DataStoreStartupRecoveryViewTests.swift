@@ -100,7 +100,7 @@ final class DataStoreStartupRecoveryViewTests: XCTestCase {
     }
 
     private func makeFailure() -> DataStoreStartupFailure {
-        let paths = OpenBurnBarAppPaths(applicationSupportRoot: URL(fileURLWithPath: "/tmp/openburnbar-tests"))
+        let paths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: URL(fileURLWithPath: "/tmp/openburnbar-tests"))
         return DataStoreStartupFailure.make(
             error: NSError(domain: NSCocoaErrorDomain, code: NSFileReadCorruptFileError, userInfo: [
                 NSLocalizedDescriptionKey: "database disk image is malformed"

@@ -1,0 +1,25 @@
+{
+  "generatedAt": "2026-07-08T04:56:32.985Z",
+  "allowBlocked": false,
+  "git": {
+    "commit": "6bb502e90000d81221e5c8b08326d4e8d2d89fa9",
+    "dirtyEntries": [
+      " M docs/linux-port/evidence/mission-001-release/active-checkout-v23-v24-evidence.json",
+      " M docs/linux-port/evidence/mission-001-release/latest-linux.draft.json",
+      " M docs/linux-port/evidence/mission-001-release/package-closure.json",
+      " M docs/linux-port/evidence/mission-001-release/sidecars/OpenBurnBar-0.1.0-linux-checksums.txt",
+      " M docs/linux-port/evidence/mission-001-release/sidecars/OpenBurnBar-0.1.0-linux.openvex.json",
+      " M docs/linux-port/evidence/mission-001-release/sidecars/OpenBurnBar-0.1.0-linux.provenance-predicate.json",
+      " M docs/linux-port/evidence/mission-001-release/sidecars/OpenBurnBar-0.1.0-linux.spdx.json",
+      " M docs/linux-port/evidence/mission-001-release/smoke/package-update-rollback.json",
+      " M docs/linux-port/parity-ledger.json",
+      "?? docs/linux-port/evidence/mission-001-release/sidecars/OpenBurnBar-0.1.0-1.aarch64.rpm.ed25519.sig",
+      "?? docs/linux-port/evidence/mission-001-release/sidecars/OpenBurnBar_0.1.0_aarch64.AppImage.ed25519.sig",
+      "?? docs/linux-port/evidence/mission-001-release/sidecars/OpenBurnBar_0.1.0_arm64.deb.ed25519.sig",
+      "?? docs/linux-port/evidence/mission-001-release/sidecars/openburnbar-daemon-0.1.0-linux-aarch64.ed25519.sig"
+    ]
+  },
+  "passed": true,
+  "failures": [],
+  "warnings": []
+}

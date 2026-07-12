@@ -4,12 +4,15 @@ import Foundation
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
 import OpenBurnBarSignalCore
+import os.log
 
 /// F10 — phone-side control-seal session establishment plus the sealing frame
 /// sink, shared by every `PhoneControlSender` call site so the negotiation,
 /// key wrap, and seal behavior cannot drift between surfaces.
 @MainActor
 enum ControlSealSessionEstablisher {
+    private static let log = Logger(subsystem: "com.openburnbar.app", category: "ControlSealSessionEstablisher")
+
     struct Session: Sendable {
         let envelope: HermesRealtimeRelayControlSealKeyEnvelope
         let key: SymmetricKey
@@ -115,6 +118,9 @@ enum ControlSealSessionEstablisher {
             let session = Session(envelope: envelope, key: key, controllerPeerNodeId: controllerPeerNodeId)
             return session
         } catch {
+            // nil means the caller proceeds without a control seal — log the
+            // establishment failure so a broken key publish/counter is visible.
+            Self.log.error("control seal session establish failed connectionID=\(connectionID, privacy: .public): \(String(describing: error), privacy: .public)")
             return nil
         }
     }

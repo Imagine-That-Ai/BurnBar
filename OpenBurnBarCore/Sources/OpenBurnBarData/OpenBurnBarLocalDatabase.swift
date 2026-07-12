@@ -146,6 +146,8 @@ public struct OpenBurnBarDatabaseOwnershipDecision: Equatable, Sendable {
     )
 }
 
+// Wraps a non-Sendable database handle; all access is internally synchronized.
+// sendable-allowlist: database-handle-wrapper
 public final class OpenBurnBarLocalDatabase: @unchecked Sendable {
     public static let ownershipDecision = OpenBurnBarDatabaseOwnershipDecision.linuxEngineSoleWriter
 

@@ -16,10 +16,19 @@ final class OMPQuotaAdapterTests: XCTestCase {
         pathBinURL = tempDirectoryURL.appendingPathComponent("bin", isDirectory: true)
         fakeOmpURL = pathBinURL.appendingPathComponent("omp")
         try? fileManager.createDirectory(at: pathBinURL, withIntermediateDirectories: true)
+        let resolvedFakeOmpURL = fakeOmpURL!
+        CLILaunchAdapter.executableResolver = { cliType in
+            guard cliType == .omp,
+                  FileManager.default.isExecutableFile(atPath: resolvedFakeOmpURL.path) else {
+                return nil
+            }
+            return resolvedFakeOmpURL
+        }
     }
 
     override func tearDown() {
         CLIExecutableResolver.clearCache()
+        CLILaunchAdapter.executableResolver = nil
         try? fileManager.removeItem(at: tempDirectoryURL)
         super.tearDown()
     }
@@ -30,11 +39,11 @@ final class OMPQuotaAdapterTests: XCTestCase {
         let context = try makeContext(path: isolatedPath)
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.provider, .omp)
+        XCTAssertEqual(snapshot.provider, AgentProvider.omp.rawValue)
         XCTAssertEqual(snapshot.confidence, .unavailable)
-        XCTAssertEqual(snapshot.source, .unavailable)
+        XCTAssertEqual(snapshot.source, ProviderQuotaSourceKind.unavailable.rawValue)
         XCTAssertTrue(snapshot.buckets.isEmpty)
-        XCTAssertTrue(snapshot.statusMessage.contains("OMP CLI was not found"))
+        XCTAssertEqual(snapshot.statusMessage?.contains("OMP CLI was not found"), true)
     }
 
     func testFetch_parsesUsageJSONFromFakeOmpExecutable() async throws {
@@ -68,9 +77,9 @@ final class OMPQuotaAdapterTests: XCTestCase {
         let context = try makeContext()
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.provider, .omp)
+        XCTAssertEqual(snapshot.provider, AgentProvider.omp.rawValue)
         XCTAssertEqual(snapshot.confidence, .exact)
-        XCTAssertEqual(snapshot.source, .localCLI)
+        XCTAssertEqual(snapshot.source, ProviderQuotaSourceKind.localCLI.rawValue)
         XCTAssertEqual(snapshot.buckets.count, 1)
         let bucket = try XCTUnwrap(snapshot.buckets.first)
         XCTAssertEqual(bucket.key, "omp-openai-codex-codex-5h")
@@ -92,10 +101,10 @@ final class OMPQuotaAdapterTests: XCTestCase {
         let context = try makeContext()
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.provider, .omp)
+        XCTAssertEqual(snapshot.provider, AgentProvider.omp.rawValue)
         XCTAssertEqual(snapshot.confidence, .unavailable)
-        XCTAssertTrue(snapshot.statusMessage.contains("omp usage"))
-        XCTAssertTrue(snapshot.statusMessage.contains("usage unavailable"))
+        XCTAssertEqual(snapshot.statusMessage?.contains("omp usage"), true)
+        XCTAssertEqual(snapshot.statusMessage?.contains("usage unavailable"), true)
     }
 
     func testFetch_whenUsagePayloadHasNoBuckets_returnsUnavailableStatus() async throws {
@@ -105,9 +114,9 @@ final class OMPQuotaAdapterTests: XCTestCase {
         let context = try makeContext()
         let snapshot = try await adapter.fetch(context: context)
 
-        XCTAssertEqual(snapshot.provider, .omp)
+        XCTAssertEqual(snapshot.provider, AgentProvider.omp.rawValue)
         XCTAssertEqual(snapshot.confidence, .unavailable)
-        XCTAssertTrue(snapshot.statusMessage.contains("no displayable usage limits"))
+        XCTAssertEqual(snapshot.statusMessage?.contains("no displayable usage limits"), true)
     }
 
     func testFetch_invokesOmpUsageWithJsonAndRedactFlags() async throws {
@@ -161,13 +170,13 @@ final class OMPQuotaAdapterTests: XCTestCase {
     }
 
     private func makeContext(path: String? = nil) throws -> ProviderQuotaAdapterContext {
-        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: tempDirectoryURL)
+        let appPaths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: tempDirectoryURL)
         let snapshotStore = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)
         let pathValue = path ?? pathBinURL.path
         let environment = [
             "PATH": pathValue,
             "HOME": tempDirectoryURL.path,
-            "SHELL": "/bin/sh",
+            "SHELL": "/bin/sh"
         ]
 
         return ProviderQuotaAdapterContext(
@@ -192,8 +201,37 @@ final class OMPQuotaAdapterTests: XCTestCase {
             codexRolloutScanCache: .empty,
             updateCodexRolloutScanCache: { _, _ in },
             claudeCredentialsReader: NoClaudeCredentialsReader(),
-            resolvedAPIKeys: [:]
+            resolvedAPIKeys: [:],
+            cliExecutor: ProcessBackedCLIExecutor()
         )
     }
 
+}
+
+private struct ProcessBackedCLIExecutor: CLIExecutor {
+    func run(executable: String, arguments: [String], environment: [String: String]) throws -> Data {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        process.environment = environment
+
+        let output = Pipe()
+        let error = Pipe()
+        process.standardOutput = output
+        process.standardError = error
+
+        try process.run()
+        process.waitUntilExit()
+
+        let outputData = output.fileHandleForReading.readDataToEndOfFile()
+        if process.terminationStatus == 0 {
+            return outputData
+        }
+
+        let errorData = error.fileHandleForReading.readDataToEndOfFile()
+        let message = String(data: errorData, encoding: .utf8) ?? "process exited \(process.terminationStatus)"
+        throw NSError(domain: "OMPQuotaAdapterTests", code: Int(process.terminationStatus), userInfo: [
+            NSLocalizedDescriptionKey: message.trimmingCharacters(in: .whitespacesAndNewlines)
+        ])
+    }
 }

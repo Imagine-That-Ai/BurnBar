@@ -1,0 +1,28 @@
+{
+  "backpressure" : {
+    "afterLossBitsPerSecond" : 4000000,
+    "afterRecoveryBitsPerSecond" : 8000000,
+    "datagramAction" : "dropped-delta-for-stale-datagrams",
+    "producerAction" : "paused-producer",
+    "startBitsPerSecond" : 8000000
+  },
+  "frameSeal" : {
+    "positionBinding" : "streamClass\/kind\/gop\/frameIndex",
+    "roundTripBytes" : 25,
+    "sealedEnvelope" : true,
+    "sealingDecision" : "seal"
+  },
+  "interop" : {
+    "acceptedRig" : "signed mobile capability replay plus product codec resolver",
+    "mobileCapabilitiesSource" : "mobile-replay-capability-fixture",
+    "simulatorOrDeviceAttached" : false
+  },
+  "negotiation" : {
+    "hevcLimitation" : "Linux evidence container has no hardware HEVC encoder; production resolver selected h264 fallback.",
+    "selectedVideoCodec" : "h264",
+    "videoDatagramPayloadBudget" : 1160,
+    "wireVersion" : 2
+  },
+  "source" : "OpenBurnBarMedia product APIs",
+  "target" : "VAL-MEDIA-001"
+}

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>OpenBurnBar.FoundationHostEvidence</RootNamespace>
+    <AssemblyName>OpenBurnBar.FoundationHostEvidence</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RollForward>Major</RollForward>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../app/OpenBurnBar.App.Configuration/OpenBurnBar.App.Configuration.csproj" />
+    <ProjectReference Include="../../app/OpenBurnBar.App.Presentation/OpenBurnBar.App.Presentation.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="../../app/OpenBurnBar.App/Chat/ChatExecutableInventory.cs" Link="Product/ChatExecutableInventory.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Chat/ChatProcessRunner.cs" Link="Product/ChatProcessRunner.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Chat/CliProcessLineSource.cs" Link="Product/CliProcessLineSource.cs" />
+  </ItemGroup>
+
+</Project>

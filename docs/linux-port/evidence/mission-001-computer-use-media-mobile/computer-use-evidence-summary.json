@@ -1,0 +1,28 @@
+{
+  "generatedAt": "2026-07-08T03:24:57.333Z",
+  "status": "pass",
+  "passedTargets": [
+    "VAL-CU-001",
+    "VAL-CU-002",
+    "VAL-CU-003",
+    "VAL-MEDIA-001",
+    "VAL-MOBILE-001",
+    "VAL-SEC-003"
+  ],
+  "failedTargets": [],
+  "sourceBundle": "worker-cu-qemu-mobile-sec-pass-20260704-1002",
+  "preservedTmpDir": "/private/tmp/openburnbar-cu-evidence-portal-20260704-1054",
+  "currentCheckoutCopy": "preserved-qemu-portal-mobile",
+  "manifest": "preserved-qemu-portal-mobile-manifest.json",
+  "mediaProof": "current-product-run/media-iroh-mercury-proof.json",
+  "loopbackLog": "current-product-run/iroh-loopback-handshake.log",
+  "evidencePolicy": {
+    "fixtureOnlyRowsAcceptedAsPass": false,
+    "staleTmpOnlyRowsAcceptedAsPass": false,
+    "panicSessionMediaSimulatorOnlyAcceptedAsPass": false,
+    "dockerHttpMobileRemoteOnlyAcceptedAsPass": false,
+    "x11OrXtestFallbackAcceptedAsPass": false,
+    "mediaSimulatorTimingOnlyAcceptedAsPass": false
+  },
+  "manifestDigest": "72669743e9e8708874b6cb7043d06f186f04902a77219eac620e3d49509ad546"
+}

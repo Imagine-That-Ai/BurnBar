@@ -38,6 +38,8 @@ struct ChatEngineModelMenu: View {
             return liveCLIRows(for: .omp, defaultTitle: "Default (OMP profile)")
         case .openClaude:
             return liveCLIRows(for: .openClaude, defaultTitle: "Default (OpenClaude profile)")
+        case .junie:
+            return liveCLIRows(for: .junie, defaultTitle: "Default (Junie profile)")
         }
     }
 
@@ -121,7 +123,7 @@ struct ChatEngineModelMenu: View {
     private var perRowQuotaSuffix: String {
         let backend = controller.chatBackend
         switch backend {
-        case .codex, .claude, .droid, .antigravity, .cursorAgent, .openClaude, .omp:
+        case .codex, .claude, .droid, .antigravity, .cursorAgent, .openClaude, .omp, .junie:
             guard let provider = backend.agentProvider,
                   let resolution = ProviderQuotaChip.resolve(
                     provider: provider,
@@ -196,6 +198,7 @@ struct ChatEngineModelMenu: View {
         case .cursorAgent: return .cursorAgent
         case .omp: return .omp
         case .openClaude: return .openClaude
+        case .junie: return .junie
         case .hermes, .openclaw, .piAgent: return nil
         }
     }
