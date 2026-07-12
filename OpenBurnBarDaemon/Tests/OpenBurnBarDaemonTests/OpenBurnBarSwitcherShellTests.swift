@@ -288,6 +288,9 @@ final class OpenBurnBarSwitcherShellTests: XCTestCase {
                     "BURNBAR_FIREBASE_ID_TOKEN": "legacy-firebase-id-token-secret",
                     "OPENBURNBAR_FIREBASE_APP_CHECK_TOKEN": "app-check-secret",
                     "OPENBURNBAR_CLOUD_VAULT_KEY_BASE64": "vault-secret",
+                    "FIREBASE_APP_CHECK_DEBUG_TOKEN": "app-check-debug-secret",
+                    "FirebaseAppCheckDebugToken": "app-check-debug-secret",
+                    "FIRAAppCheckDebugToken": "app-check-debug-secret",
                     "OPENBURNBAR_MEMBERSHIP_CHECKOUT_ENDPOINT": "https://example.com/checkout",
                     "OPENBURNBAR_MEMBERSHIP_RESTORE_ENDPOINT": "https://example.com/restore",
                     "OPENBURNBAR_DAEMON_FUTURE_SECRET": "future-daemon-val",
@@ -325,6 +328,9 @@ final class OpenBurnBarSwitcherShellTests: XCTestCase {
         XCTAssertNil(env["BURNBAR_FIREBASE_ID_TOKEN"])
         XCTAssertNil(env["OPENBURNBAR_FIREBASE_APP_CHECK_TOKEN"])
         XCTAssertNil(env["OPENBURNBAR_CLOUD_VAULT_KEY_BASE64"])
+        XCTAssertNil(env["FIREBASE_APP_CHECK_DEBUG_TOKEN"])
+        XCTAssertNil(env["FirebaseAppCheckDebugToken"])
+        XCTAssertNil(env["FIRAAppCheckDebugToken"])
 
         // Prefix-based stripping covers future daemon/gateway/membership env vars.
         XCTAssertNil(env["OPENBURNBAR_MEMBERSHIP_CHECKOUT_ENDPOINT"])

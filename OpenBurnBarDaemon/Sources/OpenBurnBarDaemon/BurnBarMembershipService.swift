@@ -149,12 +149,12 @@ private struct BurnBarMembershipCacheEnvelope: Codable, Sendable {
 struct EnvironmentBurnBarMembershipCloudClient: BurnBarMembershipCloudClient {
     private let environment: [String: String]
     private let session: URLSession
-    private let authTokenProvider: @Sendable () -> String?
+    private let authTokenProvider: (@Sendable () -> String?)?
 
     init(
         environment: [String: String] = ProcessInfo.processInfo.environment,
         session: URLSession = .shared,
-        authTokenProvider: @escaping @Sendable () -> String? = { nil }
+        authTokenProvider: (@Sendable () -> String?)? = nil
     ) {
         self.environment = environment
         self.session = session
@@ -196,7 +196,20 @@ struct EnvironmentBurnBarMembershipCloudClient: BurnBarMembershipCloudClient {
     }
 
     private func authToken() throws -> String {
-        let token = authTokenProvider()?.trimmingCharacters(in: .whitespacesAndNewlines)
+        // When a protected token provider is wired (e.g. a daemon credential
+        // store), it is the sole auth-token source. Otherwise fall back to the
+        // daemon's own launch environment — the pre-existing production path.
+        // That variable is stripped from every child-process environment via
+        // `BurnBarCLIShellExecutor.childEnvironmentDeniedKeys`, so the daemon
+        // reading its own environment does not reintroduce the child-env leak
+        // this hardening removed.
+        let raw: String?
+        if let authTokenProvider {
+            raw = authTokenProvider()
+        } else {
+            raw = environment["OPENBURNBAR_FIREBASE_ID_TOKEN"]
+        }
+        let token = raw?.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let token, !token.isEmpty else {
             throw BurnBarMembershipServiceError.unauthenticated
         }

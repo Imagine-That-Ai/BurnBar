@@ -557,7 +557,12 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
         "OPENBURNBAR_FIREBASE_APP_CHECK_TOKEN",
         "BURNBAR_FIREBASE_APP_CHECK_TOKEN",
         "OPENBURNBAR_CLOUD_VAULT_KEY_BASE64",
-        "BURNBAR_CLOUD_VAULT_KEY_BASE64"
+        "BURNBAR_CLOUD_VAULT_KEY_BASE64",
+        // App Check debug token: scripts/ci/inject-firebase-config.sh exports
+        // the same secret under all three names in debug App Check lanes.
+        "FIREBASE_APP_CHECK_DEBUG_TOKEN",
+        "FirebaseAppCheckDebugToken",
+        "FIRAAppCheckDebugToken"
     ]
 
     /// Prefixes for any future daemon-, gateway-, and membership-scoped env vars.
