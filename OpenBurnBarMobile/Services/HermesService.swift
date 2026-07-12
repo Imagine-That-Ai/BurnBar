@@ -899,15 +899,25 @@ final class HermesService {
     }
 
     /// Replace the staged copy of an in-flight assistant message in
-    /// `messages`. Exact behavior of the inline `firstIndex` commits the
-    /// streaming code performed before the `HermesStreamingEngine`
-    /// extraction: a message that is no longer part of the transcript is
-    /// dropped silently.
+    /// `messages`. Same semantics as the historical inline `firstIndex`
+    /// commit (a message that is no longer part of the transcript is
+    /// dropped silently), but routed straight into the conversation store
+    /// so the hot streaming path mutates the stored array in place instead
+    /// of round-tripping the whole transcript through the computed
+    /// `messages` proxy (get → copy-on-write → set) on every commit.
     private func commitStreamedMessage(_ message: HermesChatMessage) {
-        if let index = messages.firstIndex(where: { $0.id == message.id }) {
-            messages[index] = message
-        }
+        streamedTranscriptCommitCount &+= 1
+        conversation.commitStreamedMessage(message)
     }
+
+    /// Number of staged streaming commits applied to the visible transcript
+    /// since this service was created. Diagnostic/test hook: the streaming
+    /// scale tests assert this stays orders of magnitude below the SSE chunk
+    /// count (bounded per-chunk work), guarding the ~80ms commit throttle
+    /// against regressions. Ignored by observation — bumping it must never
+    /// invalidate SwiftUI readers.
+    @ObservationIgnored
+    private(set) var streamedTranscriptCommitCount = 0
 
     private func recordUsage(_ stats: HermesTokenUsageStats, replacing previousTotal: Int?) {
         guard let total = stats.totalTokens, total > 0 else { return }

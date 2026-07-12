@@ -136,6 +136,11 @@ struct HermesChatView: View {
                                     viewMode: chatViewMode,
                                     onRetry: canRetry(message) ? { service.retryLastUserTurn(context: dashboardContextPrompt) } : nil
                                 )
+                                    // Skip re-rendering unchanged rows on
+                                    // every streaming commit — the bubble's
+                                    // semantic Equatable ignores the retry
+                                    // closure identity (see its extension).
+                                    .equatable()
                                     .id(message.id)
                             }
                             if service.isStreaming {
@@ -167,7 +172,12 @@ struct HermesChatView: View {
                         }
                     }
                 }
-                .onChange(of: service.messages.last?.text.count ?? 0) { _, _ in
+                // `utf8.count` is O(1) (native strings store it); `.count`
+                // walked every grapheme of the accumulated reply on every
+                // body evaluation — O(n) per streamed commit, O(n²) per
+                // stream. Both grow monotonically on append, so the scroll
+                // trigger fires identically.
+                .onChange(of: service.messages.last?.text.utf8.count ?? 0) { _, _ in
                     if let last = service.messages.last, last.isStreaming {
                         // Plain scroll: a spring per streamed chunk stacks
                         // interrupted animations and burns the frame budget.
