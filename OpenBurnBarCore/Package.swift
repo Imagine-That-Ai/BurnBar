@@ -802,7 +802,8 @@ let firstPartyTargetsBase: [Target] = [
         .target(
             name: "OpenBurnBarPretext",
             dependencies: ["OpenBurnBarKernel"],
-            exclude: openBurnBarPretextExcludes
+            exclude: openBurnBarPretextExcludes,
+            resources: [.process("Resources")]
         ),
         // OpenBurnBarEngine (S16) — UI-free umbrella the daemon/CLI/parity
         // executables link. Its single source file `@_exported import`s the leaf
