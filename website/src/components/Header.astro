@@ -146,19 +146,27 @@ const path = Astro.url.pathname.replace(/\/$/, "");
   const toggle = document.querySelector<HTMLButtonElement>(".site-header__menu");
   const mobile = document.querySelector<HTMLElement>("#mobile-nav");
   if (toggle && mobile) {
-    toggle.addEventListener("click", () => {
-      const open = toggle.getAttribute("aria-expanded") === "true";
-      toggle.setAttribute("aria-expanded", String(!open));
+    const setMobileOpen = (open: boolean) => {
+      toggle.setAttribute("aria-expanded", String(open));
+      toggle.setAttribute("aria-label", open ? "Close menu" : "Open menu");
       if (open) {
-        mobile.setAttribute("hidden", "");
-      } else {
         mobile.removeAttribute("hidden");
+        mobile.querySelector<HTMLAnchorElement>("a")?.focus();
+      } else {
+        mobile.setAttribute("hidden", "");
+        if (mobile.contains(document.activeElement)) toggle.focus();
       }
+    };
+
+    toggle.addEventListener("click", () => {
+      setMobileOpen(toggle.getAttribute("aria-expanded") !== "true");
     });
     mobile.addEventListener("click", (e) => {
-      if (e.target instanceof HTMLAnchorElement) {
-        toggle.setAttribute("aria-expanded", "false");
-        mobile.setAttribute("hidden", "");
+      if (e.target instanceof Element && e.target.closest("a")) setMobileOpen(false);
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && toggle.getAttribute("aria-expanded") === "true") {
+        setMobileOpen(false);
       }
     });
   }
@@ -166,10 +174,19 @@ const path = Astro.url.pathname.replace(/\/$/, "");
   // Light / dark theme toggle (persisted; FOUC-guarded in BaseLayout head)
   const themeBtn = document.querySelector<HTMLButtonElement>(".theme-toggle");
   if (themeBtn) {
+    const updateThemeButton = (theme: string | null) => {
+      const next = theme === "light" ? "dark" : "light";
+      themeBtn.setAttribute("aria-label", `Switch to ${next} theme`);
+      themeBtn.setAttribute("title", `Switch to ${next} theme`);
+      themeBtn.setAttribute("aria-pressed", String(theme === "light"));
+    };
+
+    updateThemeButton(document.documentElement.getAttribute("data-theme"));
     themeBtn.addEventListener("click", () => {
       const root = document.documentElement;
       const next = root.getAttribute("data-theme") === "light" ? "dark" : "light";
       root.setAttribute("data-theme", next);
+      updateThemeButton(next);
       try {
         localStorage.setItem("burnbar-theme", next);
       } catch {

@@ -255,6 +255,16 @@ if [[ "$upload" == "1" ]]; then
     exit 1
   fi
 
-  xcrun altool --validate-app -f "$export_artifact" --type macos --apiKey "$key_id" --apiIssuer "$issuer_id"
-  xcrun altool --upload-app -f "$export_artifact" --type macos --apiKey "$key_id" --apiIssuer "$issuer_id"
+  xcrun iTMSTransporter \
+    -m verify \
+    -assetFile "$export_artifact" \
+    -apiKey "$key_id" \
+    -apiIssuer "$issuer_id" \
+    -v informational
+  xcrun iTMSTransporter \
+    -m upload \
+    -assetFile "$export_artifact" \
+    -apiKey "$key_id" \
+    -apiIssuer "$issuer_id" \
+    -v informational
 fi

@@ -40,3 +40,15 @@ def test_public_macos_release_scripts_run_appcheck_policy_and_artifact_scanner()
     assert 'bash scripts/ci/verify-apple-appcheck-release-artifact.sh "$archive_path"' in mas
     assert 'bash scripts/ci/verify-apple-appcheck-release-artifact.sh "$archive_path" "$export_path" "$export_artifact"' in mas
     assert 'bash "$script_dir/verify-apple-appcheck-release-artifact.sh" "$dmg_path"' in smoke
+
+
+def test_mas_upload_uses_supported_transporter_asset_upload():
+    mas = (ROOT / "scripts/build-macos-app-store-release.sh").read_text(encoding="utf-8")
+
+    assert "altool" not in mas
+    assert mas.count("xcrun iTMSTransporter") == 2
+    assert "-m verify" in mas
+    assert "-m upload" in mas
+    assert mas.count("-assetFile \"$export_artifact\"") == 2
+    assert "-apiKey \"$key_id\"" in mas
+    assert "-apiIssuer \"$issuer_id\"" in mas

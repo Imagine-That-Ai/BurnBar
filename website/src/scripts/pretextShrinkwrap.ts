@@ -26,7 +26,7 @@ async function initPretextShrinkwrap() {
   // columns — a single 0.24 CLS on the most-visited page. The pill chrome is
   // invisible on the hero anyway; native text-wrap: balance handles it.
   const elements = document.querySelectorAll(
-    ".pretext-wrap, .glass-wrap-text, .trust__head h2, .trust__head .lead, .trust__quote blockquote p, .endcta__h, .endcta__inner h2, .endcta__inner p, .endcta__inner .lead, .pagehead__inner h1, .pagehead__inner p, .pagehead__inner .lead, .pagehead__lead"
+    ".pretext-wrap, .glass-wrap-text, .trust__head h2, .trust__head .lead, .trust__quote blockquote p, .endcta__h, .endcta__inner h2, .endcta__inner p, .endcta__inner .lead, .pagehead__inner p, .pagehead__inner .lead, .pagehead__lead"
   );
 
   // Styling reconstructor to restore semantic styling highlights on wrapped lines

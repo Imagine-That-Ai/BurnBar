@@ -34,14 +34,6 @@ const surfaceShowcase = SURFACES.filter((s) =>
     "android"
   ].includes(s.id)
 );
-// The heading below spells this count out in words — fail the build if the
-// showcase drifts so the copy can't silently go stale.
-if (surfaceShowcase.length !== 8) {
-  throw new Error(
-    `index surfaces heading says "Eight" but the showcase now has ${surfaceShowcase.length} entries — update both.`
-  );
-}
-
 // Provider counts come from the data so headline copy can never drift.
 const primaryCount = PROVIDERS_PRIMARY.length;
 const totalCount = PROVIDERS_ALL.length;
@@ -307,7 +299,7 @@ const detectedCount = totalCount - primaryCount;
     <div class="container container--wide">
       <header class="sec-head">
         <span class="eyebrow eyebrow--ember">Where it shows up</span>
-        <h2 id="surfaces-h">Eight surfaces, one daemon.</h2>
+        <h2 id="surfaces-h">{surfaceShowcase.length} surfaces, one daemon.</h2>
         <p class="lead">
           Every screen you care about — and a few you didn't expect — talks to the same local
           daemon. Multi-agent work needs multi-surface visibility.

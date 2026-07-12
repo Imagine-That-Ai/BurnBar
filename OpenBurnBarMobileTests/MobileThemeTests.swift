@@ -1,5 +1,6 @@
 import XCTest
 import SwiftUI
+import UIKit
 import OpenBurnBarCore
 @testable import OpenBurnBarMobile
 
@@ -71,5 +72,26 @@ final class MobileThemeTests: XCTestCase {
         XCTAssertNotNil(gentle)
         XCTAssertNotNil(snappy)
         XCTAssertNotNil(hover)
+    }
+
+    @MainActor
+    func testTypographyScalesWithDynamicType() {
+        func measuredHeight(for dynamicTypeSize: DynamicTypeSize) -> CGFloat {
+            let rootView = Text("A representative usage value that wraps at a phone width")
+                .font(MobileTheme.Typography.body)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(width: 320, alignment: .leading)
+                .environment(\.dynamicTypeSize, dynamicTypeSize)
+            let host = UIHostingController(rootView: rootView)
+            host.view.frame = CGRect(x: 0, y: 0, width: 320, height: 1)
+            host.view.setNeedsLayout()
+            host.view.layoutIfNeeded()
+            return host.sizeThatFits(in: CGSize(width: 320, height: CGFloat.greatestFiniteMagnitude)).height
+        }
+
+        let regularHeight = measuredHeight(for: .medium)
+        let accessibilityHeight = measuredHeight(for: .accessibility3)
+
+        XCTAssertGreaterThan(accessibilityHeight, regularHeight)
     }
 }

@@ -12,6 +12,26 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 
 const launch = await readFile(path.join(ROOT, "src/data/launch.ts"), "utf8");
+const downloadPage = await readFile(path.join(ROOT, "src/pages/download.astro"), "utf8");
+
+assert.doesNotMatch(downloadPage, /(?:<<<<<<<|=======|>>>>>>>)/, "download page must not contain merge markers");
+assert.doesNotMatch(
+  downloadPage,
+  /(?:in App Store review|>In review<)/,
+  "download page must reflect the live iOS App Store status"
+);
+assert.match(
+  downloadPage,
+  /<strong>macOS<\/strong>, <strong>Linux<\/strong>, and <strong>iOS<\/strong> ship today\./,
+  "download page must name all currently shipping platforms"
+);
+
+const consentBanner = await readFile(path.join(ROOT, "src/components/ConsentBanner.astro"), "utf8");
+assert.match(
+  consentBanner,
+  /See our <a href="\/legal\/privacy-policy">Privacy Policy<\/a>/,
+  "analytics consent must link to the legal privacy policy"
+);
 
 assert.match(
   launch,

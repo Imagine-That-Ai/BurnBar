@@ -279,18 +279,18 @@ enum DesignSystem {
     // MARK: - Typography
 
     enum Typography {
-        static let displayLarge = Font.system(size: 36, weight: .bold, design: .rounded)
-        static let display = Font.system(size: 28, weight: .bold, design: .rounded)
-        static let title = Font.system(size: 20, weight: .semibold, design: .rounded)
-        static let headline = Font.system(size: 16, weight: .semibold, design: .rounded)
-        static let body = Font.system(size: 14, weight: .regular, design: .rounded)
-        static let caption = Font.system(size: 12, weight: .medium, design: .rounded)
-        static let tiny = Font.system(size: 11, weight: .medium, design: .rounded)
+        static let displayLarge = Font.system(.largeTitle, design: .rounded, weight: .bold)
+        static let display = Font.system(.title, design: .rounded, weight: .bold)
+        static let title = Font.system(.title2, design: .rounded, weight: .semibold)
+        static let headline = Font.system(.headline, design: .rounded, weight: .semibold)
+        static let body = Font.system(.body, design: .rounded, weight: .regular)
+        static let caption = Font.system(.subheadline, design: .rounded, weight: .medium)
+        static let tiny = Font.system(.caption, design: .rounded, weight: .medium)
 
-        static let monoLarge = Font.system(size: 28, weight: .bold, design: .monospaced)
-        static let mono = Font.system(size: 14, weight: .medium, design: .monospaced)
-        static let monoSmall = Font.system(size: 12, weight: .medium, design: .monospaced)
-        static let monoTiny = Font.system(size: 11, weight: .medium, design: .monospaced)
+        static let monoLarge = Font.system(.title, design: .monospaced, weight: .bold)
+        static let mono = Font.system(.body, design: .monospaced, weight: .medium)
+        static let monoSmall = Font.system(.caption, design: .monospaced, weight: .medium)
+        static let monoTiny = Font.system(.caption2, design: .monospaced, weight: .medium)
     }
 
     // MARK: - Spacing

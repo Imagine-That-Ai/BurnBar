@@ -60,18 +60,18 @@ public enum UnifiedDesignSystem {
 
     // MARK: - Typography
     public enum Typography {
-        public static let displayLarge = Font.system(size: 36, weight: .bold, design: .rounded)
-        public static let display      = Font.system(size: 28, weight: .bold, design: .rounded)
-        public static let title        = Font.system(size: 20, weight: .semibold, design: .rounded)
-        public static let headline     = Font.system(size: 18, weight: .semibold, design: .rounded)
-        public static let body         = Font.system(size: 17, weight: .regular, design: .rounded)
-        public static let caption      = Font.system(size: 15, weight: .medium, design: .rounded)
-        public static let tiny         = Font.system(size: 14, weight: .medium, design: .rounded)
+        public static let displayLarge = Font.system(.largeTitle, design: .rounded, weight: .bold)
+        public static let display      = Font.system(.title, design: .rounded, weight: .bold)
+        public static let title        = Font.system(.title2, design: .rounded, weight: .semibold)
+        public static let headline     = Font.system(.headline, design: .rounded, weight: .semibold)
+        public static let body         = Font.system(.body, design: .rounded, weight: .regular)
+        public static let caption      = Font.system(.subheadline, design: .rounded, weight: .medium)
+        public static let tiny         = Font.system(.caption, design: .rounded, weight: .medium)
 
-        public static let monoLarge = Font.system(size: 28, weight: .bold, design: .monospaced)
-        public static let mono      = Font.system(size: 16, weight: .medium, design: .monospaced)
-        public static let monoSmall = Font.system(size: 14, weight: .medium, design: .monospaced)
-        public static let monoTiny  = Font.system(size: 13, weight: .medium, design: .monospaced)
+        public static let monoLarge = Font.system(.title, design: .monospaced, weight: .bold)
+        public static let mono      = Font.system(.body, design: .monospaced, weight: .medium)
+        public static let monoSmall = Font.system(.caption, design: .monospaced, weight: .medium)
+        public static let monoTiny  = Font.system(.caption2, design: .monospaced, weight: .medium)
     }
 
     // MARK: - Spacing

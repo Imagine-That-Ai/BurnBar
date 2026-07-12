@@ -86,49 +86,49 @@ public struct UIModeTheme {
     public var displayLarge: Font {
         switch mode {
         case .standard: return UnifiedDesignSystem.Typography.displayLarge
-        case .cooking:  return .system(size: 42, weight: .bold, design: .rounded)
+        case .cooking:  return .system(.largeTitle, design: .rounded, weight: .bold)
         }
     }
 
     public var display: Font {
         switch mode {
         case .standard: return UnifiedDesignSystem.Typography.display
-        case .cooking:  return .system(size: 34, weight: .bold, design: .rounded)
+        case .cooking:  return .system(.title, design: .rounded, weight: .bold)
         }
     }
 
     public var title: Font {
         switch mode {
         case .standard: return UnifiedDesignSystem.Typography.title
-        case .cooking:  return .system(size: 24, weight: .semibold, design: .rounded)
+        case .cooking:  return .system(.title2, design: .rounded, weight: .semibold)
         }
     }
 
     public var headline: Font {
         switch mode {
         case .standard: return UnifiedDesignSystem.Typography.headline
-        case .cooking:  return .system(size: 20, weight: .semibold, design: .rounded)
+        case .cooking:  return .system(.headline, design: .rounded, weight: .semibold)
         }
     }
 
     public var body: Font {
         switch mode {
         case .standard: return UnifiedDesignSystem.Typography.body
-        case .cooking:  return .system(size: 17, weight: .regular, design: .rounded)
+        case .cooking:  return .system(.body, design: .rounded, weight: .regular)
         }
     }
 
     public var caption: Font {
         switch mode {
         case .standard: return UnifiedDesignSystem.Typography.caption
-        case .cooking:  return .system(size: 14, weight: .medium, design: .rounded)
+        case .cooking:  return .system(.subheadline, design: .rounded, weight: .medium)
         }
     }
 
     public var tiny: Font {
         switch mode {
         case .standard: return UnifiedDesignSystem.Typography.tiny
-        case .cooking:  return .system(size: 13, weight: .medium, design: .rounded)
+        case .cooking:  return .system(.caption, design: .rounded, weight: .medium)
         }
     }
 

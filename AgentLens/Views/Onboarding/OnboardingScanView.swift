@@ -6,6 +6,19 @@ struct OnboardingScanView: View {
 
     @State private var scanStarted = false
 
+    private var failedScanMessages: [String] {
+        Self.scanFailureMessages(from: aggregator?.parserHealth ?? [:])
+    }
+
+    static func scanFailureMessages(from parserHealth: [AgentProvider: ParserHealth]) -> [String] {
+        parserHealth
+            .compactMap { provider, health in
+                guard let message = health.errorMessage, !message.isEmpty else { return nil }
+                return "\(provider.displayName): \(message)"
+            }
+            .sorted()
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
@@ -72,6 +85,29 @@ struct OnboardingScanView: View {
                     Text("Parsing session data\u{2026}")
                         .font(DesignSystem.Typography.tiny)
                         .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+            } else if !failedScanMessages.isEmpty {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                    Label("Scan needs attention", systemImage: "exclamationmark.triangle.fill")
+                        .font(DesignSystem.Typography.caption.weight(.semibold))
+                        .foregroundStyle(DesignSystem.Colors.warning)
+
+                    Text(failedScanMessages.joined(separator: " "))
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Button("Retry scan") {
+                        scanStarted = false
+                        Task { await aggregator?.refreshAll() }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+                .padding(DesignSystem.Spacing.sm)
+                .background {
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                        .fill(DesignSystem.Colors.warning.opacity(0.12))
                 }
             }
         }

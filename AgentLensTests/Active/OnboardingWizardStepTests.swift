@@ -46,4 +46,13 @@ final class OnboardingWizardStepTests: XCTestCase {
         let fractions = available.map(\.progressFraction)
         XCTAssertEqual(fractions, fractions.sorted(), "progress must be monotonic")
     }
+
+    func testScanFailureMessagesExposeRecoverableParserErrors() {
+        let messages = OnboardingScanView.scanFailureMessages(from: [
+            .claudeCode: .failed(error: "The log folder is unavailable."),
+            .codex: .healthy(sessionCount: 3)
+        ])
+
+        XCTAssertEqual(messages, ["Claude Code: The log folder is unavailable."])
+    }
 }
