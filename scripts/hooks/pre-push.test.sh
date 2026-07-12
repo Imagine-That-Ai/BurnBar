@@ -55,6 +55,16 @@ else
   echo "ok: mixed push with preserve/* tag blocked"
 fi
 
+# 6) A preserve/* tag pushed under a RENAMED remote ref must be BLOCKED.
+#    This is the source-ref guard: local_ref=refs/tags/preserve/x but
+#    remote_ref=refs/tags/leaked. Checking only remote_ref would miss it.
+if run "refs/tags/preserve/x/stash-00 ${sha} refs/tags/leaked ${zero}" 2>/dev/null; then
+  echo "FAIL: preserve/* tag pushed under renamed remote ref was allowed" >&2
+  fail=1
+else
+  echo "ok: preserve/* tag under renamed remote ref blocked"
+fi
+
 if ((fail)); then
   echo "PRE-PUSH GUARD SELF-TEST FAILED" >&2
   exit 1

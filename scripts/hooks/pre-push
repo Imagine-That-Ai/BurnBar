@@ -16,14 +16,19 @@ blocked=()
 # `|| [[ -n ... ]]` processes a final line even if it lacks a trailing newline.
 while read -r local_ref local_sha remote_ref remote_sha || [[ -n "${remote_ref:-}" ]]; do
   # Deletions (local_sha all-zero) are always safe to allow.
-  case "${remote_ref}" in
-    refs/tags/preserve/*)
-      if [[ "${local_sha}" =~ ^0+$ ]]; then
-        continue
-      fi
-      blocked+=("${remote_ref}")
-      ;;
-  esac
+  if [[ "${local_sha}" =~ ^0+$ ]]; then
+    continue
+  fi
+  # Check BOTH local_ref and remote_ref: a push like
+  # `git push origin refs/tags/preserve/x:refs/tags/leaked` renames the remote
+  # ref, so checking only remote_ref would miss the preserve source.
+  for ref in "${local_ref}" "${remote_ref}"; do
+    case "${ref}" in
+      refs/tags/preserve/*)
+        blocked+=("${ref}")
+        ;;
+    esac
+  done
 done
 
 if ((${#blocked[@]} > 0)); then

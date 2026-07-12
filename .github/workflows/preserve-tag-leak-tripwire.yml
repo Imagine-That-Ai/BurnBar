@@ -27,7 +27,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          leaked="$(git ls-remote --tags "https://github.com/${GITHUB_REPOSITORY}.git" 'refs/tags/preserve/*' || true)"
+          # Fail-closed: authenticate the ls-remote query and let real
+          # auth/network errors fail the job instead of being masked by `|| true`
+          # (which would turn errors into leaked='' and report a false `ok`).
+          leaked="$(git ls-remote --tags "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" 'refs/tags/preserve/*')"
           if [[ -n "${leaked}" ]]; then
             echo "::error::SECRET LEAK: preserve/* tag(s) present on origin. These carry V-47 secrets."
             echo "${leaked}" | awk '{ print "  " $0 }'
