@@ -62,15 +62,6 @@ jobs:
           --run-id "$CANDIDATE_RUN_ID"
           --target-head "$TARGET_HEAD"
 
-      - name: Download the exact candidate
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
-        with:
-          artifact-ids: ${{ steps.candidate.outputs.artifact_id }}
-          repository: Imagine-That-Ai/BurnBar
-          run-id: ${{ inputs.candidate_run_id }}
-          github-token: ${{ github.token }}
-          path: ${{ github.workspace }}/.promotion-candidate
-
       - name: Resolve the complete immutable receipt matrix
         id: receipts
         env:
@@ -105,6 +96,17 @@ jobs:
         run: |
           node scripts/linux-port/render-parity-ledger.mjs --check
           node scripts/linux-port/validate-parity-ledger.mjs
+
+      # The attester above requires a clean source tree. Keep the unignored
+      # candidate scratch root absent until every clean-HEAD check completes.
+      - name: Download the exact candidate
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          artifact-ids: ${{ steps.candidate.outputs.artifact_id }}
+          repository: Imagine-That-Ai/BurnBar
+          run-id: ${{ inputs.candidate_run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ github.workspace }}/.promotion-candidate
 
       - name: Reverify immutable candidate signatures and provenance
         run: |

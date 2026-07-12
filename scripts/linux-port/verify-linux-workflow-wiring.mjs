@@ -238,11 +238,11 @@ export function verifyLinuxWorkflowWiring(input) {
   ], 'candidate workflow');
   requireOrder(input.promotionWorkflow, [
     'Resolve the immutable successful candidate artifact',
-    'Download the exact candidate',
     'Resolve the complete immutable receipt matrix',
     'Download all 280 exact receipt artifacts',
     'Generate current-HEAD product parity attestations',
     'Verify strict product parity at promotion HEAD',
+    'Download the exact candidate',
     'Reverify immutable candidate signatures and provenance',
     'Finalize candidate-bound promotion closure',
     'Attest the exact promotion closure',

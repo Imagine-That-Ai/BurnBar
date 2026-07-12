@@ -73,11 +73,11 @@ function valid() {
       'upload-linux-downloads-r2.sh',
       'https://downloads.burnbar.ai/latest-linux.json',
       'Resolve the immutable successful candidate artifact',
-      'Download the exact candidate',
       'Resolve the complete immutable receipt matrix',
       'Download all 280 exact receipt artifacts',
       'Generate current-HEAD product parity attestations',
       'Verify strict product parity at promotion HEAD',
+      'Download the exact candidate',
       'Reverify immutable candidate signatures and provenance',
       'Finalize candidate-bound promotion closure',
       'Attest the exact promotion closure',
@@ -254,6 +254,17 @@ test('promotion must generate current-HEAD attestations before strict parity val
     'Verify strict product parity at promotion HEAD\nGenerate current-HEAD product parity attestations'
   );
   assert.equal(verifyLinuxWorkflowWiring(reordered).passed, false);
+});
+
+test('promotion cannot create its unignored candidate scratch tree before clean-HEAD attestation', () => {
+  const input = valid();
+  input.promotionWorkflow = input.promotionWorkflow.replace(
+    'Generate current-HEAD product parity attestations\nVerify strict product parity at promotion HEAD\nDownload the exact candidate',
+    'Download the exact candidate\nGenerate current-HEAD product parity attestations\nVerify strict product parity at promotion HEAD'
+  );
+  const result = verifyLinuxWorkflowWiring(input);
+  assert.equal(result.passed, false);
+  assert.ok(result.failures.some((failure) => /Download the exact candidate/u.test(failure)));
 });
 
 test('candidate workflow cannot attest parity or publish', () => {
