@@ -42,13 +42,26 @@ to land); if P-10 already removed it, skip.
 None. `@_exported import OpenBurnBarInsights` (Apple-guarded) exists in
 `OpenBurnBarInsightsReexport.swift` (S0). Do NOT edit it.
 
+## Standard Allowed-edit classes (docs/CORE_DECOMPOSITION_PROGRAM.md)
+- **AE-IMPORT**: add `import <Dep>` to a MOVED file if the Insights build (V1) demands
+  a symbol that used to resolve inside Core — `<Dep>` MUST be a module
+  `OpenBurnBarInsights` declares (Kernel). The Insights engine references
+  `SharedModels/Insights` model types (moved to this target in P-10, which lands FIRST)
+  and Kernel types; add `import OpenBurnBarKernel` to any moved file the compiler flags.
+  Never `import OpenBurnBarCore`. Enumerate every added line in the PR body.
+- **AE-TESTABLE**: add `@testable import OpenBurnBarInsights` beneath the existing
+  `@testable import OpenBurnBarCore` in any Core test reaching an INTERNAL symbol of a
+  moved engine file. Anticipated: `Insights/InsightMissionApprovalPolicyTests.swift`.
+  Add ONLY where compile fails; enumerate each in the PR body.
+
 ## Forbidden actions
 Standard. Do NOT move `Share/InsightShareCardRenderer.swift`. Do NOT move the
 subdirectories.
 
 ## Enumerated semantic edits
 TO-ENUMERATE-AT-WAVE: compile-driven `public` additions if the engine exposed types to
-Core that were `internal` (cap 3; if more, STOP — not dependency-closed).
+Core that were `internal` (cap 3; if more, STOP — not dependency-closed). Plus the
+AE-IMPORT / AE-TESTABLE lines above (enumerate the concrete files at execution).
 
 ## Pre-flight checks
 1. Path-pin grep of `Services/Insights` over the automation roots → expected NONE (verified at S0).

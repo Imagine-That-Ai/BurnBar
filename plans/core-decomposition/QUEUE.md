@@ -9,27 +9,34 @@ DEPENDS-ON is not yet MERGED.
 
 Full cards: P-01…P-10. Draft cards (enumerate mv lists at wave start): P-11…P-20, S-H.
 
-## Wave 1 (parallel after S0 merges)
-| Lane | Packet | Card | Notes |
-|---|---|---|---|
-| B | P-01 SQLiteReader | full | K3 fix; unblocks P-12/P-13 |
-| Integrator | P-02 Kernel resources | full | ops-file bundle staging; unblocks P-12 |
-| D | P-03 root contracts → Kernel | full | canon stays green (not a canon source) |
-| D | P-04a SharedModels pure → Kernel | full | after P-03 in lane D |
-| D | P-04b SharedModels crypto → Kernel | full | after P-04a (needs CloudVaultCrypto) |
-| D | P-05 Hermes | full | independent |
-| D | P-06 Pretext | full | resources manifest edit |
-| C | P-10 Insights models | full | lands before P-08/P-09 |
-| C | P-08 Insights Services core | full | after P-10 |
-| C | P-09 Insights Services remainder | full | after P-08 |
-| A | P-07 TextExpansion | full | ui-purity --update; lane A serial |
+**S0-repair status (2026-07-12):** the four wave-1 systemic defects (marker-size sibling
+ceilings, missing cross-module AE-IMPORT policy, missing AE-TESTABLE policy, P-03
+SearchContracts closure) are FIXED on `core-decomp/s0-scaffold` + the six Codex threads
+on PR #1559 are resolved. All wave-1 packets are re-runnable as **wave-1b** once #1559
+merges. See docs/CORE_DECOMPOSITION_PROGRAM.md "Wave-1 learnings" and "Standard
+Allowed-edit classes" (AE-IMPORT / AE-TESTABLE — now verbatim in every move packet).
+
+## Wave 1b (parallel after the repaired S0 / #1559 merges)
+| Lane | Packet | Card | STATE | Notes |
+|---|---|---|---|---|
+| B | P-01 SQLiteReader | full | QUEUED-WAVE1B | K3 fix; unblocks P-12/P-13. Was the marker-ceiling named blocker → FIXED (SQLiteReader planned 3/450) |
+| Integrator | P-02 Kernel resources | full | QUEUED-WAVE1B | ops-file bundle staging; unblocks P-12 |
+| D | P-03 root contracts → Kernel | full | QUEUED-WAVE1B | 6 files (SearchContracts re-sliced to P-14); canon stays green |
+| D | P-04a SharedModels pure → Kernel | full | QUEUED-WAVE1B | after P-03 in lane D; symbol-closure re-checked |
+| D | P-04b SharedModels crypto → Kernel | full | QUEUED-WAVE1B | after P-04a (needs CloudVaultCrypto) |
+| D | P-05 Hermes | full | QUEUED-WAVE1B | adds `import OpenBurnBarKernel` to HermesAtomNavigator (AE-IMPORT) |
+| D | P-06 Pretext | full | **PR_OPEN #1561** (OPEN_WITH_NAMED_BLOCKER on #1559) | resources manifest edit; re-runs green vs Pretext planned 5/850 |
+| C | P-10 Insights models | full | QUEUED-WAVE1B | lands before P-08/P-09 |
+| C | P-08 Insights Services core | full | QUEUED-WAVE1B | after P-10 |
+| C | P-09 Insights Services remainder | full | QUEUED-WAVE1B | after P-08 |
+| A | P-07 TextExpansion | full | QUEUED-WAVE1B | ui-purity --update; lane A serial |
 
 ## Wave 2 (after their deps merge)
 | Lane | Packet | Card | DEPENDS-ON |
 |---|---|---|---|
 | B | P-12 LogParsers | draft | P-01, P-02 |
 | C | P-13 Quota | draft | P-01 |
-| D | P-14 VectorKit | draft | P-03 |
+| D | P-14 VectorKit (+ OpenBurnBarSearchContracts, re-sliced from P-03) | draft | P-03 |
 | A | P-11 MissionGroupContracts inversion | draft | P-04a/b |
 | A | P-15 LaunchServices | draft | P-04a/b (SwitcherProfile/CLIAuthDiscovery → Kernel) |
 | Integrator | S-H headless app build CI | draft | S0 (anytime before P-16) |

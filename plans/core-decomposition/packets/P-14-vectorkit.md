@@ -1,9 +1,14 @@
-# Packet P-14 (DRAFT): move vector indexes + SearchPlanner + Pensieve → OpenBurnBarVectorKit
+# Packet P-14 (DRAFT): move vector indexes + SearchPlanner + SearchContracts + Pensieve → OpenBurnBarVectorKit
 STATE: QUEUED
-LANE: D          DEPENDS-ON: S0, P-03 (search contracts in Kernel)
+LANE: D          DEPENDS-ON: S0, P-03 (root mission contracts in Kernel)
 BASELINE-TOUCHING: none
 
-Root vector files + SearchPlanner + the two Pensieve SharedModels.
+Root vector files + SearchPlanner + **`OpenBurnBarSearchContracts.swift`** (re-sliced
+here by S0-repair FIX 4 — it references `BurnBarEmbeddingDistanceMetric`
+(OpenBurnBarVectorKit.swift) + `BurnBarSearchPlan` (OpenBurnBarSearchPlanner.swift), so
+it is VectorKit-bound and moves WITH those defining files, NOT ahead of them into
+Kernel via P-03; the daemon reaches it through the Engine umbrella which re-exports
+VectorKit) + the two Pensieve SharedModels.
 `OpenBurnBarVectorKit.swift` uses Accelerate under `canImport` (verified guarded).
 
 ## Scope (TO-ENUMERATE-AT-WAVE)
@@ -15,10 +20,19 @@ git mv OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarSignpostVectorIndex.swift 
 git mv OpenBurnBarCore/Sources/OpenBurnBarCore/BurnBarVectorIndexDelta.swift OpenBurnBarCore/Sources/OpenBurnBarVectorKit/BurnBarVectorIndexDelta.swift
 git mv OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarVectorKit.swift OpenBurnBarCore/Sources/OpenBurnBarVectorKit/OpenBurnBarVectorKit.swift
 git mv OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarSearchPlanner.swift OpenBurnBarCore/Sources/OpenBurnBarVectorKit/OpenBurnBarSearchPlanner.swift
+git mv OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarSearchContracts.swift OpenBurnBarCore/Sources/OpenBurnBarVectorKit/OpenBurnBarSearchContracts.swift
 git mv OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/PensieveKnowledgeChunker.swift OpenBurnBarCore/Sources/OpenBurnBarVectorKit/SharedModels/PensieveKnowledgeChunker.swift
 git mv OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/PensieveVectorCloak.swift OpenBurnBarCore/Sources/OpenBurnBarVectorKit/SharedModels/PensieveVectorCloak.swift
 ```
 Remove `OpenBurnBarVectorKit/ModuleMarker.swift`.
+
+AT-WAVE closure re-check: `OpenBurnBarSearchContracts.swift` must land in the SAME
+packet as its `BurnBarEmbeddingDistanceMetric`/`BurnBarSearchPlan` definers
+(OpenBurnBarVectorKit.swift + OpenBurnBarSearchPlanner.swift, both in this mv list) —
+verify none raced out to another target first. If SearchContracts' public API is
+consumed by other-target callers that were reaching it via the umbrella, the
+`@_exported import OpenBurnBarVectorKit` in Core keeps them compiling (zero call-site
+changes); INTERNAL-symbol tests get AE-TESTABLE `@testable import OpenBurnBarVectorKit`.
 
 ### Enumerated semantic edits / INFERRED verify
 - Pensieve files' CryptoKit: `PensieveVectorCloak`/`PensieveKnowledgeChunker` are in

@@ -34,6 +34,16 @@ its own `resources: [.process("Resources")]`.
      Keep the target's other fields (name, dependencies, exclude) unchanged.
   2. Do NOT touch Core's `resources` block (catalog/SVGs remain there unless P-02 moved
      catalog to Kernel — either way Core still has SVGs, so keep its resources block).
+- **AE-IMPORT** (standard, docs/CORE_DECOMPOSITION_PROGRAM.md): if the Pretext build
+  (V1) demands `import <Dep>` in a moved file for a symbol that resolved inside Core,
+  add it — `<Dep>` MUST be a module `OpenBurnBarPretext` declares (Kernel). The two
+  files import Foundation/WebKit/CoreGraphics/OSLog today (WebKit under
+  `#if canImport(SwiftUI)`), with no obvious Kernel-symbol use, so none is expected;
+  the compiler is the arbiter. Never `import OpenBurnBarCore`. Enumerate any added line.
+- **AE-TESTABLE** (standard): add `@testable import OpenBurnBarPretext` beneath the
+  existing `@testable import OpenBurnBarCore` in any Core test reaching an INTERNAL
+  Pretext symbol. Anticipated: NONE (grep of the Core test tree found no Pretext-typed
+  test); if a resource-resolution test fails to compile, add it and enumerate.
 
 ## Shim
 None. `@_exported import OpenBurnBarPretext` already exists in

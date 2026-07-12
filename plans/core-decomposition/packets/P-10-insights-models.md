@@ -35,6 +35,22 @@ Then `git rm OpenBurnBarCore/Sources/OpenBurnBarInsights/ModuleMarker.swift`.
 ## Shim
 None. Do NOT edit `OpenBurnBarInsightsReexport.swift`.
 
+## Standard Allowed-edit classes (docs/CORE_DECOMPOSITION_PROGRAM.md)
+- **AE-IMPORT**: add `import OpenBurnBarKernel` to any moved model file the Insights
+  build (V1) flags for a Kernel symbol (`AgentInsightsBundle`/`Scope`/`BundleAssembler`
+  or a `SharedModels/Insights` model may reference Kernel types). `<Dep>` must be a
+  module `OpenBurnBarInsights` declares; never `import OpenBurnBarCore`. Enumerate each.
+- **AE-TESTABLE**: add `@testable import OpenBurnBarInsights` beneath the existing
+  `@testable import OpenBurnBarCore` in any Core test reaching an INTERNAL symbol of a
+  moved model. Anticipated: `Insights/AgentInsightsBundleAssemblerTests.swift`,
+  `Insights/AgentInsightsScopeTests.swift`,
+  `Insights/Verdict/InsightVerdictDemoFixtureTests.swift`,
+  `Insights/Widget/InsightVerdictWidgetSnapshotTests.swift`,
+  `InsightVerdictWidgetSnapshotDiffTests.swift`. NOTE `AgentInsightsViewModelTests.swift`
+  stays paired with `AgentInsightsViewModel.swift` (which STAYS in Core → S14), so it
+  keeps only `@testable import OpenBurnBarCore`. Add `@testable import OpenBurnBarInsights`
+  ONLY where compile fails; enumerate each in the PR body.
+
 ## Forbidden actions
 Standard. Do NOT move `AgentInsightsViewModel.swift`.
 

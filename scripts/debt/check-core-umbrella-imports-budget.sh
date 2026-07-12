@@ -47,7 +47,15 @@ const consumerRoots = [
   "scripts",
 ];
 
-const importRe = /^\s*(?:@_[A-Za-z0-9_]+\s+)*import\s+OpenBurnBarCore\b/;
+// Match `import OpenBurnBarCore` with ANY leading Swift import attributes, not
+// just the `@_`-prefixed ones — crucially `@testable import OpenBurnBarCore`
+// (Codex PR #1559 thread: the old `@_`-only prefix left `@testable` invisible, so
+// a test file importing the umbrella that way bypassed the "no NEW file imports
+// the umbrella" rule, including after privileged roots ratchet to zero). Allows
+// leading indentation, one or more space/newline-separated `@attr` prefixes
+// (`@testable`, `@_exported`, `@_implementationOnly`, `@_spi(...)`, …), and
+// arbitrary inter-token whitespace before `import`.
+const importRe = /^\s*(?:@[A-Za-z_][A-Za-z0-9_]*(?:\([^)]*\))?\s+)*import\s+OpenBurnBarCore\b/;
 
 function scanRoot(root) {
   const absRoot = path.join(repoRoot, root);
@@ -90,11 +98,13 @@ if (mode === "update") {
   const baseline = {
     note:
       "Per-consumer-root files importing the OpenBurnBarCore umbrella " +
-      "(docs/CORE_DECOMPOSITION_PROGRAM.md). Shrink-only: no NEW file may import the " +
-      "umbrella in a tracked root. Privileged roots (OpenBurnBarDaemon, " +
-      "OpenBurnBarWidget, OpenBurnBarKeyboard) ratchet to zero after their repoint " +
-      "packets (S17/S18/S19); AgentLens/OpenBurnBarMobile keep the umbrella " +
-      "deliberately. Regenerate via " +
+      "(docs/CORE_DECOMPOSITION_PROGRAM.md). Covers ALL Swift import-attribute forms " +
+      "including `@testable import OpenBurnBarCore` and `@_exported`/`@_spi(...)` " +
+      "prefixes (so no repoint can leave a hidden umbrella import). Shrink-only: no " +
+      "NEW file may import the umbrella in a tracked root. Privileged roots " +
+      "(OpenBurnBarDaemon, OpenBurnBarWidget, OpenBurnBarKeyboard) ratchet to zero " +
+      "after their repoint packets (S17/S18/S19); AgentLens/OpenBurnBarMobile keep " +
+      "the umbrella deliberately. Regenerate via " +
       "scripts/debt/check-core-umbrella-imports-budget.sh --update.",
     total,
     roots,

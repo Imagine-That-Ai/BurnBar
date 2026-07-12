@@ -31,12 +31,27 @@ if [[ ! -d "$worktree_dir" ]]; then
   exit 0
 fi
 
-# Remove the Vendor symlink BEFORE `git worktree remove` — deletion-through-symlink
-# hazard. `[ -L … ]` matches only a symlink, so a real Vendor directory (should one
-# ever exist in a lane) is never touched here.
+# Remove EVERY Vendor symlink BEFORE `git worktree remove` — deletion-through-symlink
+# hazard. lane-setup links either the whole Vendor dir (when the worktree lacked
+# one) OR, in a normal checkout where Vendor/ is a tracked directory, individual
+# gitignored artifacts INSIDE Vendor/ (Vendor/<name>.xcframework -> primary). Both
+# shapes must be unlinked here, else `git worktree remove` follows the inner
+# symlinks and deletes THROUGH them into the shared primary Vendor tree.
+#
+# 1) Whole-Vendor symlink. `[ -L … ]` matches only a symlink, so a real (tracked)
+#    Vendor directory is never removed here.
 if [[ -L "${worktree_dir}/Vendor" ]]; then
   rm "${worktree_dir}/Vendor"
   echo "Removed Vendor symlink from ${worktree_dir}" >&2
+elif [[ -d "${worktree_dir}/Vendor" ]]; then
+  # 2) Per-artifact symlinks inside a real Vendor directory. Remove only symlinks
+  #    (never the tracked GRDB-SQLCipher/libsignal/*.aar real entries). `find -maxdepth 1
+  #    -type l` targets exactly the links lane-setup created.
+  while IFS= read -r link; do
+    [[ -z "${link}" ]] && continue
+    rm "${link}"
+    echo "Removed Vendor artifact symlink ${link}" >&2
+  done < <(find "${worktree_dir}/Vendor" -maxdepth 1 -type l 2>/dev/null)
 fi
 
 git worktree remove "$worktree_dir"

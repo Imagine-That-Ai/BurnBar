@@ -40,6 +40,17 @@ git mv OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CLIAgentResumePresen
     corresponding entry in a Kernel exclude array. If the Linux-boundary build (V-linux)
     fails for one of them, STOP — do NOT invent a Kernel exclude without architect
     sign-off (would silently drop a type from the off-Apple graph).
+- **AE-IMPORT** (standard, docs/CORE_DECOMPOSITION_PROGRAM.md): S0-repair FIX-4 closure
+  check confirmed these 7 have NO VectorKit-bound refs and depend only on Foundation +
+  guarded Security + CloudVaultCrypto (moved in P-04a, so it is already a Kernel symbol
+  by the time this packet lands). If the Kernel build demands an `import <Dep>`, add it
+  only for a Kernel-declared dep; never `import OpenBurnBarCore`. Enumerate in the PR body.
+- **AE-TESTABLE** (standard): add `@testable import OpenBurnBarKernel` beneath the
+  existing `@testable import OpenBurnBarCore` in any Core test reaching an INTERNAL
+  symbol of a moved file. Anticipated: `EscrowDeviceSafetyCodeTests.swift`,
+  `HermesRatchetCryptoTests.swift`, `HermesRelayAuthenticatedRequestOpenerTests.swift`,
+  `HermesRelayContractTests.swift`, `PiAgentRelayContractTests.swift`,
+  `CLIAgentSessionCodecTests.swift`. Add ONLY where compile fails; enumerate in the PR body.
 
 ## Shim
 None. Core re-exports Kernel. Do NOT edit `KernelReexport.swift`.
