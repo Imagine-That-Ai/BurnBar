@@ -112,6 +112,7 @@ export function verifyLinuxWorkflowWiring(input) {
     'live-installed-product-evidence.test.mjs',
     'smoke-linux-packages.test.mjs',
     'product-proof-closure.test.mjs',
+    'product-feature-proof-closure.test.mjs',
     'run-linux-matrix-harness.test.mjs',
     'run-product-requirement-validator.test.mjs',
     'resolve-product-evidence-run.test.mjs',
@@ -129,6 +130,7 @@ export function verifyLinuxWorkflowWiring(input) {
     '--target-head "$TARGET_HEAD"',
     'artifact-ids: ${{ steps.evidence.outputs.artifact_id }}',
     'CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}',
+    'finalize-product-feature-proof-closure.mjs',
     'prepare-product-requirement-input.mjs',
     'run-product-requirement-validator.mjs',
     'uses: actions/attest@',
@@ -138,6 +140,12 @@ export function verifyLinuxWorkflowWiring(input) {
   if (/--run-id\s+['"]?\$\{\{\s*inputs\.candidate_run_id/u.test(input.productParityWorkflow)) {
     failures.push('product parity workflow may not interpolate candidate_run_id directly into shell.');
   }
+  requireOrder(input.productParityWorkflow, [
+    'Download exact-candidate installed evidence',
+    'Finalize registered feature proof closure',
+    'Materialize the requirement-owned release closure',
+    'Run the registered requirement validator'
+  ], 'product parity evidence workflow');
   requireText(input.release, 'npm ci --prefix scripts/linux-port --ignore-scripts', 'candidate evidence dependencies');
   for (const command of [
     'macos-matched-performance',

@@ -45,6 +45,11 @@ Primary files:
   canonical per-requirement check, environment, installed-subject, registered-
   producer, and artifact-root policy consumed by
   `scripts/linux-port/attest-product-requirement.mjs`.
+- [`product-feature-proof-registry.json`](product-feature-proof-registry.json) -
+  exact environment feature-artifact roles and size/media contracts snapshotted
+  into each immutable candidate. See
+  [`PRODUCT_FEATURE_PROOF_CONTRACT.md`](PRODUCT_FEATURE_PROOF_CONTRACT.md) for
+  capture, finalization, materialization, and validator invariants.
 - [`parity-ledger.md`](parity-ledger.md) - generated human-readable ledger.
 - [`parity-ledger-history.json`](parity-ledger-history.json) - archived
   mission evidence that cannot satisfy current product parity.
@@ -104,10 +109,13 @@ successful canonical Linux Release Candidate workflow in
 aggregate only after release attestation and final verification.
 It requires signed installed manifests for deb and rpm on both architectures,
 every release sidecar, package/feed signatures, Sigstore bundles, and lifecycle
-proof. Native package shards supply signed installed-manifest records; aggregate
+proof, and the validated feature-proof registry. Native package shards supply
+signed installed-manifest records; aggregate
 assembly validates, copies, and preserves those records before product-proof
 finalization. `prepare-product-requirement-input.mjs` copies only hash-bound
-subjects from a passed aggregate into the selected requirement/environment root.
+subjects from a passed aggregate and a candidate-bound `collected` feature
+closure into the selected requirement/environment root. Collection alone never
+produces a passed parity receipt.
 
 Release is split into three fail-closed workflows. Linux Release Candidate
 builds, signs, verifies, and uploads an immutable candidate but never evaluates

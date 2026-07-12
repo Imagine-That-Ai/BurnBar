@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { finalizeProductProofClosure } from './finalize-product-proof-closure.mjs';
+import { finalizeProductFeatureProofClosure } from './lib/product-feature-proof.mjs';
 import { finalizeLinuxPromotionClosure } from './finalize-linux-promotion-closure.mjs';
 import { prepareProductRequirementInput } from './prepare-product-requirement-input.mjs';
 import { validateProductRequirement as validateP01 } from './product-validators/P-01.mjs';
@@ -40,7 +41,7 @@ function record(root, file) {
   };
 }
 
-function createReleaseFixture() {
+function createReleaseFixture(featureRequirements = []) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-product-proof-'));
   const output = path.join(root, '.linux-release');
   const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
@@ -57,6 +58,21 @@ function createReleaseFixture() {
     path.resolve('packaging/linux/release-manifest.json'),
     path.join(root, 'packaging/linux/release-manifest.json')
   );
+  for (const relative of [
+    'docs/linux-port/product-feature-proof-registry.json',
+    'docs/linux-port/product-parity-requirements.json',
+    'schemas/linux-product-feature-proof-registry.schema.json',
+    'schemas/linux-product-feature-proof-registration.schema.json',
+    'schemas/linux-product-feature-proof-closure.schema.json'
+  ]) {
+    fs.mkdirSync(path.dirname(path.join(root, relative)), { recursive: true });
+    fs.copyFileSync(path.resolve(relative), path.join(root, relative));
+  }
+  writeJson(path.join(root, 'docs/linux-port/product-feature-proof-registry.json'), {
+    schemaVersion: 1,
+    id: 'openburnbar-linux-product-feature-proof-registry-v1',
+    requirements: featureRequirements
+  });
   const artifacts = [];
   for (const architecture of ['aarch64', 'x86_64']) {
     for (const format of ['appimage', 'deb', 'rpm', 'daemon']) {
@@ -195,6 +211,7 @@ test('finalizer emits a two-architecture cryptographic product closure', (t) => 
   assert.equal(result.document.packages.length, 4);
   assert.equal(result.document.releaseArtifacts.length, 8);
   assert.deepEqual(result.document.architectures, ['aarch64', 'x86_64']);
+  assert.equal(result.document.featureProofRegistry.path, 'sidecars/product-feature-proof-registry.json');
   assert.equal(result.document.proofs.filter((proof) => proof.role === 'package-sigstore').length, 8);
   assert.equal(fs.existsSync(result.output), true);
 });
@@ -259,6 +276,48 @@ test('materializer selects the exact environment package and copies hash-bound p
   assert.equal(fs.existsSync(result.output), true);
 });
 
+test('registered environment feature proofs are candidate-bound and materialized without implying pass', (t) => {
+  const fixture = createReleaseFixture([{
+    requirementId: 'P-02',
+    artifacts: [{ role: 'feature.parity-report', mediaType: 'application/json', maxBytes: 4096 }]
+  }]);
+  t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }));
+  finalizeProductProofClosure({ repoRoot: fixture.root, outputDir: fixture.output, targetHead: HEAD });
+  const inputRoot = stageAggregate(fixture, 'P-02');
+  writeJson(path.join(inputRoot, 'feature-artifacts/parity-report.json'), {
+    schemaVersion: 1,
+    observed: true
+  });
+  writeJson(path.join(inputRoot, 'feature-proof-registration.json'), {
+    schemaVersion: 1,
+    requirementId: 'P-02',
+    environmentId: ENVIRONMENT,
+    artifacts: [{ role: 'feature.parity-report', path: 'feature-artifacts/parity-report.json' }]
+  });
+  const feature = finalizeProductFeatureProofClosure({
+    repoRoot: fixture.root,
+    inputRoot,
+    requirementId: 'P-02',
+    environmentId: ENVIRONMENT,
+    targetHead: HEAD,
+    candidateRunId: CANDIDATE_RUN_ID,
+    candidateArtifactDigest: CANDIDATE_ARTIFACT_DIGEST
+  });
+  assert.equal(feature.closure.status, 'collected');
+  assert.equal(Object.hasOwn(feature.closure, 'passed'), false);
+  const { closure } = prepareProductRequirementInput({
+    requirementId: 'P-02', environmentId: ENVIRONMENT, inputRoot, targetHead: HEAD,
+    candidateRunId: CANDIDATE_RUN_ID, candidateArtifactDigest: CANDIDATE_ARTIFACT_DIGEST,
+    repoRoot: fixture.root
+  });
+  assert.equal(closure.schemaVersion, 3);
+  assert.equal(closure.featureProofClosure.sha256, sha256(feature.output));
+  const proof = closure.proofs.find((entry) => entry.role === 'feature.parity-report');
+  assert.equal(proof.evidenceClass, 'feature');
+  assert.equal(proof.mediaType, 'application/json');
+  assert.equal(sha256(path.join(fixture.root, proof.path)), proof.sha256);
+});
+
 test('materializer rejects wrong HEAD, unsupported requirements, Arch, and mutated aggregate subjects', async (t) => {
   const fixture = createReleaseFixture();
   t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }));
@@ -279,7 +338,7 @@ test('materializer rejects wrong HEAD, unsupported requirements, Arch, and mutat
       requirementId: 'P-02', environmentId: ENVIRONMENT, inputRoot,
       targetHead: HEAD, candidateRunId: CANDIDATE_RUN_ID,
       candidateArtifactDigest: CANDIDATE_ARTIFACT_DIGEST, repoRoot: fixture.root
-    }), /no release-proof materializer/u);
+    }), /no release or feature proof materializer/u);
   });
   await t.test('Arch lifecycle absent', () => {
     const environmentId = 'arch-sway-wayland-x86_64';

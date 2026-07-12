@@ -2,8 +2,8 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const PRODUCT_PROOF_CLOSURE_SCHEMA_VERSION = 1;
-export const REQUIREMENT_RELEASE_CLOSURE_SCHEMA_VERSION = 2;
+export const PRODUCT_PROOF_CLOSURE_SCHEMA_VERSION = 2;
+export const REQUIREMENT_RELEASE_CLOSURE_SCHEMA_VERSION = 3;
 export const RELEASE_ARCHITECTURES = Object.freeze(['aarch64', 'x86_64']);
 export const SUPPORT_ENVIRONMENTS = Object.freeze([
   'ubuntu-24.04-gnome-x11-x86_64',
@@ -127,6 +127,13 @@ export function validateAggregateDocument(document) {
   if (!Array.isArray(document.proofs) || document.proofs.length === 0) {
     throw new Error('aggregate product proof closure has no proof subjects');
   }
+  if (document.featureProofRegistry === null || typeof document.featureProofRegistry !== 'object'
+      || Array.isArray(document.featureProofRegistry)
+      || typeof document.featureProofRegistry.path !== 'string'
+      || !SHA256.test(document.featureProofRegistry.sha256 ?? '')
+      || !Number.isInteger(document.featureProofRegistry.size) || document.featureProofRegistry.size < 0) {
+    throw new Error('aggregate product proof closure has no immutable feature proof registry');
+  }
   return document;
 }
 
@@ -139,12 +146,16 @@ export function environmentPackage(environmentId) {
 }
 
 export function atomicWriteJson(file, value) {
+  atomicWriteBytes(file, Buffer.from(`${JSON.stringify(value, null, 2)}\n`, 'utf8'));
+}
+
+export function atomicWriteBytes(file, bytes) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const temporary = `${file}.tmp-${process.pid}-${crypto.randomBytes(8).toString('hex')}`;
   try {
     const descriptor = fs.openSync(temporary, 'wx', 0o600);
     try {
-      fs.writeFileSync(descriptor, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+      fs.writeFileSync(descriptor, bytes);
       fs.fsyncSync(descriptor);
     } finally {
       fs.closeSync(descriptor);

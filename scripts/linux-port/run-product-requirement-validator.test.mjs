@@ -387,6 +387,33 @@ test('dispatcher binds distinct release, package, live installed environment, an
   assert.equal(fs.statSync(path.join(root, result.outputPath)).mode & 0o777, 0o600);
 });
 
+test('canonical schema-3 closures require the immutable aggregate and registry before dispatch', async (t) => {
+  const repository = createRepository({ validators: { 'P-01': validValidatorModule() } });
+  t.after(() => fs.rmSync(repository.root, { recursive: true, force: true }));
+  const evidence = writeEvidence(repository.root, 'P-01', repository.head);
+  evidence.closure.schemaVersion = 3;
+  writeJson(repository.root, evidence.paths.closure, evidence.closure);
+  await rejectsWithMessage(
+    () => dispatch(args('P-01'), repository.root),
+    /aggregate product proof closure does not exist/u
+  );
+});
+
+test('canonical materialized closures cannot downgrade the release closure schema', async (t) => {
+  const repository = createRepository({ validators: { 'P-01': validValidatorModule() } });
+  t.after(() => fs.rmSync(repository.root, { recursive: true, force: true }));
+  const evidence = writeEvidence(repository.root, 'P-01', repository.head);
+  evidence.closure.schemaVersion = 2;
+  evidence.closure.requirementId = 'P-01';
+  evidence.closure.environmentId = ENVIRONMENT;
+  evidence.closure.status = 'passed';
+  writeJson(repository.root, evidence.paths.closure, evidence.closure);
+  await rejectsWithMessage(
+    () => dispatch(args('P-01'), repository.root),
+    /canonical release closure schemaVersion must be 3/u
+  );
+});
+
 test('live environment probe rejects every mismatched identity dimension', async (t) => {
   const mutations = [
     ['operating system', (manifest) => { manifest.os.id = 'fedora'; }, /operating system/u],

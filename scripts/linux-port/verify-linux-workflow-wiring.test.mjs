@@ -25,6 +25,7 @@ function valid() {
       'live-installed-product-evidence.test.mjs',
       'smoke-linux-packages.test.mjs',
       'product-proof-closure.test.mjs',
+      'product-feature-proof-closure.test.mjs',
       'run-linux-matrix-harness.test.mjs',
       'run-product-requirement-validator.test.mjs',
       'resolve-product-evidence-run.test.mjs',
@@ -48,11 +49,16 @@ function valid() {
       '--target-head "$TARGET_HEAD"',
       'artifact-ids: ${{ steps.evidence.outputs.artifact_id }}',
       'CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}',
+      'finalize-product-feature-proof-closure.mjs',
       'prepare-product-requirement-input.mjs',
       'run-product-requirement-validator.mjs',
       'uses: actions/attest@',
       '.sigstore.jsonl',
-      'if-no-files-found: error'
+      'if-no-files-found: error',
+      'Download exact-candidate installed evidence',
+      'Finalize registered feature proof closure',
+      'Materialize the requirement-owned release closure',
+      'Run the registered requirement validator'
     ].join('\n'),
     promotionWorkflow: [
       'resolve-product-evidence-run.mjs',
@@ -210,6 +216,7 @@ test('product evidence dependency install and mutation suites are mandatory in t
     'attest-product-requirement.test.mjs',
     'github-artifact-provenance.test.mjs',
     'smoke-linux-packages.test.mjs',
+    'product-feature-proof-closure.test.mjs',
     'run-linux-matrix-harness.test.mjs',
     'run-product-requirement-validator.test.mjs'
   ]) {
@@ -226,6 +233,7 @@ test('product evidence producer identity and immutable artifact wiring fail clos
     '--run-id "$CANDIDATE_RUN_ID"',
     '--target-head "$TARGET_HEAD"',
     'artifact-ids: ${{ steps.evidence.outputs.artifact_id }}',
+    'finalize-product-feature-proof-closure.mjs',
     'uses: actions/attest@',
     '.sigstore.jsonl'
   ]) {

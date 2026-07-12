@@ -10,8 +10,8 @@ import {
   validateAggregateDocument,
   validateRecord
 } from './lib/product-proof-closure.mjs';
+import { validateProductFeatureProofClosure } from './lib/product-feature-proof.mjs';
 
-const SUPPORTED_REQUIREMENTS = new Set(['P-01', 'P-03', 'P-04', 'P-37']);
 const DEFAULT_REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const PROOF_ROLES = Object.freeze({
   'P-01': new Set([
@@ -59,9 +59,6 @@ export function prepareProductRequirementInput({
   candidateArtifactDigest,
   repoRoot = DEFAULT_REPO_ROOT
 }) {
-  if (!SUPPORTED_REQUIREMENTS.has(requirementId)) {
-    throw new Error(`no release-proof materializer is registered for ${requirementId}`);
-  }
   if (!/^[1-9][0-9]*$/u.test(String(candidateRunId ?? ''))
       || !/^sha256:[a-f0-9]{64}$/u.test(candidateArtifactDigest ?? '')) {
     throw new Error('candidate run id and artifact digest are required');
@@ -81,6 +78,19 @@ export function prepareProductRequirementInput({
   const aggregateSnapshot = readRegularSnapshot(root, aggregateRelative, 'aggregate product proof closure');
   const aggregate = validateAggregateDocument(parseJson(aggregateSnapshot, 'aggregate product proof closure'));
   if (aggregate.targetHead !== targetHead) throw new Error('aggregate product proof closure target does not match the requested HEAD');
+  const featureProof = validateProductFeatureProofClosure({
+    repoRoot: repository,
+    inputRoot: root,
+    aggregate,
+    aggregateSnapshot,
+    requirementId,
+    environmentId,
+    candidateRunId,
+    candidateArtifactDigest
+  });
+  if (!PROOF_ROLES[requirementId] && featureProof === null) {
+    throw new Error(`no release or feature proof materializer is registered for ${requirementId}`);
+  }
   const packageRow = aggregate.packages.find((row) =>
     row.format === expectedPackage.format && row.architecture === expectedPackage.architecture
   );
@@ -136,7 +146,7 @@ export function prepareProductRequirementInput({
     }
   }
   for (const proof of aggregate.proofs) {
-    if (!PROOF_ROLES[requirementId].has(proof.role)) continue;
+    if (!PROOF_ROLES[requirementId]?.has(proof.role)) continue;
     const snapshot = validateRecord(aggregateRoot, proof, `${proof.role} aggregate proof`);
     const destination = path.join(subjectsDir, safeName(proofIndex, proof.role, proof.path));
     proofIndex += 1;
@@ -148,6 +158,34 @@ export function prepareProductRequirementInput({
       path: relative(destination),
       sha256: snapshot.sha256
     });
+  }
+  let featureProofClosure = null;
+  if (featureProof) {
+    featureProofClosure = {
+      path: relative(featureProof.closureSnapshot.absolute),
+      sha256: featureProof.closureSnapshot.sha256,
+      size: featureProof.closureSnapshot.size
+    };
+    proofRecords.push({ role: 'feature-proof-closure', ...featureProofClosure });
+    proofRecords.push({
+      role: 'feature-proof-registry',
+      path: relative(featureProof.registrySnapshot.absolute),
+      sha256: featureProof.registrySnapshot.sha256,
+      size: featureProof.registrySnapshot.size
+    });
+    for (const { proof, snapshot } of featureProof.proofs) {
+      const destination = path.join(subjectsDir, safeName(proofIndex, proof.role, proof.path));
+      proofIndex += 1;
+      copySnapshot(snapshot, destination);
+      proofRecords.push({
+        role: proof.role,
+        mediaType: proof.mediaType,
+        evidenceClass: 'feature',
+        path: relative(destination),
+        sha256: snapshot.sha256,
+        size: snapshot.size
+      });
+    }
   }
   const closure = {
     schemaVersion: REQUIREMENT_RELEASE_CLOSURE_SCHEMA_VERSION,
@@ -165,6 +203,7 @@ export function prepareProductRequirementInput({
       artifactDigest: candidateArtifactDigest,
       productProofClosureSha256: aggregateSnapshot.sha256
     },
+    ...(featureProofClosure ? { featureProofClosure } : {}),
     packageManifest: {
       path: relative(manifestDestination),
       sha256: manifestSnapshot.sha256

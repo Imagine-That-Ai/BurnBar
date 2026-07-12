@@ -10,6 +10,11 @@ import {
   captureLiveRuntimeCapabilities,
   verifyLiveInstalledProduct
 } from './lib/live-installed-product-evidence.mjs';
+import { validateProductFeatureProofClosure } from './lib/product-feature-proof.mjs';
+import {
+  REQUIREMENT_RELEASE_CLOSURE_SCHEMA_VERSION,
+  validateAggregateDocument
+} from './lib/product-proof-closure.mjs';
 
 export const CANONICAL_REQUIREMENT_IDS = Array.from(
   { length: 40 },
@@ -622,6 +627,11 @@ export function deriveReleaseSubjects(repoRoot, releaseClosurePath, requirementI
   if (!Number.isInteger(closure.schemaVersion) || closure.schemaVersion < 1) {
     throw new Error('release closure must have a positive integer schemaVersion');
   }
+  const canonicalMaterializedClosure = closure.requirementId !== undefined
+    || closure.environmentId !== undefined || closure.status !== undefined;
+  if (canonicalMaterializedClosure && closure.schemaVersion !== REQUIREMENT_RELEASE_CLOSURE_SCHEMA_VERSION) {
+    throw new Error(`canonical release closure schemaVersion must be ${REQUIREMENT_RELEASE_CLOSURE_SCHEMA_VERSION}`);
+  }
   const closureTarget = closure.targetHead ?? closure.targetCommit ?? closure.git?.commit;
   const closureSourceCommit = closure.sourceCommit ?? closure.source?.commit ?? closure.git?.commit;
   if (closureTarget !== targetHead) throw new Error('release closure target commit does not match current HEAD');
@@ -657,6 +667,73 @@ export function deriveReleaseSubjects(repoRoot, releaseClosurePath, requirementI
   if (packageRecords.length !== 1) throw new Error('environment release closure must identify exactly one installed package');
   if (closure.runtime !== undefined || closure.runtimes !== undefined) {
     throw new Error('release closure must not supply runtime capability evidence; it is captured from the live installed shell');
+  }
+
+  const featureRows = Array.isArray(closure.proofs)
+    ? closure.proofs.filter((proof) =>
+      proof?.evidenceClass === 'feature' || proof?.role?.startsWith('feature.')
+    )
+    : [];
+  let featureProof = null;
+  if (closure.schemaVersion >= REQUIREMENT_RELEASE_CLOSURE_SCHEMA_VERSION) {
+    const inputRoot = path.dirname(closureSource.absolute);
+    const aggregateSnapshot = readFileSnapshot(
+      repoRoot,
+      `${path.posix.dirname(closureSource.path)}/.linux-release/product-proof-closure.json`,
+      'aggregate product proof closure'
+    );
+    let aggregate;
+    try {
+      aggregate = validateAggregateDocument(JSON.parse(aggregateSnapshot.bytes.toString('utf8')));
+    } catch (error) {
+      throw new Error(`aggregate product proof closure is invalid: ${error.message}`);
+    }
+    if (aggregate.targetHead !== targetHead || aggregate.sourceCommit !== targetHead
+        || aggregate.version !== closure.version
+        || !aggregate.supportEnvironments.includes(expectedEnvironment.id)
+        || closure.candidate.productProofClosureSha256 !== aggregateSnapshot.sha256) {
+      throw new Error('release closure is not bound to the exact aggregate product candidate and environment');
+    }
+    featureProof = validateProductFeatureProofClosure({
+      repoRoot,
+      inputRoot,
+      aggregate,
+      aggregateSnapshot,
+      requirementId,
+      environmentId: expectedEnvironment.id,
+      candidateRunId: closure.candidate.runId,
+      candidateArtifactDigest: closure.candidate.artifactDigest
+    });
+    if (featureProof === null) {
+      if (closure.featureProofClosure !== undefined || featureRows.length > 0) {
+        throw new Error('release closure supplies feature proofs for an unregistered requirement');
+      }
+    } else {
+      const expectedFeatureClosurePath = `${path.posix.dirname(closureSource.path)}/feature-proof-closure.json`;
+      if (closure.featureProofClosure?.path !== expectedFeatureClosurePath
+          || closure.featureProofClosure?.sha256 !== featureProof.closureSnapshot.sha256
+          || closure.featureProofClosure?.size !== featureProof.closureSnapshot.size) {
+        throw new Error('release closure featureProofClosure does not match the immutable feature closure');
+      }
+      const byRole = new Map();
+      for (const row of featureRows) {
+        if (row.evidenceClass !== 'feature') throw new Error(`${row.role} is not classified as feature evidence`);
+        if (byRole.has(row.role)) throw new Error(`release closure repeats feature proof role ${row.role}`);
+        byRole.set(row.role, row);
+      }
+      if (byRole.size !== featureProof.proofs.length) {
+        throw new Error('release closure feature proof set does not match the registered closure');
+      }
+      for (const { proof, snapshot } of featureProof.proofs) {
+        const materialized = byRole.get(proof.role);
+        if (materialized?.sha256 !== snapshot.sha256 || materialized?.size !== snapshot.size
+            || materialized?.mediaType !== proof.mediaType) {
+          throw new Error(`${proof.role} materialized feature proof does not match its immutable closure`);
+        }
+      }
+    }
+  } else if (closure.featureProofClosure !== undefined || featureRows.length > 0) {
+    throw new Error('legacy release closures may not supply feature proofs');
   }
 
   const release = { path: closureSource.path, sha256: closureSource.sha256 };
@@ -700,7 +777,8 @@ export function deriveReleaseSubjects(repoRoot, releaseClosurePath, requirementI
     packages,
     runtimes: [],
     all,
-    installedManifest
+    installedManifest,
+    featureProof
   };
 }
 

@@ -105,6 +105,7 @@ jobs:
           scripts/linux-port/live-installed-product-evidence.test.mjs
           scripts/linux-port/smoke-linux-packages.test.mjs
           scripts/linux-port/product-proof-closure.test.mjs
+          scripts/linux-port/product-feature-proof-closure.test.mjs
           scripts/linux-port/run-linux-matrix-harness.test.mjs
           scripts/linux-port/run-product-requirement-validator.test.mjs
           scripts/linux-port/validate-parity-ledger.test.mjs

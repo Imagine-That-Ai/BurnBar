@@ -12,6 +12,7 @@ import {
   readRegularSnapshot,
   validateRecord
 } from './lib/product-proof-closure.mjs';
+import { snapshotFeatureProofRegistry } from './lib/product-feature-proof.mjs';
 
 const DEFAULT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -215,6 +216,10 @@ export function finalizeProductProofClosure({
     if (seenProofs.has(key)) throw new Error(`duplicate product proof subject: ${key}`);
     seenProofs.add(key);
   }
+  const featureProofRegistry = outputRecord(
+    realOutput,
+    snapshotFeatureProofRegistry(realRoot, realOutput)
+  );
   const document = {
     schemaVersion: PRODUCT_PROOF_CLOSURE_SCHEMA_VERSION,
     generatedAt: new Date().toISOString(),
@@ -230,6 +235,7 @@ export function finalizeProductProofClosure({
       `${left.type}:${left.architecture}`.localeCompare(`${right.type}:${right.architecture}`)
     ),
     packages: packageRows.sort((left, right) => `${left.format}:${left.architecture}`.localeCompare(`${right.format}:${right.architecture}`)),
+    featureProofRegistry,
     proofs: proofs.sort((left, right) => `${left.role}:${left.path}`.localeCompare(`${right.role}:${right.path}`)),
     blockers: []
   };
