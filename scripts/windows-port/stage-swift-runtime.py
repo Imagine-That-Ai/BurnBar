@@ -15,6 +15,7 @@ import sys
 
 
 DEPENDENCY_LINE = re.compile(r"^\s*([A-Za-z0-9_.+-]+\.dll)\s*$", re.IGNORECASE)
+REQUIRED_RESOURCE_BUNDLE = "OpenBurnBarCore_OpenBurnBarCore.resources"
 SYSTEM_LIBRARIES = {
     "advapi32.dll",
     "bcrypt.dll",
@@ -107,13 +108,13 @@ def stage(
     destination.mkdir(parents=True, exist_ok=True)
     queue = [engine.resolve()]
     queued = {engine.name.casefold()}
-    staged: list[Path] = []
+    staged: list[tuple[Path, Path]] = []
 
     while queue:
         source = queue.pop(0)
         target = destination / source.name
         shutil.copy2(source, target)
-        staged.append(target)
+        staged.append((target, Path(source.name)))
 
         completed = subprocess.run(
             [dumpbin, "/DEPENDENTS", str(source)],
@@ -131,13 +132,28 @@ def stage(
             queued.add(key)
             queue.append(resolved)
 
+    resource_bundle = engine.parent / REQUIRED_RESOURCE_BUNDLE
+    if not resource_bundle.is_dir():
+        raise ValueError(
+            f"required Swift resource bundle is missing: {resource_bundle}"
+        )
+
+    for source in sorted(resource_bundle.rglob("*"), key=lambda item: item.as_posix().casefold()):
+        if not source.is_file():
+            continue
+        relative = Path(resource_bundle.name) / source.relative_to(resource_bundle)
+        target = destination / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        staged.append((target, relative))
+
     files = [
         {
-            "fileName": path.name,
+            "fileName": relative.as_posix(),
             "sha256": sha256(path),
             "sizeBytes": path.stat().st_size,
         }
-        for path in sorted(staged, key=lambda item: item.name.casefold())
+        for path, relative in sorted(staged, key=lambda item: item[1].as_posix().casefold())
     ]
     manifest: dict[str, object] = {
         "schemaVersion": 1,
@@ -173,7 +189,11 @@ def main() -> int:
     except (OSError, subprocess.CalledProcessError, ValueError) as error:
         print(f"stage-swift-runtime: {error}", file=sys.stderr)
         return 1
-    print(f"stage-swift-runtime: staged {len(manifest['files'])} DLLs to {args.destination}")
+    print(
+        "stage-swift-runtime: staged "
+        f"{len(manifest['files'])} files (including {REQUIRED_RESOURCE_BUNDLE}) "
+        f"to {args.destination}"
+    )
     return 0
 
 

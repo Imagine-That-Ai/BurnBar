@@ -51,6 +51,10 @@
              Link="%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(OpenBurnBarNativeEngineDirectory)\*.resources\**\*"
+             Link="%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
     <Content Include="$(OpenBurnBarNativeEngineDirectory)\native-engine-manifest.json"
              Condition="Exists('$(OpenBurnBarNativeEngineDirectory)\native-engine-manifest.json')"
              Link="native-engine-manifest.json"
