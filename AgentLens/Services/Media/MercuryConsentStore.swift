@@ -52,7 +52,20 @@ final class MercuryConsentStore: ObservableObject {
         } else {
             self.rememberAcceptedMirrorPeers = defaults.bool(forKey: Self.rememberAcceptedPeersKey)
         }
-        self.grants = Self.decodeGrants(defaults.data(forKey: Self.grantsKey))
+        // Cap grants persisted by the earlier sliding-renewal implementation
+        // (up to 365 days) to the current fixed TTL from their original grant
+        // time. Without this, pre-existing serialized `expiresAt` values keep
+        // authorizing peers long past the advertised 30-day lifetime.
+        var loadedGrants = Self.decodeGrants(defaults.data(forKey: Self.grantsKey))
+        var grantsMutated = false
+        for index in loadedGrants.indices {
+            let cappedExpiry = loadedGrants[index].grantedAt.addingTimeInterval(Self.grantTTL)
+            if loadedGrants[index].expiresAt > cappedExpiry {
+                loadedGrants[index].expiresAt = cappedExpiry
+                grantsMutated = true
+            }
+        }
+        self.grants = loadedGrants
         if defaults.object(forKey: Self.legacyAlwaysAllowKey) != nil {
             let legacyAlwaysAllow = defaults.bool(forKey: Self.legacyAlwaysAllowKey)
             defaults.removeObject(forKey: Self.legacyAlwaysAllowKey)
@@ -63,6 +76,17 @@ final class MercuryConsentStore: ObservableObject {
                 self.rememberAcceptedMirrorPeers = legacyAlwaysAllow
                 defaults.set(legacyAlwaysAllow, forKey: Self.rememberAcceptedPeersKey)
             }
+        }
+        // Remembering is opt-in. If the preference resolves to off (including
+        // the upgrade path where a previous default-on build persisted grants
+        // without any explicit opt-in), stored grants have no consent backing
+        // them: drop them so they cannot bypass the approval UI.
+        if !rememberAcceptedMirrorPeers && !grants.isEmpty {
+            grants.removeAll()
+            grantsMutated = true
+        }
+        if grantsMutated {
+            persist()
         }
         pruneExpired()
     }
@@ -82,6 +106,10 @@ final class MercuryConsentStore: ObservableObject {
         remotePeerNodeId: String?,
         now: Date = Date()
     ) -> Bool {
+        // Auto-accept is only valid while the user is opted in to remembered
+        // peers; a stored grant without a live opt-in must not bypass the
+        // approval UI.
+        guard rememberAcceptedMirrorPeers else { return false }
         guard Self.peerNodeIDsMatch(
             declaredPeerNodeId: controlAuthorityPeerNodeId,
             remotePeerNodeId: remotePeerNodeId

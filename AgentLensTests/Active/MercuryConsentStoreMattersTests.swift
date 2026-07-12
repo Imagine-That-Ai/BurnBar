@@ -225,6 +225,121 @@ final class MercuryConsentStoreMattersTests: XCTestCase {
         XCTAssertNil(defaults.object(forKey: "mercuryAlwaysAllowMyIPhoneToMirror"))
     }
 
+    /// Upgrade path from the previous default-on build: a grant was persisted
+    /// by a normal Accept, but the user never explicitly chose the remember
+    /// preference. With the preference resolving to off, that stored grant has
+    /// no consent backing it and must be dropped, not silently honored.
+    func test_persistedGrantsAreClearedWhenRememberPreferenceWasNeverSet() throws {
+        let grants = [grant(connectionId: "conn-legacy", peer: "peer-legacy")]
+        defaults.set(try JSONEncoder().encode(grants), forKey: "mercuryMirrorAutoAcceptGrants.v2")
+
+        let store = MercuryConsentStore(defaults: defaults)
+
+        XCTAssertFalse(store.rememberAcceptedMirrorPeers)
+        XCTAssertEqual(store.grants.count, 0,
+                       "grants persisted without an explicit opt-in must be cleared on load")
+        XCTAssertFalse(store.canAutoAccept(
+            connectionId: "conn-legacy",
+            viewerDeviceId: nil,
+            controlAuthorityPeerNodeId: "peer-legacy",
+            remotePeerNodeId: "peer-legacy"
+        ), "a pre-opt-in grant must not bypass the approval UI")
+
+        let reloaded = MercuryConsentStore(defaults: defaults)
+        XCTAssertEqual(reloaded.grants.count, 0, "the cleared ledger must be persisted, not just hidden")
+    }
+
+    func test_persistedGrantsAreClearedWhenUserExplicitlyOptedOut() throws {
+        defaults.set(false, forKey: "mercuryRememberAcceptedMirrorPeers")
+        let grants = [grant(connectionId: "conn-a", peer: "peer-a")]
+        defaults.set(try JSONEncoder().encode(grants), forKey: "mercuryMirrorAutoAcceptGrants.v2")
+
+        let store = MercuryConsentStore(defaults: defaults)
+        XCTAssertEqual(store.grants.count, 0, "an explicit opt-out must clear remembered grants")
+    }
+
+    func test_autoAcceptRequiresLiveOptIn() {
+        let store = MercuryConsentStore(defaults: defaults)
+        store.rememberAcceptedMirrorPeers = true
+        store.rememberAcceptedPeer(
+            connectionId: "conn-1",
+            viewerDeviceId: "device-1",
+            controlAuthorityPeerNodeId: "abc123",
+            remotePeerNodeId: "ABC123",
+            requesterName: "iPhone"
+        )
+        XCTAssertTrue(store.canAutoAccept(
+            connectionId: "conn-1",
+            viewerDeviceId: "device-1",
+            controlAuthorityPeerNodeId: "abc123",
+            remotePeerNodeId: "ABC123"
+        ))
+
+        store.rememberAcceptedMirrorPeers = false
+        XCTAssertFalse(store.canAutoAccept(
+            connectionId: "conn-1",
+            viewerDeviceId: "device-1",
+            controlAuthorityPeerNodeId: "abc123",
+            remotePeerNodeId: "ABC123"
+        ), "turning the preference off must immediately stop auto-accepts")
+    }
+
+    /// Grants serialized by the prior 365-day sliding implementation must not
+    /// keep auto-accepting for up to a year: on load each grant is capped to
+    /// `grantedAt + 30 days`.
+    func test_overlongPersistedGrantIsCappedToCurrentTTLOnLoad() throws {
+        defaults.set(true, forKey: "mercuryRememberAcceptedMirrorPeers")
+        let now = Date()
+        let staleGrant = MercuryConsentStore.MirrorAutoAcceptGrant(
+            key: "conn-old|_|peer-old",
+            connectionId: "conn-old",
+            viewerDeviceId: nil,
+            controlAuthorityPeerNodeId: "peer-old",
+            requesterName: "Old phone",
+            grantedAt: now.addingTimeInterval(-40 * 24 * 60 * 60),
+            expiresAt: now.addingTimeInterval(300 * 24 * 60 * 60),
+            lastUsedAt: nil
+        )
+        let freshOverlongGrant = MercuryConsentStore.MirrorAutoAcceptGrant(
+            key: "conn-new|_|peer-new",
+            connectionId: "conn-new",
+            viewerDeviceId: nil,
+            controlAuthorityPeerNodeId: "peer-new",
+            requesterName: "New phone",
+            grantedAt: now.addingTimeInterval(-1 * 24 * 60 * 60),
+            expiresAt: now.addingTimeInterval(364 * 24 * 60 * 60),
+            lastUsedAt: nil
+        )
+        defaults.set(
+            try JSONEncoder().encode([staleGrant, freshOverlongGrant]),
+            forKey: "mercuryMirrorAutoAcceptGrants.v2"
+        )
+
+        let store = MercuryConsentStore(defaults: defaults)
+
+        XCTAssertEqual(store.grants.map(\.key), [freshOverlongGrant.key],
+                       "a grant older than the TTL must be pruned once capped")
+        let capped = try XCTUnwrap(store.grants.first)
+        XCTAssertEqual(
+            capped.expiresAt.timeIntervalSince1970,
+            freshOverlongGrant.grantedAt.addingTimeInterval(30 * 24 * 60 * 60).timeIntervalSince1970,
+            accuracy: 0.001,
+            "a surviving overlong grant must expire 30 days after its original grant time"
+        )
+        XCTAssertFalse(store.canAutoAccept(
+            connectionId: "conn-old",
+            viewerDeviceId: nil,
+            controlAuthorityPeerNodeId: "peer-old",
+            remotePeerNodeId: "peer-old"
+        ))
+        XCTAssertTrue(store.canAutoAccept(
+            connectionId: "conn-new",
+            viewerDeviceId: nil,
+            controlAuthorityPeerNodeId: "peer-new",
+            remotePeerNodeId: "peer-new"
+        ))
+    }
+
     func test_autoAcceptDoesNotSlideGrantExpiryForward() {
         let store = MercuryConsentStore(defaults: defaults)
         store.rememberAcceptedMirrorPeers = true
