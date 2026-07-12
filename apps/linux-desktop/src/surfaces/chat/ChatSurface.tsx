@@ -56,7 +56,8 @@ export function ChatSurface() {
   const hasMoreThreads = threads.length > visibleThreadCount;
   const selectedThread = threads.find((t) => t.id === selectedThreadId) ?? null;
   const gatewayHint = gatewayBaseURL ? `gateway ${gatewayBaseURL}` : null;
-  const liveComposerDisabled = !fixtureMode && gatewayStatus !== 'reachable';
+  const liveComposerDisabled =
+    !fixtureMode && gatewayStatus !== 'reachable' && gatewayStatus !== 'capability_absent';
   const liveComposerDisabledReason =
     gatewayStatus === 'disabled'
       ? 'Gateway chat is disabled in daemon health.'

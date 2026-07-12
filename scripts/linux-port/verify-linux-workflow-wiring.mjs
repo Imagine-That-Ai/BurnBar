@@ -46,6 +46,8 @@ export function verifyLinuxWorkflowWiring(input) {
     'https://downloads.burnbar.ai/latest-linux.json'
   ]) requireText(input.release, marker, 'two-architecture release closure');
   requireText(input.pr, 'bash scripts/linux-port/run-linux-native-tests.sh', 'PR native behavior gate');
+  requireText(input.pr, 'npm test --prefix apps/linux-desktop', 'PR Linux desktop unit test gate');
+  requireText(input.pr, 'npm run build --prefix apps/linux-desktop', 'PR Linux desktop production build gate');
   requireText(input.pr, 'verify-linux-release.test.mjs', 'PR release mutation suite');
   requireText(input.pr, 'assemble-linux-release.test.mjs', 'PR architecture assembly mutation suite');
   requireText(input.pr, 'linux-package-session.test.mjs', 'PR package lifecycle session suite');
@@ -124,9 +126,40 @@ export function verifyLinuxWorkflowWiring(input) {
     'gateway_chat_stream',
     'gateway_chat_cancel',
     '.bearer_auth(token)',
+    'GatewayProxyError',
+    'GatewayStreamEvent',
+    'GatewaySseBuffer',
+    'GatewayEventDecoder',
+    'GatewayPendingEventBuffer',
+    'release_buffer.finish()',
+    'StreamingSecretPattern',
+    'scan_ipc_event',
+    'GATEWAY_MAX_TOOL_ARGUMENT_BYTES',
+    'GATEWAY_MAX_TOTAL_TOOL_ARGUMENT_BYTES',
+    'GATEWAY_MAX_IPC_BYTES',
+    'scan_cursor',
+    'drain_tool_calls',
+    'Unimplemented',
     'gateway_non_loopback_host_refused',
     'Policy::none()'
   ]) requireText(input.rustBridge, command, 'native gateway credential boundary');
+  requireText(
+    input.rendererBridge,
+    'Channel<GatewayProxyEvent>',
+    'typed renderer gateway event boundary'
+  );
+  for (const marker of [
+    'MAX_QUEUED_EVENTS',
+    'MAX_QUEUED_EVENT_COST',
+    'queueHead',
+    'clearQueue',
+    'renderer_backpressure',
+    'toolCall.key',
+    'activeRequestId',
+    'navigationGeneration',
+    'gatewayEnabled == null',
+    'capability_absent'
+  ]) requireText(input.rendererBridge, marker, 'bounded renderer gateway stream');
   for (const command of [
     'validate_external_url',
     'open_external_url',
@@ -229,6 +262,12 @@ export function verifyLinuxWorkflowWiring(input) {
   }
   if (/\bfetch\s*\(/.test(input.rendererBridge)) {
     failures.push('renderer gateway code may not issue direct network requests.');
+  }
+  if (input.rendererBridge.includes('OpenAICompatibleSSEParser')) {
+    failures.push('renderer gateway code may not parse raw SSE from the native proxy.');
+  }
+  if (/\.shift\s*\(/u.test(input.rendererBridge)) {
+    failures.push('renderer gateway code may not use front-shifting stream queues.');
   }
   if (input.rustBridge.includes('Command::new("openburnbar-cli")')) {
     failures.push('native commands may not resolve openburnbar-cli through ambient PATH.');

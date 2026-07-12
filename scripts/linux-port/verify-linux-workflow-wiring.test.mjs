@@ -6,6 +6,8 @@ function valid() {
   return {
     pr: [
       'bash scripts/linux-port/run-linux-native-tests.sh',
+      'npm test --prefix apps/linux-desktop',
+      'npm run build --prefix apps/linux-desktop',
       'verify-linux-release.test.mjs',
       'assemble-linux-release.test.mjs',
       'linux-package-session.test.mjs',
@@ -113,6 +115,20 @@ function valid() {
       'gateway_chat_stream',
       'gateway_chat_cancel',
       '.bearer_auth(token)',
+      'GatewayProxyError',
+      'GatewayStreamEvent',
+      'GatewaySseBuffer',
+      'GatewayEventDecoder',
+      'GatewayPendingEventBuffer',
+      'release_buffer.finish()',
+      'StreamingSecretPattern',
+      'scan_ipc_event',
+      'GATEWAY_MAX_TOOL_ARGUMENT_BYTES',
+      'GATEWAY_MAX_TOTAL_TOOL_ARGUMENT_BYTES',
+      'GATEWAY_MAX_IPC_BYTES',
+      'scan_cursor',
+      'drain_tool_calls',
+      'Unimplemented',
       'gateway_non_loopback_host_refused',
       'Policy::none()',
       'validate_external_url',
@@ -143,6 +159,17 @@ function valid() {
       "invoke<RawJsonValue>('update_status')",
       "invoke<void>('open_update_url'",
       "invoke<RawJsonValue>('runtime_capabilities')",
+      'Channel<GatewayProxyEvent>',
+      'MAX_QUEUED_EVENTS',
+      'MAX_QUEUED_EVENT_COST',
+      'queueHead',
+      'clearQueue',
+      'renderer_backpressure',
+      'toolCall.key',
+      'activeRequestId',
+      'navigationGeneration',
+      'gatewayEnabled == null',
+      'capability_absent',
       'decodeRuntimeCapabilityManifest',
       'runtime_capability_manifest_missing_ids'
     ].join('\n'),
@@ -169,6 +196,17 @@ test('removing any native behavior or process-isolation command fails', () => {
   ]) {
     const input = valid();
     input.nativeTests = input.nativeTests.split('\n').filter((line) => !line.includes(marker)).join('\n');
+    assert.equal(verifyLinuxWorkflowWiring(input).passed, false, marker);
+  }
+});
+
+test('Linux desktop unit tests and production build cannot be removed from the PR gate', () => {
+  for (const marker of [
+    'npm test --prefix apps/linux-desktop',
+    'npm run build --prefix apps/linux-desktop'
+  ]) {
+    const input = valid();
+    input.pr = input.pr.replace(marker, '');
     assert.equal(verifyLinuxWorkflowWiring(input).passed, false, marker);
   }
 });
@@ -267,9 +305,59 @@ test('gateway bearer exposure or native boundary removal fails', () => {
   exposed.rustBridge += '\n#[tauri::command]\nfn gateway_auth_token() -> Option<String> { None }';
   assert.equal(verifyLinuxWorkflowWiring(exposed).passed, false);
 
-  const missingProxy = valid();
-  missingProxy.rustBridge = missingProxy.rustBridge.replace('gateway_chat_stream', '');
-  assert.equal(verifyLinuxWorkflowWiring(missingProxy).passed, false);
+  for (const marker of [
+    'gateway_chat_stream',
+    'GatewayProxyError',
+    'GatewayStreamEvent',
+    'GatewaySseBuffer',
+    'GatewayEventDecoder',
+    'GatewayPendingEventBuffer',
+    'release_buffer.finish()',
+    'StreamingSecretPattern',
+    'scan_ipc_event',
+    'GATEWAY_MAX_TOOL_ARGUMENT_BYTES',
+    'GATEWAY_MAX_TOTAL_TOOL_ARGUMENT_BYTES',
+    'GATEWAY_MAX_IPC_BYTES',
+    'scan_cursor',
+    'drain_tool_calls',
+    'Unimplemented'
+  ]) {
+    const missingProxy = valid();
+    missingProxy.rustBridge = missingProxy.rustBridge.replace(marker, '');
+    assert.equal(verifyLinuxWorkflowWiring(missingProxy).passed, false, marker);
+  }
+
+  const untypedRenderer = valid();
+  untypedRenderer.rendererBridge = untypedRenderer.rendererBridge.replace(
+    'Channel<GatewayProxyEvent>',
+    'Channel<string>'
+  );
+  assert.equal(verifyLinuxWorkflowWiring(untypedRenderer).passed, false);
+
+  const rawRenderer = valid();
+  rawRenderer.rendererBridge += '\nclass OpenAICompatibleSSEParser {}';
+  assert.equal(verifyLinuxWorkflowWiring(rawRenderer).passed, false);
+
+  for (const marker of [
+    'MAX_QUEUED_EVENTS',
+    'MAX_QUEUED_EVENT_COST',
+    'queueHead',
+    'clearQueue',
+    'renderer_backpressure',
+    'toolCall.key',
+    'activeRequestId',
+    'navigationGeneration',
+    'gatewayEnabled == null',
+    'capability_absent'
+  ]) {
+    const missingBound = valid();
+    missingBound.rendererBridge = missingBound.rendererBridge.replace(marker, '');
+    assert.equal(verifyLinuxWorkflowWiring(missingBound).passed, false, marker);
+  }
+
+  const shiftingRenderer = valid();
+  shiftingRenderer.rendererBridge += '\nqueued.shift();';
+  assert.equal(verifyLinuxWorkflowWiring(shiftingRenderer).passed, false);
 });
 
 test('generic shell, renderer network, and production fixture activation drift fail', () => {

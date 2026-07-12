@@ -548,6 +548,16 @@ export type GatewayProxyRequest = {
   messages: GatewayProxyMessage[];
 };
 
+export type GatewayProxyEvent =
+  | { type: 'delta'; text: string }
+  | { type: 'thinking'; text: string }
+  | { type: 'tool_call'; toolCall: { key: string; id: string; name: string; arguments: string } }
+  | {
+      type: 'usage';
+      usage: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
+    }
+  | { type: 'done'; finishReason?: string };
+
 export type DaemonSubscriptionTopic = 'data' | 'health' | 'run';
 export type DaemonSubscriptionStartRequest = {
   topic: DaemonSubscriptionTopic;
@@ -598,7 +608,7 @@ export interface LinuxShellBridge {
   daemonHealth(): Promise<DaemonHealth>;
   runtimeCapabilities(): Promise<RuntimeCapabilityManifest>;
   gatewayProbe(): Promise<boolean>;
-  gatewayChatStream(request: GatewayProxyRequest, onChunk: (chunk: string) => void): Promise<void>;
+  gatewayChatStream(request: GatewayProxyRequest, onEvent: (event: GatewayProxyEvent) => void): Promise<void>;
   gatewayChatCancel(requestId: string): Promise<void>;
   openDashboard(): Promise<void>;
   quitApp(): Promise<void>;
@@ -1924,9 +1934,9 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     runtimeCapabilities: async () =>
       decodeRuntimeCapabilityManifest(await invoke<RawJsonValue>('runtime_capabilities')),
     gatewayProbe: () => invoke<boolean>('gateway_probe'),
-    gatewayChatStream: (request, onChunk) => {
-      const onEvent = new Channel<string>();
-      onEvent.onmessage = onChunk;
+    gatewayChatStream: (request, onEventReceived) => {
+      const onEvent = new Channel<GatewayProxyEvent>();
+      onEvent.onmessage = onEventReceived;
       return invoke<void>('gateway_chat_stream', { request, onEvent });
     },
     gatewayChatCancel: (requestId) => invoke<void>('gateway_chat_cancel', { requestId }),
