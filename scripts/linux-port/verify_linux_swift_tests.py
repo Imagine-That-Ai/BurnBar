@@ -30,6 +30,14 @@ FORBIDDEN_PLACEHOLDER_SOURCES = {
 
 XCTEST_PASS_PATTERN = re.compile(r"Test Case '[^']+' passed \(([0-9.]+) seconds\)")
 
+# This floor intentionally lives outside the editable manifest. A manifest-only
+# minimum is self-attested and can be lowered in the same change that removes
+# coverage filters.
+MINIMUM_LINUX_COVERAGE_FILTERS_BY_SUITE = {
+    "computer-use-linux": 1,
+    "daemon-linux": 50,
+}
+
 
 def load_manifest(root: Path) -> dict:
     path = root / "scripts/linux-port/linux-swift-test-manifest.json"
@@ -75,6 +83,7 @@ def validate_contract(root: Path, manifest: dict) -> dict:
         )
 
     seen_ids: set[str] = set()
+    coverage_packages: set[str] = set()
     total_minimum = 0
     for suite in suites:
         missing = [
@@ -89,6 +98,36 @@ def validate_contract(root: Path, manifest: dict) -> dict:
         if suite_id in seen_ids:
             failures.append(f"duplicate suite id: {suite_id}")
         seen_ids.add(suite_id)
+        coverage_owner = suite.get("linuxCoverageOwner")
+        if not isinstance(coverage_owner, bool):
+            failures.append(f"suite {suite_id} must declare boolean linuxCoverageOwner")
+        elif coverage_owner:
+            coverage_packages.add(suite["packagePath"])
+            coverage_filters = suite.get("linuxCoverageFilters")
+            minimum_coverage_filters = MINIMUM_LINUX_COVERAGE_FILTERS_BY_SUITE.get(suite_id)
+            if (
+                not isinstance(coverage_filters, list)
+                or not coverage_filters
+                or any(not isinstance(item, str) or not item.strip() for item in coverage_filters)
+            ):
+                failures.append(f"coverage-owning suite {suite_id} must declare non-empty linuxCoverageFilters")
+            elif len(coverage_filters) != len(set(coverage_filters)):
+                failures.append(f"coverage-owning suite {suite_id} contains duplicate linuxCoverageFilters")
+            if "minimumLinuxCoverageFilters" in suite:
+                failures.append(
+                    f"coverage-owning suite {suite_id} may not self-attest minimumLinuxCoverageFilters"
+                )
+            if minimum_coverage_filters is None:
+                failures.append(f"coverage-owning suite {suite_id} has no pinned coverage-filter floor")
+            elif isinstance(coverage_filters, list) and len(coverage_filters) < minimum_coverage_filters:
+                failures.append(
+                    f"coverage-owning suite {suite_id} filter set shrank below its pinned contract "
+                    f"({len(coverage_filters)} < {minimum_coverage_filters})"
+                )
+        elif "linuxCoverageFilters" in suite:
+            failures.append(f"non-coverage suite {suite_id} may not declare linuxCoverageFilters")
+        elif "minimumLinuxCoverageFilters" in suite:
+            failures.append(f"non-coverage suite {suite_id} may not declare minimumLinuxCoverageFilters")
         minimum = suite["minimumExecutedTests"]
         if not isinstance(minimum, int) or minimum < 1:
             failures.append(f"suite {suite_id} must require at least one executed test")
@@ -112,6 +151,13 @@ def validate_contract(root: Path, manifest: dict) -> dict:
                 f"suite {suite_id} declares fewer test methods than its floor "
                 f"({declared_test_count(source_dir)} < {minimum})"
             )
+
+    expected_coverage_packages = {suite["packagePath"] for suite in suites if suite.get("packagePath")}
+    if coverage_packages != expected_coverage_packages:
+        failures.append(
+            "Linux coverage owners must include every package in the manifest "
+            f"({sorted(coverage_packages)} != {sorted(expected_coverage_packages)})"
+        )
 
     for exclusion in manifest.get("excludedSources", []):
         required = ("packagePath", "target", "file", "declaredTests", "reason")

@@ -1,6 +1,7 @@
 #if os(Linux)
 import Foundation
 import FoundationNetworking
+import OpenBurnBarIrohRelay
 import XCTest
 @testable import OpenBurnBarDaemon
 
@@ -25,6 +26,73 @@ private actor LinuxIrohRequestList {
 }
 
 final class LinuxIrohControllerDirectoryClientTests: XCTestCase {
+    func testPublishesHostKeyAndRecordWithFreshNonceAndBoundCredentials() async throws {
+        let recorder = LinuxIrohRequestList()
+        let context = LinuxIrohControllerCredentialContext(
+            uid: "account-A",
+            sessionGeneration: 7,
+            idToken: "account-A-id-token",
+            appCheckToken: "account-A-app-check",
+            deviceID: "linux-device-A"
+        )
+        let client = LinuxIrohControllerDirectoryClient(
+            credentials: { context },
+            transport: { request in
+                await recorder.record(request)
+                let result: [String: Any]
+                switch request.url?.path {
+                case "/issueHighRiskActionNonce":
+                    result = ["nonce": "fresh-nonce"]
+                case "/publishIrohPairingPublicKey":
+                    result = ["ok": true, "roleId": "host"]
+                case "/publishIrohPairingRecord":
+                    result = ["ok": true, "connectionId": "linux-host-A"]
+                default:
+                    throw LinuxIrohControllerDirectoryError.invalidRequest
+                }
+                let response = try JSONSerialization.data(withJSONObject: ["result": result])
+                return (
+                    response,
+                    HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+                )
+            }
+        )
+        let keypair = IrohPairingKeypair()
+        let record = IrohPairingRecord(
+            uid: context.uid,
+            connectionId: "linux-host-A",
+            nodeId: String(repeating: "a", count: 64),
+            relayURL: "https://relay.example",
+            directAddresses: ["127.0.0.1:4433"],
+            publishedAtMillis: 2_000_000_000_000,
+            signature: "signature"
+        )
+
+        try await client.publishHostPublicKey(keypair)
+        try await client.publishHostRecord(record)
+
+        let requests = await recorder.snapshot()
+        XCTAssertEqual(requests.map { $0.url?.path }, [
+            "/issueHighRiskActionNonce",
+            "/publishIrohPairingPublicKey",
+            "/issueHighRiskActionNonce",
+            "/publishIrohPairingRecord"
+        ])
+        XCTAssertTrue(requests.allSatisfy {
+            $0.value(forHTTPHeaderField: "Authorization") == "Bearer account-A-id-token"
+                && $0.value(forHTTPHeaderField: "X-Firebase-AppCheck") == "account-A-app-check"
+        })
+        let payloads = try requests.map { request -> [String: Any] in
+            let body = try XCTUnwrap(request.httpBody)
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            return try XCTUnwrap(object["data"] as? [String: Any])
+        }
+        XCTAssertEqual(payloads[1]["roleId"] as? String, "host")
+        XCTAssertEqual(payloads[1]["publicKeyBase64"] as? String, keypair.publicKeyBase64)
+        XCTAssertEqual(payloads[3]["connectionId"] as? String, record.connectionId)
+        XCTAssertEqual(payloads[3]["nonce"] as? String, "fresh-nonce")
+    }
+
     func testScopedRevokeUsesOldCredentialSnapshotWithoutReacquiringProvider() async throws {
         let recorder = LinuxIrohRequestList()
         let oldContext = LinuxIrohControllerCredentialContext(

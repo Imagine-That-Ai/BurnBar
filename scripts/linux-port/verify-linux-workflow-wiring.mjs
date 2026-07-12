@@ -66,6 +66,31 @@ export function verifyLinuxWorkflowWiring(input) {
   );
   requireText(input.pr, 'render-parity-ledger.mjs --check', 'PR Markdown drift gate');
   for (const command of [
+    'OPENBURNBAR_ENABLE_COVERAGE=YES',
+    'linux-package-coverage.lcov',
+    'linux-package-coverage-lines.json',
+    'DIFF_COVERAGE_SCOPE: linux-packages',
+    'COVERAGE_THRESHOLD: 80',
+    'scripts/linux-port/export-linux-swift-coverage-self-test.sh',
+    'scripts/diff-coverage-self-test.sh',
+    'scripts/diff-coverage.sh origin/main',
+    'linux-package-diff-coverage.json'
+  ]) requireText(input.pr, command, 'PR Linux-only package coverage gate');
+  for (const command of [
+    '--enable-code-coverage',
+    'LLVM_PROFILE_FILE',
+    'coverage_binaries+=("${xctest_binaries[0]}")',
+    'export-linux-swift-coverage.sh'
+  ]) requireText(input.swiftTests, command, 'Linux Swift LCOV runner');
+  for (const command of [
+    'LLVM_PROFDATA_BIN',
+    'merge -sparse',
+    'LLVM_COV_BIN',
+    'export -format=lcov',
+    'extract-package-coverage-lines.sh',
+    'duplicate coverage-owner XCTest binary'
+  ]) requireText(input.coverageExport, command, 'Linux Swift LCOV exporter');
+  for (const command of [
     'macos-matched-performance',
     'run-matched-performance.mjs',
     '--profile pr',
@@ -219,6 +244,8 @@ function main() {
     release: read('.github/workflows/linux-release.yml'),
     makefile: read('Makefile'),
     nativeTests: read('scripts/linux-port/run-linux-native-tests.sh'),
+    swiftTests: read('scripts/linux-port/run-linux-swift-tests.sh'),
+    coverageExport: read('scripts/linux-port/export-linux-swift-coverage.sh'),
     rustBridge: read('apps/linux-desktop/src-tauri/src/lib.rs'),
     updateFeed: read('apps/linux-desktop/src-tauri/src/update_feed.rs'),
     capability: read('apps/linux-desktop/src-tauri/capabilities/default.json'),

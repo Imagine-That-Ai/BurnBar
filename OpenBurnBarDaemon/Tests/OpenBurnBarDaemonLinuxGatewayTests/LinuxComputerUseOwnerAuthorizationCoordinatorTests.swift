@@ -5,6 +5,56 @@ import OpenBurnBarLinuxSecurity
 @testable import OpenBurnBarDaemon
 
 final class LinuxComputerUseOwnerAuthorizationCoordinatorTests: XCTestCase {
+    func testRejectsInvalidOperationIdentifiersBeforeReadingPeer() async {
+        let coordinator = LinuxComputerUseOwnerAuthorizationCoordinator(
+            authenticator: { _, _ in
+                XCTFail("Invalid operation must not authenticate")
+                throw LinuxComputerUseOwnerAuthorizationError.invalidOperation
+            },
+            peerIdentityProvider: { _ in
+                XCTFail("Invalid operation must not read peer identity")
+                throw LinuxComputerUseOwnerAuthorizationError.invalidPeer
+            }
+        )
+
+        for (operationID, reason) in [
+            ("", "Authorize Browser Computer Use"),
+            ("contains spaces", "Authorize Browser Computer Use"),
+            (String(repeating: "a", count: 129), "Authorize Browser Computer Use"),
+            ("run-1", "\n\t")
+        ] {
+            do {
+                _ = try await coordinator.authorize(
+                    peerProcessID: 42,
+                    operationID: operationID,
+                    reason: reason
+                )
+                XCTFail("Expected invalid operation rejection")
+            } catch {
+                XCTAssertEqual(error as? LinuxComputerUseOwnerAuthorizationError, .invalidOperation)
+            }
+        }
+    }
+
+    func testReadsCurrentProcessIdentityAndRejectsInvalidProcess() throws {
+        let processID = getpid()
+        let identity = try LinuxComputerUseOwnerAuthorizationCoordinator.readPeerIdentity(
+            processID: processID
+        )
+
+        XCTAssertEqual(identity.processID, processID)
+        XCTAssertEqual(identity.userID, UInt32(geteuid()))
+        XCTAssertGreaterThan(identity.processStartTime, 0)
+        XCTAssertFalse(identity.executablePath.isEmpty)
+        XCTAssertGreaterThan(identity.executableInode, 0)
+
+        XCTAssertThrowsError(
+            try LinuxComputerUseOwnerAuthorizationCoordinator.readPeerIdentity(processID: 1)
+        ) { error in
+            XCTAssertEqual(error as? LinuxComputerUseOwnerAuthorizationError, .invalidPeer)
+        }
+    }
+
     func testAuthorizesExactStableAppPeerWithFreshPolkitProof() async throws {
         let peer = makePeer()
         let coordinator = LinuxComputerUseOwnerAuthorizationCoordinator(

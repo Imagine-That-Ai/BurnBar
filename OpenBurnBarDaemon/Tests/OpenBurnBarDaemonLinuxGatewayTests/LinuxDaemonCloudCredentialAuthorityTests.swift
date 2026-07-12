@@ -239,6 +239,163 @@ final class LinuxDaemonCloudCredentialAuthorityTests: XCTestCase {
         XCTAssertEqual(counts.stops, 1)
     }
 
+    func testBoundedHTTPTransportHandlesSuccessAndSizeLimits() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [CloudAuthScriptedURLProtocol.self]
+
+        let success = LinuxCloudAuthBoundedDataDelegate(configuration: configuration, maximumBytes: 4)
+        let successRequest = URLRequest(url: URL(string: "https://scripted.example/success")!)
+        let (data, response) = try await success.perform(successRequest)
+        XCTAssertEqual(data, Data("ok".utf8))
+        XCTAssertEqual(response.statusCode, 200)
+
+        for path in ["declared-too-large", "chunk-too-large"] {
+            let delegate = LinuxCloudAuthBoundedDataDelegate(configuration: configuration, maximumBytes: 4)
+            let request = URLRequest(url: URL(string: "https://scripted.example/\(path)")!)
+            do {
+                _ = try await delegate.perform(request)
+                XCTFail("Expected bounded response rejection for \(path)")
+            } catch {
+                XCTAssertEqual(error as? LinuxCloudAuthHTTPError, .responseTooLarge)
+            }
+        }
+    }
+
+    func testBoundedHTTPTransportPropagatesSessionFailure() async {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [CloudAuthScriptedURLProtocol.self]
+        let delegate = LinuxCloudAuthBoundedDataDelegate(configuration: configuration, maximumBytes: 4)
+        let request = URLRequest(url: URL(string: "https://scripted.example/error")!)
+
+        do {
+            _ = try await delegate.perform(request)
+            XCTFail("Expected transport failure")
+        } catch {
+            XCTAssertNotNil(error as? URLError)
+        }
+    }
+
+    func testHTTPClientDescriptionsAndFailClosedRequestValidation() async throws {
+        XCTAssertEqual(LinuxCloudAuthHTTPError.invalidConfiguration.description, "Cloud authentication is not configured.")
+        XCTAssertEqual(LinuxCloudAuthHTTPError.invalidRequest.description, "Cloud authentication request was invalid.")
+        XCTAssertEqual(LinuxCloudAuthHTTPError.requestTooLarge.description, "Cloud authentication request exceeded its size limit.")
+        XCTAssertEqual(LinuxCloudAuthHTTPError.responseTooLarge.description, "Cloud authentication response exceeded its size limit.")
+        XCTAssertEqual(LinuxCloudAuthHTTPError.transportFailure.description, "Cloud authentication transport failed.")
+        XCTAssertEqual(
+            LinuxCloudAuthHTTPError.rejected(stage: "token", status: 403, reason: nil).description,
+            "Cloud authentication stage token was rejected (HTTP 403)."
+        )
+        XCTAssertEqual(
+            LinuxCloudAuthHTTPError.malformedResponse(stage: "token").description,
+            "Cloud authentication stage token returned an invalid response."
+        )
+
+        let client = LinuxCloudAuthHTTPClient(
+            allowedHosts: ["auth.example"],
+            transport: { request, _ in
+                let data = Data(#"{"error":{"details":{"reason":"denied"}}}"#.utf8)
+                return (
+                    data,
+                    HTTPURLResponse(url: request.url!, statusCode: 403, httpVersion: nil, headerFields: nil)!
+                )
+            }
+        )
+        do {
+            _ = try await client.exchangeGoogleAuthorizationCode(
+                endpoint: URL(string: "http://auth.example/token")!,
+                clientID: "client",
+                clientSecret: nil,
+                code: "code",
+                verifier: "verifier",
+                redirectURI: "http://127.0.0.1/callback"
+            )
+            XCTFail("Expected non-HTTPS endpoint rejection")
+        } catch {
+            XCTAssertEqual(error as? LinuxCloudAuthHTTPError, .invalidConfiguration)
+        }
+        do {
+            _ = try await client.exchangeGoogleAuthorizationCode(
+                endpoint: URL(string: "https://auth.example/token")!,
+                clientID: "client",
+                clientSecret: nil,
+                code: String(repeating: "x", count: LinuxCloudAuthHTTPClient.maximumRequestBytes),
+                verifier: "verifier",
+                redirectURI: "http://127.0.0.1/callback"
+            )
+            XCTFail("Expected oversized request rejection")
+        } catch {
+            XCTAssertEqual(error as? LinuxCloudAuthHTTPError, .requestTooLarge)
+        }
+        do {
+            _ = try await client.exchangeGoogleAuthorizationCode(
+                endpoint: URL(string: "https://auth.example/token")!,
+                clientID: "client",
+                clientSecret: nil,
+                code: "code",
+                verifier: "verifier",
+                redirectURI: "http://127.0.0.1/callback"
+            )
+            XCTFail("Expected HTTP rejection")
+        } catch {
+            XCTAssertEqual(
+                error as? LinuxCloudAuthHTTPError,
+                .rejected(stage: "google_token", status: 403, reason: "denied")
+            )
+        }
+    }
+
+    func testHostIdentityStoreRejectsCorruptCombinedAndLegacySecrets() throws {
+        let backend = CloudAuthMutableSecretBackend(refreshToken: nil)
+        let custodian = LinuxSecretCustodian(backends: [backend])
+        let store = LinuxIrohHostIdentityStore(custodian: custodian)
+        _ = try backend.storeSecret(
+            "not-json",
+            id: LinuxIrohHostIdentityStore.combinedSecretID,
+            secretClass: .signalIdentityKey
+        )
+        XCTAssertThrowsError(try store.loadOrCreate()) { error in
+            XCTAssertEqual(
+                error as? LinuxIrohHostIdentityStoreError,
+                .corruptSecret(LinuxIrohHostIdentityStore.combinedSecretID)
+            )
+        }
+
+        try backend.deleteSecret(
+            id: LinuxIrohHostIdentityStore.combinedSecretID,
+            secretClass: .signalIdentityKey
+        )
+        _ = try backend.storeSecret(
+            Data("short".utf8).base64EncodedString(),
+            id: LinuxIrohHostIdentityStore.endpointSecretID,
+            secretClass: .signalIdentityKey
+        )
+        XCTAssertThrowsError(try store.loadOrCreate()) { error in
+            XCTAssertEqual(
+                error as? LinuxIrohHostIdentityStoreError,
+                .corruptSecret(LinuxIrohHostIdentityStore.endpointSecretID)
+            )
+        }
+    }
+
+    func testHostIdentityRotationPersistsCombinedIdentityAndDeletesLegacySecrets() throws {
+        let backend = CloudAuthMutableSecretBackend(refreshToken: nil)
+        let store = LinuxIrohHostIdentityStore(
+            custodian: LinuxSecretCustodian(backends: [backend])
+        )
+        let original = try store.loadOrCreate()
+
+        let rotated = try store.rotate()
+
+        XCTAssertNotEqual(rotated.endpointSecret.raw, original.endpointSecret.raw)
+        XCTAssertNotEqual(rotated.pairingKeypair.publicKeyRaw, original.pairingKeypair.publicKeyRaw)
+        XCTAssertNotNil(backend.secret(id: LinuxIrohHostIdentityStore.combinedSecretID))
+        XCTAssertNil(backend.secret(id: LinuxIrohHostIdentityStore.endpointSecretID))
+        XCTAssertNil(backend.secret(id: LinuxIrohHostIdentityStore.pairingSecretID))
+        let reloaded = try store.loadOrCreate()
+        XCTAssertEqual(reloaded.endpointSecret.raw, rotated.endpointSecret.raw)
+        XCTAssertEqual(reloaded.pairingKeypair.publicKeyRaw, rotated.pairingKeypair.publicKeyRaw)
+    }
+
     func testAccountSwitchTearsDownWithOldSnapshotBeforeMintingNewAccount() async throws {
         let backend = CloudAuthMutableSecretBackend(refreshToken: "refresh-initial")
         let transport = CloudAuthScriptedTransport(now: fixedNow, switchedUID: "user-B")
@@ -1097,6 +1254,51 @@ private final class CloudAuthHangingURLProtocol: URLProtocol {
     override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() { cloudAuthURLProtocolProbe.started() }
     override func stopLoading() { cloudAuthURLProtocolProbe.stopped() }
+}
+
+private final class CloudAuthScriptedURLProtocol: URLProtocol {
+    override static func canInit(with request: URLRequest) -> Bool {
+        request.url?.host == "scripted.example"
+    }
+
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        guard let url = request.url else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badURL))
+            return
+        }
+        switch url.path {
+        case "/success":
+            let response = HTTPURLResponse(
+                url: url,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Length": "2"]
+            )!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: Data("ok".utf8))
+            client?.urlProtocolDidFinishLoading(self)
+        case "/declared-too-large":
+            let response = HTTPURLResponse(
+                url: url,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Length": "5"]
+            )!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocolDidFinishLoading(self)
+        case "/chunk-too-large":
+            let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: Data("12345".utf8))
+            client?.urlProtocolDidFinishLoading(self)
+        default:
+            client?.urlProtocol(self, didFailWithError: URLError(.cannotConnectToHost))
+        }
+    }
+
+    override func stopLoading() {}
 }
 
 private actor CloudAuthTeardownGate {
