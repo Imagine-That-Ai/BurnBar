@@ -3,7 +3,7 @@ package com.openburnbar.data.computeruse
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayApprovalRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayApprovalResponse
-import com.openburnbar.irohrelay.HermesRealtimeRelayComputerUseSessionGrantChallenge
+import com.openburnbar.irohrelay.HermesRealtimeRelaySessionGrantChallenge
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockCredentialEnvelope
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockSession
 
@@ -47,7 +47,7 @@ object PhoneControlSignerCanonicalJson {
         return PhoneControlSignerJsonEncoding.sortedJson(fields)
     }
 
-    fun canonicalComputerUseSessionIntentJson(challenge: HermesRealtimeRelayComputerUseSessionGrantChallenge): String {
+    fun canonicalComputerUseSessionIntentJson(challenge: HermesRealtimeRelaySessionGrantChallenge): String {
         val fields = linkedMapOf<String, String>()
         fields["actionCap"] = challenge.actionCap.toString()
         fields["clientId"] = PhoneControlSignerJsonEncoding.quote(challenge.clientId)

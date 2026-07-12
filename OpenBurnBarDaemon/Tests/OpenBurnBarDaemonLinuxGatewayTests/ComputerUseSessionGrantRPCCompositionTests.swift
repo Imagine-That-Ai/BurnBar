@@ -6,6 +6,56 @@ import OpenBurnBarCore
 import XCTest
 
 final class ComputerUseSessionGrantRPCCompositionTests: XCTestCase {
+    private func makeCapabilityStateStore(at root: URL) async throws -> ComputerUseCapabilityStateStore {
+        let now = Date()
+        let store = ComputerUseCapabilityStateStore(
+            fileURL: root.appendingPathComponent("capability-state.json"),
+            now: { now }
+        )
+        let provenance = ComputerUseAuthorityProvenance(
+            source: .firestoreServer,
+            observedAt: now,
+            updatedAt: now
+        )
+        _ = try await store.update(ComputerUseCapabilityStateSnapshot(
+            publisherInstanceID: "computer-use-session-grant-rpc-composition-tests",
+            revision: 1,
+            generatedAt: now,
+            userID: "linux-test-user",
+            entitlement: ComputerUseEntitlementSnapshot(
+                isActive: true,
+                productId: ComputerUseEntitlementSnapshot.hostedProductID,
+                expireAt: now.addingTimeInterval(3_600),
+                allowsBrowser: true,
+                allowsSystem: true,
+                allowsPhoneControl: true,
+                allowsTrustedScopes: true,
+                allowsAuditExport: true
+            ),
+            entitlementProvenance: provenance,
+            budgetEnvelope: ComputerUseBudgetEnvelope(
+                level: .normal,
+                projectedMonthEndUSD: 0,
+                monthToDateUSD: 0,
+                activeActionsPerRun: 50,
+                activeActionsPerDay: 200,
+                activeSessionsPerDay: 4,
+                perUserDailySpendCeilingUSD: 5,
+                updatedAt: now
+            ),
+            budgetProvenance: provenance,
+            quotaUsage: ComputerUseQuotaUsage(
+                dayKey: String(ISO8601DateFormatter().string(from: now).prefix(10)),
+                updatedAt: now
+            ),
+            quotaProvenance: provenance,
+            concurrentSessionActive: false,
+            killSwitch: false,
+            isComplete: true
+        ))
+        return store
+    }
+
     func testReadinessReportsBrokerPairingAndOperationalStates() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-cu-readiness-rpc-\(UUID().uuidString)", isDirectory: true)
@@ -61,13 +111,17 @@ final class ComputerUseSessionGrantRPCCompositionTests: XCTestCase {
         let sessionID = BurnBarSessionID(rawValue: "linux-shell-session")
         let registry = ComputerUseAuthorizationRegistry(enforcementEnabled: true)
         let sessionStartGate = FailOnceSessionStartGate()
+        let auditRoot = root.appendingPathComponent("audit", isDirectory: true)
+        let capabilityStateStore = try await makeCapabilityStateStore(at: auditRoot)
         let service = ComputerUseService(
-            auditBaseDirectory: root.appendingPathComponent("audit", isDirectory: true),
-            privilegedInputKillSwitchActivator: { _ in },
+            auditBaseDirectory: auditRoot,
+            capabilityStateStore: capabilityStateStore,
+            leafKillSwitch: { false },
             playwrightDriverFactory: { _ in
                 try sessionStartGate.beforeStart()
                 return nil
             },
+            privilegedInputKillSwitchActivator: { _ in },
             authorizationRegistry: registry
         )
         let runService = try await makeRunService(

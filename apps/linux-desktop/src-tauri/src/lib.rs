@@ -2151,6 +2151,31 @@ fn account_sign_out() -> Result<serde_json::Value, String> {
     call_daemon_method("daemon.auth.sign_out", None)
 }
 
+// Rotation may refresh Firebase auth, register the replacement key, issue and
+// sign an App Check challenge, mint App Check, and bind it. Each cloud stage is
+// bounded to 20 seconds in the daemon, so the shell permits the complete
+// sequence plus scheduling margin without making the socket wait unbounded.
+const ACCOUNT_ROTATE_IDENTITY_RPC_TIMEOUT: Duration = Duration::from_secs(135);
+
+fn account_rotate_identity_with(
+    call: impl FnOnce(&str, Option<serde_json::Value>, Duration) -> Result<serde_json::Value, String>,
+) -> Result<serde_json::Value, String> {
+    call(
+        "daemon.auth.rotate_identity",
+        None,
+        ACCOUNT_ROTATE_IDENTITY_RPC_TIMEOUT,
+    )
+}
+
+#[tauri::command]
+async fn account_rotate_identity() -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        account_rotate_identity_with(call_daemon_method_with_timeout)
+    })
+    .await
+    .map_err(|error| format!("account_identity_rotation_join_failed:{error}"))?
+}
+
 // ───────────────── P10: membership status ─────────────────
 // Proposed wire: daemon.membership.status. Older daemons reject it; the TS
 // store treats unknown-method errors as capability-absent, not fatal UI spam.
@@ -4218,6 +4243,7 @@ pub fn run() {
             account_status,
             account_begin_sign_in,
             account_cancel_sign_in,
+            account_rotate_identity,
             account_sign_out,
             membership_status,
             membership_checkout_url,
@@ -4432,6 +4458,21 @@ mod tests {
         assert_eq!(outcome, DaemonStartupOutcome::ReadinessTimedOut);
         assert_eq!(probes.get(), 4);
         assert_eq!(sleeps.get(), 2);
+    }
+
+    #[test]
+    fn account_identity_rotation_uses_bounded_multi_stage_auth_timeout() {
+        let response = account_rotate_identity_with(|method, params, timeout| {
+            assert_eq!(method, "daemon.auth.rotate_identity");
+            assert_eq!(params, None);
+            assert_eq!(timeout, ACCOUNT_ROTATE_IDENTITY_RPC_TIMEOUT);
+            assert!(timeout > Duration::from_secs(120));
+            assert!(timeout <= Duration::from_secs(150));
+            Ok(serde_json::json!({ "ok": true }))
+        })
+        .unwrap();
+
+        assert_eq!(response["ok"], true);
     }
 
     fn computer_use_broker_request_fixture() -> ComputerUseBrokerSessionStartRequest {

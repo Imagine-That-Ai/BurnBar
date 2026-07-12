@@ -3,7 +3,7 @@ package com.openburnbar.data.computeruse
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayApprovalRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayApprovalResponse
-import com.openburnbar.irohrelay.HermesRealtimeRelayComputerUseSessionGrantChallenge
+import com.openburnbar.irohrelay.HermesRealtimeRelaySessionGrantChallenge
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockCredentialEnvelope
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockSession
 
@@ -13,7 +13,7 @@ internal object PhoneControlSignerCanonical {
     fun agentGrantRequestHashHex(request: HermesRealtimeRelayAgentGrantRequest): String =
         hashJson(PhoneControlSignerCanonicalJson.canonicalAgentGrantRequestJson(request))
 
-    fun computerUseSessionIntentId(challenge: HermesRealtimeRelayComputerUseSessionGrantChallenge): String =
+    fun computerUseSessionIntentId(challenge: HermesRealtimeRelaySessionGrantChallenge): String =
         hashJson(PhoneControlSignerCanonicalJson.canonicalComputerUseSessionIntentJson(challenge))
 
     fun clipboardRequestHashHex(request: PhoneControlClipboardRequest): String =

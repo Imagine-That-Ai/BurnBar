@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AccountStatus } from '../../tauriBridge.js';
 import { useAccountStore } from '../../state/accountStore.js';
@@ -8,7 +8,7 @@ import { accountPlanTier } from './accountPlanTier.js';
 import { AccountSurface } from './AccountSurface.js';
 
 function resetStores(): void {
-  useAccountStore.setState({ data: null, loading: false, busyAction: null, error: null });
+  useAccountStore.setState(useAccountStore.getInitialState());
   useShellStore.setState({
     fixtureMode: false,
     bridge: null,
@@ -26,6 +26,14 @@ function setAccount(
     loading: partial.loading ?? false,
     error: partial.error ?? null
   });
+}
+
+function deferred<T>(): { promise: Promise<T>; resolve(value: T): void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((continuation) => {
+    resolve = continuation;
+  });
+  return { promise, resolve };
 }
 
 const signedOut: AccountStatus = {
@@ -60,13 +68,21 @@ const awaitingApproval: AccountStatus = {
   signedIn: false,
   trustClass: 'linux-lower-trust',
   syncState: 'local-only',
-  deviceApprovalRequired: true
+  deviceApprovalRequired: true,
+  installationDeviceID: `linux_${'ab'.repeat(32)}`,
+  installationSafetyFingerprint: Array(16).fill('ABAB').join(' ')
 };
 
 const unavailable: AccountStatus = {
   ...signedOut,
   state: 'unavailable',
   detail: 'secure_store_unavailable'
+};
+
+const rejectedIdentity: AccountStatus = {
+  ...signedOut,
+  state: 'unavailable',
+  detail: 'device_rejected'
 };
 
 describe('accountPlanTier', () => {
@@ -118,6 +134,72 @@ describe('AccountSurface', () => {
     expect(screen.getByTestId('canonical-invariant')).toBeTruthy();
   });
 
+  it('requires confirmation before replacing a rejected installation key', () => {
+    const rotateIdentity = vi.fn(async () => {});
+    useShellStore.setState({ bridge: { accountStatus: async () => rejectedIdentity } as never });
+    useAccountStore.setState({ rotateIdentity, data: rejectedIdentity });
+    render(<AccountSurface />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Replace installation key/i }));
+    expect(screen.getByRole('group', { name: /Confirm installation key replacement/i })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Confirm key replacement/i }));
+    expect(rotateIdentity).toHaveBeenCalledOnce();
+  });
+
+  it.each(['authorization_failed', 'cloud_unavailable', 'cloud_response_invalid'])(
+    'offers retry sign-in for recoverable unavailable detail %s',
+    (detail) => {
+      const beginSignIn = vi.fn(async () => {});
+      useShellStore.setState({ bridge: { accountStatus: async () => signedOut } as never });
+      useAccountStore.setState({
+        beginSignIn,
+        data: { ...signedOut, state: 'unavailable', detail }
+      });
+      render(<AccountSurface />);
+
+      const retry = screen.getByRole('button', { name: /Retry sign-in/i });
+      expect((retry as HTMLButtonElement).disabled).toBe(false);
+      fireEvent.click(retry);
+      expect(beginSignIn).toHaveBeenCalledOnce();
+    }
+  );
+
+  it('treats an App Check allowlist rejection as a build configuration failure, not a key rejection', () => {
+    setAccount({
+      data: {
+        ...signedOut,
+        state: 'unavailable',
+        signedIn: true,
+        detail: 'app_check_configuration_rejected'
+      }
+    });
+    render(<AccountSurface />);
+
+    expect(screen.getByRole('alert').textContent).toMatch(/not allowlisted/i);
+    expect(screen.queryByRole('button', { name: /Replace installation key/i })).toBeNull();
+  });
+
+  it('keeps replacement progress visible until identity rotation settles', async () => {
+    const rotation = deferred<AccountStatus>();
+    const accountRotateIdentity = vi.fn(() => rotation.promise);
+    useShellStore.setState({
+      bridge: { accountRotateIdentity, accountStatus: async () => rejectedIdentity } as never
+    });
+    useAccountStore.setState({ data: rejectedIdentity });
+    render(<AccountSurface />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Replace installation key/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Confirm key replacement/i }));
+
+    expect(screen.getByRole('button', { name: /Replacing key/i })).toBeTruthy();
+    expect(screen.getByRole('group', { name: /Confirm installation key replacement/i })).toBeTruthy();
+
+    rotation.resolve(awaitingApproval);
+    await waitFor(() => {
+      expect(screen.queryByRole('group', { name: /Confirm installation key replacement/i })).toBeNull();
+    });
+  });
+
   it('renders loading state', () => {
     setAccount({ loading: true });
     render(<AccountSurface />);
@@ -163,12 +245,14 @@ describe('AccountSurface', () => {
     expect(beginSignIn).toHaveBeenCalledOnce();
   });
 
-  it('surfaces trusted-iPad approval without exposing credential fields', () => {
+  it('surfaces trusted-iPad approval with the public verification descriptor only', () => {
     useShellStore.setState({ bridge: { accountStatus: async () => awaitingApproval } as never });
     setAccount({ data: awaitingApproval });
     const { container } = render(<AccountSurface />);
     expect(screen.getByText(/trusted OpenBurnBar device/i)).toBeTruthy();
-    expect(container.textContent).not.toMatch(/refreshToken|idToken|appCheckToken|deviceID|sessionGeneration/);
+    expect(screen.getByText(awaitingApproval.installationDeviceID!)).toBeTruthy();
+    expect(screen.getByText(awaitingApproval.installationSafetyFingerprint!)).toBeTruthy();
+    expect(container.textContent).not.toMatch(/refreshToken|idToken|appCheckToken|publicKey|sessionGeneration/);
   });
 
   it('renders an actionable unavailable state and prevents sign-in', () => {

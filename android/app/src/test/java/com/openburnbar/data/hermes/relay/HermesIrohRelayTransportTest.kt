@@ -7,7 +7,7 @@ import com.openburnbar.data.computeruse.ComputerUseSessionGrantChallengeDelivery
 import com.openburnbar.data.computeruse.IrohControllerRouteRegistering
 import com.openburnbar.data.computeruse.IrohControllerRouteRegistration
 import com.openburnbar.data.hermes.HermesAuthLifecycleRegistry
-import com.openburnbar.irohrelay.HermesRealtimeRelayComputerUseSessionGrantChallenge
+import com.openburnbar.irohrelay.HermesRealtimeRelaySessionGrantChallenge
 import com.openburnbar.irohrelay.HermesRealtimeRelayControlPayload
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
@@ -737,7 +737,7 @@ class HermesIrohRelayTransportTest {
         sendComplete(stream = stream, frame = incoming, chunkCount = chunks.size)
     }
 
-    private fun sessionGrantChallenge() = HermesRealtimeRelayComputerUseSessionGrantChallenge(
+    private fun sessionGrantChallenge() = HermesRealtimeRelaySessionGrantChallenge(
         version = 1,
         challengeId = "challenge-00000001",
         nonce = "0123456789abcdef0123456789abcdef",

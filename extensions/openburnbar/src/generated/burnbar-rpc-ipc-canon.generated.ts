@@ -62,6 +62,56 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.auth.begin",
+    "caseName": "linuxAuthBegin",
+    "domain": "auth",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelope",
+    "result": "BurnBarLinuxAuthBeginResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.auth.cancel",
+    "caseName": "linuxAuthCancel",
+    "domain": "auth",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarLinuxAuthCancelRequest",
+    "result": "BurnBarLinuxAuthMutationResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.auth.rotate_identity",
+    "caseName": "linuxAuthRotateIdentity",
+    "domain": "auth",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelope",
+    "result": "BurnBarLinuxAuthMutationResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.auth.sign_out",
+    "caseName": "linuxAuthSignOut",
+    "domain": "auth",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelope",
+    "result": "BurnBarLinuxAuthMutationResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.auth.status",
+    "caseName": "linuxAuthStatus",
+    "domain": "auth",
+    "capability": "lifecycle",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelope",
+    "result": "BurnBarLinuxAuthStatusResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.browser.action",
     "caseName": "browserAction",
     "domain": "tooling",

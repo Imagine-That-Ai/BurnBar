@@ -176,7 +176,8 @@ final class DaemonComputerUseApprovalAuthorityVerifierTests: XCTestCase {
             deviceIds: ["source-device", fixture.peerNodeID],
             key: pinnedKey
         ) else {
-            return XCTFail("expected source-device and transport-peer aliases to pin atomically")
+            XCTFail("expected source-device and transport-peer aliases to pin atomically")
+            return
         }
         let approvalVerifier = DaemonComputerUseApprovalAuthorityVerifier(
             resolvePinnedKey: { peerNodeID in

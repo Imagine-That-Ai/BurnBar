@@ -14,7 +14,7 @@ public struct HermesRealtimeRelayControlPayload: Codable, Sendable, Equatable {
     public var inputIntent: HermesRealtimeRelayInputIntent?
     public var approvalRequest: HermesRealtimeRelayApprovalRequest?
     public var approvalResponse: HermesRealtimeRelayApprovalResponse?
-    public var sessionGrantChallenge: HermesRealtimeRelayComputerUseSessionGrantChallenge?
+    public var sessionGrantChallenge: HermesRealtimeRelaySessionGrantChallenge?
     public var agentGrantRequest: HermesRealtimeRelayAgentGrantRequest?
     public var agentGrantReceipt: HermesRealtimeRelayAgentGrantReceipt?
     public var clipboardRequest: HermesRealtimeRelayClipboardRequest?
@@ -45,7 +45,7 @@ public struct HermesRealtimeRelayControlPayload: Codable, Sendable, Equatable {
         inputIntent: HermesRealtimeRelayInputIntent? = nil,
         approvalRequest: HermesRealtimeRelayApprovalRequest? = nil,
         approvalResponse: HermesRealtimeRelayApprovalResponse? = nil,
-        sessionGrantChallenge: HermesRealtimeRelayComputerUseSessionGrantChallenge? = nil,
+        sessionGrantChallenge: HermesRealtimeRelaySessionGrantChallenge? = nil,
         agentGrantRequest: HermesRealtimeRelayAgentGrantRequest? = nil,
         agentGrantReceipt: HermesRealtimeRelayAgentGrantReceipt? = nil,
         clipboardRequest: HermesRealtimeRelayClipboardRequest? = nil,

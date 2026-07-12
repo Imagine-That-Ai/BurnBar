@@ -1,12 +1,21 @@
 package com.openburnbar.data.computeruse
 
 import com.openburnbar.data.hermes.AssistantRuntimeID
-import com.openburnbar.irohrelay.HermesRealtimeRelayComputerUseSessionGrantChallenge
+import com.openburnbar.irohrelay.HermesRealtimeRelaySessionGrantChallenge
 
 object ComputerUseSessionGrantChallengeValidator {
     const val VERSION = 1
     const val MAXIMUM_LIFETIME_SECONDS = 5 * 60
     const val MAXIMUM_CLOCK_SKEW_SECONDS = 30
+    private const val MINIMUM_NONCE_LENGTH = 16
+    private const val MAXIMUM_NONCE_LENGTH = 128
+    private const val MAXIMUM_IDENTIFIER_BYTES = 512
+    private const val MAXIMUM_ACTION_CAP = 10_000
+    private const val MAXIMUM_SESSION_TIMEOUT_SECONDS = 24 * 60 * 60
+    private const val MAXIMUM_SCOPE_RULES = 256
+    private const val MAXIMUM_ASCII_CODE_POINT = 127
+    private val supportedModes = setOf("agent_watch", "browser", "system")
+    private val supportedTrustModes = setOf("manual", "step", "trusted")
 
     sealed class ValidationError(message: String) : IllegalArgumentException(message) {
         data class UnsupportedVersion(val value: Int) : ValidationError("Unsupported challenge version: $value")
@@ -28,67 +37,107 @@ object ComputerUseSessionGrantChallengeValidator {
         object SessionIntentMismatch : ValidationError("Session intent identifier does not match challenge fields")
     }
 
-    fun validate(challenge: HermesRealtimeRelayComputerUseSessionGrantChallenge, nowMillis: Long = System.currentTimeMillis()): String {
-        if (challenge.version != VERSION) throw ValidationError.UnsupportedVersion(challenge.version)
-        if (!isBoundedIdentifier(challenge.challengeId)) throw ValidationError.MalformedIdentifier("challengeId")
-        if (challenge.nonce.length !in 16..128 || !challenge.nonce.all { it.code <= 0x7f && !it.isWhitespace() }) {
-            throw ValidationError.MalformedNonce
-        }
-        if (!challenge.issuedAt.isFinite() || !challenge.expiresAt.isFinite() || challenge.expiresAt <= challenge.issuedAt) {
-            throw ValidationError.MalformedSession
-        }
-        val now = AgentCapabilityGrantRequest.swiftReferenceSeconds(nowMillis)
-        if (challenge.expiresAt <= now) throw ValidationError.Expired
-        if (challenge.issuedAt - now > MAXIMUM_CLOCK_SKEW_SECONDS) throw ValidationError.IssuedInFuture
-        if (challenge.expiresAt - challenge.issuedAt > MAXIMUM_LIFETIME_SECONDS) throw ValidationError.LifetimeExceeded
-        if (AssistantRuntimeID.values().none { it.token == challenge.runtime }) {
-            throw ValidationError.UnsupportedRuntime(challenge.runtime)
-        }
-        val preset = AgentPermissionPreset.entries.firstOrNull { it.wireValue == challenge.preset }
-            ?: throw ValidationError.UnsupportedPreset(challenge.preset)
-        val capabilities = challenge.capabilities.map { raw ->
-            AgentDesktopCapability.entries.firstOrNull { it.wireValue == raw }
-                ?: throw ValidationError.UnsupportedCapability(raw)
-        }.toSet()
-        if (challenge.mode !in setOf("agent_watch", "browser", "system")) {
-            throw ValidationError.UnsupportedMode(challenge.mode)
-        }
-        if (challenge.trustMode !in setOf("manual", "step", "trusted")) {
-            throw ValidationError.UnsupportedTrustMode(challenge.trustMode)
-        }
-        challenge.desktopOwnerAuthorizationMethod?.let {
-            if (it != "linux_desktop_owner") throw ValidationError.UnsupportedDesktopOwnerAuthorizationMethod(it)
-        }
-        if (challenge.trustMode == "trusted" && challenge.desktopOwnerAuthorizationMethod != "linux_desktop_owner") {
-            throw ValidationError.DesktopOwnerAuthorizationRequired
-        }
-        if (
-            preset == AgentPermissionPreset.OFF ||
-            capabilities.isEmpty() ||
-            !preset.capabilities.containsAll(capabilities) ||
-            challenge.capabilities.size != capabilities.size
-        ) {
-            throw ValidationError.PresetCapabilityTrustMismatch
-        }
-        if (
-            !isBoundedIdentifier(challenge.threadId) ||
-            !isBoundedIdentifier(challenge.clientId) ||
-            challenge.actionCap !in 1..10_000 ||
-            challenge.sessionTimeoutSeconds !in 1..(24 * 60 * 60) ||
-            challenge.scopeRuleIds.size > 256 ||
-            !challenge.scopeRuleIds.all(::isBoundedIdentifier) ||
-            challenge.phoneViewerNodeId?.let(::isBoundedIdentifier) == false ||
-            challenge.macHostNodeId?.let(::isBoundedIdentifier) == false ||
-            challenge.runId?.let(::isBoundedIdentifier) == false ||
-            challenge.runCallId?.let(::isBoundedIdentifier) == false
-        ) {
-            throw ValidationError.MalformedSession
-        }
+    fun validate(challenge: HermesRealtimeRelaySessionGrantChallenge, nowMillis: Long = System.currentTimeMillis()): String {
+        validateEnvelope(challenge)
+        validateTiming(challenge, nowMillis)
+        validateRuntimeAndMode(challenge)
+        val preset = validatedPreset(challenge.preset)
+        val capabilities = validatedCapabilities(challenge.capabilities)
+        validatePresetCapabilities(preset, capabilities, challenge.capabilities.size)
+        validateSessionFields(challenge)
         val expected = PhoneControlSigner.canonicalComputerUseSessionIntentId(challenge)
         if (challenge.sessionIntentId != expected) throw ValidationError.SessionIntentMismatch
         return expected
     }
 
+    private fun validateEnvelope(challenge: HermesRealtimeRelaySessionGrantChallenge) {
+        val nonceIsValid =
+            challenge.nonce.length in MINIMUM_NONCE_LENGTH..MAXIMUM_NONCE_LENGTH &&
+                challenge.nonce.all { it.code <= MAXIMUM_ASCII_CODE_POINT && !it.isWhitespace() }
+        val envelopeError = when {
+            challenge.version != VERSION -> ValidationError.UnsupportedVersion(challenge.version)
+            !isBoundedIdentifier(challenge.challengeId) -> ValidationError.MalformedIdentifier("challengeId")
+            !nonceIsValid -> ValidationError.MalformedNonce
+            else -> null
+        }
+        if (envelopeError != null) throw envelopeError
+    }
+
+    private fun validateTiming(challenge: HermesRealtimeRelaySessionGrantChallenge, nowMillis: Long) {
+        val hasValidBounds =
+            challenge.issuedAt.isFinite() && challenge.expiresAt.isFinite() && challenge.expiresAt > challenge.issuedAt
+        if (!hasValidBounds) throw ValidationError.MalformedSession
+        val now = AgentCapabilityGrantRequest.swiftReferenceSeconds(nowMillis)
+        val timingError = when {
+            challenge.expiresAt <= now -> ValidationError.Expired
+            challenge.issuedAt - now > MAXIMUM_CLOCK_SKEW_SECONDS -> ValidationError.IssuedInFuture
+            challenge.expiresAt - challenge.issuedAt > MAXIMUM_LIFETIME_SECONDS -> ValidationError.LifetimeExceeded
+            else -> null
+        }
+        if (timingError != null) throw timingError
+    }
+
+    private fun validateRuntimeAndMode(challenge: HermesRealtimeRelaySessionGrantChallenge) {
+        if (AssistantRuntimeID.values().none { it.token == challenge.runtime }) {
+            throw ValidationError.UnsupportedRuntime(challenge.runtime)
+        }
+        val modeError = when {
+            challenge.mode !in supportedModes -> ValidationError.UnsupportedMode(challenge.mode)
+            challenge.trustMode !in supportedTrustModes -> ValidationError.UnsupportedTrustMode(challenge.trustMode)
+            challenge.desktopOwnerAuthorizationMethod?.let { it != "linux_desktop_owner" } == true ->
+                ValidationError.UnsupportedDesktopOwnerAuthorizationMethod(challenge.desktopOwnerAuthorizationMethod.orEmpty())
+            challenge.trustMode == "trusted" && challenge.desktopOwnerAuthorizationMethod != "linux_desktop_owner" ->
+                ValidationError.DesktopOwnerAuthorizationRequired
+            else -> null
+        }
+        if (modeError != null) throw modeError
+    }
+
+    private fun validatedPreset(raw: String): AgentPermissionPreset =
+        AgentPermissionPreset.entries.firstOrNull { it.wireValue == raw }
+            ?: throw ValidationError.UnsupportedPreset(raw)
+
+    private fun validatedCapabilities(rawCapabilities: List<String>): Set<AgentDesktopCapability> =
+        rawCapabilities.map { raw ->
+            AgentDesktopCapability.entries.firstOrNull { it.wireValue == raw }
+                ?: throw ValidationError.UnsupportedCapability(raw)
+        }.toSet()
+
+    private fun validatePresetCapabilities(
+        preset: AgentPermissionPreset,
+        capabilities: Set<AgentDesktopCapability>,
+        rawCapabilityCount: Int,
+    ) {
+        val invalid =
+            preset == AgentPermissionPreset.OFF ||
+                capabilities.isEmpty() ||
+                !preset.capabilities.containsAll(capabilities) ||
+                rawCapabilityCount != capabilities.size
+        if (invalid) throw ValidationError.PresetCapabilityTrustMismatch
+    }
+
+    private fun validateSessionFields(challenge: HermesRealtimeRelaySessionGrantChallenge) {
+        val coreFieldsAreValid =
+            isBoundedIdentifier(challenge.threadId) &&
+                isBoundedIdentifier(challenge.clientId) &&
+                challenge.actionCap in 1..MAXIMUM_ACTION_CAP &&
+                challenge.sessionTimeoutSeconds in 1..MAXIMUM_SESSION_TIMEOUT_SECONDS
+        val scopeFieldsAreValid =
+            challenge.scopeRuleIds.size <= MAXIMUM_SCOPE_RULES &&
+                challenge.scopeRuleIds.all(::isBoundedIdentifier)
+        val optionalIdentifiersAreValid = listOf(
+            challenge.phoneViewerNodeId,
+            challenge.macHostNodeId,
+            challenge.runId,
+            challenge.runCallId,
+        ).all { it == null || isBoundedIdentifier(it) }
+        if (!coreFieldsAreValid || !scopeFieldsAreValid || !optionalIdentifiersAreValid) {
+            throw ValidationError.MalformedSession
+        }
+    }
+
     private fun isBoundedIdentifier(value: String): Boolean =
-        value.isNotEmpty() && value.toByteArray(Charsets.UTF_8).size <= 512 && value.all { it.code <= 0x7f && it != '\n' && it != '\r' }
+        value.isNotEmpty() &&
+            value.toByteArray(Charsets.UTF_8).size <= MAXIMUM_IDENTIFIER_BYTES &&
+            value.all { it.code <= MAXIMUM_ASCII_CODE_POINT && it != '\n' && it != '\r' }
 }

@@ -21,6 +21,7 @@ type Ref = { path: string };
 function snapshot(path: string) {
   const data = store.get(path);
   return {
+    id: path.split("/").at(-1),
     exists: data !== undefined,
     get: (field: string) => data?.[field],
     data: () => data,
@@ -42,15 +43,41 @@ vi.mock("../adminRuntime.js", () => ({
       };
     },
     collection(path: string) {
+      const documents = (limit: number, newestFirst: boolean, trustState?: string) => {
+        const entries = [...store]
+          .filter(([candidate, data]) =>
+            candidate.startsWith(`${path}/`) && (trustState === undefined || data.trustState === trustState));
+        if (newestFirst) {
+          entries.sort((left, right) => {
+            const createdOrder = Number(right[1].createdAtMillis ?? 0) - Number(left[1].createdAtMillis ?? 0);
+            return createdOrder === 0 ? right[0].localeCompare(left[0]) : createdOrder;
+          });
+        }
+        return entries.slice(0, limit).map(([candidate]) => snapshot(candidate));
+      };
+      type Query = {
+        orderBy(field: unknown, direction: string): Query;
+        limit(limit: number): { get(): Promise<{ docs: ReturnType<typeof snapshot>[] }> };
+      };
+      const query = (trustState?: string, newestFirst = false): Query => ({
+        orderBy() {
+          return query(trustState, true);
+        },
+        limit(limit: number) {
+          return { get: async () => ({ docs: documents(limit, newestFirst, trustState) }) };
+        },
+      });
       return {
-        limit() {
-          return {
-            get: async () => ({
-              docs: [...store]
-                .filter(([candidate]) => candidate.startsWith(`${path}/`))
-                .map(([candidate]) => snapshot(candidate)),
-            }),
-          };
+        where(field: string, operator: string, value: string) {
+          expect(field).toBe("trustState");
+          expect(operator).toBe("==");
+          return query(value);
+        },
+        orderBy() {
+          return query(undefined, true);
+        },
+        limit(limit: number) {
+          return { get: async () => ({ docs: documents(limit, false) }) };
         },
       };
     },
@@ -69,6 +96,7 @@ vi.mock("../adminRuntime.js", () => ({
 }));
 
 vi.mock("firebase-admin/firestore", () => ({
+  FieldPath: { documentId: () => ({ __documentID: true }) },
   FieldValue: { serverTimestamp: () => ({ __serverTimestamp: true }) },
   Timestamp: { fromMillis: (millis: number) => ({ toMillis: () => millis }) },
 }));
@@ -220,6 +248,26 @@ describe("Linux App Check approved-device lifecycle", () => {
     await expect(
       invoke(registerLinuxAppCheckDevice, { ...fixture.data, issuedAtMillis: Date.now() - 6 * 60 * 1000 }),
     ).rejects.toMatchObject({ code: "failed-precondition" });
+
+    write(`users/${UID}/linux_app_check_devices/${fixture.data.deviceId}`, { trustState: "revoked" }, true);
+    await expect(
+      invoke(registerLinuxAppCheckDevice, fixture.data),
+    ).rejects.toMatchObject({
+      code: "failed-precondition",
+      details: { reason: "linux_device_revoked" },
+    });
+
+    const other = enrollment();
+    write(`users/${UID}/linux_app_check_devices/${other.data.deviceId}`, {
+      appId: APP_ID,
+      deviceId: other.data.deviceId,
+      publicKeyBase64: fixture.data.publicKeyBase64,
+      trustState: "pending",
+    });
+    await expect(invoke(registerLinuxAppCheckDevice, other.data)).rejects.toMatchObject({
+      code: "permission-denied",
+      details: { reason: "linux_device_key_mismatch" },
+    });
   });
 
   it("requires explicit trusted-native approval and an action proof", async () => {
@@ -255,7 +303,17 @@ describe("Linux App Check approved-device lifecycle", () => {
     await invoke(registerLinuxAppCheckDevice, fixture.data);
     await expect(
       invoke(issueLinuxAppCheckChallenge, { appId: APP_ID, deviceId: fixture.data.deviceId }, undefined),
-    ).rejects.toMatchObject({ code: "permission-denied" });
+    ).rejects.toMatchObject({
+      code: "permission-denied",
+      details: { reason: "linux_device_approval_required" },
+    });
+    write(`users/${UID}/linux_app_check_devices/${fixture.data.deviceId}`, { trustState: "revoked" }, true);
+    await expect(
+      invoke(issueLinuxAppCheckChallenge, { appId: APP_ID, deviceId: fixture.data.deviceId }, undefined),
+    ).rejects.toMatchObject({
+      code: "permission-denied",
+      details: { reason: "linux_device_revoked" },
+    });
     write(`users/${UID}/linux_app_check_devices/${fixture.data.deviceId}`, { trustState: "approved" }, true);
     const challenge = await invoke<{
       challengeId: string;
@@ -344,7 +402,58 @@ describe("Linux App Check approved-device lifecycle", () => {
         signatureBase64: validSignature,
         uid: UID,
       }),
-    ).rejects.toMatchObject({ code: "permission-denied" });
+    ).rejects.toMatchObject({
+      code: "permission-denied",
+      details: { reason: "linux_device_revoked" },
+    });
+  });
+
+  it("returns stable challenge-consumption reasons for every permanent device rejection", async () => {
+    const fixture = enrollment();
+    await invoke(registerLinuxAppCheckDevice, fixture.data);
+    const devicePath = `users/${UID}/linux_app_check_devices/${fixture.data.deviceId}`;
+    write(devicePath, { trustState: "approved" }, true);
+    const challenge = await invoke<{ challengeId: string; canonicalPayloadBase64: string }>(
+      issueLinuxAppCheckChallenge,
+      { appId: APP_ID, deviceId: fixture.data.deviceId },
+      undefined,
+    );
+    const consume = () => consumeLinuxAppCheckChallenge({
+      appId: APP_ID,
+      challengeId: challenge.challengeId,
+      deviceId: fixture.data.deviceId,
+      signatureBase64: sign(
+        null,
+        Buffer.from(challenge.canonicalPayloadBase64, "base64"),
+        fixture.key.privateKey,
+      ).toString("base64"),
+      uid: UID,
+    });
+
+    store.delete(devicePath);
+    await expect(consume()).rejects.toMatchObject({
+      details: { reason: "linux_device_not_registered" },
+    });
+
+    write(devicePath, { ...fixture.data, trustState: "revoked" });
+    await expect(consume()).rejects.toMatchObject({
+      details: { reason: "linux_device_revoked" },
+    });
+
+    write(devicePath, { ...fixture.data, trustState: "unknown" });
+    await expect(consume()).rejects.toMatchObject({
+      details: { reason: "linux_device_invalid_trust_state" },
+    });
+
+    write(devicePath, { ...fixture.data, appId: "1:123:linux:other", trustState: "approved" });
+    await expect(consume()).rejects.toMatchObject({
+      details: { reason: "linux_device_record_mismatch" },
+    });
+
+    write(devicePath, { ...fixture.data, publicKeyBase64: "not-base64", trustState: "approved" });
+    await expect(consume()).rejects.toMatchObject({
+      details: { reason: "linux_device_record_mismatch" },
+    });
   });
 
   it("lists public review material and revokes without ever returning private material", async () => {
@@ -379,6 +488,57 @@ describe("Linux App Check approved-device lifecycle", () => {
         actionProof: { signed: true },
       }),
     ).rejects.toMatchObject({ code: "failed-precondition" });
+  });
+
+  it("keeps an older pending identity visible behind more than 100 newer terminal records", async () => {
+    const collection = `users/${UID}/linux_app_check_devices`;
+    for (let index = 0; index < 101; index += 1) {
+      const trustState = index % 2 === 0 ? "approved" : "revoked";
+      write(`${collection}/${trustState}-${index}`, {
+        deviceId: `${trustState}-${index}`,
+        trustState,
+        createdAtMillis: 1_000 + index,
+      });
+    }
+    write(`${collection}/rotated-pending`, {
+      deviceId: "rotated-pending",
+      deviceName: "Rotated workstation",
+      trustState: "pending",
+      createdAtMillis: 1,
+    });
+
+    const listed = await invoke<{ devices: Array<Record<string, unknown>> }>(listLinuxAppCheckDevices, {
+      approverDeviceId: APPROVER_ID,
+    });
+
+    expect(listed.devices).toHaveLength(100);
+    expect(listed.devices[0]).toMatchObject({ deviceId: "rotated-pending", trustState: "pending" });
+    expect(listed.devices.some((device) => device.deviceId === "approved-0")).toBe(false);
+  });
+
+  it("keeps the newest rotated identity visible when more than 100 devices are pending", async () => {
+    const collection = `users/${UID}/linux_app_check_devices`;
+    for (let index = 0; index < 101; index += 1) {
+      write(`${collection}/pending-${index.toString().padStart(3, "0")}`, {
+        deviceId: `pending-${index}`,
+        trustState: "pending",
+        createdAtMillis: 1_000 + index,
+      });
+    }
+    write(`${collection}/rotated-newest`, {
+      deviceId: "rotated-newest",
+      deviceName: "Rotated workstation",
+      trustState: "pending",
+      createdAtMillis: 10_000,
+    });
+
+    const listed = await invoke<{ devices: Array<Record<string, unknown>> }>(listLinuxAppCheckDevices, {
+      approverDeviceId: APPROVER_ID,
+    });
+
+    expect(listed.devices).toHaveLength(100);
+    expect(listed.devices[0]).toMatchObject({ deviceId: "rotated-newest", trustState: "pending" });
+    expect(listed.devices.some((device) => device.deviceId === "pending-0")).toBe(false);
   });
 
   it("admits only approved exact-app Linux records to the iroh host root", async () => {

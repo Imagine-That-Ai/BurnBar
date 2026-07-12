@@ -150,15 +150,22 @@ final class BurnBarLinuxPeerManifestTests: XCTestCase {
             "executableSHA256": PlatformCrypto.sha256Hex(executableBytes)
         ]
         for (key, value) in manifestOverrides { manifest[key] = value }
+        let schemaVersion = try XCTUnwrap(manifest["schemaVersion"] as? Int)
+        let kind = try XCTUnwrap(manifest["kind"] as? String)
+        let manifestKeyID = try XCTUnwrap(manifest["keyId"] as? String)
+        let identity = try XCTUnwrap(manifest["identity"] as? String)
+        let executableRelativePath = try XCTUnwrap(manifest["executableRelativePath"] as? String)
+        let executableBasename = try XCTUnwrap(manifest["executableBasename"] as? String)
+        let executableSHA256 = try XCTUnwrap(manifest["executableSHA256"] as? String)
         let canonicalData = Data(([
             "{",
-            "  \"schemaVersion\": \(manifest["schemaVersion"] as! Int),",
-            "  \"kind\": \"\(manifest["kind"] as! String)\",",
-            "  \"keyId\": \"\(manifest["keyId"] as! String)\",",
-            "  \"identity\": \"\(manifest["identity"] as! String)\",",
-            "  \"executableRelativePath\": \"\(manifest["executableRelativePath"] as! String)\",",
-            "  \"executableBasename\": \"\(manifest["executableBasename"] as! String)\",",
-            "  \"executableSHA256\": \"\(manifest["executableSHA256"] as! String)\"",
+            "  \"schemaVersion\": \(schemaVersion),",
+            "  \"kind\": \"\(kind)\",",
+            "  \"keyId\": \"\(manifestKeyID)\",",
+            "  \"identity\": \"\(identity)\",",
+            "  \"executableRelativePath\": \"\(executableRelativePath)\",",
+            "  \"executableBasename\": \"\(executableBasename)\",",
+            "  \"executableSHA256\": \"\(executableSHA256)\"",
             "}"
         ].joined(separator: "\n") + "\n").utf8)
         let manifestData = canonicalManifest

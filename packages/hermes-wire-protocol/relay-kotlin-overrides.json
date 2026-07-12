@@ -172,7 +172,7 @@
           "encodeDefault": false
         },
         "sessionGrantChallenge": {
-          "ktType": "HermesRealtimeRelayComputerUseSessionGrantChallenge?",
+          "ktType": "HermesRealtimeRelaySessionGrantChallenge?",
           "default": "null",
           "serialName": null,
           "encodeDefault": false
@@ -635,7 +635,7 @@
         "signatureEd25519"
       ]
     },
-    "HermesRealtimeRelayComputerUseSessionGrantChallenge": {
+    "HermesRealtimeRelaySessionGrantChallenge": {
       "kind": "data class",
       "fields": {
         "version": { "ktType": "Int", "serialName": null, "encodeDefault": false },

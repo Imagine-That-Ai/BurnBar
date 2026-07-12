@@ -8,10 +8,10 @@ import OpenBurnBarMedia
 /// exact challenge to the live-only mobile grant controller.
 @MainActor
 public final class MobileComputerUseSessionGrantChallengeReceiver {
-    typealias Validator = (_ challenge: HermesRealtimeRelayComputerUseSessionGrantChallenge, _ now: Date) throws -> Void
+    typealias Validator = (_ challenge: HermesRealtimeRelaySessionGrantChallenge, _ now: Date) throws -> Void
     typealias AuthenticationWillBegin = @MainActor @Sendable () -> Void
     typealias GrantHandler = (
-        _ challenge: HermesRealtimeRelayComputerUseSessionGrantChallenge,
+        _ challenge: HermesRealtimeRelaySessionGrantChallenge,
         _ authenticationWillBegin: @escaping AuthenticationWillBegin
     ) async throws -> Void
 
@@ -46,7 +46,7 @@ public final class MobileComputerUseSessionGrantChallengeReceiver {
         }
     }
 
-    func ingest(_ challenge: HermesRealtimeRelayComputerUseSessionGrantChallenge) {
+    func ingest(_ challenge: HermesRealtimeRelaySessionGrantChallenge) {
         let validationDate = now()
         pruneCompleted(at: validationDate)
         do {
@@ -93,7 +93,7 @@ public final class MobileComputerUseSessionGrantChallengeReceiver {
         completedExpirations[challengeId] != nil
     }
 
-    private func markCompleted(_ challenge: HermesRealtimeRelayComputerUseSessionGrantChallenge) {
+    private func markCompleted(_ challenge: HermesRealtimeRelaySessionGrantChallenge) {
         guard completedExpirations[challenge.challengeId] == nil else { return }
         completedExpirations[challenge.challengeId] = challenge.expiresAt
         completedOrder.append(challenge.challengeId)

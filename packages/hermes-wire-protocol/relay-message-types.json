@@ -251,7 +251,7 @@
         },
         {
           "name": "sessionGrantChallenge",
-          "swiftType": "HermesRealtimeRelayComputerUseSessionGrantChallenge?",
+          "swiftType": "HermesRealtimeRelaySessionGrantChallenge?",
           "codable": {
             "key": "sessionGrantChallenge"
           }
@@ -1046,7 +1046,7 @@
     },
     {
       "kind": "struct",
-      "name": "HermesRealtimeRelayComputerUseSessionGrantChallenge",
+      "name": "HermesRealtimeRelaySessionGrantChallenge",
       "conformances": [
         "Codable",
         "Sendable",

@@ -113,6 +113,7 @@ describe('VAL-RPC bridge contract', () => {
       'daemon.auth.status',
       'daemon.auth.begin',
       'daemon.auth.cancel',
+      'daemon.auth.rotate_identity',
       'daemon.auth.sign_out'
     ]) {
       expect(rustBridge).toContain(method);

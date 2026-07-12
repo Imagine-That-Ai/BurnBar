@@ -6,16 +6,31 @@ import { useShellStore } from './shellStore.js';
 export type AccountState = {
   data: AccountStatus | null;
   loading: boolean;
-  busyAction: 'sign-in' | 'cancel' | 'sign-out' | null;
+  busyAction: 'sign-in' | 'cancel' | 'rotate-identity' | 'sign-out' | null;
   error: string | null;
   load(): Promise<void>;
   beginSignIn(): Promise<void>;
   cancelSignIn(): Promise<void>;
+  rotateIdentity(): Promise<void>;
   signOut(): Promise<void>;
 };
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Request failed';
+}
+
+export function isAmbiguousIdentityRotationError(error: unknown): boolean {
+  const message = errorMessage(error).toLowerCase();
+  return [
+    'timed out',
+    'timeout',
+    'resource temporarily unavailable',
+    'connection reset',
+    'broken pipe',
+    'unexpected eof',
+    'eof while parsing',
+    'rpc response missing result'
+  ].some((marker) => message.includes(marker));
 }
 
 export const useAccountStore = create<AccountState>()((set, get) => {
@@ -112,6 +127,37 @@ export const useAccountStore = create<AccountState>()((set, get) => {
         set({ data, busyAction: null, error: null });
       } catch (error) {
         set({ busyAction: null, error: errorMessage(error) });
+      }
+    },
+    async rotateIdentity() {
+      const bridge = useShellStore.getState().bridge;
+      if (!bridge) {
+        set({ error: 'Packaged shell required to rotate the Linux installation identity.' });
+        return;
+      }
+      if (!beginMutation('rotate-identity')) return;
+      try {
+        const data = await bridge.accountRotateIdentity();
+        set({ data, busyAction: null, error: null });
+      } catch (error) {
+        const mutationError = errorMessage(error);
+        if (!isAmbiguousIdentityRotationError(error)) {
+          set({ busyAction: null, error: mutationError });
+          return;
+        }
+        try {
+          // A socket timeout is ambiguous: the daemon may finish rotation after
+          // the renderer stops waiting. Re-read daemon authority before
+          // presenting the old rejected key as current.
+          const data = await bridge.accountStatus();
+          set({
+            data,
+            busyAction: null,
+            error: data.detail === 'device_rejected' ? mutationError : null
+          });
+        } catch {
+          set({ busyAction: null, error: mutationError });
+        }
       }
     },
     async signOut() {

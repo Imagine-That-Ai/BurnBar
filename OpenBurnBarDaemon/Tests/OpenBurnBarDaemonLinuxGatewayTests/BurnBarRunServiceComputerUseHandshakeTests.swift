@@ -657,6 +657,7 @@ final class BurnBarRunServiceComputerUseHandshakeTests: XCTestCase {
         try FileManager.default.createDirectory(at: journalURL, withIntermediateDirectories: true)
         await harness.bindingGate.setAllowed(true)
 
+        var observedJournalError: Error?
         do {
             _ = try await harness.runService.resumeComputerUseRun(
                 created.runID,
@@ -664,7 +665,10 @@ final class BurnBarRunServiceComputerUseHandshakeTests: XCTestCase {
                 expectedGeneration: requirement.generation
             )
             XCTFail("expected journal persistence failure")
-        } catch {}
+        } catch {
+            observedJournalError = error
+        }
+        XCTAssertNotNil(observedJournalError)
 
         let detail = try await harness.runService.getRun(
             BurnBarRunGetRequest(runID: created.runID, clientID: harness.clientID)
@@ -694,6 +698,7 @@ final class BurnBarRunServiceComputerUseHandshakeTests: XCTestCase {
         let requirement = try XCTUnwrap(pendingRequirement)
         await harness.bindingGate.setAllowed(true)
 
+        var observedJournalError: Error?
         do {
             _ = try await harness.runService.resumeComputerUseRun(
                 created.runID,
@@ -701,7 +706,10 @@ final class BurnBarRunServiceComputerUseHandshakeTests: XCTestCase {
                 expectedGeneration: requirement.generation
             )
             XCTFail("expected post-dispatch journal failure")
-        } catch {}
+        } catch {
+            observedJournalError = error
+        }
+        XCTAssertNotNil(observedJournalError)
 
         let detail = try await harness.runService.getRun(
             BurnBarRunGetRequest(runID: created.runID, clientID: harness.clientID)
@@ -789,10 +797,14 @@ final class BurnBarRunServiceComputerUseHandshakeTests: XCTestCase {
         }
         await revocations.release()
 
+        var observedRestoreError: Error?
         do {
             _ = try await restoreTask.value
             XCTFail("expected interrupted Computer Use normalization persistence to fail")
-        } catch {}
+        } catch {
+            observedRestoreError = error
+        }
+        XCTAssertNotNil(observedRestoreError)
 
         switch failureStage {
         case .journalAppend:

@@ -81,7 +81,6 @@ class HermesService(
     relayClient: HermesRelayClient? = null,
     relayTransport: HermesRelayTransporting? = null,
 ) {
-    private val destroyed = AtomicBoolean(false)
     private val client =
         OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
@@ -159,9 +158,15 @@ class HermesService(
     internal var legacyConnectionInternal = HermesConnection()
     private var chatTilePreferences = ChatTilePreferences.DEFAULT
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private val lifecycleRegistration = HermesAuthLifecycleRegistry.register(priority = 100) {
-        closeForAuthTransition()
-    }
+    private val lifecycle =
+        HermesServiceLifecycle(
+            closeLocalResources = {
+                disconnect()
+                client.dispatcher.cancelAll()
+                scope.cancel()
+            },
+            relayTransportProvider = { relayTransportInternal },
+        )
 
     private val _currentThreadID = MutableStateFlow<String?>(null)
     val currentThreadID: StateFlow<String?> = _currentThreadID
@@ -370,32 +375,41 @@ class HermesService(
     }
 
     fun destroy() {
-        val shouldCloseLocalResources = destroyed.compareAndSet(false, true)
-        HermesAuthLifecycleRegistry.unregister(lifecycleRegistration)
-        if (shouldCloseLocalResources) closeLocalResources()
-        lifecycleCloseScope.launch {
-            relayTransportInternal?.destroy()
-        }
+        lifecycle.destroyAsync()
     }
 
     internal suspend fun destroyAndWait() {
-        val shouldCloseLocalResources = destroyed.compareAndSet(false, true)
-        HermesAuthLifecycleRegistry.unregister(lifecycleRegistration)
-        if (shouldCloseLocalResources) closeLocalResources()
-        relayTransportInternal?.destroy()
+        lifecycle.destroyAndWait()
+    }
+}
+
+private class HermesServiceLifecycle(
+    private val closeLocalResources: () -> Unit,
+    private val relayTransportProvider: () -> HermesRelayTransporting?,
+) {
+    private val destroyed = AtomicBoolean(false)
+    private val registration = HermesAuthLifecycleRegistry.register(priority = 100) {
+        closeForAuthTransition()
+    }
+
+    fun destroyAsync() {
+        unregisterAndCloseLocalResources()
+        lifecycleCloseScope.launch { relayTransportProvider()?.destroy() }
+    }
+
+    suspend fun destroyAndWait() {
+        unregisterAndCloseLocalResources()
+        relayTransportProvider()?.destroy()
     }
 
     private suspend fun closeForAuthTransition() {
-        if (destroyed.compareAndSet(false, true)) {
-            closeLocalResources()
-        }
-        relayTransportInternal?.closeForAuthTransition()
+        if (destroyed.compareAndSet(false, true)) closeLocalResources()
+        relayTransportProvider()?.closeForAuthTransition()
     }
 
-    private fun closeLocalResources() {
-        disconnect()
-        client.dispatcher.cancelAll()
-        scope.cancel()
+    private fun unregisterAndCloseLocalResources() {
+        HermesAuthLifecycleRegistry.unregister(registration)
+        if (destroyed.compareAndSet(false, true)) closeLocalResources()
     }
 
     private companion object {

@@ -277,7 +277,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
     /// fields. Challenge metadata is intentionally excluded: the resulting ID
     /// is byte-identical to `ComputerUseSessionStartRequest` canonicalization.
     public func canonicalComputerUseSessionIntentID(
-        challenge: HermesRealtimeRelayComputerUseSessionGrantChallenge
+        challenge: HermesRealtimeRelaySessionGrantChallenge
     ) throws -> String {
         try canonicalIntentHashHex(intent: SignableComputerUseSessionIntent(
             version: 2,
@@ -301,7 +301,7 @@ public struct ComputerUsePhoneControlSigner: Sendable {
     /// `clientIntentId`.
     @discardableResult
     public func validateSessionGrantChallenge(
-        _ challenge: HermesRealtimeRelayComputerUseSessionGrantChallenge,
+        _ challenge: HermesRealtimeRelaySessionGrantChallenge,
         now: Date = Date()
     ) throws -> String {
         guard challenge.version == Self.sessionGrantChallengeVersion else {

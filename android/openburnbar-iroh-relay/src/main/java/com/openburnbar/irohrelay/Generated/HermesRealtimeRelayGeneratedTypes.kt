@@ -49,7 +49,7 @@ data class HermesRealtimeRelayControlPayload(
     val inputIntent: HermesRealtimeRelayInputIntent? = null,
     val approvalRequest: HermesRealtimeRelayApprovalRequest? = null,
     val approvalResponse: HermesRealtimeRelayApprovalResponse? = null,
-    val sessionGrantChallenge: HermesRealtimeRelayComputerUseSessionGrantChallenge? = null,
+    val sessionGrantChallenge: HermesRealtimeRelaySessionGrantChallenge? = null,
     val agentGrantRequest: HermesRealtimeRelayAgentGrantRequest? = null,
     val agentGrantReceipt: HermesRealtimeRelayAgentGrantReceipt? = null,
     val clipboardRequest: HermesRealtimeRelayClipboardRequest? = null,
@@ -196,7 +196,7 @@ data class HermesRealtimeRelayAgentGrantLocalAuthProof(
 )
 
 @Serializable
-data class HermesRealtimeRelayComputerUseSessionGrantChallenge(
+data class HermesRealtimeRelaySessionGrantChallenge(
     val version: Int,
     val challengeId: String,
     val nonce: String,

@@ -48,7 +48,7 @@ internal object MainActivityE2EComputerUseStreamSetup {
         return StreamSession(transport, stream)
     }
 
-    suspend fun publishPhoneControlAuthority(activity: MainActivity, uid: String, connectionId: String, keyStore: PhoneControlSigningKeyStore) {
+    suspend fun publishPhoneControlAuthority(uid: String, connectionId: String, keyStore: PhoneControlSigningKeyStore) {
         val identity = keyStore.signingIdentity()
         val peerNodeId = keyStore.peerNodeId(identity)
         val deviceId = AndroidCloudVaultDeviceKeypair.loadOrCreate().deviceId

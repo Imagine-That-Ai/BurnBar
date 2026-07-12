@@ -15,7 +15,10 @@ const { createToken, consumeChallenge } = vi.hoisted(() => ({
 const APP_ID = "1:123:linux:production";
 
 vi.mock("firebase-admin/app-check", () => ({ getAppCheck: () => ({ createToken }) }));
-vi.mock("../callables/linuxAppCheckDevices.js", () => ({ consumeLinuxAppCheckChallenge: consumeChallenge }));
+vi.mock("../callables/linuxAppCheckDevices.js", () => ({
+  consumeLinuxAppCheckChallenge: consumeChallenge,
+  LINUX_APP_CHECK_REJECTION_REASON: { appNotAllowlisted: "linux_app_not_allowlisted" },
+}));
 vi.mock("../config.js", () => ({
   getConfig: () => ({
     allowMockAppCheckAttestation: false,
@@ -88,7 +91,10 @@ describe("production Linux device-key App Check mint handler", () => {
           signatureBase64: Buffer.alloc(64, 2).toString("base64"),
         },
       }),
-    ).rejects.toMatchObject({ code: "permission-denied" });
+    ).rejects.toMatchObject({
+      code: "permission-denied",
+      details: { reason: "linux_app_not_allowlisted" },
+    });
     await expect(
       invoke({
         attestation: {

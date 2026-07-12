@@ -663,6 +663,14 @@ public actor BurnBarDaemonServer {
         try await linuxCloudCredentialAuthority.signOut()
         return await linuxCloudCredentialAuthority.status()
     }
+
+    public func rotateLinuxCloudInstallationIdentity() async throws -> BurnBarLinuxAuthStatusResponse {
+        guard let linuxCloudCredentialAuthority else {
+            throw LinuxCloudAuthAuthorityError.configurationRequired
+        }
+        try await linuxCloudCredentialAuthority.rotateInstallationIdentity()
+        return await linuxCloudCredentialAuthority.status()
+    }
     #endif
 
     func ingestComputerUsePanic(
@@ -1105,7 +1113,8 @@ public actor BurnBarDaemonServer {
             let request = BurnBarRPCRequestEnvelope(id: incomingRequest.id, method: method, authToken: incomingRequest.authToken)
 
             switch method {
-            case .linuxAuthStatus, .linuxAuthBegin, .linuxAuthCancel, .linuxAuthSignOut:
+            case .linuxAuthStatus, .linuxAuthBegin, .linuxAuthCancel,
+                 .linuxAuthRotateIdentity, .linuxAuthSignOut:
                 return try await handleLinuxAuthRPC(
                     method: method,
                     decoder: decoder,

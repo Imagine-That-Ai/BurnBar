@@ -87,6 +87,72 @@ describe('accountStore daemon-owned auth actions', () => {
     expect(useAccountStore.getState().error).toMatch(/daemon refused sign-out/i);
   });
 
+  it('rotates a rejected installation identity only through the daemon bridge', async () => {
+    const awaitingApproval: AccountStatus = {
+      ...signedOut,
+      state: 'awaiting-device-approval',
+      deviceApprovalRequired: true
+    };
+    const accountRotateIdentity = vi.fn(async () => awaitingApproval);
+    useShellStore.setState({ bridge: { accountRotateIdentity } as never });
+    useAccountStore.setState({
+      data: { ...signedOut, state: 'unavailable', detail: 'device_rejected' }
+    });
+
+    await useAccountStore.getState().rotateIdentity();
+
+    expect(accountRotateIdentity).toHaveBeenCalledOnce();
+    expect(useAccountStore.getState().data).toEqual(awaitingApproval);
+    expect(useAccountStore.getState().busyAction).toBeNull();
+  });
+
+  it('reconciles authoritative status after an ambiguous rotation timeout', async () => {
+    const awaitingApproval: AccountStatus = {
+      ...signedOut,
+      state: 'awaiting-device-approval',
+      deviceApprovalRequired: true
+    };
+    const accountRotateIdentity = vi.fn(async () => {
+      throw new Error('Resource temporarily unavailable (os error 11)');
+    });
+    const accountStatus = vi.fn(async () => awaitingApproval);
+    useShellStore.setState({ bridge: { accountRotateIdentity, accountStatus } as never });
+    useAccountStore.setState({
+      data: { ...signedOut, state: 'unavailable', detail: 'device_rejected' }
+    });
+
+    await useAccountStore.getState().rotateIdentity();
+
+    expect(accountRotateIdentity).toHaveBeenCalledOnce();
+    expect(accountStatus).toHaveBeenCalledOnce();
+    expect(useAccountStore.getState().data).toEqual(awaitingApproval);
+    expect(useAccountStore.getState().error).toBeNull();
+    expect(useAccountStore.getState().busyAction).toBeNull();
+  });
+
+  it('keeps deterministic rotation failures visible and retryable without status reconciliation', async () => {
+    const rejected: AccountStatus = {
+      ...signedOut,
+      state: 'unavailable',
+      signedIn: true,
+      detail: 'device_rejected'
+    };
+    const accountRotateIdentity = vi.fn(async () => {
+      throw new Error('The Linux installation identity is unavailable or corrupt.');
+    });
+    const accountStatus = vi.fn(async () => signedOut);
+    useShellStore.setState({ bridge: { accountRotateIdentity, accountStatus } as never });
+    useAccountStore.setState({ data: rejected });
+
+    await useAccountStore.getState().rotateIdentity();
+
+    expect(accountRotateIdentity).toHaveBeenCalledOnce();
+    expect(accountStatus).not.toHaveBeenCalled();
+    expect(useAccountStore.getState().data).toEqual(rejected);
+    expect(useAccountStore.getState().error).toMatch(/identity is unavailable or corrupt/i);
+    expect(useAccountStore.getState().busyAction).toBeNull();
+  });
+
   it('preserves the current authorization operation across a transient poll failure', async () => {
     const authorizing: AccountStatus = {
       ...signedOut,

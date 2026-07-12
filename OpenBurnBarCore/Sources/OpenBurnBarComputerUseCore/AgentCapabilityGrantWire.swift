@@ -16,7 +16,7 @@ public extension AgentCapabilityGrantRequest {
     /// Builds the existing signed grant shape from an exact, validated Linux
     /// session challenge. Generic grant initializers remain unchanged.
     init(
-        validatedSessionChallenge challenge: HermesRealtimeRelayComputerUseSessionGrantChallenge,
+        validatedSessionChallenge challenge: HermesRealtimeRelaySessionGrantChallenge,
         sourceDeviceID: String,
         deliveryMode: AgentGrantDeliveryMode = .live,
         localAuthenticationSatisfied: Bool = false,

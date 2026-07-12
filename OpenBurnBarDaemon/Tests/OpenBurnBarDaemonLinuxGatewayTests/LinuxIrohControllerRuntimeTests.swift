@@ -93,6 +93,7 @@ private actor TestLinuxIrohDirectory: LinuxIrohControllerDirectoryServing {
     func suspendNextRecordPublicationAfterApply() { suspendRecordPublication = true }
     func isRecordPublicationSuspended() -> Bool { recordPublicationSuspended }
     func releaseRecordPublication() {
+        suspendRecordPublication = false
         recordPublicationContinuation?.resume()
         recordPublicationContinuation = nil
     }
@@ -239,6 +240,10 @@ private actor TestLinuxIrohTransport: IrohRelayTransport {
 }
 
 final class LinuxIrohControllerRuntimeTests: XCTestCase {
+    private enum WaitError: Error {
+        case timedOut
+    }
+
     func testStopInvalidatesAndAwaitsInProgressStartEpoch() async throws {
         let deviceID = "linux-start-race"
         let connectionID = "linux-host-" + String(PlatformCrypto.sha256Hex(Data(deviceID.utf8)).prefix(32))
@@ -352,10 +357,21 @@ final class LinuxIrohControllerRuntimeTests: XCTestCase {
         )
 
         let startTask = Task { try await runtime.start() }
-        try await eventually { await directory.isRecordPublicationSuspended() }
-        let stopTask = Task { await runtime.stop() }
-        await directory.releaseRecordPublication()
-        await stopTask.value
+        var stopTask: Task<Void, Never>?
+        do {
+            try await eventually(timeout: 10) { await directory.isRecordPublicationSuspended() }
+            let task = Task { await runtime.stop() }
+            stopTask = task
+            try await eventually(timeout: 10) { await runtime.status().phase == .stopping }
+            await directory.releaseRecordPublication()
+            await task.value
+        } catch {
+            startTask.cancel()
+            await directory.releaseRecordPublication()
+            await stopTask?.value
+            _ = await startTask.result
+            throw error
+        }
         var startupWasCancelled = false
         do {
             try await startTask.value
@@ -1053,6 +1069,8 @@ final class LinuxIrohControllerRuntimeTests: XCTestCase {
 
     private func eventually(
         timeout: TimeInterval = 2,
+        file: StaticString = #filePath,
+        line: UInt = #line,
         condition: @escaping () async -> Bool
     ) async throws {
         let deadline = Date().addingTimeInterval(timeout)
@@ -1060,7 +1078,8 @@ final class LinuxIrohControllerRuntimeTests: XCTestCase {
             if await condition() { return }
             try await Task.sleep(nanoseconds: 10_000_000)
         }
-        XCTFail("Condition did not become true before timeout")
+        XCTFail("Condition did not become true before timeout", file: file, line: line)
+        throw WaitError.timedOut
     }
 }
 #endif

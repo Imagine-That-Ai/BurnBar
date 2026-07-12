@@ -709,7 +709,8 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
             publicKeyRepresentation: originalKey.publicKey.rawRepresentation
         )
         guard case .pinned = pinStore.pin(deviceId: deviceId, key: originalVerifier) else {
-            return XCTFail("expected original device pin")
+            XCTFail("expected original device pin")
+            return
         }
         let server = makeServer(socketPath: socketPath, verifier: nil, pinStore: pinStore)
         try await server.start()
@@ -728,7 +729,8 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
 
         XCTAssertEqual(response.error?.code, BurnBarRPCErrorCode.unauthorized)
         guard case .absent = pinStore.pinnedKey(deviceId: peerNodeId) else {
-            return XCTFail("rejected device conflict must not persist the peer alias")
+            XCTFail("rejected device conflict must not persist the peer alias")
+            return
         }
     }
 
@@ -743,7 +745,8 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
             publicKeyRepresentation: originalKey.publicKey.rawRepresentation
         )
         guard case .pinned = pinStore.pin(deviceId: peerNodeId, key: originalVerifier) else {
-            return XCTFail("expected original peer pin")
+            XCTFail("expected original peer pin")
+            return
         }
         let server = makeServer(socketPath: socketPath, verifier: nil, pinStore: pinStore)
         try await server.start()
@@ -761,7 +764,8 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
 
         XCTAssertEqual(response.error?.code, BurnBarRPCErrorCode.unauthorized)
         guard case .absent = pinStore.pinnedKey(deviceId: deviceId) else {
-            return XCTFail("rejected peer conflict must not persist the device alias")
+            XCTFail("rejected peer conflict must not persist the device alias")
+            return
         }
     }
 
@@ -952,7 +956,8 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
             deviceIds: [deviceId, "atomic-peer"],
             key: verifier
         ) else {
-            return XCTFail("expected atomic alias write failure")
+            XCTFail("expected atomic alias write failure")
+            return
         }
         for identifier in [deviceId, "atomic-peer"] {
             guard case .absent = pinStore.pinnedKey(deviceId: identifier) else {
@@ -978,7 +983,8 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
         let identifiers = [deviceId, "atomic-keychain-peer"]
 
         guard case .pinned = pinStore.pinAliases(deviceIds: identifiers, key: verifier) else {
-            return XCTFail("expected one-item Keychain alias commit")
+            XCTFail("expected one-item Keychain alias commit")
+            return
         }
 
         let operations = dataStore.operationCounts()
@@ -1007,7 +1013,8 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
             publicKeyRepresentation: privateKey.publicKey.rawRepresentation
         )
         guard case .pinned = pinStore.pin(deviceId: "existing-keychain-alias", key: verifier) else {
-            return XCTFail("expected initial Keychain pin")
+            XCTFail("expected initial Keychain pin")
+            return
         }
         dataStore.forcedUpdateError = -34_018
         dataStore.forcedDeleteError = -34_019
@@ -1016,11 +1023,13 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
             deviceIds: [deviceId, "rejected-keychain-peer"],
             key: verifier
         ) else {
-            return XCTFail("expected atomic Keychain update failure")
+            XCTFail("expected atomic Keychain update failure")
+            return
         }
 
         guard case .pinned = pinStore.pinnedKey(deviceId: "existing-keychain-alias") else {
-            return XCTFail("failed update must preserve prior trust")
+            XCTFail("failed update must preserve prior trust")
+            return
         }
         for identifier in [deviceId, "rejected-keychain-peer"] {
             guard case .absent = pinStore.pinnedKey(deviceId: identifier) else {
@@ -1113,7 +1122,8 @@ final class BurnBarDaemonComputerUseLocalAuthProofWiringTests: XCTestCase {
 
         XCTAssertEqual(response.error?.code, BurnBarRPCErrorCode.invalidParams)
         guard case .absent = pinStore.pinnedKey(deviceId: "otherwise-valid-peer") else {
-            return XCTFail("malformed device identity must not persist the peer alias")
+            XCTFail("malformed device identity must not persist the peer alias")
+            return
         }
     }
 

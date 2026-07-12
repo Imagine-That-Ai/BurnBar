@@ -31,7 +31,13 @@ const ACCOUNT_CASES = [
   }
 ];
 
-
+const RETRYABLE_AUTH_FAILURES = new Set([
+  'authorization_failed',
+  'cloud_response_invalid',
+  'cloud_unavailable',
+  'reauthorization_required',
+  'session_changed'
+]);
 
 function signedOutStatus(): AccountStatus {
   return {
@@ -55,6 +61,14 @@ function unavailableCopy(detail?: string): string {
       return 'OpenBurnBar could not load this installation identity. Check keyring access, restart the app, then check again.';
     case 'cloud_unavailable':
       return 'Cloud sign-in could not be reached. Check your network connection, then check again.';
+    case 'cloud_response_invalid':
+      return 'Cloud sign-in returned an invalid response. Check again later or contact support.';
+    case 'device_rejected':
+      return 'This installation key was rejected or revoked. Replace it to request approval with a new fingerprint.';
+    case 'app_check_configuration_rejected':
+      return 'This build uses a Linux App Check application that is not allowlisted. Install an official configured build or contact support.';
+    case 'reauthorization_required':
+      return 'The cloud session expired. Sign in again to continue.';
     case 'session_changed':
       return 'The account session changed while the request was running. Check again before retrying sign-in.';
     case 'authorization_failed':
@@ -72,11 +86,13 @@ export function AccountSurface() {
   const error = useAccountStore((s) => s.error);
   const beginSignIn = useAccountStore((s) => s.beginSignIn);
   const cancelSignIn = useAccountStore((s) => s.cancelSignIn);
+  const rotateIdentity = useAccountStore((s) => s.rotateIdentity);
   const signOut = useAccountStore((s) => s.signOut);
   const fixtureMode = useShellStore((s) => s.fixtureMode);
   const bridge = useShellStore((s) => s.bridge);
   const daemonStatus = useDaemonStatusCopy();
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
+  const [confirmingIdentityRotation, setConfirmingIdentityRotation] = useState(false);
 
   useLaneLoad(load);
 
@@ -89,6 +105,8 @@ export function AccountSurface() {
   const offline = !fixtureMode && !bridge && !loading && !data && Boolean(error);
   const statusForCard = data ?? (offline || error ? signedOutStatus() : null);
   const authUnavailable = statusForCard?.state === 'unavailable';
+  const deviceRejected = statusForCard?.detail === 'device_rejected';
+  const authRetryAvailable = authUnavailable && RETRYABLE_AUTH_FAILURES.has(statusForCard?.detail ?? '');
 
   const politeSummary = useMemo(() => {
     if (loading) return 'Loading account and sync status.';
@@ -181,6 +199,21 @@ export function AccountSurface() {
                 Signed in as <strong>{statusForCard.identityLabel ?? 'Linux identity'}</strong>
               </p>
             )}
+            {statusForCard.installationDeviceID && statusForCard.installationSafetyFingerprint ? (
+              <section className="account-installation-verification" aria-labelledby="installation-verification-title">
+                <h3 id="installation-verification-title">Installation verification</h3>
+                <dl>
+                  <div>
+                    <dt>Device ID</dt>
+                    <dd><code>{statusForCard.installationDeviceID}</code></dd>
+                  </div>
+                  <div>
+                    <dt>Safety fingerprint</dt>
+                    <dd><code>{statusForCard.installationSafetyFingerprint}</code></dd>
+                  </div>
+                </dl>
+              </section>
+            ) : null}
             <TrustBadge planTier={accountPlanTier(statusForCard)} />
             <SyncStateCard status={statusForCard} />
           </div>
@@ -190,17 +223,17 @@ export function AccountSurface() {
       <MembershipSection />
 
       <div className="actions">
-        {!statusForCard?.signedIn && statusForCard?.state !== 'authorizing' && !authUnavailable ? (
+        {!statusForCard?.signedIn && statusForCard?.state !== 'authorizing' && (!authUnavailable || authRetryAvailable) ? (
           <button
             type="button"
             className="primary"
             disabled={loading || busyAction !== null || fixtureMode || !bridge}
             onClick={() => void beginSignIn()}
           >
-            {busyAction === 'sign-in' ? 'Opening browser…' : 'Sign in'}
+            {busyAction === 'sign-in' ? 'Opening browser…' : authRetryAvailable ? 'Retry sign-in' : 'Sign in'}
           </button>
         ) : null}
-        {authUnavailable ? (
+        {authUnavailable && !authRetryAvailable ? (
           <button type="button" className="primary" disabled>
             Sign in unavailable
           </button>
@@ -214,6 +247,39 @@ export function AccountSurface() {
           >
             {busyAction === 'cancel' ? 'Cancelling…' : 'Cancel sign-in'}
           </button>
+        ) : null}
+        {deviceRejected && !confirmingIdentityRotation ? (
+          <button
+            type="button"
+            className="danger"
+            disabled={busyAction !== null || fixtureMode || !bridge}
+            onClick={() => setConfirmingIdentityRotation(true)}
+          >
+            Replace installation key
+          </button>
+        ) : null}
+        {deviceRejected && confirmingIdentityRotation ? (
+          <div className="account-signout-confirmation" role="group" aria-label="Confirm installation key replacement">
+            <span>A new device ID and safety fingerprint will require approval from your trusted iPad.</span>
+            <button
+              type="button"
+              className="danger"
+              disabled={busyAction !== null}
+              onClick={() => {
+                void rotateIdentity().finally(() => setConfirmingIdentityRotation(false));
+              }}
+            >
+              {busyAction === 'rotate-identity' ? 'Replacing key…' : 'Confirm key replacement'}
+            </button>
+            <button
+              type="button"
+              className="ghost"
+              disabled={busyAction !== null}
+              onClick={() => setConfirmingIdentityRotation(false)}
+            >
+              Keep current key
+            </button>
+          </div>
         ) : null}
         {statusForCard?.signedIn && !confirmingSignOut ? (
           <button type="button" className="ghost" disabled={busyAction !== null} onClick={() => setConfirmingSignOut(true)}>

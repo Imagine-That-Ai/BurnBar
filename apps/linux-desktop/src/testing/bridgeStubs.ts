@@ -1,4 +1,6 @@
 import type {
+  AccountSignInOperation,
+  AccountStatus,
   DatabaseIndexActionResult,
   DatabaseWorkspaceStatus,
   ComputerUsePanicHaltResult,
@@ -141,6 +143,27 @@ export const emptyOnboardingAction = (
 export const emptyOnboardingReset = (): Promise<LinuxOnboardingSnapshot> =>
   Promise.resolve(defaultLinuxOnboardingSnapshot());
 
+export const emptyAccountStatus = (): Promise<AccountStatus> =>
+  Promise.resolve({
+    state: 'signed-out',
+    signedIn: false,
+    trustClass: 'linux-lower-trust',
+    syncState: 'local-only',
+    deviceApprovalRequired: false
+  });
+
+export const emptyAccountBeginSignIn = (): Promise<AccountSignInOperation> =>
+  Promise.reject(new Error('Account sign-in is unavailable in this test bridge.'));
+
+export const emptyAccountCancelSignIn = (_operationID: string): Promise<AccountStatus> =>
+  emptyAccountStatus();
+
+export const emptyAccountRotateIdentity = (): Promise<AccountStatus> =>
+  emptyAccountStatus();
+
+export const emptyAccountSignOut = (): Promise<AccountStatus> =>
+  emptyAccountStatus();
+
 export const emptySubscriptionStart = (
   request: DaemonSubscriptionStartRequest
 ): Promise<DaemonSubscriptionResponse> => Promise.resolve({
@@ -219,6 +242,11 @@ export const availableRuntimeCapabilities = (): Promise<RuntimeCapabilityManifes
   Promise.resolve(makeAvailableRuntimeCapabilityManifest());
 
 export const bridgeStubDefaults = {
+  accountStatus: emptyAccountStatus,
+  accountBeginSignIn: emptyAccountBeginSignIn,
+  accountCancelSignIn: emptyAccountCancelSignIn,
+  accountRotateIdentity: emptyAccountRotateIdentity,
+  accountSignOut: emptyAccountSignOut,
   onboardingSnapshot: emptyOnboardingSnapshot,
   onboardingAction: emptyOnboardingAction,
   onboardingReset: emptyOnboardingReset,

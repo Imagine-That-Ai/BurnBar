@@ -16,12 +16,18 @@ enum IrohInboundPeerPolicyLoadResult: Sendable, Equatable {
 /// The callable revalidates pairing signatures, trusted devices, authority
 /// keys, generation, and expiry; raw Firestore documents are not authority.
 enum CallableIrohControllerRouteDirectory {
-    static func load(uid: String, connectionId: String) async -> IrohInboundPeerPolicyLoadResult {
-        do {
-            let bindings = try await ComputerUseSecurityCallableClient.resolveActiveIrohControllerRoutes(
+    static func load(
+        uid: String,
+        connectionId: String,
+        resolve: (String, String) async throws -> [IrohControllerRouteBinding] = { uid, connectionId in
+            try await ComputerUseSecurityCallableClient.resolveActiveIrohControllerRoutes(
                 uid: uid,
                 connectionId: connectionId
             )
+        }
+    ) async -> IrohInboundPeerPolicyLoadResult {
+        do {
+            let bindings = try await resolve(uid, connectionId)
             return .authoritative(IrohInboundPeerPolicy(routeBindings: bindings))
         } catch {
             AppLogger.network.error(

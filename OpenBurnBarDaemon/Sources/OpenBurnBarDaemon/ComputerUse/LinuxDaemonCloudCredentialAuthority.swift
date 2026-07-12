@@ -114,7 +114,7 @@ public struct LinuxCloudAuthConfiguration: Sendable, Equatable {
         case .systemRoot:
             guard metadata.st_uid == 0, metadata.st_mode & 0o022 == 0 else { return .invalid }
         case .explicitUserOrRoot:
-            guard (metadata.st_uid == 0 || metadata.st_uid == geteuid()),
+            guard metadata.st_uid == 0 || metadata.st_uid == geteuid(),
                   metadata.st_mode & 0o077 == 0 else { return .invalid }
         }
 
@@ -224,6 +224,75 @@ struct LinuxCloudAuthStatus: Equatable, Sendable {
     }
 }
 
+private struct LinuxStoredFirebaseSession: Codable, Equatable, Sendable {
+    static let currentSchemaVersion = 1
+
+    let schemaVersion: Int
+    let refreshToken: String
+    let uid: String?
+    let identityLabel: String?
+
+    static func decode(_ value: String) throws -> Self {
+        guard value.utf8.count <= 16_384,
+              value.isEmpty == false,
+              value.contains("\n") == false,
+              value.contains("\r") == false else {
+            throw LinuxSecretStoreError.invalidSecretValue("invalid Firebase session record")
+        }
+        guard value.first == "{" else {
+            return Self(
+                schemaVersion: currentSchemaVersion,
+                refreshToken: value,
+                uid: nil,
+                identityLabel: nil
+            )
+        }
+        guard let data = value.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode(Self.self, from: data),
+              decoded.schemaVersion == currentSchemaVersion,
+              Self.validToken(decoded.refreshToken),
+              decoded.uid.map(Self.validUID) ?? true,
+              decoded.identityLabel.map(Self.validIdentityLabel) ?? true,
+              decoded.identityLabel == nil || decoded.uid != nil else {
+            throw LinuxSecretStoreError.invalidSecretValue("invalid Firebase session envelope")
+        }
+        return decoded
+    }
+
+    func encoded() throws -> String {
+        guard schemaVersion == Self.currentSchemaVersion,
+              Self.validToken(refreshToken),
+              uid.map(Self.validUID) ?? true,
+              identityLabel.map(Self.validIdentityLabel) ?? true,
+              identityLabel == nil || uid != nil else {
+            throw LinuxSecretStoreError.invalidSecretValue("invalid Firebase session envelope")
+        }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(self)
+        guard data.count <= 16_384, let value = String(data: data, encoding: .utf8) else {
+            throw LinuxSecretStoreError.invalidSecretValue("invalid Firebase session envelope")
+        }
+        return value
+    }
+
+    static func validToken(_ value: String) -> Bool {
+        value.isEmpty == false && value.utf8.count <= 16_384
+            && value.contains("\n") == false && value.contains("\r") == false
+    }
+
+    static func validUID(_ value: String) -> Bool {
+        value.isEmpty == false && value.utf8.count <= 256
+            && value.allSatisfy { $0.isLetter || $0.isNumber || "._:+-/=".contains($0) }
+    }
+
+    static func validIdentityLabel(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed == value && value.isEmpty == false && value.utf8.count <= 320
+            && value.unicodeScalars.allSatisfy { CharacterSet.controlCharacters.contains($0) == false }
+    }
+}
+
 public enum LinuxCloudAuthSessionEvent: Sendable, Equatable {
     case credentialsAvailable
     case invalidated
@@ -236,6 +305,10 @@ public enum LinuxCloudAuthAuthorityError: Error, Equatable, Sendable, CustomStri
     case operationMismatch
     case authorizationFailed
     case deviceApprovalRequired
+    case deviceRejected
+    case appCheckConfigurationRejected
+    case reauthorizationRequired
+    case cloudResponseInvalid
     case secureStoreUnavailable
     case installationIdentityUnavailable
     case sessionChanged
@@ -249,6 +322,10 @@ public enum LinuxCloudAuthAuthorityError: Error, Equatable, Sendable, CustomStri
         case .operationMismatch: "The sign-in operation is no longer active."
         case .authorizationFailed: "The browser sign-in could not be completed."
         case .deviceApprovalRequired: "Approve this Linux installation from a trusted OpenBurnBar device."
+        case .deviceRejected: "This Linux installation was rejected or revoked and must be enrolled with a new key."
+        case .appCheckConfigurationRejected: "This build's Linux App Check application is not allowlisted."
+        case .reauthorizationRequired: "The cloud session expired. Sign in again to continue."
+        case .cloudResponseInvalid: "The cloud authentication service returned an invalid response."
         case .secureStoreUnavailable: "Unlock an approved Linux SecretStore backend and retry."
         case .installationIdentityUnavailable: "The Linux installation identity is unavailable or corrupt."
         case .sessionChanged: "The account session changed while credentials were refreshing."
@@ -261,11 +338,17 @@ public actor LinuxDaemonCloudCredentialAuthority {
     public nonisolated let sessionEvents: AsyncStream<LinuxCloudAuthSessionEvent>
 
     private struct PendingSignIn {
+        enum Phase {
+            case authorizing
+            case transitioningAccount
+        }
+
         let operationID: String
         let flow: LinuxPKCELoopbackFlow
         let listener: LinuxOAuthLoopbackListener
         let expiresAt: Date
         var task: Task<Void, Never>?
+        var phase: Phase
     }
 
     private struct CachedAppCheck {
@@ -275,11 +358,17 @@ public actor LinuxDaemonCloudCredentialAuthority {
         let deviceID: String
     }
 
+    private struct InstallationVerificationDescriptor {
+        let deviceID: String
+        let safetyFingerprint: String
+    }
+
     private let configuration: LinuxCloudAuthConfiguration?
     private let tokenStore: LinuxAuthTokenStore
     private let identityStore: LinuxIrohHostIdentityStore
     private let http: LinuxCloudAuthHTTPClient
     private let now: @Sendable () -> Date
+    private let approvalRetrySleeper: @Sendable (UInt64) async -> Void
     private let hostname: String
     private let eventContinuation: AsyncStream<LinuxCloudAuthSessionEvent>.Continuation
     private var currentStatus: LinuxCloudAuthStatus
@@ -295,12 +384,17 @@ public actor LinuxDaemonCloudCredentialAuthority {
     private var credentialAcquisitionBlocked = false
     private var signOutInProgress = false
     private var hasStoredSession: Bool
+    private var storedIdentityUID: String?
+    private var identityLabel: String?
 
     init(
         configuration: LinuxCloudAuthConfiguration?,
         custodian: LinuxSecretCustodian = LinuxSecretStoreFactory.production(),
         httpTransport: @escaping LinuxCloudAuthHTTPTransport = LinuxCloudAuthHTTPClient.productionTransport,
         now: @escaping @Sendable () -> Date = Date.init,
+        approvalRetrySleeper: @escaping @Sendable (UInt64) async -> Void = { delay in
+            try? await Task.sleep(nanoseconds: delay)
+        },
         hostname: String = ProcessInfo.processInfo.hostName
     ) {
         var continuation: AsyncStream<LinuxCloudAuthSessionEvent>.Continuation!
@@ -315,8 +409,12 @@ public actor LinuxDaemonCloudCredentialAuthority {
         } ?? []
         http = LinuxCloudAuthHTTPClient(allowedHosts: hosts, transport: httpTransport, now: now)
         self.now = now
+        self.approvalRetrySleeper = approvalRetrySleeper
         self.hostname = String(hostname.prefix(80))
-        hasStoredSession = (try? authTokenStore.restoreRefreshToken()) != nil
+        let restoredSession = try? Self.restoreStoredSession(using: authTokenStore)
+        hasStoredSession = restoredSession != nil
+        storedIdentityUID = restoredSession?.uid
+        identityLabel = restoredSession?.identityLabel
         currentStatus = LinuxCloudAuthStatus(
             phase: configuration == nil ? .configurationRequired : .signedOut,
             hasStoredSession: hasStoredSession,
@@ -366,15 +464,18 @@ public actor LinuxDaemonCloudCredentialAuthority {
         }
         let signedIn = status.hasStoredSession && status.phase != .signedOut
             && status.phase != .configurationRequired
+        let verification = signedIn ? installationVerificationDescriptor() : nil
         return BurnBarLinuxAuthStatusResponse(
             state: state,
             signedIn: signedIn,
-            identityLabel: nil,
+            identityLabel: signedIn ? identityLabel : nil,
             trustClass: "linux-lower-trust",
             syncState: status.phase == .ready ? "cloud-ready" : "local-only",
             authorizationOperationID: status.operationID,
             authorizationExpiresAt: status.operationExpiresAt.map(Self.iso8601),
             deviceApprovalRequired: status.phase == .awaitingDeviceApproval,
+            installationDeviceID: verification?.deviceID,
+            installationSafetyFingerprint: verification?.safetyFingerprint,
             detail: status.reasonCode
         )
     }
@@ -392,8 +493,11 @@ public actor LinuxDaemonCloudCredentialAuthority {
         let state = Self.randomBase64URL(byteCount: 32)
         let verifier = Self.randomBase64URL(byteCount: 64)
         let listener: LinuxOAuthLoopbackListener
-        do { listener = try LinuxOAuthLoopbackListener(expectedState: state) }
-        catch { throw LinuxCloudAuthAuthorityError.authorizationFailed }
+        do {
+            listener = try LinuxOAuthLoopbackListener(expectedState: state)
+        } catch {
+            throw LinuxCloudAuthAuthorityError.authorizationFailed
+        }
         let flow = LinuxPKCELoopbackFlow(
             authBaseURL: configuration.authorizationEndpoint,
             clientID: configuration.googleOAuthClientID,
@@ -408,7 +512,8 @@ public actor LinuxDaemonCloudCredentialAuthority {
             flow: flow,
             listener: listener,
             expiresAt: expiresAt,
-            task: nil
+            task: nil,
+            phase: .authorizing
         )
         let task = Task { [weak self] in
             guard let self else { return }
@@ -432,6 +537,9 @@ public actor LinuxDaemonCloudCredentialAuthority {
         guard let pendingSignIn, pendingSignIn.operationID == operationID else {
             throw LinuxCloudAuthAuthorityError.operationMismatch
         }
+        guard pendingSignIn.phase == .authorizing else {
+            throw LinuxCloudAuthAuthorityError.sessionChanged
+        }
         pendingSignIn.listener.cancel()
         pendingSignIn.task?.cancel()
         self.pendingSignIn = nil
@@ -450,12 +558,14 @@ public actor LinuxDaemonCloudCredentialAuthority {
         credentialAcquisitionBlocked = true
         await performTeardown(credentials: teardownCredentials)
         invalidateInMemorySession()
-        do { try tokenStore.clearRefreshToken() }
-        catch LinuxSecretStoreError.missingSecret { }
-        catch {
+        do {
+            try tokenStore.clearRefreshToken()
+        } catch LinuxSecretStoreError.missingSecret {
+        } catch {
             invalidateInMemorySession()
             currentStatus = LinuxCloudAuthStatus(phase: .locked, hasStoredSession: true, reasonCode: "secure_store_unavailable")
             signOutInProgress = false
+            credentialAcquisitionBlocked = false
             eventContinuation.yield(.invalidated)
             throw LinuxCloudAuthAuthorityError.secureStoreUnavailable
         }
@@ -463,7 +573,45 @@ public actor LinuxDaemonCloudCredentialAuthority {
         invalidateInMemorySession()
         currentStatus = LinuxCloudAuthStatus(phase: configuration == nil ? .configurationRequired : .signedOut, hasStoredSession: false)
         signOutInProgress = false
+        credentialAcquisitionBlocked = false
         eventContinuation.yield(.invalidated)
+    }
+
+    public func rotateInstallationIdentity() async throws {
+        guard currentStatus.reasonCode == Self.reasonCode(.deviceRejected),
+              hasStoredSession,
+              signOutInProgress == false,
+              pendingSignIn == nil else {
+            throw LinuxCloudAuthAuthorityError.operationMismatch
+        }
+        let teardownCredentials = validCachedContext()
+        credentialAcquisitionBlocked = true
+        await performTeardown(credentials: teardownCredentials)
+        invalidateInMemorySession()
+        do {
+            _ = try identityStore.rotate()
+        } catch {
+            credentialAcquisitionBlocked = false
+            currentStatus = LinuxCloudAuthStatus(
+                phase: .error,
+                hasStoredSession: hasStoredSession,
+                reasonCode: Self.reasonCode(.deviceRejected)
+            )
+            throw LinuxCloudAuthAuthorityError.installationIdentityUnavailable
+        }
+        credentialAcquisitionBlocked = false
+        currentStatus = LinuxCloudAuthStatus(phase: .awaitingDeviceApproval, hasStoredSession: true)
+        do {
+            _ = try await credentialContext()
+        } catch let error as LinuxCloudAuthAuthorityError {
+            // The local key replacement is already committed. Return its
+            // authoritative descriptor even when enrollment is pending or the
+            // cloud is temporarily unavailable, and resume the bounded retry
+            // loop instead of making the renderer retain the rejected key.
+            if Self.shouldContinueApprovalRetry(after: error) {
+                scheduleApprovalRetry()
+            }
+        }
     }
 
     public func credentialContext() async throws -> LinuxIrohControllerCredentialContext {
@@ -526,14 +674,38 @@ public actor LinuxDaemonCloudCredentialAuthority {
                 credentialTaskGeneration = nil
             }
             let mapped = Self.map(error)
+            let phase: LinuxCloudAuthStatus.Phase = switch mapped {
+            case .deviceApprovalRequired: .awaitingDeviceApproval
+            case .secureStoreUnavailable: .locked
+            case .reauthorizationRequired: .signedOut
+            default: .error
+            }
             currentStatus = LinuxCloudAuthStatus(
-                phase: mapped == .deviceApprovalRequired ? .awaitingDeviceApproval : (mapped == .secureStoreUnavailable ? .locked : .error),
+                phase: phase,
                 hasStoredSession: hasStoredSession,
                 reasonCode: Self.reasonCode(mapped)
             )
             if mapped == .deviceApprovalRequired { scheduleApprovalRetry() }
             throw mapped
         }
+    }
+
+    private func installationVerificationDescriptor() -> InstallationVerificationDescriptor? {
+        guard let identity = try? identityStore.loadOrCreate() else { return nil }
+        let digest = PlatformCrypto.sha256Hex(identity.pairingKeypair.publicKeyRaw)
+        let uppercaseDigest = digest.uppercased()
+        let groups = stride(from: 0, to: uppercaseDigest.count, by: 4).map { offset in
+            let start = uppercaseDigest.index(uppercaseDigest.startIndex, offsetBy: offset)
+            let end = uppercaseDigest.index(
+                start,
+                offsetBy: min(4, uppercaseDigest.distance(from: start, to: uppercaseDigest.endIndex))
+            )
+            return String(uppercaseDigest[start..<end])
+        }
+        return InstallationVerificationDescriptor(
+            deviceID: "linux_\(digest)",
+            safetyFingerprint: groups.joined(separator: " ")
+        )
     }
 
     private func completeSignIn(operationID: String) async {
@@ -562,6 +734,7 @@ public actor LinuxDaemonCloudCredentialAuthority {
             try ensurePending(operationID)
             let transitionGeneration = sessionGeneration
             let teardownCredentials = validCachedContext()
+            pendingSignIn?.phase = .transitioningAccount
             credentialAcquisitionBlocked = true
             await performTeardown(credentials: teardownCredentials)
             try Task.checkCancellation()
@@ -570,25 +743,52 @@ public actor LinuxDaemonCloudCredentialAuthority {
                   signOutInProgress == false else {
                 throw LinuxCloudAuthAuthorityError.sessionChanged
             }
+            let retainedIdentityLabel = identityLabel
+            let retainedIdentityUID = storedIdentityUID
             invalidateInMemorySession(cancelAuthorization: false)
-            do { _ = try tokenStore.storeRefreshToken(session.refreshToken) }
-            catch { throw LinuxCloudAuthAuthorityError.secureStoreUnavailable }
+            let label = Self.verifiedIdentityLabel(
+                for: session,
+                retaining: retainedIdentityLabel,
+                retainedUID: retainedIdentityUID
+            )
+            do {
+                try store(session: session, identityLabel: label)
+            } catch {
+                throw LinuxCloudAuthAuthorityError.secureStoreUnavailable
+            }
             hasStoredSession = true
             firebaseSession = session
+            storedIdentityUID = session.uid
+            identityLabel = label
             pendingSignIn = nil
             currentStatus = LinuxCloudAuthStatus(phase: .awaitingDeviceApproval, hasStoredSession: true)
             credentialAcquisitionBlocked = false
-            do { _ = try await credentialContext() }
-            catch LinuxCloudAuthAuthorityError.deviceApprovalRequired { }
+            do {
+                _ = try await credentialContext()
+            } catch LinuxCloudAuthAuthorityError.deviceApprovalRequired {
+            }
         } catch {
             guard pendingSignIn?.operationID == operationID else { return }
             pendingSignIn?.listener.cancel()
             pendingSignIn = nil
+            credentialAcquisitionBlocked = false
             let mapped = Self.map(error)
-            let retainedReadySession = credentialAcquisitionBlocked == false
-                && validCachedContext() != nil
+            let retainedReadySession = validCachedContext() != nil
+            let retryableWithoutSession = hasStoredSession == false
+                && mapped != .secureStoreUnavailable
+                && mapped != .configurationRequired
+            let failurePhase: LinuxCloudAuthStatus.Phase
+            if retainedReadySession {
+                failurePhase = .ready
+            } else if mapped == .secureStoreUnavailable {
+                failurePhase = .locked
+            } else if retryableWithoutSession {
+                failurePhase = .signedOut
+            } else {
+                failurePhase = .error
+            }
             currentStatus = LinuxCloudAuthStatus(
-                phase: retainedReadySession ? .ready : (mapped == .secureStoreUnavailable ? .locked : .error),
+                phase: failurePhase,
                 hasStoredSession: hasStoredSession,
                 reasonCode: Self.reasonCode(mapped)
             )
@@ -600,8 +800,11 @@ public actor LinuxDaemonCloudCredentialAuthority {
         var session = try await validFirebaseSession(expectedGeneration: expectedGeneration, forceRefresh: false)
         try ensureGeneration(expectedGeneration)
         let identity: LinuxIrohHostIdentity
-        do { identity = try identityStore.loadOrCreate() }
-        catch { throw LinuxCloudAuthAuthorityError.installationIdentityUnavailable }
+        do {
+            identity = try identityStore.loadOrCreate()
+        } catch {
+            throw LinuxCloudAuthAuthorityError.installationIdentityUnavailable
+        }
         let deviceID = "linux_" + PlatformCrypto.sha256Hex(identity.pairingKeypair.publicKeyRaw)
         let issuedAtMillis = Int64(now().timeIntervalSince1970 * 1_000)
         let enrollment = Self.enrollmentPayload(
@@ -686,24 +889,110 @@ public actor LinuxDaemonCloudCredentialAuthority {
            firebaseSession.expiresAt.timeIntervalSince(now()) > 5 * 60 {
             return firebaseSession
         }
-        let refreshToken: String
-        do { refreshToken = try tokenStore.requireRefreshTokenValue() }
-        catch LinuxSecretStoreError.missingSecret { throw LinuxCloudAuthAuthorityError.notSignedIn }
-        catch { throw LinuxCloudAuthAuthorityError.secureStoreUnavailable }
+        let storedSession: LinuxStoredFirebaseSession
+        do {
+            storedSession = try Self.restoreStoredSession(using: tokenStore)
+        } catch LinuxSecretStoreError.missingSecret {
+            throw LinuxCloudAuthAuthorityError.notSignedIn
+        } catch {
+            throw LinuxCloudAuthAuthorityError.secureStoreUnavailable
+        }
         guard let configuration else { throw LinuxCloudAuthAuthorityError.configurationRequired }
         let refreshed = try await http.refreshFirebaseSession(
             endpoint: configuration.firebaseRefreshEndpoint,
             apiKey: configuration.firebaseAPIKey,
-            refreshToken: refreshToken
+            refreshToken: storedSession.refreshToken
         )
         try ensureGeneration(expectedGeneration)
-        if let current = firebaseSession, current.uid != refreshed.uid {
+        let expectedUID = firebaseSession?.uid ?? storedSession.uid ?? storedIdentityUID
+        if let expectedUID, expectedUID != refreshed.uid {
+            identityLabel = nil
+            storedIdentityUID = nil
             throw LinuxCloudAuthAuthorityError.sessionChanged
         }
-        do { _ = try tokenStore.storeRefreshToken(refreshed.refreshToken) }
-        catch { throw LinuxCloudAuthAuthorityError.secureStoreUnavailable }
+        let label = Self.verifiedIdentityLabel(
+            for: refreshed,
+            retaining: identityLabel ?? storedSession.identityLabel,
+            retainedUID: expectedUID
+        )
+        do {
+            try store(session: refreshed, identityLabel: label)
+        } catch {
+            throw LinuxCloudAuthAuthorityError.secureStoreUnavailable
+        }
         firebaseSession = refreshed
+        storedIdentityUID = refreshed.uid
+        identityLabel = label
         return refreshed
+    }
+
+    private func store(session: LinuxFirebaseSession, identityLabel: String) throws {
+        let storedSession = LinuxStoredFirebaseSession(
+            schemaVersion: LinuxStoredFirebaseSession.currentSchemaVersion,
+            refreshToken: session.refreshToken,
+            uid: session.uid,
+            identityLabel: identityLabel
+        )
+        _ = try tokenStore.custodian.storeHighValueSecret(
+            storedSession.encoded(),
+            id: "firebase-refresh-token",
+            secretClass: .refreshToken
+        )
+    }
+
+    private static func restoreStoredSession(
+        using tokenStore: LinuxAuthTokenStore
+    ) throws -> LinuxStoredFirebaseSession {
+        let value = try tokenStore.custodian.requireHighValueSecret(
+            id: "firebase-refresh-token",
+            secretClass: .refreshToken
+        ).secret
+        return try LinuxStoredFirebaseSession.decode(value)
+    }
+
+    private static func verifiedIdentityLabel(
+        for session: LinuxFirebaseSession,
+        retaining retainedLabel: String?,
+        retainedUID: String?
+    ) -> String {
+        if let claims = firebaseClaims(from: session.idToken),
+           (claims["sub"] as? String ?? claims["user_id"] as? String) == session.uid {
+            if claims["email_verified"] as? Bool == true,
+               let email = normalizedIdentityLabel(claims["email"] as? String),
+               email.contains("@"), email.contains(" ") == false {
+                return email
+            }
+            if let name = normalizedIdentityLabel(claims["name"] as? String) {
+                return name
+            }
+        }
+        if retainedUID == session.uid,
+           let retainedLabel = normalizedIdentityLabel(retainedLabel) {
+            return retainedLabel
+        }
+        let fingerprint = PlatformCrypto.sha256Hex(Data(session.uid.utf8))
+            .prefix(12)
+            .uppercased()
+        return "OpenBurnBar account \(fingerprint)"
+    }
+
+    private static func firebaseClaims(from token: String) -> [String: Any]? {
+        let segments = token.split(separator: ".", omittingEmptySubsequences: false)
+        guard segments.count == 3, segments[1].utf8.count <= 12_000 else { return nil }
+        var base64 = String(segments[1])
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        base64.append(String(repeating: "=", count: (4 - base64.count % 4) % 4))
+        guard let data = Data(base64Encoded: base64), data.count <= 8_192,
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let claims = object as? [String: Any] else { return nil }
+        return claims
+    }
+
+    private static func normalizedIdentityLabel(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return LinuxStoredFirebaseSession.validIdentityLabel(normalized) ? normalized : nil
     }
 
     private func validCachedContext() -> LinuxIrohControllerCredentialContext? {
@@ -739,6 +1028,8 @@ public actor LinuxDaemonCloudCredentialAuthority {
         }
         sessionGeneration &+= 1
         firebaseSession = nil
+        storedIdentityUID = nil
+        identityLabel = nil
         appCheck = nil
         credentialTask?.cancel()
         credentialTask = nil
@@ -751,14 +1042,18 @@ public actor LinuxDaemonCloudCredentialAuthority {
     private func scheduleApprovalRetry() {
         guard approvalRetryTask == nil else { return }
         approvalRetryTask = Task { [weak self] in
+            var retryIndex = 0
             while Task.isCancelled == false {
-                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                await self?.approvalRetrySleeper(Self.approvalRetryDelayNanoseconds(at: retryIndex))
                 guard Task.isCancelled == false, let self else { return }
                 do {
                     _ = try await self.credentialContext()
                     await self.clearApprovalRetryTask()
                     return
-                } catch LinuxCloudAuthAuthorityError.deviceApprovalRequired {
+                } catch let error as LinuxCloudAuthAuthorityError
+                    where Self.shouldContinueApprovalRetry(after: error) {
+                    await self.markApprovalRetryPending(after: error)
+                    retryIndex += 1
                     continue
                 } catch {
                     await self.clearApprovalRetryTask()
@@ -766,6 +1061,28 @@ public actor LinuxDaemonCloudCredentialAuthority {
                 }
             }
         }
+    }
+
+    nonisolated static func approvalRetryDelayNanoseconds(at index: Int) -> UInt64 {
+        let delays: [UInt64] = [15, 30, 60, 120, 300]
+        return delays[min(max(index, 0), delays.count - 1)] * 1_000_000_000
+    }
+
+    nonisolated static func shouldContinueApprovalRetry(
+        after error: LinuxCloudAuthAuthorityError
+    ) -> Bool {
+        error == .deviceApprovalRequired || error == .cloudUnavailable
+    }
+
+    private func markApprovalRetryPending(after error: LinuxCloudAuthAuthorityError) {
+        guard hasStoredSession, credentialAcquisitionBlocked == false else { return }
+        currentStatus = LinuxCloudAuthStatus(
+            phase: .awaitingDeviceApproval,
+            hasStoredSession: true,
+            reasonCode: error == .deviceApprovalRequired
+                ? Self.reasonCode(error)
+                : "device_approval_retrying"
+        )
     }
 
     private func clearApprovalRetryTask() {
@@ -827,12 +1144,47 @@ public actor LinuxDaemonCloudCredentialAuthority {
     private static func map(_ error: Error) -> LinuxCloudAuthAuthorityError {
         if let error = error as? LinuxCloudAuthAuthorityError { return error }
         if let error = error as? LinuxCloudAuthHTTPError {
-            if case let .rejected(stage, status) = error,
-               (stage == "register_linux_device" || stage == "issue_linux_challenge" || stage == "mint_linux_app_check"),
-               [403, 409, 412].contains(status) {
+            if case let .rejected(stage, status, reason) = error,
+               stage == "issue_linux_challenge",
+               status == 403,
+               reason == "linux_device_approval_required" {
                 return .deviceApprovalRequired
             }
-            return .cloudUnavailable
+            if case let .rejected(stage, _, reason) = error,
+               let reason,
+               ["register_linux_device", "issue_linux_challenge", "mint_linux_app_check"].contains(stage),
+               [
+                   "linux_device_invalid_trust_state",
+                   "linux_device_key_mismatch",
+                   "linux_device_not_registered",
+                   "linux_device_record_mismatch",
+                   "linux_device_revoked"
+               ].contains(reason) {
+                return .deviceRejected
+            }
+            if case let .rejected(stage, _, reason) = error,
+               ["register_linux_device", "issue_linux_challenge", "mint_linux_app_check"].contains(stage),
+               reason == "linux_app_not_allowlisted" {
+                return .appCheckConfigurationRejected
+            }
+            if case let .rejected(stage, status, _) = error,
+               stage == "firebase_refresh",
+               [400, 401].contains(status) {
+                return .reauthorizationRequired
+            }
+            if case let .rejected(_, status, _) = error,
+               status == 408 || status == 425 || status == 429 || status >= 500 {
+                return .cloudUnavailable
+            }
+            switch error {
+            case .transportFailure:
+                return .cloudUnavailable
+            case .invalidConfiguration:
+                return .configurationRequired
+            case .invalidRequest, .requestTooLarge, .responseTooLarge,
+                 .rejected, .malformedResponse:
+                return .cloudResponseInvalid
+            }
         }
         if error is LinuxOAuthLoopbackError || error is LinuxAuthError { return .authorizationFailed }
         if error is LinuxSecretStoreError { return .secureStoreUnavailable }
@@ -847,6 +1199,10 @@ public actor LinuxDaemonCloudCredentialAuthority {
         case .operationMismatch: "operation_mismatch"
         case .authorizationFailed: "authorization_failed"
         case .deviceApprovalRequired: "device_approval_required"
+        case .deviceRejected: "device_rejected"
+        case .appCheckConfigurationRejected: "app_check_configuration_rejected"
+        case .reauthorizationRequired: "reauthorization_required"
+        case .cloudResponseInvalid: "cloud_response_invalid"
         case .secureStoreUnavailable: "secure_store_unavailable"
         case .installationIdentityUnavailable: "installation_identity_unavailable"
         case .sessionChanged: "session_changed"

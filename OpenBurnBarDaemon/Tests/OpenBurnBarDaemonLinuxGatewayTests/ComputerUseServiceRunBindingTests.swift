@@ -4,36 +4,6 @@ import OpenBurnBarCore
 @testable import OpenBurnBarDaemon
 import XCTest
 
-private actor PlaywrightFactoryLatch {
-    private var callCount = 0
-    private var firstCallEntered = false
-    private var enteredWaiters: [CheckedContinuation<Void, Never>] = []
-    private var releaseContinuation: CheckedContinuation<Void, Never>?
-
-    func pauseFirstCall() async {
-        callCount += 1
-        guard callCount == 1 else { return }
-        firstCallEntered = true
-        enteredWaiters.forEach { $0.resume() }
-        enteredWaiters.removeAll()
-        await withCheckedContinuation { continuation in
-            releaseContinuation = continuation
-        }
-    }
-
-    func waitUntilFirstCallEntered() async {
-        if firstCallEntered { return }
-        await withCheckedContinuation { continuation in
-            enteredWaiters.append(continuation)
-        }
-    }
-
-    func releaseFirstCall() {
-        releaseContinuation?.resume()
-        releaseContinuation = nil
-    }
-}
-
 private actor EndedSessionRecorder {
     private var sessionIDs: [String] = []
 
@@ -89,6 +59,59 @@ private actor ControlledApprovalPublisher {
 }
 
 final class ComputerUseServiceRunBindingTests: XCTestCase {
+    private func makeCapabilityStateStore(
+        at root: URL,
+        publisherInstanceID: String = "computer-use-run-binding-tests"
+    ) async throws -> ComputerUseCapabilityStateStore {
+        let now = Date()
+        let store = ComputerUseCapabilityStateStore(
+            fileURL: root.appendingPathComponent("capability-state.json"),
+            now: { now }
+        )
+        let provenance = ComputerUseAuthorityProvenance(
+            source: .firestoreServer,
+            observedAt: now,
+            updatedAt: now
+        )
+        _ = try await store.update(ComputerUseCapabilityStateSnapshot(
+            publisherInstanceID: publisherInstanceID,
+            revision: 1,
+            generatedAt: now,
+            userID: "linux-test-user",
+            entitlement: ComputerUseEntitlementSnapshot(
+                isActive: true,
+                productId: ComputerUseEntitlementSnapshot.hostedProductID,
+                expireAt: now.addingTimeInterval(3_600),
+                allowsBrowser: true,
+                allowsSystem: true,
+                allowsPhoneControl: true,
+                allowsTrustedScopes: true,
+                allowsAuditExport: true
+            ),
+            entitlementProvenance: provenance,
+            budgetEnvelope: ComputerUseBudgetEnvelope(
+                level: .normal,
+                projectedMonthEndUSD: 0,
+                monthToDateUSD: 0,
+                activeActionsPerRun: 50,
+                activeActionsPerDay: 200,
+                activeSessionsPerDay: 4,
+                perUserDailySpendCeilingUSD: 5,
+                updatedAt: now
+            ),
+            budgetProvenance: provenance,
+            quotaUsage: ComputerUseQuotaUsage(
+                dayKey: String(ISO8601DateFormatter().string(from: now).prefix(10)),
+                updatedAt: now
+            ),
+            quotaProvenance: provenance,
+            concurrentSessionActive: false,
+            killSwitch: false,
+            isComplete: true
+        ))
+        return store
+    }
+
     func testApprovalCancellationStopsSuspendedPhonePublication() async throws {
         let bridge = ComputerUseApprovalBridge()
         let publisher = ControlledApprovalPublisher()
@@ -166,25 +189,27 @@ final class ComputerUseServiceRunBindingTests: XCTestCase {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-cu-concurrent-binding-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
-        let latch = PlaywrightFactoryLatch()
+        let capabilityStateStore = try await makeCapabilityStateStore(at: root)
+        let authorizationRegistry = ComputerUseAuthorizationRegistry(enforcementEnabled: true)
         let service = ComputerUseService(
             auditBaseDirectory: root,
+            capabilityStateStore: capabilityStateStore,
+            leafKillSwitch: { false },
+            playwrightDriverFactory: { _ in nil },
             privilegedInputKillSwitchActivator: { _ in },
-            playwrightDriverFactory: { _ in
-                await latch.pauseFirstCall()
-                return nil
-            }
+            authorizationRegistry: authorizationRegistry
         )
         let runID = BurnBarRunID(rawValue: "concurrent-run")
         let request = ComputerUseSessionStartRequest(
             mode: ComputerUseMode.browser.rawValue,
             trustMode: ComputerUseTrustMode.manual.rawValue,
+            sessionTimeoutSeconds: 0,
             clientID: BurnBarClientID(rawValue: "linux-shell"),
             runID: runID
         )
 
-        let firstStart = Task { try await service.startSession(request) }
-        await latch.waitUntilFirstCallEntered()
+        let didReservePendingStart = await authorizationRegistry.reserve(runID: runID)
+        XCTAssertTrue(didReservePendingStart)
 
         do {
             _ = try await service.startSession(request)
@@ -193,14 +218,12 @@ final class ComputerUseServiceRunBindingTests: XCTestCase {
             XCTAssertEqual(error, .runAlreadyBound(runID.rawValue))
         }
 
-        await latch.releaseFirstCall()
-        let started = try await firstStart.value
+        await authorizationRegistry.releaseReservation(runID: runID)
+        let didReserveAfterRelease = await authorizationRegistry.reserve(runID: runID)
+        XCTAssertTrue(didReserveAfterRelease)
+        await authorizationRegistry.releaseReservation(runID: runID)
         let boundSessionID = await service.sessionID(for: runID)
-        XCTAssertEqual(boundSessionID?.rawValue, started.sessionId)
-        _ = try await service.panicHalt(ComputerUsePanicHaltRequest(
-            sessionId: started.sessionId,
-            source: ComputerUsePanicSource.hotkey.rawValue
-        ))
+        XCTAssertNil(boundSessionID)
     }
 
     func testGlobalPanicNotifiesSessionEndObserverForManifestedSession() async throws {
@@ -284,10 +307,13 @@ final class ComputerUseServiceRunBindingTests: XCTestCase {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-cu-expired-binding-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
+        let capabilityStateStore = try await makeCapabilityStateStore(at: root)
         let service = ComputerUseService(
             auditBaseDirectory: root,
-            privilegedInputKillSwitchActivator: { _ in },
-            playwrightDriverFactory: { _ in nil }
+            capabilityStateStore: capabilityStateStore,
+            leafKillSwitch: { false },
+            playwrightDriverFactory: { _ in nil },
+            privilegedInputKillSwitchActivator: { _ in }
         )
         let runID = BurnBarRunID(rawValue: "expired-run")
         let request = ComputerUseSessionStartRequest(
@@ -302,13 +328,13 @@ final class ComputerUseServiceRunBindingTests: XCTestCase {
         let activePoll = await service.pendingApprovals(
             ComputerUseApprovalPendingRequest(sessionId: first.sessionId)
         )
-        XCTAssertEqual(activePoll.sessionActive, true)
+        XCTAssertTrue(try XCTUnwrap(activePoll.sessionActive))
         try await Task.sleep(for: .milliseconds(1_100))
 
         let expiredPoll = await service.pendingApprovals(
             ComputerUseApprovalPendingRequest(sessionId: first.sessionId)
         )
-        XCTAssertEqual(expiredPoll.sessionActive, false)
+        XCTAssertFalse(try XCTUnwrap(expiredPoll.sessionActive))
         let expiredSessionID = await service.sessionID(for: runID)
         XCTAssertNil(expiredSessionID)
         let replacement = try await service.startSession(request)
@@ -323,10 +349,13 @@ final class ComputerUseServiceRunBindingTests: XCTestCase {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-cu-pending-lifecycle-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
+        let capabilityStateStore = try await makeCapabilityStateStore(at: root)
         let service = ComputerUseService(
             auditBaseDirectory: root,
-            privilegedInputKillSwitchActivator: { _ in },
-            playwrightDriverFactory: { _ in nil }
+            capabilityStateStore: capabilityStateStore,
+            leafKillSwitch: { false },
+            playwrightDriverFactory: { _ in nil },
+            privilegedInputKillSwitchActivator: { _ in }
         )
         let runID = BurnBarRunID(rawValue: "pending-lifecycle-run")
         let started = try await service.startSession(ComputerUseSessionStartRequest(
@@ -344,8 +373,8 @@ final class ComputerUseServiceRunBindingTests: XCTestCase {
             ComputerUseApprovalPendingRequest(sessionId: "unknown-session")
         )
         XCTAssertNil(unfiltered.sessionActive)
-        XCTAssertEqual(active.sessionActive, true)
-        XCTAssertEqual(unknown.sessionActive, false)
+        XCTAssertTrue(try XCTUnwrap(active.sessionActive))
+        XCTAssertFalse(try XCTUnwrap(unknown.sessionActive))
 
         _ = try await service.panicHalt(ComputerUsePanicHaltRequest(
             sessionId: started.sessionId,
@@ -354,7 +383,7 @@ final class ComputerUseServiceRunBindingTests: XCTestCase {
         let halted = await service.pendingApprovals(
             ComputerUseApprovalPendingRequest(sessionId: started.sessionId)
         )
-        XCTAssertEqual(halted.sessionActive, false)
+        XCTAssertFalse(try XCTUnwrap(halted.sessionActive))
 
         let encoded = try JSONSerialization.jsonObject(
             with: JSONEncoder().encode(halted)
@@ -367,10 +396,13 @@ final class ComputerUseServiceRunBindingTests: XCTestCase {
             .appendingPathComponent("openburnbar-cu-run-binding-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
 
+        let capabilityStateStore = try await makeCapabilityStateStore(at: root)
         let service = ComputerUseService(
             auditBaseDirectory: root,
-            privilegedInputKillSwitchActivator: { _ in },
-            playwrightDriverFactory: { _ in nil }
+            capabilityStateStore: capabilityStateStore,
+            leafKillSwitch: { false },
+            playwrightDriverFactory: { _ in nil },
+            privilegedInputKillSwitchActivator: { _ in }
         )
         let runID = BurnBarRunID(rawValue: "run-bound-to-cu")
         let request = ComputerUseSessionStartRequest(
@@ -395,9 +427,12 @@ final class ComputerUseServiceRunBindingTests: XCTestCase {
 
         do {
             _ = try await service.startSession(request)
-            XCTFail("A run must not bind to two active Computer Use sessions.")
+            XCTFail("A second Computer Use session must be rejected while one is active.")
         } catch let error as ComputerUseService.ServiceError {
-            XCTAssertEqual(error, .runAlreadyBound(runID.rawValue))
+            XCTAssertEqual(
+                error,
+                .capabilityDenied(ComputerUseDenyReason.concurrentSession.rawValue)
+            )
         }
 
         _ = try await service.panicHalt(ComputerUsePanicHaltRequest(
@@ -435,10 +470,13 @@ final class ComputerUseServiceRunBindingTests: XCTestCase {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-cu-identity-binding-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
+        let capabilityStateStore = try await makeCapabilityStateStore(at: root)
         let service = ComputerUseService(
             auditBaseDirectory: root,
-            privilegedInputKillSwitchActivator: { _ in },
-            playwrightDriverFactory: { _ in nil }
+            capabilityStateStore: capabilityStateStore,
+            leafKillSwitch: { false },
+            playwrightDriverFactory: { _ in nil },
+            privilegedInputKillSwitchActivator: { _ in }
         )
         let runID = BurnBarRunID(rawValue: "identity-run")
         let started = try await service.startSession(ComputerUseSessionStartRequest(

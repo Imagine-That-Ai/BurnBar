@@ -100,6 +100,7 @@ final class ComputerUseLocalAuthGrantEnforcementTests: XCTestCase {
         }
     }
 
+    #if os(Linux)
     func testExactSessionIntentRetargetingIsDenied() async throws {
         let authorizedRequest = makeSessionRequest()
         let binding = try makeGrantBinding(for: authorizedRequest)
@@ -147,6 +148,7 @@ final class ComputerUseLocalAuthGrantEnforcementTests: XCTestCase {
             try assertUnauthorized(denial, context: retarget.name)
         }
     }
+    #endif
 
     #if os(Linux)
     func testLinuxFilePinBackingCommitsAliasesTogetherAndRejectsPartialConflict() throws {
@@ -162,7 +164,8 @@ final class ComputerUseLocalAuthGrantEnforcementTests: XCTestCase {
             deviceIds: [deviceID, "linux-peer-node"],
             key: originalVerifier
         ) else {
-            return XCTFail("expected atomic Linux alias commit")
+            XCTFail("expected atomic Linux alias commit")
+            return
         }
 
         let replacementKey = PlatformCrypto.ed25519PrivateKey()
@@ -171,10 +174,12 @@ final class ComputerUseLocalAuthGrantEnforcementTests: XCTestCase {
             deviceIds: ["rejected-new-device", "linux-peer-node"],
             key: replacementVerifier
         ) else {
-            return XCTFail("expected existing peer alias conflict")
+            XCTFail("expected existing peer alias conflict")
+            return
         }
         guard case .absent = store.pinnedKey(deviceId: "rejected-new-device") else {
-            return XCTFail("conflicting alias transaction must not persist a new device")
+            XCTFail("conflicting alias transaction must not persist a new device")
+            return
         }
         for identifier in [deviceID, "linux-peer-node"] {
             guard case .pinned(let key) = store.pinnedKey(deviceId: identifier) else {

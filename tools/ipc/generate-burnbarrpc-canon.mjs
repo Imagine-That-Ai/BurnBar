@@ -106,6 +106,11 @@ function domainName(name) {
 }
 
 const explicitTypes = {
+  "daemon.auth.status": ["BurnBarRPCRequestEnvelope", "BurnBarLinuxAuthStatusResponse"],
+  "daemon.auth.begin": ["BurnBarRPCRequestEnvelope", "BurnBarLinuxAuthBeginResponse"],
+  "daemon.auth.cancel": ["BurnBarLinuxAuthCancelRequest", "BurnBarLinuxAuthMutationResponse"],
+  "daemon.auth.rotate_identity": ["BurnBarRPCRequestEnvelope", "BurnBarLinuxAuthMutationResponse"],
+  "daemon.auth.sign_out": ["BurnBarRPCRequestEnvelope", "BurnBarLinuxAuthMutationResponse"],
   "daemon.health": ["BurnBarRPCRequestEnvelope", "BurnBarHealthResponse"],
   "daemon.catalog": ["BurnBarRPCRequestEnvelope", "BurnBarCatalogResponse"],
   "daemon.config.get": ["BurnBarConfigGetRequest", "BurnBarConfigResponse"],

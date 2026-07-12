@@ -965,7 +965,8 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
         XCTAssertEqual(invoked.result?.runID, invocation.runID)
         XCTAssertEqual(invoked.result?.callID, invocation.callID)
         guard case .object(let output)? = invoked.result?.output else {
-            return XCTFail("Expected the direct Playwright driver response")
+            XCTFail("Expected the direct Playwright driver response")
+            return
         }
         XCTAssertEqual(output["method"], .string("goto"))
         let managedSessionID = await service.sessionID(for: invocation.runID)

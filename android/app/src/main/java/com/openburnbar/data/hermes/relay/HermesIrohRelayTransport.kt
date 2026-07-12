@@ -310,23 +310,7 @@ class HermesIrohRelayTransport(
             val isBoundToConnection =
                 frame.uid == request.uid && frame.connectionId == request.payload.connectionID
             if (isBoundToConnection && frame.type == HermesRealtimeRelayFrameType.CONTROL_SESSION_GRANT_CHALLENGE) {
-                frame.control?.sessionGrantChallenge?.let { challenge ->
-                    sessionGrantChallengeHandler(
-                        ComputerUseSessionGrantChallengeDelivery(
-                            challenge = challenge,
-                            route =
-                            ComputerUseSessionGrantRoute(
-                                uid = request.uid,
-                                connectionId = request.payload.connectionID,
-                                authenticatedRemoteNodeId = request.authenticatedRemoteNodeId,
-                                streamToken = request.routeToken,
-                                nowMillis = nowMillis,
-                                live = { request.routeLive.get() },
-                                frameSink = { outbound -> request.stream.send(outbound) },
-                            ),
-                        ),
-                    )
-                }
+                handleSessionGrantChallenge(frame, request)
                 continue
             }
             val isMatchingFrame =
@@ -366,6 +350,28 @@ class HermesIrohRelayTransport(
             }
         }
         relayExchangeTimeout()
+    }
+
+    private fun handleSessionGrantChallenge(
+        frame: HermesRealtimeRelayFrame,
+        request: RelayExchangeRequest,
+    ) {
+        val challenge = frame.control?.sessionGrantChallenge ?: return
+        sessionGrantChallengeHandler(
+            ComputerUseSessionGrantChallengeDelivery(
+                challenge = challenge,
+                route =
+                ComputerUseSessionGrantRoute(
+                    uid = request.uid,
+                    connectionId = request.payload.connectionID,
+                    authenticatedRemoteNodeId = request.authenticatedRemoteNodeId,
+                    streamToken = request.routeToken,
+                    nowMillis = nowMillis,
+                    live = { request.routeLive.get() },
+                    frameSink = { outbound -> request.stream.send(outbound) },
+                ),
+            ),
+        )
     }
 
     private fun relayExchangeTimeout(): Nothing = throw HermesRelayException("Iroh relay timed out before response.complete.")

@@ -104,6 +104,10 @@ function bridge(overrides: Partial<LinuxShellBridge> = {}): LinuxShellBridge {
     notificationCommand: async (command) => ({ command, ok: true, message: `${command} ok` }),
     sessionEnv: async () => ({}),
     ...overrides,
+    accountBeginSignIn: overrides.accountBeginSignIn ?? bridgeStubDefaults.accountBeginSignIn,
+    accountCancelSignIn: overrides.accountCancelSignIn ?? bridgeStubDefaults.accountCancelSignIn,
+    accountRotateIdentity: overrides.accountRotateIdentity ?? bridgeStubDefaults.accountRotateIdentity,
+    accountSignOut: overrides.accountSignOut ?? bridgeStubDefaults.accountSignOut,
     onboardingSnapshot: overrides.onboardingSnapshot ?? bridgeStubDefaults.onboardingSnapshot,
     onboardingAction: overrides.onboardingAction ?? bridgeStubDefaults.onboardingAction,
     onboardingReset: overrides.onboardingReset ?? bridgeStubDefaults.onboardingReset

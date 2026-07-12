@@ -174,8 +174,8 @@ final class ComputerUsePhoneControlSignerTests: XCTestCase {
         XCTAssertEqual(roundTrip.desktopOwnerAuthorizationRequest?.method, .linuxDesktopOwner)
     }
 
-    private func sessionGrantChallenge() -> HermesRealtimeRelayComputerUseSessionGrantChallenge {
-        HermesRealtimeRelayComputerUseSessionGrantChallenge(
+    private func sessionGrantChallenge() -> HermesRealtimeRelaySessionGrantChallenge {
+        HermesRealtimeRelaySessionGrantChallenge(
             version: 1,
             challengeId: "challenge-00000001",
             nonce: "0123456789abcdef0123456789abcdef",

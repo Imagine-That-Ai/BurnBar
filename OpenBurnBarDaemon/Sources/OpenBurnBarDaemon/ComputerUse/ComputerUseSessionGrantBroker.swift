@@ -127,7 +127,7 @@ public actor ComputerUseSessionGrantBroker {
     }
 
     private struct Record: Sendable {
-        let challenge: HermesRealtimeRelayComputerUseSessionGrantChallenge
+        let challenge: HermesRealtimeRelaySessionGrantChallenge
         let metadata: AcquisitionMetadata
         let transportPeerNodeID: String
         let authorityPeerNodeID: String
@@ -226,7 +226,7 @@ public actor ComputerUseSessionGrantBroker {
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
         let expiresAt = now.addingTimeInterval(challengeLifetime)
-        let challenge = HermesRealtimeRelayComputerUseSessionGrantChallenge(
+        let challenge = HermesRealtimeRelaySessionGrantChallenge(
             version: ComputerUsePhoneControlSigner.sessionGrantChallengeVersion,
             challengeId: challengeID,
             nonce: nonce,

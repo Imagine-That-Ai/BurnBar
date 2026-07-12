@@ -34,16 +34,75 @@ final class LinuxDaemonCloudCredentialAuthorityTests: XCTestCase {
             "/v1/token", "/registerLinuxAppCheckDevice", "/issueLinuxAppCheckChallenge",
             "/mintLinuxAppCheckToken", "/bindAppCheckAttestation", "/v1/token"
         ])
-        XCTAssertEqual(backend.secret(id: "firebase-refresh-token"), "refresh-bound")
+        XCTAssertEqual(backend.firebaseRefreshToken(), "refresh-bound")
         XCTAssertFalse(backend.allSecrets().values.contains("firebase-id-bound"))
         XCTAssertFalse(backend.allSecrets().values.contains("app-check-live"))
 
-        let encodedStatus = try JSONEncoder().encode(await authority.status())
+        let status = await authority.status()
+        XCTAssertEqual(status.identityLabel, fallbackIdentityLabel(contexts[0].uid))
+        XCTAssertEqual(status.installationDeviceID, contexts[0].deviceID)
+        XCTAssertEqual(
+            status.installationSafetyFingerprint,
+            expectedSafetyFingerprint(forDeviceID: contexts[0].deviceID)
+        )
+        let encodedStatus = try JSONEncoder().encode(status)
         let statusText = String(decoding: encodedStatus, as: UTF8.self)
         XCTAssertFalse(statusText.contains(contexts[0].uid))
-        XCTAssertFalse(statusText.contains(contexts[0].deviceID))
+        XCTAssertTrue(statusText.contains(contexts[0].deviceID))
         XCTAssertFalse(statusText.contains("firebase-id-bound"))
         XCTAssertFalse(statusText.contains("app-check-live"))
+    }
+
+    func testVerifiedIdentityLabelMigratesLegacyTokenAndSurvivesDaemonRestart() async throws {
+        let backend = CloudAuthMutableSecretBackend(refreshToken: "refresh-initial")
+        let transport = CloudAuthScriptedTransport(
+            now: fixedNow,
+            identityEmail: "alberto@example.com"
+        )
+        let authority = makeAuthority(backend: backend, transport: transport.transport)
+
+        _ = try await authority.credentialContext()
+
+        let active = await authority.status()
+        XCTAssertEqual(active.state, .active)
+        XCTAssertEqual(active.identityLabel, "alberto@example.com")
+        XCTAssertEqual(backend.firebaseRefreshToken(), "refresh-bound")
+        XCTAssertEqual(backend.firebaseUID(), "user-123")
+        XCTAssertEqual(backend.firebaseIdentityLabel(), "alberto@example.com")
+        XCTAssertEqual(backend.firebaseSchemaVersion(), 1)
+
+        let restarted = makeAuthority(backend: backend) { _, _ in
+            throw URLError(.notConnectedToInternet)
+        }
+        do {
+            _ = try await restarted.credentialContext()
+            XCTFail("Offline restart must not synthesize credentials")
+        } catch let error as LinuxCloudAuthAuthorityError {
+            XCTAssertEqual(error, .cloudUnavailable)
+        }
+        let offline = await restarted.status()
+        XCTAssertEqual(offline.state, .unavailable)
+        XCTAssertTrue(offline.signedIn)
+        XCTAssertEqual(offline.identityLabel, "alberto@example.com")
+    }
+
+    func testIdentityLabelRejectsTokenClaimsForAnotherFirebaseUID() async throws {
+        let backend = CloudAuthMutableSecretBackend(refreshToken: "refresh-initial")
+        let transport = CloudAuthScriptedTransport(
+            now: fixedNow,
+            identityEmail: "spoofed@example.com",
+            identityTokenSubject: "different-user"
+        )
+        let authority = makeAuthority(backend: backend, transport: transport.transport)
+
+        let context = try await authority.credentialContext()
+        let status = await authority.status()
+
+        let fallback = fallbackIdentityLabel(context.uid)
+        XCTAssertEqual(status.identityLabel, fallback)
+        XCTAssertEqual(backend.firebaseIdentityLabel(), fallback)
+        XCTAssertFalse(fallback.contains(context.uid))
+        XCTAssertNotEqual(status.identityLabel, "spoofed@example.com")
     }
 
     func testSignOutInvalidatesRefreshInFlightAndStopsBeforeMint() async throws {
@@ -79,6 +138,7 @@ final class LinuxDaemonCloudCredentialAuthorityTests: XCTestCase {
         let status = await authority.status()
         XCTAssertEqual(status.state, .signedOut)
         XCTAssertFalse(status.signedIn)
+        XCTAssertNil(status.identityLabel)
     }
 
     func testStaleRefreshFailureCannotOverwriteSignedOutStatus() async throws {
@@ -99,7 +159,7 @@ final class LinuxDaemonCloudCredentialAuthorityTests: XCTestCase {
         }
         let status = await authority.status()
         XCTAssertEqual(status.state, .signedOut)
-        XCTAssertEqual(status.detail, nil)
+        XCTAssertNil(status.detail)
     }
 
     func testSignOutLifecycleReentryCannotRemintOrResurrectSession() async throws {
@@ -107,6 +167,8 @@ final class LinuxDaemonCloudCredentialAuthorityTests: XCTestCase {
         let transport = CloudAuthScriptedTransport(now: fixedNow)
         let authority = makeAuthority(backend: backend, transport: transport.transport)
         _ = try await authority.credentialContext()
+        let activeStatus = await authority.status()
+        XCTAssertEqual(activeStatus.identityLabel, fallbackIdentityLabel("user-123"))
         let pathsBeforeSignOut = await transport.paths()
         let probe = CloudAuthLifecycleProbe()
         await authority.setLifecycleHandler { event in
@@ -123,6 +185,9 @@ final class LinuxDaemonCloudCredentialAuthorityTests: XCTestCase {
 
         try await authority.signOut()
 
+        let signedOutStatus = await authority.status()
+        XCTAssertNil(signedOutStatus.identityLabel)
+        XCTAssertNil(backend.secret(id: "firebase-refresh-token"))
         let reentryError = await probe.error()
         let pathsAfterSignOut = await transport.paths()
         XCTAssertEqual(reentryError, .sessionChanged)
@@ -177,6 +242,8 @@ final class LinuxDaemonCloudCredentialAuthorityTests: XCTestCase {
         let transport = CloudAuthScriptedTransport(now: fixedNow, switchedUID: "user-B")
         let authority = makeAuthority(backend: backend, transport: transport.transport)
         let oldContext = try await authority.credentialContext()
+        let oldStatus = await authority.status()
+        XCTAssertEqual(oldStatus.identityLabel, fallbackIdentityLabel("user-123"))
         let teardown = CloudAuthTeardownGate()
         await authority.setTeardownHandler { credentials in
             await teardown.handle(credentials)
@@ -196,9 +263,98 @@ final class LinuxDaemonCloudCredentialAuthorityTests: XCTestCase {
         await teardown.release()
         let readyStatus = await waitForAuthState(.active, authority: authority)
         XCTAssertEqual(readyStatus.state, .active)
+        XCTAssertEqual(readyStatus.identityLabel, fallbackIdentityLabel("user-B"))
+        XCTAssertEqual(backend.firebaseIdentityLabel(), fallbackIdentityLabel("user-B"))
         let newContext = try await authority.credentialContext()
         XCTAssertEqual(newContext.uid, "user-B")
         XCTAssertGreaterThan(newContext.sessionGeneration, oldContext.sessionGeneration)
+    }
+
+    func testPostTeardownStoreFailureUnblocksNextSignInAttempt() async throws {
+        let backend = CloudAuthMutableSecretBackend(refreshToken: "refresh-initial")
+        let transport = CloudAuthScriptedTransport(now: fixedNow, switchedUID: "user-B")
+        let authority = makeAuthority(backend: backend, transport: transport.transport)
+        _ = try await authority.credentialContext()
+        backend.failNextStore()
+
+        let begin = try await authority.beginSignIn()
+        let callbackStatus = try await browserCallbackStatus(begin)
+        XCTAssertEqual(callbackStatus, 200)
+        let failedStatus = await waitForAuthState(.unavailable, authority: authority)
+        XCTAssertEqual(failedStatus.state, .unavailable)
+        XCTAssertEqual(failedStatus.detail, "secure_store_unavailable")
+
+        let retry = try await authority.beginSignIn()
+        try await authority.cancelSignIn(operationID: retry.operationID)
+        let cancelledStatus = await authority.status()
+        XCTAssertEqual(cancelledStatus.state, .signedOut)
+    }
+
+    func testFirstSignInNetworkFailureAllowsImmediateRetry() async throws {
+        let backend = CloudAuthMutableSecretBackend(refreshToken: nil)
+        let transport = CloudAuthScriptedTransport(now: fixedNow, failGoogleExchange: true)
+        let authority = makeAuthority(backend: backend, transport: transport.transport)
+
+        let begin = try await authority.beginSignIn()
+        let callbackStatus = try await browserCallbackStatus(begin)
+        XCTAssertEqual(callbackStatus, 200)
+        let failedStatus = await waitForAuthState(.signedOut, authority: authority)
+        XCTAssertEqual(failedStatus.state, .signedOut)
+        XCTAssertEqual(failedStatus.detail, "cloud_unavailable")
+
+        let retry = try await authority.beginSignIn()
+        try await authority.cancelSignIn(operationID: retry.operationID)
+    }
+
+    func testSameUserReauthRetainsVerifiedIdentityLabel() async throws {
+        let stored = #"{"identityLabel":"alberto@example.com","refreshToken":"refresh-initial","schemaVersion":1,"uid":"user-123"}"#
+        let backend = CloudAuthMutableSecretBackend(refreshToken: stored)
+        let transport = CloudAuthScriptedTransport(now: fixedNow, switchedUID: "user-123")
+        let authority = makeAuthority(backend: backend, transport: transport.transport)
+        _ = try await authority.credentialContext()
+        let initialStatus = await authority.status()
+        XCTAssertEqual(initialStatus.identityLabel, "alberto@example.com")
+
+        let begin = try await authority.beginSignIn()
+        let callbackStatus = try await browserCallbackStatus(begin)
+        XCTAssertEqual(callbackStatus, 200)
+        let ready = await waitForAuthState(.active, authority: authority)
+        XCTAssertEqual(ready.identityLabel, "alberto@example.com")
+        XCTAssertEqual(backend.firebaseIdentityLabel(), "alberto@example.com")
+    }
+
+    func testCancelDuringAccountSwitchTeardownIsRejectedUntilTransitionCompletes() async throws {
+        let backend = CloudAuthMutableSecretBackend(refreshToken: "refresh-initial")
+        let transport = CloudAuthScriptedTransport(now: fixedNow, switchedUID: "user-B")
+        let authority = makeAuthority(backend: backend, transport: transport.transport)
+        let oldContext = try await authority.credentialContext()
+        let teardown = CloudAuthTeardownGate()
+        await authority.setTeardownHandler { credentials in
+            await teardown.handle(credentials)
+        }
+
+        let begin = try await authority.beginSignIn()
+        let callbackStatus = try await browserCallbackStatus(begin)
+        XCTAssertEqual(callbackStatus, 200)
+        await teardown.waitUntilEntered()
+
+        do {
+            try await authority.cancelSignIn(operationID: begin.operationID)
+            XCTFail("Account-transition teardown must not be cancelled mid-flight")
+        } catch let error as LinuxCloudAuthAuthorityError {
+            XCTAssertEqual(error, .sessionChanged)
+        }
+        await teardown.release()
+        let status = await waitForAuthState(.active, authority: authority)
+
+        XCTAssertEqual(status.state, .active)
+        XCTAssertEqual(status.identityLabel, fallbackIdentityLabel("user-B"))
+        let newContext = try await authority.credentialContext()
+        XCTAssertEqual(newContext.uid, "user-B")
+        XCTAssertGreaterThan(newContext.sessionGeneration, oldContext.sessionGeneration)
+        XCTAssertEqual(backend.firebaseRefreshToken(), "refresh-B-bound")
+        let paths = await transport.paths()
+        XCTAssertEqual(paths.filter { $0 == "/mintLinuxAppCheckToken" }.count, 2)
     }
 
     func testSignOutDuringAccountSwitchTeardownCannotResurrectNewAccount() async throws {
@@ -232,6 +388,24 @@ final class LinuxDaemonCloudCredentialAuthorityTests: XCTestCase {
         }
     }
 
+    func testSuccessfulSignOutAllowsAFreshBrowserSignIn() async throws {
+        let backend = CloudAuthMutableSecretBackend(refreshToken: "refresh-initial")
+        let transport = CloudAuthScriptedTransport(now: fixedNow)
+        let authority = makeAuthority(backend: backend, transport: transport.transport)
+        _ = try await authority.credentialContext()
+
+        try await authority.signOut()
+        let signedOutStatus = await authority.status()
+        XCTAssertEqual(signedOutStatus.state, .signedOut)
+        XCTAssertNil(backend.secret(id: "firebase-refresh-token"))
+
+        let begin = try await authority.beginSignIn()
+        let authorizingStatus = await authority.status()
+        XCTAssertEqual(authorizingStatus.state, .authorizing)
+        XCTAssertEqual(authorizingStatus.authorizationOperationID, begin.operationID)
+        try await authority.cancelSignIn(operationID: begin.operationID)
+    }
+
     func testFailedAccountSwitchRetainsReadyOldAccount() async throws {
         let backend = CloudAuthMutableSecretBackend(refreshToken: "refresh-initial")
         let transport = CloudAuthScriptedTransport(now: fixedNow, failGoogleExchange: true)
@@ -258,12 +432,272 @@ final class LinuxDaemonCloudCredentialAuthorityTests: XCTestCase {
             _ = try await authority.credentialContext()
             XCTFail("Malformed Firebase JSON must fail closed")
         } catch let error as LinuxCloudAuthAuthorityError {
-            XCTAssertEqual(error, .cloudUnavailable)
+            XCTAssertEqual(error, .cloudResponseInvalid)
         }
-        XCTAssertEqual(backend.secret(id: "firebase-refresh-token"), "refresh-initial")
+        XCTAssertEqual(backend.firebaseRefreshToken(), "refresh-initial")
         let status = await authority.status()
         XCTAssertEqual(status.state, .unavailable)
-        XCTAssertEqual(status.detail, "cloud_unavailable")
+        XCTAssertEqual(status.detail, "cloud_response_invalid")
+    }
+
+    func testExplicitPendingApprovalReasonSchedulesApprovalState() async throws {
+        let backend = CloudAuthMutableSecretBackend(refreshToken: "refresh-initial")
+        let transport = CloudAuthStageRejectingTransport(
+            now: fixedNow,
+            path: "/issueLinuxAppCheckChallenge",
+            status: 403,
+            reason: "linux_device_approval_required"
+        )
+        let authority = makeAuthority(backend: backend, transport: transport.transport)
+
+        do {
+            _ = try await authority.credentialContext()
+            XCTFail("Pending approval must not mint controller credentials")
+        } catch let error as LinuxCloudAuthAuthorityError {
+            XCTAssertEqual(error, .deviceApprovalRequired)
+        }
+        let status = await authority.status()
+        XCTAssertEqual(status.state, .awaitingDeviceApproval)
+        XCTAssertEqual(status.detail, "device_approval_required")
+        try await authority.signOut()
+    }
+
+    func testPermanentLinuxDeviceRejectionsDoNotEnterApprovalPolling() async throws {
+        struct RejectionCase {
+            let path: String
+            let status: Int
+            let reason: String
+            let error: LinuxCloudAuthAuthorityError
+            let detail: String
+        }
+        let cases = [
+            RejectionCase(
+                path: "/registerLinuxAppCheckDevice",
+                status: 403,
+                reason: "linux_device_key_mismatch",
+                error: .deviceRejected,
+                detail: "device_rejected"
+            ),
+            RejectionCase(
+                path: "/registerLinuxAppCheckDevice",
+                status: 400,
+                reason: "linux_device_revoked",
+                error: .deviceRejected,
+                detail: "device_rejected"
+            ),
+            RejectionCase(
+                path: "/mintLinuxAppCheckToken",
+                status: 403,
+                reason: "linux_app_not_allowlisted",
+                error: .appCheckConfigurationRejected,
+                detail: "app_check_configuration_rejected"
+            )
+        ]
+
+        for testCase in cases {
+            let backend = CloudAuthMutableSecretBackend(refreshToken: "refresh-initial")
+            let transport = CloudAuthStageRejectingTransport(
+                now: fixedNow,
+                path: testCase.path,
+                status: testCase.status,
+                reason: testCase.reason
+            )
+            let authority = makeAuthority(backend: backend, transport: transport.transport)
+
+            do {
+                _ = try await authority.credentialContext()
+                XCTFail("Permanent rejection must fail for \(testCase.reason)")
+            } catch let error as LinuxCloudAuthAuthorityError {
+                XCTAssertEqual(error, testCase.error, testCase.reason)
+            }
+            let status = await authority.status()
+            XCTAssertEqual(status.state, .unavailable, testCase.reason)
+            XCTAssertEqual(status.detail, testCase.detail, testCase.reason)
+        }
+    }
+
+    func testApprovalRetryBackoffStaysBelowPublicEndpointQuotaAndSurvivesRateLimit() {
+        var elapsedSeconds: UInt64 = 0
+        var requestCount = 1
+        var retryIndex = 0
+        while true {
+            let delay = LinuxDaemonCloudCredentialAuthority.approvalRetryDelayNanoseconds(at: retryIndex)
+                / 1_000_000_000
+            guard elapsedSeconds + delay < 3_600 else { break }
+            elapsedSeconds += delay
+            requestCount += 1
+            retryIndex += 1
+        }
+
+        XCTAssertEqual(requestCount, 16)
+        XCTAssertLessThan(requestCount, 20)
+        XCTAssertTrue(LinuxDaemonCloudCredentialAuthority.shouldContinueApprovalRetry(after: .deviceApprovalRequired))
+        XCTAssertTrue(LinuxDaemonCloudCredentialAuthority.shouldContinueApprovalRetry(after: .cloudUnavailable))
+        XCTAssertFalse(LinuxDaemonCloudCredentialAuthority.shouldContinueApprovalRetry(after: .deviceRejected))
+        XCTAssertFalse(LinuxDaemonCloudCredentialAuthority.shouldContinueApprovalRetry(after: .reauthorizationRequired))
+        XCTAssertFalse(LinuxDaemonCloudCredentialAuthority.shouldContinueApprovalRetry(after: .cloudResponseInvalid))
+    }
+
+    func testApprovalRetryRecoversAfterRateLimitWithoutWaitingForWallClock() async throws {
+        let backend = CloudAuthMutableSecretBackend(refreshToken: "refresh-initial")
+        let transport = CloudAuthApprovalRetryTransport(now: fixedNow)
+        let authority = makeAuthority(
+            backend: backend,
+            transport: transport.transport,
+            approvalRetrySleeper: { _ in await Task.yield() }
+        )
+
+        do {
+            _ = try await authority.credentialContext()
+            XCTFail("The first challenge request must wait for device approval")
+        } catch let error as LinuxCloudAuthAuthorityError {
+            XCTAssertEqual(error, .deviceApprovalRequired)
+        }
+
+        let status = await waitForAuthState(.active, authority: authority)
+        XCTAssertEqual(status.state, .active)
+        let issueAttempts = await transport.issueAttempts()
+        let registerAttempts = await transport.registerAttempts()
+        XCTAssertEqual(issueAttempts, 3)
+        XCTAssertGreaterThanOrEqual(registerAttempts, 3)
+    }
+
+    func testInvalidRefreshAndMalformedResponsesNeverEnterApprovalPolling() async throws {
+        for response in [
+            CloudAuthFixedFailure(status: 400, body: #"{"error":{"message":"INVALID_REFRESH_TOKEN"}}"#),
+            CloudAuthFixedFailure(status: 200, body: "{}")
+        ] {
+            let backend = CloudAuthMutableSecretBackend(refreshToken: "refresh-initial")
+            let sleeps = CloudAuthCallCounter()
+            let authority = makeAuthority(
+                backend: backend,
+                transport: response.transport,
+                approvalRetrySleeper: { _ in await sleeps.increment() }
+            )
+
+            do {
+                _ = try await authority.credentialContext()
+                XCTFail("Permanent refresh failures must fail closed")
+            } catch let error as LinuxCloudAuthAuthorityError {
+                XCTAssertTrue(
+                    error == .reauthorizationRequired || error == .cloudResponseInvalid,
+                    "Unexpected error: \(error)"
+                )
+            }
+            for _ in 0..<32 { await Task.yield() }
+            let sleepCount = await sleeps.value()
+            XCTAssertEqual(sleepCount, 0)
+        }
+    }
+
+    func testRejectedInstallationCanRotateIdentityAndReturnToPendingApproval() async throws {
+        let backend = CloudAuthMutableSecretBackend(refreshToken: "refresh-initial")
+        let custodian = LinuxSecretCustodian(backends: [backend])
+        let identityStore = LinuxIrohHostIdentityStore(custodian: custodian)
+        let transport = CloudAuthRejectedThenPendingTransport(now: fixedNow)
+        let authority = makeAuthority(backend: backend, transport: transport.transport)
+
+        do {
+            _ = try await authority.credentialContext()
+            XCTFail("The original installation identity must be rejected")
+        } catch let error as LinuxCloudAuthAuthorityError {
+            XCTAssertEqual(error, .deviceRejected)
+        }
+        let oldIdentity = try identityStore.loadOrCreate()
+        let rejectedStatus = await authority.status()
+        XCTAssertEqual(
+            rejectedStatus.installationDeviceID,
+            deviceID(for: oldIdentity)
+        )
+        XCTAssertEqual(
+            rejectedStatus.installationSafetyFingerprint,
+            safetyFingerprint(for: oldIdentity)
+        )
+
+        try await authority.rotateInstallationIdentity()
+
+        let newIdentity = try identityStore.loadOrCreate()
+        XCTAssertNotEqual(oldIdentity.endpointSecret.raw, newIdentity.endpointSecret.raw)
+        XCTAssertNotEqual(
+            oldIdentity.pairingKeypair.publicKeyRaw,
+            newIdentity.pairingKeypair.publicKeyRaw
+        )
+        let status = await authority.status()
+        XCTAssertEqual(status.state, .awaitingDeviceApproval)
+        XCTAssertEqual(status.detail, "device_approval_required")
+        XCTAssertEqual(status.installationDeviceID, deviceID(for: newIdentity))
+        XCTAssertEqual(status.installationSafetyFingerprint, safetyFingerprint(for: newIdentity))
+        let registerAttempts = await transport.registerAttempts()
+        XCTAssertEqual(registerAttempts, 2)
+        try await authority.signOut()
+    }
+
+    func testRotationPersistenceFailureKeepsRejectedStateRetryable() async throws {
+        let backend = CloudAuthMutableSecretBackend(refreshToken: "refresh-initial")
+        let transport = CloudAuthRejectedThenPendingTransport(now: fixedNow)
+        let authority = makeAuthority(backend: backend, transport: transport.transport)
+
+        do {
+            _ = try await authority.credentialContext()
+            XCTFail("The original installation identity must be rejected")
+        } catch let error as LinuxCloudAuthAuthorityError {
+            XCTAssertEqual(error, .deviceRejected)
+        }
+        let rejected = await authority.status()
+        backend.failNextStore()
+
+        do {
+            try await authority.rotateInstallationIdentity()
+            XCTFail("A failed keyring write must not report a successful rotation")
+        } catch let error as LinuxCloudAuthAuthorityError {
+            XCTAssertEqual(error, .installationIdentityUnavailable)
+        }
+
+        let retryable = await authority.status()
+        XCTAssertEqual(retryable.state, .unavailable)
+        XCTAssertEqual(retryable.detail, "device_rejected")
+        XCTAssertEqual(retryable.installationDeviceID, rejected.installationDeviceID)
+        XCTAssertEqual(retryable.installationSafetyFingerprint, rejected.installationSafetyFingerprint)
+
+        try await authority.rotateInstallationIdentity()
+        let pending = await authority.status()
+        XCTAssertEqual(pending.state, .awaitingDeviceApproval)
+        XCTAssertEqual(pending.detail, "device_approval_required")
+        XCTAssertNotEqual(pending.installationDeviceID, rejected.installationDeviceID)
+        try await authority.signOut()
+    }
+
+    func testCommittedRotationReturnsNewDescriptorAndRetriesTransientEnrollmentFailure() async throws {
+        for transientStatus in [429, 503] {
+            let backend = CloudAuthMutableSecretBackend(refreshToken: "refresh-initial")
+            let transport = CloudAuthRejectedThenPendingTransport(
+                now: fixedNow,
+                secondRegisterFailureStatus: transientStatus
+            )
+            let authority = makeAuthority(backend: backend, transport: transport.transport)
+
+            do {
+                _ = try await authority.credentialContext()
+                XCTFail("The original installation identity must be rejected")
+            } catch let error as LinuxCloudAuthAuthorityError {
+                XCTAssertEqual(error, .deviceRejected)
+            }
+            let rejected = await authority.status()
+
+            try await authority.rotateInstallationIdentity()
+
+            let rotated = await authority.status()
+            XCTAssertEqual(rotated.state, .unavailable)
+            XCTAssertEqual(rotated.detail, "cloud_unavailable")
+            XCTAssertNotEqual(rotated.installationDeviceID, rejected.installationDeviceID)
+            XCTAssertNotEqual(
+                rotated.installationSafetyFingerprint,
+                rejected.installationSafetyFingerprint
+            )
+            let registerAttempts = await transport.registerAttempts()
+            XCTAssertEqual(registerAttempts, 2)
+            try await authority.signOut()
+        }
     }
 
     func testExpiredAppCheckChallengeFailsBeforeMintOrBind() async throws {
@@ -295,7 +729,7 @@ final class LinuxDaemonCloudCredentialAuthorityTests: XCTestCase {
             _ = try await authority.credentialContext()
             XCTFail("Linux lower-trust App Check TTL must not exceed 30 minutes")
         } catch let error as LinuxCloudAuthAuthorityError {
-            XCTAssertEqual(error, .cloudUnavailable)
+            XCTAssertEqual(error, .cloudResponseInvalid)
         }
 
         let requestPaths = await transport.paths()
@@ -425,7 +859,10 @@ final class LinuxDaemonCloudCredentialAuthorityTests: XCTestCase {
 
     private func makeAuthority(
         backend: CloudAuthMutableSecretBackend,
-        transport: @escaping LinuxCloudAuthHTTPTransport
+        transport: @escaping LinuxCloudAuthHTTPTransport,
+        approvalRetrySleeper: @escaping @Sendable (UInt64) async -> Void = { delay in
+            try? await Task.sleep(nanoseconds: delay)
+        }
     ) -> LinuxDaemonCloudCredentialAuthority {
         let fixedNow = fixedNow
         return LinuxDaemonCloudCredentialAuthority(
@@ -437,8 +874,33 @@ final class LinuxDaemonCloudCredentialAuthorityTests: XCTestCase {
             custodian: LinuxSecretCustodian(backends: [backend]),
             httpTransport: transport,
             now: { fixedNow },
+            approvalRetrySleeper: approvalRetrySleeper,
             hostname: "linux-test-host"
         )
+    }
+
+    private func fallbackIdentityLabel(_ uid: String) -> String {
+        let fingerprint = PlatformCrypto.sha256Hex(Data(uid.utf8)).prefix(12).uppercased()
+        return "OpenBurnBar account \(fingerprint)"
+    }
+
+    private func deviceID(for identity: LinuxIrohHostIdentity) -> String {
+        "linux_" + PlatformCrypto.sha256Hex(identity.pairingKeypair.publicKeyRaw)
+    }
+
+    private func safetyFingerprint(for identity: LinuxIrohHostIdentity) -> String {
+        expectedSafetyFingerprint(forDeviceID: deviceID(for: identity))!
+    }
+
+    private func expectedSafetyFingerprint(forDeviceID deviceID: String) -> String? {
+        guard deviceID.hasPrefix("linux_") else { return nil }
+        let digest = deviceID.dropFirst("linux_".count).uppercased()
+        guard digest.count == 64 else { return nil }
+        return stride(from: 0, to: digest.count, by: 4).map { offset in
+            let start = digest.index(digest.startIndex, offsetBy: offset)
+            let end = digest.index(start, offsetBy: 4)
+            return String(digest[start..<end])
+        }.joined(separator: " ")
     }
 
     private func browserCallbackStatus(_ begin: BurnBarLinuxAuthBeginResponse) async throws -> Int {
@@ -537,6 +999,7 @@ private final class CloudAuthMutableSecretBackend: LinuxSecretStoreBackend, @unc
     private let lock = NSLock()
     private var records: [String: String]
     private var reads = 0
+    private var storeFailuresRemaining = 0
     private let readFailure: Bool
 
     init(refreshToken: String?, readFailure: Bool = false) {
@@ -558,6 +1021,12 @@ private final class CloudAuthMutableSecretBackend: LinuxSecretStoreBackend, @unc
     }
 
     func storeSecret(_ secret: String, id: String, secretClass: LinuxHighValueSecretClass) throws -> LinuxSecretMetadata {
+        let shouldFail = lock.withLock {
+            guard storeFailuresRemaining > 0 else { return false }
+            storeFailuresRemaining -= 1
+            return true
+        }
+        if shouldFail { throw LinuxSecretStoreError.backendUnavailable("store failed") }
         lock.withLock { records[id] = secret }
         return LinuxSecretMetadata(
             id: id, secretClass: secretClass, trustLevel: trustLevel,
@@ -573,6 +1042,29 @@ private final class CloudAuthMutableSecretBackend: LinuxSecretStoreBackend, @unc
     func secret(id: String) -> String? { lock.withLock { records[id] } }
     func allSecrets() -> [String: String] { lock.withLock { records } }
     func readCount() -> Int { lock.withLock { reads } }
+    func failNextStore() { lock.withLock { storeFailuresRemaining += 1 } }
+
+    func firebaseRefreshToken() -> String? {
+        guard let value = secret(id: "firebase-refresh-token") else { return nil }
+        return firebaseEnvelope(value)?["refreshToken"] as? String ?? value
+    }
+
+    func firebaseUID() -> String? {
+        secret(id: "firebase-refresh-token").flatMap(firebaseEnvelope)?["uid"] as? String
+    }
+
+    func firebaseIdentityLabel() -> String? {
+        secret(id: "firebase-refresh-token").flatMap(firebaseEnvelope)?["identityLabel"] as? String
+    }
+
+    func firebaseSchemaVersion() -> Int? {
+        secret(id: "firebase-refresh-token").flatMap(firebaseEnvelope)?["schemaVersion"] as? Int
+    }
+
+    private func firebaseEnvelope(_ value: String) -> [String: Any]? {
+        guard value.first == "{", let data = value.data(using: .utf8) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
 }
 
 private actor CloudAuthLifecycleProbe {
@@ -597,10 +1089,10 @@ private final class CloudAuthURLProtocolProbe: @unchecked Sendable {
 private let cloudAuthURLProtocolProbe = CloudAuthURLProtocolProbe()
 
 private final class CloudAuthHangingURLProtocol: URLProtocol {
-    override class func canInit(with request: URLRequest) -> Bool {
+    override static func canInit(with request: URLRequest) -> Bool {
         request.url?.host == "example.invalid"
     }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() { cloudAuthURLProtocolProbe.started() }
     override func stopLoading() { cloudAuthURLProtocolProbe.stopped() }
 }
@@ -637,6 +1129,8 @@ private actor CloudAuthScriptedTransport {
     private let appCheckTTLMillis: Int64
     private let switchedUID: String?
     private let failGoogleExchange: Bool
+    private let identityEmail: String?
+    private let identityTokenSubject: String?
     private var requestPaths: [String] = []
     private var refreshCount = 0
 
@@ -645,13 +1139,17 @@ private actor CloudAuthScriptedTransport {
         expiredChallenge: Bool = false,
         appCheckTTLMillis: Int64 = 1_800_000,
         switchedUID: String? = nil,
-        failGoogleExchange: Bool = false
+        failGoogleExchange: Bool = false,
+        identityEmail: String? = nil,
+        identityTokenSubject: String? = nil
     ) {
         self.now = now
         self.expiredChallenge = expiredChallenge
         self.appCheckTTLMillis = appCheckTTLMillis
         self.switchedUID = switchedUID
         self.failGoogleExchange = failGoogleExchange
+        self.identityEmail = identityEmail
+        self.identityTokenSubject = identityTokenSubject
     }
 
     nonisolated var transport: LinuxCloudAuthHTTPTransport {
@@ -673,17 +1171,21 @@ private actor CloudAuthScriptedTransport {
             body = #"{"id_token":"google-id-token"}"#
         case "/v1/accounts:signInWithIdp":
             let uid = switchedUID ?? "user-B"
-            body = #"{"localId":"\#(uid)","idToken":"firebase-id-B","refreshToken":"refresh-B","expiresIn":"3600"}"#
+            let idToken = try firebaseIDToken(uid: uid, fallback: "firebase-id-B")
+            body = #"{"localId":"\#(uid)","idToken":"\#(idToken)","refreshToken":"refresh-B","expiresIn":"3600"}"#
         case "/v1/token":
             let requestBody = request.httpBody.map { String(decoding: $0, as: UTF8.self) } ?? ""
             if requestBody.contains("refresh-B") {
-                body = #"{"user_id":"user-B","id_token":"firebase-id-B-bound","refresh_token":"refresh-B-bound","expires_in":"3600"}"#
+                let uid = switchedUID ?? "user-B"
+                let idToken = try firebaseIDToken(uid: uid, fallback: "firebase-id-B-bound")
+                body = #"{"user_id":"\#(uid)","id_token":"\#(idToken)","refresh_token":"refresh-B-bound","expires_in":"3600"}"#
                 break
             }
             refreshCount += 1
-            body = refreshCount == 1
-                ? #"{"user_id":"user-123","id_token":"firebase-id-initial","refresh_token":"refresh-initial-rotated","expires_in":"3600"}"#
-                : #"{"user_id":"user-123","id_token":"firebase-id-bound","refresh_token":"refresh-bound","expires_in":"3600"}"#
+            let fallbackToken = refreshCount == 1 ? "firebase-id-initial" : "firebase-id-bound"
+            let idToken = try firebaseIDToken(uid: "user-123", fallback: fallbackToken)
+            let refreshToken = refreshCount == 1 ? "refresh-initial-rotated" : "refresh-bound"
+            body = #"{"user_id":"user-123","id_token":"\#(idToken)","refresh_token":"\#(refreshToken)","expires_in":"3600"}"#
         case "/registerLinuxAppCheckDevice", "/bindAppCheckAttestation":
             body = #"{"result":{"ok":true}}"#
         case "/issueLinuxAppCheckChallenge":
@@ -701,6 +1203,233 @@ private actor CloudAuthScriptedTransport {
         XCTAssertLessThanOrEqual(data.count, maximumBytes)
         return (data, HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!)
     }
+
+    private func firebaseIDToken(uid: String, fallback: String) throws -> String {
+        guard let identityEmail else { return fallback }
+        let header = Data(#"{"alg":"RS256","typ":"JWT"}"#.utf8).base64URL
+        let payload = try JSONSerialization.data(withJSONObject: [
+            "sub": identityTokenSubject ?? uid,
+            "email": identityEmail,
+            "email_verified": true
+        ]).base64URL
+        return "\(header).\(payload).test-signature"
+    }
+}
+
+private actor CloudAuthStageRejectingTransport {
+    private let base: CloudAuthScriptedTransport
+    private let path: String
+    private let status: Int
+    private let reason: String
+
+    init(now: Date, path: String, status: Int, reason: String) {
+        base = CloudAuthScriptedTransport(now: now)
+        self.path = path
+        self.status = status
+        self.reason = reason
+    }
+
+    nonisolated var transport: LinuxCloudAuthHTTPTransport {
+        { [weak self] request, maximumBytes in
+            guard let self else { throw URLError(.cancelled) }
+            return try await self.respond(request: request, maximumBytes: maximumBytes)
+        }
+    }
+
+    private func respond(request: URLRequest, maximumBytes: Int) async throws -> (Data, HTTPURLResponse) {
+        let url = try XCTUnwrap(request.url)
+        guard url.path == path else {
+            return try await base.transport(request, maximumBytes)
+        }
+        let body = try JSONSerialization.data(withJSONObject: [
+            "error": [
+                "status": "PERMISSION_DENIED",
+                "message": "Linux device request rejected.",
+                "details": ["reason": reason]
+            ]
+        ])
+        XCTAssertLessThanOrEqual(body.count, maximumBytes)
+        let response = try XCTUnwrap(HTTPURLResponse(
+            url: url,
+            statusCode: status,
+            httpVersion: nil,
+            headerFields: nil
+        ))
+        return (body, response)
+    }
+}
+
+private extension Data {
+    var base64URL: String {
+        base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+}
+
+private actor CloudAuthCallCounter {
+    private var count = 0
+
+    func increment() {
+        count += 1
+    }
+
+    func value() -> Int {
+        count
+    }
+}
+
+private struct CloudAuthFixedFailure: Sendable {
+    let status: Int
+    let body: String
+
+    var transport: LinuxCloudAuthHTTPTransport {
+        { request, maximumBytes in
+            let url = try XCTUnwrap(request.url)
+            let data = Data(body.utf8)
+            XCTAssertLessThanOrEqual(data.count, maximumBytes)
+            let response = try XCTUnwrap(HTTPURLResponse(
+                url: url,
+                statusCode: status,
+                httpVersion: nil,
+                headerFields: nil
+            ))
+            return (data, response)
+        }
+    }
+}
+
+private actor CloudAuthApprovalRetryTransport {
+    private let base: CloudAuthScriptedTransport
+    private var issueCount = 0
+    private var registerCount = 0
+
+    init(now: Date) {
+        base = CloudAuthScriptedTransport(now: now)
+    }
+
+    nonisolated var transport: LinuxCloudAuthHTTPTransport {
+        { [weak self] request, maximumBytes in
+            guard let self else { throw URLError(.cancelled) }
+            return try await self.respond(request: request, maximumBytes: maximumBytes)
+        }
+    }
+
+    func issueAttempts() -> Int {
+        issueCount
+    }
+
+    func registerAttempts() -> Int {
+        registerCount
+    }
+
+    private func respond(request: URLRequest, maximumBytes: Int) async throws -> (Data, HTTPURLResponse) {
+        let path = try XCTUnwrap(request.url).path
+        switch path {
+        case "/registerLinuxAppCheckDevice":
+            registerCount += 1
+        case "/issueLinuxAppCheckChallenge":
+            issueCount += 1
+            if issueCount == 1 {
+                return try cloudAuthCallableError(
+                    request: request,
+                    status: 403,
+                    reason: "linux_device_approval_required",
+                    maximumBytes: maximumBytes
+                )
+            }
+            if issueCount == 2 {
+                return try cloudAuthCallableError(
+                    request: request,
+                    status: 429,
+                    reason: "linux_rate_limited",
+                    maximumBytes: maximumBytes
+                )
+            }
+        default:
+            break
+        }
+        return try await base.transport(request, maximumBytes)
+    }
+}
+
+private actor CloudAuthRejectedThenPendingTransport {
+    private let base: CloudAuthScriptedTransport
+    private let secondRegisterFailureStatus: Int?
+    private var registerCount = 0
+
+    init(now: Date, secondRegisterFailureStatus: Int? = nil) {
+        base = CloudAuthScriptedTransport(now: now)
+        self.secondRegisterFailureStatus = secondRegisterFailureStatus
+    }
+
+    nonisolated var transport: LinuxCloudAuthHTTPTransport {
+        { [weak self] request, maximumBytes in
+            guard let self else { throw URLError(.cancelled) }
+            return try await self.respond(request: request, maximumBytes: maximumBytes)
+        }
+    }
+
+    func registerAttempts() -> Int {
+        registerCount
+    }
+
+    private func respond(request: URLRequest, maximumBytes: Int) async throws -> (Data, HTTPURLResponse) {
+        let path = try XCTUnwrap(request.url).path
+        if path == "/registerLinuxAppCheckDevice" {
+            registerCount += 1
+            if registerCount == 1 {
+                return try cloudAuthCallableError(
+                    request: request,
+                    status: 400,
+                    reason: "linux_device_revoked",
+                    maximumBytes: maximumBytes
+                )
+            }
+            if registerCount == 2, let secondRegisterFailureStatus {
+                return try cloudAuthCallableError(
+                    request: request,
+                    status: secondRegisterFailureStatus,
+                    reason: "linux_registration_temporarily_unavailable",
+                    maximumBytes: maximumBytes
+                )
+            }
+        }
+        if path == "/issueLinuxAppCheckChallenge" {
+            return try cloudAuthCallableError(
+                request: request,
+                status: 403,
+                reason: "linux_device_approval_required",
+                maximumBytes: maximumBytes
+            )
+        }
+        return try await base.transport(request, maximumBytes)
+    }
+}
+
+private func cloudAuthCallableError(
+    request: URLRequest,
+    status: Int,
+    reason: String,
+    maximumBytes: Int
+) throws -> (Data, HTTPURLResponse) {
+    let url = try XCTUnwrap(request.url)
+    let body = try JSONSerialization.data(withJSONObject: [
+        "error": [
+            "status": status == 429 ? "RESOURCE_EXHAUSTED" : "PERMISSION_DENIED",
+            "message": "Linux device request rejected.",
+            "details": ["reason": reason]
+        ]
+    ])
+    XCTAssertLessThanOrEqual(body.count, maximumBytes)
+    let response = try XCTUnwrap(HTTPURLResponse(
+        url: url,
+        statusCode: status,
+        httpVersion: nil,
+        headerFields: nil
+    ))
+    return (body, response)
 }
 
 private actor CloudAuthRefreshGate {

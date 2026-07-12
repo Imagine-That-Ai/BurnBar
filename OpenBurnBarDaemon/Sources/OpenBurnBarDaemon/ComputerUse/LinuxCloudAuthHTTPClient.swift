@@ -10,7 +10,7 @@ enum LinuxCloudAuthHTTPError: Error, Equatable, Sendable, CustomStringConvertibl
     case requestTooLarge
     case responseTooLarge
     case transportFailure
-    case rejected(stage: String, status: Int)
+    case rejected(stage: String, status: Int, reason: String?)
     case malformedResponse(stage: String)
 
     var description: String {
@@ -20,7 +20,7 @@ enum LinuxCloudAuthHTTPError: Error, Equatable, Sendable, CustomStringConvertibl
         case .requestTooLarge: "Cloud authentication request exceeded its size limit."
         case .responseTooLarge: "Cloud authentication response exceeded its size limit."
         case .transportFailure: "Cloud authentication transport failed."
-        case let .rejected(stage, status): "Cloud authentication stage \(stage) was rejected (HTTP \(status))."
+        case let .rejected(stage, status, _): "Cloud authentication stage \(stage) was rejected (HTTP \(status))."
         case let .malformedResponse(stage): "Cloud authentication stage \(stage) returned an invalid response."
         }
     }
@@ -354,15 +354,28 @@ struct LinuxCloudAuthHTTPClient: Sendable {
 
         let data: Data
         let response: HTTPURLResponse
-        do { (data, response) = try await transport(request, Self.maximumResponseBytes) }
-        catch let error as LinuxCloudAuthHTTPError { throw error }
-        catch { throw LinuxCloudAuthHTTPError.transportFailure }
+        do {
+            (data, response) = try await transport(request, Self.maximumResponseBytes)
+        } catch let error as LinuxCloudAuthHTTPError {
+            throw error
+        } catch {
+            throw LinuxCloudAuthHTTPError.transportFailure
+        }
         guard data.count <= Self.maximumResponseBytes else { throw LinuxCloudAuthHTTPError.responseTooLarge }
         guard (200..<300).contains(response.statusCode) else {
-            throw LinuxCloudAuthHTTPError.rejected(stage: stage, status: response.statusCode)
+            let reason = try? JSONDecoder().decode(CallableErrorResponse.self, from: data)
+                .error.details?.reason
+            throw LinuxCloudAuthHTTPError.rejected(
+                stage: stage,
+                status: response.statusCode,
+                reason: reason.flatMap { $0.isBoundedIdentifier ? $0 : nil }
+            )
         }
-        do { return try JSONDecoder().decode(Result.self, from: data) }
-        catch { throw LinuxCloudAuthHTTPError.malformedResponse(stage: stage) }
+        do {
+            return try JSONDecoder().decode(Result.self, from: data)
+        } catch {
+            throw LinuxCloudAuthHTTPError.malformedResponse(stage: stage)
+        }
     }
 
     private func endpointWithAPIKey(_ endpoint: URL, apiKey: String) throws -> URL {
@@ -533,6 +546,13 @@ private struct CallableResponse<Result: Decodable>: Decodable {
         value = try container.decodeIfPresent(Result.self, forKey: .result)
             ?? container.decode(Result.self, forKey: .data)
     }
+}
+private struct CallableErrorResponse: Decodable {
+    struct Payload: Decodable {
+        struct Details: Decodable { let reason: String? }
+        let details: Details?
+    }
+    let error: Payload
 }
 private struct EmptyRequest: Encodable {}
 private struct MutationResponse: Decodable { let ok: Bool }

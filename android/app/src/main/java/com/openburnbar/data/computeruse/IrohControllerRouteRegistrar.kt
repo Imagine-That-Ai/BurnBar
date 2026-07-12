@@ -132,6 +132,26 @@ class IrohControllerRouteRegistrar(
         endpointIdentity: IrohEndpointIdentity,
         allowAuthorityProof: Boolean,
     ): IrohControllerRouteRegistration {
+        val inputs = registrationInputs(uid, connectionId, endpointIdentity)
+        return when (val decision = claimRegistration(inputs)) {
+            is RegistrationDecision.Cached -> {
+                requireActive(inputs.routeScope, inputs.key, decision.lifecycleEpoch)
+                decision.result
+            }
+            is RegistrationDecision.Await -> {
+                val result = decision.result.await()
+                requireActive(inputs.routeScope, inputs.key, decision.lifecycleEpoch)
+                result
+            }
+            is RegistrationDecision.Own -> registerOwned(inputs, decision, allowAuthorityProof)
+        }
+    }
+
+    private fun registrationInputs(
+        uid: String,
+        connectionId: String,
+        endpointIdentity: IrohEndpointIdentity,
+    ): RegistrationInputs {
         val normalizedUid = uid.trim().also { require(it.isNotEmpty()) { "uid is required to register an iroh controller route" } }
         val normalizedConnectionId = connectionId.trim().also {
             require(it.isNotEmpty()) { "connectionId is required to register an iroh controller route" }
@@ -153,83 +173,96 @@ class IrohControllerRouteRegistrar(
             authorityPeerNodeId = authorityPeerNodeId,
         )
         val routeScope = RouteScope(normalizedUid, normalizedConnectionId, sourceDeviceId)
+        return RegistrationInputs(
+            endpointIdentity = endpointIdentity,
+            transportSeed = transportSeed,
+            authorityIdentity = authorityIdentity,
+            key = key,
+            routeScope = routeScope,
+        )
+    }
 
-        val decision = lock.withLock {
-            if (
-                !registrationAllowedProvider() ||
-                currentUidProvider() != normalizedUid ||
+    private suspend fun claimRegistration(inputs: RegistrationInputs): RegistrationDecision = lock.withLock {
+        val key = inputs.key
+        val routeScope = inputs.routeScope
+        val registrationIsBlocked =
+            !registrationAllowedProvider() ||
+                currentUidProvider() != key.uid ||
                 isInvalidating ||
                 authTransitionDepth > 0
-            ) {
-                throw RouteInvalidatedException()
-            }
-            val registrationLock = registrationLocks.getOrPut(routeScope) { ScopeRegistrationLock() }
-            val previousKey = activeKeys.put(routeScope, key)
-            if (previousKey != null && previousKey != key) {
-                cached.remove(previousKey)
-                renewalJobs.remove(previousKey)?.cancel(RouteSupersededException())
-                inFlight.remove(previousKey)?.cancel(RouteSupersededException())
-            }
-            cached[key]
-                ?.takeIf { it.expiresAtMillis > nowMillis() + renewalWindowMillis }
-                ?.let { return@withLock RegistrationDecision.Cached(it, lifecycleEpoch) }
-            inFlight[key]?.let { return@withLock RegistrationDecision.Await(it, lifecycleEpoch) }
-            val deferred = CompletableDeferred<IrohControllerRouteRegistration>()
-            inFlight[key] = deferred
-            registrationLock.owners += 1
-            RegistrationDecision.Own(deferred, registrationLock, lifecycleEpoch)
+        if (registrationIsBlocked) throw RouteInvalidatedException()
+        val registrationLock = registrationLocks.getOrPut(routeScope) { ScopeRegistrationLock() }
+        val previousKey = activeKeys.put(routeScope, key)
+        if (previousKey != null && previousKey != key) {
+            cached.remove(previousKey)
+            renewalJobs.remove(previousKey)?.cancel(RouteSupersededException())
+            inFlight.remove(previousKey)?.cancel(RouteSupersededException())
         }
-        if (decision is RegistrationDecision.Cached) {
-            requireActive(routeScope, key, decision.lifecycleEpoch)
-            return decision.result
-        }
-        if (decision is RegistrationDecision.Await) {
-            val result = decision.result.await()
-            requireActive(routeScope, key, decision.lifecycleEpoch)
-            return result
-        }
+        cached[key]
+            ?.takeIf { it.expiresAtMillis > nowMillis() + renewalWindowMillis }
+            ?.let { return@withLock RegistrationDecision.Cached(it, lifecycleEpoch) }
+        inFlight[key]?.let { return@withLock RegistrationDecision.Await(it, lifecycleEpoch) }
+        val deferred = CompletableDeferred<IrohControllerRouteRegistration>()
+        inFlight[key] = deferred
+        registrationLock.owners += 1
+        RegistrationDecision.Own(deferred, registrationLock, lifecycleEpoch)
+    }
 
-        val ownership = decision as RegistrationDecision.Own
+    private suspend fun registerOwned(
+        inputs: RegistrationInputs,
+        ownership: RegistrationDecision.Own,
+        allowAuthorityProof: Boolean,
+    ): IrohControllerRouteRegistration {
+        val key = inputs.key
+        val routeScope = inputs.routeScope
         val owner = ownership.result
-        return try {
+        val attempt = runCatching {
             val registration = ownership.registrationLock.mutex.withLock {
                 register(
                     routeScope,
                     key,
-                    transportSeed,
-                    authorityIdentity,
+                    inputs.transportSeed,
+                    inputs.authorityIdentity,
                     ownership.lifecycleEpoch,
                     allowAuthorityProof,
                 )
             }
-            val stillActive = lock.withLock {
-                if (inFlight[key] === owner) inFlight.remove(key)
-                if (
-                    registrationAllowedProvider() &&
-                    currentUidProvider() == key.uid &&
-                    lifecycleEpoch == ownership.lifecycleEpoch &&
-                    activeKeys[routeScope] == key
-                ) {
-                    cached[key] = registration
-                    true
-                } else {
-                    false
-                }
-            }
-            if (!stillActive) throw RouteSupersededException()
-            requireActive(routeScope, key, ownership.lifecycleEpoch)
+            cacheOwnedRegistration(inputs, ownership, registration)
             owner.complete(registration)
-            scheduleProactiveRenewal(routeScope, key, endpointIdentity, ownership.lifecycleEpoch)
+            scheduleProactiveRenewal(routeScope, key, inputs.endpointIdentity, ownership.lifecycleEpoch)
             registration
-        } catch (error: Throwable) {
-            lock.withLock {
-                if (inFlight[key] === owner) inFlight.remove(key)
+        }
+        try {
+            if (attempt.isFailure) {
+                val error = checkNotNull(attempt.exceptionOrNull())
+                lock.withLock {
+                    if (inFlight[key] === owner) inFlight.remove(key)
+                }
+                owner.completeExceptionally(error)
             }
-            owner.completeExceptionally(error)
-            throw error
+            return attempt.getOrThrow()
         } finally {
             releaseRegistrationLock(routeScope, ownership.registrationLock)
         }
+    }
+
+    private suspend fun cacheOwnedRegistration(
+        inputs: RegistrationInputs,
+        ownership: RegistrationDecision.Own,
+        registration: IrohControllerRouteRegistration,
+    ) {
+        val stillActive = lock.withLock {
+            if (inFlight[inputs.key] === ownership.result) inFlight.remove(inputs.key)
+            val ownsCurrentLifecycle =
+                registrationAllowedProvider() &&
+                    currentUidProvider() == inputs.key.uid &&
+                    lifecycleEpoch == ownership.lifecycleEpoch &&
+                    activeKeys[inputs.routeScope] == inputs.key
+            if (ownsCurrentLifecycle) cached[inputs.key] = registration
+            ownsCurrentLifecycle
+        }
+        if (!stillActive) throw RouteSupersededException()
+        requireActive(inputs.routeScope, inputs.key, ownership.lifecycleEpoch)
     }
 
     /**
@@ -261,17 +294,23 @@ class IrohControllerRouteRegistrar(
             var firstFailure: Throwable? = null
             for (invalidation in invalidations) {
                 try {
-                    invalidation.registrationLock.mutex.withLock {
-                        if (revokeRemote) {
-                            revoked += callables.revokeIrohControllerRoute(
-                                expectedUid = invalidation.key.uid,
-                                sourceDeviceId = invalidation.key.sourceDeviceId,
-                                connectionId = invalidation.key.connectionId,
-                            )
+                    val attempt = runCatching {
+                        invalidation.registrationLock.mutex.withLock {
+                            if (revokeRemote) {
+                                callables.revokeIrohControllerRoute(
+                                    expectedUid = invalidation.key.uid,
+                                    sourceDeviceId = invalidation.key.sourceDeviceId,
+                                    connectionId = invalidation.key.connectionId,
+                                )
+                            } else {
+                                null
+                            }
                         }
                     }
-                } catch (error: Throwable) {
-                    if (firstFailure == null) firstFailure = error
+                    attempt.getOrNull()?.let(revoked::add)
+                    attempt.exceptionOrNull()?.let { error ->
+                        if (firstFailure == null) firstFailure = error
+                    }
                 } finally {
                     lock.withLock {
                         invalidatingScopes.remove(invalidation.scope)
@@ -317,56 +356,76 @@ class IrohControllerRouteRegistrar(
             renewalJobs[key] = renewalScope.launch {
                 var renewalSucceeded = false
                 try {
-                    while (true) {
-                        val current = lock.withLock {
-                            if (activeKeys[routeScope] == key) cached[key] else null
-                        } ?: return@launch
-                        val renewalAt = current.expiresAtMillis - renewalWindowMillis
-                        val waitMillis = renewalAt - nowMillis()
-                        if (waitMillis > 0L) delay(waitMillis)
-                        try {
-                            requireActive(routeScope, key, expectedLifecycleEpoch)
-                            val renewed = withContext(NonCancellable) {
-                                ensureRegistered(
-                                    uid = key.uid,
-                                    connectionId = key.connectionId,
-                                    endpointIdentity = endpointIdentity,
-                                    allowAuthorityProof = false,
-                                )
-                            }
-                            if (
-                                renewed.sourceDeviceId != key.sourceDeviceId ||
-                                renewed.transportNodeId != key.transportNodeId ||
-                                renewed.authorityPeerNodeId != key.authorityPeerNodeId
-                            ) {
-                                lock.withLock { cached.remove(key) }
-                                return@launch
-                            }
-                            renewalSucceeded = true
-                            return@launch
-                        } catch (error: Throwable) {
-                            if (error is kotlinx.coroutines.CancellationException) throw error
-                            val remaining = current.expiresAtMillis - nowMillis()
-                            if (remaining <= 0L) {
-                                lock.withLock {
-                                    cached[key]?.takeIf { it.generation == current.generation }?.let { cached.remove(key) }
-                                }
-                                return@launch
-                            }
-                            delay(minOf(renewalRetryMillis, remaining))
-                        }
-                    }
+                    renewalSucceeded = runRenewalLoop(routeScope, key, endpointIdentity, expectedLifecycleEpoch)
                 } finally {
-                    val thisJob = currentCoroutineContext()[Job]
-                    val stillOwnsScope = lock.withLock {
-                        if (renewalJobs[key] === thisJob) renewalJobs.remove(key)
-                        lifecycleEpoch == expectedLifecycleEpoch && activeKeys[routeScope] == key
-                    }
-                    if (renewalSucceeded && stillOwnsScope) {
-                        scheduleProactiveRenewal(routeScope, key, endpointIdentity, expectedLifecycleEpoch)
-                    }
+                    finishRenewal(routeScope, key, endpointIdentity, expectedLifecycleEpoch, renewalSucceeded)
                 }
             }
+        }
+    }
+
+    private suspend fun runRenewalLoop(
+        routeScope: RouteScope,
+        key: RouteKey,
+        endpointIdentity: IrohEndpointIdentity,
+        expectedLifecycleEpoch: Long,
+    ): Boolean {
+        while (true) {
+            val current = lock.withLock {
+                if (activeKeys[routeScope] == key) cached[key] else null
+            } ?: return false
+            val waitMillis = current.expiresAtMillis - renewalWindowMillis - nowMillis()
+            if (waitMillis > 0L) delay(waitMillis)
+            val attempt = runCatching {
+                requireActive(routeScope, key, expectedLifecycleEpoch)
+                withContext(NonCancellable) {
+                    ensureRegistered(
+                        uid = key.uid,
+                        connectionId = key.connectionId,
+                        endpointIdentity = endpointIdentity,
+                        allowAuthorityProof = false,
+                    )
+                }
+            }
+            val error = attempt.exceptionOrNull()
+            if (error is CancellationException) throw error
+            attempt.getOrNull()?.let { renewed ->
+                if (!renewed.matches(key)) lock.withLock { cached.remove(key) }
+                return renewed.matches(key)
+            }
+            if (!waitForRenewalRetry(key, current)) return false
+        }
+    }
+
+    private suspend fun waitForRenewalRetry(
+        key: RouteKey,
+        current: IrohControllerRouteRegistration,
+    ): Boolean {
+        val remaining = current.expiresAtMillis - nowMillis()
+        if (remaining <= 0L) {
+            lock.withLock {
+                cached[key]?.takeIf { it.generation == current.generation }?.let { cached.remove(key) }
+            }
+            return false
+        }
+        delay(minOf(renewalRetryMillis, remaining))
+        return true
+    }
+
+    private suspend fun finishRenewal(
+        routeScope: RouteScope,
+        key: RouteKey,
+        endpointIdentity: IrohEndpointIdentity,
+        expectedLifecycleEpoch: Long,
+        renewalSucceeded: Boolean,
+    ) {
+        val thisJob = currentCoroutineContext()[Job]
+        val stillOwnsScope = lock.withLock {
+            if (renewalJobs[key] === thisJob) renewalJobs.remove(key)
+            lifecycleEpoch == expectedLifecycleEpoch && activeKeys[routeScope] == key
+        }
+        if (renewalSucceeded && stillOwnsScope) {
+            scheduleProactiveRenewal(routeScope, key, endpointIdentity, expectedLifecycleEpoch)
         }
     }
 
@@ -397,33 +456,18 @@ class IrohControllerRouteRegistrar(
             transportNodeId = key.transportNodeId,
         )
         requireActive(routeScope, key, expectedLifecycleEpoch)
-        require(challenge.signatureAlgorithm == SIGNATURE_ALGORITHM) {
-            "Controller-route challenge requires an unsupported signature algorithm."
-        }
-        require(challenge.requiresAuthorityProof == (challenge.proofKind == IrohControllerRouteProofKind.BOOTSTRAP)) {
-            "Controller-route challenge authority-proof policy is inconsistent."
-        }
-        require(challenge.registrationGeneration > 0L) { "Controller-route challenge has an invalid generation." }
-        require(challenge.expiresAtMillis > nowMillis()) { "Controller-route challenge expired before it could be signed." }
-        val canonicalPayload = decodeCanonicalPayload(challenge.canonicalPayloadBase64)
-        IrohControllerRouteProofPayload.requireMatches(
-            payload = canonicalPayload,
-            expected = key,
+        val canonicalPayload = validateControllerRouteChallenge(
             challenge = challenge,
+            expected = key,
+            nowMillis = nowMillis(),
         )
-        val authoritySignatureBase64 = when (challenge.proofKind) {
-            IrohControllerRouteProofKind.TRANSPORT_RENEWAL -> null
-            IrohControllerRouteProofKind.BOOTSTRAP -> {
-                if (!allowAuthorityProof) throw AuthorityProofRequiredException()
-                if (
-                    authorityIdentity is PhoneControlSigningIdentity.SecureEnclaveP256 &&
-                    !promptBoundP256SigningAvailableProvider()
-                ) {
-                    throw PromptBoundP256SigningUnavailableException()
-                }
-                authorityIdentity.signatureBase64(canonicalPayload)
-            }
-        }
+        val authoritySignatureBase64 = signControllerRouteAuthorityProof(
+            challenge = challenge,
+            authorityIdentity = authorityIdentity,
+            canonicalPayload = canonicalPayload,
+            allowAuthorityProof = allowAuthorityProof,
+            promptBoundP256SigningAvailableProvider = promptBoundP256SigningAvailableProvider,
+        )
         val transportSignature = Ed25519Sign(transportSeed).sign(canonicalPayload)
         requireActive(routeScope, key, expectedLifecycleEpoch)
         val registration = callables.registerIrohControllerRoute(
@@ -433,31 +477,24 @@ class IrohControllerRouteRegistrar(
             authoritySignatureBase64 = authoritySignatureBase64,
         )
         requireActive(routeScope, key, expectedLifecycleEpoch)
-        require(registration.connectionId == key.connectionId) { "Registered route returned a different connectionId." }
-        require(registration.sourceDeviceId == key.sourceDeviceId) { "Registered route returned a different sourceDeviceId." }
-        require(registration.transportNodeId == key.transportNodeId) { "Registered route returned a different transportNodeId." }
-        require(registration.authorityPeerNodeId == key.authorityPeerNodeId) {
-            "Registered route returned a different authorityPeerNodeId."
-        }
-        require(registration.generation == challenge.registrationGeneration) { "Registered route returned a different generation." }
-        val completionMillis = nowMillis()
-        require(registration.expiresAtMillis > completionMillis) { "Registered route is already expired." }
-        require(registration.expiresAtMillis - completionMillis <= MAX_ACCEPTED_LEASE_MILLIS) {
-            "Registered route lease exceeds the supported maximum."
-        }
+        validateControllerRouteRegistration(
+            registration = registration,
+            expected = key,
+            challenge = challenge,
+            completionMillis = nowMillis(),
+            maximumLeaseMillis = MAX_ACCEPTED_LEASE_MILLIS,
+        )
         return registration
     }
 
     private suspend fun requireActive(routeScope: RouteScope, key: RouteKey, expectedLifecycleEpoch: Long) {
-        if (
-            !registrationAllowedProvider() ||
-            currentUidProvider() != key.uid ||
-            lock.withLock {
-                lifecycleEpoch != expectedLifecycleEpoch ||
-                    routeScope in invalidatingScopes ||
-                    activeKeys[routeScope] != key
-            }
-        ) {
+        val registrationIsBlocked = !registrationAllowedProvider() || currentUidProvider() != key.uid
+        val routeIsInactive = lock.withLock {
+            lifecycleEpoch != expectedLifecycleEpoch ||
+                routeScope in invalidatingScopes ||
+                activeKeys[routeScope] != key
+        }
+        if (registrationIsBlocked || routeIsInactive) {
             throw RouteSupersededException()
         }
     }
@@ -488,16 +525,13 @@ class IrohControllerRouteRegistrar(
         return identity.rawPublicKey.joinToString("") { "%02x".format(it) }
     }
 
-    private fun decodeCanonicalPayload(encoded: String): ByteArray {
-        require(encoded.isNotBlank()) { "Controller-route challenge did not include canonical payload bytes." }
-        val decoded = runCatching { Base64.getDecoder().decode(encoded) }
-            .getOrElse { throw IllegalArgumentException("Controller-route challenge payload is not canonical base64.", it) }
-        require(Base64.getEncoder().encodeToString(decoded) == encoded) {
-            "Controller-route challenge payload is not canonical base64."
-        }
-        return decoded
-    }
-
+    private data class RegistrationInputs(
+        val endpointIdentity: IrohEndpointIdentity,
+        val transportSeed: ByteArray,
+        val authorityIdentity: PhoneControlSigningIdentity,
+        val key: RouteKey,
+        val routeScope: RouteScope,
+    )
     internal data class RouteKey(
         val uid: String,
         val connectionId: String,
@@ -558,9 +592,83 @@ class IrohControllerRouteRegistrar(
         internal const val DEFAULT_RENEWAL_RETRY_MILLIS = 15 * 1000L
         internal const val MAX_ACCEPTED_LEASE_MILLIS = 15 * 60 * 1000L
         private const val ED25519_KEY_BYTES = 32
-        private const val SIGNATURE_ALGORITHM = "ed25519"
     }
 }
+
+private const val IROH_ROUTE_SIGNATURE_ALGORITHM = "ed25519"
+
+private fun validateControllerRouteChallenge(
+    challenge: IrohControllerRouteChallenge,
+    expected: IrohControllerRouteRegistrar.RouteKey,
+    nowMillis: Long,
+): ByteArray {
+    require(challenge.signatureAlgorithm == IROH_ROUTE_SIGNATURE_ALGORITHM) {
+        "Controller-route challenge requires an unsupported signature algorithm."
+    }
+    require(challenge.requiresAuthorityProof == (challenge.proofKind == IrohControllerRouteProofKind.BOOTSTRAP)) {
+        "Controller-route challenge authority-proof policy is inconsistent."
+    }
+    require(challenge.registrationGeneration > 0L) { "Controller-route challenge has an invalid generation." }
+    require(challenge.expiresAtMillis > nowMillis) { "Controller-route challenge expired before it could be signed." }
+    val canonicalPayload = decodeControllerRouteCanonicalPayload(challenge.canonicalPayloadBase64)
+    IrohControllerRouteProofPayload.requireMatches(canonicalPayload, expected, challenge)
+    return canonicalPayload
+}
+
+private fun signControllerRouteAuthorityProof(
+    challenge: IrohControllerRouteChallenge,
+    authorityIdentity: PhoneControlSigningIdentity,
+    canonicalPayload: ByteArray,
+    allowAuthorityProof: Boolean,
+    promptBoundP256SigningAvailableProvider: () -> Boolean,
+): String? = when (challenge.proofKind) {
+    IrohControllerRouteProofKind.TRANSPORT_RENEWAL -> null
+    IrohControllerRouteProofKind.BOOTSTRAP -> {
+        if (!allowAuthorityProof) throw IrohControllerRouteRegistrar.AuthorityProofRequiredException()
+        if (
+            authorityIdentity is PhoneControlSigningIdentity.SecureEnclaveP256 &&
+            !promptBoundP256SigningAvailableProvider()
+        ) {
+            throw IrohControllerRouteRegistrar.PromptBoundP256SigningUnavailableException()
+        }
+        authorityIdentity.signatureBase64(canonicalPayload)
+    }
+}
+
+private fun validateControllerRouteRegistration(
+    registration: IrohControllerRouteRegistration,
+    expected: IrohControllerRouteRegistrar.RouteKey,
+    challenge: IrohControllerRouteChallenge,
+    completionMillis: Long,
+    maximumLeaseMillis: Long,
+) {
+    require(registration.connectionId == expected.connectionId) { "Registered route returned a different connectionId." }
+    require(registration.sourceDeviceId == expected.sourceDeviceId) { "Registered route returned a different sourceDeviceId." }
+    require(registration.transportNodeId == expected.transportNodeId) { "Registered route returned a different transportNodeId." }
+    require(registration.authorityPeerNodeId == expected.authorityPeerNodeId) {
+        "Registered route returned a different authorityPeerNodeId."
+    }
+    require(registration.generation == challenge.registrationGeneration) { "Registered route returned a different generation." }
+    require(registration.expiresAtMillis > completionMillis) { "Registered route is already expired." }
+    require(registration.expiresAtMillis - completionMillis <= maximumLeaseMillis) {
+        "Registered route lease exceeds the supported maximum."
+    }
+}
+
+private fun decodeControllerRouteCanonicalPayload(encoded: String): ByteArray {
+    require(encoded.isNotBlank()) { "Controller-route challenge did not include canonical payload bytes." }
+    val decoded = runCatching { Base64.getDecoder().decode(encoded) }
+        .getOrElse { throw IllegalArgumentException("Controller-route challenge payload is not canonical base64.", it) }
+    require(Base64.getEncoder().encodeToString(decoded) == encoded) {
+        "Controller-route challenge payload is not canonical base64."
+    }
+    return decoded
+}
+
+private fun IrohControllerRouteRegistration.matches(key: IrohControllerRouteRegistrar.RouteKey): Boolean =
+    sourceDeviceId == key.sourceDeviceId &&
+        transportNodeId == key.transportNodeId &&
+        authorityPeerNodeId == key.authorityPeerNodeId
 
 /** One process-wide cache so Hermes chat and retained Mercury control share the same route lease. */
 object IrohControllerRouteRegistrarProvider {
@@ -606,33 +714,44 @@ object IrohControllerRouteRegistrarProvider {
 
 private object IrohTransportNodeId {
     private const val BASE32_ALPHABET = "abcdefghijklmnopqrstuvwxyz234567"
+    private const val KEY_BYTES = 32
+    private const val HEX_NODE_ID_LENGTH = KEY_BYTES * 2
+    private const val HEX_CHARACTERS_PER_BYTE = 2
+    private const val BASE32_NODE_ID_LENGTH = 52
+    private const val BASE32_BITS_PER_CHARACTER = 5
+    private const val BITS_PER_BYTE = 8
+    private const val BYTE_MASK = 255
 
     fun decode(raw: String): ByteArray {
         val nodeId = raw.trim()
-        if (nodeId.length == 64 && nodeId.all { it in '0'..'9' || it in 'a'..'f' }) {
-            return ByteArray(32) { index -> nodeId.substring(index * 2, index * 2 + 2).toInt(16).toByte() }
+        if (nodeId.length == HEX_NODE_ID_LENGTH && nodeId.all { it in '0'..'9' || it in 'a'..'f' }) {
+            return ByteArray(KEY_BYTES) { index ->
+                val start = index * HEX_CHARACTERS_PER_BYTE
+                nodeId.substring(start, start + HEX_CHARACTERS_PER_BYTE).toInt(radix = 16).toByte()
+            }
         }
-        require(nodeId.length == 52 && nodeId.all { it in BASE32_ALPHABET }) {
+        require(nodeId.length == BASE32_NODE_ID_LENGTH && nodeId.all { it in BASE32_ALPHABET }) {
             "Iroh endpoint NodeId must be canonical lowercase hex or base32."
         }
-        val bytes = ArrayList<Byte>(32)
+        val bytes = ArrayList<Byte>(KEY_BYTES)
         var accumulator = 0
         var bitCount = 0
         for (character in nodeId) {
-            accumulator = (accumulator shl 5) or BASE32_ALPHABET.indexOf(character)
-            bitCount += 5
-            while (bitCount >= 8) {
-                bitCount -= 8
-                bytes += ((accumulator shr bitCount) and 0xff).toByte()
+            accumulator = (accumulator shl BASE32_BITS_PER_CHARACTER) or BASE32_ALPHABET.indexOf(character)
+            bitCount += BASE32_BITS_PER_CHARACTER
+            while (bitCount >= BITS_PER_BYTE) {
+                bitCount -= BITS_PER_BYTE
+                bytes += ((accumulator shr bitCount) and BYTE_MASK).toByte()
                 accumulator = accumulator and ((1 shl bitCount) - 1)
             }
         }
-        require(bytes.size == 32 && accumulator == 0) { "Iroh endpoint NodeId has non-canonical base32 padding." }
+        require(bytes.size == KEY_BYTES && accumulator == 0) { "Iroh endpoint NodeId has non-canonical base32 padding." }
         return bytes.toByteArray()
     }
 }
 
 private object IrohControllerRouteProofPayload {
+    private const val CHALLENGE_NONCE_SEGMENT_INDEX = 5
     private val prefix = "OpenBurnBar-IrohControllerRoute-v2\n".toByteArray(Charsets.UTF_8)
 
     fun requireMatches(payload: ByteArray, expected: IrohControllerRouteRegistrar.RouteKey, challenge: IrohControllerRouteChallenge) {
@@ -643,7 +762,7 @@ private object IrohControllerRouteProofPayload {
         val expectedSegments = listOf(
             "version", "2",
             "challengeId", challenge.challengeId,
-            "challengeNonce", segments.getOrNull(5).orEmpty(),
+            "challengeNonce", segments.getOrNull(CHALLENGE_NONCE_SEGMENT_INDEX).orEmpty(),
             "proofKind", challenge.proofKind.wireValue,
             "uid", expected.uid,
             "connectionId", expected.connectionId,
@@ -657,7 +776,7 @@ private object IrohControllerRouteProofPayload {
         require(segments.size == expectedSegments.size && segments == expectedSegments) {
             "Controller-route challenge payload is not bound to this endpoint and controller."
         }
-        require(segments[5].isNotBlank()) { "Controller-route challenge nonce is empty." }
+        require(segments[CHALLENGE_NONCE_SEGMENT_INDEX].isNotBlank()) { "Controller-route challenge nonce is empty." }
     }
 
     private fun parseSegments(payload: ByteArray, initialOffset: Int): List<String> {

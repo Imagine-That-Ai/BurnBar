@@ -4,6 +4,14 @@ import Foundation
 /// Canonical mapping of socket RPC methods to daemon handler domains.
 /// Used by `BurnBarDaemonServer.responseData` routing and contract tests.
 enum BurnBarDaemonSocketRPCCoverage {
+    static let auth: Set<BurnBarRPCMethod> = [
+        .linuxAuthStatus,
+        .linuxAuthBegin,
+        .linuxAuthCancel,
+        .linuxAuthRotateIdentity,
+        .linuxAuthSignOut
+    ]
+
     static let lifecycle: Set<BurnBarRPCMethod> = [
         .health,
         .catalog,
@@ -166,7 +174,8 @@ enum BurnBarDaemonSocketRPCCoverage {
     ]
 
     static var allHandled: Set<BurnBarRPCMethod> {
-        lifecycle
+        auth
+            .union(lifecycle)
             .union(config)
             .union(usage)
             .union(observability)
@@ -183,6 +192,7 @@ enum BurnBarDaemonSocketRPCCoverage {
     }
 
     static func domain(for method: BurnBarRPCMethod) -> String? {
+        if auth.contains(method) { return "auth" }
         if lifecycle.contains(method) { return "lifecycle" }
         if config.contains(method) { return "config" }
         if usage.contains(method) { return "usage" }

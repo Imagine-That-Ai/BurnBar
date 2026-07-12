@@ -55,6 +55,8 @@ describe('VAL-RPC-002 bridge behavior', () => {
         trustClass: 'linux-lower-trust',
         syncState: 'local-only',
         deviceApprovalRequired: true,
+        installationDeviceID: `linux_${'ab'.repeat(32)}`,
+        installationSafetyFingerprint: Array(16).fill('ABAB').join(' '),
         detail: 'Approval required.'
       })
       .mockResolvedValueOnce({ operationID: 'op-1', expiresAt: '2026-07-11T22:00:00Z' })
@@ -66,6 +68,16 @@ describe('VAL-RPC-002 bridge behavior', () => {
           trustClass: 'linux-lower-trust',
           syncState: 'local-only',
           deviceApprovalRequired: false
+        }
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: {
+          state: 'awaiting_device_approval',
+          signedIn: true,
+          trustClass: 'linux-lower-trust',
+          syncState: 'local-only',
+          deviceApprovalRequired: true
         }
       })
       .mockResolvedValueOnce({
@@ -83,20 +95,24 @@ describe('VAL-RPC-002 bridge behavior', () => {
     const status = await b.accountStatus();
     expect(status).toMatchObject({
       state: 'awaiting-device-approval',
-      deviceApprovalRequired: true
+      deviceApprovalRequired: true,
+      installationDeviceID: `linux_${'ab'.repeat(32)}`,
+      installationSafetyFingerprint: Array(16).fill('ABAB').join(' ')
     });
     await expect(b.accountBeginSignIn()).resolves.toEqual({
       operationID: 'op-1',
       expiresAt: '2026-07-11T22:00:00Z'
     });
     await expect(b.accountCancelSignIn('op-1')).resolves.toMatchObject({ state: 'signed-out' });
+    await expect(b.accountRotateIdentity()).resolves.toMatchObject({ state: 'awaiting-device-approval' });
     await expect(b.accountSignOut()).resolves.toMatchObject({ state: 'signed-out' });
 
     expect(invoke).toHaveBeenNthCalledWith(1, 'account_status');
     expect(invoke).toHaveBeenNthCalledWith(2, 'account_begin_sign_in');
     expect(invoke).toHaveBeenNthCalledWith(3, 'account_cancel_sign_in', { operationId: 'op-1' });
-    expect(invoke).toHaveBeenNthCalledWith(4, 'account_sign_out');
-    expect(JSON.stringify(status)).not.toMatch(/refreshToken|idToken|appCheckToken|deviceID|sessionGeneration/);
+    expect(invoke).toHaveBeenNthCalledWith(4, 'account_rotate_identity');
+    expect(invoke).toHaveBeenNthCalledWith(5, 'account_sign_out');
+    expect(JSON.stringify(status)).not.toMatch(/refreshToken|idToken|appCheckToken|publicKey|sessionGeneration/);
   });
 
   it('rejects a malformed native sign-in operation before UI state can accept it', async () => {

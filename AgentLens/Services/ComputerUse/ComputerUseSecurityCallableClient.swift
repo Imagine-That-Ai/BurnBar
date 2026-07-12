@@ -769,20 +769,23 @@ enum ComputerUseSecurityCallableClient {
 
     static func resolveActiveIrohControllerRoutes(
         uid: String,
-        connectionId: String
+        connectionId: String,
+        authenticatedUID: () throws -> String = { try requireSignedInUser().uid },
+        invokeCallable: ([String: Any]) async throws -> Any = { payload in
+            try await functions.httpsCallable("resolveActiveIrohControllerRoutes").call(payload).data
+        }
     ) async throws -> [IrohControllerRouteBinding] {
-        let user = try requireSignedInUser()
-        guard user.uid == uid else {
+        guard try authenticatedUID() == uid else {
             throw ClientError.invalidResponse("The active account changed before controller-route resolution.")
         }
-        let result = try await functions.httpsCallable("resolveActiveIrohControllerRoutes").call([
+        let raw = try await invokeCallable([
             "connectionId": connectionId
         ])
-        guard try requireSignedInUser().uid == uid else {
+        guard try authenticatedUID() == uid else {
             throw ClientError.invalidResponse("The active account changed during controller-route resolution.")
         }
         return try parseActiveIrohControllerRoutes(
-            result.data,
+            raw,
             expectedUID: uid,
             expectedConnectionId: connectionId
         )

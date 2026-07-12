@@ -1,7 +1,7 @@
 package com.openburnbar.data.computeruse
 
 import androidx.fragment.app.FragmentActivity
-import com.openburnbar.irohrelay.HermesRealtimeRelayComputerUseSessionGrantChallenge
+import com.openburnbar.irohrelay.HermesRealtimeRelaySessionGrantChallenge
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -39,25 +39,34 @@ class ComputerUseSessionGrantRoute(
 
     /** Sends only on this route, bounded by challenge expiry and never through a replacement stream. */
     suspend fun send(frame: HermesRealtimeRelayFrame, expiresAtMillis: Long) {
-        if (frame.uid != uid || frame.connectionId != connectionId) throw RouteError.InvalidBinding
-        val remainingMillis = expiresAtMillis - nowMillis()
-        if (remainingMillis <= 0L) throw RouteError.Expired
+        val remainingMillis = remainingSendTime(frame, expiresAtMillis)
         requireLive()
         val sent =
             withTimeoutOrNull(remainingMillis) {
                 // Recheck after all signing/attestation work and immediately before the actual write.
-                if (nowMillis() >= expiresAtMillis) throw RouteError.Expired
+                requireNotExpired(expiresAtMillis)
                 requireLive()
                 frameSink(frame)
                 true
             }
         if (sent != true) throw RouteError.Expired
     }
+
+    private fun remainingSendTime(frame: HermesRealtimeRelayFrame, expiresAtMillis: Long): Long {
+        if (frame.uid != uid || frame.connectionId != connectionId) throw RouteError.InvalidBinding
+        return (expiresAtMillis - nowMillis()).also { remainingMillis ->
+            if (remainingMillis <= 0L) throw RouteError.Expired
+        }
+    }
+
+    private fun requireNotExpired(expiresAtMillis: Long) {
+        if (nowMillis() >= expiresAtMillis) throw RouteError.Expired
+    }
 }
 
 /** Keeps the challenge's desktop device id distinct from the route's authenticated QUIC NodeId. */
 data class ComputerUseSessionGrantChallengeDelivery(
-    val challenge: HermesRealtimeRelayComputerUseSessionGrantChallenge,
+    val challenge: HermesRealtimeRelaySessionGrantChallenge,
     val route: ComputerUseSessionGrantRoute,
 )
 
@@ -70,7 +79,7 @@ class ComputerUseSessionGrantChallengeReceiver(
     private val nowMillis: () -> Long = { System.currentTimeMillis() },
     private val foregroundActivityProvider: suspend (challengeId: String, expiresAtMillis: Long) -> FragmentActivity?,
     private val grantHandler: suspend (FragmentActivity, ComputerUseSessionGrantChallengeDelivery) -> Unit,
-    private val failureHandler: (HermesRealtimeRelayComputerUseSessionGrantChallenge, Throwable) -> Unit = { _, _ -> },
+    private val failureHandler: (HermesRealtimeRelaySessionGrantChallenge, Throwable) -> Unit = { _, _ -> },
 ) {
     sealed class ReceiverError(message: String) : RuntimeException(message) {
         object CapacityExceeded : ReceiverError("Another session grant challenge is already awaiting user interaction.")
@@ -84,11 +93,12 @@ class ComputerUseSessionGrantChallengeReceiver(
     fun ingest(delivery: ComputerUseSessionGrantChallengeDelivery): Boolean {
         val challenge = delivery.challenge
         val receivedAtMillis = nowMillis()
-        try {
+        val validationError = runCatching {
             ComputerUseSessionGrantChallengeValidator.validate(challenge, nowMillis = receivedAtMillis)
             delivery.route.validate()
-        } catch (error: Throwable) {
-            failureHandler(challenge, error)
+        }.exceptionOrNull()
+        if (validationError != null) {
+            failureHandler(challenge, validationError)
             return false
         }
 
@@ -110,7 +120,7 @@ class ComputerUseSessionGrantChallengeReceiver(
         }
 
         scope.launch {
-            try {
+            val attempt = runCatching {
                 val activity = foregroundActivityProvider(challenge.challengeId, expiresAtMillis)
                     ?: throw ComputerUseSessionGrantRoute.RouteError.Expired
                 ComputerUseSessionGrantChallengeValidator.validate(challenge, nowMillis = nowMillis())
@@ -121,12 +131,11 @@ class ComputerUseSessionGrantChallengeReceiver(
                 // replay the same challenge and repeatedly trigger biometric prompts.
                 markTerminal(challenge.challengeId, expiresAtMillis)
                 grantHandler(activity, delivery)
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Throwable) {
+            }
+            synchronized(state) { inFlight -= challenge.challengeId }
+            attempt.exceptionOrNull()?.let { error ->
+                if (error is CancellationException) throw error
                 failureHandler(challenge, error)
-            } finally {
-                synchronized(state) { inFlight -= challenge.challengeId }
             }
         }
         return true

@@ -331,7 +331,7 @@ public struct HermesRealtimeRelayAgentGrantLocalAuthProof: Codable, Sendable, Eq
 /// Versioned Linux-host challenge asking a paired phone to issue an
 /// existing agent grant bound to one exact Computer Use session intent.
 /// The phone must validate every field before authenticating or signing.
-public struct HermesRealtimeRelayComputerUseSessionGrantChallenge: Codable, Sendable, Equatable {
+public struct HermesRealtimeRelaySessionGrantChallenge: Codable, Sendable, Equatable {
     public var version: Int
     public var challengeId: String
     public var nonce: String

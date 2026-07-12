@@ -8,7 +8,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.FirebaseFirestore
 import com.openburnbar.BurnBarApplication
-import com.openburnbar.irohrelay.HermesRealtimeRelayComputerUseSessionGrantChallenge
+import com.openburnbar.irohrelay.HermesRealtimeRelaySessionGrantChallenge
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import io.mockk.every
 import io.mockk.mockk
@@ -212,7 +212,7 @@ class AgentCapabilityGrantControllerTest {
     }
 
     private fun challengeDelivery(
-        challenge: HermesRealtimeRelayComputerUseSessionGrantChallenge = challenge(),
+        challenge: HermesRealtimeRelaySessionGrantChallenge = challenge(),
         frameSink: suspend (HermesRealtimeRelayFrame) -> Unit = {},
     ) = ComputerUseSessionGrantChallengeDelivery(
         challenge = challenge,
@@ -277,9 +277,9 @@ class AgentCapabilityGrantControllerTest {
         )
     }
 
-    private fun challenge(): HermesRealtimeRelayComputerUseSessionGrantChallenge {
+    private fun challenge(): HermesRealtimeRelaySessionGrantChallenge {
         val unsigned =
-            HermesRealtimeRelayComputerUseSessionGrantChallenge(
+            HermesRealtimeRelaySessionGrantChallenge(
                 version = 1,
                 challengeId = "challenge-00000001",
                 nonce = "0123456789abcdef0123456789abcdef",

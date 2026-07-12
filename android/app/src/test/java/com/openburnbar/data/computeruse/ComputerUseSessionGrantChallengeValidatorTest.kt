@@ -1,6 +1,6 @@
 package com.openburnbar.data.computeruse
 
-import com.openburnbar.irohrelay.HermesRealtimeRelayComputerUseSessionGrantChallenge
+import com.openburnbar.irohrelay.HermesRealtimeRelaySessionGrantChallenge
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertThrows
@@ -148,7 +148,7 @@ class ComputerUseSessionGrantChallengeValidatorTest {
         }
     }
 
-    private fun challenge() = HermesRealtimeRelayComputerUseSessionGrantChallenge(
+    private fun challenge() = HermesRealtimeRelaySessionGrantChallenge(
         version = 1,
         challengeId = "challenge-00000001",
         nonce = "0123456789abcdef0123456789abcdef",

@@ -2,11 +2,11 @@
 
 | Audit field | Value |
 |---|---|
-| Date | Baseline audit: 2026-07-09; remediation evidence through 2026-07-11 UTC |
+| Date | Baseline audit: 2026-07-09; remediation evidence through 2026-07-12 UTC |
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | `codex/linux-parity-final`; clean aarch64 and architecture-correct x86_64 release shards at `391fe2847d`; controller-route v2/runtime source packet on `codex/linux-parity-browser-cu-main-recut` |
+| Remediation evidence | `codex/linux-parity-final`; clean aarch64 and architecture-correct x86_64 release shards at `391fe2847d`; controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, and the 2026-07-12 full Linux-native aggregate on `codex/linux-parity-controller-credentials` |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -60,13 +60,48 @@ fields.
 This is still source closure, not an available release workflow. The Linux
 release graph builds the Rust iroh shared library before Swift, compiles the
 generated UniFFI bridge, stages the exact ELF in AppImage/deb/rpm/AUR payloads,
-and fails closed when it is absent. A real aarch64 VM build, factory activation,
-ALPN loopback, dynamic link, payload stage, and daemon launch pass. However, the
-shipping daemon entry point does not inject a production Linux Firebase ID-token
-and App Check credential provider into the runtime. The installed runtime
-therefore remains unavailable by design. Real installed iPad authority, browser
-actions, panic/audit/restart certification, Agent Watch, Linux system
-capture/input, and the supported-desktop matrix remain open.
+and fails closed when it is absent. The daemon now owns Google PKCE sign-in,
+refresh-token custody, Firebase ID-token refresh, per-install Ed25519 App Check
+identity, trusted-native enrollment approval, challenge signing, short-lived
+App Check minting, account generation, sign-out, account-switch teardown, and
+the controller runtime credential lifecycle. Local RPC status is redacted and
+the renderer receives neither bearer material nor the authorization URL. A
+dedicated production Firebase web app exists for Linux, and release validation
+rejects missing or non-Linux App Check configuration.
+
+The current authority packet also closes two reliability boundaries in source.
+Account transitions are phase-tagged: once old-account teardown starts, a cancel
+request is rejected instead of reporting a new account active while its runtime
+is stopped, and successful sign-out re-enables a fresh browser sign-in. The
+Functions challenge endpoint emits a bounded
+`linux_device_approval_required` reason only for explicit pending approval.
+The daemon polls only that state or a transient cloud failure; permanent device
+rejection terminates immediately. Poll delays are capped at
+15/30/60/120/300 seconds and then five minutes, limiting a continuously pending
+device to 16 challenge requests in the first hour under the public 20/hour quota.
+
+The remaining availability boundary is operational and must not be blurred:
+the dedicated Google **Desktop app** OAuth client has not been created, its
+public client ID and the Firebase public values are not yet populated as GitHub
+release variables. Specifically, `OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID`,
+`OPENBURNBAR_FIREBASE_API_KEY`, and
+`OPENBURNBAR_LINUX_APP_CHECK_APP_ID` are absent. The new Functions callables are
+not deployed, and no signed
+candidate has completed the installed Linux plus physical-iPad flow. The iPad
+approval surface is implemented against the exact nonce-bound trusted-device
+signature contract. Earlier generic iOS build-for-testing coverage passes, but
+the currently assigned physical iPad is unavailable and no current
+physical-device execution or exact-candidate approval proof exists. Real
+installed browser actions, grant/approval/panic/audit/restart certification,
+Agent Watch, Linux system capture/input, and the supported-desktop matrix remain
+open.
+
+Official AppImages no longer depend on mutable environment hash pins for daemon
+peer authentication. The final embedded GUI is described by a bounded canonical
+manifest, signed with the Linux release Ed25519 key, re-extracted after repack,
+and verified against the running `/proc/<pid>/exe` bytes. The daemon also
+enforces no-follow reads, exact key IDs, immutable/read-only AppImage roots, and
+the installed root-owned path policy; raw hash pins exist only in debug builds.
 
 Mercury is no longer a missing code path: Linux now has daemon-owned iroh session
 control, inbound and outbound file transfer, call/mirror state, sealed media
@@ -86,8 +121,10 @@ The old parity claim is now disabled. The generated product ledger contains all
 40 audited requirements, reports **0 ready / 40 blocked**, and cannot promote a
 stale or incomplete claim. Release verification now checks artifact bytes,
 detached signatures, provenance, source/SBOM/VEX inputs, architecture sessions,
-and signed-feed closure. This fixes the audit mechanism; it does not turn blocked
-product rows into parity.
+and signed-feed closure. Allow-blocked validation is structurally green, but the
+current strict verifier exits nonzero for missing exact artifacts/provenance/
+evidence, all 40 blocked product rows, and the incomplete distro matrix. This
+fixes the audit mechanism; it does not turn blocked product rows into parity.
 
 The strongest installed-product baseline remains an aarch64 `.deb` session from
 commit `9886a6ac0b`:
@@ -108,18 +145,33 @@ that historical installed baseline:
 
 - **100** focused Swift Core/security/daemon tests passed across XDG paths, provider
   discovery, gateway, switcher, Pensieve/inotify, Computer Use, and Mercury;
-- **61 files / 411 tests** passed in the Linux desktop suite, including every
+- **62 files / 457 tests** passed in the Linux desktop suite, including every
   route under axe, six-layout state, provider-path parity, durable memory, and
   real Mercury RPC decoding;
-- **19/19** Tauri Rust tests, **3/3** media-crate tests, **213/213** extension
+- **44/44** Tauri Rust tests, **3/3** media-crate tests, **213/213** extension
   daemon-client tests, and **78/78** release/workflow contract tests passed;
-- the controller-route v2 packet passed **20/20** focused Functions tests,
-  **18/18** focused Android tests, **17/17** tests on a physical iPad, and
-  **17/17** tests on an iPad Air simulator. The focused Linux daemon suite passed
+- the controller/mobile packet passed **18/18** focused Linux App Check Functions
+  tests and a current Android matrix of **1,315** unit tests with **1** skipped;
+  Android debug Kotlin compilation passes and Detekt reports zero findings
+  without suppressions. The
+  canonical `HermesRealtimeRelaySessionGrantChallenge` schema/codegen packet
+  passes **18/18** checks across generated Swift and Kotlin. Strict SwiftLint is
+  clean and earlier generic iOS build-for-testing coverage passed; the current
+  physical iPad is listed by CoreDevice as unavailable, so there is no current
+  physical-iPad execution claim. The earlier focused Linux daemon suite passed
   **32/32** tests: **13** grant broker, **3** panic authority, **4** directory,
   **8** runtime, **2** Mercury teardown, and **2** service lifecycle tests. The
   final macOS focused host aggregate passed **34/34** tests: **16** callable-security
   and **18** host lifecycle/policy tests;
+- the account-lifecycle and approval-policy packet adds regression coverage for
+  cancel during teardown, fresh sign-in after sign-out, explicit pending
+  approval, permanent rejection, rate-limit-safe polling, UID/account transition
+  fences, auth-socket redaction, and runtime teardown races; the 2026-07-12 full
+  Linux-native aggregate passed in the Docker Linux toolchain, including the
+  hardened runtime cancellation selector and **44/44** Tauri tests;
+- focused changed-line coverage for the touched macOS app paths is **81.89%**
+  (**104/127** executable lines), above the 80% gate, with **28/28** selected app
+  tests passing;
 - clean aarch64 and architecture-correct x86_64 shards at `391fe2847d` each
   produced AppImage, deb, rpm, and daemon artifacts with SHA-256 closure, zero
   blockers, and **28/28** package-smoke steps passed;
@@ -156,7 +208,7 @@ The correct release posture is therefore:
 | Updates | Native signed-feed verification implemented; invalid endpoint fails honestly | Serve valid signed feed and prove package-manager update/rollback/data preservation |
 | Packaging | aarch64 and x86_64 AppImage/deb/rpm/daemon construction and smoke passed; aarch64 installed `.deb` session passed | Produce installed x86_64 session, signed aggregate, rpm/AppImage lifecycle, and prior-version proof |
 | Core product workflows | Six dashboard layouts, XDG/provider paths, and daemon-authoritative memory decisions are implemented; several routes remain partial/read-only | Complete onboarding, chat, sessions, account/cloud, and workspace depth |
-| Advanced platform features | Mercury implementation and guarded Linux input/panic paths exist; Computer Use source routing, controller-route v2 registry and renewal, macOS route policy, Linux native runtime composition, exact-generation authority, durable replay protection, and signed-response verification are implemented, while the credential-less shipping runtime and unsupported outcomes fail closed | Inject production Linux Firebase ID-token and App Check credentials, then certify installed iPad-backed Browser CU actions/restart; continue with system CU capture, Mercury, SmartHub devices, IBus/Fcitx, and companion overlay |
+| Advanced platform features | Mercury implementation and guarded Linux input/panic paths exist; Computer Use routing, controller-route v2, exact-generation authority, durable replay protection, daemon-owned PKCE/Firebase/App Check credential lifecycle, and signed AppImage peer admission are implemented in source and fail closed | Create the dedicated desktop OAuth client, deploy the new callables, set public release variables, then certify installed physical-iPad-backed Browser CU actions/restart; continue with system CU capture, Mercury, SmartHub devices, IBus/Fcitx, and companion overlay |
 
 ### What "full parity" means
 
@@ -189,12 +241,15 @@ live product state were independently reproducible.
 
 ### Verification performed
 
-- `npm test --prefix apps/linux-desktop -- --maxWorkers=2`: **61 files, 411 tests passed**.
+- `npm test --prefix apps/linux-desktop -- --maxWorkers=2`: **62 files, 457 tests passed**.
 - `npm run build --prefix apps/linux-desktop`: **passed**; the main JavaScript
   chunk is **655.47 kB** minified and Vite reports a chunk-size warning.
 - `cargo test --manifest-path apps/linux-desktop/src-tauri/Cargo.toml`:
-  **19/19 passed**, including capability-catalog, Mercury-probe, update-feed,
+  **44/44 passed**, including capability-catalog, Mercury-probe, update-feed,
   URL, gateway, panic-shortcut, and wire-contract coverage.
+- `bash scripts/linux-port/run-linux-native-tests.sh` in the Docker Linux
+  toolchain: **passed** on 2026-07-12, covering the Linux Swift/XCTest manifest
+  with fresh-process retry isolation plus the Tauri Rust suite.
 - Fail-closed OpenBurnBar Core/security/daemon Linux manifest: **100/100 passed**.
 - Linux media crate capability/capture/decode suite: **3/3 passed**.
 - Extension daemon-client focused suite: **213/213 passed**, including the
@@ -202,12 +257,24 @@ live product state were independently reproducible.
 - macOS Computer Use compatibility selector: **1/1 passed**, executing an
   approved `browser.goto` through the direct Playwright driver while proving no
   Linux managed-run binding was acquired.
-- Controller-route v2 focused suites: Functions **20/20**, Android **18/18**,
-  physical iPad **17/17**, iPad Air simulator **17/17**, and Linux daemon
-  **32/32** passed. The Linux total comprises **13** grant broker, **3** panic
+- Controller/mobile focused suites: Linux App Check Functions **18/18** and
+  Android **1,315** unit tests with **1** skipped passed; Android debug Kotlin
+  compilation and strict Detekt pass with no suppressions. Canonical Hermes relay
+  schema/codegen checks passed **18/18**, strict SwiftLint passed, and earlier
+  generic iOS build-for-testing coverage passed. On 2026-07-12 CoreDevice listed
+  the assigned physical iPad `407C0B12-010B-5970-8E85-D0E43DA8F457` as
+  unavailable, while an iPhone and simulator were visible but explicitly not
+  accepted for this gate. There is no current physical-iPad execution claim. The
+  earlier Linux daemon packet passed
+  **32/32**. That total comprises **13** grant broker, **3** panic
   authority, **4** directory, **8** runtime, **2** Mercury teardown, and **2**
   service lifecycle tests. The final macOS focused host aggregate passed
   **34/34** tests: **16** callable-security and **18** host lifecycle/policy tests.
+- Focused changed-line coverage for touched macOS app paths: **81.89%**
+  (**104/127** executable lines), with **28/28** selected app tests passing.
+- Account-lifecycle/App Check regression cases cover teardown-time cancel, fresh
+  sign-in after sign-out, explicit approval pending, permanent rejection, and
+  quota-safe retry. The 2026-07-12 full Linux-native aggregate passed.
 - Linux release/config/packaging/matrix contract suites: **78/78 passed**.
 - Current source comparison of macOS routes, settings, chat, parser registry,
   daemon lifecycle, cloud/account, Computer Use, Mercury, SmartHub, text
@@ -299,7 +366,7 @@ required gates and were not made green by the Ed25519 result.
 | P-04 | Architecture reach | Published build covers the declared macOS architecture support contract | Native aarch64/x86_64 shard workflow exists and architecture-correct local construction/smoke is green for both; a native hosted x86_64 run, signed aggregate, and installed x86_64 evidence are not yet produced | Partial | Critical |
 | P-05 | Credential custody | Keychain-backed provider, connector, auth, and sync secrets | Secret Service, KWallet, and encrypted headless custodians are wired; live keyring/recovery matrix remains incomplete | Partial | Critical |
 | P-06 | Gateway credential boundary | Native process owns bearer credentials | Rust owns the bearer and proxies bounded authenticated HTTP/SSE; renderer receives typed data, not the token | Near parity | Critical |
-| P-07 | Computer Use | Browser, Agent Watch, Mac System, approval, audit, and three panic paths | Source now provides exact run/call/generation authority, signed session/action responses, replay protection, waiting-run selection, shared scope/panic/Playwright/audit routing, and fail-safe restart/terminal behavior. Controller-route v2 adds a server-verified registry with dual-signature bootstrap, same-generation transport-only lease renewal for the exact active tuple, authoritative absence/revocation, and generated cross-platform schemas. iOS and Android publish and renew routes; the macOS host enforces exact principal/generation/lease policy and lifecycle ownership; the Linux daemon composes the directory client, native iroh endpoint/accept loop, publisher, metadata/readiness, grant, approval, panic, media, and route-teardown handlers. The observed QUIC transport peer remains distinct from the signing authority peer. Packages compile and stage the production iroh UniFFI ELF, polkit policy, and root-owned Playwright readiness boundary. The shipping daemon entry point still injects no production Linux Firebase ID-token and App Check credential provider, so this source-complete runtime stays unavailable/fail-closed; installed iPad/browser/panic/audit/restart proof, Agent Watch, and Linux system capture/input remain missing | Partial | Critical |
+| P-07 | Computer Use | Browser, Agent Watch, Mac System, approval, audit, and three panic paths | Exact run/call/generation authority, signed session/action responses, replay protection, waiting-run selection, shared scope/panic/Playwright/audit routing, and fail-safe restart/terminal behavior are implemented. Controller-route v2 provides dual-signature bootstrap, exact-tuple same-generation transport renewal, and authoritative absence/revocation. The Linux daemon now composes that runtime with daemon-owned PKCE sign-in, secure refresh-token custody, fresh Firebase ID/App Check credentials, per-install Ed25519 App Check enrollment, account-generation invalidation, phase-safe account transition RPCs, and scoped old-account revocation. Pending approval has an explicit bounded reason and quota-safe retry; permanent rejection stops polling. Official AppImages authenticate the final GUI bytes through a signed manifest rather than mutable environment pins. Source tests cover credential expiry/failure, account switch/sign-out races, wrong-state OAuth callbacks, token redaction, peer-manifest tampering, and runtime teardown. A dedicated Linux Firebase web app exists, but the Desktop OAuth client, production callable deployment, release variables, current physical-iPad approval execution, installed browser/panic/audit/restart proof, Agent Watch, and Linux system capture/input remain missing | Partial | Critical |
 | P-08 | Mercury media | File transfer, calls, screen share, mirroring, presence, consent | Daemon-owned transport, calls, files, sealed capture, portal consent, HUD, and live capability probing are implemented; real cross-device and compositor proof remains open | Partial | Critical |
 | P-09 | Navigation and shell | Dashboard, insights, deep provider/model routes, multi-window flows | All 19 installed routes activate through AT-SPI; deep links and native multi-window behavior remain thinner | Near parity | Medium |
 | P-10 | Dashboard layouts | Six dense layouts with real live content and persisted state | All six layouts, persistence, loading/error/offline/populated states, tokens, and tests exist; the packaged six-layout visual matrix remains incomplete | Near parity | Medium |
@@ -307,8 +374,8 @@ required gates and were not made green by the Ed25519 result.
 | P-12 | Quota | Provider quotas, histories, account switching, alerts | Strong read surface; account profiles, drain targets, and switching lag | Partial | Medium |
 | P-13 | Onboarding | Provider connection, scan, permissions, chat engine, recovery, completion gates | Daemon-owned state, required-step gates, restart recovery, Secret Service readback, XDG write verification, privacy persistence, and strict native/WebView RPC decoding are implemented; provider connection/scan, auth, portal, tray, update, and first-data readback remain incomplete | Partial | High |
 | P-14 | Chat | Persisted threads, search, streaming, models, attachments, citations, approvals, panes/pop-out | Synthetic transcript rows and multiple disabled controls; five vs twelve backends | Partial | High |
-| P-15 | Account and billing | Sign-in/link/sign-out, membership, subscription, recovery | Status/checkout projection; browser auth must happen elsewhere; preview actions inert | Partial | High |
-| P-16 | Cloud and devices | Backup, sync, conflict handling, remote access, trusted device management | Cloud/trusted-device mutation RPCs explicitly absent | Partial | High |
+| P-15 | Account and billing | Sign-in/link/sign-out, membership, subscription, recovery | Daemon-owned Desktop PKCE, redacted account RPC/Tauri state, sign-out, and phase-safe account switching are implemented in source; production OAuth/callable configuration and installed account proof remain absent, while subscription/recovery depth still lags | Partial | High |
+| P-16 | Cloud and devices | Backup, sync, conflict handling, remote access, trusted device management | Physical-iPad source can list, verify, approve, and revoke Linux App Check devices through nonce-bound mutations; production deployment, current physical-iPad execution, backup/sync/conflict, and broader remote-device outcomes remain unproven or absent | Partial | High |
 | P-17 | Activity/session logs | Indexed transcript, search, body, replay, resume, export, source resolution | Recent usage is wrapped as session metadata; no real body/resume/export | Substitute | High |
 | P-18 | Memory review | Quarantined candidates, approve/reject, durable state, audit | Approve/reject/forget now use idempotent daemon RPCs and survive reload; Linux still lacks a proven first-class quarantine feed and cross-device review matrix | Partial | High |
 | P-19 | Projects | Registered projects, exact associations, detail, management | Read-only cards inferred with fuzzy title matching; no CRUD | Partial | Medium |
@@ -516,9 +583,12 @@ therefore not closed.
 ### GAP-005 - Complete Computer Use rather than exposing unsupported modes
 
 **Implementation update (2026-07-11): controller-route v2, cross-platform mobile
-renewal, macOS host policy, and Linux native runtime composition are implemented
-in source. Production Linux Firebase ID-token/App Check injection and installed
-capability proof remain open.**
+renewal, macOS host policy, Linux native runtime composition, daemon-owned
+PKCE/Firebase/App Check credentials, Linux App Check enrollment and policy, and
+signed AppImage peer admission are implemented in source. The physical-iPad
+approval surface is implemented in the active worktree. Production provisioning,
+an exact signed candidate, and installed Linux plus physical-iPad capability
+proof remain open.**
 The typed runtime manifest now marks Linux system Computer Use unavailable and
 prevents the route from offering a guaranteed-failure action. Browser is the
 only exposed source mode, but the release workflow is not yet operational.
@@ -583,7 +653,8 @@ panic-halts the new session. Tauri retains the opaque challenge and original pro
 request outside the renderer. Its idle state calls a typed daemon readiness RPC
 and advertises availability only when the operational broker, validator,
 metadata resolver, readiness provider, and trusted pairing path all confirm;
-the shipping credential-less daemon therefore reports unavailable rather than
+the daemon reports unavailable while signed out, pending trusted-device
+approval, or unable to refresh native Firebase/App Check credentials rather than
 offering a guaranteed-failure Start action. Native deb/rpm/AUR packages install
 the root-owned polkit action with fresh `auth_self`; the Computer Use path has no PAM fallback, and
 standalone AppImage/Flatpak sessions fail closed when the policy is absent.
@@ -604,12 +675,30 @@ only when the principal and original registration epoch are unchanged and the
 lease does not shorten. Stale overlapping refreshes and stop-during-start cannot
 resurrect a route.
 
-The shipping daemon entry point still does not inject the required production
-Linux Firebase ID token and App Check token provider. The composition therefore
-stays dormant and reports `credentials_unavailable`; source wiring cannot stand
-in for installed behavior. Full installed iPad-backed browser
-action/result/panic/audit/restart E2E and a real portal/PipeWire/AT-SPI/libei or
-constrained X11 system adapter are still required. AppImage, deb, and rpm payloads now stage
+The shipping daemon entry point now injects a native credential authority. It
+owns PKCE loopback state validation, refresh-token persistence, Firebase ID-token
+refresh, per-install Ed25519 App Check enrollment/challenges, 30-minute token
+minting, exact account generation, account-switch teardown, sign-out, and scoped
+old-account route revocation. Shared refresh work is generation-checked, stale
+waiters cannot resurrect credentials, and HTTP cancellation propagates to the
+underlying transport. Account-transition phases prevent a late cancel from
+reporting a stopped runtime as active, and successful sign-out permits a new
+browser sign-in. The Functions error contract exposes an explicit bounded
+pending-approval reason; the daemon retries only pending approval or transient
+cloud failure on a quota-safe capped schedule, while permanent rejection stops.
+The local RPC surface exposes only redacted state. The earlier focused Linux
+verification passed 35 tests across Core token access, credential authority,
+loopback OAuth, directory, scoped revoke, cancellation, and adjacent runtime
+behavior; the newly added lifecycle and polling cases still require the final
+clean Linux-native aggregate.
+
+The dedicated Linux Firebase web app has been created, but the separate Google
+Desktop OAuth client, GitHub public release variables, Functions deployment,
+signed release artifact, and installed physical-iPad approval/action proof are
+still missing. Source wiring cannot stand in for installed behavior. Full
+installed iPad-backed browser action/result/panic/audit/restart E2E and a real
+portal/PipeWire/AT-SPI/libei or constrained X11 system adapter are still
+required. AppImage, deb, and rpm payloads now stage
 the canonical bridge under `/usr/lib/openburnbar/playwright`; deb/rpm signed
 installed manifests hash it, and the daemon launcher selects the package path
 before development overrides. A read-only probe enforces Node 18+, exact
@@ -630,20 +719,22 @@ Browser Computer Use parity.
   workflow, and no Linux capture/input adapter existed.
 - **Why it matters:** this is a safety-sensitive feature. Offering guaranteed-
   failure modes and unproven panic behavior is both misleading and dangerous.
-- **Recommended solution:** inject a production Linux credential provider that
-  supplies fresh Firebase ID tokens, App Check tokens, uid, device ID, and account
-  generation to the daemon-owned runtime; keep account changes terminal for the
-  active route. Then exercise exact signed grants, approvals, and panic frames
+- **Recommended solution:** provision the dedicated Desktop OAuth client, deploy
+  the Linux App Check callables, populate the public release variables, and ship
+  the already implemented daemon-owned credential authority. Keep account
+  changes terminal for the active route. Then exercise exact signed grants,
+  approvals, and panic frames
   over the installed iroh path; certify polkit-agent availability without adding
   a PAM fallback; preserve restart-safe authority state; complete browser actions
   over the real Playwright bridge; then build portal/PipeWire
   capture, AT-SPI inspection, libei input, constrained X11/XTest, and explicitly
   consented uinput fallback.
 - **Priority:** **Critical**.
-- **Implementation notes:** keep credential acquisition native and out of the
-  renderer; refresh both Firebase ID token and App Check state before directory
-  operations; treat unavailable or changed credentials as terminal for the
-  active route; preserve approval as ground truth; trust elevation
+- **Implementation notes:** credential acquisition is native and remains out of
+  the renderer; Firebase ID and App Check state refresh before directory
+  operations; unavailable or changed credentials terminate the active route;
+  mobile approval is nonce-bound to the trusted native signing identity. Keep
+  approval as ground truth; trust elevation
   remains Mac/desktop local; the Linux-native daemon-wide global panic path and
   deterministic installed X11 chord proof now exist, while lock/sleep/
   permission-revocation kill paths and real-desktop latency certification remain;
@@ -1276,10 +1367,11 @@ coverage.
 | LNX-A11Y-HARNESS-001 | Implemented | All-route axe plus installed AT-SPI/Orca/keyboard/zoom contract | Full architecture/desktop/high-contrast matrix |
 | LNX-PERF-HARNESS-001 | Implemented | Matched workload tools, p50/p95/p99/resource capture, nightly soak contract | Final candidate results on comparable hardware and environments |
 | LNX-RUN-001 | Partially proven | Clean aarch64 package-owned GUI/daemon/version/uninstall session | x86_64, prior-version lifecycle, suspend/resume, compositor breadth |
-| LNX-PKG-001 | Implemented in workflow; construction proven | Four-artifact aarch64 and architecture-correct x86_64 shards green with 28/28 smoke checks each; native dual-architecture aggregation is fail closed | Native hosted x86_64 run, installed x86_64 session, signed aggregate, and channel lifecycle |
+| LNX-PKG-001 | Implemented in workflow; construction proven | Four-artifact aarch64 and architecture-correct x86_64 shards green with 28/28 smoke checks each; native dual-architecture aggregation is fail closed. Official AppImages now admit the GUI only through a signed canonical manifest bound to the exact final bytes; focused peer-admission verification passed 8 Swift and 28 Node tests | Provision the release signing secret, produce the exact signed aggregate, then complete native hosted x86_64, installed x86_64, rpm/AppImage lifecycle, and channel proof |
 | LNX-UPD-001 | Partially implemented | Native signed-feed availability verifier rejects invalid public metadata | Valid feed plus deb/rpm/AppImage update, rollback, and data preservation |
 | LNX-CHANNEL-001 through LNX-DIFF-001 | Open/partial | Existing package/channel/product foundations retained | Daily-use platform foundation and current macOS/Linux differential proof |
-| LNX-CU-BROWSER-001 | Controller-route v2 and Linux native runtime implemented in source; production credential injection and installed proof blocked | Exact run/call/generation signed intent; distinct transport/signing authority identities; dual-signature bootstrap and exact-tuple same-generation transport renewal; authoritative route resolution; iOS/Android renewal; macOS route lifecycle policy; Linux directory, host identity, endpoint/accept loop, publisher, broker, metadata/readiness, grant/approval/panic/media/teardown composition; durable replay; polkit owner gate; root-owned packaged browser runtime; production iroh ELF proof. Focused packet evidence: Functions 20/20, Android 18/18, physical iPad 17/17, iPad Air simulator 17/17, Linux daemon 32/32 (13 grant broker, 3 panic authority, 4 directory, 8 runtime, 2 Mercury teardown, 2 service lifecycle), and macOS host 34/34 (16 callable-security, 18 host lifecycle/policy) | Inject a production Linux Firebase ID-token and App Check credential provider in the shipping daemon entry point; then prove installed real browser actions, physical-iPad grant/approval/panic, audit, and restart behavior |
+| LNX-CU-CREDENTIALS-001 | Implemented in source; production provisioning blocked | Daemon-owned PKCE loopback sign-in, secure refresh-token custody, Firebase ID refresh, per-install Ed25519 App Check enrollment/challenge/mint, 30-minute production token ceiling, account-generation invalidation, phase-safe sign-out/account-switch RPC teardown, scoped old-account route revoke, cancellable HTTP, and redacted RPC state. Explicit pending approval retries on a capped 15/30/60/120/300-second schedule below the public quota; permanent rejection stops polling. The earlier focused daemon credential/runtime packet passed 35/35 and App Check backend packet passed 34/34; the lifecycle/polling regression cases are now covered by the 2026-07-12 full Linux-native aggregate. A dedicated Linux Firebase web app exists | Create the separate Google Desktop OAuth client, set the public release variables, deploy the new Functions callables/policy, and prove the flow from an installed signed candidate |
+| LNX-CU-BROWSER-001 | Source authority/runtime complete; mobile approval source present; installed proof blocked | Exact run/call/generation authority, controller-route v2, mobile renewal, macOS lifecycle policy, Linux native iroh composition, durable replay, polkit owner gate, root-owned Playwright runtime, daemon credential authority, signed AppImage peer admission, and redacted Tauri/account UI are implemented. The active worktree also contains iPad list/approve/revoke UI, canonical device-ID/fingerprint validation, nonce-bound mutation descriptors, stale-load protection, serialized mutations, and focused store/parser tests. The canonical relay challenge is generated consistently for Swift/Kotlin, Android compile/static-analysis and focused tests pass, and earlier generic iOS build-for-testing coverage passes; current physical-iPad execution is blocked because CoreDevice lists the assigned physical iPad as unavailable, and installed certification remains a separate gate | Run focused tests on the physical iPad without substituting an iPhone or simulator; then use that iPad to approve the exact Linux install and prove real browser actions, grant/approval/deny/panic, audit/tamper, credential expiry, account switch, and restart behavior |
 | Phase 2 core workflows | Open/partial | Existing routes and bounded mutations retained | Complete product outcomes and daemon-authoritative state |
 | Phase 3 native features | In progress | Mercury core, Linux CU input, panic, and outbound capture foundations are implemented; unsupported outcomes remain capability-gated | Cross-device Mercury proof, system CU capture, SmartHub, IBus/Fcitx, pet adapters |
 | Phase 4 certification/promotion | Blocked by design | No false stable promotion is possible | All product work plus exact-candidate environment matrix |
@@ -1370,8 +1462,8 @@ truth-sync, not the first time behavior is documented.
 
 | Task | Depends on | Engineering work | Acceptance criteria |
 |---|---|---|---|
-| LNX-CU-CREDENTIALS-001 | LNX-AUTH-001, LNX-SEC-001, LNX-IPC-001, LNX-NATIVE-001 | Inject a daemon-owned production Firebase credential provider that supplies fresh UID-bound ID tokens, App Check tokens, device identity, and account generation to the controller directory client; keep all tokens outside renderer and local RPC payloads | Fresh-token resolve succeeds; expiry, refresh failure, App Check rejection, sign-out, account switch, and generation change revoke the route and bound sessions fail closed; logs, crash reports, UI, and RPC traces contain no token material |
-| LNX-CU-BROWSER-001 | LNX-CU-CREDENTIALS-001, LNX-CAP-001, LNX-IPC-001, LNX-SESS-001, LNX-NATIVE-001, LNX-EVT-001 | Implemented in source: exact waiting-run picker; signed run/call/generation intent; distinct observed transport/signing authority identities; serialized iOS/Android challenge reception; controller-route v2 dual-proof bootstrap and exact-tuple same-generation transport renewal; authoritative route resolution; macOS lifecycle/lease policy; Linux directory, identity, endpoint/accept loop, publisher, broker, metadata/readiness, grant/approval/panic/media/teardown composition; durable replay; polkit owner gate; checkpoint/restart handling; root-owned packaged runtime; and production iroh ELF proof. Remaining after the credential subtask: installed physical-iPad/browser/restart certification | Release build completes navigate/type/click/screenshot with real paired authority; unsigned/forged/replayed/stale/wrong-session/wrong-request responses and swapped transport/authority identities fail; credential expiry/account switch/App Check rejection and route absence/replacement terminate the exact route; deny/panic/timeout/cancel/journal failure revoke only the exact generation; restart never redispatches an in-flight action, requires fresh session authority, and retains replay high-water marks; audit/tamper proof passes |
+| LNX-CU-CREDENTIALS-001 | LNX-AUTH-001, LNX-SEC-001, LNX-IPC-001, LNX-NATIVE-001 | **Implemented in source:** daemon-owned PKCE loopback sign-in, secure refresh-token custody, Firebase ID refresh, per-install Ed25519 App Check enrollment/challenge/mint, account generation, phase-safe sign-out/account-switch teardown, scoped old-account revoke, cancellable HTTP, redacted RPC/Tauri account state, explicit pending-approval reason mapping, permanent-rejection termination, and quota-safe capped polling. **Operational remainder:** provision the Desktop OAuth client and public variables, deploy the Functions policy/callables, then exercise the exact release configuration | Source acceptance passed the 2026-07-12 full Linux-native aggregate for lifecycle/polling regression cases plus token-redaction checks. Delivery acceptance requires a signed installed candidate to complete sign-in, approval, refresh, expiry, rejection, sign-out, and account switch against deployed production services without token material in renderer, local RPC, logs, or diagnostics |
+| LNX-CU-BROWSER-001 | LNX-CU-CREDENTIALS-001, LNX-CAP-001, LNX-IPC-001, LNX-SESS-001, LNX-NATIVE-001, LNX-EVT-001 | **Implemented in source:** exact waiting-run picker; signed run/call/generation intent; controller-route v2 bootstrap/renewal/revocation; iOS/Android renewal; canonical generated Swift/Kotlin relay-challenge schema; macOS lifecycle policy; Linux directory, identity, endpoint, publisher, broker, metadata/readiness, approval/panic/media/teardown; durable replay; polkit owner gate; checkpoint/restart handling; root-owned packaged runtime; daemon credential authority; signed AppImage peer manifest; redacted account UI; and physical-iPad Linux App Check list/approve/revoke source. **Remaining:** current physical-iPad test execution, production provisioning, signed-candidate installation, and physical-iPad/browser/restart certification | Release build completes navigate/type/click/screenshot with the physical iPad as real paired authority; exact App Check device ID and fingerprint are confirmed before approval; unsigned/forged/replayed/stale/wrong-session/wrong-request responses and swapped transport/authority identities fail; credential expiry/account switch/App Check rejection and route absence/replacement terminate the exact route; deny/panic/timeout/cancel/journal failure revoke only the exact generation; restart never redispatches an in-flight action, requires fresh session authority, and retains replay high-water marks; audit/tamper proof passes |
 | LNX-CU-SYSTEM-001 | LNX-CU-BROWSER-001, LNX-CAP-001, LNX-NATIVE-001 | Portal/PipeWire/AT-SPI/libei plus constrained X11/uinput adapters | Safety and compositor matrix green; unsupported modes hidden |
 | LNX-MEDIA-001 | LNX-CAP-001, LNX-IPC-001, LNX-SEC-001, LNX-AUTH-001, LNX-NATIVE-001, LNX-EVT-001 | Mercury transport, secure pairing, files, calls, share, codecs, consent, notification/lifecycle | Real two-device matrix green on supported desktops |
 | LNX-IOT-001 | LNX-IPC-001 | Typed SmartHub discovery/action APIs | Real device and hostile-input tests green |
@@ -1399,11 +1491,37 @@ truth-sync, not the first time behavior is documented.
 | 3 | **Mainstream install** | Package construction complete; installed/channel proof in progress | LNX-PKG-001, LNX-CHANNEL-001 | Both architectures and every declared package/repository channel install locally |
 | 4 | **Daily-use native foundation** | In progress; onboarding and bounded event-refresh foundations implemented, installed matrix pending | LNX-EVT-001, LNX-ONB-001, LNX-AUTH-001, LNX-NATIVE-001, LNX-UPD-001, LNX-CAT-001, LNX-DIFF-001 | Setup, auth, data freshness, alerts/tray, update lifecycle, and current provider diff green |
 | 5 | **Core product workflows** | Pending | LNX-SESS-001, LNX-CHAT-001, LNX-MEM-001, LNX-PROJ-001, LNX-MISSION-001, LNX-INSIGHT-001, LNX-DB-001, LNX-PROVIDER-001, LNX-PRIV-001, LNX-SET-001 | No synthetic state; every primary workspace and privacy workflow completes |
-| 6 | **Browser automation parity** | In progress; controller-route v2 registry/renewal, mobile publishers, macOS host policy, Linux route directory and native iroh runtime composition, source authority/replay/restart safety, polkit owner gate, Tauri isolation, and production iroh ELF packaging are implemented; production credential injection and installed evidence remain open | LNX-CU-BROWSER-001 | Inject production Linux Firebase ID-token/App Check credentials, then prove physical-iPad-backed session start/action approval, real actions, panic, audit, and restart recovery |
+| 6 | **Browser automation parity** | In progress; controller routing, native iroh runtime, authority/replay/restart safety, polkit owner gate, daemon-owned PKCE/Firebase/App Check credentials, phase-safe account lifecycle, bounded approval polling, redacted account UI, signed AppImage peer admission, and physical-iPad approval source are implemented. Earlier generic iOS build-for-testing coverage passes, and the 2026-07-12 Linux-native aggregate passes. Production OAuth/callable configuration, current physical-iPad execution, signed-candidate installation, and real-device evidence remain open | LNX-CU-CREDENTIALS-001, LNX-CU-BROWSER-001 | Provision Desktop OAuth and release variables, deploy Functions, complete physical-iPad tests, build the signed candidate, then prove iPad-backed sign-in, approval, real actions, panic, audit, and restart recovery |
 | 7 | **Media and system integration** | In progress; Mercury code complete | LNX-CU-SYSTEM-001, LNX-MEDIA-001 | Supported compositor safety and two-device media proof |
 | 8 | **Extended features** | Pending | LNX-IOT-001, LNX-TEXT-001, LNX-PET-001 | SmartHub, input-method, and companion outcomes proven or honestly substituted |
 | 9 | **Candidate and certification** | Blocked on milestones 3-8 | LNX-REL-CANDIDATE-001, LNX-A11Y-CERT-001, LNX-PERF-CERT-001, LNX-QA-001, LNX-DOC-001 | Exact signed candidate, assistive-tech, performance, architecture, desktop matrix, and docs green |
 | 10 | **Stable promotion** | Blocked by design | LNX-PROMOTE-001 | Zero Critical/High gaps and a current reproducible evidence graph |
+
+### Immediate blocking order from the 2026-07-12 source-complete wave
+
+These gates are deliberately sequential because each later result depends on
+the identity, configuration, and artifact bytes established by the earlier one:
+
+1. Create a dedicated Google **Desktop app** OAuth client for Linux; do not
+   reuse the web app client.
+2. Set the public Linux Firebase/OAuth/App Check release variables and validate
+   that release packaging fails closed when any required value is absent.
+3. Deploy the Linux App Check enrollment, challenge, mint, list, approve, revoke,
+   and policy callables/rules; verify the dedicated Linux Firebase app ID.
+4. Run the focused approval tests on the physical iPad. Generic iOS
+   build-for-testing already passes, but the final authority proof must use the
+   physical iPad, not an iPhone or simulator. On 2026-07-12 CoreDevice listed
+   the assigned physical iPad as unavailable, so this gate remains blocked.
+5. Build and sign the exact deb/rpm/AppImage candidate, including the AppImage
+   peer manifest over the final repacked GUI bytes.
+6. Install that exact candidate on Linux and complete PKCE sign-in, device
+   enrollment, physical-iPad fingerprint confirmation, approval, token refresh,
+   and revoke/sign-out/account-switch failure paths.
+7. Certify Browser Computer Use navigate/type/click/screenshot, approval/deny,
+   panic, tamper detection, audit export, daemon crash/restart, and replay
+   persistence against a real browser.
+8. Run the same candidate through the GNOME X11/Wayland, KDE Wayland, and
+   wlroots matrix, then complete update/rollback and stable-promotion gates.
 
 ### Parallelization and ownership
 
@@ -1446,6 +1564,11 @@ Keep one integration owner at a time for `routes.ts`, `tauriBridge.ts`, the Taur
   excluded from public install copy rather than presented as ready.
 - [ ] Release package smoke launches the real GUI and daemon, not only inspects
   archive contents.
+- [x] Source AppImage peer admission verifies a signed canonical manifest, exact
+  final GUI path/basename/hash, immutable or read-only AppImage root, and
+  no-follow file access; tampered manifest/signature/path/hash cases fail.
+- [ ] The exact signed AppImage candidate proves the same peer-admission contract
+  after final repacking and from an installed launch.
 
 ### Installation, service, and onboarding
 
@@ -1524,9 +1647,25 @@ Keep one integration owner at a time for `routes.ts`, `tauriBridge.ts`, the Taur
   same-generation transport-only renewal, authoritative empty-route revocation,
   autonomous iOS/Android renewal, macOS lifecycle/lease enforcement, and Linux
   native directory/endpoint/broker/readiness/action-response composition.
-- [ ] The shipping daemon injects fresh native Firebase ID-token and App Check
-  credentials, and expiry, refresh, rejection, account switch, and credential
-  generation changes fail closed without exposing tokens to the renderer.
+- [x] The source shipping daemon owns PKCE, refresh-token custody, fresh Firebase
+  ID-token and App Check credentials, per-install Ed25519 enrollment, account
+  generation, sign-out/account-switch teardown, and scoped route revocation;
+  focused failure-path and token-redaction tests pass.
+- [x] Account transition state is phase-safe, successful sign-out permits a
+  fresh browser sign-in, explicit pending approval is distinct from permanent
+  rejection, and capped retry remains below the public endpoint quota.
+- [x] The physical-iPad source surface lists Linux App Check devices, displays
+  the canonical stable device ID and verified public fingerprint, and requires
+  explicit approve/revoke confirmation with serialized, nonce-bound mutations.
+- [x] Generic iOS build-for-testing and the canonical Swift/Kotlin relay schema
+  generation pass; Android compile, focused tests, and strict static analysis pass.
+- [ ] The focused parser/store/mutation tests execute on the physical iPad
+  without using an iPhone or simulator as a substitute. On 2026-07-12
+  CoreDevice listed the assigned physical iPad
+  `407C0B12-010B-5970-8E85-D0E43DA8F457` as unavailable, while the visible
+  iPhone and simulator targets remained invalid substitutes.
+- [ ] The dedicated Desktop OAuth client and public release variables are set,
+  and the Linux App Check callables/rules are deployed to production.
 - [ ] A paired physical iPad supplies the exact signed session grant and action
   response;
   unsigned, forged, replayed, stale, wrong-session, and wrong-request vectors fail.
@@ -1633,8 +1772,10 @@ Primary current evidence and implementation references:
   `android/app/src/main/java/com/openburnbar/data/computeruse/ComputerUseSessionGrantChallengeValidator.kt`,
   `apps/linux-desktop/src-tauri/src/lib.rs`, and
   `apps/linux-desktop/src/surfaces/computerUse/ComputerUseSurface.tsx`
-- Shipping Linux credential-injection blocker:
-  `OpenBurnBarDaemon/Sources/OpenBurnBarDaemonExecutable/OpenBurnBarDaemonMain.swift`
+- Linux credential authority and redacted account RPC boundary:
+  `OpenBurnBarDaemon/Sources/OpenBurnBarDaemonExecutable/OpenBurnBarDaemonMain.swift`,
+  `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/LinuxDaemonCloudCredentialAuthority.swift`,
+  and `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC/BurnBarDaemonServer+RPCAuth.swift`
 - Linux Browser Computer Use native contract gate:
   `scripts/linux-port/run-linux-native-tests.sh` and
   `scripts/linux-port/run-linux-native-tests.test.mjs`

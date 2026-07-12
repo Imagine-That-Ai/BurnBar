@@ -65,27 +65,7 @@ internal suspend fun MediaControlStreamCoordinator.dispatchMercuryInboundFrame(
                 AgentCapabilityGrantState.apply(receipt)
             }
         HermesRealtimeRelayFrameType.CONTROL_SESSION_GRANT_CHALLENGE ->
-            frame.control?.sessionGrantChallenge?.let { challenge ->
-                val stream = checkNotNull(sourceStream) { "A session grant challenge requires its authenticated source stream." }
-                val remoteNodeId = stream.authenticatedRemoteNodeId()?.trim().orEmpty()
-                check(remoteNodeId.isNotEmpty()) { "A session grant challenge requires an authenticated remote iroh peer." }
-                inboundSessionGrantChallengeHandler(
-                    ComputerUseSessionGrantChallengeDelivery(
-                        challenge = challenge,
-                        route =
-                        ComputerUseSessionGrantRoute(
-                            uid = frame.uid,
-                            connectionId = frame.connectionId,
-                            authenticatedRemoteNodeId = remoteNodeId,
-                            streamToken = UUID.randomUUID().toString(),
-                            live = { inboundRouteIsLive(stream, frame.uid, frame.connectionId) },
-                            frameSink = { outbound ->
-                                sendOnInboundRoute(stream, frame.uid, frame.connectionId, outbound)
-                            },
-                        ),
-                    ),
-                )
-            }
+            handleSessionGrantChallenge(frame, sourceStream)
         HermesRealtimeRelayFrameType.CONTROL_DENIED -> {
             frame.control?.denied?.let { inboundLastControlDenied.value = it }
             inboundAgentWatchControlFrames.tryEmit(frame)
@@ -114,6 +94,32 @@ internal suspend fun MediaControlStreamCoordinator.dispatchMercuryInboundFrame(
         HermesRealtimeRelayFrameType.MEDIA_CLASSIFY -> Unit
         else -> Unit
     }
+}
+
+private suspend fun MediaControlStreamCoordinator.handleSessionGrantChallenge(
+    frame: HermesRealtimeRelayFrame,
+    sourceStream: IrohRelayStream?,
+) {
+    val challenge = frame.control?.sessionGrantChallenge ?: return
+    val stream = checkNotNull(sourceStream) { "A session grant challenge requires its authenticated source stream." }
+    val remoteNodeId = stream.authenticatedRemoteNodeId()?.trim().orEmpty()
+    check(remoteNodeId.isNotEmpty()) { "A session grant challenge requires an authenticated remote iroh peer." }
+    inboundSessionGrantChallengeHandler(
+        ComputerUseSessionGrantChallengeDelivery(
+            challenge = challenge,
+            route =
+            ComputerUseSessionGrantRoute(
+                uid = frame.uid,
+                connectionId = frame.connectionId,
+                authenticatedRemoteNodeId = remoteNodeId,
+                streamToken = UUID.randomUUID().toString(),
+                live = { inboundRouteIsLive(stream, frame.uid, frame.connectionId) },
+                frameSink = { outbound ->
+                    sendOnInboundRoute(stream, frame.uid, frame.connectionId, outbound)
+                },
+            ),
+        ),
+    )
 }
 
 private fun MediaControlStreamCoordinator.applyMercuryPresenceHeartbeat(frame: HermesRealtimeRelayFrame) {

@@ -101,7 +101,7 @@ final class MobileAgentPermissionGrantController {
     /// completed before device-owner authentication, and the generic grant API
     /// remains available for non-challenge permission changes.
     func grant(
-        sessionChallenge: HermesRealtimeRelayComputerUseSessionGrantChallenge,
+        sessionChallenge: HermesRealtimeRelaySessionGrantChallenge,
         authenticationWillBegin: @MainActor @Sendable () -> Void = {}
     ) async throws -> AgentCapabilityGrantReceipt {
         guard let uid = currentUID else { throw GrantError.notSignedIn }

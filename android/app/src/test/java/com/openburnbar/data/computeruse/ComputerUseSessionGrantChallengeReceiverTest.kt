@@ -1,7 +1,7 @@
 package com.openburnbar.data.computeruse
 
 import androidx.fragment.app.FragmentActivity
-import com.openburnbar.irohrelay.HermesRealtimeRelayComputerUseSessionGrantChallenge
+import com.openburnbar.irohrelay.HermesRealtimeRelaySessionGrantChallenge
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import io.mockk.mockk
@@ -262,7 +262,7 @@ class ComputerUseSessionGrantChallengeReceiverTest {
         nowMillis: () -> Long = { unixMillis(800_000_100.0) },
         foregroundActivityProvider: suspend (String, Long) -> FragmentActivity? = { _, _ -> foregroundActivity },
         grantHandler: suspend (FragmentActivity, ComputerUseSessionGrantChallengeDelivery) -> Unit = { _, _ -> },
-        failureHandler: (HermesRealtimeRelayComputerUseSessionGrantChallenge, Throwable) -> Unit = { _, _ -> },
+        failureHandler: (HermesRealtimeRelaySessionGrantChallenge, Throwable) -> Unit = { _, _ -> },
     ) = ComputerUseSessionGrantChallengeReceiver(
         scope = scope,
         nowMillis = nowMillis,
@@ -299,9 +299,9 @@ class ComputerUseSessionGrantChallengeReceiverTest {
         connectionId = "conn-1",
     )
 
-    private fun challenge(challengeId: String = "challenge-00000001"): HermesRealtimeRelayComputerUseSessionGrantChallenge {
+    private fun challenge(challengeId: String = "challenge-00000001"): HermesRealtimeRelaySessionGrantChallenge {
         val unsigned =
-            HermesRealtimeRelayComputerUseSessionGrantChallenge(
+            HermesRealtimeRelaySessionGrantChallenge(
                 version = 1,
                 challengeId = challengeId,
                 nonce = "0123456789abcdef0123456789abcdef",

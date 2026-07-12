@@ -4,7 +4,7 @@ import OpenBurnBarCore
 @testable import OpenBurnBarDaemon
 import XCTest
 
-final class DaemonComputerUseSessionGrantAuthorityVerifierTests: XCTestCase {
+final class SessionGrantAuthorityVerifierTests: XCTestCase {
     func testAcceptsExactFreshGrantWithoutConsumingLocalAuthProofAndRejectsReplay() async throws {
         let fixture = try makeFixture(counter: 7)
         let proofConsumptions = Locked(0)

@@ -12,6 +12,24 @@ import UIKit
 enum ComputerUseSecurityCallableClient {
     private static let relaySenderProofProtocolVersion = "3"
 
+    static let linuxAppCheckApproveActionKind = "linux_app_check_device_approve"
+    static let linuxAppCheckRevokeActionKind = "linux_app_check_device_revoke"
+
+    struct LinuxAppCheckTrustMutationDescriptor: Sendable, Equatable {
+        let callableName: String
+        let actionKind: String
+        let subjectId: String
+        let deviceId: String
+        let approverDeviceId: String
+        let approve: Bool
+    }
+
+    struct LinuxAppCheckDeviceListDependencies {
+        let authenticatedUID: () -> String?
+        let bindAppCheckAttestation: () async throws -> Void
+        let callListDevices: (_ approverDeviceId: String) async throws -> Any
+    }
+
     struct EscrowDeviceTrustRevocationResult: Sendable, Equatable {
         let revokedCloudVaultWrappers: Int
         let cloudVaultRotationRequired: Bool
@@ -155,6 +173,93 @@ enum ComputerUseSecurityCallableClient {
             throw ClientError.invalidResponse("Could not obtain a high-risk action nonce.")
         }
         return nonce
+    }
+
+    static func listLinuxAppCheckDevices(approverDeviceId: String) async throws -> [LinuxAppCheckDeviceRecord] {
+        try await listLinuxAppCheckDevices(
+            approverDeviceId: approverDeviceId,
+            dependencies: LinuxAppCheckDeviceListDependencies(
+                authenticatedUID: { authenticatedUID },
+                bindAppCheckAttestation: { try await bindAppCheckAttestation() },
+                callListDevices: { approverDeviceId in
+                    let result = try await functions.httpsCallable("listLinuxAppCheckDevices").call([
+                        "approverDeviceId": approverDeviceId
+                    ])
+                    return result.data
+                }
+            )
+        )
+    }
+
+    static func listLinuxAppCheckDevices(
+        approverDeviceId: String,
+        dependencies: LinuxAppCheckDeviceListDependencies
+    ) async throws -> [LinuxAppCheckDeviceRecord] {
+        guard let expectedUID = dependencies.authenticatedUID() else {
+            throw ClientError.notAuthenticated
+        }
+        try await dependencies.bindAppCheckAttestation()
+        guard dependencies.authenticatedUID() == expectedUID else {
+            throw ClientError.notAuthenticated
+        }
+        let response = try await dependencies.callListDevices(approverDeviceId)
+        guard dependencies.authenticatedUID() == expectedUID else {
+            throw ClientError.notAuthenticated
+        }
+        return try parseLinuxAppCheckDevicesResponse(response)
+    }
+
+    static func setLinuxAppCheckDeviceTrust(
+        deviceId: String,
+        approverDeviceId: String,
+        approve: Bool
+    ) async throws {
+        let descriptor = linuxAppCheckTrustMutationDescriptor(
+            deviceId: deviceId,
+            approverDeviceId: approverDeviceId,
+            approve: approve
+        )
+        let result = try await callHighRiskOwnerAction(
+            descriptor.callableName,
+            deviceId: descriptor.approverDeviceId,
+            actionKind: descriptor.actionKind,
+            subjectId: descriptor.subjectId,
+            payload: [
+                "deviceId": descriptor.deviceId,
+                "approverDeviceId": descriptor.approverDeviceId
+            ],
+            approve: descriptor.approve
+        )
+        guard let response = result.data as? [String: Any], response["ok"] as? Bool == true else {
+            throw ClientError.invalidResponse(
+                approve ? "Linux device approval failed." : "Linux device revocation failed."
+            )
+        }
+    }
+
+    static func linuxAppCheckTrustMutationDescriptor(
+        deviceId: String,
+        approverDeviceId: String,
+        approve: Bool
+    ) -> LinuxAppCheckTrustMutationDescriptor {
+        LinuxAppCheckTrustMutationDescriptor(
+            callableName: approve ? "approveLinuxAppCheckDevice" : "revokeLinuxAppCheckDevice",
+            actionKind: approve ? linuxAppCheckApproveActionKind : linuxAppCheckRevokeActionKind,
+            subjectId: deviceId,
+            deviceId: deviceId,
+            approverDeviceId: approverDeviceId,
+            approve: approve
+        )
+    }
+
+    static func parseLinuxAppCheckDevicesResponse(_ raw: Any) throws -> [LinuxAppCheckDeviceRecord] {
+        guard let response = raw as? [String: Any],
+              response["ok"] as? Bool == true,
+              let devices = response["devices"] as? [[String: Any]]
+        else {
+            throw ClientError.invalidResponse("Linux device list response was invalid.")
+        }
+        return try devices.map { try LinuxAppCheckDeviceRecord(callablePayload: $0) }
     }
 
     static func registerEscrowDevice(

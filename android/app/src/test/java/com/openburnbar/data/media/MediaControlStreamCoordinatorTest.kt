@@ -7,7 +7,7 @@ import com.openburnbar.irohrelay.HermesRealtimeRelayCallAck
 import com.openburnbar.irohrelay.HermesRealtimeRelayClipboardAction
 import com.openburnbar.irohrelay.HermesRealtimeRelayClipboardResponse
 import com.openburnbar.irohrelay.HermesRealtimeRelayClipboardStatus
-import com.openburnbar.irohrelay.HermesRealtimeRelayComputerUseSessionGrantChallenge
+import com.openburnbar.irohrelay.HermesRealtimeRelaySessionGrantChallenge
 import com.openburnbar.irohrelay.HermesRealtimeRelayControlDenied
 import com.openburnbar.irohrelay.HermesRealtimeRelayControlPayload
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
@@ -956,7 +956,7 @@ class MediaControlStreamCoordinatorTest {
         }
     }
 
-    private fun sessionGrantChallenge() = HermesRealtimeRelayComputerUseSessionGrantChallenge(
+    private fun sessionGrantChallenge() = HermesRealtimeRelaySessionGrantChallenge(
         version = 1,
         challengeId = "challenge-00000001",
         nonce = "0123456789abcdef0123456789abcdef",

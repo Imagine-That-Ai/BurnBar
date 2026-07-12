@@ -506,7 +506,7 @@ final class ComputerUseSessionGrantBrokerTests: XCTestCase {
     }
 
     private func signedGrant(
-        challenge: HermesRealtimeRelayComputerUseSessionGrantChallenge,
+        challenge: HermesRealtimeRelaySessionGrantChallenge,
         proof: HermesRealtimeRelayAgentGrantLocalAuthProof? = nil
     ) throws -> HermesRealtimeRelayAgentGrantRequest {
         var request = try AgentCapabilityGrantRequest(

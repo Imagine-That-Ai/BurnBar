@@ -566,9 +566,9 @@ public struct BurnBarDaemonPeerAuthenticator: Sendable {
         defer { close(descriptor) }
         var metadata = stat()
         guard fstat(descriptor, &metadata) == 0,
-              (metadata.st_mode & mode_t(S_IFMT)) == mode_t(S_IFREG),
+              metadata.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG),
               metadata.st_uid == requiredOwnerUID,
-              (!requireNoGroupOrWorldWrite || metadata.st_mode & mode_t(0o022) == 0),
+              !requireNoGroupOrWorldWrite || metadata.st_mode & mode_t(0o022) == 0,
               Int(metadata.st_size) >= minimumBytes,
               Int(metadata.st_size) <= maximumBytes else {
             throw linuxPeerInvalid()

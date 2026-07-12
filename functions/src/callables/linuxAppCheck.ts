@@ -21,7 +21,10 @@ import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import { checkPublicHttpEndpointRateLimit } from "./publicRateLimit.js";
 import { parseCallableInput } from "../validation/callableSchema.js";
 import { boundedTrimmedString } from "./shared.js";
-import { consumeLinuxAppCheckChallenge } from "./linuxAppCheckDevices.js";
+import {
+  consumeLinuxAppCheckChallenge,
+  LINUX_APP_CHECK_REJECTION_REASON,
+} from "./linuxAppCheckDevices.js";
 import { LINUX_APP_CHECK_ATTESTATION_KIND } from "./linuxAppCheckDeviceCrypto.js";
 
 const MOCK_ATTESTATION_KIND = "mock" as const;
@@ -210,7 +213,11 @@ async function mintLinuxAppCheckTokenCore(params: MintLinuxAppCheckParams): Prom
   const result = verifier.verify(claim, params.nowMillis);
   if (!result.ok) throw rejectReasonToError(result.reason);
   if (!isAppCheckAppIdAllowed(result.appId, { allowedAppCheckAppIDs: params.allowedAppIDs })) {
-    throw new HttpsError("permission-denied", "Linux App Check app id is not allowlisted.");
+    throw new HttpsError(
+      "permission-denied",
+      "Linux App Check app id is not allowlisted.",
+      { reason: LINUX_APP_CHECK_REJECTION_REASON.appNotAllowlisted },
+    );
   }
 
   const ttlMillis = clampTtl(params.ttlMillis);
@@ -271,7 +278,11 @@ export const mintLinuxAppCheckToken = onCall(
           attestation.appId !== config.linuxAppCheckAppID ||
           !isAppCheckAppIdAllowed(attestation.appId, { allowedAppCheckAppIDs: config.allowedAppCheckAppIDs })
         ) {
-          throw new HttpsError("permission-denied", "Linux App Check app id is not allowlisted.");
+          throw new HttpsError(
+            "permission-denied",
+            "Linux App Check app id is not allowlisted.",
+            { reason: LINUX_APP_CHECK_REJECTION_REASON.appNotAllowlisted },
+          );
         }
         await consumeLinuxAppCheckChallenge({
           appId: attestation.appId,

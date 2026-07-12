@@ -4,7 +4,7 @@ import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantLocalAuthProof
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantReceipt
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayAuthorityEnvelope
-import com.openburnbar.irohrelay.HermesRealtimeRelayComputerUseSessionGrantChallenge
+import com.openburnbar.irohrelay.HermesRealtimeRelaySessionGrantChallenge
 import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -153,7 +153,7 @@ data class AgentCapabilityGrantRequest(
         fun unixMillisFromSwiftReferenceSeconds(value: Double): Long = ((value + SWIFT_REFERENCE_TO_UNIX_SECONDS) * 1000.0).toLong()
 
         fun fromValidatedSessionChallenge(
-            challenge: HermesRealtimeRelayComputerUseSessionGrantChallenge,
+            challenge: HermesRealtimeRelaySessionGrantChallenge,
             sourceDeviceId: String,
             localAuthenticationSatisfied: Boolean = false,
             nowMillis: Long = System.currentTimeMillis(),

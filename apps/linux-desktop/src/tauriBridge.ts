@@ -254,6 +254,8 @@ export type AccountStatus = {
   authorizationOperationID?: string;
   authorizationExpiresAt?: string;
   deviceApprovalRequired?: boolean;
+  installationDeviceID?: string;
+  installationSafetyFingerprint?: string;
   detail?: string;
 };
 export type AccountSignInOperation = {
@@ -632,6 +634,7 @@ export interface LinuxShellBridge {
   accountStatus(): Promise<AccountStatus>;
   accountBeginSignIn(): Promise<AccountSignInOperation>;
   accountCancelSignIn(operationID: string): Promise<AccountStatus>;
+  accountRotateIdentity(): Promise<AccountStatus>;
   accountSignOut(): Promise<AccountStatus>;
   membershipStatus?(): Promise<MembershipStatus>;
   membershipCheckoutUrl?(): Promise<string>;
@@ -1363,6 +1366,9 @@ function mapAccountStatus(raw: RawJsonValue): AccountStatus {
     authorizationOperationID: str(pick(status, 'authorizationOperationID', 'authorization_operation_id')) || undefined,
     authorizationExpiresAt: str(pick(status, 'authorizationExpiresAt', 'authorization_expires_at')) || undefined,
     deviceApprovalRequired: Boolean(pick(status, 'deviceApprovalRequired', 'device_approval_required')),
+    installationDeviceID: str(pick(status, 'installationDeviceID', 'installation_device_id')) || undefined,
+    installationSafetyFingerprint:
+      str(pick(status, 'installationSafetyFingerprint', 'installation_safety_fingerprint')) || undefined,
     detail: str(pick(status, 'detail')) || undefined
   };
 }
@@ -2130,6 +2136,10 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     },
     accountCancelSignIn: async (operationID) => {
       const raw = await invoke<RawJsonValue>('account_cancel_sign_in', { operationId: operationID });
+      return mapAccountStatus(raw);
+    },
+    accountRotateIdentity: async () => {
+      const raw = await invoke<RawJsonValue>('account_rotate_identity');
       return mapAccountStatus(raw);
     },
     accountSignOut: async () => {

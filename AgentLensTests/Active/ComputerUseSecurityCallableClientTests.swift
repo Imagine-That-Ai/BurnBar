@@ -7,6 +7,130 @@ import OpenBurnBarSignalCore
 @testable import OpenBurnBar
 
 final class ComputerUseSecurityCallableClientTests: XCTestCase {
+    func testResolveActiveIrohControllerRoutesForwardsConnectionAndParsesResponse() async throws {
+        let now = Int64(Date().timeIntervalSince1970 * 1_000)
+        var authenticationChecks = 0
+        var capturedConnectionID: String?
+
+        let routes = try await ComputerUseSecurityCallableClient.resolveActiveIrohControllerRoutes(
+            uid: "user-1",
+            connectionId: "connection-1",
+            authenticatedUID: {
+                authenticationChecks += 1
+                return "user-1"
+            },
+            invokeCallable: { payload in
+                capturedConnectionID = payload["connectionId"] as? String
+                return [
+                    "uid": "user-1",
+                    "connectionId": "connection-1",
+                    "resolvedAtMillis": now,
+                    "routes": []
+                ]
+            }
+        )
+
+        XCTAssertTrue(routes.isEmpty)
+        XCTAssertEqual(capturedConnectionID, "connection-1")
+        XCTAssertEqual(authenticationChecks, 2)
+    }
+
+    func testResolveActiveIrohControllerRoutesRejectsAccountDriftBeforeAndDuringCall() async {
+        var callCount = 0
+        do {
+            _ = try await ComputerUseSecurityCallableClient.resolveActiveIrohControllerRoutes(
+                uid: "user-1",
+                connectionId: "connection-1",
+                authenticatedUID: { "user-2" },
+                invokeCallable: { _ in
+                    callCount += 1
+                    return [:]
+                }
+            )
+            XCTFail("Expected pre-call account drift to fail closed")
+        } catch {
+            XCTAssertEqual(callCount, 0)
+            XCTAssertEqual(
+                (error as? ComputerUseSecurityCallableClient.ClientError)?.errorDescription,
+                "The active account changed before controller-route resolution."
+            )
+        }
+
+        var authenticationChecks = 0
+        do {
+            _ = try await ComputerUseSecurityCallableClient.resolveActiveIrohControllerRoutes(
+                uid: "user-1",
+                connectionId: "connection-1",
+                authenticatedUID: {
+                    authenticationChecks += 1
+                    return authenticationChecks == 1 ? "user-1" : "user-2"
+                },
+                invokeCallable: { _ in
+                    callCount += 1
+                    return [:]
+                }
+            )
+            XCTFail("Expected post-call account drift to fail closed")
+        } catch {
+            XCTAssertEqual(callCount, 1)
+            XCTAssertEqual(
+                (error as? ComputerUseSecurityCallableClient.ClientError)?.errorDescription,
+                "The active account changed during controller-route resolution."
+            )
+        }
+    }
+
+    func testControllerRouteDirectoryMapsAuthoritativeAndFailureResults() async throws {
+        let now = Int64(Date().timeIntervalSince1970 * 1_000)
+        let binding = try XCTUnwrap(IrohControllerRouteBinding(
+            sourceDeviceId: "ios-device-1",
+            transportNodeId: String(repeating: "a", count: 64),
+            authorityPeerNodeId: "ios-authority-1",
+            generation: 1,
+            registeredAtMillis: now - 1_000,
+            expiresAtMillis: now + 60_000
+        ))
+        var capturedArguments: [(String, String)] = []
+
+        let authoritative = await CallableIrohControllerRouteDirectory.load(
+            uid: "user-1",
+            connectionId: "connection-1",
+            resolve: { uid, connectionID in
+                capturedArguments.append((uid, connectionID))
+                return [binding]
+            }
+        )
+        XCTAssertEqual(capturedArguments.count, 1)
+        XCTAssertEqual(capturedArguments.first?.0, "user-1")
+        XCTAssertEqual(capturedArguments.first?.1, "connection-1")
+        XCTAssertEqual(authoritative, .authoritative(IrohInboundPeerPolicy(routeBindings: [binding])))
+
+        let transient = await CallableIrohControllerRouteDirectory.load(
+            uid: "user-1",
+            connectionId: "connection-1",
+            resolve: { _, _ in throw URLError(.notConnectedToInternet) }
+        )
+        XCTAssertEqual(transient, .transientFailure)
+
+        let rejected = await CallableIrohControllerRouteDirectory.load(
+            uid: "user-1",
+            connectionId: "connection-1",
+            resolve: { _, _ in
+                throw ComputerUseSecurityCallableClient.ClientError.invalidResponse("invalid route")
+            }
+        )
+        XCTAssertEqual(rejected, .authoritative(IrohInboundPeerPolicy(routeBindings: [])))
+    }
+
+    func testControllerRouteDirectoryDefaultResolverFailsClosedWithoutAuthenticatedUser() async {
+        let result = await CallableIrohControllerRouteDirectory.load(
+            uid: "user-1",
+            connectionId: "connection-1"
+        )
+
+        XCTAssertEqual(result, .authoritative(IrohInboundPeerPolicy(routeBindings: [])))
+    }
+
     func testControllerRouteDirectoryRetainsPolicyOnlyForTransportFailures() {
         XCTAssertTrue(CallableIrohControllerRouteDirectory.isTransientTransportFailure(
             URLError(.notConnectedToInternet)

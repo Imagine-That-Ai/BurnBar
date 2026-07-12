@@ -22,9 +22,7 @@ import com.openburnbar.data.hermes.relay.FirestoreIrohPairingDirectory
 import com.openburnbar.data.hermes.relay.FirestoreIrohPairingPublicKeyProvider
 import com.openburnbar.data.hermes.relay.HermesRelayKeyStore
 import com.openburnbar.data.media.AndroidFileTransferService
-import com.openburnbar.data.media.IrohBlobKeyStore
 import com.openburnbar.data.media.MediaControlStreamCoordinator
-import com.openburnbar.data.media.MediaFileTransferService
 import com.openburnbar.data.media.RetainedIrohControlTransportPool
 import com.openburnbar.data.text.TextExpansionSyncWorker
 import com.openburnbar.data.widget.BurnBarWidgetSnapshotStore
@@ -38,7 +36,6 @@ import com.openburnbar.irohrelay.OpenBurnBarIrohFfiBackend
 import com.openburnbar.irohrelay.OpenBurnBarIrohNativeContext
 import com.openburnbar.remote.BurnBarRemoteBridge
 import com.openburnbar.services.media.AgentReplyNotificationState
-import java.io.File
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -269,60 +266,6 @@ class BurnBarApplication : Application() {
         AgentReplyNotificationState.installLifecycleTracking(this)
         com.openburnbar.data.cloud.CloudVaultRotationPickupLifecycle.install(this)
         registerFcmToken()
-    }
-
-    private fun installComputerUseSessionGrantReceiver() {
-        com.openburnbar.data.computeruse.ForegroundFragmentActivityTracker.install(this)
-        val controller = com.openburnbar.data.computeruse.AgentCapabilityGrantController(this)
-        val notificationCenter =
-            com.openburnbar.data.computeruse.ComputerUseSessionGrantNotificationCenter(this)
-        agentCapabilityGrantController = controller
-        sessionGrantChallengeReceiver =
-            com.openburnbar.data.computeruse.ComputerUseSessionGrantChallengeReceiver(
-                scope = applicationScope,
-                foregroundActivityProvider = { challengeId, expiresAtMillis ->
-                    com.openburnbar.data.computeruse.ForegroundFragmentActivityTracker.current()
-                        ?: run {
-                            notificationCenter.showPendingChallenge(challengeId, expiresAtMillis)
-                            try {
-                                com.openburnbar.data.computeruse.ForegroundFragmentActivityTracker.awaitResumedUntil(expiresAtMillis)
-                            } finally {
-                                notificationCenter.dismissPendingChallenge(challengeId)
-                            }
-                        }
-                },
-                grantHandler = { activity, delivery ->
-                    controller.grant(activity = activity, delivery = delivery)
-                },
-                failureHandler = { challenge, error ->
-                    Log.w(
-                        "BurnBar",
-                        "Session grant challenge failed id=${challenge.challengeId.take(32)}: ${error.message}",
-                    )
-                },
-            )
-    }
-
-    private fun installFileTransferService() {
-        val blobKeyStore = IrohBlobKeyStore(applicationContext)
-        val transferService = MediaFileTransferService(
-            backend = OpenBurnBarIrohBlobFfiBackend(),
-            configuration = MediaFileTransferService.Configuration(
-                storeDirectory = File(filesDir, "mercury_blob_store"),
-                inboxDirectory = File(filesDir, "mercury_blob_inbox"),
-                secretKeyProvider = { blobKeyStore.secretKeyMaterial() },
-            ),
-        )
-        registerFileTransferService(
-            AndroidFileTransferService(
-                appContext = applicationContext,
-                service = transferService,
-                settingsProvider = {
-                    getSharedPreferences("mercury_media", MODE_PRIVATE)
-                        .getBoolean("media_blob_transfer_enabled", true)
-                },
-            ),
-        )
     }
 
     private fun installAuthListener() {
