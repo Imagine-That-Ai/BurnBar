@@ -37,11 +37,13 @@
 #
 # Environment:
 #   COVERAGE_THRESHOLD    minimum diff coverage percent (default 80)
-#   DIFF_COVERAGE_SCOPE   all|app|packages (default all). CI lanes partition:
+#   DIFF_COVERAGE_SCOPE   all|app|packages|linux-packages (default all). CI lanes partition:
 #                         App XCTest gates scope=app with the xcresult, Swift
-#                         Core gates scope=packages with package coverage, so
-#                         every changed production file is measured by the
-#                         lane that actually executes its tests.
+#                         Core on macOS gates scope=packages, and the Linux PR
+#                         gate owns only the exact prefixes listed in
+#                         scripts/linux-only-package-coverage-prefixes.txt via
+#                         scope=linux-packages. Every changed production file is
+#                         measured by a lane that actually compiles it.
 #   DIFF_COVERAGE_OUTPUT  optional path — verdict JSON is also written there
 #   OPENBURNBAR_COVERAGE_REPO_ROOT  override the gated repo root (self-tests)
 #
@@ -62,9 +64,9 @@ threshold="${COVERAGE_THRESHOLD:-80}"
 scope="${DIFF_COVERAGE_SCOPE:-all}"
 
 case "$scope" in
-  all|app|packages) ;;
+  all|app|packages|linux-packages) ;;
   *)
-    echo "::error::DIFF_COVERAGE_SCOPE must be all, app, or packages (got: $scope)" >&2
+    echo "::error::DIFF_COVERAGE_SCOPE must be all, app, packages, or linux-packages (got: $scope)" >&2
     exit 2
     ;;
 esac
@@ -75,7 +77,7 @@ package_lines_json="${4:-}"
 
 tmp_root="${TMPDIR:-/tmp}"
 
-if [[ -z "$coverage_json" && "$scope" != "packages" ]]; then
+if [[ -z "$coverage_json" && "$scope" != "packages" && "$scope" != "linux-packages" ]]; then
   candidate="$repo_root/.derived-data/OpenBurnBar_TestCoverage.xcresult"
   if [[ -d "$candidate" ]]; then
     coverage_json="$tmp_root/openburnbar-diff-coverage-summary.json"
@@ -83,7 +85,7 @@ if [[ -z "$coverage_json" && "$scope" != "packages" ]]; then
   fi
 fi
 
-if [[ -z "$lines_json" && "$scope" != "packages" && -d "$repo_root/.derived-data/OpenBurnBar_TestCoverage.xcresult" ]]; then
+if [[ -z "$lines_json" && "$scope" != "packages" && "$scope" != "linux-packages" && -d "$repo_root/.derived-data/OpenBurnBar_TestCoverage.xcresult" ]]; then
   lines_json="$tmp_root/openburnbar-diff-coverage-lines.json"
   if ! "$scripts_dir/extract-coverage-lines.sh" \
       "$repo_root/.derived-data/OpenBurnBar_TestCoverage.xcresult" > "$lines_json"; then
@@ -118,7 +120,8 @@ diff_pathspec=('*.swift' ':(exclude)*Tests*' ':(exclude)scripts/*' ':(exclude)Pa
 
 changed_files=""
 if ! changed_files="$(git diff --name-only --find-renames "$base_ref" HEAD -- "${diff_pathspec[@]}" 2>/dev/null)"; then
-  changed_files=""
+  echo "::error::Unable to enumerate changed Swift files against base ref: $base_ref" >&2
+  exit 1
 fi
 
 if [[ -z "$changed_files" ]]; then
@@ -132,7 +135,7 @@ if [[ "$scope" == "app" && ! -f "${lines_json:-}" ]]; then
   echo '::error::No per-line app coverage data found. Run app tests with OPENBURNBAR_ENABLE_COVERAGE=YES and extract-coverage-lines.sh first.' >&2
   exit 1
 fi
-if [[ "$scope" == "packages" && ! -f "${package_lines_json:-}" ]]; then
+if [[ ( "$scope" == "packages" || "$scope" == "linux-packages" ) && ! -f "${package_lines_json:-}" ]]; then
   echo '::error::No package coverage data found. Run `swift test --enable-code-coverage` in OpenBurnBarCore/OpenBurnBarDaemon, then scripts/extract-package-coverage-lines.sh.' >&2
   exit 1
 fi
@@ -149,8 +152,10 @@ export LINES_JSON="${lines_json:-}"
 export PACKAGE_LINES_JSON="${package_lines_json:-}"
 export DIFF_SCOPE="$scope"
 export DIFF_OUTPUT="${DIFF_COVERAGE_OUTPUT:-}"
+export LINUX_ONLY_PREFIXES_FILE="$scripts_dir/linux-only-package-coverage-prefixes.txt"
 
 python3 - <<'PY'
+import ast
 import difflib
 import json
 import os
@@ -166,6 +171,7 @@ lines_json_path = os.environ.get("LINES_JSON") or ""
 package_lines_json_path = os.environ.get("PACKAGE_LINES_JSON") or ""
 scope = os.environ["DIFF_SCOPE"]
 output_path = os.environ.get("DIFF_OUTPUT") or ""
+linux_only_prefixes_path = os.environ["LINUX_ONLY_PREFIXES_FILE"]
 
 # ---------------------------------------------------------------------------
 # Waiver allowlist — the documented, auditable escape hatch.
@@ -428,8 +434,211 @@ def allowlist_reason(rel_path):
 PACKAGE_PREFIXES = ("OpenBurnBarCore/Sources/", "OpenBurnBarDaemon/Sources/")
 
 
+def load_linux_only_prefixes(path):
+    if not os.path.isfile(path):
+        print(f"::error::Linux-only coverage prefix policy is missing: {path}", file=sys.stderr)
+        raise SystemExit(1)
+    with open(path, encoding="utf-8") as handle:
+        prefixes = tuple(
+            line.strip() for line in handle
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+    if not prefixes or len(prefixes) != len(set(prefixes)):
+        print("::error::Linux-only coverage prefixes must be non-empty and unique.", file=sys.stderr)
+        raise SystemExit(1)
+    for prefix in prefixes:
+        if not prefix.startswith(PACKAGE_PREFIXES) or not prefix.endswith(("/", ".swift")):
+            print(
+                f"::error::Invalid Linux-only package coverage prefix: {prefix}",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+    return prefixes
+
+
+LINUX_ONLY_PACKAGE_PREFIXES = load_linux_only_prefixes(linux_only_prefixes_path)
+
+
+def is_linux_only_package_path(rel_path):
+    for policy_path in LINUX_ONLY_PACKAGE_PREFIXES:
+        if policy_path.endswith("/"):
+            if rel_path.startswith(policy_path):
+                return True
+        elif rel_path == policy_path:
+            return True
+    return False
+
+
 def partition(rel_path):
+    if is_linux_only_package_path(rel_path):
+        return "linux-packages"
     return "packages" if rel_path.startswith(PACKAGE_PREFIXES) else "app"
+
+
+_platform_partition_cache = {}
+
+
+def _tri_not(value):
+    return None if value is None else not value
+
+
+def _tri_and(left, right):
+    if left is False or right is False:
+        return False
+    if left is True and right is True:
+        return True
+    return None
+
+
+def _tri_or(left, right):
+    if left is True or right is True:
+        return True
+    if left is False and right is False:
+        return False
+    return None
+
+
+def _conditional_atom_value(name, argument, platform):
+    argument = re.sub(r"\s+", "", argument)
+    if name == "os":
+        expected = "Linux" if platform == "linux" else "macOS"
+        return argument == expected
+    if name == "canImport":
+        known = {
+            "linux": {"Glibc": True, "Darwin": False, "AppKit": False, "UIKit": False, "WinSDK": False},
+            "macos": {"Glibc": False, "Darwin": True, "AppKit": True, "UIKit": False, "WinSDK": False},
+        }
+        return known[platform].get(argument)
+    return None
+
+
+def _conditional_expression_value(expression, platform):
+    """Evaluate Swift platform predicates conservatively for one CI platform.
+
+    Unknown build flags remain tri-state. This lets `os(Linux) && DEBUG` be
+    recognized as impossible on macOS without pretending DEBUG is enabled,
+    while a plain `#if DEBUG` remains owned by the portable package lane.
+    """
+    atom_values = []
+
+    def replace_atom(match):
+        value = _conditional_atom_value(match.group(1), match.group(2), platform)
+        atom_values.append(value)
+        return f"__atom_{len(atom_values) - 1}"
+
+    rendered = re.sub(
+        r"\b(os|canImport|arch|targetEnvironment|compiler|swift)\s*\(([^()]*)\)",
+        replace_atom,
+        expression,
+    )
+    rendered = rendered.replace("&&", " and ").replace("||", " or ")
+    rendered = re.sub(r"!(?!=)", " not ", rendered).strip()
+    rendered = re.sub(r"\btrue\b", "True", rendered, flags=re.IGNORECASE)
+    rendered = re.sub(r"\bfalse\b", "False", rendered, flags=re.IGNORECASE)
+    try:
+        tree = ast.parse(rendered, mode="eval")
+    except SyntaxError:
+        return None
+
+    def evaluate(node):
+        if isinstance(node, ast.Expression):
+            return evaluate(node.body)
+        if isinstance(node, ast.Constant) and isinstance(node.value, bool):
+            return node.value
+        if isinstance(node, ast.Name):
+            if node.id.startswith("__atom_"):
+                try:
+                    return atom_values[int(node.id.removeprefix("__atom_"))]
+                except (ValueError, IndexError):
+                    return None
+            return None
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+            return _tri_not(evaluate(node.operand))
+        if isinstance(node, ast.BoolOp):
+            result = True if isinstance(node.op, ast.And) else False
+            for value_node in node.values:
+                value = evaluate(value_node)
+                result = _tri_and(result, value) if isinstance(node.op, ast.And) else _tri_or(result, value)
+            return result
+        return None
+
+    return evaluate(tree)
+
+
+def _platform_line_partitions(rel_path):
+    if rel_path in _platform_partition_cache:
+        return _platform_partition_cache[rel_path]
+    if is_linux_only_package_path(rel_path):
+        _platform_partition_cache[rel_path] = None
+        return None
+
+    abs_path = os.path.join(repo_root, rel_path)
+    try:
+        with open(abs_path, encoding="utf-8", errors="replace") as handle:
+            source = handle.read().splitlines()
+    except OSError:
+        _platform_partition_cache[rel_path] = {}
+        return {}
+
+    active = {"macos": True, "linux": True}
+    stack = []
+    owners = {}
+    for line_number, text in enumerate(source, start=1):
+        stripped = text.strip()
+        directive = re.match(r"^#(if|elseif)\s+(.+)$", stripped)
+        if directive and directive.group(1) == "if":
+            parent = dict(active)
+            condition = {
+                platform: _conditional_expression_value(directive.group(2), platform)
+                for platform in ("macos", "linux")
+            }
+            active = {
+                platform: _tri_and(parent[platform], condition[platform])
+                for platform in ("macos", "linux")
+            }
+            remaining = {
+                platform: _tri_and(parent[platform], _tri_not(condition[platform]))
+                for platform in ("macos", "linux")
+            }
+            stack.append({"parent": parent, "remaining": remaining})
+        elif directive and directive.group(1) == "elseif" and stack:
+            frame = stack[-1]
+            condition = {
+                platform: _conditional_expression_value(directive.group(2), platform)
+                for platform in ("macos", "linux")
+            }
+            active = {
+                platform: _tri_and(frame["remaining"][platform], condition[platform])
+                for platform in ("macos", "linux")
+            }
+            frame["remaining"] = {
+                platform: _tri_and(frame["remaining"][platform], _tri_not(condition[platform]))
+                for platform in ("macos", "linux")
+            }
+        elif stripped == "#else" and stack:
+            active = dict(stack[-1]["remaining"])
+            stack[-1]["remaining"] = {"macos": False, "linux": False}
+        elif stripped == "#endif" and stack:
+            active = dict(stack.pop()["parent"])
+
+        # Reassign only when a line is provably impossible on macOS and can be
+        # compiled by Linux. Unknown or malformed conditions stay portable.
+        owners[line_number] = (
+            "linux-packages"
+            if active["macos"] is False and active["linux"] is not False
+            else "packages"
+        )
+
+    _platform_partition_cache[rel_path] = owners
+    return owners
+
+
+def line_partition(rel_path, line_number):
+    if is_linux_only_package_path(rel_path):
+        return "linux-packages"
+    if not rel_path.startswith(PACKAGE_PREFIXES):
+        return "app"
+    return _platform_line_partitions(rel_path).get(line_number, "packages")
 
 
 def load_lines_payload(path):
@@ -485,6 +694,58 @@ NON_EXECUTABLE_DECLARATION = re.compile(
     r"^\s*(?:public|private|fileprivate|internal|open|package)?\s*"
     r"(?:typealias|associatedtype|case)\b"
 )
+CALLABLE_DECLARATION_START = re.compile(
+    r"^\s*(?:(?:public|private|fileprivate|internal|open|package|final|static|class|"
+    r"nonisolated|distributed|convenience|required|override|mutating|nonmutating)\s+)*"
+    r"(?:func\s+[A-Za-z_][A-Za-z0-9_]*|init\??|subscript)\s*\("
+)
+
+
+def callable_signature_lines(src_lines):
+    """Return source lines that are declaration syntax, not executable regions.
+
+    LLVM emits no counters for multiline callable signatures. This scanner is
+    deliberately narrow: it starts only at func/init/subscript declarations
+    and ends when their outer parameter list closes. Executable default-value
+    closures still remain gated whenever LLVM emits a counter for them.
+    """
+    signature_lines = set()
+    candidate_lines = []
+    active = False
+    paren_depth = 0
+    for index, text in enumerate(src_lines, start=1):
+        if not active:
+            if CALLABLE_DECLARATION_START.match(text) is None:
+                continue
+            active = True
+            paren_depth = 0
+            candidate_lines = []
+
+        # Stay deliberately conservative instead of pretending to parse Swift.
+        # Strings, comments, regex/default expressions, and closure or function
+        # bodies can all contain delimiter characters that raw counting cannot
+        # distinguish. In those cases no line in the candidate is exempted.
+        scan_text = text
+        trailing_body_brace = text.rstrip().endswith("{") and text.count("{") == 1 and "}" not in text
+        if trailing_body_brace:
+            scan_text = text.rstrip()[:-1]
+        next_depth = paren_depth + scan_text.count("(") - scan_text.count(")")
+        if (
+            any(token in scan_text for token in ('"', "'", "/", "{", "}"))
+            or (trailing_body_brace and next_depth > 0)
+        ):
+            active = False
+            candidate_lines = []
+            paren_depth = 0
+            continue
+
+        candidate_lines.append(index)
+        paren_depth = next_depth
+        if paren_depth <= 0:
+            signature_lines.update(candidate_lines)
+            active = False
+            candidate_lines = []
+    return signature_lines
 
 
 def is_structural_swift_line(text):
@@ -516,18 +777,19 @@ def is_structural_swift_line(text):
     return False
 
 
-def filter_structural_swift_lines(rel_path, line_nums):
+def filter_structural_swift_lines(rel_path, line_nums, allow_callable_signatures=True):
     abs_path = os.path.join(repo_root, rel_path)
     if not os.path.isfile(abs_path):
         return line_nums
     with open(abs_path, encoding="utf-8", errors="replace") as fh:
         src_lines = fh.read().splitlines()
+    signature_lines = callable_signature_lines(src_lines) if allow_callable_signatures else set()
     executable = []
     for ln in line_nums:
         idx = ln - 1
         if not (0 <= idx < len(src_lines)):
             continue
-        if not is_structural_swift_line(src_lines[idx]):
+        if ln not in signature_lines and not is_structural_swift_line(src_lines[idx]):
             executable.append(ln)
     return executable
 
@@ -562,6 +824,7 @@ changed_file_list = [line.strip() for line in changed_file_list if line.strip()]
 
 waived = []
 out_of_scope = []
+deferred_lines = []
 gated_files = []
 for rel_path in changed_file_list:
     reason = allowlist_reason(rel_path)
@@ -573,20 +836,39 @@ for rel_path in changed_file_list:
         })
         continue
     file_partition = partition(rel_path)
-    if scope != "all" and file_partition != scope:
-        out_of_scope.append({"file": rel_path, "gatedBy": file_partition})
-        continue
-    gated_files.append(rel_path)
+    if scope == "all":
+        gated_files.append(rel_path)
+    elif scope == "app":
+        if file_partition == "app":
+            gated_files.append(rel_path)
+        else:
+            out_of_scope.append({"file": rel_path, "gatedBy": file_partition})
+    elif rel_path.startswith(PACKAGE_PREFIXES):
+        # Mixed-platform Swift files can contain both macOS-portable and
+        # Linux-only changed lines. Both package lanes inspect the file; exact
+        # ownership is applied after changed-line hunks are enumerated.
+        gated_files.append(rel_path)
+    else:
+        out_of_scope.append({"file": rel_path, "gatedBy": "app"})
 
 git_output = ""
 if gated_files:
-    git_output = subprocess.run(
-        ["git", "diff", "-U0", "--find-renames",
-         base_ref, "HEAD", "--"] + gated_files,
-        cwd=repo_root,
-        capture_output=True,
-        text=True,
-    ).stdout
+    try:
+        git_output = subprocess.run(
+            ["git", "diff", "-U0", "--find-renames",
+             base_ref, "HEAD", "--"] + gated_files,
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+    except subprocess.CalledProcessError as error:
+        print(
+            f"::error::Unable to extract changed-line hunks against {base_ref}: "
+            f"{error.stderr.strip() or 'git diff failed'}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
 
 file_blocks = {}
 current_file = None
@@ -606,6 +888,30 @@ for line in git_output.splitlines():
             continue
         for ln in range(start, start + count):
             file_blocks[current_file].append(ln)
+
+if scope in {"packages", "linux-packages"}:
+    retained_files = []
+    for rel_path in gated_files:
+        changed = sorted(set(file_blocks.get(rel_path, [])))
+        owned = [ln for ln in changed if line_partition(rel_path, ln) == scope]
+        deferred = [ln for ln in changed if line_partition(rel_path, ln) != scope]
+        if deferred:
+            deferred_owners = sorted({line_partition(rel_path, ln) for ln in deferred})
+            deferred_lines.append({
+                "file": rel_path,
+                "changedLines": len(deferred),
+                "gatedBy": deferred_owners[0] if len(deferred_owners) == 1 else deferred_owners,
+            })
+        if owned:
+            file_blocks[rel_path] = owned
+            retained_files.append(rel_path)
+        else:
+            owner = partition(rel_path)
+            if changed:
+                owners = sorted({line_partition(rel_path, ln) for ln in changed})
+                owner = owners[0] if len(owners) == 1 else owners
+            out_of_scope.append({"file": rel_path, "gatedBy": owner})
+    gated_files = retained_files
 
 # In-source waivers: `cov:ignore -- <reason>` on a changed line excludes that
 # line. `cov:ignore-start -- <reason>` / `cov:ignore-end` excludes changed
@@ -852,8 +1158,8 @@ for rel_path in gated_files:
             exc += 1
             if line_cov[key]:
                 hit += 1
-        if scope == "app" and unmeasured:
-            # The app lane is line-truth only. Missing counters for genuinely
+        if scope in {"app", "packages", "linux-packages"} and unmeasured:
+            # Scoped lanes are line-truth only. Missing counters for genuinely
             # executable changed lines are uncovered; structural declarations
             # remain outside the denominator because LLVM emits no counters.
             unmeasured = filter_structural_swift_lines(rel_path, unmeasured)
@@ -865,7 +1171,11 @@ for rel_path in gated_files:
             file_map_by_path.get(rel_path) or file_map_by_base.get(os.path.basename(rel_path))
         )
         if not cov_item:
-            changed_lines = filter_structural_swift_lines(rel_path, changed_lines)
+            changed_lines = filter_structural_swift_lines(
+                rel_path,
+                changed_lines,
+                allow_callable_signatures=False,
+            )
             if not changed_lines:
                 continue
             # No lane produced any measurement for this file: every executable
@@ -924,6 +1234,7 @@ output = {
     "details": details,
     "waived": waived,
     "outOfScope": out_of_scope,
+    "deferredLines": deferred_lines,
     "pureMove": {"movedLines": pure_move_total, "gatedLines": total_exc},
 }
 rendered = json.dumps(output, indent=2)

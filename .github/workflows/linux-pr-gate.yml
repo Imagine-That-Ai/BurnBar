@@ -11,6 +11,10 @@ on:
       - "packaging/linux/**"
       - "schemas/linux-runtime-capability-manifest.schema.json"
       - "scripts/linux-port/**"
+      - "scripts/diff-coverage.sh"
+      - "scripts/diff-coverage-self-test.sh"
+      - "scripts/extract-package-coverage-lines.sh"
+      - "scripts/linux-only-package-coverage-prefixes.txt"
       - "tools/linux-toolchain/**"
       - "tools/provider-capabilities/**"
       - "OpenBurnBarCore/**"
@@ -143,11 +147,28 @@ jobs:
       - name: Toolchain smoke
         run: docker run --rm -v "$PWD:/workspace" -w /workspace openburnbar-linux-toolchain:mission-001 bash tools/linux-toolchain/smoke.sh
 
-      - name: Run Linux Swift package tests
-        run: >
-          docker run --rm -v "$PWD:/workspace" -w /workspace
-          openburnbar-linux-toolchain:mission-001
+      - name: Run Linux Swift package tests with LCOV
+        run: |
+          docker run --rm -v "$PWD:/workspace" -w /workspace \
+          -e OPENBURNBAR_ENABLE_COVERAGE=YES \
+          -e OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/workspace/.linux-evidence/linux-swift-tests \
+          -e OPENBURNBAR_LINUX_COVERAGE_LCOV=/workspace/.linux-evidence/linux-package-coverage.lcov \
+          -e OPENBURNBAR_LINUX_COVERAGE_LINES=/workspace/.linux-evidence/linux-package-coverage-lines.json \
+          openburnbar-linux-toolchain:mission-001 \
           bash scripts/linux-port/run-linux-swift-tests.sh
+
+      - name: Enforce Linux-only Swift package diff coverage
+        env:
+          COVERAGE_THRESHOLD: 80
+          DIFF_COVERAGE_SCOPE: linux-packages
+          DIFF_COVERAGE_OUTPUT: ${{ github.workspace }}/.linux-evidence/linux-package-diff-coverage.json
+        run: |
+          ./scripts/linux-port/export-linux-swift-coverage-self-test.sh
+          ./scripts/diff-coverage-self-test.sh
+          git fetch --no-tags --prune --depth=1 origin \
+            +refs/heads/main:refs/remotes/origin/main
+          ./scripts/diff-coverage.sh origin/main '' '' \
+            "$OPENBURNBAR_LINUX_EVIDENCE_OUT/linux-package-coverage-lines.json"
 
       - name: Download macOS matched performance reference
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
@@ -174,8 +195,9 @@ jobs:
 
       - name: Upload Linux gate evidence
         if: always()
-        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.6.1
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: linux-pr-gate-evidence
           path: ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/
-          if-no-files-found: warn
+          include-hidden-files: true
+          if-no-files-found: error

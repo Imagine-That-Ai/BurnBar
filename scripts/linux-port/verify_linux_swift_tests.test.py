@@ -196,6 +196,80 @@ sleep 5
         with self.assertRaisesRegex(VERIFIER.VerificationError, "isolated execution policy"):
             VERIFIER.validate_contract(root, manifest)
 
+    def test_real_contract_rejects_coverage_owner_without_filters(self) -> None:
+        root = MODULE_PATH.parents[2]
+        manifest = copy.deepcopy(VERIFIER.load_manifest(root))
+        owner = next(suite for suite in manifest["suites"] if suite["linuxCoverageOwner"])
+        owner["linuxCoverageFilters"] = []
+        with self.assertRaisesRegex(VERIFIER.VerificationError, "non-empty linuxCoverageFilters"):
+            VERIFIER.validate_contract(root, manifest)
+
+    def test_real_contract_requires_coverage_owner_for_every_package(self) -> None:
+        root = MODULE_PATH.parents[2]
+        manifest = copy.deepcopy(VERIFIER.load_manifest(root))
+        package_path = next(suite["packagePath"] for suite in manifest["suites"] if suite["linuxCoverageOwner"])
+        for suite in manifest["suites"]:
+            if suite["packagePath"] == package_path:
+                suite["linuxCoverageOwner"] = False
+                suite.pop("linuxCoverageFilters", None)
+        with self.assertRaisesRegex(VERIFIER.VerificationError, "must include every package"):
+            VERIFIER.validate_contract(root, manifest)
+
+    def test_real_contract_rejects_silently_shrunk_coverage_filter_set(self) -> None:
+        root = MODULE_PATH.parents[2]
+        manifest = copy.deepcopy(VERIFIER.load_manifest(root))
+        owner = next(suite for suite in manifest["suites"] if suite["id"] == "daemon-linux")
+        owner["linuxCoverageFilters"].pop()
+        with self.assertRaisesRegex(VERIFIER.VerificationError, "pinned coverage-filter set"):
+            VERIFIER.validate_contract(root, manifest)
+
+    def test_real_contract_rejects_same_count_coverage_filter_substitution(self) -> None:
+        root = MODULE_PATH.parents[2]
+        manifest = copy.deepcopy(VERIFIER.load_manifest(root))
+        owner = next(suite for suite in manifest["suites"] if suite["id"] == "daemon-linux")
+        owner["linuxCoverageFilters"][-1] = "OpenBurnBarDaemonLinuxGatewayTests.BurnBarDaemonPortableRPCFallbackTests"
+        with self.assertRaisesRegex(VERIFIER.VerificationError, "pinned coverage-filter set"):
+            VERIFIER.validate_contract(root, manifest)
+
+    def test_real_contract_rejects_deleting_a_pinned_suite(self) -> None:
+        root = MODULE_PATH.parents[2]
+        manifest = copy.deepcopy(VERIFIER.load_manifest(root))
+        manifest["suites"] = [suite for suite in manifest["suites"] if suite["id"] != "daemon-linux"]
+        with self.assertRaisesRegex(VERIFIER.VerificationError, "suite identities"):
+            VERIFIER.validate_contract(root, manifest)
+
+    def test_real_contract_rejects_suite_identity_substitution(self) -> None:
+        root = MODULE_PATH.parents[2]
+        manifest = copy.deepcopy(VERIFIER.load_manifest(root))
+        suite = next(suite for suite in manifest["suites"] if suite["id"] == "daemon-linux")
+        suite["target"] = "OpenBurnBarDaemonTests"
+        with self.assertRaisesRegex(VERIFIER.VerificationError, "identity contract drifted"):
+            VERIFIER.validate_contract(root, manifest)
+
+    def test_real_contract_rejects_overlapping_prefix_filters(self) -> None:
+        root = MODULE_PATH.parents[2]
+        manifest = copy.deepcopy(VERIFIER.load_manifest(root))
+        owner = next(suite for suite in manifest["suites"] if suite["id"] == "daemon-linux")
+        owner["linuxCoverageFilters"][-1] = "OpenBurnBarDaemonLinuxGatewayTests.BurnBarDaemonLinuxAuthSocket"
+        with self.assertRaisesRegex(VERIFIER.VerificationError, "overlapping linuxCoverageFilters"):
+            VERIFIER.validate_contract(root, manifest)
+
+    def test_real_contract_rejects_self_attested_coverage_floor(self) -> None:
+        root = MODULE_PATH.parents[2]
+        manifest = copy.deepcopy(VERIFIER.load_manifest(root))
+        owner = next(suite for suite in manifest["suites"] if suite["linuxCoverageOwner"])
+        owner["minimumLinuxCoverageFilters"] = 1
+        with self.assertRaisesRegex(VERIFIER.VerificationError, "may not self-attest"):
+            VERIFIER.validate_contract(root, manifest)
+
+    def test_real_contract_rejects_duplicate_coverage_filters(self) -> None:
+        root = MODULE_PATH.parents[2]
+        manifest = copy.deepcopy(VERIFIER.load_manifest(root))
+        owner = next(suite for suite in manifest["suites"] if suite["linuxCoverageOwner"])
+        owner["linuxCoverageFilters"].append(owner["linuxCoverageFilters"][0])
+        with self.assertRaisesRegex(VERIFIER.VerificationError, "duplicate linuxCoverageFilters"):
+            VERIFIER.validate_contract(root, manifest)
+
 
 if __name__ == "__main__":
     unittest.main()

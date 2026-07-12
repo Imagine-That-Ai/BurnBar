@@ -205,6 +205,120 @@ final class BurnBarRPCContractsTests: XCTestCase {
         XCTAssertFalse(json.contains("sessionGeneration"))
     }
 
+    func testLinuxAuthValueContractsRoundTripEveryPublicResponseShape() throws {
+        let status = BurnBarLinuxAuthStatusResponse(
+            state: .active,
+            signedIn: true,
+            identityLabel: "user@example.test",
+            trustClass: "linux-device-bound",
+            syncState: "cloud-ready",
+            authorizationOperationID: "operation-1",
+            authorizationExpiresAt: "2026-07-12T12:30:00Z",
+            deviceApprovalRequired: false,
+            installationDeviceID: "linux-device-1",
+            installationSafetyFingerprint: "0123 4567 89AB CDEF",
+            detail: "ready"
+        )
+        try assertJSONRoundTrip(status)
+        try assertJSONRoundTrip(BurnBarLinuxAuthBeginResponse(
+            operationID: "operation-1",
+            authorizationURL: "https://auth.openburnbar.test/authorize",
+            expiresAt: "2026-07-12T12:30:00Z"
+        ))
+        try assertJSONRoundTrip(BurnBarLinuxAuthCancelRequest(operationID: "operation-1"))
+        try assertJSONRoundTrip(BurnBarLinuxAuthMutationResponse(ok: true, status: status))
+
+        let encodedStates = try JSONEncoder().encode([
+            BurnBarLinuxAuthState.signedOut,
+            .authorizing,
+            .awaitingDeviceApproval,
+            .active,
+            .unavailable
+        ])
+        XCTAssertEqual(
+            try JSONDecoder().decode([BurnBarLinuxAuthState].self, from: encodedStates),
+            [.signedOut, .authorizing, .awaitingDeviceApproval, .active, .unavailable]
+        )
+    }
+
+    func testComputerUseGrantContractsRoundTripExactNonSecretMetadata() throws {
+        let issuedAt = Date(timeIntervalSince1970: 1_788_000_000)
+        let sessionRequest = ComputerUseSessionStartRequest(
+            mode: "browser",
+            trustMode: "step",
+            scopeRuleIds: ["workspace-only"],
+            phoneViewerNodeId: "phone-transport-1",
+            macHostNodeId: "linux-host-1",
+            actionCap: 12,
+            sessionTimeoutSeconds: 600,
+            clientID: BurnBarClientID(rawValue: "linux-desktop"),
+            runID: BurnBarRunID(rawValue: "run-1"),
+            runCallID: "call-1",
+            runGeneration: 3,
+            grantChallengeId: "challenge-1",
+            desktopOwnerAuthorizationRequest: .init(method: .linuxDesktopOwner)
+        )
+        try assertJSONRoundTrip(ComputerUseSessionGrantReadinessResponse(
+            available: true,
+            reason: .ready
+        ))
+        try assertJSONRoundTrip(ComputerUseSessionGrantAcquireRequest(sessionRequest: sessionRequest))
+        try assertJSONRoundTrip(ComputerUseSessionGrantStatusRequest(challengeId: "challenge-1"))
+        try assertJSONRoundTrip(ComputerUseSessionGrantStatusResponse(
+            challengeId: "challenge-1",
+            sessionIntentId: "intent-1",
+            state: .awaitingDesktopOwner,
+            issuedAt: issuedAt,
+            expiresAt: issuedAt.addingTimeInterval(300),
+            denialReason: nil
+        ))
+
+        let requirement = ComputerUseRunRequirementSummary(
+            runID: BurnBarRunID(rawValue: "run-1"),
+            callID: "call-1",
+            clientID: BurnBarClientID(rawValue: "linux-desktop"),
+            toolKind: .browserClick,
+            generation: 3,
+            requestedAt: issuedAt
+        )
+        try assertJSONRoundTrip(ComputerUseApprovalPendingResponse(
+            requests: [],
+            runRequirements: [requirement],
+            sessionActive: true
+        ))
+    }
+
+    func testGeneratedIPCCanonPinsNewLinuxAuthAndSessionGrantMappings() throws {
+        let expected: [String: (caseName: String, capability: String, result: String)] = [
+            "daemon.auth.begin": ("linuxAuthBegin", "config", "BurnBarLinuxAuthBeginResponse"),
+            "daemon.auth.cancel": ("linuxAuthCancel", "config", "BurnBarLinuxAuthMutationResponse"),
+            "daemon.auth.rotate_identity": ("linuxAuthRotateIdentity", "config", "BurnBarLinuxAuthMutationResponse"),
+            "daemon.auth.sign_out": ("linuxAuthSignOut", "config", "BurnBarLinuxAuthMutationResponse"),
+            "daemon.auth.status": ("linuxAuthStatus", "lifecycle", "BurnBarLinuxAuthStatusResponse"),
+            "daemon.computer_use.session_grant.acquire": (
+                "computerUseSessionGrantAcquire", "computer_use", "Codable response for daemon.computer_use.session_grant.acquire"
+            ),
+            "daemon.computer_use.session_grant.readiness": (
+                "computerUseSessionGrantReadiness", "computer_use", "Codable response for daemon.computer_use.session_grant.readiness"
+            ),
+            "daemon.computer_use.session_grant.status": (
+                "computerUseSessionGrantStatus", "computer_use", "Codable response for daemon.computer_use.session_grant.status"
+            )
+        ]
+        let entries = Dictionary(uniqueKeysWithValues: BurnBarRPCIPCCanon.methods.map { ($0.id, $0) })
+
+        for (method, contract) in expected {
+            let entry = try XCTUnwrap(entries[method], "Missing generated IPC canon entry for \(method)")
+            XCTAssertEqual(entry.caseName, contract.caseName)
+            XCTAssertEqual(entry.capability, contract.capability)
+            XCTAssertEqual(entry.owner, "OpenBurnBarDaemon")
+            XCTAssertEqual(entry.result, contract.result)
+            XCTAssertEqual(entry.error, "BurnBarRPCError")
+        }
+        XCTAssertEqual(Set(entries.keys), Set(BurnBarRPCMethod.allCases.map(\.rawValue)))
+        try assertJSONRoundTrip(BurnBarRPCIPCCanon.methods)
+    }
+
     func testControllerRuntimeSnapshotMethod_isAdditiveControllerNamespaceExtension() throws {
         XCTAssertTrue(BurnBarRPCMethod.allCases.contains(.controllerRuntimeSnapshot))
         XCTAssertEqual(BurnBarRPCMethod.controllerRuntimeSnapshot.rawValue, "daemon.controller.runtime_snapshot")
@@ -292,5 +406,15 @@ final class BurnBarRPCContractsTests: XCTestCase {
         )
         XCTAssertNil(bareDecoded.result)
         XCTAssertNil(bareDecoded.error)
+    }
+
+    private func assertJSONRoundTrip<Value: Codable & Equatable>(
+        _ value: Value,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let encoded = try JSONEncoder().encode(value)
+        let decoded = try JSONDecoder().decode(Value.self, from: encoded)
+        XCTAssertEqual(decoded, value, file: file, line: line)
     }
 }

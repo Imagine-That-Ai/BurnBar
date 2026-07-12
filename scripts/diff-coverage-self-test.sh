@@ -9,8 +9,10 @@
 #
 #   1. Measured percent: changed-line ∩ per-line evidence yields the exact
 #      expected percentage, and the threshold pass/fail flips accordingly.
-#   2. Scope partition: app-partition files are out of scope for the
-#      packages lane (reported, never silently dropped).
+#   2. Scope partition: app and Linux-only package files are out of scope for
+#      the macOS packages lane (reported, never silently dropped); the Linux
+#      lane owns exactly its reviewed path-prefix policy, including near-miss
+#      portable names remaining macOS-owned.
 #   3. No evidence ⇒ fail for executable changed lines. Plain Swift
 #      declaration-only changes and conditional-compilation directives are
 #      excluded because they do not emit LLVM line counters.
@@ -656,7 +658,7 @@ verdict="$tmp_root/verdict-gated-match.json"
 rc="$(run_gate "$repo_gm" "$base_gm" packages 80 "$pkg_gm" "$verdict" "$tmp_root/err-gated-match.log")"
 check "gated tally equals the coverage denominator (no structural overcount)" \
   "True" "$(json_get "$verdict" 'v["pureMove"]["gatedLines"] == v["diffCoverage"]["changedLines"]')"
-check "gated tally counts only the two executable lines (structural excluded)" \
+check "no-evidence callable signature and return line both stay gated" \
   "2" "$(json_get "$verdict" 'v["pureMove"]["gatedLines"]')"
 
 # --- fixture 11: re-indentation invariant — strip-only normalization must keep
@@ -780,6 +782,248 @@ check "app verdict uses line-level evidence" \
   "line_level(app)" "$(json_get "$verdict" 'v["details"][0]["method"]')"
 check "app scope excludes conditional-compilation directives from denominator" \
   "2" "$(json_get "$verdict" 'v["diffCoverage"]["changedLines"]')"
+
+# --- fixture 13: exact macOS/Linux package ownership -------------------------
+repo_linux="$tmp_root/repo-linux-partition"
+linux_dir="$repo_linux/OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse"
+mkdir -p "$linux_dir"
+git -C "$repo_linux" init -q -b main
+git -C "$repo_linux" config user.email selftest@openburnbar.invalid
+git -C "$repo_linux" config user.name "Diff Coverage Self-Test"
+cat > "$linux_dir/LinuxCloudAuthHTTPClient.swift" <<'EOF'
+public enum LinuxOnlyClient {
+}
+EOF
+cat > "$linux_dir/LinuxNamedPortableCredentials.swift" <<'EOF'
+public enum PortableLinuxNamedCredentials {
+}
+EOF
+cat > "$linux_dir/LinuxCloudAuthHTTPClient.swiftExtra.swift" <<'EOF'
+public enum ExactFileNearMiss {
+}
+EOF
+git -C "$repo_linux" add -A
+git -C "$repo_linux" commit -qm base
+base_linux="$(git -C "$repo_linux" rev-parse HEAD)"
+cat > "$linux_dir/LinuxCloudAuthHTTPClient.swift" <<'EOF'
+public enum LinuxOnlyClient {
+    public static func value(
+        seed: Int = 41
+    ) -> Int {
+        let result = seed
+        return result + 1
+    }
+}
+EOF
+cat > "$linux_dir/LinuxNamedPortableCredentials.swift" <<'EOF'
+public enum PortableLinuxNamedCredentials {
+    public static func value() -> Int {
+        return 42
+    }
+}
+EOF
+cat > "$linux_dir/LinuxCloudAuthHTTPClient.swiftExtra.swift" <<'EOF'
+public enum ExactFileNearMiss {
+    public static func value() -> Int {
+        return 42
+    }
+}
+EOF
+git -C "$repo_linux" add -A
+git -C "$repo_linux" commit -qm partition-change
+
+lcov_linux="$tmp_root/fixture-linux-partition.lcov"
+cat > "$lcov_linux" <<EOF
+SF:$linux_dir/LinuxCloudAuthHTTPClient.swift
+DA:5,1
+DA:6,0
+end_of_record
+SF:$linux_dir/LinuxNamedPortableCredentials.swift
+DA:2,1
+DA:3,1
+end_of_record
+SF:$linux_dir/LinuxCloudAuthHTTPClient.swiftExtra.swift
+DA:2,1
+DA:3,1
+end_of_record
+EOF
+pkg_linux="$tmp_root/pkg-linux-partition.json"
+extract_pkg "$lcov_linux" "$repo_linux" "$pkg_linux"
+
+verdict="$tmp_root/verdict-macos-package-partition.json"
+rc="$(run_gate "$repo_linux" "$base_linux" packages 80 "$pkg_linux" "$verdict" "$tmp_root/err-macos-package-partition.log")"
+check "macOS package lane passes its covered portable Linux-named file" "0" "$rc"
+check "macOS package lane defers the exact Linux-only file" \
+  "linux-packages" \
+  "$(json_get "$verdict" '[d for d in v["outOfScope"] if d["file"].endswith("LinuxCloudAuthHTTPClient.swift")][0]["gatedBy"]')"
+check "portable Linux-named near miss remains macOS package-owned" \
+  "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/LinuxNamedPortableCredentials.swift" \
+  "$(json_get "$verdict" '[d for d in v["details"] if d["file"].endswith("LinuxNamedPortableCredentials.swift")][0]["file"]')"
+check "exact Linux-only file policy does not match a longer filename" \
+  "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/LinuxCloudAuthHTTPClient.swiftExtra.swift" \
+  "$(json_get "$verdict" '[d for d in v["details"] if d["file"].endswith("LinuxCloudAuthHTTPClient.swiftExtra.swift")][0]["file"]')"
+
+verdict="$tmp_root/verdict-linux-package-partition.json"
+rc="$(run_gate "$repo_linux" "$base_linux" linux-packages 80 "$pkg_linux" "$verdict" "$tmp_root/err-linux-package-partition.log")"
+check "Linux-only package lane enforces the 80% threshold" "1" "$rc"
+check "Linux-only package lane measures exact LCOV intersection" \
+  "50.0" "$(json_get "$verdict" 'v["diffCoverage"]["percent"]')"
+check "multiline callable signature lines without LLVM counters are non-executable" \
+  "2" "$(json_get "$verdict" 'v["diffCoverage"]["changedLines"]')"
+check "Linux-only package lane defers portable package files to macOS" \
+  "packages" \
+  "$(json_get "$verdict" '[d for d in v["outOfScope"] if d["file"].endswith("LinuxNamedPortableCredentials.swift")][0]["gatedBy"]')"
+check "Linux-only package lane defers longer exact-file near miss to macOS" \
+  "packages" \
+  "$(json_get "$verdict" '[d for d in v["outOfScope"] if d["file"].endswith("LinuxCloudAuthHTTPClient.swiftExtra.swift")][0]["gatedBy"]')"
+
+rc=0
+OPENBURNBAR_COVERAGE_REPO_ROOT="$repo_linux" DIFF_COVERAGE_SCOPE=linux-packages \
+  "$scripts_dir/diff-coverage.sh" "$base_linux" > /dev/null 2> "$tmp_root/err-linux-closed.log" || rc=$?
+check "Linux-only package lane with no LCOV evidence fails closed" "1" "$rc"
+check "Linux fail-closed error names the missing package evidence" \
+  "True" "$(grep -q 'No package coverage data found' "$tmp_root/err-linux-closed.log" && echo True || echo False)"
+
+rc=0
+OPENBURNBAR_COVERAGE_REPO_ROOT="$repo_linux" DIFF_COVERAGE_SCOPE=linux-packages \
+  "$scripts_dir/diff-coverage.sh" refs/heads/base-that-does-not-exist '' '' "$pkg_linux" \
+  > /dev/null 2> "$tmp_root/err-invalid-base.log" || rc=$?
+check "invalid diff base fails closed instead of reporting an empty passing diff" "1" "$rc"
+check "invalid diff base error names enumeration failure" \
+  "True" "$(grep -q 'Unable to enumerate changed Swift files' "$tmp_root/err-invalid-base.log" && echo True || echo False)"
+
+# Signature syntax is excluded only when a file has real line evidence, and
+# even then ambiguous delimiters or executable bodies must stay in the
+# denominator. These fixtures reproduce prior zero-denominator fail-opens.
+edge_base="$(git -C "$repo_linux" rev-parse HEAD)"
+cat > "$linux_dir/LinuxOAuthLoopbackListener.swift" <<'EOF'
+public enum LiteralDelimiterEdge {
+    public static func value(
+        marker: String = "("
+    ) -> Int {
+        let result = marker.count
+        return result
+    }
+}
+EOF
+cat > "$linux_dir/LinuxIrohControllerRuntime.swift" <<'EOF'
+public enum OneLineBodyEdge {
+    public static func value() -> Int { return 42 }
+}
+EOF
+cat > "$linux_dir/LinuxIrohHostIdentityStore.swift" <<'EOF'
+public enum DefaultClosureEdge {
+    public static func value(
+        compute: () -> Int = { 42 }
+    ) -> Int {
+        return compute()
+    }
+}
+EOF
+git -C "$repo_linux" add -A
+git -C "$repo_linux" commit -qm signature-edge-change
+
+lcov_signature_edges="$tmp_root/fixture-linux-signature-edges.lcov"
+cat > "$lcov_signature_edges" <<EOF
+SF:$linux_dir/LinuxOAuthLoopbackListener.swift
+DA:1,1
+end_of_record
+SF:$linux_dir/LinuxIrohControllerRuntime.swift
+DA:1,1
+end_of_record
+SF:$linux_dir/LinuxIrohHostIdentityStore.swift
+DA:1,1
+end_of_record
+EOF
+pkg_signature_edges="$tmp_root/pkg-linux-signature-edges.json"
+extract_pkg "$lcov_signature_edges" "$repo_linux" "$pkg_signature_edges"
+
+verdict="$tmp_root/verdict-linux-signature-edges.json"
+rc="$(run_gate "$repo_linux" "$edge_base" linux-packages 80 "$pkg_signature_edges" "$verdict" "$tmp_root/err-linux-signature-edges.log")"
+check "ambiguous callable signatures and inline bodies fail closed" "1" "$rc"
+check "all signature-edge files remain in the coverage verdict" \
+  "3" "$(json_get "$verdict" 'len(v["details"])')"
+check "string delimiter cannot hide an uninstrumented function body" \
+  "True" "$(json_get "$verdict" '(lambda d: d["executableLines"] > d["coveredLines"])([d for d in v["details"] if d["file"].endswith("LinuxOAuthLoopbackListener.swift")][0])')"
+check "one-line callable body cannot be classified as declaration syntax" \
+  "True" "$(json_get "$verdict" '(lambda d: d["executableLines"] > d["coveredLines"])([d for d in v["details"] if d["file"].endswith("LinuxIrohControllerRuntime.swift")][0])')"
+check "default closure body cannot be classified as declaration syntax" \
+  "True" "$(json_get "$verdict" '(lambda d: d["executableLines"] > d["coveredLines"])([d for d in v["details"] if d["file"].endswith("LinuxIrohHostIdentityStore.swift")][0])')"
+
+# --- fixture 14: line-level ownership inside a mixed-platform Swift file -----
+repo_mixed="$tmp_root/repo-mixed-platform"
+mixed_dir="$repo_mixed/OpenBurnBarDaemon/Sources/OpenBurnBarDaemon"
+mkdir -p "$mixed_dir"
+git -C "$repo_mixed" init -q -b main
+git -C "$repo_mixed" config user.email selftest@openburnbar.invalid
+git -C "$repo_mixed" config user.name "Diff Coverage Self-Test"
+cat > "$mixed_dir/MixedPlatform.swift" <<'EOF'
+public enum MixedPlatform {
+}
+EOF
+git -C "$repo_mixed" add -A
+git -C "$repo_mixed" commit -qm base
+base_mixed="$(git -C "$repo_mixed" rev-parse HEAD)"
+cat > "$mixed_dir/MixedPlatform.swift" <<'EOF'
+public enum MixedPlatform {
+#if os(macOS)
+    public static func value() -> Int {
+        let result = 40
+        return result + 2
+    }
+#elseif os(Linux) && DEBUG
+    public static func value() -> Int {
+        let result = 41
+        return result + 1
+    }
+#else
+    public static func fallback() -> Int {
+        return 0
+    }
+#endif
+#if DEBUG
+    public static func diagnostic() -> Int {
+        let marker = 1
+        return marker
+    }
+#endif
+}
+EOF
+git -C "$repo_mixed" add -A
+git -C "$repo_mixed" commit -qm mixed-platform-change
+
+lcov_mixed="$tmp_root/fixture-mixed-platform.lcov"
+cat > "$lcov_mixed" <<EOF
+SF:$mixed_dir/MixedPlatform.swift
+DA:4,1
+DA:5,1
+DA:9,1
+DA:10,0
+DA:14,1
+DA:19,1
+DA:20,1
+end_of_record
+EOF
+pkg_mixed="$tmp_root/pkg-mixed-platform.json"
+extract_pkg "$lcov_mixed" "$repo_mixed" "$pkg_mixed"
+
+verdict="$tmp_root/verdict-mixed-macos.json"
+rc="$(run_gate "$repo_mixed" "$base_mixed" packages 80 "$pkg_mixed" "$verdict" "$tmp_root/err-mixed-macos.log")"
+check "macOS package lane passes covered macOS and unknown-flag branches" "0" "$rc"
+check "macOS package lane owns four executable lines in mixed file" \
+  "4" "$(json_get "$verdict" 'v["diffCoverage"]["changedLines"]')"
+check "macOS package lane defers only Linux-exclusive mixed-file lines" \
+  "9" "$(json_get "$verdict" '[d for d in v["deferredLines"] if d["file"].endswith("MixedPlatform.swift")][0]["changedLines"]')"
+
+verdict="$tmp_root/verdict-mixed-linux.json"
+rc="$(run_gate "$repo_mixed" "$base_mixed" linux-packages 80 "$pkg_mixed" "$verdict" "$tmp_root/err-mixed-linux.log")"
+check "Linux package lane independently fails its uncovered mixed-file branch" "1" "$rc"
+check "Linux mixed-file coverage uses only three executable Linux lines" \
+  "3" "$(json_get "$verdict" 'v["diffCoverage"]["changedLines"]')"
+check "Linux mixed-file coverage remains exact" \
+  "66.67" "$(json_get "$verdict" 'v["diffCoverage"]["percent"]')"
+check "unknown build-flag branch remains portable instead of moving to Linux" \
+  "12" "$(json_get "$verdict" '[d for d in v["deferredLines"] if d["file"].endswith("MixedPlatform.swift")][0]["changedLines"]')"
 
 # -----------------------------------------------------------------------------
 

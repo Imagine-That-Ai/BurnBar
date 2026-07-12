@@ -18,7 +18,19 @@ function valid() {
       '--profile pr',
       'matched-performance-contract.test.mjs',
       'perf-budget-contract.test.mjs',
-      'linux-parity-macos-performance-pr'
+      'linux-parity-macos-performance-pr',
+      'OPENBURNBAR_ENABLE_COVERAGE=YES',
+      'linux-package-coverage.lcov',
+      'linux-package-coverage-lines.json',
+      'DIFF_COVERAGE_SCOPE: linux-packages',
+      'COVERAGE_THRESHOLD: 80',
+      'scripts/linux-port/export-linux-swift-coverage-self-test.sh',
+      'scripts/diff-coverage-self-test.sh',
+      'scripts/diff-coverage.sh origin/main',
+      'linux-package-diff-coverage.json',
+      'name: linux-pr-gate-evidence',
+      'include-hidden-files: true',
+      'if-no-files-found: error'
     ].join('\n'),
     nightly: [
       'OPENBURNBAR_LINUX_EVIDENCE_OUT',
@@ -81,6 +93,20 @@ function valid() {
       'run_xctest_case',
       'Executed 1 test',
       'cargo test --manifest-path apps/linux-desktop/src-tauri/Cargo.toml --locked'
+    ].join('\n'),
+    swiftTests: [
+      '--enable-code-coverage',
+      'LLVM_PROFILE_FILE',
+      'coverage_binaries+=("${xctest_binaries[0]}")',
+      'export-linux-swift-coverage.sh'
+    ].join('\n'),
+    coverageExport: [
+      'LLVM_PROFDATA_BIN',
+      'merge -sparse',
+      'LLVM_COV_BIN',
+      'export -format=lcov',
+      'extract-package-coverage-lines.sh',
+      'duplicate coverage-owner XCTest binary'
     ].join('\n'),
     rustBridge: [
       'gateway_probe',
@@ -197,6 +223,18 @@ test('package lifecycle finalizer regression suite cannot be removed', () => {
   assert.equal(verifyLinuxWorkflowWiring(input).passed, false);
 });
 
+test('hidden Linux gate evidence must upload fail-closed', () => {
+  for (const marker of [
+    'name: linux-pr-gate-evidence',
+    'include-hidden-files: true',
+    'if-no-files-found: error'
+  ]) {
+    const input = valid();
+    input.pr = input.pr.replace(marker, '');
+    assert.equal(verifyLinuxWorkflowWiring(input).passed, false, marker);
+  }
+});
+
 test('each Browser Computer Use package-family suite is independently required', () => {
   for (const marker of [
     'scripts/linux-port/browser-runtime-packaging.test.mjs',
@@ -298,5 +336,48 @@ test('removing PR or nightly matched performance wiring fails', () => {
     const input = valid();
     input[field] = input[field].replace(marker, '');
     assert.equal(verifyLinuxWorkflowWiring(input).passed, false, `${field}:${marker}`);
+  }
+});
+
+test('removing any Linux-only package coverage control fails closed', () => {
+  for (const marker of [
+    'OPENBURNBAR_ENABLE_COVERAGE=YES',
+    'linux-package-coverage.lcov',
+    'linux-package-coverage-lines.json',
+    'DIFF_COVERAGE_SCOPE: linux-packages',
+    'COVERAGE_THRESHOLD: 80',
+    'scripts/linux-port/export-linux-swift-coverage-self-test.sh',
+    'scripts/diff-coverage-self-test.sh',
+    'scripts/diff-coverage.sh origin/main',
+    'linux-package-diff-coverage.json'
+  ]) {
+    const input = valid();
+    input.pr = input.pr.replace(marker, '');
+    assert.equal(verifyLinuxWorkflowWiring(input).passed, false, marker);
+  }
+});
+
+test('removing any Linux LCOV generation stage fails closed', () => {
+  for (const marker of [
+    '--enable-code-coverage',
+    'LLVM_PROFILE_FILE',
+    'coverage_binaries+=("${xctest_binaries[0]}")',
+    'export-linux-swift-coverage.sh'
+  ]) {
+    const input = valid();
+    input.swiftTests = input.swiftTests.replace(marker, '');
+    assert.equal(verifyLinuxWorkflowWiring(input).passed, false, marker);
+  }
+  for (const marker of [
+    'LLVM_PROFDATA_BIN',
+    'merge -sparse',
+    'LLVM_COV_BIN',
+    'export -format=lcov',
+    'extract-package-coverage-lines.sh',
+    'duplicate coverage-owner XCTest binary'
+  ]) {
+    const input = valid();
+    input.coverageExport = input.coverageExport.replace(marker, '');
+    assert.equal(verifyLinuxWorkflowWiring(input).passed, false, marker);
   }
 });

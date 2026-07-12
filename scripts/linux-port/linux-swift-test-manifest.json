@@ -13,7 +13,8 @@
       "target": "OpenBurnBarLinuxCoreFoundationTests",
       "filter": "OpenBurnBarLinuxCoreFoundationTests",
       "minimumExecutedTests": 14,
-      "scratchPath": ".build-linux-swift-tests/core"
+      "scratchPath": ".build-linux-swift-tests/core",
+      "linuxCoverageOwner": false
     },
     {
       "id": "linux-security",
@@ -21,7 +22,8 @@
       "target": "OpenBurnBarLinuxSecurityTests",
       "filter": "OpenBurnBarLinuxSecurityTests",
       "minimumExecutedTests": 11,
-      "scratchPath": ".build-linux-swift-tests/core"
+      "scratchPath": ".build-linux-swift-tests/core",
+      "linuxCoverageOwner": false
     },
     {
       "id": "linux-data",
@@ -29,7 +31,8 @@
       "target": "OpenBurnBarDataTests",
       "filter": "OpenBurnBarDataTests.OpenBurnBarDataLinuxTests",
       "minimumExecutedTests": 6,
-      "scratchPath": ".build-linux-swift-tests/core"
+      "scratchPath": ".build-linux-swift-tests/core",
+      "linuxCoverageOwner": false
     },
     {
       "id": "portable-wrap-vectors",
@@ -37,7 +40,8 @@
       "target": "OpenBurnBarCoreTests",
       "filter": "OpenBurnBarCoreTests.LLMSafeWrapVectorTests",
       "minimumExecutedTests": 5,
-      "scratchPath": ".build-linux-swift-tests/core"
+      "scratchPath": ".build-linux-swift-tests/core",
+      "linuxCoverageOwner": false
     },
     {
       "id": "computer-use-linux",
@@ -45,7 +49,11 @@
       "target": "OpenBurnBarComputerUseCoreTests",
       "filter": "OpenBurnBarComputerUseCoreTests",
       "minimumExecutedTests": 8,
-      "scratchPath": ".build-linux-swift-tests/core"
+      "scratchPath": ".build-linux-swift-tests/core",
+      "linuxCoverageOwner": true,
+      "linuxCoverageFilters": [
+        "OpenBurnBarComputerUseCoreTests"
+      ]
     },
     {
       "id": "daemon-linux",
@@ -53,7 +61,80 @@
       "target": "OpenBurnBarDaemonLinuxGatewayTests",
       "filter": "OpenBurnBarDaemonLinuxGatewayTests",
       "minimumExecutedTests": 15,
-      "scratchPath": "OpenBurnBarDaemon/.build"
+      "scratchPath": "OpenBurnBarDaemon/.build",
+      "linuxCoverageOwner": true,
+      "linuxCoverageFilters": [
+        "OpenBurnBarDaemonLinuxGatewayTests.BurnBarDaemonLinuxAuthSocketTests",
+        "OpenBurnBarDaemonLinuxGatewayTests.BurnBarDaemonMembershipRPCTests",
+        "OpenBurnBarDaemonLinuxGatewayTests.BurnBarDaemonSocketOwnershipLinuxTests",
+        "OpenBurnBarDaemonLinuxGatewayTests.BurnBarLinuxOnboardingServiceLinuxTests",
+        "OpenBurnBarDaemonLinuxGatewayTests.BurnBarLinuxPeerManifestTests",
+        "OpenBurnBarDaemonLinuxGatewayTests.BurnBarRunServiceComputerUseHandshakeTests",
+        "OpenBurnBarDaemonLinuxGatewayTests.BurnBarRunServiceComputerUseRoutingTests",
+        "OpenBurnBarDaemonLinuxGatewayTests.BurnBarSubscriptionServiceLinuxTests",
+        "OpenBurnBarDaemonLinuxGatewayTests.ComputerUseAuthorizationRegistryTests",
+        "OpenBurnBarDaemonLinuxGatewayTests.ComputerUseCoordinatorRevocationLinuxTests",
+        "OpenBurnBarDaemonLinuxGatewayTests.ComputerUseLocalAuthGrantEnforcementTests",
+        "OpenBurnBarDaemonLinuxGatewayTests.ComputerUseServiceRunBindingTests",
+        "OpenBurnBarDaemonLinuxGatewayTests.ComputerUseSessionGrantBrokerTests",
+        "OpenBurnBarDaemonLinuxGatewayTests.ComputerUseSessionGrantRPCCompositionTests",
+        "OpenBurnBarDaemonLinuxGatewayTests.DaemonComputerUseApprovalAuthorityVerifierTests/testAcceptsExactFreshSignedPendingApprovalAndRejectsReplay",
+        "OpenBurnBarDaemonLinuxGatewayTests.DaemonComputerUseApprovalAuthorityVerifierTests/testCorruptPersistedCounterStoreFailsClosed",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxComputerUseInputAdapterTests",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxComputerUseOwnerAuthorizationCoordinatorTests",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxComputerUseServiceSystemInputTests",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testAccount",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testAppCheckTTLAboveThirtyMinutesFailsBeforeBind",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testApproval",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testBounded",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testCancel",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testCommitted",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testCredential",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testDaemon",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testExpired",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testExplicit",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testFailed",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testFirst",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testHTTP",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testHost",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testIdentity",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testInvalid",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testMalformed",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testPermanent",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testPost",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testProduction",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testRejected",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testRotation",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testSame",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testSecure",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testShipping",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testSignOut",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testStale",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testSuccessful",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testVerified",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxIrohControllerDirectoryClientTests",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxIrohControllerRuntimeTests",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxNativeSecretStoreWiringTests",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxOAuthLoopbackListenerTests",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxSwitcherAndPensieveTests",
+        "OpenBurnBarDaemonLinuxGatewayTests.MercuryLinuxMediaTests/testSessionPhaseTransitionsAndAckEmission",
+        "OpenBurnBarDaemonLinuxGatewayTests.MercuryLinuxMediaTests/testRouteEndTerminatesCapturePendingDecisionsAndExactRouteTransfers",
+        "OpenBurnBarDaemonLinuxGatewayTests.MercuryLinuxMediaTests/testCapturedFrameWithoutSealKeyFailsClosedAndDoesNotEgressPlaintext",
+        "OpenBurnBarDaemonLinuxGatewayTests.MercuryLinuxMediaTests/testCapturePipelineEndedTransitionsToCooldown",
+        "OpenBurnBarDaemonLinuxGatewayTests.MercuryLinuxMediaTests/testRPCDecodeAndDispatchForMediaMethods",
+        "OpenBurnBarDaemonLinuxGatewayTests.MercuryLinuxMediaTests/testCapabilityProbeReportsMediaBackendTruth",
+        "OpenBurnBarDaemonLinuxGatewayTests.MercuryLinuxMediaTests/testFileOfferAcceptDownloadsToCollisionSafePathAndAcknowledges",
+        "OpenBurnBarDaemonLinuxGatewayTests.MercuryLinuxMediaTests/testFileOfferDeclineSendsRejectedAckWithoutFetch",
+        "OpenBurnBarDaemonLinuxGatewayTests.MercuryLinuxMediaTests/testCollisionSafeDownloadNaming",
+        "OpenBurnBarDaemonLinuxGatewayTests.MercuryLinuxMediaTests/testFileTransferErrorTaxonomy",
+        "OpenBurnBarDaemonLinuxGatewayTests.MercuryLinuxMediaTests/testCapabilityModelRepresentsUnknownWhenMediaBackendUnavailable",
+        "OpenBurnBarDaemonLinuxGatewayTests.MercuryLinuxMediaTests/testMediaChannelWritesLengthPrefixedShellFrames",
+        "OpenBurnBarDaemonLinuxGatewayTests.MercuryLinuxMediaTests/testPortalAdapterStartsCaptureFromLivePortalGrant",
+        "OpenBurnBarDaemonLinuxGatewayTests.MercuryLinuxMediaTests/testRouteEndPreservesNoControlRouteWhileOutboundPublishIsCancelled",
+        "OpenBurnBarDaemonLinuxGatewayTests.MercuryLinuxMediaTests/testSessionForwardsCapturedFramesSealed",
+        "OpenBurnBarDaemonLinuxGatewayTests.BurnBarProjectCodeMemoryStoreLinuxInotifyTests",
+        "OpenBurnBarDaemonLinuxGatewayTests.OpenBurnBarHTTPGatewayServerLinuxTests"
+      ]
     }
   ]
 }

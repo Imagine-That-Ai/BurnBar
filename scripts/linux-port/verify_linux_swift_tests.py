@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import pty
@@ -29,6 +30,78 @@ FORBIDDEN_PLACEHOLDER_SOURCES = {
 }
 
 XCTEST_PASS_PATTERN = re.compile(r"Test Case '[^']+' passed \(([0-9.]+) seconds\)")
+
+EXPECTED_LINUX_SUITE_CONTRACTS = {
+    "core-foundation": {
+        "packagePath": "OpenBurnBarCore",
+        "target": "OpenBurnBarLinuxCoreFoundationTests",
+        "filter": "OpenBurnBarLinuxCoreFoundationTests",
+        "minimumExecutedTests": 14,
+        "scratchPath": ".build-linux-swift-tests/core",
+        "linuxCoverageOwner": False,
+    },
+    "linux-security": {
+        "packagePath": "OpenBurnBarCore",
+        "target": "OpenBurnBarLinuxSecurityTests",
+        "filter": "OpenBurnBarLinuxSecurityTests",
+        "minimumExecutedTests": 11,
+        "scratchPath": ".build-linux-swift-tests/core",
+        "linuxCoverageOwner": False,
+    },
+    "linux-data": {
+        "packagePath": "OpenBurnBarCore",
+        "target": "OpenBurnBarDataTests",
+        "filter": "OpenBurnBarDataTests.OpenBurnBarDataLinuxTests",
+        "minimumExecutedTests": 6,
+        "scratchPath": ".build-linux-swift-tests/core",
+        "linuxCoverageOwner": False,
+    },
+    "portable-wrap-vectors": {
+        "packagePath": "OpenBurnBarCore",
+        "target": "OpenBurnBarCoreTests",
+        "filter": "OpenBurnBarCoreTests.LLMSafeWrapVectorTests",
+        "minimumExecutedTests": 5,
+        "scratchPath": ".build-linux-swift-tests/core",
+        "linuxCoverageOwner": False,
+    },
+    "computer-use-linux": {
+        "packagePath": "OpenBurnBarCore",
+        "target": "OpenBurnBarComputerUseCoreTests",
+        "filter": "OpenBurnBarComputerUseCoreTests",
+        "minimumExecutedTests": 8,
+        "scratchPath": ".build-linux-swift-tests/core",
+        "linuxCoverageOwner": True,
+    },
+    "daemon-linux": {
+        "packagePath": "OpenBurnBarDaemon",
+        "target": "OpenBurnBarDaemonLinuxGatewayTests",
+        "filter": "OpenBurnBarDaemonLinuxGatewayTests",
+        "minimumExecutedTests": 15,
+        "scratchPath": "OpenBurnBarDaemon/.build",
+        "linuxCoverageOwner": True,
+    },
+}
+
+# These digests pin the exact stable coverage partitions outside the editable
+# manifest. Some otherwise-correct async tests do not terminate under LLVM
+# coverage, so changing a partition requires an explicit verifier review.
+EXPECTED_LINUX_COVERAGE_FILTER_DIGESTS = {
+    "computer-use-linux": "4c75886e91fd74a634120cb2c7a8364b5059c242937f736868453cff1b36ce6b",
+    "daemon-linux": "1857737cd37f83b8848c6bed72f9ab2325b796cbaf9ba4d2dc08f31273dd06df",
+}
+
+
+def coverage_filter_digest(filters: list[str]) -> str:
+    canonical = json.dumps(sorted(filters), ensure_ascii=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def overlapping_coverage_filters(filters: list[str]) -> tuple[str, str] | None:
+    for index, left in enumerate(filters):
+        for right in filters[index + 1 :]:
+            if left != right and (left.startswith(right) or right.startswith(left)):
+                return left, right
+    return None
 
 
 def load_manifest(root: Path) -> dict:
@@ -75,7 +148,16 @@ def validate_contract(root: Path, manifest: dict) -> dict:
         )
 
     seen_ids: set[str] = set()
+    coverage_packages: set[str] = set()
     total_minimum = 0
+    observed_ids = [suite.get("id") for suite in suites if isinstance(suite, dict)]
+    if set(observed_ids) != set(EXPECTED_LINUX_SUITE_CONTRACTS) or len(observed_ids) != len(
+        EXPECTED_LINUX_SUITE_CONTRACTS
+    ):
+        failures.append(
+            "Linux Swift suite identities do not match the pinned contract "
+            f"({sorted(str(value) for value in observed_ids)} != {sorted(EXPECTED_LINUX_SUITE_CONTRACTS)})"
+        )
     for suite in suites:
         missing = [
             key
@@ -89,6 +171,49 @@ def validate_contract(root: Path, manifest: dict) -> dict:
         if suite_id in seen_ids:
             failures.append(f"duplicate suite id: {suite_id}")
         seen_ids.add(suite_id)
+        expected_suite = EXPECTED_LINUX_SUITE_CONTRACTS.get(suite_id)
+        if expected_suite is None:
+            failures.append(f"suite {suite_id} is absent from the pinned suite contract")
+        else:
+            drift = {
+                key: (expected, suite.get(key))
+                for key, expected in expected_suite.items()
+                if suite.get(key) != expected
+            }
+            if drift:
+                failures.append(f"suite {suite_id} identity contract drifted: {drift}")
+        coverage_owner = suite.get("linuxCoverageOwner")
+        if not isinstance(coverage_owner, bool):
+            failures.append(f"suite {suite_id} must declare boolean linuxCoverageOwner")
+        elif coverage_owner:
+            coverage_packages.add(suite["packagePath"])
+            coverage_filters = suite.get("linuxCoverageFilters")
+            if (
+                not isinstance(coverage_filters, list)
+                or not coverage_filters
+                or any(not isinstance(item, str) or not item.strip() for item in coverage_filters)
+            ):
+                failures.append(f"coverage-owning suite {suite_id} must declare non-empty linuxCoverageFilters")
+            elif len(coverage_filters) != len(set(coverage_filters)):
+                failures.append(f"coverage-owning suite {suite_id} contains duplicate linuxCoverageFilters")
+            elif overlap := overlapping_coverage_filters(coverage_filters):
+                failures.append(
+                    f"coverage-owning suite {suite_id} contains overlapping linuxCoverageFilters: {overlap}"
+                )
+            if "minimumLinuxCoverageFilters" in suite:
+                failures.append(f"coverage-owning suite {suite_id} may not self-attest minimumLinuxCoverageFilters")
+            expected_filter_digest = EXPECTED_LINUX_COVERAGE_FILTER_DIGESTS.get(suite_id)
+            if expected_filter_digest is None:
+                failures.append(f"coverage-owning suite {suite_id} has no pinned coverage-filter digest")
+            elif (
+                isinstance(coverage_filters, list)
+                and coverage_filter_digest(coverage_filters) != expected_filter_digest
+            ):
+                failures.append(f"coverage-owning suite {suite_id} does not match its pinned coverage-filter set")
+        elif "linuxCoverageFilters" in suite:
+            failures.append(f"non-coverage suite {suite_id} may not declare linuxCoverageFilters")
+        elif "minimumLinuxCoverageFilters" in suite:
+            failures.append(f"non-coverage suite {suite_id} may not declare minimumLinuxCoverageFilters")
         minimum = suite["minimumExecutedTests"]
         if not isinstance(minimum, int) or minimum < 1:
             failures.append(f"suite {suite_id} must require at least one executed test")
@@ -112,6 +237,13 @@ def validate_contract(root: Path, manifest: dict) -> dict:
                 f"suite {suite_id} declares fewer test methods than its floor "
                 f"({declared_test_count(source_dir)} < {minimum})"
             )
+
+    expected_coverage_packages = {suite["packagePath"] for suite in suites if suite.get("packagePath")}
+    if coverage_packages != expected_coverage_packages:
+        failures.append(
+            "Linux coverage owners must include every package in the manifest "
+            f"({sorted(coverage_packages)} != {sorted(expected_coverage_packages)})"
+        )
 
     for exclusion in manifest.get("excludedSources", []):
         required = ("packagePath", "target", "file", "declaredTests", "reason")
