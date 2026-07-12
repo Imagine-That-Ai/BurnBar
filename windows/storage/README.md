@@ -64,7 +64,7 @@ dotnet test windows/storage/OpenBurnBar.Storage.Tests
 Runs today on the macOS authoring host: the **same** managed assembly ships on
 Windows; the native SQLCipher comes from the bundle per-RID (osx-arm64 here,
 win-x64/win-arm64 on Windows CI). The read test opens the committed
-`openburnbar-db-compat-v54.sqlcipher` and asserts:
+`openburnbar-db-compat-v55.sqlcipher` and asserts:
 
 - 220 `sqlite_master` objects decrypt,
 - the schema hash SHA-256 matches `openburnbar-db-compat-vector.json`,
@@ -74,8 +74,8 @@ win-x64/win-arm64 on Windows CI). The read test opens the committed
   that byte-compat is anchored to the pinned parameters, not the build.
 
 The write test then writes a `token_usage` row in a transaction, reopens, reads it
-back field-for-field, and asserts the schema hash stays `57bb8d6b…` (no accidental
-migration), the migration marker stays `v54_provider_quota_snapshots` (count 55), and
+back field-for-field, and asserts the schema hash stays `449bb66d…` (no accidental
+migration), the migration marker stays `v55_search_chunks_fts_rowid` (count 56), and
 `PRAGMA user_version` stays 0 — proving a Windows write stays reopenable and
 migratable on Mac. Negative guards cover a wrong key (must fail to open) and the
 production natural-key `ON CONFLICT` upsert (must be idempotent).

@@ -133,7 +133,7 @@ public static class SqlCipherConnection
     /// <summary>
     /// The last applied migration identifier recorded in GRDB's
     /// <c>grdb_migrations</c> table — the "migration version" marker (e.g.
-    /// <c>v54_provider_quota_snapshots</c>). GRDB tracks applied migrations in this
+    /// <c>v55_search_chunks_fts_rowid</c>). GRDB tracks applied migrations in this
     /// table rather than <c>PRAGMA user_version</c>, so this — together with
     /// <see cref="ReadUserVersion"/> — is what must survive a Windows write for the
     /// file to stay reopenable + migratable on Mac.
