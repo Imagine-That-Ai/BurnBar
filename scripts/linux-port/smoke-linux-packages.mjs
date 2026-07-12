@@ -3,6 +3,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { readJson, releaseEvidenceDir, repoRoot, runStep, writeJson } from './lib/linux-release-common.mjs';
 import { findAppImageFilesystemOffset } from './lib/appimage-filesystem.mjs';
+import {
+  linuxAppImagePeerExecutableRelativePath,
+  linuxAppImagePeerManifestName,
+  linuxAppImagePeerSignatureName,
+  verifyLinuxAppImagePeerManifest
+} from './lib/linux-appimage-peer-manifest.mjs';
 
 const outDir = path.resolve(process.env.OPENBURNBAR_LINUX_RELEASE_OUT ?? releaseEvidenceDir);
 const shardMode = process.argv.includes('--architecture-shard');
@@ -90,6 +96,12 @@ for (const artifact of closure.artifacts ?? []) {
       'usr/lib/openburnbar/native/libsqlcipher.so.0',
       'deb package missing SQLCipher runtime at /usr/lib/openburnbar/native'
     );
+    assertContains(
+      'assert deb contains iroh runtime under usr/lib/openburnbar/native',
+      contents.stdout,
+      'usr/lib/openburnbar/native/libopenburnbar_iroh.so',
+      'deb package missing iroh runtime at /usr/lib/openburnbar/native'
+    );
     // Prefer sudo when non-root (guest packaging smoke).
     const dpkgInstall = runStep('sudo', ['dpkg', '-i', full]);
     if (dpkgInstall.exitCode !== 0) {
@@ -136,6 +148,12 @@ for (const artifact of closure.artifacts ?? []) {
       listing.stdout,
       '/usr/lib/openburnbar/native/libsqlcipher.so.0',
       'rpm package missing SQLCipher runtime at /usr/lib/openburnbar/native'
+    );
+    assertContains(
+      'assert rpm contains iroh runtime under /usr/lib/openburnbar/native',
+      listing.stdout,
+      '/usr/lib/openburnbar/native/libopenburnbar_iroh.so',
+      'rpm package missing iroh runtime at /usr/lib/openburnbar/native'
     );
     const rpmInstall = runStep('sudo', ['rpm', '-i', '--nodeps', '--force', full]);
     if (rpmInstall.exitCode !== 0) {
@@ -186,7 +204,10 @@ for (const artifact of closure.artifacts ?? []) {
         'usr/bin/openburnbar-daemon',
         'usr/libexec/openburnbar-daemon-launch',
         'usr/lib/openburnbar/swift',
-        'usr/lib/openburnbar/native/libsqlcipher.so.0'
+        'usr/lib/openburnbar/native/libsqlcipher.so.0',
+        'usr/lib/openburnbar/native/libopenburnbar_iroh.so',
+        `usr/share/openburnbar/${linuxAppImagePeerManifestName}`,
+        `usr/share/openburnbar/${linuxAppImagePeerSignatureName}`
       ]) {
         const present = fs.existsSync(path.join(appDir, requiredPath));
         steps.push({
@@ -195,6 +216,29 @@ for (const artifact of closure.artifacts ?? []) {
           exitCode: present ? 0 : 1,
           stdout: present ? `found ${requiredPath}` : '',
           stderr: present ? '' : `AppImage missing ${requiredPath}`
+        });
+      }
+      try {
+        const manifest = verifyLinuxAppImagePeerManifest({
+          manifestBytes: fs.readFileSync(path.join(appDir, `usr/share/openburnbar/${linuxAppImagePeerManifestName}`)),
+          signature: fs.readFileSync(path.join(appDir, `usr/share/openburnbar/${linuxAppImagePeerSignatureName}`)),
+          executable: path.join(appDir, linuxAppImagePeerExecutableRelativePath),
+          publicKeyPem: fs.readFileSync(path.join(repoRoot, 'packaging/linux/openburnbar-linux-ed25519.pub.pem'))
+        });
+        steps.push({
+          command: `verify signed AppImage peer manifest ${artifact.architecture}`,
+          cwd: '.',
+          exitCode: 0,
+          stdout: `verified ${manifest.executableRelativePath} ${manifest.executableSHA256}`,
+          stderr: ''
+        });
+      } catch (error) {
+        steps.push({
+          command: `verify signed AppImage peer manifest ${artifact.architecture}`,
+          cwd: '.',
+          exitCode: 1,
+          stdout: '',
+          stderr: error.message
         });
       }
       steps.push(runStep(path.join(appDir, 'usr/libexec/openburnbar-daemon-launch'), ['--help'], {

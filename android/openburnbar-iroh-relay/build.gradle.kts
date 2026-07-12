@@ -1,3 +1,5 @@
+import org.gradle.testing.jacoco.tasks.JacocoReport
+
 // Android-library mirror of the Swift OpenBurnBarIrohRelay package.
 //
 // Same surface, same wire format: HermesRealtimeRelayFrame JSON envelope,
@@ -17,6 +19,7 @@ plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.plugin.serialization")
     id("org.jlleitschuh.gradle.ktlint")
+    jacoco
 }
 
 android {
@@ -27,6 +30,12 @@ android {
         minSdk = 26
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
+    }
+
+    buildTypes {
+        debug {
+            enableUnitTestCoverage = true
+        }
     }
 
     compileOptions {
@@ -45,6 +54,52 @@ android {
     // The UniFFI-generated Kotlin bindings land under the standard
     // src/main/java/uniffi/openburnbar_iroh/ path from
     // scripts/build-iroh-android-aar.sh.
+}
+
+val debugUnitTestCoverageData =
+    layout.buildDirectory.file("outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec")
+val legacyDebugUnitTestCoverageData =
+    layout.buildDirectory.file("jacoco/testDebugUnitTest.exec")
+val jacocoClassExcludes =
+    listOf(
+        "**/R.class",
+        "**/R\$*.class",
+        "**/BuildConfig.*",
+        "**/Manifest*.*",
+        "**/*Test*.*",
+        "**/*\$Lambda\$*.*"
+    )
+val debugCoverageClassDirectories =
+    files(
+        fileTree(layout.buildDirectory.dir("intermediates/built_in_kotlinc/debug/compileDebugKotlin/classes")) {
+            exclude(jacocoClassExcludes)
+        },
+        fileTree(layout.buildDirectory.dir("intermediates/javac/debug/compileDebugJavaWithJavac/classes")) {
+            exclude(jacocoClassExcludes)
+        }
+    )
+val debugCoverageSourceDirectories = files("src/main/java", "src/main/kotlin")
+
+tasks.register<JacocoReport>("jacocoTestReport") {
+    dependsOn("testDebugUnitTest")
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+        xml.outputLocation.set(
+            layout.buildDirectory.file("reports/jacoco/testDebugUnitTest/jacocoTestReport.xml")
+        )
+    }
+    classDirectories.setFrom(debugCoverageClassDirectories)
+    sourceDirectories.setFrom(debugCoverageSourceDirectories)
+    executionData.setFrom(debugUnitTestCoverageData)
+}
+
+tasks.matching { it.name == "testDebugUnitTest" }.configureEach {
+    doFirst {
+        debugUnitTestCoverageData.get().asFile.delete()
+        legacyDebugUnitTestCoverageData.get().asFile.delete()
+    }
+    finalizedBy("jacocoTestReport")
 }
 
 dependencies {

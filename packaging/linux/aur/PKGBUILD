@@ -6,7 +6,7 @@ pkgdesc="Local-first AI agent cost and control dashboard"
 arch=("x86_64" "aarch64")
 url="https://github.com/Imagine-That-Ai/BurnBar"
 license=("AGPL-3.0-only")
-depends=("webkit2gtk" "gtk3" "libayatana-appindicator" "libsecret" "sqlcipher" "swift-language")
+depends=("webkit2gtk" "gtk3" "libayatana-appindicator" "libsecret" "nodejs" "npm" "polkit" "sqlcipher" "swift-language")
 optdepends=("kwallet: KDE Wallet credential backend")
 source=(
   "OpenBurnBar_${pkgver}_${CARCH}.AppImage::https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v${pkgver}/OpenBurnBar_${pkgver}_${CARCH}.AppImage"
@@ -15,6 +15,10 @@ source=(
   "openburnbar-safe-mode.desktop"
   "openburnbar-daemon.service"
   "openburnbar-daemon-launch"
+  "com.openburnbar.computer-use.policy::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/v${pkgver}/packaging/linux/com.openburnbar.computer-use.policy"
+  "openburnbar-playwright-bridge.js::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/v${pkgver}/OpenBurnBarDaemon/Resources/PlaywrightBridge/openburnbar-playwright-bridge.js"
+  "openburnbar-browser-runtime-probe::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/v${pkgver}/packaging/linux/openburnbar-browser-runtime-probe"
+  "browser-runtime-requirements.json::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/v${pkgver}/packaging/linux/browser-runtime-requirements.json"
 )
 sha256sums=(
   "REPLACE_WITH_APPIMAGE_SHA256"
@@ -23,13 +27,31 @@ sha256sums=(
   "REPLACE_WITH_SAFE_MODE_DESKTOP_SHA256"
   "REPLACE_WITH_SERVICE_SHA256"
   "REPLACE_WITH_LAUNCH_SHA256"
+  "REPLACE_WITH_COMPUTER_USE_POLKIT_POLICY_SHA256"
+  "REPLACE_WITH_PLAYWRIGHT_BRIDGE_SHA256"
+  "REPLACE_WITH_BROWSER_RUNTIME_PROBE_SHA256"
+  "REPLACE_WITH_BROWSER_RUNTIME_REQUIREMENTS_SHA256"
 )
 
 package() {
+  chmod 755 "${srcdir}/OpenBurnBar_${pkgver}_${CARCH}.AppImage"
+  rm -rf "${srcdir}/squashfs-root"
+  (
+    cd "${srcdir}"
+    "./OpenBurnBar_${pkgver}_${CARCH}.AppImage" \
+      --appimage-extract usr/lib/openburnbar/native/libopenburnbar_iroh.so >/dev/null
+  )
+  test -f "${srcdir}/squashfs-root/usr/lib/openburnbar/native/libopenburnbar_iroh.so"
   install -Dm755 "${srcdir}/OpenBurnBar_${pkgver}_${CARCH}.AppImage" "${pkgdir}/usr/bin/openburnbar-linux-desktop"
   install -Dm755 "${srcdir}/openburnbar-daemon-${pkgver}-${CARCH}" "${pkgdir}/usr/bin/openburnbar-daemon"
+  install -Dm644 "${srcdir}/squashfs-root/usr/lib/openburnbar/native/libopenburnbar_iroh.so" "${pkgdir}/usr/lib/openburnbar/native/libopenburnbar_iroh.so"
   install -Dm755 "${srcdir}/openburnbar-daemon-launch" "${pkgdir}/usr/libexec/openburnbar-daemon-launch"
   install -Dm644 "${srcdir}/openburnbar.desktop" "${pkgdir}/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop"
   install -Dm644 "${srcdir}/openburnbar-safe-mode.desktop" "${pkgdir}/usr/share/applications/dev.openburnbar.OpenBurnBar.SafeMode.desktop"
   install -Dm644 "${srcdir}/openburnbar-daemon.service" "${pkgdir}/usr/lib/systemd/user/openburnbar-daemon.service"
+  install -Dm644 "${srcdir}/com.openburnbar.computer-use.policy" "${pkgdir}/usr/share/polkit-1/actions/com.openburnbar.computer-use.policy"
+  install -Dm644 "${srcdir}/openburnbar-playwright-bridge.js" "${pkgdir}/usr/lib/openburnbar/playwright/openburnbar-playwright-bridge.js"
+  install -Dm755 "${srcdir}/openburnbar-browser-runtime-probe" "${pkgdir}/usr/lib/openburnbar/playwright/openburnbar-browser-runtime-probe"
+  install -Dm644 "${srcdir}/browser-runtime-requirements.json" "${pkgdir}/usr/lib/openburnbar/playwright/browser-runtime-requirements.json"
+  rm -rf "${srcdir}/squashfs-root"
 }

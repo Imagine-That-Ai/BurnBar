@@ -59,6 +59,13 @@ public protocol DaemonPhoneKeyPinBacking: Sendable {
     func delete(deviceId: String)
 }
 
+/// Backings that can persist a set of aliases with one atomic commit. Linux's
+/// file store and the in-memory test store implement this so an I/O failure can
+/// never expose only a subset of a newly paired phone's identities.
+public protocol DaemonPhoneKeyAtomicAliasPinBacking: DaemonPhoneKeyPinBacking {
+    @discardableResult func saveAliasesAtomically(_ records: [DaemonPhoneKeyPinRecord]) -> Int32
+}
+
 public struct DaemonPhoneKeyPinStore: Sendable {
     public enum PinResult: Sendable {
         case pinned(PhoneControlVerifyingKey)
@@ -118,6 +125,61 @@ public struct DaemonPhoneKeyPinStore: Sendable {
         return .pinned(key)
     }
 
+    /// Pins every identity alias as one fail-closed provisioning operation.
+    /// Existing aliases are preflighted before the first write. Backings that
+    /// cannot commit every missing alias atomically reject multi-alias writes
+    /// before mutating trust.
+    @discardableResult
+    public func pinAliases(deviceIds: [String], key: PhoneControlVerifyingKey) -> PinResult {
+        let normalizedDeviceIds = deviceIds
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .reduce(into: [String]()) { identifiers, candidate in
+                if identifiers.contains(candidate) == false { identifiers.append(candidate) }
+            }
+        guard normalizedDeviceIds.isEmpty == false,
+              normalizedDeviceIds.allSatisfy({ $0.isEmpty == false }) else {
+            return .malformed
+        }
+
+        var absentDeviceIds: [String] = []
+        for deviceId in normalizedDeviceIds {
+            switch pinnedKey(deviceId: deviceId) {
+            case .pinned(let existing):
+                guard Self.keysEqual(existing, key) else { return .conflict }
+            case .absent:
+                absentDeviceIds.append(deviceId)
+            case .malformed:
+                return .malformed
+            case .conflict:
+                return .conflict
+            case .storeError(let status):
+                return .storeError(status)
+            }
+        }
+        guard absentDeviceIds.isEmpty == false else { return .pinned(key) }
+
+        let records = absentDeviceIds.map {
+            DaemonPhoneKeyPinRecord(
+                deviceId: $0,
+                publicKeyBase64: key.publicKeyRepresentation.base64EncodedString(),
+                keyKind: key.kind
+            )
+        }
+        if let atomicBacking = backing as? DaemonPhoneKeyAtomicAliasPinBacking {
+            let status = atomicBacking.saveAliasesAtomically(records)
+            guard status != daemonErrSecDuplicateItemCompat else {
+                return normalizedDeviceIds.allSatisfy {
+                    guard case .pinned(let storedKey) = pinnedKey(deviceId: $0) else { return false }
+                    return Self.keysEqual(storedKey, key)
+                } ? .pinned(key) : .conflict
+            }
+            return status == daemonErrSecSuccessCompat ? .pinned(key) : .storeError(status)
+        }
+
+        guard records.count == 1 else { return .storeError(daemonErrSecParamCompat) }
+        return pin(deviceId: records[0].deviceId, key: key)
+    }
+
     public func pinnedKey(deviceId: String) -> PinResult {
         let normalizedDeviceId = deviceId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedDeviceId.isEmpty else { return .malformed }
@@ -145,59 +207,210 @@ public struct DaemonPhoneKeyPinStore: Sendable {
     private static func keysEqual(_ lhs: PhoneControlVerifyingKey, _ rhs: PhoneControlVerifyingKey) -> Bool {
         lhs.kind == rhs.kind && lhs.publicKeyRepresentation == rhs.publicKeyRepresentation
     }
+
 }
 
 #if canImport(Security)
-public struct DaemonPhoneKeyKeychainPinBacking: DaemonPhoneKeyPinBacking {
-    public static let service = "com.openburnbar.daemon.phone-control-pin"
+protocol DaemonPhoneKeyKeychainDataStore: Sendable {
+    func load(service: String, account: String) -> (status: Int32, data: Data?)
+    func add(service: String, account: String, data: Data) -> Int32
+    func update(service: String, account: String, data: Data) -> Int32
+    func delete(service: String, account: String) -> Int32
+}
 
-    public init() {}
-
-    public func load(deviceId: String) -> DaemonPhoneKeyPinLoad {
+private struct DaemonPhoneKeySecurityDataStore: DaemonPhoneKeyKeychainDataStore {
+    func load(service: String, account: String) -> (status: Int32, data: Data?) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: Self.service,
-            kSecAttrAccount as String: deviceId,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
-        switch status {
+        return (status, item as? Data)
+    }
+
+    func add(service: String, account: String, data: Data) -> Int32 {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        ]
+        return SecItemAdd(query as CFDictionary, nil)
+    }
+
+    func update(service: String, account: String, data: Data) -> Int32 {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+        return SecItemUpdate(
+            query as CFDictionary,
+            [kSecValueData as String: data] as CFDictionary
+        )
+    }
+
+    func delete(service: String, account: String) -> Int32 {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+        return SecItemDelete(query as CFDictionary)
+    }
+}
+
+public struct DaemonPhoneKeyKeychainPinBacking: DaemonPhoneKeyAtomicAliasPinBacking {
+    public static let service = "com.openburnbar.daemon.phone-control-pin"
+    private static let aliasStoreAccount = "phone-control-alias-store-v1"
+    private static let mutationState = Locked(())
+
+    private struct AliasStore: Codable {
+        static let currentVersion = 1
+
+        let version: Int
+        var records: [String: DaemonPhoneKeyPinRecord]
+    }
+
+    private enum AliasStoreLoad {
+        case found(AliasStore)
+        case absent
+        case unreadable(Int32)
+    }
+
+    private let serviceName: String
+    private let dataStore: any DaemonPhoneKeyKeychainDataStore
+
+    public init() {
+        serviceName = Self.service
+        dataStore = DaemonPhoneKeySecurityDataStore()
+    }
+
+    init(serviceName: String, dataStore: any DaemonPhoneKeyKeychainDataStore) {
+        self.serviceName = serviceName
+        self.dataStore = dataStore
+    }
+
+    public func load(deviceId: String) -> DaemonPhoneKeyPinLoad {
+        switch loadAliasStore() {
+        case .found(let aliasStore):
+            if let record = aliasStore.records[deviceId] { return .found(record) }
+        case .absent:
+            break
+        case .unreadable(let status):
+            return .unreadable(status)
+        }
+        return loadLegacyRecord(deviceId: deviceId)
+    }
+
+    @discardableResult
+    public func save(_ record: DaemonPhoneKeyPinRecord) -> Int32 {
+        saveAliasesAtomically([record])
+    }
+
+    @discardableResult
+    public func saveAliasesAtomically(_ records: [DaemonPhoneKeyPinRecord]) -> Int32 {
+        Self.mutationState.withLock { _ in
+            let identifiers = records.map(\.deviceId)
+            guard records.isEmpty == false,
+                  Set(identifiers).count == identifiers.count else {
+                return errSecParam
+            }
+
+            for identifier in identifiers {
+                switch loadLegacyRecord(deviceId: identifier) {
+                case .found:
+                    return errSecDuplicateItem
+                case .absent:
+                    break
+                case .unreadable(let status):
+                    return status
+                }
+            }
+
+            let existing: AliasStore?
+            switch loadAliasStore() {
+            case .found(let aliasStore):
+                existing = aliasStore
+            case .absent:
+                existing = nil
+            case .unreadable(let status):
+                return status
+            }
+
+            var updated = existing ?? AliasStore(version: AliasStore.currentVersion, records: [:])
+            guard records.allSatisfy({ updated.records[$0.deviceId] == nil }) else {
+                return errSecDuplicateItem
+            }
+            records.forEach { updated.records[$0.deviceId] = $0 }
+            guard let data = try? JSONEncoder().encode(updated) else { return errSecParam }
+
+            if existing == nil {
+                return dataStore.add(
+                    service: serviceName,
+                    account: Self.aliasStoreAccount,
+                    data: data
+                )
+            }
+            return dataStore.update(
+                service: serviceName,
+                account: Self.aliasStoreAccount,
+                data: data
+            )
+        }
+    }
+
+    public func delete(deviceId: String) {
+        Self.mutationState.withLock { _ in
+            if case .found(var aliasStore) = loadAliasStore(),
+               aliasStore.records.removeValue(forKey: deviceId) != nil,
+               let data = try? JSONEncoder().encode(aliasStore) {
+                _ = dataStore.update(
+                    service: serviceName,
+                    account: Self.aliasStoreAccount,
+                    data: data
+                )
+            }
+            _ = dataStore.delete(service: serviceName, account: deviceId)
+        }
+    }
+
+    private func loadAliasStore() -> AliasStoreLoad {
+        let result = dataStore.load(service: serviceName, account: Self.aliasStoreAccount)
+        switch result.status {
         case errSecItemNotFound:
             return .absent
         case errSecSuccess:
-            guard let data = item as? Data,
+            guard let data = result.data,
+                  let aliasStore = try? JSONDecoder().decode(AliasStore.self, from: data),
+                  aliasStore.version == AliasStore.currentVersion else {
+                return .unreadable(errSecDecode)
+            }
+            return .found(aliasStore)
+        default:
+            return .unreadable(result.status)
+        }
+    }
+
+    private func loadLegacyRecord(deviceId: String) -> DaemonPhoneKeyPinLoad {
+        let result = dataStore.load(service: serviceName, account: deviceId)
+        switch result.status {
+        case errSecItemNotFound:
+            return .absent
+        case errSecSuccess:
+            guard let data = result.data,
                   let record = try? JSONDecoder().decode(DaemonPhoneKeyPinRecord.self, from: data) else {
                 return .unreadable(errSecDecode)
             }
             return .found(record)
         default:
-            return .unreadable(status)
+            return .unreadable(result.status)
         }
-    }
-
-    @discardableResult
-    public func save(_ record: DaemonPhoneKeyPinRecord) -> Int32 {
-        guard let data = try? JSONEncoder().encode(record) else { return errSecParam }
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: Self.service,
-            kSecAttrAccount as String: record.deviceId
-        ]
-        var create = query
-        create[kSecValueData as String] = data
-        create[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        return SecItemAdd(create as CFDictionary, nil)
-    }
-
-    public func delete(deviceId: String) {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: Self.service,
-            kSecAttrAccount as String: deviceId
-        ]
-        SecItemDelete(query as CFDictionary)
     }
 }
 
@@ -207,7 +420,7 @@ extension DaemonPhoneKeyPinStore {
     }
 }
 #elseif os(Linux)
-public final class DaemonPhoneKeyFilePinBacking: DaemonPhoneKeyPinBacking, Sendable {
+public final class DaemonPhoneKeyFilePinBacking: DaemonPhoneKeyAtomicAliasPinBacking, Sendable {
     public static let relativeStorePath = "openburnbar/daemon-phone-control-pins.json"
 
     private let fileURL: URL
@@ -247,13 +460,20 @@ public final class DaemonPhoneKeyFilePinBacking: DaemonPhoneKeyPinBacking, Senda
 
     @discardableResult
     public func save(_ record: DaemonPhoneKeyPinRecord) -> Int32 {
+        saveAliasesAtomically([record])
+    }
+
+    @discardableResult
+    public func saveAliasesAtomically(_ newRecords: [DaemonPhoneKeyPinRecord]) -> Int32 {
         state.withLock { _ in
             do {
                 var records = try readStore()
-                guard records[record.deviceId] == nil else {
+                guard newRecords.allSatisfy({ records[$0.deviceId] == nil }) else {
                     return daemonErrSecDuplicateItemCompat
                 }
-                records[record.deviceId] = record
+                for record in newRecords {
+                    records[record.deviceId] = record
+                }
                 try writeStore(records)
                 return daemonErrSecSuccessCompat
             } catch let error as FileStoreError {
@@ -349,7 +569,7 @@ extension DaemonPhoneKeyPinStore {
 }
 #endif
 
-public final class DaemonPhoneKeyInMemoryPinBacking: DaemonPhoneKeyPinBacking, Sendable {
+public final class DaemonPhoneKeyInMemoryPinBacking: DaemonPhoneKeyAtomicAliasPinBacking, Sendable {
     private struct State {
         var store: [String: DaemonPhoneKeyPinRecord] = [:]
         var forcedReadError: Int32?
@@ -378,10 +598,19 @@ public final class DaemonPhoneKeyInMemoryPinBacking: DaemonPhoneKeyPinBacking, S
 
     @discardableResult
     public func save(_ record: DaemonPhoneKeyPinRecord) -> Int32 {
+        saveAliasesAtomically([record])
+    }
+
+    @discardableResult
+    public func saveAliasesAtomically(_ records: [DaemonPhoneKeyPinRecord]) -> Int32 {
         state.withLock { state in
             if let forcedWriteError = state.forcedWriteError { return forcedWriteError }
-            guard state.store[record.deviceId] == nil else { return daemonErrSecDuplicateItemCompat }
-            state.store[record.deviceId] = record
+            guard records.allSatisfy({ state.store[$0.deviceId] == nil }) else {
+                return daemonErrSecDuplicateItemCompat
+            }
+            for record in records {
+                state.store[record.deviceId] = record
+            }
             return daemonErrSecSuccessCompat
         }
     }

@@ -15,6 +15,95 @@ export const manifestPath = path.join(repoRoot, 'packaging/linux/release-manifes
 export const linuxReleaseWorkflowIdentity = 'https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-release.yml';
 
 const linuxReleaseTagPattern = /^linux-v([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/u;
+const runStepBareCommands = new Set([
+  'bash',
+  'cargo',
+  'cosign',
+  'dpkg',
+  'dpkg-deb',
+  'git',
+  'node',
+  'npm',
+  'python3',
+  'rpm',
+  'sudo',
+  'swift',
+  'unsquashfs'
+]);
+const absoluteRunStepCommands = new Set(['/usr/libexec/openburnbar-daemon-launch']);
+const runStepBashInlineScripts = new Set([
+  'command -v secret-tool || true',
+  'command -v kwallet-query || true'
+]);
+const runStepSudoCommands = new Set(['dpkg', 'rpm']);
+
+function isInside(parent, candidate) {
+  const relativePath = path.relative(parent, candidate);
+  return relativePath === '' || (!relativePath.startsWith('..') && !path.isAbsolute(relativePath));
+}
+
+function validateRunStepToken(value, label) {
+  if (typeof value !== 'string' || value.length === 0 || value.includes('\0')) {
+    throw new Error(`Invalid ${label} for Linux release step`);
+  }
+  return value;
+}
+
+function validateRunStepCommand(command) {
+  const value = validateRunStepToken(command, 'command');
+  if (runStepBareCommands.has(value)) return value;
+  if (!path.isAbsolute(value)) throw new Error(`Linux release step command is not allowlisted: ${value}`);
+  const resolved = path.resolve(value);
+  if (absoluteRunStepCommands.has(resolved) || isInside(repoRoot, resolved)) return resolved;
+  throw new Error(`Linux release step command is outside the trusted command roots: ${value}`);
+}
+
+function validateRunStepArgs(args) {
+  if (!Array.isArray(args)) throw new Error('Linux release step args must be an array');
+  return args.map((arg, index) => {
+    const value = validateRunStepToken(String(arg), `arg ${index}`);
+    if (value.length > 8192) throw new Error(`Linux release step arg ${index} is too long`);
+    return value;
+  });
+}
+
+function validateRunStepCommandArgs(command, args) {
+  if (command !== 'bash') return args;
+  const [flag, inlineScript, ...rest] = args;
+  if (flag === '-c' || flag === '-lc') {
+    if (rest.length > 0 || !runStepBashInlineScripts.has(inlineScript)) {
+      throw new Error('Linux release step bash inline script is not allowlisted');
+    }
+  }
+  return args;
+}
+
+function validateRunStepSudoArgs(command, args) {
+  if (command !== 'sudo') return args;
+  if (!runStepSudoCommands.has(args[0])) {
+    throw new Error(`Linux release step sudo command is not allowlisted: ${args[0] ?? '<missing>'}`);
+  }
+  return args;
+}
+
+function validateRunStepCwd(cwd) {
+  const resolved = path.resolve(cwd ?? repoRoot);
+  if (!isInside(repoRoot, resolved)) throw new Error(`Linux release step cwd is outside the repo: ${resolved}`);
+  return resolved;
+}
+
+function validateRunStepEnv(env) {
+  const source = env ?? process.env;
+  const out = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(key)) throw new Error(`Invalid Linux release env key: ${key}`);
+    if (value === undefined) continue;
+    const stringValue = String(value);
+    if (stringValue.includes('\0')) throw new Error(`Invalid Linux release env value for ${key}`);
+    out[key] = stringValue;
+  }
+  return out;
+}
 
 export function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -63,15 +152,22 @@ export function expectedLinuxReleaseIdentity(ref) {
 }
 
 export function runStep(command, args, options = {}) {
-  const result = spawnSync(command, args, {
-    cwd: options.cwd ?? repoRoot,
-    env: options.env ?? process.env,
+  const safeCommand = validateRunStepCommand(command);
+  const safeArgs = validateRunStepSudoArgs(
+    safeCommand,
+    validateRunStepCommandArgs(safeCommand, validateRunStepArgs(args))
+  );
+  const safeCwd = validateRunStepCwd(options.cwd);
+  const safeEnv = validateRunStepEnv(options.env);
+  const result = spawnSync(safeCommand, safeArgs, {
+    cwd: safeCwd,
+    env: safeEnv,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024
   });
   return {
-    command: [command, ...args].join(' '),
-    cwd: path.relative(repoRoot, options.cwd ?? repoRoot) || '.',
+    command: [safeCommand, ...safeArgs].join(' '),
+    cwd: path.relative(repoRoot, safeCwd) || '.',
     exitCode: result.status ?? 1,
     stdout: result.stdout ?? '',
     stderr: result.stderr ?? ''

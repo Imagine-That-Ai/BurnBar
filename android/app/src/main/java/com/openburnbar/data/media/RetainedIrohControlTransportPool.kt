@@ -1,6 +1,7 @@
 package com.openburnbar.data.media
 
 import com.openburnbar.irohrelay.IrohDialTarget
+import com.openburnbar.irohrelay.IrohEndpointIdentity
 import com.openburnbar.irohrelay.IrohRelayStream
 import com.openburnbar.irohrelay.IrohRelayTransport
 import kotlinx.coroutines.sync.Mutex
@@ -19,9 +20,10 @@ internal class RetainedIrohControlTransportPool(
     private var transport: IrohRelayTransport? = null
     private var relayURL: String? = null
 
-    suspend fun dial(target: IrohDialTarget, timeoutMillis: Long): IrohRelayStream {
+    suspend fun dial(target: IrohDialTarget, timeoutMillis: Long, beforeConnect: suspend (IrohEndpointIdentity) -> Unit = {}): IrohRelayStream {
         val retained = transportFor(target.relayURL)
-        return retained.connect(target, timeoutMillis)
+        beforeConnect(retained.identity)
+        return retained.transport.connect(target, timeoutMillis)
     }
 
     suspend fun shutdown() {
@@ -35,21 +37,25 @@ internal class RetainedIrohControlTransportPool(
         stale?.shutdown()
     }
 
-    private suspend fun transportFor(rawRelayURL: String?): IrohRelayTransport {
+    private suspend fun transportFor(rawRelayURL: String?): StartedTransport {
         val normalizedRelayURL = rawRelayURL?.trim()?.takeIf { it.isNotEmpty() }
         return lock.withLock {
             val current = transport
             if (current != null && relayURL == normalizedRelayURL) {
-                current.start()
-                return@withLock current
+                return@withLock StartedTransport(current, current.start())
             }
 
             current?.runCatching { shutdown() }
             val fresh = transportFactory(normalizedRelayURL)
-            fresh.start()
+            val identity = fresh.start()
             transport = fresh
             relayURL = normalizedRelayURL
-            fresh
+            StartedTransport(fresh, identity)
         }
     }
+
+    private data class StartedTransport(
+        val transport: IrohRelayTransport,
+        val identity: IrohEndpointIdentity,
+    )
 }

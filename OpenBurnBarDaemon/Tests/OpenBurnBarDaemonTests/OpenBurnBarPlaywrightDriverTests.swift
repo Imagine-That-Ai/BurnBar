@@ -5,6 +5,36 @@ import OpenBurnBarCore
 import XCTest
 
 final class OpenBurnBarPlaywrightDriverTests: XCTestCase {
+    func testPackagedDriverUsesAllowlistedChildEnvironment() async {
+        let driver = OpenBurnBarPlaywrightDriver(
+            configuration: .init(
+                nodeExecutablePath: "/usr/bin/node",
+                bridgeScriptPath: URL(fileURLWithPath: "/usr/lib/openburnbar/playwright/bridge.js"),
+                processEnvironment: [
+                    "OPENBURNBAR_PACKAGED_PLAYWRIGHT_RUNTIME": "1",
+                    "HOME": "/home/user",
+                    "DISPLAY": ":1",
+                    "LD_LIBRARY_PATH": "/usr/lib/openburnbar/swift",
+                    "NODE_OPTIONS": "--require=/tmp/attack.js",
+                    "NODE_PATH": "/tmp/node_modules",
+                    "BASH_ENV": "/tmp/attack.sh",
+                    "PATH": "/tmp/bin"
+                ]
+            ),
+            sessionId: ComputerUseSessionID("packaged-environment-test")
+        )
+
+        let environment = await driver.childProcessEnvironment()
+        XCTAssertEqual(environment["HOME"], "/home/user")
+        XCTAssertEqual(environment["DISPLAY"], ":1")
+        XCTAssertEqual(environment["LD_LIBRARY_PATH"], "/usr/lib/openburnbar/swift")
+        XCTAssertEqual(environment["PATH"], "/usr/sbin:/usr/bin:/sbin:/bin")
+        XCTAssertEqual(environment["NODE_PATH"], "/usr/lib/node_modules")
+        XCTAssertEqual(environment["PLAYWRIGHT_BROWSERS_PATH"], "/usr/lib/openburnbar/playwright-browsers")
+        XCTAssertNil(environment["NODE_OPTIONS"])
+        XCTAssertNil(environment["BASH_ENV"])
+    }
+
     func testDriverMapsBrowserActionsToBridgeRPCParams() async throws {
         let node = try XCTUnwrap(Self.nodeExecutablePath())
         let bridge = try Self.makeEchoBridge()

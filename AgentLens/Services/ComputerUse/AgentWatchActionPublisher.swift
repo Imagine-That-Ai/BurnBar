@@ -53,7 +53,7 @@ public final class AgentWatchActionPublisher {
     private func entry(from event: BurnBarRunJournalEvent) -> HermesRealtimeRelayActionLogEntry {
         let status: HermesRealtimeRelayActionLogEntry.Status
         switch event.kind {
-        case .approvalRequested:
+        case .approvalRequested, .computerUseSessionRequired:
             status = .awaitingApproval
         case .toolDispatched:
             status = .executing

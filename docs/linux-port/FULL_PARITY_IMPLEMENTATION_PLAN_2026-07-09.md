@@ -18,17 +18,29 @@ known platform divergences.
 
 Linux is not at full macOS parity.
 
-> **Execution update (2026-07-10 UTC):** the implementation wave completed the
+> **Execution update through 2026-07-12 UTC:** the implementation wave completed the
 > fail-closed 40-requirement inventory, Linux secret custody/native gateway
 > boundary, runtime capability manifest, installed accessibility harness,
 > matched performance/soak harness, native signed-feed verifier, and native
 > aarch64/x86_64 shard/aggregate workflow. A clean aarch64 `.deb` session passed
 > GUI/daemon/version/uninstall, all 19 installed routes, AT-SPI/Orca/keyboard/200%
-> zoom, 28 package-smoke steps, and repeated startup/tray/IPC measurements. The
-> next blocking order is x86_64 installed proof -> prior-version update/rollback
-> -> valid signed public feed -> daily-use/native product workflows -> full
-> desktop/compositor certification. The independent audit is the current status
-> source: `LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md`.
+> zoom, 28 package-smoke steps, and repeated startup/tray/IPC measurements.
+> Controller-route v2, Linux native iroh runtime composition, daemon-owned
+> PKCE/Firebase/App Check credentials, per-install Ed25519 Linux App Check,
+> redacted Tauri/account state, signed AppImage peer admission, explicit
+> approval-required error semantics with quota-bounded polling, and the
+> physical-iPad Linux-device approval source are now implemented. The shared
+> Hermes relay challenge schema is canonical across generated Swift and Kotlin;
+> Android static analysis is clean, earlier generic iOS build-for-testing coverage
+> passes, focused macOS app diff coverage is above its 80% gate, and the
+> 2026-07-12 full Linux-native aggregate passed in the Docker Linux toolchain.
+> These are
+> source milestones, not installed parity. The immediate blocking order is:
+> dedicated Desktop OAuth client -> public release variables -> Functions
+> deployment -> physical-iPad test execution -> exact signed candidate ->
+> installed Linux plus physical-iPad Browser Computer Use proof -> full
+> desktop/compositor and update/rollback certification. The independent audit is
+> the current status source: `LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md`.
 
 Linux has a real desktop shell, a broad set of route surfaces, a Swift daemon
 path, AF_UNIX RPC, a provider gateway, package metadata, Linux-specific
@@ -45,6 +57,45 @@ has no hidden assumptions left: every remaining uncertainty is either verified,
 turned into a hard Phase 0 gate, or represented as an explicit blocker with an
 owner and acceptance test. It does not mean every future implementation detail
 is risk-free.
+
+## Current Critical Path
+
+The remaining credential work is operational, not a missing daemon architecture.
+The daemon now owns PKCE loopback state, refresh-token custody, Firebase ID-token
+refresh, App Check enrollment/challenge/mint, account generation, sign-out, and
+account-switch teardown. Account-transition RPC state is phase-tagged so cancel
+cannot report an account active after teardown has begun, and successful sign-out
+permits a fresh browser sign-in. The Functions/daemon contract distinguishes the
+explicit pending-approval reason from permanent rejection; only pending or
+transient cloud failure retries, using a 15/30/60/120/300-second capped schedule
+that stays below the public endpoint quota. Official AppImages authenticate the
+final GUI through a signed manifest instead of mutable environment pins. The iPad
+source validates the exact Linux device ID and public fingerprint before an
+explicit approve or revoke mutation.
+
+Full parity remains **NO-GO** until all of these gates are met in order:
+
+1. Provision the dedicated Google Desktop OAuth client.
+2. Set and validate `OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID`,
+   `OPENBURNBAR_FIREBASE_API_KEY`, and
+   `OPENBURNBAR_LINUX_APP_CHECK_APP_ID`; all three public release variables are
+   currently absent.
+3. Deploy the Linux App Check callables, policy, and Firestore rules.
+4. Run the focused approval tests on the physical iPad. Generic iOS
+   build-for-testing has passed, but it does not satisfy physical-device execution.
+   On 2026-07-12 CoreDevice listed the assigned physical iPad as unavailable;
+   the visible iPhone and simulator targets are not accepted substitutes.
+5. Build and sign the exact deb/rpm/AppImage candidate, including the final-byte
+   AppImage peer manifest.
+6. Install the exact candidate and complete PKCE sign-in plus physical-iPad
+   enrollment, fingerprint confirmation, approval, refresh, revoke, and sign-out.
+7. Prove real Browser Computer Use actions, approval/deny, panic, audit/tamper,
+   credential loss, account switch, and daemon restart/replay behavior.
+8. Complete GNOME X11/Wayland, KDE Wayland, wlroots, architecture, accessibility,
+   performance, update/rollback, and release-promotion certification.
+
+An iPhone or simulator may support development coverage, but neither is accepted
+as a substitute for the physical-iPad authority gate in this plan.
 
 ## Planning Baseline Live Context
 
@@ -775,6 +826,8 @@ Work:
 16. Add Sentry Linux daemon/shell readback and strict observability release
     setting.
 17. Add support matrix, known limitations, user setup, and rollback docs.
+18. Sign the canonical AppImage peer manifest only after final repacking; bind
+    exact GUI identity/path/basename/SHA-256 and verify the final installed bytes.
 
 Acceptance:
 
@@ -788,6 +841,9 @@ Acceptance:
   explicit and validator-approved.
 - `VAL-RELEASE-005`: public docs and CHANGELOG describe prerelease/stable status
   accurately.
+- `VAL-RELEASE-006`: official AppImages fail closed for absent, malformed,
+  tampered, wrong-key, path-swapped, hash-mismatched, mutable-root, or oversized
+  peer manifests; the final repacked candidate admits only its exact GUI bytes.
 
 ## Phase 6 - Real-Surface Matrix and Security Proof
 
@@ -811,7 +867,11 @@ Work:
 7. Run global panic proof where the compositor permits it.
 8. Run support bundle redaction scan.
 9. Run App Check/Firebase/Auth/Stripe/cloud sync proof against staging/prod.
-10. Record blocked rows as `blocked.json` with exact platform reason.
+10. Complete Linux device enrollment and approval on the physical iPad; verify
+    the stable device ID and canonical public fingerprint before approving.
+11. Run Browser Computer Use action/deny/panic/audit/restart proof against the
+    exact installed candidate and the same approved iPad authority.
+12. Record blocked rows as `blocked.json` with exact platform reason.
 
 Acceptance:
 
@@ -820,6 +880,9 @@ Acceptance:
   limitations, not hidden failures.
 - `VAL-SECURITY-001`: secret, checkout, App Check, support bundle, peer-auth,
   and Tauri URL tests pass.
+- `VAL-MATRIX-003`: physical-iPad enrollment, approval, revoke, and signed
+  session/action authority pass against the exact installed candidate; an iPhone
+  or simulator result does not satisfy this gate.
 
 ## Six Parallel Implementation Streams
 
@@ -979,51 +1042,58 @@ Verification:
 
 ## Immediate PR Sequence
 
-1. **Reanchor PR**
-   - Fix CSS warning.
-   - Archive baseline evidence.
-   - Add ledger freshness/product-scope semantics.
-   - Update docs to say public prerelease exists but full parity does not.
+The original foundation sequence is substantially implemented. From the
+2026-07-12 source-complete wave, use this dependency-ordered sequence:
 
-2. **Paths and parser PR**
-   - Unify XDG paths.
-   - Unify socket/token ownership.
-   - Reconcile parser discovery and provider log-directory display.
-   - Fix onboarding/CLI/systemd contract.
+1. **Credential authority and account UI PR**
+   - Land daemon-owned PKCE/Firebase/App Check authority, redacted RPC/Tauri
+     account state, browser launch validation, and focused failure-path tests.
+   - Keep the PR explicit that Desktop OAuth provisioning and live deployment
+     are operational blockers.
 
-3. **Design foundation PR**
-   - Integrate generated design tokens.
-   - Add DashboardLayout state, persistence, switcher, and six skeletons.
-   - Keep current visual branch work intact where possible.
+2. **AppImage peer-auth PR**
+   - Land signed canonical peer manifests, release-key wiring, final-repacked
+     AppImage verification, tamper tests, and fail-closed release configuration.
 
-4. **Bridge contract PR**
-   - Add approval, memory, and Computer Use wrappers over existing methods.
-   - Fix `media_status` capability behavior.
-   - Add bridge tests and no-invented-RPC grep check.
+3. **Physical-iPad approval PR**
+   - Land Linux device list/approve/revoke, canonical device-ID/fingerprint
+     validation, confirmation UX, serialized mutations, stale-load guards, and
+     focused mobile tests.
+   - Preserve the passing generic iOS build-for-testing coverage, then run the
+     focused tests on the physical iPad; do not substitute an iPhone or simulator
+     for the final physical-device gate. The 2026-07-12 CoreDevice check listed
+     the assigned physical iPad as unavailable, so this remains blocked.
 
-5. **Daemon foundation PR**
-   - Linux secrets, Pensieve inotify, PTY shell, model catalog, CLI capability
-     alignment.
+4. **Production configuration change**
+   - Create the dedicated Desktop OAuth client.
+   - Set the public Linux release variables and deploy the App Check callables,
+     policy, and rules.
+   - Record exact app/client IDs and deployment revisions in private release
+     evidence without exposing secrets.
 
-6. **Chat/provider PR**
-   - Replace chat stub stream with real gateway events.
-   - Add model picker, tool approvals, citations, attachments, transcript
-     handling.
+5. **Signed candidate PR/run**
+   - Build the exact deb/rpm/AppImage candidate, bind source/SBOM/VEX/provenance,
+     sign the final AppImage peer manifest, and pass strict release validation.
 
-7. **Computer Use PR**
-   - Linux browser CU UI plus approval/audit/panic.
-   - System mode behind explicit compositor gates.
+6. **Installed Linux plus physical-iPad certification**
+   - Prove PKCE sign-in, enrollment, fingerprint confirmation, approval, refresh,
+     revoke, sign-out/account switch, and token redaction.
+   - Prove real Browser Computer Use actions, deny, panic, audit/tamper, crash,
+     restart, replay persistence, and permission revocation.
 
-8. **Mercury PR**
-   - Real iroh/remote-access-agent control surface and Linux UI.
+7. **Desktop and architecture matrix PR/run**
+   - Run GNOME X11/Wayland, KDE Wayland, wlroots, x86_64/aarch64,
+     accessibility, performance, update/rollback, and package lifecycle proof.
 
-9. **Workflow parity PRs**
-   - Account/cloud, activity/session logs, insights, projects, provider/model
-     detail, memory review, text expansion, pet companion, SmartHub.
+8. **Remaining product-parity PRs**
+   - Complete chat/provider, account/cloud, activity/session logs, insights,
+     projects, memory review, system Computer Use, Mercury, text expansion,
+     companion, SmartHub, and every other still-open audit row.
 
-10. **Release promotion PR**
-    - Artifact closure, source tarball, signing/provenance verification, public
-      JSON feed, package smoke, update/rollback, docs.
+9. **Promotion and public truth-sync PR**
+   - Require zero Critical/High gaps, strict evidence closure, valid signed public
+     feed, current support matrix, release/rollback docs, and exact-candidate
+     parity before stable promotion.
 
 ## Final Full-Parity Exit Criteria
 
@@ -1043,10 +1113,12 @@ Linux cannot be called full parity until all are true:
     shared-current.
 11. Chat uses live gateway events and real approval methods.
 12. Memory review uses real remember/forget/audit semantics.
-13. Computer Use has browser parity and explicit system-mode proof or Tier C
-    limits.
+13. Computer Use has installed Browser parity backed by the physical iPad, and
+    explicit system-mode proof or Tier C limits.
 14. Mercury has real transport/control proof or explicit blocked rows.
-15. Account/cloud/App Check/Stripe proof is live against staging/prod.
+15. Account/cloud/App Check/Stripe proof is live against staging/prod, including
+    Desktop PKCE, Linux enrollment, physical-iPad fingerprint confirmation,
+    approval/revoke, refresh, expiry, sign-out, and account switch.
 16. Release verifier passes strict mode without `--allow-blocked`.
 17. Public `latest-linux.json` is valid JSON and verified.
 18. deb/rpm/AppImage install, launch, update/rollback, and uninstall proof
@@ -1055,3 +1127,13 @@ Linux cannot be called full parity until all are true:
     are tested or explicitly blocked with public limitations.
 20. README, CHANGELOG, release docs, support matrix, known limitations,
     rollback docs, and supply-chain docs match live truth.
+21. The signed AppImage peer manifest binds the final repacked GUI bytes and all
+    manifest/signature/path/hash/root-mutation attacks fail closed.
+22. No Firebase ID token, App Check token, refresh token, enrollment private key,
+    OAuth verifier, or approval proof appears in renderer state, local RPC, logs,
+    crash reports, clipboard, or diagnostics.
+23. Physical-iPad approval and Computer Use proof is attached to the exact
+    candidate hash; iPhone and simulator runs are supplemental only.
+24. Functions deployment revision, Firebase app ID, Desktop OAuth client type,
+    release-variable validation, and installed artifact identity are bound into
+    the final evidence graph without exposing secret values.

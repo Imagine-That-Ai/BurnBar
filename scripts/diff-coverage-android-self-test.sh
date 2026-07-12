@@ -67,6 +67,15 @@ run_gate() {
   echo "$rc"
 }
 
+run_gate_many() {
+  local repo="$1" base="$2" reports="$3" out="$4" err="$5" rc=0
+  OPENBURNBAR_COVERAGE_REPO_ROOT="$repo" \
+  ANDROID_JACOCO_XMLS="$reports" \
+  COVERAGE_THRESHOLD=80 \
+    "$scripts_dir/diff-coverage-android.sh" "$base" > "$out" 2> "$err" || rc=$?
+  echo "$rc"
+}
+
 # Missing JaCoCo is a hard failure for production changes.
 repo="$tmp_root/missing-report"
 new_repo "$repo"
@@ -104,6 +113,24 @@ check "duplicate basenames produce the true 50 percent" \
 check "both package-qualified files remain distinct" \
   "['sample/alpha/Foo.kt', 'sample/beta/Foo.kt']" \
   "$(json_get "$tmp_root/collision.json" 'sorted(d["sourceIdentity"] for d in v["details"])')"
+
+# Changed Android library modules must be covered by their own JaCoCo XML, not
+# falsely reported missing because the app report is the first coverage source.
+repo="$tmp_root/multi-report"
+new_repo "$repo"
+add_kotlin "$repo" sample/app AppCovered 1
+relay_dir="$repo/android/openburnbar-iroh-relay/src/main/java/sample/relay"
+mkdir -p "$relay_dir"
+printf 'package sample.relay\nfun RelayCoveredValue(): Int = 2\n' > "$relay_dir/RelayCovered.kt"
+base="$(commit_change "$repo")"
+app_report="$repo/app-jacoco.xml"
+relay_report="$repo/relay-jacoco.xml"
+write_report "$app_report" '<package name="sample/app"><sourcefile name="AppCovered.kt"><line nr="2" mi="0" ci="1"/></sourcefile></package>'
+write_report "$relay_report" '<package name="sample/relay"><sourcefile name="RelayCovered.kt"><line nr="2" mi="0" ci="1"/></sourcefile></package>'
+rc="$(run_gate_many "$repo" "$base" "$app_report:$relay_report" "$tmp_root/multi-report.json" "$tmp_root/multi-report.err")"
+check "multiple Android module reports are merged" "0" "$rc"
+check "merged report covers app and library files" \
+  "2" "$(json_get "$tmp_root/multi-report.json" 'v["diffCoverage"]["changedFiles"]')"
 
 # A valid report that does not contain the changed source is still no evidence.
 repo="$tmp_root/no-source"

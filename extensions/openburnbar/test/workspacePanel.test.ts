@@ -185,6 +185,38 @@ describe("workspace panel view model integration", () => {
     expect(vm.approvalState?.tool).toBe("apply_patch");
   });
 
+  it("keeps a run waiting for Computer Use active and visually actionable", () => {
+    const state = makeConnectedState({
+      daemonRuns: [
+        {
+          runID: "run-computer-use",
+          clientID: "c1",
+          sessionID: "s1",
+          phase: "awaiting_computer_use_session",
+          modelID: "glm-4.6",
+          updatedAt: "2026-03-22T10:00:00.000Z"
+        },
+        {
+          runID: "run-completed",
+          clientID: "c1",
+          sessionID: "s1",
+          phase: "completed",
+          modelID: "glm-4.6",
+          updatedAt: "2026-03-22T10:01:00.000Z"
+        }
+      ]
+    });
+
+    state.runs = projectRuns(state);
+    state.selectedRunId = "run-completed";
+
+    const vm = buildPanelViewModel(state);
+
+    expect(vm.activeRun?.id).toBe("run-computer-use");
+    expect(vm.activeRun?.phaseColor).toBe("warning");
+    expect(vm.activeRun?.note).toBe("Waiting for a verified Browser Computer Use session.");
+  });
+
   it("disables composer when no models are available", () => {
     const state = makeConnectedState({
       catalog: { schemaVersion: 1, providers: [] }

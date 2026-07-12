@@ -128,8 +128,7 @@ export function routeSnapshotCases(): RouteSnapshotCase[] {
         'chat',
         'memory',
         'computer-use',
-        'mercury',
-        'smarthub'
+        'mercury'
       ].includes(route.id)
     ) {
       expectedState = 'daemon-backed';

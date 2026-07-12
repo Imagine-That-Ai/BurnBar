@@ -60,9 +60,10 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
     /// RPC method that is not classified here will fail to compile this switch.
     public static func capability(for method: BurnBarRPCMethod) -> BurnBarRPCCapability {
         switch method {
-        case .health, .catalog, .authBootstrap, .linuxOnboardingSnapshot:
+        case .health, .catalog, .authBootstrap, .linuxOnboardingSnapshot, .linuxAuthStatus:
             return .lifecycle
-        case .configGet, .configUpdate, .linuxOnboardingAction, .linuxOnboardingReset,
+        case .linuxAuthBegin, .linuxAuthCancel, .linuxAuthRotateIdentity, .linuxAuthSignOut,
+             .configGet, .configUpdate, .linuxOnboardingAction, .linuxOnboardingReset,
              .providerCredentialSlotUpsert, .providerCredentialSlotRemove,
              .providerModelVariantUpsert, .providerModelVariantRemove,
              .providerModelAliasUpsert, .providerModelAliasRemove,
@@ -80,6 +81,8 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
              .browserToolingGet, .browserToolingUpdate, .browserAction:
             return .tooling
         case .computerUseCapabilityStateUpdate,
+             .computerUseSessionGrantReadiness, .computerUseSessionGrantAcquire,
+             .computerUseSessionGrantStatus,
              .computerUseSessionStart, .computerUseInvoke,
              .computerUseApprovalPending, .computerUseApprovalRespond,
              .computerUsePanicHalt, .computerUseAuditExport:

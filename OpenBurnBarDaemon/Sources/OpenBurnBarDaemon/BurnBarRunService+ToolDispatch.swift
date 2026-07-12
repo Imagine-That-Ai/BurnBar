@@ -1,5 +1,12 @@
 import OpenBurnBarCore
+import OpenBurnBarComputerUseCore
 import Foundation
+
+struct BurnBarBrowserExecutionOutcome {
+    let succeeded: Bool
+    let output: BurnBarJSONValue?
+    let error: BurnBarToolExecutionError?
+}
 
 extension BurnBarRunService {
 
@@ -35,16 +42,55 @@ extension BurnBarRunService {
             requestedBy: run.snapshot.clientID,
             requestedAt: Date()
         )
-        if try await requestMandatoryToolApprovalIfNeeded(for: &run, invocation: invocation) {
+        // The Computer Use coordinator owns approval, scope, panic, and audit
+        // when the production Linux composition root installs this dispatcher.
+        // Retain the legacy run-level approval only for callers that deliberately
+        // construct a run service without that safety authority.
+        if computerUseBrowserDispatcher == nil,
+           try await requestMandatoryToolApprovalIfNeeded(for: &run, invocation: invocation) {
+            return
+        }
+        if let computerUseRunBindingChecker,
+           await computerUseRunBindingChecker(run.runID, run.computerUseGeneration) == false {
+            try await waitForComputerUseSession(invocation, run: &run)
             return
         }
         try await executeBrowserToolInvocation(invocation, for: &run)
     }
 
-    func executeBrowserToolInvocation(
+    func waitForComputerUseSession(
+        _ invocation: BurnBarToolInvocation,
+        run: inout BurnBarManagedRun
+    ) async throws {
+        let pendingSnapshot = BurnBarToolCallSnapshot(
+            callID: invocation.callID,
+            runID: invocation.runID,
+            tool: invocation.tool,
+            arguments: invocation.arguments,
+            status: .pending,
+            requestedBy: invocation.requestedBy,
+            requestedAt: invocation.requestedAt
+        )
+        run.activeToolCallID = nil
+        run.computerUseGeneration &+= 1
+        run.pendingComputerUseInvocation = invocation
+        run.lastToolCall = pendingSnapshot
+        try transition(&run, to: .awaitingComputerUseSession)
+        try await appendJournalEvent(
+            BurnBarRunJournalEvent(
+                runID: run.runID,
+                kind: .computerUseSessionRequired,
+                phase: run.snapshot.phase,
+                payload: try BurnBarJSONValue.fromEncodable(pendingSnapshot),
+                emittedAt: Date()
+            )
+        )
+    }
+
+    func claimBrowserToolInvocation(
         _ invocation: BurnBarToolInvocation,
         for run: inout BurnBarManagedRun
-    ) async throws {
+    ) throws -> BurnBarToolCallSnapshot {
         let started = Date()
         let pendingSnapshot = BurnBarToolCallSnapshot(
             callID: invocation.callID,
@@ -58,41 +104,106 @@ extension BurnBarRunService {
             claimedAt: started
         )
         run.activeToolCallID = invocation.callID
-        run.pendingApprovalToolInvocation = nil
+        run.pendingComputerUseInvocation = nil
         run.lastToolCall = pendingSnapshot
         try transition(&run, to: .executingTool)
-        try await appendJournalEvent(
-            BurnBarRunJournalEvent(
-                runID: run.runID,
-                kind: .toolDispatched,
-                phase: run.snapshot.phase,
-                payload: try BurnBarJSONValue.fromEncodable(pendingSnapshot),
-                emittedAt: Date()
-            )
-        )
+        return pendingSnapshot
+    }
 
-        let response = try await browserToolService.performAction(
-            browserActionRequest(for: invocation)
-        )
+    func executeBrowserToolInvocation(
+        _ invocation: BurnBarToolInvocation,
+        for run: inout BurnBarManagedRun,
+        alreadyClaimed: Bool = false
+    ) async throws {
+        let pendingSnapshot: BurnBarToolCallSnapshot
+        if alreadyClaimed {
+            guard run.snapshot.phase == .executingTool,
+                  run.activeToolCallID == invocation.callID,
+                  let claimed = run.lastToolCall,
+                  claimed.callID == invocation.callID,
+                  claimed.status == .inProgress else {
+                throw BurnBarRunServiceError.invalidToolResult(
+                    run.runID,
+                    "Computer Use invocation was not claimed by this run."
+                )
+            }
+            pendingSnapshot = claimed
+        } else {
+            pendingSnapshot = try claimBrowserToolInvocation(invocation, for: &run)
+            let claimedGeneration = run.computerUseGeneration
+            runs[run.runID] = run
+            do {
+                try await appendJournalEvent(
+                    BurnBarRunJournalEvent(
+                        runID: run.runID,
+                        kind: .toolDispatched,
+                        phase: run.snapshot.phase,
+                        payload: try BurnBarJSONValue.fromEncodable(pendingSnapshot),
+                        emittedAt: Date()
+                    )
+                )
+                try await writeCheckpoint(for: run)
+            } catch {
+                if let current = runs[run.runID],
+                   current.snapshot.phase == .executingTool,
+                   current.activeToolCallID == invocation.callID,
+                   current.computerUseGeneration == claimedGeneration {
+                    run = current
+                    run.activeToolCallID = nil
+                    run.pendingComputerUseInvocation = nil
+                    try? transition(
+                        &run,
+                        to: .failed,
+                        errorMessage: "Computer Use execution could not be durably claimed.",
+                        activeApprovalID: nil
+                    )
+                    runs[run.runID] = run
+                    try? await appendJournalEvent(
+                        BurnBarRunJournalEvent(
+                            runID: run.runID,
+                            kind: .runFailed,
+                            phase: run.snapshot.phase,
+                            payload: .object([
+                                "message": .string("Computer Use execution could not be durably claimed.")
+                            ]),
+                            emittedAt: Date()
+                        )
+                    )
+                    try? await writeCheckpoint(for: run)
+                    await computerUseRunRevoker?(run.runID, claimedGeneration)
+                } else if let current = runs[run.runID] {
+                    run = current
+                }
+                throw error
+            }
+
+            guard let claimed = runs[run.runID],
+                  claimed.snapshot.phase == .executingTool,
+                  claimed.activeToolCallID == invocation.callID,
+                  claimed.computerUseGeneration == claimedGeneration else {
+                if let current = runs[run.runID] {
+                    run = current
+                }
+                return
+            }
+            run = claimed
+        }
+
+        let outcome = await executeBrowserAction(invocation)
         let completedAt = Date()
-        let output = try BurnBarJSONValue.fromEncodable(response)
-        let error = response.ok ? nil : BurnBarToolExecutionError(
-            code: .unknown,
-            message: response.detail ?? response.summary
-        )
         let completedSnapshot = BurnBarToolCallSnapshot(
             callID: invocation.callID,
             runID: invocation.runID,
             tool: invocation.tool,
             arguments: invocation.arguments,
-            status: response.ok ? .completed : .failed,
+            status: outcome.succeeded ? .completed : .failed,
             requestedBy: invocation.requestedBy,
             requestedAt: invocation.requestedAt,
             claimedBy: BurnBarRunService.controllerRuntimeClientID,
-            claimedAt: started,
+            claimedAt: pendingSnapshot.claimedAt,
             completedAt: completedAt,
-            output: output,
-            error: error
+            output: outcome.output,
+            error: outcome.error
         )
         run.lastToolCall = completedSnapshot
         run.activeToolCallID = nil
@@ -106,15 +217,124 @@ extension BurnBarRunService {
             )
         )
 
-        if response.ok {
+        if outcome.succeeded {
             try applySuccessfulToolResult(completedSnapshot, to: &run)
             try transition(&run, to: .planning, activeApprovalID: nil)
             try await continueExecution(for: &run)
         } else {
             try await handleToolFailure(
-                error: error ?? BurnBarToolExecutionError(code: .unknown, message: response.summary),
+                error: outcome.error ?? BurnBarToolExecutionError(
+                    code: .unknown,
+                    message: "Browser Computer Use failed without an error detail."
+                ),
                 callSnapshot: completedSnapshot,
                 run: &run
+            )
+        }
+    }
+
+    func executeBrowserAction(
+        _ invocation: BurnBarToolInvocation
+    ) async -> BurnBarBrowserExecutionOutcome {
+        do {
+            if let computerUseBrowserDispatcher {
+                let dispatchResult = try await computerUseBrowserDispatcher(invocation)
+                let response = dispatchResult.response
+                guard response.sessionId == dispatchResult.expectedSessionID.rawValue,
+                      response.callID == invocation.callID else {
+                    return BurnBarBrowserExecutionOutcome(
+                        succeeded: false,
+                        output: nil,
+                        error: BurnBarToolExecutionError(
+                            code: .unknown,
+                            message: "Computer Use returned a response for a different session or tool call."
+                        )
+                    )
+                }
+                switch response.status {
+                case .executed:
+                    guard let result = response.result else {
+                        return BurnBarBrowserExecutionOutcome(
+                            succeeded: false,
+                            output: nil,
+                            error: BurnBarToolExecutionError(
+                                code: .unknown,
+                                message: "Computer Use reported an executed browser action without a tool result."
+                            )
+                        )
+                    }
+                    guard result.callID == invocation.callID,
+                          result.runID == invocation.runID else {
+                        return BurnBarBrowserExecutionOutcome(
+                            succeeded: false,
+                            output: nil,
+                            error: BurnBarToolExecutionError(
+                                code: .unknown,
+                                message: "Computer Use returned a browser result for a different run or tool call."
+                            )
+                        )
+                    }
+                    return BurnBarBrowserExecutionOutcome(
+                        succeeded: result.succeeded,
+                        output: result.output,
+                        error: result.succeeded ? nil : BurnBarToolExecutionError(
+                            code: .unknown,
+                            message: result.errorMessage ?? "Computer Use browser action failed."
+                        )
+                    )
+                case .denied:
+                    let code: BurnBarToolExecutionErrorCode = response.denyReason
+                        == ComputerUseDenyReason.userRejected.rawValue
+                        ? .operatorDenied
+                        : .computerUseDenied
+                    return BurnBarBrowserExecutionOutcome(
+                        succeeded: false,
+                        output: nil,
+                        error: BurnBarToolExecutionError(
+                            code: code,
+                            message: response.denyReason ?? "Computer Use browser action was denied."
+                        )
+                    )
+                case .awaitingApproval:
+                    return BurnBarBrowserExecutionOutcome(
+                        succeeded: false,
+                        output: nil,
+                        error: BurnBarToolExecutionError(
+                            code: .unknown,
+                            message: "Computer Use returned before its approval was resolved."
+                        )
+                    )
+                case .error:
+                    return BurnBarBrowserExecutionOutcome(
+                        succeeded: false,
+                        output: nil,
+                        error: BurnBarToolExecutionError(
+                            code: .unknown,
+                            message: response.denyReason ?? "Computer Use browser action failed."
+                        )
+                    )
+                }
+            }
+
+            let response = try await browserToolService.performAction(
+                browserActionRequest(for: invocation)
+            )
+            return BurnBarBrowserExecutionOutcome(
+                succeeded: response.ok,
+                output: try BurnBarJSONValue.fromEncodable(response),
+                error: response.ok ? nil : BurnBarToolExecutionError(
+                    code: .unknown,
+                    message: response.detail ?? response.summary
+                )
+            )
+        } catch {
+            return BurnBarBrowserExecutionOutcome(
+                succeeded: false,
+                output: nil,
+                error: BurnBarToolExecutionError(
+                    code: .unknown,
+                    message: error.localizedDescription
+                )
             )
         }
     }

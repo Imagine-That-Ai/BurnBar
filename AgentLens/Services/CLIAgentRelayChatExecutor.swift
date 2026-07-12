@@ -276,12 +276,19 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
         case .cursorAgent:
             let executable = try await executable(named: "cursor-agent")
             var discovered: [CLIRuntimeModelOption] = []
-            if let output = try? await run(executable: executable, arguments: ["models"], timeoutSeconds: 20) {
+            do {
+                let output = try await run(executable: executable, arguments: ["models"], timeoutSeconds: 20)
                 discovered.append(contentsOf: CLIRuntimeModelCatalog.parseCursorAgentModels(output))
+            } catch {
+                AppLogger.daemon.silentFailure("cursor_agent_models_probe_failed", error: error)
             }
-            if discovered.isEmpty,
-               let output = try? await run(executable: executable, arguments: ["--list-models"], timeoutSeconds: 20) {
-                discovered.append(contentsOf: CLIRuntimeModelCatalog.parseCursorAgentModels(output))
+            if discovered.isEmpty {
+                do {
+                    let output = try await run(executable: executable, arguments: ["--list-models"], timeoutSeconds: 20)
+                    discovered.append(contentsOf: CLIRuntimeModelCatalog.parseCursorAgentModels(output))
+                } catch {
+                    AppLogger.daemon.silentFailure("cursor_agent_list_models_probe_failed", error: error)
+                }
             }
             let deduplicated = Self.deduplicated(discovered)
             options = deduplicated.isEmpty ? try Self.defaultProfileRows(for: runtime) : deduplicated
@@ -495,21 +502,16 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
 
 /// Lock-boxed accumulation buffer for `readabilityHandler` callbacks, which
 /// arrive on a background queue while the discovery task polls for exit.
-private final class PipeDrainBuffer: @unchecked Sendable {
-    private let lock = NSLock()
-    private var data = Data()
+private final class PipeDrainBuffer: Sendable {
+    private let data = Locked<Data>(Data())
 
     func append(_ chunk: Data) {
         guard !chunk.isEmpty else { return }
-        lock.lock()
-        data.append(chunk)
-        lock.unlock()
+        data.withLock { $0.append(chunk) }
     }
 
     func string() -> String {
-        lock.lock()
-        defer { lock.unlock() }
-        return String(data: data, encoding: .utf8) ?? ""
+        data.withLock { String(data: $0, encoding: .utf8) ?? "" }
     }
 }
 

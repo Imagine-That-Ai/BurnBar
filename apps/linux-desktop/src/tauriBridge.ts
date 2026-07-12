@@ -245,11 +245,22 @@ export type DatabaseIndexActionResult = {
 // ─────────────────────────── P08: account ─────────────────────────────────
 
 export type AccountStatus = {
+  state?: 'signed-out' | 'authorizing' | 'awaiting-device-approval' | 'active' | 'unavailable';
   signedIn: boolean;
   identityLabel?: string;
   trustClass: 'linux-lower-trust';
   syncState: 'local-only' | 'paused' | 'active';
   lastSyncAt?: string;
+  authorizationOperationID?: string;
+  authorizationExpiresAt?: string;
+  deviceApprovalRequired?: boolean;
+  installationDeviceID?: string;
+  installationSafetyFingerprint?: string;
+  detail?: string;
+};
+export type AccountSignInOperation = {
+  operationID: string;
+  expiresAt: string;
 };
 
 // ─────────────────────────── P10: membership ──────────────────────────────
@@ -473,6 +484,39 @@ export type ComputerUsePanicHaltResult = {
   source: ComputerUsePanicSource;
   raw?: RawJsonValue;
 };
+
+export type ComputerUseSessionAuthorityState =
+  | 'available'
+  | 'waiting_phone'
+  | 'waiting_local_owner'
+  | 'authorized'
+  | 'expired'
+  | 'rejected'
+  | 'unavailable';
+
+export type ComputerUseSessionAuthorityStatus = {
+  state: ComputerUseSessionAuthorityState;
+  expiresAt?: number;
+  detail?: string;
+  sessionId?: string;
+};
+
+export type ComputerUseSessionStartRequest = {
+  mode: 'browser';
+  trustMode: 'manual' | 'step' | 'trusted';
+  scopeRuleIds?: string[];
+  phoneViewerNodeId?: string;
+  macHostNodeId?: string;
+  actionCap?: number;
+  sessionTimeoutSeconds?: number;
+  clientId: 'linux-shell';
+  runId: string;
+  runCallId: string;
+  runGeneration: number;
+  desktopOwnerAuthorizationRequest: {
+    method: 'linux_desktop_owner';
+  };
+};
 // ─────────────────────────── P13: integrations status ─────────────────────
 
 export type IntegrationKind =
@@ -588,6 +632,10 @@ export interface LinuxShellBridge {
   databaseIndexProject(projectPath?: string): Promise<DatabaseIndexActionResult>;
   databaseWatchProject(projectPath?: string): Promise<DatabaseIndexActionResult>;
   accountStatus(): Promise<AccountStatus>;
+  accountBeginSignIn(): Promise<AccountSignInOperation>;
+  accountCancelSignIn(operationID: string): Promise<AccountStatus>;
+  accountRotateIdentity(): Promise<AccountStatus>;
+  accountSignOut(): Promise<AccountStatus>;
   membershipStatus?(): Promise<MembershipStatus>;
   membershipCheckoutUrl?(): Promise<string>;
   openExternalUrl?(url: string): Promise<void>;
@@ -630,7 +678,10 @@ export interface LinuxShellBridge {
     action: 'approve' | 'reject' | 'audit' | 'remember' | 'forget',
     payload: Record<string, unknown>
   ): Promise<unknown>;
-  computerUseSessionStart?(params: Record<string, unknown>): Promise<unknown>;
+  computerUseSessionAuthorityStatus?(): Promise<ComputerUseSessionAuthorityStatus>;
+  computerUseSessionStart?(
+    params: ComputerUseSessionStartRequest
+  ): Promise<ComputerUseSessionAuthorityStatus>;
   computerUseInvoke?(params: Record<string, unknown>): Promise<unknown>;
   computerUseApprovalPending?(params?: Record<string, unknown>): Promise<unknown>;
   computerUseApprovalRespond?(params: Record<string, unknown>): Promise<unknown>;
@@ -653,26 +704,6 @@ export interface LinuxShellBridge {
     source?: ComputerUsePanicSource;
   }): Promise<ComputerUsePanicHaltResult>;
   integrationsStatus(): Promise<IntegrationsStatus>;
-  /** Wire: approval.respond */
-  toolApprovalRespond?(
-    approvalId: string,
-    decision: 'approve' | 'reject' | 'cancel',
-    note?: string
-  ): Promise<void>;
-  /**
-   * Wire: approve → daemon.memory.remember, reject → daemon.memory.forget,
-   * audit → daemon.memory.audit_trail.
-   */
-  memorySetStatus?(
-    action: 'approve' | 'reject' | 'audit' | 'remember' | 'forget',
-    payload: Record<string, unknown>
-  ): Promise<unknown>;
-  computerUseSessionStart?(params: Record<string, unknown>): Promise<unknown>;
-  computerUseInvoke?(params: Record<string, unknown>): Promise<unknown>;
-  computerUseApprovalPending?(params?: Record<string, unknown>): Promise<unknown>;
-  computerUseApprovalRespond?(params: Record<string, unknown>): Promise<unknown>;
-  computerUsePanicHalt?(params?: Record<string, unknown>): Promise<unknown>;
-  computerUseAuditExport?(params?: Record<string, unknown>): Promise<unknown>;
 }
 
 // ──────────────────── Raw-daemon → typed-shape mappers ────────────────────
@@ -1307,24 +1338,48 @@ function mapDatabaseIndexAction(raw: RawJsonValue): DatabaseIndexActionResult {
 }
 
 function mapAccountStatus(raw: RawJsonValue): AccountStatus {
-  // Derived from daemon.config.get — no daemon.account.* RPC exists.
-  const snap = pick(raw, 'snapshot', 'config') ?? raw;
-  const cloud = pick(snap, 'cloud', 'sync', 'account');
-  const signedIn = Boolean(pick(cloud, 'signedIn', 'signed_in', 'authenticated'));
-  const cloudSyncEnabled = Boolean(pick(snap, 'cloudSyncEnabled', 'cloud_sync_enabled'));
-  const syncStateRaw = str(pick(cloud, 'syncState', 'sync_state', 'status'), cloudSyncEnabled ? 'active' : 'local-only');
-  const syncState: AccountStatus['syncState'] = syncStateRaw.includes('active')
+  const status = pick(raw, 'status') ?? raw;
+  const signedIn = Boolean(pick(status, 'signedIn', 'signed_in', 'authenticated'));
+  const rawState = str(pick(status, 'state'), signedIn ? 'active' : 'signed_out');
+  const state: NonNullable<AccountStatus['state']> = rawState === 'authorizing'
+    ? 'authorizing'
+    : rawState === 'awaiting_device_approval'
+      ? 'awaiting-device-approval'
+      : rawState === 'active'
+        ? 'active'
+        : rawState === 'unavailable'
+          ? 'unavailable'
+          : 'signed-out';
+  const syncStateRaw = str(pick(status, 'syncState', 'sync_state'), signedIn ? 'active' : 'local-only');
+  const syncState: AccountStatus['syncState'] = syncStateRaw === 'active' || syncStateRaw === 'cloud-ready'
     ? 'active'
-    : syncStateRaw.includes('pause')
+    : syncStateRaw === 'paused'
       ? 'paused'
       : 'local-only';
   return {
+    state,
     signedIn,
-    identityLabel: str(pick(cloud, 'identityLabel', 'email', 'label')) || undefined,
+    identityLabel: str(pick(status, 'identityLabel', 'email', 'label')) || undefined,
     trustClass: 'linux-lower-trust',
     syncState,
-    lastSyncAt: str(pick(cloud, 'lastSyncAt', 'last_sync_at')) || undefined
+    lastSyncAt: str(pick(status, 'lastSyncAt', 'last_sync_at')) || undefined,
+    authorizationOperationID: str(pick(status, 'authorizationOperationID', 'authorization_operation_id')) || undefined,
+    authorizationExpiresAt: str(pick(status, 'authorizationExpiresAt', 'authorization_expires_at')) || undefined,
+    deviceApprovalRequired: Boolean(pick(status, 'deviceApprovalRequired', 'device_approval_required')),
+    installationDeviceID: str(pick(status, 'installationDeviceID', 'installation_device_id')) || undefined,
+    installationSafetyFingerprint:
+      str(pick(status, 'installationSafetyFingerprint', 'installation_safety_fingerprint')) || undefined,
+    detail: str(pick(status, 'detail')) || undefined
   };
+}
+
+function mapAccountSignInOperation(raw: RawJsonValue): AccountSignInOperation {
+  const operationID = str(pick(raw, 'operationID', 'operationId'));
+  const expiresAt = str(pick(raw, 'expiresAt'));
+  if (!operationID || !expiresAt || !Number.isFinite(Date.parse(expiresAt))) {
+    throw new Error('Daemon returned an invalid sign-in operation.');
+  }
+  return { operationID, expiresAt };
 }
 
 function mapMembershipStatus(raw: RawJsonValue): MembershipStatus {
@@ -2070,9 +2125,25 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       const raw = await invoke<RawJsonValue>('database_watch_project', { projectPath });
       return mapDatabaseIndexAction(raw);
     },
-    // P08 — derived from daemon.config.get (cloud/sync subtree)
+    // P08 — daemon-owned browser PKCE and lower-trust Linux identity.
     accountStatus: async () => {
       const raw = await invoke<RawJsonValue>('account_status');
+      return mapAccountStatus(raw);
+    },
+    accountBeginSignIn: async () => {
+      const raw = await invoke<RawJsonValue>('account_begin_sign_in');
+      return mapAccountSignInOperation(raw);
+    },
+    accountCancelSignIn: async (operationID) => {
+      const raw = await invoke<RawJsonValue>('account_cancel_sign_in', { operationId: operationID });
+      return mapAccountStatus(raw);
+    },
+    accountRotateIdentity: async () => {
+      const raw = await invoke<RawJsonValue>('account_rotate_identity');
+      return mapAccountStatus(raw);
+    },
+    accountSignOut: async () => {
+      const raw = await invoke<RawJsonValue>('account_sign_out');
       return mapAccountStatus(raw);
     },
     // P10 — daemon-owned membership data; fail closed if absent.
@@ -2259,8 +2330,10 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     },
     memorySetStatus: (action, payload) =>
       invoke<RawJsonValue>('memory_set_status', { action, payload }),
+    computerUseSessionAuthorityStatus: () =>
+      invoke<ComputerUseSessionAuthorityStatus>('computer_use_session_authority_status'),
     computerUseSessionStart: (params) =>
-      invoke<RawJsonValue>('computer_use_session_start', { params }),
+      invoke<ComputerUseSessionAuthorityStatus>('computer_use_session_start', { params }),
     computerUseInvoke: (params) => invoke<RawJsonValue>('computer_use_invoke', { params }),
     computerUseApprovalPending: (params) =>
       invoke<RawJsonValue>('computer_use_approval_pending', { params: params ?? null }),
@@ -2278,27 +2351,6 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     integrationsStatus: async () => {
       const raw = await invoke<RawJsonValue>('integrations_status');
       return mapIntegrationsStatus(raw);
-    },
-    toolApprovalRespond: async (approvalId, decision, note) => {
-      await invoke<RawJsonValue>('tool_approval_respond', {
-        approvalId,
-        decision,
-        note: note ?? null
-      });
-    },
-    memorySetStatus: async (action, payload) => {
-      return invoke<RawJsonValue>('memory_set_status', { action, payload });
-    },
-    computerUseSessionStart: (params) =>
-      invoke<RawJsonValue>('computer_use_session_start', { params }),
-    computerUseInvoke: (params) => invoke<RawJsonValue>('computer_use_invoke', { params }),
-    computerUseApprovalPending: (params) =>
-      invoke<RawJsonValue>('computer_use_approval_pending', { params: params ?? null }),
-    computerUseApprovalRespond: (params) =>
-      invoke<RawJsonValue>('computer_use_approval_respond', { params }),
-    computerUsePanicHalt: (params) =>
-      invoke<RawJsonValue>('computer_use_panic_halt', { params: params ?? null }),
-    computerUseAuditExport: (params) =>
-      invoke<RawJsonValue>('computer_use_audit_export', { params: params ?? null })
+    }
   };
 }

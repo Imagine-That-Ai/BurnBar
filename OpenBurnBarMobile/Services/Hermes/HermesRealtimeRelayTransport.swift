@@ -118,8 +118,10 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
                 timeout: max(0, deadline.timeIntervalSinceNow)
             )
             guard frame.uid == uid,
-                  frame.connectionId == payload.connectionID,
-                  frame.requestId == requestID else {
+                  frame.connectionId == payload.connectionID else {
+                continue
+            }
+            if frame.type != .controlSessionGrantChallenge, frame.requestId != requestID {
                 continue
             }
             switch frame.type {
@@ -177,6 +179,9 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
                 // Computer Use control frames are handled by the control
                 // plane; chat relay responses ignore them.
                 break
+            case .controlSessionGrantChallenge:
+                guard let challenge = frame.control?.sessionGrantChallenge else { break }
+                MobileComputerUseSessionGrantChallengeReceiver.shared.ingest(challenge)
             }
         }
 

@@ -20,12 +20,13 @@ ExecStart=/usr/libexec/openburnbar-daemon-launch
 Restart=on-failure
 RestartSec=5
 # Peer roots are forced by openburnbar-daemon-launch to the hardened allowlist
-# (/usr/bin:/usr/local/bin:/opt/openburnbar/bin). Values from daemon.env are
-# ignored — EnvironmentFile must never replace PEER_ROOTS with / or $HOME.
+# (/usr/bin:/usr/local/bin:/opt/openburnbar/bin). No user environment file is
+# imported into this privileged local control plane.
 Environment=OPENBURNBAR_DAEMON_LINUX_PEER_ROOTS=/usr/bin:/usr/local/bin:/opt/openburnbar/bin
-# Optional operator overrides for support/socket only — see daemon.env.example.
-# Do NOT put PEER_ROOTS or raw auth tokens in this file.
-EnvironmentFile=-%h/.config/openburnbar/daemon.env
+Environment=PATH=/usr/sbin:/usr/bin:/sbin:/bin
+# Never import code-loader or shell startup variables into the root-owned
+# launcher. Supported path customization uses a reviewed systemd drop-in.
+UnsetEnvironment=BASH_ENV ENV BASHOPTS SHELLOPTS CDPATH GLOBIGNORE LD_PRELOAD LD_AUDIT LD_LIBRARY_PATH NODE_OPTIONS NODE_PATH
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

@@ -47,6 +47,98 @@ describe('VAL-RPC-002 bridge behavior', () => {
     await expect(b.runtimeCapabilities()).rejects.toThrow(/missing_ids/);
   });
 
+  it('account auth methods use native commands and return only redacted state', async () => {
+    invoke
+      .mockResolvedValueOnce({
+        state: 'awaiting_device_approval',
+        signedIn: false,
+        trustClass: 'linux-lower-trust',
+        syncState: 'local-only',
+        deviceApprovalRequired: true,
+        installationDeviceID: `linux_${'ab'.repeat(32)}`,
+        installationSafetyFingerprint: Array(16).fill('ABAB').join(' '),
+        detail: 'Approval required.'
+      })
+      .mockResolvedValueOnce({ operationID: 'op-1', expiresAt: '2026-07-11T22:00:00Z' })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: {
+          state: 'signed_out',
+          signedIn: false,
+          trustClass: 'linux-lower-trust',
+          syncState: 'local-only',
+          deviceApprovalRequired: false
+        }
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: {
+          state: 'awaiting_device_approval',
+          signedIn: true,
+          trustClass: 'linux-lower-trust',
+          syncState: 'local-only',
+          deviceApprovalRequired: true
+        }
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: {
+          state: 'signed_out',
+          signedIn: false,
+          trustClass: 'linux-lower-trust',
+          syncState: 'local-only',
+          deviceApprovalRequired: false
+        }
+      });
+    const b = await bridge();
+
+    const status = await b.accountStatus();
+    expect(status).toMatchObject({
+      state: 'awaiting-device-approval',
+      deviceApprovalRequired: true,
+      installationDeviceID: `linux_${'ab'.repeat(32)}`,
+      installationSafetyFingerprint: Array(16).fill('ABAB').join(' ')
+    });
+    await expect(b.accountBeginSignIn()).resolves.toEqual({
+      operationID: 'op-1',
+      expiresAt: '2026-07-11T22:00:00Z'
+    });
+    await expect(b.accountCancelSignIn('op-1')).resolves.toMatchObject({ state: 'signed-out' });
+    await expect(b.accountRotateIdentity()).resolves.toMatchObject({ state: 'awaiting-device-approval' });
+    await expect(b.accountSignOut()).resolves.toMatchObject({ state: 'signed-out' });
+
+    expect(invoke).toHaveBeenNthCalledWith(1, 'account_status');
+    expect(invoke).toHaveBeenNthCalledWith(2, 'account_begin_sign_in');
+    expect(invoke).toHaveBeenNthCalledWith(3, 'account_cancel_sign_in', { operationId: 'op-1' });
+    expect(invoke).toHaveBeenNthCalledWith(4, 'account_rotate_identity');
+    expect(invoke).toHaveBeenNthCalledWith(5, 'account_sign_out');
+    expect(JSON.stringify(status)).not.toMatch(/refreshToken|idToken|appCheckToken|publicKey|sessionGeneration/);
+  });
+
+  it('rejects a malformed native sign-in operation before UI state can accept it', async () => {
+    invoke.mockResolvedValueOnce({ operationID: 'op-1', authorizationURL: 'https://should-not-reach-renderer' });
+    const b = await bridge();
+    await expect(b.accountBeginSignIn()).rejects.toThrow(/invalid sign-in operation/i);
+  });
+
+  it('maps the daemon cloud-ready sync state to active', async () => {
+    invoke.mockResolvedValueOnce({
+      state: 'active',
+      signedIn: true,
+      identityLabel: 'user@example.com',
+      trustClass: 'linux-lower-trust',
+      syncState: 'cloud-ready',
+      deviceApprovalRequired: false
+    });
+    const b = await bridge();
+
+    await expect(b.accountStatus()).resolves.toMatchObject({
+      state: 'active',
+      signedIn: true,
+      syncState: 'active'
+    });
+  });
+
   it('toolApprovalRespond success path invokes tool_approval_respond', async () => {
     invoke.mockResolvedValueOnce({ ok: true });
     const b = await bridge();
@@ -90,17 +182,38 @@ describe('VAL-RPC-002 bridge behavior', () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
-  it('computerUseSessionStart maps contract fields (mode/trustMode/clientID)', async () => {
-    invoke.mockResolvedValueOnce({ sessionId: 's1' });
+  it('computerUseSessionStart maps contract fields including the bound agent run', async () => {
+    invoke.mockResolvedValueOnce({ state: 'authorized', sessionId: 's1' });
     const b = await bridge();
     await b.computerUseSessionStart?.({
       mode: 'browser',
       trustMode: 'step',
-      clientId: 'linux-shell'
+      clientId: 'linux-shell',
+      runId: 'run-1',
+      runCallId: 'call-1',
+      runGeneration: 7,
+      desktopOwnerAuthorizationRequest: { method: 'linux_desktop_owner' }
     });
     expect(invoke).toHaveBeenCalledWith('computer_use_session_start', {
-      params: { mode: 'browser', trustMode: 'step', clientId: 'linux-shell' }
+      params: {
+        mode: 'browser',
+        trustMode: 'step',
+        clientId: 'linux-shell',
+        runId: 'run-1',
+        runCallId: 'call-1',
+        runGeneration: 7,
+        desktopOwnerAuthorizationRequest: { method: 'linux_desktop_owner' }
+      }
     });
+  });
+
+  it('computerUseSessionAuthorityStatus uses the native broker command without parameters', async () => {
+    invoke.mockResolvedValueOnce({ state: 'waiting_phone' });
+    const b = await bridge();
+    await expect(b.computerUseSessionAuthorityStatus?.()).resolves.toEqual({
+      state: 'waiting_phone'
+    });
+    expect(invoke).toHaveBeenCalledWith('computer_use_session_authority_status');
   });
 
   it('computerUseInvoke maps nested invocation object', async () => {
@@ -214,7 +327,15 @@ describe('VAL-RPC-002 bridge behavior', () => {
     invoke.mockRejectedValueOnce(new Error('daemon down'));
     const b = await bridge();
     await expect(
-      b.computerUseSessionStart?.({ mode: 'browser', trustMode: 'manual' })
+      b.computerUseSessionStart?.({
+        mode: 'browser',
+        trustMode: 'manual',
+        clientId: 'linux-shell',
+        runId: 'run-1',
+        runCallId: 'call-1',
+        runGeneration: 1,
+        desktopOwnerAuthorizationRequest: { method: 'linux_desktop_owner' }
+      })
     ).rejects.toThrow(/daemon down/);
   });
 

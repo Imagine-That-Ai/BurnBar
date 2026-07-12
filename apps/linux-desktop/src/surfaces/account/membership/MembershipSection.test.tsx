@@ -60,6 +60,10 @@ function bridge(partial: Partial<LinuxShellBridge>): LinuxShellBridge {
     exportDiagnostics: async () => ({ path: '' }),
     sessionEnv: async () => ({}),
     ...partial,
+    accountBeginSignIn: partial.accountBeginSignIn ?? bridgeStubDefaults.accountBeginSignIn,
+    accountCancelSignIn: partial.accountCancelSignIn ?? bridgeStubDefaults.accountCancelSignIn,
+    accountRotateIdentity: partial.accountRotateIdentity ?? bridgeStubDefaults.accountRotateIdentity,
+    accountSignOut: partial.accountSignOut ?? bridgeStubDefaults.accountSignOut,
     onboardingSnapshot: partial.onboardingSnapshot ?? bridgeStubDefaults.onboardingSnapshot,
     onboardingAction: partial.onboardingAction ?? bridgeStubDefaults.onboardingAction,
     onboardingReset: partial.onboardingReset ?? bridgeStubDefaults.onboardingReset

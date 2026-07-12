@@ -62,6 +62,56 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.auth.begin",
+    "caseName": "linuxAuthBegin",
+    "domain": "auth",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelope",
+    "result": "BurnBarLinuxAuthBeginResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.auth.cancel",
+    "caseName": "linuxAuthCancel",
+    "domain": "auth",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarLinuxAuthCancelRequest",
+    "result": "BurnBarLinuxAuthMutationResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.auth.rotate_identity",
+    "caseName": "linuxAuthRotateIdentity",
+    "domain": "auth",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelope",
+    "result": "BurnBarLinuxAuthMutationResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.auth.sign_out",
+    "caseName": "linuxAuthSignOut",
+    "domain": "auth",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelope",
+    "result": "BurnBarLinuxAuthMutationResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.auth.status",
+    "caseName": "linuxAuthStatus",
+    "domain": "auth",
+    "capability": "lifecycle",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelope",
+    "result": "BurnBarLinuxAuthStatusResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.browser.action",
     "caseName": "browserAction",
     "domain": "tooling",
@@ -269,6 +319,36 @@ export const burnBarRpcIpcCanon = [
     "owner": "OpenBurnBarDaemon",
     "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
     "result": "Codable response for daemon.computer_use.panic_halt",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.computer_use.session_grant.acquire",
+    "caseName": "computerUseSessionGrantAcquire",
+    "domain": "computer_use",
+    "capability": "computer_use",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.computer_use.session_grant.acquire",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.computer_use.session_grant.readiness",
+    "caseName": "computerUseSessionGrantReadiness",
+    "domain": "computer_use",
+    "capability": "computer_use",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.computer_use.session_grant.readiness",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.computer_use.session_grant.status",
+    "caseName": "computerUseSessionGrantStatus",
+    "domain": "computer_use",
+    "capability": "computer_use",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.computer_use.session_grant.status",
     "error": "BurnBarRPCError"
   },
   {

@@ -43,15 +43,16 @@ final class AgentWatchActionPublisherTests: XCTestCase {
         )
 
         try await publisher.publish(event(kind: .runCreated, payload: .object(["title": .string("Started")]), emittedAt: Date(timeIntervalSince1970: 1)))
-        try await publisher.publish(event(kind: .toolDispatched, payload: .object(["tool": .string("browser.click")]), emittedAt: Date(timeIntervalSince1970: 2)))
-        try await publisher.publish(event(kind: .toolCompleted, payload: .object(["message": .string("Clicked")]), emittedAt: Date(timeIntervalSince1970: 3)))
-        try await publisher.publish(event(kind: .runFailed, payload: .object(["error": .string("Timed out")]), emittedAt: Date(timeIntervalSince1970: 4)))
-        try await publisher.publish(event(kind: .runCancelled, payload: nil, emittedAt: Date(timeIntervalSince1970: 5)))
+        try await publisher.publish(event(kind: .computerUseSessionRequired, payload: .object(["message": .string("Connect Computer Use")]), emittedAt: Date(timeIntervalSince1970: 2)))
+        try await publisher.publish(event(kind: .toolDispatched, payload: .object(["tool": .string("browser.click")]), emittedAt: Date(timeIntervalSince1970: 3)))
+        try await publisher.publish(event(kind: .toolCompleted, payload: .object(["message": .string("Clicked")]), emittedAt: Date(timeIntervalSince1970: 4)))
+        try await publisher.publish(event(kind: .runFailed, payload: .object(["error": .string("Timed out")]), emittedAt: Date(timeIntervalSince1970: 5)))
+        try await publisher.publish(event(kind: .runCancelled, payload: nil, emittedAt: Date(timeIntervalSince1970: 6)))
 
         let entries = await capture.frames.compactMap(\.control?.actionLogEntry)
-        XCTAssertEqual(entries.map(\.entryIndex), [0, 1, 2, 3, 4])
-        XCTAssertEqual(entries.map(\.status), [.planned, .executing, .completed, .failed, .failed])
-        XCTAssertEqual(entries.map(\.summary), ["Started", "browser.click", "Clicked", "Timed out", "run cancelled"])
+        XCTAssertEqual(entries.map(\.entryIndex), [0, 1, 2, 3, 4, 5])
+        XCTAssertEqual(entries.map(\.status), [.planned, .awaitingApproval, .executing, .completed, .failed, .failed])
+        XCTAssertEqual(entries.map(\.summary), ["Started", "Connect Computer Use", "browser.click", "Clicked", "Timed out", "run cancelled"])
     }
 
     func testDirectEntryPublishPreservesAuditMetadataForReceiver() async throws {

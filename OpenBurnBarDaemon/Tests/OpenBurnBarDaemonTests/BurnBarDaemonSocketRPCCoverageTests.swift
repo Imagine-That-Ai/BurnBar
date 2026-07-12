@@ -27,6 +27,7 @@ final class BurnBarDaemonSocketRPCCoverageTests: XCTestCase {
 
     func testHandlerDomainsAreDisjoint() {
         let domains: [Set<BurnBarRPCMethod>] = [
+            BurnBarDaemonSocketRPCCoverage.auth,
             BurnBarDaemonSocketRPCCoverage.lifecycle,
             BurnBarDaemonSocketRPCCoverage.config,
             BurnBarDaemonSocketRPCCoverage.usage,

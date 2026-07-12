@@ -26,7 +26,6 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -41,6 +40,7 @@ import com.openburnbar.ui.components.EmptyStateView
 import com.openburnbar.ui.components.ErrorStateView
 import com.openburnbar.ui.components.ShimmerCard
 import com.openburnbar.ui.components.StaggeredEntrance
+import com.openburnbar.ui.hermes.rememberAccountScopedHermesService
 import com.openburnbar.ui.pulse.atlas.TrendAtlasCard
 import com.openburnbar.ui.theme.AuroraSpacing
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -191,10 +191,7 @@ private fun rememberPulseViewContentDerived(model: PulseContentModel): PulseView
     val recentUsages by model.activityStore.usages.collectAsState()
     val liveUsages by model.activityStore.liveUsages.collectAsState()
     val pulseUsages = pulseUsagesForDisplay(liveUsages = liveUsages, recentUsages = recentUsages)
-    val context = LocalContext.current
-    val hermesService = remember(context) {
-        HermesService(appContext = context.applicationContext)
-    }
+    val hermesService = rememberAccountScopedHermesService()
     return PulseViewContentDerived(
         snapshots = snapshots,
         recentUsages = recentUsages,

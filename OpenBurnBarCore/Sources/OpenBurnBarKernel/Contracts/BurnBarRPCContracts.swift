@@ -11,6 +11,11 @@ public enum BurnBarProtocolVersion {
 
 public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable {
     case authBootstrap = "auth.bootstrap"
+    case linuxAuthStatus = "daemon.auth.status"
+    case linuxAuthBegin = "daemon.auth.begin"
+    case linuxAuthCancel = "daemon.auth.cancel"
+    case linuxAuthRotateIdentity = "daemon.auth.rotate_identity"
+    case linuxAuthSignOut = "daemon.auth.sign_out"
     case health = "daemon.health"
     case catalog = "daemon.catalog"
     case linuxOnboardingSnapshot = "daemon.onboarding.snapshot"
@@ -45,6 +50,9 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case browserToolingUpdate = "daemon.browser.tooling.update"
     case browserAction = "daemon.browser.action"
     case computerUseCapabilityStateUpdate = "daemon.computer_use.capability_state.update"
+    case computerUseSessionGrantReadiness = "daemon.computer_use.session_grant.readiness"
+    case computerUseSessionGrantAcquire = "daemon.computer_use.session_grant.acquire"
+    case computerUseSessionGrantStatus = "daemon.computer_use.session_grant.status"
     case computerUseSessionStart = "daemon.computer_use.session.start"
     case computerUseInvoke = "daemon.computer_use.invoke"
     case computerUseApprovalPending = "daemon.computer_use.approval.pending"
@@ -182,6 +190,84 @@ public struct BurnBarAuthBootstrapResponse: Codable, Hashable, Sendable {
     public init(sessionToken: String, issuedAt: Date = Date()) {
         self.sessionToken = sessionToken
         self.issuedAt = issuedAt
+    }
+}
+
+public enum BurnBarLinuxAuthState: String, Codable, Hashable, Sendable {
+    case signedOut = "signed_out"
+    case authorizing
+    case awaitingDeviceApproval = "awaiting_device_approval"
+    case active
+    case unavailable
+}
+
+public struct BurnBarLinuxAuthStatusResponse: Codable, Hashable, Sendable {
+    public let state: BurnBarLinuxAuthState
+    public let signedIn: Bool
+    public let identityLabel: String?
+    public let trustClass: String
+    public let syncState: String
+    public let authorizationOperationID: String?
+    public let authorizationExpiresAt: String?
+    public let deviceApprovalRequired: Bool
+    public let installationDeviceID: String?
+    public let installationSafetyFingerprint: String?
+    public let detail: String?
+
+    public init(
+        state: BurnBarLinuxAuthState,
+        signedIn: Bool,
+        identityLabel: String? = nil,
+        trustClass: String = "linux-lower-trust",
+        syncState: String = "local-only",
+        authorizationOperationID: String? = nil,
+        authorizationExpiresAt: String? = nil,
+        deviceApprovalRequired: Bool = false,
+        installationDeviceID: String? = nil,
+        installationSafetyFingerprint: String? = nil,
+        detail: String? = nil
+    ) {
+        self.state = state
+        self.signedIn = signedIn
+        self.identityLabel = identityLabel
+        self.trustClass = trustClass
+        self.syncState = syncState
+        self.authorizationOperationID = authorizationOperationID
+        self.authorizationExpiresAt = authorizationExpiresAt
+        self.deviceApprovalRequired = deviceApprovalRequired
+        self.installationDeviceID = installationDeviceID
+        self.installationSafetyFingerprint = installationSafetyFingerprint
+        self.detail = detail
+    }
+}
+
+public struct BurnBarLinuxAuthBeginResponse: Codable, Hashable, Sendable {
+    public let operationID: String
+    public let authorizationURL: String
+    public let expiresAt: String
+
+    public init(operationID: String, authorizationURL: String, expiresAt: String) {
+        self.operationID = operationID
+        self.authorizationURL = authorizationURL
+        self.expiresAt = expiresAt
+    }
+}
+
+public struct BurnBarLinuxAuthCancelRequest: Codable, Hashable, Sendable {
+    public let operationID: String
+
+    public init(operationID: String) {
+        self.operationID = operationID
+    }
+}
+
+public struct BurnBarLinuxAuthMutationResponse: Codable, Hashable, Sendable {
+    public let ok: Bool
+    public let status: BurnBarLinuxAuthStatusResponse
+
+    public init(ok: Bool, status: BurnBarLinuxAuthStatusResponse) {
+        self.ok = ok
+        self.status = status
     }
 }
 

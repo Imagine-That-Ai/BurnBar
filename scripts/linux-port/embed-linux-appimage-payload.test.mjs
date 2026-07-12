@@ -3,26 +3,79 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { requiredPayloadPaths, validatePayload } from './embed-linux-appimage-payload.mjs';
+import { fileURLToPath } from 'node:url';
+import {
+  requiredPayloadPaths,
+  resolveLinuxAppImagePeerSigning,
+  validatePayload
+} from './embed-linux-appimage-payload.mjs';
 import {
   findAppImageFilesystemOffset,
   squashfsCandidateOffsets
 } from './lib/appimage-filesystem.mjs';
 
-test('AppImage payload validator requires daemon, Swift, and SQLCipher runtime', () => {
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+
+test('AppImage payload validator requires daemon, runtimes, and Browser CU resources', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-appimage-payload-'));
   fs.writeFileSync(path.join(root, 'openburnbar-daemon'), 'daemon');
   fs.mkdirSync(path.join(root, 'swift'));
   fs.mkdirSync(path.join(root, 'native'));
   fs.writeFileSync(path.join(root, 'native/libsqlcipher.so.0'), 'sqlcipher');
+  fs.writeFileSync(path.join(root, 'native/libopenburnbar_iroh.so'), 'iroh');
+  fs.mkdirSync(path.join(root, 'playwright'));
+  fs.writeFileSync(path.join(root, 'playwright/openburnbar-playwright-bridge.js'), 'bridge');
+  fs.writeFileSync(path.join(root, 'playwright/openburnbar-browser-runtime-probe'), 'probe', { mode: 0o755 });
+  fs.writeFileSync(path.join(root, 'playwright/browser-runtime-requirements.json'), '{}');
+  fs.writeFileSync(path.join(root, 'cloud-auth.json'), '{"schemaVersion":1,"configured":true}');
 
   assert.deepEqual(requiredPayloadPaths, [
     'openburnbar-daemon',
     'swift',
-    'native/libsqlcipher.so.0'
+    'native/libsqlcipher.so.0',
+    'native/libopenburnbar_iroh.so',
+    'playwright/openburnbar-playwright-bridge.js',
+    'playwright/openburnbar-browser-runtime-probe',
+    'playwright/browser-runtime-requirements.json',
+    'cloud-auth.json'
   ]);
   assert.equal(validatePayload(root), root);
   fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('release AppImage embedding requires the signing key while unsigned developer embedding is explicit', () => {
+  assert.throws(
+    () => resolveLinuxAppImagePeerSigning({ OPENBURNBAR_LINUX_RELEASE_BUILD: '1' }),
+    /ED25519_PRIVATE_KEY_PEM is required/
+  );
+  assert.equal(resolveLinuxAppImagePeerSigning({}), null);
+  assert.equal(
+    resolveLinuxAppImagePeerSigning({ OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM: '  private-key  ' }),
+    'private-key'
+  );
+});
+
+test('AppImage launcher routes cloud auth to the mounted package payload', () => {
+  const launcher = fs.readFileSync(
+    path.join(repoRoot, 'packaging/linux/openburnbar-daemon-launch.sh'),
+    'utf8'
+  );
+  assert.match(
+    launcher,
+    /OPENBURNBAR_PACKAGED_CLOUD_AUTH_CONFIG_FILE="\$\{APPIMAGE_ROOT\}\/usr\/share\/openburnbar\/cloud-auth\.json"/
+  );
+  assert.match(
+    launcher,
+    /OPENBURNBAR_PACKAGED_CLOUD_AUTH_CONFIG_FILE="\/usr\/share\/openburnbar\/cloud-auth\.json"/
+  );
+  assert.match(launcher, /unset OPENBURNBAR_DAEMON_LINUX_PEER_ROOTS BURNBAR_DAEMON_LINUX_PEER_ROOTS/);
+  assert.match(launcher, /unset OPENBURNBAR_DAEMON_LINUX_PEER_SHA256_PINS BURNBAR_DAEMON_LINUX_PEER_SHA256_PINS/);
+  assert.doesNotMatch(launcher, /export OPENBURNBAR_DAEMON_LINUX_PEER_ROOTS/);
+  assert.equal(
+    launcher,
+    fs.readFileSync(path.join(repoRoot, 'packaging/linux/aur/openburnbar-daemon-launch'), 'utf8'),
+    'AUR launcher must exactly mirror the canonical launcher'
+  );
 });
 
 test('AppImage payload validator fails closed when a runtime is absent', () => {
@@ -31,6 +84,58 @@ test('AppImage payload validator fails closed when a runtime is absent', () => {
   fs.mkdirSync(path.join(root, 'swift'));
 
   assert.throws(() => validatePayload(root), /native\/libsqlcipher\.so\.0/);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('AppImage payload validator fails closed when the packaged bridge is absent', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-appimage-bridge-missing-'));
+  fs.writeFileSync(path.join(root, 'openburnbar-daemon'), 'daemon');
+  fs.mkdirSync(path.join(root, 'swift'));
+  fs.mkdirSync(path.join(root, 'native'));
+  fs.writeFileSync(path.join(root, 'native/libsqlcipher.so.0'), 'sqlcipher');
+  fs.writeFileSync(path.join(root, 'native/libopenburnbar_iroh.so'), 'iroh');
+  fs.mkdirSync(path.join(root, 'playwright'));
+  fs.writeFileSync(path.join(root, 'playwright/openburnbar-browser-runtime-probe'), 'probe', { mode: 0o755 });
+  fs.writeFileSync(path.join(root, 'playwright/browser-runtime-requirements.json'), '{}');
+  fs.writeFileSync(path.join(root, 'cloud-auth.json'), '{"schemaVersion":1,"configured":true}');
+
+  assert.throws(() => validatePayload(root), /openburnbar-playwright-bridge\.js/);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('AppImage payload validator rejects a symlinked bridge', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-appimage-bridge-symlink-'));
+  fs.writeFileSync(path.join(root, 'openburnbar-daemon'), 'daemon');
+  fs.mkdirSync(path.join(root, 'swift'));
+  fs.mkdirSync(path.join(root, 'native'));
+  fs.writeFileSync(path.join(root, 'native/libsqlcipher.so.0'), 'sqlcipher');
+  fs.writeFileSync(path.join(root, 'native/libopenburnbar_iroh.so'), 'iroh');
+  fs.mkdirSync(path.join(root, 'playwright'));
+  fs.writeFileSync(path.join(root, 'bridge-target'), 'bridge');
+  fs.symlinkSync('../bridge-target', path.join(root, 'playwright/openburnbar-playwright-bridge.js'));
+  fs.writeFileSync(path.join(root, 'playwright/openburnbar-browser-runtime-probe'), 'probe', { mode: 0o755 });
+  fs.writeFileSync(path.join(root, 'playwright/browser-runtime-requirements.json'), '{}');
+  fs.writeFileSync(path.join(root, 'cloud-auth.json'), '{"schemaVersion":1,"configured":true}');
+
+  assert.throws(() => validatePayload(root), /not a regular file/);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('AppImage payload validator rejects a symlinked iroh runtime', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-appimage-iroh-symlink-'));
+  fs.writeFileSync(path.join(root, 'openburnbar-daemon'), 'daemon');
+  fs.mkdirSync(path.join(root, 'swift'));
+  fs.mkdirSync(path.join(root, 'native'));
+  fs.writeFileSync(path.join(root, 'native/libsqlcipher.so.0'), 'sqlcipher');
+  fs.writeFileSync(path.join(root, 'iroh-target'), 'iroh');
+  fs.symlinkSync('../iroh-target', path.join(root, 'native/libopenburnbar_iroh.so'));
+  fs.mkdirSync(path.join(root, 'playwright'));
+  fs.writeFileSync(path.join(root, 'playwright/openburnbar-playwright-bridge.js'), 'bridge');
+  fs.writeFileSync(path.join(root, 'playwright/openburnbar-browser-runtime-probe'), 'probe', { mode: 0o755 });
+  fs.writeFileSync(path.join(root, 'playwright/browser-runtime-requirements.json'), '{}');
+  fs.writeFileSync(path.join(root, 'cloud-auth.json'), '{"schemaVersion":1,"configured":true}');
+
+  assert.throws(() => validatePayload(root), /iroh native runtime.*not a regular file/);
   fs.rmSync(root, { recursive: true, force: true });
 });
 
