@@ -20,7 +20,7 @@ const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
 
 <BaseLayout
   title="Download"
-  description="Download OpenBurnBar for macOS and Linux (ARM64). iOS in App Store review; Cursor/VS Code extension source-only; Android Play Store pending."
+  description="Download OpenBurnBar. macOS by direct download, iPhone & iPad on the App Store, Linux ARM64 builds, Cursor/VS Code extension source-only."
 >
   <section class="pagehead">
     <div class="container pagehead__inner">
@@ -287,25 +287,29 @@ make install</code></pre>
     <div class="container dlsec__shell">
       <div class="dlsec__head">
         <div class="dlsec__intro">
-          <span class="tag tag--review tag--plain mono">In App Store review</span>
+          <span class="tag tag--exact tag--plain mono">On the App Store</span>
           <h2>iPhone &amp; iPad companion</h2>
           <p class="lead">
             Requires {SITE.iosMin} or later on iPhone or iPad. Companion to the Mac app — the phone
             or tablet renders what the Mac records. Native widgets, Live Activity, Siri shortcut.
           </p>
         </div>
-        <span class="btn btn--ghost dlsec__primary is-disabled" aria-disabled="true">
-          App Store · pending review
-        </span>
+        <a
+          class="btn btn--ember dlsec__primary"
+          href={SITE.iosAppStoreUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Get it on the App Store
+          <span class="btn-arrow" aria-hidden="true">→</span>
+        </a>
       </div>
 
       <div class="callout">
         <p>
-          <strong>What "in review" means:</strong>
-          OpenBurnBar 1.0 is submitted to App Store Connect with manual release enabled — Apple's approval
-          doesn't auto-publish. We'll flip the switch and update this page the moment it's live.
+          Free download; BurnBar Cloud subscriptions are available in-app. The iPhone and iPad app
+          renders what your Mac's daemon records — install the macOS app first.
         </p>
-        <p class="muted small">App Store subscriptions are gated on the same review.</p>
       </div>
     </div>
   </section>
