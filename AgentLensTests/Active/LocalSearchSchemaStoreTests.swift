@@ -201,6 +201,41 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
         let fetchedEmbeddingChunkIDs = try await store.fetchChunkEmbeddings(embeddingVersionID: "version-1").map(\.chunkID)
         XCTAssertEqual(fetchedEmbeddingChunkIDs, ["chunk-1"])
 
+        // Parent rows first: chunk_embeddings.chunkID has a FOREIGN KEY into
+        // search_chunks, so the >999-variable batch fetch needs real chunks.
+        let manyDocument = SearchDocumentRecord(
+            id: "doc-many",
+            sourceKind: .conversation,
+            sourceID: "conv-many",
+            sourceVersionID: "v1",
+            provider: AgentProvider.claudeCode.rawValue,
+            projectName: "OpenBurnBar",
+            title: "Bulk embedding fixture",
+            subtitle: nil,
+            bodyPreview: nil,
+            sourceUpdatedAt: now,
+            indexedAt: now,
+            contentHash: "hash-many",
+            createdAt: now,
+            updatedAt: now
+        )
+        try await store.upsertSearchDocument(manyDocument)
+        let manyChunks = (0..<1_100).map { index in
+            SearchChunkRecord(
+                id: String(format: "chunk-many-%04d", index),
+                documentID: "doc-many",
+                sourceKind: .conversation,
+                sourceID: "conv-many",
+                sourceVersionID: "v1",
+                ordinal: index,
+                startOffset: index,
+                endOffset: index + 1,
+                text: "chunk \(index)",
+                createdAt: now,
+                updatedAt: now
+            )
+        }
+        try await store.replaceSearchChunks(documentID: "doc-many", title: manyDocument.title, chunks: manyChunks)
         let manyEmbeddings = (0..<1_100).map { index in
             ChunkEmbeddingRecord(
                 chunkID: String(format: "chunk-many-%04d", index),
