@@ -1,0 +1,16 @@
+{
+  "collectorActualSha256": "8844a50251d2239d6d8a0f4120436c3f143ce6f5006bf10c498ac953ec3ed137",
+  "collectorCommit": "05e6a0bb5c",
+  "collectorExpectedSha256": "8844a50251d2239d6d8a0f4120436c3f143ce6f5006bf10c498ac953ec3ed137",
+  "collectorPath": "C:\\Users\\Public\\foundation-host-uia-collector-05e6a0bb5c.ps1",
+  "completedAt": "2026-07-11T22:23:38.9854311Z",
+  "error": null,
+  "identity": "NT AUTHORITY\\SYSTEM",
+  "manifestExists": true,
+  "repoExists": true,
+  "runnerExists": true,
+  "scriptStackTrace": null,
+  "sessionId": 0,
+  "startedAt": "2026-07-11T22:12:54.3495868Z",
+  "status": "passed"
+}

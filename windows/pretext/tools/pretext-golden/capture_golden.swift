@@ -9,8 +9,8 @@ let args = CommandLine.arguments
 guard args.count >= 4 else { FileHandle.standardError.write("usage: capture <bundle.js> <corpus.json> <out.json>\n".data(using: .utf8)!); exit(2) }
 let bundlePath = args[1], corpusPath = args[2], outPath = args[3]
 
-let bundle = try! String(contentsOfFile: bundlePath, encoding: .utf8)
-let corpusText = try! String(contentsOfFile: corpusPath, encoding: .utf8)
+let bundle = try String(contentsOfFile: bundlePath, encoding: .utf8)
+let corpusText = try String(contentsOfFile: corpusPath, encoding: .utf8)
 
 // The measure script mirrors Resources/Pretext/index.html method-for-method.
 let measureScript = """
@@ -84,7 +84,12 @@ final class Cap: NSObject, WKNavigationDelegate {
               "results": \(results)
             }
             """
-            try! golden.write(toFile: self.out, atomically: true, encoding: .utf8)
+            do {
+                try golden.write(toFile: self.out, atomically: true, encoding: .utf8)
+            } catch {
+                FileHandle.standardError.write("WRITE ERR \(error)\n".data(using: .utf8)!)
+                exit(7)
+            }
             FileHandle.standardError.write("WROTE \(self.out)\n".data(using: .utf8)!)
             exit(0)
         }

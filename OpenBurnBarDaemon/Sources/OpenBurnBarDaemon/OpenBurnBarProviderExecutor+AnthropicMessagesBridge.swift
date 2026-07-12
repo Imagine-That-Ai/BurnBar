@@ -124,6 +124,7 @@ extension BurnBarOpenAICompatibleProviderExecutor {
         return BurnBarProviderProxyResponse(
             statusCode: 200,
             contentType: "application/json",
+            headers: chatResponse.headers,
             body: body,
             usage: chatResponse.usage
         )
@@ -257,6 +258,7 @@ extension BurnBarOpenAICompatibleProviderExecutor {
         return BurnBarProviderProxyResponse(
             statusCode: 200,
             contentType: "text/event-stream",
+            headers: response.headers,
             body: output,
             usage: response.usage
         )

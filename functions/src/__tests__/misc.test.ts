@@ -25,8 +25,11 @@ const { refreshUserRollupsMock, seedDemoMock, enforceMock, logInfoMock, logError
   logInfoMock: vi.fn(),
   logErrorMock: vi.fn(),
   // Identity marker: the callables must pass the shared admin Firestore handle
-  // through unchanged; nothing in these tests dereferences it.
-  dbStub: { __marker: "admin-db-stub" },
+  // through unchanged; only the global account-erasure barrier dereferences it.
+  dbStub: {
+    __marker: "admin-db-stub",
+    doc: vi.fn(() => ({ get: async () => ({ exists: false }) })),
+  },
 }));
 
 vi.mock("../adminRuntime.js", () => ({ db: dbStub }));

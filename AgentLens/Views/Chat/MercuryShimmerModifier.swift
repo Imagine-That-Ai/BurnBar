@@ -4,13 +4,16 @@ import SwiftUI
 
 /// Sweeping translucent highlight band that travels across a view.
 /// Uses `TimelineView` with pause control for zero GPU cost when inactive.
+/// Honors Reduce Motion: renders a static highlight instead of the sweep.
 struct MercuryShimmerModifier: ViewModifier {
     var active: Bool
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     func body(content: Content) -> some View {
         content.overlay {
-            TimelineView(.animation(minimumInterval: 1 / 30, paused: !active)) { ctx in
-                let phase = active
+            TimelineView(.animation(minimumInterval: 1 / 30, paused: !active || reduceMotion)) { ctx in
+                let phase = active && !reduceMotion
                     ? ctx.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 3.0) / 3.0
                     : 0
 

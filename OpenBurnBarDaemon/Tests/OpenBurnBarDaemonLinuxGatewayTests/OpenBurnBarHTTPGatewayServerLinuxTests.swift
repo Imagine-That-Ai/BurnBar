@@ -12,7 +12,7 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
         defer { upstream.stop() }
 
         let harness = try LinuxGatewayHarness()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
         try await harness.configureZAIProvider(baseURL: "http://127.0.0.1:\(upstream.port)/v1")
         try await harness.start()
 
@@ -51,16 +51,15 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
         XCTAssertEqual(entry.httpStatus, 200)
         XCTAssertTrue(entry.streamed)
 
-        try await assertMidStreamUpstreamDropClosesWithoutSecondHTTPResponse()
     }
 
-    private func assertMidStreamUpstreamDropClosesWithoutSecondHTTPResponse() async throws {
+    func testMidStreamUpstreamDropClosesWithoutSecondHTTPResponse() async throws {
         let upstream = LinuxMockOpenAIStreamServer(dropsAfterFirstChunk: true)
         try upstream.start()
         defer { upstream.stop() }
 
         let harness = try LinuxGatewayHarness()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
         try await harness.configureZAIProvider(baseURL: "http://127.0.0.1:\(upstream.port)/v1")
         try await harness.start()
 
@@ -84,7 +83,7 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
         defer { upstream.stop() }
 
         let harness = try LinuxGatewayHarness()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
         try await harness.configureAnthropicProvider(baseURL: "http://127.0.0.1:\(upstream.port)/anthropic/v1")
         try await harness.start()
 
@@ -136,7 +135,7 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
         defer { upstream.stop() }
 
         let harness = try LinuxGatewayHarness()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
         try await harness.configureZAIProvider(baseURL: "http://127.0.0.1:\(upstream.port)/v1")
         try await harness.start()
 
@@ -176,7 +175,7 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
         defer { upstream.stop() }
 
         let harness = try LinuxGatewayHarness()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
         try await harness.configureAnthropicProvider(baseURL: "http://127.0.0.1:\(upstream.port)/anthropic/v1")
         try await harness.start()
 
@@ -212,7 +211,7 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
 
     func testRejectsMalformedChatCompletionsRequestBeforeRouting() async throws {
         let harness = try LinuxGatewayHarness()
-        defer { Task { await harness.stop() } }
+        addTeardownBlock { await harness.stop() }
         try await harness.start()
 
         let response = try await LinuxHTTPClient.post(
@@ -423,22 +422,33 @@ private final class LinuxMockOpenAIStreamServer: @unchecked Sendable {
 
         switch response {
         case .openAIChatStream:
-            let contentLength = dropsAfterFirstChunk ? "Content-Length: 10000\r\n" : ""
+            let firstChunk = #"data: {"id":"chatcmpl-linux","object":"chat.completion.chunk","created":1783200000,"model":"glm-5-turbo","choices":[{"index":0,"delta":{"content":"hi"},"finish_reason":null}]}"# + "\n\n"
+            let truncationHeader = dropsAfterFirstChunk
+                ? "Content-Length: \(firstChunk.utf8.count + 1_024)\r\n"
+                : ""
             let head = "HTTP/1.1 200 OK\r\n"
                 + "Content-Type: text/event-stream\r\n"
                 + "Cache-Control: no-cache\r\n"
-                + contentLength
+                + truncationHeader
                 + "Connection: close\r\n"
                 + "\r\n"
             _ = try? LinuxSocketSupport.sendAll(Data(head.utf8), to: clientFD)
 
-            let firstChunk = #"data: {"id":"chatcmpl-linux","object":"chat.completion.chunk","created":1783200000,"model":"glm-5-turbo","choices":[{"index":0,"delta":{"content":"hi"},"finish_reason":null}]}"# + "\n\n"
-            _ = try? LinuxSocketSupport.sendAll(Data(firstChunk.utf8), to: clientFD)
             if dropsAfterFirstChunk {
-                var resetLinger = linger(l_onoff: 1, l_linger: 0)
-                setsockopt(clientFD, SOL_SOCKET, SO_LINGER, &resetLinger, socklen_t(MemoryLayout<linger>.size))
+                _ = try? LinuxSocketSupport.sendAll(Data(firstChunk.utf8), to: clientFD)
+                var resetOnClose = linger(l_onoff: 1, l_linger: 0)
+                _ = withUnsafePointer(to: &resetOnClose) { pointer in
+                    Glibc.setsockopt(
+                        clientFD,
+                        SOL_SOCKET,
+                        SO_LINGER,
+                        pointer,
+                        socklen_t(MemoryLayout<linger>.size)
+                    )
+                }
                 return
             }
+            _ = try? LinuxSocketSupport.sendAll(Data(firstChunk.utf8), to: clientFD)
             Glibc.usleep(50_000)
             let usageChunk = #"data: {"id":"chatcmpl-linux","object":"chat.completion.chunk","created":1783200000,"model":"glm-5-turbo","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"#
                 + #""usage":{"prompt_tokens":7,"completion_tokens":5,"total_tokens":12,"cache_creation_input_tokens":3,"prompt_tokens_details":{"cached_tokens":2},"completion_tokens_details":{"reasoning_tokens":1}}}"# + "\n\n"

@@ -57,7 +57,7 @@ actor DataStoreActor {
 
     // MARK: - Search / Retrieval
 
-    func fetchConversations(limit: Int = 500) async throws -> [ConversationRecord] {
+    func fetchConversations(limit: Int = 500) async throws -> [OpenBurnBarCore.ConversationRecord] {
         try await conversationStore.fetchConversations(limit: limit)
     }
 

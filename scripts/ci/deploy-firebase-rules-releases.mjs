@@ -287,11 +287,11 @@ export function buildReleasePatchRequest(releaseName, rulesetName) {
   const update = buildReleaseUpdate(releaseName, rulesetName);
   return {
     method: "PATCH",
-    // Firebase Rules PATCH updates only rulesetName; send the documented
-    // field mask so existing releases are updated instead of recreated.
+    // Match firebase-tools' production request shape. The Rules API only
+    // honors rulesetName on PATCH; supplying updateMask currently causes the
+    // backend to reject an otherwise valid release update with INVALID_ARGUMENT.
     body: JSON.stringify({
       release: update,
-      updateMask: "rulesetName",
     }),
   };
 }

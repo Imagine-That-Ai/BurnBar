@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 public enum CapabilityTokenVerificationFailure: String, Codable, Sendable, Equatable, Error {
     case missingToken = "capability_token_missing"

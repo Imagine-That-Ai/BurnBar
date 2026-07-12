@@ -30,17 +30,56 @@
                 <tk:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE896;" />
                 </tk:SettingsCard.HeaderIcon>
-                <TextBlock Foreground="{StaticResource PensieveColorTextMuteBrush}" Text="—" />
+                <StackPanel Spacing="2" HorizontalAlignment="Right">
+                    <TextBlock x:Name="VersionText"
+                               TextAlignment="Right"
+                               Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                    <TextBlock x:Name="ChannelText"
+                               TextAlignment="Right"
+                               FontSize="12"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                </StackPanel>
             </tk:SettingsCard>
 
             <tk:SettingsCard x:Name="AutomaticChecksCard" Header="Automatically Check for Updates"
                              Description="Check shortly after launch and once a day">
-                <ToggleSwitch IsOn="True" />
+                <ToggleSwitch x:Name="AutomaticChecksToggle"
+                              Toggled="AutomaticChecksToggle_Toggled" />
+            </tk:SettingsCard>
+
+            <tk:SettingsCard x:Name="UpdaterStatusCard" Header="Update Feed"
+                             Description="Pinned feed and native updater availability">
+                <StackPanel Spacing="6" MinWidth="280">
+                    <TextBlock x:Name="UpdaterStatusText"
+                               TextWrapping="Wrap"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    <TextBlock x:Name="AppcastText"
+                               TextWrapping="WrapWholeWords"
+                               FontSize="12"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                    <Button x:Name="CheckNowButton"
+                            Content="Check Now"
+                            Click="CheckNowButton_Click" />
+                </StackPanel>
+            </tk:SettingsCard>
+
+            <tk:SettingsCard x:Name="StartupCard" Header="Launch at Startup"
+                             Description="Use the packaged Windows startup task when available">
+                <StackPanel Spacing="6">
+                    <ToggleSwitch x:Name="StartupToggle"
+                                  Toggled="StartupToggle_Toggled" />
+                    <TextBlock x:Name="StartupStatusText"
+                               TextWrapping="Wrap"
+                               FontSize="12"
+                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                </StackPanel>
             </tk:SettingsCard>
 
             <tk:SettingsCard x:Name="ReleaseNotesCard" Header="Release Notes"
                              Description="Open the GitHub releases page">
-                <Button Content="Open" />
+                <Button x:Name="ReleaseNotesButton"
+                        Content="Open"
+                        Click="ReleaseNotesButton_Click" />
             </tk:SettingsCard>
 
         </StackPanel>

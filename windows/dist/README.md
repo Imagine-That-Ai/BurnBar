@@ -24,7 +24,7 @@ is `dist` (see [`windows/README.md`](../README.md)).
 
 A Windows release is authenticated by **two independent keys**, exactly mirroring macOS:
 
-1. **Authenticode** (Azure Trusted Signing / the W0 cert) authenticates the installer to
+1. **Authenticode** (Azure Artifact Signing / the W0 cert) authenticates the installer to
    SmartScreen + the OS loader. *Analog: macOS Developer-ID codesign.*
 2. **The pinned Ed25519 update key** (`WINDOWS_UPDATE_SIGNING_KEY`) authenticates each **update
    offer** in the feed. *Analog: Sparkle's `SUPublicEDKey`.*
@@ -34,12 +34,12 @@ update**: the feed entry must *also* verify under the pinned key, and the downlo
 hash to the signed `sha256`. Either check failing is **fail-closed** (never "available"). This is
 the R18-adjacent supply-chain invariant the master plan requires the Windows port to preserve.
 
-## Honest ceiling
+## Release gate
 
 The real MSIX/EXE build, Authenticode signing, and Store/winget submission need a **Windows
-runner + the W0 Trusted-Signing tenant + code-signing cert** (procurement — Alberto). Those steps
-are gated on the `WINDOWS_CODESIGN_*` / `WINDOWS_UPDATE_SIGNING_KEY` secrets in
-[`openburnbar-release-windows.yml`](../../.github/workflows/openburnbar-release-windows.yml) and
-emit a clear *deferred* warning when unset. What is **proven today on macOS**: the portable
-update-feed kernel (`dotnet test` + an end-to-end signer round-trip), the packaging props
-(`xmllint` + policy cross-check), version consistency, and workflow lint (`actionlint`).
+runner, the Azure Artifact Signing profile secret, and the pinned update-feed key. Those steps are
+gated on the `WINDOWS_CODESIGN_*` / `WINDOWS_UPDATE_SIGNING_KEY` secrets in
+[`openburnbar-release-windows.yml`](../../.github/workflows/openburnbar-release-windows.yml) and fail
+closed for real release tags when unset. What is **proven on macOS**: the portable update-feed kernel
+(`dotnet test` + an end-to-end signer round-trip), the packaging props (`xmllint` + policy
+cross-check), version consistency, and workflow lint (`actionlint`).

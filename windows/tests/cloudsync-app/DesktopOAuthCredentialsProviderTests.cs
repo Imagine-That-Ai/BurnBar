@@ -34,7 +34,8 @@ public sealed class DesktopOAuthCredentialsProviderTests
         await using var server = new FakeAuthorizationServer(SuccessResponder());
         var browser = new CapturingBrowserLauncher(DefaultCallback);
         var clock = new MutableClock(BaseNow);
-        DesktopOAuthCredentialsProvider provider = BuildProvider(server, browser, clock);
+        var sessionStore = new RecordingSessionStore();
+        DesktopOAuthCredentialsProvider provider = BuildProvider(server, browser, clock, sessionStore);
 
         FirebaseOAuthSession session = await provider.SignInAsync();
 
@@ -55,6 +56,7 @@ public sealed class DesktopOAuthCredentialsProviderTests
 
         // The App Check id-token source sees the same live token.
         Assert.Equal("fb-idtok-1", await provider.GetIdTokenAsync());
+        Assert.Equal("fb-refresh-1", sessionStore.Saved!.RefreshToken);
 
         // Value-for-value on the wire: the PKCE challenge in the auth URL matches the
         // verifier posted to the token endpoint; the code round-trips; the Google id
@@ -74,6 +76,7 @@ public sealed class DesktopOAuthCredentialsProviderTests
         CloudSyncCredentials refreshed = await provider.GetCredentialsAsync();
         Assert.Equal("fb-idtok-2", refreshed.IdToken);
         Assert.Equal("fb-refresh-2", provider.CurrentSession!.RefreshToken);
+        Assert.Equal("fb-refresh-2", sessionStore.Saved!.RefreshToken);
         var refreshBody = ParseQuery(server.LastBodyByPath["securetoken"]);
         Assert.Equal("refresh_token", refreshBody["grant_type"]);
         Assert.Equal("fb-refresh-1", refreshBody["refresh_token"]); // the OLD refresh token was spent
@@ -229,7 +232,8 @@ public sealed class DesktopOAuthCredentialsProviderTests
             return (200, "{}");
         });
         var clock = new MutableClock(BaseNow);
-        DesktopOAuthCredentialsProvider provider = BuildProvider(server, new CapturingBrowserLauncher(DefaultCallback), clock);
+        var sessionStore = new RecordingSessionStore();
+        DesktopOAuthCredentialsProvider provider = BuildProvider(server, new CapturingBrowserLauncher(DefaultCallback), clock, sessionStore);
 
         FirebaseOAuthSession session = await provider.SignInAsync();
         clock.Set(session.ExpiresAtMs + 1000); // fully expired
@@ -238,6 +242,7 @@ public sealed class DesktopOAuthCredentialsProviderTests
         Assert.Equal(DesktopOAuthFailure.TokenExchangeFailed, ex.Failure);
         Assert.Null(provider.CurrentSession);   // cleared — never serve an expired token
         Assert.False(provider.IsSignedIn);
+        Assert.True(sessionStore.Deleted);
     }
 
     // ── Wiring helpers ───────────────────────────────────────────────────────
@@ -253,15 +258,21 @@ public sealed class DesktopOAuthCredentialsProviderTests
     };
 
     private static DesktopOAuthCredentialsProvider BuildProvider(
-        FakeAuthorizationServer server, IBrowserLauncher browser, IClock clock) =>
-        BuildProvider(Options(server), browser, clock);
+        FakeAuthorizationServer server,
+        IBrowserLauncher browser,
+        IClock clock,
+        IFirebaseOAuthSessionStore? sessionStore = null) =>
+        BuildProvider(Options(server), browser, clock, sessionStore);
 
     private static DesktopOAuthCredentialsProvider BuildProvider(
-        DesktopOAuthOptions options, IBrowserLauncher browser, IClock clock)
+        DesktopOAuthOptions options,
+        IBrowserLauncher browser,
+        IClock clock,
+        IFirebaseOAuthSessionStore? sessionStore = null)
     {
         var identity = new FirebaseIdentityClient(new HttpClient(), options);
         var flow = new DesktopOAuthLoopbackFlow(options, browser, identity, clock);
-        return new DesktopOAuthCredentialsProvider(options, flow, identity, clock);
+        return new DesktopOAuthCredentialsProvider(options, flow, identity, clock, sessionStore);
     }
 
     private static string? DefaultCallback(string state) => $"code=fake-auth-code&state={Uri.EscapeDataString(state)}";
@@ -388,6 +399,26 @@ public sealed class DesktopOAuthCredentialsProviderTests
             try { await _loop.ConfigureAwait(false); } catch { /* shutdown */ }
             _listener.Close();
             _cts.Dispose();
+        }
+    }
+
+    private sealed class RecordingSessionStore : IFirebaseOAuthSessionStore
+    {
+        public FirebaseOAuthSession? Saved { get; private set; }
+        public bool Deleted { get; private set; }
+
+        public FirebaseOAuthSession? Load() => Saved;
+
+        public void Save(FirebaseOAuthSession session)
+        {
+            Saved = session;
+            Deleted = false;
+        }
+
+        public void Delete()
+        {
+            Saved = null;
+            Deleted = true;
         }
     }
 }

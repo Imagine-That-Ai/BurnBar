@@ -14,10 +14,72 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  macos-matched-performance:
+    name: macOS 30-minute matched workload soak
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      OB_EVIDENCE_OUT: ${{ github.workspace }}/.linux-matched-performance
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+
+      - name: Capture macOS nightly matched workload soak
+        run: node scripts/linux-port/run-matched-performance.mjs --macos-only --profile nightly
+
+      - name: Upload macOS nightly matched workload soak
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: linux-parity-macos-performance-nightly
+          path: ${{ env.OB_EVIDENCE_OUT }}/matched-performance-macos.json
+          if-no-files-found: error
+
+  linux-matched-performance:
+    name: Linux 30-minute matched workload soak and comparison
+    runs-on: ubuntu-24.04-arm
+    needs: [macos-matched-performance]
+    timeout-minutes: 50
+    env:
+      OB_EVIDENCE_OUT: ${{ github.workspace }}/.linux-matched-performance
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+
+      - name: Download macOS nightly matched workload soak
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          name: linux-parity-macos-performance-nightly
+          path: ${{ runner.temp }}/openburnbar-macos-performance
+
+      - name: Build mission Linux toolchain image
+        run: docker build -t openburnbar-linux-toolchain:mission-001 tools/linux-toolchain
+
+      - name: Run Linux nightly matched workload soak and comparison
+        run: >
+          node scripts/linux-port/run-matched-performance.mjs
+          --profile nightly
+          --macos-input "${{ runner.temp }}/openburnbar-macos-performance/matched-performance-macos.json"
+
+      - name: Upload nightly matched performance evidence
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: linux-parity-matched-performance-nightly
+          path: ${{ env.OB_EVIDENCE_OUT }}/
+          if-no-files-found: error
+
   linux-surface:
     name: ${{ matrix.label }}
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 45
+    needs: [linux-matched-performance]
+    timeout-minutes: 75
+    env:
+      OPENBURNBAR_LINUX_EVIDENCE_OUT: ${{ github.workspace }}/.linux-evidence
     strategy:
       fail-fast: false
       matrix:
@@ -47,8 +109,8 @@ jobs:
       - name: Record blocked environment row
         if: matrix.mode == 'blocked'
         run: |
-          mkdir -p docs/linux-port/evidence/mission-001-release/nightly/${{ matrix.label }}
-          cat > docs/linux-port/evidence/mission-001-release/nightly/${{ matrix.label }}/blocked.json <<'JSON'
+          mkdir -p "$OPENBURNBAR_LINUX_EVIDENCE_OUT/nightly/${{ matrix.label }}"
+          cat > "$OPENBURNBAR_LINUX_EVIDENCE_OUT/nightly/${{ matrix.label }}/blocked.json" <<'JSON'
           {
             "label": "${{ matrix.label }}",
             "status": "blocked",
@@ -65,8 +127,27 @@ jobs:
         if: matrix.mode == 'runnable'
         run: docker build -t openburnbar-linux-toolchain:mission-001 tools/linux-toolchain
 
+      - name: Run Linux Swift package tests
+        if: matrix.mode == 'runnable'
+        run: >
+          docker run --rm -v "$PWD:/workspace" -w /workspace
+          openburnbar-linux-toolchain:mission-001
+          bash scripts/linux-port/run-linux-swift-tests.sh
+
+      - name: Download nightly matched performance evidence
+        if: matrix.mode == 'runnable'
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          name: linux-parity-matched-performance-nightly
+          path: ${{ runner.temp }}/openburnbar-matched-performance
+
       - name: Run shell smoke
         if: matrix.mode == 'runnable' && matrix.smoke == 'shell'
+        env:
+          OB_EVIDENCE_OUT: ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}
+          OB_MATCHED_PERF_PROFILE: nightly
+          OB_MATCHED_MACOS_INPUT: ${{ runner.temp }}/openburnbar-matched-performance/matched-performance-macos.json
+          OB_MATCHED_LINUX_INPUT: ${{ runner.temp }}/openburnbar-matched-performance/matched-performance-linux.json
         run: node scripts/linux-port/run-shell-smoke.mjs
 
       - name: Run package release structural checks
@@ -74,6 +155,7 @@ jobs:
         run: |
           node scripts/linux-port/validate-linux-release-config.mjs
           node scripts/linux-port/validate-parity-ledger.mjs --allow-blocked
+          node scripts/linux-port/render-parity-ledger.mjs --check
           node scripts/linux-port/check-linux-docs.mjs
 
       - name: Upload Linux nightly evidence
@@ -81,12 +163,12 @@ jobs:
         uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.6.1
         with:
           name: linux-nightly-${{ matrix.label }}
-          path: docs/linux-port/evidence/
+          path: ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/
           if-no-files-found: warn
 
   open-failure-issue:
     runs-on: ubuntu-latest
-    needs: [linux-surface]
+    needs: [macos-matched-performance, linux-matched-performance, linux-surface]
     if: always() && contains(needs.*.result, 'failure')
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)

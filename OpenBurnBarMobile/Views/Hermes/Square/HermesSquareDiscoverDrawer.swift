@@ -182,7 +182,7 @@ struct HermesSquareDiscoverDrawer: View {
             Text("Marketplace")
                 .font(.headline)
                 .foregroundStyle(DesignSystemColors.textPrimary)
-            Text("Install third-party agents from a manifest URL or QR code. Coming in Phase C — first-party only at GA.")
+            Text("Third-party agent installs from a manifest URL or QR code are coming soon. For now, the built-in agents are ready to pin from the Agents tab.")
                 .font(.callout)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(DesignSystemColors.textSecondary)

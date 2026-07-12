@@ -10,10 +10,11 @@ import OpenBurnBarComputerUseCore
 ///   1. **Overview.** What Computer Use does, what's about to happen.
 ///   2. **Permissions.** Trigger the macOS Accessibility prompt and
 ///      surface the Playwright install flow if Phase 9 is enabled.
-///   3. **Sample action.** "OpenBurnBar will open Calculator and
-///      compute 2+2" — a benign, observable smoke test that proves the
-///      whole approval flow before the agent is allowed to drive
-///      anything real.
+///   3. **Sample action.** Launches Calculator via NSWorkspace — a
+///      benign, observable smoke test that proves OpenBurnBar can open
+///      and observe apps. Click synthesis and result verification are
+///      exercised in real sessions with per-action approval; the wizard
+///      claims only what it actually ran.
 ///
 /// `#if !DISTRIBUTION_MAS` — Path C requires Accessibility which the
 /// MAS sandbox forbids, so the wizard compiles to nothing in MAS
@@ -118,13 +119,18 @@ public struct ComputerUseSetupWizard: View {
                 Image(systemName: model.playwrightReady ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(model.playwrightReady ? .green : .secondary)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Playwright (Phase 9 — browser mode)")
+                    Text("Playwright (browser mode)")
                         .font(.system(size: 12, weight: .semibold))
                     Text(model.playwrightReady
                          ? "Pinned at playwright@1.49.x. Bridge script ready."
-                         : "Run scripts/install-playwright.sh to install the pinned Playwright build + Chromium.")
+                         : "Optional — only needed for browser-mode sessions. Click Install to set up the pinned Playwright build + Chromium.")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(.secondary)
+                    if let hint = model.playwrightInstallHint, !model.playwrightReady {
+                        Text(hint)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.orange)
+                    }
                 }
                 Spacer()
                 Button(model.playwrightReady ? "Re-check" : "Install") {
@@ -137,15 +143,10 @@ public struct ComputerUseSetupWizard: View {
 
     private var sampleActionStep: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("OpenBurnBar will open Calculator and compute 2+2. Watch the approval sheet appear on this Mac and (if paired) on your phone — approve each click, and confirm the result is 4.")
+            Text("OpenBurnBar will open Calculator to confirm it can launch and observe apps on this Mac. Clicks and typing are exercised in your first real session, where every action waits for your approval.")
                 .font(.system(size: 13))
             VStack(alignment: .leading, spacing: 6) {
                 progressRow(label: "Open Calculator", status: model.sampleStatus.openCalculator)
-                progressRow(label: "Click 2", status: model.sampleStatus.click2)
-                progressRow(label: "Click +", status: model.sampleStatus.clickPlus)
-                progressRow(label: "Click 2", status: model.sampleStatus.click2Again)
-                progressRow(label: "Click =", status: model.sampleStatus.clickEquals)
-                progressRow(label: "Result 4", status: model.sampleStatus.verifiedResult)
             }
             Button(model.sampleIsRunning ? "Running…" : "Run sample action") {
                 model.runSampleAction()
@@ -242,12 +243,12 @@ public final class ComputerUseSetupWizardModel: ObservableObject {
     }
 
     public struct SampleActionStatus: Sendable, Equatable {
+        /// The only check the wizard actually performs today: launching an
+        /// app via NSWorkspace to prove OpenBurnBar can open and observe
+        /// applications. Click synthesis and result verification happen in
+        /// real sessions with per-action approval — the wizard must not
+        /// claim to have verified them.
         public var openCalculator: StepStatus = .pending
-        public var click2: StepStatus = .pending
-        public var clickPlus: StepStatus = .pending
-        public var click2Again: StepStatus = .pending
-        public var clickEquals: StepStatus = .pending
-        public var verifiedResult: StepStatus = .pending
 
         public init() {}
     }
@@ -255,6 +256,7 @@ public final class ComputerUseSetupWizardModel: ObservableObject {
     @Published public var currentStep: ComputerUseSetupWizard.Step = .overview
     @Published public var accessibilityGranted: Bool = false
     @Published public var playwrightReady: Bool = false
+    @Published public var playwrightInstallHint: String?
     @Published public var sampleStatus = SampleActionStatus()
     @Published public var sampleIsRunning: Bool = false
 
@@ -268,7 +270,7 @@ public final class ComputerUseSetupWizardModel: ObservableObject {
         switch currentStep {
         case .overview: return true
         case .permissions: return accessibilityGranted
-        case .sampleAction: return sampleStatus.verifiedResult == .succeeded
+        case .sampleAction: return sampleStatus.openCalculator == .succeeded
         case .complete: return true
         }
     }

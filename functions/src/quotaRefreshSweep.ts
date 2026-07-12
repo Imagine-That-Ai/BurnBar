@@ -33,11 +33,10 @@
  *
  * - Refreshes run through a bounded concurrency pool instead of strictly
  *   serial awaits: each refresh is an outbound provider HTTP call (1-3 s), so
- *   a serial batch of 20 approached the default 60 s function timeout. Note
- *   the underlying adapters share one process-global `externalApiPolicy`
- *   circuit breaker (not per-provider), so a dead provider failing in
- *   parallel can open the shared breaker for the remainder of the run; that
- *   self-heals on the next run.
+ *   a serial batch of 20 approached the default 60 s function timeout. Provider
+ *   adapters call `providerFetch`, which uses a provider-scoped breaker; one
+ *   dead provider can open only its own breaker while the same sweep continues
+ *   refreshing unrelated healthy providers.
  *
  * All Firestore access goes through narrow structural types so the real
  * admin-SDK objects satisfy them directly (zero casts, production and tests).
@@ -104,8 +103,12 @@ type QuotaRefreshSweepOptions<Doc extends SweepAccountDoc> = {
   batchSize: number;
   /** Parallel refresh width (default 5). */
   concurrency?: number;
+  /** Clock for due-date checks (default now). */
+  now?: Date;
   /** Backfill scan page size per stream per run (default 200). */
   backfillScanPageSize?: number;
+  /** Maximum ordered account docs inspected while selecting one refresh batch. */
+  maxSelectionScanCount?: number;
   /** Refresh one provider account doc. Expected to handle its own errors. */
   refreshAccountDoc(doc: Doc): Promise<void>;
   /** `${uid}/${providerID}` key used to dedupe the legacy connection pass. */
@@ -126,6 +129,7 @@ const REFRESHABLE_STATUSES = ["connected", "stale", "error"] as const;
 const REFRESHABLE_SCOPES = ["cloud_refreshable", "server_private"] as const;
 const DEFAULT_CONCURRENCY = 5;
 const DEFAULT_BACKFILL_SCAN_PAGE_SIZE = 200;
+const DEFAULT_SELECTION_SCAN_MULTIPLIER = 5;
 
 /**
  * Schema-valid marker for legacy provider account docs that predate
@@ -217,6 +221,14 @@ function isDemoSweepAccountDoc(doc: SweepAccountDoc): boolean {
   if (typeof id === "string" && isDemoProviderAccountID(id)) return true;
   const accountID = providerAccountIDFromPath(doc.ref.path);
   return accountID !== undefined && isDemoProviderAccountID(accountID);
+}
+
+export function isQuotaSweepAccountDue(doc: SweepAccountDoc, now: Date = new Date()): boolean {
+  const nextRefreshAt = doc.get("quotaNextRefreshAt");
+  if (typeof nextRefreshAt !== "string") return true;
+  const nextRefreshAtMs = Date.parse(nextRefreshAt);
+  if (!Number.isFinite(nextRefreshAtMs)) return true;
+  return nextRefreshAtMs <= now.getTime();
 }
 
 /**
@@ -329,19 +341,27 @@ export async function runQuotaRefreshSweep<Doc extends SweepAccountDoc>(
   options: QuotaRefreshSweepOptions<Doc>,
 ): Promise<QuotaRefreshSweepResult> {
   const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;
+  const now = options.now ?? new Date();
   const backfill = await runLastRefreshAtBackfill(db, options.backfillScanPageSize ?? DEFAULT_BACKFILL_SCAN_PAGE_SIZE);
 
   // Selection pass: materialize the batch before any refresh starts.
   const selectedAccounts: Doc[] = [];
   const selectedAccountPaths = new Set<string>();
   const legacyKeys = new Set<string>();
+  const maxSelectionScanCount = Math.max(
+    options.batchSize,
+    options.maxSelectionScanCount ?? options.batchSize * DEFAULT_SELECTION_SCAN_MULTIPLIER,
+  );
+  let scannedForSelection = 0;
 
   for (const status of REFRESHABLE_STATUSES) {
-    if (selectedAccounts.length >= options.batchSize) break;
+    if (selectedAccounts.length >= options.batchSize || scannedForSelection >= maxSelectionScanCount) break;
     let cursor: Doc | undefined;
 
     for (;;) {
-      const limit = options.batchSize - selectedAccounts.length;
+      const scanRemaining = maxSelectionScanCount - scannedForSelection;
+      if (scanRemaining <= 0) break;
+      const limit = Math.min(options.batchSize - selectedAccounts.length, scanRemaining);
       let query = db
         .collectionGroup("provider_accounts")
         .where("status", "==", status)
@@ -354,8 +374,10 @@ export async function runQuotaRefreshSweep<Doc extends SweepAccountDoc>(
       }
 
       const snapshot = await query.get();
+      scannedForSelection += snapshot.docs.length;
       for (const doc of snapshot.docs) {
         if (isDemoSweepAccountDoc(doc) || selectedAccountPaths.has(doc.ref.path)) continue;
+        if (!isQuotaSweepAccountDue(doc, now)) continue;
         selectedAccountPaths.add(doc.ref.path);
         const legacyKey = options.legacyKeyForAccountDoc(doc);
         if (legacyKey !== undefined) legacyKeys.add(legacyKey);
@@ -363,7 +385,11 @@ export async function runQuotaRefreshSweep<Doc extends SweepAccountDoc>(
         if (selectedAccounts.length >= options.batchSize) break;
       }
 
-      if (selectedAccounts.length >= options.batchSize || snapshot.docs.length < limit) {
+      if (
+        selectedAccounts.length >= options.batchSize
+        || scannedForSelection >= maxSelectionScanCount
+        || snapshot.docs.length < limit
+      ) {
         break;
       }
       cursor = snapshot.docs.at(-1);

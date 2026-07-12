@@ -1,0 +1,12 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  OpenBurnBar.App.Configuration -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/app/OpenBurnBar.App.Configuration/bin/Release/net8.0/OpenBurnBar.App.Configuration.dll
+  OpenBurnBar.Storage -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/storage/OpenBurnBar.Storage/bin/Release/net8.0/OpenBurnBar.Storage.dll
+  OpenBurnBar.App.Presentation -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/app/OpenBurnBar.App.Presentation/bin/Release/net8.0/OpenBurnBar.App.Presentation.dll
+  OpenBurnBar.Storage -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/storage/OpenBurnBar.Storage/bin/Release/net10.0/OpenBurnBar.Storage.dll
+  OpenBurnBar.App.Chat.Runtime.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/chat/bin/Release/net10.0/OpenBurnBar.App.Chat.Runtime.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/chat/bin/Release/net10.0/OpenBurnBar.App.Chat.Runtime.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    20, Skipped:     0, Total:    20, Duration: 692 ms - OpenBurnBar.App.Chat.Runtime.Tests.dll (net10.0)

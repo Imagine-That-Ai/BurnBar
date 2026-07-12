@@ -59,7 +59,10 @@ function bridge(partial: Partial<LinuxShellBridge>): LinuxShellBridge {
     appVersionInfo: async () => ({ shellVersion: '', daemonVersion: '', packageChannel: 'unknown', updateCheck: '' }),
     exportDiagnostics: async () => ({ path: '' }),
     sessionEnv: async () => ({}),
-    ...partial
+    ...partial,
+    onboardingSnapshot: partial.onboardingSnapshot ?? bridgeStubDefaults.onboardingSnapshot,
+    onboardingAction: partial.onboardingAction ?? bridgeStubDefaults.onboardingAction,
+    onboardingReset: partial.onboardingReset ?? bridgeStubDefaults.onboardingReset
   };
 }
 

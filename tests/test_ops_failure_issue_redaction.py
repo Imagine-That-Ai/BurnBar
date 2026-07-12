@@ -68,6 +68,7 @@ def run_action_script(*, existing_issue: bool) -> dict:
         const twilio = 'SK' + 'a'.repeat(32);
         const processShim = {{
           env: {{
+            GITHUB_WORKSPACE: {str(REPO_ROOT)!r},
             OPS_MODE: 'open',
             OPS_LANE: 'nightly-e2e secret=sample',
             OPS_TITLE_PREFIX: 'Ops failed for ops@example.test with Bearer sample-token',

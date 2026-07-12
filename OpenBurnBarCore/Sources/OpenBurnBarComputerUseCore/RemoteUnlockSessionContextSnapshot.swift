@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Signed, short-lived presenter context for Remote Unlock Virtual HID leaves.
 ///

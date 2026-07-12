@@ -46,7 +46,7 @@ actor RefreshOrchestrator {
         self.memoryCloudSyncDomain = memoryCloudSyncDomain
     }
 
-    func indexConversations(_ conversations: [ConversationRecord]) async -> Int {
+    func indexConversations(_ conversations: [OpenBurnBarCore.ConversationRecord]) async -> Int {
         guard !conversations.isEmpty else { return 0 }
         let indexingEnabled = await MainActor.run { settingsManager.conversationIndexingEnabled }
         guard indexingEnabled else { return 0 }
@@ -59,7 +59,7 @@ actor RefreshOrchestrator {
         }
     }
 
-    func indexConversationsOffMain(_ conversations: [ConversationRecord], indexingEnabled: Bool) async -> Int {
+    func indexConversationsOffMain(_ conversations: [OpenBurnBarCore.ConversationRecord], indexingEnabled: Bool) async -> Int {
         guard !conversations.isEmpty, indexingEnabled else { return 0 }
         do {
             let indexingReport = try await ConversationIndexer.shared.index(conversations, in: dataStore)
@@ -88,7 +88,7 @@ actor RefreshOrchestrator {
         }
     }
 
-    func runScheduledBackfillIfNeeded(parsers: [AgentProvider: any LogParser]) async {
+    func runScheduledBackfillIfNeeded(parsers: [AgentProvider: any OpenBurnBarCore.LogParser]) async {
         let now = Date()
 
         for provider in parsers.keys {
@@ -169,12 +169,14 @@ actor RefreshOrchestrator {
             await coordinator.syncConversationMetadata()
             await coordinator.syncSessionLogs()
             await coordinator.syncTextExpansionSnippets()
+            await coordinator.syncRoamingProfile()
             await coordinator.syncCollaborationArtifacts()
         } else if let cloudSync {
             await cloudSync.uploadPending()
             await cloudSync.uploadPendingConversations()
             await cloudSync.uploadPendingSessionLogs()
             await cloudSync.syncTextExpansionSnippets()
+            await cloudSync.syncRoamingProfile()
             await cloudSync.syncSharedArtifacts()
         }
 

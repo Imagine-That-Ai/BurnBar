@@ -492,6 +492,7 @@ extension ChatSessionController {
                             systemPrompt: augmentedSystem,
                             userMessage: trimmed,
                             workspaceDirectory: self.chatWorkspaceURL,
+                            model: requestModel,
                             capabilityGrant: activeDesktopGrant
                         )
                     case .openClaude:

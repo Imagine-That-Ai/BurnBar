@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// F10 — confidentiality seal for `control.*` iroh frames.
 ///

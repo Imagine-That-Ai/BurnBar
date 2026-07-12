@@ -24,13 +24,19 @@ export type GatewayChatStreamEvent =
   | { type: 'usage'; usage: GatewayChatUsage }
   | { type: 'done'; finishReason?: string };
 
-export type GatewayChatRequest = {
-  baseURL: string;
+export type NativeGatewayChatRequest = {
+  requestId: string;
   model: string;
   messages: GatewayChatMessage[];
-  bearerToken?: string;
   signal?: AbortSignal;
-  timeoutMs?: number;
+};
+
+export type NativeGatewayChatTransport = {
+  start(
+    request: Omit<NativeGatewayChatRequest, 'signal'>,
+    onChunk: (chunk: string) => void
+  ): Promise<void>;
+  cancel(requestId: string): Promise<void>;
 };
 
 export type GatewayErrorKind = 'unreachable' | 'http' | 'unimplemented' | 'stream_interrupted' | 'invalid_response' | 'aborted';
@@ -61,63 +67,6 @@ function str(value: RawJson): string | undefined {
 
 function num(value: RawJson): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-}
-
-function errorMessageFromBody(body: string): string {
-  const trimmed = body.trim();
-  if (!trimmed) return '';
-  try {
-    const parsed = object(JSON.parse(trimmed));
-    const error = parsed?.error;
-    if (typeof error === 'string') return error;
-    const errorObject = object(error);
-    return (
-      str(errorObject?.message) ??
-      str(errorObject?.detail) ??
-      str(errorObject?.code) ??
-      str(parsed?.message) ??
-      str(parsed?.detail) ??
-      trimmed
-    );
-  } catch {
-    return trimmed;
-  }
-}
-
-function gatewayURL(baseURL: string, path: string): string {
-  const url = new URL(baseURL);
-  url.pathname = path;
-  url.search = '';
-  return url.toString();
-}
-
-function withTimeout(signal: AbortSignal | undefined, timeoutMs: number): { signal: AbortSignal; cleanup: () => void } {
-  const controller = new AbortController();
-  const relayAbort = () => controller.abort(signal?.reason);
-  if (signal?.aborted) relayAbort();
-  signal?.addEventListener('abort', relayAbort, { once: true });
-  const timer = timeoutMs > 0 ? globalThis.setTimeout(() => controller.abort(new DOMException('Request timed out', 'TimeoutError')), timeoutMs) : 0;
-  return {
-    signal: controller.signal,
-    cleanup: () => {
-      signal?.removeEventListener('abort', relayAbort);
-      if (timer) globalThis.clearTimeout(timer);
-    }
-  };
-}
-
-export async function probeGatewayHealth(baseURL: string, bearerToken?: string, timeoutMs = 3000): Promise<boolean> {
-  const { signal, cleanup } = withTimeout(undefined, timeoutMs);
-  try {
-    const headers: Record<string, string> = {};
-    if (bearerToken?.trim()) headers.Authorization = `Bearer ${bearerToken.trim()}`;
-    const response = await fetch(gatewayURL(baseURL, '/health'), { method: 'GET', headers, signal });
-    return response.ok;
-  } catch {
-    return false;
-  } finally {
-    cleanup();
-  }
 }
 
 export class OpenAICompatibleSSEParser {
@@ -217,77 +166,112 @@ function usageFrom(raw: RawJson): GatewayChatUsage | null {
   };
 }
 
-export async function* streamGatewayChat(request: GatewayChatRequest): AsyncGenerator<GatewayChatStreamEvent, void, void> {
+function nativeGatewayError(error: unknown): GatewayChatError {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes('gateway_aborted')) {
+    return new GatewayChatError('aborted', 'Chat stream aborted.');
+  }
+  const http = message.match(/gateway_http:(\d+):(.*)/s);
+  if (http) {
+    const status = Number(http[1]);
+    const detail = http[2]?.trim() ?? '';
+    const kind: GatewayErrorKind = status === 503 && /unimplemented|not available|stub/i.test(detail)
+      ? 'unimplemented'
+      : 'http';
+    return new GatewayChatError(kind, detail ? `HTTP ${status}: ${detail}` : `HTTP ${status}`, { status, detail });
+  }
+  if (message.includes('gateway_stream_interrupted')) {
+    return new GatewayChatError('stream_interrupted', 'Gateway stream was interrupted.');
+  }
+  if (message.includes('gateway_invalid_') || message.includes('gateway_response_too_large')) {
+    return new GatewayChatError('invalid_response', message);
+  }
+  return new GatewayChatError('unreachable', message || 'Gateway unreachable.');
+}
+
+export async function* streamGatewayChatNative(
+  transport: NativeGatewayChatTransport,
+  request: NativeGatewayChatRequest
+): AsyncGenerator<GatewayChatStreamEvent, void, void> {
   const selectedModel = request.model.trim();
   if (!selectedModel) {
     throw new GatewayChatError('invalid_response', 'Missing chat model.');
   }
-  const { signal, cleanup } = withTimeout(request.signal, request.timeoutMs ?? 120_000);
-  try {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      Accept: 'text/event-stream'
-    };
-    if (request.bearerToken?.trim()) headers.Authorization = `Bearer ${request.bearerToken.trim()}`;
-    const response = await fetch(gatewayURL(request.baseURL, '/v1/chat/completions'), {
-      method: 'POST',
-      headers,
-      signal,
-      body: JSON.stringify({
-        model: selectedModel,
-        stream: true,
-        stream_options: { include_usage: true },
-        messages: request.messages
-      })
-    });
 
-    if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      const message = errorMessageFromBody(body);
-      const detail = message ? `HTTP ${response.status}: ${message}` : `HTTP ${response.status}`;
-      const kind: GatewayErrorKind = response.status === 503 && /unimplemented|not available|stub/i.test(message)
-        ? 'unimplemented'
-        : 'http';
-      throw new GatewayChatError(kind, detail, { status: response.status, detail: message });
+  const parser = new OpenAICompatibleSSEParser();
+  const queued: GatewayChatStreamEvent[] = [];
+  let completed = false;
+  let failure: GatewayChatError | null = null;
+  let sawDone = false;
+  let wake: (() => void) | null = null;
+  const notify = () => {
+    const pending = wake;
+    wake = null;
+    pending?.();
+  };
+  const append = (events: GatewayChatStreamEvent[]) => {
+    for (const event of events) {
+      if (event.type === 'done') sawDone = true;
+      queued.push(event);
     }
-    if (!response.body) {
-      throw new GatewayChatError('invalid_response', 'Gateway response did not include a stream body.');
-    }
+    notify();
+  };
+  const abort = () => {
+    if (completed) return;
+    failure = new GatewayChatError('aborted', 'Chat stream aborted.');
+    completed = true;
+    void transport.cancel(request.requestId);
+    notify();
+  };
+  request.signal?.addEventListener('abort', abort, { once: true });
+  if (request.signal?.aborted) abort();
 
-    const parser = new OpenAICompatibleSSEParser();
-    const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
-    let sawDone = false;
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        for (const event of parser.push(value)) {
-          if (event.type === 'done') sawDone = true;
-          yield event;
-          if (event.type === 'done') return;
+  if (!completed) {
+    void transport
+      .start(
+        {
+          requestId: request.requestId,
+          model: selectedModel,
+          messages: request.messages
+        },
+        (chunk) => {
+          if (!completed) append(parser.push(chunk));
         }
-      }
-      for (const event of parser.finish()) {
-        if (event.type === 'done') sawDone = true;
+      )
+      .then(() => {
+        if (completed) return;
+        append(parser.finish());
+        if (!sawDone) {
+          failure = new GatewayChatError('stream_interrupted', 'Gateway stream ended before the completion marker.');
+        }
+        completed = true;
+        notify();
+      })
+      .catch((error) => {
+        if (completed) return;
+        failure = nativeGatewayError(error);
+        completed = true;
+        notify();
+      });
+  }
+
+  try {
+    while (true) {
+      const event = queued.shift();
+      if (event) {
         yield event;
+        continue;
       }
-      if (!sawDone) {
-        throw new GatewayChatError('stream_interrupted', 'Gateway stream ended before the completion marker.');
+      if (completed) {
+        if (failure) throw failure;
+        return;
       }
-    } catch (error) {
-      if (error instanceof GatewayChatError) throw error;
-      if (signal.aborted) throw new GatewayChatError('aborted', 'Chat stream aborted.');
-      throw new GatewayChatError('stream_interrupted', error instanceof Error ? error.message : 'Chat stream interrupted.');
-    } finally {
-      reader.releaseLock();
+      await new Promise<void>((resolve) => {
+        wake = resolve;
+      });
     }
-  } catch (error) {
-    if (error instanceof GatewayChatError) throw error;
-    if (signal.aborted || (error instanceof DOMException && error.name === 'AbortError')) {
-      throw new GatewayChatError('aborted', 'Chat stream aborted.');
-    }
-    throw new GatewayChatError('unreachable', error instanceof Error ? error.message : 'Gateway unreachable.');
   } finally {
-    cleanup();
+    request.signal?.removeEventListener('abort', abort);
+    if (!completed) void transport.cancel(request.requestId);
   }
 }

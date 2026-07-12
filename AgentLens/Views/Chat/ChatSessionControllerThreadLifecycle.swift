@@ -10,7 +10,7 @@ import AppKit
 extension ChatSessionController {
     /// On-disk folder for the active chat thread (shared across backends).
     var chatWorkspaceURL: URL {
-        OpenBurnBarAppPaths.live().chatWorkspaceURL(forThreadID: activeThreadID)
+        OpenBurnBarCore.OpenBurnBarAppPaths.live().chatWorkspaceURL(forThreadID: activeThreadID)
     }
 
     /// Backward-compatible alias for Hermes-era call sites.
@@ -24,7 +24,7 @@ extension ChatSessionController {
         }
         OpenBurnBarChatWorkspaceConfigurator.ensureMCPHints(
             in: chatWorkspaceURL,
-            databaseURL: OpenBurnBarAppPaths.live().databaseURL,
+            databaseURL: OpenBurnBarCore.OpenBurnBarAppPaths.live().databaseURL,
             wandParallelMax: WandFanOut.maxParallel(for: MacCloudEntitlementStore.shared.cloudTier)
         )
     }

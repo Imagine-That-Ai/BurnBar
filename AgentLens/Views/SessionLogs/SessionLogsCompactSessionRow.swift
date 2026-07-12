@@ -4,7 +4,7 @@ import OpenBurnBarCore
 // MARK: - Compact Session Row
 
 struct CompactSessionRow: View {
-    let record: ConversationRecord
+    let record: OpenBurnBarCore.ConversationRecord
     let isSelected: Bool
     var showDeviceIndicator: Bool = false
     var modelName: String?

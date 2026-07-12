@@ -181,6 +181,7 @@ jobs:
             firestore.indexes.json
             firestore.rules
             functions
+            services/hosted-mcp/Dockerfile
             scripts/ci/verify-production-deploy-auth.sh
             scripts/ci/verify-production-deploy-auth.test.sh
             scripts/ci/write-firebase-hosting-ci-config.mjs

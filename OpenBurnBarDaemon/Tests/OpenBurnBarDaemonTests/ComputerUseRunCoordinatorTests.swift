@@ -131,6 +131,52 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
         XCTAssertEqual(state.actionsRejected, 0)
     }
 
+    func testRepeatedCallIDIsDeniedWithoutRedispatch() async throws {
+        let sessionId = ComputerUseSessionID.newRandom()
+        let inputs = MacInputRecorder()
+        let coordinator = makeCoordinator(
+            macInputDispatcher: { _, action in
+                inputs.record(action)
+                return .object(["posted": .bool(true)])
+            }
+        )
+        let manifest = manifest(sessionId: sessionId, mode: .system, trustMode: .manual)
+        _ = try await coordinator.startSession(manifest: manifest)
+        let repeatedInvocation = invocation(tool: .macInputClick, arguments: macClickArguments())
+        let context = ComputerUseScopeContext(bundleId: "com.apple.finder")
+        let authority = capability(
+            for: makeState(sessionId: sessionId, manifest: manifest),
+            accessibilityTrusted: true
+        )
+
+        let first = await coordinator.invoke(
+            sessionId: sessionId,
+            invocation: repeatedInvocation,
+            scopeContext: context,
+            scopeOutcome: .notMatched,
+            accessibilityDeny: nil,
+            capability: authority
+        )
+        let replay = await coordinator.invoke(
+            sessionId: sessionId,
+            invocation: repeatedInvocation,
+            scopeContext: context,
+            scopeOutcome: .notMatched,
+            accessibilityDeny: nil,
+            capability: authority
+        )
+
+        XCTAssertEqual(first.status, .executed)
+        XCTAssertEqual(replay.status, .denied)
+        XCTAssertEqual(replay.denyReason, ComputerUseDenyReason.counterReplay.rawValue)
+        XCTAssertEqual(replay.meteringHeader?.denyReason, ComputerUseDenyReason.counterReplay.rawValue)
+        XCTAssertEqual(inputs.count, 1)
+        let maybeState = await coordinator.session(sessionId)
+        let state = try XCTUnwrap(maybeState)
+        XCTAssertEqual(state.actionsExecuted, 1)
+        XCTAssertEqual(state.actionsRejected, 1)
+    }
+
     func testMacInputApprovalRejectDoesNotDispatch() async throws {
         let sessionId = ComputerUseSessionID.newRandom()
         let approvals = ApprovalRecorder(decision: .reject)
@@ -885,6 +931,153 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
         XCTAssertEqual(response.auditEntryIndex, entries[1].entryIndex)
     }
 
+    func testRevocationDuringApprovalPreventsDispatchAndSessionResurrection() async throws {
+        let sessionId = ComputerUseSessionID.newRandom()
+        let approvalBarrier = SuspensionBarrier()
+        let inputs = MacInputRecorder()
+        let coordinator = makeCoordinator(
+            approvalIssuer: { request in
+                await approvalBarrier.suspend()
+                return HermesRealtimeRelayApprovalResponse(
+                    approvalId: request.approvalId,
+                    decision: .approve,
+                    respondedBy: "mac",
+                    respondedAt: Date()
+                )
+            },
+            macInputDispatcher: { _, action in
+                inputs.record(action)
+                return .object(["posted": .bool(true)])
+            }
+        )
+        let activeManifest = manifest(sessionId: sessionId, mode: .system, trustMode: .manual)
+        _ = try await coordinator.startSession(manifest: activeManifest)
+
+        let invocationTask = Task {
+            await coordinator.invoke(
+                sessionId: sessionId,
+                invocation: invocation(tool: .macInputClick, arguments: macClickArguments()),
+                scopeContext: ComputerUseScopeContext(bundleId: "com.apple.finder"),
+                scopeOutcome: .notMatched,
+                accessibilityDeny: nil,
+                capability: capability(
+                    for: makeState(sessionId: sessionId, manifest: activeManifest),
+                    accessibilityTrusted: true
+                )
+            )
+        }
+
+        await approvalBarrier.waitUntilSuspended()
+        await coordinator.panicHalt(sessionId: sessionId, source: .revoked)
+        await approvalBarrier.release()
+        let response = await invocationTask.value
+
+        XCTAssertEqual(response.status, .denied)
+        XCTAssertEqual(response.denyReason, "session_revoked")
+        XCTAssertEqual(inputs.count, 0)
+        let remainingSession = await coordinator.session(sessionId)
+        XCTAssertNil(remainingSession)
+    }
+
+    func testRevocationDuringDispatchCancelsWorkAndPreventsSessionResurrection() async throws {
+        let sessionId = ComputerUseSessionID.newRandom()
+        let dispatchBarrier = SuspensionBarrier()
+        let inputs = MacInputRecorder()
+        let coordinator = makeCoordinator(
+            macInputDispatcher: { _, action in
+                await dispatchBarrier.suspend()
+                try Task.checkCancellation()
+                inputs.record(action)
+                return .object(["posted": .bool(true)])
+            }
+        )
+        let activeManifest = manifest(sessionId: sessionId, mode: .system, trustMode: .trusted)
+        _ = try await coordinator.startSession(manifest: activeManifest)
+
+        let invocationTask = Task {
+            await coordinator.invoke(
+                sessionId: sessionId,
+                invocation: invocation(tool: .macInputClick, arguments: macClickArguments()),
+                scopeContext: ComputerUseScopeContext(bundleId: "com.apple.finder"),
+                scopeOutcome: .allowed(rule: ComputerUseScopeRuleID("dispatch-revoke-test")),
+                accessibilityDeny: nil,
+                capability: capability(
+                    for: makeState(sessionId: sessionId, manifest: activeManifest),
+                    accessibilityTrusted: true
+                )
+            )
+        }
+
+        await dispatchBarrier.waitUntilSuspended()
+        await coordinator.panicHalt(sessionId: sessionId, source: .revoked)
+        await dispatchBarrier.release()
+        let response = await invocationTask.value
+
+        XCTAssertEqual(response.status, .denied)
+        XCTAssertEqual(response.denyReason, "session_revoked")
+        XCTAssertEqual(inputs.count, 0, "A cancelled dispatch must not reach its side effect.")
+        let remainingSession = await coordinator.session(sessionId)
+        XCTAssertNil(remainingSession)
+    }
+
+    func testDriverStartFailureTearsDownReservedSession() async throws {
+        let sessionId = ComputerUseSessionID.newRandom()
+        let coordinator = makeCoordinator()
+        let driver = OpenBurnBarPlaywrightDriver(
+            configuration: OpenBurnBarPlaywrightDriver.Configuration(
+                nodeExecutablePath: "/definitely/missing/openburnbar-node",
+                bridgeScriptPath: URL(fileURLWithPath: "/definitely/missing/openburnbar-bridge.js")
+            ),
+            sessionId: sessionId,
+            logger: BurnBarDaemonLogger(category: "cu-start-failure-tests")
+        )
+
+        do {
+            _ = try await coordinator.startSession(
+                manifest: manifest(sessionId: sessionId, mode: .browser, trustMode: .manual),
+                playwrightDriver: driver
+            )
+            XCTFail("Expected an invalid Playwright executable to fail session start")
+        } catch {
+            XCTAssertFalse(error.localizedDescription.isEmpty)
+        }
+
+        let remainingSession = await coordinator.session(sessionId)
+        XCTAssertNil(remainingSession)
+        let hasActiveSession = await coordinator.hasActiveSession()
+        XCTAssertFalse(hasActiveSession)
+    }
+
+    func testExpiredSessionIsStoppedBeforeInvocation() async throws {
+        let sessionId = ComputerUseSessionID.newRandom()
+        let coordinator = makeCoordinator()
+        let expiredManifest = ComputerUseSessionManifest(
+            sessionId: sessionId,
+            mode: .system,
+            trustMode: .manual,
+            startedAt: Date().addingTimeInterval(-10),
+            userId: "test-user",
+            entitlementProductId: "com.openburnbar.hostedComputerUseSync.monthly",
+            actionCap: 50,
+            sessionTimeoutSeconds: 1
+        )
+        _ = try await coordinator.startSession(manifest: expiredManifest)
+
+        let response = await coordinator.invoke(
+            sessionId: sessionId,
+            invocation: invocation(tool: .macInspectAccessibility, arguments: .object([:])),
+            scopeContext: ComputerUseScopeContext(),
+            scopeOutcome: .notMatched,
+            accessibilityDeny: nil,
+            capability: capability(for: makeState(sessionId: sessionId, manifest: expiredManifest))
+        )
+
+        XCTAssertEqual(response.status, .denied)
+        XCTAssertEqual(response.denyReason, "session_expired")
+        let remainingSession = await coordinator.session(sessionId)
+        XCTAssertNil(remainingSession)
+    }
+
     // MARK: - Helpers
 
     private func waitForCondition(
@@ -1225,5 +1418,38 @@ private final class InspectRecorder: @unchecked Sendable {
 
     func record(_ action: MacInspectAction) {
         lock.withLock { storedLast = action }
+    }
+}
+
+private actor SuspensionBarrier {
+    private var isSuspended = false
+    private var suspensionWaiters: [CheckedContinuation<Void, Never>] = []
+    private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func suspend() async {
+        isSuspended = true
+        let waiters = suspensionWaiters
+        suspensionWaiters.removeAll()
+        for waiter in waiters {
+            waiter.resume()
+        }
+        await withCheckedContinuation { continuation in
+            releaseWaiters.append(continuation)
+        }
+    }
+
+    func waitUntilSuspended() async {
+        if isSuspended { return }
+        await withCheckedContinuation { continuation in
+            suspensionWaiters.append(continuation)
+        }
+    }
+
+    func release() {
+        let waiters = releaseWaiters
+        releaseWaiters.removeAll()
+        for waiter in waiters {
+            waiter.resume()
+        }
     }
 }

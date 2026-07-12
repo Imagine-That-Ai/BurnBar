@@ -12,8 +12,30 @@ namespace OpenBurnBar.App.Presentation.Tests.Insights;
 /// expected eight canvases, and stamping renumbers widgets, auto-places them without overlap,
 /// and is deterministic across two stampings.
 /// </summary>
-public sealed class InsightsBuiltInTemplatesTests
+public sealed class InsightsBuiltInTemplatesTests : IDisposable
 {
+    public InsightsBuiltInTemplatesTests()
+    {
+        ResetTemplates(sampleFallback: false);
+    }
+
+    public void Dispose() => ResetTemplates(sampleFallback: false);
+
+    private static void ResetTemplates(bool sampleFallback)
+    {
+        InsightsBuiltInTemplates.SampleFallbackEnabled = sampleFallback;
+        InsightsBuiltInTemplates.RealDataResolver = null;
+    }
+
+    [Fact]
+    public void SampleFallbackEnabled_DefaultsFalse_FailClosed()
+    {
+        // Fresh process may have been mutated by other tests; ResetTemplates in ctor sets false.
+        Assert.False(InsightsBuiltInTemplates.SampleFallbackEnabled);
+        InsightCanvas canvas = InsightsBuiltInTemplates.Find("today")!.Instantiate();
+        Assert.All(canvas.Widgets, w => Assert.IsType<EmptyData>(w.Data));
+    }
+
     [Fact]
     public void All_ContainsEightUniqueTemplates()
     {
@@ -69,21 +91,38 @@ public sealed class InsightsBuiltInTemplatesTests
         InsightCanvas a = template.Instantiate();
         InsightCanvas b = template.Instantiate();
 
-        // Fresh widget + canvas ids each stamping…
         Assert.NotEqual(a.Id, b.Id);
         Assert.Empty(a.Widgets.Select(w => w.Id).Intersect(b.Widgets.Select(w => w.Id)));
 
-        // …but the row-major auto-placement is deterministic (same cells in widget order).
         List<CellPlacement> placementsA = a.Widgets.Select(w => a.Layout.Placements[w.Id]).ToList();
         List<CellPlacement> placementsB = b.Widgets.Select(w => b.Layout.Placements[w.Id]).ToList();
         Assert.Equal(placementsA, placementsB);
     }
 
     [Fact]
-    public void Instantiate_CarriesSampleDataForRendering()
+    public void Instantiate_CarriesSampleDataForRendering_WhenSampleFallbackEnabled()
     {
+        ResetTemplates(sampleFallback: true);
         InsightCanvas canvas = InsightsBuiltInTemplates.Find("cost-audit-7d")!.Instantiate();
         Assert.All(canvas.Widgets, w => Assert.NotNull(w.Data));
+        Assert.Contains(canvas.Widgets, w => w.Data is RankingData or TimeSeriesData or DistributionData);
+    }
+
+    [Fact]
+    public void ProductionDefault_DoesNotFabricateSampleSeries_AndKpisAreEmptyChrome()
+    {
+        ResetTemplates(sampleFallback: false);
+
+        foreach (InsightCanvasTemplate template in InsightsBuiltInTemplates.All)
+        {
+            InsightCanvas canvas = template.Instantiate();
+            Assert.All(canvas.Widgets, w => Assert.IsType<EmptyData>(w.Data));
+            Assert.DoesNotContain(
+                canvas.Widgets,
+                w => w.Data is RankingData or TimeSeriesData or DistributionData or ScatterData
+                    or NarrativeData or RecommendationData or KpiData or QuotaData or HeatmapData
+                    or RadarData or FunnelData or SankeyData);
+        }
     }
 
     [Fact]
@@ -91,6 +130,7 @@ public sealed class InsightsBuiltInTemplatesTests
     {
         try
         {
+            ResetTemplates(sampleFallback: true);
             _ = InsightsBuiltInTemplates.All.Count;
             InsightsBuiltInTemplates.RealDataResolver = (kind, seed) =>
                 kind == InsightWidgetKind.KpiTile
@@ -115,7 +155,7 @@ public sealed class InsightsBuiltInTemplatesTests
         }
         finally
         {
-            InsightsBuiltInTemplates.RealDataResolver = null;
+            ResetTemplates(sampleFallback: false);
         }
     }
 

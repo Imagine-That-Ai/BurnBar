@@ -2,7 +2,7 @@ import Foundation
 #if canImport(CryptoKit)
 import CryptoKit
 #endif
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// F2 — the P-256 signing surface shared by the software key (unit tests and
 /// the no-Secure-Enclave fallback) and the hardware key

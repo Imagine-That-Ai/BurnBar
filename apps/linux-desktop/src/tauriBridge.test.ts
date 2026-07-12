@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { computeCacheHitRatePct } from './tauriBridge';
+import { bridgeStubDefaults } from './testing/bridgeStubs';
+import {
+  computeCacheHitRatePct,
+  decodeDaemonSubscriptionResponse,
+  decodeDaemonSubscriptionStopResponse
+} from './tauriBridge';
 
 describe('computeCacheHitRatePct', () => {
   it('matches the macOS CacheEfficiency formula (prompt-side basis)', () => {
@@ -34,5 +39,69 @@ describe('computeCacheHitRatePct', () => {
   it('ignores negative token counts', () => {
     const events = [{ inputTokens: -10, cacheCreationTokens: 0, cacheReadTokens: 100 }];
     expect(computeCacheHitRatePct(events)).toBe(100);
+  });
+});
+
+describe('bridgeStubDefaults media wiring', () => {
+  it('keeps full-shape bridge mocks current for live media methods', async () => {
+    await expect(bridgeStubDefaults.computerUsePanicHalt()).resolves.toMatchObject({ sessionId: '*', source: 'hotkey' });
+    await expect(bridgeStubDefaults.mediaSessionState()).resolves.toMatchObject({ phase: 'capability-absent' });
+    await expect(bridgeStubDefaults.mediaAcceptCall('req')).resolves.toMatchObject({ phase: 'capability-absent' });
+    await expect(bridgeStubDefaults.mediaDeclineCall('req')).resolves.toMatchObject({ phase: 'capability-absent' });
+    await expect(bridgeStubDefaults.mediaEndCall()).resolves.toMatchObject({ phase: 'capability-absent' });
+    await expect(bridgeStubDefaults.mediaCapabilityGet()).resolves.toMatchObject({ available: false });
+  });
+});
+
+describe('daemon subscription wire decoding', () => {
+  it('strictly decodes the snake-case Swift response', () => {
+    expect(decodeDaemonSubscriptionResponse({
+      subscription_id: 'sub-data',
+      topic: 'data',
+      seq: 2,
+      cursor: '2',
+      first_snapshot: false,
+      events: [{
+        seq: 2,
+        kind: 'data.tick',
+        snapshot: { daemon_session_id: 'daemon-a' },
+        terminal: false
+      }],
+      degraded_fallback: true,
+      degradation_reason: 'bounded_pull_over_burnbarrpc_envelope',
+      backpressure: 'coalesce_latest_per_topic',
+      disconnect_detected: true,
+      recovered_after_restart: true,
+      terminal_state_delivered: false
+    })).toMatchObject({
+      subscriptionId: 'sub-data',
+      seq: 2,
+      recoveredAfterRestart: true,
+      terminalStateDelivered: false
+    });
+  });
+
+  it('rejects malformed cursor and terminal-state fields', () => {
+    expect(() => decodeDaemonSubscriptionResponse({
+      subscription_id: 'sub-data',
+      topic: 'data',
+      seq: -1,
+      cursor: 'bad',
+      first_snapshot: true,
+      events: [],
+      degraded_fallback: true,
+      backpressure: 'coalesce_latest_per_topic',
+      disconnect_detected: false,
+      recovered_after_restart: false,
+      terminal_state_delivered: 'false'
+    })).toThrow('subscription.seq');
+  });
+
+  it('strictly decodes stop acknowledgement fields', () => {
+    expect(decodeDaemonSubscriptionStopResponse({
+      subscription_id: 'sub-data',
+      stopped: true,
+      last_seq: 8
+    })).toEqual({ subscriptionId: 'sub-data', stopped: true, lastSeq: 8 });
   });
 });

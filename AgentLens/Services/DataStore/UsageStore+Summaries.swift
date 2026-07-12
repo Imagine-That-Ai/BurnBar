@@ -372,7 +372,7 @@ extension UsageStore {
 
     static func makeModelSummaries(from usages: [TokenUsage]) -> [ModelSummary] {
         let grouped = Dictionary(grouping: usages) {
-            TokenExtractionUtility.normalizeModelKey($0.model)
+            OpenBurnBarCore.TokenExtractionUtility.normalizeModelKey($0.model)
         }
         return grouped.compactMap { key, modelUsages -> ModelSummary? in
             guard !modelUsages.isEmpty else { return nil }
@@ -397,7 +397,7 @@ extension UsageStore {
 
             return ModelSummary(
                 modelName: key,
-                displayName: TokenExtractionUtility.displayNameForModel(modelUsages.first?.model ?? key),
+                displayName: OpenBurnBarCore.TokenExtractionUtility.displayNameForModel(modelUsages.first?.model ?? key),
                 totalCost: totalCost,
                 totalTokens: totalTokens,
                 totalInputTokens: totalInputTokens,

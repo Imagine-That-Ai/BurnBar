@@ -23,14 +23,14 @@ struct HomeAssistantTokenStore: HomeAssistantTokenStoring {
     private let keychain: KeychainStore
 
     init(keychain: KeychainStore = KeychainStore(
-        service: OpenBurnBarIdentity.homeAssistantKeychainService,
+        service: OpenBurnBarCore.OpenBurnBarIdentity.homeAssistantKeychainService,
         legacyServices: []
     )) {
         self.keychain = keychain
     }
 
     func loadAccessToken() throws -> String? {
-        try keychain.string(for: OpenBurnBarIdentity.homeAssistantAccessTokenAccount)
+        try keychain.string(for: OpenBurnBarCore.OpenBurnBarIdentity.homeAssistantAccessTokenAccount)
     }
 
     func saveAccessToken(_ token: String) throws {
@@ -38,16 +38,16 @@ struct HomeAssistantTokenStore: HomeAssistantTokenStoring {
         if trimmed.isEmpty {
             try deleteAccessToken()
         } else {
-            try keychain.set(trimmed, for: OpenBurnBarIdentity.homeAssistantAccessTokenAccount)
+            try keychain.set(trimmed, for: OpenBurnBarCore.OpenBurnBarIdentity.homeAssistantAccessTokenAccount)
         }
     }
 
     func deleteAccessToken() throws {
-        try keychain.delete(account: OpenBurnBarIdentity.homeAssistantAccessTokenAccount)
+        try keychain.delete(account: OpenBurnBarCore.OpenBurnBarIdentity.homeAssistantAccessTokenAccount)
     }
 
     func loadWebhookSecret() throws -> String? {
-        try keychain.string(for: OpenBurnBarIdentity.homeAssistantWebhookSecretAccount)
+        try keychain.string(for: OpenBurnBarCore.OpenBurnBarIdentity.homeAssistantWebhookSecretAccount)
     }
 
     func saveWebhookSecret(_ secret: String) throws {
@@ -55,12 +55,12 @@ struct HomeAssistantTokenStore: HomeAssistantTokenStoring {
         if trimmed.isEmpty {
             try deleteWebhookSecret()
         } else {
-            try keychain.set(trimmed, for: OpenBurnBarIdentity.homeAssistantWebhookSecretAccount)
+            try keychain.set(trimmed, for: OpenBurnBarCore.OpenBurnBarIdentity.homeAssistantWebhookSecretAccount)
         }
     }
 
     func deleteWebhookSecret() throws {
-        try keychain.delete(account: OpenBurnBarIdentity.homeAssistantWebhookSecretAccount)
+        try keychain.delete(account: OpenBurnBarCore.OpenBurnBarIdentity.homeAssistantWebhookSecretAccount)
     }
 }
 

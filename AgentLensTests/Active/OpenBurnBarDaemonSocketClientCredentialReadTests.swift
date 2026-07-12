@@ -15,8 +15,8 @@ import XCTest
 /// `nil`, while the nil-on-absent contract callers rely on is preserved.
 final class OpenBurnBarDaemonSocketClientCredentialReadTests: XCTestCase {
 
-    private let service = OpenBurnBarIdentity.controllerRuntimeKeychainService
-    private let account = OpenBurnBarIdentity.daemonSocketAuthTokenAccount
+    private let service = OpenBurnBar.OpenBurnBarIdentity.controllerRuntimeKeychainService
+    private let account = OpenBurnBar.OpenBurnBarIdentity.daemonSocketAuthTokenAccount
 
     private func makeStore(backend: KeychainStoreBackend) -> KeychainStore {
         KeychainStore(service: service, legacyServices: [], backend: backend)

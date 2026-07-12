@@ -1,11 +1,13 @@
-# OpenBurnBar Windows Port — Master Handoff (2026-07-03)
+# OpenBurnBar Windows Port — Historical Handoff (2026-07-03)
 
-> **⚠️ PARTIALLY SUPERSEDED (2026-07-06):** §2/§3/§6 predate the 2026-07-04 atomic integration (#1267) —
-> the burndown PRs described as unmerged are on `main` and the Windows CI workflows are live. For current
-> status, key off the status labels in [`PARITY_CERTIFICATION_BUNDLE.md`](PARITY_CERTIFICATION_BUNDLE.md)
-> (Real / Authored / deferred), and for the remaining work see
-> [`PARITY_100_REMEDIATION_PLAN.md`](PARITY_100_REMEDIATION_PLAN.md). "Phase done" phrasing below means
-> G0/G1 only; G2–G5 are not certified.
+> **⚠️ SUPERSEDED FOR PARITY STATUS (2026-07-09):** Production-parity status is **only**
+> [`WINDOWS_PARITY_LEDGER.yml`](WINDOWS_PARITY_LEDGER.yml) (closed set: Real / Substituted /
+> DeferredApproved / Blocked). **Authored is never parity.** Scanner:
+> `bash scripts/ci/verify-windows-parity-ledger.sh`. Narrative evidence remains in
+> [`PARITY_CERTIFICATION_BUNDLE.md`](PARITY_CERTIFICATION_BUNDLE.md); remaining work map:
+> [`PARITY_100_REMEDIATION_PLAN.md`](PARITY_100_REMEDIATION_PLAN.md) and the Wave 2–7 plan.
+> §2/§3/§6 below also predate the 2026-07-04 atomic integration (#1267) — verify against
+> the ledger + live code, not "done" phrasing in this handoff.
 
 The single doc to continue the entire Windows port. Read `docs/WINDOWS_PORT_MASTER_PLAN.md` (v2.1) for the
 authoritative spec; this is the *current state + how to finish*.
@@ -105,7 +107,9 @@ Plans already written (execute through the factory):
   macOS-tested** (Node Firebase-Admin mint backend, mock-fenced, in `functions/`); build the Windows TPM
   attestation client (CNG `NCryptCreateClaim`) + prove real-TPM→createToken→enforced-callable on the dev
   host (TPM 2.0 + Win11; clear firebase-admin-node #2308).
-- **W0 procurement (calendar-bound, Alberto):** Authenticode/Trusted-Signing cert + Microsoft Store account
+- **W0 procurement:** Azure Artifact Signing identity validation and signed x64/ARM64
+  production are **resolved** by run [29160512069](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29160512069).
+  Microsoft Store and winget publisher onboarding remain calendar-bound.
   + winget publisher — external lead-times; start now, gates G5.
 
 ## 5. Execution model (how to keep running it)

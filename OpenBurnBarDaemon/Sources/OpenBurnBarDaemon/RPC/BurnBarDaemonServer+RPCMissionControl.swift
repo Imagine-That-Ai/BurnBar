@@ -267,6 +267,20 @@ extension BurnBarDaemonServer {
                 result: try await missionControlService.missionRecordResult(typedRequest.params)
             )
             return encode(response)
+        case .missionAuthorizeRemote:
+            // M2 (split-brain remediation): pure verdict evaluation — every
+            // outcome, including every fail-closed default, is a typed verdict
+            // in the result lane, never an RPC error.
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarRemoteMissionAuthorizeRequest>.self,
+                from: requestData
+            )
+            let response = BurnBarRPCResponseEnvelope<BurnBarRemoteMissionAuthorizeResponse>(
+                id: typedRequest.id,
+                protocolVersion: BurnBarProtocolVersion.current,
+                result: await missionControlService.missionAuthorizeRemote(typedRequest.params)
+            )
+            return encode(response)
         case .notificationConfigGet:
             let typedRequest = try decoder.decode(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarNotificationConfigGetRequest>.self,

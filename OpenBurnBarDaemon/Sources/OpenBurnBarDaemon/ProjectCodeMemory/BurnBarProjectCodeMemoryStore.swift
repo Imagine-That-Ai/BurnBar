@@ -20,7 +20,8 @@ import CSQLite
 #endif
 
 let projectCodeMemorySQLiteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
-let projectCodeMemoryQueueKey = DispatchSpecificKey<UUID>()
+// DispatchSpecificKey is not Sendable; access is confined to the project-code serial queue.
+nonisolated(unsafe) let projectCodeMemoryQueueKey = DispatchSpecificKey<UUID>()
 
 enum BurnBarProjectCodeMemoryStoreError: Error, LocalizedError {
     case emptyText

@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Wire-version constants for the iroh transport. Mirrors
 /// `HermesRealtimeRelayProtocol` for the WebSocket relay — same protocol

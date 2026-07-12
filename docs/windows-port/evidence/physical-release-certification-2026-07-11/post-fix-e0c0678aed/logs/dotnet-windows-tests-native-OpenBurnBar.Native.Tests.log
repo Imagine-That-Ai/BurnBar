@@ -1,0 +1,39 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  OpenBurnBar.Native -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/native/OpenBurnBar.Native/bin/Release/net8.0/OpenBurnBar.Native.dll
+  BurnBarRemote.Ffi -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/crates/burnbar-remote/bindings/csharp/BurnBarRemote.Ffi/bin/Release/net8.0/BurnBarRemote.Ffi.dll
+  OpenBurnBarIroh.Ffi -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/crates/openburnbar-iroh/bindings/csharp/OpenBurnBarIroh.Ffi/bin/Release/net8.0/OpenBurnBarIroh.Ffi.dll
+  OpenBurnBar.Native.BurnBarRemote -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/native/OpenBurnBar.Native.BurnBarRemote/bin/Release/net8.0/OpenBurnBar.Native.BurnBarRemote.dll
+  OpenBurnBar.Native.Iroh -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/native/OpenBurnBar.Native.Iroh/bin/Release/net8.0/OpenBurnBar.Native.Iroh.dll
+  OpenBurnBar.Native.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/native/bin/Release/net10.0/OpenBurnBar.Native.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/native/bin/Release/net10.0/OpenBurnBar.Native.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:00.12]     OpenBurnBar.Native.Tests.IrohLoopbackTests.ParseBlobTicket_RejectsGarbage_WithTheTypedError [SKIP]
+[xUnit.net 00:00:00.13]     OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.Readiness_ReportsTheGen2Protocol [SKIP]
+[xUnit.net 00:00:00.14]     OpenBurnBar.Native.Tests.IrohLoopbackTests.ProtocolVersion_IsTheV1TheMacPeerSpeaks [SKIP]
+[xUnit.net 00:00:00.14]     OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.QualityController_UpdatesThroughTheStatefulObjectPath [SKIP]
+[xUnit.net 00:00:00.14]     OpenBurnBar.Native.Tests.IrohLoopbackTests.AuxiliaryAlpns_AreNonEmpty_AndDistinct [SKIP]
+  Skipped OpenBurnBar.Native.Tests.IrohLoopbackTests.ParseBlobTicket_RejectsGarbage_WithTheTypedError [1 ms]
+  Skipped OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.Readiness_ReportsTheGen2Protocol [1 ms]
+  Skipped OpenBurnBar.Native.Tests.IrohLoopbackTests.ProtocolVersion_IsTheV1TheMacPeerSpeaks [1 ms]
+  Skipped OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.QualityController_UpdatesThroughTheStatefulObjectPath [1 ms]
+  Skipped OpenBurnBar.Native.Tests.IrohLoopbackTests.AuxiliaryAlpns_AreNonEmpty_AndDistinct [1 ms]
+[xUnit.net 00:00:00.15]     OpenBurnBar.Native.Tests.IrohLoopbackTests.OpenBurnBarAlpn_MatchesThePinnedConstant [SKIP]
+[xUnit.net 00:00:00.16]     OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.DecodeQualityDecision_Truncated_ThrowsTheTypedError [SKIP]
+[xUnit.net 00:00:00.16]     OpenBurnBar.Native.Tests.IrohLoopbackTests.GenerateSecretKeyMaterial_Returns32FreshBytes [SKIP]
+[xUnit.net 00:00:00.16]     OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.DecodeQualityDecision_OfTheGolden_ReturnsTheOriginal [SKIP]
+[xUnit.net 00:00:00.16]     OpenBurnBar.Native.Tests.IrohLoopbackTests.EndpointHandle_RejectsAnInvalidSecretKey [SKIP]
+[xUnit.net 00:00:00.16]     OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.ModeRequiresPermission_MatchesTheEnginePolicyTable [SKIP]
+[xUnit.net 00:00:00.16]     OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.EncodeQualityDecision_MatchesTheCommittedGolden_AndFiresCallbacksInOrder [SKIP]
+[xUnit.net 00:00:00.17]     OpenBurnBar.Native.Tests.IrohLoopbackTests.EndpointHandle_Identity_BeforeBootstrap_ThrowsTheTypedError [SKIP]
+  Skipped OpenBurnBar.Native.Tests.IrohLoopbackTests.OpenBurnBarAlpn_MatchesThePinnedConstant [1 ms]
+  Skipped OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.DecodeQualityDecision_Truncated_ThrowsTheTypedError [1 ms]
+  Skipped OpenBurnBar.Native.Tests.IrohLoopbackTests.GenerateSecretKeyMaterial_Returns32FreshBytes [1 ms]
+  Skipped OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.DecodeQualityDecision_OfTheGolden_ReturnsTheOriginal [1 ms]
+  Skipped OpenBurnBar.Native.Tests.IrohLoopbackTests.EndpointHandle_RejectsAnInvalidSecretKey [1 ms]
+  Skipped OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.ModeRequiresPermission_MatchesTheEnginePolicyTable [1 ms]
+  Skipped OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.EncodeQualityDecision_MatchesTheCommittedGolden_AndFiresCallbacksInOrder [1 ms]
+  Skipped OpenBurnBar.Native.Tests.IrohLoopbackTests.EndpointHandle_Identity_BeforeBootstrap_ThrowsTheTypedError [1 ms]
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    15, Skipped:    13, Total:    28, Duration: 60 ms - OpenBurnBar.Native.Tests.dll (net10.0)

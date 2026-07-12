@@ -9,8 +9,8 @@ namespace OpenBurnBar.App.Presentation.Quota;
 //
 // Portable parse half of the macOS Cursor adapter. On both platforms the
 // session cookie is auto-extracted from Cursor's own SQLite database
-// (`state.vscdb`, an editor `ItemTable` blob) — that read is the
-// net8.0-windows/adapter-deferred half (CursorCookieExtractor). THIS file is
+// (`state.vscdb`, an editor `ItemTable` blob) — that read is the Windows
+// acquisition adapter (CursorCookieExtractor). THIS file is
 // the pure usage-summary JSON → ProviderQuotaSnapshot transform, portable and
 // unit-tested on macOS.
 //

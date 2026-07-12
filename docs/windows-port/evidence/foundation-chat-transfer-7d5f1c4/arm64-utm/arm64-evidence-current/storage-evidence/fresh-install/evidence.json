@@ -1,0 +1,23 @@
+{
+  "name": "fresh-install",
+  "databasePath": "C:\\WINDOWS\\SystemTemp\\obb-storage-29b230fdb6dc4a6e80327b6e1140ab1a\\openburnbar.sqlite",
+  "databaseExists": true,
+  "encryptedHeader": true,
+  "walExists": true,
+  "shmExists": true,
+  "report": {
+    "DatabasePath": "C:\\WINDOWS\\SystemTemp\\obb-storage-29b230fdb6dc4a6e80327b6e1140ab1a\\openburnbar.sqlite",
+    "JournalPath": "C:\\WINDOWS\\SystemTemp\\obb-storage-29b230fdb6dc4a6e80327b6e1140ab1a\\openburnbar.sqlite.windows-migration-journal.json",
+    "RedactedLogPath": "C:\\WINDOWS\\SystemTemp\\obb-storage-29b230fdb6dc4a6e80327b6e1140ab1a\\openburnbar.sqlite.recovery.log",
+    "KeyProvenance": "protected-generated:openburnbar.windows.sqlcipher.passphrase",
+    "PathOwner": "WORKGROUP\\WIN-MIGC91I3AKQ$",
+    "CipherVersion": "4.5.2 community",
+    "SchemaEndpoint": "v54_provider_quota_snapshots",
+    "MigrationCount": 55,
+    "UserVersion": 0,
+    "SchemaHash": "79bc8290e924d1cb395bba3c93574cfbe5637187655879c63d82032e9f42a2b0",
+    "Created": true,
+    "RetriedInterruptedMigration": false
+  },
+  "recovery": null
+}

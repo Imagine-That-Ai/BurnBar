@@ -2,16 +2,9 @@
 
   <!--
     macOS-runnable parity tests for the Liquid-Glass transparency preference math
-    (Phase 3 · W6 · W6-DS-GLASS). Runs on the macOS authoring host today via
-    `dotnet test` — it LINKS the dependency-free
-    ../../app/OpenBurnBar.App/Theme/LiquidGlassTransparency.cs (System-only, no WinUI),
-    so the parity-critical port of the Swift `enum LiquidGlassTransparency`
-    (AgentLens/Theme/LiquidGlass.swift) is asserted against independently hand-computed
-    Swift golden values. The WinUI adapters (LiquidGlass.cs) are Windows-only and are
-    type-checked separately; see the PR's Validation section.
-
-    Mirrors windows/tests/ipc/OpenBurnBar.Pal.Ipc.Tests.csproj (net10.0, xUnit) so the
-    toolchain is the one already proven on this host.
+    and the pure KernelBackdrop catalog/bridge (Phase 3 · W6 · W6-DS-GLASS + reskin).
+    Links dependency-free sources from the WinUI app (System-only, no WinUI) so the
+    shipped code is driven on this host via `dotnet test`.
   -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -25,15 +18,23 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Link the pure-math chokepoint core directly (no WinUI dependency). -->
+    <!-- Pure math + preference store + kernel catalog/bridge (no WinUI). -->
     <Compile Include="../../app/OpenBurnBar.App/Theme/LiquidGlassTransparency.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Theme/LiquidGlassPreferenceStore.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Dashboard/KernelCatalog.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Dashboard/KernelBackdropBridge.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Dashboard/KernelBackdropSelection.cs" />
     <Compile Include="LiquidGlassTransparencyTests.cs" />
+    <Compile Include="LiquidGlassPreferenceStoreTests.cs" />
+    <Compile Include="KernelBackdropBridgeTests.cs" />
+    <Compile Include="KernelBackdropSelectionTests.cs" />
+    <Compile Include="KernelCatalogTests.cs" />
   </ItemGroup>
 
 </Project>

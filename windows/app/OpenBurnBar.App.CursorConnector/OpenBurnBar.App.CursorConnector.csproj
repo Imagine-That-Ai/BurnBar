@@ -44,6 +44,7 @@
          CursorStateCredentials); the connector reuses it for Cursor account
          identity rather than opening its own ItemTable reader. -->
     <ProjectReference Include="..\OpenBurnBar.App.Quota.Acquisition\OpenBurnBar.App.Quota.Acquisition.csproj" />
+    <ProjectReference Include="..\OpenBurnBar.App.Configuration\OpenBurnBar.App.Configuration.csproj" />
   </ItemGroup>
 
 </Project>

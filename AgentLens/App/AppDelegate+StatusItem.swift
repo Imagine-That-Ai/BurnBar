@@ -21,6 +21,7 @@ extension AppDelegate {
             button.title = OpenBurnBarStatusItemBrandMark.menuBarTitle
             button.toolTip = "OpenBurnBar"
             button.setAccessibilityLabel("OpenBurnBar")
+            button.setAccessibilityIdentifier(OBBAccessibilityID.menuBarStatusItem)
             button.target = self
             button.action = #selector(handleStatusItemClick(_:))
             button.sendAction(on: OpenBurnBarStatusItemClick.primaryActionMask)
@@ -322,7 +323,7 @@ extension AppDelegate {
         let updates = menu.addItem(withTitle: "Check for Updates...", action: #selector(checkForUpdatesAction(_:)), keyEquivalent: ""); updates.target = self // cov:ignore -- menu glue
 #endif
         menu.addItem(.separator())
-        let quit = menu.addItem(withTitle: "Quit \(OpenBurnBarIdentity.productName)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"); quit.target = NSApp
+        let quit = menu.addItem(withTitle: "Quit \(OpenBurnBarCore.OpenBurnBarIdentity.productName)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"); quit.target = NSApp
 
         let anchor = NSPoint(x: 0, y: sender.bounds.height + 2)
         menu.popUp(positioning: nil, at: anchor, in: sender)

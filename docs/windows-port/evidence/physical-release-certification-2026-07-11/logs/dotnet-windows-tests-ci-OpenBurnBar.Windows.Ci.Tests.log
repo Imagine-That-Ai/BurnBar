@@ -1,0 +1,8 @@
+  Determining projects to restore...
+  Restored /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/ci/OpenBurnBar.Windows.Ci.Tests.csproj (in 125 ms).
+  OpenBurnBar.Windows.Ci.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/ci/bin/Release/net10.0/OpenBurnBar.Windows.Ci.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/ci/bin/Release/net10.0/OpenBurnBar.Windows.Ci.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:     2, Skipped:     0, Total:     2, Duration: 9 ms - OpenBurnBar.Windows.Ci.Tests.dll (net10.0)

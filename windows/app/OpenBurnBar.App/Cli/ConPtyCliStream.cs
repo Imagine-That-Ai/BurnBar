@@ -5,6 +5,7 @@ using System.Runtime.Versioning;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using OpenBurnBar.App.Configuration;
 using OpenBurnBar.Pal.Ipc.Windows;
 
 namespace OpenBurnBar.App.Cli;
@@ -50,7 +51,12 @@ public sealed class ConPtyCliStream : ICliStream
 
         yield return new CliStreamEvent(CliStreamEventKind.System, $"$ {_commandLine}\n");
 
-        using var session = ConPtySession.Spawn(_commandLine, _columns, _rows, _workingDirectory);
+        using var session = ConPtySession.Spawn(
+            _commandLine,
+            _columns,
+            _rows,
+            _workingDirectory,
+            ChildProcessLaunchPolicy.CreateEnvironment(ChildProcessProfile.Chat));
         yield return new CliStreamEvent(
             CliStreamEventKind.System,
             $"session pid {session.ProcessId} started\n");

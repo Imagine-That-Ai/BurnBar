@@ -1,0 +1,17 @@
+{
+  "appcastUrl": "https://dl.openburnbar.app/windows/appcast-windows.xml",
+  "build": "1.0.29",
+  "bundleId": "com.openburnbar.app",
+  "channel": "direct-download",
+  "commit": "9dbcaa791794944326ce9ffb18ed4d9771f31ecc",
+  "createdAt": "2026-07-11T21:06:31Z",
+  "critical": false,
+  "downloadUrl": "https://dl.openburnbar.app/windows/OpenBurnBar-1.0.29-x64.msix",
+  "edSignature": "+P2rcFrYaCKUjzeDFz0bjfI45kt11KDJrBzQFRtVEFsfSbbphc4AsQULB3FlHMVBs9952G/aoSLtWHx+0NoOAQ==",
+  "length": 138059771,
+  "minimumSystemVersion": "10.0.19041",
+  "package": "OpenBurnBar-1.0.29-x64.msix",
+  "releaseNotesUrl": "https://dl.openburnbar.app/windows/release-metadata.json",
+  "sha256": "ac5b63a258c2151c7f1c8f3092ff54720d8c97b375efa38754a2e4a1857e0f43",
+  "version": "1.0.29"
+}

@@ -251,6 +251,19 @@ final class BurnBarCLITests: XCTestCase {
         XCTAssertTrue(output.contains("spawned Codex"))
         XCTAssertTrue(output.contains("pid=4242"))
     }
+
+    func testComputerUsePanicHaltFormatsDaemonResponse() async throws {
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+        let result = try await runner.invoke(
+            arguments: ["computer-use", "panic-halt", "--session-id", "session-123", "--source", "hotkey"],
+            invokedExecutablePath: "/tmp/OpenBurnBarCLI"
+        )
+
+        XCTAssertEqual(result.exitCode, EXIT_SUCCESS)
+        XCTAssertEqual(result.output?.contains("computer_use_panic_halt=accepted"), true)
+        XCTAssertEqual(result.output?.contains("session_id=session-123"), true)
+        XCTAssertEqual(result.output?.contains("source=hotkey"), true)
+    }
 }
 
 struct FakeCLIClient: BurnBarCLIClient {
@@ -546,6 +559,14 @@ struct FakeCLIClient: BurnBarCLIClient {
                 modelID: "gpt-5.5",
                 updatedAt: Date()
             )
+        )
+    }
+
+    func panicHalt(_ request: ComputerUsePanicHaltRequest) throws -> ComputerUsePanicHaltResponse {
+        ComputerUsePanicHaltResponse(
+            sessionId: request.sessionId,
+            endedAt: Date(timeIntervalSince1970: 1_780_000_000),
+            auditHeadHashHex: "panic-head-fixture"
         )
     }
 

@@ -1,0 +1,30 @@
+{
+    "schema":  "openburnbar.windows.foundation-host.v1",
+    "capturedAt":  "2026-07-11T17:11:30.2865756Z",
+    "computerName":  "WIN-MIGC91I3AKQ",
+    "osCaption":  "Microsoft Windows 11 Pro",
+    "osVersion":  "10.0.26200",
+    "osArchitecture":  "ARM 64-bit Processor",
+    "manufacturer":  "QEMU",
+    "model":  "QEMU Virtual Machine",
+    "processorArchitecture":  "AMD64",
+    "processArchitecture":  "X64",
+    "platform":  "ARM64",
+    "repoRoot":  "C:\\candidate778e735a_final",
+    "outputDir":  "C:\\Users\\Public\\foundation-final-778e735a",
+    "dotnet":  "10.0.301",
+    "candidate":  {
+                      "branch":  "codex/windows-final-certification",
+                      "commit":  "778e735a69ea9d812db87146630223ac1a3a49d7",
+                      "commitDate":  "2026-07-11T16:26:37Z",
+                      "parentCommits":  [
+                                            "b35206464ab0aafb11bde06330cfeb4f18021ae6"
+                                        ],
+                      "ref":  "HEAD",
+                      "tree":  "97a56caca0f60cf62ecb027f24334899d21d2f72"
+                  },
+    "tpm":  {
+                "present":  false,
+                "error":  "An internal error has occurred within the Trusted Platform Module support program. (Exception from HRESULT: 0x80284001)"
+            }
+}

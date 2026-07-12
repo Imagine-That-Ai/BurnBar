@@ -4,6 +4,7 @@ import { listPerfSamples } from '../../perfMarks.js';
 import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
 import { useSupportStore } from '../../state/supportStore.js';
 import { Sparkline } from '../../components/Sparkline.js';
+import { DAEMON_FIXTURE_AVAILABLE } from '../../daemonFixture.js';
 import { OfflineNotice } from '../../components/OfflineNotice.js';
 import { SystemStatusSection } from '../SystemStatusSection.js';
 import { DiagnosticsExportCard } from './DiagnosticsExportCard.js';
@@ -96,11 +97,13 @@ export function SupportSurface() {
         </tbody>
       </table>
       {trayDegraded ? <p className="muted">Tray degraded: use window reopen from launcher.</p> : null}
-      <div className="actions">
-        <button type="button" className="ghost" onClick={() => setFixtureMode(!fixtureMode)}>
-          {fixtureMode ? 'Disable daemon fixture' : 'Enable daemon fixture (host smoke)'}
-        </button>
-      </div>
+      {DAEMON_FIXTURE_AVAILABLE ? (
+        <div className="actions">
+          <button type="button" className="ghost" onClick={() => setFixtureMode(!fixtureMode)}>
+            {fixtureMode ? 'Disable daemon fixture' : 'Enable daemon fixture (host smoke)'}
+          </button>
+        </div>
+      ) : null}
     </>
   );
 }

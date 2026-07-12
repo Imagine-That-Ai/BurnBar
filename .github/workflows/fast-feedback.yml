@@ -437,6 +437,7 @@ jobs:
           bash scripts/ci/inject-firebase-config.test.sh
           bash scripts/ci/verify-apple-release-firebase-config.test.sh
           bash scripts/ci/inject-sentry-config-extension.test.sh
+          bash scripts/ci/verify-windows-release-signing-preflight.test.sh
 
       - name: Install ShellCheck
         env:
@@ -571,7 +572,7 @@ jobs:
             packages/hermes-wire-protocol/gen/HermesWireProtocol.kt \
             packages/hermes-wire-protocol/gen/wire_protocol.rs \
             android/openburnbar-iroh-relay/src/main/java/com/openburnbar/irohrelay/Generated/HermesRealtimeRelayGeneratedTypes.kt \
-            OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/Generated
+            OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Generated
           node packages/hermes-wire-protocol/codegen.mjs
           # codegen.mjs writes ALL generated surfaces (the gen/ references AND the real
           # consumed payload types: Kotlin android Generated/ + Swift SharedModels/Generated/).
@@ -581,7 +582,7 @@ jobs:
             services/hermes-realtime-relay/src/generated/wireProtocol.ts \
             packages/hermes-wire-protocol/gen \
             android/openburnbar-iroh-relay/src/main/java/com/openburnbar/irohrelay/Generated \
-            OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/Generated \
+            OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Generated \
             || { echo "::error::Hermes wire-protocol generated files are stale — run 'node packages/hermes-wire-protocol/codegen.mjs' and commit."; exit 1; }
           node packages/hermes-wire-protocol/parity.mjs
           node --test packages/hermes-wire-protocol/protocol.test.mjs
@@ -987,6 +988,12 @@ jobs:
       - name: Verify ops-plane workflow boundary
         run: node scripts/ci/verify-ops-plane-workflow-boundary.mjs
 
+      - name: Self-test branch-protection drift gate
+        run: node --test scripts/ops/check-branch-protection-drift.test.mjs
+
+      - name: Self-test ops alert-plane drift gate
+        run: node --test scripts/ops/check-ops-alert-plane-drift.test.mjs
+
       - name: Self-test PR harness aggregate gates
         run: node scripts/ci/verify-pr-harness-aggregate-gates.test.mjs
 
@@ -1036,7 +1043,7 @@ jobs:
           sparse-checkout: |
             AgentLens/Services/DataStore
             OpenBurnBarMobile/Models
-            OpenBurnBarCore/Sources/OpenBurnBarCore/Budget
+            OpenBurnBarCore/Sources/OpenBurnBarKernel/Budget
             scripts/ci/check-budget-fork-drift.sh
             scripts/ci/budget-fork-baselines
 
@@ -1092,6 +1099,31 @@ jobs:
 
       - name: Verify Windows storage architecture (WPD-0005 honesty)
         run: bash scripts/ci/verify-windows-storage-architecture.sh
+
+  # ── Windows parity ledger (Phase 0 anti-false-green gate) ───────────────────
+  # The machine-readable macOS↔Windows ledger rejects non-approved states, Real
+  # rows without tests/evidence, fake production paths, and unmapped primary routes.
+  windows-parity-ledger:
+    name: Windows parity ledger (Phase 0)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PyYAML for ledger scanner
+        run: python3 -m pip install --user 'pyyaml>=6,<7'
+
+      - name: Self-test the Windows parity ledger gate
+        run: bash scripts/ci/verify-windows-parity-ledger.test.sh
+
+      - name: Verify Windows parity ledger honesty
+        run: bash scripts/ci/verify-windows-parity-ledger.sh
 
   # ── Functions critical correctness (money + compliance; merge-blocking) ─────
   # The App Store JWS verifier, billing/tier rollups, tier COGS, cloud-pro
@@ -1183,11 +1215,30 @@ jobs:
       - name: Swift file-size debt budget (shrink-only)
         run: ./scripts/debt/check-swift-file-size-budget.sh
 
+      # Structural remediation ratchets (audit 2026-06-30 findings #4/#5).
+      # Core UI purity: no new SwiftUI/AppKit imports in OpenBurnBarCore's main
+      # module; pure sibling targets assert-zero. Mission split-brain: the
+      # GUI-side mission-authority cluster may only shrink as authority moves
+      # to the daemon MissionControl.
+      - name: Core UI-purity budget (shrink-only ratchet)
+        run: ./scripts/debt/check-core-ui-purity-budget.sh
+
+      - name: Mission split-brain budget (shrink-only ratchet)
+        run: ./scripts/debt/check-mission-splitbrain-budget.sh
+
       # Windows per-tree size ratchet (rooted at windows/, partitioned by
       # app/pal/native/tests). Blocking Windows check on every PR — a red
       # Windows budget fails HERE at merge time. Pure bash + python3.
       - name: Windows tree budget (per-tree shrink-only ratchet)
         run: ./scripts/debt/check-windows-tree-budget.sh
+
+      - name: BurnBarRPC IPC canon is current
+        run: node tools/ipc/generate-burnbarrpc-canon.mjs --check
+
+      - name: Migration rollback catalog covers both migrators
+        run: |
+          node --test scripts/ci/verify-migration-rollback-catalog.test.mjs
+          node scripts/ci/verify-migration-rollback-catalog.mjs
 
   # ── Fast summary gate ──────────────────────────────────────────────────────
   fast-feedback-gate:
@@ -1216,6 +1267,7 @@ jobs:
       - no-suppressions
       - twin-basenames
       - windows-storage-architecture
+      - windows-parity-ledger
       - debt-budgets
       - functions-correctness
     runs-on: ubuntu-latest

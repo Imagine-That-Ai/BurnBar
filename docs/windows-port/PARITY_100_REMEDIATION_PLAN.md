@@ -4,9 +4,16 @@
 **Author:** Claude (repo-wide audit: macOS feature inventory + Windows code audit + docs/git claims review, cross-checked)
 **Companion docs:** `docs/WINDOWS_PORT_MASTER_PLAN.md` (phases/gates), `docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md` (living G5 ledger), `docs/windows-port/HANDOFF.md` (partially stale, 2026-07-03)
 
+> **SUPERSEDED FOR STATUS (2026-07-09):** Production-parity status is **only**
+> [`WINDOWS_PARITY_LEDGER.yml`](WINDOWS_PARITY_LEDGER.yml). **100% under ledger laws =
+> F2 True 1:1** (`finish_line: F2_True_1to1`) with all rows Real. Verified:
+> **46 Real / 0 DeferredApproved / 0 Blocked / 0 Substituted**. Scanner:
+> `bash scripts/ci/verify-windows-parity-ledger.sh`. This document remains historical
+> assessment + wave map; do not use §1 percentages as current status.
+
 ---
 
-## 1. TL;DR — the honest number
+## 1. TL;DR — the honest number (historical, 2026-07-05/06)
 
 **Original assessment (2026-07-05): ~40%. After the 2026-07-06 build session: ~55%** — and the honest ceiling for *agent-only* work is ~65% (everything remaining is Windows-hardware or Alberto-account gated; see [`TONIGHT_PUNCHLIST.md`](TONIGHT_PUNCHLIST.md)).
 
@@ -196,7 +203,7 @@ Wave 0: ~5–10 PRs. Wave 1: ~60–100. Wave 2: ~40–70. Wave 3: ~200–350 (do
 ---
 
 ## 5. Standing rules while remediating
-- Key all status claims off `PARITY_CERTIFICATION_BUNDLE.md` labels (Real / Authored / deferred), never off "done" phrasing in handoffs.
+- Key all **production-parity** status claims off [`WINDOWS_PARITY_LEDGER.yml`](WINDOWS_PARITY_LEDGER.yml) (`Real` / `Substituted` / `DeferredApproved` / `Blocked` only). **Authored is never parity.** The certification bundle is narrative evidence; the ledger + `scripts/ci/verify-windows-parity-ledger.sh` are the honesty gate. Never key off "done" phrasing in handoffs.
 - No admin-merges into the parity lane once Wave 0 completes.
 - Every deferral gets a doc with an expiry (the storage waiver pattern; that waiver itself was retired 2026-07-06 when WPD-0005 turned the gap into a decision) — and gets deleted when closed.
 - "Parity" claims require Windows-runner or real-hardware evidence; macOS-host test parity is labeled as such.

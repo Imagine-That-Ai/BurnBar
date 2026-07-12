@@ -192,7 +192,7 @@ enum ContextBuilder {
         let convBySession = Dictionary(uniqueKeysWithValues: conversations.map { ($0.id, $0) })
 
         for usage in recentUsages.prefix(24) {
-            let cid = ConversationRecord.stableId(provider: usage.provider, sessionId: usage.sessionId)
+            let cid = OpenBurnBarCore.ConversationRecord.stableId(provider: usage.provider, sessionId: usage.sessionId)
             let conv = convBySession[cid]
             let title = conv?.inferredTaskTitle ?? usage.projectName
             let day = usage.startTime.formatted(date: .abbreviated, time: .omitted)
@@ -343,7 +343,7 @@ enum ContextBuilder {
         rollupLines.append("")
         rollupLines.append("### Recent work (last 7 days)")
         for usage in recentUsages.prefix(18) {
-            let cid = ConversationRecord.stableId(provider: usage.provider, sessionId: usage.sessionId)
+            let cid = OpenBurnBarCore.ConversationRecord.stableId(provider: usage.provider, sessionId: usage.sessionId)
             let conv = convBySession[cid]
             let title = conv?.inferredTaskTitle ?? usage.projectName
             let day = usage.startTime.formatted(date: .abbreviated, time: .omitted)
@@ -399,7 +399,7 @@ enum ContextBuilder {
         return result
     }
 
-    private static func latestConversation(in conversations: [ConversationRecord]) -> ConversationRecord? {
+    private static func latestConversation(in conversations: [OpenBurnBarCore.ConversationRecord]) -> OpenBurnBarCore.ConversationRecord? {
         conversations.max(by: { a, b in
             let ad = a.endTime ?? a.startTime ?? .distantPast
             let bd = b.endTime ?? b.startTime ?? .distantPast
@@ -513,7 +513,7 @@ enum ContextBuilder {
 // silently become an unbounded seventh block and starve the user's own turn / tool
 // definitions on small-context backends (ollama, unknown local models).
 //
-// The arbiter estimates each section via `TokenExtractionUtility.estimatedTokenCount`,
+// The arbiter estimates each section via `OpenBurnBarCore.TokenExtractionUtility.estimatedTokenCount`,
 // reserves a hard floor for the conversation history + user turn (subtracted from the
 // model's context window before the system-prompt budget is computed), guarantees the
 // persona (`.core`) and tool definitions (`.toolDefs`) are never dropped, carves a
@@ -768,15 +768,15 @@ struct PromptTokenArbiter {
     }
 
     static func estimateProseTokens(_ content: String) -> Int {
-        TokenExtractionUtility.estimatedTokenCount(for: content.count, charsPerToken: 3.5)
+        OpenBurnBarCore.TokenExtractionUtility.estimatedTokenCount(for: content.count, charsPerToken: 3.5)
     }
 
     static func estimateCodeTokens(_ content: String) -> Int {
-        TokenExtractionUtility.estimatedTokenCount(for: content.count, charsPerToken: 2.8)
+        OpenBurnBarCore.TokenExtractionUtility.estimatedTokenCount(for: content.count, charsPerToken: 2.8)
     }
 
     private func estimate(_ content: String, _ kind: ContentKind) -> Int {
-        TokenExtractionUtility.estimatedTokenCount(for: content.count, charsPerToken: ratioFor(kind))
+        OpenBurnBarCore.TokenExtractionUtility.estimatedTokenCount(for: content.count, charsPerToken: ratioFor(kind))
     }
 
     private func recordOutcome(

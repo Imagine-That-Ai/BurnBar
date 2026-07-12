@@ -1,8 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Runtime app configuration: SQLCipher path/passphrase, Firebase dev-host tokens, vault key.
-    net8.0, no WinUI — loaded at startup from env (override) + app_config.json (user settings).
+    Runtime app configuration: protected SQLCipher path/passphrase references,
+    Firebase dev-host tokens, vault key, launch policy, and release credential guards.
+    net8.0, no WinUI — loaded at startup from app_config.json plus protected storage;
+    plaintext SQLCipher environment overrides are rejected by release composition.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>

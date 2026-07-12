@@ -6,7 +6,7 @@ export const SITE = {
   domain: "burnbar.ai",
   url: "https://burnbar.ai",
   description:
-    "A local-first developer tool that watches AI coding agents — tokens burned, dollars spent, quota left — across Claude Code, Codex, Cursor, Copilot, Factory and more. macOS app, iOS companion, daemon, CLI, editor extension.",
+    "A local-first tool that watches AI coding agents — tokens burned, dollars spent, quota left — across Claude Code, Codex, Cursor, Copilot, and more.",
   twitter: "",
   github: "https://github.com/Imagine-That-Ai/BurnBar",
   releasesUrl: "https://github.com/Imagine-That-Ai/BurnBar/releases",
@@ -127,9 +127,13 @@ export const SITE = {
   linuxPubKeyFile: "openburnbar-linux-ed25519.pub.pem",
   linuxDownloadBaseUrl: "https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v0.1.0",
   linuxArch: "aarch64 (ARM64)",
-  linuxStatus: "preview · signed prerelease",
+  // Shown on download cards and jump pills — lead with Available so it doesn't
+  // read like a blocked/pending platform next to macOS.
+  linuxStatus: "Available · 0.1.0 · ARM64",
+  linuxStatusDetail: "Signed prerelease — AppImage, deb, and rpm on GitHub Releases",
   iosMin: "iOS 17",
-  iosStatus: "in App Store review",
+  iosStatus: "on the App Store",
+  iosAppStoreUrl: "https://apps.apple.com/us/app/openburnbar/id6766366964",
   androidStatus: "feature-complete, Play Store pending",
   cursorExtStatus: "source-only beta"
 };
@@ -161,7 +165,7 @@ export const NAV_FOOTER = {
     { href: "/faq", label: "FAQ" }
   ],
   trust: [
-    { href: "/trust?v=20260607", label: "Open & secure" },
+    { href: "/trust", label: "Open & secure" },
     { href: "/privacy", label: "Privacy model" },
     { href: "/privacy#data-domains", label: "What we can see" },
     { href: "/security", label: "Security model" },

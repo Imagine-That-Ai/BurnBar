@@ -393,6 +393,7 @@ struct QuotaPopoverBar: View {
             }
         }
         .animation(DesignSystem.Animation.gentle, value: expandedProvider)
+        .accessibilityIdentifier(OBBAccessibilityID.providersRow(provider.providerID.rawValue))
     }
 
     @ViewBuilder

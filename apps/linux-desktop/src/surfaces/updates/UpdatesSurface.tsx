@@ -4,6 +4,7 @@ import { OfflineNotice } from '../../components/OfflineNotice.js';
 import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
 import { useSupportStore } from '../../state/supportStore.js';
 import { VersionGrid } from '../support/VersionGrid.js';
+import { UpdateStatusCard } from './UpdateStatusCard.js';
 import '../support/support.css';
 
 const UPDATE_CASES = [
@@ -19,8 +20,9 @@ const UPDATE_CASES = [
   }
 ];
 
-const CHANNEL_CARD_COPY: Record<'deb' | 'appimage' | 'unknown', string> = {
+const CHANNEL_CARD_COPY: Record<'deb' | 'rpm' | 'appimage' | 'unknown', string> = {
   deb: 'Installed via the Debian package channel; apt/dpkg owns upgrades.',
+  rpm: 'Installed via the RPM package channel; dnf/rpm owns upgrades.',
   appimage: 'Installed as AppImage; replace the image file from your release source.',
   unknown: 'Package channel could not be determined; use your distro package manager or release notes.'
 };
@@ -32,6 +34,10 @@ export function UpdatesSurface() {
   const versionLoading = useSupportStore((s) => s.versionLoading);
   const versionError = useSupportStore((s) => s.versionError);
   const loadVersion = useSupportStore((s) => s.loadVersion);
+  const updateStatus = useSupportStore((s) => s.updateStatus);
+  const updateLoading = useSupportStore((s) => s.updateLoading);
+  const updateError = useSupportStore((s) => s.updateError);
+  const checkUpdate = useSupportStore((s) => s.checkUpdate);
 
   useLaneLoad(loadVersion);
 
@@ -76,10 +82,15 @@ export function UpdatesSurface() {
         Updates are delivered by your package manager — this shell does not download or install upgrades in-app.
       </p>
       <VersionGrid info={versionInfo} />
+      <UpdateStatusCard
+        status={updateStatus}
+        loading={updateLoading}
+        error={updateError}
+        onCheck={() => void checkUpdate()}
+      />
       <div className="p09-channel-card">
         <h3>Package channel</h3>
         <p>{CHANNEL_CARD_COPY[versionInfo.packageChannel]}</p>
-        <p className="muted mono">Update check: {versionInfo.updateCheck}</p>
       </div>
       <div className="p09-restart-guidance">
         <h3>Restart guidance</h3>

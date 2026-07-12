@@ -2,7 +2,7 @@
 <!--
   CommandPalette — the Ctrl+K palette, the Windows analog of CommandDeckPalette.swift and the
   substitute for the macOS App-Intents surface. Presented as a ContentDialog overlay: a search
-  box over a results list that unifies "Go to" section navigation with (stubbed) session jumps.
+  box over a results list that unifies "Go to" section navigation with tracked session jumps.
   Keyboard-first: Up/Down move the selection, Enter activates, Esc dismisses (ContentDialog).
 -->
 <ContentDialog

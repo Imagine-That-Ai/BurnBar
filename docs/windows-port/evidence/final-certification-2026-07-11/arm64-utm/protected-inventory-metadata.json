@@ -1,0 +1,7 @@
+{
+    "root":  "C:\\WINDOWS\\system32\\config\\systemprofile\\AppData\\Local\\OpenBurnBar\\protected-secrets",
+    "files":  [
+
+              ],
+    "note":  "Metadata only; secret plaintext is never emitted."
+}

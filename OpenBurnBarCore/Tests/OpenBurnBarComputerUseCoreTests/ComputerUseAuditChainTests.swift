@@ -1,4 +1,5 @@
 import XCTest
+import OpenBurnBarKernel
 @testable import OpenBurnBarComputerUseCore
 
 final class ComputerUseAuditChainTests: XCTestCase {
@@ -251,5 +252,27 @@ final class ComputerUseAuditChainTests: XCTestCase {
         XCTAssertEqual(json?["index"] as? Int, 1)
         XCTAssertEqual(json?["hashHex"] as? String, logger.headHashHex)
         XCTAssertEqual(json?["sessionId"] as? String, sessionId.rawValue)
+    }
+
+    func testMeteringHeaderRedactsUnstructuredFailureDetails() {
+        let entry = ComputerUseAuditEntry(
+            sessionId: sessionId.rawValue,
+            entryIndex: 7,
+            timestamp: Date(timeIntervalSince1970: 1_788_000_300),
+            actionKind: "browser.goto",
+            actionSummary: "Visit a private URL",
+            actionDescriptorHashHex: String(repeating: "a", count: 64),
+            approvedBy: .mac,
+            scopeRuleId: "rule-1",
+            denyReason: "navigation failed for https://private.example/account",
+            parentEntryHashHex: String(repeating: "b", count: 64),
+            macAppVersion: macAppVersion
+        )
+
+        let header = ComputerUseActionMeteringHeader(auditEntry: entry)
+
+        XCTAssertEqual(header.denyReason, "dispatch_error")
+        XCTAssertFalse(String(describing: header).contains("private.example"))
+        XCTAssertFalse(String(describing: header).contains("Visit a private URL"))
     }
 }

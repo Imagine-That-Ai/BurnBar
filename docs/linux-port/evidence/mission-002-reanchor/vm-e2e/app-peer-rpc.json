@@ -1,0 +1,9 @@
+{
+"generatedAt":"2026-07-09T16:27:50Z",
+"daemonHealth": true,
+"results": {
+"health": {"id":"daemon.health","protocolVersion":1,"result":{"daemonVersion":"1.0.29","protocolVersion":1,"socketPath":"\/run\/user\/1000\/openburnbar\/daemon.sock","gatewayEnabled":false,"ok":true}},
+"memory_audit": {"protocolVersion":1,"error":{"code":-32603,"message":"Project memory is not available. Configure OPENBURNBAR_INDEX_DATABASE_PATH and restart the daemon."},"id":"memory-unavailable"},
+"cu_pending": {"id":"daemon.computer_use.approval.pending","result":{"requests":[]},"protocolVersion":1}
+}
+}

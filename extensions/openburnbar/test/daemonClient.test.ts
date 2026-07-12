@@ -5,7 +5,7 @@ import { rmSync, writeFileSync } from 'node:fs';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { OpenBurnBarDaemonClient } from '../src/daemon/client';
+import { OpenBurnBarDaemonClient, resolveOpenBurnBarDaemonRuntimePaths } from '../src/daemon/client';
 
 const socketsToClean = new Set<string>();
 const filesToClean = new Set<string>();
@@ -26,6 +26,87 @@ afterEach(() => {
 });
 
 describe('OpenBurnBarDaemonClient', () => {
+  it('VAL-EXT-001: resolves Linux daemon socket and token paths from the packaged support directory', () => {
+    const paths = resolveOpenBurnBarDaemonRuntimePaths({
+      platform: 'linux',
+      homeDir: '/home/alberto',
+      env: {
+        XDG_DATA_HOME: '/home/alberto/.local/share',
+        XDG_RUNTIME_DIR: '/run/user/1000'
+      }
+    });
+
+    expect(paths.socketPath).toBe('/run/user/1000/openburnbar/daemon.sock');
+    expect(paths.authTokenFilePath).toBe('/home/alberto/.local/share/openburnbar/daemon-socket-auth-token');
+    expect(paths.supportDir).toBe('/home/alberto/.local/share/openburnbar');
+    expect(paths.launchAgentPlistPath).toBeUndefined();
+  });
+
+  it('VAL-EXT-001: honors the Linux shell socket override', () => {
+    const paths = resolveOpenBurnBarDaemonRuntimePaths({
+      platform: 'linux',
+      homeDir: '/home/alberto',
+      env: {
+        OPENBURNBAR_SOCKET_PATH: '/run/openburnbar/daemon.sock',
+        XDG_DATA_HOME: '/home/alberto/.local/share'
+      }
+    });
+
+    expect(paths.socketPath).toBe('/run/openburnbar/daemon.sock');
+    expect(paths.authTokenFilePath).toBe('/home/alberto/.local/share/openburnbar/daemon-socket-auth-token');
+    expect(paths.supportDir).toBe('/home/alberto/.local/share/openburnbar');
+  });
+
+  it('VAL-EXT-001: honors Linux daemon socket and support-dir overrides', () => {
+    const paths = resolveOpenBurnBarDaemonRuntimePaths({
+      platform: 'linux',
+      homeDir: '/home/alberto',
+      env: {
+        OPENBURNBAR_DAEMON_SOCKET_PATH: '/srv/openburnbar/daemon.sock',
+        OPENBURNBAR_DAEMON_SUPPORT_DIR: '/srv/openburnbar/state'
+      }
+    });
+
+    expect(paths.socketPath).toBe('/srv/openburnbar/daemon.sock');
+    expect(paths.authTokenFilePath).toBe('/srv/openburnbar/state/daemon-socket-auth-token');
+    expect(paths.supportDir).toBe('/srv/openburnbar/state');
+  });
+
+  it('VAL-EXT-001: ignores blank daemon path overrides before fallback values', () => {
+    const paths = resolveOpenBurnBarDaemonRuntimePaths({
+      platform: 'linux',
+      homeDir: '/home/alberto',
+      env: {
+        OPENBURNBAR_SOCKET_PATH: '',
+        OPENBURNBAR_DAEMON_SOCKET_PATH: '   ',
+        BURNBAR_DAEMON_SOCKET_PATH: '/srv/openburnbar/daemon.sock',
+        OPENBURNBAR_DAEMON_SUPPORT_DIR: '',
+        BURNBAR_DAEMON_SUPPORT_DIR: '/srv/openburnbar/state',
+        OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE: ' ',
+        BURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE: '/srv/openburnbar/socket-token'
+      }
+    });
+
+    expect(paths.socketPath).toBe('/srv/openburnbar/daemon.sock');
+    expect(paths.authTokenFilePath).toBe('/srv/openburnbar/socket-token');
+    expect(paths.supportDir).toBe('/srv/openburnbar/state');
+  });
+
+  it('VAL-EXT-001: resolves macOS daemon paths from the provided home directory', () => {
+    const paths = resolveOpenBurnBarDaemonRuntimePaths({
+      platform: 'darwin',
+      homeDir: '/Users/tester',
+      env: {}
+    });
+
+    expect(paths.socketPath).toBe('/Users/tester/Library/Application Support/OpenBurnBar/openburnbar-daemon.sock');
+    expect(paths.authTokenFilePath).toBe(
+      '/Users/tester/Library/Application Support/OpenBurnBar/daemon-socket-auth-token'
+    );
+    expect(paths.supportDir).toBe('/Users/tester/Library/Application Support/OpenBurnBar');
+    expect(paths.launchAgentPlistPath).toBe('/Users/tester/Library/LaunchAgents/com.openburnbar.daemon.plist');
+  });
+
   it('requests daemon health over the unix socket', async () => {
     const socketPath = makeSocketPath('health');
     const server = createServer((socket) => {

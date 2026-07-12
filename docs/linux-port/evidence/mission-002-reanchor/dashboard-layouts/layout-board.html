@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>OpenBurnBar Linux DashboardLayout matrix</title>
+<style>
+  :root { color-scheme: dark; --bg:#0b0d12; --card:#141824; --fg:#e8ecf4; --muted:#9aa3b5; --accent:#6ea8fe; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.4 ui-sans-serif, system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+  h1 { font-size: 18px; margin: 16px 20px 8px; }
+  .meta { margin: 0 20px 16px; color: var(--muted); }
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 0 16px 24px; }
+  .card { background: var(--card); border: 1px solid #243049; border-radius: 14px; overflow: hidden; min-height: 220px; }
+  .card header { display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-bottom:1px solid #243049; }
+  .card header strong { font-size: 13px; }
+  .glyph { opacity: .85; }
+  .stage { position: relative; height: 170px; padding: 12px; }
+  .layout-classic .cols { display:flex; flex-direction:column; gap:8px; height:100%; }
+  .layout-classic .band { flex:1; border-radius:10px; background: linear-gradient(180deg,#1b2233,#121722); border:1px solid #2b3650; }
+  .layout-aurora .wrap { display:grid; grid-template-rows: 1fr 48px; gap:8px; height:100%; }
+  .layout-aurora .hero { border-radius:12px; background: radial-gradient(circle at 30% 20%, #355f9c, #121722 70%); border:1px solid #2b3650; }
+  .layout-aurora .data { border-radius:10px; background:#1a2030; border:1px solid #2b3650; }
+  .layout-nebula .bento { display:grid; grid-template-columns: 1.2fr 1fr; grid-template-rows: 1fr 1fr; gap:8px; height:100%; }
+  .layout-nebula .cell { border-radius:10px; background:#1a2030; border:1px solid #2b3650; }
+  .layout-nebula .cell.wide { grid-column: span 2; background: linear-gradient(135deg,#24314d,#141a28); }
+  .layout-constellation .center { height:100%; display:grid; place-items:center; border-radius:12px; background:
+    radial-gradient(circle at 50% 45%, rgba(110,168,254,.35), transparent 35%),
+    radial-gradient(circle at 20% 70%, rgba(180,120,255,.25), transparent 30%),
+    #121722; border:1px solid #2b3650; }
+  .layout-constellation .pill { padding:10px 16px; border-radius:999px; background:rgba(20,24,36,.75); border:1px solid #3a4a6a; }
+  .layout-cockpit .grid3 { display:grid; grid-template-columns: repeat(3,1fr); gap:8px; height:100%; }
+  .layout-cockpit .kpi { border-radius:10px; background:#1a2030; border:1px solid #2b3650; display:grid; place-items:center; color:var(--muted); font-size:12px; }
+  .layout-atelier .hero { height:100%; border-radius:12px; background:
+    radial-gradient(circle at 70% 30%, rgba(255,180,120,.28), transparent 40%),
+    linear-gradient(160deg,#1a2033,#0e121c 70%); border:1px solid #2b3650; position:relative; }
+  .layout-atelier .float { position:absolute; left:12px; bottom:12px; right:12px; display:flex; gap:8px; }
+  .layout-atelier .chip { flex:1; height:36px; border-radius:10px; background:rgba(20,24,36,.72); border:1px solid #3a4a6a; backdrop-filter: blur(8px); }
+  .badge { font-size:11px; color:var(--accent); border:1px solid #355f9c; border-radius:999px; padding:2px 8px; }
+</style>
+</head>
+<body>
+  <h1 id="title">VAL-DASHBOARD-004 — six DashboardLayout modes</h1>
+  <p class="meta">Linux product-parity layout matrix. Layout ids: classic, aurora, nebula, constellation, cockpit, atelier.</p>
+  <div class="grid" id="grid"></div>
+  <script>
+    const layouts = [
+      { id: 'classic', glyph: '▤', cls: 'layout-classic', html: '<div class="cols"><div class="band"></div><div class="band"></div><div class="band"></div></div>' },
+      { id: 'aurora', glyph: '◎', cls: 'layout-aurora', html: '<div class="wrap"><div class="hero"></div><div class="data"></div></div>' },
+      { id: 'nebula', glyph: '▦', cls: 'layout-nebula', html: '<div class="bento"><div class="cell"></div><div class="cell"></div><div class="cell wide"></div></div>' },
+      { id: 'constellation', glyph: '✦', cls: 'layout-constellation', html: '<div class="center"><div class="pill">command column</div></div>' },
+      { id: 'cockpit', glyph: '◉', cls: 'layout-cockpit', html: '<div class="grid3"><div class="kpi">KPI</div><div class="kpi">KPI</div><div class="kpi">KPI</div><div class="kpi">route</div><div class="kpi">stage</div><div class="kpi">ops</div></div>' },
+      { id: 'atelier', glyph: '✧', cls: 'layout-atelier', html: '<div class="hero"><div class="float"><div class="chip"></div><div class="chip"></div><div class="chip"></div></div></div>' }
+    ];
+    const grid = document.getElementById('grid');
+    for (const l of layouts) {
+      const card = document.createElement('section');
+      card.className = 'card ' + l.cls;
+      card.dataset.layout = l.id;
+      card.innerHTML = `<header><strong>${l.id}</strong><span class="glyph">${l.glyph}</span><span class="badge">VAL-DASHBOARD-004</span></header><div class="stage">${l.html}</div>`;
+      grid.appendChild(card);
+    }
+  </script>
+</body>
+</html>
