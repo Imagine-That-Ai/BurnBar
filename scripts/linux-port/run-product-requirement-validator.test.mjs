@@ -32,7 +32,7 @@ const FEATURE_SCHEMAS = [
 ];
 const CANDIDATE_RUN_ID = '12345';
 const CANDIDATE_ARTIFACT_DIGEST = `sha256:${'e'.repeat(64)}`;
-const RELEASE_ONLY_REQUIREMENTS_FOR_TEST = new Set(['P-01', 'P-03', 'P-04', 'P-37']);
+const RELEASE_ONLY_REQUIREMENTS_FOR_TEST = new Set(['P-01', 'P-03', 'P-04', 'P-37', 'P-38']);
 
 function write(root, relativePath, contents) {
   const absolute = path.join(root, relativePath);

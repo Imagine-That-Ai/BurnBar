@@ -128,6 +128,29 @@
         "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
         "testName": "P-37 materializer selects Linux matrix evidence"
       }
+    },
+    {
+      "requirementId": "P-38",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-38.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "mutationTestName": "P-38 rejects missing prior-version lifecycle and workflow verification"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/finalize-product-proof-closure.mjs",
+        "entrypoint": "finalizeProductProofClosure",
+        "workflowPath": ".github/workflows/linux-release.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-38 release capture includes architecture lifecycle and signing evidence"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/prepare-product-requirement-input.mjs",
+        "entrypoint": "prepareProductRequirementInput",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-38 materializer selects release automation evidence"
+      }
     }
   ]
 }

@@ -29,6 +29,7 @@ function valid() {
       'smoke-linux-packages.test.mjs',
       'product-proof-closure.test.mjs',
       'product-feature-proof-closure.test.mjs',
+      'p38-release-automation-proof.test.mjs',
       'parity-certification-preflight.test.mjs',
       'run-linux-matrix-harness.test.mjs',
       'run-product-requirement-validator.test.mjs',
@@ -76,6 +77,15 @@ function valid() {
       'if-no-files-found: error',
       'include-hidden-files: true',
       'Download exact-candidate installed evidence',
+      [
+        '      - name: Capture P-38 release automation verification',
+        "        if: inputs.requirement == 'P-38'",
+        '        run: |',
+        '          set -euo pipefail',
+        '          node scripts/linux-port/capture-p38-release-automation.mjs',
+        '            --candidate-run-id "$CANDIDATE_RUN_ID"',
+        '            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"'
+      ].join('\n'),
       'Capture parity certification preflight',
       'Preserve non-promotable P-02 diagnostic evidence',
       'Finalize registered feature proof closure',
@@ -265,6 +275,31 @@ function valid() {
 
 test('complete fail-closed workflow wiring passes', () => {
   assert.deepEqual(verifyLinuxWorkflowWiring(valid()), { passed: true, failures: [] });
+});
+
+test('P-38 workflow step cannot be removed or weakened', () => {
+  for (const marker of [
+    'capture-p38-release-automation.mjs',
+    "if: inputs.requirement == 'P-38'",
+    'Capture P-38 release automation verification'
+  ]) {
+    const input = valid();
+    input.productParityWorkflow = input.productParityWorkflow.replace(marker, 'removed-p38-capture-marker');
+    const result = verifyLinuxWorkflowWiring(input);
+    assert.equal(result.passed, false, marker);
+    assert.ok(result.failures.some((failure) => /product parity evidence workflow/u.test(failure)), marker);
+  }
+  for (const [name, from, to] of [
+    ['commented producer', '          node scripts/linux-port/capture-p38-release-automation.mjs', '          # node scripts/linux-port/capture-p38-release-automation.mjs'],
+    ['swallowed producer failure', '          set -euo pipefail', '          set -euo pipefail\n          continue-on-error: true'],
+    ['disabled fail-fast shell', '          set -euo pipefail', '          set +e']
+  ]) {
+    const input = valid();
+    input.productParityWorkflow = input.productParityWorkflow.replace(from, to);
+    const result = verifyLinuxWorkflowWiring(input);
+    assert.equal(result.passed, false, name);
+    assert.ok(result.failures.some((failure) => /P-38 release automation verification/u.test(failure)), name);
+  }
 });
 
 test('hidden Linux output uploads fail closed when upload protections mutate', () => {
