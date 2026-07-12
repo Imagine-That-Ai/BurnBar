@@ -16,6 +16,8 @@ export const FEATURE_PROOF_CLOSURE_SCHEMA_PATH = 'schemas/linux-product-feature-
 export const FEATURE_PROOF_REGISTRATION_PATH = 'feature-proof-registration.json';
 export const FEATURE_PROOF_CLOSURE_PATH = 'feature-proof-closure.json';
 export const RELEASE_ONLY_REQUIREMENTS = Object.freeze(['P-01', 'P-03', 'P-04', 'P-37']);
+export const MAX_FEATURE_PROOF_ROLES_PER_REQUIREMENT = 16;
+export const MAX_FEATURE_PROOF_CONTRACT_BYTES = 2 * 1024 * 1024 * 1024;
 
 const CANDIDATE_DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const RUN_ID = /^[1-9][0-9]*$/u;
@@ -93,9 +95,21 @@ export function validateFeatureProofRegistry(repoRoot, snapshot) {
     }
     previousRequirement = contract.requirementId;
     seenRequirements.add(contract.requirementId);
+    if (contract.artifacts.length > MAX_FEATURE_PROOF_ROLES_PER_REQUIREMENT) {
+      throw new Error(
+        `${contract.requirementId} exceeds the ${MAX_FEATURE_PROOF_ROLES_PER_REQUIREMENT}-role feature proof limit`
+      );
+    }
     const seenRoles = new Set();
     let previousRole = '';
+    let contractBytes = 0;
     for (const artifact of contract.artifacts) {
+      contractBytes += artifact.maxBytes;
+      if (contractBytes > MAX_FEATURE_PROOF_CONTRACT_BYTES) {
+        throw new Error(
+          `${contract.requirementId} exceeds the ${MAX_FEATURE_PROOF_CONTRACT_BYTES}-byte aggregate feature proof budget`
+        );
+      }
       if (seenRoles.has(artifact.role)) {
         throw new Error(`${contract.requirementId} repeats feature proof role ${artifact.role}`);
       }

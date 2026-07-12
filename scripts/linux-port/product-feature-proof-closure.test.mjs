@@ -5,6 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import {
+  MAX_FEATURE_PROOF_CONTRACT_BYTES,
+  MAX_FEATURE_PROOF_ROLES_PER_REQUIREMENT,
   finalizeProductFeatureProofClosure,
   validateProductFeatureProofClosure
 } from './lib/product-feature-proof.mjs';
@@ -125,6 +127,16 @@ function registerEvidence(subject, artifacts = [
   });
 }
 
+function replaceRegistryArtifacts(subject, artifacts) {
+  writeJson(subject.registryFile, {
+    schemaVersion: 1,
+    id: 'openburnbar-linux-product-feature-proof-registry-v1',
+    requirements: [{ requirementId: 'P-02', artifacts }]
+  });
+  subject.aggregate.featureProofRegistry = record(subject.releaseRoot, subject.registryFile);
+  writeJson(subject.aggregateFile, subject.aggregate);
+}
+
 function finalize(subject, overrides = {}) {
   return finalizeProductFeatureProofClosure({
     repoRoot: subject.root,
@@ -216,6 +228,31 @@ test('feature closure finalization rejects missing, extra, duplicate, symlinked,
       t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
       writeJson(path.join(subject.inputRoot, 'feature-proof-closure.json'), { stale: true });
       mutate(subject);
+      assert.throws(() => finalize(subject), pattern);
+      assert.equal(fs.existsSync(path.join(subject.inputRoot, 'feature-proof-closure.json')), false);
+    });
+  }
+});
+
+test('feature registry rejects role-count and aggregate-byte exhaustion before reading proof payloads', async (t) => {
+  const cases = [
+    ['role count', Array.from({ length: MAX_FEATURE_PROOF_ROLES_PER_REQUIREMENT + 1 }, (_, index) => ({
+      role: `feature.proof-${String(index).padStart(2, '0')}`,
+      mediaType: 'application/json',
+      maxBytes: 1
+    })), /must NOT have more than 16 items/u],
+    ['aggregate bytes', [
+      { role: 'feature.proof-00', mediaType: 'application/json', maxBytes: 1024 * 1024 * 1024 },
+      { role: 'feature.proof-01', mediaType: 'application/json', maxBytes: 1024 * 1024 * 1024 },
+      { role: 'feature.proof-02', mediaType: 'application/json', maxBytes: 1 }
+    ], new RegExp(`exceeds the ${MAX_FEATURE_PROOF_CONTRACT_BYTES}-byte aggregate feature proof budget`)]
+  ];
+  for (const [name, artifacts, pattern] of cases) {
+    await t.test(name, () => {
+      const subject = fixture();
+      t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
+      replaceRegistryArtifacts(subject, artifacts);
+      assert.equal(fs.existsSync(path.join(subject.inputRoot, 'feature-proof-registration.json')), false);
       assert.throws(() => finalize(subject), pattern);
       assert.equal(fs.existsSync(path.join(subject.inputRoot, 'feature-proof-closure.json')), false);
     });
