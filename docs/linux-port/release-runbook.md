@@ -50,7 +50,7 @@ export OPENBURNBAR_FIREBASE_API_KEY="..."
 export OPENBURNBAR_LINUX_APP_CHECK_APP_ID="1:...:web:..."
 export VERSION="1.2.3"
 export COMMIT="$(git rev-parse HEAD)"
-export ARCH="$(node -p \"process.arch === 'arm64' ? 'aarch64' : 'x86_64'\")"
+export ARCH="$(node -p "process.arch === 'arm64' ? 'aarch64' : 'x86_64'")"
 export OUT="$PWD/.linux-shard"
 export TOOLCHAIN="openburnbar-linux-toolchain:mission-001"
 docker build -t "$TOOLCHAIN" tools/linux-toolchain
