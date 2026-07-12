@@ -49,7 +49,7 @@ final class MissionRemoteAuthorizationShadowTests: XCTestCase {
             // --- daemon unreachable (fail-safe, GUI decision governs) ---
             .init(name: "allow + unreachable", gui: .allow, daemon: nil, expected: .daemonUnreachable, expectDivergent: false),
             .init(name: "deny + unreachable", gui: .deny, daemon: nil, expected: .daemonUnreachable, expectDivergent: false),
-            .init(name: "requiresApproval + unreachable", gui: .requiresApproval, daemon: nil, expected: .daemonUnreachable, expectDivergent: false),
+            .init(name: "requiresApproval + unreachable", gui: .requiresApproval, daemon: nil, expected: .daemonUnreachable, expectDivergent: false)
         ]
 
         for testCase in cases {
@@ -137,6 +137,46 @@ final class MissionRemoteAuthorizationShadowTests: XCTestCase {
         XCTAssertEqual(decision, .allow)
     }
 
+    func testReduceGUIDecisionTerminalDenialIsDeny() {
+        // When Mac CLI assistants are disabled, shouldPauseForApproval
+        // returns true (the mission is already failed) but the shadow must
+        // report `.deny`, not `.requiresApproval`, so the GUI-vs-daemon
+        // divergence is visible in telemetry.
+        let decision = MissionRemoteAuthorizationShadow.reduceGUIDecision(
+            data: ["approvalStatus": "approved"],
+            willPauseForApproval: true,
+            isTerminalDenial: true
+        )
+        XCTAssertEqual(decision, .deny)
+    }
+
+    func testReduceGUIDecisionTerminalDenialOverridesApprovalPause() {
+        let decision = MissionRemoteAuthorizationShadow.reduceGUIDecision(
+            data: [:],
+            willPauseForApproval: true,
+            isTerminalDenial: true
+        )
+        XCTAssertEqual(decision, .deny)
+    }
+
+    func testReduceGUIDecisionNoTerminalDenialFallsBackToApprovalLogic() {
+        let decision = MissionRemoteAuthorizationShadow.reduceGUIDecision(
+            data: ["approvalStatus": "pending"],
+            willPauseForApproval: true,
+            isTerminalDenial: false
+        )
+        XCTAssertEqual(decision, .requiresApproval)
+    }
+
+    func testReduceGUIDecisionDefaultsTerminalDenialToFalse() {
+        // Backward compat: isTerminalDenial defaults to false
+        let decision = MissionRemoteAuthorizationShadow.reduceGUIDecision(
+            data: ["approvalStatus": "pending"],
+            willPauseForApproval: true
+        )
+        XCTAssertEqual(decision, .requiresApproval)
+    }
+
     // MARK: - Request builder
 
     func testMakeRequestCarriesSummaryAndHashNotFullPrompt() {
@@ -162,8 +202,8 @@ final class MissionRemoteAuthorizationShadowTests: XCTestCase {
         XCTAssertEqual(request.executorTrustState, "trusted")
         XCTAssertEqual(request.requestedRuntime, "codex")
         XCTAssertEqual(request.requestedModelID, "gpt-x")
-        XCTAssertEqual(request.requestedGrant.commandsAllowed, true)
-        XCTAssertEqual(request.requestedGrant.fileEditsAllowed, false)
+        XCTAssertTrue(request.requestedGrant.commandsAllowed)
+        XCTAssertFalse(request.requestedGrant.fileEditsAllowed)
         XCTAssertEqual(request.approvalMode, "manual_all")
         XCTAssertEqual(request.approvalStatus, "pending")
         XCTAssertEqual(request.entitlementTier, "pro")
