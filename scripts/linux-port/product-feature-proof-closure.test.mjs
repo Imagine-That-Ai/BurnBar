@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import {
+  MAX_FEATURE_PROOF_ARTIFACT_BYTES,
   MAX_FEATURE_PROOF_CONTRACT_BYTES,
   MAX_FEATURE_PROOF_ROLES_PER_REQUIREMENT,
   finalizeProductFeatureProofClosure,
@@ -234,16 +235,23 @@ test('feature closure finalization rejects missing, extra, duplicate, symlinked,
   }
 });
 
-test('feature registry rejects role-count and aggregate-byte exhaustion before reading proof payloads', async (t) => {
+test('feature registry rejects role-count and byte-budget exhaustion before reading proof payloads', async (t) => {
   const cases = [
     ['role count', Array.from({ length: MAX_FEATURE_PROOF_ROLES_PER_REQUIREMENT + 1 }, (_, index) => ({
       role: `feature.proof-${String(index).padStart(2, '0')}`,
       mediaType: 'application/json',
       maxBytes: 1
     })), /must NOT have more than 16 items/u],
+    ['per-artifact bytes', [
+      {
+        role: 'feature.proof-00',
+        mediaType: 'application/json',
+        maxBytes: MAX_FEATURE_PROOF_ARTIFACT_BYTES + 1
+      }
+    ], new RegExp(`must be <= ${MAX_FEATURE_PROOF_ARTIFACT_BYTES}`)],
     ['aggregate bytes', [
-      { role: 'feature.proof-00', mediaType: 'application/json', maxBytes: 1024 * 1024 * 1024 },
-      { role: 'feature.proof-01', mediaType: 'application/json', maxBytes: 1024 * 1024 * 1024 },
+      { role: 'feature.proof-00', mediaType: 'application/json', maxBytes: MAX_FEATURE_PROOF_ARTIFACT_BYTES },
+      { role: 'feature.proof-01', mediaType: 'application/json', maxBytes: MAX_FEATURE_PROOF_ARTIFACT_BYTES },
       { role: 'feature.proof-02', mediaType: 'application/json', maxBytes: 1 }
     ], new RegExp(`exceeds the ${MAX_FEATURE_PROOF_CONTRACT_BYTES}-byte aggregate feature proof budget`)]
   ];

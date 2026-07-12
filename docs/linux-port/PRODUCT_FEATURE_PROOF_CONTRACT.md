@@ -8,10 +8,11 @@ alone.
 ## Trust chain
 
 1. `product-feature-proof-registry.json` declares the exact artifact roles, media types, and byte
-   limits owned by each feature requirement. A requirement may register at most 16 roles with a
-   combined declared budget no greater than 2 GiB; both limits are checked before any proof payload
-   is read. The four release-only requirements (`P-01`, `P-03`, `P-04`, and `P-37`) cannot register
-   feature roles.
+   limits owned by each feature requirement. A requirement may register at most 16 roles, each
+   limited to 256 MiB, with a combined declared budget no greater than 512 MiB. These limits are
+   checked before any proof payload is read. Larger media must be chunked or gain a separately
+   reviewed streaming verifier. The four release-only requirements (`P-01`, `P-03`, `P-04`, and
+   `P-37`) cannot register feature roles.
 2. `finalize-product-proof-closure.mjs` validates and snapshots that registry into the immutable
    candidate artifact. The aggregate closure records its SHA-256 and size.
 3. A requirement capture harness writes only its observed artifacts under

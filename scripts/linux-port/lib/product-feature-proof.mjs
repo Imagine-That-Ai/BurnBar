@@ -17,7 +17,8 @@ export const FEATURE_PROOF_REGISTRATION_PATH = 'feature-proof-registration.json'
 export const FEATURE_PROOF_CLOSURE_PATH = 'feature-proof-closure.json';
 export const RELEASE_ONLY_REQUIREMENTS = Object.freeze(['P-01', 'P-03', 'P-04', 'P-37']);
 export const MAX_FEATURE_PROOF_ROLES_PER_REQUIREMENT = 16;
-export const MAX_FEATURE_PROOF_CONTRACT_BYTES = 2 * 1024 * 1024 * 1024;
+export const MAX_FEATURE_PROOF_ARTIFACT_BYTES = 256 * 1024 * 1024;
+export const MAX_FEATURE_PROOF_CONTRACT_BYTES = 512 * 1024 * 1024;
 
 const CANDIDATE_DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const RUN_ID = /^[1-9][0-9]*$/u;
