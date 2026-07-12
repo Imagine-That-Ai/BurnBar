@@ -301,6 +301,10 @@ The follow-on campaign is recorded under
 [`evidence/external-certification-2026-07-12/README.md`](evidence/external-certification-2026-07-12/README.md).
 It binds the exact signed candidate `7c362298230e14bfd51dcdcbaf9476cd86cefa66`
 to workflow run `29177583506` and retains a validator-clean ARM64 UTM bundle.
+Because the branch was subsequently repaired and rebased (post-#1557), that
+bundle is historical supporting context for its recorded commit only; any
+release decision for a later head requires regenerating the campaign against
+that head's own signed candidate.
 The candidate began from a clean tree and passed restore, serialized Release
 build, and the full Windows solution test run. The service-session UIA probe
 failed to launch WinUI routes and is retained as negative supporting evidence,

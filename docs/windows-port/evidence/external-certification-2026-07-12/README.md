@@ -5,6 +5,26 @@ physical release-certification report. It does not replace the original bundle
 and does not convert VM, hosted-runner, source, or unit-test evidence into a
 physical PASS.
 
+## Historical scope: superseded by later branch heads
+
+This campaign is bound to source commit
+`7c362298230e14bfd51dcdcbaf9476cd86cefa66` and its signed workflow artifacts.
+The branch was subsequently repaired and rebased (post-#1557), so for any later
+head this bundle is **historical supporting context only**: it must not back a
+release or certification decision for a head other than the recorded commit.
+To verify the retained bundle, pass the recorded commit explicitly:
+
+```
+node scripts/windows-port/validate-release-certification-evidence.mjs \
+  docs/windows-port/evidence/external-certification-2026-07-12/windows-arm64-utm \
+  --expected-commit 7c362298230e14bfd51dcdcbaf9476cd86cefa66
+```
+
+Validating with a newer head as `--expected-commit` fails by design. A release
+or certification decision for the current head requires regenerating the full
+external campaign (Windows rehearsal, staging cloud, and physical iOS peer
+runs) against that head's own signed candidate.
+
 ## Exact candidate
 
 - Source commit: `7c362298230e14bfd51dcdcbaf9476cd86cefa66`

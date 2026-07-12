@@ -1,1 +1,3 @@
 windows-arm64-utm/** whitespace=cr-at-eol,-blank-at-eof
+# Evidence bytes are hash-bound by receipts/SHA256SUMS; never eol-normalize them.
+** -text

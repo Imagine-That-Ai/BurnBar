@@ -213,6 +213,7 @@ jobs:
         run: |
           node scripts/windows-port/test-validate-release-certification-evidence.mjs
           node scripts/windows-port/test-physical-release-certification.mjs
+          node scripts/windows-port/test-stage-exact-candidate-rehearsal.mjs
 
       - name: Install PyYAML for ledger scanner
         run: python3 -m pip install --user 'pyyaml>=6,<7'

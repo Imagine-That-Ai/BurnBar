@@ -52,7 +52,13 @@ function Get-CommitSha {
 }
 
 function Test-DirtyTree {
-    $value = (& git -C $RepoRoot status --porcelain 2>$null)
+    # Runner-owned output written inside the repo must not poison the source
+    # cleanliness verdict, so the resolved OutputDir is excluded when in-repo.
+    $statusArguments = @('status', '--porcelain')
+    if (-not [string]::IsNullOrWhiteSpace($script:RepoRelativeOutputDir)) {
+        $statusArguments += @('--', '.', (":(exclude)" + $script:RepoRelativeOutputDir))
+    }
+    $value = (& git -C $RepoRoot @statusArguments 2>$null)
     return -not [string]::IsNullOrWhiteSpace(($value -join "`n"))
 }
 
@@ -106,7 +112,9 @@ function Invoke-LoggedProcess(
         $startInfo.CreateNoWindow = $true
         $startInfo.RedirectStandardOutput = $true
         $startInfo.RedirectStandardError = $true
-        if ($null -ne $startInfo.ArgumentList) {
+        # Windows PowerShell 5.1 (.NET Framework) has no ProcessStartInfo.ArgumentList;
+        # probe via PSObject so strict-mode sessions cannot throw before the fallback.
+        if ($null -ne $startInfo.PSObject.Properties['ArgumentList']) {
             foreach ($argument in $processArguments) { $startInfo.ArgumentList.Add($argument) }
         }
         else {
@@ -172,16 +180,21 @@ function Get-ArtifactIdentity {
     $manifestPath = Resolve-FullPath $ArtifactManifestPath
     if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw "Artifact manifest not found: $manifestPath" }
     $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
-    foreach ($field in @('artifactName', 'architecture', 'workflowRunId', 'workflowRunUrl', 'artifactSha256', 'signatureResult', 'signatureIdentity')) {
+    foreach ($field in @('artifactName', 'architecture', 'sourceCommit', 'workflowRunId', 'workflowRunUrl', 'artifactSha256', 'signatureResult', 'signatureIdentity')) {
         if ($null -eq $manifest.$field -or [string]::IsNullOrWhiteSpace([string]$manifest.$field)) { throw "Artifact manifest missing ${field}: $manifestPath" }
     }
     if ($manifest.architecture -ne $Platform) { throw "Artifact architecture mismatch: expected $Platform, got $($manifest.architecture)" }
     if ($manifest.signatureResult -ne 'verified') { throw 'Refusing certification evidence for an artifact without a verified signature.' }
     if ([string]$manifest.artifactSha256 -notmatch '^[a-fA-F0-9]{64}$') { throw 'Artifact manifest sha256 must be a 64-character hex digest.' }
+    $manifestSourceCommit = ([string]$manifest.sourceCommit).Trim().ToLowerInvariant()
+    if ($manifestSourceCommit -notmatch '^[a-f0-9]{40}$') { throw 'Artifact manifest sourceCommit must be a full 40-character Git SHA.' }
+    $candidateCommit = Get-CommitSha
+    if ($manifestSourceCommit -ne $candidateCommit) { throw "Artifact manifest source commit mismatch: manifest $manifestSourceCommit, candidate $candidateCommit" }
     return [ordered]@{
         name = [string]$manifest.artifactName
         architecture = [string]$manifest.architecture
         availability = 'recorded'
+        sourceCommit = $manifestSourceCommit
         sha256 = ([string]$manifest.artifactSha256).ToLowerInvariant()
         workflowRunId = [string]$manifest.workflowRunId
         workflowRunUrl = [string]$manifest.workflowRunUrl
@@ -322,8 +335,14 @@ function New-Receipt(
 
 $RepoRoot = Resolve-FullPath $RepoRoot
 $OutputDir = Resolve-FullPath $OutputDir
-New-Item -ItemType Directory -Force -Path $OutputDir, (Join-Path $OutputDir 'receipts'), (Join-Path $OutputDir 'logs'), (Join-Path $OutputDir 'blockers') | Out-Null
 if (-not (Test-Path -LiteralPath (Join-Path $RepoRoot 'windows\OpenBurnBar.sln'))) { throw "RepoRoot does not contain windows\OpenBurnBar.sln: $RepoRoot" }
+$script:RepoRelativeOutputDir = $null
+$repoRootWithSeparator = $RepoRoot.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+if ($OutputDir.StartsWith($repoRootWithSeparator, [System.StringComparison]::OrdinalIgnoreCase)) {
+    $script:RepoRelativeOutputDir = $OutputDir.Substring($repoRootWithSeparator.Length).Replace('\', '/').TrimEnd('/')
+}
+# Snapshot source cleanliness before this runner writes anything to disk so an
+# in-repo -OutputDir cannot dirty an otherwise clean candidate.
 $script:SourceIdentity = [ordered]@{
     commitSha = Get-CommitSha
     dirtyTree = Test-DirtyTree
@@ -331,6 +350,7 @@ $script:SourceIdentity = [ordered]@{
 if ($script:SourceIdentity.dirtyTree) {
     throw 'Refusing certification evidence for a candidate that was dirty before execution.'
 }
+New-Item -ItemType Directory -Force -Path $OutputDir, (Join-Path $OutputDir 'receipts'), (Join-Path $OutputDir 'logs'), (Join-Path $OutputDir 'blockers') | Out-Null
 
 $script:HardwareAttestation = $null
 $script:HardwareAttestationSha256 = $null

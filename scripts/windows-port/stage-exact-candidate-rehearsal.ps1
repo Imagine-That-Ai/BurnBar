@@ -19,6 +19,7 @@ param(
     [Parameter(Mandatory = $true)] [string] $OutputDir,
     [ValidateSet('x64', 'ARM64')] [Parameter(Mandatory = $true)] [string] $Platform,
     [string] $RunnerScriptPath = (Join-Path $PSScriptRoot 'run-physical-release-certification.ps1'),
+    [switch] $ForceReplaceRepoRoot,
     [switch] $SkipAutomatedTests,
     [switch] $SkipUiAutomation
 )
@@ -55,6 +56,30 @@ function Remove-DirectoryWithRetry([string] $Path) {
     }
 }
 
+function Assert-SafeRehearsalRoot([string] $Path) {
+    $normalized = $Path.TrimEnd('\', '/')
+    $pathRoot = ([string][System.IO.Path]::GetPathRoot($Path)).TrimEnd('\', '/')
+    if ([string]::IsNullOrWhiteSpace($normalized) -or [string]::Equals($normalized, $pathRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing filesystem-root rehearsal RepoRoot: $Path"
+    }
+    if ($normalized.Length -lt 8) {
+        throw "Refusing suspiciously short rehearsal RepoRoot: $Path"
+    }
+    $protectedRoots = @($env:USERPROFILE, $env:HOME, $env:SystemRoot, $env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:ProgramData, $env:PUBLIC) |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+        ForEach-Object { ([System.IO.Path]::GetFullPath($_)).TrimEnd('\', '/') }
+    foreach ($protected in $protectedRoots) {
+        if ([string]::Equals($normalized, $protected, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Refusing protected rehearsal RepoRoot: $Path"
+        }
+    }
+    $separator = [string][System.IO.Path]::DirectorySeparatorChar
+    $scriptRoot = ([System.IO.Path]::GetFullPath($PSScriptRoot)).TrimEnd('\', '/')
+    if (($scriptRoot + $separator).StartsWith($normalized + $separator, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing rehearsal RepoRoot that contains this running checkout: $Path"
+    }
+}
+
 function Expand-ZipWithTar([string] $Archive, [string] $Destination) {
     $tar = Join-Path $env:SystemRoot 'System32\tar.exe'
     if (-not (Test-Path -LiteralPath $tar -PathType Leaf)) {
@@ -79,11 +104,23 @@ if ($expectedCommitNormalized -notmatch '^[a-f0-9]{40}$') {
     throw 'ExpectedCommit must be a full 40-character Git SHA.'
 }
 
+Assert-SafeRehearsalRoot $RepoRoot
+if (Test-Path -LiteralPath $RepoRoot) {
+    $existingEntry = Get-ChildItem -LiteralPath $RepoRoot -Force -ErrorAction Stop | Select-Object -First 1
+    if ($null -ne $existingEntry -and -not $ForceReplaceRepoRoot) {
+        throw "RepoRoot already exists and is not empty: $RepoRoot. Stage into a fresh or empty directory, or pass -ForceReplaceRepoRoot only when this path is a disposable staging checkout you intend to delete."
+    }
+}
+
 $manifest = Get-Content -Raw -LiteralPath $artifactManifest | ConvertFrom-Json
-foreach ($field in @('artifactName', 'architecture', 'artifactSha256', 'signatureResult', 'signatureIdentity')) {
+foreach ($field in @('artifactName', 'architecture', 'sourceCommit', 'artifactSha256', 'signatureResult', 'signatureIdentity')) {
     if ([string]::IsNullOrWhiteSpace([string]$manifest.$field)) {
         throw "Artifact manifest missing ${field}: $artifactManifest"
     }
+}
+$manifestSourceCommit = ([string]$manifest.sourceCommit).Trim().ToLowerInvariant()
+if ($manifestSourceCommit -ne $expectedCommitNormalized) {
+    throw "Artifact manifest source commit mismatch: expected $expectedCommitNormalized, got $manifestSourceCommit"
 }
 if ([string]$manifest.architecture -ne $Platform) {
     throw "Artifact architecture mismatch: expected $Platform, got $($manifest.architecture)"
