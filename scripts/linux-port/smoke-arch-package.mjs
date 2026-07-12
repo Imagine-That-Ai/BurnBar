@@ -1,0 +1,87 @@
+#!/usr/bin/env node
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import {
+  readJson,
+  repoRoot,
+  runStep,
+  writeJson
+} from './lib/linux-release-common.mjs';
+import { installedPackageVerificationStep } from './lib/linux-package-smoke-installed.mjs';
+
+const outDir = path.resolve(process.env.OPENBURNBAR_LINUX_RELEASE_OUT ?? path.join(repoRoot, '.linux-shard'));
+const closure = readJson(path.join(outDir, 'architecture-closure.json'));
+const artifacts = (closure.artifacts ?? []).filter((entry) => entry.type === 'arch');
+if (artifacts.length !== 1) throw new Error(`Arch smoke requires exactly one artifact, found ${artifacts.length}`);
+const artifact = artifacts[0];
+const full = readRecordedFile(artifact, 'Arch package artifact').file;
+const steps = [];
+
+steps.push(runStep('pacman', ['-Qip', full]));
+steps.push(runStep('pacman', ['-Qlp', full]));
+steps.push(runStep('pacman', ['-U', '--noconfirm', '--nodeps', '--nodeps', full]));
+if (steps.at(-1).exitCode === 0) {
+  steps.push(installedPackageVerificationStep({
+    artifact,
+    readSubject: (record, label) => readRecordedFile(record, label).bytes
+  }));
+  steps.push(runStep('/usr/libexec/openburnbar-daemon-launch', ['--help'], {
+    env: isolatedRuntimeEnvironment()
+  }));
+}
+steps.push(runStep('pacman', ['-R', '--noconfirm', '--nodeps', 'openburnbar']));
+const failed = steps.filter((entry) => entry.exitCode !== 0);
+const report = {
+  schemaVersion: 1,
+  architecture: closure.architecture,
+  version: closure.version,
+  gitCommit: closure.git?.commit,
+  packageSha256: artifact.sha256,
+  packageManager: 'pacman',
+  installedManifestSha256: artifact.installedManifest?.sha256,
+  steps,
+  failedCount: failed.length,
+  passed: failed.length === 0
+};
+const reportFile = path.join(outDir, 'smoke/arch-package-smoke.json');
+writeJson(reportFile, report);
+console.log(JSON.stringify(report, null, 2));
+process.exit(report.passed ? 0 : 1);
+
+function isolatedRuntimeEnvironment() {
+  const root = path.join(outDir, 'smoke/arch-runtime');
+  fs.rmSync(root, { recursive: true, force: true });
+  fs.mkdirSync(root, { recursive: true });
+  return {
+    ...process.env,
+    HOME: root,
+    XDG_CONFIG_HOME: path.join(root, 'config'),
+    XDG_DATA_HOME: path.join(root, 'data'),
+    XDG_RUNTIME_DIR: path.join(root, 'run')
+  };
+}
+
+function readRecordedFile(record, label) {
+  if (record === null || typeof record !== 'object' || Array.isArray(record)
+      || typeof (record.file ?? record.path) !== 'string'
+      || !/^[a-f0-9]{64}$/u.test(record.sha256 ?? '')
+      || !Number.isSafeInteger(record.size) || record.size < 0) {
+    throw new Error(`${label} record is invalid`);
+  }
+  const file = path.resolve(repoRoot, record.file ?? record.path);
+  const relative = path.relative(repoRoot, file);
+  if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new Error(`${label} escapes the repository`);
+  }
+  let current = repoRoot;
+  for (const component of relative.split(path.sep).filter(Boolean)) {
+    current = path.join(current, component);
+    if (fs.lstatSync(current).isSymbolicLink()) throw new Error(`${label} traverses a symlink`);
+  }
+  const bytes = fs.readFileSync(file);
+  if (bytes.length !== record.size || crypto.createHash('sha256').update(bytes).digest('hex') !== record.sha256) {
+    throw new Error(`${label} does not match its architecture closure record`);
+  }
+  return { file, bytes };
+}

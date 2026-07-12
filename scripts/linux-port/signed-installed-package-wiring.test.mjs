@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 
-test('deb and rpm package exact installed attestation subjects', () => {
+test('deb, rpm, and Arch package exact installed attestation subjects', () => {
   const config = JSON.parse(read('apps/linux-desktop/src-tauri/tauri.conf.json'));
   const expected = {
     '/usr/share/openburnbar/attestation/installed-manifest.json': 'target/openburnbar-package-payload/attestation/installed-manifest.json',
@@ -17,6 +17,10 @@ test('deb and rpm package exact installed attestation subjects', () => {
   for (const format of ['deb', 'rpm']) {
     const files = config.bundle.linux[format].files;
     for (const [destination, source] of Object.entries(expected)) assert.equal(files[destination], source);
+  }
+  const pkgbuild = read('packaging/linux/aur/PKGBUILD');
+  for (const destination of Object.keys(expected)) {
+    assert.ok(pkgbuild.includes(destination), `Arch recipe missing ${destination}`);
   }
 });
 
@@ -45,6 +49,10 @@ test('package preparation and finalization never receive the private key', () =>
   const signer = read('scripts/linux-port/sign-linux-release-requests.mjs');
   assert.match(signer, /ED25519_PRIVATE_KEY_PEM is required in the isolated signer/u);
   assert.doesNotMatch(signer, /tauri|npm|extractNativePackage/u);
+  const arch = read('scripts/linux-port/build-signed-arch-package.mjs');
+  assert.match(arch, /must not receive the Linux release private key/u);
+  assert.match(arch, /verifySignedNativePackage/u);
+  assert.match(arch, /makepkg/u);
 });
 
 test('release workflow isolates the signer from mutable build tools and the network', () => {
@@ -62,6 +70,17 @@ test('release workflow isolates the signer from mutable build tools and the netw
     '$SIGNER_ROOT:/signer:ro',
     'sign-linux-release-requests.mjs',
     '--git-commit "$GITHUB_SHA"',
-    '--phase finalize'
+    '--phase finalize',
+    'docker create --name "$container"',
+    'docker start --attach "$container"'
   ]) assert.ok(workflow.includes(marker), `missing isolated signer marker: ${marker}`);
+});
+
+test('Arch pacman smoke verifies the live signed inventory before uninstall', () => {
+  const source = read('scripts/linux-port/smoke-arch-package.mjs');
+  const install = source.indexOf("['-U', '--noconfirm'");
+  const verify = source.indexOf('steps.push(installedPackageVerificationStep');
+  const uninstall = source.indexOf("['-R', '--noconfirm'");
+  assert.ok(install > 0 && verify > install && uninstall > verify);
+  assert.match(source, /packageManager: 'pacman'/u);
 });

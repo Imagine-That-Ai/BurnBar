@@ -161,7 +161,7 @@ jobs:
           cp packaging/linux/openburnbar-linux-ed25519.pub.pem "$art/"
           cp "$art/latest-linux.draft.json" "$art/latest-linux.json"
           mapfile -t assets < <(find "$art/artifacts" "$art/sidecars" "$art/promotion" "$art" -maxdepth 3 -type f \
-            \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name 'openburnbar-daemon-*' \
+            \( -name '*.AppImage' -o -name '*.pkg.tar.zst' -o -name '*.deb' -o -name '*.rpm' -o -name 'openburnbar-daemon-*' \
                -o -name '*.ed25519.sig' -o -name '*.sigstore.json' -o -name '*.sigstore.jsonl' \
                -o -name '*.spdx.json' -o -name '*.openvex.json' -o -name '*checksums*.txt' \
                -o -name '*source-*.tar' -o -name '*provenance-predicate.json' \

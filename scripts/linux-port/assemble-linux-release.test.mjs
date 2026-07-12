@@ -3,7 +3,7 @@ import test from 'node:test';
 import { validateArchitectureShardSet } from './lib/linux-release-shards.mjs';
 
 const manifest = {
-  requiredArtifacts: ['appimage', 'deb', 'rpm', 'daemon'],
+  requiredArtifacts: ['appimage', 'arch', 'deb', 'rpm', 'daemon'],
   supportedArchitectures: ['aarch64', 'x86_64']
 };
 const version = '1.2.3';

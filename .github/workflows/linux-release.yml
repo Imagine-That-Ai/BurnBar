@@ -98,8 +98,10 @@ jobs:
         include:
           - architecture: aarch64
             runner: ubuntu-24.04-arm
+            arch_base_image: menci/archlinuxarm@sha256:b5568ae763e3a3315de5a08eda6228be9213da28f5869fc45b983f0add962413
           - architecture: x86_64
             runner: ubuntu-24.04
+            arch_base_image: archlinux@sha256:377f594c95c2c4f245e7285ec7f0bc7cd5a36003bd8b869c932b9b0ff2d761a5
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 75
     env:
@@ -127,6 +129,13 @@ jobs:
       - name: Build mission Linux toolchain image
         run: docker build -t openburnbar-linux-toolchain:mission-001 tools/linux-toolchain
 
+      - name: Build architecture-pinned Arch package image
+        run: >
+          docker build
+          --build-arg 'BASE_IMAGE=${{ matrix.arch_base_image }}'
+          -t openburnbar-arch-package:mission-001
+          tools/linux-arch-package
+
       - name: Prepare unsigned native architecture artifacts
         run: >
           docker run --rm
@@ -142,6 +151,29 @@ jobs:
           --architecture-shard
           --phase prepare
           --version '${{ needs.resolve-release.outputs.version }}'"
+
+      - name: Prepare unsigned Arch installed-manifest request
+        run: |
+          set -euo pipefail
+          container="openburnbar-arch-prepare-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${RANDOM}"
+          cleanup() {
+            if [[ "$(docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null || true)" == "true" ]]; then
+              docker stop --time 10 "$container" >/dev/null
+            fi
+            docker rm "$container" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker create --name "$container" \
+            -e OPENBURNBAR_LINUX_APP_CHECK_APP_ID \
+            -v "$PWD:/workspace" -w /workspace \
+            openburnbar-arch-package:mission-001 \
+            node scripts/linux-port/build-signed-arch-package.mjs \
+              --phase prepare \
+              --version '${{ needs.resolve-release.outputs.version }}' \
+              --git-commit "$GITHUB_SHA" \
+              --architecture '${{ matrix.architecture }}' \
+              --state-dir /workspace/.linux-shard/signing-state
+          docker start --attach "$container"
 
       - name: Materialize exact-commit isolated signer
         env:
@@ -179,6 +211,29 @@ jobs:
           --git-commit "$GITHUB_SHA"
           --architecture '${{ matrix.architecture }}'
 
+      - name: Finalize signed Arch package with makepkg
+        run: |
+          set -euo pipefail
+          container="openburnbar-arch-finalize-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${RANDOM}"
+          cleanup() {
+            if [[ "$(docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null || true)" == "true" ]]; then
+              docker stop --time 10 "$container" >/dev/null
+            fi
+            docker rm "$container" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker create --name "$container" \
+            -e OPENBURNBAR_LINUX_APP_CHECK_APP_ID \
+            -v "$PWD:/workspace" -w /workspace \
+            openburnbar-arch-package:mission-001 \
+            node scripts/linux-port/build-signed-arch-package.mjs \
+              --phase finalize \
+              --version '${{ needs.resolve-release.outputs.version }}' \
+              --git-commit "$GITHUB_SHA" \
+              --architecture '${{ matrix.architecture }}' \
+              --state-dir /workspace/.linux-shard/signing-state
+          docker start --attach "$container"
+
       - name: Finalize and verify signed native architecture artifacts
         run: >
           docker run --rm
@@ -204,6 +259,24 @@ jobs:
           openburnbar-linux-toolchain:mission-001
           bash -c "git config --global --add safe.directory /workspace &&
           node scripts/linux-port/smoke-linux-packages.mjs --architecture-shard"
+
+      - name: Arch pacman install ownership and uninstall smoke
+        run: |
+          set -euo pipefail
+          container="openburnbar-arch-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${RANDOM}"
+          cleanup() {
+            if [[ "$(docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null || true)" == "true" ]]; then
+              docker stop --time 10 "$container" >/dev/null
+            fi
+            docker rm "$container" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker create --name "$container" \
+            -e OPENBURNBAR_LINUX_RELEASE_OUT=/workspace/.linux-shard \
+            -v "$PWD:/workspace" -w /workspace \
+            openburnbar-arch-package:mission-001 \
+            node scripts/linux-port/smoke-arch-package.mjs
+          docker start --attach "$container"
 
       - name: Take ownership of shard output
         run: sudo chown -R "$(id -u):$(id -g)" "$OPENBURNBAR_LINUX_RELEASE_OUT"
@@ -318,7 +391,7 @@ jobs:
       - name: Attest Linux release sidecars and packages
         run: |
           set -euo pipefail
-          mapfile -t files < <(find "$OPENBURNBAR_LINUX_RELEASE_OUT" -type f \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name 'openburnbar-daemon-*' -o -name '*.spdx.json' -o -name '*.openvex.json' -o -name '*checksums.txt' -o -name '*source-*.tar' -o -name '*provenance-predicate.json' -o -name 'latest-linux.draft.json' \) | sort)
+          mapfile -t files < <(find "$OPENBURNBAR_LINUX_RELEASE_OUT" -type f \( -name '*.AppImage' -o -name '*.pkg.tar.zst' -o -name '*.deb' -o -name '*.rpm' -o -name 'openburnbar-daemon-*' -o -name '*.spdx.json' -o -name '*.openvex.json' -o -name '*checksums.txt' -o -name '*source-*.tar' -o -name '*provenance-predicate.json' -o -name 'latest-linux.draft.json' \) | sort)
           test "${#files[@]}" -gt 0
           for file in "${files[@]}"; do
             predicate="${file}.predicate.json"

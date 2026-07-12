@@ -23,6 +23,9 @@ const daemonOracle = optionalJson('daemon-session-oracle.json');
 const daemonHealth = optionalJson('daemon-health-readback.json');
 const updateRollback = optionalJson('package-update-rollback.json');
 const packageSmoke = optionalJson('../smoke/architecture-smoke.json');
+const archPackageSmoke = optionalJson('../smoke/arch-package-smoke.json');
+const archArtifacts = (closure.artifacts ?? []).filter((artifact) => artifact.type === 'arch');
+const archArtifact = archArtifacts.length === 1 ? archArtifacts[0] : null;
 const shellVersion = desktop?.package?.shellVersionReadback ?? '';
 const daemonVersion = daemonHealth?.response?.result?.daemonVersion ?? '';
 const lifecycle = {
@@ -44,6 +47,15 @@ const lifecycle = {
 };
 const blockers = [];
 if (packageSmoke?.passed !== true) blockers.push('Architecture package inspection/install/uninstall smoke is not green.');
+if (archPackageSmoke?.passed !== true
+    || archArtifact === null
+    || archPackageSmoke.architecture !== closure.architecture
+    || archPackageSmoke.version !== closure.version
+    || archPackageSmoke.gitCommit !== closure.git?.commit
+    || archPackageSmoke.packageSha256 !== archArtifact?.sha256
+    || archPackageSmoke.installedManifestSha256 !== archArtifact?.installedManifest?.sha256) {
+  blockers.push('Arch pacman install/ownership/uninstall smoke is missing, failed, or release-unbound.');
+}
 if (desktop?.accessibility?.keyboardFocus?.pass !== true) blockers.push('Installed keyboard focus evidence is not green.');
 if (desktop?.accessibility?.zoom?.pass !== true) blockers.push('Installed 200% zoom evidence is not green.');
 for (const step of requiredLifecycleSteps) {
@@ -60,7 +72,8 @@ const report = {
   evidence: {
     desktopSession: relative(path.join(sessionDir, 'linux-desktop-session-report.json')),
     daemonHealth: relative(path.join(sessionDir, 'daemon-health-readback.json')),
-    updateRollback: relative(path.join(sessionDir, 'package-update-rollback.json'))
+    updateRollback: relative(path.join(sessionDir, 'package-update-rollback.json')),
+    archPackageSmoke: relative(path.join(outDir, 'smoke/arch-package-smoke.json'))
   },
   blockers,
   passed: blockers.length === 0

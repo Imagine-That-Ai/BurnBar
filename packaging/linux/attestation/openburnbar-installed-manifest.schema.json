@@ -35,8 +35,8 @@
     },
     "gitCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
     "packageArchitecture": { "type": "string", "enum": ["aarch64", "x86_64"] },
-    "packageFormat": { "type": "string", "enum": ["deb", "rpm"] },
-    "packageName": { "const": "open-burn-bar" },
+    "packageFormat": { "type": "string", "enum": ["arch", "deb", "rpm"] },
+    "packageName": { "type": "string", "enum": ["open-burn-bar", "openburnbar"] },
     "policyId": { "const": "openburnbar-linux-signed-package-inventory-v1" },
     "brokerProtocolVersion": { "const": 2 },
     "installedFilesRootSha256": { "$ref": "#/$defs/sha256" },
@@ -58,6 +58,13 @@
       }
     }
   },
+  "allOf": [
+    {
+      "if": { "properties": { "packageFormat": { "const": "arch" } } },
+      "then": { "properties": { "packageName": { "const": "openburnbar" } } },
+      "else": { "properties": { "packageName": { "const": "open-burn-bar" } } }
+    }
+  ],
   "$defs": {
     "absolutePath": {
       "type": "string",

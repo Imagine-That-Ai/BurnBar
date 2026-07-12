@@ -163,6 +163,25 @@ test('live package ownership is queried from the native manager and rejects an e
   assert.deepEqual(calls, [{ command: 'dpkg-query', args: ['-L', 'open-burn-bar'] }]);
 });
 
+test('Arch ownership proof queries the exact pacman package path set', (t) => {
+  const fixture = createFixture();
+  t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }));
+  fixture.manifest.packageFormat = 'arch';
+  fixture.manifest.packageName = 'openburnbar';
+  const calls = [];
+  verifyLiveInstalledProduct({
+    installedManifest: fixture.manifest,
+    expectedManifestBytes: fixture.manifestBytes,
+    installedRoot: fixture.root,
+    ownership: { uid: 0, gid: 0 },
+    packageListRunner: (command, args) => {
+      calls.push({ command, args });
+      return { status: 0, stdout: `${ownedPaths(fixture).join('\n')}\n`, stderr: '' };
+    }
+  });
+  assert.deepEqual(calls, [{ command: 'pacman', args: ['-Qlq', 'openburnbar'] }]);
+});
+
 test('live package ownership rejects non-canonical and escaping manager output before lookup', async (t) => {
   for (const installedPath of ['/usr/../etc/passwd', 'usr/bin/openburnbar-daemon']) {
     await t.test(installedPath, () => {

@@ -4,7 +4,7 @@
   "appId": "dev.openburnbar.OpenBurnBar",
   "linuxDesktopPackage": "apps/linux-desktop",
   "primaryArtifact": "appimage",
-  "requiredArtifacts": ["appimage", "deb", "rpm", "daemon"],
+  "requiredArtifacts": ["appimage", "arch", "deb", "rpm", "daemon"],
   "supportedArchitectures": ["aarch64", "x86_64"],
   "releaseTagPrefix": "linux-v",
   "signing": {

@@ -194,12 +194,13 @@ function readSigningIndex() {
   ]) || index.schemaVersion !== 1 || index.product !== 'OpenBurnBar'
       || index.version !== version || index.gitCommit !== gitCommit
       || index.architecture !== architecture || !Array.isArray(index.requests)
-      || index.requests.length !== 3 || !bytes.equals(canonicalJsonBytes(index))) {
+      || index.requests.length !== 4 || !bytes.equals(canonicalJsonBytes(index))) {
     throw new Error('signing request index does not match the requested release identity');
   }
   const expected = new Map([
     [`deb-${architecture}-installed-manifest`, 'installed-manifest'],
     [`rpm-${architecture}-installed-manifest`, 'installed-manifest'],
+    [`arch-${architecture}-installed-manifest`, 'installed-manifest'],
     [`appimage-${architecture}-peer-manifest`, 'appimage-peer-manifest']
   ]);
   if (index.requests.some((request) =>

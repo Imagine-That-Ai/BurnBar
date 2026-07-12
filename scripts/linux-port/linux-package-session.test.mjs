@@ -74,9 +74,22 @@ test('architecture finalizer consumes the architecture smoke report', () => {
       schemaVersion: 1,
       architecture: 'aarch64',
       version,
-      git: { commit }
+      git: { commit },
+      artifacts: [{
+        type: 'arch',
+        sha256: 'a'.repeat(64),
+        installedManifest: { sha256: 'b'.repeat(64) }
+      }]
     });
     json(path.join(smokeDir, 'architecture-smoke.json'), { passed: true });
+    json(path.join(smokeDir, 'arch-package-smoke.json'), {
+      passed: true,
+      architecture: 'aarch64',
+      version,
+      gitCommit: commit,
+      packageSha256: 'a'.repeat(64),
+      installedManifestSha256: 'b'.repeat(64)
+    });
     json(path.join(sessionDir, 'linux-desktop-session-report.json'), {
       profile: 'test',
       package: {
@@ -111,6 +124,24 @@ test('architecture finalizer consumes the architecture smoke report', () => {
     assert.equal(report.packageSmokePassed, true);
     assert.equal(report.passed, true);
     assert.deepEqual(report.blockers, []);
+
+    json(path.join(smokeDir, 'arch-package-smoke.json'), {
+      passed: true,
+      architecture: 'aarch64',
+      version,
+      gitCommit: commit,
+      packageSha256: 'c'.repeat(64),
+      installedManifestSha256: 'b'.repeat(64)
+    });
+    const drifted = spawnSync(
+      process.execPath,
+      [path.resolve('scripts/linux-port/finalize-linux-architecture-session.mjs')],
+      { encoding: 'utf8', env: { ...process.env, OPENBURNBAR_LINUX_RELEASE_OUT: root } }
+    );
+    assert.equal(drifted.status, 0, drifted.stderr);
+    const driftedReport = JSON.parse(readFileSync(path.join(root, 'architecture-session.json'), 'utf8'));
+    assert.equal(driftedReport.passed, false);
+    assert.match(driftedReport.blockers.join('\n'), /Arch pacman/u);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

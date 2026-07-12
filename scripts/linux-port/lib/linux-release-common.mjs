@@ -24,6 +24,7 @@ const runStepBareCommands = new Set([
   'git',
   'node',
   'npm',
+  'pacman',
   'python3',
   'rpm',
   'sudo',
@@ -35,7 +36,7 @@ const runStepBashInlineScripts = new Set([
   'command -v secret-tool || true',
   'command -v kwallet-query || true'
 ]);
-const runStepSudoCommands = new Set(['dpkg', 'rpm']);
+const runStepSudoCommands = new Set(['dpkg', 'pacman', 'rpm']);
 
 function isInside(parent, candidate) {
   const relativePath = path.relative(parent, candidate);
@@ -234,6 +235,8 @@ export function discoverBundleArtifacts() {
       const lower = entry.name.toLowerCase();
       const type = lower.endsWith('.appimage')
         ? 'appimage'
+        : lower.endsWith('.pkg.tar.zst')
+          ? 'arch'
         : lower.endsWith('.deb')
           ? 'deb'
           : lower.endsWith('.rpm')

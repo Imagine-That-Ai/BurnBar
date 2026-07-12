@@ -51,13 +51,14 @@ export function signLinuxReleaseRequests({
   ]) || index.schemaVersion !== 1 || index.product !== 'OpenBurnBar'
       || index.version !== expectedVersion || index.gitCommit !== expectedGitCommit
       || index.architecture !== expectedArchitecture
-      || !Array.isArray(index.requests) || index.requests.length !== 3
+      || !Array.isArray(index.requests) || index.requests.length !== 4
       || !indexBytes.equals(canonicalJsonBytes(index))) {
     throw new Error('invalid Linux release signing request index');
   }
   const expectedRequests = new Map([
     [`deb-${expectedArchitecture}-installed-manifest`, 'installed-manifest'],
     [`rpm-${expectedArchitecture}-installed-manifest`, 'installed-manifest'],
+    [`arch-${expectedArchitecture}-installed-manifest`, 'installed-manifest'],
     [`appimage-${expectedArchitecture}-peer-manifest`, 'appimage-peer-manifest']
   ]);
   if (index.requests.some((request) => expectedRequests.get(request.id) !== request.kind)
@@ -136,7 +137,8 @@ function validateRequest({
   }
   if (request.kind === 'installed-manifest') {
     const manifest = assertInstalledManifest(JSON.parse(bytes.toString('utf8')));
-    const expectedFormat = request.id.startsWith('deb-') ? 'deb' : 'rpm';
+    const expectedFormat = request.id.startsWith('deb-') ? 'deb'
+      : request.id.startsWith('rpm-') ? 'rpm' : 'arch';
     if (manifest.packageVersion !== expectedVersion
         || manifest.gitCommit !== expectedGitCommit
         || manifest.packageArchitecture !== expectedArchitecture

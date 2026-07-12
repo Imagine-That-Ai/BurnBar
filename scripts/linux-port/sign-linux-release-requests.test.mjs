@@ -20,7 +20,7 @@ import { signLinuxReleaseRequests } from './sign-linux-release-requests.mjs';
 test('isolated signer signs the exact canonical release request set', (t) => {
   const value = fixture(t);
   const result = sign(value);
-  assert.equal(result.signed.length, 3);
+  assert.equal(result.signed.length, 4);
   const response = JSON.parse(fs.readFileSync(
     path.join(value.root, 'signed/signing-response.json'),
     'utf8'
@@ -115,7 +115,7 @@ function fixture(t) {
     file(RELEASE_PUBLIC_KEY_PATH, publicKeyPem, '0644')
   ];
   const requests = [];
-  for (const format of ['deb', 'rpm']) {
+  for (const format of ['deb', 'rpm', 'arch']) {
     const manifest = createInstalledManifest({
       files,
       packageVersion: version,

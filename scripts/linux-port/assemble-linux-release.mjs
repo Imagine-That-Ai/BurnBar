@@ -141,7 +141,7 @@ for (const shardFile of shardFiles) {
       size: fileSize(destination),
       sha256: sha256(destination)
     };
-    if (['deb', 'rpm'].includes(artifact.type)) {
+    if (['arch', 'deb', 'rpm'].includes(artifact.type)) {
       const manifestRecord = copyInstalledAttestationSubject({
         shardFile,
         record: artifact.installedManifest,

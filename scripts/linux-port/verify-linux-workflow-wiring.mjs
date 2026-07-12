@@ -25,6 +25,8 @@ export function verifyLinuxWorkflowWiring(input) {
   requireText(input.release, 'OPENBURNBAR_LINUX_RELEASE_OUT', 'canonical release output');
   requireText(input.release, 'OPENBURNBAR_LINUX_EVIDENCE_OUT', 'canonical evidence output');
   requireText(input.release, '--candidate', 'candidate-only release assembly');
+  requireText(input.release, "-name '*.pkg.tar.zst'", 'Arch package attestation selection');
+  requireText(input.promotionWorkflow, "-name '*.pkg.tar.zst'", 'Arch package publication selection');
   for (const marker of [
     'architecture: aarch64',
     'runner: ubuntu-24.04-arm',
@@ -38,6 +40,10 @@ export function verifyLinuxWorkflowWiring(input) {
     '--cap-drop ALL',
     '--security-opt no-new-privileges',
     'sign-linux-release-requests.mjs',
+    'build-signed-arch-package.mjs',
+    'smoke-arch-package.mjs',
+    'docker create --name "$container"',
+    'docker start --attach "$container"',
     '--phase finalize',
     'previous_version',
     'linux-desktop-session.sh',
@@ -98,6 +104,11 @@ export function verifyLinuxWorkflowWiring(input) {
     input.pr,
     'scripts/linux-port/aur-browser-runtime-packaging.test.mjs',
     'PR AUR Browser Computer Use package runtime suite'
+  );
+  requireText(
+    input.pr,
+    'scripts/linux-port/arch-package-lifecycle.test.mjs',
+    'PR signed Arch package lifecycle suite'
   );
   requireText(
     input.pr,
@@ -250,10 +261,13 @@ export function verifyLinuxWorkflowWiring(input) {
     'Resolve and validate Linux release version',
     'Assert native runner architecture',
     'Prepare unsigned native architecture artifacts',
+    'Prepare unsigned Arch installed-manifest request',
     'Materialize exact-commit isolated signer',
     'Sign exact native requests in isolated container',
+    'Finalize signed Arch package with makepkg',
     'Finalize and verify signed native architecture artifacts',
     'Native package inspection/install/uninstall smoke',
+    'Arch pacman install ownership and uninstall smoke',
     'Run package-owned desktop, daemon, accessibility, tray, and route session',
     'Verify native package update, rollback, and data preservation',
     'Finalize commit-bound architecture session',

@@ -175,8 +175,11 @@ if (!irohNativeReady) {
 }
 
 const buildSteps = [];
-// Never let an earlier package or sidecar satisfy this architecture closure.
-fs.rmSync(path.join(appDir, 'src-tauri/target/release/bundle'), { recursive: true, force: true });
+// Prepare owns cleanup. Finalize retains the independently made Arch artifact
+// while rebuilding and verifying the signed Tauri-native artifacts.
+if (phase === 'prepare') {
+  fs.rmSync(path.join(appDir, 'src-tauri/target/release/bundle'), { recursive: true, force: true });
+}
 if (daemonReady && irohNativeReady) {
   // Never let an artifact from an earlier architecture/version satisfy this shard.
   const prepareCommands = [
@@ -261,7 +264,7 @@ const copied = discoverBundleArtifacts().map((artifact) => {
     size: fileSize(dest),
     sha256: sha256(dest)
   };
-  if (['deb', 'rpm'].includes(artifact.type)) {
+  if (['arch', 'deb', 'rpm'].includes(artifact.type)) {
     const attestationSource = path.join(
       appDir,
       'src-tauri/target/release/bundle/attestation',
@@ -292,7 +295,7 @@ const copied = discoverBundleArtifacts().map((artifact) => {
           || installedManifest.packageVersion !== version
           || installedManifest.packageArchitecture !== linuxArch()
           || installedManifest.packageFormat !== artifact.type
-          || installedManifest.packageName !== 'open-burn-bar')) {
+          || installedManifest.packageName !== (artifact.type === 'arch' ? 'openburnbar' : 'open-burn-bar'))) {
       blockers.push({ kind: 'installed-manifest-binding', message: `${artifact.type}:${linuxArch()} installed manifest identity is not release-bound.` });
     }
     try {

@@ -119,6 +119,7 @@ jobs:
           scripts/linux-port/linux-aggregate-installed-attestation.test.mjs
           scripts/linux-port/browser-runtime-packaging.test.mjs
           scripts/linux-port/aur-browser-runtime-packaging.test.mjs
+          scripts/linux-port/arch-package-lifecycle.test.mjs
           scripts/linux-port/embed-linux-appimage-payload.test.mjs
           scripts/linux-port/linux-appimage-peer-manifest.test.mjs
           scripts/linux-port/linux-native-package-real-tools.test.mjs

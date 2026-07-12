@@ -1,7 +1,7 @@
 # Maintainer: OpenBurnBar Release Engineering <release@openburnbar.dev>
 pkgname=openburnbar
 pkgver=0.1.0
-pkgrel=0
+pkgrel=1
 pkgdesc="Local-first AI agent cost and control dashboard"
 arch=("x86_64" "aarch64")
 url="https://github.com/Imagine-That-Ai/BurnBar"
@@ -19,6 +19,9 @@ source=(
   "openburnbar-playwright-bridge.js::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/v${pkgver}/OpenBurnBarDaemon/Resources/PlaywrightBridge/openburnbar-playwright-bridge.js"
   "openburnbar-browser-runtime-probe::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/v${pkgver}/packaging/linux/openburnbar-browser-runtime-probe"
   "browser-runtime-requirements.json::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/v${pkgver}/packaging/linux/browser-runtime-requirements.json"
+  "installed-manifest.json"
+  "installed-manifest.ed25519"
+  "release-ed25519.pub.pem"
 )
 sha256sums=(
   "REPLACE_WITH_APPIMAGE_SHA256"
@@ -31,6 +34,9 @@ sha256sums=(
   "REPLACE_WITH_PLAYWRIGHT_BRIDGE_SHA256"
   "REPLACE_WITH_BROWSER_RUNTIME_PROBE_SHA256"
   "REPLACE_WITH_BROWSER_RUNTIME_REQUIREMENTS_SHA256"
+  "REPLACE_WITH_INSTALLED_MANIFEST_SHA256"
+  "REPLACE_WITH_INSTALLED_MANIFEST_SIGNATURE_SHA256"
+  "REPLACE_WITH_RELEASE_PUBLIC_KEY_SHA256"
 )
 
 package() {
@@ -53,5 +59,8 @@ package() {
   install -Dm644 "${srcdir}/openburnbar-playwright-bridge.js" "${pkgdir}/usr/lib/openburnbar/playwright/openburnbar-playwright-bridge.js"
   install -Dm755 "${srcdir}/openburnbar-browser-runtime-probe" "${pkgdir}/usr/lib/openburnbar/playwright/openburnbar-browser-runtime-probe"
   install -Dm644 "${srcdir}/browser-runtime-requirements.json" "${pkgdir}/usr/lib/openburnbar/playwright/browser-runtime-requirements.json"
+  install -Dm644 "${srcdir}/installed-manifest.json" "${pkgdir}/usr/share/openburnbar/attestation/installed-manifest.json"
+  install -Dm644 "${srcdir}/installed-manifest.ed25519" "${pkgdir}/usr/share/openburnbar/attestation/installed-manifest.json.sig"
+  install -Dm644 "${srcdir}/release-ed25519.pub.pem" "${pkgdir}/usr/share/openburnbar/attestation/release-ed25519.pub.pem"
   rm -rf "${srcdir}/squashfs-root"
 }

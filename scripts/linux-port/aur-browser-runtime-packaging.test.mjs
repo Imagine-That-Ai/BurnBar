@@ -94,6 +94,12 @@ test('AUR package staging installs canonical Browser Computer Use resources with
   for (const [alias, sourcePath] of canonicalInputs) {
     fs.copyFileSync(path.join(repoRoot, sourcePath), path.join(srcdir, alias));
   }
+  fs.writeFileSync(path.join(srcdir, 'installed-manifest.json'), '{}\n');
+  fs.writeFileSync(path.join(srcdir, 'installed-manifest.ed25519'), Buffer.alloc(64));
+  fs.copyFileSync(
+    path.join(repoRoot, 'packaging/linux/openburnbar-linux-ed25519.pub.pem'),
+    path.join(srcdir, 'release-ed25519.pub.pem')
+  );
 
   try {
     const result = spawnSync('bash', ['-c', [
@@ -116,6 +122,9 @@ test('AUR package staging installs canonical Browser Computer Use resources with
       ['openburnbar-playwright-bridge.js', ['usr/lib/openburnbar/playwright/openburnbar-playwright-bridge.js', 0o644]],
       ['openburnbar-browser-runtime-probe', ['usr/lib/openburnbar/playwright/openburnbar-browser-runtime-probe', 0o755]],
       ['browser-runtime-requirements.json', ['usr/lib/openburnbar/playwright/browser-runtime-requirements.json', 0o644]]
+      ,['installed-manifest.json', ['usr/share/openburnbar/attestation/installed-manifest.json', 0o644]]
+      ,['installed-manifest.ed25519', ['usr/share/openburnbar/attestation/installed-manifest.json.sig', 0o644]]
+      ,['release-ed25519.pub.pem', ['usr/share/openburnbar/attestation/release-ed25519.pub.pem', 0o644]]
     ]);
     for (const [alias, [relativePath, mode]] of installed) {
       const output = path.join(pkgdir, relativePath);
