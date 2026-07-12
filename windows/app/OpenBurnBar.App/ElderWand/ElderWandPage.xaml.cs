@@ -1,6 +1,9 @@
+using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Presentation.ElderWand;
+using OpenBurnBar.App.Storage;
 
 namespace OpenBurnBar.App.ElderWand;
 
@@ -8,9 +11,8 @@ namespace OpenBurnBar.App.ElderWand;
 /// Nav-frame host for <see cref="ElderWandConfiguratorView"/>. Registered as the "elderWand"
 /// destination in <see cref="OpenBurnBar.App.Shell.SurfacePageResolver"/> and reachable via the
 /// Command Palette (NavCatalog.Auxiliary) — deliberately NOT a sidebar row, matching the macOS
-/// gated Settings-leaf / chat-header reachability. Seeds the configurator from the portable,
-/// unit-tested <see cref="ElderWandSampleData"/> (preset store + grouped live-model catalog) so the
-/// surface shows its full live form before the real advertised-model stream + settings store wire in.
+/// gated Settings-leaf / chat-header reachability. Presets persist through the configured store;
+/// provider-group demo data is shown only when <c>OPENBURNBAR_SAMPLE_MODE=1</c>.
 /// </summary>
 public sealed partial class ElderWandPage : Page
 {
@@ -25,7 +27,7 @@ public sealed partial class ElderWandPage : Page
         Loaded -= OnLoaded;
 
         ConfiguratorView.Configure(
-            ElderWandSampleData.CreateDevHostSettings(),
-            ElderWandSampleData.DevHostGroups());
+            new ElderWandSettingsModel(WindowsStorageDevHost.CreateElderWandPersistence()),
+            RuntimeDataMode.SampleModeEnabled ? ElderWandSampleData.DevHostGroups() : Array.Empty<ElderWandProviderGroup>());
     }
 }

@@ -24,15 +24,15 @@ Windows-only). This document closes that gap on real hardware.
 | Requirement | Notes |
 |---|---|
 | **Windows 11** (22H2 or newer) | Mica needs Win11; on Win10 the shell falls back to a solid backdrop (still runnable — call that out in the recording). |
-| **.NET SDK 8.0+** | `winget install Microsoft.DotNet.SDK.8` (the project targets `net8.0-windows10.0.19041.0`). .NET 9/10 SDKs also build it. |
-| **Windows App SDK / WinUI workload** | Visual Studio 2022 17.11+ with the **"Windows App SDK C# Templates"** component, **or** SDK-only: the `Microsoft.WindowsAppSDK` NuGet (restored automatically) + the **Windows App Runtime** installed so an *unpackaged* app can launch. `winget install Microsoft.WindowsAppRuntime.1.7` (match the package version in `OpenBurnBar.App.csproj`). |
+| **.NET SDK 10.0+** | `winget install Microsoft.DotNet.SDK.10`. The app target is `net8.0-windows10.0.19041.0`, but shared Windows libraries multi-target `net10.0`, so the repo build/test graph needs a .NET 10 SDK. |
+| **Windows App SDK / WinUI workload** | Visual Studio 2022 17.11+ with the **"Windows App SDK C# Templates"** component, **or** SDK-only: the `Microsoft.WindowsAppSDK` NuGet (restored automatically) + the **Windows App Runtime** installed so an *unpackaged* app can launch. `winget install Microsoft.WindowsAppRuntime.1.8` (match the package version in `OpenBurnBar.App.csproj`). |
 | **Windows 10 SDK 10.0.19041+** | Ships with the VS "Desktop development with C++"/"WinUI" workloads; the `Microsoft.Windows.SDK.BuildTools` NuGet (pulled transitively) covers the build. |
 | **Git** | To clone the branch under test. |
 
 Confirm the toolchain:
 
 ```powershell
-dotnet --info                     # SDK 8.0+ listed
+dotnet --info                     # SDK 10.0+ listed
 winget list "Windows App Runtime" # runtime present for unpackaged launch
 ```
 
@@ -72,8 +72,8 @@ Expected: `Build succeeded. 0 Error(s)`. The output binary lands at:
 app\OpenBurnBar.App\bin\x64\Debug\net8.0-windows10.0.19041.0\win-x64\OpenBurnBar.App.exe
 ```
 
-> If `dotnet build` reports a missing WinUI/Windows App SDK component, open the solution once in
-> **Visual Studio 2022** and let it install the recommended components, then re-run the CLI build.
+> If `dotnet build` reports a missing WinUI/Windows App SDK component, install/repair the
+> **Windows App Runtime 1.8** and open the solution once in **Visual Studio 2022** so it can install the recommended WinUI components, then re-run the CLI build.
 
 ---
 
@@ -87,7 +87,7 @@ dotnet run --project app\OpenBurnBar.App\OpenBurnBar.App.csproj -c Debug -p:Plat
 .\app\OpenBurnBar.App\bin\x64\Debug\net8.0-windows10.0.19041.0\win-x64\OpenBurnBar.App.exe
 ```
 
-The app launches **into the tray** (no window on start — menu-bar-first parity with the macOS app).
+The app launches **into the tray** (no window on start — menu-bar-first parity with the macOS app). Production mode is honest-empty when SQLCipher/Firebase/Hermes credentials are absent. Demo/sample data is opt-in only: set `OPENBURNBAR_SAMPLE_MODE=1` before launch when you need a labeled demo.
 
 ---
 
@@ -99,9 +99,9 @@ Tick each — these are the WINUI-016 behaviors the spike claims, proven live:
 2. **Primary click → Mica flyout.** Left-clicking the tray icon opens a **borderless, top-most flyout**
    at the bottom-right (above the tray). Confirm the **Mica** backdrop (translucent, desktop tint shows
    through) on Win11. Left-click again (or click away) dismisses it — transient popover behavior.
-3. **Live CLI stream (stub).** Inside the flyout the **CLI stream view** appends lines **in real time**
-   from the stub source: system/`$` lines dim, stdout light, `→ tool:` lines blue, `warn:` lines red.
-   It auto-scrolls to the tail and loops.
+3. **Live CLI stream.** With a configured CLI command/source, the flyout appends lines **in real time**
+   from the backend. Without a backend, the chat/session surfaces show explicit "connect data source"
+   empty states instead of scripted fake turns. For a labeled demo, launch with `OPENBURNBAR_SAMPLE_MODE=1`.
 4. **Start / Stop.** The Stop button halts the stream; Start resumes it.
 5. **Context menu.** Right-click the tray icon → **Open OpenBurnBar** and **Quit**.
 6. **Main window.** "Open full window" (flyout) or "Open OpenBurnBar" (tray menu) opens the **main
@@ -111,9 +111,56 @@ Tick each — these are the WINUI-016 behaviors the spike claims, proven live:
 
 ---
 
-## 6. Screen-record the run
+## 6. Windows UI automation harness
 
-Record one continuous take covering the checklist above.
+After a successful build, run the full UI automation harness before doing the manual recording:
+
+```powershell
+..\scripts\windows-port\run-ui-automation.ps1 `
+  -Configuration Debug `
+  -Platform ARM64
+```
+
+By default the script builds the app + harness, then runs the harness through a one-shot interactive
+Scheduled Task. That matters when you are connected over SSH: the WinUI process must launch in the
+logged-in desktop session, not in the non-interactive SSH window station. Use `-Direct` only from an
+already-interactive PowerShell prompt.
+
+The harness writes artifacts under `.artifacts\windows-ui-automation\<timestamp>\`:
+
+| Artifact | Purpose |
+|---|---|
+| `summary.json` | Redacted machine-readable verdict for the whole run. |
+| `junit.xml` | CI/check-run friendly failures for each route and semantic probe. |
+| `index.html` | Human evidence index with links to screenshots. |
+| `route-manifest.json` | Route keys, expected root `AutomationId`s, and source XAML paths. |
+| `routes\<route>\*.png` + `*-result.json` | Per-route in-app render capture and pixel stats. |
+| `semantic\main-window.png` | External window bitmap capture from the persistent main-window launch. |
+| `launches\*\automation-launch.json` | Proof that the app redirected state/log/config into a throwaway automation profile. |
+
+The harness fails if a route crashes, times out, renders near-uniform/blank, the persistent main
+window cannot be inspected, or UIA classifies the foreground window as a password/secure-desktop/
+credential-prompt deny region. It also records the PAL input route contract: click/type/key/shortcut/
+drag actions must stay on the non-bypassable ViGEm/driver path, while pointer move/scroll/inspect
+remain advisory.
+
+The older `run-route-smoke.ps1` remains useful for a narrow screenshot-only pass, but it is no longer
+the release-grade Windows UI evidence path.
+
+Set these only when the dev VM lacks optional render runtimes:
+
+```powershell
+$env:OPENBURNBAR_DISABLE_WIN2D = "1"
+$env:OPENBURNBAR_DISABLE_WEBVIEW2 = "1"
+```
+
+Those switches keep the page route alive with a degraded visible state; they are not a substitute for the final visual pass on a Win2D/WebView2-capable host.
+
+---
+
+## 7. Screen-record the run
+
+Record one continuous take covering the checklist above after the UI automation harness passes.
 
 - **Xbox Game Bar (built in):** `Win + Alt + R` to start/stop; clips land in
   `%USERPROFILE%\Videos\Captures\`. (Game Bar records the focused window; for the tray + flyout
@@ -136,19 +183,21 @@ Then record the go/no-go for WINUI-017 (pass = every checklist item observed).
 
 ---
 
-## 7. Troubleshooting
+## 8. Troubleshooting
 
 | Symptom | Fix |
 |---|---|
 | `error NETSDK1100 … EnableWindowsTargeting` | You're building on macOS/Linux. This app only **compiles** on Windows — that's the WINUI-016 → -017 boundary. |
-| App exits immediately / `The app didn't start` (0x8007007E) | Install/repair the **Windows App Runtime** matching `Microsoft.WindowsAppSDK` in the csproj (`winget install Microsoft.WindowsAppRuntime.1.7`). |
+| App exits immediately / `The app didn't start` (0x8007007E) | Install/repair the **Windows App Runtime** matching `Microsoft.WindowsAppSDK` in the csproj (`winget install Microsoft.WindowsAppRuntime.1.8`). |
 | Flyout has a solid (not translucent) background | Expected on **Windows 10** — `MicaController.IsSupported()` is false there and the shell falls back to solid. Note it in the recording; re-shoot on Win11 for the Mica frame. |
 | Tray icon missing after a crash | Windows caches dead tray icons; hover the notification area or restart Explorer. On a clean Quit the icon is removed via `NIM_DELETE`. |
 | `dotnet build` can't find WinUI targets | Open the `.sln` in VS 2022 once to install components, or install the **"Windows App SDK C# Templates"** individual component. |
+| `NETSDK1045` for `net10.0` projects | Install the .NET 10 SDK. A .NET 8-only host can target the app TFM but cannot build the shared multi-targeted Windows libraries. |
+| Harness route PNG is blank/near-uniform | Open the failing route's `launches\<route>\automation-launch.json`, then inspect that profile's `logs\winui-crash.log` and `route-breadcrumbs.log`; the app records the active route and native renderer exceptions there. |
 
 ---
 
-## 8. Contract cross-reference
+## 9. Contract cross-reference
 
 - **VAL-P0-WINUI-016** — *this project + this runbook authored* (macOS). LIVE verdict: **"authored; build
   unproven until WINUI-017"**. ✅ delivered.

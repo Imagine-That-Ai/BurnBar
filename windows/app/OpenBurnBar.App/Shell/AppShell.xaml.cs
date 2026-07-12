@@ -1,14 +1,16 @@
 using System;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using OpenBurnBar.App.Diagnostics;
 using OpenBurnBar.App.Theme;
 
 namespace OpenBurnBar.App.Shell;
 
 /// <summary>
-/// Code-behind for the NavigationView app frame. Populates the sidebar from
-/// <see cref="NavCatalog"/>, drives the content <see cref="Frame"/> per selection, exposes
-/// programmatic <see cref="Navigate(string)"/> for the Command Palette, and raises
-/// <see cref="CommandPaletteRequested"/> for the header button + the global hotkey.
+/// App frame chrome matching macOS <c>DashboardView</c> Command Deck:
+/// section switcher menu + palette + appearance, full-width content frame.
+/// The permanent left destination rail is intentionally gone — Dashboard owns
+/// the Command sidebar (<c>DashboardSidebarView</c> parity).
 /// </summary>
 public sealed partial class AppShell : UserControl
 {
@@ -19,16 +21,15 @@ public sealed partial class AppShell : UserControl
     public AppShell()
     {
         InitializeComponent();
-        BuildDestinations();
-        SelectDefault();
+        BuildSectionMenus();
+        NavigateFrame(NavCatalog.Default);
     }
 
     /// <summary>Raised when the user asks for the Command Palette (header button or Ctrl+K).</summary>
     public event EventHandler? CommandPaletteRequested;
 
     /// <summary>
-    /// Provide the shell theme service. The Appearance picker binds lazily on first flyout open
-    /// (the flyout's content is realized then), which avoids any construction-order surprises.
+    /// Provide the shell theme service. The Appearance picker binds lazily on first flyout open.
     /// </summary>
     public void BindTheme(ThemeService theme) => _theme = theme;
 
@@ -52,114 +53,102 @@ public sealed partial class AppShell : UserControl
             return;
         }
 
-        // Reflect the selection in the sidebar; SelectionChanged performs the frame navigation.
-        var item = FindItem(key);
-        if (item is not null)
-        {
-            if (ReferenceEquals(Nav.SelectedItem, item))
-            {
-                // Already selected (SelectionChanged won't re-fire): drive the frame directly.
-                NavigateFrame(destination);
-            }
-            else
-            {
-                Nav.SelectedItem = item;
-            }
-        }
-        else
-        {
-            // Auxiliary (non-sidebar) destination — e.g. Elder Wand. Clear any stale sidebar
-            // highlight so the next sidebar click always re-navigates, then drive the frame.
-            Nav.SelectedItem = null;
-            NavigateFrame(destination);
-        }
+        NavigateFrame(destination);
     }
 
-    private void BuildDestinations()
+    private void BuildSectionMenus()
     {
+        SectionMenu.Items.Clear();
+        OverflowMenu.Items.Clear();
+
+        // Primary sections in the switcher — macOS DashboardSectionSwitcher lists
+        // chat/quota/database/projects/missions/sessionLogs/memory; Windows NavCatalog
+        // is the ordered catalog (IA-1 adds database/projects as deferred disclosure).
+        // Dashboard stays first (overview home).
         foreach (var destination in NavCatalog.Menu)
         {
-            Nav.MenuItems.Add(CreateItem(destination));
+            SectionMenu.Items.Add(CreateMenuItem(destination));
         }
 
         foreach (var destination in NavCatalog.Footer)
         {
-            Nav.FooterMenuItems.Add(CreateItem(destination));
+            OverflowMenu.Items.Add(CreateMenuItem(destination));
+        }
+
+        // Palette-only auxiliaries stay reachable from overflow too.
+        if (NavCatalog.Auxiliary.Count > 0)
+        {
+            OverflowMenu.Items.Add(new MenuFlyoutSeparator());
+            foreach (var destination in NavCatalog.Auxiliary)
+            {
+                OverflowMenu.Items.Add(CreateMenuItem(destination));
+            }
         }
     }
 
-    private static NavigationViewItem CreateItem(NavDestination destination) => new()
+    private MenuFlyoutItem CreateMenuItem(NavDestination destination)
     {
-        Content = destination.Title,
-        Tag = destination.Key,
-        Icon = new FontIcon
+        var item = new MenuFlyoutItem
         {
-            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Segoe MDL2 Assets"),
-            Glyph = destination.Glyph,
-        },
-    };
-
-    private void SelectDefault()
-    {
-        var first = FindItem(NavCatalog.Default.Key);
-        if (first is not null)
-        {
-            Nav.SelectedItem = first;
-        }
-
-        // Guarantee initial content even if SelectionChanged is deferred until load.
-        NavigateFrame(NavCatalog.Default);
-    }
-
-    private NavigationViewItem? FindItem(string key)
-    {
-        foreach (var item in Nav.MenuItems)
-        {
-            if (item is NavigationViewItem nvi && (string?)nvi.Tag == key)
+            Text = destination.Title,
+            Tag = destination.Key,
+            Icon = new FontIcon
             {
-                return nvi;
-            }
-        }
-
-        foreach (var item in Nav.FooterMenuItems)
-        {
-            if (item is NavigationViewItem nvi && (string?)nvi.Tag == key)
-            {
-                return nvi;
-            }
-        }
-
-        return null;
-    }
-
-    private void Nav_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
-    {
-        if (args.SelectedItem is NavigationViewItem { Tag: string key })
-        {
-            var destination = NavCatalog.Find(key);
-            if (destination is not null)
-            {
-                NavigateFrame(destination);
-            }
-        }
+                FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Segoe MDL2 Assets"),
+                Glyph = destination.Glyph,
+            },
+        };
+        item.Click += (_, _) => Navigate(destination.Key);
+        return item;
     }
 
     private void NavigateFrame(NavDestination destination)
     {
-        // Dedupe: selection-in-constructor + SelectionChanged-on-load can both fire.
+        // Dedupe: selection-in-constructor + palette re-entry can both fire.
         if (_currentKey == destination.Key)
         {
+            ApplySectionChrome(destination);
             return;
         }
 
-        _currentKey = destination.Key;
-        HeaderTitle.Text = destination.Title;
-        // Route through the resolver so ported surfaces render their real page while
-        // not-yet-ported destinations fall back to the stub. Each Phase-3 surface lane
-        // registers its key -> Page mapping in SurfacePageResolver.Resolve.
-        ContentFrame.Navigate(SurfacePageResolver.Resolve(destination.Key), destination);
+        Type pageType = SurfacePageResolver.Resolve(destination.Key);
+        AppDiagnostics.RouteBegin(destination.Key, pageType);
+        try
+        {
+            _currentKey = destination.Key;
+            ApplySectionChrome(destination);
+            ContentFrame.Navigate(pageType, destination);
+            AppDiagnostics.RouteSuccess(destination.Key, pageType);
+        }
+        catch (Exception ex)
+        {
+            AppDiagnostics.RouteFailure(destination.Key, pageType, ex);
+            throw;
+        }
     }
 
-    private void Palette_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    private void ApplySectionChrome(NavDestination destination)
+    {
+        SectionTitle.Text = destination.Title;
+        SectionGlyph.Glyph = destination.Glyph;
+
+        // Tick mark on the active section menu row.
+        foreach (object raw in SectionMenu.Items)
+        {
+            if (raw is MenuFlyoutItem item)
+            {
+                bool active = (string?)item.Tag == destination.Key;
+                item.Icon = new FontIcon
+                {
+                    FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Segoe MDL2 Assets"),
+                    Glyph = active ? "\uE73E" : (NavCatalog.Find((string?)item.Tag)?.Glyph ?? "\uE80F"),
+                };
+            }
+        }
+    }
+
+    private void Palette_Click(object sender, RoutedEventArgs e)
         => CommandPaletteRequested?.Invoke(this, EventArgs.Empty);
+
+    private void Brand_Click(object sender, RoutedEventArgs e) => Navigate(NavCatalog.Default.Key);
 }

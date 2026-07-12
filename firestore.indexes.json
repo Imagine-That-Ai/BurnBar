@@ -1,6 +1,20 @@
 {
   "indexes": [
     {
+      "collectionGroup": "account_erasure_tombstones",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "pending",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "updatedAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "cloud_vault_rotation_requirements",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
@@ -1601,6 +1615,28 @@
     {
       "collectionGroup": "computer_use_sessions",
       "fieldPath": "startedAt",
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "order": "DESCENDING",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        },
+        {
+          "order": "DESCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "computer_use_sessions",
+      "fieldPath": "endedAt",
       "indexes": [
         {
           "order": "ASCENDING",

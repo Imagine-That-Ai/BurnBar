@@ -51,10 +51,21 @@ public sealed class DashboardBackdrop : IDisposable
     /// <summary>Switch the backdrop family + substrate to match the selected layout.</summary>
     public void SetLayout(DashboardLayout layout)
     {
-        _family = FamilyFor(layout);
+        SubstrateFamily next = FamilyFor(layout);
+        bool familyChanged = next != _family;
+        _family = next;
         _stage = BuildStage(_family);
         SubstrateDescriptor[] bespoke = SubstrateCatalog.BespokeFor(_family);
         _host.Substrate = bespoke.Length > 0 ? bespoke[0].Make() : new PlainDotsSubstrate();
+        // Rebuild the synthetic field when the family changes so accent/ramp reseed
+        // and the switch is visibly different (not just a quieter painter swap).
+        if (familyChanged && _fieldWidth > 1 && _fieldHeight > 1)
+        {
+            _dots = BuildField(_fieldWidth, _fieldHeight);
+        }
+
+        // Resume the vsync loop if it was paused while the kernel layer was on top.
+        Control.Paused = false;
     }
 
     /// <summary>

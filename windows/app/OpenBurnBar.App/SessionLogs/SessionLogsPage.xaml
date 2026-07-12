@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Nav-frame host for the session-logs list-detail surface (key "sessionLogs"). Replaces
+  the SurfaceStubPage live CLI stream preview with the real SessionLogsView. Dev-host
+  uses an empty read source until StorageSessionLogReadSource is wired (net10 TFM seam, B0).
+-->
+<Page
+    x:Class="OpenBurnBar.App.SessionLogs.SessionLogsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:OpenBurnBar.App.SessionLogs"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <local:SessionLogsView x:Name="LogsView" />
+</Page>

@@ -31,6 +31,7 @@ namespace OpenBurnBar.CloudSync.Crypto
         public const int BlobIntegrityHashVersion = 1;
         public const string BlobEnvelopeAadContext = "OpenBurnBar-CloudVaultBlob-v2";
         public const string SealedPayloadAadContext = "OpenBurnBar-CloudVaultSealedPayload-v2";
+        public const string RoamingProfileAadDomain = "OpenBurnBar-RoamingProfile-v1";
 
         private const string EscrowHkdfInfo = "OpenBurnBar-Escrow-v1";
         private const string HmacSalt = "OpenBurnBar-CloudVault-HMAC-Salt-v1";
@@ -48,6 +49,15 @@ namespace OpenBurnBar.CloudSync.Crypto
             RequireVaultKey(keyData);
             return "v1_" + Sha256Hex(keyData).Substring(0, 32);
         }
+
+        public static CloudVaultAadContext RoamingProfileAadContext(string uid) =>
+            new(
+                uid: uid,
+                collection: "roaming_profile",
+                docId: "current",
+                field: "sealedPayload",
+                schemaVersion: CurrentSealedPayloadSchemaVersion,
+                purpose: RoamingProfileAadDomain);
 
         // ── sealText / openText (AES-256-GCM detached) ──────────────────────
         public static CloudVaultSealedText SealText(
@@ -218,6 +228,13 @@ namespace OpenBurnBar.CloudSync.Crypto
             }
         }
 
+        public static CloudVaultSealedPayload SealRoamingProfile(
+            byte[] payloadJson, byte[] keyData, string uid, int keyVersion = CurrentKeyVersion) =>
+            SealPayload(payloadJson, keyData, VaultKeyId(keyData), keyVersion, RoamingProfileAadContext(uid));
+
+        public static byte[] OpenRoamingProfile(CloudVaultSealedPayload envelope, byte[] keyData, string uid) =>
+            OpenPayload(envelope, keyData, RoamingProfileAadContext(uid));
+
         private static byte[] SealedPayloadAad(string algorithm, int keyVersion, string vaultKeyId, CloudVaultAadContext? aadContext)
         {
             if (aadContext != null)
@@ -327,6 +344,22 @@ namespace OpenBurnBar.CloudSync.Crypto
         public static string ProjectMemoryContentHash(byte[] data, byte[] keyData) =>
             KeyedHmacHex(data, keyData, "project-memory-content");
 
+        /// <summary>
+        /// Vault-keyed HMAC for Pensieve/memory opaque doc ids — parity with Swift
+        /// <c>pensieveSlugHmac</c> (HKDF info <c>pensieve-dedup:slug</c>).
+        /// </summary>
+        public static string PensieveSlugHmac(string slug, byte[] keyData) =>
+            PensieveKeyedHmacHex(Encoding.UTF8.GetBytes(slug), keyData, "slug");
+
+        private static string PensieveKeyedHmacHex(byte[] data, byte[] keyData, string label)
+        {
+            RequireVaultKey(keyData);
+            var subKey = HkdfDerive(
+                keyData,
+                Array.Empty<byte>(),
+                Encoding.UTF8.GetBytes($"pensieve-dedup:{label}"));
+            return HexString(HMACSHA256.HashData(subKey, data));
+        }
         private static string KeyedHmacHex(byte[] data, byte[] keyData, string purpose)
         {
             RequireVaultKey(keyData);

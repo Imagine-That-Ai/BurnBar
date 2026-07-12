@@ -133,7 +133,7 @@ public static class SqlCipherConnection
     /// <summary>
     /// The last applied migration identifier recorded in GRDB's
     /// <c>grdb_migrations</c> table — the "migration version" marker (e.g.
-    /// <c>v53_memory_forget_outbox</c>). GRDB tracks applied migrations in this
+    /// <c>v54_provider_quota_snapshots</c>). GRDB tracks applied migrations in this
     /// table rather than <c>PRAGMA user_version</c>, so this — together with
     /// <see cref="ReadUserVersion"/> — is what must survive a Windows write for the
     /// file to stay reopenable + migratable on Mac.
@@ -167,7 +167,11 @@ public static class SqlCipherConnection
     /// </summary>
     public static bool FileIsEncrypted(string path)
     {
-        using var stream = System.IO.File.OpenRead(path);
+        using var stream = new System.IO.FileStream(
+            path,
+            System.IO.FileMode.Open,
+            System.IO.FileAccess.Read,
+            System.IO.FileShare.ReadWrite | System.IO.FileShare.Delete);
         Span<byte> header = stackalloc byte[16];
         int read = stream.Read(header);
         if (read < 16)

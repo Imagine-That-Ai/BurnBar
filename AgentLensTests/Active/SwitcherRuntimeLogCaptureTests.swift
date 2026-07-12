@@ -742,6 +742,7 @@ final class SwitcherRuntimeLogCaptureTests: XCTestCase {
         }
 
         let logs = logCapture.capturedLogs
+        XCTAssertFalse(logs.isEmpty, "Rapid operations must capture logs before the redaction assertion runs")
         assertNoSecretPatternsInLogs(logs: logs, context: "test_rapidOperations_capturesRuntimeLogs_noSecrets")
     }
 
@@ -774,6 +775,7 @@ final class SwitcherRuntimeLogCaptureTests: XCTestCase {
         logCapture.captureActiveProfileState(state)
 
         let logs = logCapture.capturedLogs
+        XCTAssertFalse(logs.isEmpty, "Validation recovery must capture logs before the redaction assertion runs")
         assertNoSecretPatternsInLogs(logs: logs, context: "test_validationRecovery_capturesRuntimeLogs_noSecrets")
     }
 

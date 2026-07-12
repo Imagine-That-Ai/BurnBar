@@ -87,6 +87,26 @@ final class EscrowRevocationWatcherMattersTests: XCTestCase {
         XCTAssertEqual(recorder.calls.first?.peerNodeId, "peer-direct")
     }
 
+    func test_historicalPeerNodeIdsAreAllDeliveredBeforeSingularPeer() async {
+        let recorder = RevocationRecorder()
+        let probe = AuthorityFetchProbe(script: [])
+        let watcher = makeWatcher(recorder: recorder) { _, deviceId in
+            try await MainActor.run { try probe.next() } ?? deviceId
+        }
+
+        await watcher.processRevokedDevice(
+            uid: "uid-1",
+            deviceId: "device-A2",
+            deviceData: [
+                "peerNodeId": " relay-peer ",
+                "peerNodeIds": ["controller-peer", "relay-peer", "controller-peer", ""]
+            ]
+        )
+
+        XCTAssertEqual(probe.attempts, 0, "Direct peer history must short-circuit the authority fetch")
+        XCTAssertEqual(recorder.calls.map(\.peerNodeId), ["controller-peer", "relay-peer"])
+    }
+
     // MARK: - Authority mapping resolves the peer
 
     func test_peerResolvedFromAuthorityMappingIsDelivered() async {

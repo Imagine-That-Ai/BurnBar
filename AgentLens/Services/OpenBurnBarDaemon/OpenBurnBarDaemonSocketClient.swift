@@ -1,10 +1,11 @@
 import OpenBurnBarCore
+import OpenBurnBarComputerUseCore
 import Foundation
 
 enum OpenBurnBarDaemonSocketClient {
     private static let controllerRuntimeSecrets = KeychainStore(
-        service: OpenBurnBarIdentity.controllerRuntimeKeychainService,
-        legacyServices: OpenBurnBarIdentity.legacyControllerRuntimeKeychainServices
+        service: OpenBurnBarCore.OpenBurnBarIdentity.controllerRuntimeKeychainService,
+        legacyServices: OpenBurnBarCore.OpenBurnBarIdentity.legacyControllerRuntimeKeychainServices
     )
     private static let daemonSocketAuthTokenLock = NSLock()
     // AUDIT(nonisolated): all reads/writes go through
@@ -403,6 +404,19 @@ enum OpenBurnBarDaemonSocketClient {
             ),
             socketURL: socketURL
         ) as ComputerUseSessionStartResponse
+    }
+
+    static func updateComputerUseCapabilityState(
+        _ request: ComputerUseCapabilityStateUpdateRequest,
+        at socketURL: URL
+    ) throws -> ComputerUseCapabilityStateUpdateResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .computerUseCapabilityStateUpdate,
+                params: request
+            ),
+            socketURL: socketURL
+        ) as ComputerUseCapabilityStateUpdateResponse
     }
 
     static func invokeComputerUse(
@@ -1216,7 +1230,7 @@ enum OpenBurnBarDaemonSocketClient {
             return fileToken
         }
         if let storedToken = secrets.credentialIfPresent(
-            for: OpenBurnBarIdentity.daemonSocketAuthTokenAccount,
+            for: OpenBurnBarCore.OpenBurnBarIdentity.daemonSocketAuthTokenAccount,
             allowUserInteraction: false,
             event: "daemon_socket_token_read_failed"
         ) {

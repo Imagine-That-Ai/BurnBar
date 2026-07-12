@@ -662,9 +662,15 @@ struct PiChatThreadView: View {
                         .stroke(MobileTheme.Colors.border, lineWidth: 0.5)
                 )
             Button {
-                let text = input
-                input = ""
-                service.send(prompt: text)
+                if service.isStreaming {
+                    // Stop mode — cancel the in-flight turn and leave the
+                    // composer text alone so the user can edit and re-send.
+                    service.cancelStreaming()
+                } else {
+                    let text = input
+                    input = ""
+                    service.send(prompt: text)
+                }
             } label: {
                 Image(systemName: service.isStreaming ? "stop.fill" : "arrow.up.circle.fill")
                     .font(.system(size: 28, weight: .bold))

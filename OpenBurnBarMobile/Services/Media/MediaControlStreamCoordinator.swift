@@ -160,6 +160,9 @@ final class MediaControlStreamCoordinator: ObservableObject {
     /// mirror acks. Mirror surfaces install this so failed taps/scrolls
     /// produce an actionable status instead of looking like dead tools.
     var controlDeniedHandler: ((HermesRealtimeRelayControlDenied) async -> Void)?
+    /// Mercury call signaling response from the Mac. iOS initiates with
+    /// `media.call.invite`; the Mac replies on the same live control stream.
+    var callAckHandler: ((HermesRealtimeRelayCallAck) async -> Void)?
 
     /// Explicit remote-clipboard responses from the Mac. Mirror surfaces
     /// match request IDs here before reading or writing the phone pasteboard.
@@ -385,6 +388,34 @@ final class MediaControlStreamCoordinator: ObservableObject {
         )
     }
 
+    func sendCallInvite(
+        requestId: String,
+        uid: String,
+        requesterDisplayName: String,
+        callKind: String = "video",
+        timeout: TimeInterval = 8
+    ) async throws {
+        guard activeUID == uid, let connectionID = activeConnectionID else {
+            throw ControlStreamError.notLive
+        }
+        let invite = HermesRealtimeRelayCallInvite(
+            requestId: requestId,
+            requestedAt: Date(),
+            requesterDisplayName: requesterDisplayName,
+            callKind: callKind
+        )
+        try await send(
+            frame: HermesRealtimeRelayFrame(
+                type: .mediaCallInvite,
+                uid: uid,
+                connectionId: connectionID,
+                requestId: requestId,
+                media: HermesRealtimeRelayMediaPayload(callInvite: invite)
+            ),
+            timeout: timeout
+        )
+    }
+
     /// Ensure the current control stream is truly bidirectional before a
     /// request that needs an immediate Mac response. Iroh can leave a stream
     /// in a half-stale state where local writes return success but the Mac no
@@ -529,6 +560,7 @@ final class MediaControlStreamCoordinator: ObservableObject {
                 // exponential backoff kicks in.
                 attempt = max(0, attempt - 1)
             } catch is CancellationError {
+                // Supervisor cancelled — exit the dial loop quietly.
                 break
             } catch {
                 guard isCurrentSupervisor(generation: generation, uid: uid, connectionID: connectionID) else {
@@ -638,10 +670,23 @@ final class MediaControlStreamCoordinator: ObservableObject {
                             await handler(decoded)
                         }
                     } catch {
+                        // Undecodable frame — drop it and keep the stream alive.
+                        // Per-frame hot path: debug trace only, no release logging.
+                        Self.debugTrace("media_frame_decode_failed error=\(error.localizedDescription)")
                         continue
                     }
                 case .mediaMirrorRequest:
                     // iOS is the requester, not the receiver.
+                    continue
+                case .mediaCallAck:
+                    if let ack = frame.media?.callAck,
+                       let handler = callAckHandler {
+                        await handler(ack)
+                    }
+                    continue
+                case .mediaCallInvite:
+                    // iOS originates phone -> Mac invites; Mac-originated
+                    // wake goes through PushKit/CallKit instead.
                     continue
                 case .mediaPresenceHeartbeat:
                     if let pendingHeartbeatSentAt {

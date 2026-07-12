@@ -4,15 +4,15 @@ import Foundation
 
 /// FactoryDroidParser extracts token usage from Factory Droid sessions and categorizes
 /// them by the underlying model provider (MiniMax, Z.ai, Claude, etc.)
-final class FactoryDroidParser: LogParser, Sendable {
-    let provider: AgentProvider = .factory
+public final class FactoryDroidParser: LogParser, Sendable {
+    public let provider: AgentProvider = .factory
     private let fileManager: FileManager
     private let appPaths: OpenBurnBarAppPaths
     private let cacheURL: URL
     private let cacheStore: ParserDiskCacheStore<FactoryDroidCacheEntry>
     private let sessionsDirectoryOverride: URL?
 
-    init(
+    public init(
         fileManager: FileManager = .default,
         appPaths: OpenBurnBarAppPaths = .live(),
         sessionsDirectoryOverride: URL? = nil
@@ -30,11 +30,15 @@ final class FactoryDroidParser: LogParser, Sendable {
         _ = try? OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths) // try?-ok(best-effort dir prep)
     }
 
-    func parse() async throws -> ParseResult {
+    public func parse() async throws -> ParseResult {
         try await parse(options: .default)
     }
 
-    func parse(options: LogParseOptions) async throws -> ParseResult {
+    public func parse(options: LogParseOptions) async throws -> ParseResult {
+        try parseSynchronously(options: options)
+    }
+
+    func parseSynchronously(options: LogParseOptions) throws -> ParseResult {
         let sessionsURL = sessionsDirectoryOverride
             ?? URL(fileURLWithPath: NSString(string: provider.logDirectory).expandingTildeInPath)
         let sessionsPath = sessionsURL.path

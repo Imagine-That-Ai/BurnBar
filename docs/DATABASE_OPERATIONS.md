@@ -1,220 +1,180 @@
 # Database Operations
 
-This document covers OpenBurnBar's local SQLite database: migration management, rollback strategies, and operational drills.
+This runbook covers the macOS app's local GRDB/SQLCipher database, migration contract, backup handling, and recovery drills.
 
-## Database Location
+## Storage Contract
 
-```
+The canonical database is:
+
+```text
 ~/Library/Application Support/OpenBurnBar/openburnbar.sqlite
 ```
 
-Backups are created automatically by the app before each migration run (via `runMigrationsSafely()`). Backup location:
+Encryption at rest is enabled by default. The SQLCipher passphrase is held by the app's key-management path, not by this runbook or the rollback shell script. A stock `sqlite3` process cannot read an encrypted database and must not be used as an integrity or migration check.
 
-```
-~/Library/Application Support/OpenBurnBar/openburnbar.sqlite.backup.<timestamp>
-```
-
-If the app cannot open the database at startup, it enters recovery mode instead of crashing. Recovery mode does not start dashboard refresh, cloud sync, daemon attach, cursor attach, or periodic parsing tasks. Use **Retry** after fixing disk or permission issues, or **Archive and Reset** to move the current database sidecars into:
-
-```
-~/Library/Application Support/OpenBurnBar/StartupRecovery/<timestamp>/
-```
-
-The archive action preserves `openburnbar.sqlite`, `openburnbar.sqlite-wal`, and `openburnbar.sqlite-shm` before retrying with a clean database.
+The database normally runs in WAL mode. `openburnbar.sqlite`, `openburnbar.sqlite-wal`, and `openburnbar.sqlite-shm` are one storage unit while a writer is active. Never copy only the main file from a live database.
 
 ## Migration Architecture
 
-OpenBurnBar uses [GRDB](https://github.com/groue/GRDB.swift) for schema migrations. Each migration is registered with a unique string identifier (e.g., `v1_initial`, `v2_sync`) and runs in order. GRDB tracks applied migrations in the `grdb_migrations` table.
+GRDB registers 55 ordered migrations through `v54_provider_quota_snapshots`. Applied identifiers live in `grdb_migrations`, inside the encrypted database.
 
-### Migration Lifecycle
+The macOS app and shared `OpenBurnBarData` target intentionally carry parallel migration definitions. CI runs `scripts/ci/verify-migration-rollback-catalog.mjs`, which enforces:
 
-1. App launches -> `DataStore` initializes with `runMigrations: true`
-2. `runMigrationsSafely()` runs integrity check (`PRAGMA integrity_check`)
-3. If integrity passes, creates backup (except in-memory databases)
-4. GRDB migrator runs all unapplied migrations in order
-5. If opening, integrity, backup, or migration fails, the app starts in recovery mode with user-facing Retry, Show Support Folder, Copy Diagnostics, and Archive and Reset actions
+- exact registration order from each migrator's actual function-call sequence;
+- normalized migration-body equality;
+- exact, hash-pinned exceptions for reviewed platform adaptations;
+- exact rollback-catalog order and coverage; and
+- this generated documentation table.
 
-### Migration Catalog
+The hash-pinned exceptions are narrow. Changing either implementation, including the shared v46 provider mapping helper, invalidates the exception and requires review.
 
-| # | Name | Safety | Description |
-|---|------|--------|-------------|
-| 1 | `v1_initial` | safe-rerun | Initial schema — all core tables |
-| 2 | `v2_sync` | manual | Cloud sync tracking columns |
-| 3 | `v3_conversations` | manual | Conversation model and FTS |
-| 4 | `v4_summaries` | safe-rerun | Summary tables |
-| 5 | `v5_fts_rebuild` | safe-rerun | Full FTS index rebuild |
-| 6 | `v6_fts_standalone_triggers` | safe-rerun | Standalone FTS triggers |
-| 7 | `v7_conversation_cloud_sync` | manual | Conversation cloud sync metadata |
-| 8 | `v8_chat_transcript_pieces` | safe-rerun | Chat transcript pieces table |
-| 9 | `v9_source_type` | manual | Source type column addition |
-| 10 | `v10_log_synced_at` | safe-rerun | Log sync timestamp column |
-| 11 | `v11_auto_summary_metadata` | safe-rerun | Auto-summary metadata columns |
-| 12 | `v12_token_usage_dedupe_unique_session_model` | manual | Token usage dedup with unique constraint |
-| 13 | `v13_backfill_claude_usage_timestamps` | safe-rerun | Backfill Claude usage timestamps |
-| 14 | `v14_local_search_substrate` | manual | Local search substrate (FTS5 + semantic) |
-| 15 | `v15_source_artifact_registry` | manual | Source artifact registry table |
-| 16 | `v16_shared_artifact_sync_state` | safe-rerun | Shared artifact sync state columns |
-| 17 | `v17_shared_artifact_permissions_and_audit` | manual | Shared artifact permissions and audit |
-| 18 | `v18_summary_attempt_tracking` | safe-rerun | Summary attempt tracking |
-| 19 | `v19_conversation_fts_trigger_fix` | safe-rerun | Conversation FTS trigger fix |
-| 20 | `v20_chat_threads` | manual | Chat threads table |
-| 21 | `v21_multifield_fts` | manual | Multi-field FTS content |
-| 22 | `v22_cross_device_sync` | safe-rerun | Cross-device sync columns |
-| 23 | `v23_device_hardware_model` | safe-rerun | Device hardware model column |
-| 24 | `v24_repair_custom_icon_column` | safe-rerun | Repair custom icon column |
-| 25 | `v25_operating_action_history` | manual | Operating action history table |
-| 26 | `v26_controller_runtime_cache` | safe-rerun | Controller runtime cache table |
-| 27 | `v27_token_usage_reasoning_source` | safe-rerun | Token usage reasoning source column |
-| 28 | `v28_token_usage_provenance` | manual | Token usage provenance tracking |
-| 29 | `v29_parser_checkpoints` | safe-rerun | Parser checkpoint store |
-| 30 | `v30_remote_sync_watermarks` | safe-rerun | Remote sync watermark store |
-| 31 | `v31_chunk_content_hash` | safe-rerun | Chunk content hash column |
-| 32 | `v32_switcher_profiles` | manual | Switcher profiles table |
-| 33 | `v33_backfill_cursors` | safe-rerun | Cursor backfill migration |
-| 34 | `v34_vector_index_snapshots` | manual | Vector index snapshot tracking |
+### Transaction, Retry, and Rollback
 
-### Safety Classifications
+These properties are separate:
 
-- **safe-rerun**: Migration is idempotent. If a partial failure occurs, re-launching the app will re-attempt the migration from where it left off. No data loss risk.
-- **manual**: Migration adds tables, columns, or constraints that cannot be trivially reverted in SQLite (e.g., `DROP COLUMN` requires SQLite 3.35.0+, `DROP UNIQUE` requires table rebuild). Reverting these requires careful SQL and may cause data loss.
+- **Transaction `atomic`:** GRDB commits the migration body and its identifier together. A thrown error rolls back the migration transaction.
+- **Retry `unapplied-only`:** relaunch retry is supported only when the identifier is absent because the transaction did not commit. This does not assert that individual `ALTER TABLE`, FTS, or data-rewrite statements are idempotent.
+- **Rollback `backup-restore`:** OpenBurnBar does not ship or certify down migrations. The supported rollback is restoration of a keyed pre-migration backup.
 
-## Rollback Strategies
+No current migration is classified as independently reversible. SQL snippets printed by `scripts/rollback-migration.sh vXX` are forensic notes, not executable or tested down migrations.
 
-### Strategy 1: Restore from Backup (Recommended for all cases)
+## Migration Catalog
 
-The app creates a timestamped backup before each migration. This is the safest rollback path.
+<!-- BEGIN GENERATED MIGRATION CATALOG -->
+| # | Name | Transaction | Retry | Rollback | Description |
+|---:|---|---|---|---|---|
+| 1 | `v1_initial` | atomic | unapplied-only | backup-restore | Initial schema creation — all core tables |
+| 2 | `v2_sync` | atomic | unapplied-only | backup-restore | Cloud sync tracking columns |
+| 3 | `v3_conversations` | atomic | unapplied-only | backup-restore | Conversation model and FTS |
+| 4 | `v4_summaries` | atomic | unapplied-only | backup-restore | Summary tables |
+| 5 | `v5_fts_rebuild` | atomic | unapplied-only | backup-restore | Full FTS index rebuild |
+| 6 | `v6_fts_standalone_triggers` | atomic | unapplied-only | backup-restore | Standalone FTS triggers |
+| 7 | `v7_conversation_cloud_sync` | atomic | unapplied-only | backup-restore | Conversation cloud sync metadata |
+| 8 | `v8_chat_transcript_pieces` | atomic | unapplied-only | backup-restore | Chat transcript pieces table |
+| 9 | `v9_source_type` | atomic | unapplied-only | backup-restore | Source type column addition |
+| 10 | `v10_log_synced_at` | atomic | unapplied-only | backup-restore | Log sync timestamp column |
+| 11 | `v11_auto_summary_metadata` | atomic | unapplied-only | backup-restore | Auto-summary metadata columns |
+| 12 | `v12_token_usage_dedupe_unique_session_model` | atomic | unapplied-only | backup-restore | Token usage dedup with unique session+model constraint |
+| 13 | `v13_backfill_claude_usage_timestamps` | atomic | unapplied-only | backup-restore | Backfill Claude usage timestamps |
+| 14 | `v14_local_search_substrate` | atomic | unapplied-only | backup-restore | Local search substrate (FTS5 + semantic) |
+| 15 | `v15_source_artifact_registry` | atomic | unapplied-only | backup-restore | Source artifact registry table |
+| 16 | `v16_shared_artifact_sync_state` | atomic | unapplied-only | backup-restore | Shared artifact sync state columns |
+| 17 | `v17_shared_artifact_permissions_and_audit` | atomic | unapplied-only | backup-restore | Shared artifact permissions and audit |
+| 18 | `v18_summary_attempt_tracking` | atomic | unapplied-only | backup-restore | Summary attempt tracking |
+| 19 | `v19_conversation_fts_trigger_fix` | atomic | unapplied-only | backup-restore | Conversation FTS trigger fix |
+| 20 | `v20_chat_threads` | atomic | unapplied-only | backup-restore | Chat threads table |
+| 21 | `v21_multifield_fts` | atomic | unapplied-only | backup-restore | Multi-field FTS content |
+| 22 | `v22_cross_device_sync` | atomic | unapplied-only | backup-restore | Cross-device sync columns |
+| 23 | `v23_device_hardware_model` | atomic | unapplied-only | backup-restore | Device hardware model column |
+| 24 | `v24_repair_custom_icon_column` | atomic | unapplied-only | backup-restore | Repair custom icon column |
+| 25 | `v25_operating_action_history` | atomic | unapplied-only | backup-restore | Operating action history table |
+| 26 | `v26_controller_runtime_cache` | atomic | unapplied-only | backup-restore | Controller runtime cache table |
+| 27 | `v27_token_usage_reasoning_source` | atomic | unapplied-only | backup-restore | Token usage reasoning source column |
+| 28 | `v28_token_usage_provenance` | atomic | unapplied-only | backup-restore | Token usage provenance tracking |
+| 29 | `v29_parser_checkpoints` | atomic | unapplied-only | backup-restore | Parser checkpoint store |
+| 30 | `v30_remote_sync_watermarks` | atomic | unapplied-only | backup-restore | Remote sync watermark store |
+| 31 | `v31_chunk_content_hash` | atomic | unapplied-only | backup-restore | Chunk content hash column |
+| 32 | `v32_switcher_profiles` | atomic | unapplied-only | backup-restore | Switcher profiles table |
+| 33 | `v33_backfill_cursors` | atomic | unapplied-only | backup-restore | Cursor backfill migration |
+| 34 | `v34_vector_index_snapshots` | atomic | unapplied-only | backup-restore | Vector index snapshot tracking |
+| 35 | `v35_provider_accounts` | atomic | unapplied-only | backup-restore | Provider accounts table and token usage account attribution |
+| 36 | `v36_repair_kimi_request_id_models` | atomic | unapplied-only | backup-restore | Repair Kimi request-id models and duplicate cache accounting |
+| 37 | `v37_token_usage_performance_indexes` | atomic | unapplied-only | backup-restore | Token usage performance indexes |
+| 38 | `v38_chat_message_attachments` | atomic | unapplied-only | backup-restore | Chat message attachments JSON column |
+| 39 | `v39_project_memory_snapshots` | atomic | unapplied-only | backup-restore | Project memory snapshot table |
+| 40 | `v40_reprice_gpt55_cached_input` | atomic | unapplied-only | backup-restore | Reprice GPT-5.5 cached input rows |
+| 41 | `v41_reprice_openai_family_cached_input` | atomic | unapplied-only | backup-restore | Reprice OpenAI-family cached input rows |
+| 42 | `v42_budget_rules_and_events` | atomic | unapplied-only | backup-restore | Budget rules and budget events tables |
+| 43 | `v43_text_expansion_snippets` | atomic | unapplied-only | backup-restore | Text expansion snippets table and active-trigger index |
+| 44 | `v44_repair_token_accounting_duplicates` | atomic | unapplied-only | backup-restore | Delete duplicated token accounting rows |
+| 45 | `v45_conversation_working_directory` | atomic | unapplied-only | backup-restore | Conversation working directory column |
+| 46 | `v46_drain_target_per_provider` | atomic | unapplied-only | backup-restore | Per-provider switcher drain target pointer |
+| 47 | `v47_conversation_tombstones` | atomic | unapplied-only | backup-restore | Conversation tombstone and version columns |
+| 48 | `v48_conversation_fts_orphan_repair` | atomic | unapplied-only | backup-restore | Repair orphaned conversation FTS rows |
+| 49 | `v49_token_usage_parent_request_id` | atomic | unapplied-only | backup-restore | Fusion parent request attribution column and index |
+| 50 | `v50_project_code_memory_schema` | atomic | unapplied-only | backup-restore | Project Code Memory tables and indexes |
+| 51 | `v51a_drop_body_fts` | atomic | unapplied-only | backup-restore | Drop obsolete body-only agent memory FTS table |
+| 52 | `v51_chat_memory_authority` | atomic | unapplied-only | backup-restore | Chat memory authority metadata, jobs, and tombstones |
+| 53 | `v52_memory_extraction_job_intent_and_lease` | atomic | unapplied-only | backup-restore | Memory extraction intent and lease columns |
+| 54 | `v53_memory_forget_outbox` | atomic | unapplied-only | backup-restore | User-scoped memory forget replication outbox |
+| 55 | `v54_provider_quota_snapshots` | atomic | unapplied-only | backup-restore | Durable provider quota snapshot cache |
+<!-- END GENERATED MIGRATION CATALOG -->
+
+Regenerate and verify the table with:
 
 ```bash
-# 1. Stop OpenBurnBar completely (quit from menu bar)
-
-# 2. List available backups
-ls -lt ~/Library/Application\ Support/OpenBurnBar/openburnbar.sqlite.backup.*
-
-# 3. Verify backup integrity
-sqlite3 ~/Library/Application\ Support/OpenBurnBar/openburnbar.sqlite.backup.YYYYMMDD-HHMMSS "PRAGMA integrity_check;"
-# Expected output: ok
-
-# 4. Replace the live database with the backup
-cd ~/Library/Application\ Support/OpenBurnBar/
-cp openburnbar.sqlite openburnbar.sqlite.failed-$(date +%Y%m%d-%H%M%S)
-cp openburnbar.sqlite.backup.YYYYMMDD-HHMMSS openburnbar.sqlite
-
-# 5. Relaunch OpenBurnBar
-open -a OpenBurnBar
+node scripts/ci/verify-migration-rollback-catalog.mjs --write-doc
+node scripts/ci/verify-migration-rollback-catalog.test.mjs
 ```
 
-### Strategy 2: Re-run Safe Migrations
+CI runs the verifier without `--write-doc`, so stale documentation fails closed.
 
-For `safe-rerun` migrations, simply relaunch the app. The GRDB migrator will detect the unapplied migration and re-run it.
+## Automatic Migration Backup
 
-### Strategy 3: Manual SQL Revert (Last Resort)
+`runMigrationsSafely()` checks whether the latest migration is absent. Before migrating an existing on-disk database, it:
 
-For `manual` migrations, use the rollback helper script to review suggested SQL:
+1. opens the database through the already-keyed GRDB writer;
+2. runs `PRAGMA integrity_check` through that keyed connection;
+3. creates `openburnbar.sqlite.backup.<timestamp>` with GRDB's online backup API and a keyed destination configuration;
+4. runs the ordered migrator; and
+5. restores that backup automatically if migration fails.
+
+Ordinary launches at the current schema do not run the full migration backup path. The app retains the five newest automatic backups.
+
+## Quiesced Inspection Bundle
+
+For incident preservation, first quit OpenBurnBar, then run:
 
 ```bash
-scripts/rollback-migration.sh v34
-```
-
-Then apply the SQL against a backup copy first:
-
-```bash
-# 1. Create an inspection backup
 scripts/rollback-migration.sh --inspect
-
-# 2. Test the revert SQL in the interactive session
-
-# 3. Only after testing, apply to live DB (with backup)
 ```
 
-### Strategy 4: Nuclear Reset
+The command fails unless `lsof` proves no process has the database or sidecars open. It copies the encrypted main file and every present WAL/SHM sidecar into a mode-0700 timestamped bundle, rechecks quiescence, byte-compares every source and destination, rejects sidecar creation/removal during the copy, and writes SHA-256 checksums.
 
-If the database is beyond repair, OpenBurnBar will recreate it on next launch:
+This is a byte-preservation bundle, not a logical SQLite backup. It deliberately does not invoke `sqlite3`, request the SQLCipher key, or report a false integrity result. If a process opens the source during the copy, the command quarantines the bundle and fails.
 
-```bash
-# WARNING: This destroys ALL local data. Cloud-synced data will be preserved on Firebase.
-mv ~/Library/Application\ Support/OpenBurnBar/OpenBurnBar.sqlite ~/Desktop/openburnbar-db-recovery-$(date +%Y%m%d).sqlite
+## Recovery
 
-# On next launch, OpenBurnBar will create a fresh database and run all migrations.
-```
+### Migration Failure
 
-## Rollback Drill Procedure
+The app first attempts automatic restoration from the keyed pre-migration backup. If startup still cannot open, key, validate, or migrate the database, it enters recovery mode and does not start dashboard refresh, cloud sync, daemon attach, cursor attach, or periodic parsing.
 
-Run this drill after any migration change to validate rollback procedures:
+Use recovery mode to copy diagnostics and preserve the support directory before taking further action. **Archive and Reset** moves the database and sidecars to `StartupRecovery/<timestamp>/` before creating a clean database.
 
-### Drill 1: Backup and Restore (5 minutes)
+### Operator Restore
 
-```bash
-# 1. Verify database exists and is healthy
-sqlite3 ~/Library/Application\ Support/OpenBurnBar/OpenBurnBar.sqlite "PRAGMA integrity_check;"
+Do not perform an ad hoc SQL rollback. Restore the complete encrypted artifact while OpenBurnBar is fully quit:
 
-# 2. Check current migration state
-sqlite3 ~/Library/Application\ Support/OpenBurnBar/OpenBurnBar.sqlite "SELECT * FROM grdb_migrations ORDER BY identifier;"
+1. Preserve the current database with `scripts/rollback-migration.sh --inspect`.
+2. Select an app-created `openburnbar.sqlite.backup.<timestamp>` from before the failed migration.
+3. Move the current main file and sidecars together to a quarantine directory.
+4. Copy the selected backup to `openburnbar.sqlite` with owner-only permissions. Do not reuse stale WAL/SHM sidecars.
+5. Relaunch OpenBurnBar. The app applies the Keychain-held SQLCipher key, validates the database, and runs only unapplied migrations.
 
-# 3. Create a manual backup
-cp ~/Library/Application\ Support/OpenBurnBar/OpenBurnBar.sqlite \
-   ~/Desktop/openburnbar-drill-backup-$(date +%Y%m%d).sqlite
+If the Keychain key is missing or belongs to another installation, file replacement cannot recover the data. Use the app's passphrase-wrapped encryption-key recovery bundle flow or restore the original Keychain item; do not disable encryption or attempt plaintext fallback.
 
-# 4. Verify backup
-sqlite3 ~/Desktop/openburnbar-drill-backup-$(date +%Y%m%d).sqlite "PRAGMA integrity_check;"
+## Rollback Drill
 
-# 5. Simulate restore
-cp ~/Desktop/openburnbar-drill-backup-$(date +%Y%m%d).sqlite \
-   ~/Library/Application\ Support/OpenBurnBar/OpenBurnBar.sqlite
+Run drills only on an isolated test account and copied support directory, never the active production profile.
 
-# 6. Verify restore
-open -a OpenBurnBar  # App should launch normally
-```
+1. Confirm the app can open the test copy and reports the expected latest migration.
+2. Quit the app and create a quiesced inspection bundle.
+3. Verify the bundle checksums with `shasum -a 256 -c SHA256SUMS` from inside the bundle.
+4. Exercise recovery-mode Archive and Reset on the test copy.
+5. Restore an app-created keyed migration backup with the app quit.
+6. Relaunch and verify schema, representative reads/writes, FTS search, and provider-account routing.
+7. Record the app version, source migration, target migration, backup identifier, and result in the incident or release evidence.
 
-### Drill 2: Migration List Review (2 minutes)
+Do not simulate failure by manually inserting an unknown row into a live `grdb_migrations` table. That requires a keyed connection and does not model a transactional migration failure.
 
-```bash
-# List all migrations and their safety classifications
-scripts/rollback-migration.sh --list
-```
+## Adding a Migration
 
-Review that the catalog matches what's in `OpenBurnBarDatabase.swift`.
+1. Add the migration to both ordered migrator surfaces without changing any prior registration or body.
+2. Use a new immutable identifier; never rename or edit a migration that may have shipped.
+3. Add the same ordered entry to `MIGRATIONS` in `scripts/rollback-migration.sh`.
+4. Keep the contract `atomic|unapplied-only|backup-restore` unless the implementation and tests establish a stronger property.
+5. Add forensic notes only when they are useful for diagnosis. Do not present them as a supported down migration.
+6. Run `node scripts/ci/verify-migration-rollback-catalog.mjs --write-doc`.
+7. Run the verifier tests and the app/shared migration tests against an encrypted fixture upgraded from the previous release schema.
 
-### Drill 3: Failed Migration Simulation (10 minutes)
-
-```bash
-# 1. Quit OpenBurnBar
-# 2. Create backup
-scripts/rollback-migration.sh --inspect
-# 3. In the interactive session, verify schema
-# 4. Simulate a failed migration by adding a partial migration record
-sqlite3 ~/Library/Application\ Support/OpenBurnBar/OpenBurnBar.sqlite \
-  "INSERT INTO grdb_migrations (identifier) VALUES ('v99_test_rollback');"
-# 5. Launch OpenBurnBar — it should handle the unknown migration gracefully
-# 6. Clean up: remove the test record
-sqlite3 ~/Library/Application\ Support/OpenBurnBar/OpenBurnBar.sqlite \
-  "DELETE FROM grdb_migrations WHERE identifier = 'v99_test_rollback';"
-```
-
-## Adding a New Migration
-
-When adding a new migration to `OpenBurnBarDatabase.swift`:
-
-1. Register it with `migrator.registerMigration("vXX_name") { db in ... }`
-2. Update the catalog table in this document
-3. Update the `MIGRATION_SAFETY`, `MIGRATION_DESC`, and `REVERT_SQL` arrays in `scripts/rollback-migration.sh`
-4. Classify the migration as `safe-rerun` or `manual` based on:
-   - If the migration only adds new tables/indexes that can be dropped: `safe-rerun`
-   - If it adds columns to existing tables with data, changes constraints, or modifies FTS: `manual`
-5. If `manual`, add suggested revert SQL to `REVERT_SQL` in the script
-
-## Daemon Database
-
-The daemon does not use SQLite directly — it communicates with the app's DataStore via JSON-RPC. The daemon's own state directory (`~/Library/Application Support/OpenBurnBar/`) contains:
-
-- Provider config
-- Run journals and checkpoints
-- Controller events
-- Connector configuration
-
-These are file-based and can be reset by removing the daemon support directory. The daemon will recreate configuration on next launch.
-
-## Monitoring
-
-- Check database size: `du -h ~/Library/Application\ Support/OpenBurnBar/OpenBurnBar.sqlite`
-- Check migration state: `sqlite3 ~/Library/Application\ Support/OpenBurnBar/OpenBurnBar.sqlite "SELECT identifier FROM grdb_migrations ORDER BY identifier;"`
-- Check integrity: `sqlite3 ~/Library/Application\ Support/OpenBurnBar/openburnbar.sqlite "PRAGMA integrity_check;"`
+Any intentional app/shared body difference must have a narrow reason, exact fingerprints for both bodies, and mutation coverage. A broad name-only allowlist is not acceptable.

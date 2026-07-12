@@ -30,7 +30,9 @@
     <!-- Unpackaged: no MSIX identity; the Windows App Runtime bootstrapper auto-inits. -->
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
     <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <DefaultLanguage>en-US</DefaultLanguage>
     <!--
@@ -40,11 +42,40 @@
       (restore / project evaluation / schema checks). Real compile stays on Windows.
     -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <OpenBurnBarNativeEngineDirectory
+      Condition="'$(OpenBurnBarNativeEngineDirectory)' == ''">$(MSBuildProjectDirectory)\..\..\native-engine\$(RuntimeIdentifier)</OpenBurnBarNativeEngineDirectory>
   </PropertyGroup>
+
+  <ItemGroup Condition="Exists('$(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCoreCAbi.dll')">
+    <Content Include="$(OpenBurnBarNativeEngineDirectory)\*.dll"
+             Link="%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(OpenBurnBarNativeEngineDirectory)\native-engine-manifest.json"
+             Condition="Exists('$(OpenBurnBarNativeEngineDirectory)\native-engine-manifest.json')"
+             Link="native-engine-manifest.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="RequireOpenBurnBarNativeEngine"
+          BeforeTargets="Publish"
+          Condition="'$(OpenBurnBarRequireNativeEngine)' == 'true'">
+    <Error
+      Condition="!Exists('$(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCoreCAbi.dll')"
+      Text="Required Windows parser engine is missing: $(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCoreCAbi.dll" />
+  </Target>
+
+  <ItemGroup>
+    <Using Include="Microsoft.UI" />
+    <Using Include="Microsoft.UI.Text" />
+    <Using Include="Microsoft.UI.Xaml.Automation" />
+    <Using Remove="System.IO.Path" />
+  </ItemGroup>
 
   <ItemGroup>
     <!--
-      Windows App SDK 1.7 (stable). Brings WinUI 3, MicaBackdrop, the bootstrapper,
+      Windows App SDK 1.8 (stable). Brings WinUI 3, MicaBackdrop, the bootstrapper,
       and Microsoft.Windows.SDK.BuildTools transitively (no separate ref needed).
       It also brings the WebView2 control (Microsoft.UI.Xaml.Controls.WebView2) and
       CoreWebView2 (Microsoft.Web.WebView2.Core) transitively — the offscreen
@@ -52,7 +83,7 @@
       Windows build ever needs to pin the WebView2 runtime independently, add an
       explicit Microsoft.Web.WebView2 PackageReference matching WindowsAppSDK 1.7.
     -->
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.250606001" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260508005" />
     <!--
       Win2D (Phase 3 / W6-DS-SWARM). The GPU renderer for the particle-engine
       substrate layer: CanvasAnimatedControl host + CanvasDrawingSession adapter in
@@ -94,6 +125,7 @@
       (windows/tests/settings/); the WinUI XAML that binds it is XamlCompiler-deferred.
     -->
     <ProjectReference Include="../OpenBurnBar.App.Settings/OpenBurnBar.App.Settings.csproj" />
+    <ProjectReference Include="../OpenBurnBar.App.Settings.ViewModels/OpenBurnBar.App.Settings.ViewModels.csproj" />
     <!--
       Portable presentation layer (net8.0, no WinUI) for the SessionLogs + Memory
       surfaces (Phase 3 · W7): view-models, ported record types, grouping passes, and
@@ -102,6 +134,20 @@
       render of that same logic.
     -->
     <ProjectReference Include="../OpenBurnBar.App.Presentation/OpenBurnBar.App.Presentation.csproj" />
+    <ProjectReference Include="../OpenBurnBar.App.UsageRuntime/OpenBurnBar.App.UsageRuntime.csproj" />
+    <ProjectReference Include="../OpenBurnBar.App.Configuration/OpenBurnBar.App.Configuration.csproj" />
+    <ProjectReference Include="../OpenBurnBar.App.UsageRuntime/OpenBurnBar.App.UsageRuntime.csproj" />
+    <ProjectReference Include="../OpenBurnBar.App.CloudSync/OpenBurnBar.App.CloudSync.csproj" />
+    <ProjectReference Include="../../packaging/updater/OpenBurnBar.Updater.Windows/OpenBurnBar.Updater.Windows.csproj" />
+    <ProjectReference Include="../../storage/OpenBurnBar.Storage/OpenBurnBar.Storage.csproj" />
+    <!--
+      Quota ACQUISITION layer (Wave 1 item 5): the portable sources + coordinator
+      feeding the landed Presentation/Quota parsers, and the Windows host half
+      (default %LOCALAPPDATA%/%APPDATA% paths, FileSystemWatcher, statusline hook
+      installer). Unit-tested on macOS (windows/tests/quota-acquisition).
+    -->
+    <ProjectReference Include="../OpenBurnBar.App.Quota.Acquisition/OpenBurnBar.App.Quota.Acquisition.csproj" />
+    <ProjectReference Include="../OpenBurnBar.App.Quota.Acquisition.Windows/OpenBurnBar.App.Quota.Acquisition.Windows.csproj" />
     <!--
       Portable Dashboard layer (net8.0, no WinUI) for the Dashboard surface (Phase 3 ·
       W7, Bucket C): the layout-switch state machine + the FULL frame-stepped easter-egg
@@ -127,18 +173,49 @@
       are unit-tested on macOS (windows/tests/pet/Overlay).
     -->
     <ProjectReference Include="../../pal/overlay/OpenBurnBar.Pal.Overlay.csproj" />
+    <ProjectReference Include="../../pal/ipc/OpenBurnBar.Pal.Ipc.csproj" />
+    <ProjectReference Include="../../pal/ipc-windows/OpenBurnBar.Pal.Ipc.Windows.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <!--
       DLL-load hardening core (Phase 5 · R19 library-validation equivalent). net8.0, no WinUI.
-      Provides OpenBurnBar.Dist.Hardening.DllSearchHardening.Apply(), which the app entry point
-      calls at the very start of Main (SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_DEFAULT_DIRS)
-      + SetDllDirectory("")) to strip the CWD/legacy unsafe DLL search order. See
-      windows/dist/DLL_HARDENING.md for the exact wiring. The P/Invoke declarations restore on
-      macOS; they only execute on Windows.
+      Provides OpenBurnBar.Dist.Hardening.DllSearchHardening.ApplyWinUICompatible(), which the
+      app entry point calls at the very start of Main. The WinUI-compatible mode strips the CWD via
+      SetDllDirectory("") while avoiding SetDefaultDllDirectories, which breaks Microsoft.UI.Xaml
+      ms-appx resource lookup for unpackaged self-contained runs. See windows/dist/DLL_HARDENING.md
+      for the exact wiring. The P/Invoke declarations restore on macOS; they only execute on Windows.
     -->
     <ProjectReference Include="../../dist/OpenBurnBar.Dist.Hardening/OpenBurnBar.Dist.Hardening.csproj" />
+  </ItemGroup>
+
+  <!--
+    Shared WebGL2 kernel backdrop field (AgentLens/Resources/KernelBackdrop/).
+    Copied beside the exe so KernelBackdropHost can map a virtual host to the folder
+    and Navigate to index.html — the same offline bundle macOS WKWebView loads.
+  -->
+  <ItemGroup>
+    <Content Include="..\..\..\AgentLens\Resources\KernelBackdrop\index.html"
+             Link="Resources\KernelBackdrop\index.html"
+             CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\..\AgentLens\Resources\KernelBackdrop\kernel-backdrop.js"
+             Link="Resources\KernelBackdrop\kernel-backdrop.js"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- Brand + provider logos (macOS AppLogo / Linux openburnbar.png parity). -->
+  <ItemGroup>
+    <Content Include="Assets\AppLogo.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\AppLogo-32.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\AppLogo-64.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\AppLogo.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\ProviderLogos\*.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\packaging\updater\feed\latest-windows.json"
+             Link="Resources\Updates\latest-windows.json"
+             CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\packaging\updater\feed\pinned-update-key.pub"
+             Link="Resources\Updates\pinned-update-key.pub"
+             CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!--

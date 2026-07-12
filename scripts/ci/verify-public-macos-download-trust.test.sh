@@ -30,6 +30,27 @@ if [[ "$metadata" != "$expected" ]]; then
   exit 1
 fi
 
+spoof_config="$tmpdir/spoof-site.ts"
+cat >"$spoof_config" <<'TS'
+export const SITE = {
+  releaseNotes: `
+    macReleaseLatest: "0.1.2-beta.1",
+    macReleaseFile: "OpenBurnBar-0.1.2-beta.1-macOS.dmg",
+    macDownloadBaseUrl: "https://trusted.example.test/releases"
+  `,
+  macReleaseLatest: "9.9.9",
+  macReleaseFile: "OpenBurnBar-9.9.9-macOS.dmg",
+  macDownloadBaseUrl: "https://downloads.example.test/releases",
+} as const;
+TS
+
+spoof_metadata="$(OPENBURNBAR_PRINT_PUBLIC_MACOS_DOWNLOAD_METADATA=1 bash "$verifier" "$spoof_config")"
+if [[ "$spoof_metadata" != "$expected" ]]; then
+  echo "expected verifier to ignore property-looking decoys inside string literals, got:" >&2
+  printf '%s\n' "$spoof_metadata" >&2
+  exit 1
+fi
+
 bad_config="$tmpdir/bad-site.ts"
 cat >"$bad_config" <<'TS'
 export const SITE = {

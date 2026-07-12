@@ -29,7 +29,7 @@ import XCTest
 /// fault branch is verified without touching the system keychain.
 final class OpenBurnBarDaemonManagerProviderConfigMattersTests: XCTestCase {
 
-    private let service = OpenBurnBarIdentity.cursorConnectorKeychainService
+    private let service = OpenBurnBar.OpenBurnBarIdentity.cursorConnectorKeychainService
     private let account = "provider.zai.slot.test-slot.apiKey"
 
     private func makeStore(backend: KeychainStoreBackend) -> KeychainStore {

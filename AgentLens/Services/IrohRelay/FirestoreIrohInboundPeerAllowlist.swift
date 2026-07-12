@@ -73,7 +73,10 @@ enum FirestoreIrohInboundPeerAllowlist {
                 allowed.insert(nodeId)
             }
         } catch {
-            // Fail closed: trusted-device node ids simply aren't added.
+            AppLogger.network.error(
+                "iroh_inbound_trusted_device_allowlist_load_failed",
+                metadata: AppLogger.publicErrorMetadata(error)
+            )
         }
 
         return IrohInboundPeerPolicy(allowedPeerNodeIds: allowed)

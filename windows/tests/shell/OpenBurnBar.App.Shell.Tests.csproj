@@ -10,8 +10,7 @@
     off-Windows. The WinUI-bound shell surfaces (AppShell, FlyoutWindow, ThemeService)
     are Windows-only and are type-checked separately; see the PR's Validation section.
 
-    Mirrors windows/tests/theme/OpenBurnBar.App.Theme.Tests.csproj (net10.0, xUnit) so
-    the toolchain is the one already proven on this host.
+    RouteSmokeOptions is linked the same way (no WinUI) for CLI argument parsing tests.
   -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -25,15 +24,25 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Link the pure-System shell-state store directly (no WinUI dependency). -->
     <Compile Include="../../app/OpenBurnBar.App/Shell/AppStatePersistence.cs" />
+    <Compile Include="../../app/OpenBurnBar.App.Configuration/RuntimePaths.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Shell/AutomationLaunchOptions.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Shell/CommandLineParts.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Shell/RouteSmokeOptions.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Shell/NavDestination.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Shell/SurfaceRouteMap.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Shell/WindowsActivationRouter.cs" />
     <Compile Include="AppStatePersistenceTests.cs" />
+    <Compile Include="AutomationLaunchOptionsTests.cs" />
+    <Compile Include="RouteSmokeOptionsTests.cs" />
+    <Compile Include="NavCatalogTests.cs" />
+    <Compile Include="WindowsActivationRouterTests.cs" />
   </ItemGroup>
 
 </Project>

@@ -1,8 +1,10 @@
 using System.Collections.Generic;
+using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
+using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Components;
 using OpenBurnBar.App.Theme;
 using Windows.UI;
@@ -30,6 +32,10 @@ public sealed partial class QuotaWorkspacePage : Page
         InitializeComponent();
     }
 
+    // Live quota: Mac-computed snapshots via B4 Firestore (users/{uid}/quota_snapshots).
+    // Without Firebase credentials/synced docs this route shows an empty setup state; sample
+    // quota rows require OPENBURNBAR_SAMPLE_MODE=1.
+
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
@@ -38,8 +44,18 @@ public sealed partial class QuotaWorkspacePage : Page
             return;
         }
 
-        _built = true;
-        _accounts = QuotaSampleData.Accounts();
+        _ = LoadAccountsAsync();
+    }
+
+    private async System.Threading.Tasks.Task LoadAccountsAsync()
+    {
+        IReadOnlyList<QuotaSampleAccount> accounts = await QuotaAccountsSource.LoadAsync().ConfigureAwait(true);
+        ApplyAccounts(accounts);
+    }
+
+    private void ApplyAccounts(IReadOnlyList<QuotaSampleAccount> accounts)
+    {
+        _accounts = accounts;
         _byId.Clear();
         var entries = new List<SubscriptionEntry>(_accounts.Count);
         foreach (QuotaSampleAccount account in _accounts)
@@ -49,9 +65,13 @@ public sealed partial class QuotaWorkspacePage : Page
         }
 
         Hero.Entries = entries;
-        Hero.SelectedProvider = null;
-        Hero.OrbTapped += OnOrbTapped;
-        Hero.ClearRequested += OnClearRequested;
+        if (!_built)
+        {
+            Hero.SelectedProvider = null;
+            Hero.OrbTapped += OnOrbTapped;
+            Hero.ClearRequested += OnClearRequested;
+            _built = true;
+        }
 
         RebuildDials();
     }
@@ -87,6 +107,43 @@ public sealed partial class QuotaWorkspacePage : Page
                 DialHost.Children.Add(BuildCard(account));
             }
         }
+
+        if (DialHost.Children.Count == 0)
+        {
+            DialHost.Children.Add(BuildEmptyCard());
+        }
+    }
+
+    private static Border BuildEmptyCard()
+    {
+        var title = new TextBlock
+        {
+            Text = "No quota snapshots yet",
+            FontSize = 18,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = (Brush)Application.Current.Resources["PensieveColorTextBrightBrush"],
+        };
+
+        var detail = new TextBlock
+        {
+            Text = RuntimeDataMode.EmptyStateDetail("Firebase quota snapshots"),
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.Resources["PensieveColorTextMuteBrush"],
+        };
+
+        var stack = new StackPanel { Spacing = 6 };
+        stack.Children.Add(title);
+        stack.Children.Add(detail);
+
+        return new Border
+        {
+            Padding = new Thickness(18),
+            CornerRadius = (CornerRadius)Application.Current.Resources["PensieveRadiusLgCorner"],
+            Background = (Brush)Application.Current.Resources["PensieveColorGlassBgBrush"],
+            BorderBrush = (Brush)Application.Current.Resources["PensieveColorGlassLineBrush"],
+            BorderThickness = new Thickness(1),
+            Child = stack,
+        };
     }
 
     private Border BuildCard(QuotaSampleAccount account)
@@ -118,7 +175,7 @@ public sealed partial class QuotaWorkspacePage : Page
         var remaining = new TextBlock
         {
             Text = $"{account.Entry.RemainingPercentText} remaining",
-            FontFamily = (FontFamily)Application.Current.Resources["PensieveFontMono"],
+            FontFamily = new FontFamily((string)Application.Current.Resources["PensieveFontMono"]),
             FontSize = 12,
             Foreground = new SolidColorBrush(ProviderBrand.Primary(account.Entry.Provider)),
         };

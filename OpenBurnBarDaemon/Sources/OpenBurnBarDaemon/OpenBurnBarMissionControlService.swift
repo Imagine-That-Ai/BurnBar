@@ -43,6 +43,11 @@ public protocol BurnBarMissionControlServing: AnyObject, Sendable {
     func missionCancel(_ request: BurnBarMissionCancelRequest) async throws -> BurnBarMissionMutationResponse
     func missionDispatchPacket(_ request: BurnBarMissionDispatchPacketRequest) async throws -> BurnBarMissionMutationResponse
     func missionRecordResult(_ request: BurnBarMissionRecordResultRequest) async throws -> BurnBarMissionMutationResponse
+    /// M2 (split-brain remediation Phase 2): the daemon's authorization
+    /// verdict for a remote (mobile/Wand) mission whose sealed payload the
+    /// GUI transport already unsealed. Non-throwing: every outcome — including
+    /// every fail-closed default — is a typed verdict, never an error.
+    func missionAuthorizeRemote(_ request: BurnBarRemoteMissionAuthorizeRequest) async -> BurnBarRemoteMissionAuthorizeResponse
 
     func notificationConfigGet(_ request: BurnBarNotificationConfigGetRequest) async throws -> BurnBarNotificationConfigResponse
     func notificationConfigUpdate(_ request: BurnBarNotificationConfigUpdateRequest) async throws -> BurnBarNotificationConfigResponse
@@ -53,6 +58,19 @@ public protocol BurnBarMissionControlServing: AnyObject, Sendable {
     func simulatorList(_ request: BurnBarSimulatorListRequest) async throws -> BurnBarSimulatorListResponse
     func simulatorReplay(_ request: BurnBarSimulatorReplayRequest) async throws -> BurnBarSimulatorRunResponse
     func projectionRebuild(_ request: BurnBarProjectionRebuildRequest) async throws -> BurnBarProjectionRebuildResponse
+}
+
+extension BurnBarMissionControlServing {
+    /// Default implementation for every conformer: remote-mission
+    /// authorization is a PURE, stateless policy evaluation
+    /// (`BurnBarRemoteMissionAuthorizationPolicy`), so no store or transport
+    /// state participates in the verdict. Conformers that later need to
+    /// journal or enrich verdicts (M3 shadow-mode telemetry) can override.
+    public func missionAuthorizeRemote(
+        _ request: BurnBarRemoteMissionAuthorizeRequest
+    ) async -> BurnBarRemoteMissionAuthorizeResponse {
+        BurnBarRemoteMissionAuthorizationPolicy.evaluate(request)
+    }
 }
 
 extension BurnBarMissionControlService {

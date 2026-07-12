@@ -22,7 +22,12 @@ public enum TranscriptBlockKind
 }
 
 /// <summary>A parsed block from a raw session transcript. Swift: <c>struct TranscriptBlock</c>.</summary>
-public sealed record TranscriptBlock(TranscriptBlockKind Kind, string Content, string? Label);
+public sealed class TranscriptBlock(TranscriptBlockKind Kind, string Content, string? Label)
+{
+    public TranscriptBlockKind Kind { get; set; } = Kind;
+    public string Content { get; set; } = Content;
+    public string? Label { get; set; } = Label;
+}
 
 /// <summary>Parses raw transcript text into structured blocks. Swift: <c>enum TranscriptBlockParser</c>.</summary>
 public static class TranscriptBlockParser

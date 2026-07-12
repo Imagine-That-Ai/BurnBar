@@ -57,6 +57,7 @@ object ProviderLogo {
         AgentProvider.FORGE_DEV -> R.drawable.logo_forge
         AgentProvider.AUGMENT -> R.drawable.augment_logo
         AgentProvider.HERMES -> R.drawable.logo_hermes
+        AgentProvider.JUNIE -> R.drawable.logo_junie
         AgentProvider.PI_AGENT -> R.drawable.pi_agent_logo
         AgentProvider.GEMINI_CLI -> R.drawable.logo_gemini_cli
         AgentProvider.GOOSE -> R.drawable.goose_logo
@@ -84,6 +85,7 @@ object ProviderLogo {
         AssistantRuntimeID.ANTIGRAVITY -> R.drawable.logo_antigravity
         AssistantRuntimeID.GROK -> R.drawable.logo_grok
         AssistantRuntimeID.CURSOR_AGENT -> R.drawable.logo_cursor
+        AssistantRuntimeID.JUNIE -> R.drawable.logo_junie
     }
 
     // / Asset for a `HermesSubProvider`. Maps the sub-providers to their

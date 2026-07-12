@@ -2,7 +2,7 @@
 xwininfo: Window id: 0xa00003 "OpenBurnBar"
 
   Absolute upper-left X:  1
-  Absolute upper-left Y:  47
+  Absolute upper-left Y:  49
   Relative upper-left X:  1
   Relative upper-left Y:  20
   Width: 1278
@@ -19,6 +19,6 @@ xwininfo: Window id: 0xa00003 "OpenBurnBar"
   Save Under State: no
   Map State: IsViewable
   Override Redirect State: no
-  Corners:  +1+47  -1+47  -1-13  +1-13
-  -geometry 1278x840+0-8
+  Corners:  +1+49  -1+49  -1-11  +1-11
+  -geometry 1278x840+0-6
 

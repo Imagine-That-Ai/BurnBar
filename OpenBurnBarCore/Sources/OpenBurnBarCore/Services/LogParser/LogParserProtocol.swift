@@ -3,26 +3,35 @@ import OpenBurnBarCore
 
 // MARK: - Parse Result
 
-struct ParseResult: Sendable {
-    let usages: [TokenUsage]
-    let conversations: [ConversationRecord]
+public struct ParseResult: Sendable {
+    public let usages: [TokenUsage]
+    public let conversations: [ConversationRecord]
+
+    public init(usages: [TokenUsage], conversations: [ConversationRecord]) {
+        self.usages = usages
+        self.conversations = conversations
+    }
 }
 
-struct LogParseOptions: Sendable {
-    var includeConversationBodies: Bool
+public struct LogParseOptions: Sendable {
+    public var includeConversationBodies: Bool
 
-    static let `default` = LogParseOptions(includeConversationBodies: true)
+    public static let `default` = LogParseOptions(includeConversationBodies: true)
+
+    public init(includeConversationBodies: Bool) {
+        self.includeConversationBodies = includeConversationBodies
+    }
 }
 
 // MARK: - Log Parser Protocol
 
-protocol LogParser: LogParserProtocol {
+public protocol LogParser: LogParserProtocol {
     func parse() async throws -> ParseResult
     func parse(options: LogParseOptions) async throws -> ParseResult
 }
 
 extension LogParser {
-    func parse(options: LogParseOptions) async throws -> ParseResult {
+    public func parse(options: LogParseOptions) async throws -> ParseResult {
         let result = try await parse()
         guard options.includeConversationBodies else {
             return ParseResult(usages: result.usages, conversations: [])
@@ -31,11 +40,11 @@ extension LogParser {
     }
 }
 
-struct ParserConversationCacheScrubber {
+public struct ParserConversationCacheScrubber {
     private let fileManager: FileManager
     private let appPaths: OpenBurnBarAppPaths
 
-    init(
+    public init(
         fileManager: FileManager = .default,
         appPaths: OpenBurnBarAppPaths = .live()
     ) {
@@ -43,7 +52,7 @@ struct ParserConversationCacheScrubber {
         self.appPaths = appPaths
     }
 
-    func scrubKnownParserCaches() {
+    public func scrubKnownParserCaches() {
         for cacheURL in knownCacheURLs() {
             scrubCache(at: cacheURL)
         }
@@ -53,7 +62,8 @@ struct ParserConversationCacheScrubber {
         var urls = [
             appPaths.supportDirectory.appendingPathComponent("codex_parser_cache.json"),
             appPaths.claudeCodeParserCacheURL,
-            appPaths.factoryDroidParserCacheURL
+            appPaths.factoryDroidParserCacheURL,
+            appPaths.junieParserCacheURL
         ]
 
         if let dynamicURLs = try? fileManager.contentsOfDirectory( // try?-ok(optional cache directory scan)
@@ -73,8 +83,43 @@ struct ParserConversationCacheScrubber {
 
     private func scrubCache(at cacheURL: URL) {
         guard fileManager.fileExists(atPath: cacheURL.path),
-              let data = try? Data(contentsOf: cacheURL), // try?-ok(best-effort cache read)
-              var root = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(best-effort cache decode)
+              let data = try? Data(contentsOf: cacheURL) else { // try?-ok(best-effort cache read)
+            return
+        }
+
+        // Dual-format read: the round-4 perf sweep moved parser caches from
+        // pretty-printed JSON to binary plist. Both shapes carry the same
+        // `fileEntries` dictionary; scrub whichever one is on disk.
+        if let plistRoot = try? PropertyListSerialization.propertyList(
+            from: data,
+            options: [],
+            format: nil
+        ) as? [String: Any],
+           var entries = plistRoot["fileEntries"] as? [String: Any] {
+            var mutated = false
+            for (key, value) in entries {
+                guard var entry = value as? [String: Any],
+                      entry["conversation"] != nil else { continue }
+                entry.removeValue(forKey: "conversation")
+                entries[key] = entry
+                mutated = true
+            }
+            guard mutated else { return }
+            var root = plistRoot
+            root["fileEntries"] = entries
+            guard let scrubbedData = try? PropertyListSerialization.data( // try?-ok(best-effort cache encode)
+                fromPropertyList: root,
+                format: .binary,
+                options: 0
+            ) else {
+                return
+            }
+            try? scrubbedData.write(to: cacheURL, options: .atomic) // try?-ok(best-effort cache rewrite)
+            return
+        }
+
+        // Legacy JSON fallback for caches not yet re-persisted as binary plist.
+        guard var root = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(best-effort cache decode)
               var entries = root["fileEntries"] as? [String: Any] else {
             return
         }
@@ -83,7 +128,7 @@ struct ParserConversationCacheScrubber {
         for (key, value) in entries {
             guard var entry = value as? [String: Any],
                   entry["conversation"] != nil else { continue }
-            entry["conversation"] = NSNull()
+            entry.removeValue(forKey: "conversation")
             entries[key] = entry
             mutated = true
         }
@@ -105,18 +150,18 @@ struct ParserConversationCacheScrubber {
 extension FileHandle {
     /// Buffered UTF-8 line reader for log files. Returns a lazy sequence so
     /// parsers do not load and split multi-megabyte logs into memory at startup.
-    func readAllUTF8Lines() -> BufferedLineSequence {
+    public func readAllUTF8Lines() -> BufferedLineSequence {
         BufferedLineSequence(fileHandle: self)
     }
 
-    func readLine() -> String? {
+    public func readLine() -> String? {
         var data = Data()
         var byte = readData(ofLength: 1)
         // EOF before reading any byte should terminate line iteration.
         if byte.isEmpty {
             return nil
         }
-        
+
         while !byte.isEmpty {
             if byte.first == Character("\n").asciiValue {
                 break
@@ -124,15 +169,15 @@ extension FileHandle {
             data.append(byte)
             byte = readData(ofLength: 1)
         }
-        
+
         return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .newlines)
     }
-    
-    func readLastLine() throws -> String? {
+
+    public func readLastLine() throws -> String? {
         // Read last ~4KB and find last newline
         seek(toFileOffset: max(0, offsetInFile - 4096))
         let data = readData(ofLength: 4096)
-        
+
         guard let content = String(data: data, encoding: .utf8) else { return nil }
         let lines = content.components(separatedBy: .newlines).filter { !$0.isEmpty }
         return lines.last

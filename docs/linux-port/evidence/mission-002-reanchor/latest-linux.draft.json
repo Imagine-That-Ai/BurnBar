@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "product": "OpenBurnBar",
+  "platform": "linux",
+  "version": "0.1.0",
+  "commit": "f0d6a85fe1d5cd3c5cc62ebaba235fa77f4d6fcc",
+  "generatedAt": "2026-07-09T18:20:00.346Z",
+  "promotionState": "candidate",
+  "primaryArtifact": {
+    "type": "appimage",
+    "file": "docs/linux-port/evidence/mission-002-reanchor/artifacts/OpenBurnBar_0.1.0_aarch64.AppImage",
+    "sourceFile": "apps/linux-desktop/src-tauri/target/release/bundle/appimage/OpenBurnBar_0.1.0_aarch64.AppImage",
+    "size": 80103944,
+    "sha256": "e545e6e452e054278b66b92af293ba607e8bd7b1c812e37e3d2400ad9183d0f5"
+  },
+  "artifacts": [
+    {
+      "type": "appimage",
+      "file": "docs/linux-port/evidence/mission-002-reanchor/artifacts/OpenBurnBar_0.1.0_aarch64.AppImage",
+      "sourceFile": "apps/linux-desktop/src-tauri/target/release/bundle/appimage/OpenBurnBar_0.1.0_aarch64.AppImage",
+      "size": 80103944,
+      "sha256": "e545e6e452e054278b66b92af293ba607e8bd7b1c812e37e3d2400ad9183d0f5"
+    },
+    {
+      "type": "deb",
+      "file": "docs/linux-port/evidence/mission-002-reanchor/artifacts/OpenBurnBar_0.1.0_arm64.deb",
+      "sourceFile": "apps/linux-desktop/src-tauri/target/release/bundle/deb/OpenBurnBar_0.1.0_arm64.deb",
+      "size": 53975410,
+      "sha256": "322ff158b4d61e2be2629b649eecd9a195b869639886ac23dfc6ec4fb34d660d"
+    },
+    {
+      "type": "rpm",
+      "file": "docs/linux-port/evidence/mission-002-reanchor/artifacts/OpenBurnBar-0.1.0-1.aarch64.rpm",
+      "sourceFile": "apps/linux-desktop/src-tauri/target/release/bundle/rpm/OpenBurnBar-0.1.0-1.aarch64.rpm",
+      "size": 72955734,
+      "sha256": "6bb31a65e1f0f6f5838acb85cff936b7c36a3474e63fc7ff801b0604508d693a"
+    },
+    {
+      "type": "daemon",
+      "file": "docs/linux-port/evidence/mission-002-reanchor/artifacts/openburnbar-daemon-0.1.0-linux-aarch64",
+      "sourceFile": "OpenBurnBarDaemon/.build/release/OpenBurnBarDaemon",
+      "size": 97396968,
+      "sha256": "c8c6185d84eb9575c509d8dd76f1f5aa5a883d25a66adf67340ced351bf09bbb"
+    }
+  ],
+  "sidecars": {
+    "checksums": "docs/linux-port/evidence/mission-002-reanchor/sidecars/OpenBurnBar-0.1.0-linux-checksums.txt",
+    "sbom": "docs/linux-port/evidence/mission-002-reanchor/sidecars/OpenBurnBar-0.1.0-linux.spdx.json",
+    "vex": "docs/linux-port/evidence/mission-002-reanchor/sidecars/OpenBurnBar-0.1.0-linux.openvex.json",
+    "provenancePredicate": "docs/linux-port/evidence/mission-002-reanchor/sidecars/OpenBurnBar-0.1.0-linux.provenance-predicate.json"
+  },
+  "blockers": []
+}

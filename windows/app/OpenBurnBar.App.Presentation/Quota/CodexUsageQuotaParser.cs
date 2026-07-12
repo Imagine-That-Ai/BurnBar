@@ -9,7 +9,7 @@ namespace OpenBurnBar.App.Presentation.Quota;
 //
 // Portable parse of the Codex usage API body (`GET
 // chatgpt.com/backend-api/wham/usage`). The auth/refresh + HTTP round-trip and
-// the local rollout-JSONL fallback scan are the adapter-deferred half; THIS is
+// the local rollout-JSONL fallback scan live in the acquisition adapter; THIS is
 // the pure API-response JSON → ProviderQuotaSnapshot transform, portable and
 // unit-tested on macOS.
 //

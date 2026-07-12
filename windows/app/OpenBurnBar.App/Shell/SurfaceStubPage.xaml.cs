@@ -1,20 +1,16 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
-using OpenBurnBar.App.Cli;
-using OpenBurnBar.App.Views;
 
 namespace OpenBurnBar.App.Shell;
 
 /// <summary>
-/// The placeholder page every stubbed NavigationView destination navigates to. It renders the
-/// destination's glyph/title/subtitle and, for Session Logs, hosts the live CLI stream so the
-/// frame is proven to host real controls. Real surfaces replace this per-key over Phase 3.
+/// Fallback when <see cref="SurfacePageResolver"/> has no product page for a key,
+/// and the intentional deferred-disclosure host for IA-1 <c>database</c> / <c>projects</c>
+/// until depth pages land. Never pretends to be a Real parity surface.
 /// </summary>
 public sealed partial class SurfaceStubPage : Page
 {
-    private LiveCliStreamView? _liveView;
-
     public SurfaceStubPage()
     {
         InitializeComponent();
@@ -30,25 +26,27 @@ public sealed partial class SurfaceStubPage : Page
         TitleText.Text = destination.Title;
         SubtitleText.Text = destination.Subtitle;
 
-        // Session Logs previews the live stream (the spike's original demo content).
-        if (destination.Key == "sessionLogs")
+        bool ia1 = SurfaceRouteMap.IsIa1DeferredDisclosure(destination.Key);
+        if (ia1)
         {
-            PlaceholderCard.Visibility = Visibility.Collapsed;
-            LiveHost.Visibility = Visibility.Visible;
-
-            _liveView = new LiveCliStreamView();
-            LiveHost.Child = _liveView;
-            _liveView.Attach(new StubCliStream(), autoStart: true);
+            StatusPillText.Text = "Coming soon · depth deferred (IA-1)";
+            NextStepText.Text = destination.Key switch
+            {
+                "database" =>
+                    "Session browsing will live here. Until then use Session Logs for indexed conversations, and keep this route as a honest macOS primary-section peer.",
+                "projects" =>
+                    "Project grouping will live here. Until then track work by provider and model on Dashboard — full project-code depth needs a later phase (WPD-0003).",
+                _ =>
+                    "This macOS primary route is registered but not depth-ported yet. Nothing is fabricated on this page.",
+            };
         }
-    }
+        else
+        {
+            StatusPillText.Text = "Unknown destination";
+            NextStepText.Text =
+                "This key is not a registered product surface. Use the sidebar or Command Palette to open a known destination.";
+        }
 
-    protected override void OnNavigatedFrom(NavigationEventArgs e)
-    {
-        base.OnNavigatedFrom(e);
-
-        // Stop the stream and release the host when navigating away.
-        _liveView?.Detach();
-        _liveView = null;
-        LiveHost.Child = null;
+        PlaceholderCard.Visibility = Visibility.Visible;
     }
 }

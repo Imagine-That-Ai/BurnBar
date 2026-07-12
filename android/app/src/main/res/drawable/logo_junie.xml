@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- JetBrains Junie mark (official 32x32 glyph), brand green #48E054. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="32"
+    android:viewportHeight="32">
+    <path
+        android:fillColor="#48E054"
+        android:pathData="M21,11.0001L31,11V12.6638C31,24.3042 25.9621,31 12.6638,31H11V21H12.6638C18.4811,21 21,18.4749 21,12.6576V11.0001Z" />
+    <path
+        android:fillColor="#48E054"
+        android:pathData="M11,11H1V21H11V11Z" />
+    <path
+        android:fillColor="#48E054"
+        android:pathData="M21,1H11V11H21V1Z" />
+</vector>

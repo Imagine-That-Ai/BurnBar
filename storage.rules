@@ -2,13 +2,18 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
+    function isActiveOwner(userId) {
+      return request.auth != null
+        && request.auth.uid == userId
+        && !firestore.exists(/databases/(default)/documents/account_erasure_tombstones/$(userId));
+    }
+
     match /users/{userId}/session_logs/{allPaths=**} {
       // Direct SDK access is owner-only. Production uploads/downloads use
       // short-lived signed URLs issued by Cloud Functions after a live
       // BurnBar Pro entitlement check.
-      allow read: if request.auth != null && request.auth.uid == userId;
-      allow write: if request.auth != null
-        && request.auth.uid == userId
+      allow read: if isActiveOwner(userId);
+      allow write: if isActiveOwner(userId)
         && request.resource.size < 10 * 1024 * 1024
         && request.resource.contentType == 'application/octet-stream';
     }
@@ -21,9 +26,8 @@ service firebase.storage {
       // `getProfileAvatarDownloadUrl`; relationship-scoped cross-user avatar
       // distribution must be added through a callable, not by reopening bucket
       // reads. Owner can write (≤2 MB JPEG).
-      allow read: if request.auth != null && request.auth.uid == userId;
-      allow write: if request.auth != null
-        && request.auth.uid == userId
+      allow read: if isActiveOwner(userId);
+      allow write: if isActiveOwner(userId)
         && request.resource.size < 2 * 1024 * 1024
         && request.resource.contentType == 'image/jpeg';
     }

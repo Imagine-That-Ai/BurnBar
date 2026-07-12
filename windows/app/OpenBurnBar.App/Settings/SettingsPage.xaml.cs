@@ -5,6 +5,7 @@
 // and lets that page consume the router's pending anchor (the WinUI realization of
 // SettingsView.swift's sidebar + detail NavigationStack + `.searchable`).
 
+using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
@@ -155,7 +156,15 @@ public sealed partial class SettingsPage : Page
     {
         SettingsTab.General => typeof(GeneralSettingsPage),
         SettingsTab.Updates => typeof(UpdatesSettingsPage),
-        _ => typeof(SettingsPlaceholderPage),
+        SettingsTab.DataPrivacy => typeof(DataSourceSettingsPage),
+        // Every catalog ViewModel tab gets a real host page (no empty-leaf fallthrough).
+        SettingsTab.Daemon or SettingsTab.Agents or SettingsTab.ModelProxy or SettingsTab.Alerts
+            or SettingsTab.Notifications or SettingsTab.TextExpansion or SettingsTab.ComputerUse
+            or SettingsTab.Pets or SettingsTab.Account or SettingsTab.Cloud
+            or SettingsTab.DevicesAndSync or SettingsTab.Media
+            => typeof(SettingsViewModelHostPage),
+        SettingsTab.Home => typeof(GeneralSettingsPage),
+        _ => typeof(SettingsViewModelHostPage),
     };
 
     private static Type PageTypeForRoute(SettingsPageRoute route, SettingsTab tab) => route switch

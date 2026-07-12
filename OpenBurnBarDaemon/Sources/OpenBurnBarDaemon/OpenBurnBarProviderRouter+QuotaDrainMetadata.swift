@@ -10,6 +10,7 @@ extension BurnBarProviderRouter {
         let lastQuotaRemainingPercent: Double?
         let latencyMs: Double
         let isPreferredSlot: Bool
+        let priority: Int?
     }
 
     func buildSlotInfoMap(
@@ -29,6 +30,7 @@ extension BurnBarProviderRouter {
                     let slot = resolvedSlot.slot
                     let latencyMs = estimateLatencyMs(for: resolvedSlot)
                     let isPreferred = config.settings.preferredCredentialSlotID == slotID
+                    let priority = config.settings.ollamaEndpoints.first { $0.id == slotID }?.priority
                     slotMap[key] = SlotInfo(
                         status: slot.status,
                         cooldownUntil: slot.cooldownUntil,
@@ -36,7 +38,8 @@ extension BurnBarProviderRouter {
                         lastQuotaResetsAt: slot.lastQuotaResetsAt,
                         lastQuotaRemainingPercent: slot.lastQuotaRemainingPercent,
                         latencyMs: latencyMs,
-                        isPreferredSlot: isPreferred
+                        isPreferredSlot: isPreferred,
+                        priority: priority
                     )
                 }
             }

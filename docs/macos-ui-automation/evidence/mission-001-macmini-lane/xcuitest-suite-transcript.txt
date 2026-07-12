@@ -1,0 +1,12 @@
+# XCUITest suite run transcript
+host: Tikkas-Mac-mini | macOS 27.0 | arm64 | Xcode 27.0
+gatekeeper: assessments disabled | date_utc: 2026-07-09T08:25:00Z
+---
+status: {"endedAt": "2026-07-09T08:24:20Z", "exitCode": 0, "kind": "xcuitest", "startedAt": "2026-07-09T08:23:08Z"}
+---
+Test Case '-[OpenBurnBarUITests.DashboardUITests testDashboardRendersWithLayoutSwitcher]' passed (9.044 seconds).
+Test Case '-[OpenBurnBarUITests.DashboardUITests testDashboardViewModeSwitcherIsInteractive]' passed (19.929 seconds).
+Test Case '-[OpenBurnBarUITests.LaunchSmokeTests testLaunchShowsDashboardOrStatusItem]' passed (4.575 seconds).
+Test Case '-[OpenBurnBarUITests.ProviderRowsUITests testAgentsSettingsRowIsNavigable]' passed (14.823 seconds).
+Test Case '-[OpenBurnBarUITests.SettingsNavigationUITests testSettingsSidebarRowsReachComputerUse]' passed (21.596 seconds).
+Test Suite 'All tests' passed at 2026-07-09 03:24:19.706.

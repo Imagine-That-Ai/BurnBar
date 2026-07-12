@@ -14,8 +14,10 @@ struct MercuryActionStack: View {
     let canSendFile: Bool
     let mirrorAutoAccept: Bool
     let awaitingRequestID: String?
+    let pendingCallRequestID: String?
     let sendingFile: Bool
     let mercuryStatusMessage: String?
+    let callStatusMessage: String?
     let onRequestMirror: () -> Void
     let onPlaceCall: () -> Void
     let onSendFile: () -> Void
@@ -25,9 +27,7 @@ struct MercuryActionStack: View {
         VStack(spacing: 14) {
             ForEach(order) { action in
                 row(for: action)
-                if action == .mirror {
-                    statusRow
-                }
+                statusRow(for: action)
             }
         }
     }
@@ -51,9 +51,9 @@ struct MercuryActionStack: View {
         case .call:
             Button(action: onPlaceCall) {
                 HStack(spacing: 12) {
-                    Image(systemName: action.icon)
+                    Image(systemName: pendingCallRequestID == nil ? action.icon : "hourglass")
                         .font(.system(size: 14))
-                    Text(action.displayName)
+                    Text(pendingCallRequestID == nil ? action.displayName : "Calling Mac...")
                 }
                 .frame(maxWidth: .infinity)
             }
@@ -77,8 +77,9 @@ struct MercuryActionStack: View {
     }
 
     @ViewBuilder
-    private var statusRow: some View {
-        if order.contains(.mirror) {
+    private func statusRow(for action: MercuryQuickAction) -> some View {
+        switch action {
+        case .mirror:
             if awaitingRequestID != nil {
                 statusText(mirrorAutoAccept ? "Opening mirror on your Mac..." : "Request sent. Check your Mac.")
             } else if let status = mercuryStatusMessage {
@@ -86,6 +87,16 @@ struct MercuryActionStack: View {
             } else if !peer.isOnline {
                 statusText("Mercury is still connecting. Ask will wait for the Mac and show the real error if it cannot connect.")
             }
+        case .call:
+            if pendingCallRequestID != nil {
+                statusText("Calling Mac. Check the incoming prompt on your Mac.")
+            } else if let callStatus = callStatusMessage {
+                statusText(callStatus)
+            } else if !peer.isOnline && !order.contains(.mirror) {
+                statusText("Mercury is still connecting. Ask will wait for the Mac and show the real error if it cannot connect.")
+            }
+        case .sendFile:
+            EmptyView()
         }
     }
 

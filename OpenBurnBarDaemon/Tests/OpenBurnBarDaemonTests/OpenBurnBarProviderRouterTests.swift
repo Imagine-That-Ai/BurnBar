@@ -329,6 +329,83 @@ final class BurnBarProviderRouterTests: XCTestCase {
         XCTAssertTrue(route.apiKey.isEmpty, "Local routing carries no credential.")
     }
 
+    func testLocalOllamaEndpointsEmitDistinctRouteSlots() async throws {
+        let harness = try makeHarness(name: "ollama-local-endpoint-slots", allowDynamicModels: true)
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "ollama-local",
+                isEnabled: true,
+                baseURL: "http://localhost:11434/v1",
+                preferredModelIDs: [],
+                ollamaEndpoints: [
+                    BurnBarOllamaEndpointConfig(id: "edge-b", baseURL: "http://127.0.0.1:21435", label: "Edge B", priority: 10),
+                    BurnBarOllamaEndpointConfig(id: "edge-a", baseURL: "http://127.0.0.1:21434", label: "Edge A", priority: 0)
+                ]
+            )
+        )
+
+        let candidates = try await harness.router.candidateRoutes(
+            modelName: "qwen2.5:3b",
+            preferredProviderID: "ollama-local"
+        )
+
+        XCTAssertEqual(candidates.map(\.providerID), ["ollama-local", "ollama-local"])
+        XCTAssertEqual(candidates.map(\.credentialSlotID), ["edge-a", "edge-b"])
+        XCTAssertEqual(candidates.map(\.credentialSlotLabel), ["Edge A", "Edge B"])
+        XCTAssertEqual(candidates.map(\.baseURL), ["http://127.0.0.1:21434", "http://127.0.0.1:21435"])
+        XCTAssertTrue(candidates.allSatisfy { $0.apiKey.isEmpty })
+
+        let ranking = try await harness.router.scoreAndRankRoutes(
+            modelName: "qwen2.5:3b",
+            preferredProviderID: "ollama-local"
+        )
+        let event = harness.router.routingDecisionEvent(ranking: ranking, modelName: "qwen2.5:3b")
+        XCTAssertEqual(event.selectedAccountID, "edge-a")
+        XCTAssertEqual(event.nextFallbackAccountID, "edge-b")
+    }
+
+    func testLocalOllamaEndpointFailureCoolsOnlyFailedEndpoint() async throws {
+        let harness = try makeHarness(name: "ollama-local-endpoint-cooldown", allowDynamicModels: true)
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "ollama-local",
+                isEnabled: true,
+                baseURL: "http://localhost:11434/v1",
+                preferredModelIDs: [],
+                ollamaEndpoints: [
+                    BurnBarOllamaEndpointConfig(id: "edge-a", baseURL: "http://127.0.0.1:21434", label: "Edge A", priority: 0),
+                    BurnBarOllamaEndpointConfig(id: "edge-b", baseURL: "http://127.0.0.1:21435", label: "Edge B", priority: 10)
+                ]
+            )
+        )
+
+        let failedRoute = try await harness.router.route(
+            modelName: "qwen2.5:3b",
+            preferredProviderID: "ollama-local"
+        )
+        XCTAssertEqual(failedRoute.credentialSlotID, "edge-a")
+
+        await harness.router.markRouteFailure(
+            failedRoute,
+            error: URLError(.cannotConnectToHost)
+        )
+
+        let snapshot = try await harness.configStore.snapshot()
+        let localOllama = try XCTUnwrap(snapshot.providerSettings(id: "ollama-local"))
+        let edgeA = try XCTUnwrap(localOllama.credentialSlots.first { $0.slotID == "edge-a" })
+        let edgeB = try XCTUnwrap(localOllama.credentialSlots.first { $0.slotID == "edge-b" })
+        XCTAssertEqual(edgeA.status, .coolingDown)
+        XCTAssertNotNil(edgeA.cooldownUntil)
+        XCTAssertEqual(edgeB.status, .ready)
+        XCTAssertNil(edgeB.cooldownUntil)
+
+        let candidates = try await harness.router.candidateRoutes(
+            modelName: "qwen2.5:3b",
+            preferredProviderID: "ollama-local"
+        )
+        XCTAssertEqual(candidates.map(\.credentialSlotID), ["edge-b"])
+    }
+
     func testRouterLocalProviderDoesNotShadowCatalogModels() async throws {
         let harness = try makeHarness(name: "ollama-local-no-shadow", allowDynamicModels: true)
 

@@ -17,7 +17,7 @@ struct MercuryBadgePicker: View {
                     chip(for: kind)
                 }
             }
-            Text("Pick up to two badges. Some kinds (Battery, Hostname, IP, Foreground app) light up once your Mac advertises them — for now they render a placeholder.")
+            Text("Pick up to two badges to show on your device card. Battery, Hostname, IP, and Foreground app light up once your Mac starts sharing that info.")
                 .font(.system(size: 11, design: .rounded))
                 .foregroundStyle(Color.white.opacity(0.4))
                 .multilineTextAlignment(.leading)

@@ -1,6 +1,11 @@
 import Foundation
+#if canImport(LocalAuthentication)
 import LocalAuthentication
+#endif
 import OpenBurnBarComputerUseCore
+#if canImport(OpenBurnBarLinuxSecurity)
+import OpenBurnBarLinuxSecurity
+#endif
 
 enum DesktopGrantLocalAuthenticator {
     enum AuthError: Error {
@@ -26,6 +31,7 @@ enum DesktopGrantLocalAuthenticator {
     }
 
     private static func authenticate(reason: String) async throws -> Bool {
+        #if os(macOS) && canImport(LocalAuthentication)
         let context = LAContext()
         var error: NSError?
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
@@ -40,5 +46,20 @@ enum DesktopGrantLocalAuthenticator {
                 }
             }
         }
+        #elseif os(Linux) && canImport(OpenBurnBarLinuxSecurity)
+        let authenticator = LinuxDesktopOwnerAuthenticator()
+        do {
+            return try await authenticator.authenticate(reason: reason).localAuthenticationSatisfied
+        } catch let error as LinuxDesktopOwnerAuthenticationError {
+            switch error {
+            case .localAuthUnavailable, .polkitUnavailable, .pamUnavailable, .unsupportedPlatform:
+                throw AuthError.unavailable
+            case .polkitDenied, .pamDenied:
+                throw AuthError.failed
+            }
+        }
+        #else
+        throw AuthError.unavailable
+        #endif
     }
 }

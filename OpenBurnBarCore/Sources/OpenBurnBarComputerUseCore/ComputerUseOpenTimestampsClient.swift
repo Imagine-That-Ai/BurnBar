@@ -1,5 +1,8 @@
 import Foundation
-import CryptoKit
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+import OpenBurnBarKernel
 
 /// Pure-Swift OpenTimestamps client for Phase 13 chain notarization.
 ///
@@ -61,8 +64,7 @@ public final class ComputerUseOpenTimestampsClient: Sendable {
     /// digest stamped here.
     public func notarize(chainFileAt chainURL: URL) async throws -> Data {
         let chainBytes = try Data(contentsOf: chainURL)
-        let digest = SHA256.hash(data: chainBytes)
-        return try await notarize(digest: Data(digest))
+        return try await notarize(digest: PlatformCrypto.sha256(chainBytes))
     }
 
     /// Hash + submit the chain-head hash to the calendar server.
@@ -71,8 +73,7 @@ public final class ComputerUseOpenTimestampsClient: Sendable {
     /// `chain.jsonl`. This remains available for callers that explicitly
     /// persist and verify a head-hash payload instead of the chain file.
     public func notarize(auditChainHeadHashHex: String) async throws -> Data {
-        let digest = SHA256.hash(data: Data(auditChainHeadHashHex.utf8))
-        return try await notarize(digest: Data(digest))
+        return try await notarize(digest: PlatformCrypto.sha256(Data(auditChainHeadHashHex.utf8)))
     }
 
     /// Submit a raw 32-byte digest. OTS calendar servers reject longer

@@ -8,21 +8,22 @@
 //     --artifact path/to/OpenBurnBar-Setup-1.4.2.msix \
 //     --download-url https://dl.openburnbar.app/OpenBurnBar-Setup-1.4.2.msix \
 //     --appcast-url https://dl.openburnbar.app/appcast-windows.xml \
-//     --ed-seed-file path/to/dev-ed25519-seed.hex \
+//     --ed-seed-base64-env WINDOWS_UPDATE_SIGNING_KEY \
 //     --appcast-out appcast-windows.xml --json-out latest-windows.json \
 //     [--critical] [--min-system-version 10.0.19041] [--release-notes-url URL] \
 //     [--commit SHA] [--pub-date "Fri, 04 Jul 2026 00:00:00 GMT"] \
 //     [--created-at 2026-07-04T00:00:00Z] [--package OpenBurnBar-Setup-1.4.2.msix]
 //
-// The private seed is a 64-hex-char (32-byte) Ed25519 seed. At release time it
-// is the W0 pinned key from a CI secret; for the committed sample it is the
-// throwaway DEV seed documented in ../feed/README.md.
+// At release time the private seed is read as base64 from the W0 CI secret.
+// Local sample generation can still use a 64-hex-char (32-byte) seed via
+// --ed-seed or --ed-seed-file.
 
 using System;
 using System.Collections.Generic;
 using System.IO;
 using OpenBurnBar.Updater.Core.Crypto;
 using OpenBurnBar.Updater.Core.Feed;
+using OpenBurnBar.Updater.Core.Verification;
 
 namespace OpenBurnBar.Updater.Generator;
 
@@ -62,11 +63,22 @@ internal static class Program
             var jsonOut = Require(options, "json-out");
             File.WriteAllText(appcastOut, AppcastFeedWriter.Write(descriptor));
             File.WriteAllText(jsonOut, JsonFeedWriter.Write(descriptor));
+            VerifyGeneratedFeed(
+                appcastOut,
+                FeedFormat.Appcast,
+                keyPair.PublicKeyBase64,
+                artifactBytes);
+            VerifyGeneratedFeed(
+                jsonOut,
+                FeedFormat.Json,
+                keyPair.PublicKeyBase64,
+                artifactBytes);
 
             Console.Error.WriteLine(
                 $"generate-windows-appcast: wrote {appcastOut} + {jsonOut} " +
                 $"(version={descriptor.Version} length={descriptor.Length} " +
-                $"sha256={descriptor.Sha256} pinnedKey={keyPair.PublicKeyBase64})");
+                $"sha256={descriptor.Sha256} pinnedKey={keyPair.PublicKeyBase64} " +
+                "verified=appcast,json)");
             return 0;
         }
         catch (Exception ex)
@@ -76,8 +88,65 @@ internal static class Program
         }
     }
 
+    private static void VerifyGeneratedFeed(
+        string feedPath,
+        FeedFormat format,
+        string publicKeyBase64,
+        byte[] artifactBytes)
+    {
+        var verifier = UpdateFeedVerifier.TryCreate(publicKeyBase64)
+            ?? throw new InvalidDataException("Generated update-feed public key is invalid.");
+        var feedText = File.ReadAllText(feedPath);
+        var manifest = format switch
+        {
+            FeedFormat.Appcast => AppcastFeedReader.TryParse(feedText),
+            FeedFormat.Json => JsonFeedReader.TryParse(feedText),
+            _ => null,
+        };
+        if (manifest is null)
+        {
+            throw new InvalidDataException($"Generated {format} feed could not be parsed.");
+        }
+
+        var verification = verifier.VerifyArtifact(manifest, artifactBytes);
+        if (!verification.Verified)
+        {
+            throw new InvalidDataException(
+                $"Generated {format} feed failed artifact verification: {verification.Reason}.");
+        }
+    }
+
     private static Ed25519UpdateKeyPair LoadKeyPair(IReadOnlyDictionary<string, string> options)
     {
+        if (options.TryGetValue("ed-seed-base64-env", out var seedEnvironmentVariable))
+        {
+            var encodedSeed = Environment.GetEnvironmentVariable(seedEnvironmentVariable);
+            if (string.IsNullOrWhiteSpace(encodedSeed))
+            {
+                throw new ArgumentException(
+                    $"Environment variable {seedEnvironmentVariable} is empty.");
+            }
+
+            byte[] decodedSeed;
+            try
+            {
+                decodedSeed = Convert.FromBase64String(encodedSeed.Trim());
+            }
+            catch (FormatException)
+            {
+                throw new ArgumentException(
+                    $"Environment variable {seedEnvironmentVariable} must contain a base64 Ed25519 seed.");
+            }
+
+            if (decodedSeed.Length != Ed25519Sizes.KeySize)
+            {
+                throw new ArgumentException(
+                    $"Environment variable {seedEnvironmentVariable} must decode to exactly 32 bytes.");
+            }
+
+            return Ed25519UpdateKeyPair.FromSeed(decodedSeed);
+        }
+
         var seedHex = options.GetValueOrDefault("ed-seed");
         if (seedHex is null && options.TryGetValue("ed-seed-file", out var seedFile))
         {
@@ -86,7 +155,8 @@ internal static class Program
 
         if (string.IsNullOrWhiteSpace(seedHex))
         {
-            throw new ArgumentException("Missing --ed-seed or --ed-seed-file (64-hex-char Ed25519 seed).");
+            throw new ArgumentException(
+                "Missing --ed-seed-base64-env, --ed-seed, or --ed-seed-file.");
         }
 
         byte[] seed;

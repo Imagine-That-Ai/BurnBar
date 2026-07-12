@@ -4,7 +4,7 @@
 #
 # CEILING (honest): the InstallerSha256 values below are RELEASE-STAMPED placeholders
 # (64 zero-hex, schema-valid format). The signed MSIX artifacts don't exist until a
-# Windows runner packs + Authenticode/Trusted-Signing signs them with the W0 cert, so
+# Windows runner packs + Authenticode/Artifact Signing signs them, so
 # the real per-arch SHA256, plus SignatureSha256 and PackageFamilyName (both derived
 # from the signed package), are filled in by the release pipeline. The commented
 # SignatureSha256 / PackageFamilyName lines mark exactly where those land.

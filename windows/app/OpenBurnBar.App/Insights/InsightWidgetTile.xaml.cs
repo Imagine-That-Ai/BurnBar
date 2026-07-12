@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -50,10 +51,42 @@ public sealed partial class InsightWidgetTile : UserControl
             InsightRenderKind.Narrative when data is NarrativeData n => BuildNarrative(n),
             InsightRenderKind.Recommendation when data is RecommendationData r => BuildRecommendation(r),
             InsightRenderKind.Skeleton => BuildMessage("Loading…"),
-            InsightRenderKind.Empty when data is EmptyData e => BuildMessage(e.Reason),
+            InsightRenderKind.Empty when data is EmptyData e => BuildEmpty(e.Reason),
             InsightRenderKind.Error when data is ErrorData err => BuildMessage(err.Message, ErrorColor),
             _ => BuildChart(data, theme),
         };
+    }
+
+    /// <summary>
+    /// Hierarchical empty chrome: short primary label + full reason so tiles cannot be
+    /// misread as live metrics or as a blank broken chart (H0 honesty UX).
+    /// </summary>
+    private static UIElement BuildEmpty(string reason)
+    {
+        var stack = new StackPanel
+        {
+            Spacing = 6,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        stack.Children.Add(new TextBlock
+        {
+            Text = "No data",
+            FontSize = 13,
+            FontWeight = FontWeights.SemiBold,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Foreground = new SolidColorBrush(TextBright),
+        });
+        stack.Children.Add(new TextBlock
+        {
+            Text = reason,
+            FontSize = 11,
+            TextWrapping = TextWrapping.Wrap,
+            TextAlignment = TextAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Foreground = new SolidColorBrush(TextMuted),
+        });
+        return stack;
     }
 
     private UIElement BuildChart(InsightWidgetData? data, InsightTheme theme)

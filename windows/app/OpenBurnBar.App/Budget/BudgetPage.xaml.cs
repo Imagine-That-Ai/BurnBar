@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
 using OpenBurnBar.App.Presentation.Budget;
+using OpenBurnBar.App.Storage;
 
 namespace OpenBurnBar.App.Budget;
 
@@ -14,13 +15,13 @@ namespace OpenBurnBar.App.Budget;
 /// <see cref="BudgetSettingsModel"/> (unit-tested on macOS). Registered as the "budget"
 /// destination in the AppShell NavigationView.
 ///
-/// Dev-host content: the model is backed by an <see cref="InMemoryBudgetRuleStore"/> seeded
-/// with sample rules (the Windows analog of the SessionLogs live-stream stub) until the
-/// SQLCipher-backed store lands in a later storage wave.
+/// Dev-host: <see cref="WindowsStorageDevHost.CreateBudgetRuleStore"/> uses SQLCipher when
+/// configured. Without credentials it creates an empty editable store; <see cref="SeedRules"/>
+/// is used only when <c>OPENBURNBAR_SAMPLE_MODE=1</c>.
 /// </summary>
 public sealed partial class BudgetPage : Page
 {
-    private BudgetSettingsModel _settings = new(new InMemoryBudgetRuleStore());
+    private BudgetSettingsModel _settings = new(WindowsStorageDevHost.CreateBudgetRuleStore());
 
     public BudgetPage()
     {
@@ -36,7 +37,7 @@ public sealed partial class BudgetPage : Page
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         Loaded -= OnLoaded;
-        _settings = new BudgetSettingsModel(new InMemoryBudgetRuleStore(SeedRules()));
+        _settings = new BudgetSettingsModel(WindowsStorageDevHost.CreateBudgetRuleStore(SeedRules()));
         await _settings.RefreshAsync();
 
         GlobalList.ItemsSource = _settings.GlobalRuleItems;

@@ -17,6 +17,7 @@ typealias TokenUsage = OpenBurnBarCore.TokenUsage
 typealias UsageProvenanceMethod = OpenBurnBarCore.UsageProvenanceMethod
 typealias UsageProvenanceConfidence = OpenBurnBarCore.UsageProvenanceConfidence
 typealias UsageSource = OpenBurnBarCore.UsageSource
+typealias EscrowDeviceTrustState = OpenBurnBarCore.EscrowDeviceTrustState
 
 // MARK: - Provider Support Level (Mac-only)
 
@@ -88,13 +89,14 @@ extension AgentProvider {
         case .xAI: return "summary.json"
         case .mimo: return "mimo-no-local-logs"
         case .openBurnBar: return "openburnbar-no-local-logs"
+        case .junie: return "*.jsonl"
         }
     }
 
     /// How well the macOS app supports this provider's local data.
     var supportLevel: ProviderSupportLevel {
         switch self {
-        case .factory, .claudeCode, .codex, .openCode, .omp, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .antigravity, .goose, .xAI, .cursorAgent, .openClaude:
+        case .factory, .claudeCode, .codex, .openCode, .omp, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .antigravity, .goose, .xAI, .cursorAgent, .openClaude, .junie:
             return .supported
         // OpenAI is supported via the official org usage endpoint — no log
         // parsing, but exact aggregate counts.
@@ -113,7 +115,7 @@ extension AgentProvider {
     /// provider's local artifacts.
     var dataConfidence: DataConfidence {
         switch self {
-        case .factory, .claudeCode, .codex, .openCode, .omp, .kimi, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .antigravity, .goose, .openClaw, .piAgent, .xAI, .cursorAgent, .openClaude:
+        case .factory, .claudeCode, .codex, .openCode, .omp, .kimi, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .antigravity, .goose, .openClaw, .piAgent, .xAI, .cursorAgent, .openClaude, .junie:
             return .exact
         // OpenAI exposes exact tokens-used per org via the usage API.
         case .openAI, .deepSeek, .openBurnBar:

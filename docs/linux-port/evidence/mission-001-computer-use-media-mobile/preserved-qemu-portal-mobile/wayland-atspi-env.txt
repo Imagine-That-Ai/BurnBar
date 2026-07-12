@@ -1,0 +1,3 @@
+DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/dbus-mEwwrBpWqH,guid=b27014e0e2de48293fce3e0c6a49199d
+WAYLAND_DISPLAY=wayland-1
+SWAYSOCK=/run/user/0/sway-ipc.0.811.sock

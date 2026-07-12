@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - Anthropic Usage API
 
@@ -21,7 +22,7 @@ final class AnthropicUsageAPI: ProviderUsageAPI, Sendable {
     func validate() async throws -> Bool {
         let now = Date()
         let oneDayAgo = now.addingTimeInterval(-86400)
-        let url = buildURL(startTime: oneDayAgo, endTime: now, granularity: "1d")
+        let url = try buildURL(startTime: oneDayAgo, endTime: now, granularity: "1d")
         var request = URLRequest(url: url)
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
@@ -33,7 +34,7 @@ final class AnthropicUsageAPI: ProviderUsageAPI, Sendable {
 
     func fetchUsage(since: Date) async throws -> [ProviderUsageRecord] {
         let now = Date()
-        let url = buildURL(startTime: since, endTime: now, granularity: "1d", groupBy: "model")
+        let url = try buildURL(startTime: since, endTime: now, granularity: "1d", groupBy: "model")
 
         var request = URLRequest(url: url)
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
@@ -81,8 +82,10 @@ final class AnthropicUsageAPI: ProviderUsageAPI, Sendable {
         endTime: Date,
         granularity: String,
         groupBy: String? = nil
-    ) -> URL {
-        var components = URLComponents(string: "\(baseURL)/usage_report/messages")!
+    ) throws -> URL {
+        guard var components = URLComponents(string: "\(baseURL)/usage_report/messages") else {
+            throw ProviderUsageAPIError.invalidResponse
+        }
         var items: [URLQueryItem] = [
             URLQueryItem(name: "start_time", value: iso8601(startTime)),
             URLQueryItem(name: "end_time", value: iso8601(endTime)),
@@ -92,8 +95,10 @@ final class AnthropicUsageAPI: ProviderUsageAPI, Sendable {
             items.append(URLQueryItem(name: "group_by", value: groupBy))
         }
         components.queryItems = items
-        // URLComponents.url is guaranteed non-nil here — scheme, host, and path are hardcoded
-        return components.url ?? URL(string: "\(baseURL)/usage_report/messages")!
+        guard let url = components.url else {
+            throw ProviderUsageAPIError.invalidResponse
+        }
+        return url
     }
 
     private func parseBucket(_ bucket: [String: Any]) -> [ProviderUsageRecord] {
@@ -110,7 +115,7 @@ final class AnthropicUsageAPI: ProviderUsageAPI, Sendable {
         guard input > 0 || output > 0 || cachedInput > 0 || cacheCreation > 0 else { return [] }
 
         // Anthropic doesn't return cost directly — compute from pricing
-        let pricing = ModelPricing.lookup(model: model)
+        let pricing = OpenBurnBarCore.ModelPricing.lookup(model: model)
         let cost = pricing.cost(
             inputTokens: input,
             outputTokens: output,

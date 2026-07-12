@@ -15,6 +15,7 @@ final class AccountStore {
 
     private let authRepo: AuthRepository
     private let firestore: FirestoreRepository
+    private let profileDefaults: UserDefaults
 
     private(set) var user: User?
     private(set) var isSignedIn = false
@@ -40,10 +41,12 @@ final class AccountStore {
 
     init(
         authRepo: AuthRepository = AuthRepository(),
-        firestore: FirestoreRepository = FirestoreRepository()
+        firestore: FirestoreRepository = FirestoreRepository(),
+        profileDefaults: UserDefaults = .standard
     ) {
         self.authRepo = authRepo
         self.firestore = firestore
+        self.profileDefaults = profileDefaults
         self.isSignedIn = authRepo.isSignedIn
         self.user = authRepo.currentUser
 
@@ -74,6 +77,7 @@ final class AccountStore {
             async let accountsTask = firestore.fetchProviderAccounts()
             connections = try await connectionsTask
             providerAccounts = try await accountsTask
+            refreshProfilesFromLoadedAccounts()
             syncHealth = .healthy
         } catch {
             self.error = error.localizedDescription
@@ -102,35 +106,131 @@ final class AccountStore {
 
     func loadProfiles() async {
         isLoading = true
+        error = nil
         defer { isLoading = false }
 
-        // For now, derive profiles from the current Firebase user + any
-        // cached switcher profiles stored in UserDefaults.
-        // Full multi-account support requires deeper integration with
-        // the macOS switcher system.
-        var loaded: [BurnBarProfile] = []
-        if let user = authRepo.currentUser {
-            loaded.append(BurnBarProfile(
-                id: user.uid,
-                displayName: user.displayName ?? user.email ?? "Current Account",
-                email: user.email,
-                photoURL: user.photoURL,
-                isActive: true
-            ))
+        do {
+            providerAccounts = try await firestore.fetchProviderAccounts()
+            refreshProfilesFromLoadedAccounts()
+            syncHealth = .healthy
+        } catch {
+            self.error = error.localizedDescription
+            syncHealth = .error
+            refreshProfilesFromLoadedAccounts()
         }
-        profiles = loaded
-        activeProfile = loaded.first { $0.isActive }
     }
 
     func switchTo(_ profile: BurnBarProfile) async {
-        // In the full implementation this would swap Firebase auth contexts.
-        // For now we just update the active marker.
+        if profiles.contains(where: { $0.id == profile.id }) == false {
+            await loadProfiles()
+        }
+        guard profiles.contains(where: { $0.id == profile.id }) else { return }
+        profileDefaults.set(profile.id, forKey: activeProfileDefaultsKey())
         profiles = profiles.map {
             var p = $0
             p.isActive = (p.id == profile.id)
             return p
         }
-        activeProfile = profile
+        activeProfile = profiles.first { $0.id == profile.id }
+    }
+
+    private func refreshProfilesFromLoadedAccounts() {
+        profiles = Self.deriveProfiles(
+            currentProfile: currentFirebaseProfile(),
+            providerAccounts: providerAccounts,
+            activeProfileID: profileDefaults.string(forKey: activeProfileDefaultsKey())
+        )
+        activeProfile = profiles.first { $0.isActive }
+    }
+
+    private func currentFirebaseProfile() -> BurnBarProfile? {
+        guard let user = authRepo.currentUser else { return nil }
+        return BurnBarProfile(
+            id: user.uid,
+            displayName: user.displayName ?? user.email ?? "Current Account",
+            email: user.email,
+            photoURL: user.photoURL,
+            isActive: false
+        )
+    }
+
+    private func activeProfileDefaultsKey() -> String {
+        let uid = authRepo.currentUser?.uid ?? "anonymous"
+        return "OpenBurnBarMobile.AccountStore.activeProfile.\(uid)"
+    }
+
+    nonisolated static func deriveProfiles(
+        currentProfile: BurnBarProfile?,
+        providerAccounts: [ProviderAccountDoc],
+        activeProfileID: String?
+    ) -> [BurnBarProfile] {
+        var loaded: [BurnBarProfile] = []
+        var seen = Set<String>()
+
+        if let currentProfile {
+            loaded.append(currentProfile)
+            _ = seen.insert(currentProfile.id)
+        }
+
+        let accounts = providerAccounts
+            .filter { $0.status != .deleted }
+            .sorted { lhs, rhs in
+                if lhs.sortKey != rhs.sortKey { return lhs.sortKey < rhs.sortKey }
+                if lhs.providerID.rawValue != rhs.providerID.rawValue {
+                    return lhs.providerID.rawValue < rhs.providerID.rawValue
+                }
+                return lhs.id < rhs.id
+            }
+
+        for account in accounts {
+            let profileID = Self.profileID(for: account)
+            guard seen.insert(profileID).inserted else { continue }
+            loaded.append(BurnBarProfile(
+                id: profileID,
+                displayName: Self.profileDisplayName(for: account),
+                email: Self.emailLikeIdentityHint(account.identityHint),
+                photoURL: nil,
+                isActive: false
+            ))
+        }
+
+        let resolvedActiveID: String? = {
+            if let activeProfileID, loaded.contains(where: { $0.id == activeProfileID }) {
+                return activeProfileID
+            }
+            return currentProfile?.id ?? loaded.first?.id
+        }()
+
+        return loaded.map { profile in
+            var copy = profile
+            copy.isActive = profile.id == resolvedActiveID
+            return copy
+        }
+    }
+
+    private nonisolated static func profileID(for account: ProviderAccountDoc) -> String {
+        if let linked = nonEmpty(account.linkedSwitcherProfileID) {
+            return "switcher:\(linked)"
+        }
+        return "provider-account:\(account.id)"
+    }
+
+    private nonisolated static func profileDisplayName(for account: ProviderAccountDoc) -> String {
+        if let label = nonEmpty(account.label) {
+            return label
+        }
+        return AgentProvider.fromProviderID(account.providerID)?.displayName ?? account.providerID.rawValue
+    }
+
+    private nonisolated static func emailLikeIdentityHint(_ value: String?) -> String? {
+        guard let value = nonEmpty(value), value.contains("@") else { return nil }
+        return value
+    }
+
+    private nonisolated static func nonEmpty(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
 

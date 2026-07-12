@@ -92,7 +92,7 @@ final class ThreadInboxStore {
             case "pi":
                 agentURI = AgentIdentity.builtInURI(.pi)
                 source = .pi
-            case "codex", "claude", "openclaw":
+            case _ where Self.cliRuntime(from: thread.runtime) != nil:
                 guard let runtime = Self.cliRuntime(from: thread.runtime) else { return nil }
                 agentURI = AgentIdentity.builtInURI(runtime)
                 source = .cliMirror
@@ -132,6 +132,7 @@ final class ThreadInboxStore {
             case .grok: runtime = .grok
             case .cursorAgent: runtime = .cursorAgent
             case .openClaude: runtime = .openClaude
+            case .junie:    runtime = .junie
             case .omp: runtime = .omp
             }
             return ThreadInboxItem(
@@ -173,11 +174,13 @@ final class ThreadInboxStore {
         case "codex": return .codex
         case "claude": return .claude
         case "openclaw": return .openClaw
+        case "openclaude", "open-claude", "open_claude": return .openClaude
         case "droid", "factory", "factory-droid", "factorydroid": return .droid
         case "forge", "forge-dev", "forgedev": return .forge
         case "antigravity", "agy", "google-antigravity", "googleantigravity": return .antigravity
         case "grok", "grok-build", "xai", "grok-agent": return .grok
         case "cursor", "cursor-agent", "cursoragent": return .cursorAgent
+        case "junie", "junie-agent", "jetbrains-junie": return .junie
         default: return nil
         }
     }

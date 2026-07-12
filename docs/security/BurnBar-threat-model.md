@@ -100,7 +100,7 @@ Audit verdict: BurnBar has meaningful and code-backed controls for sealed curren
 | Mobile iOS/iPadOS app | User-facing remote control, Hermes Gateway client, CloudVault client, trusted device, push receiver | Message plaintext before sealing/after opening, vault keys, device private keys, push tokens, approvals, attachments | High trust endpoint | Firebase Auth/App Check, iOS Keychain, APNs, CloudVault, Hermes/Iroh | `OpenBurnBarMobile/Services/MobileCloudVaultKeyAccess.swift`, `OpenBurnBarMobile/Services/iOSDeviceKeypair.swift` |
 | Android app | Mobile client parity for chat, CloudVault, trusted device, push, media | Message plaintext, vault keys, Android private keys, FCM tokens, approvals | High trust endpoint | Firebase, Android Keystore, Firestore, FCM | `android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto.kt` |
 | macOS OpenBurnBar / AgentLens | Desktop host for local agents, Hermes/Iroh endpoint, local memory/indexing, device trust root publisher | Agent prompts/responses, local files/logs, key material, provider metadata, runtime output | High trust endpoint | macOS Keychain, local process APIs, Firebase, Iroh, Hermes | `AgentLens/Services/CLIBridge/CLIProcessStreamRunner.swift`, `AgentLens/Services/CloudVaultKeyAccess.swift` |
-| OpenBurnBarCore | Shared crypto, sealed envelopes, Iroh pairing, CloudVault types, Signal at-rest helpers | Crypto envelopes, AAD, key wrapping primitives, pairing records | Security-critical shared library | CryptoKit, Swift shared models, Android-compatible formats | `OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRelayCrypto.swift`, `CloudVaultCrypto.swift`, `OpenBurnBarSignalCore/SignalAtRestSealer.swift` |
+| OpenBurnBarCore | Shared crypto, sealed envelopes, Iroh pairing, CloudVault types, Signal at-rest helpers | Crypto envelopes, AAD, key wrapping primitives, pairing records | Security-critical shared library | CryptoKit, Swift shared models, Android-compatible formats | `OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesRelayCrypto.swift`, `CloudVaultCrypto.swift`, `OpenBurnBarSignalCore/SignalAtRestSealer.swift` |
 | BurnBar Cloud / Firebase Functions | Authenticated control plane, Gateway HTTP/callables, push fanout, provider secrets, search/session APIs, entitlement checks | Auth context, metadata, sealed payloads, provider secret refs, push requests, audit events | Trusted service, not plaintext-blind for all data | Firebase Auth, App Check, Firestore, Storage, Secret Manager, KMS, APNs, FCM | `functions/src/index.ts`, `functions/src/auth.ts`, `functions/src/logging.ts` |
 | Firestore | Primary control-plane and sync database | Sealed documents, metadata, indexes, device records, trust roots, tokens, audit events | Trusted storage for metadata; untrusted for sealed content confidentiality | Firestore rules, Functions Admin SDK | `firestore.rules` |
 | Cloud Storage | Encrypted session blobs, attachment objects, profile photos | Sealed blobs and some public/auth-visible profile photos | Trusted storage for availability and object metadata; untrusted for sealed content confidentiality | Storage rules, signed URLs | `storage.rules`, `functions/src/callables/encryptedSearch.ts` |
@@ -577,7 +577,7 @@ Audit note: this is a local trust boundary. A signed app compromise or local pri
 - `functions/src/callables/hermesGateway.ts:884-982` - device start and pending pairing session.
 - `functions/src/callables/hermesGateway.ts:1116-1193` - message send sealed-write path.
 - `functions/src/callables/hermesGateway.ts:1409-1605` - attachment init/finalize sealed upload path.
-- `OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRelayCrypto.swift:5-588` - relay security considerations, AAD, v2/v3 crypto.
+- `OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesRelayCrypto.swift:5-588` - relay security considerations, AAD, v2/v3 crypto.
 - `OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRatchetCrypto.swift:130-399` - ratchet encrypt/decrypt, skipped-key handling, AAD validation.
 - `OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRelayAuthenticatedRequest.swift:91-260` - replay cache and authenticated relay opening.
 - `AgentLens/Services/HermesRelaySenderTrustResolver.swift:22-163` - pinned relay sender key and verified Signal identity resolver.
@@ -591,7 +591,7 @@ Audit note: this is a local trust boundary. A signed app compromise or local pri
 - `android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto.kt:39-409` - Android CloudVault AAD and envelope compatibility.
 - `android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto.kt:817-992` - Android device keypair and local secret box.
 - `OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalAtRestSealer.swift:62-268` - Signal at-rest payload seal/open and sender authentication.
-- `OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/SignalEnvelopeAAD.swift:3-128` - Signal envelope canonical AAD binding.
+- `OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/SignalEnvelopeAAD.swift:3-128` - Signal envelope canonical AAD binding.
 - `functions/src/callables/encryptedSearch.ts:52-907` - encrypted session blob upload/download, search index, project memory, search/query APIs.
 - `functions/src/callables/conversationQuery.ts:132-163` - plaintext facets and sealed row projection.
 

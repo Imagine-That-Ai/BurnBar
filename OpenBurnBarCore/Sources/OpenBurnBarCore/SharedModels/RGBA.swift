@@ -28,7 +28,10 @@ public struct RGBA: Hashable, Sendable {
 
     #if canImport(SwiftUI)
     public var color: Color {
-        Color(red: r, green: g, blue: b).opacity(a)
+        // Single-initializer form: `Color(...).opacity(a)` layers an extra
+        // wrapper Color per call, and substrates convert thousands of RGBA
+        // values per frame on the main thread. Rendering is identical.
+        Color(red: r, green: g, blue: b, opacity: a)
     }
     #endif
 

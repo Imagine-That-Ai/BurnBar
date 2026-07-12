@@ -25,6 +25,21 @@ class AgentProviderTest {
         assertEquals(AgentProvider.FACTORY, AgentProvider.fromKey("factory-droid"))
         assertEquals(AgentProvider.FORGE_DEV, AgentProvider.fromKey("forge"))
         assertEquals(AgentProvider.FORGE_DEV, AgentProvider.fromKey("forge-dev"))
+        assertEquals(AgentProvider.JUNIE, AgentProvider.fromKey("junie"))
+        assertEquals(AgentProvider.JUNIE, AgentProvider.fromKey("jetbrains-junie"))
+        assertEquals(AgentProvider.JUNIE, AgentProvider.fromKey("jetbrainsjunie"))
+        assertEquals(AgentProvider.JUNIE, AgentProvider.fromKey("jetbrains junie"))
+    }
+
+    @Test
+    fun `junie mirrors the swift provider values`() {
+        assertEquals("junie", AgentProvider.JUNIE.key)
+        assertEquals("Junie", AgentProvider.JUNIE.displayName)
+        assertEquals(0xFF48E054, AgentProvider.JUNIE.brandColor)
+        assertEquals(0xFF6FE87F, AgentProvider.JUNIE.accentColor)
+        // Swarm glyph roster: Junie sits right after Hermes, mirroring Swift.
+        val swarm = AgentProvider.swarmGlyphProviders
+        assertEquals(swarm.indexOf(AgentProvider.HERMES) + 1, swarm.indexOf(AgentProvider.JUNIE))
     }
 
     @Test

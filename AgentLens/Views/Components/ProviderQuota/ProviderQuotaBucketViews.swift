@@ -127,6 +127,8 @@ struct QuotaFigureTile: View {
             return "remaining"
         case .currency:
             return "remaining"
+        case .fastCalls, .credits, .unknown:
+            return "remaining"
         }
     }
 

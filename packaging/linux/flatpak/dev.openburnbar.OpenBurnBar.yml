@@ -1,0 +1,28 @@
+app-id: dev.openburnbar.OpenBurnBar
+runtime: org.gnome.Platform
+runtime-version: "47"
+sdk: org.gnome.Sdk
+command: openburnbar-linux-desktop
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --talk-name=org.freedesktop.portal.Desktop
+  - --talk-name=org.freedesktop.secrets
+  - --filesystem=xdg-run/openburnbar:create
+  - --filesystem=xdg-data/openburnbar:create
+modules:
+  - name: openburnbar
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 openburnbar-linux-desktop /app/bin/openburnbar-linux-desktop
+      - install -Dm644 dev.openburnbar.OpenBurnBar.desktop /app/share/applications/dev.openburnbar.OpenBurnBar.desktop
+    sources:
+      - type: file
+        path: openburnbar-linux-desktop
+      - type: file
+        path: dev.openburnbar.OpenBurnBar.desktop
+# Tail metadata only for mission-001. The Flatpak path is intentionally not
+# promoted until portal, sandboxed Secret Service, Computer Use, update, and
+# Flathub credential evidence exist for a real runner.

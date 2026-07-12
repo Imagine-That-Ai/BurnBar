@@ -19,7 +19,7 @@ final class CardLayoutSnapshotTests: XCTestCase {
             accent: .blue,
             action: {}
         )
-        assertAdaptiveSnapshot(
+        XCTAssertAdaptiveSnapshot(
             of: view,
             size: CGSize(width: 360, height: 100),
             named: SnapshotName.insightBriefCard
@@ -30,7 +30,7 @@ final class CardLayoutSnapshotTests: XCTestCase {
         let store = try makeIsolatedStore()
         store.replaceUsages(ViewTestFixtures.makeWeekOfUsages())
         let view = NarrativeCardView(dataStore: store)
-        assertAdaptiveSnapshot(
+        XCTAssertAdaptiveSnapshot(
             of: view,
             size: CGSize(width: 360, height: 120),
             named: SnapshotName.narrativeCard
@@ -44,7 +44,7 @@ final class CardLayoutSnapshotTests: XCTestCase {
             isStreaming: false,
             showViaBadge: false
         )
-        assertAdaptiveSnapshot(
+        XCTAssertAdaptiveSnapshot(
             of: view,
             size: CGSize(width: 400, height: 100),
             named: SnapshotName.chatMessageAssistant
@@ -59,7 +59,7 @@ final class CardLayoutSnapshotTests: XCTestCase {
             detail: "Replace 'foo' with 'bar' in /src/main.swift",
             isRunning: false
         )
-        assertAdaptiveSnapshot(
+        XCTAssertAdaptiveSnapshot(
             of: view,
             size: CGSize(width: 320, height: 70),
             named: "hermesToolCard.geometry"

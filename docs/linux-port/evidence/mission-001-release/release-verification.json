@@ -1,0 +1,116 @@
+{
+  "generatedAt": "2026-07-09T18:05:09.136Z",
+  "outDir": "docs/linux-port/evidence/mission-001-release",
+  "allowBlocked": false,
+  "passed": false,
+  "failures": [
+    {
+      "message": "appimage artifact is missing",
+      "file": "docs/linux-port/evidence/mission-001-release/artifacts/OpenBurnBar_0.1.0_aarch64.AppImage"
+    },
+    {
+      "message": "deb artifact is missing",
+      "file": "docs/linux-port/evidence/mission-001-release/artifacts/OpenBurnBar_0.1.0_arm64.deb"
+    },
+    {
+      "message": "rpm artifact is missing",
+      "file": "docs/linux-port/evidence/mission-001-release/artifacts/OpenBurnBar-0.1.0-1.aarch64.rpm"
+    },
+    {
+      "message": "daemon artifact is missing",
+      "file": "docs/linux-port/evidence/mission-001-release/artifacts/openburnbar-daemon-0.1.0-linux-aarch64"
+    },
+    {
+      "message": "checksum target is missing",
+      "file": "docs/linux-port/evidence/mission-001-release/artifacts/OpenBurnBar_0.1.0_aarch64.AppImage"
+    },
+    {
+      "message": "checksum target is missing",
+      "file": "docs/linux-port/evidence/mission-001-release/artifacts/OpenBurnBar_0.1.0_arm64.deb"
+    },
+    {
+      "message": "checksum target is missing",
+      "file": "docs/linux-port/evidence/mission-001-release/artifacts/OpenBurnBar-0.1.0-1.aarch64.rpm"
+    },
+    {
+      "message": "checksum target is missing",
+      "file": "docs/linux-port/evidence/mission-001-release/artifacts/openburnbar-daemon-0.1.0-linux-aarch64"
+    },
+    {
+      "message": "latest-linux draft is not promotable.",
+      "promotionState": "blocked",
+      "primaryArtifact": {
+        "type": "appimage",
+        "file": "docs/linux-port/evidence/mission-001-release/artifacts/OpenBurnBar_0.1.0_aarch64.AppImage",
+        "sourceFile": "apps/linux-desktop/src-tauri/target/release/bundle/appimage/OpenBurnBar_0.1.0_aarch64.AppImage",
+        "size": 79886856,
+        "sha256": "4ba109b88237d111c655adf70863f73c91c7b38698990c785ae70571f4d6856c"
+      }
+    },
+    {
+      "message": "release checkout has unexpected dirty files outside generated Linux release evidence.",
+      "dirtyEntries": [
+        " M .github/workflows/linux-pr-gate.yml",
+        " M Makefile",
+        " M OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/OpenBurnBarLinuxPaths.swift",
+        " M OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/AgentProviderLogDiscovery.swift",
+        " M OpenBurnBarCore/Tests/BurnBarRemoteEngineTests/LinuxEmptyTests.swift",
+        " M OpenBurnBarCore/Tests/OpenBurnBarAnalyticsTests/LinuxEmptyTests.swift",
+        " M OpenBurnBarCore/Tests/OpenBurnBarComputerUseCoreTests/LinuxEmptyTests.swift",
+        " M OpenBurnBarCore/Tests/OpenBurnBarCoreTests/LinuxEmptyTests.swift",
+        " M OpenBurnBarCore/Tests/OpenBurnBarIrohRelayTests/LinuxEmptyTests.swift",
+        " M OpenBurnBarCore/Tests/OpenBurnBarMediaTests/LinuxEmptyTests.swift",
+        " M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarDaemonPeerAuthenticator.swift",
+        " M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/OpenBurnBarHTTPGatewayServerLinux.swift",
+        " M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/OpenBurnBarSwitcherShellLinux.swift",
+        " M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/PensieveKnowledgeWatcherLinux.swift",
+        " M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonConfiguration.swift",
+        " M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarIndexedSearchService.swift",
+        " M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ProjectCodeMemory/BurnBarProjectCodeMemoryStore.swift",
+        " M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC/BurnBarDaemonServer+RPCComputerUse.swift",
+        " M apps/linux-desktop/index.html",
+        " M apps/linux-desktop/package-lock.json",
+        " M apps/linux-desktop/package.json",
+        " M apps/linux-desktop/src-tauri/src/lib.rs",
+        " M apps/linux-desktop/src-tauri/tauri.conf.json",
+        " M apps/linux-desktop/src/app/App.tsx",
+        " M apps/linux-desktop/src/components/KernelBackdrop.tsx",
+        " M apps/linux-desktop/src/daemonFixture.ts",
+        " M apps/linux-desktop/src/linuxPaths.test.ts",
+        " M apps/linux-desktop/src/linuxPaths.ts",
+        " M apps/linux-desktop/src/onboardingSteps.ts",
+        " M apps/linux-desktop/src/routes.test.ts",
+        " M apps/linux-desktop/src/routes.ts",
+        " M apps/linux-desktop/src/shellEvidenceModel.ts",
+        " M apps/linux-desktop/src/state/chatStore.ts",
+        " M apps/linux-desktop/src/state/mediaStore.ts",
+        " M apps/linux-desktop/src/state/memoryStore.ts",
+        " M apps/linux-desktop/src/styles/app.css",
+        " M apps/linux-desktop/src/styles/tokens.css",
+        " M apps/linux-desktop/src/surfaces/OnboardingSurface.tsx",
+        " M apps/linux-desktop/src/surfaces/OverviewSurface.tsx",
+        " M apps/linux-desktop/src/surfaces/SurfaceRouter.tsx"
+      ]
+    },
+    {
+      "message": "parity ledger is not green for release promotion.",
+      "command": "node scripts/linux-port/validate-parity-ledger.mjs",
+      "stdout": "{\n  \"generatedAt\": \"2026-07-09T18:05:09.132Z\",\n  \"allowBlocked\": false,\n  \"git\": {\n    \"commit\": \"4a6274616b7b86f36d0af22f5464ba412cd7b834\",\n    \"dirtyEntries\": [\n      \" M .github/workflows/linux-pr-gate.yml\",\n      \" M Makefile\",\n      \" M OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/OpenBurnBarLinuxPaths.swift\",\n      \" M OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/AgentProviderLogDiscovery.swift\",\n      \" M OpenBurnBarCore/Tests/BurnBarRemoteEngineTests/LinuxEmptyTests.swift\",\n      \" M OpenBurnBarCore/Tests/OpenBurnBarAnalyticsTests/LinuxEmptyTests.swift\",\n      \" M OpenBurnBarCore/Tests/OpenBurnBarComputerUseCoreTests/LinuxEmptyTests.swift\",\n      \" M OpenBurnBarCore/Tests/OpenBurnBarCoreTests/LinuxEmptyTests.swift\",\n      \" M OpenBurnBarCore/Tests/OpenBurnBarIrohRelayTests/LinuxEmptyTests.swift\",\n      \" M OpenBurnBarCore/Tests/OpenBurnBarMediaTests/LinuxEmptyTests.swift\",\n      \" M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarDaemonPeerAuthenticator.swift\",\n      \" M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/OpenBurnBarHTTPGatewayServerLinux.swift\",\n      \" M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/OpenBurnBarSwitcherShellLinux.swift\",\n      \" M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/PensieveKnowledgeWatcherLinux.swift\",\n      \" M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonConfiguration.swift\",\n      \" M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarIndexedSearchService.swift\",\n      \" M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ProjectCodeMemory/BurnBarProjectCodeMemoryStore.swift\",\n      \" M OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC/BurnBarDaemonServer+RPCComputerUse.swift\",\n      \" M apps/linux-desktop/index.html\",\n      \" M apps/linux-desktop/package-lock.json\",\n      \" M apps/linux-desktop/package.json\",\n      \" M apps/linux-desktop/src-tauri/src/lib.rs\",\n      \" M apps/linux-desktop/src-tauri/tauri.conf.json\",\n      \" M apps/linux-desktop/src/app/App.tsx\",\n      \" M apps/linux-desktop/src/components/KernelBackdrop.tsx\",\n      \" M apps/linux-desktop/src/daemonFixture.ts\",\n      \" M apps/linux-desktop/src/linuxPaths.test.ts\",\n      \" M apps/linux-desktop/src/linuxPaths.ts\",\n      \" M apps/linux-desktop/src/onboardingSteps.ts\",\n      \" M apps/linux-desktop/src/routes.test.ts\",\n      \" M apps/linux-desktop/src/routes.ts\",\n      \" M apps/linux-desktop/src/shellEvidenceModel.ts\",\n      \" M apps/linux-desktop/src/state/chatStore.ts\",\n      \" M apps/linux-desktop/src/state/mediaStore.ts\",\n      \" M apps/linux-desktop/src/state/memoryStore.ts\",\n      \" M apps/linux-desktop/src/styles/app.css\",\n      \" M apps/linux-desktop/src/styles/tokens.css\",\n      \" M apps/linux-desktop/src/surfaces/OnboardingSurface.tsx\",\n      \" M apps/linux-desktop/src/surfaces/OverviewSurface.tsx\",\n      \" M apps/linux-desktop/src/surfaces/SurfaceRouter.tsx\",\n      \" M apps/linux-desktop/src/surfaces/chat/ChatSurface.tsx\",\n      \" M apps/linux-desktop/src/surfaces/chat/ChatWorkspacePanel.tsx\",\n      \" M apps/linux-desktop/src/surfaces/chat/chat.css\",\n      \" M apps/linux-desktop/src/surfaces/media/MediaSection.test.tsx\",\n      \" M apps/linux-desktop/src/surfaces/media/MediaSection.tsx\",\n      \" M apps/linux-desktop/src/surfaces/memory/MemorySurface.test.tsx\",\n      \" M apps/linux-desktop/src/surfaces/memory/MemorySurface.tsx\",\n      \" M apps/linux-desktop/src/surfaces/overview/OverviewSurface.test.tsx\",\n      \" M apps/linux-desktop/src/surfaces/settings/SettingsDetailPane.tsx\",\n      \" M apps/linux-desktop/src/surfaces/settings/settings.css\",\n      \" M apps/linux-desktop/src/tauriBridge.ts\",\n      \" M apps/linux-desktop/src/testing/bridgeStubs.ts\",\n      \" M apps/linux-desktop/vite.config.ts\",\n      \" M docs/linux-port/README.md\",\n      \" M docs/linux-port/factory-pr-handoff.md\",\n      \" M docs/linux-port/parity-ledger.json\",\n      \" M docs/linux-port/parity-ledger.md\",\n      \" M docs/linux-port/release-runbook.md\",\n      \" M docs/windows-port/HANDOFF.md\",\n      \" M docs/windows-port/PARITY_100_REMEDIATION_PLAN.md\",\n      \" M docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md\",\n      \" M docs/windows-port/WINDOWS_FULL_PARITY_MASTER_PLAN_2026-07-09.md\",\n      \" M docs/windows-port/WINDOWS_PARITY_LEDGER.md\",\n      \" M docs/windows-port/WINDOWS_PARITY_LEDGER.yml\",\n      \" M extensions/openburnbar/src/daemon/client.ts\",\n      \" M extensions/openburnbar/test/daemonClient.test.ts\",\n      \" M packages/design-tokens/package.json\",\n      \" M packaging/linux/aur/PKGBUILD\",\n      \" M packaging/linux/autostart/openburnbar.desktop\",\n      \" M packaging/linux/openburnbar-daemon.service\",\n      \" M packaging/linux/openburnbar.desktop\",\n      \" M packaging/linux/release-manifest.json\",\n      \" M scripts/ci/verify-windows-parity-ledger.py\",\n      \" M scripts/ci/verify-windows-parity-ledger.test.sh\",\n      \" M scripts/linux-port/build-linux-release.mjs\",\n      \" M scripts/linux-port/check-linux-docs.mjs\",\n      \" M scripts/linux-port/lib/linux-release-common.mjs\",\n      \" M scripts/linux-port/run-discovery-devices-extension-evidence.sh\",\n      \" M scripts/linux-port/run-provider-hermes-evidence.sh\",\n      \" M scripts/linux-port/smoke-linux-packages.mjs\",\n      \" M scripts/linux-port/start-shell-session-daemon.sh\",\n      \" M scripts/linux-port/validate-linux-release-config.mjs\",\n      \" M scripts/linux-port/validate-parity-ledger.mjs\",\n      \" M scripts/linux-port/validate-parity-ledger.test.mjs\",\n      \"?? apps/linux-desktop/src/bridgeRpcBehavior.test.ts\",\n      \"?? apps/linux-desktop/src/bridgeRpcContract.test.ts\",\n      \"?? apps/linux-desktop/src/dashboard/\",\n      \"?? apps/linux-desktop/src/pathContractGoldens.ts\",\n      \"?? apps/linux-desktop/src/providerPathRegistry.swiftParity.test.ts\",\n      \"?? apps/linux-desktop/src/providerPathRegistry.test.ts\",\n      \"?? apps/linux-desktop/src/providerPathRegistry.ts\",\n      \"?? apps/linux-desktop/src/state/dashboardLayoutStore.ts\",\n      \"?? apps/linux-desktop/src/state/memoryStore.test.ts\",\n      \"?? apps/linux-desktop/src/styles/skins.css\",\n      \"?? apps/linux-desktop/src/styles/tokensContract.test.ts\",\n      \"?? apps/linux-desktop/src/surfaces/computerUse/\",\n      \"?? apps/linux-desktop/src/surfaces/media/MercurySurface.tsx\",\n      \"?? apps/linux-desktop/src/surfaces/onboarding.css\",\n      \"?? apps/linux-desktop/src/surfaces/overview/overviewShellState.test.ts\",\n      \"?? apps/linux-desktop/src/surfaces/smarthub/\",\n      \"?? apps/linux-desktop/src/tokenFileContract.test.ts\",\n      \"?? apps/linux-desktop/src/tokenFileContract.ts\",\n      \"?? docs/linux-port/FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md\",\n      \"?? docs/linux-port/FULL_PARITY_PLAN.md\",\n      \"?? docs/linux-port/UTM_VM_ACCESS.md\",\n      \"?? docs/linux-port/evidence/mission-002-reanchor/\",\n      \"?? docs/linux-port/full-macos-parity-audit-2026-07-09.md\",\n      \"?? docs/windows-port/WINDOWS_FULL_PARITY_SCAN_2026-07-09.md\",\n      \"?? docs/windows-port/WINDOWS_MACOS_PARITY_SCAN_2026-07-09.md\",\n      \"?? docs/windows-port/evidence/f1-residuals/\",\n      \"?? packaging/linux/aur/openburnbar-daemon-launch\",\n      \"?? packaging/linux/aur/openburnbar-daemon.service\",\n      \"?? packaging/linux/aur/openburnbar-safe-mode.desktop\",\n      \"?? packaging/linux/aur/openburnbar.desktop\",\n      \"?? packaging/linux/daemon.env.example\",\n      \"?? packaging/linux/openburnbar-daemon-launch.sh\",\n      \"?? packaging/linux/openburnbar-safe-mode.desktop\",\n      \"?? packaging/linux/systemd/\",\n      \"?? scripts/ci/verify-windows-full-gate-workflow.sh\",\n      \"?? scripts/linux-port/check-linux-update-feed.mjs\",\n      \"?? scripts/linux-port/check-linux-update-feed.test.mjs\",\n      \"?? scripts/linux-port/check-packaging-path-sync.mjs\",\n      \"?? scripts/linux-port/export-provider-path-matrix.mjs\",\n      \"?? scripts/linux-port/lib/linux-update-feed.mjs\",\n      \"?? scripts/linux-port/lib/parity-ledger-validate.mjs\",\n      \"?? scripts/linux-port/linux-update-feed-schema.json\",\n      \"?? scripts/linux-port/run-linux-matrix-harness.mjs\",\n      \"?? windows/ci/\",\n      \"?? windows/native/OpenBurnBar.Native/NativeFfiLoopbackProbe.cs\",\n      \"?? windows/tests/ci/\",\n      \"?? windows/tests/native/NativeFfiLoopbackProbeTests.cs\"\n    ]\n  },\n  \"semantics\": {\n    \"kind\": \"historical-infrastructure-plus-product\",\n    \"productParityClaim\": false,\n    \"note\": \"Mission-001 rows are historical infrastructure evidence sealed at the ledger git.commit. They are NOT a claim of full macOS product parity on the current checkout. Product foundation rows use scope=product-parity and staleWhenHeadDiffers.\",\n    \"refreshedAt\": \"2026-07-09T14:45:22.684Z\",\n    \"productPlan\": \"docs/linux-port/FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md\"\n  },\n  \"productParityClaim\": false,\n  \"passed\": false,\n  \"failures\": [\n    {\n      \"message\": \"evidence file does not mention row id VAL-OPS-001\",\n      \"row\": \"VAL-OPS-001\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-OPS-002\",\n      \"row\": \"VAL-OPS-002\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-CORE-001\",\n      \"row\": \"VAL-CORE-001\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-CORE-002\",\n      \"row\": \"VAL-CORE-002\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-CORE-003\",\n      \"row\": \"VAL-CORE-003\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-CORE-004\",\n      \"row\": \"VAL-CORE-004\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-CORE-005\",\n      \"row\": \"VAL-CORE-005\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-IPC-001\",\n      \"row\": \"VAL-IPC-001\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-IPC-002\",\n      \"row\": \"VAL-IPC-002\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-IPC-003\",\n      \"row\": \"VAL-IPC-003\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-IPC-004\",\n      \"row\": \"VAL-IPC-004\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-IPC-005\",\n      \"row\": \"VAL-IPC-005\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-CLI-001\",\n      \"row\": \"VAL-CLI-001\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-HTTP-001\",\n      \"row\": \"VAL-HTTP-001\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-DATA-008\",\n      \"row\": \"VAL-DATA-008\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-CLOUD-001\",\n      \"row\": \"VAL-CLOUD-001\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-CLOUD-002\",\n      \"row\": \"VAL-CLOUD-002\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-SEC-001\",\n      \"row\": \"VAL-SEC-001\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-SEC-002\",\n      \"row\": \"VAL-SEC-002\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-SEC-004\",\n      \"row\": \"VAL-SEC-004\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-AUTH-001\",\n      \"row\": \"VAL-AUTH-001\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-MEMBERSHIP-001\",\n      \"row\": \"VAL-MEMBERSHIP-001\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-TELEMETRY-001\",\n      \"row\": \"VAL-TELEMETRY-001\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-SHELL-001\",\n      \"row\": \"VAL-SHELL-001\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-SHELL-002\",\n      \"row\": \"VAL-SHELL-002\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-SHELL-003\",\n      \"row\": \"VAL-SHELL-003\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-SHELL-004\",\n      \"row\": \"VAL-SHELL-004\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-EXTENSION-001\",\n      \"row\": \"VAL-EXTENSION-001\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-CI-001\",\n      \"row\": \"VAL-CI-001\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-CI-002\",\n      \"row\": \"VAL-CI-002\"\n    },\n    {\n      \"message\": \"evidence path is the ledger itself (self-referential proof)\",\n      \"row\": \"VAL-CI-003\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-RELEASE-001\",\n      \"row\": \"VAL-RELEASE-001\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-RELEASE-002\",\n      \"row\": \"VAL-RELEASE-002\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-RELEASE-003\",\n      \"row\": \"VAL-RELEASE-003\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-DOC-001\",\n      \"row\": \"VAL-DOC-001\"\n    },\n    {\n      \"message\": \"evidence file does not mention row id VAL-DOC-002\",\n      \"row\": \"VAL-DOC-002\"\n    },\n    {\n      \"message\": \"Tier A/B row is not ready for release promotion\",\n      \"row\": \"VAL-000-BASELINE\"\n    },\n    {\n      \"message\": \"Tier A/B row is not ready for release promotion\",\n      \"row\": \"VAL-000-CSS\"\n    },\n    {\n      \"message\": \"evidence path is the ledger itself (self-referential proof)\",\n      \"row\": \"VAL-000-LEDGER\"\n    },\n    {\n      \"message\": \"Tier A/B row is not ready for release promotion\",\n      \"row\": \"VAL-000-LEDGER\"\n    },\n    {\n      \"message\": \"Tier A/B row is not ready for release promotion\",\n      \"row\": \"VAL-PATH-001\"\n    },\n    {\n      \"message\": \"Tier A/B row is not ready for release promotion\",\n      \"row\": \"VAL-PARSER-001\"\n    },\n    {\n      \"message\": \"Tier A/B row is not ready for release promotion\",\n      \"row\": \"VAL-TOKENS-001\"\n    },\n    {\n      \"message\": \"Tier A/B row is not ready for release promotion\",\n      \"row\": \"VAL-DASHBOARD-001\"\n    },\n    {\n      \"message\": \"Tier A/B row is not ready for release promotion\",\n      \"row\": \"VAL-RPC-001\"\n    },\n    {\n      \"message\": \"Tier A/B row is not ready for release promotion\",\n      \"row\": \"VAL-DASHBOARD-004\"\n    }\n  ],\n  \"warnings\": [\n    {\n      \"message\": \"evidence file does not mention row id VAL-DASHBOARD-004\",\n      \"row\": \"VAL-DASHBOARD-004\"\n    },\n    {\n      \"message\": \"evidence file docs/linux-port/evidence/mission-001-release/active-checkout-v23-v24-evidence.json is shared by 5 rows (VAL-CORE-001, VAL-CORE-002, VAL-CORE-003, VAL-CORE-004, VAL-CORE-005); existence alone does not prove each row.\",\n      \"row\": null\n    },\n    {\n      \"message\": \"evidence file docs/linux-port/evidence/mission-001-ipc-cli-gateway/summary.txt is shared by 7 rows (VAL-IPC-001, VAL-IPC-002, VAL-IPC-003, VAL-IPC-004, VAL-IPC-005, VAL-CLI-001, VAL-HTTP-001); existence alone does not prove each row.\",\n      \"row\": null\n    },\n    {\n      \"message\": \"evidence file docs/linux-port/evidence/mission-001-provider-hermes/contract-status.json is shared by 15 rows (VAL-DATA-000, VAL-DATA-001, VAL-DATA-002, VAL-DATA-003, VAL-DATA-004, VAL-DATA-005, VAL-DATA-006, VAL-DATA-007, VAL-DATA-008, VAL-PROVIDER-001, VAL-PROVIDER-002, VAL-PROVIDER-003, VAL-HERMES-001, VAL-HERMES-002, VAL-HERMES-003); existence alone does not prove each row.\",\n      \"row\": null\n    },\n    {\n      \"message\": \"evidence file docs/linux-port/evidence/mission-001-linux-cloud-security/linux-security-evidence.json is shared by 8 rows (VAL-CLOUD-001, VAL-CLOUD-002, VAL-SEC-001, VAL-SEC-002, VAL-SEC-004, VAL-AUTH-001, VAL-MEMBERSHIP-001, VAL-TELEMETRY-001); existence alone does not prove each row.\",\n      \"row\": null\n    },\n    {\n      \"message\": \"evidence file docs/linux-port/evidence/mission-001-shell-ux/shell-evidence-verify.json is shared by 9 rows (VAL-SHELL-001, VAL-SHELL-002, VAL-SHELL-003, VAL-SHELL-004, VAL-SHELL-005, VAL-ONBOARDING-001, VAL-PET-001, VAL-TEXTEXP-001, VAL-PERF-001); existence alone does not prove each row.\",\n      \"row\": null\n    },\n    {\n      \"message\": \"evidence file docs/linux-port/evidence/mission-001-computer-use-media-mobile/computer-use-target-status.json is shared by 6 rows (VAL-CU-001, VAL-CU-002, VAL-CU-003, VAL-MEDIA-001, VAL-MOBILE-001, VAL-SEC-003); existence alone does not prove each row.\",\n      \"row\": null\n    },\n    {\n      \"message\": \"evidence file docs/linux-port/evidence/mission-002-reanchor/README.md is shared by 8 rows (VAL-000-BASELINE, VAL-000-CSS, VAL-PATH-001, VAL-PARSER-001, VAL-TOKENS-001, VAL-DASHBOARD-001, VAL-RPC-001, VAL-DASHBOARD-004); existence alone does not prove each row.\",\n      \"row\": null\n    }\n  ]\n}\n",
+      "stderr": ""
+    },
+    {
+      "message": "release blockers are recorded in package metadata.",
+      "blockers": [
+        {
+          "kind": "cosign-oidc",
+          "message": "GitHub OIDC request token is unavailable locally; CI must produce and verify cosign bundle with GitHub OIDC."
+        }
+      ]
+    }
+  ],
+  "warnings": [
+    {
+      "message": "public latest-linux.json is absent, as expected until promotion is green."
+    }
+  ]
+}

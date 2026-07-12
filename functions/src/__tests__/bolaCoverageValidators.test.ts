@@ -20,6 +20,18 @@ it("synthetic rejects cross-user object access", async () => {
 });
 `;
 
+const providerWebhookCoverageSource = `
+import { expect, it } from "vitest";
+import { ALICE_UID, BOB_UID } from "./callableBolaHarness.js";
+import { runHttpHandler } from "../httpHarness.js";
+
+it("synthetic provider webhook rejects cross-user object access", async () => {
+  const res = await runHttpHandler(handler, signedProviderRequest({ repository: { full_name: "owner/repo" } }));
+  expect(res._status).toBe(200);
+  expect(ALICE_UID).not.toEqual(BOB_UID);
+});
+`;
+
 function syntheticEntry(): EndpointAuthorizationEntry {
   return {
     exportedName: "syntheticEndpoint",
@@ -41,6 +53,28 @@ function syntheticEntry(): EndpointAuthorizationEntry {
       },
     ],
     highRiskComputerUse: false,
+  };
+}
+
+function syntheticProviderWebhookEntry(): EndpointAuthorizationEntry {
+  return {
+    exportedName: "syntheticProviderWebhook",
+    trigger: "provider-webhook",
+    authMethod: "provider HMAC signature",
+    appCheck: "not-applicable",
+    tenantSource: "provider-signed payload mapped server-side",
+    objectIdsFromClient: [],
+    ownershipCheck: "handler verifies provider signature before mapping payload fields",
+    bolaCoverage: [
+      {
+        file: COVERAGE_FILE,
+        test: "synthetic provider webhook rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["syntheticProviderWebhook"],
+      },
+    ],
+    highRiskComputerUse: false,
+    publicJustification: "Provider webhooks are internet-facing and authenticated by provider signatures.",
   };
 }
 
@@ -212,5 +246,14 @@ export async function run(request) {
     tempRoots.push(repoRoot);
 
     expect(validateEndpointBolaCoverage(syntheticEntry(), repoRoot)).toEqual([]);
+  });
+
+  it("validates provider webhooks with HTTP runtime coverage markers", () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "openburnbar-bola-validator-"));
+    tempRoots.push(repoRoot);
+    mkdirSync(join(repoRoot, "functions/src/__tests__/bola"), { recursive: true });
+    writeFileSync(join(repoRoot, COVERAGE_FILE), providerWebhookCoverageSource);
+
+    expect(validateEndpointBolaCoverage(syntheticProviderWebhookEntry(), repoRoot)).toEqual([]);
   });
 });

@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 public struct RemoteUnlockReadinessSnapshot: Codable, Sendable, Equatable {
     public var featureFlagEnabled: Bool

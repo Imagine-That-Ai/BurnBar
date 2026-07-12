@@ -16,8 +16,8 @@
     • SMAppService / login-item autolaunch       → windows.startupTask
     • NSUserNotification / toasts                 → windows.toastNotificationActivation
 
-  BUILD CEILING (honest): actual MSIX pack + Authenticode/Trusted-Signing signature
-  need a Windows runner + the W0 cert (procurement, Alberto). The <Identity Publisher>
+  BUILD CEILING (honest): actual MSIX pack + Authenticode/Artifact Signing signature
+  need a Windows runner + the Azure Artifact Signing profile. The <Identity Publisher>
   below MUST equal the signing certificate's Subject at sign time, or the package is
   rejected. AUTO-UPDATE is NOT wired to App-Installer here on purpose: OpenBurnBar
   auto-updates from the Ed25519-PINNED release feed (parity with macOS Sparkle),
@@ -38,8 +38,8 @@
   <!--
     Identity — the stable package identity.
       • Name       : reverse-DNS-free unique id (Publisher.Product convention).
-      • Publisher  : PLACEHOLDER. MUST match the Authenticode / Azure Trusted Signing
-                     certificate Subject exactly at sign time (W0 cert, deferred). For
+      • Publisher  : The direct-download signing subject. MUST match the Authenticode /
+                     Azure Artifact Signing certificate Subject exactly at sign time. For
                      a Microsoft Store submission the Store assigns its own reserved
                      Name + Publisher (CN=<StorePublisherId>) — swap both then.
       • Version    : Major.Minor.Build.Revision. Seeded at the Windows-port pre-release
@@ -51,7 +51,7 @@
   -->
   <Identity
       Name="ImagineThat.OpenBurnBar"
-      Publisher="CN=Imagine That, O=Imagine That, C=US"
+      Publisher="CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US"
       Version="0.1.0.0"
       ProcessorArchitecture="x64" />
 

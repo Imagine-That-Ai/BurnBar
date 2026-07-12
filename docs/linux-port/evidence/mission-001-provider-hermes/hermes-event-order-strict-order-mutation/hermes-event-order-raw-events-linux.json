@@ -1,0 +1,845 @@
+{
+  "browser": {
+    "artifact": "packaged-browser-hermes-dom-transcript.json",
+    "assertionKeys": [
+      "cancellationCovered",
+      "promptWrapperRendered",
+      "recordedToolApproval",
+      "retryCovered",
+      "sentPromptThroughDaemon",
+      "streamedAssistantAndDoneEvents"
+    ],
+    "dataSource": "live-daemon-backed-tauri-bridge",
+    "rowCount": 14,
+    "rowSteps": [
+      "seed mock provider config",
+      "seed mock credential slot",
+      "attach shell client",
+      "send prompt through daemon",
+      "stream assistant/done events",
+      "request tool approval",
+      "render pending approval",
+      "record approval response",
+      "create cancellable run",
+      "cancel pending run",
+      "create retry failure",
+      "retry failed run",
+      "persisted transcript state",
+      "prompt wrapper enforced"
+    ],
+    "rows": [
+      {
+        "method": "daemon.config.update",
+        "rowIndex": 1,
+        "step": "seed mock provider config"
+      },
+      {
+        "method": "daemon.provider.credential_slot.upsert",
+        "rowIndex": 2,
+        "step": "seed mock credential slot"
+      },
+      {
+        "method": "client.attach",
+        "rowIndex": 3,
+        "step": "attach shell client"
+      },
+      {
+        "method": "run.create",
+        "rowIndex": 4,
+        "step": "send prompt through daemon"
+      },
+      {
+        "method": "run.poll",
+        "rowIndex": 5,
+        "step": "stream assistant/done events"
+      },
+      {
+        "method": "run.create",
+        "rowIndex": 6,
+        "step": "request tool approval"
+      },
+      {
+        "method": "run.poll",
+        "rowIndex": 7,
+        "step": "render pending approval"
+      },
+      {
+        "method": "approval.respond",
+        "rowIndex": 8,
+        "step": "record approval response"
+      },
+      {
+        "method": "run.create",
+        "rowIndex": 9,
+        "step": "create cancellable run"
+      },
+      {
+        "method": "run.cancel",
+        "rowIndex": 10,
+        "step": "cancel pending run"
+      },
+      {
+        "method": "run.create",
+        "rowIndex": 11,
+        "step": "create retry failure"
+      },
+      {
+        "method": "run.retry",
+        "rowIndex": 12,
+        "step": "retry failed run"
+      },
+      {
+        "method": "run.list",
+        "rowIndex": 13,
+        "step": "persisted transcript state"
+      },
+      {
+        "method": "LLMSafeContent",
+        "rowIndex": 14,
+        "step": "prompt wrapper enforced"
+      }
+    ],
+    "surface": "installed-tauri-deb-xvfb-xfce-dom"
+  },
+  "checkpoints": [
+    {
+      "attempt": 1,
+      "fileName": "01B77492-9F29-4506-B3EA-BE7CCEB09E81.json",
+      "phase": "completed",
+      "rawFileOrdinal": 1,
+      "runID": "01B77492-9F29-4506-B3EA-BE7CCEB09E81",
+      "sourceFile": "hermes-run-checkpoints/01B77492-9F29-4506-B3EA-BE7CCEB09E81.json"
+    },
+    {
+      "attempt": 2,
+      "fileName": "0303AE54-7468-4295-8A33-135E05CECCE4.json",
+      "phase": "completed",
+      "rawFileOrdinal": 2,
+      "runID": "0303AE54-7468-4295-8A33-135E05CECCE4",
+      "sourceFile": "hermes-run-checkpoints/0303AE54-7468-4295-8A33-135E05CECCE4.json"
+    },
+    {
+      "attempt": 1,
+      "fileName": "0A9D573B-CFC2-4A85-8166-272515AD4DFF.json",
+      "phase": "completed",
+      "rawFileOrdinal": 3,
+      "runID": "0A9D573B-CFC2-4A85-8166-272515AD4DFF",
+      "sourceFile": "hermes-run-checkpoints/0A9D573B-CFC2-4A85-8166-272515AD4DFF.json"
+    },
+    {
+      "attempt": 1,
+      "fileName": "0DE62FE7-DE42-4E74-AD25-066D2D112B61.json",
+      "phase": "completed",
+      "rawFileOrdinal": 4,
+      "runID": "0DE62FE7-DE42-4E74-AD25-066D2D112B61",
+      "sourceFile": "hermes-run-checkpoints/0DE62FE7-DE42-4E74-AD25-066D2D112B61.json"
+    },
+    {
+      "attempt": 1,
+      "fileName": "0E5FBB15-22E0-42E4-8625-0484632CB712.json",
+      "phase": "completed",
+      "rawFileOrdinal": 5,
+      "runID": "0E5FBB15-22E0-42E4-8625-0484632CB712",
+      "sourceFile": "hermes-run-checkpoints/0E5FBB15-22E0-42E4-8625-0484632CB712.json"
+    },
+    {
+      "attempt": 1,
+      "fileName": "142D0CB5-3879-4BCD-AA33-7FC0C9F113EA.json",
+      "phase": "completed",
+      "rawFileOrdinal": 6,
+      "runID": "142D0CB5-3879-4BCD-AA33-7FC0C9F113EA",
+      "sourceFile": "hermes-run-checkpoints/142D0CB5-3879-4BCD-AA33-7FC0C9F113EA.json"
+    },
+    {
+      "attempt": 1,
+      "fileName": "1A03B00E-9A27-494E-82B7-AEE6B75F793E.json",
+      "phase": "completed",
+      "rawFileOrdinal": 7,
+      "runID": "1A03B00E-9A27-494E-82B7-AEE6B75F793E",
+      "sourceFile": "hermes-run-checkpoints/1A03B00E-9A27-494E-82B7-AEE6B75F793E.json"
+    },
+    {
+      "attempt": 1,
+      "fileName": "255DF5A5-76E9-4396-AF60-0A71C13095D8.json",
+      "phase": "completed",
+      "rawFileOrdinal": 8,
+      "runID": "255DF5A5-76E9-4396-AF60-0A71C13095D8",
+      "sourceFile": "hermes-run-checkpoints/255DF5A5-76E9-4396-AF60-0A71C13095D8.json"
+    },
+    {
+      "attempt": 1,
+      "fileName": "368DA671-8FC0-47E1-9376-86BB31351125.json",
+      "phase": "cancelled",
+      "rawFileOrdinal": 9,
+      "runID": "368DA671-8FC0-47E1-9376-86BB31351125",
+      "sourceFile": "hermes-run-checkpoints/368DA671-8FC0-47E1-9376-86BB31351125.json"
+    },
+    {
+      "attempt": 1,
+      "fileName": "396977A9-E402-484B-A66B-F33B5178719D.json",
+      "phase": "completed",
+      "rawFileOrdinal": 10,
+      "runID": "396977A9-E402-484B-A66B-F33B5178719D",
+      "sourceFile": "hermes-run-checkpoints/396977A9-E402-484B-A66B-F33B5178719D.json"
+    },
+    {
+      "attempt": 1,
+      "fileName": "4A2B02AC-EF15-43F8-882D-5EB5B1493116.json",
+      "phase": "completed",
+      "rawFileOrdinal": 11,
+      "runID": "4A2B02AC-EF15-43F8-882D-5EB5B1493116",
+      "sourceFile": "hermes-run-checkpoints/4A2B02AC-EF15-43F8-882D-5EB5B1493116.json"
+    },
+    {
+      "attempt": 1,
+      "fileName": "4D5A7D41-5BFE-4881-8417-E0BEDD0AAE3B.json",
+      "phase": "completed",
+      "rawFileOrdinal": 12,
+      "runID": "4D5A7D41-5BFE-4881-8417-E0BEDD0AAE3B",
+      "sourceFile": "hermes-run-checkpoints/4D5A7D41-5BFE-4881-8417-E0BEDD0AAE3B.json"
+    },
+    {
+      "attempt": 1,
+      "fileName": "50B7BACA-6E6D-4F09-99FF-12A99F330F46.json",
+      "phase": "cancelled",
+      "rawFileOrdinal": 13,
+      "runID": "50B7BACA-6E6D-4F09-99FF-12A99F330F46",
+      "sourceFile": "hermes-run-checkpoints/50B7BACA-6E6D-4F09-99FF-12A99F330F46.json"
+    },
+    {
+      "attempt": 2,
+      "fileName": "583BD3FE-D45E-4242-AFA1-5CFBB5DCBE86.json",
+      "phase": "completed",
+      "rawFileOrdinal": 14,
+      "runID": "583BD3FE-D45E-4242-AFA1-5CFBB5DCBE86",
+      "sourceFile": "hermes-run-checkpoints/583BD3FE-D45E-4242-AFA1-5CFBB5DCBE86.json"
+    },
+    {
+      "attempt": 1,
+      "fileName": "59487C4A-3BF5-46EB-9C64-6BC9C1E4ADEA.json",
+      "phase": "cancelled",
+      "rawFileOrdinal": 15,
+      "runID": "59487C4A-3BF5-46EB-9C64-6BC9C1E4ADEA",
+      "sourceFile": "hermes-run-checkpoints/59487C4A-3BF5-46EB-9C64-6BC9C1E4ADEA.json"
+    },
+    {
+      "attempt": 2,
+      "fileName": "6F06C22D-F326-40F9-873B-0CE8414D9FAE.json",
+      "phase": "completed",
+      "rawFileOrdinal": 16,
+      "runID": "6F06C22D-F326-40F9-873B-0CE8414D9FAE",
+      "sourceFile": "hermes-run-checkpoints/6F06C22D-F326-40F9-873B-0CE8414D9FAE.json"
+    },
+    {
+      "attempt": 1,
+      "fileName": "732B80F0-F3FE-4754-9640-102DBB91A069.json",
+      "phase": "cancelled",
+      "rawFileOrdinal": 17,
+      "runID": "732B80F0-F3FE-4754-9640-102DBB91A069",
+      "sourceFile": "hermes-run-checkpoints/732B80F0-F3FE-4754-9640-102DBB91A069.json"
+    },
+    {
+      "attempt": 2,
+      "fileName": "7BD8C635-020B-4260-B91E-197986938967.json",
+      "phase": "completed",
+      "rawFileOrdinal": 18,
+      "runID": "7BD8C635-020B-4260-B91E-197986938967",
+      "sourceFile": "hermes-run-checkpoints/7BD8C635-020B-4260-B91E-197986938967.json"
+    },
+    {
+      "attempt": 1,
+      "fileName": "84E57A64-E3D6-435B-9015-84B19E1017E2.json",
+      "phase": "completed",
+      "rawFileOrdinal": 19,
+      "runID": "84E57A64-E3D6-435B-9015-84B19E1017E2",
+      "sourceFile": "hermes-run-checkpoints/84E57A64-E3D6-435B-9015-84B19E1017E2.json"
+    },
+    {
+      "attempt": 2,
+      "fileName": "8B628873-9349-4E3E-9738-73E9E0E18B7F.json",
+      "phase": "completed",
+      "rawFileOrdinal": 20,
+      "runID": "8B628873-9349-4E3E-9738-73E9E0E18B7F",
+      "sourceFile": "hermes-run-checkpoints/8B628873-9349-4E3E-9738-73E9E0E18B7F.json"
+    },
+    {
+      "attempt": 1,
+      "fileName": "8F2698E8-C5C3-4DA2-B810-C497A24FAB7A.json",
+      "phase": "completed",
+      "rawFileOrdinal": 21,
+      "runID": "8F2698E8-C5C3-4DA2-B810-C497A24FAB7A",
+      "sourceFile": "hermes-run-checkpoints/8F2698E8-C5C3-4DA2-B810-C497A24FAB7A.json"
+    },
+    {
+      "attempt": 2,
+      "fileName": "966DC09E-FC36-4373-A01E-CA58EDB5BE92.json",
+      "phase": "completed",
+      "rawFileOrdinal": 22,
+      "runID": "966DC09E-FC36-4373-A01E-CA58EDB5BE92",
+      "sourceFile": "hermes-run-checkpoints/966DC09E-FC36-4373-A01E-CA58EDB5BE92.json"
+    },
+    {
+      "attempt": 1,
+      "fileName": "A4D0D843-8ED0-48F1-AE4F-E24B23190BFB.json",
+      "phase": "cancelled",
+      "rawFileOrdinal": 23,
+      "runID": "A4D0D843-8ED0-48F1-AE4F-E24B23190BFB",
+      "sourceFile": "hermes-run-checkpoints/A4D0D843-8ED0-48F1-AE4F-E24B23190BFB.json"
+    },
+    {
+      "attempt": 1,
+      "fileName": "A82B7075-6FA9-44D8-8C35-55E3C27CE042.json",
+      "phase": "completed",
+      "rawFileOrdinal": 24,
+      "runID": "A82B7075-6FA9-44D8-8C35-55E3C27CE042",
+      "sourceFile": "hermes-run-checkpoints/A82B7075-6FA9-44D8-8C35-55E3C27CE042.json"
+    },
+    {
+      "attempt": 1,
+      "fileName": "B167CE41-0015-4DFF-BAD1-42B3691968CA.json",
+      "phase": "completed",
+      "rawFileOrdinal": 25,
+      "runID": "B167CE41-0015-4DFF-BAD1-42B3691968CA",
+      "sourceFile": "hermes-run-checkpoints/B167CE41-0015-4DFF-BAD1-42B3691968CA.json"
+    },
+    {
+      "attempt": 1,
+      "fileName": "B99D43DB-14C9-494A-BD88-7D6E4B004325.json",
+      "phase": "completed",
+      "rawFileOrdinal": 26,
+      "runID": "B99D43DB-14C9-494A-BD88-7D6E4B004325",
+      "sourceFile": "hermes-run-checkpoints/B99D43DB-14C9-494A-BD88-7D6E4B004325.json"
+    },
+    {
+      "attempt": 1,
+      "fileName": "BA04CE2F-4C33-4002-829A-5308E9FCCE78.json",
+      "phase": "cancelled",
+      "rawFileOrdinal": 27,
+      "runID": "BA04CE2F-4C33-4002-829A-5308E9FCCE78",
+      "sourceFile": "hermes-run-checkpoints/BA04CE2F-4C33-4002-829A-5308E9FCCE78.json"
+    },
+    {
+      "attempt": 1,
+      "fileName": "BD6F2573-70A5-45F3-8C49-5553A95D8DCB.json",
+      "phase": "completed",
+      "rawFileOrdinal": 28,
+      "runID": "BD6F2573-70A5-45F3-8C49-5553A95D8DCB",
+      "sourceFile": "hermes-run-checkpoints/BD6F2573-70A5-45F3-8C49-5553A95D8DCB.json"
+    },
+    {
+      "attempt": 2,
+      "fileName": "BE50CAB9-64CA-4381-9D22-F93D3DD5987E.json",
+      "phase": "completed",
+      "rawFileOrdinal": 29,
+      "runID": "BE50CAB9-64CA-4381-9D22-F93D3DD5987E",
+      "sourceFile": "hermes-run-checkpoints/BE50CAB9-64CA-4381-9D22-F93D3DD5987E.json"
+    },
+    {
+      "attempt": 2,
+      "fileName": "CE7D8AE4-87C8-4C56-B12C-D313A1A975DE.json",
+      "phase": "completed",
+      "rawFileOrdinal": 30,
+      "runID": "CE7D8AE4-87C8-4C56-B12C-D313A1A975DE",
+      "sourceFile": "hermes-run-checkpoints/CE7D8AE4-87C8-4C56-B12C-D313A1A975DE.json"
+    },
+    {
+      "attempt": 1,
+      "fileName": "CEB19550-AF7F-4710-820D-DCD87F85BD14.json",
+      "phase": "completed",
+      "rawFileOrdinal": 31,
+      "runID": "CEB19550-AF7F-4710-820D-DCD87F85BD14",
+      "sourceFile": "hermes-run-checkpoints/CEB19550-AF7F-4710-820D-DCD87F85BD14.json"
+    },
+    {
+      "attempt": 2,
+      "fileName": "D0852623-26CB-40D5-9B1E-B28536841C6A.json",
+      "phase": "completed",
+      "rawFileOrdinal": 32,
+      "runID": "D0852623-26CB-40D5-9B1E-B28536841C6A",
+      "sourceFile": "hermes-run-checkpoints/D0852623-26CB-40D5-9B1E-B28536841C6A.json"
+    },
+    {
+      "attempt": 1,
+      "fileName": "D4CAA3E8-21AA-4C59-8B2B-FF71735A45E2.json",
+      "phase": "cancelled",
+      "rawFileOrdinal": 33,
+      "runID": "D4CAA3E8-21AA-4C59-8B2B-FF71735A45E2",
+      "sourceFile": "hermes-run-checkpoints/D4CAA3E8-21AA-4C59-8B2B-FF71735A45E2.json"
+    },
+    {
+      "attempt": 1,
+      "fileName": "D88057CB-41A2-4DD8-B324-3A9AE02EC55A.json",
+      "phase": "completed",
+      "rawFileOrdinal": 34,
+      "runID": "D88057CB-41A2-4DD8-B324-3A9AE02EC55A",
+      "sourceFile": "hermes-run-checkpoints/D88057CB-41A2-4DD8-B324-3A9AE02EC55A.json"
+    },
+    {
+      "attempt": 1,
+      "fileName": "EBB52D1E-F2D3-4A51-B732-CFD997B6AA54.json",
+      "phase": "cancelled",
+      "rawFileOrdinal": 35,
+      "runID": "EBB52D1E-F2D3-4A51-B732-CFD997B6AA54",
+      "sourceFile": "hermes-run-checkpoints/EBB52D1E-F2D3-4A51-B732-CFD997B6AA54.json"
+    },
+    {
+      "attempt": 1,
+      "fileName": "F23D0BBC-D136-4D38-9756-3E614B4B14DD.json",
+      "phase": "completed",
+      "rawFileOrdinal": 36,
+      "runID": "F23D0BBC-D136-4D38-9756-3E614B4B14DD",
+      "sourceFile": "hermes-run-checkpoints/F23D0BBC-D136-4D38-9756-3E614B4B14DD.json"
+    },
+    {
+      "attempt": 1,
+      "fileName": "F34FA585-F482-4EA2-9F90-B1E874D46E8E.json",
+      "phase": "cancelled",
+      "rawFileOrdinal": 37,
+      "runID": "F34FA585-F482-4EA2-9F90-B1E874D46E8E",
+      "sourceFile": "hermes-run-checkpoints/F34FA585-F482-4EA2-9F90-B1E874D46E8E.json"
+    },
+    {
+      "attempt": 2,
+      "fileName": "F7496D0D-31BA-4C7A-9DE1-1498840C03B5.json",
+      "phase": "completed",
+      "rawFileOrdinal": 38,
+      "runID": "F7496D0D-31BA-4C7A-9DE1-1498840C03B5",
+      "sourceFile": "hermes-run-checkpoints/F7496D0D-31BA-4C7A-9DE1-1498840C03B5.json"
+    },
+    {
+      "attempt": 1,
+      "fileName": "F917E3CA-CA81-4D02-A9C1-09A5326A7378.json",
+      "phase": "completed",
+      "rawFileOrdinal": 39,
+      "runID": "F917E3CA-CA81-4D02-A9C1-09A5326A7378",
+      "sourceFile": "hermes-run-checkpoints/F917E3CA-CA81-4D02-A9C1-09A5326A7378.json"
+    },
+    {
+      "attempt": 1,
+      "fileName": "FFCEF48E-F1DA-4818-BB22-4699F0C2F2BD.json",
+      "phase": "cancelled",
+      "rawFileOrdinal": 40,
+      "runID": "FFCEF48E-F1DA-4818-BB22-4699F0C2F2BD",
+      "sourceFile": "hermes-run-checkpoints/FFCEF48E-F1DA-4818-BB22-4699F0C2F2BD.json"
+    }
+  ],
+  "cliSections": [
+    {
+      "approvalID": null,
+      "command": null,
+      "exitCode": -1,
+      "lineStart": 6,
+      "phase": "completed",
+      "runID": "142D0CB5-3879-4BCD-AA33-7FC0C9F113EA",
+      "sectionIndex": 2,
+      "sourceFile": "cli-hermes-transcript.txt",
+      "textSHA256": "5344948c07f5f8911678e4c69cc318157316eb0c11d5849bb65a36e6e956599a",
+      "title": "daemon initial"
+    },
+    {
+      "approvalID": null,
+      "command": "openburnbar-cli run create --prompt w04 persistence probe --mock-provider",
+      "exitCode": 0,
+      "lineStart": 57,
+      "phase": "completed",
+      "runID": "142D0CB5-3879-4BCD-AA33-7FC0C9F113EA",
+      "sectionIndex": 3,
+      "sourceFile": "cli-hermes-transcript.txt",
+      "textSHA256": "a40be80db5c3cca25ecf3ea191870439ed0a90764f223057659108d95b2e3f8e",
+      "title": "run create mock provider"
+    },
+    {
+      "approvalID": null,
+      "command": "openburnbar-cli run list",
+      "exitCode": 0,
+      "lineStart": 71,
+      "phase": "completed",
+      "runID": "142D0CB5-3879-4BCD-AA33-7FC0C9F113EA",
+      "sectionIndex": 4,
+      "sourceFile": "cli-hermes-transcript.txt",
+      "textSHA256": "46325f01193e7c9d93ec720b887974e6d39c4be77544e3496b986ca26330505b",
+      "title": "run list after create"
+    },
+    {
+      "approvalID": null,
+      "command": "openburnbar-cli run get 142D0CB5-3879-4BCD-AA33-7FC0C9F113EA",
+      "exitCode": 0,
+      "lineStart": 82,
+      "phase": "completed",
+      "runID": "142D0CB5-3879-4BCD-AA33-7FC0C9F113EA",
+      "sectionIndex": 5,
+      "sourceFile": "cli-hermes-transcript.txt",
+      "textSHA256": "da54e1970a2b1e4a74387a77421488ca46fa95954bf54a5eaa71aa753377ff9a",
+      "title": "run get"
+    },
+    {
+      "approvalID": null,
+      "command": "openburnbar-cli run poll 142D0CB5-3879-4BCD-AA33-7FC0C9F113EA --json",
+      "exitCode": 0,
+      "lineStart": 97,
+      "phase": "awaiting_approval",
+      "runID": "01B77492-9F29-4506-B3EA-BE7CCEB09E81",
+      "sectionIndex": 6,
+      "sourceFile": "cli-hermes-transcript.txt",
+      "textSHA256": "6344172af9be838e552bf90708ed00d61ba889d314f9f2664555fa0f90a348f9",
+      "title": "run poll"
+    },
+    {
+      "approvalID": null,
+      "command": "openburnbar-cli run create --prompt w04 approval probe --mock-provider --requires-approval",
+      "exitCode": 0,
+      "lineStart": 144,
+      "phase": "awaiting_approval",
+      "runID": "01B77492-9F29-4506-B3EA-BE7CCEB09E81",
+      "sectionIndex": 7,
+      "sourceFile": "cli-hermes-transcript.txt",
+      "textSHA256": "9a91103739eca81cf9188963caa3d61e503d335062e55739c581f3af659ee73b",
+      "title": "run create requires approval"
+    },
+    {
+      "approvalID": "2640D4E4-9CB8-4E9C-B0BB-C7A00EBF67B4",
+      "command": "openburnbar-cli run poll 01B77492-9F29-4506-B3EA-BE7CCEB09E81 --json",
+      "exitCode": 0,
+      "lineStart": 158,
+      "phase": "completed",
+      "runID": "01B77492-9F29-4506-B3EA-BE7CCEB09E81",
+      "sectionIndex": 8,
+      "sourceFile": "cli-hermes-transcript.txt",
+      "textSHA256": "d835731e3de0f9b80f1aaf0653bf80b17c9ace073808dd76d5c20e88bc0fb9b4",
+      "title": "run poll approval json"
+    },
+    {
+      "approvalID": "2640D4E4-9CB8-4E9C-B0BB-C7A00EBF67B4",
+      "command": "openburnbar-cli run approval 2640D4E4-9CB8-4E9C-B0BB-C7A00EBF67B4 --decision approve --note approved by linux evidence harness",
+      "exitCode": 0,
+      "lineStart": 206,
+      "phase": "completed",
+      "runID": "01B77492-9F29-4506-B3EA-BE7CCEB09E81",
+      "sectionIndex": 9,
+      "sourceFile": "cli-hermes-transcript.txt",
+      "textSHA256": "7dc53e920d43c2c95608fa176aef083f9f062a35a5838a8867993fbc34b19208",
+      "title": "run approval approve"
+    },
+    {
+      "approvalID": null,
+      "command": "openburnbar-cli run poll 01B77492-9F29-4506-B3EA-BE7CCEB09E81 --json",
+      "exitCode": 0,
+      "lineStart": 223,
+      "phase": "awaiting_approval",
+      "runID": "A4D0D843-8ED0-48F1-AE4F-E24B23190BFB",
+      "sectionIndex": 10,
+      "sourceFile": "cli-hermes-transcript.txt",
+      "textSHA256": "be4301ba5c6af52024f6efb16eb619f7023680fcd0035b77237ec20d0737cde5",
+      "title": "run poll after approval"
+    },
+    {
+      "approvalID": null,
+      "command": "openburnbar-cli run create --prompt w04 cancellation probe --mock-provider --requires-approval",
+      "exitCode": 0,
+      "lineStart": 270,
+      "phase": "awaiting_approval",
+      "runID": "A4D0D843-8ED0-48F1-AE4F-E24B23190BFB",
+      "sectionIndex": 11,
+      "sourceFile": "cli-hermes-transcript.txt",
+      "textSHA256": "fa4d08baa24dfcc893077f4615a6857b03c719ab92faefd0358bfdd7093bca55",
+      "title": "run create cancellable"
+    },
+    {
+      "approvalID": null,
+      "command": "openburnbar-cli run cancel A4D0D843-8ED0-48F1-AE4F-E24B23190BFB --reason linux evidence cancellation",
+      "exitCode": 0,
+      "lineStart": 287,
+      "phase": "cancelled",
+      "runID": "A4D0D843-8ED0-48F1-AE4F-E24B23190BFB",
+      "sectionIndex": 12,
+      "sourceFile": "cli-hermes-transcript.txt",
+      "textSHA256": "87adb76d988363f6f108d3e95b8a24931039480966f9163e585a7952f809a6ba",
+      "title": "run cancel"
+    },
+    {
+      "approvalID": null,
+      "command": "openburnbar-cli run create --prompt w04 retry probe --mock-provider --fail-until-attempt 1",
+      "exitCode": 0,
+      "lineStart": 316,
+      "phase": "failed",
+      "runID": "583BD3FE-D45E-4242-AFA1-5CFBB5DCBE86",
+      "sectionIndex": 13,
+      "sourceFile": "cli-hermes-transcript.txt",
+      "textSHA256": "1a14b2ffc07e87ba40bddbb92ba592eb28e4c9ebd6d9780a456d8e652ff6c432",
+      "title": "run create retry failure"
+    },
+    {
+      "approvalID": null,
+      "command": "openburnbar-cli run retry 583BD3FE-D45E-4242-AFA1-5CFBB5DCBE86",
+      "exitCode": 0,
+      "lineStart": 338,
+      "phase": "completed",
+      "runID": "583BD3FE-D45E-4242-AFA1-5CFBB5DCBE86",
+      "sectionIndex": 14,
+      "sourceFile": "cli-hermes-transcript.txt",
+      "textSHA256": "a74818110f3f33e591a747787431f7416f325d7ee073bc0b9107f85553c8b909",
+      "title": "run retry"
+    },
+    {
+      "approvalID": null,
+      "command": "openburnbar-cli run poll 583BD3FE-D45E-4242-AFA1-5CFBB5DCBE86 --json",
+      "exitCode": 0,
+      "lineStart": 353,
+      "phase": null,
+      "runID": null,
+      "sectionIndex": 15,
+      "sourceFile": "cli-hermes-transcript.txt",
+      "textSHA256": "2628f8a05ec34626b4c592fd40933fe901e1874f530c33904a1a17191acefe71",
+      "title": "run poll after retry"
+    },
+    {
+      "approvalID": null,
+      "command": "openburnbar-cli index /tmp/tmp.QDlL6j9hJD/sample-project --max-files 20 --max-file-bytes 65536",
+      "exitCode": 1,
+      "lineStart": 383,
+      "phase": null,
+      "runID": null,
+      "sectionIndex": 16,
+      "sourceFile": "cli-hermes-transcript.txt",
+      "textSHA256": "c65424f8f989f50caa99e1add489219e5ffc2b3d968d91e7f08925b5ca90f912",
+      "title": "index sample project"
+    },
+    {
+      "approvalID": null,
+      "command": "openburnbar-cli search linuxEvidenceToken --cwd /tmp/tmp.QDlL6j9hJD/sample-project --limit 5",
+      "exitCode": 1,
+      "lineStart": 389,
+      "phase": null,
+      "runID": null,
+      "sectionIndex": 17,
+      "sourceFile": "cli-hermes-transcript.txt",
+      "textSHA256": "0fedcf0ef6a77fb0f1947ed0fe4f7a5d090b069d38e01dec8924afb6da6be266",
+      "title": "search sample project"
+    },
+    {
+      "approvalID": null,
+      "command": "openburnbar-cli recall linux evidence --cwd /tmp/tmp.QDlL6j9hJD/sample-project --limit 5",
+      "exitCode": 1,
+      "lineStart": 395,
+      "phase": null,
+      "runID": null,
+      "sectionIndex": 18,
+      "sourceFile": "cli-hermes-transcript.txt",
+      "textSHA256": "639d8f12b3eca8d1a2b9c768bbde60f8c5c5b060f6232090aaac41b037c6e374",
+      "title": "recall sample project"
+    },
+    {
+      "approvalID": null,
+      "command": null,
+      "exitCode": -1,
+      "lineStart": 404,
+      "phase": null,
+      "runID": null,
+      "sectionIndex": 19,
+      "sourceFile": "cli-hermes-transcript.txt",
+      "textSHA256": "28e740d7977f3fb0d95b1c85b9b62e8acf3563565cff4a1debd89e9853407aee",
+      "title": "daemon restart-persistence"
+    },
+    {
+      "approvalID": null,
+      "command": "openburnbar-cli run list",
+      "exitCode": 0,
+      "lineStart": 428,
+      "phase": "completed",
+      "runID": "583BD3FE-D45E-4242-AFA1-5CFBB5DCBE86",
+      "sectionIndex": 20,
+      "sourceFile": "cli-hermes-transcript.txt",
+      "textSHA256": "df3587a2f56296abe77a043d964642a2d41c8b40b19fa6028a78bfc4e250b8eb",
+      "title": "run list persistence tail"
+    },
+    {
+      "approvalID": null,
+      "command": "openburnbar-cli run get 142D0CB5-3879-4BCD-AA33-7FC0C9F113EA",
+      "exitCode": 0,
+      "lineStart": 442,
+      "phase": "completed",
+      "runID": "142D0CB5-3879-4BCD-AA33-7FC0C9F113EA",
+      "sectionIndex": 21,
+      "sourceFile": "cli-hermes-transcript.txt",
+      "textSHA256": "edeafe3fe24dd78e35cf0e4ea9b8b54c34054bd52021e1bf6d5c2b6a28afd900",
+      "title": "run get persistence readback"
+    },
+    {
+      "approvalID": null,
+      "command": "openburnbar-cli run poll 142D0CB5-3879-4BCD-AA33-7FC0C9F113EA --json",
+      "exitCode": 0,
+      "lineStart": 457,
+      "phase": null,
+      "runID": null,
+      "sectionIndex": 22,
+      "sourceFile": "cli-hermes-transcript.txt",
+      "textSHA256": "7726611cb9a68c644966b36a0d796494e1515d38a3125a5feabe7bcf3f77cf1a",
+      "title": "run poll persistence readback"
+    }
+  ],
+  "generatedAt": "2026-07-08T02:47:12.016Z",
+  "journalEvents": [
+    {
+      "emittedAt": 805171631.2530233,
+      "eventID": "3D18750D-2179-4D75-AEEA-E86830376B66",
+      "kind": "run_created",
+      "lineNumber": 1,
+      "phase": "planning",
+      "rawJournalOrdinal": 1,
+      "runID": "142D0CB5-3879-4BCD-AA33-7FC0C9F113EA",
+      "sourceFile": "hermes-run-journal.jsonl"
+    },
+    {
+      "emittedAt": 805171631.2544767,
+      "eventID": "E717AD3F-D9D5-4FBC-BF98-11461BB9A0D2",
+      "kind": "plan_generated",
+      "lineNumber": 2,
+      "phase": "planning",
+      "rawJournalOrdinal": 2,
+      "runID": "142D0CB5-3879-4BCD-AA33-7FC0C9F113EA",
+      "sourceFile": "hermes-run-journal.jsonl"
+    },
+    {
+      "emittedAt": 805171631.3348215,
+      "eventID": "37FCF8B1-DA93-4108-817D-1852A4A13FE6",
+      "kind": "run_created",
+      "lineNumber": 3,
+      "phase": "planning",
+      "rawJournalOrdinal": 3,
+      "runID": "01B77492-9F29-4506-B3EA-BE7CCEB09E81",
+      "sourceFile": "hermes-run-journal.jsonl"
+    },
+    {
+      "approvalID": "2640D4E4-9CB8-4E9C-B0BB-C7A00EBF67B4",
+      "emittedAt": 805171631.335436,
+      "eventID": "8D2C808C-CC01-4687-9BD5-4090366EC6A9",
+      "kind": "approval_requested",
+      "lineNumber": 4,
+      "phase": "awaiting_approval",
+      "rawJournalOrdinal": 4,
+      "runID": "01B77492-9F29-4506-B3EA-BE7CCEB09E81",
+      "sourceFile": "hermes-run-journal.jsonl"
+    },
+    {
+      "emittedAt": 805171631.3350106,
+      "eventID": "49F8E55D-CDD4-4353-BE64-48DD842BAF27",
+      "kind": "plan_generated",
+      "lineNumber": 5,
+      "phase": "planning",
+      "rawJournalOrdinal": 5,
+      "runID": "01B77492-9F29-4506-B3EA-BE7CCEB09E81",
+      "sourceFile": "hermes-run-journal.jsonl"
+    },
+    {
+      "approvalID": "2640D4E4-9CB8-4E9C-B0BB-C7A00EBF67B4",
+      "decision": "approve",
+      "emittedAt": 805171631.373119,
+      "eventID": "0676C9CB-9965-4F7B-AA03-C642FF998BF5",
+      "kind": "approval_responded",
+      "lineNumber": 6,
+      "phase": "awaiting_approval",
+      "rawJournalOrdinal": 6,
+      "runID": "01B77492-9F29-4506-B3EA-BE7CCEB09E81",
+      "sourceFile": "hermes-run-journal.jsonl"
+    },
+    {
+      "emittedAt": 805171631.4158468,
+      "eventID": "89DDF9D8-3D23-40FA-9873-E065F895D624",
+      "kind": "run_created",
+      "lineNumber": 7,
+      "phase": "planning",
+      "rawJournalOrdinal": 7,
+      "runID": "A4D0D843-8ED0-48F1-AE4F-E24B23190BFB",
+      "sourceFile": "hermes-run-journal.jsonl"
+    },
+    {
+      "emittedAt": 805171631.4160519,
+      "eventID": "8CED6186-AEF5-476F-BDD5-D4C7C55A4AD3",
+      "kind": "plan_generated",
+      "lineNumber": 8,
+      "phase": "planning",
+      "rawJournalOrdinal": 8,
+      "runID": "A4D0D843-8ED0-48F1-AE4F-E24B23190BFB",
+      "sourceFile": "hermes-run-journal.jsonl"
+    },
+    {
+      "approvalID": "C3E33AFC-9AF7-420C-9190-73E7C5E0D500",
+      "emittedAt": 805171631.416252,
+      "eventID": "1E6B5847-BAB7-4CF7-85A5-5AAA566B9719",
+      "kind": "approval_requested",
+      "lineNumber": 9,
+      "phase": "awaiting_approval",
+      "rawJournalOrdinal": 9,
+      "runID": "A4D0D843-8ED0-48F1-AE4F-E24B23190BFB",
+      "sourceFile": "hermes-run-journal.jsonl"
+    },
+    {
+      "emittedAt": 805171631.4356422,
+      "eventID": "1B0EEEB3-F37F-412D-9D1C-BA185AB79886",
+      "kind": "run_cancelled",
+      "lineNumber": 10,
+      "phase": "cancelled",
+      "rawJournalOrdinal": 10,
+      "runID": "A4D0D843-8ED0-48F1-AE4F-E24B23190BFB",
+      "sourceFile": "hermes-run-journal.jsonl"
+    },
+    {
+      "emittedAt": 805171631.4589516,
+      "eventID": "69FA57DA-FA0E-4ECD-A929-244C06B96233",
+      "kind": "run_created",
+      "lineNumber": 11,
+      "phase": "planning",
+      "rawJournalOrdinal": 11,
+      "runID": "583BD3FE-D45E-4242-AFA1-5CFBB5DCBE86",
+      "sourceFile": "hermes-run-journal.jsonl"
+    },
+    {
+      "emittedAt": 805171631.4591533,
+      "eventID": "B02CC30A-18D6-4530-8805-B9E4965C34EF",
+      "kind": "plan_generated",
+      "lineNumber": 12,
+      "phase": "planning",
+      "rawJournalOrdinal": 12,
+      "runID": "583BD3FE-D45E-4242-AFA1-5CFBB5DCBE86",
+      "sourceFile": "hermes-run-journal.jsonl"
+    },
+    {
+      "emittedAt": 805171631.4593223,
+      "eventID": "3116EF27-B102-4D39-85EF-2F300FBED4E6",
+      "kind": "run_failed",
+      "lineNumber": 13,
+      "phase": "failed",
+      "rawJournalOrdinal": 13,
+      "runID": "583BD3FE-D45E-4242-AFA1-5CFBB5DCBE86",
+      "sourceFile": "hermes-run-journal.jsonl"
+    },
+    {
+      "emittedAt": 805171631.4816762,
+      "eventID": "117D5CA8-58EF-4F39-940C-58C22E1243FA",
+      "kind": "run_created",
+      "lineNumber": 14,
+      "phase": "planning",
+      "rawJournalOrdinal": 14,
+      "runID": "583BD3FE-D45E-4242-AFA1-5CFBB5DCBE86",
+      "sourceFile": "hermes-run-journal.jsonl"
+    },
+    {
+      "emittedAt": 805171631.48192,
+      "eventID": "5659792D-E881-4EFA-91B7-B7A21C970A60",
+      "kind": "plan_generated",
+      "lineNumber": 15,
+      "phase": "planning",
+      "rawJournalOrdinal": 15,
+      "runID": "583BD3FE-D45E-4242-AFA1-5CFBB5DCBE86",
+      "sourceFile": "hermes-run-journal.jsonl"
+    }
+  ],
+  "platform": "linux",
+  "schema": "openburnbar-hermes-event-order-raw-extraction-v1",
+  "sourceArtifacts": [
+    "hermes-run-journal.jsonl",
+    "hermes-run-checkpoints/",
+    "cli-hermes-transcript.txt",
+    "packaged-browser-hermes-dom-transcript.json"
+  ]
+}

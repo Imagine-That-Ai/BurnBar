@@ -1,5 +1,5 @@
-import CryptoKit
 import Foundation
+import OpenBurnBarKernel
 
 /// Signal-style safety number for the phone-control trust binding (F1).
 ///
@@ -42,8 +42,8 @@ public enum ControllerKeySafetyCode {
         let decoded = publicKeysBase64.compactMap(validatedEd25519KeyBytes)
         guard decoded.count == publicKeysBase64.count else { return nil }
         let ordered = decoded.sorted { $0.lexicographicallyPrecedes($1) }
-        let digest = SHA256.hash(data: ordered.reduce(into: Data()) { $0.append($1) })
-        return formatDigest(Data(digest))
+        let digest = PlatformCrypto.sha256(ordered.reduce(into: Data()) { $0.append($1) })
+        return formatDigest(digest)
     }
 
     /// A spaced-out, screen-reader-friendly rendering so VoiceOver speaks
@@ -60,7 +60,7 @@ public enum ControllerKeySafetyCode {
         guard !trimmed.isEmpty,
               let raw = Data(base64Encoded: trimmed),
               raw.count == ed25519PublicKeyByteCount,
-              (try? Curve25519.Signing.PublicKey(rawRepresentation: raw)) != nil else {
+              (try? PlatformCrypto.ed25519PublicKey(rawRepresentation: raw)) != nil else {
             return nil
         }
         return raw

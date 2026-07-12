@@ -1,5 +1,5 @@
 import Foundation
-import CryptoKit
+import OpenBurnBarKernel
 
 /// Ed25519 signing and verification for `CapabilityToken` payloads.
 ///
@@ -53,24 +53,24 @@ public struct CapabilityTokenSigner: Sendable {
 
     public func sign(
         token: CapabilityToken,
-        privateKey: Curve25519.Signing.PrivateKey
+        privateKey: PlatformEd25519SigningMaterial
     ) throws -> CapabilityToken {
         var signed = token
         let payload = try canonicalSignableBytes(token: token)
-        let signature = try privateKey.signature(for: payload)
+        let signature = try PlatformCrypto.ed25519Signature(message: payload, privateKey: privateKey)
         signed.signatureEd25519Base64 = signature.base64EncodedString()
         return signed
     }
 
     public func verify(
         token: CapabilityToken,
-        publicKey: Curve25519.Signing.PublicKey
+        publicKey: PlatformEd25519PublicKey
     ) throws -> Bool {
         guard let signatureBase64 = token.signatureEd25519Base64,
               let signature = Data(base64Encoded: signatureBase64) else {
             return false
         }
         let payload = try canonicalSignableBytes(token: token)
-        return publicKey.isValidSignature(signature, for: payload)
+        return try PlatformCrypto.verifyEd25519Signature(signature, message: payload, publicKey: publicKey)
     }
 }

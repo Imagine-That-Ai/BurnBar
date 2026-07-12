@@ -3,15 +3,15 @@ import OpenBurnBarCore
 
 // MARK: - Claude Code Parser
 
-final class ClaudeCodeParser: LogParser, Sendable {
-    let provider: AgentProvider = .claudeCode
+public final class ClaudeCodeParser: LogParser, Sendable {
+    public let provider: AgentProvider = .claudeCode
     private let fileManager: FileManager
     private let appPaths: OpenBurnBarAppPaths
     private let cacheURL: URL
     private let cacheStore: ParserDiskCacheStore<ClaudeCodeCacheEntry>
     private let projectsDirectoryOverride: URL?
 
-    init(
+    public init(
         fileManager: FileManager = .default,
         appPaths: OpenBurnBarAppPaths = .live(),
         projectsDirectoryOverride: URL? = nil
@@ -29,11 +29,15 @@ final class ClaudeCodeParser: LogParser, Sendable {
         _ = try? OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths) // try?-ok(best-effort dir prep)
     }
 
-    func parse() async throws -> ParseResult {
+    public func parse() async throws -> ParseResult {
         try await parse(options: .default)
     }
 
-    func parse(options: LogParseOptions) async throws -> ParseResult {
+    public func parse(options: LogParseOptions) async throws -> ParseResult {
+        try parseSynchronously(options: options)
+    }
+
+    func parseSynchronously(options: LogParseOptions) throws -> ParseResult {
         let projectsURL = projectsDirectoryOverride
             ?? URL(fileURLWithPath: (provider.logDirectory as NSString).expandingTildeInPath)
         let projectsPath = projectsURL.path
@@ -179,64 +183,32 @@ final class ClaudeCodeParser: LogParser, Sendable {
         return ParseResult(usages: usages, conversations: conversations)
     }
 
-    private func decodeProjectName(_ encoded: String) -> String {
-        #if os(Windows)
-        // Windows-port Phase-2 parser path-remap: on Windows the project directory
-        // is encoded from a Windows `cwd` — drive form (`C--Users-Alice-project`)
-        // or UNC (`--server-share-project`) — which the macOS `-Users-` heuristic
-        // below never recognizes. Route those through the shared PATH-021 decoder
-        // (`ClaudeCodeProjectPathCodec`, now Windows-buildable in the Engine) and
-        // mirror the macOS home-relative convention (`~/<tail>` under `\Users\<user>`).
-        if !encoded.hasPrefix("-Users-") {
-            let decoded = ClaudeCodeProjectPathCodec.decode(encoded, style: .windows)
-            let backslash: Character = "\\"
-            let components = decoded.reconstructedPath
-                .split(separator: backslash, omittingEmptySubsequences: true)
-                .map(String.init)
-            if components.count >= 4,
-               components[1].caseInsensitiveCompare("Users") == .orderedSame {
-                return "~/" + components.dropFirst(3).joined(separator: "/")
-            }
-            return decoded.displayPath
+    public func decodeProjectName(_ encoded: String) -> String {
+        var decoded = ClaudeCodeProjectPathCodec.decode(encoded)
+        if decoded.isAmbiguous {
+            decoded = ClaudeCodeProjectPathCodec.decode(encoded, style: .windows)
         }
-        #endif
-        guard encoded.hasPrefix("-Users-") else {
-            return encoded
-        }
+        let path = decoded.displayPath
 
-        let pathAfterPrefix = String(encoded.dropFirst(7))
-
-        var segments: [String] = []
-        var currentSegment = ""
-
-        for (index, char) in pathAfterPrefix.enumerated() {
-            if char == "-" && index + 1 < pathAfterPrefix.count {
-                let nextIndex = pathAfterPrefix.index(pathAfterPrefix.startIndex, offsetBy: index + 1)
-                let nextChar = pathAfterPrefix[nextIndex]
-
-                if nextChar.isUppercase {
-                    if !currentSegment.isEmpty {
-                        segments.append(currentSegment)
-                    }
-                    currentSegment = ""
-                } else {
-                    currentSegment.append(char)
-                }
-            } else {
-                currentSegment.append(char)
+        if decoded.style == .posix, path.hasPrefix("/Users/") {
+            let components = path.split(separator: "/")
+            if components.count >= 2 {
+                let rest = components.dropFirst(2).joined(separator: "/")
+                return rest.isEmpty ? "~" : "~/" + rest
             }
         }
 
-        if !currentSegment.isEmpty {
-            segments.append(currentSegment)
+        if decoded.style == .windows {
+            let components = path.split(separator: "\\")
+            if components.count >= 3,
+               components[0].hasSuffix(":"),
+               components[1].lowercased() == "users" {
+                let rest = components.dropFirst(3).joined(separator: "\\")
+                return rest.isEmpty ? "~" : "~\\" + rest
+            }
         }
 
-        if segments.count == 1 {
-            return "~/" + segments[0]
-        } else {
-            let pathComponents = segments.dropFirst()
-            return "~/" + pathComponents.joined(separator: "/")
-        }
+        return path
     }
 
     private func parseClaudeSession(

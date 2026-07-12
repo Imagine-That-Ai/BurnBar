@@ -6,11 +6,9 @@ using OpenBurnBar.App.Theme;
 namespace OpenBurnBar.App.Quota;
 
 /// <summary>
-/// Representative sample subscriptions for the Quota workspace preview. Live wiring to the ported
-/// ProviderQuotaService is a later Phase-3 lane; this stands in exactly as <c>StubCliStream</c> does
-/// for the Session Logs surface, so the parity-tested visuals render against realistic data on the
-/// dev host today. Pure (no WinUI); the dial buckets align with each account's pressure so an orb's
-/// remaining percent and its dial agree.
+/// Dev-host fallback when B4 Firestore quota_snapshots are unset or empty. Live quota is
+/// computed on Mac by ProviderQuotaService and uploaded to Firestore — not read from
+/// local SQLCipher. Windows consumes those snapshots via QuotaAccountsSource.
 /// </summary>
 public sealed record QuotaSampleAccount(SubscriptionEntry Entry, QuotaDialBucket? Outer, QuotaDialBucket? Inner);
 

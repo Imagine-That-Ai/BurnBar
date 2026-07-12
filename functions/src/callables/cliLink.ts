@@ -447,6 +447,7 @@ export const completeCliLink = onCall(
     // only its locally-held delivery private key can open the returned envelope.
     await sessionRef.update({
       status: "approved",
+      ownerUid: uid,
       credentialEnvelope,
       accessToken: FieldValue.delete(),
       refreshToken: FieldValue.delete(),

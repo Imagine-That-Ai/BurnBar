@@ -45,7 +45,7 @@ final class PerfAuditScreenshotTests: XCTestCase {
         return image
     }
 
-    private func assertNotBlank(_ image: UIImage, name: String) throws {
+    private func XCTAssertNotBlank(_ image: UIImage, name: String) throws {
         let cgImage = try XCTUnwrap(image.cgImage)
         // A blank capture means the hierarchy failed to render — cheap
         // sanity: the image must contain more than one distinct pixel value
@@ -96,7 +96,7 @@ final class PerfAuditScreenshotTests: XCTestCase {
             size: CGSize(width: 393, height: 620),
             named: "ios-013-\(Self.phase).png"
         )
-        try assertNotBlank(image, name: "ios-013-\(Self.phase).png")
+        try XCTAssertNotBlank(image, name: "ios-013-\(Self.phase).png")
     }
 
     /// Pins the no-blur glow contract (ios-013): the pre-shaped gradients
@@ -196,6 +196,6 @@ final class PerfAuditScreenshotTests: XCTestCase {
             size: CGSize(width: 393, height: 760),
             named: "ios-014-\(Self.phase).png"
         )
-        try assertNotBlank(image, name: "ios-014-\(Self.phase).png")
+        try XCTAssertNotBlank(image, name: "ios-014-\(Self.phase).png")
     }
 }

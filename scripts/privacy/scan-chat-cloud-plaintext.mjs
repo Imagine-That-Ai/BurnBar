@@ -1033,18 +1033,18 @@ for (const field of [
   "personaScopeJSON",
 ]) {
   assertIncludes(
-    "OpenBurnBarMobile/Services/CLIAgentMissionDispatcher.swift",
+    "OpenBurnBarMobile/Services/CLIAgentMissionRequestPayloadFactory.swift",
     `"${field}"`,
     `mobile mission sealer handles ${field}`,
   );
 }
 assertIncludes(
-  "OpenBurnBarMobile/Services/CLIAgentMissionDispatcher.swift",
+  "OpenBurnBarMobile/Services/CLIAgentMissionRequestPayloadFactory.swift",
   "payload.removeValue(forKey: key)",
   "mobile mission removes private top-level fields",
 );
 assertIncludes(
-  "OpenBurnBarMobile/Services/CLIAgentMissionDispatcher.swift",
+  "OpenBurnBarMobile/Services/CLIAgentMissionRequestPayloadFactory.swift",
   "sealedPayload",
   "mobile mission sealed payload",
 );
@@ -1698,7 +1698,7 @@ assertIncludes(
   "iOS gateway must prefer ratchetEnvelope for capable phone events",
 );
 assertIncludesExecutable(
-  "OpenBurnBarMobile/Services/HermesGatewayAPI.swift",
+  "OpenBurnBarMobile/Services/HermesGatewayMessageRecord.swift",
   "decodedRatchetText(",
   "iOS gateway must open ratchetEnvelope agent replies",
 );
@@ -1780,12 +1780,12 @@ for (const rotationFile of [
 // response.error. Pin both directions: senders emit only errorCode, receivers
 // ignore the legacy plaintext field and map known codes to fixed public text.
 assertIncludes(
-  "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/Generated/HermesRealtimeRelayEnvelope.swift",
+  "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Generated/HermesRealtimeRelayEnvelope.swift",
   "public enum HermesRealtimeRelayErrorCode",
   "Swift iroh relay frame model must carry fixed public error codes",
 );
 assertIncludes(
-  "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/Generated/HermesRealtimeRelayEnvelope.swift",
+  "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Generated/HermesRealtimeRelayEnvelope.swift",
   "public var errorCode: String?",
   "Swift iroh relay payload must expose errorCode",
 );

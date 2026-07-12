@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 import UserNotifications
 
 @MainActor
@@ -45,11 +46,11 @@ final class DailyDigestManager {
 
     func scheduleDigest(from dataStore: DataStore, at hour: Int = 18) {
         notificationCenter.removePendingNotificationRequests(
-            withIdentifiers: [OpenBurnBarIdentity.dailyDigestNotificationIdentifier] + OpenBurnBarIdentity.legacyDailyDigestNotificationIdentifiers
+            withIdentifiers: [OpenBurnBarCore.OpenBurnBarIdentity.dailyDigestNotificationIdentifier] + OpenBurnBarCore.OpenBurnBarIdentity.legacyDailyDigestNotificationIdentifiers
         )
         let narrative = InsightEngine.generateNarrative(from: dataStore)
         let content = UNMutableNotificationContent()
-        content.title = "\(OpenBurnBarIdentity.productName) Daily Digest"
+        content.title = "\(OpenBurnBarCore.OpenBurnBarIdentity.productName) Daily Digest"
         content.body = [narrative.headline, narrative.detail].compactMap { $0 }.joined(separator: " ")
         content.sound = .default
 
@@ -58,7 +59,7 @@ final class DailyDigestManager {
         components.minute = 0
         let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
         let request = UNNotificationRequest(
-            identifier: OpenBurnBarIdentity.dailyDigestNotificationIdentifier,
+            identifier: OpenBurnBarCore.OpenBurnBarIdentity.dailyDigestNotificationIdentifier,
             content: content,
             trigger: trigger
         )
@@ -67,7 +68,7 @@ final class DailyDigestManager {
 
     func cancelDigest() {
         notificationCenter.removePendingNotificationRequests(
-            withIdentifiers: [OpenBurnBarIdentity.dailyDigestNotificationIdentifier] + OpenBurnBarIdentity.legacyDailyDigestNotificationIdentifiers
+            withIdentifiers: [OpenBurnBarCore.OpenBurnBarIdentity.dailyDigestNotificationIdentifier] + OpenBurnBarCore.OpenBurnBarIdentity.legacyDailyDigestNotificationIdentifiers
         )
     }
 }

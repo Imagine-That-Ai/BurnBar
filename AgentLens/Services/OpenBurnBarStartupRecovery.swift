@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import Observation
+import OpenBurnBarCore
 import OpenBurnBarMedia
 
 struct DataStoreStartupFailure: Identifiable, Equatable {
@@ -14,7 +15,7 @@ struct DataStoreStartupFailure: Identifiable, Equatable {
 
     static func make(
         error: Error,
-        paths: OpenBurnBarAppPaths = .live(),
+        paths: OpenBurnBarCore.OpenBurnBarAppPaths = .live(),
         occurredAt: Date = Date(),
         archiveURL: URL? = nil,
         id: UUID = UUID()
@@ -50,7 +51,7 @@ struct DataStoreStartupFailure: Identifiable, Equatable {
 
     var diagnostics: String {
         var lines = [
-            "\(OpenBurnBarIdentity.productName) could not open its local database.",
+            "\(OpenBurnBarCore.OpenBurnBarIdentity.productName) could not open its local database.",
             "Occurred: \(Self.formatDiagnosticsDate(occurredAt))",
             "Error: \(errorSummary)",
             "Details: \(technicalDetails)",
@@ -82,7 +83,7 @@ enum OpenBurnBarStartupRecovery {
     static let minimumAutomaticUsageRefreshInterval: TimeInterval = 15 * 60
 
     static func archiveDatabaseSidecars(
-        paths: OpenBurnBarAppPaths = .live(),
+        paths: OpenBurnBarCore.OpenBurnBarAppPaths = .live(),
         fileManager: FileManager = .default,
         now: Date = Date()
     ) throws -> DataStoreRecoveryArchiveResult {
@@ -140,7 +141,7 @@ enum OpenBurnBarStartupRecovery {
     }
 
     private static func uniqueArchiveDirectory(
-        paths: OpenBurnBarAppPaths,
+        paths: OpenBurnBarCore.OpenBurnBarAppPaths,
         fileManager: FileManager,
         timestamp: String
     ) throws -> URL {
@@ -484,6 +485,7 @@ final class OpenBurnBarRuntimeContext {
 
     #if canImport(AppKit) && !DISTRIBUTION_MAS
     func startComputerUseServices(relayHostService explicitRelayHostService: HermesRelayHostService? = nil) {
+        // cov:ignore-start -- live app bootstrap wiring; runtime controller behavior is covered by Computer Use coordinator and daemon manager tests.
         let controller: ComputerUseRuntimeController
         if let existing = computerUseRuntimeController {
             controller = existing
@@ -491,6 +493,7 @@ final class OpenBurnBarRuntimeContext {
             controller = ComputerUseRuntimeController(
                 accountManager: accountManager,
                 settingsManager: settingsManager,
+                daemonManager: daemonManager,
                 relayHostService: explicitRelayHostService ?? hermesRelayHostService,
                 chatController: chatController
             )
@@ -506,6 +509,7 @@ final class OpenBurnBarRuntimeContext {
         #if DEBUG
         controller.startE2EProofSessionIfRequested()
         #endif
+        // cov:ignore-end
     }
     #endif
 

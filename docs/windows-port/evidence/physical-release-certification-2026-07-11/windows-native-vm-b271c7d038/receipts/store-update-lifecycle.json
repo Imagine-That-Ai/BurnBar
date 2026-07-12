@@ -1,0 +1,61 @@
+{
+  "schema": "openburnbar.windows.release-certification-receipt.v1",
+  "status": "BLOCKED",
+  "gate": "store-update-lifecycle",
+  "target": "store-update-lifecycle",
+  "source": {
+    "commitSha": "b271c7d0387060fb1c040f0047cf0f2ebd8408ac",
+    "dirtyTree": false
+  },
+  "artifact": {
+    "name": "source-checkout",
+    "architecture": "win32-x64",
+    "availability": "not-applicable",
+    "sha256": null,
+    "workflowRunId": "not-applicable-local",
+    "workflowRunUrl": "not-applicable",
+    "signature": {
+      "result": "not-applicable",
+      "identity": "not-applicable"
+    }
+  },
+  "device": {
+    "kind": "windows-native-unattested",
+    "manufacturer": "unattested",
+    "model": "virt-10.0",
+    "architecture": "x64",
+    "osBuild": "win32 10.0.26200",
+    "tpm": "not-inspected",
+    "cpu": "virt-10.0",
+    "ramBytes": 8580235264
+  },
+  "protocol": {
+    "commands": [],
+    "manualSteps": [
+      "No Microsoft Partner Center reservation/private-flight approval and no authorized physical Store/update test device is available; public release advancement is not authorized.",
+      "After PR #1541's exact signed sustained-launch artifact is recorded, validate private flight and direct-download lifecycle on x64 and ARM64, then record Store/winget/update/rollback receipts without publishing broadly."
+    ]
+  },
+  "time": {
+    "startedAtUtc": "2026-07-12T01:22:14.870Z",
+    "endedAtUtc": "2026-07-12T01:40:13.495Z",
+    "durationSeconds": 1078.625
+  },
+  "expected": "The complete physical/live/private-flight protocol passes with exact signed artifact and raw evidence.",
+  "observed": "The required external device, account, permission, or approval is unavailable in this session; no pass is claimed.",
+  "exitCode": null,
+  "evidence": {
+    "files": [
+      {
+        "path": "blockers/store-update-lifecycle.md",
+        "sha256": "006cff911fa2cf32a433e67f82531de69b67a9b017d6c6f6672c78f66f75cc37"
+      }
+    ]
+  },
+  "blocker": {
+    "id": "EXT-STORE-PRIVATE-FLIGHT-APPROVAL",
+    "owner": "Alberto",
+    "missing": "No Microsoft Partner Center reservation/private-flight approval and no authorized physical Store/update test device is available; public release advancement is not authorized.",
+    "recovery": "After PR #1541's exact signed sustained-launch artifact is recorded, validate private flight and direct-download lifecycle on x64 and ARM64, then record Store/winget/update/rollback receipts without publishing broadly."
+  }
+}

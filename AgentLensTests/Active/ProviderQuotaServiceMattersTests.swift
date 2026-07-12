@@ -129,7 +129,7 @@ final class ProviderQuotaServiceMattersTests: XCTestCase {
                 legacyServices: [],
                 backend: InMemoryKeychainBackend()
             ),
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: appSupportRoot),
+            appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: appSupportRoot),
             fileManager: .default,
             session: .shared,
             environment: [:],

@@ -57,7 +57,7 @@ final class FactoryDroidParserTests: XCTestCase {
         )
 
         let parser = FactoryDroidParser(
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
+            appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
             sessionsDirectoryOverride: sessionsRoot
         )
 
@@ -103,7 +103,7 @@ final class FactoryDroidParserTests: XCTestCase {
         )
 
         let parser = FactoryDroidParser(
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
+            appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
             sessionsDirectoryOverride: sessionsRoot
         )
 
@@ -148,7 +148,7 @@ final class FactoryDroidParserTests: XCTestCase {
         )
 
         let parser = FactoryDroidParser(
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
+            appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
             sessionsDirectoryOverride: sessionsRoot
         )
 

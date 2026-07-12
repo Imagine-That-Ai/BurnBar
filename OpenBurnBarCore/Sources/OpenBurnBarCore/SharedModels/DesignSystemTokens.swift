@@ -133,6 +133,7 @@ public enum DesignSystemColors {
         case .openClaw: return "FF6B6B"
         case .openClaude: return "D97757"
         case .omp: return "EC4899"
+        case .junie: return "48E054"
         case .ollama:      return "6B7280"
         case .windsurf:    return "06B6D4"
         case .warp:        return "DDE4EA"

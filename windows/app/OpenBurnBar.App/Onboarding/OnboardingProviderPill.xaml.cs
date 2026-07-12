@@ -57,9 +57,9 @@ public sealed partial class OnboardingProviderPill : UserControl
         }
         else
         {
-            PillBorder.Background = ResourceBrush("OBBSurfaceBrush");
-            PillBorder.BorderBrush = ResourceBrush("OBBStrokeBrush");
-            PillBorder.BorderThickness = new Thickness(0.5);
+            PillBorder.Background = ResourceBrush("PensieveColorGlassBgBrush");
+            PillBorder.BorderBrush = ResourceBrush("PensieveColorFrostLineBrush");
+            PillBorder.BorderThickness = new Thickness(1);
         }
 
         AutomationProperties.SetHelpText(this, selected ? "Selected" : "Not selected");

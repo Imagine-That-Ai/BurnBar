@@ -1,7 +1,15 @@
 import OpenBurnBarCore
+import OpenBurnBarLinuxSecurity
 import Foundation
+#if canImport(FoundationNetworking)
+@preconcurrency import FoundationNetworking
+#endif
+#if canImport(LocalAuthentication)
 import LocalAuthentication
+#endif
+#if canImport(Security)
 import Security
+#endif
 
 public struct BurnBarProviderExecutionResult: Sendable {
     public let outputText: String
@@ -53,17 +61,20 @@ public struct BurnBarProviderProxyUsage: Sendable {
 public struct BurnBarProviderProxyResponse: Sendable {
     public let statusCode: Int
     public let contentType: String
+    public let headers: [String: String]
     public let body: Data
     public let usage: BurnBarProviderProxyUsage?
 
     public init(
         statusCode: Int,
         contentType: String,
+        headers: [String: String] = [:],
         body: Data,
         usage: BurnBarProviderProxyUsage?
     ) {
         self.statusCode = statusCode
         self.contentType = contentType
+        self.headers = headers
         self.body = body
         self.usage = usage
     }
@@ -76,15 +87,18 @@ public struct BurnBarProviderProxyResponse: Sendable {
 public struct BurnBarProviderProxyStream: Sendable {
     public let statusCode: Int
     public let contentType: String
+    public let headers: [String: String]
     public let chunks: AsyncThrowingStream<Data, Error>
 
     public init(
         statusCode: Int,
         contentType: String,
+        headers: [String: String] = [:],
         chunks: AsyncThrowingStream<Data, Error>
     ) {
         self.statusCode = statusCode
         self.contentType = contentType
+        self.headers = headers
         self.chunks = chunks
     }
 }
@@ -104,6 +118,12 @@ public struct BurnBarProxyStreamingUnsupported: Error, Sendable {
 /// a helper that opens a line-framed byte stream from a `URLRequest`.
 public enum BurnBarProxyStreaming {
     private static let logger = BurnBarDaemonLogger(category: "provider-stream")
+    #if os(Linux)
+    // swift-corelibs-foundation can fail to complete a data task after an
+    // upstream RST. Bound post-response silence so the gateway always closes
+    // the downstream client instead of holding a streamed request forever.
+    private static let linuxStreamInactivityTimeoutNanoseconds: UInt64 = 15_000_000_000
+    #endif
 
     /// Streaming responses can stay open far longer than a normal request,
     /// so this session relaxes the per-request and resource timeouts that
@@ -113,7 +133,9 @@ public enum BurnBarProxyStreaming {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 300
         configuration.timeoutIntervalForResource = 86_400
+        #if !os(Linux)
         configuration.waitsForConnectivity = true
+        #endif
         configuration.httpShouldUsePipelining = false
         return URLSession(configuration: configuration)
     }()
@@ -126,6 +148,32 @@ public enum BurnBarProxyStreaming {
         request: URLRequest,
         defaultContentType: String
     ) async throws -> BurnBarProviderProxyStream {
+        #if os(Linux)
+        let delegate = LinuxURLSessionByteStreamDelegate(
+            defaultContentType: defaultContentType,
+            inactivityTimeoutNanoseconds: linuxStreamInactivityTimeoutNanoseconds
+        )
+        let stream = delegate.makeStream()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 300
+        configuration.timeoutIntervalForResource = 86_400
+        configuration.httpShouldUsePipelining = false
+        let streamingSession = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
+        let task = streamingSession.dataTask(with: request)
+        delegate.setTerminationHandler {
+            task.cancel()
+            streamingSession.invalidateAndCancel()
+        }
+        task.resume()
+
+        let response = try await delegate.awaitHTTPResponse()
+
+        return BurnBarProviderProxyStream(
+            statusCode: response.statusCode,
+            contentType: response.contentType,
+            chunks: stream
+        )
+        #else
         let (bytes, response) = try await session.bytes(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw BurnBarProviderExecutorError.invalidResponse
@@ -149,9 +197,10 @@ public enum BurnBarProxyStreaming {
                     ]
                 )
             }
-            throw BurnBarProviderExecutorError.upstreamError(
+            throw BurnBarProviderExecutorError.upstreamErrorWithHeaders(
                 httpResponse.statusCode,
-                String(data: errorData, encoding: .utf8) ?? ""
+                String(data: errorData, encoding: .utf8) ?? "",
+                BurnBarProxyStreaming.normalizedHeaders(from: httpResponse)
             )
         }
 
@@ -184,8 +233,23 @@ public enum BurnBarProxyStreaming {
         return BurnBarProviderProxyStream(
             statusCode: httpResponse.statusCode,
             contentType: contentType,
+            headers: normalizedHeaders(from: httpResponse),
             chunks: stream
         )
+        #endif
+    }
+
+    static func normalizedHeaders(from response: HTTPURLResponse) -> [String: String] {
+        response.allHeaderFields.reduce(into: [String: String]()) { result, element in
+            guard let key = element.key as? String else { return }
+            let value: String
+            if let stringValue = element.value as? String {
+                value = stringValue
+            } else {
+                value = "\(element.value)"
+            }
+            result[key] = value
+        }
     }
 
     static func appendBytePreservingStreamFraming(_ byte: UInt8, to buffer: inout Data) -> Data? {
@@ -306,9 +370,10 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
             throw BurnBarProviderExecutorError.invalidResponse
         }
         guard (200..<300).contains(httpResponse.statusCode) else {
-            throw BurnBarProviderExecutorError.upstreamError(
+            throw BurnBarProviderExecutorError.upstreamErrorWithHeaders(
                 httpResponse.statusCode,
-                String(data: data, encoding: .utf8) ?? ""
+                String(data: data, encoding: .utf8) ?? "",
+                BurnBarProxyStreaming.normalizedHeaders(from: httpResponse)
             )
         }
 
@@ -386,9 +451,10 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
 
         let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type") ?? "application/json"
         guard (200..<300).contains(httpResponse.statusCode) else {
-            throw BurnBarProviderExecutorError.upstreamError(
+            throw BurnBarProviderExecutorError.upstreamErrorWithHeaders(
                 httpResponse.statusCode,
-                String(data: data, encoding: .utf8) ?? ""
+                String(data: data, encoding: .utf8) ?? "",
+                BurnBarProxyStreaming.normalizedHeaders(from: httpResponse)
             )
         }
         try Self.validateOpenAICompatibleChatResponse(data, modelID: route.resolvedModelID)
@@ -396,6 +462,7 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         return BurnBarProviderProxyResponse(
             statusCode: httpResponse.statusCode,
             contentType: contentType,
+            headers: BurnBarProxyStreaming.normalizedHeaders(from: httpResponse),
             body: data,
             usage: Self.extractProxyUsage(requestBody: outboundBody, responseBody: data)
         )
@@ -479,15 +546,17 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
             if httpResponse.statusCode == 404 || httpResponse.statusCode == 405 {
                 return try await proxyResponsesViaChatCompletions(body: body, route: route, variant: variant)
             }
-            throw BurnBarProviderExecutorError.upstreamError(
+            throw BurnBarProviderExecutorError.upstreamErrorWithHeaders(
                 httpResponse.statusCode,
-                String(data: data, encoding: .utf8) ?? ""
+                String(data: data, encoding: .utf8) ?? "",
+                BurnBarProxyStreaming.normalizedHeaders(from: httpResponse)
             )
         }
 
         return BurnBarProviderProxyResponse(
             statusCode: httpResponse.statusCode,
             contentType: contentType,
+            headers: BurnBarProxyStreaming.normalizedHeaders(from: httpResponse),
             body: data,
             usage: Self.extractResponsesUsage(responseBody: data)
         )
@@ -518,6 +587,7 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         return BurnBarProviderProxyResponse(
             statusCode: 200,
             contentType: "application/json",
+            headers: chatResponse.headers,
             body: body,
             usage: chatResponse.usage
         )
@@ -556,9 +626,10 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         }
 
         guard (200..<300).contains(httpResponse.statusCode) else {
-            throw BurnBarProviderExecutorError.upstreamError(
+            throw BurnBarProviderExecutorError.upstreamErrorWithHeaders(
                 httpResponse.statusCode,
-                String(data: data, encoding: .utf8) ?? ""
+                String(data: data, encoding: .utf8) ?? "",
+                BurnBarProxyStreaming.normalizedHeaders(from: httpResponse)
             )
         }
 
@@ -566,7 +637,8 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
             requestBody: outboundBody,
             responseBody: data,
             modelID: route.resolvedModelID,
-            streamRequested: streamRequested
+            streamRequested: streamRequested,
+            headers: BurnBarProxyStreaming.normalizedHeaders(from: httpResponse)
         )
     }
 
@@ -858,6 +930,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
     private let hermesCredentialPoolURL: URL?
     private let claudeCodeCredentialsURL: URL?
     private let claudeOAuthRefreshSession: URLSession
+    private let linuxSecretCustodian: LinuxSecretCustodian
 
     public init(
         service: String = BurnBarKeychainSecretStore.defaultService,
@@ -867,7 +940,8 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
         claudeCodeCredentialsURL: URL? = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".claude/.credentials.json", isDirectory: false),
         fallbackSecretFileURL: URL? = BurnBarDaemonPaths.defaultProviderSecretContinuityURL,
-        claudeOAuthRefreshSession: URLSession = .shared
+        claudeOAuthRefreshSession: URLSession = .shared,
+        linuxSecretCustodian: LinuxSecretCustodian = LinuxSecretStoreFactory.production()
     ) {
         self.service = service
         self.legacyServices = legacyServices ?? (
@@ -876,6 +950,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
         self.hermesCredentialPoolURL = hermesCredentialPoolURL
         self.claudeCodeCredentialsURL = claudeCodeCredentialsURL
         self.claudeOAuthRefreshSession = claudeOAuthRefreshSession
+        self.linuxSecretCustodian = linuxSecretCustodian
         if let fallbackSecretFileURL {
             // Legacy continuity vaults were plaintext JSON. They are no longer
             // trusted as a credential source; best-effort scrub stale copies.
@@ -1046,9 +1121,15 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             let newRefreshToken = (json["refresh_token"] as? String)?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .nilIfEmpty ?? refreshToken
-            let expiresIn = (json["expires_in"] as? Double)
-                ?? (json["expires_in"] as? Int).map(Double.init)
-                ?? 8 * 60 * 60
+            let expiresValue = json["expires_in"]
+            let expiresIn: Double
+            if let seconds = expiresValue as? Double {
+                expiresIn = seconds
+            } else if let seconds = expiresValue as? Int {
+                expiresIn = Double(seconds)
+            } else {
+                expiresIn = 8 * 60 * 60
+            }
             return credential.refreshed(
                 accessToken: newAccessToken,
                 refreshToken: newRefreshToken,
@@ -1060,6 +1141,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
     }
 
     private func secret(forService service: String, account: String) throws -> String? {
+#if canImport(Security) && canImport(LocalAuthentication)
         let context = LAContext()
         context.interactionNotAllowed = true
         let query: [String: Any] = [
@@ -1090,6 +1172,18 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
         let decoded = String(data: data, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return decoded?.isEmpty == false ? decoded : nil
+#elseif os(Linux)
+        do {
+            return try linuxSecretCustodian.requireHighValueSecret(
+                id: "\(service):\(account)",
+                secretClass: .providerCredential
+            ).secret
+        } catch LinuxSecretStoreError.missingSecret(_) {
+            return nil
+        }
+#else
+        return nil
+#endif
     }
 
     public func setSecret(_ secret: String?, for providerID: String) async throws {
@@ -1098,6 +1192,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             return
         }
 
+#if canImport(Security) && canImport(LocalAuthentication)
         let account = "provider.\(providerID).apiKey"
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -1142,6 +1237,29 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
                 throw NSError(domain: NSOSStatusErrorDomain, code: Int(deleteStatus))
             }
         }
+#elseif os(Linux)
+        let account = "provider.\(providerID).apiKey"
+        let id = "\(service):\(account)"
+        if let normalized = secret?.trimmingCharacters(in: .whitespacesAndNewlines),
+           normalized.isEmpty == false {
+            _ = try linuxSecretCustodian.storeHighValueSecret(
+                normalized,
+                id: id,
+                secretClass: .providerCredential
+            )
+        } else {
+            try linuxSecretCustodian.deleteHighValueSecret(
+                id: id,
+                secretClass: .providerCredential
+            )
+        }
+#else
+        throw NSError(
+            domain: "BurnBarProviderKeychainSecretStore",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "Provider keychain secrets are unavailable on this platform."]
+        )
+#endif
     }
 
     private func hermesCredentialPoolSecret(for providerID: String) -> String? {
@@ -1692,59 +1810,4 @@ struct ProviderCompletionResponse: Decodable {
 
     let choices: [Choice]
     let usage: Usage?
-}
-
-struct OllamaNativeChatResponse: Decodable {
-    struct Message: Decodable {
-        let role: String?
-        let content: String?
-        let thinking: String?
-        let toolCalls: [OllamaNativeToolCall]?
-
-        private enum CodingKeys: String, CodingKey {
-            case role
-            case content
-            case thinking
-            case tool_calls
-            case toolCalls
-        }
-
-        init(from decoder: Decoder) throws {
-            let container = try decoder.container(keyedBy: CodingKeys.self)
-            role = try container.decodeIfPresent(String.self, forKey: .role)
-            content = try container.decodeIfPresent(String.self, forKey: .content)
-            thinking = try container.decodeIfPresent(String.self, forKey: .thinking)
-            toolCalls = try container.decodeIfPresent([OllamaNativeToolCall].self, forKey: .tool_calls)
-                ?? container.decodeIfPresent([OllamaNativeToolCall].self, forKey: .toolCalls)
-        }
-    }
-
-    let model: String?
-    let createdAt: String?
-    let message: Message?
-    let done: Bool?
-    let doneReason: String?
-    let promptEvalCount: Int?
-    let evalCount: Int?
-
-    private enum CodingKeys: String, CodingKey {
-        case model
-        case createdAt = "created_at"
-        case message
-        case done
-        case doneReason = "done_reason"
-        case promptEvalCount = "prompt_eval_count"
-        case evalCount = "eval_count"
-    }
-}
-
-struct OllamaNativeToolCall: Decodable {
-    struct Function: Decodable {
-        let name: String?
-        let arguments: BurnBarJSONValue?
-    }
-
-    let id: String?
-    let type: String?
-    let function: Function?
 }

@@ -1,4 +1,5 @@
 import Foundation
+import os.log
 import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
@@ -8,6 +9,8 @@ import OpenBurnBarCore
 import SwiftUI
 import UIKit
 import UserNotifications
+
+private let agentReplyNotificationLogger = Logger(subsystem: "com.openburnbar.mobile", category: "AgentReplyNotificationService")
 
 struct AgentReplyNotificationBanner: Identifiable, Equatable {
     let id: String
@@ -301,7 +304,7 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
                 .setData(payload, merge: true)
         } catch {
             #if DEBUG
-            print("AgentReplyNotificationService device state write failed: \(error.localizedDescription)")
+            agentReplyNotificationLogger.error("AgentReplyNotificationService device state write failed: \(error.localizedDescription, privacy: .public)")
             #endif
         }
     }
@@ -369,7 +372,7 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
             ])
         } catch {
             #if DEBUG
-            print("submitAgentNotificationReply failed: \(error.localizedDescription)")
+            agentReplyNotificationLogger.error("submitAgentNotificationReply failed: \(error.localizedDescription, privacy: .public)")
             #endif
         }
     }
@@ -486,6 +489,9 @@ extension AgentReplyNotificationService: UNUserNotificationCenterDelegate {
                   !threadID.isEmpty else { return payload }
             return payload.withResolvedThreadID(threadID)
         } catch {
+            // Best-effort: fall back to the un-resolved push payload, but log —
+            // the tap will land without a thread id and open the generic surface.
+            agentReplyNotificationLogger.warning("resolvedPayloadForPush failed event=\(payload.eventID, privacy: .public): \(error.localizedDescription, privacy: .public)")
             return payload
         }
     }

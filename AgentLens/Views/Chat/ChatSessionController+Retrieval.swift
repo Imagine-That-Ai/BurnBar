@@ -92,10 +92,13 @@ extension ChatSessionController {
             case .omp:
                 let m = chatModelOMP.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "omp"
                 return (.omp, "OpenBurnBar OMP Chat", m)
+            case .junie:
+                let m = chatModelJunie.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "junie"
+                return (.junie, "OpenBurnBar Junie Chat", m)
             }
         }()
 
-        let pricing = ModelPricing.lookup(model: model)
+        let pricing = OpenBurnBarCore.ModelPricing.lookup(model: model)
         let cost = pricing.cost(
             inputTokens: usageSnapshot.inputTokens,
             outputTokens: usageSnapshot.outputTokens,

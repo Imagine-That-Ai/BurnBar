@@ -18,7 +18,7 @@
 
     Parity source (macOS, canonical):
       OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift
-      OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformSupport.swift  (PlatformCrypto)
+      OpenBurnBarCore/Sources/OpenBurnBarKernel/Platform/PlatformSupport.swift  (PlatformCrypto)
     Browser mirror:
       apps/console/lib/escrow.ts
     KAT vector (Apple CryptoKit origin, self-verified on emit):

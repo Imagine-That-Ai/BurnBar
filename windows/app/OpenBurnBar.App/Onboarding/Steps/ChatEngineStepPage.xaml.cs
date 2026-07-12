@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using OpenBurnBar.App.Theme;
+using OpenBurnBar.App.Chat;
 
 namespace OpenBurnBar.App.Onboarding;
 
@@ -34,6 +35,7 @@ public sealed partial class ChatEngineStepPage : Page
 
         BuildBackendRows();
         RefreshDefaultEngine();
+        RefreshGatewayHealth();
     }
 
     private void BuildBackendRows()
@@ -141,7 +143,19 @@ public sealed partial class ChatEngineStepPage : Page
 
     private void OnCheckGatewayHealth(object sender, RoutedEventArgs e)
     {
-        // Live probe wires in with the Windows Hermes runtime; this reflects the placeholder
-        // "unknown" state (neutral dots) until then.
+        RefreshGatewayHealth();
+    }
+
+    private void RefreshGatewayHealth()
+    {
+        ChatExecutableInventorySnapshot snapshot = ProtectedChatExecutableInventoryStore.CreateDefault().LoadSnapshot();
+        bool hermes = snapshot.Executables.Any(executable =>
+            executable.Id.Contains("hermes", System.StringComparison.OrdinalIgnoreCase));
+        bool openClaw = snapshot.Executables.Any(executable =>
+            executable.Id.Contains("openclaw", System.StringComparison.OrdinalIgnoreCase)
+            || executable.Id.Contains("open-claw", System.StringComparison.OrdinalIgnoreCase));
+        HermesDot.Background = new SolidColorBrush(hermes ? Microsoft.UI.Colors.LimeGreen : Microsoft.UI.Colors.Gray);
+        OpenClawDot.Background = new SolidColorBrush(openClaw ? Microsoft.UI.Colors.LimeGreen : Microsoft.UI.Colors.Gray);
+        GatewayHealthText.Text = snapshot.Status.Title + " " + snapshot.Status.Message;
     }
 }

@@ -1,53 +1,43 @@
 # OpenBurnBar Technical Readiness
 
-One-page diligence snapshot for investors, operators, and senior engineers.
+Current diligence-facing snapshot for investors, operators, and senior engineers.
 
-**Evidence snapshot (UTC):** 2026-05-31 — ops code + production 10/10 (`verify-production-ops-plane.sh` green; GCP alerts + health probes live in `burnbar`).
+**Evidence snapshot (UTC):** 2026-07-08 source-readiness pass. This page is not
+commercial launch proof. A launch claim requires fresh live evidence under
+`launch-evidence/` plus a passing `scripts/commercial-launch-gate.mjs` run.
 
-## Scorecard
+## Current Posture
 
-Scores are **1–10 per category**, not aspirational targets.
+OpenBurnBar has a strong engineering foundation: typed schema surfaces,
+domain-specific sync services, resilience wrappers, security ratchets, rules
+tests, operator runbooks, and release gates. The July diligence review found
+that the source maturity is materially stronger than the launch proof posture:
+the codebase can support production, but stale evidence and environment-coupled
+ops checks must never be presented as current readiness.
 
-| Category | Score | Evidence |
-|----------|-------|----------|
-| CI / Testing | **8/10** | PR harness runs empty-catch / try? ratchets + rules unit tests for CU + media budget split; full `make ci` remains the merge gate |
-| Schema | **10/10** | **13** TypeSpec domains; `./tools/schema-sync/check-drift.sh` includes hand-maintained TS surface gate (PR2) |
-| Security | **8/10** | App Check enforced on callables; budget public envelope exposes caps only (no USD); **97** empty catches baseline |
-| Ops | **10/10** | Code: `verify-ops-readiness.sh` + `verify-resilience-wiring.sh`. Production: `verify-production-ops-plane.sh` green 2026-05-31 (`check-ops-alerts`, health probes live); [oncall.md](runbooks/oncall.md); ADR [007](architecture/007-ops-notification-plane.md) |
-| Architecture | **8/10** | ADR 006 budget split; daemon RPC domain extraction in progress; top service LOC splits scheduled PR4 |
-| Documentation | **8/10** | ADRs + automated debt metrics; readiness math matches cited numbers |
+## Evidence Boundaries
 
-## Weighted diligence score
+| Area | Current source guard | What still requires live proof |
+|------|----------------------|--------------------------------|
+| Public endpoints | `functions/src/security/endpointAuthorizationCatalog.generated.ts`; endpoint inventory tests; `latestRouterRundown` product-layer rate limit | Deployed endpoint catalog and production traffic telemetry |
+| Storage rules | `scripts/ci/test-storage-rules.sh`; storage emulator suite in release, security, full-matrix, and deploy-firestore workflows | Deployed Firebase Storage ruleset ID |
+| Launch evidence hygiene | `scripts/ci/check-no-stale-launch-evidence.sh` rejects tracked commercial `NO_GO` gate artifacts | Fresh commercial launch gate JSON from the release machine |
+| Build artifact hygiene | `.gitignore` plus `scripts/ci/check-no-committed-build-artifacts.sh` blocks tracked module caches, DerivedData, and `.pcm` files | Clean release checkout generated from tracked source only |
+| Ops readiness | `scripts/ci/verify-ops-readiness.sh` checks logging, resilience, legal packet, and Hermes provenance | `verify-production-ops-plane.sh` with production credentials and a matching `HERMES_AGENT_SRC` checkout |
+| Android E2E | PR harness and nightly E2E now execute `scripts/e2e/android-iroh-chat.sh` on emulator when the relevant lane runs | Green instrumented result from GitHub Actions or a local emulator with valid Firebase config |
 
-**~87/100** — `round(mean(8, 10, 8, 10, 8, 8) × 10) ≈ 87`. Ops verifiers: `bash scripts/ci/verify-ops-readiness.sh`.
+## Diligence Interpretation
 
-**Not 100/100 because:** **783** `try?` in Services; **97** empty catches; App Check ENFORCED and branch protection are human-only gates; hand-maintained TS surface still **~2864** LOC in `legacy.ts` alone.
+Use this page as a map of source-controlled readiness, not as investor-ready
+launch evidence. The correct diligence packet is:
 
-**Not counted toward /100:** [`docs/TECH_DEBT_METRICS.md`](TECH_DEBT_METRICS.md) is trend input for monthly reviews, not an auto-scored category.
+1. This source snapshot.
+2. Passing CI runs for the relevant branch.
+3. Fresh ops-readiness output.
+4. Fresh production ops-plane output.
+5. Fresh commercial launch gate output.
+6. `launch-evidence/final-launch-evidence.json` validated with
+   `scripts/validate-launch-evidence-bundle.mjs --require-done-stamp`.
 
-## Ops production activation (human / CI with GCP auth)
-
-Production **10/10** requires `bash scripts/ops/verify-production-ops-plane.sh` exit 0 in project `burnbar` (`node scripts/ops/check-ops-alerts.mjs` + prod health). One-time apply:
-
-```bash
-export GCLOUD_PROJECT=burnbar
-export OPS_ALERT_CHANNELS="projects/burnbar/notificationChannels/..."
-bash scripts/ops/activate-production-ops-plane.sh
-bash scripts/ops/deploy-health-functions.sh
-bash scripts/ops/verify-production-ops-plane.sh
-```
-
-| Checkpoint | Status (UTC 2026-05-31) |
-|------------|-------------------------|
-| GCP ops alerts (14 required policies) | **PASS** — `check-ops-alerts.mjs` on 2026-06-13; verifies enabled live notification channels, not just channel counts |
-| Prod health gate | **PASS** — `healthLive`, `healthReady`, `healthCheck` deployed (`us-central1-burnbar.cloudfunctions.net`) |
-| Full verify script | **PASS** — `verify-production-ops-plane.sh` (`ok: true`, `opsAlertsOk: true`) |
-
-Record last **full** green `verify-production-ops-plane.sh` date here: **2026-05-31** (UTC). Weekly check: [ops-plane-verify.yml](../.github/workflows/ops-plane-verify.yml).
-
-## Human-only operator steps
-
-- Firestore App Check → **ENFORCED**: [FIREBASE_APP_CHECK_ENFORCEMENT.md](FIREBASE_APP_CHECK_ENFORCEMENT.md)
-- GitHub branch protection + CodeQL: org admin per [GOVERNANCE.md](GOVERNANCE.md)
-
-See [`docs/SOTA_REMEDIATION_PROGRESS.md`](SOTA_REMEDIATION_PROGRESS.md) for phase evidence.
+If any item is stale, missing, or environment-blocked, the honest status is
+source-ready with named launch blockers, not launch-ready.

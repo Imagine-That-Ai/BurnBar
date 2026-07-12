@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// The "relay.echo" path: the smallest end-to-end Hermes-shaped exchange we
 /// can run over the iroh transport without touching the local Hermes

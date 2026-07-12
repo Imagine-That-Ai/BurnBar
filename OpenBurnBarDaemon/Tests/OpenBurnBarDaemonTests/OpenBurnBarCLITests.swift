@@ -251,6 +251,19 @@ final class BurnBarCLITests: XCTestCase {
         XCTAssertTrue(output.contains("spawned Codex"))
         XCTAssertTrue(output.contains("pid=4242"))
     }
+
+    func testComputerUsePanicHaltFormatsDaemonResponse() async throws {
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+        let result = try await runner.invoke(
+            arguments: ["computer-use", "panic-halt", "--session-id", "session-123", "--source", "hotkey"],
+            invokedExecutablePath: "/tmp/OpenBurnBarCLI"
+        )
+
+        XCTAssertEqual(result.exitCode, EXIT_SUCCESS)
+        XCTAssertEqual(result.output?.contains("computer_use_panic_halt=accepted"), true)
+        XCTAssertEqual(result.output?.contains("session_id=session-123"), true)
+        XCTAssertEqual(result.output?.contains("source=hotkey"), true)
+    }
 }
 
 struct FakeCLIClient: BurnBarCLIClient {
@@ -456,6 +469,151 @@ struct FakeCLIClient: BurnBarCLIClient {
             storageBudgetBytes: 4096,
             storageWithinBudget: true,
             lastVacuumedAt: "2026-06-16T00:00:01Z"
+        )
+    }
+
+    func attachRunClient(clientID: BurnBarClientID, sessionID: BurnBarSessionID) throws {}
+
+    func createRun(_ request: BurnBarRunCreateRequest) throws -> BurnBarRunCreateResponse {
+        BurnBarRunCreateResponse(runID: BurnBarRunID(rawValue: "run-fixture"), phase: .completed)
+    }
+
+    func listRuns(_ request: BurnBarRunListRequest) throws -> BurnBarRunListResponse {
+        BurnBarRunListResponse(runs: [
+            BurnBarRunStateSnapshot(
+                runID: BurnBarRunID(rawValue: "run-fixture"),
+                clientID: request.clientID,
+                sessionID: BurnBarSessionID(rawValue: "session-fixture"),
+                phase: .completed,
+                modelID: "gpt-5.5",
+                updatedAt: Date()
+            )
+        ])
+    }
+
+    func getRun(_ request: BurnBarRunGetRequest) throws -> BurnBarRunDetailResponse {
+        BurnBarRunDetailResponse(
+            run: BurnBarRunStateSnapshot(
+                runID: request.runID,
+                clientID: request.clientID,
+                sessionID: BurnBarSessionID(rawValue: "session-fixture"),
+                phase: .completed,
+                modelID: "gpt-5.5",
+                updatedAt: Date()
+            )
+        )
+    }
+
+    func pollRuns(_ request: BurnBarRunPollRequest) throws -> BurnBarRunEventBatch {
+        BurnBarRunEventBatch(
+            runs: [
+                BurnBarRunStateSnapshot(
+                    runID: request.runID ?? BurnBarRunID(rawValue: "run-fixture"),
+                    clientID: request.clientID,
+                    sessionID: request.sessionID,
+                    phase: .completed,
+                    modelID: "gpt-5.5",
+                    updatedAt: Date()
+                )
+            ],
+            approvals: [],
+            pendingToolCalls: [],
+            arbitration: nil,
+            emittedAt: Date()
+        )
+    }
+
+    func cancelRun(_ request: BurnBarRunCancelRequest) throws -> BurnBarRunDetailResponse {
+        BurnBarRunDetailResponse(
+            run: BurnBarRunStateSnapshot(
+                runID: request.runID,
+                clientID: request.clientID,
+                sessionID: BurnBarSessionID(rawValue: "session-fixture"),
+                phase: .cancelled,
+                modelID: "gpt-5.5",
+                updatedAt: Date()
+            )
+        )
+    }
+
+    func retryRun(_ request: BurnBarRunRetryRequest) throws -> BurnBarRunDetailResponse {
+        BurnBarRunDetailResponse(
+            run: BurnBarRunStateSnapshot(
+                runID: request.runID,
+                clientID: request.clientID,
+                sessionID: BurnBarSessionID(rawValue: "session-fixture"),
+                phase: .completed,
+                modelID: "gpt-5.5",
+                updatedAt: Date()
+            )
+        )
+    }
+
+    func respondToApproval(_ request: BurnBarApprovalRespondRequest) throws -> BurnBarRunDetailResponse {
+        BurnBarRunDetailResponse(
+            run: BurnBarRunStateSnapshot(
+                runID: BurnBarRunID(rawValue: "run-fixture"),
+                clientID: request.response.clientID,
+                sessionID: BurnBarSessionID(rawValue: "session-fixture"),
+                phase: request.response.decision == .approve ? .completed : .cancelled,
+                modelID: "gpt-5.5",
+                updatedAt: Date()
+            )
+        )
+    }
+
+    func panicHalt(_ request: ComputerUsePanicHaltRequest) throws -> ComputerUsePanicHaltResponse {
+        ComputerUsePanicHaltResponse(
+            sessionId: request.sessionId,
+            endedAt: Date(timeIntervalSince1970: 1_780_000_000),
+            auditHeadHashHex: "panic-head-fixture"
+        )
+    }
+
+    func startSubscription(_ request: BurnBarSubscriptionStartRequest) throws -> BurnBarSubscriptionResponse {
+        BurnBarSubscriptionResponse(
+            subscriptionID: request.requestedSubscriptionID ?? "sub-fixture",
+            topic: request.topic,
+            seq: 1,
+            cursor: "1",
+            firstSnapshot: true,
+            events: [
+                BurnBarSubscriptionEvent(
+                    seq: 1,
+                    kind: "\(request.topic).snapshot",
+                    snapshot: ["topic": request.topic]
+                )
+            ],
+            degradedFallback: true,
+            degradationReason: "test-fixture",
+            backpressure: "coalesce_latest_per_topic",
+            disconnectDetected: false,
+            recoveredAfterRestart: false,
+            terminalStateDelivered: true
+        )
+    }
+
+    func resumeSubscription(_ request: BurnBarSubscriptionResumeRequest) throws -> BurnBarSubscriptionResponse {
+        let seq = request.afterSeq + 1
+        return BurnBarSubscriptionResponse(
+            subscriptionID: request.subscriptionID,
+            topic: request.topic,
+            seq: seq,
+            cursor: String(seq),
+            firstSnapshot: false,
+            events: [
+                BurnBarSubscriptionEvent(
+                    seq: seq,
+                    kind: "\(request.topic).resume_snapshot",
+                    snapshot: ["topic": request.topic]
+                )
+            ],
+            degradedFallback: true,
+            degradationReason: "test-fixture",
+            backpressure: "coalesce_latest_per_topic",
+            disconnectDetected: true,
+            recoveredAfterRestart: true,
+            terminalStateDelivered: true
         )
     }
 

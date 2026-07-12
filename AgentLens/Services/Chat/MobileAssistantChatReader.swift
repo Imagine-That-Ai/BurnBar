@@ -104,7 +104,7 @@ final class MobileAssistantChatReader {
     init(
         remote: MobileAssistantChatRemoteSource? = nil,
         deviceIDProvider: @escaping @MainActor () -> String = {
-            UserDefaults.standard.string(forKey: OpenBurnBarIdentity.deviceIDKey) ?? "device_local"
+            UserDefaults.standard.string(forKey: OpenBurnBarCore.OpenBurnBarIdentity.deviceIDKey) ?? "device_local"
         }
     ) {
         self.deviceIDProvider = deviceIDProvider
@@ -170,7 +170,7 @@ final class MobileAssistantChatFirestoreSource: MobileAssistantChatRemoteSource 
     init(
         firestoreProvider: @escaping @Sendable () -> Firestore = { Firestore.firestore() },
         deviceIDProvider: @escaping @MainActor () -> String = {
-            UserDefaults.standard.string(forKey: OpenBurnBarIdentity.deviceIDKey) ?? "device_local"
+            UserDefaults.standard.string(forKey: OpenBurnBarCore.OpenBurnBarIdentity.deviceIDKey) ?? "device_local"
         }
     ) {
         self.firestoreProvider = firestoreProvider

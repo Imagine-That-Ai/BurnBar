@@ -29,7 +29,7 @@
         <conv:BoolToVisibilityConverter x:Key="BoolToVisibility" />
     </UserControl.Resources>
 
-    <Grid Background="{StaticResource PensieveColorInkBaseBrush}">
+    <Grid Background="Transparent">
         <ScrollViewer Padding="20"
                       HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Auto">
@@ -111,11 +111,6 @@
                                            Text="{x:Bind BudgetLabel(Editor.MaxToolCalls), Mode=OneWay}" />
                             </Grid>
                             <Slider x:Name="BudgetSlider"
-                                    Minimum="1"
-                                    Maximum="16"
-                                    StepFrequency="1"
-                                    SmallChange="1"
-                                    LargeChange="1"
                                     ValueChanged="OnBudgetChanged"
                                     Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
                         </StackPanel>

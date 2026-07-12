@@ -20,6 +20,12 @@ export { computeTierCogsDaily } from "./tierCogs.js";
 export { reserveAgentControlActionBudget, reserveFlooRelayBudget } from "./cloudProAllowance.js";
 export { performElderWandHostedSearch } from "./elderWandHostedSearch.js";
 export { recomputeComputerUseQuotaUsage } from "./computerUseQuota.js";
+export {
+  meterComputerUseAction,
+  meterComputerUseSessionStart,
+  meterComputerUseSessionCompletion,
+} from "./computerUseMetering.js";
+export { reconcileAccountErasures } from "./accountDeletionReconciler.js";
 export { rollupComputerUseDaily } from "./computerUseMonitoring.js";
 export { validateOpenTimestampsProof } from "./computerUseOpenTimestamps.js";
 export { sendVoIPOutbound, retryStuckVoIPPushes } from "./apnsSender.js";

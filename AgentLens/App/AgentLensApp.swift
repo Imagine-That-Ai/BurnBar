@@ -1,17 +1,7 @@
 import AppKit
-import FirebaseAuth
-import FirebaseCore
-import FirebaseAppCheck
-import FirebaseFirestore
-import GoogleSignIn
-import LocalAuthentication
 import OpenBurnBarCore
 import OSLog
 import SwiftUI
-
-#if canImport(Sentry)
-import Sentry
-#endif
 
 /// Single source of truth for "this process is hosting XCTest, not a real user."
 /// Keeps test hosts from starting heavyweight scene/bootstrap work before XCTest connects.
@@ -58,6 +48,26 @@ enum OpenBurnBarRuntime {
     /// `OPENBURNBAR_FORCE_LIVE_SCENE=1`. Default is opt-out (skip the live scene under tests).
     static var forceLiveScene: Bool {
         ProcessInfo.processInfo.environment["OPENBURNBAR_FORCE_LIVE_SCENE"] == "1"
+            || isUITestLaunch
+    }
+
+    static var isUITestLaunch: Bool {
+        isUITestLaunch(
+            environment: ProcessInfo.processInfo.environment,
+            arguments: ProcessInfo.processInfo.arguments
+        )
+    }
+
+    static func isUITestLaunch(environment: [String: String], arguments: [String]) -> Bool {
+        #if DEBUG
+        environment["OPENBURNBAR_UITEST"] == "1" || arguments.contains("--uitest")
+        #else
+        false
+        #endif
+    }
+
+    static var shouldOpenSettingsForUITest: Bool {
+        ProcessInfo.processInfo.environment["OPENBURNBAR_UITEST_OPEN_SETTINGS"] == "1"
     }
 
     /// Harness-launched live-scene processes must remain alive even when AppKit
@@ -101,7 +111,7 @@ enum OpenBurnBarRuntime {
     }
 }
 
-private enum StartupProfiler {
+enum StartupProfiler {
     private static let log = OSLog(subsystem: "com.openburnbar.app", category: "Startup")
 
     static func event(_ name: StaticString) {
@@ -143,780 +153,22 @@ private struct BackgroundSceneWindowDismisser: NSViewRepresentable {
     }
 }
 
-/// Rasterizes `AppLogo` so `MenuBarExtra` gets a normal menu-bar icon size.
-private enum MenuBarRasterBrandMark {
-    static let side: CGFloat = 18
-
-    static let image: NSImage = {
-        let empty = NSImage(size: NSSize(width: side, height: side))
-        guard let source = NSImage(named: "AppLogo") else { return empty }
-        let target = NSSize(width: side, height: side)
-        return NSImage(size: target, flipped: false) { rect in
-            NSGraphicsContext.saveGraphicsState()
-            NSGraphicsContext.current?.imageInterpolation = .high
-            let from = NSRect(origin: .zero, size: source.size)
-            source.draw(in: rect, from: from, operation: .copy, fraction: 1.0, respectFlipped: true, hints: nil)
-            NSGraphicsContext.restoreGraphicsState()
-            return true
-        }
-    }()
-}
-
-@MainActor
-final class AppCommandRouter {
-    static let shared = AppCommandRouter()
-
-    var openDashboard: (() -> Void)?
-    var openConversationSearch: (() -> Void)?
-    var openChatPanel: (() -> Void)?
-    var openSettings: (() -> Void)?
-    var makeMenuBarPopoverContent: ((_ onDismiss: @escaping () -> Void) -> AnyView)? {
-        didSet {
-            // Reprime menu-bar popover content when the real factory lands and
-            // invalidate stale startup-recovery prewarms.
-            onMenuBarPopoverFactoryChanged?()
-        }
-    }
-    /// Installed by `AppDelegate`; invoked after every factory (re)install.
-    var onMenuBarPopoverFactoryChanged: (() -> Void)?
-
-    func handle(_ url: URL) -> Bool {
-        guard url.scheme?.lowercased() == "openburnbar" else { return false }
-
-        let host = url.host?.lowercased() ?? ""
-        let path = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")).lowercased()
-        let target = host.isEmpty ? path : host
-
-        switch target {
-        case "dashboard":
-            openDashboard?()
-            return true
-        case "search", "chat":
-            openConversationSearch?()
-            return true
-        case "link-cli":
-            return handleLinkCli()
-        default:
-            return false
-        }
-    }
-
-    /// Outcome of the device-owner authentication gate in the link-cli flow.
-    enum LinkCliAuthOutcome {
-        /// `LAContext.canEvaluatePolicy` refused — no Touch ID / login password
-        /// available. Fail closed without attempting the export.
-        case unavailable
-        /// The user failed or cancelled the identity check.
-        case denied
-        /// Device-owner authentication succeeded; the export may proceed.
-        case authenticated
-    }
-
-    // F1 link-cli test seams. Production leaves every seam nil and runs the
-    // shipped modal NSAlert + LAContext + Keychain flow verbatim; tests inject
-    // fakes so the security-gate matrix (signed-out, declined confirmation,
-    // unavailable/denied device-owner auth, export outcomes) is executable
-    // headless in CI. Same pattern as the ComputerUseSessionCoordinator
-    // `controlSeal*Provider` seams.
-    var linkCliUserIDProvider: () -> String? = { nil }
-    var linkCliConfirmationPresenter: (() -> Bool)?
-    var linkCliDeviceOwnerAuthenticator: ((@escaping @MainActor (LinkCliAuthOutcome) -> Void) -> Void)?
-    var linkCliAlertPresenter: ((NSAlert.Style, String, String) -> Void)?
-    var linkCliVaultKeyLoader: ((String) throws -> Data?)?
-    var linkCliKeychainWriter: ((Data) throws -> Void)?
-    var linkCliLegacyFallbackRemover: (() throws -> Void)?
-
-    /// Handles `openburnbar://link-cli`.
-    ///
-    /// SECURITY (F1): exporting the Cloud Vault key into the external CLI keychain
-    /// item is a high-impact key migration — that key decrypts ALL synced E2E
-    /// content. The `openburnbar://` scheme is reachable by any local process or a
-    /// crafted web link, so the export MUST NOT happen silently. We require an
-    /// explicit confirmation AND a device-owner (Touch ID / login password) proof
-    /// BEFORE the key is read or copied, and only surface success after the gated
-    /// copy completes. A drive-by link can no longer provision the key without a
-    /// human physically authenticating at the Mac.
-    @discardableResult
-    func handleLinkCli() -> Bool {
-        guard let uid = linkCliUserIDProvider() else {
-            presentLinkCliAlert(
-                style: .warning,
-                title: "Sign In Required",
-                message: "Please sign in to the OpenBurnBar app before linking your CLI."
-            )
-            // The URL was recognized and handled (we showed guidance); returning
-            // true prevents fall-through to a generic "unhandled URL" path.
-            return true
-        }
-
-        guard confirmLinkCliIntent() else {
-            return true
-        }
-
-        // Fail-closed device-owner authentication gate before any key read/copy.
-        authenticateLinkCliDeviceOwner { [weak self] outcome in
-            switch outcome {
-            case .unavailable:
-                self?.presentLinkCliAlert(
-                    style: .critical,
-                    title: "Linking Unavailable",
-                    message: "This Mac can't verify your identity (Touch ID or a login password is required). Your vault key was not exported."
-                )
-            case .denied:
-                self?.presentLinkCliAlert(
-                    style: .warning,
-                    title: "Linking Cancelled",
-                    message: "Identity check failed or was cancelled. Your vault key was not exported."
-                )
-            case .authenticated:
-                self?.performLinkCliExport(uid: uid)
-            }
-        }
-        return true
-    }
-
-    private func confirmLinkCliIntent() -> Bool {
-        if let presenter = linkCliConfirmationPresenter {
-            return presenter()
-        }
-        let confirm = NSAlert()
-        confirm.messageText = "Link this Mac's CLI to your secure vault?"
-        confirm.informativeText = """
-        This copies your Cloud Vault encryption key into the local OpenBurnBar CLI \
-        keychain item so the CLI can decrypt your synced data on this Mac. That key \
-        unlocks all of your end-to-end encrypted cloud content. Only continue if you \
-        started CLI linking yourself from your terminal. You'll confirm with Touch ID \
-        or your login password.
-        """
-        confirm.alertStyle = .warning
-        confirm.addButton(withTitle: "Continue")
-        confirm.addButton(withTitle: "Cancel")
-        return confirm.runModal() == .alertFirstButtonReturn
-    }
-
-    /// `completion` is always delivered on the main queue (the seam contract
-    /// mirrors the production `DispatchQueue.main.async` hop after Touch ID).
-    private func authenticateLinkCliDeviceOwner(completion: @escaping @MainActor (LinkCliAuthOutcome) -> Void) {
-        if let authenticator = linkCliDeviceOwnerAuthenticator {
-            authenticator(completion)
-            return
-        }
-        let context = LAContext()
-        var policyError: NSError?
-        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &policyError) else {
-            completion(.unavailable)
-            return
-        }
-        context.evaluatePolicy(
-            .deviceOwnerAuthentication,
-            localizedReason: "Authorize copying your Cloud Vault key to the OpenBurnBar CLI."
-        ) { success, _ in
-            DispatchQueue.main.async {
-                MainActor.assumeIsolated {
-                    completion(success ? .authenticated : .denied)
-                }
-            }
-        }
-    }
-
-    @MainActor
-    private func performLinkCliExport(uid: String) {
-        do {
-            let keyData: Data?
-            if let loader = linkCliVaultKeyLoader {
-                keyData = try loader(uid)
-            } else {
-                keyData = try CloudVaultKeyStore(service: "com.openburnbar.cloud-vault").loadKey(uid: uid)
-            }
-            guard let keyData else {
-                presentLinkCliAlert(
-                    style: .warning,
-                    title: "No Vault Key Found",
-                    message: "No cloud vault key was found for your account. Please enable cloud sync first."
-                )
-                return
-            }
-
-            let base64Key = keyData.base64EncodedString()
-            if let utf8Data = base64Key.data(using: .utf8) {
-                if let writer = linkCliKeychainWriter {
-                    try writer(utf8Data)
-                } else {
-                    let keychain = SecurityKeychainStoreBackend()
-                    try keychain.set(utf8Data, service: "com.openburnbar.mcp-remote", account: "vault-key")
-                }
-            }
-            if let remover = linkCliLegacyFallbackRemover {
-                try remover()
-            } else {
-                try removeLegacyMCPVaultKeyFallback()
-            }
-
-            presentLinkCliAlert(
-                style: .informational,
-                title: "CLI Linked Successfully!",
-                message: "Your Mac's CLI has been linked with your secure cloud vault key. You can now return to your terminal."
-            )
-        } catch {
-            presentLinkCliAlert(
-                style: .critical,
-                title: "Linking Failed",
-                message: "Failed to link your CLI: \(error.localizedDescription)"
-            )
-        }
-    }
-
-    @MainActor
-    private func presentLinkCliAlert(style: NSAlert.Style, title: String, message: String) {
-        if let presenter = linkCliAlertPresenter {
-            presenter(style, title, message)
-            return
-        }
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = message
-        alert.alertStyle = style
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
-    }
-
-    private func removeLegacyMCPVaultKeyFallback() throws {
-        let fileManager = FileManager.default
-        let fileURL = fileManager
-            .homeDirectoryForCurrentUser
-            .appendingPathComponent(".openburnbar", isDirectory: true)
-            .appendingPathComponent("vault-key")
-        guard fileManager.fileExists(atPath: fileURL.path) else { return }
-        try fileManager.removeItem(at: fileURL)
-    }
-}
-
-// MARK: - Window Manager
-
-@MainActor
-final class WindowManager: ObservableObject {
-    static let shared = WindowManager()
-
-    private enum DashboardWindowMetrics {
-        static let preferredWidth: CGFloat = 1360
-        static let preferredHeight: CGFloat = 820
-        static let minimumContentWidth: CGFloat = 1040
-        static let minimumContentHeight: CGFloat = 650
-        static let screenInset: CGFloat = 80
-    }
-
-    private var dashboardWindow: NSWindow?
-    private var settingsWindow: NSWindow?
-    private var onboardingWindow: NSWindow?
-    private var hermesSetupWindow: NSWindow?
-    private var switcherOnboardingWindow: NSWindow?
-    private var startupRecoveryWindow: NSWindow?
-    private var dashboardWindowLifecycleHandler: DashboardWindowLifecycleDelegate?
-
-    func openDashboard(
-        dataStore: DataStore,
-        aggregator: UsageAggregator?,
-        accountManager: AccountManager,
-        cloudSyncService: CloudSyncService?,
-        iCloudSessionMirrorService: ICloudSessionMirrorService?,
-        chatController: ChatSessionController,
-        operatingLayer: OpenBurnBarOperatingLayer,
-        navigationCoordinator: NavigationCoordinator,
-        settingsManager: SettingsManager,
-        runtimeContext: OpenBurnBarRuntimeContext? = nil
-    ) {
-        NSApplication.shared.activate(ignoringOtherApps: true)
-
-        if let window = dashboardWindow {
-            if window.isMiniaturized {
-                window.deminiaturize(nil)
-            }
-            window.orderFrontRegardless()
-            window.makeKeyAndOrderFront(nil)
-            return
-        }
-
-        let contentView = DashboardView(
-            dataStore: dataStore,
-            aggregator: aggregator,
-            accountManager: accountManager,
-            cloudSyncService: cloudSyncService,
-            iCloudSessionMirrorService: iCloudSessionMirrorService,
-            chatController: chatController,
-            operatingLayer: operatingLayer,
-            settingsManager: settingsManager,
-            runtimeContext: runtimeContext
-        )
-        .frame(
-            minWidth: DashboardWindowMetrics.minimumContentWidth,
-            minHeight: DashboardWindowMetrics.minimumContentHeight
-        )
-        .environment(settingsManager)
-        .environment(accountManager)
-        .environment(navigationCoordinator)
-
-        let visibleFrame = NSScreen.main?.visibleFrame
-        let initialWidth = min(
-            DashboardWindowMetrics.preferredWidth,
-            max(
-                DashboardWindowMetrics.minimumContentWidth,
-                (visibleFrame?.width ?? DashboardWindowMetrics.preferredWidth) - DashboardWindowMetrics.screenInset
-            )
-        )
-        let initialHeight = min(
-            DashboardWindowMetrics.preferredHeight,
-            max(
-                DashboardWindowMetrics.minimumContentHeight,
-                (visibleFrame?.height ?? DashboardWindowMetrics.preferredHeight) - DashboardWindowMetrics.screenInset
-            )
-        )
-
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: initialWidth, height: initialHeight),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = OpenBurnBarIdentity.productName
-        // Keep a real title for the Window menu / accessibility; hide the redundant title text
-        // in the title bar now that the in-toolbar brand mark carries the product name.
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
-        window.backgroundColor = NSColor(DesignSystem.Colors.background)
-        window.contentMinSize = NSSize(
-            width: DashboardWindowMetrics.minimumContentWidth,
-            height: DashboardWindowMetrics.minimumContentHeight
-        )
-        window.contentView = NSHostingView(rootView: contentView)
-        window.center()
-        window.makeKeyAndOrderFront(nil)
-        window.isReleasedWhenClosed = false
-        let lifecycleDelegate = DashboardWindowLifecycleDelegate()
-        window.delegate = lifecycleDelegate
-
-        dashboardWindow = window
-        dashboardWindowLifecycleHandler = lifecycleDelegate
-    }
-
-    func openSettings(
-        settingsManager: SettingsManager,
-        accountManager: AccountManager,
-        cloudSyncService: CloudSyncService?,
-        iCloudSessionMirrorService: ICloudSessionMirrorService?,
-        dataStore: DataStore,
-        runtimeContext: OpenBurnBarRuntimeContext? = nil
-    ) {
-        NSApplication.shared.activate(ignoringOtherApps: true)
-
-        if let window = settingsWindow {
-            window.makeKeyAndOrderFront(nil)
-            return
-        }
-
-        let contentView = SettingsView(
-            settingsManager: settingsManager,
-            accountManager: accountManager,
-            cloudSyncService: cloudSyncService,
-            iCloudSessionMirrorService: iCloudSessionMirrorService,
-            dataStore: dataStore,
-            runtimeContext: runtimeContext
-        )
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-        let initialWidth: CGFloat = 920
-        let initialHeight: CGFloat = 660
-
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: initialWidth, height: initialHeight),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = "Settings"
-        window.contentMinSize = NSSize(width: 780, height: 560)
-        window.contentView = NSHostingView(rootView: contentView)
-        window.center()
-        window.makeKeyAndOrderFront(nil)
-        window.isReleasedWhenClosed = false
-
-        settingsWindow = window
-    }
-
-    func openOnboardingWizard(
-        dataStore: DataStore,
-        aggregator: UsageAggregator?,
-        settingsManager: SettingsManager,
-        chatController: ChatSessionController?,
-        onOpenDashboard: @escaping () -> Void
-    ) {
-        NSApplication.shared.activate(ignoringOtherApps: true)
-
-        if let window = onboardingWindow {
-            window.makeKeyAndOrderFront(nil)
-            return
-        }
-
-        let contentView = OnboardingWizardView(
-            dataStore: dataStore,
-            aggregator: aggregator,
-            settingsManager: settingsManager,
-            chatController: chatController,
-            onDismiss: { [weak self] in
-                self?.onboardingWindow?.close()
-                self?.onboardingWindow = nil
-            },
-            onOpenDashboard: { [weak self] in
-                self?.onboardingWindow?.close()
-                self?.onboardingWindow = nil
-                onOpenDashboard()
-            }
-        )
-
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: 620),
-            styleMask: [.titled, .closable, .fullSizeContentView],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = "Welcome to OpenBurnBar"
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
-        window.backgroundColor = NSColor(DesignSystem.Colors.background)
-        window.contentView = NSHostingView(rootView: contentView)
-        window.center()
-        window.makeKeyAndOrderFront(nil)
-        window.isReleasedWhenClosed = false
-
-        onboardingWindow = window
-    }
-
-    func openHermesSetupWizard(
-        settingsManager: SettingsManager,
-        chatController: ChatSessionController?,
-        dataStore: DataStore? = nil,
-        cloudSyncService: CloudSyncService? = nil,
-        iCloudSessionMirrorService: ICloudSessionMirrorService? = nil
-    ) {
-        NSApplication.shared.activate(ignoringOtherApps: true)
-
-        if let window = hermesSetupWindow {
-            window.makeKeyAndOrderFront(nil)
-            return
-        }
-
-        let importService: HermesInventoryImportService? = dataStore.map { store in
-            HermesInventoryImportService(
-                dataStore: store,
-                settingsManager: settingsManager,
-                cloudSyncService: cloudSyncService ?? CloudSyncService(dataStore: store, accountManager: .shared, settingsManager: settingsManager),
-                iCloudMirrorService: iCloudSessionMirrorService ?? ICloudSessionMirrorService(settingsManager: settingsManager)
-            )
-        }
-
-        let contentView = HermesSetupWizardView(
-            settingsManager: settingsManager,
-            chatController: chatController,
-            inventoryImportService: importService,
-            onDismiss: { [weak self] in
-                self?.hermesSetupWindow?.close()
-                self?.hermesSetupWindow = nil
-            }
-        )
-
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 560, height: 620),
-            styleMask: [.titled, .closable, .fullSizeContentView],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = "Set up Hermes"
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
-        window.backgroundColor = NSColor(DesignSystem.Colors.background)
-        window.contentView = NSHostingView(rootView: contentView)
-        window.center()
-        window.makeKeyAndOrderFront(nil)
-        window.isReleasedWhenClosed = false
-
-        hermesSetupWindow = window
-    }
-
-    func openSwitcherOnboardingWizard(
-        dataStore: DataStore,
-        settingsManager: SettingsManager,
-        accountManager: AccountManager,
-        onOpenSettings: @escaping () -> Void
-    ) {
-        NSApplication.shared.activate(ignoringOtherApps: true)
-
-        if let window = switcherOnboardingWindow {
-            window.makeKeyAndOrderFront(nil)
-            return
-        }
-
-        let contentView = SwitcherOnboardingWizardView(
-            dataStore: dataStore,
-            settingsManager: settingsManager,
-            accountManager: accountManager,
-            onDismiss: { [weak self] in
-                self?.switcherOnboardingWindow?.close()
-                self?.switcherOnboardingWindow = nil
-            },
-            onOpenSettings: { [weak self] in
-                self?.switcherOnboardingWindow?.close()
-                self?.switcherOnboardingWindow = nil
-                onOpenSettings()
-            }
-        )
-
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: 620),
-            styleMask: [.titled, .closable, .fullSizeContentView],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = "Set Up Account Switching"
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
-        window.backgroundColor = NSColor(DesignSystem.Colors.background)
-        window.contentView = NSHostingView(rootView: contentView)
-        window.center()
-        window.makeKeyAndOrderFront(nil)
-        window.isReleasedWhenClosed = false
-
-        switcherOnboardingWindow = window
-    }
-
-    func openStartupRecovery(
-        failure: DataStoreStartupFailure,
-        isRetrying: Bool,
-        isArchivingReset: Bool,
-        actionError: String?,
-        onRetry: @escaping () -> Void,
-        onRevealSupportFolder: @escaping () -> Void,
-        onArchiveAndReset: @escaping () -> Void,
-        onCopyDiagnostics: @escaping () -> Bool,
-        onQuit: @escaping () -> Void
-    ) {
-        NSApplication.shared.activate(ignoringOtherApps: true)
-
-        let contentView = DataStoreStartupRecoveryView(
-            failure: failure,
-            isRetrying: isRetrying,
-            isArchivingReset: isArchivingReset,
-            actionError: actionError,
-            compact: false,
-            onRetry: onRetry,
-            onRevealSupportFolder: onRevealSupportFolder,
-            onArchiveAndReset: onArchiveAndReset,
-            onCopyDiagnostics: onCopyDiagnostics,
-            onQuit: onQuit
-        )
-
-        if let window = startupRecoveryWindow {
-            window.contentView = NSHostingView(rootView: contentView)
-            window.makeKeyAndOrderFront(nil)
-            return
-        }
-
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 560, height: 520),
-            styleMask: [.titled, .closable, .miniaturizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = "OpenBurnBar Recovery"
-        window.backgroundColor = NSColor(DesignSystem.Colors.background)
-        window.contentView = NSHostingView(rootView: contentView)
-        window.center()
-        window.makeKeyAndOrderFront(nil)
-        window.isReleasedWhenClosed = false
-
-        startupRecoveryWindow = window
-    }
-
-    func closeStartupRecovery() {
-        startupRecoveryWindow?.close()
-        startupRecoveryWindow = nil
-    }
-
-    // MARK: - Chat Pop-Out Window
-
-    private static var chatPopOutWindow: NSWindow?
-    private static var chatPopOutLifecycleHandler: ChatPopOutWindowLifecycleDelegate?
-
-    @discardableResult
-    func openChatPopOutWindow(
-        controller: ChatSessionController,
-        dataStore: DataStore,
-        settingsManager: SettingsManager,
-        accountManager: AccountManager
-    ) -> NSWindow {
-        if !OpenBurnBarRuntime.isRunningTests {
-            NSApplication.shared.activate(ignoringOtherApps: true)
-        }
-
-        if let window = WindowManager.chatPopOutWindow {
-            window.makeKeyAndOrderFront(nil)
-            return window
-        }
-
-        let contentView = WindowManager.chatPopOutContent(
-            controller: controller,
-            dataStore: dataStore,
-            settingsManager: settingsManager,
-            accountManager: accountManager,
-            onClose: { [weak self] in self?.closeChatPopOutWindow() }
-        )
-        .frame(minWidth: 780, minHeight: 560)
-
-        let initialFrame = WindowManager.persistedChatPopOutFrame()
-            ?? NSRect(x: 0, y: 0, width: 1100, height: 760)
-
-        let window = NSWindow(
-            contentRect: initialFrame,
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = "Chat — OpenBurnBar"
-        window.titleVisibility = .visible
-        window.titlebarAppearsTransparent = true
-        window.backgroundColor = NSColor(DesignSystem.Colors.background)
-        window.contentView = NSHostingView(rootView: contentView)
-        if WindowManager.persistedChatPopOutFrame() == nil {
-            window.center()
-        }
-        if OpenBurnBarRuntime.isRunningTests {
-            window.orderFront(nil)
-        } else {
-            window.makeKeyAndOrderFront(nil)
-        }
-        window.isReleasedWhenClosed = false
-
-        let delegate = ChatPopOutWindowLifecycleDelegate { closed in
-            WindowManager.persistChatPopOutFrame(closed.frame)
-            WindowManager.chatPopOutWindow = nil
-            WindowManager.chatPopOutLifecycleHandler = nil
-        }
-        window.delegate = delegate
-
-        WindowManager.chatPopOutWindow = window
-        WindowManager.chatPopOutLifecycleHandler = delegate
-        return window
-    }
-
-    func closeChatPopOutWindow() {
-        WindowManager.chatPopOutWindow?.close()
-    }
-
-    /// Test-only accessor.
-    static func _currentChatPopOutWindow() -> NSWindow? { chatPopOutWindow }
-
-    private static func chatPopOutContent(
-        controller: ChatSessionController,
-        dataStore: DataStore,
-        settingsManager: SettingsManager,
-        accountManager: AccountManager,
-        onClose: @escaping () -> Void
-    ) -> AnyView {
-        guard !OpenBurnBarRuntime.isRunningTests else {
-            return AnyView(ChatPopOutWindowTestContent(onClose: onClose))
-        }
-
-        return AnyView(
-            DashboardChatWorkspaceView(
-                controller: controller,
-                dataStore: dataStore,
-                settingsManager: settingsManager,
-                sharedFeaturesAvailable: accountManager.isSignedIn,
-                mode: .popOut,
-                onClose: onClose
-            )
-            .environment(settingsManager)
-            .environment(accountManager)
-        )
-    }
-
-    fileprivate static func persistedChatPopOutFrame() -> NSRect? {
-        let raw = UserDefaults.standard.string(forKey: "dashboardChatPopOutFrameJSON") ?? ""
-        guard !raw.isEmpty,
-              let data = raw.data(using: .utf8),
-              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Double],
-              let x = dict["x"], let y = dict["y"], let w = dict["w"], let h = dict["h"],
-              w >= 780, h >= 560
-        else { return nil }
-        return NSRect(x: x, y: y, width: w, height: h)
-    }
-
-    fileprivate static func persistChatPopOutFrame(_ rect: NSRect) {
-        let dict: [String: Double] = [
-            "x": Double(rect.origin.x),
-            "y": Double(rect.origin.y),
-            "w": Double(rect.size.width),
-            "h": Double(rect.size.height)
-        ]
-        if let data = try? JSONSerialization.data(withJSONObject: dict),
-           let raw = String(data: data, encoding: .utf8) {
-            UserDefaults.standard.set(raw, forKey: "dashboardChatPopOutFrameJSON")
-        }
-    }
-}
-
-@MainActor
-private final class ChatPopOutWindowLifecycleDelegate: NSObject, NSWindowDelegate {
-    private let onWillClose: @MainActor (NSWindow) -> Void
-
-    init(onWillClose: @escaping @MainActor (NSWindow) -> Void) {
-        self.onWillClose = onWillClose
-    }
-
-    nonisolated func windowWillClose(_ notification: Notification) {
-        guard let window = notification.object as? NSWindow else { return }
-        Task { @MainActor in
-            self.onWillClose(window)
-        }
-    }
-}
-
-private struct ChatPopOutWindowTestContent: View {
-    let onClose: () -> Void
-
-    var body: some View {
-        VStack(spacing: 12) {
-            Text("Chat")
-                .font(.headline)
-            Button("Close", action: onClose)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityIdentifier("chat-pop-out-test-content")
-    }
-}
-
-@MainActor
-private final class DashboardWindowLifecycleDelegate: NSObject, NSWindowDelegate {
-    func windowShouldClose(_ sender: NSWindow) -> Bool {
-        sender.orderOut(nil)
-        return false
-    }
-}
-
 // MARK: - App Entry Point
 
 @main
 struct OpenBurnBarApp: App {
-    private static var didConfigureFirebase = false
 
-    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @AppStorage("hasShownInitialDashboard") private var hasShownInitialDashboard = false
-    @StateObject private var windowManager = WindowManager.shared
-    @State private var startupState: OpenBurnBarStartupState
-    @State private var isRetryingStartup = false
-    @State private var isArchivingReset = false
-    @State private var startupRecoveryActionError: String?
-    @State private var hasPresentedStartupRecoveryWindow = false
-    @State private var periodicRefreshTask: Task<Void, Never>?
-    @State private var navigationCoordinator = NavigationCoordinator()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @AppStorage("hasShownInitialDashboard") var hasShownInitialDashboard = false
+    @StateObject var windowManager = WindowManager.shared
+    @State var startupState: OpenBurnBarStartupState
+    @State var isRetryingStartup = false
+    @State var isArchivingReset = false
+    @State var startupRecoveryActionError: String?
+    @State var hasPresentedStartupRecoveryWindow = false
+    @State var periodicRefreshTask: Task<Void, Never>?
+    @State var navigationCoordinator = NavigationCoordinator()
+    @State var didOpenUITestDashboard = false
 
     init() {
         StartupProfiler.event("app_init_start")
@@ -928,7 +180,7 @@ struct OpenBurnBarApp: App {
             // opaque `"test runner hung before establishing connection"`
             // failure mode). We therefore skip every form of synchronous boot:
             //   - No Firebase / Sentry / Google Sign-In configuration.
-            //   - No `OpenBurnBarMigration.migrateUserDefaults()` (the legacy-
+            //   - No `OpenBurnBarCore.OpenBurnBarMigration.migrateUserDefaults()` (the legacy-
             //     domain scan can stall briefly under XCTest sandboxing).
             //   - No `DataStore` open. The live menu-bar scene is short-
             //     circuited to `EmptyView` for both content and label by
@@ -942,6 +194,8 @@ struct OpenBurnBarApp: App {
             return
         }
 
+        Self.seedUITestDefaultsIfNeeded()
+
         StartupProfiler.interval("configure_firebase") {
             Self.configureFirebaseIfAvailable(accountManager: .shared)
         }
@@ -952,7 +206,7 @@ struct OpenBurnBarApp: App {
             Self.configureAnalytics()
         }
         StartupProfiler.interval("migrate_user_defaults") {
-            OpenBurnBarMigration.migrateUserDefaults()
+            OpenBurnBarCore.OpenBurnBarMigration.migrateUserDefaults()
         }
 
         _startupState = State(initialValue: StartupProfiler.interval("make_startup_state") {
@@ -961,26 +215,18 @@ struct OpenBurnBarApp: App {
         StartupProfiler.event("app_init_end")
     }
 
-    /// Wires consent-gated Amplitude analytics and resumes prior opt-ins.
-    @MainActor
-    private static func configureAnalytics() {
-        TelemetryService.shared.setForwarder { feature, outcome, durationMs in
-            Task { @MainActor in
-                var properties: [String: AnalyticsValue] = [
-                    "feature": .string(feature.rawValue),
-                    "outcome": .string(outcome.rawValue)
-                ]
-                if let durationMs {
-                    properties["duration_ms_bucket"] = .string(AnalyticsBuckets.durationMs(durationMs))
-                }
-                Analytics.shared.track(.featureUsed, properties)
-            }
-        }
-        Analytics.shared.startIfConsented()
+    private static func seedUITestDefaultsIfNeeded() {
+        guard OpenBurnBarRuntime.isUITestLaunch else { return }
+        UserDefaults.standard.set(true, forKey: "hasOnboarded")
+        UserDefaults.standard.set(true, forKey: "hasShownInitialDashboard")
+        UserDefaults.standard.set(true, forKey: "conversationIndexingConsentShown")
+        UserDefaults.standard.set(true, forKey: "cliAssistantConsentShown")
+        UserDefaults.standard.removeObject(forKey: SettingsDeepLinkRouting.pendingTabKey)
+        UserDefaults.standard.removeObject(forKey: SettingsDeepLinkRouting.pendingItemKey)
     }
 
     @MainActor
-    private static func makeStartupState(archiveURL: URL? = nil) -> OpenBurnBarStartupState {
+    static func makeStartupState(archiveURL: URL? = nil) -> OpenBurnBarStartupState {
         do {
             return .ready(try makeRuntimeContext())
         } catch {
@@ -1008,7 +254,7 @@ struct OpenBurnBarApp: App {
             ProviderQuotaService(settingsManager: settings)
         }
         let daemonManager = StartupProfiler.interval("daemon_manager_init") {
-            OpenBurnBarDaemonManager(settingsManager: settings)
+            OpenBurnBarDaemonManager.shared // cov:ignore -- app composition root: singleton graph initialization is covered by app startup smoke tests.
         }
         let cursorConnectorManager = StartupProfiler.interval("cursor_connector_init") {
             CursorConnectorManager(settingsManager: settings)
@@ -1079,580 +325,6 @@ struct OpenBurnBarApp: App {
         return context
     }
 
-    @MainActor
-    private static func configureFirebaseIfAvailable(accountManager: AccountManager) {
-        guard !didConfigureFirebase else {
-            accountManager.onFirebaseConfigured()
-            return
-        }
-        guard let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
-              let options = FirebaseOptions(contentsOfFile: path) else {
-            return
-        }
-
-        // Configure App Check before FirebaseApp.configure()
-        let providerFactory = OpenBurnBarAppCheckProviderFactory()
-        AppCheck.setAppCheckProviderFactory(providerFactory)
-
-        FirebaseApp.configure(options: options)
-        if ProcessInfo.processInfo.environment["OPENBURNBAR_STARTUP_PROFILE"] == "1" {
-            let settings = Firestore.firestore().settings
-            settings.cacheSettings = MemoryCacheSettings()
-            Firestore.firestore().settings = settings
-        }
-        didConfigureFirebase = true
-        if let clientID = FirebaseApp.app()?.options.clientID {
-            GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
-        }
-        accountManager.onFirebaseConfigured()
-        #if DEBUG
-        signInWithE2ECustomTokenIfNeeded(accountManager: accountManager)
-        #endif
-
-        // Validate App Check token when cloud sync is enabled.
-        // This is a fail-open warning: the app continues to work but logs a warning.
-        Task {
-            await validateAppCheckIfNeeded(accountManager: accountManager)
-        }
-    }
-
-    #if DEBUG
-    private static func signInWithE2ECustomTokenIfNeeded(
-        accountManager: AccountManager,
-        environment: [String: String] = ProcessInfo.processInfo.environment
-    ) {
-        let token = environment["OPENBURNBAR_E2E_FIREBASE_CUSTOM_TOKEN"]?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let email = environment["OPENBURNBAR_E2E_FIREBASE_EMAIL"]?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let password = environment["OPENBURNBAR_E2E_FIREBASE_PASSWORD"]
-        guard token?.isEmpty == false || (email?.isEmpty == false && password?.isEmpty == false) else {
-            return
-        }
-
-        let expectedUID = environment["OPENBURNBAR_E2E_FIREBASE_UID"]
-        if let expectedUID, Auth.auth().currentUser?.uid == expectedUID {
-            return
-        }
-
-        Task { @MainActor in
-            do {
-                let result: AuthDataResult
-                if let token, token.isEmpty == false {
-                    result = try await Auth.auth().signIn(withCustomToken: token)
-                } else if let email, let password {
-                    result = try await Auth.auth().signIn(withEmail: email, password: password)
-                } else {
-                    return
-                }
-                accountManager.onFirebaseConfigured()
-                print("OpenBurnBar E2E Firebase sign-in active for uid \(result.user.uid).")
-            } catch {
-                print("warning: OpenBurnBar E2E Firebase sign-in failed: \(error.localizedDescription)")
-            }
-        }
-    }
-    #endif
-
-    /// Validates that App Check is functional when cloud sync is enabled.
-    /// Posts a notification if App Check cannot obtain a token so the UI can warn the user.
-    @MainActor
-    private static func validateAppCheckIfNeeded(accountManager: AccountManager) async {
-        guard accountManager.isCloudSyncEnabled else { return }
-        guard Auth.auth().currentUser?.isAnonymous == false else { return }
-        do {
-            let token = try await AppCheck.appCheck().token(forcingRefresh: false)
-            guard !token.token.isEmpty else {
-                postAppCheckWarning("App Check returned an empty token.")
-                return
-            }
-        } catch {
-            postAppCheckWarning("App Check token fetch failed: \(error.localizedDescription)")
-            return
-        }
-        do {
-            try await ComputerUseSecurityCallableClient.bindAppCheckAttestation()
-        } catch {
-            postAppCheckWarning("App Check attestation bind failed: \(error.localizedDescription)")
-        }
-    }
-
-    @MainActor
-    private static func postAppCheckWarning(_ message: String) {
-        os_log("App Check validation warning: %{public}@", log: .default, type: .error, message)
-        NotificationCenter.default.post(
-            name: .openBurnBarAppCheckValidationFailed,
-            object: nil,
-            userInfo: ["message": message]
-        )
-    }
-
-    /// Initialize Sentry crash reporting if a DSN is available.
-    /// The DSN is read from the `sentry.dsn` key in Info.plist (injected via
-    /// CI for internal builds). If absent, Sentry remains disabled silently.
-    #if canImport(Sentry)
-    private static func configureSentryIfAvailable() {
-        guard let finalDsn = resolveSentryDSN(), !finalDsn.trimmingCharacters(in: .whitespaces).isEmpty else {
-            // No DSN configured — crash reporting remains disabled silently.
-            return
-        }
-        // T-PRV-03 — consent gate. Crash reporting only runs when the user has
-        // not opted out. Default-on matches the existing internal-build posture
-        // (and the iOS app), but the explicit key lets a privacy-conscious user
-        // disable it, in which case Sentry is never started.
-        guard MacCrashReportingConsent.isEnabled() else {
-            return
-        }
-        SentrySDK.start { options in
-            options.dsn = finalDsn
-            options.environment = "app"
-            let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
-            options.releaseName = "openburnbar@\(version)"
-            options.tracesSampleRate = 0
-            options.enableAutoSessionTracking = true
-            // T-PRV-03 — never attach PII (IP, username, email) to events.
-            options.sendDefaultPii = false
-            // T-PRV-03 — scrub event payloads + breadcrumbs of any user content
-            // (prompts, vault data, tokens, file paths, the macOS user's home
-            // directory) before they leave the device. Returning nil drops the
-            // breadcrumb entirely. Mirrors `MobileSentryScrubber` on iOS.
-            options.beforeSend = { event in
-                MacSentryScrubber.scrub(event)
-            }
-            options.beforeBreadcrumb = { breadcrumb in
-                MacSentryScrubber.scrub(breadcrumb)
-            }
-            #if DEBUG
-            options.debug = false
-            #endif
-        }
-
-        // T-PRV-03 — set a non-PII, per-install anonymized user ID so Sentry can
-        // correlate crashes per install WITHOUT seeding from `NSFullUserName()`
-        // (the macOS account full name is PII and is stable across reinstalls).
-        // The seed is a random per-install UUID persisted in the app's own
-        // defaults; it never leaves this install and reveals nothing about the
-        // human operating the machine.
-        let user = User()
-        user.userId = MacCrashReportingConsent.perInstallAnonymizedID()
-        SentrySDK.setUser(user)
-    }
-    #else
-    @MainActor
-    private static func configureSentryIfAvailable() {
-        // Sentry SDK not linked — skip silently.
-    }
-    #endif
-
-    @MainActor
-    private func installCommandRouter() {
-        guard let context = startupState.runtimeContext else {
-            AppCommandRouter.shared.openDashboard = { openStartupRecoveryWindow() }
-            AppCommandRouter.shared.openConversationSearch = { openStartupRecoveryWindow() }
-            AppCommandRouter.shared.openChatPanel = { openStartupRecoveryWindow() }
-            AppCommandRouter.shared.openSettings = { openStartupRecoveryWindow() }
-            AppCommandRouter.shared.makeMenuBarPopoverContent = { _ in
-                AnyView(EmptyView())
-            }
-            return
-        }
-
-        AppCommandRouter.shared.openDashboard = {
-            openDashboard(context: context)
-        }
-        AppCommandRouter.shared.openConversationSearch = {
-            openDashboard(context: context)
-            navigationCoordinator.openConversationSearch()
-        }
-        AppCommandRouter.shared.openChatPanel = {
-            openDashboard(context: context)
-            navigationCoordinator.openChatPanel()
-        }
-        AppCommandRouter.shared.openSettings = {
-            windowManager.openSettings(
-                settingsManager: context.settingsManager,
-                accountManager: context.accountManager,
-                cloudSyncService: context.cloudSyncService,
-                iCloudSessionMirrorService: context.iCloudSessionMirrorService,
-                dataStore: context.dataStore,
-                runtimeContext: context
-            )
-        }
-        AppCommandRouter.shared.makeMenuBarPopoverContent = { onDismiss in
-            AnyView(
-                MenuBarPopoverView(
-                    dataStore: context.dataStore,
-                    aggregator: context.aggregator,
-                    quotaService: context.quotaService,
-                    settingsManager: context.settingsManager,
-                    smartHubBridgeController: context.smartHubBridgeController,
-                    smartDisplayRepairCoordinator: context.smartDisplayRepairCoordinator,
-                    operatingLayer: context.operatingLayer,
-                    onOpenDashboard: {
-                        onDismiss()
-                        openDashboard(context: context)
-                    },
-                    onOpenSettings: {
-                        onDismiss()
-                        windowManager.openSettings(
-                            settingsManager: context.settingsManager,
-                            accountManager: context.accountManager,
-                            cloudSyncService: context.cloudSyncService,
-                            iCloudSessionMirrorService: context.iCloudSessionMirrorService,
-                            dataStore: context.dataStore,
-                            runtimeContext: context
-                        )
-                    },
-                    chatController: context.chatController,
-                    onOpenDashboardWithChat: {
-                        onDismiss()
-                        openDashboard(context: context)
-                        navigationCoordinator.openChatPanel()
-                    },
-                    onOpenOnboardingWizard: {
-                        onDismiss()
-                        windowManager.openOnboardingWizard(
-                            dataStore: context.dataStore,
-                            aggregator: context.aggregator,
-                            settingsManager: context.settingsManager,
-                            chatController: context.chatController,
-                            onOpenDashboard: {
-                                openDashboard(context: context)
-                            }
-                        )
-                    },
-                    runtimeContext: context
-                )
-                .environment(context.settingsManager)
-                .environment(context.accountManager)
-            )
-        }
-
-        startLiveServicesIfNeeded(context: context)
-    }
-
-    @MainActor
-    private func startLiveServicesIfNeeded(context: OpenBurnBarRuntimeContext) {
-        guard !OpenBurnBarApp.didStartLiveServices else { return }
-        OpenBurnBarApp.didStartLiveServices = true
-        guard !OpenBurnBarRuntime.shouldUseTestStubScene else { return }
-
-        Analytics.shared.track(.appSessionStarted)
-
-        Task { @MainActor in
-            StartupProfiler.event("live_services_start")
-            startMemoryExtractionIfNeeded(context: context)
-
-            let sync: CloudSyncService
-            sync = StartupProfiler.interval("cloud_sync_init") {
-                if let existingSync = context.cloudSyncService {
-                    return existingSync
-                }
-                return CloudSyncService(
-                    dataStore: context.dataStore,
-                    accountManager: context.accountManager,
-                    settingsManager: context.settingsManager
-                )
-            }
-            context.cloudSyncService = sync
-
-            appDelegate.settingsManager = context.settingsManager
-            appDelegate.dataStore = context.dataStore
-            appDelegate.daemonManager = context.daemonManager
-            AppCommandRouter.shared.linkCliUserIDProvider = { [weak accountManager = context.accountManager] in
-                accountManager?.userID
-            }
-
-            StartupProfiler.interval("relay_services_start") {
-                context.startRelayServices()
-            }
-            StartupProfiler.interval("smart_display_services_start") {
-                context.startSmartDisplayServices()
-            }
-            StartupProfiler.interval("mercury_services_start") {
-                context.startMercuryServices()
-            }
-            #if canImport(AppKit) && !DISTRIBUTION_MAS
-            StartupProfiler.interval("text_expansion_start") {
-                context.textExpansionRuntimeController?.start()
-            }
-            #endif
-
-            let mirror: ICloudSessionMirrorService
-            mirror = StartupProfiler.interval("icloud_mirror_init") {
-                if let existingMirror = context.iCloudSessionMirrorService {
-                    return existingMirror
-                }
-                return ICloudSessionMirrorService(settingsManager: context.settingsManager)
-            }
-            context.iCloudSessionMirrorService = mirror
-
-            let aggregator: UsageAggregator
-            aggregator = StartupProfiler.interval("usage_aggregator_init") {
-                if let existingAggregator = context.aggregator {
-                    return existingAggregator
-                }
-                return UsageAggregator(
-                    dataStore: context.dataStore,
-                    cloudSync: sync,
-                    sessionMirror: mirror,
-                    settingsManager: context.settingsManager,
-                    quotaService: context.quotaService,
-                    memoryCloudSyncDomain: context.memoryCloudSyncDomain
-                )
-            }
-            context.aggregator = aggregator
-            context.operatingLayer.aggregator = aggregator
-            context.operatingLayer.chatController = context.chatController
-            StartupProfiler.interval("daemon_attach") {
-                context.daemonManager.attach(dataStore: context.dataStore, cloudSyncService: sync)
-            }
-            #if !DISTRIBUTION_MAS
-            StartupProfiler.interval("computer_use_approval_start") {
-                ComputerUseDaemonApprovalPresenter.shared.start(daemonManager: context.daemonManager)
-            }
-            #endif
-            StartupProfiler.interval("cursor_connector_attach") {
-                context.cursorConnectorManager.attach(dataStore: context.dataStore)
-            }
-            StartupProfiler.interval("quota_refresh_schedule") {
-                context.quotaService.startAutomaticRefresh(dataStore: context.dataStore)
-            }
-            StartupProfiler.interval("agent_reply_listener_start") {
-                MacAgentReplyNotificationListener.shared.start(
-                    chatController: context.chatController,
-                    accountManager: context.accountManager
-                )
-            }
-            StartupProfiler.interval("pet_companion_activate") { PetCompanionFeature.activateIfEnabled(chat: context.chatController); PetOnboardingWindowPresenter.openIfNeeded(chatController: context.chatController) }
-
-            if !hasShownInitialDashboard {
-                hasShownInitialDashboard = true
-                StartupProfiler.interval("first_dashboard_open") {
-                    windowManager.openDashboard(
-                        dataStore: context.dataStore,
-                        aggregator: aggregator,
-                        accountManager: context.accountManager,
-                        cloudSyncService: sync,
-                        iCloudSessionMirrorService: mirror,
-                        chatController: context.chatController,
-                        operatingLayer: context.operatingLayer,
-                        navigationCoordinator: navigationCoordinator,
-                        settingsManager: context.settingsManager,
-                        runtimeContext: context
-                    )
-                }
-            }
-            StartupProfiler.event("first_ui_ready")
-
-            Task(priority: .utility) {
-                try? await Task.sleep(for: .seconds(2))
-                guard !Task.isCancelled else { return }
-                if context.settingsManager.launchHermesWithOpenBurnBar {
-                    let baseURL = URL(string: context.settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-                        ?? URL(string: "http://127.0.0.1:8642")!
-                    let bearerToken = context.settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
-                    _ = await HermesRuntimeLauncher().openHermesAndGateway(
-                        baseURL: baseURL,
-                        bearerToken: bearerToken.isEmpty ? nil : bearerToken
-                    )
-                }
-                if context.settingsManager.launchPiAgentsWithOpenBurnBar {
-                    let baseURL = URL(string: context.settingsManager.piAgentGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-                        ?? URL(string: "http://127.0.0.1:8765")!
-                    let bearerToken = context.settingsManager.piAgentBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let preferred = context.settingsManager.piAgentSelectedInstanceID.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let redisRaw = context.settingsManager.piAgentRedisURL.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let piAdapter = PiAgentRuntimeAdapter(
-                        preferredInstanceID: preferred.isEmpty ? nil : preferred,
-                        redisURL: redisRaw.isEmpty ? nil : URL(string: redisRaw)
-                    )
-                    _ = await piAdapter.openManagedRuntime(
-                        baseURL: baseURL,
-                        bearerToken: bearerToken.isEmpty ? nil : bearerToken
-                    )
-                }
-                let enabledBackends = Set(context.settingsManager.enabledChatBackends)
-                if enabledBackends.contains(.hermes) || context.chatController.chatBackend == .hermes {
-                    await context.chatController.probeHermesAvailability()
-                } else {
-                    context.chatController.hermesAvailable = false
-                }
-                if enabledBackends.contains(.openclaw) || context.chatController.chatBackend == .openclaw {
-                    await context.chatController.probeOpenClawAvailability()
-                } else {
-                    context.chatController.openClawAvailable = false
-                }
-                if enabledBackends.contains(.piAgent) || context.chatController.chatBackend == .piAgent {
-                    await context.chatController.probePiAgentAvailability()
-                } else {
-                    context.chatController.piAgentAvailable = false
-                }
-                StartupProfiler.event("startup_probe_work_start")
-                await context.daemonManager.refreshHealth()
-                await context.operatingLayer.refreshControllerRuntime()
-                StartupProfiler.event("startup_probe_work_end")
-            }
-
-            Task(priority: .utility) {
-                for _ in 0..<30 where !context.accountManager.isSignedIn {
-                    try? await Task.sleep(for: .seconds(1))
-                    guard !Task.isCancelled else { return }
-                }
-                await sync.uploadPending()
-                let startupScanDelay: Duration = context.settingsManager.pixelClockConfig.enabled
-                    ? .seconds(600)
-                    : .seconds(15)
-                try? await Task.sleep(for: startupScanDelay)
-                guard !Task.isCancelled else { return }
-                await aggregator.refreshAll()
-                await sync.uploadPendingConversations()
-                await sync.uploadPendingChatThreads()
-                await sync.syncTextExpansionSnippets()
-                if context.settingsManager.dailyDigestEnabled {
-                    await DailyDigestManager.shared.requestAuthorization()
-                    DailyDigestManager.shared.scheduleDigest(
-                        from: context.dataStore,
-                        at: context.settingsManager.dailyDigestHour
-                    )
-                }
-            }
-
-            periodicRefreshTask?.cancel()
-            // Coordinator-managed cadence: same active interval as before
-            // (`max(settingsManager.refreshInterval, minimum)`), but the
-            // coordinator pauses the loop entirely while the display sleeps
-            // and stretches the interval 5× when the app is in the
-            // background. Net: no work happens while the laptop lid is
-            // closed and on idle the cadence honours the user setting.
-            let cadenceID = "agentlens-periodic-refresh"
-            BackgroundCadenceCoordinator.shared.register(
-                BackgroundCadenceCoordinator.Cadence(
-                    id: cadenceID,
-                    activeIntervalProvider: {
-                        let minimumRefreshInterval: TimeInterval = context.settingsManager.pixelClockConfig.enabled
-                            ? 10 * 60
-                            : 60
-                        return max(context.settingsManager.refreshInterval, minimumRefreshInterval)
-                    },
-                    backgroundIntervalProvider: nil,
-                    sleepIntervalProvider: { nil }, // paused on sleep
-                    isEnabled: { true },
-                    fireImmediately: false,
-                    cancellableInFlight: false,
-                    work: { [weak aggregator] in
-                        await aggregator?.refreshAll()
-                        await context.daemonManager.refreshHealth()
-                        await context.operatingLayer.refreshControllerRuntime()
-                    }
-                )
-            )
-            // Sentinel so re-entrant `startBackgroundWork()` paths leave the
-            // cadence registered exactly once.
-            periodicRefreshTask = Task { @MainActor in }
-        }
-    }
-
-    nonisolated(unsafe) private static var didStartLiveServices = false
-
-    @MainActor
-    private func openDashboard(context: OpenBurnBarRuntimeContext) {
-        windowManager.openDashboard(
-            dataStore: context.dataStore,
-            aggregator: context.aggregator,
-            accountManager: context.accountManager,
-            cloudSyncService: context.cloudSyncService,
-            iCloudSessionMirrorService: context.iCloudSessionMirrorService,
-            chatController: context.chatController,
-            operatingLayer: context.operatingLayer,
-            navigationCoordinator: navigationCoordinator,
-            settingsManager: context.settingsManager,
-            runtimeContext: context
-        )
-    }
-
-    @MainActor
-    private func openStartupRecoveryWindow() {
-        guard let failure = startupState.failure else { return }
-        windowManager.openStartupRecovery(
-            failure: failure,
-            isRetrying: isRetryingStartup,
-            isArchivingReset: isArchivingReset,
-            actionError: startupRecoveryActionError,
-            onRetry: retryStartup,
-            onRevealSupportFolder: revealStartupSupportFolder,
-            onArchiveAndReset: archiveAndResetStartupDatabase,
-            onCopyDiagnostics: copyStartupDiagnostics,
-            onQuit: quitFromStartupRecovery
-        )
-    }
-
-    @MainActor
-    private func retryStartup() {
-        guard !isRetryingStartup && !isArchivingReset else { return }
-        isRetryingStartup = true
-        startupRecoveryActionError = nil
-        startupState = Self.makeStartupState()
-        isRetryingStartup = false
-        if startupState.runtimeContext != nil {
-            hasPresentedStartupRecoveryWindow = false
-            windowManager.closeStartupRecovery()
-        } else {
-            openStartupRecoveryWindow()
-        }
-    }
-
-    @MainActor
-    private func archiveAndResetStartupDatabase() {
-        guard !isRetryingStartup && !isArchivingReset else { return }
-        isArchivingReset = true
-        startupRecoveryActionError = nil
-        do {
-            let archiveResult = try OpenBurnBarStartupRecovery.archiveDatabaseSidecars()
-            startupState = Self.makeStartupState(archiveURL: archiveResult.archiveDirectory)
-            isArchivingReset = false
-            if startupState.runtimeContext != nil {
-                hasPresentedStartupRecoveryWindow = false
-                windowManager.closeStartupRecovery()
-            } else {
-                startupRecoveryActionError = "The database was archived, but OpenBurnBar still could not create a clean database."
-                openStartupRecoveryWindow()
-            }
-        } catch {
-            isArchivingReset = false
-            startupRecoveryActionError = error.localizedDescription
-            AppLogger.dataStore.error(
-                "startup_datastore_archive_reset_failed",
-                metadata: ["error": String(describing: error)]
-            )
-            openStartupRecoveryWindow()
-        }
-    }
-
-    @MainActor
-    private func revealStartupSupportFolder() {
-        guard let failure = startupState.failure else { return }
-        let fileManager = FileManager.default
-        if fileManager.fileExists(atPath: failure.supportDirectory.path) {
-            NSWorkspace.shared.activateFileViewerSelecting([failure.supportDirectory])
-        } else {
-            NSWorkspace.shared.selectFile(
-                nil,
-                inFileViewerRootedAtPath: failure.supportDirectory.deletingLastPathComponent().path
-            )
-        }
-    }
-
-    @MainActor
-    private func copyStartupDiagnostics() -> Bool {
-        guard let failure = startupState.failure else { return false }
-        NSPasteboard.general.clearContents()
-        return NSPasteboard.general.setString(failure.diagnostics, forType: .string)
-    }
-
-    @MainActor
-    private func quitFromStartupRecovery() {
-        NSApplication.shared.terminate(nil)
-    }
-
     #if DEBUG
     @MainActor
     private func toggleHermesIrohTransportFromDebugMenu() {
@@ -1671,6 +343,7 @@ struct OpenBurnBarApp: App {
         // each one as a Scene component.
         installCommandRouter()
         OpenBurnBarRuntime.beginHarnessHostActivityIfNeeded()
+        openUITestDashboardIfNeeded()
         presentStartupRecoveryIfNeeded()
         // The AppDelegate owns the live status item + popover via AppKit
         // (`NSPopover` survives SwiftUI's macOS-26/Tahoe `MenuBarExtra(.window)`
@@ -1691,11 +364,33 @@ struct OpenBurnBarApp: App {
     @MainActor
     private func presentStartupRecoveryIfNeeded() {
         guard !OpenBurnBarRuntime.shouldUseTestStubScene else { return }
+        guard !OpenBurnBarRuntime.isUITestLaunch else { return }
         guard case .failed = startupState else { return }
         guard !hasPresentedStartupRecoveryWindow else { return }
         hasPresentedStartupRecoveryWindow = true
         DispatchQueue.main.async { [self] in
             openStartupRecoveryWindow()
+        }
+    }
+
+    @MainActor
+    private func openUITestDashboardIfNeeded() {
+        guard OpenBurnBarRuntime.isUITestLaunch else { return }
+        guard !didOpenUITestDashboard else { return }
+        guard startupState.runtimeContext != nil else { return }
+        didOpenUITestDashboard = true
+
+        Self.seedUITestDefaultsIfNeeded()
+        if case .ready(let context) = startupState {
+            context.settingsManager.conversationIndexingConsentShown = true
+            context.settingsManager.cliAssistantConsentShown = true
+        }
+
+        DispatchQueue.main.async {
+            AppCommandRouter.shared.openDashboard?()
+            if OpenBurnBarRuntime.shouldOpenSettingsForUITest {
+                AppCommandRouter.shared.openSettings?()
+            }
         }
     }
 
@@ -1711,6 +406,15 @@ struct OpenBurnBarApp: App {
     var body: some Scene {
         liveMenuBarScene
             .commands {
+                // Standard macOS Cmd-, binding. Without this, Settings only
+                // opens from the status-item menu's key equivalent, which is
+                // active solely while that menu is open.
+                CommandGroup(replacing: .appSettings) {
+                    Button("Settings…") {
+                        AppCommandRouter.shared.openSettings?()
+                    }
+                    .keyboardShortcut(",", modifiers: .command)
+                }
                 #if DEBUG
                 CommandMenu("Debug") {
                     Button(
@@ -1750,271 +454,4 @@ struct OpenBurnBarApp: App {
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
     }
-}
-
-// MARK: - Menu Bar Label
-
-struct MenuBarLabel: View {
-    let totalCostToday: Double
-    let totalTokensToday: Int
-    let usageDisplayMode: UsageDisplayMode
-    let rollingDailyAverage: Double
-    let isRefreshing: Bool
-
-    @State private var showCostIncrease = false
-    @State private var bounceTick = 0
-    @State private var logoBounceScale: CGFloat = 1
-    @State private var pulseGlow: CGFloat = 0
-    @AppStorage("lastDailyCostPulseDay") private var lastDailyCostPulseDay: String = ""
-
-    /// Shown on hover in the menu bar (balance for the selected display mode).
-    private var balanceTooltip: String {
-        switch usageDisplayMode {
-        case .currency:
-            return "Today: \(totalCostToday.formatAsCost())"
-        case .tokens:
-            return "Today: \(totalTokensToday.formatAsTokenVolume()) tokens"
-        }
-    }
-
-    private var todayDayKey: String {
-        let f = DateFormatter()
-        f.calendar = Calendar.current
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.dateFormat = "yyyy-MM-dd"
-        return f.string(from: Date())
-    }
-
-    private var shouldDailyPulse: Bool {
-        rollingDailyAverage > 0 && totalCostToday > rollingDailyAverage * 1.2
-    }
-
-    static let menuBarLabelSlotWidth: CGFloat = 22
-    static let menuBarLabelSlotHeight: CGFloat = 18
-
-    private var menuBarIcon: some View {
-        Image(nsImage: MenuBarRasterBrandMark.image)
-    }
-
-    var body: some View {
-        Label {
-            EmptyView()
-        } icon: {
-            menuBarIcon
-                .scaleEffect(logoBounceScale)
-                .shadow(color: Color.primary.opacity(pulseGlow * 0.35), radius: pulseGlow * 3)
-        }
-        .labelStyle(.iconOnly)
-        .overlay(alignment: .topTrailing) {
-            Group {
-                if isRefreshing {
-                    AnimatedMiningPickView()
-                        .frame(width: 14, height: 14)
-                        .clipShape(.circle)
-                        .scaleEffect(0.5)
-                        .offset(x: 3, y: -3)
-                } else if showCostIncrease {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 8))
-                        .foregroundStyle(Color.green)
-                        .background(Circle().fill(Color(NSColor.windowBackgroundColor)))
-                        .offset(x: 3, y: -2)
-                        .transition(.opacity)
-                }
-            }
-        }
-        .frame(width: Self.menuBarLabelSlotWidth, height: Self.menuBarLabelSlotHeight)
-        .fixedSize()
-        .help(balanceTooltip)
-        .accessibilityLabel("\(OpenBurnBarIdentity.productName), \(balanceTooltip)")
-        .onChange(of: isRefreshing) { _, new in
-            guard !new else { return }
-            Task { @MainActor in
-                bounceTick &+= 1
-            }
-        }
-        .onChange(of: bounceTick) { _, _ in
-            Task { @MainActor in
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.55)) {
-                    logoBounceScale = 1.14
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.55)) {
-                        logoBounceScale = 1
-                    }
-                }
-            }
-        }
-        .onChange(of: totalCostToday) { oldValue, newValue in
-            guard newValue > oldValue, oldValue > 0 else { return }
-            Task { @MainActor in
-                withAnimation(.easeIn(duration: 0.2)) {
-                    showCostIncrease = true
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                    withAnimation(.easeOut(duration: 0.3)) {
-                        showCostIncrease = false
-                    }
-                }
-            }
-        }
-        .onChange(of: shouldDailyPulse) { _, pulse in
-            guard pulse, lastDailyCostPulseDay != todayDayKey else { return }
-            Task { @MainActor in
-                lastDailyCostPulseDay = todayDayKey
-                pulseGlow = 0
-                withAnimation(.easeInOut(duration: 0.45)) {
-                    pulseGlow = 1
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    withAnimation(.easeOut(duration: 0.6)) {
-                        pulseGlow = 0
-                    }
-                }
-            }
-        }
-    }
-}
-
-// MARK: - Crash-reporting consent (T-PRV-03)
-
-/// Crash-reporting consent for the macOS app. Default-on (matches the existing
-/// internal-distribution posture in `configureSentryIfAvailable` and the iOS
-/// `MobileCrashReportingConsent`), but an explicit, user-settable key lets a
-/// privacy-conscious user opt out, in which case Sentry is never started.
-///
-/// Also owns the non-PII per-install identifier that replaces the old
-/// `NSFullUserName()` seed: a random UUID persisted in the app's own defaults,
-/// hashed to a stable opaque hex id. It carries no account name, no email, and
-/// nothing derivable about the human operating the Mac.
-enum MacCrashReportingConsent {
-    static let defaultsKey = "crashReporting.enabled"
-    static let installIDDefaultsKey = "crashReporting.perInstallID"
-
-    /// Whether crash reporting is allowed to run. Defaults to `true` when the
-    /// key has never been set.
-    static func isEnabled(defaults: UserDefaults = .standard) -> Bool {
-        if defaults.object(forKey: defaultsKey) == nil { return true }
-        return defaults.bool(forKey: defaultsKey)
-    }
-
-    /// Stable non-PII per-install id seeded from this install's own random UUID.
-    /// Pure with injected defaults so the privacy property is unit-testable.
-    static func perInstallAnonymizedID(defaults: UserDefaults = .standard) -> String {
-        let seed: String
-        if let stored = defaults.string(forKey: installIDDefaultsKey),
-           !stored.isEmpty {
-            seed = stored
-        } else {
-            let created = UUID().uuidString
-            defaults.set(created, forKey: installIDDefaultsKey)
-            seed = created
-        }
-        let bundleID = Bundle.main.bundleIdentifier ?? "com.openburnbar.app"
-        let data = (bundleID + seed).data(using: .utf8) ?? Data()
-        return String(data.map { String(format: "%02x", $0) }.joined().prefix(32))
-    }
-}
-
-// MARK: - Sentry payload scrubber (T-PRV-03)
-
-/// Strips user content from Sentry events + breadcrumbs before they leave device.
-/// The pure redaction logic mirrors `MobileSentryScrubber`.
-enum MacSentryScrubber {
-    static let redactionPlaceholder = "[redacted]"
-
-    /// Key fragments whose values are always fully redacted.
-    static let sensitiveKeyFragments: [String] = [
-        "token", "secret", "password", "passcode", "key", "auth",
-        "credential", "cookie", "session", "email", "prompt", "message",
-        "body", "content", "snippet", "vault", "mnemonic", "recovery",
-        "address", "phone", "name", "uid", "user"
-    ]
-
-    /// Returns `true` if a dictionary key should have its value redacted.
-    static func isSensitiveKey(_ key: String) -> Bool {
-        let lower = key.lowercased()
-        return sensitiveKeyFragments.contains { lower.contains($0) }
-    }
-
-    /// Redacts email-like strings, bearer/long tokens, and absolute paths.
-    static func redact(_ text: String) -> String {
-        var result = text
-        let patterns = [
-            // emails
-            #"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"#,
-            // bearer / sk- / long opaque tokens (20+ url-safe chars)
-            #"(?i)bearer\s+[A-Za-z0-9._-]+"#,
-            #"\b[A-Za-z0-9._-]{20,}\b"#,
-            // absolute POSIX paths (may carry the username / vault filenames)
-            #"(/[Uu]sers/[^\s]+)"#,
-            #"(/private/var/[^\s]+)"#
-        ]
-        for pattern in patterns {
-            result = result.replacingOccurrences(
-                of: pattern,
-                with: redactionPlaceholder,
-                options: .regularExpression
-            )
-        }
-        return result
-    }
-
-    /// Recursively redacts maps, nested maps, and arrays.
-    static func redactDictionary(_ input: [String: Any]) -> [String: Any] {
-        var output: [String: Any] = [:]
-        for (key, value) in input {
-            if isSensitiveKey(key) {
-                output[key] = redactionPlaceholder
-            } else {
-                output[key] = redactValue(value)
-            }
-        }
-        return output
-    }
-
-    private static func redactValue(_ value: Any) -> Any {
-        switch value {
-        case let string as String:
-            return redact(string)
-        case let dict as [String: Any]:
-            return redactDictionary(dict)
-        case let array as [Any]:
-            return array.map(redactValue)
-        default:
-            return value
-        }
-    }
-
-    #if canImport(Sentry)
-    /// Keeps crash signal while removing user content.
-    static func scrub(_ event: Event) -> Event? {
-        // Never report identity.
-        event.user = nil
-        if let message = event.message?.formatted {
-            event.message = SentryMessage(formatted: redact(message))
-        }
-        if let extra = event.extra {
-            event.extra = redactDictionary(extra)
-        }
-        // Drop request bodies / headers / cookies wholesale.
-        event.request = nil
-        // Redact breadcrumbs carried on the event.
-        if let crumbs = event.breadcrumbs {
-            event.breadcrumbs = crumbs.compactMap { scrub($0) }
-        }
-        return event
-    }
-
-    /// Redacts breadcrumb message/data while keeping crash-correlation signal.
-    static func scrub(_ breadcrumb: Breadcrumb) -> Breadcrumb? {
-        if let message = breadcrumb.message {
-            breadcrumb.message = redact(message)
-        }
-        if let data = breadcrumb.data {
-            breadcrumb.data = redactDictionary(data)
-        }
-        return breadcrumb
-    }
-    #endif
 }

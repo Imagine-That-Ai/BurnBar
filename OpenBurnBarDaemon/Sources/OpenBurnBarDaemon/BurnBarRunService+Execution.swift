@@ -33,13 +33,6 @@ extension BurnBarRunService {
             return
         }
 
-        if run.metadata.boolValue(forKey: .controllerReview) ?? false
-            || run.metadata.boolValue(forKey: .missionExecution) ?? false
-            || run.metadata.boolValue(forKey: .autoTakeover) ?? false {
-            try await executeProviderOnlyRun(for: &run)
-            return
-        }
-
         if run.attempt <= run.plan.failUntilAttempt {
             try transition(
                 &run,
@@ -57,6 +50,13 @@ extension BurnBarRunService {
                 )
             )
             try await writeCheckpoint(for: run)
+            return
+        }
+
+        if run.metadata.boolValue(forKey: .controllerReview) ?? false
+            || run.metadata.boolValue(forKey: .missionExecution) ?? false
+            || run.metadata.boolValue(forKey: .autoTakeover) ?? false {
+            try await executeProviderOnlyRun(for: &run)
             return
         }
 
@@ -422,29 +422,53 @@ extension BurnBarRunService {
     }
 
     func shouldFailOverProviderError(_ error: Error) -> Bool {
-        if let providerError = error as? BurnBarProviderExecutorError {
-            switch providerError {
-            case .upstreamError(let statusCode, let body):
-                if BurnBarProviderExecutorError.isTransientCapacityFailure(statusCode: statusCode, body: body) {
-                    return true
-                }
-                if statusCode == 429 || statusCode == 401 || statusCode == 403 || statusCode == 402 {
-                    return true
-                }
-                let normalizedBody = body.lowercased()
-                return normalizedBody.contains("quota")
-                    || normalizedBody.contains("rate")
-                    || normalizedBody.contains("insufficient")
-                    || normalizedBody.contains("exhaust")
-            case .invalidBaseURL, .invalidResponse:
-                return false
+        if let providerError = error as? BurnBarProviderExecutorError,
+           let statusAndBody = providerError.upstreamStatusAndBody {
+            let statusCode = statusAndBody.statusCode
+            let body = statusAndBody.body
+            if BurnBarProviderExecutorError.isTransientCapacityFailure(statusCode: statusCode, body: body) {
+                return true
             }
+            if statusCode == 429 || statusCode == 401 || statusCode == 403 || statusCode == 402 {
+                return true
+            }
+            let normalizedBody = body.lowercased()
+            return normalizedBody.contains("quota")
+                || normalizedBody.contains("rate limit")
+                || normalizedBody.contains("rate_limit")
+                || normalizedBody.contains("insufficient_quota")
+                || normalizedBody.contains("insufficient funds")
+                || normalizedBody.contains("insufficient balance")
+                || normalizedBody.contains("exhaust")
+        } else if error is BurnBarProviderExecutorError {
+            return false
+        }
+
+        if Self.isRetryableProviderTransportError(error) {
+            return true
         }
 
         let description = error.localizedDescription.lowercased()
         return description.contains("quota")
             || description.contains("rate limit")
             || description.contains("429")
+    }
+
+    private static func isRetryableProviderTransportError(_ error: Error) -> Bool {
+        guard let urlError = error as? URLError else { return false }
+        switch urlError.code {
+        case .cannotConnectToHost,
+             .cannotFindHost,
+             .dnsLookupFailed,
+             .networkConnectionLost,
+             .notConnectedToInternet,
+             .timedOut,
+             .secureConnectionFailed,
+             .badServerResponse:
+            return true
+        default:
+            return false
+        }
     }
 
     func completeRunAndRecordUsage(for run: inout BurnBarManagedRun) async throws {

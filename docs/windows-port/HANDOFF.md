@@ -1,4 +1,13 @@
-# OpenBurnBar Windows Port — Master Handoff (2026-07-03)
+# OpenBurnBar Windows Port — Historical Handoff (2026-07-03)
+
+> **⚠️ SUPERSEDED FOR PARITY STATUS (2026-07-09):** Production-parity status is **only**
+> [`WINDOWS_PARITY_LEDGER.yml`](WINDOWS_PARITY_LEDGER.yml) (closed set: Real / Substituted /
+> DeferredApproved / Blocked). **Authored is never parity.** Scanner:
+> `bash scripts/ci/verify-windows-parity-ledger.sh`. Narrative evidence remains in
+> [`PARITY_CERTIFICATION_BUNDLE.md`](PARITY_CERTIFICATION_BUNDLE.md); remaining work map:
+> [`PARITY_100_REMEDIATION_PLAN.md`](PARITY_100_REMEDIATION_PLAN.md) and the Wave 2–7 plan.
+> §2/§3/§6 below also predate the 2026-07-04 atomic integration (#1267) — verify against
+> the ledger + live code, not "done" phrasing in this handoff.
 
 The single doc to continue the entire Windows port. Read `docs/WINDOWS_PORT_MASTER_PLAN.md` (v2.1) for the
 authoritative spec; this is the *current state + how to finish*.
@@ -14,8 +23,11 @@ the Engine subset compiles on Windows MSVC and the walking skeleton runs green o
 28672100306, 23/23 assertions).** Remainder = Phases 2–5, ~1,000 PRs / a few agent-months.
 **IMPORTANT SCOPE:** what compiles on Windows today is the walking-skeleton **Engine SUBSET** — GRDB storage +
 several UI/Apple subsystems (Insights/Verdict, AgentInsights, TextExpansion, App-Check contracts) were
-**pruned off-Apple** to reach green. Un-pruning storage (needs the real-Mac-DB-open dev-host spike) + those
-subsystems is Phase-2+ work. Nothing here is faked; unfinished work is labeled unfinished.
+**pruned off-Apple** to reach green. **Storage is no longer an "un-pruning" work item:** per **WPD-0005**
+(`decisions/0005-windows-storage-architecture.md`, 2026-07-06) the storage prune is permanent architecture —
+the Windows Swift Engine is compute-only and the C# seam (`windows/storage/`, byte-compat proven per
+WPD-0004) owns persistence. Un-pruning the *other* subsystems is Phase-2+ work. Nothing here is faked;
+unfinished work is labeled unfinished.
 
 ## 1. Proven on REAL Windows (dev-host `Xio`, via Droid, 2026-07-03)
 | Kill-risk / question | Result |
@@ -95,7 +107,9 @@ Plans already written (execute through the factory):
   macOS-tested** (Node Firebase-Admin mint backend, mock-fenced, in `functions/`); build the Windows TPM
   attestation client (CNG `NCryptCreateClaim`) + prove real-TPM→createToken→enforced-callable on the dev
   host (TPM 2.0 + Win11; clear firebase-admin-node #2308).
-- **W0 procurement (calendar-bound, Alberto):** Authenticode/Trusted-Signing cert + Microsoft Store account
+- **W0 procurement:** Azure Artifact Signing identity validation and signed x64/ARM64
+  production are **resolved** by run [29160512069](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29160512069).
+  Microsoft Store and winget publisher onboarding remain calendar-bound.
   + winget publisher — external lead-times; start now, gates G5.
 
 ## 5. Execution model (how to keep running it)
@@ -159,8 +173,9 @@ Each is a Droid one-liner (Swift/.NET/sqlcipher already installed there). The fl
   VM.** On Apple Silicon: **VMware Fusion (now free) + a Windows 11 ARM64 ISO (unactivated, free from
   Microsoft via CrystalFetch)** → a full ARM64 Windows desktop with an auto-provisioned **vTPM 2.0** (UTM is a
   free OSS alternative). ~4 cores / 8 GB / 64 GB; Win11-ARM runs x64 tools via Prism emulation, so one VM
-  covers both arches. This is where item 2 (WinUI shell), the real-Mac-DB-open (to un-prune GRDB storage),
-  TPM R14, and the path codec now run — no physical box.
+  covers both arches. This is where item 2 (WinUI shell), the real-Mac-DB-open (done — and GRDB storage is
+  now *permanently* pruned by architecture per WPD-0005, not un-pruned), TPM R14, and the path codec now
+  run — no physical box.
 - **Honest TPM caveat:** the vTPM builds+tests the whole App Check attestation flow (~95%) but can't present a
   real manufacturer-signed hardware Endorsement Key → *final* hardware-EK-chain acceptance eventually wants
   any cheap/borrowed physical Windows box. Everything up to that gate runs on the free vTPM.

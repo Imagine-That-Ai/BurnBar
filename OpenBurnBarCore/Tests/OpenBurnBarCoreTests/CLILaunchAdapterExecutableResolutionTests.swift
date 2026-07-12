@@ -84,6 +84,18 @@ final class CLILaunchAdapterExecutableResolutionTests: XCTestCase {
         XCTAssertFalse(trustedDirectories.contains("\(home)/.nvm/versions/node/v20/bin"))
     }
 
+    func testJunieSearchPolicyIncludesJunieManagedBinDirectory() {
+        let home = "/tmp/openburnbar-cli-resolution-home"
+        let trustedDirectories = CLILaunchAdapter.trustedExecutableSearchDirectories(
+            for: .junie,
+            environment: [:],
+            homeDirectory: home
+        )
+
+        XCTAssertTrue(SwitcherCLIProfileType.junie.trustedExecutablePaths.contains("$HOME/.junie/bin/junie"))
+        XCTAssertTrue(trustedDirectories.contains("\(home)/.junie/bin"))
+    }
+
     func testCLILaunchErrorUsesLocalizedDescriptions() {
         let error: Error = CLILaunchError.executableNotFound(.codex)
         XCTAssertEqual(
