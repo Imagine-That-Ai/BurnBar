@@ -448,6 +448,17 @@ expect(
   1,
 );
 
+expect(
+  "I7 — nested device id record still fails",
+  buildTree((f) => {
+    f["docs/device-record.json"] = JSON.stringify({
+      device: { id: IOS_COREDEVICE_SAMPLE },
+    });
+    return f;
+  }),
+  1,
+);
+
 // Misconfiguration: invalid indexes JSON must exit 2 (fail-closed, not crash to 0).
 expect(
   "invalid firestore.indexes.json exits 2",
