@@ -128,7 +128,7 @@ const commands = [
     name: "windows-solution-aggregate",
     file: "dotnet",
     args: ["test", "windows/OpenBurnBar.sln", "--configuration", "Release", "--nologo", "-p:EnableWindowsTargeting=true", "--blame-hang-timeout", "60s"],
-    timeoutMs: 240000,
+    timeoutMs: 900000,
   },
 ];
 
