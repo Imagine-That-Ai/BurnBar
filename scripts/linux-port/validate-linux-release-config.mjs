@@ -53,7 +53,10 @@ const expectedInstallPaths = {
   nativeRuntime: '/usr/lib/openburnbar/native',
   playwrightRuntime: '/usr/lib/openburnbar/playwright',
   irohNativeLibrary: '/usr/lib/openburnbar/native/libopenburnbar_iroh.so',
-  cloudAuthConfig: '/usr/share/openburnbar/cloud-auth.json',
+    cloudAuthConfig: '/usr/share/openburnbar/cloud-auth.json',
+    installedManifest: '/usr/share/openburnbar/attestation/installed-manifest.json',
+    installedManifestSignature: '/usr/share/openburnbar/attestation/installed-manifest.json.sig',
+    releasePublicKey: '/usr/share/openburnbar/attestation/release-ed25519.pub.pem',
   computerUsePolkitPolicy: '/usr/share/polkit-1/actions/com.openburnbar.computer-use.policy'
 };
 for (const [key, expected] of Object.entries(expectedInstallPaths)) {
@@ -71,7 +74,10 @@ const packageSources = {
   '/usr/lib/openburnbar/swift': 'target/openburnbar-package-payload/swift',
   '/usr/lib/openburnbar/native': 'target/openburnbar-package-payload/native',
   '/usr/lib/openburnbar/playwright': 'target/openburnbar-package-payload/playwright',
-  '/usr/share/openburnbar/cloud-auth.json': 'target/openburnbar-package-payload/cloud-auth.json'
+  '/usr/share/openburnbar/cloud-auth.json': 'target/openburnbar-package-payload/cloud-auth.json',
+  '/usr/share/openburnbar/attestation/installed-manifest.json': 'target/openburnbar-package-payload/attestation/installed-manifest.json',
+  '/usr/share/openburnbar/attestation/installed-manifest.json.sig': 'target/openburnbar-package-payload/attestation/installed-manifest.json.sig',
+  '/usr/share/openburnbar/attestation/release-ed25519.pub.pem': 'target/openburnbar-package-payload/attestation/release-ed25519.pub.pem'
 };
 for (const packageType of ['deb', 'rpm']) {
   const files = tauri.bundle?.linux?.[packageType]?.files ?? {};
@@ -103,17 +109,36 @@ const desktopPackage = readJson(path.join(repoRoot, 'apps/linux-desktop/package.
 if (desktopPackage.scripts?.['pretauri:build'] !== 'node ../../scripts/linux-port/prepare-linux-package-payload.mjs') {
   failures.push('tauri build must stage and runtime-probe the native Linux package payload');
 }
+if (desktopPackage.scripts?.['tauri:bundle'] !== 'tauri bundle') {
+  failures.push('Linux release packaging must expose the two-pass Tauri bundle command');
+}
 const releaseBuilder = fs.readFileSync(path.join(repoRoot, 'scripts/linux-port/build-linux-release.mjs'), 'utf8');
-if (!releaseBuilder.includes('embed-linux-appimage-payload.mjs')) {
-  failures.push('release build must inject the staged native payload into the base AppImage');
+if (!releaseBuilder.includes('bundle-signed-linux-packages.mjs')) {
+  failures.push('release build must create and verify signed installed manifests before native package closure');
+}
+if (!releaseBuilder.includes("['prepare', 'finalize']")
+    || !releaseBuilder.includes('must not receive OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM')) {
+  failures.push('release build must expose distinct no-key prepare and finalize phases');
 }
 if (!releaseBuilder.includes("OPENBURNBAR_LINUX_RELEASE_BUILD: '1'")) {
   failures.push('release builder must require configured Linux cloud-auth public identifiers');
 }
 const releaseWorkflow = fs.readFileSync(path.join(repoRoot, '.github/workflows/linux-release.yml'), 'utf8');
-if (!releaseWorkflow.includes('OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM: ${{ secrets.OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM }}')
-    || !releaseWorkflow.includes('-e OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM')) {
-  failures.push('Linux architecture builds must receive the release Ed25519 key for the signed AppImage peer manifest');
+for (const marker of [
+  '--phase prepare',
+  'Materialize exact-commit isolated signer',
+  '--network none',
+  '--read-only',
+  '--cap-drop ALL',
+  '--security-opt no-new-privileges',
+  'sign-linux-release-requests.mjs',
+  '--phase finalize'
+]) {
+  if (!releaseWorkflow.includes(marker)) failures.push(`Linux isolated signing workflow missing ${marker}`);
+}
+const buildArchitecturePrefix = releaseWorkflow.split('Materialize exact-commit isolated signer')[0] ?? '';
+if (buildArchitecturePrefix.includes('OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM')) {
+  failures.push('Linux unsigned build environment must not receive the release Ed25519 private key');
 }
 for (const variable of manifest.externalCredentials?.publicCloudAuthVariables ?? []) {
   if (!releaseWorkflow.includes(`vars.${variable}`) || !releaseWorkflow.includes(`-e ${variable}`)) {
@@ -157,9 +182,10 @@ const appImageEmbedder = fs.readFileSync(
   'utf8'
 );
 for (const marker of [
-  'writeSignedLinuxAppImagePeerManifest',
+  'prepareLinuxAppImagePeerManifest',
+  'resolveLinuxAppImagePeerAttestation',
   'verifyLinuxAppImagePeerManifest',
-  'OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM is required'
+  'must not receive OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM'
 ]) {
   if (!appImageEmbedder.includes(marker)) failures.push(`AppImage peer-manifest embedder missing ${marker}`);
 }

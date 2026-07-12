@@ -12,6 +12,7 @@
     "tauri:dev": "tauri dev",
     "pretauri:build": "node ../../scripts/linux-port/prepare-linux-package-payload.mjs",
     "tauri:build": "tauri build",
+    "tauri:bundle": "tauri bundle",
     "perf:budget": "node ../../scripts/linux-port/run-perf-budget.mjs"
   },
   "dependencies": {

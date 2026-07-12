@@ -6,7 +6,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
   requiredPayloadPaths,
-  resolveLinuxAppImagePeerSigning,
+  resolveLinuxAppImagePeerAttestation,
   validatePayload
 } from './embed-linux-appimage-payload.mjs';
 import {
@@ -43,15 +43,27 @@ test('AppImage payload validator requires daemon, runtimes, and Browser CU resou
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-test('release AppImage embedding requires the signing key while unsigned developer embedding is explicit', () => {
+test('release AppImage embedding requires pre-signed bytes and rejects private-key exposure', () => {
   assert.throws(
-    () => resolveLinuxAppImagePeerSigning({ OPENBURNBAR_LINUX_RELEASE_BUILD: '1' }),
-    /ED25519_PRIVATE_KEY_PEM is required/
+    () => resolveLinuxAppImagePeerAttestation({
+      manifestBytes: null,
+      signature: null,
+      environment: { OPENBURNBAR_LINUX_RELEASE_BUILD: '1' }
+    }),
+    /pre-signed AppImage peer manifest/u
   );
-  assert.equal(resolveLinuxAppImagePeerSigning({}), null);
-  assert.equal(
-    resolveLinuxAppImagePeerSigning({ OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM: '  private-key  ' }),
-    'private-key'
+  assert.equal(resolveLinuxAppImagePeerAttestation({
+    manifestBytes: null,
+    signature: null,
+    environment: {}
+  }), null);
+  assert.throws(
+    () => resolveLinuxAppImagePeerAttestation({
+      manifestBytes: Buffer.from('{}\n'),
+      signature: Buffer.alloc(64),
+      environment: { OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM: 'private-key' }
+    }),
+    /must not receive/u
   );
 });
 

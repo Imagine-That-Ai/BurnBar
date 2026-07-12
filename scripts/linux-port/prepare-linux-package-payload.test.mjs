@@ -48,6 +48,7 @@ test('payload staging copies daemon, Swift tree, and SQLCipher SONAME', () => {
   const swift = path.join(root, 'swift-source');
   const sqlcipher = path.join(root, 'sqlcipher-source');
   const iroh = path.join(root, 'libopenburnbar_iroh.so');
+  const releasePublicKey = path.join(root, 'release-ed25519.pub.pem');
   const payload = path.join(root, 'payload');
   fs.writeFileSync(daemon, '#!/bin/sh\nexit 0\n');
   fs.writeFileSync(bridge, 'bridge');
@@ -60,12 +61,14 @@ test('payload staging copies daemon, Swift tree, and SQLCipher SONAME', () => {
   fs.writeFileSync(path.join(sqlcipher, 'libsqlcipher.so.0'), 'sqlcipher');
   fs.writeFileSync(path.join(sqlcipher, 'libsqlcipher.so'), 'sqlcipher');
   fs.writeFileSync(iroh, 'iroh');
+  fs.writeFileSync(releasePublicKey, 'public-key');
 
   const report = stageLinuxPackagePayload({
     daemonBinary: daemon,
     playwrightBridge: bridge,
     browserRuntimeProbe: browserProbe,
     browserRuntimeRequirements: browserRequirements,
+    releasePublicKey,
     payloadRoot: payload,
     swiftRuntimeDir: swift,
     sqlcipherLibDir: sqlcipher,
@@ -88,6 +91,10 @@ test('payload staging copies daemon, Swift tree, and SQLCipher SONAME', () => {
     configured: false
   });
   assert.equal(fs.statSync(report.cloudAuthConfig).mode & 0o777, 0o644);
+  assert.equal(fs.readFileSync(report.releasePublicKey, 'utf8'), 'public-key');
+  assert.equal(fs.readFileSync(report.installedManifest, 'utf8'), '{}\n');
+  assert.equal(fs.readFileSync(report.installedManifestSignature).length, 64);
+  assert.equal(fs.statSync(report.releasePublicKey).mode & 0o777, 0o644);
   fs.rmSync(root, { recursive: true, force: true });
 });
 
@@ -100,6 +107,7 @@ test('payload staging rejects SQLCipher trees without the required SONAME', () =
   const swift = path.join(root, 'swift');
   const sqlcipher = path.join(root, 'sqlcipher');
   const iroh = path.join(root, 'libopenburnbar_iroh.so');
+  const releasePublicKey = path.join(root, 'release-ed25519.pub.pem');
   fs.writeFileSync(daemon, 'daemon');
   fs.writeFileSync(bridge, 'bridge');
   fs.writeFileSync(browserProbe, 'probe');
@@ -108,12 +116,14 @@ test('payload staging rejects SQLCipher trees without the required SONAME', () =
   fs.mkdirSync(sqlcipher);
   fs.writeFileSync(path.join(sqlcipher, 'libsqlcipher.so'), 'sqlcipher');
   fs.writeFileSync(iroh, 'iroh');
+  fs.writeFileSync(releasePublicKey, 'public-key');
 
   assert.throws(() => stageLinuxPackagePayload({
     daemonBinary: daemon,
     playwrightBridge: bridge,
     browserRuntimeProbe: browserProbe,
     browserRuntimeRequirements: browserRequirements,
+    releasePublicKey,
     payloadRoot: path.join(root, 'payload'),
     swiftRuntimeDir: swift,
     sqlcipherLibDir: sqlcipher,
@@ -136,7 +146,7 @@ test('release cloud auth config is complete, validated, and never contains token
     env: {
       OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID: '123456789012-desktop.apps.googleusercontent.com',
       OPENBURNBAR_FIREBASE_API_KEY: fixtureFirebaseAPIKey,
-      OPENBURNBAR_LINUX_APP_CHECK_APP_ID: '1:123456789012:linux:abcdef1234567890'
+      OPENBURNBAR_LINUX_APP_CHECK_APP_ID: '1:123456789012:web:abcdef1234567890'
     }
   });
   assert.equal(config.configured, true);

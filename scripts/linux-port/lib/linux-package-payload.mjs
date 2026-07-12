@@ -105,7 +105,7 @@ export function buildLinuxCloudAuthConfig({ env = process.env, requireConfigured
   if (!/^AIza[A-Za-z0-9_-]{20,196}$/u.test(values.firebaseAPIKey)) {
     throw new Error('OPENBURNBAR_FIREBASE_API_KEY is malformed');
   }
-  if (!/^1:[0-9]{6,20}:(?:linux|web):[A-Za-z0-9_-]{8,128}$/u.test(values.linuxAppCheckAppID)
+  if (!/^1:[0-9]{6,20}:web:[A-Za-z0-9_-]{8,128}$/u.test(values.linuxAppCheckAppID)
       || /placeholder/iu.test(values.linuxAppCheckAppID)) {
     throw new Error('OPENBURNBAR_LINUX_APP_CHECK_APP_ID is malformed or a placeholder');
   }
@@ -164,6 +164,7 @@ export function stageLinuxPackagePayload({
   playwrightBridge,
   browserRuntimeProbe,
   browserRuntimeRequirements,
+  releasePublicKey,
   payloadRoot,
   swiftRuntimeDir,
   sqlcipherLibDir,
@@ -178,6 +179,7 @@ export function stageLinuxPackagePayload({
     browserRuntimeRequirements,
     'browser runtime requirements'
   );
+  const releasePublicKeySource = requireRegularFile(releasePublicKey, 'Linux release public key');
   const swiftSource = requireDirectory(swiftRuntimeDir, 'Swift runtime');
   const sqlcipherSource = requireDirectory(sqlcipherLibDir, 'SQLCipher runtime');
   const irohNativeSource = requireRegularFile(irohNativeLibrary, 'Linux iroh native runtime');
@@ -187,6 +189,7 @@ export function stageLinuxPackagePayload({
   const nativeDestination = path.join(root, 'native');
   const playwrightDestination = path.join(root, 'playwright');
   const cloudAuthDestination = path.join(root, 'cloud-auth.json');
+  const attestationDestination = path.join(root, 'attestation');
 
   fs.rmSync(root, { recursive: true, force: true });
   fs.mkdirSync(root, { recursive: true });
@@ -229,6 +232,18 @@ export function stageLinuxPackagePayload({
     mode: 0o644
   });
   fs.chmodSync(cloudAuthDestination, 0o644);
+  fs.mkdirSync(attestationDestination, { recursive: true });
+  const releasePublicKeyDestination = path.join(attestationDestination, 'release-ed25519.pub.pem');
+  const installedManifestDestination = path.join(attestationDestination, 'installed-manifest.json');
+  const installedManifestSignatureDestination = `${installedManifestDestination}.sig`;
+  fs.copyFileSync(releasePublicKeySource, releasePublicKeyDestination);
+  fs.writeFileSync(installedManifestDestination, '{}\n', { mode: 0o644 });
+  fs.writeFileSync(installedManifestSignatureDestination, Buffer.alloc(64), { mode: 0o644 });
+  for (const file of [
+    releasePublicKeyDestination,
+    installedManifestDestination,
+    installedManifestSignatureDestination
+  ]) fs.chmodSync(file, 0o644);
   const runtimeProbe = probe
     ? runRuntimeProbe(daemonDestination, swiftDestination, nativeDestination, env)
     : null;
@@ -246,6 +261,9 @@ export function stageLinuxPackagePayload({
     browserRuntimeRequirements: browserRuntimeRequirementsDestination,
     cloudAuthConfig: cloudAuthDestination,
     cloudAuthConfigured: cloudAuth.configured,
+    releasePublicKey: releasePublicKeyDestination,
+    installedManifest: installedManifestDestination,
+    installedManifestSignature: installedManifestSignatureDestination,
     sqlcipherFiles,
     runtimeProbe
   };

@@ -102,6 +102,18 @@ for (const artifact of closure.artifacts ?? []) {
       'usr/lib/openburnbar/native/libopenburnbar_iroh.so',
       'deb package missing iroh runtime at /usr/lib/openburnbar/native'
     );
+    for (const attestationPath of [
+      'usr/share/openburnbar/attestation/installed-manifest.json',
+      'usr/share/openburnbar/attestation/installed-manifest.json.sig',
+      'usr/share/openburnbar/attestation/release-ed25519.pub.pem'
+    ]) {
+      assertContains(
+        `assert deb contains ${attestationPath}`,
+        contents.stdout,
+        attestationPath,
+        `deb package missing /${attestationPath}`
+      );
+    }
     // Prefer sudo when non-root (guest packaging smoke).
     const dpkgInstall = runStep('sudo', ['dpkg', '-i', full]);
     if (dpkgInstall.exitCode !== 0) {
@@ -155,6 +167,18 @@ for (const artifact of closure.artifacts ?? []) {
       '/usr/lib/openburnbar/native/libopenburnbar_iroh.so',
       'rpm package missing iroh runtime at /usr/lib/openburnbar/native'
     );
+    for (const attestationPath of [
+      '/usr/share/openburnbar/attestation/installed-manifest.json',
+      '/usr/share/openburnbar/attestation/installed-manifest.json.sig',
+      '/usr/share/openburnbar/attestation/release-ed25519.pub.pem'
+    ]) {
+      assertContains(
+        `assert rpm contains ${attestationPath}`,
+        listing.stdout,
+        attestationPath,
+        `rpm package missing ${attestationPath}`
+      );
+    }
     const rpmInstall = runStep('sudo', ['rpm', '-i', '--nodeps', '--force', full]);
     if (rpmInstall.exitCode !== 0) {
       steps.push(runStep('rpm', ['-i', '--nodeps', '--force', full]));

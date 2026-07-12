@@ -32,20 +32,88 @@ Required package artifacts:
   `/usr/lib/openburnbar/swift`, and SQLCipher shared libraries under
   `/usr/lib/openburnbar/native`. `npm run tauri:build` stages and executes the
   daemon with those exact packaged libraries before Tauri bundles anything.
+- Every deb/rpm owns a root-installed Ed25519 trust set under
+  `/usr/share/openburnbar/attestation/`: the canonical installed-file manifest,
+  its raw 64-byte signature, and the pinned release public key. The signed
+  inventory covers every package-owned non-directory path except the manifest
+  and signature themselves, including the desktop and daemon executables. The
+  shard closure binds the exact manifest and signature bytes by path, SHA-256,
+  and size.
 - Custom XDG drop-in example:
   [`../../packaging/linux/systemd/openburnbar-daemon.service.d/custom-xdg.conf.example`](../../packaging/linux/systemd/openburnbar-daemon.service.d/custom-xdg.conf.example).
 
 Build locally:
 
 ```bash
-OPENBURNBAR_LINUX_RELEASE_OUT="$PWD/.linux-shard" \
+export OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID="...apps.googleusercontent.com"
+export OPENBURNBAR_FIREBASE_API_KEY="..."
+export OPENBURNBAR_LINUX_APP_CHECK_APP_ID="1:...:web:..."
+export VERSION="1.2.3"
+export COMMIT="$(git rev-parse HEAD)"
+export ARCH="$(node -p \"process.arch === 'arm64' ? 'aarch64' : 'x86_64'\")"
+export OUT="$PWD/.linux-shard"
+export TOOLCHAIN="openburnbar-linux-toolchain:mission-001"
+docker build -t "$TOOLCHAIN" tools/linux-toolchain
+docker run --rm \
+  -e OPENBURNBAR_LINUX_RELEASE_OUT=/workspace/.linux-shard \
+  -e OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID \
+  -e OPENBURNBAR_FIREBASE_API_KEY \
+  -e OPENBURNBAR_LINUX_APP_CHECK_APP_ID \
+  -v "$PWD:/workspace" -w /workspace "$TOOLCHAIN" \
   node scripts/linux-port/build-linux-release.mjs \
-  --architecture-shard --version 1.2.3
-OPENBURNBAR_LINUX_RELEASE_OUT="$PWD/.linux-shard" \
+    --architecture-shard --phase prepare --version "$VERSION"
+
+SIGNER_ROOT="$(mktemp -d)"
+git archive "$COMMIT" \
+  scripts/linux-port/sign-linux-release-requests.mjs \
+  scripts/linux-port/lib/linux-installed-manifest.mjs \
+  scripts/linux-port/lib/linux-appimage-peer-manifest.mjs \
+  packaging/linux/openburnbar-linux-ed25519.pub.pem \
+  | tar -x -C "$SIGNER_ROOT"
+export OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM="..."
+docker run --rm --network none --read-only --cap-drop ALL \
+  --security-opt no-new-privileges \
+  --tmpfs /tmp:rw,noexec,nosuid,nodev,size=16m \
+  -e OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM \
+  -v "$SIGNER_ROOT:/signer:ro" -v "$OUT/signing-state:/state:rw" \
+  -w /signer "$TOOLCHAIN" \
+  node scripts/linux-port/sign-linux-release-requests.mjs \
+    --state-dir /state --version "$VERSION" \
+    --git-commit "$COMMIT" --architecture "$ARCH"
+unset OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM
+
+docker run --rm \
+  -e OPENBURNBAR_LINUX_RELEASE_OUT=/workspace/.linux-shard \
+  -e OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID \
+  -e OPENBURNBAR_FIREBASE_API_KEY \
+  -e OPENBURNBAR_LINUX_APP_CHECK_APP_ID \
+  -v "$PWD:/workspace" -w /workspace "$TOOLCHAIN" \
+  node scripts/linux-port/build-linux-release.mjs \
+    --architecture-shard --phase finalize --version "$VERSION"
+docker run --rm -e OPENBURNBAR_LINUX_RELEASE_OUT=/workspace/.linux-shard \
+  -v "$PWD:/workspace" -w /workspace "$TOOLCHAIN" \
   node scripts/linux-port/smoke-linux-packages.mjs --architecture-shard
 ```
 
-Run that pair on native aarch64 and x86_64 hosts. CI uploads each hash-bound
+Run prepare and finalize in the pinned Linux toolchain container as root; native
+archive inventory intentionally rejects non-root extraction because it cannot
+prove the package's installed uid/gid contract. Release CI is the canonical
+invocation. It runs the prepare container without the private key, exits it,
+materializes the signer from the exact release commit, and gives a separate
+networkless, read-only, capability-free signer container only the three
+canonical request files. Final Tauri bundling and package verification then run
+without the key. The key never enters npm, Tauri, an archive extractor, or the
+mutable build container.
+
+The prepare phase compiles the Tauri executable and creates exact deb, rpm, and
+AppImage signing requests. The isolated signer binds explicit version, commit,
+and architecture inputs. Finalize rebuilds each native format with its detached
+attestation, preflights archive member paths, extracts with libarchive's secure
+path handling, and re-verifies exact bytes, Ed25519 signatures, authorized daemon
+identity, manager metadata, modes, and absence of extra files before recording
+the shard. Missing or mismatched inputs fail instead of emitting a candidate.
+
+Run those three phases on native aarch64 and x86_64 hosts. CI uploads each hash-bound
 `architecture-closure.json` and native smoke result, downloads both into
 `.linux-shards/`, then runs:
 
@@ -112,9 +180,11 @@ evidence for every declared package channel.
 
 ## Signatures and provenance
 
-Local signing verifier support is implemented with Ed25519 detached signatures
-when `OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM` is present. GitHub release CI
-additionally produces and verifies keyless Sigstore/cosign bundles with
+Local signing verifier support uses the isolated
+`sign-linux-release-requests.mjs` process with Ed25519 detached signatures.
+Prepare and finalize reject `OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM` when it
+is present. GitHub release CI additionally produces and verifies keyless
+Sigstore/cosign bundles with
 `id-token: write`. The workflow runs only from a pre-existing
 `linux-v<version>` tag and uses this identity:
 
@@ -157,6 +227,8 @@ This must exit 0 before `website/public/downloads/latest-linux.json` or any
 public website/download metadata is added. The verifier checks:
 
 - required artifacts and package metadata exist;
+- each deb/rpm embeds the same signed installed manifest recorded by its native
+  architecture shard;
 - checksums match artifact bytes;
 - SBOM, VEX, provenance predicate, and exact-commit source archive exist;
 - detached signatures are recorded;

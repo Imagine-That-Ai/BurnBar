@@ -105,8 +105,12 @@ jobs:
           scripts/linux-port/browser-runtime-packaging.test.mjs
           scripts/linux-port/aur-browser-runtime-packaging.test.mjs
           scripts/linux-port/embed-linux-appimage-payload.test.mjs
+          scripts/linux-port/linux-installed-manifest.test.mjs
+          scripts/linux-port/linux-appimage-peer-manifest.test.mjs
+          scripts/linux-port/linux-native-package-real-tools.test.mjs
           scripts/linux-port/linux-package-session.test.mjs
           scripts/linux-port/prepare-linux-package-payload.test.mjs
+          scripts/linux-port/sign-linux-release-requests.test.mjs
           scripts/linux-port/credential-storage-contract.test.mjs
           scripts/linux-port/verify-linux-release.test.mjs
           scripts/linux-port/resolve-linux-release-version.test.mjs
@@ -136,6 +140,12 @@ jobs:
 
       - name: Toolchain smoke
         run: docker run --rm -v "$PWD:/workspace" -w /workspace openburnbar-linux-toolchain:mission-001 bash tools/linux-toolchain/smoke.sh
+
+      - name: Real deb and rpm metadata and extraction tests
+        run: >
+          docker run --rm -v "$PWD:/workspace:ro" -w /workspace
+          openburnbar-linux-toolchain:mission-001
+          node --test scripts/linux-port/linux-native-package-real-tools.test.mjs
 
       - name: Run Linux Swift package tests
         run: >

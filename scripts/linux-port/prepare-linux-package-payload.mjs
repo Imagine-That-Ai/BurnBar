@@ -23,6 +23,10 @@ const browserRuntimeRequirements = path.join(
   repoRoot,
   'packaging/linux/browser-runtime-requirements.json'
 );
+const releasePublicKey = path.join(
+  repoRoot,
+  'packaging/linux/openburnbar-linux-ed25519.pub.pem'
+);
 const payloadRoot = process.env.OPENBURNBAR_LINUX_PACKAGE_PAYLOAD?.trim()
   || path.join(repoRoot, 'apps/linux-desktop/src-tauri/target/openburnbar-package-payload');
 
@@ -32,6 +36,7 @@ try {
     playwrightBridge,
     browserRuntimeProbe,
     browserRuntimeRequirements,
+    releasePublicKey,
     payloadRoot,
     swiftRuntimeDir: resolveSwiftRuntimeDir(),
     sqlcipherLibDir: resolveSqlcipherLibDir(),

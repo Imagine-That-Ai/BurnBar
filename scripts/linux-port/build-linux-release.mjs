@@ -13,11 +13,15 @@ import {
   repoRoot,
   runStep,
   sha256,
+  verifyEd25519Signature,
   writeJson
 } from './lib/linux-release-common.mjs';
+import { verifySignedNativePackage } from './lib/linux-native-package.mjs';
+import { withoutLinuxReleasePrivateKey } from './lib/linux-signing-environment.mjs';
 
 const args = new Set(process.argv.slice(2));
 const versionArgIndex = process.argv.indexOf('--version');
+const phaseArgIndex = process.argv.indexOf('--phase');
 const outDir = path.resolve(
   process.env.OPENBURNBAR_LINUX_RELEASE_OUT ?? path.join(repoRoot, '.linux-shard')
 );
@@ -25,6 +29,19 @@ const appDir = path.join(repoRoot, 'apps/linux-desktop');
 const manifest = readJson(manifestPath);
 if (!args.has('--architecture-shard')) {
   console.error('build-linux-release.mjs is architecture-shard only; use assemble-linux-release.mjs after both native shards pass.');
+  process.exit(1);
+}
+if (args.has('--skip-tauri')) {
+  console.error('--skip-tauri is not supported for architecture closure; native packages must be rebuilt and reverified.');
+  process.exit(1);
+}
+const phase = phaseArgIndex >= 0 ? process.argv[phaseArgIndex + 1]?.trim() : '';
+if (!['prepare', 'finalize'].includes(phase)) {
+  console.error('--phase prepare or --phase finalize is required for architecture closure.');
+  process.exit(1);
+}
+if (process.env.OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM) {
+  console.error(`${phase} architecture builds must not receive OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM; use sign-linux-release-requests.mjs in an isolated signer.`);
   process.exit(1);
 }
 const requestedVersion = versionArgIndex >= 0 ? process.argv[versionArgIndex + 1] : null;
@@ -46,19 +63,26 @@ if (git.dirty) {
 }
 const logsDir = path.join(outDir, 'logs');
 const artifactsDir = path.join(outDir, 'artifacts');
+const installedManifestsDir = path.join(outDir, 'installed-manifests');
+const signingStateDir = path.join(outDir, 'signing-state');
 const daemonBinary = path.join(repoRoot, 'OpenBurnBarDaemon/.build/release/OpenBurnBarDaemon');
 const irohManifest = path.join(repoRoot, 'crates/openburnbar-iroh/Cargo.toml');
 const irohTargetDirectory = path.join(repoRoot, 'crates/openburnbar-iroh/target-linux-release');
 const irohNativeLibraryDirectory = path.join(irohTargetDirectory, 'release');
 const irohNativeLibrary = path.join(irohNativeLibraryDirectory, 'libopenburnbar_iroh.so');
+if (phase === 'finalize') {
+  fs.rmSync(artifactsDir, { recursive: true, force: true });
+  fs.rmSync(installedManifestsDir, { recursive: true, force: true });
+}
 fs.mkdirSync(logsDir, { recursive: true });
 fs.mkdirSync(artifactsDir, { recursive: true });
+fs.mkdirSync(installedManifestsDir, { recursive: true });
 
 const cargoBuildJobs = process.env.OPENBURNBAR_LINUX_CARGO_BUILD_JOBS?.trim() || '4';
 const irohCargoBuildJobs = process.env.OPENBURNBAR_LINUX_IROH_BUILD_JOBS?.trim() || '1';
 const swiftBuildJobs = process.env.OPENBURNBAR_LINUX_SWIFT_BUILD_JOBS?.trim() || '4';
-const packageBuildEnv = {
-  ...process.env,
+const packageBuildEnv = withoutLinuxReleasePrivateKey(process.env);
+Object.assign(packageBuildEnv, {
   OPENBURNBAR_LINUX_RELEASE_BUILD: '1',
   CARGO_BUILD_JOBS: cargoBuildJobs,
   OPENBURNBAR_LINUX_IROH_LIBRARY_DIR: irohNativeLibraryDirectory,
@@ -66,7 +90,7 @@ const packageBuildEnv = {
   // to self-mount; container builds (local toolchain + CI docker) have no FUSE,
   // so tell it to self-extract instead. Harmless outside containers.
   APPIMAGE_EXTRACT_AND_RUN: '1'
-};
+});
 
 function writeLog(name, steps) {
   const body = steps
@@ -85,7 +109,7 @@ function writeLog(name, steps) {
 
 const blockers = [];
 const daemonSteps = [];
-if (!args.has('--skip-daemon')) {
+if (phase === 'prepare' && !args.has('--skip-daemon')) {
   daemonSteps.push(runStep('cargo', [
     'build',
     '--manifest-path',
@@ -98,7 +122,7 @@ if (!args.has('--skip-daemon')) {
     irohCargoBuildJobs
   ], { env: { ...packageBuildEnv, CARGO_BUILD_JOBS: irohCargoBuildJobs } }));
 }
-if (!args.has('--skip-daemon') && daemonSteps.every((step) => step.exitCode === 0)) {
+if (phase === 'prepare' && !args.has('--skip-daemon') && daemonSteps.every((step) => step.exitCode === 0)) {
   // Swift 6.1 Linux libswiftObservation.so references swift::threading::fatal which
   // is missing from the shared libswiftCore.so (present only in the static archive).
   // --allow-shlib-undefined lets the link complete; runtime uses matching 6.1 libs.
@@ -151,21 +175,48 @@ if (!irohNativeReady) {
 }
 
 const buildSteps = [];
-if (!args.has('--skip-tauri') && daemonReady && irohNativeReady) {
+// Never let an earlier package or sidecar satisfy this architecture closure.
+fs.rmSync(path.join(appDir, 'src-tauri/target/release/bundle'), { recursive: true, force: true });
+if (daemonReady && irohNativeReady) {
   // Never let an artifact from an earlier architecture/version satisfy this shard.
-  fs.rmSync(path.join(appDir, 'src-tauri/target/release/bundle'), { recursive: true, force: true });
-  const packageCommands = [
-    ['npm', ['ci', '--no-audit', '--no-fund'], { cwd: appDir }],
-    ['npm', ['run', 'build'], { cwd: appDir }],
-    ['npm', ['run', 'tauri:build', '--', '--bundles', 'deb,rpm,appimage'], {
+  const prepareCommands = [
+    ['npm', ['ci', '--no-audit', '--no-fund'], { cwd: appDir, env: packageBuildEnv }],
+    ['npm', ['run', 'build'], { cwd: appDir, env: packageBuildEnv }],
+    ['npm', ['run', 'tauri:build', '--', '--no-bundle'], {
       cwd: appDir,
       env: packageBuildEnv
     }],
-    ['node', ['scripts/linux-port/embed-linux-appimage-payload.mjs'], {
+    ['node', [
+      'scripts/linux-port/bundle-signed-linux-packages.mjs',
+      '--phase',
+      'prepare',
+      '--version',
+      version,
+      '--git-commit',
+      git.commit,
+      '--state-dir',
+      signingStateDir
+    ], {
       cwd: repoRoot,
       env: packageBuildEnv
     }]
   ];
+  const finalizeCommands = [[
+    'node',
+    [
+      'scripts/linux-port/bundle-signed-linux-packages.mjs',
+      '--phase',
+      'finalize',
+      '--version',
+      version,
+      '--git-commit',
+      git.commit,
+      '--state-dir',
+      signingStateDir
+    ],
+    { cwd: repoRoot, env: packageBuildEnv }
+  ]];
+  const packageCommands = phase === 'prepare' ? prepareCommands : finalizeCommands;
   for (const [command, commandArgs, options] of packageCommands) {
     const step = runStep(command, commandArgs, options);
     buildSteps.push(step);
@@ -183,9 +234,26 @@ for (const step of buildSteps) {
   }
 }
 
+if (phase === 'prepare') {
+  const preparation = {
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    version,
+    git,
+    architecture: linuxArch(),
+    signingState: relative(signingStateDir),
+    signingRequest: relative(path.join(signingStateDir, 'signing-request.json')),
+    blockers
+  };
+  writeJson(path.join(outDir, 'signing-preparation.json'), preparation);
+  console.log(JSON.stringify({ outDir: relative(outDir), preparation }, null, 2));
+  process.exit(blockers.length === 0 ? 0 : 1);
+}
+
+const releasePublicKey = path.join(repoRoot, 'packaging/linux/openburnbar-linux-ed25519.pub.pem');
 const copied = discoverBundleArtifacts().map((artifact) => {
   const dest = copyArtifact(artifact.file, artifactsDir);
-  return {
+  const record = {
     type: artifact.type,
     architecture: linuxArch(),
     file: relative(dest),
@@ -193,6 +261,66 @@ const copied = discoverBundleArtifacts().map((artifact) => {
     size: fileSize(dest),
     sha256: sha256(dest)
   };
+  if (['deb', 'rpm'].includes(artifact.type)) {
+    const attestationSource = path.join(
+      appDir,
+      'src-tauri/target/release/bundle/attestation',
+      `${artifact.type}-${linuxArch()}.installed-manifest.json`
+    );
+    const signatureSource = `${attestationSource}.sig`;
+    if (!fs.existsSync(attestationSource) || !fs.existsSync(signatureSource)) {
+      blockers.push({
+        kind: 'missing-installed-manifest',
+        message: `Required signed installed manifest was not produced for ${artifact.type}:${linuxArch()}.`
+      });
+      return record;
+    }
+    const manifestBytes = fs.readFileSync(attestationSource);
+    const signatureBytes = fs.readFileSync(signatureSource);
+    let installedManifest = null;
+    try {
+      installedManifest = JSON.parse(manifestBytes.toString('utf8'));
+    } catch (error) {
+      blockers.push({ kind: 'installed-manifest-json', message: `${artifact.type}:${linuxArch()} manifest is invalid JSON: ${error.message}` });
+    }
+    if (signatureBytes.length !== 64
+        || !verifyEd25519Signature(manifestBytes, signatureBytes, fs.readFileSync(releasePublicKey))) {
+      blockers.push({ kind: 'installed-manifest-signature', message: `${artifact.type}:${linuxArch()} installed manifest signature is invalid.` });
+    }
+    if (installedManifest
+        && (installedManifest.gitCommit !== git.commit
+          || installedManifest.packageVersion !== version
+          || installedManifest.packageArchitecture !== linuxArch()
+          || installedManifest.packageFormat !== artifact.type
+          || installedManifest.packageName !== 'open-burn-bar')) {
+      blockers.push({ kind: 'installed-manifest-binding', message: `${artifact.type}:${linuxArch()} installed manifest identity is not release-bound.` });
+    }
+    try {
+      verifySignedNativePackage({
+        format: artifact.type,
+        artifact: dest,
+        manifestBytes,
+        signatureBytes,
+        publicKeyPem: fs.readFileSync(releasePublicKey),
+        env: packageBuildEnv
+      });
+    } catch (error) {
+      blockers.push({
+        kind: 'installed-manifest-package-binding',
+        message: `${artifact.type}:${linuxArch()} package does not match its signed installed manifest: ${error.message}`
+      });
+    }
+    const manifestDestination = path.join(
+      installedManifestsDir,
+      `${artifact.type}-${linuxArch()}.installed-manifest.json`
+    );
+    const signatureDestination = `${manifestDestination}.sig`;
+    fs.copyFileSync(attestationSource, manifestDestination);
+    fs.copyFileSync(signatureSource, signatureDestination);
+    record.installedManifest = shardRecord(manifestDestination);
+    record.installedManifestSignature = shardRecord(signatureDestination);
+  }
+  return record;
 });
 // Always package a prebuilt daemon when present (supports --skip-daemon after a
 // guest/CI binary is staged at OpenBurnBarDaemon/.build/release/OpenBurnBarDaemon).
@@ -261,4 +389,12 @@ function linuxArch() {
     default:
       return process.arch;
   }
+}
+
+function shardRecord(file) {
+  return {
+    file: path.relative(outDir, file).split(path.sep).join('/'),
+    sha256: sha256(file),
+    size: fileSize(file)
+  };
 }

@@ -36,6 +36,9 @@
     "browserRuntimeProbe": "/usr/lib/openburnbar/playwright/openburnbar-browser-runtime-probe",
     "browserRuntimeRequirements": "/usr/lib/openburnbar/playwright/browser-runtime-requirements.json",
     "cloudAuthConfig": "/usr/share/openburnbar/cloud-auth.json",
+    "installedManifest": "/usr/share/openburnbar/attestation/installed-manifest.json",
+    "installedManifestSignature": "/usr/share/openburnbar/attestation/installed-manifest.json.sig",
+    "releasePublicKey": "/usr/share/openburnbar/attestation/release-ed25519.pub.pem",
     "systemdUserService": "/usr/lib/systemd/user/openburnbar-daemon.service",
     "computerUsePolkitPolicy": "/usr/share/polkit-1/actions/com.openburnbar.computer-use.policy",
     "desktopEntry": "/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop"

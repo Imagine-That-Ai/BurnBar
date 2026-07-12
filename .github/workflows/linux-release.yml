@@ -112,7 +112,6 @@ jobs:
       OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID: ${{ vars.OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID }}
       OPENBURNBAR_FIREBASE_API_KEY: ${{ vars.OPENBURNBAR_FIREBASE_API_KEY }}
       OPENBURNBAR_LINUX_APP_CHECK_APP_ID: ${{ vars.OPENBURNBAR_LINUX_APP_CHECK_APP_ID }}
-      OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM: ${{ secrets.OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -133,20 +132,72 @@ jobs:
       - name: Build mission Linux toolchain image
         run: docker build -t openburnbar-linux-toolchain:mission-001 tools/linux-toolchain
 
-      - name: Build native architecture artifacts
+      - name: Prepare unsigned native architecture artifacts
         run: >
           docker run --rm
           -e OPENBURNBAR_LINUX_RELEASE_OUT=/workspace/.linux-shard
           -e OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID
           -e OPENBURNBAR_FIREBASE_API_KEY
           -e OPENBURNBAR_LINUX_APP_CHECK_APP_ID
-          -e OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM
           -v "$PWD:/workspace"
           -w /workspace
           openburnbar-linux-toolchain:mission-001
           bash -c "git config --global --add safe.directory /workspace &&
           node scripts/linux-port/build-linux-release.mjs
           --architecture-shard
+          --phase prepare
+          --version '${{ needs.resolve-release.outputs.version }}'"
+
+      - name: Materialize exact-commit isolated signer
+        env:
+          SIGNER_ROOT: ${{ runner.temp }}/openburnbar-linux-signer
+        run: |
+          set -euo pipefail
+          mkdir -p "$SIGNER_ROOT"
+          git archive "$GITHUB_SHA" \
+            scripts/linux-port/sign-linux-release-requests.mjs \
+            scripts/linux-port/lib/linux-installed-manifest.mjs \
+            scripts/linux-port/lib/linux-appimage-peer-manifest.mjs \
+            packaging/linux/openburnbar-linux-ed25519.pub.pem \
+            | tar -x -C "$SIGNER_ROOT"
+          test "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Sign exact native requests in isolated container
+        env:
+          OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM: ${{ secrets.OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM }}
+          SIGNER_ROOT: ${{ runner.temp }}/openburnbar-linux-signer
+        run: >
+          docker run --rm
+          --network none
+          --read-only
+          --cap-drop ALL
+          --security-opt no-new-privileges
+          --tmpfs /tmp:rw,noexec,nosuid,nodev,size=16m
+          -e OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM
+          -v "$SIGNER_ROOT:/signer:ro"
+          -v "$OPENBURNBAR_LINUX_RELEASE_OUT/signing-state:/state:rw"
+          -w /signer
+          openburnbar-linux-toolchain:mission-001
+          node scripts/linux-port/sign-linux-release-requests.mjs
+          --state-dir /state
+          --version '${{ needs.resolve-release.outputs.version }}'
+          --git-commit "$GITHUB_SHA"
+          --architecture '${{ matrix.architecture }}'
+
+      - name: Finalize and verify signed native architecture artifacts
+        run: >
+          docker run --rm
+          -e OPENBURNBAR_LINUX_RELEASE_OUT=/workspace/.linux-shard
+          -e OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID
+          -e OPENBURNBAR_FIREBASE_API_KEY
+          -e OPENBURNBAR_LINUX_APP_CHECK_APP_ID
+          -v "$PWD:/workspace"
+          -w /workspace
+          openburnbar-linux-toolchain:mission-001
+          bash -c "git config --global --add safe.directory /workspace &&
+          node scripts/linux-port/build-linux-release.mjs
+          --architecture-shard
+          --phase finalize
           --version '${{ needs.resolve-release.outputs.version }}'"
 
       - name: Native package inspection/install/uninstall smoke

@@ -33,6 +33,14 @@ export function verifyLinuxWorkflowWiring(input) {
     'architecture: x86_64',
     'runner: ubuntu-24.04',
     '--architecture-shard',
+    '--phase prepare',
+    'Materialize exact-commit isolated signer',
+    '--network none',
+    '--read-only',
+    '--cap-drop ALL',
+    '--security-opt no-new-privileges',
+    'sign-linux-release-requests.mjs',
+    '--phase finalize',
     'previous_version',
     'linux-desktop-session.sh',
     'verify-linux-package-update-rollback.sh',
@@ -49,6 +57,10 @@ export function verifyLinuxWorkflowWiring(input) {
   requireText(input.pr, 'verify-linux-release.test.mjs', 'PR release mutation suite');
   requireText(input.pr, 'assemble-linux-release.test.mjs', 'PR architecture assembly mutation suite');
   requireText(input.pr, 'linux-package-session.test.mjs', 'PR package lifecycle session suite');
+  requireText(input.pr, 'linux-installed-manifest.test.mjs', 'PR installed manifest mutation suite');
+  requireText(input.pr, 'linux-appimage-peer-manifest.test.mjs', 'PR AppImage peer manifest suite');
+  requireText(input.pr, 'linux-native-package-real-tools.test.mjs', 'PR real native package suite');
+  requireText(input.pr, 'sign-linux-release-requests.test.mjs', 'PR isolated signer mutation suite');
   requireText(
     input.pr,
     'scripts/linux-port/browser-runtime-packaging.test.mjs',
@@ -147,7 +159,10 @@ export function verifyLinuxWorkflowWiring(input) {
   requireOrder(input.release, [
     'Resolve and validate Linux release version',
     'Assert native runner architecture',
-    'Build native architecture artifacts',
+    'Prepare unsigned native architecture artifacts',
+    'Materialize exact-commit isolated signer',
+    'Sign exact native requests in isolated container',
+    'Finalize and verify signed native architecture artifacts',
     'Native package inspection/install/uninstall smoke',
     'Run package-owned desktop, daemon, accessibility, tray, and route session',
     'Verify native package update, rollback, and data preservation',

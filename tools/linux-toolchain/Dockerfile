@@ -16,6 +16,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         build-essential \
         ca-certificates \
         curl \
+        cpio \
         dbus \
         dbus-x11 \
         at-spi2-core \
@@ -27,6 +28,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         gnupg \
         jq \
         libayatana-appindicator3-dev \
+        libarchive-tools \
         libatspi2.0-dev \
         libei-dev \
         libgtk-3-dev \
