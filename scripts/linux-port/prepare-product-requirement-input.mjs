@@ -13,7 +13,7 @@ import {
 import { validateProductFeatureProofClosure } from './lib/product-feature-proof.mjs';
 
 const DEFAULT_REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const PROOF_ROLES = Object.freeze({
+export const RELEASE_PROOF_ROLES = Object.freeze({
   'P-01': new Set([
     'checksums', 'sbom', 'vex', 'provenance', 'source-archive',
     'update-feed', 'update-feed-signature', 'update-feed-sigstore',
@@ -88,7 +88,7 @@ export function prepareProductRequirementInput({
     candidateRunId,
     candidateArtifactDigest
   });
-  if (!PROOF_ROLES[requirementId] && featureProof === null) {
+  if (!RELEASE_PROOF_ROLES[requirementId] && featureProof === null) {
     throw new Error(`no release or feature proof materializer is registered for ${requirementId}`);
   }
   const packageRow = aggregate.packages.find((row) =>
@@ -146,7 +146,7 @@ export function prepareProductRequirementInput({
     }
   }
   for (const proof of aggregate.proofs) {
-    if (!PROOF_ROLES[requirementId]?.has(proof.role)) continue;
+    if (!RELEASE_PROOF_ROLES[requirementId]?.has(proof.role)) continue;
     const snapshot = validateRecord(aggregateRoot, proof, `${proof.role} aggregate proof`);
     const destination = path.join(subjectsDir, safeName(proofIndex, proof.role, proof.path));
     proofIndex += 1;

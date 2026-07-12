@@ -118,6 +118,45 @@ jobs:
           github-token: ${{ github.token }}
           path: docs/linux-port/evidence/product-parity-inputs/${{ inputs.requirement }}/${{ inputs.environment }}
 
+      - name: Capture parity certification preflight
+        id: p02_capture
+        if: inputs.requirement == 'P-02'
+        shell: bash
+        env:
+          REQUIREMENT_ID: ${{ inputs.requirement }}
+          ENVIRONMENT_ID: ${{ inputs.environment }}
+          CANDIDATE_RUN_ID: ${{ steps.evidence.outputs.run_id }}
+          CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}
+          TARGET_HEAD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"
+          diagnostic_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p02.XXXXXX")"
+          printf 'diagnostic_root=%s\n' "$diagnostic_root" >> "$GITHUB_OUTPUT"
+          capture_log="$diagnostic_root/capture.log"
+          node scripts/linux-port/capture-parity-certification-preflight.mjs \
+            --input-root "$input_root" \
+            --environment "$ENVIRONMENT_ID" \
+            --target-head "$TARGET_HEAD" \
+            --candidate-run-id "$CANDIDATE_RUN_ID" \
+            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST" \
+            --diagnostic-root "$diagnostic_root" \
+            2>&1 | tee "$capture_log"
+
+      - name: Preserve non-promotable P-02 diagnostic evidence
+        if: always() && inputs.requirement == 'P-02'
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.6.1
+        with:
+          name: linux-product-parity-diagnostic-${{ github.sha }}-${{ inputs.candidate_run_id }}-${{ inputs.environment }}
+          path: |
+            docs/linux-port/evidence/product-parity-inputs/P-02/${{ inputs.environment }}/feature-artifacts/parity-certification-preflight.json
+            docs/linux-port/evidence/product-parity-inputs/P-02/${{ inputs.environment }}/feature-proof-registration.json
+            ${{ steps.p02_capture.outputs.diagnostic_root }}/capture-failure.json
+            ${{ steps.p02_capture.outputs.diagnostic_root }}/capture.log
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 30
+
       - name: Finalize registered feature proof closure
         shell: bash
         env:

@@ -5,7 +5,7 @@ import { finalizeProductFeatureProofClosure } from './lib/product-feature-proof.
 
 const DEFAULT_REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
-function parseArguments(argv) {
+export function parseArguments(argv) {
   const allowed = new Set([
     '--requirement', '--environment', '--input-root', '--target-head',
     '--candidate-run-id', '--candidate-artifact-digest'
@@ -34,9 +34,13 @@ function parseArguments(argv) {
   };
 }
 
+export function main(argv = process.argv.slice(2), repoRoot = DEFAULT_REPO_ROOT) {
+  return finalizeProductFeatureProofClosure({ ...parseArguments(argv), repoRoot });
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    const result = finalizeProductFeatureProofClosure(parseArguments(process.argv.slice(2)));
+    const result = main();
     process.stdout.write(`${JSON.stringify({
       registered: result.registered,
       output: result.output,

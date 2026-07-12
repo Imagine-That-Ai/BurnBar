@@ -216,6 +216,35 @@ test('finalizer emits a two-architecture cryptographic product closure', (t) => 
   assert.equal(fs.existsSync(result.output), true);
 });
 
+function assertRequirementReleaseCapture(t, requirementId, role) {
+  const fixture = createReleaseFixture();
+  t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }));
+  const result = finalizeProductProofClosure({
+    repoRoot: fixture.root,
+    outputDir: fixture.output,
+    targetHead: HEAD
+  });
+  const selected = result.document.proofs.filter((proof) => proof.role === role);
+  assert.ok(selected.length > 0, `${requirementId} must capture ${role}`);
+  assert.ok(selected.every((proof) => /^[a-f0-9]{64}$/u.test(proof.sha256)));
+}
+
+test('P-01 release capture includes signed application artifacts', (t) => {
+  assertRequirementReleaseCapture(t, 'P-01', 'package-signature');
+});
+
+test('P-03 release capture includes daemon protocol evidence', (t) => {
+  assertRequirementReleaseCapture(t, 'P-03', 'package-smoke');
+});
+
+test('P-04 release capture includes two-architecture smoke evidence', (t) => {
+  assertRequirementReleaseCapture(t, 'P-04', 'architecture-smoke');
+});
+
+test('P-37 release capture includes Linux matrix evidence', (t) => {
+  assertRequirementReleaseCapture(t, 'P-37', 'architecture-smoke');
+});
+
 test('finalizer rejects blockers, missing manifests, and signature mutation', async (t) => {
   for (const [name, mutate, pattern] of [
     ['release blocker', (fixture) => {
@@ -274,6 +303,41 @@ test('materializer selects the exact environment package and copies hash-bound p
   assert.equal(result.closure.proofs.filter((proof) => proof.role === 'package-signature').length, 8);
   assert.equal(result.closure.proofs.filter((proof) => proof.role === 'release-artifact').length, 8);
   assert.equal(fs.existsSync(result.output), true);
+});
+
+function assertRequirementMaterializer(t, requirementId, role) {
+  const fixture = createReleaseFixture();
+  t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }));
+  finalizeProductProofClosure({ repoRoot: fixture.root, outputDir: fixture.output, targetHead: HEAD });
+  const inputRoot = stageAggregate(fixture, requirementId);
+  const result = prepareProductRequirementInput({
+    requirementId,
+    environmentId: ENVIRONMENT,
+    inputRoot,
+    targetHead: HEAD,
+    candidateRunId: CANDIDATE_RUN_ID,
+    candidateArtifactDigest: CANDIDATE_ARTIFACT_DIGEST,
+    repoRoot: fixture.root
+  });
+  const selected = result.closure.proofs.filter((proof) => proof.role === role);
+  assert.ok(selected.length > 0, `${requirementId} must materialize ${role}`);
+  assert.ok(selected.every((proof) => fs.existsSync(path.join(fixture.root, proof.path))));
+}
+
+test('P-01 materializer selects signed application artifacts', (t) => {
+  assertRequirementMaterializer(t, 'P-01', 'package-signature');
+});
+
+test('P-03 materializer selects daemon protocol evidence', (t) => {
+  assertRequirementMaterializer(t, 'P-03', 'package-smoke');
+});
+
+test('P-04 materializer selects two-architecture smoke evidence', (t) => {
+  assertRequirementMaterializer(t, 'P-04', 'architecture-smoke');
+});
+
+test('P-37 materializer selects Linux matrix evidence', (t) => {
+  assertRequirementMaterializer(t, 'P-37', 'architecture-smoke');
 });
 
 test('registered environment feature proofs are candidate-bound and materialized without implying pass', (t) => {
@@ -493,6 +557,48 @@ test('P-03 rejects duplicate architecture lifecycle rows', async (t) => {
   writeJson(path.join(inputRoot, 'release-closure.json'), closure);
   const context = validatorContext(fixture, 'P-03', closure, 'p-03.installed-runtime');
   await assert.rejects(() => validateP03(context), /cover both release architectures/u);
+});
+
+test('P-04 rejects architecture smoke evidence missing a release architecture', async (t) => {
+  const fixture = createReleaseFixture();
+  t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }));
+  finalizeProductProofClosure({ repoRoot: fixture.root, outputDir: fixture.output, targetHead: HEAD });
+  const inputRoot = stageAggregate(fixture, 'P-04');
+  const { closure } = prepareProductRequirementInput({
+    requirementId: 'P-04', environmentId: ENVIRONMENT, inputRoot, targetHead: HEAD,
+    candidateRunId: CANDIDATE_RUN_ID, candidateArtifactDigest: CANDIDATE_ARTIFACT_DIGEST,
+    repoRoot: fixture.root
+  });
+  const smoke = closure.proofs.find((proof) => proof.role === 'architecture-smoke');
+  const smokeFile = path.join(fixture.root, smoke.path);
+  const document = JSON.parse(fs.readFileSync(smokeFile, 'utf8'));
+  document.architectures = [{ architecture: 'x86_64' }];
+  writeJson(smokeFile, document);
+  smoke.sha256 = sha256(smokeFile);
+  writeJson(path.join(inputRoot, 'release-closure.json'), closure);
+  const context = validatorContext(fixture, 'P-04', closure, 'p-04.architecture-reach');
+  await assert.rejects(() => validateP04(context), /does not cover aarch64/u);
+});
+
+test('P-37 rejects a failed architecture smoke proof', async (t) => {
+  const fixture = createReleaseFixture();
+  t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }));
+  finalizeProductProofClosure({ repoRoot: fixture.root, outputDir: fixture.output, targetHead: HEAD });
+  const inputRoot = stageAggregate(fixture, 'P-37');
+  const { closure } = prepareProductRequirementInput({
+    requirementId: 'P-37', environmentId: ENVIRONMENT, inputRoot, targetHead: HEAD,
+    candidateRunId: CANDIDATE_RUN_ID, candidateArtifactDigest: CANDIDATE_ARTIFACT_DIGEST,
+    repoRoot: fixture.root
+  });
+  const smoke = closure.proofs.find((proof) => proof.role === 'architecture-smoke');
+  const smokeFile = path.join(fixture.root, smoke.path);
+  const document = JSON.parse(fs.readFileSync(smokeFile, 'utf8'));
+  document.passed = false;
+  writeJson(smokeFile, document);
+  smoke.sha256 = sha256(smokeFile);
+  writeJson(path.join(inputRoot, 'release-closure.json'), closure);
+  const context = validatorContext(fixture, 'P-37', closure, 'p-37.linux-matrix');
+  await assert.rejects(() => validateP37(context), /architecture-smoke proof is not passed/u);
 });
 
 function stagePassedPromotionEvidence(fixture) {

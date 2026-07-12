@@ -113,6 +113,7 @@ export function verifyLinuxWorkflowWiring(input) {
     'smoke-linux-packages.test.mjs',
     'product-proof-closure.test.mjs',
     'product-feature-proof-closure.test.mjs',
+    'parity-certification-preflight.test.mjs',
     'run-linux-matrix-harness.test.mjs',
     'run-product-requirement-validator.test.mjs',
     'resolve-product-evidence-run.test.mjs',
@@ -131,6 +132,19 @@ export function verifyLinuxWorkflowWiring(input) {
     'artifact-ids: ${{ steps.evidence.outputs.artifact_id }}',
     'CANDIDATE_RUN_ID: ${{ steps.evidence.outputs.run_id }}',
     'CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}',
+    'capture-parity-certification-preflight.mjs',
+    "if: inputs.requirement == 'P-02'",
+    'Preserve non-promotable P-02 diagnostic evidence',
+    "if: always() && inputs.requirement == 'P-02'",
+    'linux-product-parity-diagnostic-',
+    'id: p02_capture',
+    'mktemp -d "${RUNNER_TEMP}/openburnbar-p02.XXXXXX"',
+    "printf 'diagnostic_root=%s\\n' \"$diagnostic_root\" >> \"$GITHUB_OUTPUT\"",
+    '--diagnostic-root "$diagnostic_root"',
+    '${{ steps.p02_capture.outputs.diagnostic_root }}/',
+    'capture-failure.json',
+    'capture.log',
+    '2>&1 | tee "$capture_log"',
     'finalize-product-feature-proof-closure.mjs',
     'prepare-product-requirement-input.mjs',
     'run-product-requirement-validator.mjs',
@@ -138,13 +152,16 @@ export function verifyLinuxWorkflowWiring(input) {
     '--candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"',
     'uses: actions/attest@',
     '.sigstore.jsonl',
-    'if-no-files-found: error'
+    'if-no-files-found: error',
+    'include-hidden-files: true'
   ]) requireText(input.productParityWorkflow, marker, 'product parity evidence workflow');
   if (/--run-id\s+['"]?\$\{\{\s*inputs\.candidate_run_id/u.test(input.productParityWorkflow)) {
     failures.push('product parity workflow may not interpolate candidate_run_id directly into shell.');
   }
   requireOrder(input.productParityWorkflow, [
     'Download exact-candidate installed evidence',
+    'Capture parity certification preflight',
+    'Preserve non-promotable P-02 diagnostic evidence',
     'Finalize registered feature proof closure',
     'Materialize the requirement-owned release closure',
     'Run the registered requirement validator'

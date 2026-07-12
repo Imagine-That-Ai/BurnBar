@@ -47,3 +47,42 @@ The candidate artifact digest is learned only after GitHub uploads the candidate
 embedded into that artifact without a circular digest. The environment closure supplies that final
 binding after the exact candidate is resolved, while the registry SHA inside the candidate prevents
 the environment job from changing the accepted artifact contract.
+
+## P-02 parity certification preflight
+
+P-02 captures `feature.parity-certification-preflight` before feature closure finalization. The
+report inventories exactly P-01 through P-40, all canonical policies and seven environments,
+substantive validator modules, registered capture roles, and release or feature materializer
+ownership. It detects missing and duplicate rows, reused validator bytes or capture roles, fixture
+implementations, stale candidate bindings, unsupported materializers, and self-reference.
+
+Collection deliberately succeeds with `status: blocked` so the missing ownership is preserved as
+evidence. The workflow uploads that JSON immediately as a clearly named, non-promotable diagnostic
+artifact even when later validation fails. It is not a validator receipt, is not attested, and
+cannot satisfy promotion.
+
+Readiness is declared in the candidate-bound feature registry and requires an exact validator
+source, semantic mutation test, capture producer and workflow, and materializer producer and
+workflow. Ownership tests are unique to one requirement component. Capture extracts only the
+target-commit certification surface into an isolated directory, executes each exact named test in
+a controlled environment, replaces only the registry-owned exported entrypoint with a throwing
+implementation, and requires the same test to fail. Target-commit symlinks are rejected, dependency
+symlinks must resolve inside the copied dependency tree, and every child process has a hard timeout.
+Only a normal integer nonzero mutation exit counts; timeout, output overflow, spawn error, or signal
+termination remains a failed ownership check. Execution records preserve those process fields and
+authenticate both normalized output digests as well as the baseline and mutation exit metadata.
+Workflow ownership is parsed as YAML and requires the exact job, step, condition, and run script;
+comments, dead branches, swallowed failures, and unrelated steps do not count. The resulting record
+binds the source entrypoint and source/test blobs plus baseline and mutation outputs.
+The P-02 validator independently repeats that isolated execution instead of trusting execution
+claims in the feature proof, then recomputes and validates the inventory. It can pass only when
+every one of the 40 rows has executable, mutation-sensitive ownership. A role, policy, empty test,
+reused test, workflow comment, untracked helper, or hand-authored passed JSON cannot satisfy a
+lane. The repository currently has five ready rows and 35 named blockers.
+
+If collection itself fails, the capture producer atomically leaves a non-promotable
+`capture-failed` diagnostic in a runner-owned `mktemp` directory, even when the downloaded input
+tree or a repository `.linux-parity-diagnostics` path is hostile or unwritable. The capture step
+publishes that exact temporary path as a step output; the `always()` upload consumes that path and
+preserves both the diagnostic and combined output log. Neither file is registered as feature
+evidence or accepted as a validator receipt.
