@@ -219,62 +219,17 @@ final class CLIAgentMissionRequestListenerMattersTests: XCTestCase {
         }
     }
 
-    func testCharacterization_M1_RequiresPreDispatchApprovalTable() {
-        // The GUI pre-dispatch approval verdict = shared InsightMissionApprovalPolicy
-        // OR the per-backend Mac CLI-assistant consent requirement.
-        struct Row {
-            let mode: String?
-            let commands: Bool
-            let fileEdits: Bool
-            let backend: CLIAgentMissionBackend
-            let expected: Bool
-            let note: String
-        }
-        let hermes = backend(.hermes)
-        let codex = backend(.codex)
-        let rows: [Row] = [
-            // Hermes (consent-exempt): verdict is purely the shared policy.
-            Row(mode: nil, commands: false, fileEdits: false, backend: hermes, expected: false,
-                note: "hermes read-only default mode dispatches without approval"),
-            Row(mode: "existing_policy", commands: false, fileEdits: false, backend: hermes, expected: false,
-                note: "hermes read-only existing_policy dispatches without approval"),
-            Row(mode: "manual_all", commands: false, fileEdits: false, backend: hermes, expected: true,
-                note: "manual_all pauses hermes"),
-            Row(mode: "existing_policy", commands: true, fileEdits: false, backend: hermes, expected: true,
-                note: "commands pause hermes"),
-            Row(mode: nil, commands: false, fileEdits: true, backend: hermes, expected: true,
-                note: "file edits pause hermes"),
-            Row(mode: "definitely_not_a_mode", commands: false, fileEdits: false, backend: hermes, expected: true,
-                note: "unknown approvalMode fails closed for hermes"),
-            // Codex (consent-required): ALWAYS requires approval, even for the
-            // safest mission shape — the consent branch dominates.
-            Row(mode: "existing_policy", commands: false, fileEdits: false, backend: codex, expected: true,
-                note: "codex requires approval even read-only"),
-            Row(mode: nil, commands: false, fileEdits: false, backend: codex, expected: true,
-                note: "codex requires approval with absent mode"),
-            // Raw runtime without consent requirement behaves like hermes.
-            Row(mode: nil, commands: false, fileEdits: false,
-                backend: CLIAgentMissionBackend(rawValue: "grok", displayName: "Grok Build"), expected: false,
-                note: "consent-exempt raw runtime follows shared policy only"),
-            Row(mode: nil, commands: false, fileEdits: false,
-                backend: CLIAgentMissionBackend(rawValue: "opencode", displayName: "OpenCode"), expected: true,
-                note: "opencode requires consent-driven approval")
-        ]
-        for row in rows {
-            var data: [String: Any] = [
-                "commandsAllowed": row.commands,
-                "fileEditsAllowed": row.fileEdits
-            ]
-            if let mode = row.mode {
-                data["approvalMode"] = mode
-            }
-            XCTAssertEqual(
-                CLIAgentMissionRuntimePlanner.requiresPreDispatchApproval(data: data, backend: row.backend),
-                row.expected,
-                row.note
-            )
-        }
-    }
+    // The GUI's pre-dispatch approval DECISION table
+    // (`CLIAgentMissionRuntimePlanner.requiresPreDispatchApproval`) was DELETED
+    // in split-brain M4: that allow / requires-approval / deny decision now lives
+    // solely in the daemon's `BurnBarRemoteMissionAuthorizationPolicy`, whose
+    // characterization is pinned by OpenBurnBarDaemonTests
+    // (`BurnBarRemoteMissionAuthorizationTests.testApprovalVerdictTable` /
+    // `.testMacCLIAssistantBackendsRequireConsentBeforeAuthorization`) and by the
+    // GUI↔daemon parity gate (`MissionRemoteAuthorizationParityTests`). The
+    // shared `InsightMissionApprovalPolicy` half stays covered by
+    // OpenBurnBarCoreTests. The Mac CLI-assistant CONSENT table below stays: it
+    // is the execution-side local-privacy gate that survives M4.
 
     func testCharacterization_M1_CapabilityGrantIsNeverWiderThanRequested() {
         // The app-side capability grant built for spawned CLI missions:

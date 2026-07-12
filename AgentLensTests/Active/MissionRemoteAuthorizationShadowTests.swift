@@ -276,4 +276,49 @@ final class MissionRemoteAuthorizationShadowTests: XCTestCase {
         )
         XCTAssertNil(request.personaScope)
     }
+
+    func testMakeRequestCarriesTrustedFanOutCap() {
+        let request = MissionRemoteAuthorizationShadow.makeRequest(
+            missionID: "req-5",
+            data: [:],
+            prompt: "p",
+            executorTrustState: "trusted",
+            requestedRuntime: nil,
+            requestedModelID: nil,
+            requestedFanOutCount: 8,
+            trustedFanOutCap: 8
+        )
+        XCTAssertEqual(request.trustedFanOutCap, 8)
+        XCTAssertEqual(request.requestedFanOutCount, 8)
+    }
+
+    // MARK: - Enforce mode (split-brain M4)
+
+    func testDefaultModeIsEnforce() {
+        // The default `MissionRemoteAuthorizationShadow.mode` resolves from the
+        // environment at first access; in the test environment (no override) it
+        // must default to `.enforce` — the daemon is the sole authority.
+        XCTAssertEqual(MissionRemoteAuthorizationShadow.mode, .enforce)
+    }
+
+    func testModeEnumCarriesEnforceCase() {
+        // Guard the rollback vocabulary the call site branches on.
+        XCTAssertEqual(MissionRemoteAuthorizationShadow.Mode(rawValue: "enforce"), .enforce)
+        XCTAssertEqual(MissionRemoteAuthorizationShadow.Mode(rawValue: "shadow"), .shadow)
+        XCTAssertEqual(MissionRemoteAuthorizationShadow.Mode(rawValue: "off"), .off)
+    }
+
+    func testAuthorizationOutcomeUnreachableFlag() {
+        XCTAssertTrue(
+            MissionRemoteAuthorizationShadow.AuthorizationOutcome
+                .daemonUnreachable(detail: "x").isDaemonUnreachable
+        )
+        XCTAssertFalse(
+            MissionRemoteAuthorizationShadow.AuthorizationOutcome.authorized.isDaemonUnreachable
+        )
+        XCTAssertFalse(
+            MissionRemoteAuthorizationShadow.AuthorizationOutcome
+                .denied(reason: .untrustedDevice, detail: nil).isDaemonUnreachable
+        )
+    }
 }
