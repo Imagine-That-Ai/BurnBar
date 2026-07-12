@@ -1,5 +1,5 @@
 # Packet P-04a: move pure SharedModels (incl. CloudVaultCrypto) → OpenBurnBarKernel
-STATE: QUEUED
+STATE: CONVERGED (PR open) — see "Convergence update (integrator, 2026-07-12)" below.
 LANE: D          DEPENDS-ON: S0
 BASELINE-TOUCHING: none
 
@@ -9,23 +9,79 @@ this packet edits ZERO Package.swift exclude lines. CloudVaultCrypto is included
 (it is pure Foundation crypto and the P-04b crypto chain depends on it — moving it
 first lets P-04b reference it from Kernel).
 
+> **Convergence update (integrator, compile-based closure, 2026-07-12).** The
+> original 12-file list did NOT achieve Kernel compile-closure; the compiler surfaced
+> three symbol deps grep missed (RGBA, CardEnvelope, SubstrateCatalog) AND a resource
+> loader dep (BurnBarCatalogLoader) that forces two files out of this slice. The
+> converged slice ships **10 of the 12** carded files + one option-b move
+> (`Views/Cards/CardEnvelope.swift`) + one option-c extraction (Kernel `RGBA.swift`),
+> removes the redundant `LinuxCardEnvelope.swift` stub, and re-slices
+> `CLIRuntimeModelCatalog.swift` + `WandModelRouter.swift` OUT (they depend on P-02's
+> resource-backed catalog loader — see the "RE-SLICED OUT" block below). The mv list
+> and semantic edits here reflect the CONVERGED (shipped) slice.
+
 ## Scope — the ONLY files you may touch
 
-### git mv list (run exactly these, from repo root)
+### git mv list (CONVERGED — the 10 that achieve Kernel compile-closure today)
 ```
 git mv OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultCrypto.swift
-git mv OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CLIRuntimeModelCatalog.swift OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CLIRuntimeModelCatalog.swift
 git mv OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderRuntimeFailoverTypes.swift OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/ProviderRuntimeFailoverTypes.swift
 git mv OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/SubscriptionTopic.swift OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/SubscriptionTopic.swift
-git mv OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/WandModelRouter.swift OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/WandModelRouter.swift
 git mv OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/UIMode.swift OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/UIMode.swift
 git mv OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesSquareFeatureFlags.swift OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesSquareFeatureFlags.swift
-git mv OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/LinuxCardEnvelope.swift OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/LinuxCardEnvelope.swift
 git mv OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/LinuxSubstrateSupport.swift OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/LinuxSubstrateSupport.swift
 git mv OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/SubstrateFamily.swift OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/SubstrateFamily.swift
 git mv OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/AskAssistantIntent.swift OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/AskAssistantIntent.swift
 git mv OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/AssistantPendingPrompt.swift OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/AssistantPendingPrompt.swift
+git mv OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Cards/CardEnvelope.swift OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CardEnvelope.swift
 ```
+
+### Compile-closure convergence edits (semantic, beyond the raw git mv)
+- **RGBA (option-c, minimal extraction).** `SubstrateFamily`/`FamilyAccent` reference
+  the `RGBA` value type. `SharedModels/RGBA.swift` was Foundation-pure EXCEPT a
+  `#if canImport(SwiftUI)` `.color` bridge — and the V3 PURE gate's regex flags ANY
+  `import SwiftUI` line regardless of `#if`, so the whole file could not enter the pure
+  Kernel. Extracted just the Foundation-pure value type (`struct RGBA { r,g,b,a; init }`)
+  into a NEW `OpenBurnBarKernel/SharedModels/RGBA.swift`. The `.color` bridge + color
+  math (`bucketKey`/`mix`/`lightened`/`darkened` + `Double.clamped`) stay in Core's
+  `SharedModels/RGBA.swift` (path kept identical → zero UI-purity-baseline churn) as
+  retroactive extensions behind `#if canImport(SwiftUI)`. Zero call-site changes for
+  the ~40 Views/AgentLens `.color`/`.mix`/`.bucketKey` consumers (Kernel type + Core
+  extensions both reach them via the `@_exported` umbrella).
+- **CardEnvelope (option-b, layer-appropriate file join + stub removal).**
+  `SubscriptionTopic.SubscriptionInboxPost.card: CardEnvelope?` references the full
+  `CardEnvelope`. The full type in `Views/Cards/CardEnvelope.swift` is `import
+  Foundation`-only (no SwiftUI; all `Card*` payload structs in-file; only comment-level
+  refs to `Card*View`/`MissionConsoleActiveTile`/`CardSurface`), i.e. layer-appropriate
+  for the pure Kernel. Moved it to `OpenBurnBarKernel/SharedModels/CardEnvelope.swift`
+  and DELETED the redundant `SharedModels/LinuxCardEnvelope.swift` off-Apple stub (the
+  full type now compiles on all platforms in the Kernel — a strict off-Apple win: real
+  enum vs the old `.unknown`-only stub). `Views/Cards/CardEnvelopeView.swift` +
+  `Views/Square/UnifiedSearchIndex.swift` still resolve `CardEnvelope` via the umbrella.
+- **SubstrateCatalog (option-c via guard relaxation).** `SubstrateFamily.currentID`
+  reads `SubstrateCatalog.plainID` / `SubstrateCatalog.byID`. The rich catalog in
+  `Views/Substrate/SubstrateCatalog.swift` `import SwiftUI` (UI-tainted → forbidden in
+  the pure Kernel). The Foundation stub already lived in `LinuxSubstrateSupport.swift`
+  (moving to Kernel) behind `#if os(Linux)||os(Windows)`; relaxed that guard so the
+  stub `SubstrateCatalog` (plainID/byID only) compiles on ALL platforms and satisfies
+  `SubstrateFamily`. VERIFIED empirically: Core + daemon build clean — the same-name
+  SwiftUI catalog in the Core/UI module shadows the re-exported Kernel one for Core/UI
+  code (`SwarmSubstrateBox.swift`'s `SubstrateCatalog.resolved(...)` still binds the
+  Core catalog), and the two types never exchange values. Zero call-site changes.
+
+### RE-SLICED OUT — unstated DEPENDS-ON: P-02 (resource-backed catalog loader)
+`CLIRuntimeModelCatalog.swift` (defines `CLIRuntimeModelOption`) and
+`WandModelRouter.swift` (uses `CLIRuntimeModelOption`) both stay in Core in this PR.
+`CLIRuntimeModelCatalog.swift` has two `catalog: BurnBarCatalog =
+BurnBarCatalogLoader.bundledCatalog` DEFAULT-ARG sites, and `BurnBarCatalogLoader`
+(`OpenBurnBarCatalogLoader.swift`) is a `Bundle.module`/`catalog.json` resource-backed
+loader that **P-02** moves into the Kernel (P-02 card mv list: catalog loader +
+`Resources/catalog.json`). Until P-02 lands, moving these two into the Kernel fails
+`cannot find 'BurnBarCatalogLoader' in scope`, and pulling the loader+resource into
+P-04a is a forbidden **resource-bundle STOP** (Failure Playbook #3). These two files
+(+ their tests `CLIRuntimeModelCatalogTests.swift` / `WandModelRouterTests.swift`) must
+ride a **P-04a successor packet that DEPENDS-ON P-02** (architect to home them). The DAG
+had no P-04a→P-02 edge; this is the wave-1c dependency it missed.
 
 ### Allowed edit files
 - `OpenBurnBarCore/Package.swift` — NONE expected (none of these 12 files is in
@@ -72,13 +128,12 @@ git mv OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/AssistantPendingProm
   off-Apple as empty). Never `import OpenBurnBarCore`.
 - **AE-TESTABLE** (standard): add `@testable import OpenBurnBarKernel` beneath the
   existing `@testable import OpenBurnBarCore` in any Core test reaching an INTERNAL
-  symbol of a moved file. Anticipated: `CLIRuntimeModelCatalogTests.swift`,
-  `CloudVaultCryptoTests.swift`, `CloudVaultAADParityTests.swift`,
-  `CloudVaultSignalEnvelopeTests.swift`, `ProviderRuntimeFailoverTypesTests.swift`,
-  `WandModelRouterTests.swift`, `HermesSquarePhaseATests.swift`,
-  `SwarmSubstrateContractTests.swift`, `CLIAgentSessionCodecTests.swift`,
-  `PensieveKnowledgeChunkerTests.swift`. Add ONLY where compile fails (public models
-  need none); enumerate in the PR body.
+  symbol of a moved file. **CONVERGED actual set: exactly ONE —
+  `CloudVaultCryptoTests.swift`** (reaches internal `secureRandomCopyBytes` /
+  `resolveAADForTesting`). Every other anticipated test compiled unchanged: the moved
+  models expose only PUBLIC symbols (resolved via the umbrella), and the
+  `CLIRuntimeModelCatalogTests.swift` / `WandModelRouterTests.swift` tests still reach
+  Core (their files did not move — see RE-SLICED OUT).
 
 ## Shim
 None. Core re-exports Kernel. Do NOT edit `KernelReexport.swift`.
@@ -112,9 +167,18 @@ SharedModels the app and daemon both use → already `public`).
    (grep Package.swift). If any does → it belongs in P-04b, STOP.
 4. Not a CANON packet.
 
-## Local validation
-V1 Kernel build · V2 Core build · V3 PURE · V4 test · V5 daemon build · V6–V9b
-ratchets (membership shrink) · V11 scope (12 R100, 0 or 1 M).
+## Local validation (CONVERGED — all run 2026-07-12, Swift 6.4 / macOS)
+V1 Kernel build OK · V2 Core build OK · V3 PURE OK (Kernel SwiftUI/AppKit-free; Core
+UI-purity baseline 115=115, RGBA.swift path kept so no ratchet) · V4 61 tests / 0
+failures (CloudVaultCrypto 24, CloudVaultAADParity 11, CloudVaultSignalEnvelope 4,
+ProviderRuntimeFailoverTypes 4, SwarmSubstrateContract 18) · V5 daemon build OK · V6
+membership OK (shrink, non-fatal) · V7 umbrella OK · verify-codeowners PASS ·
+scan-chat-cloud-plaintext resolves the 5 CloudVault assertions at the new Kernel path
+(only pre-existing unrelated SessionLogSyncService/firestore.rules findings remain,
+identical on base). · V11 scope: 9 R100 (SharedModels moves) + 1 R100 (CardEnvelope.swift
+Views→Kernel) + 1 A (new Kernel RGBA.swift) + 1 D (LinuxCardEnvelope.swift stub removed)
++ 1 M (Core RGBA.swift → color bridge) + 1 M test + 4 M path-pin gate files. `CLIRuntimeModelCatalog.swift`
++ `WandModelRouter.swift` NOT moved (RE-SLICED OUT to a P-02-dependent successor).
 
 ## PR body / Acceptance
 Title: "P-04a: move pure SharedModels into OpenBurnBarKernel". Invariants: zero
