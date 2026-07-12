@@ -161,7 +161,7 @@ export const SURFACES: Surface[] = [
       "Three Model Context Protocol surfaces let Codex, Claude Code, Cursor, Droid, Kimi, Forge, and Hermes query your OpenBurnBar history as grounded evidence — local SQLite for free, encrypted hosted memory for Pro.",
     bullets: [
       "Local Python MCP — 26 tools over your OpenBurnBar SQLite, read-mostly by default",
-      "Hosted Remote MCP — live at https://mcp.burnbar.ai/mcp, 8 tools, BurnBar Pro entitlement",
+      "Hosted Remote MCP — live at https://mcp.burnbar.ai/mcp, 8 tools, BurnBar Cloud entitlement",
       "Local stdio shim — bridges stdio-only clients to the hosted endpoint, decrypts on-device",
       "Default privacy mode is local_decrypt_shim — server never sees plaintext queries or bodies"
     ],

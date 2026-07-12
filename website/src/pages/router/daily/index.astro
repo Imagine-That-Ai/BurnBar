@@ -77,9 +77,11 @@ const months = [...groupedByMonth.keys()].sort((a, b) => (a < b ? 1 : -1));
 
             <ul class="archive__list">
               {groupedByMonth.get(month)?.map((rundown) => {
-                const top =
-                  rundown.taskRankings.find((t) => t.taskID === "coding")?.recommendations[0] ??
-                  rundown.taskRankings[0]?.recommendations[0];
+                const codingTask =
+                  rundown.taskRankings.find((t) => t.taskID === "coding") ??
+                  rundown.taskRankings[0];
+                const top = codingTask?.recommendations[0];
+                const runnerUp = codingTask?.recommendations[1];
                 const freshSources = rundown.sourceStatuses.filter(
                   (s) => s.status === "fresh"
                 ).length;
@@ -117,6 +119,12 @@ const months = [...groupedByMonth.keys()].sort((a, b) => (a < b ? 1 : -1));
                         </div>
                       ) : (
                         <p class="archcard__empty">No task rankings — sources were unavailable.</p>
+                      )}
+                      {top && runnerUp && (
+                        <p class="archcard__runnerup mono">
+                          next: {runnerUp.modelDisplay} ·{" "}
+                          {pct(runnerUp.selectionScore ?? runnerUp.score)}
+                        </p>
                       )}
 
                       <ul class="archcard__sources">
@@ -368,6 +376,12 @@ const months = [...groupedByMonth.keys()].sort((a, b) => (a < b ? 1 : -1));
     padding: var(--s-3);
     border: 1px dashed var(--ink-line);
     border-radius: var(--r-3);
+  }
+  .archcard__runnerup {
+    color: var(--text-mute);
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    margin-top: calc(var(--s-2) * -1);
   }
 
   .archcard__sources {

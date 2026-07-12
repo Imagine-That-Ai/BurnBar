@@ -1,7 +1,7 @@
 ---
 import BaseLayout from "@layouts/BaseLayout.astro";
 import { SITE } from "@data/site";
-const updated = "May 8, 2026";
+const updated = "July 11, 2026";
 ---
 
 <BaseLayout
@@ -73,7 +73,10 @@ const updated = "May 8, 2026";
           sign-in.
         </li>
         <li>Any data from other applications.</li>
-        <li>Payment card numbers. App Store subscriptions are handled entirely by Apple.</li>
+        <li>
+          Payment card numbers. Billing is handled entirely by Apple (App Store), Google Play, or
+          Stripe, depending on where you subscribe — we never receive card details.
+        </li>
       </ul>
 
       <h2>4. How information is used</h2>
@@ -93,6 +96,14 @@ const updated = "May 8, 2026";
         <li><strong>Apple · iCloud Drive:</strong> the iCloud session mirror, when enabled.</li>
         <li>
           <strong>Apple · App Store / StoreKit:</strong> subscription billing, JWS receipt issuance.
+        </li>
+        <li>
+          <strong>Google · Play Billing:</strong> subscription billing for purchases made on
+          Android.
+        </li>
+        <li>
+          <strong>Stripe:</strong> subscription billing and checkout for purchases made on the web.
+          Stripe receives your payment details directly; we receive only the subscription status.
         </li>
         <li><strong>Sentry:</strong> opt-in crash reports.</li>
         <li>
@@ -124,7 +135,11 @@ const updated = "May 8, 2026";
         <li>Disable any optional feature in Settings.</li>
         <li>Remove hosted quota credentials by deleting the provider account.</li>
         <li>Delete iCloud mirrored files in iCloud Drive.</li>
-        <li>Manage or cancel your subscription in <em>Settings → Apple ID</em>.</li>
+        <li>
+          Manage or cancel your subscription where you bought it: <em>Settings → Apple ID</em> on
+          Apple devices, Google Play subscriptions on Android, or the Stripe billing portal for web
+          purchases.
+        </li>
       </ul>
 
       <h2>8. Security</h2>

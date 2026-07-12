@@ -10,9 +10,9 @@
 <aside
   id="analytics-consent"
   class="analytics-consent"
-  role="dialog"
-  aria-modal="false"
+  role="region"
   aria-label="Usage analytics consent"
+  tabindex="-1"
   hidden
 >
   <div class="analytics-consent__body">
@@ -47,12 +47,20 @@
     inset-block-end: 1rem;
     z-index: 1000;
     max-width: min(32rem, calc(100vw - 2rem));
-    border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+    border: 1px solid var(--ink-line-bright);
     border-radius: 14px;
-    background: color-mix(in srgb, var(--color-surface, #14131a) 92%, transparent);
+    background: var(--consent-bg);
     backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     box-shadow: 0 18px 48px -24px rgba(0, 0, 0, 0.7);
     padding: 1rem 1.15rem;
+    /* Theme-aware surface: the old --color-* tokens never existed in this
+       codebase, so the banner was stuck on its dark fallbacks (and violet
+       accent) in both themes. */
+    --consent-bg: rgba(20, 19, 26, 0.92);
+  }
+  :root[data-theme="light"] .analytics-consent {
+    --consent-bg: rgba(252, 250, 245, 0.94);
   }
   .analytics-consent[hidden] {
     display: none;
@@ -69,10 +77,10 @@
     margin: 0;
     font-size: 0.85rem;
     line-height: 1.5;
-    color: var(--color-text-muted, #c6c4d0);
+    color: var(--text-mute);
   }
   .analytics-consent__text strong {
-    color: var(--color-text, #f4f3f7);
+    color: var(--text-bright);
   }
   .analytics-consent__text a {
     color: inherit;
@@ -99,17 +107,30 @@
   .analytics-consent__btn--ghost {
     background: transparent;
     border-color: color-mix(in srgb, currentColor 22%, transparent);
-    color: var(--color-text-muted, #c6c4d0);
+    color: var(--text-mute);
   }
   .analytics-consent__btn--ghost:hover {
     border-color: color-mix(in srgb, currentColor 40%, transparent);
+    color: var(--text-bright);
   }
+  /* Ember-family primary, matching the site's CTA language instead of the
+     violet the phantom --color-accent fallback used to produce. Near-black
+     label clears WCAG AA on the fire tokens in both themes. */
   .analytics-consent__btn--primary {
-    background: var(--color-accent, #6d5efc);
-    color: #fff;
+    background: var(--ember-core);
+    color: #140a04;
   }
   .analytics-consent__btn--primary:hover {
-    background: color-mix(in srgb, var(--color-accent, #6d5efc) 88%, #fff);
+    background: color-mix(in srgb, var(--ember-core) 86%, #fff);
+  }
+  :root[data-theme="light"] .analytics-consent__btn--primary {
+    /* light --core-fire alone is ~4.1:1 vs both white and black; darken it
+       so the white label clears 4.5:1. */
+    background: color-mix(in srgb, var(--ember-core) 78%, #000);
+    color: #fff;
+  }
+  :root[data-theme="light"] .analytics-consent__btn--primary:hover {
+    background: color-mix(in srgb, var(--ember-core) 68%, #000);
   }
   @media (max-width: 640px) {
     .analytics-consent {
@@ -156,8 +177,19 @@
   } from "../lib/analytics";
 
   const banner = document.getElementById("analytics-consent");
-  const show = () => banner?.removeAttribute("hidden");
+  const show = (focus = false) => {
+    banner?.removeAttribute("hidden");
+    // Move focus only for explicit reopens (footer "manage analytics") —
+    // first-visit auto-show must not steal focus from the page.
+    if (focus) banner?.focus();
+  };
   const hide = () => banner?.setAttribute("hidden", "");
+
+  // Escape dismisses without persisting a decision — the banner returns on
+  // the next visit, same as never answering.
+  banner?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") hide();
+  });
 
   // CTA tracking is safe to wire immediately — every track() is dropped until
   // consent is granted, so nothing leaks pre-opt-in.
@@ -182,7 +214,7 @@
   document.querySelectorAll("[data-analytics-manage]").forEach((el) =>
     el.addEventListener("click", (event) => {
       event.preventDefault();
-      show();
+      show(true);
     })
   );
 </script>

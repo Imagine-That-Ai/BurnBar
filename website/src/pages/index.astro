@@ -34,6 +34,13 @@ const surfaceShowcase = SURFACES.filter((s) =>
     "android"
   ].includes(s.id)
 );
+// The heading below spells this count out in words — fail the build if the
+// showcase drifts so the copy can't silently go stale.
+if (surfaceShowcase.length !== 8) {
+  throw new Error(
+    `index surfaces heading says "Eight" but the showcase now has ${surfaceShowcase.length} entries — update both.`
+  );
+}
 
 // Provider counts come from the data so headline copy can never drift.
 const primaryCount = PROVIDERS_PRIMARY.length;
@@ -41,7 +48,7 @@ const totalCount = PROVIDERS_ALL.length;
 const detectedCount = totalCount - primaryCount;
 ---
 
-<BaseLayout title={SITE.name} description={SITE.description} ogImage="/og/default.svg">
+<BaseLayout title={SITE.name} description={SITE.description}>
   <!-- ────────────────────────────────────────────────
        HERO
        ──────────────────────────────────────────────── -->
@@ -53,7 +60,7 @@ const detectedCount = totalCount - primaryCount;
           <span aria-hidden="true">·</span>
           <a class="hero__agpl" href="/download#linux">Linux {SITE.linuxReleaseLatest} ARM64</a>
           <span aria-hidden="true">·</span>
-          <span>iOS in App Store review</span>
+          <span>iOS {SITE.iosStatus}</span>
           <span aria-hidden="true">·</span>
           <a class="hero__agpl" href="/trust">{SITE.license.replace("-only", "")}</a>
         </div>
@@ -70,39 +77,39 @@ const detectedCount = totalCount - primaryCount;
               <div class="hero__provider-pill" title="Claude Code">
                 <img
                   src="/brand/providers/claude-code.png"
-                  alt="Claude Code"
+                  alt=""
                   width="16"
                   height="16"
                 />
                 <span class="mono">Claude Code</span>
               </div>
               <div class="hero__provider-pill" title="Codex">
-                <img src="/brand/providers/codex.png" alt="Codex" width="16" height="16" />
+                <img src="/brand/providers/codex.png" alt="" width="16" height="16" />
                 <span class="mono">Codex</span>
               </div>
               <div class="hero__provider-pill" title="Cursor">
-                <img src="/brand/providers/cursor.png" alt="Cursor" width="16" height="16" />
+                <img src="/brand/providers/cursor.png" alt="" width="16" height="16" />
                 <span class="mono">Cursor</span>
               </div>
               <div class="hero__provider-pill" title="OpenAI">
-                <img src="/brand/providers/openai.png" alt="OpenAI" width="16" height="16" />
+                <img src="/brand/providers/openai.png" alt="" width="16" height="16" />
                 <span class="mono">OpenAI</span>
               </div>
               <div class="hero__provider-pill" title="GitHub Copilot">
                 <img
                   src="/brand/providers/copilot.png"
-                  alt="GitHub Copilot"
+                  alt=""
                   width="16"
                   height="16"
                 />
                 <span class="mono">Copilot</span>
               </div>
               <div class="hero__provider-pill" title="Factory">
-                <img src="/brand/providers/factory.png" alt="Factory" width="16" height="16" />
+                <img src="/brand/providers/factory.png" alt="" width="16" height="16" />
                 <span class="mono">Factory</span>
               </div>
               <div class="hero__provider-pill" title="MiniMax">
-                <img src="/brand/providers/minimax.png" alt="MiniMax" width="16" height="16" />
+                <img src="/brand/providers/minimax.png" alt="" width="16" height="16" />
                 <span class="mono">MiniMax</span>
               </div>
             </div>
@@ -363,7 +370,7 @@ const detectedCount = totalCount - primaryCount;
           See how routing actually works
           <span class="btn-arrow" aria-hidden="true">→</span>
         </a>
-        <a class="btn btn--ghost" href="/router/daily"> Browse today's rundown </a>
+        <a class="btn btn--ghost" href="/router/daily"> Browse the latest rundown </a>
         <a class="btn btn--ghost" href="/providers"> See the provider matrix </a>
       </div>
     </div>
@@ -410,7 +417,7 @@ const detectedCount = totalCount - primaryCount;
           <li>
             <span class="hermes__mark mono" aria-hidden="true">·</span>
             <div class="hermes__listbody">
-              <strong>Hermes Remote Relay.</strong>
+              <strong>Hermes Realtime Relay.</strong>
               Reach the Mac's Hermes from anywhere over an end-to-end-encrypted WebSocket. Paid-tier;
               relay never sees plaintext.
             </div>
@@ -540,7 +547,8 @@ const detectedCount = totalCount - primaryCount;
           <h3>{FLOO.name} — your phone & your Mac, joined</h3>
           <p>
             See your Mac from your phone, reach in and control it, send files, take a call, even
-            unlock it. Only your own devices. Encrypted end to end. You approve every connection.
+            unlock it. Only your own devices, sealed between them once pairing completes. You
+            approve every connection.
           </p>
           <span class="companion__more">Explore {FLOO.name} <span aria-hidden="true">→</span></span>
         </a>
@@ -1473,7 +1481,7 @@ const detectedCount = totalCount - primaryCount;
     display: grid;
     gap: var(--s-5);
     justify-items: center;
-    padding: var(--s-4) 0;
+    padding-block: var(--s-4);
   }
   .endcta__h {
     font-size: var(--t-display);

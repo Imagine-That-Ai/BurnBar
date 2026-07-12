@@ -217,6 +217,10 @@ async function initPretextShrinkwrap() {
               container.appendChild(span);
 
               if (lineIndex < lines.length - 1) {
+                // Whitespace between line spans: without it, screen readers
+                // and copy/paste see the words at line joins mashed together
+                // ("…OpenBurnBarcollects…"). A collapsed space is invisible.
+                container.appendChild(document.createTextNode(" "));
                 container.appendChild(document.createElement("br"));
               }
             });
@@ -224,6 +228,7 @@ async function initPretextShrinkwrap() {
 
           // Add a newline between blocks if it's not the last block and not followed by a BR block
           if (blockIndex < blocks.length - 1 && !blocks[blockIndex + 1].isBr) {
+            el.appendChild(document.createTextNode(" "));
             el.appendChild(document.createElement("br"));
           }
         });

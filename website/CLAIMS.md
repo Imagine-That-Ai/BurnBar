@@ -28,7 +28,7 @@ org is ambiguous in the repo today.
 | Local-first developer tool                                          | `docs/MISSION.md:5`, `docs/OPENBURNBAR_RELEASE_ARCHITECTURE.md:5`                |
 | Tracks tokens, dollars, quota                                       | `README.md:54-67`                                                                |
 | Across Claude Code, Codex, Cursor, Copilot, Factory, MiniMax…       | `docs/PROVIDERS.md`, `AgentLens/Services/ProviderQuota/`                         |
-| 11 providers with real usage data                                   | `AgentProvider.swift:37-49` (quotaSignalProviders), plus OpenRouter (usage-only) |
+| Provider count in the stat band (computed from `PROVIDERS_PRIMARY.length`, not hardcoded) | `website/src/data/providers.ts` (`PROVIDERS_PRIMARY`); per-row evidence in the matrix sections below |
 | 0 telemetry by default                                              | `docs/PRIVACY.md:21`                                                             |
 | Works offline                                                       | `docs/THREAT_MODEL.md:188`                                                       |
 | "Reads logs, not API keys"                                          | `README.md:57`, verbatim                                                         |
@@ -115,7 +115,19 @@ removing a row updates every count automatically.
 
 | Claim                                                                | Source                                                                                                                                                             |
 | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Cursor Agent (CLI) is a distinct provider from the Cursor editor row | `CursorAgentParser` reads `~/.cursor-agent/sessions/`; exact tokens/models/transcripts. **[verify]** confirm `docs/PROVIDERS.md` lists cursor-agent before publish |
+| Cursor Agent (CLI) is a distinct provider from the Cursor editor row | `OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/CursorAgentParser.swift:5-15` reads `~/.cursor-agent/sessions/` (transcript/chat_history JSONL + summary.json); registered in `ParserRegistry.swift:15`. Token counts are char-estimates (`TokenExtractionUtility`, lines 195-219) — the site labels the row **estimated**, not exact (verified 2026-07-11) |
+
+### Newer provider rows (verified against parsers/adapters 2026-07-11)
+
+| Claim (providers.ts row)                       | Source                                                                                                                                                                                                                          |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Xiaomi MiMo — exact cost, quota `yes`          | `OpenBurnBarCore/.../ProviderQuota/MimoQuotaAdapter.swift:38-114`; region hosts + `tp-` key prefix in `SharedModels/ProviderEndpointProfileRegistry.swift:131-149`; registered `QuotaRefreshActor.swift:96`                        |
+| Antigravity — estimated cost, quota `partial`  | Parser `OpenBurnBarCore/.../LogParser/AntigravityParser.swift:5-13` (transcript JSONL, `heuristicEstimate` provenance :320-321); quota `AntigravityQuotaAdapter.swift:84,194-196` (community-estimated caps, `.estimated`)         |
+| DeepSeek — balance-only (cost `unavailable`)   | `OpenBurnBarQuotaAdapters.swift:104-203` — `GET api.deepseek.com/user/balance` credit buckets; no usage parser exists (`AgentProvider.swift:69` pins `deepseek-no-local-logs`)                                                     |
+| OpenCode — exact cost, quota `partial`         | `AgentLens/Services/UsageAggregatorParsers+More.swift:413-455` reads `~/.local/share/opencode/opencode.db` (exact per-message tokens/cost); quota is a local plan-pressure estimate (`OpenCodeQuotaAdapters.swift:258-296`)         |
+| Hermes — exact cost, quota `no`                | `OpenBurnBarCore/.../LogParser/HermesParser.swift:15,50-90` reads `~/.hermes/state.db` + session snapshots; exact usage buckets preferred (:268-284); no quota adapter registered                                                  |
+| Pi Agent — exact cost, quota `no`              | `AgentLens/Services/UsageAggregatorParsers+More.swift:782-813` reads `~/.pi/sessions/*.jsonl`; exact when inline `usage` blocks present, estimate otherwise                                                                        |
+| xAI (Grok) — estimated cost, quota `yes`       | Parser `OpenBurnBarCore/.../LogParser/GrokParser.swift:5-9,103-104` (`~/.grok/sessions/`); quota `XAIQuotaAdapter.swift:7-60` (Management API prepaid balance/usage + SuperGrok event-log pacing)                                  |
 
 | Claim                                                                                                                                               | Source                                                                                                                                                       |
 | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |

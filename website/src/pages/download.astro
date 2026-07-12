@@ -83,14 +83,22 @@ const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
           <span class="tag tag--exact tag--plain mono">Release · {SITE.macReleaseLatest}</span>
           <h2>macOS app</h2>
           <p class="lead">
-            Native Swift app. Runs as a menu-bar utility. macOS {SITE.macMin} or later. Apple Silicon
-            supported.
+            Native Swift app. Runs as a menu-bar utility. Requires {SITE.macMin} or later on an
+            Apple Silicon Mac.
           </p>
         </div>
-        <a class="btn btn--ember dlsec__primary" href={macDownloadHref}>
-          Download DMG · {SITE.macReleaseLatest}
-          <span class="btn-arrow" aria-hidden="true">↓</span>
-        </a>
+        <div class="dlsec__primarywrap">
+          <a class="btn btn--ember dlsec__primary" href={macDownloadHref}>
+            Download DMG · {SITE.macReleaseLatest}
+            <span class="btn-arrow" aria-hidden="true">↓</span>
+          </a>
+          <a
+            class="dlsec__verify mono"
+            href={`${SITE.releasesUrl}/tag/v${SITE.macReleaseLatest}`}
+            target="_blank"
+            rel="noopener noreferrer">Verify this download — checksums &amp; SBOM ↗</a
+          >
+        </div>
       </div>
 
       <ol class="steps" data-animate-onview>
@@ -282,8 +290,8 @@ make install</code></pre>
           <span class="tag tag--review tag--plain mono">In App Store review</span>
           <h2>iPhone &amp; iPad companion</h2>
           <p class="lead">
-            iOS &amp; iPadOS {SITE.iosMin} or later. Companion to the Mac app — the phone or tablet renders
-            what the Mac records. Native widgets, Live Activity, Siri shortcut.
+            Requires {SITE.iosMin} or later on iPhone or iPad. Companion to the Mac app — the phone
+            or tablet renders what the Mac records. Native widgets, Live Activity, Siri shortcut.
           </p>
         </div>
         <span class="btn btn--ghost dlsec__primary is-disabled" aria-disabled="true">
@@ -931,7 +939,7 @@ npm run build</code></pre>
     display: grid;
     gap: var(--s-5);
     justify-items: center;
-    padding: var(--s-4) 0;
+    padding-block: var(--s-4);
   }
 
   /* ---------- reveal motion ---------- */
@@ -984,5 +992,19 @@ npm run build</code></pre>
       opacity: 1 !important;
       translate: none !important;
     }
+  }
+  .dlsec__primarywrap {
+    display: grid;
+    gap: var(--s-2);
+    justify-items: start;
+  }
+  .dlsec__verify {
+    font-size: 0.78rem;
+    color: var(--text-mute);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .dlsec__verify:hover {
+    color: var(--text-bright);
   }
 </style>
