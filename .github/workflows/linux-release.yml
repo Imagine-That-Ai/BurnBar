@@ -109,6 +109,10 @@ jobs:
     timeout-minutes: 75
     env:
       OPENBURNBAR_LINUX_RELEASE_OUT: ${{ github.workspace }}/.linux-shard
+      OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID: ${{ vars.OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID }}
+      OPENBURNBAR_FIREBASE_API_KEY: ${{ vars.OPENBURNBAR_FIREBASE_API_KEY }}
+      OPENBURNBAR_LINUX_APP_CHECK_APP_ID: ${{ vars.OPENBURNBAR_LINUX_APP_CHECK_APP_ID }}
+      OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM: ${{ secrets.OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -133,6 +137,10 @@ jobs:
         run: >
           docker run --rm
           -e OPENBURNBAR_LINUX_RELEASE_OUT=/workspace/.linux-shard
+          -e OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID
+          -e OPENBURNBAR_FIREBASE_API_KEY
+          -e OPENBURNBAR_LINUX_APP_CHECK_APP_ID
+          -e OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM
           -v "$PWD:/workspace"
           -w /workspace
           openburnbar-linux-toolchain:mission-001

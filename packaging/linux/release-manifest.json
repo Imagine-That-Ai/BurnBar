@@ -34,6 +34,7 @@
     "playwrightBridge": "/usr/lib/openburnbar/playwright/openburnbar-playwright-bridge.js",
     "browserRuntimeProbe": "/usr/lib/openburnbar/playwright/openburnbar-browser-runtime-probe",
     "browserRuntimeRequirements": "/usr/lib/openburnbar/playwright/browser-runtime-requirements.json",
+    "cloudAuthConfig": "/usr/share/openburnbar/cloud-auth.json",
     "systemdUserService": "/usr/lib/systemd/user/openburnbar-daemon.service",
     "computerUsePolkitPolicy": "/usr/share/polkit-1/actions/com.openburnbar.computer-use.policy",
     "desktopEntry": "/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop"
@@ -93,6 +94,11 @@
     "ed25519PrivateKeyEnv": "OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM",
     "ed25519PublicKey": "packaging/linux/openburnbar-linux-ed25519.pub.pem",
     "cosignOidc": "GitHub Actions id-token: write",
+    "publicCloudAuthVariables": [
+      "OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID",
+      "OPENBURNBAR_FIREBASE_API_KEY",
+      "OPENBURNBAR_LINUX_APP_CHECK_APP_ID"
+    ],
     "packageRegistryTokens": {
       "aur": "operator SSH/Git push credentials",
       "flatpak": "future Flathub publisher credentials"

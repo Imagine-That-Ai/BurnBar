@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import {
+  buildLinuxCloudAuthConfig,
   resolveIrohNativeLibrary,
   resolveSqlcipherLibDir,
   resolveSwiftRuntimeDir,
@@ -80,6 +81,11 @@ test('payload staging copies daemon, Swift tree, and SQLCipher SONAME', () => {
   assert.equal(fs.statSync(report.playwrightBridge).mode & 0o777, 0o644);
   assert.equal(fs.statSync(report.browserRuntimeProbe).mode & 0o777, 0o755);
   assert.equal(fs.statSync(report.browserRuntimeRequirements).mode & 0o777, 0o644);
+  assert.deepEqual(JSON.parse(fs.readFileSync(report.cloudAuthConfig, 'utf8')), {
+    schemaVersion: 1,
+    configured: false
+  });
+  assert.equal(fs.statSync(report.cloudAuthConfig).mode & 0o777, 0o644);
   fs.rmSync(root, { recursive: true, force: true });
 });
 
@@ -119,5 +125,28 @@ test('Linux package staging fails closed without the iroh native runtime', () =>
   assert.throws(
     () => resolveIrohNativeLibrary({ env: {} }),
     /OPENBURNBAR_LINUX_IROH_LIBRARY_DIR is required/
+  );
+});
+
+test('release cloud auth config is complete, validated, and never contains tokens', () => {
+  const config = buildLinuxCloudAuthConfig({
+    requireConfigured: true,
+    env: {
+      OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID: '123456789012-desktop.apps.googleusercontent.com',
+      OPENBURNBAR_FIREBASE_API_KEY: 'AIza12345678901234567890123456789012345',
+      OPENBURNBAR_LINUX_APP_CHECK_APP_ID: '1:123456789012:linux:abcdef1234567890'
+    }
+  });
+  assert.equal(config.configured, true);
+  assert.doesNotMatch(JSON.stringify(config), /refreshToken|idToken|appCheckToken/);
+  assert.throws(
+    () => buildLinuxCloudAuthConfig({ requireConfigured: true, env: {} }),
+    /Release packaging requires/
+  );
+  assert.throws(
+    () => buildLinuxCloudAuthConfig({
+      env: { OPENBURNBAR_FIREBASE_API_KEY: 'AIza12345678901234567890123456789012345' }
+    }),
+    /all public identifiers together/
   );
 });

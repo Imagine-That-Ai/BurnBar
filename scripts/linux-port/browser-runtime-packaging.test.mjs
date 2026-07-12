@@ -171,6 +171,8 @@ test('release metadata and launcher bind the immutable bridge without claiming b
   assert.equal(requirements.dynamicInstallAtActionTime, false);
   assert.match(launcher, /export OPENBURNBAR_PACKAGED_PLAYWRIGHT_BRIDGE=/);
   assert.match(launcher, /APPIMAGE_ROOT.*usr\/lib\/openburnbar\/playwright/s);
+  assert.match(launcher, /export OPENBURNBAR_PACKAGED_CLOUD_AUTH_CONFIG_FILE=/);
+  assert.match(launcher, /APPIMAGE_ROOT.*usr\/share\/openburnbar\/cloud-auth\.json/s);
   assert.match(launcher, /unset NODE_OPTIONS/);
   assert.match(launcher, /^#!\/bin\/bash/);
   assert.match(launcher, /export PATH=\/usr\/sbin:\/usr\/bin:\/sbin:\/bin/);

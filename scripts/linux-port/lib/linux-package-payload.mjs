@@ -81,6 +81,37 @@ export function resolveIrohNativeLibrary({ env = process.env } = {}) {
   );
 }
 
+export function buildLinuxCloudAuthConfig({ env = process.env, requireConfigured = false } = {}) {
+  const values = {
+    googleOAuthClientID: env.OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID?.trim() ?? '',
+    firebaseAPIKey: env.OPENBURNBAR_FIREBASE_API_KEY?.trim() ?? '',
+    linuxAppCheckAppID: env.OPENBURNBAR_LINUX_APP_CHECK_APP_ID?.trim() ?? ''
+  };
+  const present = Object.values(values).filter(Boolean).length;
+  if (present !== 0 && present !== Object.keys(values).length) {
+    throw new Error('Linux cloud auth configuration must provide all public identifiers together');
+  }
+  if (present === 0) {
+    if (requireConfigured) {
+      throw new Error(
+        'Release packaging requires OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID, OPENBURNBAR_FIREBASE_API_KEY, and OPENBURNBAR_LINUX_APP_CHECK_APP_ID'
+      );
+    }
+    return { schemaVersion: 1, configured: false };
+  }
+  if (!/^[A-Za-z0-9._-]{12,512}\.apps\.googleusercontent\.com$/u.test(values.googleOAuthClientID)) {
+    throw new Error('OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID is not a valid installed-app client id');
+  }
+  if (!/^AIza[A-Za-z0-9_-]{20,196}$/u.test(values.firebaseAPIKey)) {
+    throw new Error('OPENBURNBAR_FIREBASE_API_KEY is malformed');
+  }
+  if (!/^1:[0-9]{6,20}:(?:linux|web):[A-Za-z0-9_-]{8,128}$/u.test(values.linuxAppCheckAppID)
+      || /placeholder/iu.test(values.linuxAppCheckAppID)) {
+    throw new Error('OPENBURNBAR_LINUX_APP_CHECK_APP_ID is malformed or a placeholder');
+  }
+  return { schemaVersion: 1, configured: true, ...values };
+}
+
 function copySqlcipherRuntime(source, destination) {
   const entries = fs.readdirSync(source)
     .filter((entry) => entry.startsWith('libsqlcipher.so'))
@@ -155,6 +186,7 @@ export function stageLinuxPackagePayload({
   const swiftDestination = path.join(root, 'swift');
   const nativeDestination = path.join(root, 'native');
   const playwrightDestination = path.join(root, 'playwright');
+  const cloudAuthDestination = path.join(root, 'cloud-auth.json');
 
   fs.rmSync(root, { recursive: true, force: true });
   fs.mkdirSync(root, { recursive: true });
@@ -188,6 +220,15 @@ export function stageLinuxPackagePayload({
   fs.chmodSync(browserRuntimeProbeDestination, 0o755);
   fs.copyFileSync(browserRuntimeRequirementsSource, browserRuntimeRequirementsDestination);
   fs.chmodSync(browserRuntimeRequirementsDestination, 0o644);
+  const cloudAuth = buildLinuxCloudAuthConfig({
+    env,
+    requireConfigured: env.OPENBURNBAR_LINUX_RELEASE_BUILD === '1'
+  });
+  fs.writeFileSync(cloudAuthDestination, `${JSON.stringify(cloudAuth, null, 2)}\n`, {
+    encoding: 'utf8',
+    mode: 0o644
+  });
+  fs.chmodSync(cloudAuthDestination, 0o644);
   const runtimeProbe = probe
     ? runRuntimeProbe(daemonDestination, swiftDestination, nativeDestination, env)
     : null;
@@ -203,6 +244,8 @@ export function stageLinuxPackagePayload({
     playwrightBridge: bridgeDestination,
     browserRuntimeProbe: browserRuntimeProbeDestination,
     browserRuntimeRequirements: browserRuntimeRequirementsDestination,
+    cloudAuthConfig: cloudAuthDestination,
+    cloudAuthConfigured: cloudAuth.configured,
     sqlcipherFiles,
     runtimeProbe
   };

@@ -59,6 +59,7 @@ const irohCargoBuildJobs = process.env.OPENBURNBAR_LINUX_IROH_BUILD_JOBS?.trim()
 const swiftBuildJobs = process.env.OPENBURNBAR_LINUX_SWIFT_BUILD_JOBS?.trim() || '4';
 const packageBuildEnv = {
   ...process.env,
+  OPENBURNBAR_LINUX_RELEASE_BUILD: '1',
   CARGO_BUILD_JOBS: cargoBuildJobs,
   OPENBURNBAR_LINUX_IROH_LIBRARY_DIR: irohNativeLibraryDirectory,
   // linuxdeploy (Tauri's AppImage bundler) is itself an AppImage and needs FUSE
