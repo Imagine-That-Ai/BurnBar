@@ -73,6 +73,7 @@ public enum LinuxSecretStoreError: Error, Equatable, CustomStringConvertible {
     case missingSecret(String)
     case backendUnavailable(String)
     case mutationUnavailable(String)
+    case readOnlySecretRemains(id: String, backends: [String])
     case commandFailed(backend: String, operation: String, detail: String)
     case invalidSecretID(String)
     case invalidSecretValue(String)
@@ -88,6 +89,8 @@ public enum LinuxSecretStoreError: Error, Equatable, CustomStringConvertible {
             return "SecretStore backend unavailable: \(reason)"
         case let .mutationUnavailable(backend):
             return "SecretStore backend \(backend) does not support secret mutations."
+        case let .readOnlySecretRemains(id, backends):
+            return "Secret \(id) remains in read-only SecretStore backend(s): \(backends.joined(separator: ", "))."
         case let .commandFailed(backend, operation, detail):
             return "SecretStore backend \(backend) failed to \(operation): \(detail)"
         case let .invalidSecretID(id):
@@ -338,7 +341,7 @@ private enum LinuxSystemdCredentialReader {
         }
 
         let descriptor = credentialName.withCString { name in
-            Glibc.openat(directoryDescriptor, name, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
+            Glibc.openat(directoryDescriptor, name, O_RDONLY | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW)
         }
         guard descriptor >= 0 else {
             throw LinuxSecretStoreError.backendUnavailable("systemd credential is unavailable")
@@ -476,18 +479,61 @@ public struct LinuxSecretCustodian: Sendable {
         secretClass: LinuxHighValueSecretClass
     ) throws {
         var foundWritableBackend = false
-        for backend in backends where backend.supportsMutations {
+        var mutableMatches: [any LinuxSecretStoreBackend] = []
+        var readOnlyMatches: [String] = []
+        var firstDiscoveryError: Error?
+
+        // Complete discovery before deleting anything so an unreadable backend
+        // cannot hide a stale copy behind a partially completed deletion.
+        for backend in backends {
             guard backend.trustLevel.approvedForHighValueSecrets else { continue }
-            foundWritableBackend = true
-            try backend.healthCheck()
-            guard try backend.readSecret(id: id, secretClass: secretClass) != nil else {
-                continue
+            if backend.supportsMutations {
+                foundWritableBackend = true
             }
-            try backend.deleteSecret(id: id, secretClass: secretClass)
-            return
+            do {
+                try backend.healthCheck()
+                if try backend.readSecret(id: id, secretClass: secretClass) != nil {
+                    if backend.supportsMutations {
+                        mutableMatches.append(backend)
+                    } else {
+                        readOnlyMatches.append(backend.backendName)
+                    }
+                }
+            } catch {
+                if firstDiscoveryError == nil {
+                    firstDiscoveryError = error
+                }
+            }
         }
+
+        if let firstDiscoveryError {
+            throw firstDiscoveryError
+        }
+
         if foundWritableBackend == false {
-            throw LinuxSecretStoreError.mutationUnavailable("no writable approved backend")
+            if readOnlyMatches.isEmpty {
+                throw LinuxSecretStoreError.mutationUnavailable("no writable approved backend")
+            }
+        }
+
+        var firstDeletionError: Error?
+        for backend in mutableMatches {
+            do {
+                try backend.deleteSecret(id: id, secretClass: secretClass)
+            } catch {
+                if firstDeletionError == nil {
+                    firstDeletionError = error
+                }
+            }
+        }
+        if let firstDeletionError {
+            throw firstDeletionError
+        }
+        if readOnlyMatches.isEmpty == false {
+            throw LinuxSecretStoreError.readOnlySecretRemains(
+                id: id,
+                backends: readOnlyMatches
+            )
         }
     }
 
@@ -497,6 +543,8 @@ public struct LinuxSecretCustodian: Sendable {
             return "Connect GNOME Secret Service, KWallet, systemd credentials, or set the documented headless passphrase before starting cloud features."
         case .backendUnavailable, .commandFailed:
             return "Install and unlock Secret Service or KWallet, then retry. Headless servers may use systemd credentials."
+        case .readOnlySecretRemains:
+            return "Remove the matching systemd credential from the service configuration, restart the service, then retry."
         case .trustLevelRefused, .plaintextFallbackRefused, .mutationUnavailable,
              .invalidSecretID, .invalidSecretValue, .secretTooLarge:
             return "OpenBurnBar refused to place high-value secrets in plaintext. Choose an approved SecretStore trust level."

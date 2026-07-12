@@ -1240,10 +1240,10 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
 #elseif os(Linux)
         let account = "provider.\(providerID).apiKey"
         let id = "\(service):\(account)"
-        if let normalized = secret?.trimmingCharacters(in: .whitespacesAndNewlines),
-           normalized.isEmpty == false {
+        if let secret,
+           secret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
             _ = try linuxSecretCustodian.storeHighValueSecret(
-                normalized,
+                secret,
                 id: id,
                 secretClass: .providerCredential
             )

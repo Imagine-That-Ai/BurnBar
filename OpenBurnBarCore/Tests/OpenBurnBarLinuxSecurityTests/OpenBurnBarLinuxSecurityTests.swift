@@ -1,6 +1,9 @@
 import Foundation
 @testable import OpenBurnBarLinuxSecurity
 import XCTest
+#if os(Linux)
+import Glibc
+#endif
 
 final class OpenBurnBarLinuxSecurityTests: XCTestCase {
     func testNativeSecretServiceCRUDKeepsSecretOutOfArguments() throws {
@@ -336,6 +339,111 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
             try backend.readSecret(id: "audit-signing-key", secretClass: .auditSigningKey)
         )
     }
+
+    func testSystemdCredentialReaderRejectsSymlinkedDirectoryWrongOwnersAndNonRegularFiles() throws {
+        let fileManager = FileManager.default
+        let root = fileManager.temporaryDirectory
+            .appendingPathComponent("openburnbar-systemd-types-\(UUID().uuidString)", isDirectory: true)
+        let directory = root.appendingPathComponent("credentials", isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: root.path)
+        try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+        defer { try? fileManager.removeItem(at: root) }
+
+        let credential = directory.appendingPathComponent("audit-signing-key")
+        try Data("audit-secret".utf8).write(to: credential)
+        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: credential.path)
+        let backend = LinuxHeadlessSecretStoreBackend(
+            environment: ["CREDENTIALS_DIRECTORY": directory.path]
+        )
+
+        let linkedDirectory = root.appendingPathComponent("credentials-link")
+        try fileManager.createSymbolicLink(at: linkedDirectory, withDestinationURL: directory)
+        let linkedBackend = LinuxHeadlessSecretStoreBackend(
+            environment: ["CREDENTIALS_DIRECTORY": linkedDirectory.path]
+        )
+        XCTAssertThrowsError(
+            try linkedBackend.readSecret(id: "audit-signing-key", secretClass: .auditSigningKey)
+        )
+
+        if geteuid() == 0 {
+            XCTAssertEqual(Glibc.chown(directory.path, 65_534, 65_534), 0)
+            XCTAssertThrowsError(
+                try backend.readSecret(id: "audit-signing-key", secretClass: .auditSigningKey)
+            )
+            XCTAssertEqual(Glibc.chown(directory.path, 0, 0), 0)
+
+            XCTAssertEqual(Glibc.chown(credential.path, 65_534, 65_534), 0)
+            XCTAssertThrowsError(
+                try backend.readSecret(id: "audit-signing-key", secretClass: .auditSigningKey)
+            )
+            XCTAssertEqual(Glibc.chown(credential.path, 0, 0), 0)
+        }
+
+        try fileManager.removeItem(at: credential)
+        XCTAssertEqual(Glibc.mkfifo(credential.path, 0o600), 0)
+        XCTAssertThrowsError(
+            try backend.readSecret(id: "audit-signing-key", secretClass: .auditSigningKey)
+        )
+
+        try fileManager.removeItem(at: credential)
+        try fileManager.createDirectory(at: credential, withIntermediateDirectories: false)
+        try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: credential.path)
+        XCTAssertThrowsError(
+            try backend.readSecret(id: "audit-signing-key", secretClass: .auditSigningKey)
+        )
+    }
+
+    func testSystemdCredentialReaderRejectsMalformedContentAndAcceptsExactLimit() throws {
+        let fileManager = FileManager.default
+        let directory = fileManager.temporaryDirectory
+            .appendingPathComponent("openburnbar-systemd-content-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: false)
+        try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+        defer { try? fileManager.removeItem(at: directory) }
+
+        let credential = directory.appendingPathComponent("audit-signing-key")
+        let backend = LinuxHeadlessSecretStoreBackend(
+            environment: ["CREDENTIALS_DIRECTORY": directory.path]
+        )
+
+        func replaceCredential(with data: Data) throws {
+            try? fileManager.removeItem(at: credential)
+            try data.write(to: credential)
+            try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: credential.path)
+        }
+
+        for malformed in [
+            Data([0xFF]),
+            Data("secret\0value".utf8),
+            Data("secret\rvalue".utf8),
+            Data("secret\nvalue".utf8)
+        ] {
+            try replaceCredential(with: malformed)
+            XCTAssertThrowsError(
+                try backend.readSecret(id: "audit-signing-key", secretClass: .auditSigningKey)
+            )
+        }
+
+        for missing in [Data(), Data(" \t ".utf8)] {
+            try replaceCredential(with: missing)
+            XCTAssertThrowsError(
+                try backend.readSecret(id: "audit-signing-key", secretClass: .auditSigningKey)
+            )
+        }
+
+        let exactLimit = Data(repeating: 0x61, count: 16_384)
+        try replaceCredential(with: exactLimit)
+        let record = try XCTUnwrap(
+            backend.readSecret(id: "audit-signing-key", secretClass: .auditSigningKey)
+        )
+        XCTAssertEqual(record.secret.utf8.count, 16_384)
+
+        try replaceCredential(with: Data(repeating: 0x61, count: 16_385))
+        XCTAssertThrowsError(
+            try backend.readSecret(id: "audit-signing-key", secretClass: .auditSigningKey)
+        )
+    }
 #endif
 
     func testSecretStoreSetupProbeIncludesLibsecretTPMAndUXBlockers() {
@@ -549,19 +657,19 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
         XCTAssertEqual(writableFallback.healthCheckCount, 0)
         XCTAssertEqual(writableFallback.storeCount, 0)
 
-        let unreadablePrimary = LinuxSecretMutationProbeBackend(
-            backendName: "unreadable-primary",
-            readFailure: .commandFailed(
-                backend: "unreadable-primary",
-                operation: "read",
-                detail: "primary is locked"
-            )
-        )
-        let populatedFallback = LinuxSecretMutationProbeBackend(
-            backendName: "populated-fallback",
+        let populatedPrimary = LinuxSecretMutationProbeBackend(
+            backendName: "populated-primary",
             initialSecret: "stale-secret"
         )
-        let deleteCustodian = LinuxSecretCustodian(backends: [unreadablePrimary, populatedFallback])
+        let unreadableSecondary = LinuxSecretMutationProbeBackend(
+            backendName: "unreadable-secondary",
+            readFailure: .commandFailed(
+                backend: "unreadable-secondary",
+                operation: "read",
+                detail: "secondary is locked"
+            )
+        )
+        let deleteCustodian = LinuxSecretCustodian(backends: [populatedPrimary, unreadableSecondary])
 
         XCTAssertThrowsError(
             try deleteCustodian.deleteHighValueSecret(
@@ -572,14 +680,15 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
             XCTAssertEqual(
                 error as? LinuxSecretStoreError,
                 .commandFailed(
-                    backend: "unreadable-primary",
+                    backend: "unreadable-secondary",
                     operation: "read",
-                    detail: "primary is locked"
+                    detail: "secondary is locked"
                 )
             )
         }
-        XCTAssertEqual(populatedFallback.readCount, 0)
-        XCTAssertEqual(populatedFallback.deleteCount, 0)
+        XCTAssertEqual(populatedPrimary.readCount, 1)
+        XCTAssertEqual(unreadableSecondary.readCount, 1)
+        XCTAssertEqual(populatedPrimary.deleteCount, 0)
     }
 
     func testDeletingSecretSkipsWritableBackendsWithoutTheItem() throws {
@@ -624,6 +733,64 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
         XCTAssertNil(
             try populated.readSecret(id: "firebase-refresh-token", secretClass: .refreshToken)
         )
+    }
+
+    func testDeletingSecretRemovesEveryMutableCopy() throws {
+        let first = LinuxSecretMutationProbeBackend(
+            backendName: "secret-service",
+            initialSecret: "first-copy"
+        )
+        let second = LinuxSecretMutationProbeBackend(
+            backendName: "kwallet",
+            initialSecret: "second-copy"
+        )
+        let custodian = LinuxSecretCustodian(backends: [first, second])
+
+        try custodian.deleteHighValueSecret(
+            id: "provider-token",
+            secretClass: .providerCredential
+        )
+
+        XCTAssertEqual(first.readCount, 1)
+        XCTAssertEqual(second.readCount, 1)
+        XCTAssertEqual(first.deleteCount, 1)
+        XCTAssertEqual(second.deleteCount, 1)
+        XCTAssertNil(try first.readSecret(id: "provider-token", secretClass: .providerCredential))
+        XCTAssertNil(try second.readSecret(id: "provider-token", secretClass: .providerCredential))
+    }
+
+    func testDeletingSecretReportsMatchingReadOnlySystemdCredential() throws {
+        let writable = LinuxSecretMutationProbeBackend(backendName: "secret-service")
+        let systemd = LinuxInMemorySecretStoreBackend(
+            backendName: "systemd-credential",
+            trustLevel: .systemdCredential,
+            secrets: ["provider-token": "systemd-copy"]
+        )
+        let custodian = LinuxSecretCustodian(backends: [writable, systemd])
+
+        XCTAssertThrowsError(
+            try custodian.deleteHighValueSecret(
+                id: "provider-token",
+                secretClass: .providerCredential
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? LinuxSecretStoreError,
+                LinuxSecretStoreError.readOnlySecretRemains(
+                    id: "provider-token",
+                    backends: ["systemd-credential"]
+                )
+            )
+        }
+        XCTAssertEqual(writable.readCount, 1)
+        XCTAssertEqual(writable.deleteCount, 0)
+
+        let record = try custodian.requireHighValueSecret(
+            id: "provider-token",
+            secretClass: .providerCredential
+        )
+        XCTAssertEqual(record.secret, "systemd-copy")
+        XCTAssertEqual(record.metadata.trustLevel, .systemdCredential)
     }
 
     func testSignOutClearsLocalTokenWhenRemoteRevocationFails() async throws {
