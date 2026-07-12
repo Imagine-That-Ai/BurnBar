@@ -763,6 +763,14 @@ enum ComputerUseSecurityCallableClient {
         return trimmed.isEmpty ? nil : value
     }
 
+    private static func groupedFingerprint(_ hex: String) -> String {
+        stride(from: 0, to: hex.count, by: 4).map { offset in
+            let start = hex.index(hex.startIndex, offsetBy: offset)
+            let end = hex.index(start, offsetBy: 4)
+            return String(hex[start..<end])
+        }.joined(separator: " ")
+    }
+
     private static func typedCallable<Request: Encodable, Response: Decodable>(
         _ name: String,
         _ request: Request,

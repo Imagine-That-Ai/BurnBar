@@ -719,7 +719,24 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                 continue
             case .sessionGrantChallenge:
                 guard let challenge = frame.control?.sessionGrantChallenge else { continue }
-                MobileComputerUseSessionGrantChallengeReceiver.shared.ingest(challenge)
+                let signingKeyStore = PhoneControlSigningKeyStore.shared
+                let signingIdentity = try signingKeyStore.signingIdentity()
+                let routeBoundSender = PhoneControlSender(
+                    peerNodeId: signingKeyStore.peerNodeId(for: signingIdentity),
+                    uid: uid,
+                    connectionId: payload.connectionID,
+                    signingIdentityProvider: { signingIdentity },
+                    frameSink: { [stream] outboundFrame in
+                        try await stream.send(outboundFrame)
+                    }
+                )
+                await MobileComputerUseSessionGrantChallengeReceiver.shared.ingestAndWait(
+                    challenge,
+                    liveGrantDelivery: { request in
+                        _ = try await routeBoundSender.send(agentGrant: request)
+                        return true
+                    }
+                )
                 continue
             }
         }

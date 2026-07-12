@@ -19,7 +19,7 @@ public final class MobileComputerUseSessionGrantChallengeReceiver {
 
     private let now: () -> Date
     private let validator: Validator
-    private let grantHandler: GrantHandler
+    private let grantHandler: GrantHandler?
     private let completedRetentionLimit: Int
     private var activeChallengeId: String?
     private var activeTask: Task<Void, Never>?
@@ -38,15 +38,13 @@ public final class MobileComputerUseSessionGrantChallengeReceiver {
         self.validator = validator ?? { challenge, validationDate in
             try signer.validateSessionGrantChallenge(challenge, now: validationDate)
         }
-        self.grantHandler = grantHandler ?? { challenge, authenticationWillBegin in
-            _ = try await MobileAgentPermissionGrantController.shared.grant(
-                sessionChallenge: challenge,
-                authenticationWillBegin: authenticationWillBegin
-            )
-        }
+        self.grantHandler = grantHandler
     }
 
-    func ingest(_ challenge: HermesRealtimeRelaySessionGrantChallenge) {
+    func ingest(
+        _ challenge: HermesRealtimeRelaySessionGrantChallenge,
+        liveGrantDelivery: MobileAgentPermissionGrantController.LiveGrantDelivery? = nil
+    ) {
         let validationDate = now()
         pruneCompleted(at: validationDate)
         do {
@@ -58,12 +56,27 @@ public final class MobileComputerUseSessionGrantChallengeReceiver {
               completedExpirations[challenge.challengeId] == nil else {
             return
         }
+        let handler: GrantHandler
+        if let grantHandler {
+            handler = grantHandler
+        } else {
+            guard let liveGrantDelivery else {
+                return
+            }
+            handler = { challenge, authenticationWillBegin in
+                _ = try await MobileAgentPermissionGrantController.shared.grant(
+                    sessionChallenge: challenge,
+                    liveGrantDelivery: liveGrantDelivery,
+                    authenticationWillBegin: authenticationWillBegin
+                )
+            }
+        }
 
         activeChallengeId = challenge.challengeId
         activeTask = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                try await grantHandler(challenge) { [weak self] in
+                try await handler(challenge) { [weak self] in
                     self?.markCompleted(challenge)
                 }
                 // A handler that completes before an authentication boundary
@@ -78,6 +91,15 @@ public final class MobileComputerUseSessionGrantChallengeReceiver {
                 activeTask = nil
             }
         }
+    }
+
+    func ingestAndWait(
+        _ challenge: HermesRealtimeRelaySessionGrantChallenge,
+        liveGrantDelivery: @escaping MobileAgentPermissionGrantController.LiveGrantDelivery
+    ) async {
+        ingest(challenge, liveGrantDelivery: liveGrantDelivery)
+        let task = activeTask
+        await task?.value
     }
 
     func waitUntilIdleForTesting() async {
@@ -163,7 +185,14 @@ public final class AgentWatchReceiver: ObservableObject {
             }
         case .controlSessionGrantChallenge:
             guard let challenge = frame.control?.sessionGrantChallenge else { return }
-            sessionGrantChallengeReceiver.ingest(challenge)
+            guard let phoneControlSender else { return }
+            sessionGrantChallengeReceiver.ingest(
+                challenge,
+                liveGrantDelivery: { request in
+                    _ = try await phoneControlSender.send(agentGrant: request)
+                    return true
+                }
+            )
         case .controlAgentGrantReceipt:
             guard let wireReceipt = frame.control?.agentGrantReceipt,
                   let receipt = try? AgentCapabilityGrantReceipt(wire: wireReceipt) else { return }

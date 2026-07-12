@@ -3814,6 +3814,29 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(queueWrites, 0)
     }
 
+    func testRouteBoundSessionGrantDeliveryDoesNotUseCurrentGlobalSender() async throws {
+        var globalRouteWrites = 0
+        var challengeRouteWrites = 0
+        let controller = MobileAgentPermissionGrantController(
+            liveGrantDelivery: { _ in
+                globalRouteWrites += 1
+                return true
+            }
+        )
+
+        _ = try await controller.deliver(
+            uid: "user",
+            request: agentGrantRequest(deliveryMode: .live),
+            liveGrantDelivery: { _ in
+                challengeRouteWrites += 1
+                return true
+            }
+        )
+
+        XCTAssertEqual(globalRouteWrites, 0)
+        XCTAssertEqual(challengeRouteWrites, 1)
+    }
+
     func testLiveThenQueuedAgentGrantStillQueuesWhenSenderIsUnavailable() async throws {
         var queueWrites = 0
         let controller = MobileAgentPermissionGrantController(

@@ -102,6 +102,7 @@ final class MobileAgentPermissionGrantController {
     /// remains available for non-challenge permission changes.
     func grant(
         sessionChallenge: HermesRealtimeRelaySessionGrantChallenge,
+        liveGrantDelivery: @escaping LiveGrantDelivery,
         authenticationWillBegin: @MainActor @Sendable () -> Void = {}
     ) async throws -> AgentCapabilityGrantReceipt {
         guard let uid = currentUID else { throw GrantError.notSignedIn }
@@ -116,16 +117,22 @@ final class MobileAgentPermissionGrantController {
         try await ensureTrustedDevice(uid: uid, sourceDeviceID: deviceID)
         authenticationWillBegin()
         request.localAuthenticationSatisfied = try await authenticateSessionGrant(for: request.preset)
-        return try await deliver(uid: uid, request: request)
+        return try await deliver(
+            uid: uid,
+            request: request,
+            liveGrantDelivery: liveGrantDelivery
+        )
     }
 
     func deliver(
         uid: String,
-        request: AgentCapabilityGrantRequest
+        request: AgentCapabilityGrantRequest,
+        liveGrantDelivery routeBoundLiveGrantDelivery: LiveGrantDelivery? = nil
     ) async throws -> AgentCapabilityGrantReceipt {
         if request.deliveryMode != .queued {
             do {
-                if try await liveGrantDelivery(request) {
+                let delivery = routeBoundLiveGrantDelivery ?? liveGrantDelivery
+                if try await delivery(request) {
                     return remember(pendingReceipt(for: request, message: "Sent to your Mac."))
                 }
                 if request.deliveryMode == .live {

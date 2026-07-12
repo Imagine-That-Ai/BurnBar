@@ -54,6 +54,37 @@ class ComputerUseSessionGrantChallengeValidatorTest {
     }
 
     @Test
+    fun validatedChallengePreservesSubMillisecondWireTimestamps() {
+        val issuedAt = 800_000_000.000_123
+        val expiresAt = issuedAt + 300.0
+        val unsigned = challenge().copy(
+            issuedAt = issuedAt,
+            expiresAt = expiresAt,
+        )
+        val exact = unsigned.copy(
+            sessionIntentId = PhoneControlSigner.canonicalComputerUseSessionIntentId(unsigned),
+        )
+
+        val request = AgentCapabilityGrantRequest.fromValidatedSessionChallenge(
+            challenge = exact,
+            sourceDeviceId = "android-device-1",
+            nowMillis = unixMillis(800_000_100.0),
+        )
+        val wire = request.toWire(
+            authority = com.openburnbar.irohrelay.HermesRealtimeRelayAuthorityEnvelope(
+                peerNodeId = "android-phone-1",
+                counter = 1,
+                timestamp = 800_000_100.0,
+                intentHashBlake3 = "a".repeat(64),
+                signatureEd25519 = "signature",
+            ),
+        )
+
+        assertEquals(issuedAt, wire.requestedAt, 0.0)
+        assertEquals(expiresAt, wire.expiresAt, 0.0)
+    }
+
+    @Test
     fun desktopSubsetWithStepTrustBuildsExactGrant() {
         val unsigned = challenge().copy(
             capabilities = listOf("desktop_browser", "desktop_screenshot"),

@@ -181,7 +181,25 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
                 break
             case .controlSessionGrantChallenge:
                 guard let challenge = frame.control?.sessionGrantChallenge else { break }
-                MobileComputerUseSessionGrantChallengeReceiver.shared.ingest(challenge)
+                let signingKeyStore = PhoneControlSigningKeyStore.shared
+                let signingIdentity = try signingKeyStore.signingIdentity()
+                let routeBoundSender = PhoneControlSender(
+                    peerNodeId: signingKeyStore.peerNodeId(for: signingIdentity),
+                    uid: uid,
+                    connectionId: payload.connectionID,
+                    signingIdentityProvider: { signingIdentity },
+                    frameSink: { [task] outboundFrame in
+                        let encoded = try JSONEncoder().encode(outboundFrame)
+                        try await task.send(.data(encoded))
+                    }
+                )
+                await MobileComputerUseSessionGrantChallengeReceiver.shared.ingestAndWait(
+                    challenge,
+                    liveGrantDelivery: { request in
+                        _ = try await routeBoundSender.send(agentGrant: request)
+                        return true
+                    }
+                )
             }
         }
 

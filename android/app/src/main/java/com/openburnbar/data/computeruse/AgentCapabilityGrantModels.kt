@@ -94,6 +94,8 @@ data class AgentCapabilityGrantRequest(
     val deliveryMode: AgentGrantDeliveryMode = AgentGrantDeliveryMode.LIVE_THEN_QUEUED,
     val requestedAtMillis: Long = System.currentTimeMillis(),
     val expiresAtMillis: Long = requestedAtMillis + MILLIS * MILLIS_2 * 1000,
+    private val requestedAtSwiftReferenceSecondsOverride: Double? = null,
+    private val expiresAtSwiftReferenceSecondsOverride: Double? = null,
     val grantDurationSeconds: Double = MILLIS_3 * MILLIS_4,
     val sourceDeviceId: String,
     val clientIntentId: String = UUID.randomUUID().toString(),
@@ -103,10 +105,10 @@ data class AgentCapabilityGrantRequest(
     val trustMode: String = preset.trustMode,
 ) {
     val requestedAtSwiftReferenceSeconds: Double
-        get() = swiftReferenceSeconds(requestedAtMillis)
+        get() = requestedAtSwiftReferenceSecondsOverride ?: swiftReferenceSeconds(requestedAtMillis)
 
     val expiresAtSwiftReferenceSeconds: Double
-        get() = swiftReferenceSeconds(expiresAtMillis)
+        get() = expiresAtSwiftReferenceSecondsOverride ?: swiftReferenceSeconds(expiresAtMillis)
 
     val capabilityWireValues: List<String>
         get() = capabilities.map { it.wireValue }.sorted()
@@ -168,6 +170,8 @@ data class AgentCapabilityGrantRequest(
                 deliveryMode = AgentGrantDeliveryMode.LIVE,
                 requestedAtMillis = unixMillisFromSwiftReferenceSeconds(challenge.issuedAt),
                 expiresAtMillis = unixMillisFromSwiftReferenceSeconds(challenge.expiresAt),
+                requestedAtSwiftReferenceSecondsOverride = challenge.issuedAt,
+                expiresAtSwiftReferenceSecondsOverride = challenge.expiresAt,
                 grantDurationSeconds = minOf(MILLIS_3 * MILLIS_4, challenge.sessionTimeoutSeconds.toDouble()),
                 sourceDeviceId = sourceDeviceId,
                 clientIntentId = sessionIntentId,

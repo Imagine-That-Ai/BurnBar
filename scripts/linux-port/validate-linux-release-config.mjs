@@ -51,6 +51,7 @@ const expectedInstallPaths = {
   daemonBinary: '/usr/bin/openburnbar-daemon',
   swiftRuntime: '/usr/lib/openburnbar/swift',
   nativeRuntime: '/usr/lib/openburnbar/native',
+  playwrightRuntime: '/usr/lib/openburnbar/playwright',
   irohNativeLibrary: '/usr/lib/openburnbar/native/libopenburnbar_iroh.so',
   cloudAuthConfig: '/usr/share/openburnbar/cloud-auth.json',
   computerUsePolkitPolicy: '/usr/share/polkit-1/actions/com.openburnbar.computer-use.policy'
@@ -69,6 +70,7 @@ const packageSources = {
   '/usr/bin/openburnbar-daemon': 'target/openburnbar-package-payload/openburnbar-daemon',
   '/usr/lib/openburnbar/swift': 'target/openburnbar-package-payload/swift',
   '/usr/lib/openburnbar/native': 'target/openburnbar-package-payload/native',
+  '/usr/lib/openburnbar/playwright': 'target/openburnbar-package-payload/playwright',
   '/usr/share/openburnbar/cloud-auth.json': 'target/openburnbar-package-payload/cloud-auth.json'
 };
 for (const packageType of ['deb', 'rpm']) {

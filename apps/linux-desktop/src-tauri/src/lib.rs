@@ -2942,6 +2942,33 @@ fn update_computer_use_broker_flow(
     true
 }
 
+fn claim_computer_use_broker_start(
+    expected_challenge_id: &str,
+    waiting_owner: ComputerUseSessionAuthorityStatus,
+) -> Result<(), ComputerUseSessionAuthorityStatus> {
+    let Ok(mut guard) = computer_use_broker_flow().lock() else {
+        return Err(unavailable_computer_use_broker_status(
+            "Computer Use authorization state is unavailable.",
+        ));
+    };
+    let Some(flow) = guard.as_mut() else {
+        return Err(unavailable_computer_use_broker_status(
+            "Computer Use authorization changed before session start.",
+        ));
+    };
+    if flow.challenge_id.as_deref() != Some(expected_challenge_id) {
+        return Err(unavailable_computer_use_broker_status(
+            "Computer Use authorization changed before session start.",
+        ));
+    }
+    if flow.start_in_progress || flow.status.state == ComputerUseSessionAuthorityState::Authorized {
+        return Err(flow.status.clone());
+    }
+    flow.start_in_progress = true;
+    flow.status = waiting_owner;
+    Ok(())
+}
+
 fn computer_use_broker_acquire_with<F>(
     request: ComputerUseBrokerSessionStartRequest,
     caller: F,
@@ -3219,14 +3246,8 @@ where
         detail: Some("Waiting for Linux desktop-owner authorization.".into()),
         session_id: None,
     };
-    let owns_start = update_computer_use_broker_flow(Some(challenge_id), |flow| {
-        flow.start_in_progress = true;
-        flow.status = waiting_owner.clone();
-    });
-    if !owns_start {
-        return unavailable_computer_use_broker_status(
-            "Computer Use authorization changed before session start.",
-        );
+    if let Err(current_status) = claim_computer_use_broker_start(challenge_id, waiting_owner) {
+        return current_status;
     }
 
     let final_wire = computer_use_session_request_wire(&snapshot.request, Some(challenge_id));
@@ -5060,6 +5081,62 @@ mod tests {
         });
         assert_eq!(ended.state, ComputerUseSessionAuthorityState::Expired);
         assert!(ended.session_id.is_none());
+    }
+
+    #[test]
+    fn computer_use_broker_concurrent_status_polls_claim_session_start_once() {
+        use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
+        use std::sync::{Arc, Barrier};
+
+        let _guard = computer_use_broker_test_guard();
+        let request = computer_use_broker_request_fixture();
+        let acquired = computer_use_broker_acquire_with(request, |_, _, _| {
+            Ok(computer_use_grant_status_fixture("awaiting_phone"))
+        });
+        assert_eq!(
+            acquired.state,
+            ComputerUseSessionAuthorityState::WaitingPhone
+        );
+
+        let status_barrier = Arc::new(Barrier::new(2));
+        let start_count = Arc::new(AtomicUsize::new(0));
+        let mut polls = Vec::new();
+        for _ in 0..2 {
+            let status_barrier = Arc::clone(&status_barrier);
+            let start_count = Arc::clone(&start_count);
+            polls.push(thread::spawn(move || {
+                computer_use_broker_status_with(|method, _, _| match method {
+                    "daemon.computer_use.session_grant.status" => {
+                        status_barrier.wait();
+                        Ok(computer_use_grant_status_fixture("ready"))
+                    }
+                    "daemon.computer_use.session.start" => {
+                        start_count.fetch_add(1, AtomicOrdering::SeqCst);
+                        thread::sleep(Duration::from_millis(50));
+                        Ok(serde_json::json!({
+                            "sessionId": "session-concurrent",
+                            "manifestHashHex": "b".repeat(64),
+                            "startedAt": 800_000_100.0,
+                            "entitlementProductId": "openburnbar.computer-use",
+                            "actionCap": 50
+                        }))
+                    }
+                    other => panic!("unexpected broker method: {other}"),
+                })
+            }));
+        }
+
+        let statuses = polls
+            .into_iter()
+            .map(|poll| poll.join().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(start_count.load(AtomicOrdering::SeqCst), 1);
+        assert!(statuses
+            .iter()
+            .any(|status| { status.state == ComputerUseSessionAuthorityState::Authorized }));
+        assert!(statuses
+            .iter()
+            .any(|status| { status.state == ComputerUseSessionAuthorityState::WaitingLocalOwner }));
     }
 
     #[test]
