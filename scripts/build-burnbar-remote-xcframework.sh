@@ -125,7 +125,16 @@ build_target() {
   log "cargo build ${PROFILE} ${target}"
   (
     cd "${CRATE_DIR}"
-    MACOSX_DEPLOYMENT_TARGET=14.0 \
+    # MACOSX_DEPLOYMENT_TARGET leaks into HOST proc-macro dylib links too (cargo
+    # applies env to every unit). On newer Apple linkers a >=12.0 minimum makes
+    # ld emit chained-fixups proc-macro dylibs that rustc's crate loader cannot
+    # read back (E0463 "can't find crate for `paste`" inside uniffi_core), and
+    # RUSTFLAGS cannot scope link flags to host units. Keep 14.0 as the shipped
+    # default but allow affected machines (e.g. Xcode 27 beta ld) to override:
+    #   BURNBAR_REMOTE_MACOSX_DEPLOYMENT_TARGET=11.0 ./scripts/build-burnbar-remote-xcframework.sh
+    # A lower minimum only widens compatibility of the macOS slice; the app
+    # target still enforces macOS 14.0.
+    MACOSX_DEPLOYMENT_TARGET="${BURNBAR_REMOTE_MACOSX_DEPLOYMENT_TARGET:-14.0}" \
     IPHONEOS_DEPLOYMENT_TARGET=17.0 \
     IPHONE_SIMULATOR_DEPLOYMENT_TARGET=17.0 \
     PATH="${HOME}/.cargo/bin:${PATH}" \

@@ -858,9 +858,28 @@ struct ComputerUseSettingsView: View {
     private func refreshReadiness() {
         accessibilityTrusted = AXIsProcessTrusted()
         wizardModel.accessibilityGranted = accessibilityTrusted
-        wizardModel.playwrightReady = FileManager.default.fileExists(
-            atPath: "OpenBurnBarDaemon/Resources/PlaywrightBridge/openburnbar-playwright-bridge.js"
-        )
+        wizardModel.playwrightReady = Self.playwrightBridgeExists()
+    }
+
+    /// Mirrors the daemon's bridge-script resolution
+    /// (`OpenBurnBarBrowserToolService.defaultBridgeScriptURL`): env override,
+    /// bundled resource, then repo-relative dev paths. A bare relative path
+    /// is always false inside a shipped .app.
+    private static func playwrightBridgeExists() -> Bool {
+        let fm = FileManager.default
+        if let override = ProcessInfo.processInfo.environment["OPENBURNBAR_PLAYWRIGHT_BRIDGE"],
+           !override.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return fm.fileExists(atPath: override)
+        }
+        let cwd = URL(fileURLWithPath: fm.currentDirectoryPath, isDirectory: true)
+        let candidates = [
+            Bundle.main.resourceURL?
+                .appendingPathComponent("PlaywrightBridge", isDirectory: true)
+                .appendingPathComponent("openburnbar-playwright-bridge.js", isDirectory: false),
+            cwd.appendingPathComponent("OpenBurnBarDaemon/Resources/PlaywrightBridge/openburnbar-playwright-bridge.js"),
+            cwd.appendingPathComponent("Resources/PlaywrightBridge/openburnbar-playwright-bridge.js")
+        ].compactMap { $0 }
+        return candidates.contains { fm.fileExists(atPath: $0.path) }
     }
 
     private func requestAccessibility() {
@@ -869,16 +888,23 @@ struct ComputerUseSettingsView: View {
     }
 
     private func runPlaywrightInstaller() {
-        guard let script = Bundle.main.path(forResource: "install-playwright", ofType: "sh") else {
-            if let url = URL(string: "file://\(FileManager.default.currentDirectoryPath)/scripts/install-playwright.sh") {
-                NSWorkspace.shared.open(url)
-            }
+        wizardModel.playwrightInstallHint = nil
+        let fm = FileManager.default
+        let devScript = "\(fm.currentDirectoryPath)/scripts/install-playwright.sh"
+        let script = Bundle.main.path(forResource: "install-playwright", ofType: "sh")
+            ?? (fm.fileExists(atPath: devScript) ? devScript : nil)
+        guard let script else {
+            wizardModel.playwrightInstallHint = "Automatic install isn't available in this build. Install Playwright 1.49 + Chromium on this Mac, or point OPENBURNBAR_PLAYWRIGHT_BRIDGE at your bridge script, then Re-check."
             return
         }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
         process.arguments = [script]
-        try? process.run()
+        do {
+            try process.run()
+        } catch {
+            wizardModel.playwrightInstallHint = "Installer failed to launch: \(error.localizedDescription)"
+        }
     }
 
     private func startSystemSession() {
@@ -909,11 +935,6 @@ struct ComputerUseSettingsView: View {
         NSWorkspace.shared.openApplication(at: calculatorURL, configuration: NSWorkspace.OpenConfiguration()) { _, error in
             Task { @MainActor in
                 wizardModel.sampleStatus.openCalculator = error == nil ? .succeeded : .failed
-                wizardModel.sampleStatus.click2 = .pending
-                wizardModel.sampleStatus.clickPlus = .pending
-                wizardModel.sampleStatus.click2Again = .pending
-                wizardModel.sampleStatus.clickEquals = .pending
-                wizardModel.sampleStatus.verifiedResult = error == nil ? .succeeded : .failed
                 wizardModel.sampleIsRunning = false
             }
         }
@@ -933,9 +954,10 @@ struct ComputerUseSettingsView: View {
                     )
                 } else {
                     let index = result.firstInvalidEntryIndex.map(String.init) ?? "unknown"
+                    let reason = result.firstInvalidReason?.userFacingDescription ?? "unknown reason"
                     auditStatus = AuditOperationStatus(
                         kind: .failed,
-                        message: "Tamper or corruption detected at entry \(index): \(String(describing: result.firstInvalidReason))."
+                        message: "Tamper or corruption detected at entry \(index): \(reason)."
                     )
                 }
             } catch {

@@ -1521,6 +1521,41 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertFalse(process.isRunning)
     }
 
+    // Process.terminate() raises an uncatchable NSInvalidArgumentException on a
+    // never-launched Process. Cancels that land between registration and
+    // process.run() must be deferred and reported via markProcessLaunched.
+    func test_streamRuntime_preLaunchCancel_isDeferredUntilMarkLaunched() async throws {
+        let runtime = CLIBridgeStreamRuntimeCoordinator()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        process.arguments = ["5"]
+
+        let token = await runtime.registerRunningProcess(process, launched: false)
+        await runtime.cancelRunningProcess(token: token)
+
+        try process.run()
+        let accepted = await runtime.markProcessLaunched(token: token)
+        XCTAssertFalse(accepted, "pre-launch cancellation must be reported at launch time")
+        process.terminate()
+        process.waitUntilExit()
+    }
+
+    func test_streamRuntime_markProcessLaunched_acceptsWhenNoCancelArrived() async throws {
+        let runtime = CLIBridgeStreamRuntimeCoordinator()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        process.arguments = ["5"]
+        let token = await runtime.registerRunningProcess(process, launched: false)
+        try process.run()
+
+        let accepted = await runtime.markProcessLaunched(token: token)
+        XCTAssertTrue(accepted, "launch must be accepted when no cancel arrived")
+
+        await runtime.cancelRunningProcess(token: token)
+        process.waitUntilExit()
+        XCTAssertFalse(process.isRunning, "post-launch cancel must still terminate the process")
+    }
+
     func test_streamRuntime_cancelHTTPStreamTask_cancelsMatchingTokenOnly() async {
         let runtime = CLIBridgeStreamRuntimeCoordinator()
         let streamID = await runtime.nextHTTPStreamID()

@@ -232,6 +232,7 @@ struct MercuryLiveSheet: View {
                         accent: accent,
                         pulse: pulseTrigger,
                         avatarStyle: personalization.avatar,
+                        badges: personalization.normalizedBadges(),
                         reduceMotion: reduceMotion
                     ) {
                         MercuryLiveStatusStrip(

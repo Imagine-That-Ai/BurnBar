@@ -450,7 +450,7 @@ struct SettingsView: View {
                     try await accountManager.deleteCurrentUser()
                 },
                 onSignOut: {
-                    try? accountManager.signOut()
+                    try accountManager.signOut()
                 }
             )
             .navigationTitle("Account")

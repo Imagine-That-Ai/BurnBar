@@ -130,6 +130,7 @@ protocol ArtifactDiscoveryDataStoring: Sendable {
     ) async throws -> [SourceArtifactRecord]
     func markSourceArtifactDeleted(id: String, deletedAt: Date) async throws -> Bool
     func upsertRetrievalHealth(_ health: RetrievalHealthRecord) async throws
+    func fetchRetrievalHealth() async throws -> [RetrievalHealthRecord]
     func enqueueProjectionJob(_ job: ProjectionJobRecord) async throws
 }
 
@@ -162,6 +163,10 @@ struct DataStoreArtifactDiscoveryStore: ArtifactDiscoveryDataStoring {
 
     func upsertRetrievalHealth(_ health: RetrievalHealthRecord) async throws {
         try await dataStore.upsertRetrievalHealth(health)
+    }
+
+    func fetchRetrievalHealth() async throws -> [RetrievalHealthRecord] {
+        try await dataStore.fetchRetrievalHealth()
     }
 
     func enqueueProjectionJob(_ job: ProjectionJobRecord) async throws {
@@ -237,6 +242,16 @@ actor ArtifactDiscoveryService {
         var discoveredSourceIDs = Set<String>()
         var successfullyScannedRoots = Set<String>()
 
+        // Fetched once up front so the scan can skip re-reading and re-hashing
+        // files whose (mtime, size) signature is unchanged — the same gate the
+        // log parsers use. Also reused for the deletion sweep below.
+        let existingArtifacts = try await store.fetchSourceArtifacts(
+            includeDeleted: false,
+            rootPaths: nil,
+            sourceKinds: [.skillDoc, .agentDoc]
+        )
+        let existingByID = Dictionary(uniqueKeysWithValues: existingArtifacts.map { ($0.id, $0) })
+
         for rootPath in registeredRoots {
             let rootURL = URL(fileURLWithPath: rootPath, isDirectory: true)
             var isDirectory = ObjCBool(false)
@@ -297,6 +312,21 @@ actor ArtifactDiscoveryService {
 
                 let relativePath = relativePath(from: canonicalCandidatePath, rootPath: rootPath)
                 guard let match = rules.match(relativePath: relativePath) else { continue }
+
+                // Signature gate: identical (mtime, size) means identical
+                // content for our purposes — skip the read + SHA-256 entirely.
+                let candidateID = stableSourceID(for: canonicalCandidatePath)
+                if let existing = existingByID[candidateID],
+                   let storedModifiedAt = existing.fileModifiedAt,
+                   let candidateModifiedAt = resourceValues?.contentModificationDate,
+                   let candidateSize = resourceValues?.fileSize,
+                   existing.fileSizeBytes == candidateSize,
+                   abs(storedModifiedAt.timeIntervalSince(candidateModifiedAt)) < 0.001 {
+                    discoveredSourceIDs.insert(candidateID)
+                    report.discoveredArtifacts += 1
+                    report.unchangedArtifacts += 1
+                    continue
+                }
 
                 let fileData: Data
                 do {
@@ -366,11 +396,6 @@ actor ArtifactDiscoveryService {
             }
         }
 
-        let existingArtifacts = try await store.fetchSourceArtifacts(
-            includeDeleted: false,
-            rootPaths: nil,
-            sourceKinds: [.skillDoc, .agentDoc]
-        )
         let registeredRootSet = Set(registeredRoots)
         for existing in existingArtifacts {
             if registeredRootSet.contains(existing.rootPath) == false {
@@ -406,6 +431,19 @@ actor ArtifactDiscoveryService {
         let details = ArtifactDiscoveryHealthDetails(report: report)
         let detailsData = try JSONEncoder().encode(details)
         let detailsJSON = String(data: detailsData, encoding: .utf8)
+
+        // Change-gate (same pattern as InsightEngine): at idle — and always
+        // while the feature is disabled — this row is byte-identical every
+        // refresh tick; skip the pointless writer transaction.
+        let existing = try? await store.fetchRetrievalHealth()
+            .first(where: { $0.subsystem == .discovery })
+        if let existing,
+           existing.status == status,
+           existing.detailsJSON == detailsJSON,
+           existing.errorCode == errorCode,
+           existing.errorMessage == errorMessage {
+            return
+        }
 
         try await store.upsertRetrievalHealth(
             RetrievalHealthRecord(

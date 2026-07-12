@@ -139,7 +139,7 @@ struct ChatPanel: View {
             }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("This starts a new chat. Previous Burn Bar chats stay in History.")
+            Text("This starts a new chat. Previous BurnBar chats stay in History.")
         }
         .confirmationDialog("Open Hermes?", isPresented: $showHermesRuntimePrompt) {
             Button("Open Hermes + Gateway") {
@@ -204,6 +204,8 @@ struct ChatPanel: View {
         await controller.probeHermesAvailability()
         if controller.hermesAvailable {
             controller.setChatBackend(.hermes)
+        } else {
+            controller.streamError = "Hermes launched but its gateway at \(resolvedHermesGatewayBaseURL.absoluteString) still isn't responding. Check the gateway URL and bearer token in Settings → Agents, then try again."
         }
     }
 
