@@ -267,6 +267,12 @@ extension CLIAgentMissionRequestListener {
         )
         guard trustResult.isTrusted else {
             logger.warning("mission id=\(document.documentID, privacy: .public) refused for untrusted Mac device=\(self.accountManager.deviceId, privacy: .public)")
+            await MissionRemoteAuthorizationShadow.observe(
+                missionID: document.documentID, data: data, prompt: prompt,
+                guiDecision: .deny, executorTrustState: "untrusted",
+                requestedRuntime: requestedRuntime, requestedModelID: requestedModelID,
+                requestedFanOutCount: missionGroupContext?.siblingCount ?? 1
+            )
             return
         }
 
@@ -296,7 +302,15 @@ extension CLIAgentMissionRequestListener {
             await fail(document: document, message: error.localizedDescription)
             return
         }
-        if await shouldPauseForApproval(document: document, data: data, backend: backend) {
+        let willPauseForApproval = await shouldPauseForApproval(document: document, data: data, backend: backend)
+        await MissionRemoteAuthorizationShadow.observe(
+            missionID: document.documentID, data: data, prompt: prompt,
+            guiDecision: MissionRemoteAuthorizationShadow.reduceGUIDecision(data: data, willPauseForApproval: willPauseForApproval),
+            executorTrustState: "trusted",
+            requestedRuntime: requestedRuntime, requestedModelID: requestedModelID,
+            requestedFanOutCount: missionGroupContext?.siblingCount ?? 1
+        )
+        if willPauseForApproval {
             return
         }
 
