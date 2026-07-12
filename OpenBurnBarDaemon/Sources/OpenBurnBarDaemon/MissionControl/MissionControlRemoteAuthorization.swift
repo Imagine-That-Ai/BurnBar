@@ -63,8 +63,12 @@ public enum BurnBarRemoteMissionAuthorizationPolicy {
         }
 
         // (d) Fan-out — malformed counts are invalid; anything over the
-        // daemon-trusted cap is refused. M2 has no trusted entitlement store
-        // inside the daemon yet, so it fails closed to the free-tier cap.
+        // daemon-trusted cap is refused. The trusted cap is the GUI-resolved
+        // entitlement cap (read from server-signed Firestore entitlement docs,
+        // NOT the advisory `entitlementTier` text), hard-clamped here to the
+        // maximum tier so a compromised transport can never widen fan-out past
+        // the ceiling. When the GUI reports no resolved cap (older build /
+        // unresolved), the daemon fails closed to the free-tier cap.
         guard request.requestedFanOutCount >= 1 else {
             return BurnBarRemoteMissionAuthorizeResponse(
                 verdict: .denied,
@@ -72,7 +76,7 @@ public enum BurnBarRemoteMissionAuthorizationPolicy {
                 detail: "Requested fan-out count \(request.requestedFanOutCount) is not a positive mission count."
             )
         }
-        let cap = trustedFanOutCap()
+        let cap = trustedFanOutCap(reportedCap: request.trustedFanOutCap)
         guard request.requestedFanOutCount <= cap else {
             return BurnBarRemoteMissionAuthorizeResponse(
                 verdict: .denied,
@@ -136,10 +140,18 @@ public enum BurnBarRemoteMissionAuthorizationPolicy {
         )
     }
 
-    /// (d) Trusted Wand fan-out cap. Until M3 wires daemon-owned entitlement
-    /// resolution, the only safe cap is the free-tier cap.
-    static func trustedFanOutCap() -> Int {
-        WandFanOut.maxParallel(for: .none)
+    /// (d) Trusted Wand fan-out cap. The daemon has no direct entitlement store,
+    /// so the GUI reports the cap it resolved from the server-signed Firestore
+    /// entitlement documents. The daemon honors that cap but never trusts it
+    /// verbatim: it is clamped to `[freeCap, ultraCap]` so a compromised or
+    /// buggy transport can neither widen fan-out past the maximum tier nor drop
+    /// it below the always-available free cap. A `nil` reported cap (older GUI /
+    /// unresolved) fails closed to the free cap.
+    static func trustedFanOutCap(reportedCap: Int?) -> Int {
+        let freeCap = WandFanOut.maxParallel(for: .none)
+        let ultraCap = WandFanOut.maxParallel(for: .ultra)
+        guard let reportedCap else { return freeCap }
+        return min(max(reportedCap, freeCap), ultraCap)
     }
 
     static func requiresPreDispatchApproval(

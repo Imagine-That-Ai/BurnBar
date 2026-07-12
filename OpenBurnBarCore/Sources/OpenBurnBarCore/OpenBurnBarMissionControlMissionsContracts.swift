@@ -1181,6 +1181,13 @@ public struct BurnBarRemoteMissionAuthorizeRequest: Codable, Hashable, Sendable 
     public let entitlementTier: String
     /// Sibling count of the mission's Wand fan-out group (1 = solo mission).
     public let requestedFanOutCount: Int
+    /// The GUI-resolved trusted Wand fan-out cap for this account, read from the
+    /// server-signed Firestore entitlement documents (NOT the advisory
+    /// `entitlementTier` wire text). Absent for older GUIs; when present the
+    /// daemon treats it as the authoritative cap, clamped to a hard ceiling so a
+    /// compromised transport can never widen fan-out past the maximum tier. When
+    /// absent the daemon fails closed to the free-tier cap.
+    public let trustedFanOutCap: Int?
     public let workingDirectory: String?
 
     public init(
@@ -1199,6 +1206,7 @@ public struct BurnBarRemoteMissionAuthorizeRequest: Codable, Hashable, Sendable 
         approverDeviceID: String? = nil,
         entitlementTier: String,
         requestedFanOutCount: Int = 1,
+        trustedFanOutCap: Int? = nil,
         workingDirectory: String? = nil
     ) {
         self.missionID = missionID
@@ -1216,7 +1224,32 @@ public struct BurnBarRemoteMissionAuthorizeRequest: Codable, Hashable, Sendable 
         self.approverDeviceID = approverDeviceID
         self.entitlementTier = entitlementTier
         self.requestedFanOutCount = requestedFanOutCount
+        self.trustedFanOutCap = trustedFanOutCap
         self.workingDirectory = workingDirectory
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        missionID = try container.decode(String.self, forKey: .missionID)
+        originDeviceID = try container.decode(String.self, forKey: .originDeviceID)
+        originPlatform = try container.decode(String.self, forKey: .originPlatform)
+        executorTrustState = try container.decode(String.self, forKey: .executorTrustState)
+        promptSummary = try container.decode(String.self, forKey: .promptSummary)
+        promptSHA256 = try container.decode(String.self, forKey: .promptSHA256)
+        requestedRuntime = try container.decodeIfPresent(String.self, forKey: .requestedRuntime)
+        requestedModelID = try container.decodeIfPresent(String.self, forKey: .requestedModelID)
+        requestedGrant = try container.decode(BurnBarRemoteMissionCapabilityGrantRequest.self, forKey: .requestedGrant)
+        personaScope = try container.decodeIfPresent(PersonaScopeEnvelope.self, forKey: .personaScope)
+        approvalMode = try container.decodeIfPresent(String.self, forKey: .approvalMode)
+        approvalStatus = try container.decodeIfPresent(String.self, forKey: .approvalStatus)
+        approverDeviceID = try container.decodeIfPresent(String.self, forKey: .approverDeviceID)
+        entitlementTier = try container.decode(String.self, forKey: .entitlementTier)
+        requestedFanOutCount = try container.decodeIfPresent(Int.self, forKey: .requestedFanOutCount) ?? 1
+        // Absent on the wire from an older GUI: fail closed (nil → daemon uses
+        // the free-tier cap). A present cap is honored (and hard-clamped) by the
+        // daemon policy, never trusted verbatim.
+        trustedFanOutCap = try container.decodeIfPresent(Int.self, forKey: .trustedFanOutCap)
+        workingDirectory = try container.decodeIfPresent(String.self, forKey: .workingDirectory)
     }
 }
 
