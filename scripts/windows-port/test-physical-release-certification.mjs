@@ -69,6 +69,7 @@ assert.match(
   localRunner,
   /windows\/OpenBurnBar\.sln[\s\S]*--blame-hang-timeout", "60s"[\s\S]*timeoutMs: 900000/,
 );
+assert.match(localRunner, /PYTHONUTF8: process\.env\.PYTHONUTF8 \?\? "1"/);
 
 const windowsHost = describeLocalCertificationHost({
   platform: "win32",

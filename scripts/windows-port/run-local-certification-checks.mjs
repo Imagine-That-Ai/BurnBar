@@ -174,7 +174,7 @@ function runCommand(spec) {
     encoding: "utf8",
     timeout: spec.timeoutMs,
     maxBuffer: 32 * 1024 * 1024,
-    env: { ...process.env },
+    env: { ...process.env, PYTHONUTF8: process.env.PYTHONUTF8 ?? "1" },
   });
   const endedAt = new Date();
   const timedOut = result.error?.code === "ETIMEDOUT" || result.signal === "SIGTERM";
