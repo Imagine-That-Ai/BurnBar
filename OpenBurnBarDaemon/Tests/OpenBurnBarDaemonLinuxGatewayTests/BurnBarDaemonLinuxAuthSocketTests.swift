@@ -200,6 +200,65 @@ final class BurnBarDaemonLinuxAuthSocketTests: XCTestCase {
         await server.stop()
     }
 
+    func testUnavailableAuthorityReturnsTypedFailClosedMutationErrors() async throws {
+        let server = BurnBarDaemonServer(
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: makeSocketPath("unavailable-authority"),
+                socketAuthToken: authToken,
+                startsMissionControlBackgroundLoops: false
+            )
+        )
+        let decoder = JSONDecoder()
+
+        let cases: [(BurnBarRPCMethod, Data, Int, String)] = [
+            (
+                .linuxAuthBegin,
+                try encodeEnvelope(id: "unavailable-begin", method: .linuxAuthBegin),
+                BurnBarRPCErrorCode.internalError,
+                "Linux browser sign-in is unavailable."
+            ),
+            (
+                .linuxAuthCancel,
+                try JSONEncoder().encode(BurnBarRPCRequestEnvelopeWithParams(
+                    id: "unavailable-cancel",
+                    method: BurnBarRPCMethod.linuxAuthCancel,
+                    authToken: authToken,
+                    params: BurnBarLinuxAuthCancelRequest(operationID: "missing-operation")
+                )),
+                BurnBarRPCErrorCode.invalidRequest,
+                "The Linux sign-in operation could not be cancelled."
+            ),
+            (
+                .linuxAuthRotateIdentity,
+                try encodeEnvelope(id: "unavailable-rotate", method: .linuxAuthRotateIdentity),
+                BurnBarRPCErrorCode.invalidRequest,
+                "The Linux installation identity could not be rotated."
+            ),
+            (
+                .linuxAuthSignOut,
+                try encodeEnvelope(id: "unavailable-sign-out", method: .linuxAuthSignOut),
+                BurnBarRPCErrorCode.internalError,
+                "Linux sign-out did not complete."
+            )
+        ]
+
+        for (method, requestData, expectedCode, expectedMessage) in cases {
+            let responseData = try await server.handleLinuxAuthRPC(
+                method: method,
+                decoder: decoder,
+                requestData: requestData
+            )
+            let response = try decode(
+                BurnBarRPCResponseEnvelope<BurnBarEmptyResult>.self,
+                from: responseData
+            )
+            XCTAssertNil(response.result, method.rawValue)
+            XCTAssertEqual(response.error?.code, expectedCode, method.rawValue)
+            XCTAssertEqual(response.error?.message, expectedMessage, method.rawValue)
+            assertDoesNotLeakCredentials(responseData)
+        }
+    }
+
     private func makeAuthority(
         backend: LinuxAuthSocketSecretBackend
     ) -> LinuxDaemonCloudCredentialAuthority {

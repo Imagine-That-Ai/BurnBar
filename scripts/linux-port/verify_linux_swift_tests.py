@@ -30,12 +30,20 @@ FORBIDDEN_PLACEHOLDER_SOURCES = {
 
 XCTEST_PASS_PATTERN = re.compile(r"Test Case '[^']+' passed \(([0-9.]+) seconds\)")
 
-# This floor intentionally lives outside the editable manifest. A manifest-only
-# minimum is self-attested and can be lowered in the same change that removes
-# coverage filters.
+# The floor and mandatory filters live outside the editable manifest. The daemon
+# suite deliberately uses stable class/test partitions because a few otherwise
+# correct async tests do not terminate under LLVM coverage instrumentation.
 MINIMUM_LINUX_COVERAGE_FILTERS_BY_SUITE = {
     "computer-use-linux": 1,
-    "daemon-linux": 50,
+    "daemon-linux": 70,
+}
+
+REQUIRED_LINUX_COVERAGE_FILTERS_BY_SUITE = {
+    "computer-use-linux": ["OpenBurnBarComputerUseCoreTests"],
+    "daemon-linux": [
+        "OpenBurnBarDaemonLinuxGatewayTests.BurnBarDaemonLinuxAuthSocketTests",
+        "OpenBurnBarDaemonLinuxGatewayTests.ComputerUseSessionGrantRPCCompositionTests",
+    ],
 }
 
 
@@ -105,6 +113,7 @@ def validate_contract(root: Path, manifest: dict) -> dict:
             coverage_packages.add(suite["packagePath"])
             coverage_filters = suite.get("linuxCoverageFilters")
             minimum_coverage_filters = MINIMUM_LINUX_COVERAGE_FILTERS_BY_SUITE.get(suite_id)
+            required_coverage_filters = REQUIRED_LINUX_COVERAGE_FILTERS_BY_SUITE.get(suite_id)
             if (
                 not isinstance(coverage_filters, list)
                 or not coverage_filters
@@ -115,13 +124,19 @@ def validate_contract(root: Path, manifest: dict) -> dict:
                 failures.append(f"coverage-owning suite {suite_id} contains duplicate linuxCoverageFilters")
             if "minimumLinuxCoverageFilters" in suite:
                 failures.append(f"coverage-owning suite {suite_id} may not self-attest minimumLinuxCoverageFilters")
-            if minimum_coverage_filters is None:
-                failures.append(f"coverage-owning suite {suite_id} has no pinned coverage-filter floor")
+            if minimum_coverage_filters is None or required_coverage_filters is None:
+                failures.append(f"coverage-owning suite {suite_id} has no pinned coverage contract")
             elif isinstance(coverage_filters, list) and len(coverage_filters) < minimum_coverage_filters:
                 failures.append(
                     f"coverage-owning suite {suite_id} filter set shrank below its pinned contract "
                     f"({len(coverage_filters)} < {minimum_coverage_filters})"
                 )
+            elif isinstance(coverage_filters, list):
+                missing_required = sorted(set(required_coverage_filters) - set(coverage_filters))
+                if missing_required:
+                    failures.append(
+                        f"coverage-owning suite {suite_id} is missing mandatory stable filters: {missing_required}"
+                    )
         elif "linuxCoverageFilters" in suite:
             failures.append(f"non-coverage suite {suite_id} may not declare linuxCoverageFilters")
         elif "minimumLinuxCoverageFilters" in suite:

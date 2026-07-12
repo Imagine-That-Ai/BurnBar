@@ -66,6 +66,36 @@ final class ComputerUseSessionGrantRPCCompositionTests: XCTestCase {
         XCTAssertEqual(brokerUnavailable.result?.available, false)
         XCTAssertEqual(brokerUnavailable.result?.reason, .brokerUnavailable)
 
+        let transportUnavailableBroker = ComputerUseSessionGrantBroker(
+            publisher: nil,
+            prevalidatePinnedPhoneGrant: { _, _, _ in }
+        )
+        let transportUnavailableServer = makeReadinessServer(
+            root: root.appendingPathComponent("transport-unavailable"),
+            broker: transportUnavailableBroker
+        )
+        let transportUnavailable = try await readiness(
+            server: transportUnavailableServer,
+            id: "transport-unavailable"
+        )
+        XCTAssertEqual(transportUnavailable.result?.available, false)
+        XCTAssertEqual(transportUnavailable.result?.reason, .transportUnavailable)
+
+        let proofUnavailableBroker = ComputerUseSessionGrantBroker(
+            publisher: { _, _ in },
+            prevalidatePinnedPhoneGrant: nil
+        )
+        let proofUnavailableServer = makeReadinessServer(
+            root: root.appendingPathComponent("proof-unavailable"),
+            broker: proofUnavailableBroker
+        )
+        let proofUnavailable = try await readiness(
+            server: proofUnavailableServer,
+            id: "proof-unavailable"
+        )
+        XCTAssertEqual(proofUnavailable.result?.available, false)
+        XCTAssertEqual(proofUnavailable.result?.reason, .proofValidatorUnavailable)
+
         let operationalBroker = ComputerUseSessionGrantBroker(
             publisher: { _, _ in },
             prevalidatePinnedPhoneGrant: { _, _, _ in }
@@ -99,6 +129,121 @@ final class ComputerUseSessionGrantRPCCompositionTests: XCTestCase {
         let ready = try await readiness(server: readyServer, id: "ready")
         XCTAssertEqual(ready.result?.available, true)
         XCTAssertEqual(ready.result?.reason, .ready)
+
+        let runtimeNotReadyServer = makeReadinessServer(
+            root: root.appendingPathComponent("runtime-not-ready"),
+            broker: operationalBroker,
+            metadataResolver: { _, _ in throw CompositionTestFailure.invalidPhoneGrant },
+            readinessProvider: { false }
+        )
+        let runtimeNotReady = try await readiness(
+            server: runtimeNotReadyServer,
+            id: "runtime-not-ready"
+        )
+        XCTAssertEqual(runtimeNotReady.result?.available, false)
+        XCTAssertEqual(runtimeNotReady.result?.reason, .pairingUnavailable)
+
+        let missingStatus: BurnBarRPCResponseEnvelope<ComputerUseSessionGrantStatusResponse> = try await rpc(
+            server: defaultServer,
+            method: .computerUseSessionGrantStatus,
+            id: "missing-status",
+            params: ComputerUseSessionGrantStatusRequest(challengeId: "missing")
+        )
+        XCTAssertEqual(missingStatus.error?.code, BurnBarRPCErrorCode.invalidParams)
+
+        let missingRunStart: BurnBarRPCResponseEnvelope<ComputerUseSessionStartResponse> = try await rpc(
+            server: defaultServer,
+            method: .computerUseSessionStart,
+            id: "missing-run-start",
+            params: ComputerUseSessionStartRequest(
+                mode: ComputerUseMode.browser.rawValue,
+                trustMode: ComputerUseTrustMode.step.rawValue,
+                clientID: BurnBarClientID(rawValue: "missing-run-client")
+            )
+        )
+        XCTAssertEqual(missingRunStart.error?.code, BurnBarRPCErrorCode.invalidParams)
+
+        do {
+            let _: BurnBarRPCResponseEnvelope<ComputerUseSessionStartResponse> = try await rpc(
+                server: defaultServer,
+                method: .computerUseSessionStart,
+                id: "unentitled-system-start",
+                params: ComputerUseSessionStartRequest(
+                    mode: ComputerUseMode.system.rawValue,
+                    trustMode: ComputerUseTrustMode.step.rawValue,
+                    clientID: BurnBarClientID(rawValue: "unentitled-system-client")
+                )
+            )
+            XCTFail("An unentitled system session must fail closed")
+        } catch {
+            XCTAssertFalse(String(describing: error).isEmpty)
+        }
+
+        let barePending = BurnBarRPCRequestEnvelope(
+            id: "bare-pending",
+            method: .computerUseApprovalPending,
+            authToken: "test-token"
+        )
+        let barePendingData = try await defaultServer.handleComputerUseRPC(
+            method: .computerUseApprovalPending,
+            decoder: JSONDecoder(),
+            requestData: JSONEncoder().encode(barePending)
+        )
+        let barePendingResponse = try JSONDecoder().decode(
+            BurnBarRPCResponseEnvelope<ComputerUseApprovalPendingResponse>.self,
+            from: barePendingData
+        )
+        XCTAssertEqual(barePendingResponse.result?.requests, [])
+        XCTAssertEqual(barePendingResponse.result?.runRequirements, [])
+        XCTAssertNil(barePendingResponse.result?.sessionActive)
+    }
+
+    func testSignedApprovalRPCRejectsMissingSessionAndMissingPendingRequest() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-cu-approval-rpc-errors-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let verifier = DaemonComputerUseApprovalAuthorityVerifier(
+            resolvePinnedKey: { _ in nil },
+            replayCounterStore: DaemonComputerUseApprovalReplayCounterStore(
+                fileURL: root.appendingPathComponent("approval-counters.json")
+            )
+        )
+        let server = BurnBarDaemonServer(
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: root.appendingPathComponent("daemon.sock").path,
+                socketAuthToken: "test-token",
+                startsMissionControlBackgroundLoops: false
+            ),
+            logger: BurnBarDaemonLogger(category: "cu-approval-rpc-error-tests"),
+            localAuthProofVerifier: DaemonLocalAuthProofVerifier(
+                resolvePinnedKey: { _ in nil },
+                consumeProof: { _, _ in true }
+            ),
+            computerUseApprovalAuthorityVerifier: verifier
+        )
+        let response = HermesRealtimeRelayApprovalResponse(
+            approvalId: "missing-approval",
+            decision: .approve,
+            respondedBy: "phone-1",
+            respondedAt: Date()
+        )
+
+        let missingSession: BurnBarRPCResponseEnvelope<ComputerUseApprovalRespondResponse> = try await rpc(
+            server: server,
+            method: .computerUseApprovalRespond,
+            id: "missing-session",
+            params: ComputerUseApprovalRespondRequest(response: response)
+        )
+        XCTAssertEqual(missingSession.error?.code, BurnBarRPCErrorCode.unauthorized)
+
+        let missingPending: BurnBarRPCResponseEnvelope<ComputerUseApprovalRespondResponse> = try await rpc(
+            server: server,
+            method: .computerUseApprovalRespond,
+            id: "missing-pending",
+            params: ComputerUseApprovalRespondRequest(sessionId: "session-1", response: response)
+        )
+        XCTAssertEqual(missingPending.error?.code, BurnBarRPCErrorCode.unauthorized)
     }
 
     func testAcquireIngestStatusDenialAndKnownStartFailureRemainRetryableUntilSuccess() async throws {
@@ -225,6 +370,120 @@ final class ComputerUseSessionGrantRPCCompositionTests: XCTestCase {
                 )
             }
         )
+
+        let invalidAcquire: BurnBarRPCResponseEnvelope<ComputerUseSessionGrantStatusResponse> = try await rpc(
+            server: server,
+            method: .computerUseSessionGrantAcquire,
+            id: "invalid-acquire",
+            params: ComputerUseSessionGrantAcquireRequest(
+                sessionRequest: ComputerUseSessionStartRequest(
+                    mode: ComputerUseMode.system.rawValue,
+                    trustMode: ComputerUseTrustMode.step.rawValue,
+                    clientID: clientID
+                )
+            )
+        )
+        XCTAssertEqual(invalidAcquire.error?.code, BurnBarRPCErrorCode.invalidParams)
+
+        let brokerUnavailableServer = BurnBarDaemonServer(
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: root.appendingPathComponent("broker-unavailable.sock").path,
+                socketAuthToken: "test-token",
+                startsMissionControlBackgroundLoops: false
+            ),
+            logger: BurnBarDaemonLogger(category: "cu-grant-rpc-broker-unavailable-tests"),
+            runService: runService,
+            computerUseService: service,
+            computerUseAuthorizationRegistry: registry
+        )
+        let brokerUnavailable: BurnBarRPCResponseEnvelope<ComputerUseSessionGrantStatusResponse> = try await rpc(
+            server: brokerUnavailableServer,
+            method: .computerUseSessionGrantAcquire,
+            id: "broker-unavailable",
+            params: ComputerUseSessionGrantAcquireRequest(sessionRequest: unsignedRequest)
+        )
+        XCTAssertEqual(brokerUnavailable.error?.code, BurnBarRPCErrorCode.internalError)
+
+        let resolverFailureServer = BurnBarDaemonServer(
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: root.appendingPathComponent("resolver-failure.sock").path,
+                socketAuthToken: "test-token",
+                startsMissionControlBackgroundLoops: false
+            ),
+            logger: BurnBarDaemonLogger(category: "cu-grant-rpc-resolver-failure-tests"),
+            runService: runService,
+            computerUseService: service,
+            computerUseAuthorizationRegistry: registry,
+            computerUseSessionGrantBroker: broker,
+            computerUseSessionGrantMetadataResolver: { _, _ in
+                throw CompositionTestFailure.invalidPhoneGrant
+            }
+        )
+        let resolverFailure: BurnBarRPCResponseEnvelope<ComputerUseSessionGrantStatusResponse> = try await rpc(
+            server: resolverFailureServer,
+            method: .computerUseSessionGrantAcquire,
+            id: "resolver-failure",
+            params: ComputerUseSessionGrantAcquireRequest(sessionRequest: unsignedRequest)
+        )
+        XCTAssertEqual(resolverFailure.error?.code, BurnBarRPCErrorCode.unauthorized)
+
+        let localAuthOnlyServer = BurnBarDaemonServer(
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: root.appendingPathComponent("local-auth-only.sock").path,
+                socketAuthToken: "test-token",
+                startsMissionControlBackgroundLoops: false
+            ),
+            logger: BurnBarDaemonLogger(category: "cu-grant-rpc-local-auth-only-tests"),
+            runService: runService,
+            computerUseService: service,
+            computerUseAuthorizationRegistry: registry,
+            localAuthProofVerifier: verifier
+        )
+        let missingPairedAuthority: BurnBarRPCResponseEnvelope<ComputerUseSessionStartResponse> = try await rpc(
+            server: localAuthOnlyServer,
+            method: .computerUseSessionStart,
+            id: "missing-paired-authority",
+            params: unsignedRequest,
+            peerPID: 42
+        )
+        XCTAssertEqual(missingPairedAuthority.error?.code, BurnBarRPCErrorCode.unauthorized)
+
+        let prepareFailureServer = BurnBarDaemonServer(
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: root.appendingPathComponent("prepare-failure.sock").path,
+                socketAuthToken: "test-token",
+                startsMissionControlBackgroundLoops: false
+            ),
+            logger: BurnBarDaemonLogger(category: "cu-grant-rpc-prepare-failure-tests"),
+            runService: runService,
+            computerUseService: service,
+            computerUseAuthorizationRegistry: registry,
+            localAuthProofVerifier: verifier,
+            computerUseSessionGrantBroker: broker
+        )
+        let missingChallengeRequest = ComputerUseSessionStartRequest(
+            mode: unsignedRequest.mode,
+            trustMode: unsignedRequest.trustMode,
+            scopeRuleIds: unsignedRequest.scopeRuleIds,
+            phoneViewerNodeId: unsignedRequest.phoneViewerNodeId,
+            macHostNodeId: unsignedRequest.macHostNodeId,
+            actionCap: unsignedRequest.actionCap,
+            sessionTimeoutSeconds: unsignedRequest.sessionTimeoutSeconds,
+            clientID: unsignedRequest.clientID,
+            runID: unsignedRequest.runID,
+            runCallID: unsignedRequest.runCallID,
+            runGeneration: unsignedRequest.runGeneration,
+            grantChallengeId: "missing-challenge",
+            desktopOwnerAuthorizationRequest: unsignedRequest.desktopOwnerAuthorizationRequest
+        )
+        let missingChallenge: BurnBarRPCResponseEnvelope<ComputerUseSessionStartResponse> = try await rpc(
+            server: prepareFailureServer,
+            method: .computerUseSessionStart,
+            id: "missing-challenge",
+            params: missingChallengeRequest,
+            peerPID: 42
+        )
+        XCTAssertEqual(missingChallenge.error?.code, BurnBarRPCErrorCode.unauthorized)
 
         let acquired: BurnBarRPCResponseEnvelope<ComputerUseSessionGrantStatusResponse> = try await rpc(
             server: server,

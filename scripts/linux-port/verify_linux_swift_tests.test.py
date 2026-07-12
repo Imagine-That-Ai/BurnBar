@@ -218,13 +218,20 @@ sleep 5
     def test_real_contract_rejects_silently_shrunk_coverage_filter_set(self) -> None:
         root = MODULE_PATH.parents[2]
         manifest = copy.deepcopy(VERIFIER.load_manifest(root))
-        owner = next(
-            suite
-            for suite in manifest["suites"]
-            if VERIFIER.MINIMUM_LINUX_COVERAGE_FILTERS_BY_SUITE.get(suite["id"], 0) > 1
-        )
+        owner = next(suite for suite in manifest["suites"] if suite["id"] == "daemon-linux")
         owner["linuxCoverageFilters"].pop()
         with self.assertRaisesRegex(VERIFIER.VerificationError, "filter set shrank below its pinned contract"):
+            VERIFIER.validate_contract(root, manifest)
+
+    def test_real_contract_rejects_removing_mandatory_stable_filter(self) -> None:
+        root = MODULE_PATH.parents[2]
+        manifest = copy.deepcopy(VERIFIER.load_manifest(root))
+        owner = next(suite for suite in manifest["suites"] if suite["id"] == "daemon-linux")
+        owner["linuxCoverageFilters"].remove(
+            "OpenBurnBarDaemonLinuxGatewayTests.ComputerUseSessionGrantRPCCompositionTests"
+        )
+        owner["linuxCoverageFilters"].append("OpenBurnBarDaemonLinuxGatewayTests.ComputerUseSessionGrantBrokerTests")
+        with self.assertRaisesRegex(VERIFIER.VerificationError, "missing mandatory stable filters"):
             VERIFIER.validate_contract(root, manifest)
 
     def test_real_contract_rejects_self_attested_coverage_floor(self) -> None:
