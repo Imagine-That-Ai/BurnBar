@@ -242,18 +242,7 @@ extension CLIAgentMissionRequestListener {
             )
         } catch {
             logger.warning("mission id=\(document.documentID, privacy: .public) refused before claim: \(error.localizedDescription, privacy: .public)")
-            let failPrompt = (data["prompt"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-                ?? ""
-            let failRuntime = (data["requestedRuntime"] as? String) ?? "auto"
-            let failModelID = (data["requestedModelID"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-            Task { @MainActor in
-                await MissionRemoteAuthorizationShadow.observe(
-                    missionID: document.documentID, data: data, prompt: failPrompt,
-                    guiDecision: .deny, executorTrustState: "trusted",
-                    requestedRuntime: failRuntime, requestedModelID: failModelID,
-                    requestedFanOutCount: 1
-                )
-            }
+            MissionRemoteAuthorizationShadow.observeDeny(missionID: document.documentID, data: data, executorTrustState: "trusted")
             await fail(document: document, message: error.localizedDescription)
             return
         }
@@ -279,19 +268,11 @@ extension CLIAgentMissionRequestListener {
         )
         guard trustResult.isTrusted else {
             logger.warning("mission id=\(document.documentID, privacy: .public) refused for untrusted Mac device=\(self.accountManager.deviceId, privacy: .public)")
-            let denyPrompt = prompt
-            let denyRuntime = requestedRuntime
-            let denyModelID = requestedModelID
-            let denyFanOut = missionGroupContext?.siblingCount ?? 1
-            let denyData = data
-            Task { @MainActor in
-                await MissionRemoteAuthorizationShadow.observe(
-                    missionID: document.documentID, data: denyData, prompt: denyPrompt,
-                    guiDecision: .deny, executorTrustState: "untrusted",
-                    requestedRuntime: denyRuntime, requestedModelID: denyModelID,
-                    requestedFanOutCount: denyFanOut
-                )
-            }
+            MissionRemoteAuthorizationShadow.observeDeny(
+                missionID: document.documentID, data: data,
+                executorTrustState: "untrusted",
+                fanOutCount: missionGroupContext?.siblingCount ?? 1
+            )
             return
         }
 
@@ -322,49 +303,12 @@ extension CLIAgentMissionRequestListener {
             return
         }
         let willPauseForApproval = await shouldPauseForApproval(document: document, data: data, backend: backend)
-        // Detect terminal GUI denial: when the pause is caused by Mac CLI
-        // assistants being disabled (not a genuine approval pause), the
-        // mission is already failed — the shadow must report `.deny`, not
-        // `.requiresApproval`, so the GUI-vs-daemon divergence is visible.
-        let isTerminalDenial = willPauseForApproval
-            && CLIAgentMissionRuntimePlanner.requiresMacCLIAssistantConsentForRemoteMission(backend: backend)
-            && !settingsManager.cliAssistantAllowed
-        // Validate persona scope BEFORE shadowing an allow: a malformed present
-        // scope causes the GUI to fail closed later, so the shadow must not
-        // emit `.allow` first (it would hide the divergence).
-        let personaScopeIsMalformed: Bool = {
-            guard data["personaScopeJSON"] != nil else { return false }
-            return CLIAgentMissionPersonaScopeResolution.resolve(from: data).isRefused
-        }()
-        let shadowDecision = personaScopeIsMalformed
-            ? GUIMissionAuthorizationDecision.deny
-            : MissionRemoteAuthorizationShadow.reduceGUIDecision(
-                data: data,
-                willPauseForApproval: willPauseForApproval,
-                isTerminalDenial: isTerminalDenial
-            )
-        // Fire the shadow observation WITHOUT awaiting so processingDocs is
-        // released promptly and approval transitions arriving during the
-        // daemon RPC are not swallowed.
-        Task { @MainActor in
-            await MissionRemoteAuthorizationShadow.observe(
-                missionID: document.documentID, data: data, prompt: prompt,
-                guiDecision: shadowDecision,
-                executorTrustState: "trusted",
-                requestedRuntime: requestedRuntime, requestedModelID: requestedModelID,
-                requestedFanOutCount: missionGroupContext?.siblingCount ?? 1
-            )
-        }
+        MissionRemoteAuthorizationShadow.observeTrustedDecision(missionID: document.documentID, data: data, willPauseForApproval: willPauseForApproval, backend: backend, cliAssistantAllowed: settingsManager.cliAssistantAllowed, fanOutCount: missionGroupContext?.siblingCount ?? 1)
         if willPauseForApproval {
             return
         }
-        if personaScopeIsMalformed {
-            await fail(
-                document: document,
-                message: "The persona scope attached to this mission could not be read, "
-                    + "so it was rejected instead of running with broader permissions. "
-                    + "Re-send the mission from your device."
-            )
+        if MissionRemoteAuthorizationShadow.personaScopeIsMalformed(in: data) {
+            await fail(document: document, message: "The persona scope attached to this mission could not be read, so it was rejected instead of running with broader permissions. Re-send the mission from your device.")
             return
         }
 
