@@ -370,7 +370,7 @@ required gates and were not made green by the Ed25519 result.
 | P-08 | Mercury media | File transfer, calls, screen share, mirroring, presence, consent | Daemon-owned transport, calls, files, sealed capture, portal consent, HUD, and live capability probing are implemented; real cross-device and compositor proof remains open | Partial | Critical |
 | P-09 | Navigation and shell | Dashboard, insights, deep provider/model routes, multi-window flows | All 19 installed routes activate through AT-SPI; deep links and native multi-window behavior remain thinner | Near parity | Medium |
 | P-10 | Dashboard layouts | Six dense layouts with real live content and persisted state | All six layouts, persistence, loading/error/offline/populated states, tokens, and tests exist; the packaged six-layout visual matrix remains incomplete | Near parity | Medium |
-| P-11 | Usage ingestion | 27 parser registrations, API/quota aggregation, recount, projections, cloud mirror | One 15-row Linux path registry now drives shell discovery copy and is contract-tested against Swift; the full macOS/Linux normalized parser corpus remains unproven | Partial | High |
+| P-11 | Usage ingestion | 27 parser registrations, API/quota aggregation, recount, projections, cloud mirror | One machine-readable manifest now covers all 33 `AgentProvider` identities exactly once and generates typed Swift/Linux outputs for provider identity, parser/path/XDG/symlink rules, quota, chat, account connection, and explicit unsupported reasons. Swift discovery plus Linux Settings/onboarding consume it, with generator drift/mutation and compiled `allCases` coverage. The full macOS/Linux normalized parser corpus, installed scans, and differential output remain unproven | Partial | High |
 | P-12 | Quota | Provider quotas, histories, account switching, alerts | Strong read surface; account profiles, drain targets, and switching lag | Partial | Medium |
 | P-13 | Onboarding | Provider connection, scan, permissions, chat engine, recovery, completion gates | Daemon-owned state, required-step gates, restart recovery, Secret Service readback, XDG write verification, privacy persistence, and strict native/WebView RPC decoding are implemented; provider connection/scan, auth, portal, tray, update, and first-data readback remain incomplete | Partial | High |
 | P-14 | Chat | Persisted threads, search, streaming, models, attachments, citations, approvals, panes/pop-out | Synthetic transcript rows and multiple disabled controls; five vs twelve backends | Partial | High |
@@ -783,11 +783,13 @@ hard-disabling the route.
 ### GAP-007 - Make usage/provider coverage authoritative
 
 - **Difference:** macOS registers 27 parsers and combines local logs, APIs,
-  quotas, recount, persistence, projections, and cloud mirroring. Linux's UI
-  path registry has 15 rows and no generated proof that the shared daemon
-  parsers, Linux path discovery, settings, and UI share one complete catalog.
-  The registry count alone does not prove the remaining parser implementations
-  are absent; it proves coverage and wiring are not authoritatively demonstrated.
+  quotas, recount, persistence, projections, and cloud mirroring. The canonical
+  manifest now covers all 33 current `AgentProvider.allCases` exactly once and
+  generates the Swift discovery and Linux Settings/onboarding contracts. It
+  explicitly records the 27 parser-backed identities, conventional-but-not-yet-
+  parsed OpenClaude/OMP paths, and four API-only/no-local-log identities. Linux
+  still lacks a same-input, same-output macOS differential corpus and installed
+  proof that every declared parser can read real native artifacts.
 - **Why it matters:** missing or mislabeled usage silently breaks the app's core
   value and makes parity counts unreliable.
 - **Recommended solution:** generate macOS and Linux provider/model/path
@@ -801,6 +803,25 @@ hard-disabling the route.
   usage, cost, quota, model/provider identity, timestamps, and deduplication on
   macOS and Linux; every declared provider has path, parser, empty, error, and
   migration tests.
+
+**Implementation update (2026-07-12): canonical catalog foundation complete;
+differential evidence remains open.**
+
+- `tools/provider-capabilities/provider-capabilities.json` is the only authored
+  provider capability/path table. The generator emits typed Swift and TypeScript
+  outputs and CI rejects drift.
+- Compiled Swift tests compare generated keys against `AgentProvider.allCases`,
+  canonical provider IDs, quota/account registries, and every Assistant runtime;
+  mutation tests reject duplicate identities, incomplete paths, and a parser on
+  an explicit no-local-log provider.
+- Linux path tests cover custom XDG config/data, Flatpak-style XDG homes,
+  `SNAP_REAL_HOME`, an explicit host-home override, standardized logical-path
+  identity, symlinks, rotation, and every unsupported local-source case.
+- Remaining proof: shared fixture corpus for all 27 parser registrations;
+  normalized macOS/Linux output comparison; malformed/partial/rotated artifact
+  cases per format; multi-account quota/provider attribution; installed Snap,
+  Flatpak, AppImage, deb, and rpm scans; performance/soak bounds on a realistic
+  corpus. None of those evidence gaps is closed by catalog coverage alone.
 
 ### GAP-008 - Replace informational onboarding with transactional setup
 
@@ -1782,9 +1803,10 @@ Primary current evidence and implementation references:
 - Linux Mercury runtime: `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/MercuryLinux*`,
   `apps/linux-desktop/src/state/mediaStore.ts`, and
   `apps/linux-desktop/src/surfaces/media/`
-- Canonical Linux paths/provider registry:
+- Canonical provider capability/path manifest:
+  `tools/provider-capabilities/provider-capabilities.json`,
+  `tools/provider-capabilities/generate-provider-capabilities.mjs`, and
   `OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/OpenBurnBarLinuxPaths.swift`
-  and `apps/linux-desktop/src/providerPathRegistry.ts`
 - Linux daemon secret stores: `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/`
 - Current ledger: `docs/linux-port/parity-ledger.json` and
   `docs/linux-port/parity-ledger.md`

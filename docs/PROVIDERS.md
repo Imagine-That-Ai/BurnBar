@@ -3,6 +3,15 @@
 > Do not regress: every provider must report real data or explicitly state "Not available."
 > Canonical mappings match the macOS and iOS `AgentProvider` schema definitions end-to-end.
 
+The cross-platform provider capability and path catalog is authored once in
+`tools/provider-capabilities/provider-capabilities.json`. Run
+`node tools/provider-capabilities/generate-provider-capabilities.mjs` after a
+catalog change; CI runs the same command with `--check`. The generated Swift and
+TypeScript outputs drive Core discovery plus Linux Settings/onboarding. A new
+`AgentProvider` case must have exactly one catalog row, even when it has no local
+logs, quota signal, chat runtime, or account-connect adapter; unsupported
+capabilities require the manifest's explicit reason policy.
+
 ## Provider Status Table
 
 | Provider | Adapter | Confidence | Source | Data Available |

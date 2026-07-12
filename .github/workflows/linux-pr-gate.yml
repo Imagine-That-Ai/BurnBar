@@ -12,6 +12,7 @@ on:
       - "schemas/linux-runtime-capability-manifest.schema.json"
       - "scripts/linux-port/**"
       - "tools/linux-toolchain/**"
+      - "tools/provider-capabilities/**"
       - "OpenBurnBarCore/**"
       - "OpenBurnBarDaemon/**"
   merge_group:
@@ -80,6 +81,11 @@ jobs:
 
       - name: Check Linux docs
         run: node scripts/linux-port/check-linux-docs.mjs
+
+      - name: Check canonical provider capabilities
+        run: |
+          node tools/provider-capabilities/generate-provider-capabilities.mjs --check
+          node --test scripts/linux-port/provider-capability-manifest.test.mjs
 
       # PR policy (Issue 6 R2): hermetic unit tests always run. Live probe against
       # GitHub latest-release feed availability is advisory on PRs until a
