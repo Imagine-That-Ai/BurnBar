@@ -67,7 +67,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: apps/linux-desktop/package-lock.json
+          cache-dependency-path: |
+            apps/linux-desktop/package-lock.json
+            scripts/linux-port/package-lock.json
+
+      - name: Install Linux evidence contract dependencies
+        run: npm ci --prefix scripts/linux-port --ignore-scripts
 
       - name: Validate Linux release config
         run: node scripts/linux-port/validate-linux-release-config.mjs
@@ -95,6 +100,14 @@ jobs:
       - name: Linux parity ledger unit tests
         run: >
           node --test
+          scripts/linux-port/attest-product-requirement.test.mjs
+          scripts/linux-port/github-artifact-provenance.test.mjs
+          scripts/linux-port/live-installed-product-evidence.test.mjs
+          scripts/linux-port/smoke-linux-packages.test.mjs
+          scripts/linux-port/product-proof-closure.test.mjs
+          scripts/linux-port/product-feature-proof-closure.test.mjs
+          scripts/linux-port/run-linux-matrix-harness.test.mjs
+          scripts/linux-port/run-product-requirement-validator.test.mjs
           scripts/linux-port/validate-parity-ledger.test.mjs
           scripts/linux-port/render-parity-ledger.test.mjs
 
@@ -102,6 +115,7 @@ jobs:
         run: >
           node --test
           scripts/linux-port/assemble-linux-release.test.mjs
+          scripts/linux-port/linux-aggregate-installed-attestation.test.mjs
           scripts/linux-port/browser-runtime-packaging.test.mjs
           scripts/linux-port/aur-browser-runtime-packaging.test.mjs
           scripts/linux-port/embed-linux-appimage-payload.test.mjs
@@ -110,6 +124,7 @@ jobs:
           scripts/linux-port/linux-package-session.test.mjs
           scripts/linux-port/prepare-linux-package-payload.test.mjs
           scripts/linux-port/sign-linux-release-requests.test.mjs
+          scripts/linux-port/signed-installed-package-wiring.test.mjs
           scripts/linux-port/credential-storage-contract.test.mjs
           scripts/linux-port/verify-linux-release.test.mjs
           scripts/linux-port/resolve-linux-release-version.test.mjs
@@ -119,6 +134,8 @@ jobs:
           node scripts/linux-port/verify-linux-workflow-wiring.mjs
           node --test \
             scripts/linux-port/verify-linux-workflow-wiring.test.mjs \
+            scripts/linux-port/resolve-product-evidence-run.test.mjs \
+            scripts/linux-port/resolve-product-receipt-artifacts.test.mjs \
             scripts/linux-port/runtime-capability-contract.test.mjs \
             scripts/linux-port/accessibility-harness-contract.test.mjs \
             scripts/linux-port/run-linux-native-tests.test.mjs \

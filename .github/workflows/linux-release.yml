@@ -1,4 +1,4 @@
-name: Linux Release
+name: Linux Release Candidate
 
 on:
   workflow_dispatch:
@@ -16,11 +16,6 @@ on:
           - prerelease
           - stable
           - nightly
-      allow_prerelease:
-        description: Mark GitHub release as prerelease
-        required: false
-        default: true
-        type: boolean
       previous_version:
         description: Previous published Linux version for native update/rollback proof; auto-discovers when empty
         required: false
@@ -30,7 +25,7 @@ on:
       - "linux-v*"
 
 permissions:
-  contents: write
+  contents: read
   id-token: write
   attestations: write
 
@@ -272,7 +267,7 @@ jobs:
           if-no-files-found: error
 
   assemble-release:
-    name: Assemble, attest, and publish Linux release
+    name: Assemble and attest Linux release candidate
     needs:
       - resolve-release
       - build-architecture
@@ -291,17 +286,15 @@ jobs:
         with:
           node-version: 22
 
+      - name: Install Linux evidence contract dependencies
+        run: npm ci --prefix scripts/linux-port --ignore-scripts
+
       - name: Download native architecture shards
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
         with:
           pattern: linux-release-shard-*
           path: ${{ env.OPENBURNBAR_LINUX_SHARDS_DIR }}
           merge-multiple: false
-
-      - name: Verify product parity at release HEAD
-        run: |
-          node scripts/linux-port/render-parity-ledger.mjs --check
-          node scripts/linux-port/validate-parity-ledger.mjs
 
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2 (node24-native)
@@ -311,19 +304,21 @@ jobs:
           OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM: ${{ secrets.OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM }}
         run: >
           node scripts/linux-port/assemble-linux-release.mjs
+          --candidate
           --version '${{ needs.resolve-release.outputs.version }}'
           --channel '${{ needs.resolve-release.outputs.channel }}'
 
       - name: Pre-attestation Linux release verification
         run: >
           node scripts/linux-port/verify-linux-release.mjs
+          --candidate
           --phase pre-attestation
           --version '${{ needs.resolve-release.outputs.version }}'
 
       - name: Attest Linux release sidecars and packages
         run: |
           set -euo pipefail
-          mapfile -t files < <(find "$OPENBURNBAR_LINUX_RELEASE_OUT" -type f \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name 'openburnbar-daemon-*' -o -name '*.spdx.json' -o -name '*.openvex.json' -o -name '*checksums.txt' -o -name '*source-*.tar' -o -name '*parity-attestation.json' -o -name '*provenance-predicate.json' -o -name 'latest-linux.draft.json' \) | sort)
+          mapfile -t files < <(find "$OPENBURNBAR_LINUX_RELEASE_OUT" -type f \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name 'openburnbar-daemon-*' -o -name '*.spdx.json' -o -name '*.openvex.json' -o -name '*checksums.txt' -o -name '*source-*.tar' -o -name '*provenance-predicate.json' -o -name 'latest-linux.draft.json' \) | sort)
           test "${#files[@]}" -gt 0
           for file in "${files[@]}"; do
             predicate="${file}.predicate.json"
@@ -342,67 +337,14 @@ jobs:
       - name: Final Linux release verification
         run: >
           node scripts/linux-port/verify-linux-release.mjs
+          --candidate
           --phase final
           --version '${{ needs.resolve-release.outputs.version }}'
 
-      - name: Publish Linux GitHub release
-        if: needs.resolve-release.outputs.publish_allowed == 'true'
+      - name: Finalize installed-product proof closure
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          tag="${{ needs.resolve-release.outputs.tag }}"
-          release_commit="$(git rev-parse HEAD)"
-          git fetch --force origin "+refs/tags/${tag}:refs/tags/${tag}"
-          tag_commit="$(git rev-list -n 1 "refs/tags/${tag}^{commit}")"
-          if [[ "$tag_commit" != "$release_commit" ]]; then
-            echo "::error::Remote release tag drifted: expected ${release_commit}, resolved ${tag_commit}"
-            exit 1
-          fi
-          art="$OPENBURNBAR_LINUX_RELEASE_OUT"
-          cp packaging/linux/openburnbar-linux-ed25519.pub.pem "$art/"
-          cp "$art/latest-linux.draft.json" "$art/latest-linux.json"
-          mapfile -t assets < <(find "$art/artifacts" "$art/sidecars" "$art" -maxdepth 2 -type f \
-            \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name 'openburnbar-daemon-*' \
-               -o -name '*.ed25519.sig' -o -name '*.sigstore.json' -o -name '*.spdx.json' \
-               -o -name '*.openvex.json' -o -name '*checksums*.txt' -o -name '*source-*.tar' \
-               -o -name '*parity-attestation.json' -o -name '*provenance-predicate.json' \
-               -o -name 'latest-linux.json' \
-               -o -name 'openburnbar-linux-ed25519.pub.pem' \) | sort -u)
-          prerelease=""
-          if [[ "${{ github.event_name }}" != "workflow_dispatch" || "${{ inputs.allow_prerelease }}" = "true" ]]; then
-            prerelease="--prerelease"
-          fi
-          gh release create "$tag" $prerelease \
-            --verify-tag \
-            --target "$release_commit" \
-            --latest=false \
-            --title "OpenBurnBar Linux ${{ needs.resolve-release.outputs.version }}" \
-            --notes "OpenBurnBar Linux candidate for aarch64 and x86_64. Artifacts include Ed25519 signatures, Sigstore bundles, source, SBOM, VEX, provenance, and parity attestation." \
-            "${assets[@]}"
-
-      - name: Configure branded Linux update origin
-        if: needs.resolve-release.outputs.publish_allowed == 'true'
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          OPENBURNBAR_R2_BUCKET: ${{ vars.OPENBURNBAR_R2_BUCKET }}
-          OPENBURNBAR_R2_CUSTOM_DOMAIN: downloads.burnbar.ai
-          OPENBURNBAR_R2_ZONE_ID: ${{ secrets.OPENBURNBAR_R2_ZONE_ID }}
-        run: bash scripts/setup-macos-downloads-r2.sh
-
-      - name: Publish signed update feed to downloads origin
-        if: needs.resolve-release.outputs.publish_allowed == 'true'
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          OPENBURNBAR_R2_BUCKET: ${{ vars.OPENBURNBAR_R2_BUCKET }}
-          OPENBURNBAR_R2_PUBLIC_BASE_URL: https://downloads.burnbar.ai
-        run: bash scripts/upload-linux-downloads-r2.sh
-
-      - name: Verify live Linux update feed after publish
-        if: needs.resolve-release.outputs.publish_allowed == 'true'
-        run: node scripts/linux-port/check-linux-update-feed.mjs --url https://downloads.burnbar.ai/latest-linux.json
+          TARGET_HEAD: ${{ github.sha }}
+        run: node scripts/linux-port/finalize-product-proof-closure.mjs --target-head "$TARGET_HEAD"
 
       - name: Upload Linux release evidence
         if: always()
@@ -413,4 +355,5 @@ jobs:
             ${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/
             ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/
             ${{ env.OPENBURNBAR_LINUX_SHARDS_DIR }}/
+          include-hidden-files: true
           if-no-files-found: error

@@ -41,9 +41,19 @@ Primary files:
   current-HEAD attestations.
 - [`product-parity-requirements.json`](product-parity-requirements.json) -
   canonical `P-01` through `P-40` inventory and minimum support matrix.
+- [`product-parity-evidence-policies.json`](product-parity-evidence-policies.json) -
+  canonical per-requirement check, environment, installed-subject, registered-
+  producer, and artifact-root policy consumed by
+  `scripts/linux-port/attest-product-requirement.mjs`.
+- [`product-feature-proof-registry.json`](product-feature-proof-registry.json) -
+  exact environment feature-artifact roles and size/media contracts snapshotted
+  into each immutable candidate. See
+  [`PRODUCT_FEATURE_PROOF_CONTRACT.md`](PRODUCT_FEATURE_PROOF_CONTRACT.md) for
+  capture, finalization, materialization, and validator invariants.
 - [`parity-ledger.md`](parity-ledger.md) - generated human-readable ledger.
 - [`parity-ledger-history.json`](parity-ledger-history.json) - archived
   mission evidence that cannot satisfy current product parity.
+
 - [`evidence/mission-002-reanchor/`](evidence/mission-002-reanchor/) - Phase 0
   reanchor baseline for full parity work.
 - [`factory-pr-handoff.md`](factory-pr-handoff.md) - review map and known
@@ -67,6 +77,63 @@ Primary files:
 - [`evidence/parity-audit-2026-07-10/aarch64-installed-session-summary.json`](evidence/parity-audit-2026-07-10/aarch64-installed-session-summary.json) -
   compact retained results and source hashes from the current installed aarch64
   audit sample; it is evidence for this report, not a release-promotion row.
+
+Each ledger command discovers exactly one canonical receipt per required
+check/environment pair below
+`evidence/validator-receipts/<requirement>/<check>/<environment>.json`. Receipt
+schema 2 binds current HEAD, the release closure, signed installed-file manifest,
+candidate package artifact, exact package-manager ownership and installed-file
+inventory, pre/post capability manifests captured from the installed desktop
+binary, the logind-anchored live environment, and the registered validator
+command/source tree. Trust files must be root-owned, the Ed25519 signature must
+verify, and every file hash, size, mode, owner, and symlink target must match.
+Installation and session identity are rechecked after validation; both runtime
+snapshots are retained and the final snapshot is authoritative.
+The adjacent `.sigstore.jsonl` bundle must verify with `gh attestation verify`
+against `Imagine-That-Ai/BurnBar` and the pinned
+`.github/workflows/linux-product-parity.yml` signer. A hand-authored `passed`
+JSON file is never promotion evidence.
+
+`run-product-requirement-validator.mjs` dispatches only to a deterministic
+`scripts/linux-port/product-validators/P-XX.mjs` module and deletes stale output
+on every failure. Its required candidate run and artifact-digest inputs come
+from the trusted GitHub evidence resolver; closure-provided provenance cannot
+replace them. Current release closures must directly match the invoked
+requirement, environment, and selected package, and registered materialized
+feature subjects are byte-validated and required in the validator result.
+Requirement-specific validators exist for P-01 release
+integrity, P-03 installed runtime, P-04 architecture reach, and P-37 Linux
+matrix coverage. The other 36 modules remain intentionally absent until their
+installed-product acceptance packets land. Source availability is not a parity
+claim: every row remains blocked until all seven signed live receipts exist.
+
+The product workflow accepts only an immutable artifact ID resolved from the
+successful canonical Linux Release Candidate workflow in
+`Imagine-That-Ai/BurnBar` at the exact target SHA.
+`finalize-product-proof-closure.mjs` emits the required exact-candidate
+aggregate only after release attestation and final verification.
+It requires signed installed manifests for deb and rpm on both architectures,
+every release sidecar, package/feed signatures, Sigstore bundles, and lifecycle
+proof, and the validated feature-proof registry. Native package shards supply
+signed installed-manifest records; aggregate
+assembly validates, copies, and preserves those records before product-proof
+finalization. `prepare-product-requirement-input.mjs` copies only hash-bound
+subjects from a passed aggregate and a candidate-bound `collected` feature
+closure into the selected requirement/environment root. Collection alone never
+produces a passed parity receipt.
+
+Release is split into three fail-closed workflows. Linux Release Candidate
+builds, signs, verifies, and uploads an immutable candidate but never evaluates
+parity or publishes. Linux Product Parity consumes that exact successful
+candidate to produce one signed requirement/environment receipt. Linux Release
+Promotion resolves exactly 280 successful first-attempt receipt artifacts at
+the candidate HEAD, regenerates all 40 row attestations, runs strict ledger
+validation, binds the candidate and all rows into `promotion-closure.json`, and
+only then stages a draft GitHub release, publishes and verifies the signed R2
+feed, and makes the GitHub release public. Missing, stale, cross-candidate,
+cross-workflow, cross-repository, or cross-HEAD artifacts stop promotion.
+Repeated successful certification for the same candidate is deterministic: the
+newest immutable artifact ID is selected and its producer is revalidated.
 
 The release verifier refuses to publish `latest-linux.json` while the package
 closure has missing artifacts, missing signatures, missing Sigstore provenance,
