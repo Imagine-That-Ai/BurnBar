@@ -1252,6 +1252,12 @@ jobs:
       - name: Swift file-size debt budget (shrink-only)
         run: ./scripts/debt/check-swift-file-size-budget.sh
 
+      # Port-side analogue: freeze the Kotlin/Rust/TS god files (Tauri lib.rs,
+      # SwarmBackground.kt, tauriBridge.ts) so the newer platforms cannot regrow
+      # the bloat the Swift ratchet burned down (diligence 2026-07-12).
+      - name: Port file-size debt budget (shrink-only)
+        run: ./scripts/debt/check-port-file-size-budget.sh
+
       # Structural remediation ratchets (audit 2026-06-30 findings #4/#5).
       # Core UI purity: no new SwiftUI/AppKit imports in OpenBurnBarCore's main
       # module; pure sibling targets assert-zero. Mission split-brain: the

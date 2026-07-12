@@ -48,6 +48,15 @@ env:
 jobs:
   validate-provenance:
     name: Validate Cursor repair provenance
+    # Signal integrity (diligence 2026-07-12): the workflow_run fan-out fires on
+    # EVERY completion of many upstream workflows, so success-triggered runs used
+    # to conclude green with the operator skipped — false-healthy runs masking the
+    # dead proof plane. Only proceed when there is actually something to repair (a
+    # failed upstream) or on schedule/manual dispatch; otherwise both jobs skip and
+    # the run concludes neutral (grey), not success.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'failure'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

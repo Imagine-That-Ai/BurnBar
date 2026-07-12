@@ -1,0 +1,18 @@
+{
+  "target": 2000,
+  "total": 3,
+  "files": [
+    {
+      "path": "apps/linux-desktop/src-tauri/src/lib.rs",
+      "lines": 3267
+    },
+    {
+      "path": "android/app/src/main/java/com/openburnbar/ui/components/SwarmBackground.kt",
+      "lines": 2987
+    },
+    {
+      "path": "apps/linux-desktop/src/tauriBridge.ts",
+      "lines": 2304
+    }
+  ]
+}
