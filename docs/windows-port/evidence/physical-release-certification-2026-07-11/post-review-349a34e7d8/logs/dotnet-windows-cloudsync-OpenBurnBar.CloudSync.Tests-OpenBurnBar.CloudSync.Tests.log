@@ -1,0 +1,9 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  OpenBurnBar.CloudSync -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/cloudsync/OpenBurnBar.CloudSync/bin/Release/net8.0/OpenBurnBar.CloudSync.dll
+  OpenBurnBar.CloudSync.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/cloudsync/OpenBurnBar.CloudSync.Tests/bin/Release/net10.0/OpenBurnBar.CloudSync.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/cloudsync/OpenBurnBar.CloudSync.Tests/bin/Release/net10.0/OpenBurnBar.CloudSync.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:   113, Skipped:     0, Total:   113, Duration: 119 ms - OpenBurnBar.CloudSync.Tests.dll (net10.0)

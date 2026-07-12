@@ -1,0 +1,296 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  OpenBurnBar.Pal.Ipc -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/pal/ipc/bin/Release/net10.0/OpenBurnBar.Pal.Ipc.dll
+  OpenBurnBar.Pal.Ipc -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/pal/ipc/bin/Release/net8.0/OpenBurnBar.Pal.Ipc.dll
+  OpenBurnBar.Storage -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/storage/OpenBurnBar.Storage/bin/Release/net10.0/OpenBurnBar.Storage.dll
+  OpenBurnBar.App.Shell.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/shell/bin/Release/net10.0/OpenBurnBar.App.Shell.Tests.dll
+  OpenBurnBar.App.Onboarding.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/onboarding/bin/Release/net10.0/OpenBurnBar.App.Onboarding.Tests.dll
+  OpenBurnBar.App.Theme.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/theme/bin/Release/net10.0/OpenBurnBar.App.Theme.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/shell/bin/Release/net10.0/OpenBurnBar.App.Shell.Tests.dll (.NETCoreApp,Version=v10.0)
+  OpenBurnBar.App.Components.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/components/bin/Release/net10.0/OpenBurnBar.App.Components.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/theme/bin/Release/net10.0/OpenBurnBar.App.Theme.Tests.dll (.NETCoreApp,Version=v10.0)
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/components/bin/Release/net10.0/OpenBurnBar.App.Components.Tests.dll (.NETCoreApp,Version=v10.0)
+  OpenBurnBar.Storage -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/storage/OpenBurnBar.Storage/bin/Release/net8.0/OpenBurnBar.Storage.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/onboarding/bin/Release/net10.0/OpenBurnBar.App.Onboarding.Tests.dll (.NETCoreApp,Version=v10.0)
+  OpenBurnBar.Pretext -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/pretext/OpenBurnBar.Pretext/bin/Release/net8.0/OpenBurnBar.Pretext.dll
+A total of 1 test files matched the specified pattern.
+A total of 1 test files matched the specified pattern.
+A total of 1 test files matched the specified pattern.
+  OpenBurnBar.ComputerUse.Core -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/computeruse/OpenBurnBar.ComputerUse.Core/bin/Release/net8.0/OpenBurnBar.ComputerUse.Core.dll
+A total of 1 test files matched the specified pattern.
+  OpenBurnBar.Integrations.Cast -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/integrations/cast/OpenBurnBar.Integrations.Cast/bin/Release/net8.0/OpenBurnBar.Integrations.Cast.dll
+  OpenBurnBar.Pal.Input -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/pal/input/bin/Release/net8.0/OpenBurnBar.Pal.Input.dll
+  OpenBurnBar.EngineBinding.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/engine-binding/bin/Release/net10.0/OpenBurnBar.EngineBinding.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/engine-binding/bin/Release/net10.0/OpenBurnBar.EngineBinding.Tests.dll (.NETCoreApp,Version=v10.0)
+  OpenBurnBar.App.Dashboard -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/app/OpenBurnBar.App.Dashboard/bin/Release/net8.0/OpenBurnBar.App.Dashboard.dll
+  OpenBurnBar.Integrations.Mercury -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/integrations/mercury/OpenBurnBar.Integrations.Mercury/bin/Release/net8.0/OpenBurnBar.Integrations.Mercury.dll
+  OpenBurnBar.App.Configuration -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/app/OpenBurnBar.App.Configuration/bin/Release/net8.0/OpenBurnBar.App.Configuration.dll
+  OpenBurnBar.App.Settings -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/app/OpenBurnBar.App.Settings/bin/Release/net8.0/OpenBurnBar.App.Settings.dll
+  OpenBurnBar.App.TextExpansion -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/app/OpenBurnBar.App.TextExpansion/bin/Release/net8.0/OpenBurnBar.App.TextExpansion.dll
+  OpenBurnBar.App.ManagedAgentRuntime -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/app/OpenBurnBar.App.ManagedAgentRuntime/bin/Release/net8.0/OpenBurnBar.App.ManagedAgentRuntime.dll
+A total of 1 test files matched the specified pattern.
+  OpenBurnBar.CloudSync -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/cloudsync/OpenBurnBar.CloudSync/bin/Release/net8.0/OpenBurnBar.CloudSync.dll
+  OpenBurnBar.App.MemorySearch -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/app/OpenBurnBar.App.MemorySearch/bin/Release/net8.0/OpenBurnBar.App.MemorySearch.dll
+  OpenBurnBar.Updater.Core -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/packaging/updater/OpenBurnBar.Updater.Core/bin/Release/net8.0/OpenBurnBar.Updater.Core.dll
+  OpenBurnBar.Pal.Overlay -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/pal/overlay/bin/Release/net8.0/OpenBurnBar.Pal.Overlay.dll
+  OpenBurnBar.App.Configuration.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/configuration/bin/Release/net10.0/OpenBurnBar.App.Configuration.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/configuration/bin/Release/net10.0/OpenBurnBar.App.Configuration.Tests.dll (.NETCoreApp,Version=v10.0)
+  OpenBurnBar.CloudSync.Crypto -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/cloudsync/OpenBurnBar.CloudSync.Crypto/bin/Release/net8.0/OpenBurnBar.CloudSync.Crypto.dll
+  OpenBurnBar.Pal.Ipc.Windows -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/pal/ipc-windows/bin/Release/net10.0/OpenBurnBar.Pal.Ipc.Windows.dll
+  OpenBurnBar.Pal.Ipc.Windows -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/pal/ipc-windows/bin/Release/net8.0/OpenBurnBar.Pal.Ipc.Windows.dll
+  OpenBurnBar.CloudSync.AppCheck -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/cloudsync/appcheck/OpenBurnBar.CloudSync.AppCheck/bin/Release/net8.0/OpenBurnBar.CloudSync.AppCheck.dll
+  OpenBurnBar.Pretext.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/pretext/OpenBurnBar.Pretext.Tests/bin/Release/net10.0/OpenBurnBar.Pretext.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/pretext/OpenBurnBar.Pretext.Tests/bin/Release/net10.0/OpenBurnBar.Pretext.Tests.dll (.NETCoreApp,Version=v10.0)
+  OpenBurnBar.App.Settings.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/settings/OpenBurnBar.App.Settings.Tests/bin/Release/net10.0/OpenBurnBar.App.Settings.Tests.dll
+A total of 1 test files matched the specified pattern.
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/settings/OpenBurnBar.App.Settings.Tests/bin/Release/net10.0/OpenBurnBar.App.Settings.Tests.dll (.NETCoreApp,Version=v10.0)
+  OpenBurnBar.Pal.Ipc.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/ipc/bin/Release/net10.0/OpenBurnBar.Pal.Ipc.Tests.dll
+  OpenBurnBar.Integrations.HomeAssistant -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/integrations/homeassistant/OpenBurnBar.Integrations.HomeAssistant/bin/Release/net8.0/OpenBurnBar.Integrations.HomeAssistant.dll
+  OpenBurnBar.Storage.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/storage/OpenBurnBar.Storage.Tests/bin/Release/net10.0/OpenBurnBar.Storage.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/storage/OpenBurnBar.Storage.Tests/bin/Release/net10.0/OpenBurnBar.Storage.Tests.dll (.NETCoreApp,Version=v10.0)
+  OpenBurnBar.Integrations.SmartHub -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/integrations/smarthub/OpenBurnBar.Integrations.SmartHub/bin/Release/net8.0/OpenBurnBar.Integrations.SmartHub.dll
+  OpenBurnBar.Integrations.Mercury.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/mercury/bin/Release/net10.0/OpenBurnBar.Integrations.Mercury.Tests.dll
+A total of 1 test files matched the specified pattern.
+  OpenBurnBar.CloudSync.Crypto.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/cloudsync/bin/Release/net10.0/OpenBurnBar.CloudSync.Crypto.Tests.dll
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/cloudsync/bin/Release/net10.0/OpenBurnBar.CloudSync.Crypto.Tests.dll (.NETCoreApp,Version=v10.0)
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/mercury/bin/Release/net10.0/OpenBurnBar.Integrations.Mercury.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+
+Passed!  - Failed:     0, Passed:    77, Skipped:     0, Total:    77, Duration: 342 ms - OpenBurnBar.App.Onboarding.Tests.dll (net10.0)
+  OpenBurnBar.UiAutomationHarness.Core -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/ui-automation-harness/OpenBurnBar.UiAutomationHarness.Core/bin/Release/net8.0/OpenBurnBar.UiAutomationHarness.Core.dll
+  OpenBurnBar.Integrations.HomeAssistant.Net -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/integrations/homeassistant/OpenBurnBar.Integrations.HomeAssistant.Net/bin/Release/net10.0/OpenBurnBar.Integrations.HomeAssistant.Net.dll
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+A total of 1 test files matched the specified pattern.A total of 1 test files matched the specified pattern.
+
+
+Passed!  - Failed:     0, Passed:    70, Skipped:     0, Total:    70, Duration: 243 ms - OpenBurnBar.App.Theme.Tests.dll (net10.0)
+
+Passed!  - Failed:     0, Passed:    49, Skipped:     0, Total:    49, Duration: 229 ms - OpenBurnBar.App.Shell.Tests.dll (net10.0)
+A total of 1 test files matched the specified pattern.
+  OpenBurnBar.UiAutomationHarness.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/ui-automation/bin/Release/net10.0/OpenBurnBar.UiAutomationHarness.Tests.dll
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/ui-automation/bin/Release/net10.0/OpenBurnBar.UiAutomationHarness.Tests.dll (.NETCoreApp,Version=v10.0)
+
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+Passed!  - Failed:     0, Passed:   181, Skipped:     0, Total:   181, Duration: 522 ms - OpenBurnBar.App.Components.Tests.dll (net10.0)
+
+Passed!  - Failed:     0, Passed:     3, Skipped:     0, Total:     3, Duration: 23 ms - OpenBurnBar.EngineBinding.Tests.dll (net10.0)
+A total of 1 test files matched the specified pattern.
+  OpenBurnBar.App.UsageRuntime -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/app/OpenBurnBar.App.UsageRuntime/bin/Release/net8.0/OpenBurnBar.App.UsageRuntime.dll
+  OpenBurnBar.App.UsageRuntime.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/usage-runtime/bin/Release/net10.0/OpenBurnBar.App.UsageRuntime.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/usage-runtime/bin/Release/net10.0/OpenBurnBar.App.UsageRuntime.Tests.dll (.NETCoreApp,Version=v10.0)
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+[xUnit.net 00:00:00.44]     OpenBurnBar.Pretext.Tests.MetricParityHarnessTests.Live_webview2_matches_mac_golden_within_tolerance [SKIP]
+  Skipped OpenBurnBar.Pretext.Tests.MetricParityHarnessTests.Live_webview2_matches_mac_golden_within_tolerance [1 ms]
+
+Passed!  - Failed:     0, Passed:    35, Skipped:     0, Total:    35, Duration: 186 ms - OpenBurnBar.App.Configuration.Tests.dll (net10.0)
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    38, Skipped:     1, Total:    39, Duration: 182 ms - OpenBurnBar.Pretext.Tests.dll (net10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    75, Skipped:     0, Total:    75, Duration: 144 ms - OpenBurnBar.App.Settings.Tests.dll (net10.0)
+  OpenBurnBar.App.Presentation -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/app/OpenBurnBar.App.Presentation/bin/Release/net8.0/OpenBurnBar.App.Presentation.dll
+  OpenBurnBar.App.MemorySearch.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/memory-search/OpenBurnBar.App.MemorySearch.Tests/bin/Release/net10.0/OpenBurnBar.App.MemorySearch.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/memory-search/OpenBurnBar.App.MemorySearch.Tests/bin/Release/net10.0/OpenBurnBar.App.MemorySearch.Tests.dll (.NETCoreApp,Version=v10.0)
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    45, Skipped:     0, Total:    45, Duration: 346 ms - OpenBurnBar.CloudSync.Crypto.Tests.dll (net10.0)
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+  OpenBurnBar.Pal.Input.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/input/bin/Release/net10.0/OpenBurnBar.Pal.Input.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/input/bin/Release/net10.0/OpenBurnBar.Pal.Input.Tests.dll (.NETCoreApp,Version=v10.0)
+
+Passed!  - Failed:     0, Passed:   152, Skipped:     0, Total:   152, Duration: 281 ms - OpenBurnBar.Integrations.Mercury.Tests.dll (net10.0)
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+  OpenBurnBar.Dist.Hardening -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/dist/OpenBurnBar.Dist.Hardening/bin/Release/net8.0/OpenBurnBar.Dist.Hardening.dll
+
+  OpenBurnBar.Integrations.Cast.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/integrations-cast/bin/Release/net10.0/OpenBurnBar.Integrations.Cast.Tests.dll
+Passed!  - Failed:     0, Passed:    10, Skipped:     0, Total:    10, Duration: 56 ms - OpenBurnBar.UiAutomationHarness.Tests.dll (net10.0)
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/integrations-cast/bin/Release/net10.0/OpenBurnBar.Integrations.Cast.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+A total of 1 test files matched the specified pattern.
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    66, Skipped:     0, Total:    66, Duration: 111 ms - OpenBurnBar.Pal.Input.Tests.dll (net10.0)
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:   138, Skipped:     0, Total:   138, Duration: 181 ms - OpenBurnBar.App.MemorySearch.Tests.dll (net10.0)
+  OpenBurnBar.CloudSync.AppCheck.Net -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/cloudsync/appcheck/OpenBurnBar.CloudSync.AppCheck.Net/bin/Release/net10.0/OpenBurnBar.CloudSync.AppCheck.Net.dll
+  OpenBurnBar.App.CloudSync -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/app/OpenBurnBar.App.CloudSync/bin/Release/net8.0/OpenBurnBar.App.CloudSync.dll
+  OpenBurnBar.App.Quota.Acquisition -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/app/OpenBurnBar.App.Quota.Acquisition/bin/Release/net8.0/OpenBurnBar.App.Quota.Acquisition.dll
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+  OpenBurnBar.App.Quota.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/quota/bin/Release/net10.0/OpenBurnBar.App.Quota.Tests.dll
+
+Passed!  - Failed:     0, Passed:    79, Skipped:     0, Total:    79, Duration: 140 ms - OpenBurnBar.Integrations.Cast.Tests.dll (net10.0)
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/quota/bin/Release/net10.0/OpenBurnBar.App.Quota.Tests.dll (.NETCoreApp,Version=v10.0)
+  OpenBurnBar.App.Chat.Runtime.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/chat/bin/Release/net10.0/OpenBurnBar.App.Chat.Runtime.Tests.dll
+  OpenBurnBar.App.Storage.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/storage/bin/Release/net10.0/OpenBurnBar.App.Storage.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/chat/bin/Release/net10.0/OpenBurnBar.App.Chat.Runtime.Tests.dll (.NETCoreApp,Version=v10.0)
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/storage/bin/Release/net10.0/OpenBurnBar.App.Storage.Tests.dll (.NETCoreApp,Version=v10.0)
+  OpenBurnBar.Storage.SessionLogs -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/storage/OpenBurnBar.Storage.SessionLogs/bin/Release/net10.0/OpenBurnBar.Storage.SessionLogs.dll
+  OpenBurnBar.App.CursorConnector -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/app/OpenBurnBar.App.CursorConnector/bin/Release/net8.0/OpenBurnBar.App.CursorConnector.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/ipc/bin/Release/net10.0/OpenBurnBar.Pal.Ipc.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+A total of 1 test files matched the specified pattern.
+A total of 1 test files matched the specified pattern.
+  OpenBurnBar.App.CloudSync.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/cloudsync-app/bin/Release/net10.0/OpenBurnBar.App.CloudSync.Tests.dll
+A total of 1 test files matched the specified pattern.
+  OpenBurnBar.CloudSync.AppCheck.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/cloudsync-appcheck/bin/Release/net10.0/OpenBurnBar.CloudSync.AppCheck.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/cloudsync-appcheck/bin/Release/net10.0/OpenBurnBar.CloudSync.AppCheck.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    20, Skipped:     0, Total:    20, Duration: 87 ms - OpenBurnBar.Pal.Ipc.Tests.dll (net10.0)
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    21, Skipped:     0, Total:    21, Duration: 97 ms - OpenBurnBar.App.Quota.Tests.dll (net10.0)
+  OpenBurnBar.App.Pet -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/app/OpenBurnBar.App.Pet/bin/Release/net8.0/OpenBurnBar.App.Pet.dll
+  OpenBurnBar.App.TextExpansion.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/text-expansion/OpenBurnBar.App.TextExpansion.Tests/bin/Release/net10.0/OpenBurnBar.App.TextExpansion.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/text-expansion/OpenBurnBar.App.TextExpansion.Tests/bin/Release/net10.0/OpenBurnBar.App.TextExpansion.Tests.dll (.NETCoreApp,Version=v10.0)
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+
+Passed!  - Failed:     0, Passed:    55, Skipped:     0, Total:    55, Duration: 154 ms - OpenBurnBar.CloudSync.AppCheck.Tests.dll (net10.0)
+Passed!  - Failed:     0, Passed:    20, Skipped:     0, Total:    20, Duration: 712 ms - OpenBurnBar.App.Chat.Runtime.Tests.dll (net10.0)
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/cloudsync-app/bin/Release/net10.0/OpenBurnBar.App.CloudSync.Tests.dll (.NETCoreApp,Version=v10.0)
+  OpenBurnBar.App.Quota.Acquisition.Windows -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/app/OpenBurnBar.App.Quota.Acquisition.Windows/bin/Release/net8.0/OpenBurnBar.App.Quota.Acquisition.Windows.dll
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:     6, Skipped:     0, Total:     6, Duration: 4 s - OpenBurnBar.App.UsageRuntime.Tests.dll (net10.0)
+  OpenBurnBar.App.Quota.Acquisition.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/quota-acquisition/bin/Release/net10.0/OpenBurnBar.App.Quota.Acquisition.Tests.dll
+A total of 1 test files matched the specified pattern.
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/quota-acquisition/bin/Release/net10.0/OpenBurnBar.App.Quota.Acquisition.Tests.dll (.NETCoreApp,Version=v10.0)
+  OpenBurnBar.Dist.UpdateFeed -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/dist/OpenBurnBar.Dist.UpdateFeed/bin/Release/net8.0/OpenBurnBar.Dist.UpdateFeed.dll
+  OpenBurnBar.Integrations.SmartHub.Net -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/integrations/smarthub/OpenBurnBar.Integrations.SmartHub.Net/bin/Release/net10.0/OpenBurnBar.Integrations.SmartHub.Net.dll
+A total of 1 test files matched the specified pattern.
+  OpenBurnBar.Dist.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/dist/bin/Release/net10.0/OpenBurnBar.Dist.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/dist/bin/Release/net10.0/OpenBurnBar.Dist.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    59, Skipped:     0, Total:    59, Duration: 650 ms - OpenBurnBar.App.CloudSync.Tests.dll (net10.0)
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    57, Skipped:     0, Total:    57, Duration: 411 ms - OpenBurnBar.App.Quota.Acquisition.Tests.dll (net10.0)
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    97, Skipped:     0, Total:    97, Duration: 226 ms - OpenBurnBar.Dist.Tests.dll (net10.0)
+  OpenBurnBar.App.CursorConnector.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/cursor-connector/bin/Release/net10.0/OpenBurnBar.App.CursorConnector.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/cursor-connector/bin/Release/net10.0/OpenBurnBar.App.CursorConnector.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    94, Skipped:     0, Total:    94, Duration: 165 ms - OpenBurnBar.App.CursorConnector.Tests.dll (net10.0)
+  OpenBurnBar.Integrations.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/integrations/OpenBurnBar.Integrations.Tests/bin/Release/net10.0/OpenBurnBar.Integrations.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/integrations/OpenBurnBar.Integrations.Tests/bin/Release/net10.0/OpenBurnBar.Integrations.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    82, Skipped:     0, Total:    82, Duration: 4 s - OpenBurnBar.App.TextExpansion.Tests.dll (net10.0)
+  OpenBurnBar.Native -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/native/OpenBurnBar.Native/bin/Release/net8.0/OpenBurnBar.Native.dll
+  OpenBurnBar.App.Presentation.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/presentation/bin/Release/net10.0/OpenBurnBar.App.Presentation.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/presentation/bin/Release/net10.0/OpenBurnBar.App.Presentation.Tests.dll (.NETCoreApp,Version=v10.0)
+  OpenBurnBarIroh.Ffi -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/crates/openburnbar-iroh/bindings/csharp/OpenBurnBarIroh.Ffi/bin/Debug/net8.0/OpenBurnBarIroh.Ffi.dll
+  BurnBarRemote.Ffi -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/crates/burnbar-remote/bindings/csharp/BurnBarRemote.Ffi/bin/Debug/net8.0/BurnBarRemote.Ffi.dll
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:   163, Skipped:     0, Total:   163, Duration: 860 ms - OpenBurnBar.Integrations.Tests.dll (net10.0)
+A total of 1 test files matched the specified pattern.
+  OpenBurnBar.Native.Iroh -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/native/OpenBurnBar.Native.Iroh/bin/Release/net8.0/OpenBurnBar.Native.Iroh.dll
+  OpenBurnBar.Native.BurnBarRemote -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/native/OpenBurnBar.Native.BurnBarRemote/bin/Release/net8.0/OpenBurnBar.Native.BurnBarRemote.dll
+  OpenBurnBar.Native.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/native/bin/Release/net10.0/OpenBurnBar.Native.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/native/bin/Release/net10.0/OpenBurnBar.Native.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:00.54]     OpenBurnBar.Native.Tests.IrohLoopbackTests.ParseBlobTicket_RejectsGarbage_WithTheTypedError [SKIP]
+[xUnit.net 00:00:00.55]     OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.Readiness_ReportsTheGen2Protocol [SKIP]
+[xUnit.net 00:00:00.56]     OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.QualityController_UpdatesThroughTheStatefulObjectPath [SKIP]
+[xUnit.net 00:00:00.56]     OpenBurnBar.Native.Tests.IrohLoopbackTests.ProtocolVersion_IsTheV1TheMacPeerSpeaks [SKIP]
+[xUnit.net 00:00:00.56]     OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.DecodeQualityDecision_Truncated_ThrowsTheTypedError [SKIP]
+[xUnit.net 00:00:00.56]     OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.DecodeQualityDecision_OfTheGolden_ReturnsTheOriginal [SKIP]
+  Skipped OpenBurnBar.Native.Tests.IrohLoopbackTests.ParseBlobTicket_RejectsGarbage_WithTheTypedError [1 ms]
+  Skipped OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.Readiness_ReportsTheGen2Protocol [1 ms]
+  Skipped OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.QualityController_UpdatesThroughTheStatefulObjectPath [1 ms]
+  Skipped OpenBurnBar.Native.Tests.IrohLoopbackTests.ProtocolVersion_IsTheV1TheMacPeerSpeaks [1 ms]
+  Skipped OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.DecodeQualityDecision_Truncated_ThrowsTheTypedError [1 ms]
+  Skipped OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.DecodeQualityDecision_OfTheGolden_ReturnsTheOriginal [1 ms]
+[xUnit.net 00:00:00.59]     OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.ModeRequiresPermission_MatchesTheEnginePolicyTable [SKIP]
+[xUnit.net 00:00:00.59]     OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.EncodeQualityDecision_MatchesTheCommittedGolden_AndFiresCallbacksInOrder [SKIP]
+[xUnit.net 00:00:00.60]     OpenBurnBar.Native.Tests.IrohLoopbackTests.AuxiliaryAlpns_AreNonEmpty_AndDistinct [SKIP]
+[xUnit.net 00:00:00.60]     OpenBurnBar.Native.Tests.IrohLoopbackTests.OpenBurnBarAlpn_MatchesThePinnedConstant [SKIP]
+[xUnit.net 00:00:00.60]     OpenBurnBar.Native.Tests.IrohLoopbackTests.GenerateSecretKeyMaterial_Returns32FreshBytes [SKIP]
+[xUnit.net 00:00:00.60]     OpenBurnBar.Native.Tests.IrohLoopbackTests.EndpointHandle_RejectsAnInvalidSecretKey [SKIP]
+[xUnit.net 00:00:00.61]     OpenBurnBar.Native.Tests.IrohLoopbackTests.EndpointHandle_Identity_BeforeBootstrap_ThrowsTheTypedError [SKIP]
+  Skipped OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.ModeRequiresPermission_MatchesTheEnginePolicyTable [1 ms]
+  Skipped OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.EncodeQualityDecision_MatchesTheCommittedGolden_AndFiresCallbacksInOrder [1 ms]
+  Skipped OpenBurnBar.Native.Tests.IrohLoopbackTests.AuxiliaryAlpns_AreNonEmpty_AndDistinct [1 ms]
+  Skipped OpenBurnBar.Native.Tests.IrohLoopbackTests.OpenBurnBarAlpn_MatchesThePinnedConstant [1 ms]
+  Skipped OpenBurnBar.Native.Tests.IrohLoopbackTests.GenerateSecretKeyMaterial_Returns32FreshBytes [1 ms]
+  Skipped OpenBurnBar.Native.Tests.IrohLoopbackTests.EndpointHandle_RejectsAnInvalidSecretKey [1 ms]
+  Skipped OpenBurnBar.Native.Tests.IrohLoopbackTests.EndpointHandle_Identity_BeforeBootstrap_ThrowsTheTypedError [1 ms]
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    15, Skipped:    13, Total:    28, Duration: 102 ms - OpenBurnBar.Native.Tests.dll (net10.0)
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    21, Skipped:     0, Total:    21, Duration: 20 s - OpenBurnBar.Storage.Tests.dll (net10.0)
+  OpenBurnBar.ComputerUse.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/computeruse/bin/Release/net10.0/OpenBurnBar.ComputerUse.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/computeruse/bin/Release/net10.0/OpenBurnBar.ComputerUse.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:   111, Skipped:     0, Total:   111, Duration: 340 ms - OpenBurnBar.ComputerUse.Tests.dll (net10.0)
+  OpenBurnBar.CloudSync.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/cloudsync/OpenBurnBar.CloudSync.Tests/bin/Release/net10.0/OpenBurnBar.CloudSync.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/cloudsync/OpenBurnBar.CloudSync.Tests/bin/Release/net10.0/OpenBurnBar.CloudSync.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:   113, Skipped:     0, Total:   113, Duration: 258 ms - OpenBurnBar.CloudSync.Tests.dll (net10.0)
+  OpenBurnBar.App.Dashboard.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/dashboard/bin/Release/net10.0/OpenBurnBar.App.Dashboard.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/dashboard/bin/Release/net10.0/OpenBurnBar.App.Dashboard.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    75, Skipped:     0, Total:    75, Duration: 227 ms - OpenBurnBar.App.Dashboard.Tests.dll (net10.0)
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:   742, Skipped:     0, Total:   742, Duration: 15 s - OpenBurnBar.App.Presentation.Tests.dll (net10.0)
+  OpenBurnBar.App.Pet.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/pet/bin/Release/net10.0/OpenBurnBar.App.Pet.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/pet/bin/Release/net10.0/OpenBurnBar.App.Pet.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    74, Skipped:     0, Total:    74, Duration: 140 ms - OpenBurnBar.App.Pet.Tests.dll (net10.0)
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    18, Skipped:     0, Total:    18, Duration: 33 s - OpenBurnBar.App.Storage.Tests.dll (net10.0)
+  OpenBurnBar.App.Insights.Runtime.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/insights/bin/Release/net10.0/OpenBurnBar.App.Insights.Runtime.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/insights/bin/Release/net10.0/OpenBurnBar.App.Insights.Runtime.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    15, Skipped:     0, Total:    15, Duration: 275 ms - OpenBurnBar.App.Insights.Runtime.Tests.dll (net10.0)
+  OpenBurnBar.App.Settings.ViewModels -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/app/OpenBurnBar.App.Settings.ViewModels/bin/Release/net8.0/OpenBurnBar.App.Settings.ViewModels.dll
+  OpenBurnBar.App.ManagedAgentRuntime.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/managed-agent-runtime/bin/Release/net10.0/OpenBurnBar.App.ManagedAgentRuntime.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/managed-agent-runtime/bin/Release/net10.0/OpenBurnBar.App.ManagedAgentRuntime.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    97, Skipped:     0, Total:    97, Duration: 688 ms - OpenBurnBar.App.ManagedAgentRuntime.Tests.dll (net10.0)
+  OpenBurnBar.App.Settings.ViewModels.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/settings/OpenBurnBar.App.Settings.ViewModels.Tests/bin/Release/net10.0/OpenBurnBar.App.Settings.ViewModels.Tests.dll
+  OpenBurnBar.Updater.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/updater/bin/Release/net10.0/OpenBurnBar.Updater.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/settings/OpenBurnBar.App.Settings.ViewModels.Tests/bin/Release/net10.0/OpenBurnBar.App.Settings.ViewModels.Tests.dll (.NETCoreApp,Version=v10.0)
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/updater/bin/Release/net10.0/OpenBurnBar.Updater.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    94, Skipped:     0, Total:    94, Duration: 1 s - OpenBurnBar.Updater.Tests.dll (net10.0)
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:   128, Skipped:     0, Total:   128, Duration: 1 s - OpenBurnBar.App.Settings.ViewModels.Tests.dll (net10.0)
