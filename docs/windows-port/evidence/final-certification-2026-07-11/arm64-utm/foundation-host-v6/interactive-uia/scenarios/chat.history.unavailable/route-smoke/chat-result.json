@@ -1,0 +1,19 @@
+{
+  "RouteKey": "chat",
+  "ExitCode": 0,
+  "ScreenshotPath": "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.history.unavailable\\route-smoke\\chat.png",
+  "Width": 1024,
+  "Height": 711,
+  "MeanLuma": 27.875951762284124,
+  "LumaStdDev": 47.74364282393339,
+  "NearUniform": false,
+  "ElapsedMs": 9808.662,
+  "ActualWidth": 1024,
+  "ActualHeight": 711,
+  "Theme": "Dark",
+  "ActualDpiScalePercent": 100,
+  "ExpectedAutomationId": "RouteRoot.chat",
+  "ExpectedAutomationIdFound": true,
+  "ExceptionType": null,
+  "Message": null
+}

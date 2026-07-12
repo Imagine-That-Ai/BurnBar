@@ -1,0 +1,8 @@
+﻿[2026-07-11T21:14:33.9714321+00:00] process.start pid=3628
+SetDllDirectory("") applied; SetDefaultDllDirectories skipped for WinUI resource compatibility.
+[2026-07-11T21:14:34.6976814+00:00] process pid=3628
+diagnostics-installed
+[2026-07-11T21:14:36.9105962+00:00] launch pid=3628
+
+[2026-07-11T21:14:42.9305016+00:00] activation.route pid=3628
+Launch initial=True route=tray raw=

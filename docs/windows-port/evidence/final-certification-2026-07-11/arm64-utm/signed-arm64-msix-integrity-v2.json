@@ -1,0 +1,10 @@
+{
+  "status": "passed",
+  "error": null,
+  "path": "C:\\Users\\Public\\OpenBurnBar-1.0.29-arm64-run-29166970379.msix",
+  "length": 134420406,
+  "sha256": "7350fd248f65fd9de6eb3b2b5804508d9b47386a9fa0d9028526d70791874d8b",
+  "signatureStatus": "Valid",
+  "signerSubject": "CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US",
+  "timestampSubject": "CN=Microsoft Public RSA Time Stamping Authority, OU=nShield TSS ESN:A500-05E0-D947, OU=Microsoft America Operations, O=Microsoft Corporation, L=Redmond, S=Washington, C=US"
+}
