@@ -51,6 +51,49 @@
   margin: 0;
 }
 
+.account-installation-verification {
+  padding: var(--space-3);
+  border: 1px solid var(--color-glass-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-glass-elevated);
+}
+
+.account-installation-verification h3 {
+  margin: 0 0 var(--space-3);
+  color: var(--color-text-bright);
+  font-size: 0.95rem;
+  letter-spacing: 0;
+}
+
+.account-installation-verification dl {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.account-installation-verification dl > div {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.account-installation-verification dt {
+  color: var(--color-text-mute);
+  font-size: 0.78rem;
+}
+
+.account-installation-verification dd {
+  min-width: 0;
+  margin: 0;
+}
+
+.account-installation-verification code {
+  color: var(--color-text-bright);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+
 .account-trust {
   display: flex;
   flex-direction: column;
@@ -186,6 +229,28 @@
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+.account-signout-confirmation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-3);
+  border: 1px solid var(--color-brass-deep);
+  border-radius: var(--radius-sm);
+  background: var(--color-glass-elevated);
+}
+
+.account-signout-confirmation span {
+  flex: 1 1 18rem;
+}
+
+.account-signout-confirmation .danger {
+  border-color: color-mix(in srgb, var(--color-danger, var(--color-ember-bright)) 62%, var(--color-glass-line));
+  color: var(--color-text-bright);
+  background: color-mix(in srgb, var(--color-danger, var(--color-ember-bright)) 16%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {

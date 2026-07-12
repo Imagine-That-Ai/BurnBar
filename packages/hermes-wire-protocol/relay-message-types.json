@@ -250,6 +250,13 @@
           }
         },
         {
+          "name": "sessionGrantChallenge",
+          "swiftType": "HermesRealtimeRelaySessionGrantChallenge?",
+          "codable": {
+            "key": "sessionGrantChallenge"
+          }
+        },
+        {
           "name": "agentGrantRequest",
           "swiftType": "HermesRealtimeRelayAgentGrantRequest?",
           "codable": {
@@ -386,6 +393,7 @@
         "inputIntent": "nil",
         "approvalRequest": "nil",
         "approvalResponse": "nil",
+        "sessionGrantChallenge": "nil",
         "agentGrantRequest": "nil",
         "agentGrantReceipt": "nil",
         "clipboardRequest": "nil",
@@ -1034,6 +1042,54 @@
         }
       ],
       "initDefaults": {},
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelaySessionGrantChallenge",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": false,
+      "doc": [
+        "/// Versioned Linux-host challenge asking a paired phone to issue an",
+        "/// existing agent grant bound to one exact Computer Use session intent.",
+        "/// The phone must validate every field before authenticating or signing."
+      ],
+      "fields": [
+        { "name": "version", "swiftType": "Int", "codable": { "key": "version" } },
+        { "name": "challengeId", "swiftType": "String", "codable": { "key": "challengeId" } },
+        { "name": "nonce", "swiftType": "String", "codable": { "key": "nonce" } },
+        { "name": "issuedAt", "swiftType": "Date", "codable": { "key": "issuedAt" } },
+        { "name": "expiresAt", "swiftType": "Date", "codable": { "key": "expiresAt" } },
+        { "name": "sessionIntentId", "swiftType": "String", "codable": { "key": "sessionIntentId" } },
+        { "name": "runtime", "swiftType": "String", "codable": { "key": "runtime" } },
+        { "name": "threadId", "swiftType": "String", "codable": { "key": "threadId" } },
+        { "name": "preset", "swiftType": "String", "codable": { "key": "preset" } },
+        { "name": "capabilities", "swiftType": "[String]", "codable": { "key": "capabilities" } },
+        { "name": "mode", "swiftType": "String", "codable": { "key": "mode" } },
+        { "name": "trustMode", "swiftType": "String", "codable": { "key": "trustMode" } },
+        { "name": "scopeRuleIds", "swiftType": "[String]", "codable": { "key": "scopeRuleIds" } },
+        { "name": "phoneViewerNodeId", "swiftType": "String?", "codable": { "key": "phoneViewerNodeId" } },
+        { "name": "macHostNodeId", "swiftType": "String?", "codable": { "key": "macHostNodeId" } },
+        { "name": "actionCap", "swiftType": "Int", "codable": { "key": "actionCap" } },
+        { "name": "sessionTimeoutSeconds", "swiftType": "Int", "codable": { "key": "sessionTimeoutSeconds" } },
+        { "name": "clientId", "swiftType": "String", "codable": { "key": "clientId" } },
+        { "name": "runId", "swiftType": "String?", "codable": { "key": "runId" } },
+        { "name": "runCallId", "swiftType": "String?", "codable": { "key": "runCallId" } },
+        { "name": "runGeneration", "swiftType": "UInt64?", "codable": { "key": "runGeneration" } },
+        { "name": "desktopOwnerAuthorizationMethod", "swiftType": "String?", "codable": { "key": "desktopOwnerAuthorizationMethod" } }
+      ],
+      "initDefaults": {
+        "phoneViewerNodeId": "nil",
+        "macHostNodeId": "nil",
+        "runId": "nil",
+        "runCallId": "nil",
+        "runGeneration": "nil",
+        "desktopOwnerAuthorizationMethod": "nil"
+      },
       "nested": []
     },
     {

@@ -40,12 +40,14 @@ test('deb artifact ships daemon, launch, Swift, and SQLCipher runtime', () => {
     assert.match(log, /assert deb contains openburnbar-daemon-launch[\s\S]*?exit_code=0/);
     assert.match(log, /usr\/lib\/openburnbar\/swift/);
     assert.match(log, /usr\/lib\/openburnbar\/native\/libsqlcipher\.so\.0/);
+    assert.match(log, /usr\/lib\/openburnbar\/native\/libopenburnbar_iroh\.so/);
     return;
   }
   assert.match(listing, /openburnbar-daemon-launch/);
   assert.match(listing, /usr\/bin\/openburnbar-daemon/);
   assert.match(listing, /usr\/lib\/openburnbar\/swift/);
   assert.match(listing, /usr\/lib\/openburnbar\/native\/libsqlcipher\.so\.0/);
+  assert.match(listing, /usr\/lib\/openburnbar\/native\/libopenburnbar_iroh\.so/);
 });
 
 test('rpm artifact ships daemon, launch, Swift, and SQLCipher runtime', () => {
@@ -58,12 +60,14 @@ test('rpm artifact ships daemon, launch, Swift, and SQLCipher runtime', () => {
     assert.match(log, /assert rpm contains openburnbar-daemon-launch[\s\S]*?exit_code=0/);
     assert.match(log, /usr\/lib\/openburnbar\/swift/);
     assert.match(log, /usr\/lib\/openburnbar\/native\/libsqlcipher\.so\.0/);
+    assert.match(log, /usr\/lib\/openburnbar\/native\/libopenburnbar_iroh\.so/);
     return;
   }
   assert.match(listing, /openburnbar-daemon-launch/);
   assert.match(listing, /openburnbar-daemon/);
   assert.match(listing, /usr\/lib\/openburnbar\/swift/);
   assert.match(listing, /usr\/lib\/openburnbar\/native\/libsqlcipher\.so\.0/);
+  assert.match(listing, /usr\/lib\/openburnbar\/native\/libopenburnbar_iroh\.so/);
 });
 
 test('VAL-DASHBOARD-004 six-layout screenshots exist', () => {

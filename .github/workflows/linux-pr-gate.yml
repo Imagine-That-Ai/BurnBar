@@ -102,6 +102,9 @@ jobs:
         run: >
           node --test
           scripts/linux-port/assemble-linux-release.test.mjs
+          scripts/linux-port/browser-runtime-packaging.test.mjs
+          scripts/linux-port/aur-browser-runtime-packaging.test.mjs
+          scripts/linux-port/embed-linux-appimage-payload.test.mjs
           scripts/linux-port/linux-package-session.test.mjs
           scripts/linux-port/prepare-linux-package-payload.test.mjs
           scripts/linux-port/credential-storage-contract.test.mjs

@@ -6,11 +6,23 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { discoverBundleArtifacts, relative, repoRoot } from './lib/linux-release-common.mjs';
 import { findAppImageFilesystemOffset } from './lib/appimage-filesystem.mjs';
+import {
+  linuxAppImagePeerExecutableRelativePath,
+  linuxAppImagePeerManifestName,
+  linuxAppImagePeerSignatureName,
+  verifyLinuxAppImagePeerManifest,
+  writeSignedLinuxAppImagePeerManifest
+} from './lib/linux-appimage-peer-manifest.mjs';
 
 export const requiredPayloadPaths = [
   'openburnbar-daemon',
   'swift',
-  'native/libsqlcipher.so.0'
+  'native/libsqlcipher.so.0',
+  'native/libopenburnbar_iroh.so',
+  'playwright/openburnbar-playwright-bridge.js',
+  'playwright/openburnbar-browser-runtime-probe',
+  'playwright/browser-runtime-requirements.json',
+  'cloud-auth.json'
 ];
 
 function requirePath(candidate, label, expectedType) {
@@ -20,11 +32,43 @@ function requirePath(candidate, label, expectedType) {
   if (expectedType === 'directory' && !stat.isDirectory()) throw new Error(`${label} is not a directory: ${candidate}`);
 }
 
+function requireRegularResource(candidate, label, expectedMode) {
+  if (!fs.existsSync(candidate)) throw new Error(`${label} missing: ${candidate}`);
+  const stat = fs.lstatSync(candidate);
+  if (!stat.isFile() || stat.isSymbolicLink()) {
+    throw new Error(`${label} is not a regular file: ${candidate}`);
+  }
+  if ((stat.mode & 0o777) !== expectedMode) {
+    throw new Error(`${label} mode must be ${expectedMode.toString(8)}: ${candidate}`);
+  }
+}
+
 export function validatePayload(payloadRoot) {
   const root = path.resolve(payloadRoot);
   for (const entry of requiredPayloadPaths) {
     requirePath(path.join(root, entry), `AppImage payload ${entry}`, entry === 'swift' ? 'directory' : 'file');
   }
+  requireRegularResource(
+    path.join(root, 'native/libopenburnbar_iroh.so'),
+    'AppImage iroh native runtime',
+    0o644
+  );
+  requireRegularResource(
+    path.join(root, 'playwright/openburnbar-playwright-bridge.js'),
+    'AppImage Playwright bridge',
+    0o644
+  );
+  requireRegularResource(
+    path.join(root, 'playwright/openburnbar-browser-runtime-probe'),
+    'AppImage browser runtime probe',
+    0o755
+  );
+  requireRegularResource(
+    path.join(root, 'playwright/browser-runtime-requirements.json'),
+    'AppImage browser runtime requirements',
+    0o644
+  );
+  requireRegularResource(path.join(root, 'cloud-auth.json'), 'AppImage cloud auth config', 0o644);
   return root;
 }
 
@@ -63,14 +107,71 @@ function copyFileRange(source, destination, bytes = null) {
   }
 }
 
-function assertEmbeddedPayload(appDir) {
+function assertEmbeddedPayload(appDir, { requirePeerManifest }) {
   const required = [
     'usr/bin/openburnbar-daemon',
     'usr/libexec/openburnbar-daemon-launch',
     'usr/lib/openburnbar/swift',
-    'usr/lib/openburnbar/native/libsqlcipher.so.0'
+    'usr/lib/openburnbar/native/libsqlcipher.so.0',
+    'usr/lib/openburnbar/native/libopenburnbar_iroh.so',
+    'usr/lib/openburnbar/playwright/openburnbar-playwright-bridge.js',
+    'usr/lib/openburnbar/playwright/openburnbar-browser-runtime-probe',
+    'usr/lib/openburnbar/playwright/browser-runtime-requirements.json',
+    'usr/share/openburnbar/cloud-auth.json'
   ];
+  if (requirePeerManifest) {
+    required.push(
+      `usr/share/openburnbar/${linuxAppImagePeerManifestName}`,
+      `usr/share/openburnbar/${linuxAppImagePeerSignatureName}`
+    );
+  }
   for (const entry of required) requirePath(path.join(appDir, entry), `embedded AppImage path ${entry}`, entry.endsWith('/swift') ? 'directory' : 'file');
+  requireRegularResource(
+    path.join(appDir, 'usr/lib/openburnbar/native/libopenburnbar_iroh.so'),
+    'embedded AppImage iroh native runtime',
+    0o644
+  );
+  requireRegularResource(
+    path.join(appDir, 'usr/lib/openburnbar/playwright/openburnbar-playwright-bridge.js'),
+    'embedded AppImage Playwright bridge',
+    0o644
+  );
+  requireRegularResource(
+    path.join(appDir, 'usr/lib/openburnbar/playwright/openburnbar-browser-runtime-probe'),
+    'embedded AppImage browser runtime probe',
+    0o755
+  );
+  requireRegularResource(
+    path.join(appDir, 'usr/share/openburnbar/cloud-auth.json'),
+    'embedded AppImage cloud auth config',
+    0o644
+  );
+  if (requirePeerManifest) {
+    requireRegularResource(
+      path.join(appDir, `usr/share/openburnbar/${linuxAppImagePeerManifestName}`),
+      'embedded AppImage peer manifest',
+      0o644
+    );
+    requireRegularResource(
+      path.join(appDir, `usr/share/openburnbar/${linuxAppImagePeerSignatureName}`),
+      'embedded AppImage peer manifest signature',
+      0o644
+    );
+    verifyLinuxAppImagePeerManifest({
+      manifestBytes: fs.readFileSync(path.join(appDir, `usr/share/openburnbar/${linuxAppImagePeerManifestName}`)),
+      signature: fs.readFileSync(path.join(appDir, `usr/share/openburnbar/${linuxAppImagePeerSignatureName}`)),
+      executable: path.join(appDir, linuxAppImagePeerExecutableRelativePath),
+      publicKeyPem: fs.readFileSync(path.join(repoRoot, 'packaging/linux/openburnbar-linux-ed25519.pub.pem'))
+    });
+  }
+}
+
+export function resolveLinuxAppImagePeerSigning(environment) {
+  const privateKeyPem = environment.OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM?.trim() || null;
+  if (!privateKeyPem && environment.OPENBURNBAR_LINUX_RELEASE_BUILD === '1') {
+    throw new Error('OPENBURNBAR_LINUX_ED25519_PRIVATE_KEY_PEM is required to sign the AppImage peer manifest');
+  }
+  return privateKeyPem;
 }
 
 export function embedLinuxAppImagePayload({ appImage, payloadRoot, env = process.env }) {
@@ -85,6 +186,7 @@ export function embedLinuxAppImagePayload({ appImage, payloadRoot, env = process
   const candidate = `${image}.payload.tmp`;
   const appImageEnv = { ...env, APPIMAGE_EXTRACT_AND_RUN: '1' };
   const runtimeProbe = env.OPENBURNBAR_APPIMAGE_RUNTIME_PROBE?.trim() || 'appimage';
+  const peerManifestPrivateKey = resolveLinuxAppImagePeerSigning(env);
   if (!['appimage', 'extracted'].includes(runtimeProbe)) {
     throw new Error(`invalid OPENBURNBAR_APPIMAGE_RUNTIME_PROBE: ${runtimeProbe}`);
   }
@@ -107,6 +209,7 @@ export function embedLinuxAppImagePayload({ appImage, payloadRoot, env = process
     fs.chmodSync(path.join(appDir, 'usr/bin/openburnbar-daemon'), 0o755);
     fs.rmSync(path.join(appDir, 'usr/lib/openburnbar/swift'), { recursive: true, force: true });
     fs.rmSync(path.join(appDir, 'usr/lib/openburnbar/native'), { recursive: true, force: true });
+    fs.rmSync(path.join(appDir, 'usr/lib/openburnbar/playwright'), { recursive: true, force: true });
     fs.mkdirSync(path.join(appDir, 'usr/lib/openburnbar'), { recursive: true });
     fs.cpSync(path.join(payload, 'swift'), path.join(appDir, 'usr/lib/openburnbar/swift'), {
       recursive: true,
@@ -118,7 +221,24 @@ export function embedLinuxAppImagePayload({ appImage, payloadRoot, env = process
       dereference: false,
       preserveTimestamps: true
     });
-    assertEmbeddedPayload(appDir);
+    fs.cpSync(path.join(payload, 'playwright'), path.join(appDir, 'usr/lib/openburnbar/playwright'), {
+      recursive: true,
+      dereference: false,
+      preserveTimestamps: true
+    });
+    fs.mkdirSync(path.join(appDir, 'usr/share/openburnbar'), { recursive: true });
+    fs.copyFileSync(
+      path.join(payload, 'cloud-auth.json'),
+      path.join(appDir, 'usr/share/openburnbar/cloud-auth.json')
+    );
+    fs.chmodSync(path.join(appDir, 'usr/share/openburnbar/cloud-auth.json'), 0o644);
+    if (peerManifestPrivateKey) {
+      writeSignedLinuxAppImagePeerManifest({
+        appDir,
+        privateKeyPem: peerManifestPrivateKey
+      });
+    }
+    assertEmbeddedPayload(appDir, { requirePeerManifest: peerManifestPrivateKey !== null });
 
     run('mksquashfs', [appDir, squash, '-noappend', '-root-owned', '-comp', 'zstd', '-no-xattrs'], {
       cwd: work,
@@ -145,7 +265,7 @@ export function embedLinuxAppImagePayload({ appImage, payloadRoot, env = process
       String(candidateOffset),
       candidate
     ], { cwd: verify, env: appImageEnv });
-    assertEmbeddedPayload(verifiedRoot);
+    assertEmbeddedPayload(verifiedRoot, { requirePeerManifest: peerManifestPrivateKey !== null });
     run(path.join(verifiedRoot, 'usr/libexec/openburnbar-daemon-launch'), ['--help'], {
       cwd: verify,
       env: { ...appImageEnv, APPDIR: verifiedRoot }
@@ -160,7 +280,12 @@ export function embedLinuxAppImagePayload({ appImage, payloadRoot, env = process
     }
 
     fs.renameSync(candidate, image);
-    return { appImage: image, size: fs.statSync(image).size, filesystemOffset: offset };
+    return {
+      appImage: image,
+      size: fs.statSync(image).size,
+      filesystemOffset: offset,
+      peerManifestSigned: peerManifestPrivateKey !== null
+    };
   } finally {
     fs.rmSync(candidate, { force: true });
     fs.rmSync(work, { recursive: true, force: true });

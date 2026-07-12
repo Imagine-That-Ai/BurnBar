@@ -53,6 +53,7 @@ import com.openburnbar.data.square.ThreadInboxStore
 import com.openburnbar.data.square.splitForInbox
 import com.openburnbar.data.stores.ActivityStore
 import com.openburnbar.ui.components.AuroraBackdrop
+import com.openburnbar.ui.hermes.rememberAccountScopedHermesService
 import com.openburnbar.ui.pro.CloudTier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -216,7 +217,7 @@ private fun rememberHermesSquareOverlayFields(): HermesSquareOverlayFields = rem
 private fun rememberHermesSquareServiceCore(): HermesSquareServiceCore {
     val context = LocalContext.current
     val registry = remember { AgentIdentityRegistry.shared() }
-    val hermesService = remember(context) { HermesService(appContext = context.applicationContext) }
+    val hermesService = rememberAccountScopedHermesService()
     val inbox = remember { ThreadInboxStore.shared() }
     val activityStore: ActivityStore = viewModel()
     val cloudHits by activityStore.cloudSearchHits.collectAsStateWithLifecycle()

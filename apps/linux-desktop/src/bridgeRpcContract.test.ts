@@ -81,6 +81,8 @@ describe('VAL-RPC bridge contract', () => {
   it('wires computer use wrappers to existing enum methods', () => {
     for (const method of [
       'daemon.computer_use.session.start',
+      'daemon.computer_use.session_grant.acquire',
+      'daemon.computer_use.session_grant.status',
       'daemon.computer_use.invoke',
       'daemon.computer_use.approval.pending',
       'daemon.computer_use.approval.respond',
@@ -104,5 +106,24 @@ describe('VAL-RPC bridge contract', () => {
     for (const method of new Set(mediaCalls)) {
       expect(canonicalRpc, `${method} must exist in BurnBarRPCIPCCanon`).toContain(`id: "${method}"`);
     }
+  });
+
+  it('wires daemon-owned Linux auth without renderer credential material', () => {
+    for (const method of [
+      'daemon.auth.status',
+      'daemon.auth.begin',
+      'daemon.auth.cancel',
+      'daemon.auth.rotate_identity',
+      'daemon.auth.sign_out'
+    ]) {
+      expect(rustBridge).toContain(method);
+      expect(canonicalRpc, `${method} must exist in BurnBarRPCIPCCanon`).toContain(`id: "${method}"`);
+    }
+    expect(rustBridge).toContain('object.remove("authorizationURL")');
+    const accountTypes = tsBridge.slice(
+      tsBridge.indexOf('P08: account'),
+      tsBridge.indexOf('P10: membership')
+    );
+    expect(accountTypes).not.toMatch(/\b(refreshToken|idToken|appCheckToken|sessionGeneration|deviceID)\b/);
   });
 });

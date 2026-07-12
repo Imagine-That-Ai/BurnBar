@@ -9,6 +9,9 @@ function valid() {
       'verify-linux-release.test.mjs',
       'assemble-linux-release.test.mjs',
       'linux-package-session.test.mjs',
+      'scripts/linux-port/browser-runtime-packaging.test.mjs',
+      'scripts/linux-port/aur-browser-runtime-packaging.test.mjs',
+      'scripts/linux-port/embed-linux-appimage-payload.test.mjs',
       'render-parity-ledger.mjs --check',
       'macos-matched-performance',
       'run-matched-performance.mjs',
@@ -194,6 +197,17 @@ test('package lifecycle finalizer regression suite cannot be removed', () => {
   assert.equal(verifyLinuxWorkflowWiring(input).passed, false);
 });
 
+test('each Browser Computer Use package-family suite is independently required', () => {
+  for (const marker of [
+    'scripts/linux-port/browser-runtime-packaging.test.mjs',
+    'scripts/linux-port/aur-browser-runtime-packaging.test.mjs',
+    'scripts/linux-port/embed-linux-appimage-payload.test.mjs'
+  ]) {
+    const input = valid();
+    input.pr = input.pr.replace(marker, '');
+    assert.equal(verifyLinuxWorkflowWiring(input).passed, false, marker);
+  }
+});
 test('attestation and publish order drift fails', () => {
   const input = valid();
   input.release = input.release.replace(

@@ -1,7 +1,11 @@
 import type {
+  AccountSignInOperation,
+  AccountStatus,
   DatabaseIndexActionResult,
   DatabaseWorkspaceStatus,
   ComputerUsePanicHaltResult,
+  ComputerUseSessionAuthorityStatus,
+  ComputerUseSessionStartRequest,
   IntegrationsStatus,
   MercuryMediaCapability,
   MercuryFileOfferListResponse,
@@ -82,6 +86,13 @@ export const emptyComputerUse = async (
   _params?: Record<string, unknown>
 ): Promise<unknown> => ({ ok: false, reason: 'stub' });
 
+export const emptyComputerUseSessionAuthorityStatus = (
+): Promise<ComputerUseSessionAuthorityStatus> => Promise.resolve({ state: 'available' });
+
+export const emptyComputerUseSessionStart = async (
+  _params: ComputerUseSessionStartRequest
+): Promise<ComputerUseSessionAuthorityStatus> => ({ state: 'unavailable' });
+
 export const emptyDatabaseWorkspaceStatus = (): Promise<DatabaseWorkspaceStatus> =>
   Promise.resolve({
     sourceLabel: 'test stub',
@@ -131,6 +142,27 @@ export const emptyOnboardingAction = (
 
 export const emptyOnboardingReset = (): Promise<LinuxOnboardingSnapshot> =>
   Promise.resolve(defaultLinuxOnboardingSnapshot());
+
+export const emptyAccountStatus = (): Promise<AccountStatus> =>
+  Promise.resolve({
+    state: 'signed-out',
+    signedIn: false,
+    trustClass: 'linux-lower-trust',
+    syncState: 'local-only',
+    deviceApprovalRequired: false
+  });
+
+export const emptyAccountBeginSignIn = (): Promise<AccountSignInOperation> =>
+  Promise.reject(new Error('Account sign-in is unavailable in this test bridge.'));
+
+export const emptyAccountCancelSignIn = (_operationID: string): Promise<AccountStatus> =>
+  emptyAccountStatus();
+
+export const emptyAccountRotateIdentity = (): Promise<AccountStatus> =>
+  emptyAccountStatus();
+
+export const emptyAccountSignOut = (): Promise<AccountStatus> =>
+  emptyAccountStatus();
 
 export const emptySubscriptionStart = (
   request: DaemonSubscriptionStartRequest
@@ -210,6 +242,11 @@ export const availableRuntimeCapabilities = (): Promise<RuntimeCapabilityManifes
   Promise.resolve(makeAvailableRuntimeCapabilityManifest());
 
 export const bridgeStubDefaults = {
+  accountStatus: emptyAccountStatus,
+  accountBeginSignIn: emptyAccountBeginSignIn,
+  accountCancelSignIn: emptyAccountCancelSignIn,
+  accountRotateIdentity: emptyAccountRotateIdentity,
+  accountSignOut: emptyAccountSignOut,
   onboardingSnapshot: emptyOnboardingSnapshot,
   onboardingAction: emptyOnboardingAction,
   onboardingReset: emptyOnboardingReset,
@@ -236,7 +273,8 @@ export const bridgeStubDefaults = {
   memoryReviewDecision: emptyMemoryReviewDecision,
   memorySetStatus: emptyMemorySetStatus,
   toolApprovalRespond: emptyToolApprovalRespond,
-  computerUseSessionStart: emptyComputerUse,
+  computerUseSessionAuthorityStatus: emptyComputerUseSessionAuthorityStatus,
+  computerUseSessionStart: emptyComputerUseSessionStart,
   computerUseInvoke: emptyComputerUse,
   computerUseApprovalPending: emptyComputerUse,
   computerUseApprovalRespond: emptyComputerUse,

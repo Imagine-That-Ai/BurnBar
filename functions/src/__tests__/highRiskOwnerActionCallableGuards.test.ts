@@ -22,11 +22,18 @@ const EXPECTED_GUARDS: Array<{
   exportedName: string;
   file: string;
   actionKind: string;
+  guardFunction?: string;
 }> = [
   {
     exportedName: "approveHermesGatewayDeviceGrant",
     file: "hermesGatewayApprove.ts",
     actionKind: "hermes_gateway_device_grant_approve",
+  },
+  {
+    exportedName: "approveLinuxAppCheckDevice",
+    file: "linuxAppCheckDevices.ts",
+    actionKind: "linux_app_check_device_approve",
+    guardFunction: "enforceHighRiskComputerUseCallableWithNonce",
   },
   { exportedName: "connectProviderAccount", file: "providerAccounts.ts", actionKind: "provider_account_connect" },
   { exportedName: "connectProviderCredential", file: "providerAccounts.ts", actionKind: "provider_credential_connect" },
@@ -46,6 +53,12 @@ const EXPECTED_GUARDS: Array<{
   { exportedName: "updateProviderAccount", file: "providerAccounts.ts", actionKind: "provider_account_update" },
   { exportedName: "revokeRemoteMcpClient", file: "remoteMcp.ts", actionKind: "remote_mcp_grant_revoke" },
   {
+    exportedName: "revokeLinuxAppCheckDevice",
+    file: "linuxAppCheckDevices.ts",
+    actionKind: "linux_app_check_device_revoke",
+    guardFunction: "enforceHighRiskComputerUseCallableWithNonce",
+  },
+  {
     exportedName: "deleteHostedQuotaCredentials",
     file: "providerAccounts.ts",
     actionKind: "hosted_quota_credential_delete",
@@ -63,9 +76,10 @@ describe("highRiskOwnerAction callable guards — source wiring", () => {
   });
 
   for (const guard of EXPECTED_GUARDS) {
-    it(`${guard.exportedName} calls enforceHighRiskOwnerAction with actionKind "${guard.actionKind}"`, () => {
+    const guardFunction = guard.guardFunction ?? "enforceHighRiskOwnerAction";
+    it(`${guard.exportedName} calls ${guardFunction} with actionKind "${guard.actionKind}"`, () => {
       const source = readCallableSource(guard.file);
-      expect(source).toContain("enforceHighRiskOwnerAction");
+      expect(source).toContain(guardFunction);
       expect(source).toContain(`"${guard.actionKind}"`);
     });
   }

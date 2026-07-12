@@ -14,6 +14,11 @@ final class BurnBarRPCContractsTests: XCTestCase {
     /// mismatch here must be treated as a protocol break, not a test update.
     private static let expectedWireNames: [BurnBarRPCMethod: String] = [
         .authBootstrap: "auth.bootstrap",
+        .linuxAuthStatus: "daemon.auth.status",
+        .linuxAuthBegin: "daemon.auth.begin",
+        .linuxAuthCancel: "daemon.auth.cancel",
+        .linuxAuthRotateIdentity: "daemon.auth.rotate_identity",
+        .linuxAuthSignOut: "daemon.auth.sign_out",
         .health: "daemon.health",
         .catalog: "daemon.catalog",
         .linuxOnboardingSnapshot: "daemon.onboarding.snapshot",
@@ -44,6 +49,9 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .browserToolingUpdate: "daemon.browser.tooling.update",
         .browserAction: "daemon.browser.action",
         .computerUseCapabilityStateUpdate: "daemon.computer_use.capability_state.update",
+        .computerUseSessionGrantReadiness: "daemon.computer_use.session_grant.readiness",
+        .computerUseSessionGrantAcquire: "daemon.computer_use.session_grant.acquire",
+        .computerUseSessionGrantStatus: "daemon.computer_use.session_grant.status",
         .computerUseSessionStart: "daemon.computer_use.session.start",
         .computerUseInvoke: "daemon.computer_use.invoke",
         .computerUseApprovalPending: "daemon.computer_use.approval.pending",
@@ -171,6 +179,30 @@ final class BurnBarRPCContractsTests: XCTestCase {
         XCTAssertThrowsError(try JSONDecoder().decode([BurnBarRPCMethod].self, from: unknown)) { error in
             XCTAssertTrue(error is DecodingError, "Expected DecodingError, got \(error)")
         }
+    }
+
+    func testLinuxAuthResponsesExposeOnlyRedactedState() throws {
+        let status = BurnBarLinuxAuthStatusResponse(
+            state: .awaitingDeviceApproval,
+            signedIn: false,
+            authorizationOperationID: "operation-1",
+            authorizationExpiresAt: "2026-07-11T22:00:00Z",
+            deviceApprovalRequired: true,
+            installationDeviceID: "linux_0123456789abcdef",
+            installationSafetyFingerprint: "0123 4567 89AB CDEF",
+            detail: "Approval required on a trusted device."
+        )
+        let encoded = try JSONEncoder().encode(status)
+        let json = try XCTUnwrap(String(data: encoded, encoding: .utf8))
+
+        XCTAssertTrue(json.contains("awaiting_device_approval"))
+        XCTAssertTrue(json.contains("linux_0123456789abcdef"))
+        XCTAssertTrue(json.contains("0123 4567 89AB CDEF"))
+        XCTAssertFalse(json.contains("refreshToken"))
+        XCTAssertFalse(json.contains("idToken"))
+        XCTAssertFalse(json.contains("appCheckToken"))
+        XCTAssertFalse(json.contains("publicKey"))
+        XCTAssertFalse(json.contains("sessionGeneration"))
     }
 
     func testControllerRuntimeSnapshotMethod_isAdditiveControllerNamespaceExtension() throws {

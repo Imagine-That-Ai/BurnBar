@@ -16,6 +16,9 @@ import Foundation
 /// the daemon can independently verify local-auth proofs.
 public struct DaemonPhoneControlPinProvisionRequest: Codable, Hashable, Sendable {
     public let deviceId: String
+    /// Stable transport peer identity used by signed action-authority envelopes.
+    /// This can differ from the platform source-device document id.
+    public let peerNodeId: String?
     /// Base64 of the canonical published public-key bytes (32-byte raw for
     /// Ed25519, 65-byte X9.63 for SE-P256).
     public let publicKeyBase64: String
@@ -23,10 +26,12 @@ public struct DaemonPhoneControlPinProvisionRequest: Codable, Hashable, Sendable
 
     public init(
         deviceId: String,
+        peerNodeId: String? = nil,
         publicKeyBase64: String,
         keyKind: PhoneControlSigningKeyKind = .ed25519
     ) {
         self.deviceId = deviceId
+        self.peerNodeId = peerNodeId
         self.publicKeyBase64 = publicKeyBase64
         self.keyKind = keyKind
     }
@@ -92,6 +97,21 @@ public struct ComputerUseLocalAuthGrantBinding: Codable, Hashable, Sendable {
     }
 }
 
+public enum ComputerUseDesktopOwnerAuthorizationMethod: String, Codable, Hashable, Sendable {
+    case linuxDesktopOwner = "linux_desktop_owner"
+}
+
+/// Requests a fresh, desktop-local owner authorization before session start.
+/// This is a request only: success, timestamps, and proofs are produced and
+/// verified locally by the daemon and are never accepted from the client.
+public struct ComputerUseDesktopOwnerAuthorizationRequest: Codable, Hashable, Sendable {
+    public let method: ComputerUseDesktopOwnerAuthorizationMethod
+
+    public init(method: ComputerUseDesktopOwnerAuthorizationMethod) {
+        self.method = method
+    }
+}
+
 public struct ComputerUseSessionStartRequest: Codable, Hashable, Sendable {
     public let mode: String  // ComputerUseMode raw value
     public let trustMode: String  // ComputerUseTrustMode raw value
@@ -102,6 +122,17 @@ public struct ComputerUseSessionStartRequest: Codable, Hashable, Sendable {
     public let sessionTimeoutSeconds: Int
     public let clientID: BurnBarClientID
     public let runID: BurnBarRunID?
+    /// Exact managed-run call selected by the Linux session handshake.
+    public let runCallID: String?
+    /// Exact managed-run generation selected by the Linux session handshake.
+    public let runGeneration: UInt64?
+    /// Opaque handle for daemon-brokered paired-phone authority. The challenge
+    /// id is transport state, not part of the canonical session intent hash.
+    /// Linux release clients send this instead of receiving proof material.
+    public let grantChallengeId: String?
+    /// Additive desktop-local authorization requirement. Phone proof remains
+    /// independently mandatory when daemon proof enforcement is enabled.
+    public let desktopOwnerAuthorizationRequest: ComputerUseDesktopOwnerAuthorizationRequest?
 
     /// T-DMN-04 — the single-use, op-hash-bound Ed25519 local-auth proof that
     /// authorizes starting a high-risk computer-use session. The Mac app already
@@ -134,6 +165,10 @@ public struct ComputerUseSessionStartRequest: Codable, Hashable, Sendable {
         sessionTimeoutSeconds: Int = 1800,
         clientID: BurnBarClientID,
         runID: BurnBarRunID? = nil,
+        runCallID: String? = nil,
+        runGeneration: UInt64? = nil,
+        grantChallengeId: String? = nil,
+        desktopOwnerAuthorizationRequest: ComputerUseDesktopOwnerAuthorizationRequest? = nil,
         localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof? = nil,
         sourceDeviceId: String? = nil,
         intentHashHex: String? = nil,
@@ -148,10 +183,91 @@ public struct ComputerUseSessionStartRequest: Codable, Hashable, Sendable {
         self.sessionTimeoutSeconds = sessionTimeoutSeconds
         self.clientID = clientID
         self.runID = runID
+        self.runCallID = runCallID
+        self.runGeneration = runGeneration
+        self.grantChallengeId = grantChallengeId
+        self.desktopOwnerAuthorizationRequest = desktopOwnerAuthorizationRequest
         self.localAuthProof = localAuthProof
         self.sourceDeviceId = sourceDeviceId
         self.intentHashHex = intentHashHex
         self.localAuthGrantBinding = localAuthGrantBinding
+    }
+}
+
+public enum ComputerUseSessionGrantBrokerState: String, Codable, Hashable, Sendable {
+    case unavailable
+    case awaitingPhone = "awaiting_phone"
+    case awaitingDesktopOwner = "awaiting_desktop_owner"
+    case ready
+    case denied
+    case expired
+    case consumed
+}
+
+public enum ComputerUseSessionGrantReadinessReason: String, Codable, Hashable, Sendable {
+    case ready
+    case brokerUnavailable = "broker_unavailable"
+    case transportUnavailable = "transport_unavailable"
+    case pairingUnavailable = "pairing_unavailable"
+    case proofValidatorUnavailable = "proof_validator_unavailable"
+}
+
+/// Non-secret release readiness for the daemon-owned Linux session-grant path.
+/// The desktop must not advertise Computer Use as ready until this response is
+/// available and affirmative.
+public struct ComputerUseSessionGrantReadinessResponse: Codable, Hashable, Sendable {
+    public let available: Bool
+    public let reason: ComputerUseSessionGrantReadinessReason
+
+    public init(available: Bool, reason: ComputerUseSessionGrantReadinessReason) {
+        self.available = available
+        self.reason = reason
+    }
+}
+
+/// Safe metadata used to ask the daemon-owned paired-controller broker for one
+/// exact phone grant. Proofs, signatures, and signing keys never appear in this
+/// request or its response.
+public struct ComputerUseSessionGrantAcquireRequest: Codable, Hashable, Sendable {
+    public let sessionRequest: ComputerUseSessionStartRequest
+
+    public init(
+        sessionRequest: ComputerUseSessionStartRequest
+    ) {
+        self.sessionRequest = sessionRequest
+    }
+}
+
+public struct ComputerUseSessionGrantStatusRequest: Codable, Hashable, Sendable {
+    public let challengeId: String
+
+    public init(challengeId: String) {
+        self.challengeId = challengeId
+    }
+}
+
+public struct ComputerUseSessionGrantStatusResponse: Codable, Hashable, Sendable {
+    public let challengeId: String
+    public let sessionIntentId: String
+    public let state: ComputerUseSessionGrantBrokerState
+    public let issuedAt: Date
+    public let expiresAt: Date
+    public let denialReason: String?
+
+    public init(
+        challengeId: String,
+        sessionIntentId: String,
+        state: ComputerUseSessionGrantBrokerState,
+        issuedAt: Date,
+        expiresAt: Date,
+        denialReason: String? = nil
+    ) {
+        self.challengeId = challengeId
+        self.sessionIntentId = sessionIntentId
+        self.state = state
+        self.issuedAt = issuedAt
+        self.expiresAt = expiresAt
+        self.denialReason = denialReason
     }
 }
 
@@ -303,11 +419,47 @@ public struct ComputerUseApprovalPendingRequest: Codable, Hashable, Sendable {
     }
 }
 
+public struct ComputerUseRunRequirementSummary: Codable, Equatable, Sendable {
+    public let runID: BurnBarRunID
+    public let callID: String
+    public let clientID: BurnBarClientID
+    public let toolKind: BurnBarToolKind
+    public let generation: UInt64
+    public let requestedAt: Date
+
+    public init(
+        runID: BurnBarRunID,
+        callID: String,
+        clientID: BurnBarClientID,
+        toolKind: BurnBarToolKind,
+        generation: UInt64,
+        requestedAt: Date
+    ) {
+        self.runID = runID
+        self.callID = callID
+        self.clientID = clientID
+        self.toolKind = toolKind
+        self.generation = generation
+        self.requestedAt = requestedAt
+    }
+}
+
 public struct ComputerUseApprovalPendingResponse: Codable, Equatable, Sendable {
     public let requests: [HermesRealtimeRelayApprovalRequest]
+    public let runRequirements: [ComputerUseRunRequirementSummary]?
+    /// Authoritative lifecycle state for an exact filtered session poll.
+    /// `nil` preserves unfiltered polling semantics; filtered polls always
+    /// return a concrete value so clients can retire daemon-ended sessions.
+    public let sessionActive: Bool?
 
-    public init(requests: [HermesRealtimeRelayApprovalRequest]) {
+    public init(
+        requests: [HermesRealtimeRelayApprovalRequest],
+        runRequirements: [ComputerUseRunRequirementSummary]? = nil,
+        sessionActive: Bool? = nil
+    ) {
         self.requests = requests
+        self.runRequirements = runRequirements
+        self.sessionActive = sessionActive
     }
 }
 

@@ -51,6 +51,8 @@ interface DomainPaths {
   encryptionTier: EncryptionTier;
   /** Top-level Firestore collection names under users/{uid}/ for this domain. */
   firestoreCollections: string[];
+  /** Ephemeral server records that must be deleted with the domain but never exported. */
+  exportExcludedCollections?: string[];
   /**
    * Cloud Storage path templates under users/{uid}/ for this domain (the
    * `{...}` segments are wildcards). Stored as the SEGMENT BEFORE the first
@@ -150,6 +152,7 @@ export const DATA_DOMAIN_PATHS: Record<string, DomainPaths> = {
       "pi_agent_relay_requests",
       "iroh_pairing",
       "iroh_pairing_keys",
+      "iroh_controller_route_challenges",
       "relay_sender_keys",
       "runtime_connection_preferences",
     ],
@@ -206,7 +209,10 @@ export const DATA_DOMAIN_PATHS: Record<string, DomainPaths> = {
       "escrow_audit_events",
       "account_recovery_methods",
       "roaming_profile",
+      "linux_app_check_devices",
+      "linux_app_check_challenges",
     ],
+    exportExcludedCollections: ["linux_app_check_challenges"],
     storagePrefixes: [],
   },
   audit_timeline: {
@@ -411,6 +417,7 @@ async function collectInlineJson(
   const redacted = new Set<string>();
   const domainSealAware = paths.encryptionTier !== "server_readable";
   for (const collection of paths.firestoreCollections) {
+    if (paths.exportExcludedCollections?.includes(collection)) continue;
     // Force seal-aware serialization for sealed-content collections that live in
     // an otherwise-server_readable domain (e.g. the now-sealed gateway content
     // collections under connected_devices), so plaintext can never leak.

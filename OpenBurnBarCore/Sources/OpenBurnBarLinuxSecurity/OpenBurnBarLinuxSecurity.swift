@@ -497,6 +497,17 @@ public struct LinuxAuthTokenStore: Sendable {
         try custodian.requireHighValueSecret(id: "firebase-refresh-token", secretClass: .refreshToken).metadata
     }
 
+    /// Resolves the Firebase refresh token for an in-process authentication
+    /// exchange. Callers must keep the returned value out of persistence, IPC,
+    /// diagnostics, and logs; only ``restoreRefreshToken()`` is appropriate for
+    /// non-secret status surfaces.
+    public func requireRefreshTokenValue() throws -> String {
+        try custodian.requireHighValueSecret(
+            id: "firebase-refresh-token",
+            secretClass: .refreshToken
+        ).secret
+    }
+
     @discardableResult
     public func storeRefreshToken(_ token: String) throws -> LinuxSecretMetadata {
         try custodian.storeHighValueSecret(
