@@ -33,6 +33,19 @@ public sealed class UpdateVersionTests
         Assert.False(UpdateVersion.TryParse(value, out _));
     }
 
+    [Theory]
+    [InlineData("1.4.2.0.1")]
+    [InlineData("1.2.3.4.5")]
+    [InlineData("1.2.3.4.5.6.7.8")]
+    public void RejectsMoreComponentsThanTheSignedNormalizedForm(string value)
+    {
+        // Every component that participates in ordering must be bound by the
+        // signed canonical descriptor (which emits exactly 4). A fifth
+        // component would order as "newer" while reusing a 4-component
+        // signature, so it is rejected at parse time.
+        Assert.False(UpdateVersion.TryParse(value, out _));
+    }
+
     [Fact]
     public void TrailingZeroComponentsAreEquivalent()
     {

@@ -1,0 +1,99 @@
+﻿{
+    "schema":  "openburnbar.windows.release-certification-bundle.v1",
+    "generatedAtUtc":  "2026-07-12T08:29:28.8350764+00:00",
+    "source":  {
+                   "commitSha":  "7c362298230e14bfd51dcdcbaf9476cd86cefa66",
+                   "dirtyTree":  false
+               },
+    "runner":  {
+                   "script":  "scripts/windows-port/run-physical-release-certification.ps1",
+                   "platform":  "ARM64",
+                   "physicalHardwareAsserted":  false
+               },
+    "overallVerdict":  "NO-GO",
+    "receipts":  [
+                     {
+                         "path":  "receipts/local-automated-checks.json",
+                         "sha256":  "447ef651e4f75e91bf3c0c04187222055a290c08595c2791f16c2fecc09d08c1"
+                     },
+                     {
+                         "path":  "receipts/accessibility-display.json",
+                         "sha256":  "8d36f5afc3076769fb1c6e2a4c958a2e265761166a36fa5897ea74db8f4425c0"
+                     },
+                     {
+                         "path":  "receipts/staging-cloud.json",
+                         "sha256":  "ec340add6cfaa8677a5338f11dcffe88bc188b4f03f3f0f13ba3d4aab159ec13"
+                     },
+                     {
+                         "path":  "receipts/physical-performance-arm64.json",
+                         "sha256":  "19b44ce00c3213cb6532c70c22306ee67af442dbd71674f64068a2bb84c056bd"
+                     },
+                     {
+                         "path":  "receipts/store-update-lifecycle.json",
+                         "sha256":  "6db52dd375b1c6b6f256fefb07ef6c8a5c5882ba1989d7947e3d2fabf5fed8b7"
+                     },
+                     {
+                         "path":  "receipts/physical-performance-x64.json",
+                         "sha256":  "f392371950577a6081143721f63f3f731516d1fd8b9c5c4d7b1ff086fbe5401f"
+                     },
+                     {
+                         "path":  "receipts/media-computer-use-safety.json",
+                         "sha256":  "964ee7b6453cc61afe76f91e4313a845554f018b992edabc0a349a738fc1885f"
+                     }
+                 ],
+    "gates":  [
+                  {
+                      "id":  "local-automated-checks",
+                      "status":  "PASS",
+                      "receipts":  [
+                                       "receipts/local-automated-checks.json"
+                                   ]
+                  },
+                  {
+                      "id":  "accessibility-display",
+                      "status":  "BLOCKED",
+                      "receipts":  [
+                                       "receipts/accessibility-display.json"
+                                   ]
+                  },
+                  {
+                      "id":  "staging-cloud",
+                      "status":  "BLOCKED",
+                      "receipts":  [
+                                       "receipts/staging-cloud.json"
+                                   ]
+                  },
+                  {
+                      "id":  "physical-performance-arm64",
+                      "status":  "BLOCKED",
+                      "receipts":  [
+                                       "receipts/physical-performance-arm64.json"
+                                   ]
+                  },
+                  {
+                      "id":  "store-update-lifecycle",
+                      "status":  "BLOCKED",
+                      "receipts":  [
+                                       "receipts/store-update-lifecycle.json"
+                                   ]
+                  },
+                  {
+                      "id":  "physical-performance-x64",
+                      "status":  "BLOCKED",
+                      "receipts":  [
+                                       "receipts/physical-performance-x64.json"
+                                   ]
+                  },
+                  {
+                      "id":  "media-computer-use-safety",
+                      "status":  "BLOCKED",
+                      "receipts":  [
+                                       "receipts/media-computer-use-safety.json"
+                                   ]
+                  }
+              ],
+    "notes":  [
+                  "PASS is reserved for evidence observed on the declared surface.",
+                  "VM, hosted runner, source review, unit tests, and package registration do not satisfy physical certification."
+              ]
+}

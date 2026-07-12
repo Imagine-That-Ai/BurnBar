@@ -82,6 +82,10 @@ budgets/windows-tree-baseline.json
 budgets/core-ui-purity-baseline.json
 budgets/mission-splitbrain-baseline.json
 budgets/linux-desktop.perf.json
+# migrator-parity: annotated schema divergences between the canonical Swift GRDB
+# migrator and the Windows/Linux mirrors (scripts/check-migrator-parity.mjs).
+# Exact-set matched both ways: new divergences AND stale entries fail CI.
+budgets/migrator-parity-baseline.json
 
 # --- File-level TypeScript suppressions (token-scoped) ---
 functions/src/types/legacy.ts | eslint-disable
