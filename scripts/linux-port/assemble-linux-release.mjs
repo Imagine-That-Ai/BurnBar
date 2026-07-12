@@ -241,6 +241,12 @@ try {
     gitCommit: git.commit,
     artifacts
   });
+  for (const artifact of artifacts.filter((entry) => entry.type === 'arch')) {
+    const published = archRelease.installedAttestations[artifact.architecture];
+    if (!published) throw new Error(`missing published Arch installed attestation for ${artifact.architecture}`);
+    artifact.installedManifest = published.installedManifest;
+    artifact.installedManifestSignature = published.installedManifestSignature;
+  }
 } catch (error) {
   blockers.push({ kind: 'arch-release-metadata', message: error.message });
 }

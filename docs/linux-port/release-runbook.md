@@ -242,6 +242,13 @@ Sigstore/cosign bundles with
 `id-token: write`. The workflow runs only from a pre-existing
 `linux-v<version>` tag and uses this identity:
 
+The attestation input is the fail-closed set emitted by
+`scripts/linux-port/list-linux-release-attestation-subjects.mjs`, not a filename
+glob. It covers the exact ten-artifact matrix, all six native installed-manifest
+pairs, and the eight required release sidecars. Finalization requires a bundle
+for every subject and re-renders the Arch `PKGBUILD` from the canonical template
+to cross-check its source hashes, release metadata, tag, version, and commit.
+
 ```text
 https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-release.yml@refs/tags/linux-v<version>
 ```

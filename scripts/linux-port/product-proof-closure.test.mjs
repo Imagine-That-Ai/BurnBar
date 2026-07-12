@@ -12,6 +12,11 @@ import { validateProductRequirement as validateP01 } from './product-validators/
 import { validateProductRequirement as validateP03 } from './product-validators/P-03.mjs';
 import { validateProductRequirement as validateP04 } from './product-validators/P-04.mjs';
 import { validateProductRequirement as validateP37 } from './product-validators/P-37.mjs';
+import {
+  archPkgbuildCommonSources,
+  materializeArchReleaseMetadata
+} from './lib/linux-arch-pkgbuild.mjs';
+import { deriveReleaseAttestationSubjects } from './lib/product-proof-closure.mjs';
 
 const HEAD = 'a'.repeat(40);
 const VERSION = '1.2.3';
@@ -73,11 +78,23 @@ function createReleaseFixture(featureRequirements = []) {
     id: 'openburnbar-linux-product-feature-proof-registry-v1',
     requirements: featureRequirements
   });
+  fs.mkdirSync(path.join(root, 'packaging/linux/aur'), { recursive: true });
+  fs.copyFileSync(
+    path.resolve('packaging/linux/aur/PKGBUILD.in'),
+    path.join(root, 'packaging/linux/aur/PKGBUILD.in')
+  );
+  for (const [slot, relativeFile] of archPkgbuildCommonSources) {
+    if (slot === 'RELEASE_PUBLIC_KEY') continue;
+    const destination = path.join(root, relativeFile);
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.copyFileSync(path.resolve(relativeFile), destination);
+  }
   const artifacts = [];
   for (const architecture of ['aarch64', 'x86_64']) {
-    for (const format of ['appimage', 'deb', 'rpm', 'daemon']) {
+    for (const format of ['appimage', 'arch', 'deb', 'rpm', 'daemon']) {
       const name = format === 'appimage' ? `OpenBurnBar-${architecture}.AppImage`
         : format === 'daemon' ? `openburnbar-daemon-${architecture}`
+          : format === 'arch' ? `openburnbar-${architecture}.pkg.tar.zst`
           : `OpenBurnBar-${architecture}.${format}`;
       const packageFile = write(path.join(output, 'artifacts', name), `package:${format}:${architecture}\n`);
       write(
@@ -86,7 +103,7 @@ function createReleaseFixture(featureRequirements = []) {
       );
       writeJson(`${packageFile}.sigstore.json`, { verified: true });
       const artifact = { type: format, architecture, ...record(root, packageFile) };
-      if (!['deb', 'rpm'].includes(format)) {
+      if (!['arch', 'deb', 'rpm'].includes(format)) {
         artifacts.push(artifact);
         continue;
       }
@@ -99,7 +116,7 @@ function createReleaseFixture(featureRequirements = []) {
         gitCommit: HEAD,
         packageArchitecture: architecture,
         packageFormat: format,
-        packageName: 'open-burn-bar',
+        packageName: format === 'arch' ? 'openburnbar' : 'open-burn-bar',
         policyId: 'openburnbar-linux-signed-package-inventory-v1',
         brokerProtocolVersion: 2,
         installedFilesRootSha256: 'd'.repeat(64),
@@ -168,6 +185,16 @@ function createReleaseFixture(featureRequirements = []) {
     crypto.sign(null, fs.readFileSync(path.join(root, feed.file)), privateKey)
   ));
   writeJson(path.join(output, 'sidecars/latest-linux.draft.json.sigstore.json'), { verified: true });
+  const archRelease = materializeArchReleaseMetadata({
+    repoRoot: root,
+    outDir: path.join(output, 'arch'),
+    version: VERSION,
+    gitCommit: HEAD,
+    artifacts
+  });
+  for (const artifact of artifacts.filter((entry) => entry.type === 'arch')) {
+    Object.assign(artifact, archRelease.installedAttestations[artifact.architecture]);
+  }
   const packageClosure = {
     schemaVersion: 3,
     stage: 'candidate',
@@ -183,12 +210,18 @@ function createReleaseFixture(featureRequirements = []) {
       parityAttestation: sidecar('parity.json', { promotionPassed: true, productParityClaim: true }),
       architectureSessions,
       packageSmoke,
+      archPkgbuild: record(root, archRelease.pkgbuildFile),
+      archReleaseMetadata: record(root, archRelease.metadataFile),
       updateFeed: feed,
       updateFeedSignature: feedSignature
     },
     blockers: []
   };
   writeJson(path.join(output, 'package-closure.json'), packageClosure);
+  for (const subject of deriveReleaseAttestationSubjects(packageClosure)) {
+    const subjectFile = path.join(root, subject.record.file ?? subject.record.path);
+    writeJson(`${subjectFile}.sigstore.json`, { verified: true, subjectSha256: sha256(subjectFile) });
+  }
   return { root, output, packageClosure };
 }
 
@@ -208,11 +241,15 @@ test('finalizer emits a two-architecture cryptographic product closure', (t) => 
   t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }));
   const result = finalizeProductProofClosure({ repoRoot: fixture.root, outputDir: fixture.output, targetHead: HEAD });
   assert.equal(result.document.status, 'passed');
-  assert.equal(result.document.packages.length, 4);
-  assert.equal(result.document.releaseArtifacts.length, 8);
+  assert.equal(result.document.packages.length, 6);
+  assert.equal(result.document.releaseArtifacts.length, 10);
   assert.deepEqual(result.document.architectures, ['aarch64', 'x86_64']);
   assert.equal(result.document.featureProofRegistry.path, 'sidecars/product-feature-proof-registry.json');
-  assert.equal(result.document.proofs.filter((proof) => proof.role === 'package-sigstore').length, 8);
+  assert.equal(result.document.proofs.filter((proof) => proof.role === 'package-sigstore').length, 10);
+  assert.equal(result.document.attestationSubjects.length, 30);
+  assert.ok(result.document.packages
+    .filter((row) => row.format === 'arch')
+    .every((row) => row.installedManifest.path.startsWith('arch/openburnbar-')));
   assert.equal(fs.existsSync(result.output), true);
 });
 
@@ -272,7 +309,52 @@ test('finalizer rejects blockers, missing manifests, and signature mutation', as
       write(file, Buffer.alloc(64, 9));
       signature.sha256 = sha256(file);
       writeJson(path.join(fixture.output, 'package-closure.json'), fixture.packageClosure);
-    }, /update feed signature does not verify/u]
+    }, /update feed signature does not verify/u],
+    ['missing artifact Sigstore bundle', (fixture) => {
+      const artifact = fixture.packageClosure.artifacts[0];
+      fs.rmSync(`${path.join(fixture.root, artifact.file)}.sigstore.json`);
+    }, /Sigstore bundle/u],
+    ['missing installed-manifest Sigstore bundle', (fixture) => {
+      const manifest = fixture.packageClosure.artifacts.find((artifact) => artifact.type === 'arch').installedManifest;
+      fs.rmSync(`${path.join(fixture.root, manifest.file)}.sigstore.json`);
+    }, /Sigstore bundle/u],
+    ['deleted Arch PKGBUILD', (fixture) => {
+      fs.rmSync(path.join(fixture.root, fixture.packageClosure.sidecars.archPkgbuild.file));
+    }, /Arch PKGBUILD/u],
+    ['corrupt Arch release metadata identity', (fixture) => {
+      const record = fixture.packageClosure.sidecars.archReleaseMetadata;
+      const file = path.join(fixture.root, record.file);
+      const document = JSON.parse(fs.readFileSync(file, 'utf8'));
+      document.gitCommit = 'b'.repeat(40);
+      writeJson(file, document);
+      Object.assign(record, { sha256: sha256(file), size: fs.statSync(file).size });
+      writeJson(path.join(fixture.output, 'package-closure.json'), fixture.packageClosure);
+    }, /not bound to the release identity/u],
+    ['cross-bind an Arch source record to the wrong release file', (fixture) => {
+      const record = fixture.packageClosure.sidecars.archReleaseMetadata;
+      const file = path.join(fixture.root, record.file);
+      const document = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const appImage = document.sources.find((source) => source.slot === 'APPIMAGE_X86_64');
+      appImage.file = fixture.packageClosure.artifacts.find((artifact) =>
+        artifact.type === 'appimage' && artifact.architecture === 'aarch64'
+      ).file;
+      writeJson(file, document);
+      Object.assign(record, { sha256: sha256(file), size: fs.statSync(file).size });
+      writeJson(path.join(fixture.output, 'package-closure.json'), fixture.packageClosure);
+    }, /not bound to release bytes and identity/u],
+    ['corrupt Arch PKGBUILD with self-consistent metadata hashes', (fixture) => {
+      const pkgbuildRecord = fixture.packageClosure.sidecars.archPkgbuild;
+      const pkgbuildFile = path.join(fixture.root, pkgbuildRecord.file);
+      fs.appendFileSync(pkgbuildFile, '# semantic drift\n');
+      Object.assign(pkgbuildRecord, { sha256: sha256(pkgbuildFile), size: fs.statSync(pkgbuildFile).size });
+      const metadataRecord = fixture.packageClosure.sidecars.archReleaseMetadata;
+      const metadataFile = path.join(fixture.root, metadataRecord.file);
+      const metadata = JSON.parse(fs.readFileSync(metadataFile, 'utf8'));
+      Object.assign(metadata.pkgbuild, { sha256: pkgbuildRecord.sha256, size: pkgbuildRecord.size });
+      writeJson(metadataFile, metadata);
+      Object.assign(metadataRecord, { sha256: sha256(metadataFile), size: fs.statSync(metadataFile).size });
+      writeJson(path.join(fixture.output, 'package-closure.json'), fixture.packageClosure);
+    }, /canonical release template/u]
   ]) {
     await t.test(name, () => {
       const fixture = createReleaseFixture();
@@ -300,8 +382,8 @@ test('materializer selects the exact environment package and copies hash-bound p
   });
   assert.equal(result.closure.selectedPackage.format, 'deb');
   assert.equal(result.closure.selectedPackage.architecture, 'x86_64');
-  assert.equal(result.closure.proofs.filter((proof) => proof.role === 'package-signature').length, 8);
-  assert.equal(result.closure.proofs.filter((proof) => proof.role === 'release-artifact').length, 8);
+  assert.equal(result.closure.proofs.filter((proof) => proof.role === 'package-signature').length, 10);
+  assert.equal(result.closure.proofs.filter((proof) => proof.role === 'release-artifact').length, 10);
   assert.equal(fs.existsSync(result.output), true);
 });
 
@@ -404,14 +486,15 @@ test('materializer rejects wrong HEAD, unsupported requirements, Arch, and mutat
       candidateArtifactDigest: CANDIDATE_ARTIFACT_DIGEST, repoRoot: fixture.root
     }), /no release or feature proof materializer/u);
   });
-  await t.test('Arch lifecycle absent', () => {
+  await t.test('Arch selects its signed package lifecycle', () => {
     const environmentId = 'arch-sway-wayland-x86_64';
     const inputRoot = stageAggregate(fixture, 'P-37', environmentId);
-    assert.throws(() => prepareProductRequirementInput({
+    const result = prepareProductRequirementInput({
       requirementId: 'P-37', environmentId, inputRoot,
       targetHead: HEAD, candidateRunId: CANDIDATE_RUN_ID,
       candidateArtifactDigest: CANDIDATE_ARTIFACT_DIGEST, repoRoot: fixture.root
-    }), /Arch product evidence remains blocked/u);
+    });
+    assert.deepEqual(result.closure.selectedPackage, { architecture: 'x86_64', format: 'arch' });
   });
   await t.test('proof bytes mutated', () => {
     const inputRoot = stageAggregate(fixture, 'P-03');
@@ -422,6 +505,18 @@ test('materializer rejects wrong HEAD, unsupported requirements, Arch, and mutat
       targetHead: HEAD, candidateRunId: CANDIDATE_RUN_ID,
       candidateArtifactDigest: CANDIDATE_ARTIFACT_DIGEST, repoRoot: fixture.root
     }), /SHA-256 does not match/u);
+  });
+  await t.test('aggregate attestation subject deleted', () => {
+    const inputRoot = stageAggregate(fixture, 'P-01');
+    const aggregateFile = path.join(inputRoot, '.linux-release/product-proof-closure.json');
+    const aggregate = JSON.parse(fs.readFileSync(aggregateFile, 'utf8'));
+    aggregate.attestationSubjects.pop();
+    writeJson(aggregateFile, aggregate);
+    assert.throws(() => prepareProductRequirementInput({
+      requirementId: 'P-01', environmentId: ENVIRONMENT, inputRoot,
+      targetHead: HEAD, candidateRunId: CANDIDATE_RUN_ID,
+      candidateArtifactDigest: CANDIDATE_ARTIFACT_DIGEST, repoRoot: fixture.root
+    }), /exact attestation subject set/u);
   });
 });
 

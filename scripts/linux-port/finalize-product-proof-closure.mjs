@@ -6,13 +6,16 @@ import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 import {
   PRODUCT_PROOF_CLOSURE_SCHEMA_VERSION,
+  NATIVE_PACKAGE_TYPES,
   RELEASE_ARCHITECTURES,
   SUPPORT_ENVIRONMENTS,
   atomicWriteJson,
+  deriveReleaseAttestationSubjects,
   readRegularSnapshot,
   validateRecord
 } from './lib/product-proof-closure.mjs';
 import { snapshotFeatureProofRegistry } from './lib/product-feature-proof.mjs';
+import { validateArchReleaseMetadata } from './lib/linux-arch-pkgbuild.mjs';
 
 const DEFAULT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -144,7 +147,7 @@ export function finalizeProductProofClosure({
       detachedSignature: outputRecord(realOutput, detachedSignatureSnapshot),
       sigstore: outputRecord(realOutput, sigstoreSnapshot)
     });
-    if (!['deb', 'rpm'].includes(format)) continue;
+    if (!NATIVE_PACKAGE_TYPES.includes(format)) continue;
     packageKeys.add(key);
     const manifestSnapshot = validateRecord(realRoot, artifact.installedManifest, `installed manifest ${key}`);
     const signatureSnapshot = validateRecord(realRoot, artifact.installedManifestSignature, `installed manifest signature ${key}`);
@@ -164,7 +167,9 @@ export function finalizeProductProofClosure({
       sigstore: outputRecord(realOutput, sigstoreSnapshot)
     });
   }
-  const requiredPackageKeys = new Set(RELEASE_ARCHITECTURES.flatMap((architecture) => [`deb:${architecture}`, `rpm:${architecture}`]));
+  const requiredPackageKeys = new Set(RELEASE_ARCHITECTURES.flatMap((architecture) =>
+    NATIVE_PACKAGE_TYPES.map((format) => `${format}:${architecture}`)
+  ));
   if (packageKeys.size !== requiredPackageKeys.size || [...requiredPackageKeys].some((key) => !packageKeys.has(key))) {
     throw new Error('release output must contain deb and rpm installed-manifest closures for both architectures');
   }
@@ -175,6 +180,41 @@ export function finalizeProductProofClosure({
       || [...requiredReleaseArtifactKeys].some((key) => !releaseArtifactKeys.has(key))) {
     throw new Error('release output does not contain the exact required artifact and architecture matrix');
   }
+
+  const pkgbuildSnapshot = validateRecord(realRoot, packageClosure.sidecars?.archPkgbuild, 'Arch PKGBUILD');
+  const archMetadataSnapshot = validateRecord(
+    realRoot,
+    packageClosure.sidecars?.archReleaseMetadata,
+    'Arch release metadata'
+  );
+  validateArchReleaseMetadata({
+    repoRoot: realRoot,
+    pkgbuildSnapshot,
+    metadataSnapshot: archMetadataSnapshot,
+    version,
+    gitCommit: commit,
+    artifacts: packageClosure.artifacts
+  });
+
+  const attestationSubjects = deriveReleaseAttestationSubjects(
+    packageClosure,
+    releaseManifest.requiredArtifacts
+  ).map((subjectRow) => {
+    const subjectSnapshot = validateRecord(realRoot, subjectRow.record, `${subjectRow.role} attestation subject`);
+    const subjectRelative = path.relative(realOutput, subjectSnapshot.absolute).split(path.sep).join('/');
+    const bundleSnapshot = readRegularSnapshot(
+      realOutput,
+      `${subjectRelative}.sigstore.json`,
+      `${subjectRow.role} Sigstore bundle`
+    );
+    return {
+      role: subjectRow.role,
+      ...(subjectRow.architecture ? { architecture: subjectRow.architecture } : {}),
+      ...(subjectRow.type ? { format: subjectRow.type } : {}),
+      subject: outputRecord(realOutput, subjectSnapshot),
+      bundle: outputRecord(realOutput, bundleSnapshot)
+    };
+  });
 
   const proofs = [];
   const addSidecar = (role, key) => {
@@ -187,6 +227,8 @@ export function finalizeProductProofClosure({
   addSidecar('vex', 'vex');
   addSidecar('provenance', 'provenancePredicate');
   addSidecar('source-archive', 'sourceArchive');
+  addSidecar('arch-pkgbuild', 'archPkgbuild');
+  addSidecar('arch-release-metadata', 'archReleaseMetadata');
   addSidecar('architecture-sessions', 'architectureSessions');
   addSidecar('package-smoke', 'packageSmoke');
   addSidecar('update-feed', 'updateFeed');
@@ -236,6 +278,7 @@ export function finalizeProductProofClosure({
     ),
     packages: packageRows.sort((left, right) => `${left.format}:${left.architecture}`.localeCompare(`${right.format}:${right.architecture}`)),
     featureProofRegistry,
+    attestationSubjects,
     proofs: proofs.sort((left, right) => `${left.role}:${left.path}`.localeCompare(`${right.role}:${right.path}`)),
     blockers: []
   };

@@ -40,7 +40,11 @@ export function verifyLinuxWorkflowWiring(input) {
   requireText(input.release, 'OPENBURNBAR_LINUX_RELEASE_OUT', 'canonical release output');
   requireText(input.release, 'OPENBURNBAR_LINUX_EVIDENCE_OUT', 'canonical evidence output');
   requireText(input.release, '--candidate', 'candidate-only release assembly');
-  requireText(input.release, "-name '*.pkg.tar.zst'", 'Arch package attestation selection');
+  requireText(
+    input.release,
+    'list-linux-release-attestation-subjects.mjs',
+    'exact release attestation subject selection'
+  );
   requireText(input.promotionWorkflow, "-name '*.pkg.tar.zst'", 'Arch package publication selection');
   for (const marker of [
     "-name 'PKGBUILD'",
@@ -48,7 +52,6 @@ export function verifyLinuxWorkflowWiring(input) {
     "-name 'openburnbar-*.installed-manifest.json'",
     "-name 'openburnbar-*.installed-manifest.ed25519'"
   ]) {
-    requireText(input.release, marker, 'Arch release metadata attestation selection');
     requireText(input.promotionWorkflow, marker, 'Arch release metadata publication selection');
   }
   requireUploadContract(
@@ -97,6 +100,7 @@ export function verifyLinuxWorkflowWiring(input) {
     'finalize-linux-architecture-session.mjs',
     'linux-release-shard-${{ matrix.architecture }}',
     'assemble-linux-release.mjs',
+    'list-linux-release-attestation-subjects.mjs',
     'finalize-product-proof-closure.mjs',
     'include-hidden-files: true',
     'merge-multiple: false',

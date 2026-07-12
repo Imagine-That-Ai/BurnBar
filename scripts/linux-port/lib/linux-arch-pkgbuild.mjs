@@ -14,6 +14,21 @@ export const archPkgbuildCommonSources = Object.freeze([
   ['RELEASE_PUBLIC_KEY', 'packaging/linux/openburnbar-linux-ed25519.pub.pem']
 ]);
 
+export const archPkgbuildArchitectures = Object.freeze(['x86_64', 'aarch64']);
+
+export const archPkgbuildSourceSlots = Object.freeze([
+  ...archPkgbuildCommonSources.map(([slot]) => slot),
+  ...archPkgbuildArchitectures.flatMap((architecture) => {
+    const suffix = architecture.toUpperCase();
+    return [
+      `APPIMAGE_${suffix}`,
+      `DAEMON_${suffix}`,
+      `INSTALLED_MANIFEST_${suffix}`,
+      `INSTALLED_MANIFEST_SIGNATURE_${suffix}`
+    ];
+  })
+]);
+
 export function renderReleasePkgbuild(template, { version, checksums }) {
   if (!/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/u.test(version)) {
     throw new Error('Arch package version must be strict X.Y.Z');
@@ -44,6 +59,7 @@ export function materializeArchReleaseMetadata({ repoRoot, outDir, version, gitC
   fs.mkdirSync(outDir, { recursive: true });
   const checksums = {};
   const sources = [];
+  const installedAttestations = {};
 
   for (const [slot, relativeFile] of archPkgbuildCommonSources) {
     const file = path.join(repoRoot, relativeFile);
@@ -52,7 +68,7 @@ export function materializeArchReleaseMetadata({ repoRoot, outDir, version, gitC
     sources.push({ slot, ...record });
   }
 
-  for (const architecture of ['x86_64', 'aarch64']) {
+  for (const architecture of archPkgbuildArchitectures) {
     const byType = new Map(artifacts
       .filter((artifact) => artifact.architecture === architecture)
       .map((artifact) => [artifact.type, artifact]));
@@ -68,6 +84,10 @@ export function materializeArchReleaseMetadata({ repoRoot, outDir, version, gitC
     const signatureName = `openburnbar-${version}-${architecture}.installed-manifest.ed25519`;
     const manifestFile = copyRecordedFile(repoRoot, manifest, path.join(outDir, manifestName));
     const signatureFile = copyRecordedFile(repoRoot, signature, path.join(outDir, signatureName));
+    installedAttestations[architecture] = {
+      installedManifest: manifestFile,
+      installedManifestSignature: signatureFile
+    };
     const suffix = architecture.toUpperCase();
     checksums[`APPIMAGE_${suffix}`] = appImage.sha256;
     checksums[`DAEMON_${suffix}`] = daemon.sha256;
@@ -107,7 +127,99 @@ export function materializeArchReleaseMetadata({ repoRoot, outDir, version, gitC
   };
   const metadataFile = path.join(outDir, 'arch-release-metadata.json');
   fs.writeFileSync(metadataFile, `${JSON.stringify(metadata, null, 2)}\n`, { mode: 0o644 });
-  return { pkgbuildFile, metadataFile, metadata };
+  return { pkgbuildFile, metadataFile, metadata, installedAttestations };
+}
+
+export function validateArchReleaseMetadata({
+  repoRoot,
+  pkgbuildSnapshot,
+  metadataSnapshot,
+  version,
+  gitCommit,
+  artifacts
+}) {
+  let metadata;
+  try {
+    metadata = JSON.parse(metadataSnapshot.bytes.toString('utf8'));
+  } catch (error) {
+    throw new Error(`Arch release metadata is not valid JSON: ${error.message}`);
+  }
+  if (metadata?.schemaVersion !== 1 || metadata.product !== 'OpenBurnBar'
+      || metadata.version !== version || metadata.gitCommit !== gitCommit
+      || metadata.releaseTag !== `linux-v${version}`
+      || metadata.aurPublication?.published !== false
+      || metadata.aurPublication?.status !== 'operator-required') {
+    throw new Error('Arch release metadata is not bound to the release identity and publication state');
+  }
+  const pkgbuildRecord = requiredRecord(metadata.pkgbuild, 'PKGBUILD');
+  if (pkgbuildRecord.file !== pkgbuildSnapshot.path
+      || pkgbuildRecord.sha256 !== pkgbuildSnapshot.sha256 || pkgbuildRecord.size !== pkgbuildSnapshot.size) {
+    throw new Error('Arch release metadata PKGBUILD record does not match the closure subject');
+  }
+  if (!Array.isArray(metadata.sources) || metadata.sources.length !== archPkgbuildSourceSlots.length) {
+    throw new Error('Arch release metadata does not contain the exact PKGBUILD source set');
+  }
+  const sources = new Map();
+  for (const source of metadata.sources) {
+    if (!archPkgbuildSourceSlots.includes(source?.slot) || sources.has(source.slot)) {
+      throw new Error(`Arch release metadata has an invalid or duplicate source slot: ${source?.slot}`);
+    }
+    sources.set(source.slot, requiredRecord(source, `${source.slot} source`));
+  }
+  if (sources.size !== archPkgbuildSourceSlots.length) {
+    throw new Error('Arch release metadata does not contain the exact PKGBUILD source set');
+  }
+
+  const expectedRecords = new Map();
+  for (const [slot, relativeFile] of archPkgbuildCommonSources) {
+    expectedRecords.set(slot, { ...fileRecord(path.join(repoRoot, relativeFile), relativeFile), architecture: undefined });
+  }
+  for (const architecture of archPkgbuildArchitectures) {
+    const byType = new Map(artifacts
+      .filter((artifact) => artifact.architecture === architecture)
+      .map((artifact) => [artifact.type, artifact]));
+    const suffix = architecture.toUpperCase();
+    expectedRecords.set(`APPIMAGE_${suffix}`, {
+      ...requiredArtifact(byType, 'appimage', architecture), architecture
+    });
+    expectedRecords.set(`DAEMON_${suffix}`, {
+      ...requiredArtifact(byType, 'daemon', architecture), architecture
+    });
+    const archPackage = requiredArtifact(byType, 'arch', architecture);
+    expectedRecords.set(
+      `INSTALLED_MANIFEST_${suffix}`,
+      {
+        ...requiredRecord(archPackage.installedManifest, `${architecture} installed manifest`),
+        file: path.posix.join(path.posix.dirname(pkgbuildSnapshot.path), `openburnbar-${version}-${architecture}.installed-manifest.json`),
+        architecture
+      }
+    );
+    expectedRecords.set(
+      `INSTALLED_MANIFEST_SIGNATURE_${suffix}`,
+      {
+        ...requiredRecord(archPackage.installedManifestSignature, `${architecture} installed manifest signature`),
+        file: path.posix.join(path.posix.dirname(pkgbuildSnapshot.path), `openburnbar-${version}-${architecture}.installed-manifest.ed25519`),
+        architecture
+      }
+    );
+  }
+  for (const [slot, expected] of expectedRecords) {
+    const source = sources.get(slot);
+    const metadataSource = metadata.sources.find((row) => row.slot === slot);
+    if (source.file !== expected.file || source.sha256 !== expected.sha256 || source.size !== expected.size
+        || metadataSource.architecture !== expected.architecture) {
+      throw new Error(`Arch release metadata source ${slot} is not bound to release bytes and identity`);
+    }
+  }
+  const template = fs.readFileSync(path.join(repoRoot, 'packaging/linux/aur/PKGBUILD.in'), 'utf8');
+  const expectedPkgbuild = renderReleasePkgbuild(template, {
+    version,
+    checksums: Object.fromEntries([...sources].map(([slot, source]) => [slot, source.sha256]))
+  });
+  if (!pkgbuildSnapshot.bytes.equals(Buffer.from(expectedPkgbuild))) {
+    throw new Error('Arch PKGBUILD does not equal the canonical release template rendered from bound sources');
+  }
+  return metadata;
 }
 
 function requiredArtifact(byType, type, architecture) {
@@ -118,21 +230,80 @@ function requiredArtifact(byType, type, architecture) {
 
 function requiredRecord(record, label) {
   if (record === null || typeof record !== 'object' || Array.isArray(record)
-      || typeof record.file !== 'string' || !/^[a-f0-9]{64}$/u.test(record.sha256 ?? '')
+      || typeof record.file !== 'string' || record.file.includes('\\') || path.posix.isAbsolute(record.file)
+      || path.posix.normalize(record.file) !== record.file || record.file === '..' || record.file.startsWith('../')
+      || !/^[a-f0-9]{64}$/u.test(record.sha256 ?? '')
       || !Number.isSafeInteger(record.size) || record.size <= 0) {
     throw new Error(`Arch release metadata ${label} record is invalid`);
   }
   return record;
 }
 
-function copyRecordedFile(repoRoot, record, destination) {
-  const source = path.resolve(repoRoot, record.file);
-  const relative = path.relative(repoRoot, source);
-  if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('Arch release source escapes repository');
-  const actual = fileRecord(source, record.file);
-  if (actual.sha256 !== record.sha256 || actual.size !== record.size) throw new Error('Arch release source record drifted');
-  fs.copyFileSync(source, destination);
-  return fileRecord(destination, path.relative(repoRoot, destination).split(path.sep).join('/'));
+export function copyRecordedFile(repoRoot, record, destination) {
+  const root = fs.realpathSync(repoRoot);
+  const requestedRoot = path.resolve(repoRoot);
+  const requestedTarget = path.resolve(destination);
+  const targetRelative = path.relative(requestedRoot, requestedTarget);
+  if (targetRelative === '..' || targetRelative.startsWith(`..${path.sep}`) || path.isAbsolute(targetRelative)) {
+    throw new Error('Arch release destination escapes repository');
+  }
+  const target = path.resolve(root, targetRelative);
+  let targetAncestor = root;
+  const targetComponents = targetRelative.split(path.sep).filter(Boolean);
+  for (const component of targetComponents.slice(0, -1)) {
+    targetAncestor = path.join(targetAncestor, component);
+    if (fs.lstatSync(targetAncestor).isSymbolicLink()) throw new Error('Arch release destination traverses a symlink');
+  }
+  const existingTarget = fs.lstatSync(target, { throwIfNoEntry: false });
+  if (existingTarget?.isSymbolicLink()) throw new Error('Arch release destination is a symlink');
+  const snapshot = readRecordedSource(repoRoot, record);
+  fs.rmSync(target, { force: true });
+  const descriptor = fs.openSync(target, 'wx', 0o644);
+  try {
+    fs.writeFileSync(descriptor, snapshot.bytes);
+    fs.fsyncSync(descriptor);
+  } finally {
+    fs.closeSync(descriptor);
+  }
+  return fileRecord(target, targetRelative.split(path.sep).join('/'));
+}
+
+function readRecordedSource(repoRoot, record) {
+  requiredRecord(record, 'recorded source');
+  if (path.posix.isAbsolute(record.file) || record.file.includes('\\')
+      || path.posix.normalize(record.file) !== record.file
+      || record.file === '..' || record.file.startsWith('../')) {
+    throw new Error('Arch release source must be a canonical repository-relative path');
+  }
+  const root = fs.realpathSync(repoRoot);
+  const source = path.resolve(root, record.file);
+  const relative = path.relative(root, source);
+  if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new Error('Arch release source escapes repository');
+  }
+  let current = root;
+  for (const component of relative.split(path.sep).filter(Boolean)) {
+    current = path.join(current, component);
+    if (fs.lstatSync(current).isSymbolicLink()) throw new Error('Arch release source traverses a symlink');
+  }
+  const descriptor = fs.openSync(source, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
+  try {
+    const before = fs.fstatSync(descriptor);
+    if (!before.isFile()) throw new Error('Arch release source must be a regular file');
+    const bytes = fs.readFileSync(descriptor);
+    const after = fs.fstatSync(descriptor);
+    if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size
+        || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs) {
+      throw new Error('Arch release source changed while it was read');
+    }
+    const actual = { sha256: crypto.createHash('sha256').update(bytes).digest('hex'), size: bytes.length };
+    if (actual.sha256 !== record.sha256 || actual.size !== record.size) {
+      throw new Error('Arch release source record drifted');
+    }
+    return { source, bytes, ...actual };
+  } finally {
+    fs.closeSync(descriptor);
+  }
 }
 
 function fileRecord(file, relativeFile) {

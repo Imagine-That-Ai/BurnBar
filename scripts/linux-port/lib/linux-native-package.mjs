@@ -8,6 +8,17 @@ import {
   verifyInstalledManifestTree
 } from './linux-installed-manifest.mjs';
 
+export const ARCH_PACKAGE_ROOT_METADATA_ALLOWLIST = Object.freeze([
+  '.BUILDINFO',
+  '.MTREE',
+  '.PKGINFO'
+]);
+
+export const ARCH_PACKAGE_PRIVATE_DIRECTORIES = Object.freeze([
+  '/usr/lib/openburnbar',
+  '/usr/share/openburnbar'
+]);
+
 function runBinary(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd,
@@ -152,8 +163,37 @@ export function extractNativePackage(format, artifact, destination, { env = proc
       : (() => { throw new Error(`unsupported native package format: ${format}`); })();
   extractPreflightedArchiveBytes(archive, destination, {
     env,
-    allowedRootMetadata: format === 'arch' ? ['.BUILDINFO', '.MTREE', '.PKGINFO'] : [],
+    allowedRootMetadata: format === 'arch' ? ARCH_PACKAGE_ROOT_METADATA_ALLOWLIST : [],
     extractUsrOnly: format === 'arch'
+  });
+}
+
+export function archPackageRemovalCandidates(listing, metadataProvider = fs.lstatSync) {
+  const candidates = [];
+  for (const file of [...new Set(listing.split('\n').filter(Boolean))]) {
+    let metadata;
+    try {
+      metadata = metadataProvider(file);
+    } catch (error) {
+      if (error?.code === 'ENOENT') continue;
+      throw error;
+    }
+    const isPrivateDirectory = metadata.isDirectory()
+      && ARCH_PACKAGE_PRIVATE_DIRECTORIES.some((root) => file === root || file.startsWith(`${root}/`));
+    if (!metadata.isDirectory() || isPrivateDirectory) candidates.push(file);
+  }
+  return candidates;
+}
+
+export function remainingFilesystemEntriesNoFollow(files, metadataProvider = fs.lstatSync) {
+  return files.filter((file) => {
+    try {
+      metadataProvider(file);
+      return true;
+    } catch (error) {
+      if (error?.code === 'ENOENT') return false;
+      throw error;
+    }
   });
 }
 

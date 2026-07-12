@@ -13,6 +13,7 @@ import {
   writeJson
 } from './lib/linux-release-common.mjs';
 import { verifyLinuxReleaseCandidate } from './lib/linux-release-verify.mjs';
+import { deriveReleaseAttestationSubjects } from './lib/product-proof-closure.mjs';
 
 const argv = process.argv.slice(2);
 const phaseIndex = argv.indexOf('--phase');
@@ -125,9 +126,19 @@ if (!candidate) {
 
 if (phase === 'final' && closure.artifacts) {
   const identity = manifest.signing.cosignIdentityTemplate.replace('{version}', expectedVersion);
-  for (const artifact of closure.artifacts) {
-    const bundle = `${artifact.file}.sigstore.json`;
-    if (!fs.existsSync(path.join(repoRoot, bundle))) continue;
+  let attestationSubjects = [];
+  try {
+    attestationSubjects = deriveReleaseAttestationSubjects(closure, manifest.requiredArtifacts);
+  } catch (error) {
+    fail('Exact Linux release attestation subject set is invalid.', { error: error.message });
+  }
+  for (const subject of attestationSubjects) {
+    const subjectFile = subject.record.file ?? subject.record.path;
+    const bundle = `${subjectFile}.sigstore.json`;
+    if (!fs.existsSync(path.join(repoRoot, bundle))) {
+      fail('Sigstore bundle is missing for a required release subject.', { artifact: subjectFile, bundle });
+      continue;
+    }
     const verification = runStep('cosign', [
       'verify-blob-attestation',
       '--bundle',
@@ -138,11 +149,11 @@ if (phase === 'final' && closure.artifacts) {
       identity,
       '--certificate-oidc-issuer',
       manifest.signing.cosignIssuer,
-      path.join(repoRoot, artifact.file)
+      path.join(repoRoot, subjectFile)
     ]);
     if (verification.exitCode !== 0) {
       fail('Sigstore bundle verification failed.', {
-        artifact: artifact.file,
+        artifact: subjectFile,
         stderr: verification.stderr
       });
     }

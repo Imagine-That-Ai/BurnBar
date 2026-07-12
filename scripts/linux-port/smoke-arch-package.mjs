@@ -9,7 +9,11 @@ import {
   writeJson
 } from './lib/linux-release-common.mjs';
 import { installedPackageVerificationStep } from './lib/linux-package-smoke-installed.mjs';
-import { inspectArchPackageDependencies } from './lib/linux-native-package.mjs';
+import {
+  archPackageRemovalCandidates,
+  inspectArchPackageDependencies,
+  remainingFilesystemEntriesNoFollow
+} from './lib/linux-native-package.mjs';
 
 const outDir = path.resolve(process.env.OPENBURNBAR_LINUX_RELEASE_OUT ?? path.join(repoRoot, '.linux-shard'));
 const closure = readJson(path.join(outDir, 'architecture-closure.json'));
@@ -49,13 +53,7 @@ if (install.exitCode === 0) {
   const ownership = runStep('pacman', ['-Qlq', 'openburnbar']);
   steps.push(ownership);
   if (ownership.exitCode === 0) {
-    packageOwnedFiles = ownership.stdout.split('\n').filter(Boolean).filter((file) => {
-      try {
-        return !fs.lstatSync(file).isDirectory();
-      } catch {
-        return false;
-      }
-    });
+    packageOwnedFiles = archPackageRemovalCandidates(ownership.stdout);
   }
 }
 const uninstall = runStep('pacman', ['-R', '--noconfirm', 'openburnbar']);
@@ -68,7 +66,7 @@ if (install.exitCode === 0 && uninstall.exitCode === 0) {
     query.stdout,
     query.stderr
   ));
-  const remaining = packageOwnedFiles.filter((file) => fs.existsSync(file));
+  const remaining = remainingFilesystemEntriesNoFollow(packageOwnedFiles);
   steps.push(assertionStep(
     'package-owned filesystem entries removed',
     remaining.length === 0,

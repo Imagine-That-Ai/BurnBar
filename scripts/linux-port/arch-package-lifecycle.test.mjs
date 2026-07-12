@@ -16,11 +16,18 @@ import {
   sha256Bytes
 } from './lib/linux-installed-manifest.mjs';
 import {
+  ARCH_PACKAGE_ROOT_METADATA_ALLOWLIST,
+  archPackageRemovalCandidates,
   assertSafeArchiveMemberNames,
+  extractPreflightedArchiveBytes,
   inspectArchPackageDependencies,
-  inspectNativePackageMetadata
+  inspectNativePackageMetadata,
+  remainingFilesystemEntriesNoFollow
 } from './lib/linux-native-package.mjs';
-import { materializeArchReleaseMetadata } from './lib/linux-arch-pkgbuild.mjs';
+import {
+  copyRecordedFile,
+  materializeArchReleaseMetadata
+} from './lib/linux-arch-pkgbuild.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -131,21 +138,114 @@ test('Arch manager metadata is read from the package .PKGINFO', {
 test('Arch extraction preflight permits only known package metadata beside /usr', () => {
   assert.deepEqual(
     [...assertSafeArchiveMemberNames('.PKGINFO\n.BUILDINFO\n.MTREE\nusr/bin/openburnbar\n', {
-      allowedRootMetadata: ['.BUILDINFO', '.MTREE', '.PKGINFO']
+      allowedRootMetadata: ARCH_PACKAGE_ROOT_METADATA_ALLOWLIST
     })],
     ['.PKGINFO', '.BUILDINFO', '.MTREE', 'usr/bin/openburnbar']
   );
   assert.throws(
     () => assertSafeArchiveMemberNames('.PKGINFO\netc/pacman.conf\n', {
-      allowedRootMetadata: ['.BUILDINFO', '.MTREE', '.PKGINFO']
+      allowedRootMetadata: ARCH_PACKAGE_ROOT_METADATA_ALLOWLIST
     }),
     /outside \/usr/u
   );
   assert.throws(
     () => assertSafeArchiveMemberNames('.PKGINFO\n.INSTALL\nusr/bin/openburnbar\n', {
-      allowedRootMetadata: ['.BUILDINFO', '.MTREE', '.PKGINFO']
+      allowedRootMetadata: ARCH_PACKAGE_ROOT_METADATA_ALLOWLIST
     }),
     /outside \/usr/u
+  );
+});
+
+test('production Arch extraction rejects a real archive containing .INSTALL', {
+  skip: commandAvailable('bsdtar') ? false : 'requires bsdtar'
+}, (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-arch-malicious-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const payload = path.join(root, 'payload');
+  fs.mkdirSync(path.join(payload, 'usr/bin'), { recursive: true });
+  fs.writeFileSync(path.join(payload, '.PKGINFO'), 'pkgname = openburnbar\n');
+  fs.writeFileSync(path.join(payload, '.INSTALL'), 'post_install() { id; }\n');
+  fs.writeFileSync(path.join(payload, 'usr/bin/openburnbar'), 'binary\n');
+  const archive = path.join(root, 'malicious.pkg.tar');
+  const packed = spawnSync('bsdtar', ['-cf', archive, '-C', payload, '.'], { encoding: 'utf8' });
+  assert.equal(packed.status, 0, packed.stderr);
+  assert.throws(
+    () => extractPreflightedArchiveBytes(fs.readFileSync(archive), path.join(root, 'out'), {
+      allowedRootMetadata: ARCH_PACKAGE_ROOT_METADATA_ALLOWLIST,
+      extractUsrOnly: true
+    }),
+    /outside \/usr/u
+  );
+  assert.equal(fs.existsSync(path.join(root, 'out')), false);
+});
+
+test('Arch uninstall candidates and no-follow checks include private dirs and dangling symlinks', (t) => {
+  const metadata = new Map([
+    ['/usr', 'directory'],
+    ['/usr/lib/openburnbar', 'directory'],
+    ['/usr/lib/openburnbar/native', 'directory'],
+    ['/usr/bin/openburnbar', 'file'],
+    ['/usr/lib/openburnbar/native/lib.so', 'symlink']
+  ]);
+  const stat = (file) => {
+    const kind = metadata.get(file);
+    if (!kind) throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+    return { isDirectory: () => kind === 'directory', isSymbolicLink: () => kind === 'symlink' };
+  };
+  const candidates = archPackageRemovalCandidates([...metadata.keys()].join('\n'), stat);
+  assert.deepEqual(candidates, [
+    '/usr/lib/openburnbar',
+    '/usr/lib/openburnbar/native',
+    '/usr/bin/openburnbar',
+    '/usr/lib/openburnbar/native/lib.so'
+  ]);
+  metadata.delete('/usr/bin/openburnbar');
+  assert.deepEqual(remainingFilesystemEntriesNoFollow(candidates, stat), [
+    '/usr/lib/openburnbar',
+    '/usr/lib/openburnbar/native',
+    '/usr/lib/openburnbar/native/lib.so'
+  ]);
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-arch-remove-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const dangling = path.join(root, 'dangling');
+  fs.symlinkSync('missing-target', dangling);
+  assert.deepEqual(remainingFilesystemEntriesNoFollow([dangling, path.join(root, 'missing')]), [dangling]);
+});
+
+test('copyRecordedFile rejects source symlinks and symlinked ancestors', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-arch-copy-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(root, 'real'));
+  const source = path.join(root, 'real/source');
+  fs.writeFileSync(source, 'trusted\n');
+  const sourceRecord = {
+    file: 'link/source',
+    sha256: sha256Bytes(fs.readFileSync(source)),
+    size: fs.statSync(source).size
+  };
+  fs.symlinkSync('real', path.join(root, 'link'));
+  assert.throws(
+    () => copyRecordedFile(root, sourceRecord, path.join(root, 'copied')),
+    /traverses a symlink/u
+  );
+  fs.unlinkSync(path.join(root, 'link'));
+  fs.symlinkSync('real/source', path.join(root, 'link'));
+  sourceRecord.file = 'link';
+  assert.throws(
+    () => copyRecordedFile(root, sourceRecord, path.join(root, 'copied')),
+    /traverses a symlink/u
+  );
+  fs.unlinkSync(path.join(root, 'link'));
+  sourceRecord.file = 'real/source';
+  fs.symlinkSync('real', path.join(root, 'destination-link'));
+  assert.throws(
+    () => copyRecordedFile(root, sourceRecord, path.join(root, 'destination-link/copied')),
+    /destination traverses a symlink/u
+  );
+  fs.symlinkSync('missing-target', path.join(root, 'destination'));
+  assert.throws(
+    () => copyRecordedFile(root, sourceRecord, path.join(root, 'destination')),
+    /destination is a symlink/u
   );
 });
 
