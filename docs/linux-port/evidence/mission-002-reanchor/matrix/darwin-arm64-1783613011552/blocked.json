@@ -1,0 +1,41 @@
+{
+  "blocked": [
+    {
+      "capability": "os-linux",
+      "status": "blocked",
+      "platformReason": "platform=darwin",
+      "recordedAt": "2026-07-09T16:03:31.568Z"
+    },
+    {
+      "capability": "session-desktop",
+      "status": "blocked",
+      "platformReason": "desktop=null",
+      "recordedAt": "2026-07-09T16:03:31.569Z"
+    },
+    {
+      "capability": "display-server",
+      "status": "blocked",
+      "platformReason": "need WAYLAND_DISPLAY or DISPLAY",
+      "recordedAt": "2026-07-09T16:03:31.569Z"
+    },
+    {
+      "capability": "dbus-session",
+      "status": "blocked",
+      "platformReason": "Secret Service / notifications need session bus",
+      "recordedAt": "2026-07-09T16:03:31.569Z"
+    },
+    {
+      "capability": "secret-tool",
+      "status": "blocked",
+      "platformReason": "secret-tool not on PATH",
+      "recordedAt": "2026-07-09T16:03:31.569Z"
+    },
+    {
+      "capability": "kwallet-query",
+      "status": "blocked",
+      "platformReason": "kwallet-query not on PATH",
+      "recordedAt": "2026-07-09T16:03:31.569Z"
+    }
+  ],
+  "generatedAt": "2026-07-09T16:03:31.569Z"
+}

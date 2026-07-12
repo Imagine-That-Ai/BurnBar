@@ -267,7 +267,7 @@ struct ChatDesktopControlButton: View {
 
     private var statusText: String {
         guard let grant = controller.activeDesktopControlGrant else {
-            return "\(controller.chatBackend.rawValue) has no tools yet"
+            return "\(controller.chatBackend.displayName) has no tools yet"
         }
         let minutes = max(1, Int(ceil(grant.expiresAt.timeIntervalSinceNow / 60)))
         return "\(grant.runtimeID.displayName) · \(minutes)m left"

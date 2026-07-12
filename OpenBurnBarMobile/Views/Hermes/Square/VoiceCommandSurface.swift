@@ -157,13 +157,27 @@ struct VoiceCommandSurface: View {
         isPressed = true
         lastError = nil
         transcript = ""
-        session.start(
-            onPartial: { partial in transcript = partial },
-            onFailure: { msg in
-                lastError = msg
+        Task { @MainActor in
+            // Record permission is separate from speech-recognition
+            // authorization — without it the engine gets no input (and on
+            // some routes an invalid 0 Hz format that would crash
+            // `installTap`). Ask before touching the engine.
+            guard await session.requestRecordPermission() else {
                 isPressed = false
+                lastError = "Microphone access is off for OpenBurnBar. Open Settings > OpenBurnBar to allow microphone access."
+                return
             }
-        )
+            // The user may have released the button while the permission
+            // prompt was up — don't start a capture nobody is holding.
+            guard isPressed else { return }
+            session.start(
+                onPartial: { partial in transcript = partial },
+                onFailure: { msg in
+                    lastError = msg
+                    isPressed = false
+                }
+            )
+        }
     }
 
     private func endCapture() {
@@ -201,11 +215,42 @@ private final class VoiceCaptureSession {
         }
     }
 
+    /// Microphone-record permission — required in addition to
+    /// speech-recognition authorization before the audio engine can
+    /// deliver input. Fast-paths the already-decided states so the
+    /// system prompt only ever appears once.
+    func requestRecordPermission() async -> Bool {
+        switch AVAudioApplication.shared.recordPermission {
+        case .granted:
+            return true
+        case .denied:
+            return false
+        case .undetermined:
+            return await AVAudioApplication.requestRecordPermission()
+        @unknown default:
+            return false
+        }
+    }
+
     func start(onPartial: @escaping (String) -> Void, onFailure: @escaping (String) -> Void) {
         guard let recognizer, recognizer.isAvailable else {
             onFailure("Speech recognizer offline.")
             return
         }
+
+        // A record-capable session category is mandatory before installing
+        // the input tap — without one the input node advertises a 0 Hz
+        // format and `installTap` raises an uncatchable NSException. This
+        // surface never plays audio back, so plain `.record` is enough.
+        let audioSession = AVAudioSession.sharedInstance()
+        do {
+            try audioSession.setCategory(.record, mode: .measurement, options: .duckOthers)
+            try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+        } catch {
+            onFailure("Could not activate the microphone: \(error.localizedDescription)")
+            return
+        }
+
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
         self.request = request
@@ -213,6 +258,14 @@ private final class VoiceCaptureSession {
         let inputNode = audioEngine.inputNode
         inputNode.removeTap(onBus: 0)
         let format = inputNode.outputFormat(forBus: 0)
+        // Belt and braces: an invalid input format (0 Hz / 0 channels —
+        // seen when no input route is available) would crash inside
+        // `installTap`. Fail soft instead.
+        guard format.sampleRate > 0, format.channelCount > 0 else {
+            self.request = nil
+            onFailure("No usable microphone input is available right now.")
+            return
+        }
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
             request.append(buffer)
         }
@@ -246,6 +299,9 @@ private final class VoiceCaptureSession {
         task?.finish()
         task = nil
         request = nil
+        // Hand the audio session back so other audio (Mercury calls,
+        // media playback) isn't left ducked behind a dead record session.
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 }
 

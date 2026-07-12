@@ -1,4 +1,4 @@
-# OpenBurnBar Windows — Parity Certification Bundle (G5 evidence)
+# OpenBurnBar Windows — Scoped Parity Evidence Bundle
 
 **Status:** Living evidence ledger for Phase 5 gate **G5** (`docs/WINDOWS_PORT_MASTER_PLAN.md` §7.3).
 **Role:** Single source of truth for an independent reviewer to decide **GO / FIX** on launch certification — not the gate verdict itself.

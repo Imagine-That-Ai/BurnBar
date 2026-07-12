@@ -19,6 +19,7 @@ struct HermesRuntimeGate: ViewModifier {
     @State private var didRequestHermesFirstRunSetup = false
     @State private var showHermesRuntimePrompt = false
     @State private var showPiAgentRuntimePrompt = false
+    @State private var runtimeLaunchFailureMessage: String?
     @State private var hermesRuntimeLauncher = HermesRuntimeLauncher()
     @State private var piAgentRuntimeAdapter = PiAgentRuntimeAdapter()
 
@@ -82,6 +83,16 @@ struct HermesRuntimeGate: ViewModifier {
             } message: {
                 Text("Pi Agent is selected but the local gateway is not reachable. OpenBurnBar can start the Pi agent and its gateway for you.")
             }
+            // The user explicitly clicked a recovery action; if the gateway
+            // still doesn't come up they must hear that, not silence.
+            .alert("Couldn't Reach Gateway", isPresented: Binding(
+                get: { runtimeLaunchFailureMessage != nil },
+                set: { if !$0 { runtimeLaunchFailureMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(runtimeLaunchFailureMessage ?? "")
+            }
     }
 
     private func presentHermesSetupIfNeeded() {
@@ -124,6 +135,8 @@ struct HermesRuntimeGate: ViewModifier {
         await controller.probeHermesAvailability()
         if controller.hermesAvailable {
             controller.setChatBackend(.hermes)
+        } else {
+            runtimeLaunchFailureMessage = "Hermes launched but its gateway at \(resolvedHermesGatewayBaseURL.absoluteString) still isn't responding. Check the gateway URL and bearer token in Settings → Agents, then try again."
         }
     }
 
@@ -136,6 +149,8 @@ struct HermesRuntimeGate: ViewModifier {
         await controller.probePiAgentAvailability()
         if controller.piAgentAvailable {
             controller.setChatBackend(.piAgent)
+        } else {
+            runtimeLaunchFailureMessage = "Pi Agent launched but its gateway at \(resolvedPiAgentGatewayBaseURL.absoluteString) still isn't responding. Check the gateway URL and bearer token in Settings → Agents, then try again."
         }
     }
 

@@ -34,7 +34,9 @@ This report is a new certification addendum. It does not edit or overwrite the e
 The following are recorded references only; this bundle does not claim their physical behavior:
 
 - PR #1541 exact signed workflow run `29166970379`, commit `9dbcaa791794944326ce9ffb18ed4d9771f31ecc`, artifact `windows-release-v1.0.29`, with signed x64 package SHA-256 `ac5b63a258c2151c7f1c8f3092ff54720d8c97b375efa38754a2e4a1857e0f43` and signed ARM64 package SHA-256 `7350fd248f65fd9de6eb3b2b5804508d9b47386a9fa0d9028526d70791874d8b`. The run completed successfully; see `reference-artifacts.json`. These signed packages are historical evidence for `9dbcaa7917`, not exact artifacts for the later integrated source.
-- PR #1541 merged as `4a155b5dfa`, PR #1546 merged as `1cf8c8c4e3`, and PR #1542 merged as `8ca407b0d6`. PR #1545 remains the open certification/final-integration lane. None of those merge facts closes the physical/manual/staging/safety/public lifecycle gates.
+- PR #1541 merged as `4a155b5dfa`, PR #1546 merged as `1cf8c8c4e3`, PR #1542 merged as `8ca407b0d6`, and PR #1545 merged as exact integrated candidate `7c36229823`.
+- Exact signed workflow run [`29177583506`](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29177583506) completed successfully from `refs/heads/main` at `7c362298230e14bfd51dcdcbaf9476cd86cefa66` with `allow_unsigned=false`. The signed x64 MSIX SHA-256 is `9f3f085250d551dccf7ad887d2e7dc996edbcc25217c067b02cf9729ae9e8327`; the signed ARM64 MSIX SHA-256 is `d8cd1423827e54b777a85cf58962b5c18ae6ae1118676b8255749894815c597e`. Workflow and independent Windows verification both report `Valid` signatures from Imagine That AI LLC with Microsoft RFC-3161 timestamps. The x64 install/launch/uninstall/reinstall lifecycle passed, both update-feed entries reverified under the pinned Ed25519 key, all 13 exact-SHA Sigstore attestations reverified under strict GitHub OIDC claims, and the SPDX SBOM contains 449 packages. See `exact-signed-artifacts-7c36229823.json`.
+- These signing, hosted lifecycle, and supply-chain facts do not close any physical/manual/staging/safety/Store gate. No Store submission, public feed publication, or broad rollout occurred.
 
 ## Evidence bundles and hashes
 
@@ -52,11 +54,10 @@ shasum -a 256 -c <bundle>/SHA256SUMS
 
 ## Exact human actions to reach a non-NO-GO verdict
 
-1. Merge PR #1545, then run the Windows release workflow with `allow_unsigned=false` against that exact post-merge `main` commit. Record the workflow URL, artifact manifest, package hashes, verified signatures, SBOMs, and attestations before using the artifacts in any remaining protocol.
-2. Provide a named physical Windows 11 x64 device and a named physical Windows 11 ARM64 device, with the exact signed-candidate manifest and operator hardware-attestation receipts. Run the physical-performance protocol and attach WPR/ETW/counter/frame/soak evidence.
-3. Supply only the names of configured staging secrets or use an interactive login: a Windows Desktop OAuth client/Web API key, staging Firebase/App Check enforcement access, a staging account, and permission to exercise the physical TPM claim path. Do not paste values into chat.
-4. Run the complete Narrator/manual keyboard/display protocol on physical x64 and ARM64 devices, including the 100/150/200% DPI sweep, OS high contrast, reduced motion/transparency, focus/live regions, and mixed-DPI multi-monitor cases.
-5. Pair a physical Windows host with Mac/mobile staging peers and run the harmless Mercury/file-transfer/Computer Use safety fixtures, including protected-target/secure-desktop denials, permission revoke/recovery, quarantine/MOTW, panic/watchdog/kill switches, audit-chain tamper, and phone replay rejection.
-6. Obtain Microsoft Partner Center reservation/private-flight approval and run authorized Store/direct-download/update/rollback/repair/uninstall/reinstall lifecycle checks. Do not publish broadly or advance rollout without explicit approval at that boundary.
+1. Provide a named physical Windows 11 x64 device and a named physical Windows 11 ARM64 device, with the exact signed-candidate manifest and operator hardware-attestation receipts. Run the physical-performance protocol and attach WPR/ETW/counter/frame/soak evidence.
+2. Supply only the names of configured staging secrets or use an interactive login: a Windows Desktop OAuth client/Web API key, staging Firebase/App Check enforcement access, a staging account, and permission to exercise the physical TPM claim path. Do not paste values into chat.
+3. Run the complete Narrator/manual keyboard/display protocol on physical x64 and ARM64 devices, including the 100/150/200% DPI sweep, OS high contrast, reduced motion/transparency, focus/live regions, and mixed-DPI multi-monitor cases.
+4. Pair a physical Windows host with Mac/mobile staging peers and run the harmless Mercury/file-transfer/Computer Use safety fixtures, including protected-target/secure-desktop denials, permission revoke/recovery, quarantine/MOTW, panic/watchdog/kill switches, audit-chain tamper, and phone replay rejection.
+5. Obtain Microsoft Partner Center reservation/private-flight approval and run authorized Store/direct-download/update/rollback/repair/uninstall/reinstall lifecycle checks. Do not publish broadly or advance rollout without explicit approval at that boundary.
 
 Until those named actions have fresh receipts, the release remains **NO-GO**. No source, unit, VM, hosted-runner, package-registration, or signing result is being promoted to physical, Store, or public-release certification.

@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarCore
+import Security
 
 // MARK: - Pi Chat Message
 //
@@ -186,6 +187,7 @@ enum PiChatMessageOutcome: String, Equatable, Sendable {
 enum PiServiceError: LocalizedError {
     case selectedModelUnavailable(String)
     case selectedModelCatalogUnavailable(String)
+    case keychain(OSStatus)
 
     var errorDescription: String? {
         switch self {
@@ -193,6 +195,70 @@ enum PiServiceError: LocalizedError {
             return "Selected Pi model '\(modelID)' is not available on this Mac Pi harness. Pick another model or refresh/restart the Mac Pi gateway."
         case .selectedModelCatalogUnavailable(let modelID):
             return "Selected Pi model '\(modelID)' has not been verified against this Mac Pi harness catalog yet. Refresh the Mac Pi gateway before sending, so the selected model is not silently rerouted."
+        case .keychain(let status):
+            return "Could not update the Pi connection token in Keychain (\(status))."
+        }
+    }
+}
+
+// MARK: - Pi Connection Secret Store
+
+/// Keychain-backed storage for Pi direct-connection bearer tokens. Same
+/// shape as `HermesConnectionSecretStore` (it reuses the
+/// `HermesConnectionSecretStoring` seam so tests can inject an in-memory
+/// fake), with a Pi-specific service string so Pi and Hermes secrets never
+/// collide. Account = the Pi connection record id.
+final class PiConnectionSecretStore: HermesConnectionSecretStoring {
+    nonisolated(unsafe) static let shared = PiConnectionSecretStore()
+
+    private let keychainService = "com.openburnbar.mobile.pi-connection"
+
+    func save(_ value: String, connectionID: String) throws {
+        let data = Data(value.utf8)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: connectionID
+        ]
+        let attrs: [String: Any] = [kSecValueData as String: data]
+        let status = SecItemUpdate(query as CFDictionary, attrs as CFDictionary)
+        if status == errSecItemNotFound {
+            var create = query
+            create[kSecValueData as String] = data
+            create[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            let addStatus = SecItemAdd(create as CFDictionary, nil)
+            guard addStatus == errSecSuccess else { throw PiServiceError.keychain(addStatus) }
+        } else if status != errSecSuccess {
+            throw PiServiceError.keychain(status)
+        }
+    }
+
+    func load(connectionID: String) throws -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: connectionID,
+            kSecReturnData as String: true
+        ]
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecItemNotFound { return nil }
+        guard status == errSecSuccess,
+              let data = result as? Data else {
+            throw PiServiceError.keychain(status)
+        }
+        return String(data: data, encoding: .utf8)
+    }
+
+    func delete(connectionID: String) throws {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: connectionID
+        ]
+        let status = SecItemDelete(query as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw PiServiceError.keychain(status)
         }
     }
 }
@@ -227,6 +293,11 @@ final class PiService {
     private let urlSession: URLSession
     private let defaults: UserDefaults
     private let history: MobileChatHistoryStore
+    /// Keychain-backed bearer-token storage for direct connections.
+    /// Production uses `PiConnectionSecretStore.shared`; tests inject an
+    /// in-memory fake through the shared `HermesConnectionSecretStoring`
+    /// seam.
+    private let secretStore: HermesConnectionSecretStoring
     /// Composition seam (WP3-IOSROOT, see `AppServices`): resolves the
     /// CLI-runtime model-catalog provider used by the relay model-discovery
     /// fallback. A closure — resolved at call time, not init time — so
@@ -235,6 +306,11 @@ final class PiService {
     /// tests; production default is `{ HermesService.shared }`.
     private let runtimeCatalogProvider: @MainActor () -> any CLIRuntimeCatalogProviding
     private var currentTask: Task<Void, Never>?
+    /// Monotonic stream generation. Bumped whenever the in-flight stream
+    /// is superseded (new send, user stop, thread switch) so a cancelled
+    /// task's deferred cleanup can't clobber the state of the stream —
+    /// or thread — that replaced it.
+    private var streamGeneration = 0
 
     private let selectedConnectionDefaultsKey = "pi.selectedConnectionID"
     private let selectedModelDefaultsKey = "pi.selectedModelID"
@@ -261,12 +337,14 @@ final class PiService {
         defaults: UserDefaults = .standard,
         history: MobileChatHistoryStore = .shared,
         toolCatalog: MobileToolCatalog = .default,
+        secretStore: HermesConnectionSecretStoring = PiConnectionSecretStore.shared,
         runtimeCatalogProvider: @escaping @MainActor () -> any CLIRuntimeCatalogProviding = { HermesService.shared }
     ) {
         self.urlSession = urlSession
         self.defaults = defaults
         self.history = history
         self.toolCatalog = toolCatalog
+        self.secretStore = secretStore
         self.runtimeCatalogProvider = runtimeCatalogProvider
         self.selectedModelID = Self.restoredModelID(
             defaults.string(forKey: selectedModelDefaultsKey),
@@ -352,11 +430,12 @@ final class PiService {
         )
         connections.append(record)
         persistConnections()
-        // Stash bearer with the record id in defaults — encrypted at rest by iOS
-        // file protection. Plan 2 §"Pi keychain handling" delegates to Keychain
-        // when the cross-platform helper exists.
+        // Stash the bearer in the Keychain keyed by the record id — same
+        // convention as Hermes connections (`HermesConnectionSecretStore`).
+        // Legacy builds stored it in UserDefaults; `bearerToken(for:)`
+        // migrates those on first read.
         if let bearerToken, !bearerToken.isEmpty {
-            defaults.set(bearerToken, forKey: bearerTokenDefaultsKey(for: record.id))
+            try? secretStore.save(bearerToken, connectionID: record.id)
         }
         _ = selectConnection(record)
         return record
@@ -364,6 +443,9 @@ final class PiService {
 
     func revokeConnection(_ connection: PiConnectionRecord) async throws {
         connections.removeAll { $0.id == connection.id }
+        try? secretStore.delete(connectionID: connection.id)
+        // Also clear any pre-Keychain copy so a legacy token can't outlive
+        // the connection in defaults.
         defaults.removeObject(forKey: bearerTokenDefaultsKey(for: connection.id))
         if selectedConnection.id == connection.id {
             selectedConnection = .localDefault
@@ -487,11 +569,21 @@ final class PiService {
             return
         }
 
-        currentTask?.cancel()
+        supersedeCurrentStream()
+        let generation = streamGeneration
         currentTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { self.isStreaming = false; self.persistCurrentThread() }
+            defer {
+                if self.streamGeneration == generation {
+                    self.isStreaming = false
+                    self.persistCurrentThread()
+                }
+            }
             do {
+                // A stop can land before this task ever runs (the task is
+                // created suspended) — bail before appending a streaming
+                // placeholder nobody will fill.
+                try Task.checkCancellation()
                 try await self.runStreamingLoop(
                     baseURL: baseURL,
                     bearerToken: bearer,
@@ -499,6 +591,14 @@ final class PiService {
                     iteration: 0
                 )
             } catch {
+                guard self.streamGeneration == generation else { return }
+                if error is CancellationError || (error as? URLError)?.code == .cancelled {
+                    // User-initiated stop (`cancelStreaming()`) — the
+                    // partial turn was already finalized there; don't
+                    // rewrite it into an error bubble.
+                    self.finalizeMessagesAfterCancelledStream()
+                    return
+                }
                 self.lastError = error.localizedDescription
                 // Replace the most recent streaming assistant turn (if any)
                 // with an error placeholder so the user sees the failure
@@ -655,17 +755,52 @@ final class PiService {
         )
     }
 
-    func cancel() {
+    /// User-initiated stop for the in-flight turn (the composer's stop
+    /// button). Cancels the streaming task, then finalizes the transcript
+    /// the same way the completion path does — streaming placeholders stop
+    /// pulsing, partial text is kept, and a placeholder that never
+    /// received any content is dropped so the chat doesn't keep an empty
+    /// bubble. The rest of the conversation is untouched.
+    func cancelStreaming() {
+        guard isStreaming || currentTask != nil else { return }
+        supersedeCurrentStream()
+        finalizeMessagesAfterCancelledStream()
+        isStreaming = false
+        persistCurrentThread()
+    }
+
+    /// Cancels the in-flight stream task (if any) and bumps the stream
+    /// generation so the cancelled task's deferred cleanup becomes a
+    /// no-op. Every path that replaces or abandons the current stream
+    /// routes through here.
+    private func supersedeCurrentStream() {
         currentTask?.cancel()
         currentTask = nil
-        isStreaming = false
+        streamGeneration += 1
+    }
+
+    /// Shared teardown between `cancelStreaming()` and the cancellation
+    /// branch of the send task (whichever runs first — both are
+    /// idempotent).
+    private func finalizeMessagesAfterCancelledStream() {
+        for idx in messages.indices where messages[idx].isStreaming {
+            var msg = messages[idx]
+            msg.isStreaming = false
+            messages[idx] = msg
+        }
+        if let last = messages.last,
+           last.role == .assistant,
+           last.text.isEmpty,
+           last.toolCalls.isEmpty,
+           !last.isError {
+            messages.removeLast()
+        }
     }
 
     /// Starts a brand-new conversation in memory without deleting the previously
     /// active thread (it remains in the chat history list).
     func startNewThread() {
-        currentTask?.cancel()
-        currentTask = nil
+        supersedeCurrentStream()
         isStreaming = false
         messages.removeAll()
         currentThreadID = nil
@@ -683,8 +818,7 @@ final class PiService {
     /// row in the chat history list.
     func loadThread(id: String) {
         guard let thread = history.thread(id: id), thread.runtime == AssistantRuntimeID.pi.rawValue else { return }
-        currentTask?.cancel()
-        currentTask = nil
+        supersedeCurrentStream()
         isStreaming = false
         currentThreadID = thread.id
         messages = thread.messages.map { Self.convertFromStore($0) }
@@ -1163,9 +1297,30 @@ final class PiService {
     }
 
     var resolvedBearerToken: String? {
-        let token = defaults.string(forKey: bearerTokenDefaultsKey(for: selectedConnection.id))?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return (token?.isEmpty == false) ? token : nil
+        bearerToken(for: selectedConnection.id)
+    }
+
+    /// Reads the connection's bearer token from the Keychain, migrating
+    /// any pre-Keychain UserDefaults copy on first read (older builds
+    /// stashed the bearer in defaults; see `addDirectConnection`). The
+    /// defaults copy is deleted only once the Keychain write succeeds so
+    /// a transient Keychain failure can't lose the token.
+    private func bearerToken(for connectionID: String) -> String? {
+        if let stored = (try? secretStore.load(connectionID: connectionID)) ?? nil {
+            let token = stored.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !token.isEmpty { return token }
+        }
+        let legacyKey = bearerTokenDefaultsKey(for: connectionID)
+        guard let legacy = defaults.string(forKey: legacyKey) else { return nil }
+        let token = legacy.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty else {
+            defaults.removeObject(forKey: legacyKey)
+            return nil
+        }
+        if (try? secretStore.save(token, connectionID: connectionID)) != nil {
+            defaults.removeObject(forKey: legacyKey)
+        }
+        return token
     }
 
     private func bearerTokenDefaultsKey(for connectionID: String) -> String {

@@ -301,7 +301,7 @@ matrix = {
         "windsurf": {"logical": "~/.config/Windsurf - Next/User/globalStorage", "filePattern": "state.vscdb"},
         "cline": {"logical": "~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/tasks", "filePattern": "*.json"},
     },
-    "xdg_notes": "Daemon support dir uses XDG_DATA_HOME/OpenBurnBar via OpenBurnBarLinuxPaths; VS Code globalStorage uses ~/.config on Linux.",
+    "xdg_notes": "Daemon support dir uses XDG_DATA_HOME/openburnbar (lowercase) via OpenBurnBarLinuxPaths; runtime socket is XDG_RUNTIME_DIR/openburnbar/daemon.sock; VS Code globalStorage uses ~/.config (or XDG_CONFIG_HOME) on Linux.",
     "session_identity": "provider.rawValue|standardized resolved log root path",
 }
 with open(out, "w", encoding="utf-8") as f:

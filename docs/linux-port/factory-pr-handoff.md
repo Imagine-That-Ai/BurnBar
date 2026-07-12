@@ -2,87 +2,103 @@
 
 ## Summary
 
-This handoff packages the Linux peer as reviewable release infrastructure:
-package metadata, release artifact generation, fail-closed update metadata,
-sidecars, provenance hooks, CI gates, nightly matrix, parity ledger, docs, and
-release-blocker reporting.
+This handoff packages the Linux peer as reviewable release infrastructure **and**
+tracks the mission-002 full macOS parity foundation work.
 
-It does not claim public Linux release readiness. V24 foundation and V23 surface
-evidence passed at `1b62ec42bd752cc8a6af578f034bf776c6ec3b97`, but the checkout
-later moved to `1af805eb1878cc5af8821ee35cac838c5ac473ee`. Promotion remains
-blocked until validation is rerun at the release head and release package,
-update, signing/provenance, nightly-matrix artifact, and clean commit evidence
-exist.
+It does **not** claim full macOS product parity or public Linux release
+readiness.
+
+Current facts (2026-07-09):
+
+- A public signed aarch64 **prerelease** exists (`linux-v0.1.0`).
+- Full macOS parity is **not** complete — see
+  [`FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md`](FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md)
+  and [`full-macos-parity-audit-2026-07-09.md`](full-macos-parity-audit-2026-07-09.md).
+- `parity-ledger.json` semantics set `productParityClaim: false`. Historical
+  mission-001 rows are `scope: historical-infrastructure`. Product foundation
+  rows use `scope: product-parity`.
+- Public `https://burnbar.ai/latest-linux.json` must be real JSON before
+  promotion; HTML SPA fallback is a hard update-feed blocker.
 
 ## Review map
 
-1. Release metadata and packaging templates:
-   - `packaging/linux/release-manifest.json`
-   - `packaging/linux/openburnbar.desktop`
-   - `packaging/linux/autostart/openburnbar.desktop`
-   - `packaging/linux/openburnbar-daemon.service`
-   - `packaging/linux/aur/PKGBUILD`
-   - `packaging/linux/flatpak/dev.openburnbar.OpenBurnBar.yml`
-2. Release scripts:
-   - `scripts/linux-port/build-linux-release.mjs`
-   - `scripts/linux-port/smoke-linux-packages.mjs`
-   - `scripts/linux-port/verify-linux-release.mjs`
+1. Phase 0 reanchor evidence:
+   - `docs/linux-port/evidence/mission-002-reanchor/**`
    - `scripts/linux-port/validate-parity-ledger.mjs`
-   - `scripts/linux-port/check-linux-docs.mjs`
-3. CI workflows:
-   - `.github/workflows/linux-pr-gate.yml`
-   - `.github/workflows/linux-nightly.yml`
-4. Documentation and parity:
-   - `docs/linux-port/README.md`
-   - `docs/linux-port/release-runbook.md`
-   - `docs/linux-port/parity-ledger.json`
-   - `docs/linux-port/parity-ledger.md`
-   - `docs/linux-port/evidence/mission-001-release/active-checkout-v23-v24-evidence.json`
-   - `docs/RELEASE_MACOS.md`
-   - `docs/security/SUPPLY_CHAIN_PROVENANCE.md`
-   - `CHANGELOG.md`
+   - `scripts/linux-port/check-linux-update-feed.mjs`
+2. Path / parser / token / dashboard foundation:
+   - `apps/linux-desktop/src/linuxPaths.ts`
+   - `apps/linux-desktop/src/providerPathRegistry.ts`
+   - `apps/linux-desktop/src/dashboard/**`
+   - `apps/linux-desktop/src/styles/tokens.css` + `skins.css`
+   - `OpenBurnBarCore/.../OpenBurnBarLinuxPaths.swift`
+3. Bridge contract:
+   - `apps/linux-desktop/src-tauri/src/lib.rs`
+   - `apps/linux-desktop/src/tauriBridge.ts`
+4. Release metadata (unchanged promotion blockers):
+   - `packaging/linux/**`
+   - `scripts/linux-port/verify-linux-release.mjs`
 
 ## Validation matrix
 
 | Target | Command | Expected state |
 |---|---|---|
-| Release config | `node scripts/linux-port/validate-linux-release-config.mjs` | Pass |
-| Ledger structure | `node scripts/linux-port/validate-parity-ledger.mjs --allow-blocked` | Pass with blocked-row warnings |
-| Ledger promotion | `node scripts/linux-port/validate-parity-ledger.mjs` | Fail until release/nightly Tier A/B blockers clear |
+| Ledger structure | `node scripts/linux-port/validate-parity-ledger.mjs --allow-blocked` | Pass; `productParityClaim: false` |
+| Update feed | `node scripts/linux-port/check-linux-update-feed.mjs --allow-missing` | Fail closed on HTML body; soft on 404 |
 | Docs | `node scripts/linux-port/check-linux-docs.mjs` | Pass |
-| Package build | `node scripts/linux-port/build-linux-release.mjs` | May fail while Tauri/AppImage toolchain is incomplete; logs are evidence |
-| Release promotion | `node scripts/linux-port/verify-linux-release.mjs` | Fail until packages, smoke, signatures, provenance, clean commit, and ledger are green |
+| Desktop tests | `npm test --prefix apps/linux-desktop` | Pass |
+| Desktop types | `cd apps/linux-desktop && npx tsc --noEmit` | Pass |
+| Desktop build | `npm run build --prefix apps/linux-desktop` | Pass, no CSS syntax warning |
+| Release promotion | `node scripts/linux-port/verify-linux-release.mjs` | Fail until packages, signatures, clean commit, feed |
+
+## Packaging install contract (203/EXEC prevention)
+
+| Path on disk | Source |
+|---|---|
+| `/usr/libexec/openburnbar-daemon-launch` | `packaging/linux/openburnbar-daemon-launch.sh` |
+| `/usr/lib/systemd/user/openburnbar-daemon.service` | `packaging/linux/openburnbar-daemon.service` |
+| `/usr/bin/openburnbar-daemon` | release daemon artifact |
+| `/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop` | `packaging/linux/openburnbar.desktop` |
+
+Install paths are wired in:
+
+- AUR `packaging/linux/aur/PKGBUILD`
+- Tauri `apps/linux-desktop/src-tauri/tauri.conf.json` `bundle.linux.{deb,rpm,appimage}.files`
+- `packaging/linux/release-manifest.json` `tailMetadata.daemonLaunchScript` + `installPaths`
+
+Custom `XDG_DATA_HOME` / support dir under `ProtectHome=read-only` requires a
+systemd drop-in (see `custom-xdg.conf.example`). Do not put
+`OPENBURNBAR_DAEMON_LINUX_PEER_ROOTS` in `daemon.env` — the launch script
+refuses world-writable prefixes.
 
 ## Named blockers
 
-- `VAL-RELEASE-001`: no AppImage/RPM release artifacts or install/update smoke
-  proof exist yet; the current `.deb` is shell-surface proof only.
-- `VAL-RELEASE-002`: no promotable `latest-linux.json` candidate exists, and
-  update/rollback smoke has no previous Linux stable/prerelease artifact.
-- `VAL-RELEASE-003`: local evidence lacks detached package signatures,
-  Sigstore/cosign bundle, and a clean release commit binding.
-- Current-head evidence drift: the last green V23/V24 seal is for `1b62ec42bd75`,
-  while the checkout is now `1af805eb1878`.
-- `VAL-CI-002`: the nightly workflow exists, but no fresh GitHub artifact set
-  proves every named Linux desktop environment.
-- `VAL-DOC-001`: docs are accurate as readiness/blocker docs, but the contract
-  depends on `VAL-RELEASE-001`, which is still blocked.
+- **Full product parity** is incomplete (see plan Phases 3–6).
+- `VAL-RELEASE-001`…`004`: packages, smoke, signatures, provenance, update feed.
+- Public `latest-linux.json` must not be HTML.
+- Do not set `semantics.productParityClaim: true` until product rows are proven
+  at the release head with fresh evidence.
 
 ## Rollback and containment
 
 - Do not add `website/public/downloads/latest-linux.json` until strict release
   verification exits 0.
-- Keep Linux release artifacts under evidence or GitHub Actions artifacts until
-  promotion. Do not update website download copy as if Linux is public.
-- If a partial package is generated, remove only that release evidence directory
-  and rerun `build-linux-release.mjs`; product source changes are separate.
+- Keep historical mission-001 ledger rows as infrastructure history; do not
+  silently rewrite them to product-ready without re-running evidence.
+
+## Factory entrypoints
+
+```bash
+make release-linux   # config + packaging sync + docs + desktop tests + ledger + feed unit tests
+make linux-matrix    # local DE probe → mission-002 matrix artifacts + blocked.json
+```
 
 ## Cross-agent receipt
 
-- Saw current active-checkout V24/V23 foundation/surface seals and the older
-  recovered-worktree release lane.
-- Reaction: moved product rows to current active-checkout ready evidence and
-  kept release/CI/doc closure rows fail-closed.
-- Status: release infrastructure is reviewable; public promotion is blocked.
-- Next owner: release lane produces AppImage/deb/rpm artifacts, signatures,
-  update smoke, nightly artifacts, and strict verification from a clean commit.
+- Saw mission-001 historical ledger all-ready overclaim risk and invented-RPC risk.
+- Reaction: reanchor + foundation (paths, parser registry, tokens, dashboard,
+  bridge contracts) with VAL product rows and `productParityClaim: false`.
+- Status: Phase 0–2 complete; Phase 3–6 in progress (pensieve inotify, POSIX switcher,
+  gateway models/catalog, Computer Use/Mercury/SmartHub routes, matrix harness).
+- Release promotion still blocked (`productParityClaim: false`, packages/feed).
+- Next owner: live multi-DE matrix proof + package artifacts for VAL-RELEASE-001.

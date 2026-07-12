@@ -203,6 +203,20 @@ enum RefreshBackgroundWork {
         )
         let detailsData = try JSONEncoder().encode(details)
         let detailsJSON = String(data: detailsData, encoding: .utf8)
+
+        // Same change-gate as InsightEngine.upsertHealthIfChanged: at idle this
+        // row is byte-identical every tick, and rewriting it took the
+        // single-writer queue for nothing.
+        let existing = try? await dataStore.fetchRetrievalHealth()
+            .first(where: { $0.subsystem == .parserImport })
+        if let existing,
+           existing.status == status,
+           existing.detailsJSON == detailsJSON,
+           existing.errorCode == errorCode,
+           existing.errorMessage == errorMessage {
+            return
+        }
+
         let now = Date()
         try await dataStore.upsertRetrievalHealth(
             RetrievalHealthRecord(

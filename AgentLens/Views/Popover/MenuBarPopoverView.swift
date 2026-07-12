@@ -230,6 +230,9 @@ struct MenuBarPopoverView: View {
         .onChange(of: isScanning) { oldValue, newValue in
             guard oldValue, !newValue else { return }
             refreshInsightRollups()
+            // Only flash success when the scan actually succeeded — flashing
+            // green over a failed parse/persist masks the failure.
+            guard scanIssues.isEmpty else { return }
             Task { @MainActor in
                 withAnimation(DesignSystem.Animation.gentle) {
                     showScanFlash = true
@@ -644,6 +647,24 @@ struct MenuBarPopoverView: View {
 
     // MARK: - Freshness Bar
 
+    /// Scan problems the user must be able to see: a broken parser or a
+    /// failed DB write otherwise looks identical to a clean scan while
+    /// totals silently go stale.
+    private var scanIssues: [String] {
+        guard let agg = aggregator else { return [] }
+        var issues: [String] = []
+        if let persistence = agg.persistenceErrorMessage, !persistence.isEmpty {
+            issues.append("Couldn't save scanned usage: \(persistence)")
+        }
+        if let importError = agg.parserImportError, !importError.isEmpty {
+            issues.append("Import issue: \(importError)")
+        }
+        for (provider, message) in agg.errors.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
+            issues.append("\(provider.displayName): \(message)")
+        }
+        return issues
+    }
+
     private var freshnessBar: some View {
         TimelineView(.periodic(from: .now, by: 15)) { context in
             HStack(spacing: DesignSystem.Spacing.xs) {
@@ -655,6 +676,18 @@ struct MenuBarPopoverView: View {
                 Text(freshnessLabel(at: context.date))
                     .font(DesignSystem.Typography.tiny)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
+
+                if !scanIssues.isEmpty {
+                    HStack(spacing: 3) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 9))
+                        Text(scanIssues.count == 1 ? "1 scan issue" : "\(scanIssues.count) scan issues")
+                            .font(DesignSystem.Typography.tiny)
+                    }
+                    .foregroundStyle(DesignSystem.Colors.warning)
+                    .popoverTooltip(scanIssues.joined(separator: "\n"))
+                    .accessibilityLabel("Scan issues: \(scanIssues.joined(separator: ". "))")
+                }
 
                 Spacer()
 

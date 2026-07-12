@@ -20,8 +20,13 @@ async function initPretextShrinkwrap() {
   }
 
   // Query all key copy elements for tight word wrapping
+  // NOTE: the homepage hero (.hero__h / .hero__copy .lead / .hero__attest)
+  // is deliberately NOT treated. The engine runs after document.fonts.ready,
+  // ~170ms after first paint, and re-wrapping the hero moved both hero
+  // columns — a single 0.24 CLS on the most-visited page. The pill chrome is
+  // invisible on the hero anyway; native text-wrap: balance handles it.
   const elements = document.querySelectorAll(
-    ".pretext-wrap, .glass-wrap-text, .hero__h, .hero__copy .lead, .hero__attest > span, .trust__head h2, .trust__head .lead, .trust__quote blockquote p, .endcta__h, .endcta__inner h2, .endcta__inner p, .endcta__inner .lead, .pagehead__inner h1, .pagehead__inner p, .pagehead__inner .lead, .pagehead__lead"
+    ".pretext-wrap, .glass-wrap-text, .trust__head h2, .trust__head .lead, .trust__quote blockquote p, .endcta__h, .endcta__inner h2, .endcta__inner p, .endcta__inner .lead, .pagehead__inner h1, .pagehead__inner p, .pagehead__inner .lead, .pagehead__lead"
   );
 
   // Styling reconstructor to restore semantic styling highlights on wrapped lines
