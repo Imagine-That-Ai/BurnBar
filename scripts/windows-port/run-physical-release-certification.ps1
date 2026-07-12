@@ -29,6 +29,9 @@ $ReceiptSchema = 'openburnbar.windows.release-certification-receipt.v1'
 $StartedAtUtc = [DateTimeOffset]::UtcNow
 
 function Resolve-FullPath([string] $Path) {
+    if ([System.IO.Path]::IsPathRooted($Path)) {
+        return [System.IO.Path]::GetFullPath($Path)
+    }
     return [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $Path))
 }
 
@@ -62,6 +65,17 @@ function Sanitize-Text([string] $Text) {
     return $redacted
 }
 
+function ConvertTo-WindowsProcessArgument([string] $Argument) {
+    if ($null -eq $Argument -or $Argument.Length -eq 0) { return '""' }
+    if ($Argument -notmatch '[\s"]') { return $Argument }
+
+    # CommandLineToArgvW quoting: double backslashes before quotes and at the
+    # closing quote so Windows PowerShell 5 and modern PowerShell agree.
+    $escaped = [regex]::Replace($Argument, '(\\*)"', '$1$1\"')
+    $escaped = [regex]::Replace($escaped, '(\\+)$', '$1$1')
+    return '"' + $escaped + '"'
+}
+
 function Invoke-LoggedProcess(
     [string] $Name,
     [string] $File,
@@ -92,7 +106,14 @@ function Invoke-LoggedProcess(
         $startInfo.CreateNoWindow = $true
         $startInfo.RedirectStandardOutput = $true
         $startInfo.RedirectStandardError = $true
-        foreach ($argument in $processArguments) { $startInfo.ArgumentList.Add($argument) }
+        if ($null -ne $startInfo.ArgumentList) {
+            foreach ($argument in $processArguments) { $startInfo.ArgumentList.Add($argument) }
+        }
+        else {
+            $startInfo.Arguments = (($processArguments | ForEach-Object {
+                ConvertTo-WindowsProcessArgument $_
+            }) -join ' ')
+        }
 
         $process = [System.Diagnostics.Process]::new()
         $process.StartInfo = $startInfo
@@ -279,7 +300,7 @@ function New-Receipt(
         status = $Status
         gate = $Gate
         target = $Target
-        source = [ordered]@{ commitSha = Get-CommitSha; dirtyTree = Test-DirtyTree }
+        source = $script:SourceIdentity
         artifact = $Artifact
         device = $Device
         protocol = [ordered]@{ commands = @($Commands); manualSteps = @($ManualSteps) }
@@ -303,6 +324,13 @@ $RepoRoot = Resolve-FullPath $RepoRoot
 $OutputDir = Resolve-FullPath $OutputDir
 New-Item -ItemType Directory -Force -Path $OutputDir, (Join-Path $OutputDir 'receipts'), (Join-Path $OutputDir 'logs'), (Join-Path $OutputDir 'blockers') | Out-Null
 if (-not (Test-Path -LiteralPath (Join-Path $RepoRoot 'windows\OpenBurnBar.sln'))) { throw "RepoRoot does not contain windows\OpenBurnBar.sln: $RepoRoot" }
+$script:SourceIdentity = [ordered]@{
+    commitSha = Get-CommitSha
+    dirtyTree = Test-DirtyTree
+}
+if ($script:SourceIdentity.dirtyTree) {
+    throw 'Refusing certification evidence for a candidate that was dirty before execution.'
+}
 
 $script:HardwareAttestation = $null
 $script:HardwareAttestationSha256 = $null
@@ -332,8 +360,8 @@ if ($SkipAutomatedTests) {
     $receiptEntries.Add((New-Receipt 'local-automated-checks' 'Windows solution and focused test suites' 'BLOCKED' 'The Windows solution and focused test suites exit 0.' 'Automated tests were explicitly skipped.' $null @() @('Run dotnet restore/build/test on the exact candidate.') ([ordered]@{ id = 'LOCAL-AUTOMATION-SKIPPED'; owner = 'operator'; missing = 'automated test execution'; recovery = 'Run the script without -SkipAutomatedTests.' }) @($skipBlocker) $device $artifact))
 } else {
     $steps.Add((Invoke-LoggedProcess 'dotnet-restore' 'dotnet' @('restore', 'windows\OpenBurnBar.sln', "-p:Platform=$Platform")))
-    $steps.Add((Invoke-LoggedProcess 'dotnet-build' 'dotnet' @('build', 'windows\OpenBurnBar.sln', '-c', 'Release', '--no-restore', "-p:Platform=$Platform")))
-    $steps.Add((Invoke-LoggedProcess 'dotnet-test' 'dotnet' @('test', 'windows\OpenBurnBar.sln', '-c', 'Release', '--no-build', '--nologo', "-p:Platform=$Platform", '--logger', 'trx;LogFileName=physical-certification.trx')))
+    $steps.Add((Invoke-LoggedProcess 'dotnet-build' 'dotnet' @('build', 'windows\OpenBurnBar.sln', '-c', 'Release', '--no-restore', '-m:1', "-p:Platform=$Platform")))
+    $steps.Add((Invoke-LoggedProcess 'dotnet-test' 'dotnet' @('test', 'windows\OpenBurnBar.sln', '-c', 'Release', '--no-build', '--nologo', '-m:1', "-p:Platform=$Platform", '--logger', 'trx;LogFileName=physical-certification.trx')))
     $failed = @($steps | Where-Object { $_.exitCode -ne 0 })
     $localLogRefs = @($steps | ForEach-Object { [ordered]@{ path = $_.log; sha256 = $_.logSha256 } })
     if ($failed.Count -eq 0) {
@@ -460,7 +488,7 @@ $overallVerdict = if ($nonPassingRequiredGates.Count -eq 0) { 'GO' } else { 'NO-
 $manifest = [ordered]@{
     schema = $BundleSchema
     generatedAtUtc = [DateTimeOffset]::UtcNow.ToUniversalTime().ToString('o')
-    source = [ordered]@{ commitSha = Get-CommitSha; dirtyTree = Test-DirtyTree }
+    source = $script:SourceIdentity
     runner = [ordered]@{ script = 'scripts/windows-port/run-physical-release-certification.ps1'; platform = $Platform; physicalHardwareAsserted = [bool]$PhysicalHardware }
     overallVerdict = $overallVerdict
     receipts = @($receiptEntries | ForEach-Object { [ordered]@{ path = $_.path; sha256 = $_.sha256 } })

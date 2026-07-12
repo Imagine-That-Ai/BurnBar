@@ -1,0 +1,11 @@
+{
+  "createTime": "2026-07-12T05:40:26.623Z",
+  "labels": {
+    "firebase": "enabled",
+    "firebase-core": "disabled"
+  },
+  "lifecycleState": "ACTIVE",
+  "name": "BurnBar Staging",
+  "projectId": "burnbar-staging",
+  "projectNumber": "1079930549647"
+}

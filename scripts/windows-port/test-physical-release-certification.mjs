@@ -22,6 +22,17 @@ assert.match(
 );
 assert.match(script, /Physical hardware architecture mismatch/);
 assert.match(script, /Get-Tpm/);
+assert.match(script, /IsPathRooted\(\$Path\)/);
+assert.match(script, /function ConvertTo-WindowsProcessArgument/);
+assert.match(script, /if \(\$null -ne \$startInfo\.ArgumentList\)/);
+assert.match(script, /\$startInfo\.Arguments =/);
+assert.match(script, /ConvertTo-WindowsProcessArgument \$_/);
+assert.match(script, /'dotnet-build'[\s\S]*'-m:1'/);
+assert.match(script, /'dotnet-test'[\s\S]*'-m:1'/);
+assert.match(script, /\$script:SourceIdentity = \[ordered\]@\{/);
+assert.match(script, /Refusing certification evidence for a candidate that was dirty before execution/);
+assert.match(script, /source = \$script:SourceIdentity/);
+assert.doesNotMatch(script, /source = \[ordered\]@\{ commitSha = Get-CommitSha; dirtyTree = Test-DirtyTree \}/);
 assert.match(script, /\$script:HardwareAttestationSha256 = Get-Sha256 \$attestationPath/);
 assert.doesNotMatch(script, /\$script:HardwareAttestation\.sha256\s*=/);
 assert.match(script, /ArtifactManifestPath/);
