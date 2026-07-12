@@ -18,7 +18,7 @@ test('deb, rpm, and Arch package exact installed attestation subjects', () => {
     const files = config.bundle.linux[format].files;
     for (const [destination, source] of Object.entries(expected)) assert.equal(files[destination], source);
   }
-  const pkgbuild = read('packaging/linux/aur/PKGBUILD');
+  const pkgbuild = read('packaging/linux/aur/PKGBUILD.in');
   for (const destination of Object.keys(expected)) {
     assert.ok(pkgbuild.includes(destination), `Arch recipe missing ${destination}`);
   }
@@ -83,4 +83,11 @@ test('Arch pacman smoke verifies the live signed inventory before uninstall', ()
   const uninstall = source.indexOf("['-R', '--noconfirm'");
   assert.ok(install > 0 && verify > install && uninstall > verify);
   assert.match(source, /packageManager: 'pacman'/u);
+  assert.doesNotMatch(source, /--nodeps/u);
+  assert.match(source, /inspectArchPackageDependencies/u);
+  assert.match(source, /\['-Syu', '--noconfirm', '--needed'/u);
+  assert.match(source, /\/usr\/bin\/openburnbar-linux-desktop/u);
+  assert.match(source, /\/usr\/bin\/openburnbar-daemon/u);
+  assert.match(source, /pacman -Q openburnbar expects package absence/u);
+  assert.match(source, /package-owned filesystem entries removed/u);
 });

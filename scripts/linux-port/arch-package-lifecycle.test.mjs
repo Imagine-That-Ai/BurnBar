@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import {
   extendSigningIndex,
   renderReleasePkgbuild
@@ -16,18 +17,24 @@ import {
 } from './lib/linux-installed-manifest.mjs';
 import {
   assertSafeArchiveMemberNames,
+  inspectArchPackageDependencies,
   inspectNativePackageMetadata
 } from './lib/linux-native-package.mjs';
+import { materializeArchReleaseMetadata } from './lib/linux-arch-pkgbuild.mjs';
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 const checksumSlots = [
-  'APPIMAGE', 'DAEMON', 'DESKTOP', 'SAFE_MODE_DESKTOP', 'SERVICE', 'LAUNCH',
+  'APPIMAGE_X86_64', 'DAEMON_X86_64', 'INSTALLED_MANIFEST_X86_64',
+  'INSTALLED_MANIFEST_SIGNATURE_X86_64', 'APPIMAGE_AARCH64', 'DAEMON_AARCH64',
+  'INSTALLED_MANIFEST_AARCH64', 'INSTALLED_MANIFEST_SIGNATURE_AARCH64',
+  'DESKTOP', 'SAFE_MODE_DESKTOP', 'SERVICE', 'LAUNCH',
   'COMPUTER_USE_POLKIT_POLICY', 'PLAYWRIGHT_BRIDGE', 'BROWSER_RUNTIME_PROBE',
-  'BROWSER_RUNTIME_REQUIREMENTS', 'INSTALLED_MANIFEST',
-  'INSTALLED_MANIFEST_SIGNATURE', 'RELEASE_PUBLIC_KEY'
+  'BROWSER_RUNTIME_REQUIREMENTS', 'RELEASE_PUBLIC_KEY'
 ];
 
 test('release PKGBUILD rendering fills every checksum slot without bypasses', () => {
-  const template = fs.readFileSync(new URL('../../packaging/linux/aur/PKGBUILD', import.meta.url), 'utf8');
+  const template = fs.readFileSync(new URL('../../packaging/linux/aur/PKGBUILD.in', import.meta.url), 'utf8');
   const checksums = Object.fromEntries(checksumSlots.map((slot, index) => [
     slot,
     index.toString(16).padStart(64, '0')
@@ -40,7 +47,7 @@ test('release PKGBUILD rendering fills every checksum slot without bypasses', ()
   assert.match(rendered, /release-ed25519\.pub\.pem/u);
 });
 
-test('Arch prepare atomically extends the exact three-subject signing transaction', (t) => {
+test('Arch prepare atomically extends the signing transaction with its fourth subject', (t) => {
   const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-arch-index-'));
   t.after(() => fs.rmSync(stateDir, { recursive: true, force: true }));
   const requestsDir = path.join(stateDir, 'requests');
@@ -105,6 +112,8 @@ test('Arch manager metadata is read from the package .PKGINFO', {
     'pkgname = openburnbar',
     'pkgver = 1.2.3-1',
     'arch = x86_64',
+    'depend = gtk3',
+    'depend = nodejs>=22',
     ''
   ].join('\n'));
   fs.writeFileSync(path.join(root, 'payload/usr/bin/openburnbar-daemon'), 'daemon\n');
@@ -116,21 +125,72 @@ test('Arch manager metadata is read from the package .PKGINFO', {
     packageVersion: '1.2.3',
     packageArchitecture: 'x86_64'
   });
+  assert.deepEqual(inspectArchPackageDependencies(artifact), ['gtk3', 'nodejs>=22']);
 });
 
 test('Arch extraction preflight permits only known package metadata beside /usr', () => {
   assert.deepEqual(
     [...assertSafeArchiveMemberNames('.PKGINFO\n.BUILDINFO\n.MTREE\nusr/bin/openburnbar\n', {
-      allowedRootMetadata: ['.BUILDINFO', '.INSTALL', '.MTREE', '.PKGINFO']
+      allowedRootMetadata: ['.BUILDINFO', '.MTREE', '.PKGINFO']
     })],
     ['.PKGINFO', '.BUILDINFO', '.MTREE', 'usr/bin/openburnbar']
   );
   assert.throws(
     () => assertSafeArchiveMemberNames('.PKGINFO\netc/pacman.conf\n', {
-      allowedRootMetadata: ['.BUILDINFO', '.INSTALL', '.MTREE', '.PKGINFO']
+      allowedRootMetadata: ['.BUILDINFO', '.MTREE', '.PKGINFO']
     }),
     /outside \/usr/u
   );
+  assert.throws(
+    () => assertSafeArchiveMemberNames('.PKGINFO\n.INSTALL\nusr/bin/openburnbar\n', {
+      allowedRootMetadata: ['.BUILDINFO', '.MTREE', '.PKGINFO']
+    }),
+    /outside \/usr/u
+  );
+});
+
+test('release assembly renders a two-architecture PKGBUILD from published assets', (t) => {
+  const root = fs.mkdtempSync(path.join(repoRoot, '.tmp-openburnbar-arch-release-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const artifacts = [];
+  for (const architecture of ['x86_64', 'aarch64']) {
+    for (const type of ['appimage', 'daemon', 'arch']) {
+      const file = path.join(root, `${type}-${architecture}`);
+      fs.writeFileSync(file, `${type}:${architecture}\n`);
+      const artifact = fileRecord(file);
+      artifact.type = type;
+      artifact.architecture = architecture;
+      if (type === 'arch') {
+        const manifest = path.join(root, `${architecture}.installed-manifest.json`);
+        const signature = path.join(root, `${architecture}.installed-manifest.json.sig`);
+        fs.writeFileSync(manifest, `manifest:${architecture}\n`);
+        fs.writeFileSync(signature, Buffer.alloc(64, architecture === 'x86_64' ? 1 : 2));
+        artifact.installedManifest = fileRecord(manifest);
+        artifact.installedManifestSignature = fileRecord(signature);
+      }
+      artifacts.push(artifact);
+    }
+  }
+  const result = materializeArchReleaseMetadata({
+    repoRoot,
+    outDir: path.join(root, 'out'),
+    version: '4.5.6',
+    gitCommit: 'a'.repeat(40),
+    artifacts
+  });
+  const pkgbuild = fs.readFileSync(result.pkgbuildFile, 'utf8');
+  assert.doesNotMatch(pkgbuild, /REPLACE_WITH_|\bSKIP\b/u);
+  assert.match(pkgbuild, /^pkgver=4\.5\.6$/mu);
+  assert.match(pkgbuild, /releases\/download\/linux-v\$\{pkgver\}\/OpenBurnBar_\$\{pkgver\}_amd64\.AppImage/u);
+  assert.match(pkgbuild, /raw\.githubusercontent\.com\/Imagine-That-Ai\/BurnBar\/linux-v\$\{pkgver\}/u);
+  const metadata = JSON.parse(fs.readFileSync(result.metadataFile, 'utf8'));
+  assert.equal(metadata.releaseTag, 'linux-v4.5.6');
+  assert.deepEqual(metadata.aurPublication, {
+    published: false,
+    status: 'operator-required',
+    note: 'Release assets are consumable directly; publishing to the AUR requires a separate operator action.'
+  });
+  assert.equal(metadata.sources.length, 17);
 });
 
 function record(installedPath, value, mode) {
@@ -147,4 +207,13 @@ function commandAvailable(command) {
       return false;
     }
   });
+}
+
+function fileRecord(file) {
+  const bytes = fs.readFileSync(file);
+  return {
+    file: path.relative(repoRoot, file).split(path.sep).join('/'),
+    sha256: sha256Bytes(bytes),
+    size: bytes.length
+  };
 }

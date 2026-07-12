@@ -66,7 +66,13 @@ Required package artifacts:
 - AppImage primary artifact.
 - Debian package.
 - RPM package.
-- AUR metadata in [`../../packaging/linux/aur/PKGBUILD`](../../packaging/linux/aur/PKGBUILD).
+- Arch packages for `x86_64` and `aarch64`, plus a checksum-complete `PKGBUILD`,
+  `arch-release-metadata.json`, and architecture-specific installed-manifest
+  sidecars rendered from
+  [`../../packaging/linux/aur/PKGBUILD.in`](../../packaging/linux/aur/PKGBUILD.in).
+  These assets are published with the `linux-vX.Y.Z` GitHub release. AUR
+  repository publication is a separate credentialed operator action and is
+  recorded as unpublished until that action occurs.
 - Flatpak tail metadata in
   [`../../packaging/linux/flatpak/dev.openburnbar.OpenBurnBar.yml`](../../packaging/linux/flatpak/dev.openburnbar.OpenBurnBar.yml).
 - Desktop entry, autostart entry, and systemd user service under

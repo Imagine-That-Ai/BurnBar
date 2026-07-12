@@ -17,6 +17,10 @@ import {
   verifySignedNativePackage
 } from './lib/linux-native-package.mjs';
 import { withoutLinuxReleasePrivateKey } from './lib/linux-signing-environment.mjs';
+import {
+  archPkgbuildCommonSources,
+  renderReleasePkgbuild
+} from './lib/linux-arch-pkgbuild.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const appDir = path.join(repoRoot, 'apps/linux-desktop');
@@ -36,26 +40,7 @@ function exactRequestKinds(architecture) {
   ]);
 }
 
-export function renderReleasePkgbuild(template, { version, checksums }) {
-  if (!/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/u.test(version)) {
-    throw new Error('Arch package version must be strict X.Y.Z');
-  }
-  const versionSlots = template.match(/^pkgver=.*$/gmu) ?? [];
-  if (versionSlots.length !== 1) throw new Error('Arch PKGBUILD must contain exactly one pkgver assignment');
-  let rendered = template.replace(/^pkgver=.*$/mu, `pkgver=${version}`);
-  for (const [placeholder, digest] of Object.entries(checksums)) {
-    if (!/^[A-Z0-9_]+$/u.test(placeholder) || !/^[a-f0-9]{64}$/u.test(digest)) {
-      throw new Error(`invalid Arch source checksum replacement: ${placeholder}`);
-    }
-    const marker = `REPLACE_WITH_${placeholder}_SHA256`;
-    if (!rendered.includes(marker)) throw new Error(`Arch PKGBUILD checksum slot is missing: ${marker}`);
-    rendered = rendered.replaceAll(marker, digest);
-  }
-  const unresolved = rendered.match(/REPLACE_WITH_[A-Z0-9_]+_SHA256/gu) ?? [];
-  if (unresolved.length > 0) throw new Error(`Arch PKGBUILD has unresolved checksums: ${unresolved.join(', ')}`);
-  if (/\bSKIP\b/u.test(rendered)) throw new Error('Arch PKGBUILD may not bypass source verification');
-  return rendered;
-}
+export { renderReleasePkgbuild } from './lib/linux-arch-pkgbuild.mjs';
 
 export function extendSigningIndex({ stateDir, version, gitCommit, architecture, manifestBytes }) {
   const indexFile = path.join(stateDir, 'signing-request.json');
@@ -153,20 +138,28 @@ function sourceInputs({ version, architecture, manifestBytes, signatureBytes }) 
   const appImage = findSingle(path.join(bundleRoot, 'appimage'), '.AppImage');
   const daemon = path.join(appDir, 'src-tauri/target/openburnbar-package-payload/openburnbar-daemon');
   if (!fs.existsSync(daemon)) throw new Error(`Arch package daemon input is missing: ${daemon}`);
+  const appImageArchitecture = architecture === 'x86_64' ? 'amd64' : architecture;
+  const suffix = architecture.toUpperCase();
+  const commonNames = new Map([
+    ['DESKTOP', 'openburnbar.desktop'],
+    ['SAFE_MODE_DESKTOP', 'openburnbar-safe-mode.desktop'],
+    ['SERVICE', 'openburnbar-daemon.service'],
+    ['LAUNCH', 'openburnbar-daemon-launch'],
+    ['COMPUTER_USE_POLKIT_POLICY', 'com.openburnbar.computer-use.policy'],
+    ['PLAYWRIGHT_BRIDGE', 'openburnbar-playwright-bridge.js'],
+    ['BROWSER_RUNTIME_PROBE', 'openburnbar-browser-runtime-probe'],
+    ['BROWSER_RUNTIME_REQUIREMENTS', 'browser-runtime-requirements.json'],
+    ['RELEASE_PUBLIC_KEY', 'release-ed25519.pub.pem']
+  ]);
   return new Map([
-    ['APPIMAGE', [`OpenBurnBar_${version}_${architecture}.AppImage`, appImage]],
-    ['DAEMON', [`openburnbar-daemon-${version}-${architecture}`, daemon]],
-    ['DESKTOP', ['openburnbar.desktop', path.join(repoRoot, 'packaging/linux/aur/openburnbar.desktop')]],
-    ['SAFE_MODE_DESKTOP', ['openburnbar-safe-mode.desktop', path.join(repoRoot, 'packaging/linux/aur/openburnbar-safe-mode.desktop')]],
-    ['SERVICE', ['openburnbar-daemon.service', path.join(repoRoot, 'packaging/linux/aur/openburnbar-daemon.service')]],
-    ['LAUNCH', ['openburnbar-daemon-launch', path.join(repoRoot, 'packaging/linux/aur/openburnbar-daemon-launch')]],
-    ['COMPUTER_USE_POLKIT_POLICY', ['com.openburnbar.computer-use.policy', path.join(repoRoot, 'packaging/linux/com.openburnbar.computer-use.policy')]],
-    ['PLAYWRIGHT_BRIDGE', ['openburnbar-playwright-bridge.js', path.join(repoRoot, 'OpenBurnBarDaemon/Resources/PlaywrightBridge/openburnbar-playwright-bridge.js')]],
-    ['BROWSER_RUNTIME_PROBE', ['openburnbar-browser-runtime-probe', path.join(repoRoot, 'packaging/linux/openburnbar-browser-runtime-probe')]],
-    ['BROWSER_RUNTIME_REQUIREMENTS', ['browser-runtime-requirements.json', path.join(repoRoot, 'packaging/linux/browser-runtime-requirements.json')]],
-    ['INSTALLED_MANIFEST', ['installed-manifest.json', manifestBytes]],
-    ['INSTALLED_MANIFEST_SIGNATURE', ['installed-manifest.ed25519', signatureBytes]],
-    ['RELEASE_PUBLIC_KEY', ['release-ed25519.pub.pem', publicKeyFile]]
+    [`APPIMAGE_${suffix}`, [`OpenBurnBar_${version}_${appImageArchitecture}.AppImage`, appImage]],
+    [`DAEMON_${suffix}`, [`openburnbar-daemon-${version}-${architecture}`, daemon]],
+    ...archPkgbuildCommonSources.map(([slot, relativeFile]) => [
+      slot,
+      [commonNames.get(slot), path.join(repoRoot, relativeFile)]
+    ]),
+    [`INSTALLED_MANIFEST_${suffix}`, ['installed-manifest.json', manifestBytes]],
+    [`INSTALLED_MANIFEST_SIGNATURE_${suffix}`, ['installed-manifest.ed25519', signatureBytes]]
   ]);
 }
 
@@ -187,7 +180,12 @@ function buildArchPackage({ version, architecture, manifestBytes, signatureBytes
       fs.writeFileSync(path.join(buildDir, name), bytes, { mode: 0o644 });
       checksums[slot] = sha256(bytes);
     }
-    const template = fs.readFileSync(path.join(repoRoot, 'packaging/linux/aur/PKGBUILD'), 'utf8');
+    for (const inactiveArchitecture of ['X86_64', 'AARCH64'].filter((entry) => entry !== architecture.toUpperCase())) {
+      for (const slot of ['APPIMAGE', 'DAEMON', 'INSTALLED_MANIFEST', 'INSTALLED_MANIFEST_SIGNATURE']) {
+        checksums[`${slot}_${inactiveArchitecture}`] = '0'.repeat(64);
+      }
+    }
+    const template = fs.readFileSync(path.join(repoRoot, 'packaging/linux/aur/PKGBUILD.in'), 'utf8');
     fs.writeFileSync(path.join(buildDir, 'PKGBUILD'), renderReleasePkgbuild(template, { version, checksums }));
     run('chown', ['-R', 'openburnbar-builder:openburnbar-builder', root]);
     const makepkgConfig = path.join(root, 'makepkg.conf');

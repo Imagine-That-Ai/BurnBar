@@ -333,10 +333,11 @@ jobs:
         run: git diff --exit-code -- OpenBurnBarCore/Package.resolved OpenBurnBarDaemon/Package.resolved
 
       - name: Upload architecture shard
-        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.6.1
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: linux-release-shard-${{ matrix.architecture }}
           path: ${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/
+          include-hidden-files: true
           if-no-files-found: error
 
   assemble-release:
@@ -391,7 +392,7 @@ jobs:
       - name: Attest Linux release sidecars and packages
         run: |
           set -euo pipefail
-          mapfile -t files < <(find "$OPENBURNBAR_LINUX_RELEASE_OUT" -type f \( -name '*.AppImage' -o -name '*.pkg.tar.zst' -o -name '*.deb' -o -name '*.rpm' -o -name 'openburnbar-daemon-*' -o -name '*.spdx.json' -o -name '*.openvex.json' -o -name '*checksums.txt' -o -name '*source-*.tar' -o -name '*provenance-predicate.json' -o -name 'latest-linux.draft.json' \) | sort)
+          mapfile -t files < <(find "$OPENBURNBAR_LINUX_RELEASE_OUT" -type f \( -name '*.AppImage' -o -name '*.pkg.tar.zst' -o -name '*.deb' -o -name '*.rpm' -o -name 'openburnbar-daemon-*' -o -name 'PKGBUILD' -o -name 'arch-release-metadata.json' -o -name 'openburnbar-*.installed-manifest.json' -o -name 'openburnbar-*.installed-manifest.ed25519' -o -name '*.spdx.json' -o -name '*.openvex.json' -o -name '*checksums.txt' -o -name '*source-*.tar' -o -name '*provenance-predicate.json' -o -name 'latest-linux.draft.json' \) | sort)
           test "${#files[@]}" -gt 0
           for file in "${files[@]}"; do
             predicate="${file}.predicate.json"
@@ -421,7 +422,7 @@ jobs:
 
       - name: Upload Linux release evidence
         if: always()
-        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.6.1
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: linux-release-evidence
           path: |

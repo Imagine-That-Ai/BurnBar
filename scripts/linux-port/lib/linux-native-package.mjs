@@ -125,6 +125,20 @@ function inspectArchMetadata(artifact, env) {
   return [fields.get('pkgname') ?? '', packageVersion, fields.get('arch') ?? ''];
 }
 
+export function inspectArchPackageDependencies(artifact, { env = process.env } = {}) {
+  const metadata = runBinary('bsdtar', ['-xOf', artifact, '.PKGINFO'], { env }).toString('utf8');
+  const dependencies = metadata.split('\n')
+    .map((line) => /^depend = (.+)$/u.exec(line)?.[1]?.trim())
+    .filter(Boolean);
+  if (dependencies.length === 0) throw new Error('Arch package metadata has no runtime dependencies');
+  for (const dependency of dependencies) {
+    if (!/^[a-z0-9@._+:-]+(?:[<>=]+[a-zA-Z0-9@._+:-]+)?$/u.test(dependency)) {
+      throw new Error(`Arch package metadata has an unsafe dependency: ${dependency}`);
+    }
+  }
+  return dependencies;
+}
+
 export function extractNativePackage(format, artifact, destination, { env = process.env } = {}) {
   if (typeof process.getuid === 'function' && process.getuid() !== 0) {
     throw new Error('native package inventory extraction requires the isolated root toolchain container');
@@ -138,7 +152,7 @@ export function extractNativePackage(format, artifact, destination, { env = proc
       : (() => { throw new Error(`unsupported native package format: ${format}`); })();
   extractPreflightedArchiveBytes(archive, destination, {
     env,
-    allowedRootMetadata: format === 'arch' ? ['.BUILDINFO', '.INSTALL', '.MTREE', '.PKGINFO'] : [],
+    allowedRootMetadata: format === 'arch' ? ['.BUILDINFO', '.MTREE', '.PKGINFO'] : [],
     extractUsrOnly: format === 'arch'
   });
 }

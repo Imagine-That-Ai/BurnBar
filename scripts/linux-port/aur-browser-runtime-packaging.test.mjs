@@ -7,8 +7,8 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const pkgbuildPath = path.join(repoRoot, 'packaging/linux/aur/PKGBUILD');
-const pkgbuildRelativePath = 'packaging/linux/aur/PKGBUILD';
+const pkgbuildPath = path.join(repoRoot, 'packaging/linux/aur/PKGBUILD.in');
+const pkgbuildRelativePath = 'packaging/linux/aur/PKGBUILD.in';
 const canonicalInputs = new Map([
   [
     'openburnbar-playwright-bridge.js',
@@ -30,8 +30,8 @@ function evaluatePkgbuild() {
     'CARCH=x86_64',
     'source "$1"',
     'printf "DEPEND=%s\\n" "${depends[@]}"',
-    'printf "SOURCE=%s\\n" "${source[@]}"',
-    'printf "SUM=%s\\n" "${sha256sums[@]}"'
+    'printf "SOURCE=%s\\n" "${source[@]}" "${source_x86_64[@]}"',
+    'printf "SUM=%s\\n" "${sha256sums[@]}" "${sha256sums_x86_64[@]}"'
   ].join('\n'), 'bash', pkgbuildRelativePath], { cwd: repoRoot, encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
   const values = { DEPEND: [], SOURCE: [], SUM: [] };
@@ -51,7 +51,7 @@ test('AUR recipe pins every Browser Computer Use package input to the release ta
 
   for (const [alias, sourcePath] of canonicalInputs) {
     assert.ok(sources.includes(
-      `${alias}::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/v0.1.0/${sourcePath}`
+      `${alias}::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-vREPLACE_WITH_RELEASE_VERSION/${sourcePath}`
     ));
   }
   assert.ok(sums.includes('REPLACE_WITH_PLAYWRIGHT_BRIDGE_SHA256'));
@@ -63,8 +63,6 @@ test('AUR package staging installs canonical Browser Computer Use resources with
   const root = fs.mkdtempSync(path.join(repoRoot, '.tmp-openburnbar-aur-package-'));
   const srcdir = path.join(root, 'src');
   const pkgdir = path.join(root, 'pkg');
-  const srcdirRelative = path.relative(repoRoot, srcdir);
-  const pkgdirRelative = path.relative(repoRoot, pkgdir);
   fs.mkdirSync(srcdir, { recursive: true });
 
   const localAssets = [
@@ -76,17 +74,20 @@ test('AUR package staging installs canonical Browser Computer Use resources with
   for (const asset of localAssets) {
     fs.copyFileSync(path.join(repoRoot, 'packaging/linux/aur', asset), path.join(srcdir, asset));
   }
-  const appImage = path.join(srcdir, 'OpenBurnBar_0.1.0_x86_64.AppImage');
+  const appImage = path.join(srcdir, 'OpenBurnBar_REPLACE_WITH_RELEASE_VERSION_amd64.AppImage');
   fs.writeFileSync(appImage, [
     '#!/bin/bash',
     'set -euo pipefail',
     'test "$1" = --appimage-extract',
-    'test "$2" = usr/lib/openburnbar/native/libopenburnbar_iroh.so',
+    'test "$2" = usr/lib/openburnbar',
     'mkdir -p squashfs-root/usr/lib/openburnbar/native',
-    'printf iroh >squashfs-root/usr/lib/openburnbar/native/libopenburnbar_iroh.so'
+    'mkdir -p squashfs-root/usr/lib/openburnbar/swift/linux',
+    'printf iroh >squashfs-root/usr/lib/openburnbar/native/libopenburnbar_iroh.so',
+    'printf sqlcipher >squashfs-root/usr/lib/openburnbar/native/libsqlcipher.so.0',
+    'printf swift >squashfs-root/usr/lib/openburnbar/swift/linux/libswiftCore.so'
   ].join('\n'));
   fs.chmodSync(appImage, 0o755);
-  fs.writeFileSync(path.join(srcdir, 'openburnbar-daemon-0.1.0-x86_64'), 'daemon\n');
+  fs.writeFileSync(path.join(srcdir, 'openburnbar-daemon-REPLACE_WITH_RELEASE_VERSION-x86_64'), 'daemon\n');
   fs.copyFileSync(
     path.join(repoRoot, 'packaging/linux/com.openburnbar.computer-use.policy'),
     path.join(srcdir, 'com.openburnbar.computer-use.policy')
@@ -109,13 +110,14 @@ test('AUR package staging installs canonical Browser Computer Use resources with
       'srcdir="$2"',
       'pkgdir="$3"',
       'install() {',
+      '  if [[ "$1" == -d ]]; then mkdir -p "$2"; return; fi',
       '  local mode="${1#-Dm}" input="$2" output="$3"',
       '  mkdir -p "$(dirname "${output}")"',
       '  cp "${input}" "${output}"',
       '  chmod "${mode}" "${output}"',
       '}',
       'package'
-    ].join('\n'), 'bash', pkgbuildRelativePath, srcdirRelative, pkgdirRelative], { cwd: repoRoot, encoding: 'utf8' });
+    ].join('\n'), 'bash', pkgbuildRelativePath, srcdir, pkgdir], { cwd: repoRoot, encoding: 'utf8' });
     assert.equal(result.status, 0, result.stderr);
 
     const installed = new Map([
@@ -148,7 +150,7 @@ test('AUR PKGBUILD remains valid Bash and does not bypass source verification', 
   assert.doesNotMatch(pkgbuild, /noextract/);
   assert.match(
     pkgbuild,
-    /--appimage-extract usr\/lib\/openburnbar\/native\/libopenburnbar_iroh\.so/u
+    /--appimage-extract usr\/lib\/openburnbar/u
   );
   assert.doesNotMatch(pkgbuild, /libopenburnbar_iroh\.so::https?:/u);
 });

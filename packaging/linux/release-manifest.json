@@ -14,7 +14,7 @@
     "cosignIdentityTemplate": "https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-release.yml@refs/tags/linux-v{version}"
   },
   "tailMetadata": {
-    "aur": "packaging/linux/aur/PKGBUILD",
+    "archPackageTemplate": "packaging/linux/aur/PKGBUILD.in",
     "flatpak": "packaging/linux/flatpak/dev.openburnbar.OpenBurnBar.yml",
     "desktopEntry": "packaging/linux/openburnbar.desktop",
     "safeModeDesktopEntry": "packaging/linux/openburnbar-safe-mode.desktop",

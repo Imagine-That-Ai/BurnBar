@@ -31,7 +31,11 @@ const runStepBareCommands = new Set([
   'swift',
   'unsquashfs'
 ]);
-const absoluteRunStepCommands = new Set(['/usr/libexec/openburnbar-daemon-launch']);
+const absoluteRunStepCommands = new Set([
+  '/usr/bin/openburnbar-daemon',
+  '/usr/bin/openburnbar-linux-desktop',
+  '/usr/libexec/openburnbar-daemon-launch'
+]);
 const runStepBashInlineScripts = new Set([
   'command -v secret-tool || true',
   'command -v kwallet-query || true'

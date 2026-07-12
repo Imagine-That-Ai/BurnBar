@@ -18,6 +18,21 @@ export function verifyLinuxWorkflowWiring(input) {
       previous = Math.max(previous, index);
     }
   };
+  const requireUploadContract = (body, stepName, paths, source) => {
+    const start = body.indexOf(`- name: ${stepName}`);
+    const end = start < 0 ? -1 : body.indexOf('\n      - name:', start + 1);
+    const block = start < 0 ? '' : body.slice(start, end < 0 ? body.length : end);
+    if (!block) {
+      failures.push(`${source} is missing upload step: ${stepName}`);
+      return;
+    }
+    for (const marker of [
+      'actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4',
+      'include-hidden-files: true',
+      'if-no-files-found: error',
+      ...paths
+    ]) requireText(block, marker, `${source} ${stepName}`);
+  };
 
   requireText(input.release, '- "linux-v*"', 'release tag trigger');
   if (input.release.includes('- "v*"')) failures.push('legacy v* tag trigger is forbidden in the Linux release workflow.');
@@ -27,6 +42,37 @@ export function verifyLinuxWorkflowWiring(input) {
   requireText(input.release, '--candidate', 'candidate-only release assembly');
   requireText(input.release, "-name '*.pkg.tar.zst'", 'Arch package attestation selection');
   requireText(input.promotionWorkflow, "-name '*.pkg.tar.zst'", 'Arch package publication selection');
+  for (const marker of [
+    "-name 'PKGBUILD'",
+    "-name 'arch-release-metadata.json'",
+    "-name 'openburnbar-*.installed-manifest.json'",
+    "-name 'openburnbar-*.installed-manifest.ed25519'"
+  ]) {
+    requireText(input.release, marker, 'Arch release metadata attestation selection');
+    requireText(input.promotionWorkflow, marker, 'Arch release metadata publication selection');
+  }
+  requireUploadContract(
+    input.release,
+    'Upload architecture shard',
+    ['${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/'],
+    'candidate workflow'
+  );
+  requireUploadContract(
+    input.release,
+    'Upload Linux release evidence',
+    [
+      '${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/',
+      '${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/',
+      '${{ env.OPENBURNBAR_LINUX_SHARDS_DIR }}/'
+    ],
+    'candidate workflow'
+  );
+  requireUploadContract(
+    input.promotionWorkflow,
+    'Upload promotion closure',
+    ['${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/promotion/'],
+    'promotion workflow'
+  );
   for (const marker of [
     'architecture: aarch64',
     'runner: ubuntu-24.04-arm',

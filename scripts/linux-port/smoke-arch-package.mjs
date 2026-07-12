@@ -9,6 +9,7 @@ import {
   writeJson
 } from './lib/linux-release-common.mjs';
 import { installedPackageVerificationStep } from './lib/linux-package-smoke-installed.mjs';
+import { inspectArchPackageDependencies } from './lib/linux-native-package.mjs';
 
 const outDir = path.resolve(process.env.OPENBURNBAR_LINUX_RELEASE_OUT ?? path.join(repoRoot, '.linux-shard'));
 const closure = readJson(path.join(outDir, 'architecture-closure.json'));
@@ -17,20 +18,64 @@ if (artifacts.length !== 1) throw new Error(`Arch smoke requires exactly one art
 const artifact = artifacts[0];
 const full = readRecordedFile(artifact, 'Arch package artifact').file;
 const steps = [];
+const dependencies = inspectArchPackageDependencies(full);
+const dependencyPackages = [...new Set(dependencies.map((dependency) => {
+  const match = /^([a-z0-9@._+:-]+)/u.exec(dependency);
+  if (!match) throw new Error(`Arch dependency cannot be installed safely: ${dependency}`);
+  return match[1];
+}))];
 
 steps.push(runStep('pacman', ['-Qip', full]));
 steps.push(runStep('pacman', ['-Qlp', full]));
-steps.push(runStep('pacman', ['-U', '--noconfirm', '--nodeps', '--nodeps', full]));
-if (steps.at(-1).exitCode === 0) {
+steps.push(runStep('pacman', ['-Syu', '--noconfirm', '--needed', ...dependencyPackages]));
+steps.push(runStep('pacman', ['-T', ...dependencies]));
+const install = runStep('pacman', ['-U', '--noconfirm', full]);
+steps.push(install);
+let packageOwnedFiles = [];
+if (install.exitCode === 0) {
   steps.push(installedPackageVerificationStep({
     artifact,
     readSubject: (record, label) => readRecordedFile(record, label).bytes
   }));
+  steps.push(runStep('/usr/bin/openburnbar-linux-desktop', ['--appimage-extract-and-run', '--version'], {
+    env: isolatedRuntimeEnvironment()
+  }));
+  steps.push(runStep('/usr/bin/openburnbar-daemon', ['--help'], {
+    env: isolatedRuntimeEnvironment()
+  }));
   steps.push(runStep('/usr/libexec/openburnbar-daemon-launch', ['--help'], {
     env: isolatedRuntimeEnvironment()
   }));
+  const ownership = runStep('pacman', ['-Qlq', 'openburnbar']);
+  steps.push(ownership);
+  if (ownership.exitCode === 0) {
+    packageOwnedFiles = ownership.stdout.split('\n').filter(Boolean).filter((file) => {
+      try {
+        return !fs.lstatSync(file).isDirectory();
+      } catch {
+        return false;
+      }
+    });
+  }
 }
-steps.push(runStep('pacman', ['-R', '--noconfirm', '--nodeps', 'openburnbar']));
+const uninstall = runStep('pacman', ['-R', '--noconfirm', 'openburnbar']);
+steps.push(uninstall);
+if (install.exitCode === 0 && uninstall.exitCode === 0) {
+  const query = runStep('pacman', ['-Q', 'openburnbar']);
+  steps.push(assertionStep(
+    'pacman -Q openburnbar expects package absence',
+    query.exitCode !== 0,
+    query.stdout,
+    query.stderr
+  ));
+  const remaining = packageOwnedFiles.filter((file) => fs.existsSync(file));
+  steps.push(assertionStep(
+    'package-owned filesystem entries removed',
+    remaining.length === 0,
+    remaining.length === 0 ? `${packageOwnedFiles.length} package-owned files removed\n` : '',
+    remaining.length === 0 ? '' : `remaining package-owned files:\n${remaining.join('\n')}\n`
+  ));
+}
 const failed = steps.filter((entry) => entry.exitCode !== 0);
 const report = {
   schemaVersion: 1,
@@ -52,7 +97,9 @@ process.exit(report.passed ? 0 : 1);
 function isolatedRuntimeEnvironment() {
   const root = path.join(outDir, 'smoke/arch-runtime');
   fs.rmSync(root, { recursive: true, force: true });
-  fs.mkdirSync(root, { recursive: true });
+  for (const directory of ['config', 'data', 'run']) {
+    fs.mkdirSync(path.join(root, directory), { recursive: true });
+  }
   return {
     ...process.env,
     HOME: root,
@@ -60,6 +107,10 @@ function isolatedRuntimeEnvironment() {
     XDG_DATA_HOME: path.join(root, 'data'),
     XDG_RUNTIME_DIR: path.join(root, 'run')
   };
+}
+
+function assertionStep(command, passed, stdout = '', stderr = '') {
+  return { command, cwd: '.', exitCode: passed ? 0 : 1, stdout, stderr };
 }
 
 function readRecordedFile(record, label) {
