@@ -37,7 +37,8 @@ public readonly struct UpdateVersion : IComparable<UpdateVersion>, IEquatable<Up
     public string? Raw { get; private init; }
 
     /// <summary>
-    /// Parses "1", "1.4", "1.4.2", or "1.4.2.0" into an ordered version. Throws
+    /// Parses "1", "1.4", "1.4.2", or "1.4.2.0" into an ordered version (at most
+    /// 4 components — the MSIX width; more components are rejected). Throws
     /// <see cref="FormatException"/> on any non-numeric / negative / empty
     /// component so a caller that forgot to guard fails loudly; feed parsing
     /// uses <see cref="TryParse"/> and fails closed instead.
@@ -56,6 +57,12 @@ public readonly struct UpdateVersion : IComparable<UpdateVersion>, IEquatable<Up
     /// Attempts to parse a dotted-numeric version. Returns false (and a default
     /// struct) for null / empty / non-numeric / negative / overflowing input so
     /// the updater treats a malformed feed version as unusable, not as newest.
+    /// At most <see cref="NormalizedComponentCount"/> components are accepted:
+    /// every component that participates in ordering is also emitted by
+    /// <see cref="ToNormalizedString"/> and therefore BOUND by the signed
+    /// canonical descriptor. Accepting extra components would let a feed
+    /// attacker reuse a "1.4.2.0" signature for "1.4.2.0.1" (same canonical
+    /// string, but ordered as newer), so they are rejected outright.
     /// </summary>
     public static bool TryParse(string? value, out UpdateVersion version)
     {
@@ -67,7 +74,7 @@ public readonly struct UpdateVersion : IComparable<UpdateVersion>, IEquatable<Up
 
         var trimmed = value.Trim();
         var parts = trimmed.Split('.');
-        if (parts.Length == 0 || parts.Length > 8)
+        if (parts.Length == 0 || parts.Length > NormalizedComponentCount)
         {
             return false;
         }
@@ -136,6 +143,17 @@ public readonly struct UpdateVersion : IComparable<UpdateVersion>, IEquatable<Up
         }
 
         return hash.ToHashCode();
+    }
+
+    public string ToNormalizedString()
+    {
+        var components = new string[NormalizedComponentCount];
+        for (var i = 0; i < NormalizedComponentCount; i++)
+        {
+            components[i] = ComponentAt(i).ToString(CultureInfo.InvariantCulture);
+        }
+
+        return string.Join(".", components);
     }
 
     public override string ToString() => Raw ?? "0.0.0.0";

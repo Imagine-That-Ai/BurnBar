@@ -173,7 +173,7 @@ public sealed class Ed25519UpdateKeyPair
     /// <summary>The 32-byte raw public key, base64 — the value pinned in the app.</summary>
     public string PublicKeyBase64 => Convert.ToBase64String(PublicKeyRaw);
 
-    /// <summary>Produces a detached Ed25519 signature over the artifact bytes.</summary>
+    /// <summary>Produces a detached Ed25519 signature over caller-supplied bytes.</summary>
     public byte[] Sign(ReadOnlySpan<byte> message)
     {
         var signer = new Org.BouncyCastle.Crypto.Signers.Ed25519Signer();
@@ -183,7 +183,7 @@ public sealed class Ed25519UpdateKeyPair
         return signer.GenerateSignature();
     }
 
-    /// <summary>The detached signature over the artifact bytes, base64 — the
+    /// <summary>The detached signature over caller-supplied bytes, base64 — the
     /// value that goes into the feed's <c>sparkle:edSignature</c> / JSON
     /// <c>edSignature</c> field.</summary>
     public string SignBase64(ReadOnlySpan<byte> message) => Convert.ToBase64String(Sign(message));
