@@ -7,6 +7,7 @@ import test from 'node:test';
 import {
   canonicalJsonBytes,
   createInstalledManifest,
+  installedFilesRoot,
   RELEASE_PUBLIC_KEY_PATH,
   sha256Bytes
 } from './lib/linux-installed-manifest.mjs';
@@ -76,7 +77,17 @@ for (const [name, mutate, pattern] of [
     request.size = bytes.length;
     request.sha256 = sha256Bytes(bytes);
     writeIndex(value);
-  }, /not canonical/u]
+  }, /not canonical/u],
+  ['nested inventory fields', (value) => {
+    mutateInstalledRequest(value, (document) => {
+      document.files[0].chosenMessage = 'not part of the signed schema';
+    });
+  }, /unexpected fields/u],
+  ['duplicate inventory paths', (value) => {
+    mutateInstalledRequest(value, (document) => {
+      document.files.splice(1, 0, { ...document.files[0] });
+    });
+  }, /strictly sorted and unique/u]
 ]) {
   test(`isolated signer rejects ${name}`, (t) => {
     const value = fixture(t);
@@ -186,6 +197,19 @@ function writeRequest({ root, requestsDir, id, kind, name, bytes }) {
 
 function writeIndex(value) {
   fs.writeFileSync(value.indexFile, canonicalJsonBytes(value.index));
+}
+
+function mutateInstalledRequest(value, mutate) {
+  const request = value.index.requests[0];
+  const file = path.join(value.root, request.file);
+  const document = JSON.parse(fs.readFileSync(file, 'utf8'));
+  mutate(document);
+  document.installedFilesRootSha256 = installedFilesRoot(document.files);
+  const bytes = canonicalJsonBytes(document);
+  fs.writeFileSync(file, bytes);
+  request.size = bytes.length;
+  request.sha256 = sha256Bytes(bytes);
+  writeIndex(value);
 }
 
 function sign(value, overrides = {}) {

@@ -25,6 +25,12 @@ const MANIFEST_KEYS = Object.freeze([
 const SHA256 = /^[a-f0-9]{64}$/u;
 const VERSION = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/u;
 const FIREBASE_APP_ID = /^1:[0-9]+:web:[A-Za-z0-9_-]+$/u;
+const MODE = /^[0-7]{4}$/u;
+const FILE_KEYS = Object.freeze(['gid', 'mode', 'path', 'sha256', 'size', 'type', 'uid']);
+const SYMLINK_KEYS = Object.freeze(['gid', 'mode', 'path', 'target', 'type', 'uid']);
+const AUTHORIZED_CLIENT_KEYS = Object.freeze([
+  'mode', 'ownerGid', 'ownerUid', 'path', 'role', 'sha256'
+]);
 
 function compareUtf8(left, right) {
   return Buffer.compare(Buffer.from(left, 'utf8'), Buffer.from(right, 'utf8'));
@@ -246,8 +252,18 @@ export function assertInstalledManifest(manifest) {
       || !FIREBASE_APP_ID.test(manifest.firebaseAppId ?? '')) {
     throw new Error('installed manifest identity is invalid');
   }
-  if (!Array.isArray(manifest.files) || manifest.files.length === 0
-      || installedFilesRoot(manifest.files) !== manifest.installedFilesRootSha256
+  if (!Array.isArray(manifest.files) || manifest.files.length === 0 || manifest.files.length > 100_000) {
+    throw new Error('installed manifest inventory is empty or unbounded');
+  }
+  let previousPath = null;
+  for (const file of manifest.files) {
+    assertInstalledFileRecord(file);
+    if (previousPath !== null && compareUtf8(previousPath, file.path) >= 0) {
+      throw new Error('installed manifest file paths must be strictly sorted and unique');
+    }
+    previousPath = file.path;
+  }
+  if (installedFilesRoot(manifest.files) !== manifest.installedFilesRootSha256
       || !SHA256.test(manifest.installedFilesRootSha256 ?? '')) {
     throw new Error('installed manifest inventory root is invalid');
   }
@@ -255,13 +271,52 @@ export function assertInstalledManifest(manifest) {
     throw new Error('installed manifest must authorize exactly one daemon client');
   }
   const daemon = manifest.files.find((file) => file.path === '/usr/bin/openburnbar-daemon');
+  const desktop = manifest.files.find((file) => file.path === '/usr/bin/openburnbar-linux-desktop');
+  const releaseKey = manifest.files.find((file) => file.path === RELEASE_PUBLIC_KEY_PATH);
   const authorized = manifest.authorizedClients[0];
-  if (!daemon || authorized.role !== 'daemon' || authorized.path !== daemon.path
+  if (!daemon || daemon.type !== 'file' || daemon.mode !== '0755'
+      || !desktop || desktop.type !== 'file' || desktop.mode !== '0755'
+      || !releaseKey || releaseKey.type !== 'file' || releaseKey.mode !== '0644') {
+    throw new Error('installed manifest required executable and trust subjects are invalid');
+  }
+  if (JSON.stringify(Object.keys(authorized ?? {}).sort(compareUtf8))
+        !== JSON.stringify(AUTHORIZED_CLIENT_KEYS)
+      || authorized.role !== 'daemon' || authorized.path !== daemon.path
       || authorized.sha256 !== daemon.sha256 || authorized.ownerUid !== daemon.uid
       || authorized.ownerGid !== daemon.gid || authorized.mode !== Number.parseInt(daemon.mode, 8)) {
     throw new Error('installed manifest daemon authorization is not inventory-bound');
   }
   return manifest;
+}
+
+function assertInstalledFileRecord(file) {
+  if (!file || typeof file !== 'object' || Array.isArray(file)
+      || !['file', 'symlink'].includes(file.type)) {
+    throw new Error('installed manifest file record is invalid');
+  }
+  const expectedKeys = file.type === 'file' ? FILE_KEYS : SYMLINK_KEYS;
+  if (JSON.stringify(Object.keys(file).sort(compareUtf8)) !== JSON.stringify(expectedKeys)) {
+    throw new Error('installed manifest file record has unexpected fields');
+  }
+  if (typeof file.path !== 'string' || file.path.includes('\0')
+      || !file.path.startsWith('/usr/') || path.posix.normalize(file.path) !== file.path
+      || file.path === INSTALLED_MANIFEST_PATH || file.path === INSTALLED_MANIFEST_SIGNATURE_PATH
+      || !MODE.test(file.mode ?? '') || file.uid !== 0 || file.gid !== 0) {
+    throw new Error('installed manifest file record path, mode, or ownership is invalid');
+  }
+  if (file.type === 'file') {
+    if (!SHA256.test(file.sha256 ?? '') || !Number.isSafeInteger(file.size) || file.size < 0
+        || (Number.parseInt(file.mode, 8) & 0o022) !== 0) {
+      throw new Error('installed manifest regular file record is invalid');
+    }
+    return;
+  }
+  if (typeof file.target !== 'string' || file.target.length === 0 || file.target.length > 4096
+      || file.target.includes('\0') || path.posix.isAbsolute(file.target)) {
+    throw new Error('installed manifest symlink record is invalid');
+  }
+  const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(file.path), file.target));
+  if (!resolved.startsWith('/usr/')) throw new Error('installed manifest symlink escapes /usr');
 }
 
 export function signInstalledManifest(manifestBytes, privateKeyPem, publicKeyPem) {
