@@ -58,10 +58,11 @@ describe("DATA_DOMAIN_PATHS ⇄ data-domain registry (no drift)", () => {
     }
   });
 
-  it("exports Linux approval records but never single-use App Check challenges", () => {
-    const collections = DATA_DOMAIN_PATHS.device_trust_keys.firestoreCollections;
-    expect(collections).toContain("linux_app_check_devices");
-    expect(collections).not.toContain("linux_app_check_challenges");
+  it("deletes Linux challenge records with the domain but excludes them from export", () => {
+    const paths = DATA_DOMAIN_PATHS.device_trust_keys;
+    expect(paths.firestoreCollections).toContain("linux_app_check_devices");
+    expect(paths.firestoreCollections).toContain("linux_app_check_challenges");
+    expect(paths.exportExcludedCollections).toContain("linux_app_check_challenges");
   });
 });
 

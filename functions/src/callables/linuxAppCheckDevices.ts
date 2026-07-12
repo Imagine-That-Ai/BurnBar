@@ -194,7 +194,7 @@ export const registerLinuxAppCheckDevice = onCallProduction(
   ) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before enrolling a Linux App Check device.");
-    await checkPublicHttpEndpointRateLimit("mintLinuxAppCheckToken", `${uid}:register`);
+    await checkPublicHttpEndpointRateLimit("registerLinuxAppCheckDevice", uid);
     const nowMillis = Date.now();
     const proof = parseLinuxAppCheckEnrollmentProof(request.data, getConfig().linuxAppCheckAppID, uid, nowMillis);
     const deviceName =
@@ -257,7 +257,7 @@ export const issueLinuxAppCheckChallenge = onCallProduction(
   async (request: CallableRequest<{ appId?: unknown; deviceId?: unknown }>) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before requesting a Linux App Check challenge.");
-    await checkPublicHttpEndpointRateLimit("mintLinuxAppCheckToken", `${uid}:challenge`);
+    await checkPublicHttpEndpointRateLimit("issueLinuxAppCheckChallenge", uid);
     const appId = requireExactLinuxAppId(request.data.appId);
     const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 160, true);
     const challengeId = randomBytes(16).toString("hex");

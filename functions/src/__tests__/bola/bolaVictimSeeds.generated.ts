@@ -1457,6 +1457,24 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
       },
     },
   ],
+  mintLinuxAppCheckToken: [
+    {
+      path: "users/__BOB_UID__/bola_victim/attestation.deviceId/bob-attestation.deviceId",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/attestation.challengeId/bob-attestation.challengeId",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
   pollCliLink: [
     {
       path: "cli_link_sessions/bob-device-code",

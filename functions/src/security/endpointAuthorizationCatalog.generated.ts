@@ -104,14 +104,15 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     bolaCoverage: [
       {
         file: "functions/src/__tests__/linuxAppCheckDevices.test.ts",
-        test: "requires explicit trusted-native approval and an action proof",
+        test: "rejects cross-user App Check device operations without victim side effects",
         kind: "runtime-cross-user",
         covers: ["approveLinuxAppCheckDevice"],
         expectedOutcome: "throws",
-        expectedCode: "permission-denied",
+        expectedCode: "not-found",
       },
     ],
     highRiskComputerUse: true,
+    actionKind: "linux_app_check_device_approve",
   },
   {
     exportedName: "appStoreServerNotificationsV2",
@@ -1396,7 +1397,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     bolaCoverage: [
       {
         file: "functions/src/__tests__/linuxAppCheckDevices.test.ts",
-        test: "issues an opaque challenge only to approved keys and atomically consumes a valid signature once",
+        test: "rejects cross-user App Check device operations without victim side effects",
         kind: "runtime-cross-user",
         covers: ["issueLinuxAppCheckChallenge"],
         expectedOutcome: "throws",
@@ -1542,7 +1543,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     bolaCoverage: [
       {
         file: "functions/src/__tests__/linuxAppCheckDevices.test.ts",
-        test: "lists public review material and revokes without ever returning private material",
+        test: "rejects cross-user App Check device operations without victim side effects",
         kind: "runtime-cross-user",
         covers: ["listLinuxAppCheckDevices"],
         expectedOutcome: "throws",
@@ -1699,15 +1700,15 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     objectIdsFromClient: ["attestation.deviceId", "attestation.challengeId"],
     ownershipCheck:
       "handler scopes the approved key and challenge below request.auth.uid, verifies the exact configured Linux app id and Ed25519 signature, and atomically consumes the same-user challenge before minting",
-    handlerModule: "callables/shared.ts",
+    handlerModule: "callables/linuxAppCheck.ts",
     bolaCoverage: [
       {
-        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
-        test: "rejects unauthenticated callable access",
-        kind: "auth-only",
+        file: "functions/src/__tests__/linuxAppCheckMintHandler.test.ts",
+        test: "rejects cross-user challenge and device identifiers before minting",
+        kind: "runtime-cross-user",
         covers: ["mintLinuxAppCheckToken"],
         expectedOutcome: "throws",
-        expectedCode: "unauthenticated",
+        expectedCode: "permission-denied",
       },
     ],
     highRiskComputerUse: false,
@@ -2428,7 +2429,7 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     bolaCoverage: [
       {
         file: "functions/src/__tests__/linuxAppCheckDevices.test.ts",
-        test: "registers only a fresh self-signed key-derived pending identity without granting escrow trust",
+        test: "rejects cross-user App Check device operations without victim side effects",
         kind: "runtime-cross-user",
         covers: ["registerLinuxAppCheckDevice"],
         expectedOutcome: "throws",
@@ -2806,14 +2807,15 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     bolaCoverage: [
       {
         file: "functions/src/__tests__/linuxAppCheckDevices.test.ts",
-        test: "lists public review material and revokes without ever returning private material",
+        test: "rejects cross-user App Check device operations without victim side effects",
         kind: "runtime-cross-user",
         covers: ["revokeLinuxAppCheckDevice"],
         expectedOutcome: "throws",
-        expectedCode: "permission-denied",
+        expectedCode: "not-found",
       },
     ],
     highRiskComputerUse: true,
+    actionKind: "linux_app_check_device_revoke",
   },
   {
     exportedName: "revokePiAgentConnection",

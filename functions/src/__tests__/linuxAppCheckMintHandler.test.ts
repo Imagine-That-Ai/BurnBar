@@ -5,7 +5,11 @@ const { createToken, consumeChallenge } = vi.hoisted(() => ({
     token: `token:${appId}`,
     ttlMillis: options?.ttlMillis ?? 1_800_000,
   })),
-  consumeChallenge: vi.fn(async () => undefined),
+  consumeChallenge: vi.fn(async (args: { challengeId: string; uid: string }) => {
+    if (args.uid === "alice-bola-uid" && args.challengeId === "bob-challenge") {
+      throw Object.assign(new Error("challenge belongs to another account"), { code: "permission-denied" });
+    }
+  }),
 }));
 
 const APP_ID = "1:123:linux:production";
@@ -29,6 +33,9 @@ vi.mock("../logging.js", () => ({
 vi.mock("../callables/publicRateLimit.js", () => ({ checkPublicHttpEndpointRateLimit: vi.fn(async () => undefined) }));
 
 import { mintLinuxAppCheckToken } from "../callables/linuxAppCheck.js";
+import { callableRunner, tier2CallableProof } from "./bola/callableBolaHarness.js";
+
+const bolaStore = new Map<string, Record<string, unknown>>();
 
 function invoke(data: Record<string, unknown>, uid = "linux-owner"): Promise<unknown> {
   const run = Reflect.get(mintLinuxAppCheckToken as object, "run") as (request: unknown) => Promise<unknown>;
@@ -39,6 +46,7 @@ describe("production Linux device-key App Check mint handler", () => {
   beforeEach(() => {
     createToken.mockClear();
     consumeChallenge.mockClear();
+    bolaStore.clear();
   });
 
   it("consumes the approved single-use challenge before minting the configured lower-trust token", async () => {
@@ -99,6 +107,25 @@ describe("production Linux device-key App Check mint handler", () => {
   it("requires Firebase Auth before any challenge or token work", async () => {
     await expect(invoke({}, "")).rejects.toMatchObject({ code: "unauthenticated" });
     expect(consumeChallenge).not.toHaveBeenCalled();
+    expect(createToken).not.toHaveBeenCalled();
+  });
+
+  it("rejects cross-user challenge and device identifiers before minting", async () => {
+    await tier2CallableProof(bolaStore, {
+      exportedName: "mintLinuxAppCheckToken",
+      run: callableRunner(mintLinuxAppCheckToken),
+      payload: {
+        attestation: {
+          kind: "device-key-v1",
+          appId: APP_ID,
+          challengeId: "bob-challenge",
+          deviceId: `linux_${"b".repeat(64)}`,
+          signatureBase64: Buffer.alloc(64, 2).toString("base64"),
+        },
+      },
+      expectedCode: "permission-denied",
+      strictCode: true,
+    });
     expect(createToken).not.toHaveBeenCalled();
   });
 });

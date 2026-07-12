@@ -151,8 +151,12 @@ describe("Computer Use callables require hosted Agent Control entitlement", () =
   ] as const)("%s fails closed before Firestore state access for non-entitled callers", async (exportedName) => {
     const mod = await import("../callables/computerUseSecurity.js");
     const callable = mod[exportedName];
+    const data =
+      exportedName === "issueIrohControllerRouteChallenge" || exportedName === "registerIrohControllerRoute"
+        ? { expectedUid: UID }
+        : undefined;
 
-    await expect(run(callable)).rejects.toMatchObject({
+    await expect(run(callable, data)).rejects.toMatchObject({
       code: "permission-denied",
     });
     expect(dbAccesses).toEqual([`account_erasure_tombstones/${UID}`]);

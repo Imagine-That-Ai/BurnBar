@@ -1,12 +1,19 @@
 import { generateKeyPairSync, sign } from "node:crypto";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { CallableRequest } from "firebase-functions/v2/https";
 
-const { store, highRisk, actionProof, trustedDevice } = vi.hoisted(() => ({
+const { store, highRisk, actionProof, trustedDevice, rateLimit } = vi.hoisted(() => ({
   store: new Map<string, Record<string, unknown>>(),
   highRisk: vi.fn(async () => ({ nonceConsumed: true })),
   actionProof: vi.fn(async () => undefined),
-  trustedDevice: vi.fn(async (_uid: string, deviceId: string) => ({ deviceId, platform: "iPadOS" })),
+  trustedDevice: vi.fn(async (_uid: string, deviceId: string) => {
+    if (deviceId.startsWith("bob-")) {
+      throw Object.assign(new Error("manager device belongs to another account"), { code: "permission-denied" });
+    }
+    return { deviceId, platform: "iPadOS" };
+  }),
+  rateLimit: vi.fn(async () => undefined),
 }));
 
 type Ref = { path: string };
@@ -88,7 +95,7 @@ vi.mock("../callables/computerUseSecurityFirestore.js", () => ({
   requireTrustedDeviceActionProof: actionProof,
   requireTrustedEscrowDevice: trustedDevice,
 }));
-vi.mock("../callables/publicRateLimit.js", () => ({ checkPublicHttpEndpointRateLimit: vi.fn(async () => undefined) }));
+vi.mock("../callables/publicRateLimit.js", () => ({ checkPublicHttpEndpointRateLimit: rateLimit }));
 
 import {
   approveLinuxAppCheckDevice,
@@ -104,6 +111,7 @@ import {
   deriveLinuxAppCheckDeviceId,
   linuxAppCheckEnrollmentPayload,
 } from "../callables/linuxAppCheckDeviceCrypto.js";
+import { BOB_UID, callableRunner, tier2CallableProof } from "./bola/callableBolaHarness.js";
 
 const UID = "linux-owner";
 const APPROVER_ID = "trusted-ipad";
@@ -112,8 +120,24 @@ function rawPublicKey(key: ReturnType<typeof generateKeyPairSync>["publicKey"]):
   return key.export({ format: "der", type: "spki" }).subarray(-32);
 }
 
-function request(data: Record<string, unknown>, appId = "1:123:ios:native") {
-  return { auth: { uid: UID, token: {} }, app: { appId }, data, rawRequest: { headers: {} } };
+function request(data: Record<string, unknown>, appId = "1:123:ios:native"): CallableRequest<Record<string, unknown>> {
+  return {
+    auth: { uid: UID, token: {}, rawToken: "test-id-token" },
+    app: {
+      appId,
+      token: {
+        app_id: appId,
+        aud: ["projects/123"],
+        exp: 4_102_444_800,
+        iat: 1_700_000_000,
+        iss: "https://firebaseappcheck.googleapis.com/123",
+        sub: appId,
+      },
+    },
+    data,
+    rawRequest: { headers: {} },
+    acceptsStreaming: false,
+  } as unknown as CallableRequest<Record<string, unknown>>;
 }
 
 function invoke<T>(callable: unknown, data: Record<string, unknown>, appId?: string): Promise<T> {
@@ -121,7 +145,7 @@ function invoke<T>(callable: unknown, data: Record<string, unknown>, appId?: str
   return run(request(data, appId));
 }
 
-function enrollment(deviceName = "Workstation") {
+function enrollment(deviceName = "Workstation", uid = UID) {
   const key = generateKeyPairSync("ed25519");
   const publicKeyBase64 = rawPublicKey(key.publicKey).toString("base64");
   const deviceId = deriveLinuxAppCheckDeviceId(Buffer.from(publicKeyBase64, "base64"));
@@ -131,7 +155,7 @@ function enrollment(deviceName = "Workstation") {
     deviceId,
     publicKeyBase64,
     issuedAtMillis,
-    uid: UID,
+    uid,
   });
   return {
     key,
@@ -152,6 +176,7 @@ describe("Linux App Check approved-device lifecycle", () => {
     highRisk.mockClear();
     actionProof.mockClear();
     trustedDevice.mockClear();
+    rateLimit.mockClear();
   });
 
   it("uses the exact daemon-owned enrollment wire format", () => {
@@ -184,6 +209,7 @@ describe("Linux App Check approved-device lifecycle", () => {
       trustState: "pending",
     });
     expect([...store.keys()].some((path) => path.includes("/escrow_devices/"))).toBe(false);
+    expect(rateLimit).toHaveBeenCalledWith("registerLinuxAppCheckDevice", UID);
 
     await expect(
       invoke(registerLinuxAppCheckDevice, { ...fixture.data, signatureBase64: Buffer.alloc(64).toString("base64") }),
@@ -236,6 +262,7 @@ describe("Linux App Check approved-device lifecycle", () => {
       canonicalPayloadBase64: string;
       expiresAtMillis: number;
     }>(issueLinuxAppCheckChallenge, { appId: APP_ID, deviceId: fixture.data.deviceId }, undefined);
+    expect(rateLimit).toHaveBeenLastCalledWith("issueLinuxAppCheckChallenge", UID);
     const signatureBase64 = sign(
       null,
       Buffer.from(challenge.canonicalPayloadBase64, "base64"),
@@ -367,5 +394,56 @@ describe("Linux App Check approved-device lifecycle", () => {
     await expect(
       requireApprovedLinuxAppCheckIrohHost(request({}, "1:123:linux:evil"), UID, fixture.data.deviceId),
     ).rejects.toMatchObject({ code: "permission-denied" });
+  });
+
+  it("rejects cross-user App Check device operations without victim side effects", async () => {
+    const nativeRunner = (callable: unknown) => {
+      const run = callableRunner(callable);
+      return (candidate: unknown) => {
+        const app = Reflect.get(candidate as object, "app") as Record<string, unknown>;
+        app.appId = "1:123:ios:native";
+        return run(candidate);
+      };
+    };
+    const victimEnrollment = enrollment("Victim workstation", BOB_UID);
+
+    await tier2CallableProof(store, {
+      exportedName: "registerLinuxAppCheckDevice",
+      run: callableRunner(registerLinuxAppCheckDevice),
+      payload: victimEnrollment.data,
+      expectedCode: "unauthenticated",
+      strictCode: true,
+    });
+    await tier2CallableProof(store, {
+      exportedName: "issueLinuxAppCheckChallenge",
+      run: callableRunner(issueLinuxAppCheckChallenge),
+      payload: { appId: APP_ID, deviceId: "bob-device" },
+      expectedCode: "permission-denied",
+      strictCode: true,
+    });
+    await tier2CallableProof(store, {
+      exportedName: "listLinuxAppCheckDevices",
+      run: nativeRunner(listLinuxAppCheckDevices),
+      payload: { approverDeviceId: "bob-approverDeviceId" },
+      expectedCode: "permission-denied",
+      strictCode: true,
+    });
+    for (const [exportedName, callable] of [
+      ["approveLinuxAppCheckDevice", approveLinuxAppCheckDevice],
+      ["revokeLinuxAppCheckDevice", revokeLinuxAppCheckDevice],
+    ] as const) {
+      await tier2CallableProof(store, {
+        exportedName,
+        run: nativeRunner(callable),
+        payload: {
+          deviceId: "bob-device",
+          approverDeviceId: APPROVER_ID,
+          nonce: "b".repeat(32),
+          actionProof: { signed: true },
+        },
+        expectedCode: "not-found",
+        strictCode: true,
+      });
+    }
   });
 });

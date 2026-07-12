@@ -55,8 +55,8 @@ export {
   revokeIrohPairingRecord,
   publishPhoneControlAuthority,
   publishRelaySenderKey,
-  publishAgentGrantAuthority,
 } from "./phoneControlCallables.js";
+export { publishAgentGrantAuthority } from "./agentGrantAuthorityCallable.js";
 export {
   issueIrohControllerRouteChallenge,
   registerIrohControllerRoute,
