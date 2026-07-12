@@ -24,7 +24,8 @@ name: OpenBurnBar Windows Release
 # proven on every run by the `portable-verify` job (real `dotnet test` + a signer round-trip).
 #
 # TRIGGER: a `windows-v*` tag (the manifest version must be bumped first — the portable-verify job
-# enforces version consistency at tag time) or a manual dispatch.
+# enforces version consistency at tag time) or a manual dispatch run FROM the release tag ref
+# (`refs/tags/windows-vX.Y.Z`); dispatching from a branch is rejected by the authorization guard.
 
 on:
   push:
@@ -33,7 +34,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version (e.g. 1.0.28) — required for manual dispatch."
+        description: "Release version (e.g. 1.0.28). Optional: manual dispatch must run from the windows-vX.Y.Z tag ref, where the version is derived from the tag itself."
         required: false
         default: ""
 
@@ -104,6 +105,22 @@ jobs:
             echo "::error::Unable to resolve ${tag_ref} to a commit."
             exit 1
           fi
+
+          # Bind the release to the commit that actually triggered this run (GITHUB_SHA).
+          # Without this, a tag moved/recreated between the webhook and this step would
+          # silently build+sign whatever the tag points at NOW instead of the audited
+          # trigger commit, letting artifacts/provenance drift from the event.
+          if ! trigger_commit="$(git rev-parse --verify --quiet "${GITHUB_SHA}^{commit}")" || [[ -z "${trigger_commit}" ]]; then
+            echo "::error::Unable to resolve triggering commit ${GITHUB_SHA}."
+            exit 1
+          fi
+          if [[ "${release_commit}" != "${trigger_commit}" ]]; then
+            echo "::error::Tag ${tag_name} now points at ${release_commit}, but this run was triggered at ${trigger_commit}."
+            echo "::error::The release tag moved after the run was queued; refusing to build a drifted commit. Re-tag and re-run."
+            exit 1
+          fi
+          release_commit="${trigger_commit}"
+
           if ! git merge-base --is-ancestor "${release_commit}" origin/main; then
             echo "::error::Windows release tag ${tag_name} points at ${release_commit}, which is not reachable from origin/main."
             exit 1
