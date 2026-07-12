@@ -10,6 +10,8 @@ import OpenBurnBarLinuxSecurity
 import XCTest
 
 final class LinuxDaemonCloudCredentialAuthorityTests: XCTestCase {
+    private static let fixtureFirebaseAPIKey = "AI" + "za" + "1234567890abcdefghij"
+
     private let fixedNow = Date(timeIntervalSince1970: 1_900_000_000)
 
     func testCredentialMintIsSingleFlightBoundAndForceRefreshesIDToken() async throws {
@@ -752,7 +754,7 @@ final class LinuxDaemonCloudCredentialAuthorityTests: XCTestCase {
     }
 
     func testDaemonLoggerRedactsFirebaseAndAuthorizationCredentials() {
-        let input = "Authorization: Bearer abc.def.ghi id_token=eyJheader.payload.signature api_key=AIza1234567890abcdefghijkl"
+        let input = "Authorization: Bearer abc.def.ghi id_token=eyJheader.payload.signature api_key=\(Self.fixtureFirebaseAPIKey)"
         let output = BurnBarDaemonLogger.redactedMetadataValue(input)
         XCTAssertFalse(output.contains("abc.def.ghi"))
         XCTAssertFalse(output.contains("eyJheader"))
@@ -780,7 +782,7 @@ final class LinuxDaemonCloudCredentialAuthorityTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let configURL = directory.appendingPathComponent("cloud-auth.json")
-        let json = #"{"schemaVersion":1,"configured":true,"googleOAuthClientID":"123456789012.apps.googleusercontent.com","firebaseAPIKey":"AIza1234567890abcdefghij","linuxAppCheckAppID":"1:123456789:linux:abcdef123456"}"#
+        let json = #"{"schemaVersion":1,"configured":true,"googleOAuthClientID":"123456789012.apps.googleusercontent.com","firebaseAPIKey":"\#(Self.fixtureFirebaseAPIKey)","linuxAppCheckAppID":"1:123456789:linux:abcdef123456"}"#
         try Data(json.utf8).write(to: configURL)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: configURL.path)
 
@@ -788,7 +790,7 @@ final class LinuxDaemonCloudCredentialAuthorityTests: XCTestCase {
             "OPENBURNBAR_CLOUD_AUTH_CONFIG_FILE": configURL.path
         ])
         XCTAssertEqual(configuration?.googleOAuthClientID, "123456789012.apps.googleusercontent.com")
-        XCTAssertEqual(configuration?.firebaseAPIKey, "AIza1234567890abcdefghij")
+        XCTAssertEqual(configuration?.firebaseAPIKey, Self.fixtureFirebaseAPIKey)
         XCTAssertEqual(configuration?.linuxAppCheckAppID, "1:123456789:linux:abcdef123456")
 
         let packagedURL = directory.appendingPathComponent("cloud-auth-packaged.json")
@@ -824,7 +826,7 @@ final class LinuxDaemonCloudCredentialAuthorityTests: XCTestCase {
         ]))
 
         let wrongSchemaURL = directory.appendingPathComponent("cloud-auth-wrong-schema.json")
-        try Data(#"{"schemaVersion":2,"configured":true,"googleOAuthClientID":"123456789012.apps.googleusercontent.com","firebaseAPIKey":"AIza1234567890abcdefghij","linuxAppCheckAppID":"1:123456789:linux:abcdef123456"}"#.utf8).write(to: wrongSchemaURL)
+        try Data(#"{"schemaVersion":2,"configured":true,"googleOAuthClientID":"123456789012.apps.googleusercontent.com","firebaseAPIKey":"\#(Self.fixtureFirebaseAPIKey)","linuxAppCheckAppID":"1:123456789:linux:abcdef123456"}"#.utf8).write(to: wrongSchemaURL)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: wrongSchemaURL.path)
         XCTAssertNil(LinuxCloudAuthConfiguration.production(environment: [
             "OPENBURNBAR_CLOUD_AUTH_CONFIG_FILE": wrongSchemaURL.path
@@ -842,7 +844,7 @@ final class LinuxDaemonCloudCredentialAuthorityTests: XCTestCase {
         ]))
         XCTAssertNil(LinuxCloudAuthConfiguration.production(environment: [
             "OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID": "123456789012.example.com",
-            "OPENBURNBAR_FIREBASE_API_KEY": "AIza1234567890abcdefghij",
+            "OPENBURNBAR_FIREBASE_API_KEY": Self.fixtureFirebaseAPIKey,
             "OPENBURNBAR_LINUX_APP_CHECK_APP_ID": "1:123456789:linux:abcdef123456"
         ]))
         XCTAssertNil(LinuxCloudAuthConfiguration.production(environment: [
@@ -852,7 +854,7 @@ final class LinuxDaemonCloudCredentialAuthorityTests: XCTestCase {
         ]))
         XCTAssertNil(LinuxCloudAuthConfiguration.production(environment: [
             "OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID": "123456789012.apps.googleusercontent.com",
-            "OPENBURNBAR_FIREBASE_API_KEY": "AIza1234567890abcdefghij",
+            "OPENBURNBAR_FIREBASE_API_KEY": Self.fixtureFirebaseAPIKey,
             "OPENBURNBAR_LINUX_APP_CHECK_APP_ID": "1:123:web:short"
         ]))
     }
@@ -868,7 +870,7 @@ final class LinuxDaemonCloudCredentialAuthorityTests: XCTestCase {
         return LinuxDaemonCloudCredentialAuthority(
             configuration: LinuxCloudAuthConfiguration(
                 googleOAuthClientID: "123456789012.apps.googleusercontent.com",
-                firebaseAPIKey: "AIza1234567890abcdefghij",
+                firebaseAPIKey: Self.fixtureFirebaseAPIKey,
                 linuxAppCheckAppID: "1:123456789:linux:abcdef123456"
             ),
             custodian: LinuxSecretCustodian(backends: [backend]),

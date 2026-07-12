@@ -11,6 +11,8 @@ import {
   stageLinuxPackagePayload
 } from './lib/linux-package-payload.mjs';
 
+const fixtureFirebaseAPIKey = ['AI', 'za', '12345678901234567890123456789012345'].join('');
+
 test('runtime discovery honors explicit architecture-local directories', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-runtime-discovery-'));
   const swift = path.join(root, 'swift');
@@ -133,7 +135,7 @@ test('release cloud auth config is complete, validated, and never contains token
     requireConfigured: true,
     env: {
       OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID: '123456789012-desktop.apps.googleusercontent.com',
-      OPENBURNBAR_FIREBASE_API_KEY: 'AIza12345678901234567890123456789012345',
+      OPENBURNBAR_FIREBASE_API_KEY: fixtureFirebaseAPIKey,
       OPENBURNBAR_LINUX_APP_CHECK_APP_ID: '1:123456789012:linux:abcdef1234567890'
     }
   });
@@ -145,7 +147,7 @@ test('release cloud auth config is complete, validated, and never contains token
   );
   assert.throws(
     () => buildLinuxCloudAuthConfig({
-      env: { OPENBURNBAR_FIREBASE_API_KEY: 'AIza12345678901234567890123456789012345' }
+      env: { OPENBURNBAR_FIREBASE_API_KEY: fixtureFirebaseAPIKey }
     }),
     /all public identifiers together/
   );

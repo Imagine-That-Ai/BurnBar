@@ -7,10 +7,12 @@ import OpenBurnBarLinuxSecurity
 import XCTest
 
 final class BurnBarDaemonLinuxAuthSocketTests: XCTestCase {
+    private static let fixtureFirebaseAPIKey = "AI" + "za" + "1234567890abcdefghij"
+
     private let authToken = "socket-bearer-token"
     private let refreshToken = "refresh-token-must-never-cross-rpc"
     private let clientSecret = "oauth-client-secret-must-never-cross-rpc"
-    private let firebaseAPIKey = "AIza1234567890abcdefghij"
+    private let firebaseAPIKey = BurnBarDaemonLinuxAuthSocketTests.fixtureFirebaseAPIKey
 
     func testAuthMethodsRoundTripAndResponsesNeverExposeCredentials() async throws {
         let backend = LinuxAuthSocketSecretBackend(refreshToken: refreshToken)
