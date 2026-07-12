@@ -195,46 +195,34 @@ enum MissionRemoteAuthorizationShadow {
 
     // MARK: Request construction
 
-    /// Build the authoritative-decision inputs from the decoded mission
-    /// document. Carries ONLY a prompt summary + SHA-256, never the sealed
-    /// payload or the full prompt.
+    /// Build the authoritative-decision inputs from the typed shadow context.
+    /// Carries ONLY a prompt summary + SHA-256, never the sealed payload or
+    /// the full prompt.
     static func makeRequest(
-        missionID: String,
-        data: [String: Any],
-        prompt: String,
-        executorTrustState: String,
-        requestedRuntime: String?,
-        requestedModelID: String?,
-        requestedFanOutCount: Int
+        ctx: ShadowContext,
+        executorTrustState: String
     ) -> BurnBarRemoteMissionAuthorizeRequest {
-        let commandsAllowed = (data["commandsAllowed"] as? Bool) ?? false
-        let fileEditsAllowed = (data["fileEditsAllowed"] as? Bool) ?? false
         let grant = BurnBarRemoteMissionCapabilityGrantRequest(
-            commandsAllowed: commandsAllowed,
-            fileEditsAllowed: fileEditsAllowed
+            commandsAllowed: ctx.commandsAllowed,
+            fileEditsAllowed: ctx.fileEditsAllowed
         )
-
         return BurnBarRemoteMissionAuthorizeRequest(
-            missionID: missionID,
-            originDeviceID: stringField(data, "originDeviceID")
-                ?? stringField(data, "createdBy")
-                ?? "unknown",
-            originPlatform: stringField(data, "originPlatform")
-                ?? stringField(data, "source")
-                ?? "unknown",
+            missionID: ctx.missionID,
+            originDeviceID: ctx.originDeviceID,
+            originPlatform: ctx.originPlatform,
             executorTrustState: executorTrustState,
-            promptSummary: promptSummary(from: prompt),
-            promptSHA256: sha256Hex(prompt),
-            requestedRuntime: requestedRuntime?.nilIfBlank,
-            requestedModelID: requestedModelID?.nilIfBlank,
+            promptSummary: promptSummary(from: ctx.prompt),
+            promptSHA256: sha256Hex(ctx.prompt),
+            requestedRuntime: ctx.runtime?.nilIfBlank,
+            requestedModelID: ctx.modelID?.nilIfBlank,
             requestedGrant: grant,
-            personaScope: personaScope(from: data),
-            approvalMode: stringField(data, "approvalMode"),
-            approvalStatus: stringField(data, "approvalStatus"),
-            approverDeviceID: stringField(data, "approverDeviceID"),
-            entitlementTier: stringField(data, "entitlementTier") ?? "none",
-            requestedFanOutCount: max(1, requestedFanOutCount),
-            workingDirectory: stringField(data, "workingDirectory")
+            personaScope: personaScope(from: ctx.personaScopeJSON),
+            approvalMode: ctx.approvalMode,
+            approvalStatus: ctx.approvalStatus.nilIfBlank,
+            approverDeviceID: ctx.approverDeviceID,
+            entitlementTier: ctx.entitlementTier,
+            requestedFanOutCount: max(1, ctx.fanOutCount),
+            workingDirectory: ctx.workingDirectory
         )
     }
 
@@ -255,11 +243,8 @@ enum MissionRemoteAuthorizationShadow {
         return String(collapsed.prefix(limit)) + "…"
     }
 
-    private static func personaScope(from data: [String: Any]) -> PersonaScopeEnvelope? {
-        guard let json = stringField(data, "personaScopeJSON"),
-              let payload = json.data(using: .utf8) else {
-            return nil
-        }
+    private static func personaScope(from json: String?) -> PersonaScopeEnvelope? {
+        guard let json, let payload = json.data(using: .utf8) else { return nil }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         // Best-effort: a malformed envelope is left nil here (the GUI's own
@@ -285,14 +270,13 @@ enum MissionRemoteAuthorizationShadow {
                 "mission_authorize_shadow daemon_unreachable mission=\(signal.missionID, privacy: .public) gui=\(signal.guiDecision.rawValue, privacy: .public) detail=\(signal.unreachableDetail ?? "", privacy: .public) sha=\(signal.promptSHA256, privacy: .public)"
             )
         case .daemonStricter, .guiStricter:
-            logger.warning(
-                "mission_authorize_shadow DIVERGENCE kind=\(signal.kind.rawValue, privacy: .public)"
-                    + " mission=\(signal.missionID, privacy: .public)"
-                    + " gui=\(signal.guiDecision.rawValue, privacy: .public)"
-                    + " daemon=\(signal.daemonVerdict?.rawValue ?? "nil", privacy: .public)"
-                    + " daemonReason=\(signal.daemonDeniedReason?.rawValue ?? "none", privacy: .public)"
-                    + " sha=\(signal.promptSHA256, privacy: .public)"
-            )
+            let kind = signal.kind.rawValue
+            let mission = signal.missionID
+            let gui = signal.guiDecision.rawValue
+            let daemon = signal.daemonVerdict?.rawValue ?? "nil"
+            let reason = signal.daemonDeniedReason?.rawValue ?? "none"
+            let sha = signal.promptSHA256
+            logger.warning("mission_authorize_shadow DIVERGENCE kind=\(kind, privacy: .public) mission=\(mission, privacy: .public) gui=\(gui, privacy: .public) daemon=\(daemon, privacy: .public) daemonReason=\(reason, privacy: .public) sha=\(sha, privacy: .public)")
         }
     }
 
@@ -307,34 +291,21 @@ enum MissionRemoteAuthorizationShadow {
     /// entirely in charge. A no-op when `mode == .off`.
     @MainActor
     static func observe(
-        missionID: String,
-        data: [String: Any],
-        prompt: String,
+        ctx: ShadowContext,
         guiDecision: GUIMissionAuthorizationDecision,
         executorTrustState: String,
-        requestedRuntime: String?,
-        requestedModelID: String?,
-        requestedFanOutCount: Int,
         manager: OpenBurnBarDaemonManager = .shared
     ) async {
         guard mode == .shadow else { return }
 
-        let request = makeRequest(
-            missionID: missionID,
-            data: data,
-            prompt: prompt,
-            executorTrustState: executorTrustState,
-            requestedRuntime: requestedRuntime,
-            requestedModelID: requestedModelID,
-            requestedFanOutCount: requestedFanOutCount
-        )
+        let request = makeRequest(ctx: ctx, executorTrustState: executorTrustState)
         let promptSHA = request.promptSHA256
 
         // Only reach for the daemon when it is healthy; otherwise classify as
         // unreachable (fail-safe) without a socket attempt.
         guard case .healthy = manager.status else {
             emit(compare(
-                missionID: missionID,
+                missionID: ctx.missionID,
                 gui: guiDecision,
                 daemon: nil,
                 promptSHA256: promptSHA,
@@ -356,7 +327,7 @@ enum MissionRemoteAuthorizationShadow {
         }
 
         emit(compare(
-            missionID: missionID,
+            missionID: ctx.missionID,
             gui: guiDecision,
             daemon: daemonResponse,
             promptSHA256: promptSHA,
@@ -374,14 +345,12 @@ enum MissionRemoteAuthorizationShadow {
     ///   - otherwise "would pause for approval" → `.requiresApproval`
     ///   - otherwise (would execute now) → `.allow`
     static func reduceGUIDecision(
-        data: [String: Any],
+        approvalStatus: String,
         willPauseForApproval: Bool,
         isTerminalDenial: Bool = false
     ) -> GUIMissionAuthorizationDecision {
-        let approvalStatus = ((data["approvalStatus"] as? String) ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        if approvalStatus == "rejected" || approvalStatus == "canceled" || approvalStatus == "cancelled" {
+        let normalized = approvalStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if normalized == "rejected" || normalized == "canceled" || normalized == "cancelled" {
             return .deny
         }
         if isTerminalDenial {
@@ -390,85 +359,69 @@ enum MissionRemoteAuthorizationShadow {
         return willPauseForApproval ? .requiresApproval : .allow
     }
 
-    // MARK: Field helpers
+    // MARK: Typed shadow context
 
-    private static func stringField(_ data: [String: Any], _ key: String) -> String? {
-        // `String.nilIfBlank` is the shared AgentLens trim-or-nil helper
-        // (AgentLens/Utilities/AgentLensStringNilIfBlank.swift).
-        (data[key] as? String)?.nilIfBlank
+    /// All data-derived fields the shadow observation needs, extracted as
+    /// typed values at the call site. This keeps the shadow module free of
+    /// any `[String: Any]` boundary access.
+    struct ShadowContext {
+        let missionID: String
+        let prompt: String
+        let runtime: String?
+        let modelID: String?
+        let commandsAllowed: Bool
+        let fileEditsAllowed: Bool
+        let originDeviceID: String
+        let originPlatform: String
+        let personaScopeJSON: String?
+        let approvalMode: String?
+        let approvalStatus: String
+        let approverDeviceID: String?
+        let entitlementTier: String
+        let workingDirectory: String?
+        let fanOutCount: Int
     }
 
     // MARK: Fire-and-forget observation helpers
 
-    /// Extract the common shadow-observation fields from a mission payload,
-    /// then fire the observation detached so `processingDocs` is released
-    /// promptly and approval transitions are not swallowed.
     private static func fireAndForget(
-        missionID: String,
-        data: [String: Any],
+        ctx: ShadowContext,
         guiDecision: GUIMissionAuthorizationDecision,
-        executorTrustState: String,
-        fanOutCount: Int
+        executorTrustState: String
     ) {
-        let prompt = (data["prompt"] as? String)?
-            .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? ""
-        let runtime = (data["requestedRuntime"] as? String) ?? "auto"
-        let modelID = (data["requestedModelID"] as? String)?
-            .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        let c = ctx
         Task { @MainActor in
             await observe(
-                missionID: missionID, data: data, prompt: prompt,
-                guiDecision: guiDecision, executorTrustState: executorTrustState,
-                requestedRuntime: runtime, requestedModelID: modelID,
-                requestedFanOutCount: fanOutCount
+                ctx: c,
+                guiDecision: guiDecision,
+                executorTrustState: executorTrustState
             )
         }
     }
 
-    /// Shadow-observe a deny at the fan-out validation failure path.
+    /// Shadow-observe a deny at the fan-out validation or untrusted-device path.
     static func observeDeny(
-        missionID: String, data: [String: Any],
-        executorTrustState: String, fanOutCount: Int = 1
+        ctx: ShadowContext,
+        executorTrustState: String
     ) {
-        fireAndForget(
-            missionID: missionID, data: data,
-            guiDecision: .deny, executorTrustState: executorTrustState,
-            fanOutCount: fanOutCount
-        )
+        fireAndForget(ctx: ctx, guiDecision: .deny, executorTrustState: executorTrustState)
     }
 
-    /// Shadow-observe the trusted-path authorization outcome, computing the
-    /// GUI decision (including terminal-denial and persona-scope logic)
-    /// inside the shadow module so the call site stays compact.
+    /// Shadow-observe the trusted-path authorization outcome. All derived
+    /// values are pre-computed by the caller.
     static func observeTrustedDecision(
-        missionID: String, data: [String: Any],
-        willPauseForApproval: Bool,
-        backend: CLIAgentMissionBackend, cliAssistantAllowed: Bool,
-        fanOutCount: Int
+        ctx: ShadowContext,
+        isTerminalDenial: Bool,
+        personaScopeMalformed: Bool,
+        willPauseForApproval: Bool
     ) {
-        let isTerminalDenial = willPauseForApproval
-            && CLIAgentMissionRuntimePlanner.requiresMacCLIAssistantConsentForRemoteMission(backend: backend)
-            && !cliAssistantAllowed
-        let personaMalformed = personaScopeIsMalformed(in: data)
-        let decision = personaMalformed
+        let decision = personaScopeMalformed
             ? .deny
             : reduceGUIDecision(
-                data: data, willPauseForApproval: willPauseForApproval,
+                approvalStatus: ctx.approvalStatus,
+                willPauseForApproval: willPauseForApproval,
                 isTerminalDenial: isTerminalDenial
             )
-        fireAndForget(
-            missionID: missionID, data: data,
-            guiDecision: decision, executorTrustState: "trusted",
-            fanOutCount: fanOutCount
-        )
-    }
-
-    /// Check whether the mission's persona scope is malformed (present but
-    /// unresolvable). Kept here so Handling.swift does not need to import or
-    /// duplicate the resolution enum.
-    static func personaScopeIsMalformed(in data: [String: Any]) -> Bool {
-        guard data["personaScopeJSON"] != nil else { return false }
-        if case .refused = CLIAgentMissionPersonaScopeResolution.resolve(from: data) { return true }
-        return false
+        fireAndForget(ctx: ctx, guiDecision: decision, executorTrustState: "trusted")
     }
 }

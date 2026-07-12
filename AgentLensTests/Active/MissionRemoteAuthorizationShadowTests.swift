@@ -106,7 +106,7 @@ final class MissionRemoteAuthorizationShadowTests: XCTestCase {
     func testReduceGUIDecisionRejectedApprovalIsDeny() {
         for status in ["rejected", "canceled", "cancelled", "REJECTED", " Cancelled "] {
             let decision = MissionRemoteAuthorizationShadow.reduceGUIDecision(
-                data: ["approvalStatus": status],
+                approvalStatus: status,
                 willPauseForApproval: false
             )
             XCTAssertEqual(decision, .deny, "status=\(status) must reduce to deny")
@@ -115,7 +115,7 @@ final class MissionRemoteAuthorizationShadowTests: XCTestCase {
 
     func testReduceGUIDecisionPauseIsRequiresApproval() {
         let decision = MissionRemoteAuthorizationShadow.reduceGUIDecision(
-            data: ["approvalStatus": "pending"],
+            approvalStatus: "pending",
             willPauseForApproval: true
         )
         XCTAssertEqual(decision, .requiresApproval)
@@ -123,7 +123,7 @@ final class MissionRemoteAuthorizationShadowTests: XCTestCase {
 
     func testReduceGUIDecisionNoPauseIsAllow() {
         let decision = MissionRemoteAuthorizationShadow.reduceGUIDecision(
-            data: ["approvalStatus": "approved"],
+            approvalStatus: "approved",
             willPauseForApproval: false
         )
         XCTAssertEqual(decision, .allow)
@@ -131,7 +131,7 @@ final class MissionRemoteAuthorizationShadowTests: XCTestCase {
 
     func testReduceGUIDecisionMissingApprovalStatusNoPauseIsAllow() {
         let decision = MissionRemoteAuthorizationShadow.reduceGUIDecision(
-            data: [:],
+            approvalStatus: "",
             willPauseForApproval: false
         )
         XCTAssertEqual(decision, .allow)
@@ -143,7 +143,7 @@ final class MissionRemoteAuthorizationShadowTests: XCTestCase {
         // report `.deny`, not `.requiresApproval`, so the GUI-vs-daemon
         // divergence is visible in telemetry.
         let decision = MissionRemoteAuthorizationShadow.reduceGUIDecision(
-            data: ["approvalStatus": "approved"],
+            approvalStatus: "approved",
             willPauseForApproval: true,
             isTerminalDenial: true
         )
@@ -152,7 +152,7 @@ final class MissionRemoteAuthorizationShadowTests: XCTestCase {
 
     func testReduceGUIDecisionTerminalDenialOverridesApprovalPause() {
         let decision = MissionRemoteAuthorizationShadow.reduceGUIDecision(
-            data: [:],
+            approvalStatus: "",
             willPauseForApproval: true,
             isTerminalDenial: true
         )
@@ -161,7 +161,7 @@ final class MissionRemoteAuthorizationShadowTests: XCTestCase {
 
     func testReduceGUIDecisionNoTerminalDenialFallsBackToApprovalLogic() {
         let decision = MissionRemoteAuthorizationShadow.reduceGUIDecision(
-            data: ["approvalStatus": "pending"],
+            approvalStatus: "pending",
             willPauseForApproval: true,
             isTerminalDenial: false
         )
@@ -171,7 +171,7 @@ final class MissionRemoteAuthorizationShadowTests: XCTestCase {
     func testReduceGUIDecisionDefaultsTerminalDenialToFalse() {
         // Backward compat: isTerminalDenial defaults to false
         let decision = MissionRemoteAuthorizationShadow.reduceGUIDecision(
-            data: ["approvalStatus": "pending"],
+            approvalStatus: "pending",
             willPauseForApproval: true
         )
         XCTAssertEqual(decision, .requiresApproval)
@@ -182,20 +182,14 @@ final class MissionRemoteAuthorizationShadowTests: XCTestCase {
     func testMakeRequestCarriesSummaryAndHashNotFullPrompt() {
         let longPrompt = String(repeating: "secret-payload ", count: 40)
         let request = MissionRemoteAuthorizationShadow.makeRequest(
-            missionID: "req-1",
-            data: [
-                "commandsAllowed": true,
-                "fileEditsAllowed": false,
-                "approvalMode": "manual_all",
-                "approvalStatus": "pending",
-                "entitlementTier": "pro",
-                "source": "ios"
-            ],
-            prompt: longPrompt,
-            executorTrustState: "trusted",
-            requestedRuntime: "codex",
-            requestedModelID: "gpt-x",
-            requestedFanOutCount: 3
+            ctx: .init(
+                missionID: "req-1", prompt: longPrompt, runtime: "codex", modelID: "gpt-x",
+                commandsAllowed: true, fileEditsAllowed: false,
+                originDeviceID: "unknown", originPlatform: "ios",
+                personaScopeJSON: nil, approvalMode: "manual_all", approvalStatus: "pending",
+                approverDeviceID: nil, entitlementTier: "pro", workingDirectory: nil, fanOutCount: 3
+            ),
+            executorTrustState: "trusted"
         )
 
         XCTAssertEqual(request.missionID, "req-1")
@@ -219,13 +213,14 @@ final class MissionRemoteAuthorizationShadowTests: XCTestCase {
 
     func testMakeRequestFailsClosedOnMissingCapabilityFieldsAndDefaults() {
         let request = MissionRemoteAuthorizationShadow.makeRequest(
-            missionID: "req-2",
-            data: [:],
-            prompt: "hi",
-            executorTrustState: "untrusted",
-            requestedRuntime: nil,
-            requestedModelID: nil,
-            requestedFanOutCount: 0
+            ctx: .init(
+                missionID: "req-2", prompt: "hi", runtime: nil, modelID: nil,
+                commandsAllowed: false, fileEditsAllowed: false,
+                originDeviceID: "unknown", originPlatform: "unknown",
+                personaScopeJSON: nil, approvalMode: nil, approvalStatus: "",
+                approverDeviceID: nil, entitlementTier: "none", workingDirectory: nil, fanOutCount: 0
+            ),
+            executorTrustState: "untrusted"
         )
         // Absent capability keys are a non-grant.
         XCTAssertFalse(request.requestedGrant.commandsAllowed)
@@ -251,13 +246,14 @@ final class MissionRemoteAuthorizationShadowTests: XCTestCase {
         let json = String(data: try encoder.encode(envelope), encoding: .utf8)!
 
         let request = MissionRemoteAuthorizationShadow.makeRequest(
-            missionID: "req-3",
-            data: ["personaScopeJSON": json],
-            prompt: "p",
-            executorTrustState: "trusted",
-            requestedRuntime: nil,
-            requestedModelID: nil,
-            requestedFanOutCount: 1
+            ctx: .init(
+                missionID: "req-3", prompt: "p", runtime: nil, modelID: nil,
+                commandsAllowed: false, fileEditsAllowed: false,
+                originDeviceID: "unknown", originPlatform: "unknown",
+                personaScopeJSON: json, approvalMode: nil, approvalStatus: "",
+                approverDeviceID: nil, entitlementTier: "none", workingDirectory: nil, fanOutCount: 1
+            ),
+            executorTrustState: "trusted"
         )
         XCTAssertEqual(request.personaScope?.permitShell, false)
         XCTAssertEqual(request.personaScope?.permitFileEdits, false)
@@ -266,13 +262,14 @@ final class MissionRemoteAuthorizationShadowTests: XCTestCase {
 
     func testMakeRequestLeavesPersonaScopeNilOnMalformedJSON() {
         let request = MissionRemoteAuthorizationShadow.makeRequest(
-            missionID: "req-4",
-            data: ["personaScopeJSON": "{not valid json"],
-            prompt: "p",
-            executorTrustState: "trusted",
-            requestedRuntime: nil,
-            requestedModelID: nil,
-            requestedFanOutCount: 1
+            ctx: .init(
+                missionID: "req-4", prompt: "p", runtime: nil, modelID: nil,
+                commandsAllowed: false, fileEditsAllowed: false,
+                originDeviceID: "unknown", originPlatform: "unknown",
+                personaScopeJSON: "{not valid json", approvalMode: nil, approvalStatus: "",
+                approverDeviceID: nil, entitlementTier: "none", workingDirectory: nil, fanOutCount: 1
+            ),
+            executorTrustState: "trusted"
         )
         XCTAssertNil(request.personaScope)
     }

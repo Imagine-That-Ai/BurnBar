@@ -233,6 +233,25 @@ extension CLIAgentMissionRequestListener {
             return
         }
         var data = mergePrivateMissionPayload(privatePayload, into: rawData)
+        // Build shadow context from current data at call time (reads post-wand-routing values).
+        func shadowCtx(_ id: String, _ p: String, _ fanOut: Int) -> MissionRemoteAuthorizationShadow.ShadowContext {
+            MissionRemoteAuthorizationShadow.ShadowContext(
+                missionID: id, prompt: p,
+                runtime: (data["requestedRuntime"] as? String) ?? "auto",
+                modelID: (data["requestedModelID"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                commandsAllowed: (data["commandsAllowed"] as? Bool) ?? false,
+                fileEditsAllowed: (data["fileEditsAllowed"] as? Bool) ?? false,
+                originDeviceID: (data["originDeviceID"] as? String)?.nilIfBlank ?? (data["createdBy"] as? String)?.nilIfBlank ?? "unknown",
+                originPlatform: (data["originPlatform"] as? String)?.nilIfBlank ?? (data["source"] as? String)?.nilIfBlank ?? "unknown",
+                personaScopeJSON: (data["personaScopeJSON"] as? String)?.nilIfBlank,
+                approvalMode: (data["approvalMode"] as? String)?.nilIfBlank,
+                approvalStatus: (data["approvalStatus"] as? String) ?? "",
+                approverDeviceID: (data["approverDeviceID"] as? String)?.nilIfBlank,
+                entitlementTier: (data["entitlementTier"] as? String)?.nilIfBlank ?? "none",
+                workingDirectory: (data["workingDirectory"] as? String)?.nilIfBlank,
+                fanOutCount: fanOut
+            )
+        }
         let missionGroupContext: MissionGroupClaimContext?
         do {
             missionGroupContext = try await validateMissionGroupClaimIfNeeded(
@@ -242,7 +261,9 @@ extension CLIAgentMissionRequestListener {
             )
         } catch {
             logger.warning("mission id=\(document.documentID, privacy: .public) refused before claim: \(error.localizedDescription, privacy: .public)")
-            MissionRemoteAuthorizationShadow.observeDeny(missionID: document.documentID, data: data, executorTrustState: "trusted")
+            MissionRemoteAuthorizationShadow.observeDeny(
+                ctx: shadowCtx(document.documentID, "", 1),
+                executorTrustState: "trusted")
             await fail(document: document, message: error.localizedDescription)
             return
         }
@@ -269,10 +290,8 @@ extension CLIAgentMissionRequestListener {
         guard trustResult.isTrusted else {
             logger.warning("mission id=\(document.documentID, privacy: .public) refused for untrusted Mac device=\(self.accountManager.deviceId, privacy: .public)")
             MissionRemoteAuthorizationShadow.observeDeny(
-                missionID: document.documentID, data: data,
-                executorTrustState: "untrusted",
-                fanOutCount: missionGroupContext?.siblingCount ?? 1
-            )
+                ctx: shadowCtx(document.documentID, prompt, missionGroupContext?.siblingCount ?? 1),
+                executorTrustState: "untrusted")
             return
         }
 
@@ -303,11 +322,14 @@ extension CLIAgentMissionRequestListener {
             return
         }
         let willPauseForApproval = await shouldPauseForApproval(document: document, data: data, backend: backend)
-        MissionRemoteAuthorizationShadow.observeTrustedDecision(missionID: document.documentID, data: data, willPauseForApproval: willPauseForApproval, backend: backend, cliAssistantAllowed: settingsManager.cliAssistantAllowed, fanOutCount: missionGroupContext?.siblingCount ?? 1)
+        let isTerminalDenial = willPauseForApproval && CLIAgentMissionRuntimePlanner.requiresMacCLIAssistantConsentForRemoteMission(backend: backend) && !settingsManager.cliAssistantAllowed
+        let ctx = shadowCtx(document.documentID, prompt, missionGroupContext?.siblingCount ?? 1)
+        let personaMalformed: Bool = ctx.personaScopeJSON != nil && { if case .refused = CLIAgentMissionPersonaScopeResolution.resolve(from: data) { return true }; return false }()
+        MissionRemoteAuthorizationShadow.observeTrustedDecision(ctx: ctx, isTerminalDenial: isTerminalDenial, personaScopeMalformed: personaMalformed, willPauseForApproval: willPauseForApproval)
         if willPauseForApproval {
             return
         }
-        if MissionRemoteAuthorizationShadow.personaScopeIsMalformed(in: data) {
+        if personaMalformed {
             await fail(document: document, message: "The persona scope attached to this mission could not be read, so it was rejected instead of running with broader permissions. Re-send the mission from your device.")
             return
         }
