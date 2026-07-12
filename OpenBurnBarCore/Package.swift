@@ -449,8 +449,7 @@ let openBurnBarCoreExcludes = [
     // Insights + Verdict subsystem: heavy, model-gateway/LLM-analysis coupled, and
     // consumed only by Views/ (excluded) — drop the whole tree off-Apple rather than
     // the prior partial set that left model files referencing excluded types.
-    "AgentInsights",
-    "Demo/InsightVerdictDemoFixture.swift",
+    "AgentInsights/AgentInsightsViewModel.swift",
     "Services/Insights",
     "SwitcherBrowserLaunchService.swift",
     // TextExpansion is an Apple keyboard-extension feature (App Group stores); not
@@ -470,8 +469,6 @@ let openBurnBarCoreExcludes = [
     "SharedModels/HermesRatchetCrypto.swift",
     // Uses HermesRelayCrypto plus authenticated-request trust/runtime types outside the Engine subset.
     "SharedModels/HermesRelayAuthenticatedRequest.swift",
-    "SharedModels/Insights",
-    "SharedModels/InsightVerdictWidgetSnapshot.swift",
     "SharedModels/PensieveKnowledgeChunker.swift",
     "SharedModels/PensieveVectorCloak.swift",
     "SharedModels/PixelClockSettingsModel.swift",
