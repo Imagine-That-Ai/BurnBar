@@ -358,7 +358,7 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertFalse(args.contains("--auto-approve"))
     }
 
-    func test_cliArgumentBuilder_ompArguments_manualShellGrantIncludesBashToolWithoutAutoApprove() throws {
+    func test_cliArgumentBuilder_ompArguments_manualShellGrantForcesAlwaysAskApprovalMode() throws {
         let grant = AgentCapabilityGrant.sessionGrant(
             runtimeID: .omp,
             threadID: "thread-omp",
@@ -370,6 +370,26 @@ final class CLIBridgeTests: XCTestCase {
         let tools = args[toolsIndex + 1]
         XCTAssertTrue(tools.contains("bash"))
         XCTAssertFalse(args.contains("--auto-approve"))
+        // OMP defaults tools.approvalMode to "yolo"; omitting --auto-approve
+        // alone would still auto-approve shell/write tool calls.
+        let approvalModeIndex = try XCTUnwrap(args.firstIndex(of: "--approval-mode"))
+        XCTAssertEqual(args[approvalModeIndex + 1], "always-ask")
+    }
+
+    func test_cliArgumentBuilder_ompArguments_stepWriteGrantForcesAlwaysAskApprovalMode() throws {
+        let grant = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .omp,
+            threadID: "thread-omp",
+            capabilities: [.workspaceRead, .workspaceWrite],
+            trustMode: .step
+        )
+        let args = CLIArgumentBuilder.ompArguments(prompt: "run", capabilityGrant: grant)
+        let toolsIndex = try XCTUnwrap(args.firstIndex(of: "--tools"))
+        let tools = args[toolsIndex + 1]
+        XCTAssertTrue(tools.contains("edit"))
+        XCTAssertFalse(args.contains("--auto-approve"))
+        let approvalModeIndex = try XCTUnwrap(args.firstIndex(of: "--approval-mode"))
+        XCTAssertEqual(args[approvalModeIndex + 1], "always-ask")
     }
 
     func test_cliArgumentBuilder_ompArguments_trustedShellGrantAutoApprovesTools() throws {
@@ -384,6 +404,7 @@ final class CLIBridgeTests: XCTestCase {
         let tools = args[toolsIndex + 1]
         XCTAssertTrue(tools.contains("bash"))
         XCTAssertTrue(args.contains("--auto-approve"))
+        XCTAssertFalse(args.contains("--approval-mode"))
     }
 
     // MARK: - Forge Arguments Tests

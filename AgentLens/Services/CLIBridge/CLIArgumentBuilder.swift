@@ -235,6 +235,14 @@ enum CLIArgumentBuilder {
             arguments.append(contentsOf: ["--tools", dedupedTools])
             if capabilityGrant.trustMode == .trusted {
                 arguments.append("--auto-approve")
+            } else {
+                // OMP defaults tools.approvalMode to "yolo", so merely omitting
+                // --auto-approve still auto-approves every tool call. Force the
+                // strictest mode for non-trusted grants: read-only tools run,
+                // write/exec tools (edit, write, bash) require approval — and
+                // fail closed in headless `--mode json` runs where no UI exists
+                // to grant them.
+                arguments.append(contentsOf: ["--approval-mode", "always-ask"])
             }
         } else {
             arguments.append("--no-tools")
