@@ -827,7 +827,7 @@ let firstPartyTargetsBase: [Target] = [
                 "OpenBurnBarKernel",
                 "OpenBurnBarFirestoreModels",
                 swiftCryptoNonAppleDependency
-            ] + coreSQLiteDependencies + coreDecompositionDependencies,
+            ] + coreDecompositionDependencies,
             exclude: openBurnBarCoreExcludes,
             resources: [
                 // SwiftPM's `.process` rule flattens nested resource folders
