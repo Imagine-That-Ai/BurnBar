@@ -216,6 +216,35 @@ test('finalizer emits a two-architecture cryptographic product closure', (t) => 
   assert.equal(fs.existsSync(result.output), true);
 });
 
+function assertRequirementReleaseCapture(t, requirementId, role) {
+  const fixture = createReleaseFixture();
+  t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }));
+  const result = finalizeProductProofClosure({
+    repoRoot: fixture.root,
+    outputDir: fixture.output,
+    targetHead: HEAD
+  });
+  const selected = result.document.proofs.filter((proof) => proof.role === role);
+  assert.ok(selected.length > 0, `${requirementId} must capture ${role}`);
+  assert.ok(selected.every((proof) => /^[a-f0-9]{64}$/u.test(proof.sha256)));
+}
+
+test('P-01 release capture includes signed application artifacts', (t) => {
+  assertRequirementReleaseCapture(t, 'P-01', 'package-signature');
+});
+
+test('P-03 release capture includes daemon protocol evidence', (t) => {
+  assertRequirementReleaseCapture(t, 'P-03', 'package-smoke');
+});
+
+test('P-04 release capture includes two-architecture smoke evidence', (t) => {
+  assertRequirementReleaseCapture(t, 'P-04', 'architecture-smoke');
+});
+
+test('P-37 release capture includes Linux matrix evidence', (t) => {
+  assertRequirementReleaseCapture(t, 'P-37', 'architecture-smoke');
+});
+
 test('finalizer rejects blockers, missing manifests, and signature mutation', async (t) => {
   for (const [name, mutate, pattern] of [
     ['release blocker', (fixture) => {
@@ -274,6 +303,41 @@ test('materializer selects the exact environment package and copies hash-bound p
   assert.equal(result.closure.proofs.filter((proof) => proof.role === 'package-signature').length, 8);
   assert.equal(result.closure.proofs.filter((proof) => proof.role === 'release-artifact').length, 8);
   assert.equal(fs.existsSync(result.output), true);
+});
+
+function assertRequirementMaterializer(t, requirementId, role) {
+  const fixture = createReleaseFixture();
+  t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }));
+  finalizeProductProofClosure({ repoRoot: fixture.root, outputDir: fixture.output, targetHead: HEAD });
+  const inputRoot = stageAggregate(fixture, requirementId);
+  const result = prepareProductRequirementInput({
+    requirementId,
+    environmentId: ENVIRONMENT,
+    inputRoot,
+    targetHead: HEAD,
+    candidateRunId: CANDIDATE_RUN_ID,
+    candidateArtifactDigest: CANDIDATE_ARTIFACT_DIGEST,
+    repoRoot: fixture.root
+  });
+  const selected = result.closure.proofs.filter((proof) => proof.role === role);
+  assert.ok(selected.length > 0, `${requirementId} must materialize ${role}`);
+  assert.ok(selected.every((proof) => fs.existsSync(path.join(fixture.root, proof.path))));
+}
+
+test('P-01 materializer selects signed application artifacts', (t) => {
+  assertRequirementMaterializer(t, 'P-01', 'package-signature');
+});
+
+test('P-03 materializer selects daemon protocol evidence', (t) => {
+  assertRequirementMaterializer(t, 'P-03', 'package-smoke');
+});
+
+test('P-04 materializer selects two-architecture smoke evidence', (t) => {
+  assertRequirementMaterializer(t, 'P-04', 'architecture-smoke');
+});
+
+test('P-37 materializer selects Linux matrix evidence', (t) => {
+  assertRequirementMaterializer(t, 'P-37', 'architecture-smoke');
 });
 
 test('registered environment feature proofs are candidate-bound and materialized without implying pass', (t) => {

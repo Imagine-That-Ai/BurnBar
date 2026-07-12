@@ -1,8 +1,11 @@
 import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
+import { parse as parseYaml } from 'yaml';
 import { RELEASE_PROOF_ROLES } from '../prepare-product-requirement-input.mjs';
 import {
   SUPPORT_ENVIRONMENTS,
@@ -33,7 +36,90 @@ const VALIDATOR_ROOT = 'scripts/linux-port/product-validators';
 const RUN_ID = /^[1-9][0-9]*$/u;
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const HEAD = /^[a-f0-9]{40,64}$/u;
+const COMMAND_TIMEOUT_MS = 30_000;
+const OWNERSHIP_TEST_TIMEOUT_MS = 120_000;
 const COMMIT_SNAPSHOT_CACHE = new Map();
+const MODULE_DEPENDENCY_ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../node_modules'
+);
+const ISOLATED_TARGET_PATHS = Object.freeze([
+  '.github/workflows',
+  'docs/linux-port/product-feature-proof-registry.json',
+  'docs/linux-port/product-parity-evidence-policies.json',
+  'docs/linux-port/product-parity-requirements.json',
+  'packaging/linux',
+  'schemas',
+  'scripts/linux-port'
+]);
+const CANONICAL_WORKFLOW_OWNERSHIP = Object.freeze({
+  'scripts/linux-port/finalize-product-proof-closure.mjs': {
+    workflow: '.github/workflows/linux-release.yml',
+    job: 'assemble-release',
+    step: 'Finalize installed-product proof closure',
+    run: 'node scripts/linux-port/finalize-product-proof-closure.mjs --target-head "$TARGET_HEAD"'
+  },
+  'scripts/linux-port/capture-parity-certification-preflight.mjs': {
+    workflow: '.github/workflows/linux-product-parity.yml',
+    job: 'validate',
+    step: 'Capture parity certification preflight',
+    stepId: 'p02_capture',
+    condition: "inputs.requirement == 'P-02'",
+    run: [
+      'set -euo pipefail',
+      'input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"',
+      'diagnostic_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p02.XXXXXX")"',
+      'printf \'diagnostic_root=%s\\n\' "$diagnostic_root" >> "$GITHUB_OUTPUT"',
+      'capture_log="$diagnostic_root/capture.log"',
+      'node scripts/linux-port/capture-parity-certification-preflight.mjs \\',
+      '  --input-root "$input_root" \\',
+      '  --environment "$ENVIRONMENT_ID" \\',
+      '  --target-head "$TARGET_HEAD" \\',
+      '  --candidate-run-id "$CANDIDATE_RUN_ID" \\',
+      '  --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST" \\',
+      '  --diagnostic-root "$diagnostic_root" \\',
+      '  2>&1 | tee "$capture_log"'
+    ].join('\n')
+  },
+  'scripts/linux-port/finalize-product-feature-proof-closure.mjs': {
+    workflow: '.github/workflows/linux-product-parity.yml',
+    job: 'validate',
+    step: 'Finalize registered feature proof closure',
+    run: [
+      'set -euo pipefail',
+      'input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"',
+      'node scripts/linux-port/finalize-product-feature-proof-closure.mjs \\',
+      '  --requirement "$REQUIREMENT_ID" \\',
+      '  --environment "$ENVIRONMENT_ID" \\',
+      '  --input-root "$input_root" \\',
+      '  --target-head "$TARGET_HEAD" \\',
+      '  --candidate-run-id "$CANDIDATE_RUN_ID" \\',
+      '  --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"'
+    ].join('\n')
+  },
+  'scripts/linux-port/prepare-product-requirement-input.mjs': {
+    workflow: '.github/workflows/linux-product-parity.yml',
+    job: 'validate',
+    step: 'Materialize the requirement-owned release closure',
+    run: [
+      'set -euo pipefail',
+      'input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"',
+      'node scripts/linux-port/prepare-product-requirement-input.mjs \\',
+      '  --requirement "$REQUIREMENT_ID" \\',
+      '  --environment "$ENVIRONMENT_ID" \\',
+      '  --input-root "$input_root" \\',
+      '  --target-head "$TARGET_HEAD" \\',
+      '  --candidate-run-id "$CANDIDATE_RUN_ID" \\',
+      '  --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"'
+    ].join('\n')
+  }
+});
+const EXECUTION_AUTHENTICATION_FIELDS = Object.freeze([
+  'requirementId', 'component', 'sourcePath', 'sourceEntrypoint', 'sourceSha256',
+  'testPath', 'testName', 'testSha256', 'status', 'exitCode', 'spawnSignal',
+  'spawnErrorCode', 'outputSha256', 'mutationDetected', 'mutationExitCode',
+  'mutationSignal', 'mutationSpawnErrorCode', 'mutationOutputSha256'
+]);
 
 function parseJson(snapshot, label) {
   try {
@@ -50,7 +136,9 @@ function sourceRecord(snapshot) {
 function currentHead(repoRoot) {
   const result = spawnSync('git', ['rev-parse', '--verify', 'HEAD'], {
     cwd: repoRoot,
-    encoding: 'utf8'
+    encoding: 'utf8',
+    timeout: COMMAND_TIMEOUT_MS,
+    killSignal: 'SIGKILL'
   });
   if (result.status !== 0) throw new Error(`git HEAD lookup failed: ${(result.stderr || result.stdout).trim()}`);
   return result.stdout.trim();
@@ -61,7 +149,9 @@ function commitSnapshot(repoRoot, targetHead, relativePath, label, optional = fa
   if (COMMIT_SNAPSHOT_CACHE.has(cacheKey)) return COMMIT_SNAPSHOT_CACHE.get(cacheKey);
   const tree = spawnSync('git', ['ls-tree', '-z', targetHead, '--', relativePath], {
     cwd: repoRoot,
-    encoding: 'buffer'
+    encoding: 'buffer',
+    timeout: COMMAND_TIMEOUT_MS,
+    killSignal: 'SIGKILL'
   });
   if (tree.status !== 0) throw new Error(`git tree lookup failed for ${label}`);
   if (tree.stdout.length === 0) {
@@ -80,7 +170,9 @@ function commitSnapshot(repoRoot, targetHead, relativePath, label, optional = fa
   const shown = spawnSync('git', ['show', `${targetHead}:${relativePath}`], {
     cwd: repoRoot,
     encoding: 'buffer',
-    maxBuffer: 64 * 1024 * 1024
+    maxBuffer: 64 * 1024 * 1024,
+    timeout: COMMAND_TIMEOUT_MS,
+    killSignal: 'SIGKILL'
   });
   if (shown.status !== 0) throw new Error(`git blob read failed for ${label}`);
   const snapshot = {
@@ -116,93 +208,361 @@ function certificationRows(registry) {
   return Array.isArray(registry.certification) ? registry.certification : [];
 }
 
-function executionKey(testPath, testName) {
+function executionKey(requirementId, component) {
+  return `${requirementId}\0${component}`;
+}
+
+function testOwnershipKey(testPath, testName) {
   return `${testPath}\0${testName}`;
 }
 
 function ownershipExecutions(registry) {
-  const entries = new Map();
+  const entries = [];
   for (const ownership of certificationRows(registry)) {
     for (const component of ['validator', 'capture', 'materializer']) {
       const value = ownership?.[component];
       const testName = component === 'validator' ? value?.mutationTestName : value?.testName;
       if (typeof value?.testPath !== 'string' || typeof testName !== 'string') continue;
-      entries.set(executionKey(value.testPath, testName), {
+      entries.push({
+        requirementId: ownership.requirementId,
+        component,
+        sourcePath: component === 'validator' ? value.sourcePath : value.producerPath,
+        sourceEntrypoint: value.entrypoint,
         testPath: value.testPath,
         testName
       });
     }
   }
-  return [...entries.values()].sort((left, right) =>
-    executionKey(left.testPath, left.testName).localeCompare(executionKey(right.testPath, right.testName))
+  return entries.sort((left, right) =>
+    executionKey(left.requirementId, left.component).localeCompare(
+      executionKey(right.requirementId, right.component)
+    )
   );
+}
+
+function duplicateOwnershipTests(registry) {
+  const owners = new Map();
+  for (const entry of ownershipExecutions(registry)) {
+    const key = testOwnershipKey(entry.testPath, entry.testName);
+    const rows = owners.get(key) ?? [];
+    rows.push(entry);
+    owners.set(key, rows);
+  }
+  return [...owners.values()].filter((rows) => rows.length > 1);
 }
 
 function validateExecutionInventory(registry, testExecutions, blockers) {
   const expected = new Set(ownershipExecutions(registry).map((entry) =>
-    executionKey(entry.testPath, entry.testName)
+    executionKey(entry.requirementId, entry.component)
   ));
   const counts = new Map();
   for (const entry of testExecutions) {
-    const key = executionKey(entry?.testPath, entry?.testName);
+    const key = executionKey(entry?.requirementId, entry?.component);
     counts.set(key, (counts.get(key) ?? 0) + 1);
     if (!expected.has(key)) {
-      addBlocker(blockers, 'unexpected-test-execution', entry?.testPath ?? '<missing>',
+      addBlocker(blockers, 'unexpected-test-execution', entry?.requirementId ?? '<missing>',
         'test execution is not owned by the candidate registry');
     }
   }
   for (const entry of ownershipExecutions(registry)) {
-    const count = counts.get(executionKey(entry.testPath, entry.testName)) ?? 0;
+    const count = counts.get(executionKey(entry.requirementId, entry.component)) ?? 0;
     if (count !== 1) {
       addBlocker(blockers, count === 0 ? 'missing-test-execution' : 'duplicate-test-execution',
-        entry.testPath, `${entry.testName} occurs ${count} times`);
+        entry.requirementId, `${entry.component} execution occurs ${count} times`);
+    }
+  }
+  for (const rows of duplicateOwnershipTests(registry)) {
+    const subjects = rows.map((entry) => `${entry.requirementId}/${entry.component}`).join(', ');
+    addBlocker(blockers, 'reused-ownership-test', subjects,
+      `${rows[0].testPath} :: ${rows[0].testName} is registered by multiple components`);
+  }
+}
+
+function isWithin(root, candidate) {
+  const relative = path.relative(root, candidate);
+  return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..'
+    && !path.isAbsolute(relative));
+}
+
+function validateIsolatedTree(root, { allowInternalSymlinks }) {
+  const canonicalRoot = fs.realpathSync(root);
+  const pending = [canonicalRoot];
+  while (pending.length > 0) {
+    const directory = pending.pop();
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const absolute = path.join(directory, entry.name);
+      const metadata = fs.lstatSync(absolute);
+      if (metadata.isSymbolicLink()) {
+        if (!allowInternalSymlinks) {
+          throw new Error(`isolated target archive contains a symbolic link: ${path.relative(canonicalRoot, absolute)}`);
+        }
+        let resolved;
+        try {
+          resolved = fs.realpathSync(absolute);
+        } catch {
+          throw new Error(`isolated dependency symbolic link is unresolved: ${path.relative(canonicalRoot, absolute)}`);
+        }
+        if (!isWithin(canonicalRoot, resolved)) {
+          throw new Error(`isolated dependency symbolic link escapes its root: ${path.relative(canonicalRoot, absolute)}`);
+        }
+      } else if (metadata.isDirectory()) {
+        pending.push(absolute);
+      }
     }
   }
 }
 
-function requireTargetWorktree(repoRoot, targetHead) {
-  if (currentHead(repoRoot) !== targetHead) throw new Error('test execution requires the exact target HEAD');
-  for (const args of [['diff', '--quiet', targetHead, '--'], ['diff', '--cached', '--quiet', targetHead, '--']]) {
-    const result = spawnSync('git', args, { cwd: repoRoot });
-    if (result.status !== 0) throw new Error('test execution requires target-controlled tracked bytes');
+function isolatedTargetCheckout(repoRoot, targetHead) {
+  const availablePaths = ISOLATED_TARGET_PATHS.filter((relativePath) => {
+    const present = spawnSync('git', ['ls-tree', '--name-only', targetHead, '--', relativePath], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      timeout: COMMAND_TIMEOUT_MS,
+      killSignal: 'SIGKILL'
+    });
+    if (present.status !== 0) throw new Error(`failed to inspect target path ${relativePath}`);
+    return present.stdout.trim().length > 0;
+  });
+  const archive = spawnSync('git', ['archive', '--format=tar', targetHead, '--', ...availablePaths], {
+    cwd: repoRoot,
+    encoding: 'buffer',
+    maxBuffer: 128 * 1024 * 1024,
+    timeout: COMMAND_TIMEOUT_MS,
+    killSignal: 'SIGKILL'
+  });
+  if (archive.status !== 0) throw new Error('failed to archive target-controlled ownership-test bytes');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-p02-target-'));
+  try {
+    const extracted = spawnSync('tar', ['-xf', '-', '-C', root], {
+      input: archive.stdout,
+      encoding: 'buffer',
+      maxBuffer: 16 * 1024 * 1024,
+      timeout: COMMAND_TIMEOUT_MS,
+      killSignal: 'SIGKILL'
+    });
+    if (extracted.status !== 0) throw new Error('failed to extract target-controlled ownership-test bytes');
+    validateIsolatedTree(root, { allowInternalSymlinks: false });
+    fs.rmSync(path.join(root, 'scripts/linux-port/node_modules'), {
+      recursive: true,
+      force: true
+    });
+    const dependencyRoot = fs.existsSync(path.join(repoRoot, 'scripts/linux-port/node_modules'))
+      ? path.join(repoRoot, 'scripts/linux-port/node_modules')
+      : MODULE_DEPENDENCY_ROOT;
+    if (!fs.lstatSync(dependencyRoot).isDirectory()) {
+      throw new Error('Linux parity tool dependencies must be an installed directory');
+    }
+    fs.cpSync(dependencyRoot, path.join(root, 'scripts/linux-port/node_modules'), {
+      recursive: true,
+      dereference: false,
+      verbatimSymlinks: true,
+      mode: fs.constants.COPYFILE_FICLONE
+    });
+    validateIsolatedTree(path.join(root, 'scripts/linux-port/node_modules'), {
+      allowInternalSymlinks: true
+    });
+    return root;
+  } catch (error) {
+    fs.rmSync(root, { recursive: true, force: true });
+    throw error;
   }
+}
+
+function escapedPattern(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+}
+
+export function classifyOwnershipTestSpawn(result, testName) {
+  const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
+  const exitCode = Number.isInteger(result.status) ? result.status : null;
+  const signal = typeof result.signal === 'string' ? result.signal : null;
+  const errorCode = typeof result.error?.code === 'string'
+    ? result.error.code : result.error ? 'UNKNOWN' : null;
+  const completedNormally = exitCode !== null && signal === null && errorCode === null;
+  const namedTestPassed = new RegExp(
+    `^ok [0-9]+ - ${escapedPattern(testName)}$`,
+    'mu'
+  ).test(output);
+  return {
+    exitCode,
+    signal,
+    errorCode,
+    output,
+    passed: completedNormally && exitCode === 0 && namedTestPassed && /# fail 0/u.test(output),
+    failedNormally: completedNormally && exitCode > 0
+  };
+}
+
+function canonicalOwnershipOutput(output, roots) {
+  let normalized = output.replace(/\r\n/gu, '\n');
+  for (const root of roots) normalized = normalized.replaceAll(root, '<isolated-root>');
+  return normalized
+    .replace(/^(\s*duration_ms:\s*)[0-9.]+$/gmu, '$1<elapsed>')
+    .replace(/^(# duration_ms\s+)[0-9.]+$/gmu, '$1<elapsed>');
+}
+
+function runOwnedTest(checkout, entry) {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-p02-home-'));
+  const environment = {
+    HOME: home,
+    LANG: 'C.UTF-8',
+    LC_ALL: 'C',
+    OPENBURNBAR_PARITY_PREFLIGHT_OWNERSHIP_TEST: '1',
+    PATH: process.env.PATH ?? '/usr/bin:/bin',
+    TMPDIR: os.tmpdir()
+  };
+  try {
+    const result = spawnSync(process.execPath, [
+      '--test',
+      `--test-name-pattern=^${escapedPattern(entry.testName)}$`,
+      entry.testPath
+    ], {
+      cwd: checkout,
+      encoding: 'utf8',
+      maxBuffer: 16 * 1024 * 1024,
+      env: environment,
+      timeout: OWNERSHIP_TEST_TIMEOUT_MS,
+      killSignal: 'SIGKILL'
+    });
+    const classified = classifyOwnershipTestSpawn(result, entry.testName);
+    return {
+      ...classified,
+      output: canonicalOwnershipOutput(classified.output, [checkout, home])
+    };
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+}
+
+function installSemanticMutation(checkout, entry) {
+  const { sourcePath, sourceEntrypoint } = entry;
+  const absolute = path.join(checkout, sourcePath);
+  const probe = spawnSync(process.execPath, [
+    '--input-type=module',
+    '--eval',
+    `import(${JSON.stringify(pathToFileURL(absolute).href)})`
+      + ".then((module) => process.stdout.write(JSON.stringify(Object.keys(module).sort())))"
+  ], {
+    cwd: checkout,
+    encoding: 'utf8',
+    maxBuffer: 4 * 1024 * 1024,
+    timeout: COMMAND_TIMEOUT_MS,
+    killSignal: 'SIGKILL',
+    env: {
+      HOME: os.tmpdir(),
+      LANG: 'C.UTF-8',
+      LC_ALL: 'C',
+      PATH: process.env.PATH ?? '/usr/bin:/bin',
+      TMPDIR: os.tmpdir()
+    }
+  });
+  if (probe.status !== 0) throw new Error(`cannot enumerate exports for semantic mutation of ${sourcePath}`);
+  let exports;
+  try {
+    exports = JSON.parse(probe.stdout);
+  } catch {
+    throw new Error(`cannot parse exports for semantic mutation of ${sourcePath}`);
+  }
+  if (!Array.isArray(exports) || exports.length === 0 || !exports.includes(sourceEntrypoint)
+      || exports.some((name) => name !== 'default' && !/^[$A-Z_a-z][$\w]*$/u.test(name))) {
+    throw new Error(`semantic mutation requires exported entrypoint ${sourceEntrypoint} in ${sourcePath}`);
+  }
+  const original = `${absolute}.ownership-original.mjs`;
+  fs.copyFileSync(absolute, original);
+  const lines = [
+    `import * as original from ${JSON.stringify(`./${path.basename(original)}`)};`,
+    "const fail = () => { throw new Error('OpenBurnBar semantic ownership mutation'); };"
+  ];
+  for (const name of exports) {
+    if (name === sourceEntrypoint) {
+      lines.push(name === 'default'
+        ? 'export default (...args) => fail(...args);'
+        : `export const ${name} = (...args) => fail(...args);`);
+    } else if (name === 'default') {
+      lines.push('export default original.default;');
+    } else {
+      lines.push(`export const ${name} = original.${name};`);
+    }
+  }
+  fs.writeFileSync(absolute, `${lines.join('\n')}\n`);
+}
+
+function cloneIsolatedTarget(templateRoot) {
+  const container = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-p02-run-'));
+  const checkout = path.join(container, 'checkout');
+  fs.cpSync(templateRoot, checkout, {
+    recursive: true,
+    dereference: false,
+    mode: fs.constants.COPYFILE_FICLONE
+  });
+  return { checkout, container };
+}
+
+function executeOwnershipTest(repoRoot, targetHead, templateRoot, entry) {
+  const sourceSnapshot = commitSnapshot(
+    repoRoot, targetHead, entry.sourcePath, `${entry.requirementId} ${entry.component} source`
+  );
+  const testSnapshot = commitSnapshot(
+    repoRoot, targetHead, entry.testPath, `${entry.requirementId} ${entry.component} ownership test`
+  );
+  const baselineRoot = cloneIsolatedTarget(templateRoot);
+  let baseline;
+  try {
+    baseline = runOwnedTest(baselineRoot.checkout, entry);
+  } finally {
+    fs.rmSync(baselineRoot.container, { recursive: true, force: true });
+  }
+  const mutationRoot = cloneIsolatedTarget(templateRoot);
+  let mutation;
+  try {
+    installSemanticMutation(mutationRoot.checkout, entry);
+    mutation = runOwnedTest(mutationRoot.checkout, entry);
+  } finally {
+    fs.rmSync(mutationRoot.container, { recursive: true, force: true });
+  }
+  return {
+    requirementId: entry.requirementId,
+    component: entry.component,
+    sourcePath: entry.sourcePath,
+    sourceEntrypoint: entry.sourceEntrypoint,
+    sourceSha256: sourceSnapshot.sha256,
+    testPath: entry.testPath,
+    testName: entry.testName,
+    testSha256: testSnapshot.sha256,
+    status: baseline.passed && mutation.failedNormally ? 'passed' : 'failed',
+    exitCode: baseline.exitCode,
+    spawnSignal: baseline.signal,
+    spawnErrorCode: baseline.errorCode,
+    outputSha256: cryptoHash(Buffer.from(baseline.output)),
+    mutationDetected: mutation.failedNormally,
+    mutationExitCode: mutation.exitCode,
+    mutationSignal: mutation.signal,
+    mutationSpawnErrorCode: mutation.errorCode,
+    mutationOutputSha256: cryptoHash(Buffer.from(mutation.output))
+  };
 }
 
 export function collectCertificationTestExecutions(repoRoot, targetHead) {
   const repository = fs.realpathSync(repoRoot);
-  requireTargetWorktree(repository, targetHead);
+  if (!HEAD.test(targetHead ?? '')) throw new Error('test execution requires a canonical target HEAD');
   const registrySnapshot = commitSnapshot(repository, targetHead, REGISTRY_PATH, 'feature proof registry');
   const registry = parseJson(registrySnapshot, 'feature proof registry');
-  const executions = [];
-  const byPath = Map.groupBy(ownershipExecutions(registry), (entry) => entry.testPath);
-  const childEnvironment = { ...process.env, OPENBURNBAR_PARITY_PREFLIGHT_OWNERSHIP_TEST: '1' };
-  delete childEnvironment.NODE_TEST_CONTEXT;
-  for (const [testPath, entries] of byPath) {
-    const testSnapshot = commitSnapshot(repository, targetHead, testPath, `${testPath} ownership test`);
-    const result = spawnSync(process.execPath, ['--test', testPath], {
-      cwd: repository,
-      encoding: 'utf8',
-      maxBuffer: 16 * 1024 * 1024,
-      env: childEnvironment
-    });
-    const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
-    for (const entry of entries) {
-      const escapedName = entry.testName.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-      const namedTestPassed = new RegExp(`^ok [0-9]+ - ${escapedName}$`, 'mu').test(output);
-      const passed = result.status === 0 && namedTestPassed && /# fail 0/u.test(output);
-      executions.push({
-        testPath,
-        testName: entry.testName,
-        testSha256: testSnapshot.sha256,
-        status: passed ? 'passed' : 'failed',
-        exitCode: Number.isInteger(result.status) ? result.status : 1,
-        outputSha256: cryptoHash(Buffer.from(output))
-      });
-    }
+  const duplicates = duplicateOwnershipTests(registry);
+  if (duplicates.length > 0) {
+    throw new Error('certification ownership tests must be unique to one requirement component');
   }
-  return executions.sort((left, right) =>
-    executionKey(left.testPath, left.testName).localeCompare(executionKey(right.testPath, right.testName))
-  );
+  const templateRoot = isolatedTargetCheckout(repository, targetHead);
+  try {
+    return ownershipExecutions(registry).map((entry) =>
+      executeOwnershipTest(repository, targetHead, templateRoot, entry)
+    ).sort((left, right) =>
+      executionKey(left.requirementId, left.component).localeCompare(
+        executionKey(right.requirementId, right.component)
+      )
+    );
+  } finally {
+    fs.rmSync(templateRoot, { recursive: true, force: true });
+  }
 }
 
 function ownedSource(repoRoot, targetHead, relativePath, label) {
@@ -210,20 +570,64 @@ function ownedSource(repoRoot, targetHead, relativePath, label) {
   return commitSnapshot(repoRoot, targetHead, relativePath, label, true);
 }
 
-function executionReady(testExecutions, targetHead, testPath, testName, testSnapshot) {
+function executionReady(testExecutions, targetHead, requirementId, component, sourceSnapshot,
+  sourceEntrypoint, testPath, testName, testSnapshot) {
   if (!testSnapshot) return false;
   const rows = testExecutions.filter((entry) =>
-    entry?.testPath === testPath && entry?.testName === testName
+    entry?.requirementId === requirementId && entry?.component === component
   );
   return rows.length === 1
+    && rows[0].sourcePath === sourceSnapshot?.path
+    && rows[0].sourceEntrypoint === sourceEntrypoint
+    && rows[0].sourceSha256 === sourceSnapshot?.sha256
+    && rows[0].testPath === testPath
+    && rows[0].testName === testName
     && rows[0].status === 'passed'
     && rows[0].exitCode === 0
+    && rows[0].spawnSignal === null
+    && rows[0].spawnErrorCode === null
     && rows[0].testSha256 === testSnapshot.sha256
+    && rows[0].mutationDetected === true
+    && Number.isInteger(rows[0].mutationExitCode)
+    && rows[0].mutationExitCode > 0
+    && rows[0].mutationSignal === null
+    && rows[0].mutationSpawnErrorCode === null
     && HEAD.test(targetHead);
 }
 
+function normalizedRunScript(value) {
+  return value.split(/\r?\n/u).map((line) => line.trimEnd()).join('\n').trim();
+}
+
+function workflowExecutesProducer(
+  workflowSnapshot, workflowPath, producerPath, requirementId, component
+) {
+  const canonical = CANONICAL_WORKFLOW_OWNERSHIP[producerPath] ?? {
+    workflow: `.github/workflows/${requirementId.toLowerCase()}-${component}.yml`,
+    job: 'certification',
+    step: `${requirementId} ${component} executes`,
+    run: `node ${producerPath}`
+  };
+  if (canonical.workflow !== workflowPath) return false;
+  let document;
+  try {
+    document = parseYaml(workflowSnapshot.bytes.toString('utf8'));
+  } catch {
+    return false;
+  }
+  const steps = document?.jobs?.[canonical.job]?.steps;
+  if (!Array.isArray(steps)) return false;
+  const owned = steps.filter((step) => step?.name === canonical.step);
+  if (owned.length !== 1 || typeof owned[0].run !== 'string'
+      || owned[0]['continue-on-error'] !== undefined
+      || (canonical.stepId !== undefined && owned[0].id !== canonical.stepId)
+      || (canonical.condition === undefined && owned[0].if !== undefined)
+      || (canonical.condition !== undefined && owned[0].if !== canonical.condition)) return false;
+  return normalizedRunScript(owned[0].run) === normalizedRunScript(canonical.run);
+}
+
 function componentOwnershipStatus({
-  repoRoot, targetHead, ownership, component, testExecutions, expectedProducerPath
+  repoRoot, targetHead, requirementId, ownership, component, testExecutions, expectedProducerPath
 }) {
   if (!ownership || typeof ownership !== 'object') {
     return {
@@ -233,11 +637,15 @@ function componentOwnershipStatus({
   const producer = ownedSource(repoRoot, targetHead, ownership.producerPath, `${component} producer`);
   const workflow = ownedSource(repoRoot, targetHead, ownership.workflowPath, `${component} workflow`);
   const test = ownedSource(repoRoot, targetHead, ownership.testPath, `${component} test`);
-  const workflowSource = workflow?.bytes.toString('utf8') ?? '';
   const wired = producer && workflow && test
     && ownership.producerPath === expectedProducerPath
-    && workflowSource.includes(path.posix.basename(ownership.producerPath))
-    && executionReady(testExecutions, targetHead, ownership.testPath, ownership.testName, test);
+    && workflowExecutesProducer(
+      workflow, ownership.workflowPath, ownership.producerPath, requirementId, component
+    )
+    && executionReady(
+      testExecutions, targetHead, requirementId, component, producer, ownership.entrypoint,
+      ownership.testPath, ownership.testName, test
+    );
   return {
     status: wired ? 'ready' : 'invalid',
     producerPath: ownership.producerPath ?? null,
@@ -370,6 +778,10 @@ export function buildParityCertificationPreflight({
       && executionReady(
         testExecutions,
         targetHead,
+        requirementId,
+        'validator',
+        validatorSnapshot,
+        ownership.validator.entrypoint,
         ownership.validator.testPath,
         ownership.validator.mutationTestName,
         validatorTest
@@ -391,8 +803,9 @@ export function buildParityCertificationPreflight({
       ? componentOwnershipStatus({
         repoRoot: repository,
         targetHead,
+        requirementId,
         ownership: ownership.capture,
-        component: `${requirementId} capture`,
+        component: 'capture',
         testExecutions,
         expectedProducerPath: releaseRoles.length > 0
           ? 'scripts/linux-port/finalize-product-proof-closure.mjs'
@@ -444,8 +857,9 @@ export function buildParityCertificationPreflight({
       ? componentOwnershipStatus({
         repoRoot: repository,
         targetHead,
+        requirementId,
         ownership: ownership.materializer,
-        component: `${requirementId} materializer`,
+        component: 'materializer',
         testExecutions,
         expectedProducerPath: ownership.materializer?.producerPath
       })
@@ -584,6 +998,19 @@ export function validateParityCertificationPreflightSchema(repoRoot, document) {
   }
 }
 
+function normalizedExecution(entry) {
+  return Object.fromEntries(EXECUTION_AUTHENTICATION_FIELDS.map((field) => [field, entry?.[field]]));
+}
+
+export function certificationTestExecutionsMatch(claimed, independent) {
+  return Array.isArray(claimed) && Array.isArray(independent)
+    && claimed.length === independent.length
+    && claimed.every((entry, index) =>
+      JSON.stringify(normalizedExecution(entry))
+        === JSON.stringify(normalizedExecution(independent[index]))
+    );
+}
+
 export function validateParityCertificationPreflight(document, expected) {
   validateParityCertificationPreflightSchema(expected.repoRoot, document);
   const citedPaths = [
@@ -592,6 +1019,18 @@ export function validateParityCertificationPreflight(document, expected) {
   ];
   if (document.proofPath === expected.materializedProofPath || citedPaths.includes(document.proofPath)) {
     throw new Error('parity certification preflight proof is self-referential');
+  }
+  if (document.candidate.runId !== expected.candidate.runId
+      || document.candidate.artifactDigest !== expected.candidate.artifactDigest
+      || document.candidate.productProofClosureSha256 !== expected.candidate.productProofClosureSha256) {
+    throw new Error('parity certification preflight is stale, substituted, or not bound to current candidate');
+  }
+  const independentlyExecuted = collectCertificationTestExecutions(expected.repoRoot, expected.targetHead);
+  if (independentlyExecuted.some((entry) => entry.status !== 'passed')) {
+    throw new Error('independent target-commit ownership test execution failed');
+  }
+  if (!certificationTestExecutionsMatch(document.testExecutions, independentlyExecuted)) {
+    throw new Error('parity certification ownership executions are not independently authenticated');
   }
   const rebuilt = buildParityCertificationPreflight({
     repoRoot: expected.repoRoot,
@@ -604,9 +1043,6 @@ export function validateParityCertificationPreflight(document, expected) {
   });
   if (JSON.stringify(document) !== JSON.stringify(rebuilt)) {
     throw new Error('parity certification preflight is stale, substituted, or not bound to current inventory');
-  }
-  if (document.candidate.productProofClosureSha256 !== expected.candidate.productProofClosureSha256) {
-    throw new Error('parity certification preflight is bound to a stale candidate aggregate');
   }
   return document;
 }

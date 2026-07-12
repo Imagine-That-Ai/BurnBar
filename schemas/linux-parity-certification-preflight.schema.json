@@ -161,14 +161,31 @@
     "testExecution": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["testPath", "testName", "testSha256", "status", "exitCode", "outputSha256"],
+      "required": [
+        "requirementId", "component", "sourcePath", "sourceEntrypoint", "sourceSha256",
+        "testPath", "testName", "testSha256", "status", "exitCode", "spawnSignal",
+        "spawnErrorCode", "outputSha256", "mutationDetected", "mutationExitCode",
+        "mutationSignal", "mutationSpawnErrorCode", "mutationOutputSha256"
+      ],
       "properties": {
+        "requirementId": { "type": "string", "pattern": "^P-(0[1-9]|[1-3][0-9]|40)$" },
+        "component": { "enum": ["validator", "capture", "materializer"] },
+        "sourcePath": { "type": "string", "minLength": 1 },
+        "sourceEntrypoint": { "type": "string", "pattern": "^[$A-Z_a-z][$A-Z_a-z0-9]*$" },
+        "sourceSha256": { "$ref": "#/$defs/sha256" },
         "testPath": { "type": "string", "minLength": 1 },
         "testName": { "type": "string", "minLength": 1 },
         "testSha256": { "$ref": "#/$defs/sha256" },
         "status": { "enum": ["passed", "failed"] },
-        "exitCode": { "type": "integer", "minimum": 0 },
-        "outputSha256": { "$ref": "#/$defs/sha256" }
+        "exitCode": { "type": ["integer", "null"], "minimum": 0 },
+        "spawnSignal": { "type": ["string", "null"], "minLength": 1 },
+        "spawnErrorCode": { "type": ["string", "null"], "minLength": 1 },
+        "outputSha256": { "$ref": "#/$defs/sha256" },
+        "mutationDetected": { "type": "boolean" },
+        "mutationExitCode": { "type": ["integer", "null"], "minimum": 0 },
+        "mutationSignal": { "type": ["string", "null"], "minLength": 1 },
+        "mutationSpawnErrorCode": { "type": ["string", "null"], "minLength": 1 },
+        "mutationOutputSha256": { "$ref": "#/$defs/sha256" }
       }
     },
     "requirement": {

@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { main as runFeatureProofMaterializer } from './finalize-product-feature-proof-closure.mjs';
 import {
   MAX_FEATURE_PROOF_ARTIFACT_BYTES,
   MAX_FEATURE_PROOF_CONTRACT_BYTES,
@@ -150,6 +151,33 @@ function finalize(subject, overrides = {}) {
     ...overrides
   });
 }
+
+test('P-02 materializer CLI materializes the exact candidate registration', (t) => {
+  const subject = fixture();
+  t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
+  registerEvidence(subject);
+  const result = runFeatureProofMaterializer([
+    '--requirement', 'P-02',
+    '--environment', ENVIRONMENT,
+    '--input-root', subject.inputRoot,
+    '--target-head', HEAD,
+    '--candidate-run-id', RUN_ID,
+    '--candidate-artifact-digest', DIGEST
+  ], subject.root);
+  assert.equal(result.registered, true);
+  assert.equal(result.closure.requirementId, 'P-02');
+  assert.equal(result.closure.environmentId, ENVIRONMENT);
+  assert.deepEqual(result.closure.candidate, {
+    runId: RUN_ID,
+    artifactDigest: DIGEST,
+    productProofClosureSha256: sha256(subject.aggregateFile)
+  });
+  assert.deepEqual(result.closure.proofs.map((proof) => proof.role), [
+    'feature.parity-report',
+    'feature.visual-capture'
+  ]);
+  assert.equal(fs.existsSync(result.output), true);
+});
 
 test('feature closure binds the exact registry, candidate, product, environment, roles, and bytes', (t) => {
   const subject = fixture();

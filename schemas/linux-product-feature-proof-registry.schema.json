@@ -56,9 +56,10 @@
     "validatorOwnership": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["sourcePath", "testPath", "mutationTestName"],
+      "required": ["sourcePath", "entrypoint", "testPath", "mutationTestName"],
       "properties": {
         "sourcePath": { "$ref": "#/$defs/sourcePath" },
+        "entrypoint": { "$ref": "#/$defs/entrypoint" },
         "testPath": { "$ref": "#/$defs/testPath" },
         "mutationTestName": { "type": "string", "minLength": 1 }
       }
@@ -66,9 +67,10 @@
     "componentOwnership": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["producerPath", "workflowPath", "testPath", "testName"],
+      "required": ["producerPath", "entrypoint", "workflowPath", "testPath", "testName"],
       "properties": {
         "producerPath": { "$ref": "#/$defs/sourcePath" },
+        "entrypoint": { "$ref": "#/$defs/entrypoint" },
         "workflowPath": { "type": "string", "pattern": "^\\.github/workflows/[a-z0-9-]+\\.yml$" },
         "testPath": { "$ref": "#/$defs/testPath" },
         "testName": { "type": "string", "minLength": 1 }
@@ -77,6 +79,10 @@
     "sourcePath": {
       "type": "string",
       "pattern": "^scripts/linux-port/[A-Za-z0-9._/-]+\\.mjs$"
+    },
+    "entrypoint": {
+      "type": "string",
+      "pattern": "^[$A-Z_a-z][$A-Z_a-z0-9]*$"
     },
     "testPath": {
       "type": "string",

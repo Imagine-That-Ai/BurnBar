@@ -122,6 +122,7 @@ export function validateFeatureProofRegistry(repoRoot, snapshot) {
     }
   }
   const seenCertification = new Set();
+  const seenCertificationTests = new Map();
   let previousCertification = '';
   for (const ownership of document.certification ?? []) {
     if (!canonicalIds.has(ownership.requirementId)) {
@@ -135,6 +136,22 @@ export function validateFeatureProofRegistry(repoRoot, snapshot) {
     }
     previousCertification = ownership.requirementId;
     seenCertification.add(ownership.requirementId);
+    for (const [component, nameField] of [
+      ['validator', 'mutationTestName'],
+      ['capture', 'testName'],
+      ['materializer', 'testName']
+    ]) {
+      const value = ownership[component];
+      const key = `${value.testPath}\0${value[nameField]}`;
+      const previous = seenCertificationTests.get(key);
+      if (previous) {
+        throw new Error(
+          `feature proof registry reuses ownership test ${value.testPath} :: ${value[nameField]} `
+          + `for ${previous} and ${ownership.requirementId}/${component}`
+        );
+      }
+      seenCertificationTests.set(key, `${ownership.requirementId}/${component}`);
+    }
   }
   return { document, contracts: new Map(document.requirements.map((entry) => [entry.requirementId, entry])) };
 }

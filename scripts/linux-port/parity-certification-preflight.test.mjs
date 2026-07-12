@@ -10,6 +10,8 @@ import {
   PARITY_PREFLIGHT_FILENAME,
   PARITY_PREFLIGHT_ROLE,
   REQUIREMENT_IDS,
+  certificationTestExecutionsMatch,
+  classifyOwnershipTestSpawn,
   collectCertificationTestExecutions,
   validateParityCertificationPreflight
 } from './lib/parity-certification-preflight.mjs';
@@ -123,22 +125,36 @@ function registry(complete) {
         : requirementId === 'P-02'
           ? 'scripts/linux-port/capture-parity-certification-preflight.mjs'
           : `scripts/linux-port/capture-${requirementId.toLowerCase()}.mjs`;
+      const materializerProducerPath = RELEASE_ONLY.has(requirementId)
+        ? 'scripts/linux-port/prepare-product-requirement-input.mjs'
+        : requirementId === 'P-02'
+          ? 'scripts/linux-port/finalize-product-feature-proof-closure.mjs'
+          : `scripts/linux-port/materialize-${requirementId.toLowerCase()}.mjs`;
       return {
         requirementId,
         validator: {
           sourcePath: `scripts/linux-port/product-validators/${requirementId}.mjs`,
+          entrypoint: 'validateProductRequirement',
           testPath,
           mutationTestName: `${requirementId} semantic mutation fails closed`
         },
         capture: {
           producerPath: captureProducerPath,
-          workflowPath: `.github/workflows/${requirementId.toLowerCase()}-capture.yml`,
+          entrypoint: 'requirement',
+          workflowPath: RELEASE_ONLY.has(requirementId)
+            ? '.github/workflows/linux-release.yml'
+            : requirementId === 'P-02'
+              ? '.github/workflows/linux-product-parity.yml'
+              : `.github/workflows/${requirementId.toLowerCase()}-capture.yml`,
           testPath,
           testName: `${requirementId} capture executes`
         },
         materializer: {
-          producerPath: `scripts/linux-port/materialize-${requirementId.toLowerCase()}.mjs`,
-          workflowPath: `.github/workflows/${requirementId.toLowerCase()}-materialize.yml`,
+          producerPath: materializerProducerPath,
+          entrypoint: 'requirement',
+          workflowPath: RELEASE_ONLY.has(requirementId) || requirementId === 'P-02'
+            ? '.github/workflows/linux-product-parity.yml'
+            : `.github/workflows/${requirementId.toLowerCase()}-materialize.yml`,
           testPath,
           testName: `${requirementId} materializer executes`
         }
@@ -170,19 +186,34 @@ function createRepository({ complete = true } = {}) {
       + `  if (context.observedRequirement !== '${requirementId}') throw new Error('${requirementId} semantic mutation');\n`
       + `  return { status: 'passed', requirementId: '${requirementId}' };\n}\n`);
     const ownership = registry(complete).certification.find((entry) => entry.requirementId === requirementId);
+    const testDirectory = path.posix.dirname(ownership.validator.testPath);
+    const relativeModule = (modulePath) => {
+      const relative = path.posix.relative(testDirectory, modulePath);
+      return relative.startsWith('.') ? relative : `./${relative}`;
+    };
     write(root, ownership.validator.testPath,
       `import assert from 'node:assert/strict';\n`
       + `import test from 'node:test';\n`
       + `import { validateProductRequirement } from '../product-validators/${requirementId}.mjs';\n`
+      + `import * as captureProducer from '${relativeModule(ownership.capture.producerPath)}';\n`
+      + `import * as materializerProducer from '${relativeModule(ownership.materializer.producerPath)}';\n`
       + `test('${ownership.validator.mutationTestName}', async () => {\n`
       + `  await assert.rejects(() => validateProductRequirement({ observedRequirement: 'substituted' }), /semantic mutation/u);\n`
       + `});\n`
-      + `test('${ownership.capture.testName}', () => {});\n`
-      + `test('${ownership.materializer.testName}', () => {});\n`);
+      + `test('${ownership.capture.testName}', () => assert.equal(typeof captureProducer.requirement, 'string'));\n`
+      + `test('${ownership.materializer.testName}', () => assert.equal(typeof materializerProducer.requirement, 'string'));\n`);
     for (const component of ['capture', 'materializer']) {
       write(root, ownership[component].producerPath, `export const requirement = '${requirementId}';\n`);
-      write(root, ownership[component].workflowPath,
-        `run: node ${ownership[component].producerPath}\n`);
+      const workflowPath = ownership[component].workflowPath;
+      if (['.github/workflows/linux-release.yml', '.github/workflows/linux-product-parity.yml']
+        .includes(workflowPath)) {
+        write(root, workflowPath, fs.readFileSync(path.join(SOURCE_ROOT, workflowPath)));
+      } else {
+        write(root, workflowPath,
+          `jobs:\n  certification:\n    steps:\n`
+          + `      - name: ${requirementId} ${component} executes\n`
+          + `        run: node ${ownership[component].producerPath}\n`);
+      }
     }
   }
   write(root, 'scripts/linux-port/run-product-requirement-validator.mjs', 'export const runner = true;\n');
@@ -236,25 +267,49 @@ function createRepository({ complete = true } = {}) {
 }
 
 function capture(subject, overrides = {}) {
-  const registryValue = JSON.parse(fs.readFileSync(
-    path.join(subject.root, 'docs/linux-port/product-feature-proof-registry.json'),
-    'utf8'
-  ));
-  const executions = new Map();
+  const committedBytes = (relativePath) => {
+    try {
+      return execFileSync('git', ['show', `${subject.head}:${relativePath}`], {
+        cwd: subject.root,
+        encoding: 'buffer',
+        stdio: ['ignore', 'pipe', 'ignore']
+      });
+    } catch {
+      return null;
+    }
+  };
+  const registryValue = JSON.parse(committedBytes(
+    'docs/linux-port/product-feature-proof-registry.json'
+  ).toString('utf8'));
+  const executions = [];
   for (const ownership of registryValue.certification ?? []) {
     for (const [component, nameField] of [
       ['validator', 'mutationTestName'], ['capture', 'testName'], ['materializer', 'testName']
     ]) {
       const owned = ownership[component];
-      const key = `${owned.testPath}\0${owned[nameField]}`;
-      if (!fs.existsSync(path.join(subject.root, owned.testPath))) continue;
-      executions.set(key, {
+      const sourcePath = component === 'validator' ? owned.sourcePath : owned.producerPath;
+      const sourceBytes = committedBytes(sourcePath);
+      const testBytes = committedBytes(owned.testPath);
+      if (!sourceBytes || !testBytes) continue;
+      executions.push({
+        requirementId: ownership.requirementId,
+        component,
+        sourcePath,
+        sourceEntrypoint: owned.entrypoint,
+        sourceSha256: crypto.createHash('sha256').update(sourceBytes).digest('hex'),
         testPath: owned.testPath,
         testName: owned[nameField],
-        testSha256: sha256(path.join(subject.root, owned.testPath)),
+        testSha256: crypto.createHash('sha256').update(testBytes).digest('hex'),
         status: 'passed',
         exitCode: 0,
-        outputSha256: 'c'.repeat(64)
+        spawnSignal: null,
+        spawnErrorCode: null,
+        outputSha256: 'c'.repeat(64),
+        mutationDetected: true,
+        mutationExitCode: 1,
+        mutationSignal: null,
+        mutationSpawnErrorCode: null,
+        mutationOutputSha256: 'd'.repeat(64)
       });
     }
   }
@@ -265,8 +320,8 @@ function capture(subject, overrides = {}) {
     targetHead: subject.head,
     candidateRunId: RUN_ID,
     candidateArtifactDigest: DIGEST,
-    testExecutions: [...executions.values()].sort((left, right) =>
-      `${left.testPath}:${left.testName}`.localeCompare(`${right.testPath}:${right.testName}`)
+    testExecutions: executions.sort((left, right) =>
+      `${left.requirementId}:${left.component}`.localeCompare(`${right.requirementId}:${right.component}`)
     ),
     ...overrides
   });
@@ -410,7 +465,9 @@ function validatorContext(subject, captureResult) {
 test('current implementation inventory truthfully blocks exactly the 35 unimplemented requirement lanes', async (t) => {
   const subject = createRepository({ complete: false });
   t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
-  const captured = capture(subject);
+  const captured = capture(subject, {
+    testExecutions: collectCertificationTestExecutions(subject.root, subject.head)
+  });
   assert.equal(captured.document.status, 'blocked');
   assert.equal(captured.document.summary.validatorCount, 5);
   assert.equal(captured.document.summary.captureCount, 5);
@@ -424,6 +481,60 @@ test('current implementation inventory truthfully blocks exactly the 35 unimplem
     () => validateProductRequirement(validatorContext(subject, captured)),
     /remains blocked by incomplete substantive parity coverage/u
   );
+});
+
+test('P-02 validator rejects an invocation without a passed release closure', async () => {
+  await assert.rejects(
+    () => validateProductRequirement({}),
+    /requirement release closure is not passed and invocation-bound/u
+  );
+});
+
+test('ownership mutation accepts only a normal nonzero child exit', () => {
+  const testName = 'P-02 mutation target';
+  const normalFailure = classifyOwnershipTestSpawn({
+    status: 1, signal: null, stdout: '', stderr: 'expected failure\n'
+  }, testName);
+  assert.equal(normalFailure.failedNormally, true);
+  for (const [name, result, expectedError, expectedSignal] of [
+    ['timeout', { status: null, signal: 'SIGKILL', error: { code: 'ETIMEDOUT' } }, 'ETIMEDOUT', 'SIGKILL'],
+    ['output overflow', { status: null, signal: null, error: { code: 'ENOBUFS' } }, 'ENOBUFS', null],
+    ['abnormal signal', { status: null, signal: 'SIGABRT' }, null, 'SIGABRT']
+  ]) {
+    const classified = classifyOwnershipTestSpawn({ stdout: '', stderr: '', ...result }, testName);
+    assert.equal(classified.failedNormally, false, name);
+    assert.equal(classified.passed, false, name);
+    assert.equal(classified.exitCode, null, name);
+    assert.equal(classified.errorCode, expectedError, name);
+    assert.equal(classified.signal, expectedSignal, name);
+  }
+});
+
+test('execution authentication binds baseline and mutation result metadata and output digests', (t) => {
+  const subject = createRepository({ complete: false });
+  t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
+  const executions = capture(subject).document.testExecutions;
+  assert.equal(certificationTestExecutionsMatch(executions, executions), true);
+  for (const [field, value] of [
+    ['outputSha256', 'e'.repeat(64)],
+    ['mutationExitCode', 2],
+    ['mutationOutputSha256', 'f'.repeat(64)]
+  ]) {
+    const tampered = executions.map((entry, index) => index === 0 ? { ...entry, [field]: value } : entry);
+    assert.equal(certificationTestExecutionsMatch(tampered, executions), false, field);
+  }
+});
+
+test('P-02 capture emits a blocked candidate-bound diagnostic inventory', (t) => {
+  const subject = createRepository({ complete: false });
+  t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
+  const captured = capture(subject);
+  assert.equal(captured.document.targetHead, subject.head);
+  assert.equal(captured.document.candidate.runId, RUN_ID);
+  assert.equal(captured.document.candidate.artifactDigest, DIGEST);
+  assert.equal(captured.document.status, 'blocked');
+  assert.equal(captured.document.summary.readyCount, 5);
+  assert.equal(fs.existsSync(captured.output), true);
 });
 
 test('inventory detects every missing, duplicate, reused, invalid, and unsupported ownership gap', async (t) => {
@@ -517,6 +628,210 @@ test('executed semantic mutation ownership rejects a unique no-op validator', (t
   );
 });
 
+test('paired no-op ownership, duplicate tests, workflow comments, and untracked imports fail closed', async (t) => {
+  await t.test('paired no-op validator and ownership test cannot authenticate fabricated passing executions', () => {
+    const subject = createRepository();
+    t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
+    const ownership = registry(true).certification.find((row) => row.requirementId === 'P-05');
+    write(subject.root, ownership.validator.sourcePath,
+      "export async function validateProductRequirement() { return { status: 'passed' }; }\n");
+    write(subject.root, ownership.validator.testPath,
+      `import test from 'node:test';\n`
+      + `test('${ownership.validator.mutationTestName}', () => {});\n`
+      + `test('${ownership.capture.testName}', () => {});\n`
+      + `test('${ownership.materializer.testName}', () => {});\n`);
+    commitMutation(subject, 'paired no-op validator and ownership test');
+    const fabricated = capture(subject);
+    assert.throws(() => validateParityCertificationPreflight(fabricated.document, {
+      repoRoot: subject.root,
+      targetHead: subject.head,
+      environmentId: ENVIRONMENT,
+      materializedProofPath: `${subject.inputRelative}/release-subjects/proof.json`,
+      candidate: fabricated.document.candidate
+    }), /independent target-commit ownership test execution failed/u);
+  });
+
+  await t.test('duplicate ownership test registration is rejected', () => {
+    const subject = createRepository();
+    t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
+    mutateFeatureRegistry(subject, (value) => {
+      const p05 = value.certification.find((row) => row.requirementId === 'P-05');
+      const p06 = value.certification.find((row) => row.requirementId === 'P-06');
+      p06.validator.testPath = p05.validator.testPath;
+      p06.validator.mutationTestName = p05.validator.mutationTestName;
+    });
+    commitMutation(subject, 'reuse ownership test');
+    assert.throws(
+      () => collectCertificationTestExecutions(subject.root, subject.head),
+      /ownership tests must be unique/u
+    );
+    const captured = capture(subject);
+    assert.ok(captured.document.blockers.some((blocker) => blocker.code === 'reused-ownership-test'));
+  });
+
+  await t.test('a YAML comment mentioning the producer is not executable workflow wiring', () => {
+    const subject = createRepository();
+    t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
+    const ownership = registry(true).certification.find((row) => row.requirementId === 'P-05').capture;
+    write(subject.root, ownership.workflowPath,
+      `jobs:\n  certification:\n    steps:\n      - run: echo safe # node ${ownership.producerPath}\n`);
+    commitMutation(subject, 'replace capture command with comment');
+    const captured = capture(subject);
+    const p05 = captured.document.requirements.find((row) => row.requirementId === 'P-05');
+    assert.equal(p05.capture.status, 'invalid');
+    assert.equal(p05.ready, false);
+  });
+
+  for (const [name, run] of [
+    ['a command behind an always-false branch', (producer) => `if false; then node ${producer}; fi`],
+    ['a command whose failure is swallowed', (producer) => `node ${producer} --help || true`]
+  ]) {
+    await t.test(`${name} is not executable workflow wiring`, () => {
+      const subject = createRepository();
+      t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
+      const ownership = registry(true).certification.find((row) => row.requirementId === 'P-05').capture;
+      write(subject.root, ownership.workflowPath,
+        `jobs:\n  certification:\n    steps:\n`
+        + `      - name: P-05 capture executes\n`
+        + `        run: ${run(ownership.producerPath)}\n`);
+      commitMutation(subject, `replace capture command: ${name}`);
+      const captured = capture(subject);
+      const p05 = captured.document.requirements.find((row) => row.requirementId === 'P-05');
+      assert.equal(p05.capture.status, 'invalid');
+      assert.equal(p05.ready, false);
+    });
+  }
+
+  await t.test('a producer command in an unrelated step is not executable workflow wiring', () => {
+    const subject = createRepository();
+    t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
+    const ownership = registry(true).certification.find((row) => row.requirementId === 'P-05').capture;
+    write(subject.root, ownership.workflowPath,
+      `jobs:\n  certification:\n    steps:\n`
+      + `      - name: P-05 capture executes\n`
+      + `        run: echo safe\n`
+      + `      - name: unrelated\n`
+      + `        run: node ${ownership.producerPath}\n`);
+    commitMutation(subject, 'move capture command to unrelated step');
+    const captured = capture(subject);
+    const p05 = captured.document.requirements.find((row) => row.requirementId === 'P-05');
+    assert.equal(p05.capture.status, 'invalid');
+    assert.equal(p05.ready, false);
+  });
+
+  await t.test('an untracked imported helper cannot influence isolated target execution', () => {
+    const subject = createRepository();
+    t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
+    const ownership = registry(true).certification.find((row) => row.requirementId === 'P-05');
+    write(subject.root, ownership.validator.testPath,
+      `import assert from 'node:assert/strict';\n`
+      + `import test from 'node:test';\n`
+      + `import { semanticPass } from './untracked-helper.mjs';\n`
+      + `test('${ownership.validator.mutationTestName}', () => assert.equal(semanticPass, true));\n`
+      + `test('${ownership.capture.testName}', () => assert.equal(semanticPass, true));\n`
+      + `test('${ownership.materializer.testName}', () => assert.equal(semanticPass, true));\n`);
+    commitMutation(subject, 'ownership test imports absent helper');
+    write(subject.root, 'scripts/linux-port/ownership-tests/untracked-helper.mjs',
+      'export const semanticPass = true;\n');
+    const executions = collectCertificationTestExecutions(subject.root, subject.head);
+    assert.ok(executions.filter((entry) => entry.requirementId === 'P-05')
+      .every((entry) => entry.status === 'failed'));
+  });
+
+  await t.test('a committed target symlink cannot escape isolated ownership execution', () => {
+    const subject = createRepository();
+    t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
+    fs.symlinkSync('/etc/hosts', path.join(
+      subject.root, 'scripts/linux-port/ownership-tests/external-helper.mjs'
+    ));
+    commitMutation(subject, 'add target symlink outside isolated checkout');
+    assert.throws(
+      () => collectCertificationTestExecutions(subject.root, subject.head),
+      /target archive contains a symbolic link/u
+    );
+  });
+});
+
+test('capture failure always leaves an uploadable non-promotable diagnostic', (t) => {
+  const subject = createRepository();
+  t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
+  const diagnosticRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-p02-diagnostic-test-'));
+  t.after(() => fs.rmSync(diagnosticRoot, { recursive: true, force: true }));
+  write(subject.root, '.linux-parity-diagnostics', 'hostile repository path\n');
+  const baseline = capture(subject);
+  const failedExecutions = baseline.document.testExecutions.map((entry, index) =>
+    index === 0 ? { ...entry, status: 'failed', exitCode: 1 } : entry
+  );
+  assert.throws(() => captureParityCertificationPreflight({
+    repoRoot: subject.root,
+    inputRoot: subject.inputRoot,
+    environmentId: ENVIRONMENT,
+    targetHead: subject.head,
+    candidateRunId: RUN_ID,
+    candidateArtifactDigest: DIGEST,
+    diagnosticRoot,
+    testExecutions: failedExecutions
+  }), /ownership tests failed/u);
+  const diagnosticPath = path.join(diagnosticRoot, 'capture-failure.json');
+  const diagnostic = JSON.parse(fs.readFileSync(diagnosticPath, 'utf8'));
+  assert.equal(diagnostic.status, 'capture-failed');
+  assert.equal(diagnostic.targetHead, subject.head);
+  assert.equal(fs.existsSync(path.join(subject.inputRoot, 'feature-proof-registration.json')), false);
+
+  const hostileOutput = path.join(subject.inputRoot, 'feature-artifacts', PARITY_PREFLIGHT_FILENAME);
+  fs.mkdirSync(hostileOutput, { recursive: true });
+  assert.throws(() => captureParityCertificationPreflight({
+    repoRoot: subject.root,
+    inputRoot: subject.inputRoot,
+    environmentId: ENVIRONMENT,
+    targetHead: subject.head,
+    candidateRunId: RUN_ID,
+    candidateArtifactDigest: DIGEST,
+    diagnosticRoot,
+    testExecutions: failedExecutions
+  }));
+  assert.equal(JSON.parse(fs.readFileSync(diagnosticPath, 'utf8')).status, 'capture-failed');
+  assert.equal(fs.existsSync(path.join(subject.inputRoot, 'feature-proof-registration.json')), false);
+
+  assert.throws(() => captureParityCertificationPreflight({
+    repoRoot: subject.root,
+    inputRoot: path.join(subject.root, 'missing-input-root'),
+    environmentId: ENVIRONMENT,
+    targetHead: subject.head,
+    candidateRunId: RUN_ID,
+    candidateArtifactDigest: DIGEST,
+    diagnosticRoot,
+    testExecutions: failedExecutions
+  }));
+  assert.equal(JSON.parse(fs.readFileSync(diagnosticPath, 'utf8')).status, 'capture-failed');
+
+  let fallbackError;
+  try {
+    captureParityCertificationPreflight({
+      repoRoot: subject.root,
+      inputRoot: path.join(subject.root, 'missing-input-root'),
+      environmentId: ENVIRONMENT,
+      targetHead: subject.head,
+      candidateRunId: RUN_ID,
+      candidateArtifactDigest: DIGEST,
+      diagnosticRoot: path.join(subject.root, '.linux-parity-diagnostics'),
+      testExecutions: failedExecutions
+    });
+    assert.fail('hostile diagnostic root unexpectedly succeeded');
+  } catch (error) {
+    fallbackError = error;
+  }
+  assert.equal(typeof fallbackError.diagnosticOutput, 'string');
+  assert.notEqual(path.dirname(fallbackError.diagnosticOutput), path.join(
+    subject.root, '.linux-parity-diagnostics'
+  ));
+  assert.equal(JSON.parse(fs.readFileSync(fallbackError.diagnosticOutput, 'utf8')).status, 'capture-failed');
+  t.after(() => fs.rmSync(path.dirname(fallbackError.diagnosticOutput), {
+    recursive: true,
+    force: true
+  }));
+});
+
 test('uncommitted target inventory and validator substitutions cannot affect the commit snapshot', (t) => {
   const subject = createRepository();
   t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
@@ -574,7 +889,7 @@ test('target snapshots, candidate substitution, and self-referential proof fail 
       environmentId: ENVIRONMENT,
       materializedProofPath: `${subject.inputRelative}/release-subjects/proof.json`,
       candidate: captured.document.candidate
-    }), /stale, substituted, or not bound/u);
+    }), /not independently authenticated/u);
   });
   await t.test('stale candidate registry', () => {
     const subject = createRepository();

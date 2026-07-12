@@ -55,6 +55,14 @@ function valid() {
       "if: inputs.requirement == 'P-02'",
       "if: always() && inputs.requirement == 'P-02'",
       'linux-product-parity-diagnostic-',
+      'id: p02_capture',
+      'mktemp -d "${RUNNER_TEMP}/openburnbar-p02.XXXXXX"',
+      "printf 'diagnostic_root=%s\\n' \"$diagnostic_root\" >> \"$GITHUB_OUTPUT\"",
+      '--diagnostic-root "$diagnostic_root"',
+      '${{ steps.p02_capture.outputs.diagnostic_root }}/',
+      'capture-failure.json',
+      'capture.log',
+      '2>&1 | tee "$capture_log"',
       'finalize-product-feature-proof-closure.mjs',
       'prepare-product-requirement-input.mjs',
       'run-product-requirement-validator.mjs',
@@ -63,6 +71,7 @@ function valid() {
       'uses: actions/attest@',
       '.sigstore.jsonl',
       'if-no-files-found: error',
+      'include-hidden-files: true',
       'Download exact-candidate installed evidence',
       'Capture parity certification preflight',
       'Preserve non-promotable P-02 diagnostic evidence',
@@ -243,9 +252,18 @@ test('product evidence producer identity and immutable artifact wiring fail clos
     '--run-id "$CANDIDATE_RUN_ID"',
     '--target-head "$TARGET_HEAD"',
     'artifact-ids: ${{ steps.evidence.outputs.artifact_id }}',
+    'id: p02_capture',
+    'mktemp -d "${RUNNER_TEMP}/openburnbar-p02.XXXXXX"',
+    "printf 'diagnostic_root=%s\\n' \"$diagnostic_root\" >> \"$GITHUB_OUTPUT\"",
+    '--diagnostic-root "$diagnostic_root"',
+    '${{ steps.p02_capture.outputs.diagnostic_root }}/',
+    'capture-failure.json',
+    'capture.log',
+    '2>&1 | tee "$capture_log"',
     'finalize-product-feature-proof-closure.mjs',
     'uses: actions/attest@',
-    '.sigstore.jsonl'
+    '.sigstore.jsonl',
+    'include-hidden-files: true'
   ]) {
     const input = valid();
     input.productParityWorkflow = input.productParityWorkflow.replace(marker, 'removed');
