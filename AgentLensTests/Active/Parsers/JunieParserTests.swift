@@ -270,6 +270,221 @@ final class JunieParserTests: XCTestCase {
         XCTAssertTrue(result.usages.isEmpty)
     }
 
+    // MARK: - Schema-variant contract tests (best-known real shape)
+    //
+    // TODO(junie-schema-pin): these inline fixtures pin the best-known
+    // events.jsonl/state.json/index.jsonl shapes from PR #1136's live-install
+    // inspection. JetBrains does not publicly document the on-disk schema, so
+    // the one thing that still needs a REAL authenticated Junie session is
+    // capturing a frozen session triple and promoting it into the
+    // ParserContract corpus (pc-junie-*). See JunieParser.swift header.
+
+    /// A full session triple (index.jsonl + events.jsonl + state.json) in the
+    /// best-known real shape: lifecycle noise, roled messages, explicit usage
+    /// on the assistant message, model + projectPath in state.json.
+    func testBestKnownRealShapeSessionTriple() async throws {
+        let (tempRoot, sessionsRoot, supportRoot) = try makeTempRoots()
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let sessionId = "session-260711-101500-zz99"
+        try """
+        {"sessionId":"\(sessionId)","projectPath":"/Users/alberto/Projects/triple","createdAt":1783764900000}
+        """.write(
+            to: sessionsRoot.appendingPathComponent("index.jsonl"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try writeSession(
+            sessionsRoot: sessionsRoot,
+            sessionId: sessionId,
+            events: """
+            {"type":"lifecycle","phase":"sessionStarted","timestamp":"2026-07-11T10:15:00.000Z"}
+            {"type":"message","timestamp":"2026-07-11T10:15:02.000Z","message":{"role":"user","content":"Add a regression test"}}
+            {"type":"message","timestamp":"2026-07-11T10:15:30.000Z","message":{"role":"assistant","content":"Added and passing.","usage":{"input_tokens":800,"output_tokens":120,"cache_read_input_tokens":300}}}
+            {"type":"lifecycle","phase":"sessionEnded","timestamp":"2026-07-11T10:15:31.000Z"}
+            """,
+            state: """
+            {"model":"claude-sonnet-4-5","projectPath":"/Users/alberto/Projects/triple","env":{"OPAQUE":"enc:v1:abc"}}
+            """
+        )
+
+        let parser = JunieParser(
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
+            sessionsDirectoryOverride: sessionsRoot
+        )
+        let result = try await parser.parse(options: LogParseOptions(includeConversationBodies: true))
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(usage.sessionId, sessionId)
+        XCTAssertEqual(usage.inputTokens, 800)
+        XCTAssertEqual(usage.outputTokens, 120)
+        XCTAssertEqual(usage.cacheReadTokens, 300)
+        XCTAssertEqual(usage.model, "claude-sonnet-4-5")
+        XCTAssertEqual(usage.provenanceConfidence, .exact)
+        XCTAssertTrue(usage.projectName.contains("Projects/triple"), "got \(usage.projectName)")
+        let conversation = try XCTUnwrap(result.conversations.first)
+        XCTAssertTrue(conversation.inferredTaskTitle.contains("regression test"))
+    }
+
+    /// Reasoning/thinking tokens are a distinct bucket (VAL-TOKEN-006) and
+    /// must survive into the TokenUsage record, not be dropped.
+    func testReasoningTokensBucketIsPreserved() async throws {
+        let (tempRoot, sessionsRoot, supportRoot) = try makeTempRoots()
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        try writeSession(
+            sessionsRoot: sessionsRoot,
+            sessionId: "session-260711-110000-rt01",
+            events: """
+            {"type":"message","message":{"role":"assistant","content":"done","usage":{"input_tokens":400,"output_tokens":90,"completion_tokens_details":{"reasoning_tokens":256}}}}
+            """
+        )
+
+        let parser = JunieParser(
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
+            sessionsDirectoryOverride: sessionsRoot
+        )
+        let result = try await parser.parse()
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(usage.inputTokens, 400)
+        XCTAssertEqual(usage.outputTokens, 90)
+        XCTAssertEqual(usage.reasoningTokens, 256)
+        XCTAssertEqual(usage.provenanceConfidence, .exact)
+    }
+
+    /// A session whose ONLY explicit bucket is reasoning tokens is still an
+    /// exact measurement — it must not fall back to character estimation.
+    func testReasoningOnlyUsageDoesNotFallBackToEstimate() async throws {
+        let (tempRoot, sessionsRoot, supportRoot) = try makeTempRoots()
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        try writeSession(
+            sessionsRoot: sessionsRoot,
+            sessionId: "session-260711-111500-rt02",
+            events: """
+            {"type":"message","message":{"role":"user","content":"think hard about the flaky test"}}
+            {"type":"message","message":{"role":"assistant","content":"thought about it","usage":{"reasoning_tokens":512}}}
+            """
+        )
+
+        let parser = JunieParser(
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
+            sessionsDirectoryOverride: sessionsRoot
+        )
+        let result = try await parser.parse()
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(usage.reasoningTokens, 512)
+        XCTAssertEqual(usage.provenanceConfidence, .exact)
+    }
+
+    /// Junie builds vary between camelCase and snake_case index fields.
+    func testSnakeCaseIndexFieldsMapProject() async throws {
+        let (tempRoot, sessionsRoot, supportRoot) = try makeTempRoots()
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let sessionId = "session-260711-112000-sc03"
+        try """
+        {"session_id":"\(sessionId)","project_path":"/Users/alberto/Projects/snake"}
+        """.write(
+            to: sessionsRoot.appendingPathComponent("index.jsonl"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try writeSession(
+            sessionsRoot: sessionsRoot,
+            sessionId: sessionId,
+            events: """
+            {"type":"message","message":{"role":"assistant","content":"ok","usage":{"input_tokens":10,"output_tokens":5}}}
+            """
+        )
+
+        let parser = JunieParser(
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
+            sessionsDirectoryOverride: sessionsRoot
+        )
+        let result = try await parser.parse()
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertTrue(usage.projectName.contains("Projects/snake"), "got \(usage.projectName)")
+    }
+
+    /// The `data` envelope key variant unwraps like `event`/`payload`.
+    func testDataEnvelopeKeyUnwraps() async throws {
+        let (tempRoot, sessionsRoot, supportRoot) = try makeTempRoots()
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        try writeSession(
+            sessionsRoot: sessionsRoot,
+            sessionId: "session-260711-113000-de04",
+            events: """
+            {"type":"agentEvent","data":{"message":{"role":"assistant","content":"wrapped in data","usage":{"input_tokens":70,"output_tokens":20}},"model":"gpt-5.5"}}
+            """
+        )
+
+        let parser = JunieParser(
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
+            sessionsDirectoryOverride: sessionsRoot
+        )
+        let result = try await parser.parse()
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(usage.inputTokens, 70)
+        XCTAssertEqual(usage.outputTokens, 20)
+        XCTAssertEqual(usage.model, "gpt-5.5")
+    }
+
+    /// Malformed lines interleaved with valid ones must be skipped, not fatal.
+    func testMalformedLinesAreSkipped() async throws {
+        let (tempRoot, sessionsRoot, supportRoot) = try makeTempRoots()
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        try writeSession(
+            sessionsRoot: sessionsRoot,
+            sessionId: "session-260711-114500-ml05",
+            events: """
+            this is not json
+            {"type":"message","message":{"role":"user","content":"still parses"}}
+            {"truncated": "line
+            {"type":"message","message":{"role":"assistant","content":"yes","usage":{"input_tokens":33,"output_tokens":11}}}
+            []
+            """
+        )
+
+        let parser = JunieParser(
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
+            sessionsDirectoryOverride: sessionsRoot
+        )
+        let result = try await parser.parse()
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(usage.inputTokens, 33)
+        XCTAssertEqual(usage.outputTokens, 11)
+        XCTAssertEqual(usage.provenanceConfidence, .exact)
+    }
+
+    /// A `total_tokens`-only usage record normalizes into input/output
+    /// buckets (VAL-TOKEN-004) instead of being treated as absent.
+    func testTotalTokensOnlyUsageNormalizes() async throws {
+        let (tempRoot, sessionsRoot, supportRoot) = try makeTempRoots()
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        try writeSession(
+            sessionsRoot: sessionsRoot,
+            sessionId: "session-260711-115900-tt06",
+            events: """
+            {"type":"message","message":{"role":"user","content":"How many tokens did that take?"}}
+            {"type":"message","message":{"role":"assistant","content":"A fair few.","usage":{"total_tokens":900}}}
+            """
+        )
+
+        let parser = JunieParser(
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
+            sessionsDirectoryOverride: sessionsRoot
+        )
+        let result = try await parser.parse()
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(usage.inputTokens + usage.outputTokens, 900)
+        XCTAssertGreaterThan(usage.inputTokens, 0)
+        XCTAssertGreaterThan(usage.outputTokens, 0)
+        XCTAssertEqual(usage.provenanceConfidence, .exact)
+    }
+
     // MARK: - Conversations + caching
 
     func testConversationRecordAndDiskCacheRoundTrip() async throws {
