@@ -7,6 +7,7 @@
 import Foundation
 import XCTest
 @testable import OpenBurnBarCore
+@testable import OpenBurnBarKernel
 
 final class MemorySecretPIIGateTests: XCTestCase {
     // MARK: - Availability (must-fix #2: Bundle.module flat loader resolves)

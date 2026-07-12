@@ -102,12 +102,42 @@ enum OpenBurnBarDaemonBinaryResolver {
         appBundleURL: URL,
         fileManager: FileManager
     ) -> URL? {
-        let binaryDirectory = nearBinaryURL.deletingLastPathComponent()
-        let appParent = appBundleURL.deletingLastPathComponent()
         let bundleNames = [
             OpenBurnBarDaemonManager.resourceBundleName,
             OpenBurnBarDaemonManager.legacyResourceBundleNames[0]
         ]
+        return resolveResourceBundle(
+            named: bundleNames,
+            nearBinaryURL: nearBinaryURL,
+            appBundleURL: appBundleURL,
+            fileManager: fileManager
+        )
+    }
+
+    /// Core-decomposition P-02: locates the OpenBurnBarKernel resource bundle
+    /// (`OpenBurnBarCore_OpenBurnBarKernel.bundle`) across the SAME six candidate roots
+    /// the Core-bundle resolver searches. Staged IN ADDITION to the Core bundle.
+    static func resolveKernelResourceBundle(
+        nearBinaryURL: URL,
+        appBundleURL: URL,
+        fileManager: FileManager
+    ) -> URL? {
+        return resolveResourceBundle(
+            named: [OpenBurnBarDaemonManager.kernelResourceBundleName],
+            nearBinaryURL: nearBinaryURL,
+            appBundleURL: appBundleURL,
+            fileManager: fileManager
+        )
+    }
+
+    private static func resolveResourceBundle(
+        named bundleNames: [String],
+        nearBinaryURL: URL,
+        appBundleURL: URL,
+        fileManager: FileManager
+    ) -> URL? {
+        let binaryDirectory = nearBinaryURL.deletingLastPathComponent()
+        let appParent = appBundleURL.deletingLastPathComponent()
         let candidates = bundleNames.flatMap { bundleName in
             [
                 binaryDirectory.appendingPathComponent(bundleName),

@@ -26,7 +26,7 @@ from collections.abc import Callable
 
 _THIS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = _THIS_DIR.parent.parent
-CATALOG_PATH = REPO_ROOT / "OpenBurnBarCore" / "Sources" / "OpenBurnBarCore" / "Resources" / "catalog.json"
+CATALOG_PATH = REPO_ROOT / "OpenBurnBarCore" / "Sources" / "OpenBurnBarKernel" / "Resources" / "catalog.json"
 MODELS_JSON_PATHS = (
     REPO_ROOT / "website" / "public" / "data" / "models.json",
     REPO_ROOT / "website" / "scripts" / "rundown-seed" / "models.json",
