@@ -180,6 +180,34 @@ final class BurnBarRunServiceComputerUseHandshakeTests: XCTestCase {
         XCTAssertEqual(checkpoint.computerUseGeneration, requirement.generation)
     }
 
+    func testSystemToolCreatesExactManagedComputerUseRequirement() async throws {
+        let harness = try await makeHarness(name: "system-requirement")
+
+        let created = try await harness.runService.createRun(
+            BurnBarRunCreateRequest(
+                clientID: harness.clientID,
+                sessionID: harness.sessionID,
+                prompt: "Click the visible desktop control",
+                modelID: "glm-5",
+                metadata: [
+                    "toolKind": .string(BurnBarToolKind.macInputClick.rawValue),
+                    "toolArguments": .object([
+                        "displayX": .number(120),
+                        "displayY": .number(80)
+                    ])
+                ]
+            )
+        )
+
+        let pendingRequirement = await harness.runService.computerUseRequirement(for: created.runID)
+        let requirement = try XCTUnwrap(pendingRequirement)
+        XCTAssertEqual(created.phase, .awaitingComputerUseSession)
+        XCTAssertEqual(requirement.invocation.tool, .macInputClick)
+        XCTAssertEqual(requirement.invocation.runID, created.runID)
+        XCTAssertEqual(requirement.invocation.requestedBy, harness.clientID)
+        XCTAssertEqual(requirement.generation, 1)
+    }
+
     func testResumeRejectsWrongCallAndGenerationWithoutConsumingRequirement() async throws {
         let harness = try await makeHarness(name: "exact-resume")
         let created = try await createBrowserRun(using: harness)

@@ -502,7 +502,7 @@ export type ComputerUseSessionAuthorityStatus = {
 };
 
 export type ComputerUseSessionStartRequest = {
-  mode: 'browser';
+  mode: 'browser' | 'system';
   trustMode: 'manual' | 'step' | 'trusted';
   scopeRuleIds?: string[];
   phoneViewerNodeId?: string;

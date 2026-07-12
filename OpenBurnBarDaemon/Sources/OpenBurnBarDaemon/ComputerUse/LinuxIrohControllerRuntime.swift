@@ -453,7 +453,15 @@ actor LinuxIrohControllerRuntime {
         now: Date = Date()
     ) async throws -> ComputerUseSessionGrantBroker.AcquisitionMetadata {
         guard await isReady(now: now), let route else { throw RuntimeError.routeUnavailable }
-        guard request.mode == ComputerUseMode.browser.rawValue else { throw RuntimeError.frameRejected }
+        let capabilities: Set<AgentDesktopCapability>
+        switch ComputerUseMode(rawValue: request.mode) {
+        case .browser:
+            capabilities = [.desktopBrowser, .desktopScreenshot]
+        case .system:
+            capabilities = [.desktopSystemInput, .desktopScreenshot]
+        case .agentWatch, nil:
+            throw RuntimeError.frameRejected
+        }
         return ComputerUseSessionGrantBroker.AcquisitionMetadata(
             uid: route.uid,
             connectionID: route.connectionID,
@@ -463,7 +471,7 @@ actor LinuxIrohControllerRuntime {
             runtimeID: .hermes,
             threadID: requirement.sessionID.rawValue,
             preset: .desktop,
-            capabilities: [.desktopBrowser, .desktopScreenshot],
+            capabilities: capabilities,
             routeGeneration: route.generation,
             routeExpiresAt: route.expiresAt,
             accountGeneration: route.accountGeneration

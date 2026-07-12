@@ -843,6 +843,7 @@ public actor BurnBarDaemonServer {
                 },
                 routeEnded: { [weak self] route, reason in
                     guard let self else { return }
+                    await self.computerUseService.controllerRouteEnded(reason: reason)
                     await self.mediaService.routeEnded(
                         uid: route.uid,
                         connectionID: route.connectionID,
@@ -981,6 +982,7 @@ public actor BurnBarDaemonServer {
         ownership?.release()
         await missionControlService.stopBackgroundLoops()
         #if os(Linux)
+        await computerUseService.shutdown()
         await linuxIrohControllerRuntime?.stop()
         await mediaService.stop()
         #endif

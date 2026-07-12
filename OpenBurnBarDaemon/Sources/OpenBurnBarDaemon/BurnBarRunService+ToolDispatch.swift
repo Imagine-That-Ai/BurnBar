@@ -225,7 +225,7 @@ extension BurnBarRunService {
             try await handleToolFailure(
                 error: outcome.error ?? BurnBarToolExecutionError(
                     code: .unknown,
-                    message: "Browser Computer Use failed without an error detail."
+                    message: "Computer Use failed without an error detail."
                 ),
                 callSnapshot: completedSnapshot,
                 run: &run
@@ -364,7 +364,7 @@ extension BurnBarRunService {
         invocation: BurnBarToolInvocation
     ) async throws -> Bool {
         guard run.approvalRequest == nil,
-              invocation.tool == .applyPatch || invocation.tool == .runTerminal || invocation.tool.isBrowserComputerUse,
+              invocation.tool == .applyPatch || invocation.tool == .runTerminal || invocation.tool.isComputerUse,
               let approval = policyEngine.approvalDescriptor(
                   explicitApprovalRequired: true,
                   intent: run.intent,

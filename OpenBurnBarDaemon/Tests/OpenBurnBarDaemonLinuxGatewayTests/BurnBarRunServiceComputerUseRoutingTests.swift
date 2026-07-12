@@ -135,7 +135,7 @@ final class BurnBarRunServiceComputerUseRoutingTests: XCTestCase {
         XCTAssertEqual(outcome.error?.code, .unknown)
         XCTAssertEqual(
             outcome.error?.message,
-            "Start Browser Computer Use for agent run run-1 before allowing browser actions."
+            "Start Computer Use for agent run run-1 before allowing managed actions."
         )
     }
 

@@ -5,9 +5,11 @@ import type {
   ComputerUseSessionAuthorityStatus,
   ComputerUseSessionStartRequest
 } from '../../tauriBridge.js';
+import { findRuntimeCapability } from '../../runtimeCapabilities.js';
 import './computer-use.css';
 
 export type ComputerUseTrust = 'manual' | 'step' | 'trusted';
+export type ComputerUseMode = 'browser' | 'system';
 
 type PendingApproval = {
   approvalId?: string;
@@ -60,7 +62,8 @@ export function clearSessionIfCurrent(current: string | null, expected: string):
 export function buildComputerUseSessionStartParams(
   selectedRunId: string,
   trustMode: ComputerUseTrust,
-  requirements: readonly RunRequirement[]
+  requirements: readonly RunRequirement[],
+  mode: ComputerUseMode = 'browser'
 ): ComputerUseSessionStartRequest {
   const runId = selectedRunId.trim();
   const selectedRequirement = requirements.find(
@@ -70,8 +73,11 @@ export function buildComputerUseSessionStartParams(
   if (!runCallId || selectedRequirement?.generation === undefined) {
     throw new Error('The selected run requirement is stale. Refresh and select it again.');
   }
+  if (computerUseModeForTool(selectedRequirement.toolKind) !== mode) {
+    throw new Error('The selected run requirement does not match the requested Computer Use mode.');
+  }
   return {
-    mode: 'browser' as const,
+    mode,
     trustMode,
     clientId: 'linux-shell',
     runId,
@@ -81,6 +87,12 @@ export function buildComputerUseSessionStartParams(
       method: 'linux_desktop_owner'
     }
   };
+}
+
+export function computerUseModeForTool(toolKind?: string): ComputerUseMode | null {
+  if (toolKind?.startsWith('browser_')) return 'browser';
+  if (toolKind?.startsWith('mac_input_') || toolKind === 'mac_inspect_accessibility') return 'system';
+  return null;
 }
 
 const AUTHORITY_COPY: Record<ComputerUseSessionAuthorityState, string> = {
@@ -101,6 +113,8 @@ export function ComputerUseSurface() {
   const bridge = useShellStore((s) => s.bridge);
   const fixtureMode = useShellStore((s) => s.fixtureMode);
   const [trust, setTrust] = useState<ComputerUseTrust>('step');
+  const [mode, setMode] = useState<ComputerUseMode>('browser');
+  const [systemModeAvailable, setSystemModeAvailable] = useState(false);
   const [runId, setRunId] = useState('');
   const [runRequirements, setRunRequirements] = useState<RunRequirement[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -136,7 +150,7 @@ export function ComputerUseSurface() {
       setSessionId(next.sessionId);
       setStatus('idle');
       setError(null);
-      pushLog(`Session started: ${next.sessionId} · mode=browser`);
+      pushLog(`Session started: ${next.sessionId} · mode=${mode}`);
       return;
     }
     if (next.state === 'waiting_phone' || next.state === 'waiting_local_owner') {
@@ -155,7 +169,7 @@ export function ComputerUseSurface() {
       return;
     }
     setStatus('offline');
-  }, [pushLog]);
+  }, [mode, pushLog]);
 
   const refreshAuthorityStatus = useCallback(async () => {
     if (fixtureMode) {
@@ -233,6 +247,22 @@ export function ComputerUseSurface() {
   }, [refreshAuthorityStatus]);
 
   useEffect(() => {
+    if (fixtureMode || !bridge?.runtimeCapabilities) {
+      setSystemModeAvailable(false);
+      return;
+    }
+    let cancelled = false;
+    void bridge.runtimeCapabilities().then((manifest) => {
+      if (cancelled) return;
+      const capability = findRuntimeCapability(manifest, 'computer-use.system');
+      setSystemModeAvailable(capability?.state === 'available');
+    }).catch(() => {
+      if (!cancelled) setSystemModeAvailable(false);
+    });
+    return () => { cancelled = true; };
+  }, [bridge, fixtureMode]);
+
+  useEffect(() => {
     if (fixtureMode
       || (authorityStatus.state !== 'waiting_phone'
         && authorityStatus.state !== 'waiting_local_owner')) return;
@@ -258,7 +288,7 @@ export function ComputerUseSurface() {
     const normalizedRunId = runId.trim();
     if (!normalizedRunId) {
       setStatus('error');
-      setError('Select an agent run before starting Browser Computer Use.');
+      setError(`Select an agent run before starting ${mode === 'system' ? 'System' : 'Browser'} Computer Use.`);
       return;
     }
     if (!bridge?.computerUseSessionStart) {
@@ -267,7 +297,7 @@ export function ComputerUseSurface() {
       return;
     }
     try {
-      const params = buildComputerUseSessionStartParams(normalizedRunId, trust, runRequirements);
+      const params = buildComputerUseSessionStartParams(normalizedRunId, trust, runRequirements, mode);
       applyAuthorityStatus(await bridge.computerUseSessionStart(params));
     } catch (err) {
       setStatus('error');
@@ -400,7 +430,9 @@ export function ComputerUseSurface() {
             disabled={Boolean(sessionId)}
           >
             <option value="">Select a waiting run</option>
-            {runRequirements.map((requirement) => {
+            {runRequirements.filter(
+              (requirement) => computerUseModeForTool(requirement.toolKind) === mode
+            ).map((requirement) => {
               const id = requirement.runID ?? requirement.runId ?? '';
               const callID = requirement.callID ?? requirement.callId;
               return (
@@ -414,9 +446,21 @@ export function ComputerUseSurface() {
             ) : null}
           </select>
         </label>
-        <span className="computer-use-surface__mode" aria-label="Computer Use mode">
-          Browser
-        </span>
+        <label>
+          Mode
+          <select
+            aria-label="Computer Use mode"
+            value={mode}
+            disabled={Boolean(sessionId)}
+            onChange={(event) => {
+              setMode(event.target.value as ComputerUseMode);
+              setRunId('');
+            }}
+          >
+            <option value="browser">Browser</option>
+            {systemModeAvailable ? <option value="system">System</option> : null}
+          </select>
+        </label>
         <label>
           Trust
           <select value={trust} onChange={(e) => setTrust(e.target.value as ComputerUseTrust)}>

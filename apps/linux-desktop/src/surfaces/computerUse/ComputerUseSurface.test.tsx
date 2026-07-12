@@ -19,7 +19,7 @@ describe('ComputerUseSurface', () => {
   it('builds an exact session start payload from the selected run requirement', () => {
     expect(buildComputerUseSessionStartParams(' run-1 ', 'step', [
       { runID: 'run-other', callID: 'call-other', generation: 99 },
-      { runID: 'run-1', callID: 'call-1', generation: 7 }
+      { runID: 'run-1', callID: 'call-1', generation: 7, toolKind: 'browser_goto' }
     ])).toEqual({
       mode: 'browser',
       trustMode: 'step',
@@ -31,6 +31,64 @@ describe('ComputerUseSurface', () => {
         method: 'linux_desktop_owner'
       }
     });
+  });
+
+  it('builds a System session only from an exact system-tool requirement', () => {
+    expect(buildComputerUseSessionStartParams('run-system', 'manual', [{
+      runID: 'run-system',
+      callID: 'call-system',
+      generation: 12,
+      toolKind: 'mac_input_click'
+    }], 'system')).toMatchObject({
+      mode: 'system',
+      runId: 'run-system',
+      runCallId: 'call-system',
+      runGeneration: 12
+    });
+    expect(() => buildComputerUseSessionStartParams('run-system', 'manual', [{
+      runID: 'run-system',
+      callID: 'call-system',
+      generation: 12,
+      toolKind: 'mac_input_click'
+    }], 'browser')).toThrow(/does not match/i);
+  });
+
+  it('exposes System mode only after the native runtime probe passes', async () => {
+    const computerUseSessionStart = vi.fn(async () => ({ state: 'waiting_phone' as const }));
+    useShellStore.setState({
+      fixtureMode: false,
+      bridge: {
+        runtimeCapabilities: vi.fn(async () => ({
+          capabilities: [{ id: 'computer-use.system', state: 'available' }]
+        })),
+        computerUseSessionAuthorityStatus: vi.fn(async () => ({ state: 'available' as const })),
+        computerUseSessionStart,
+        computerUseApprovalPending: vi.fn(async () => ({
+          requests: [],
+          runRequirements: [{
+            runID: 'run-system',
+            callID: 'call-system',
+            generation: 4,
+            toolKind: 'mac_input_click'
+          }]
+        }))
+      } as never
+    });
+
+    render(<ComputerUseSurface />);
+    const modePicker = await screen.findByRole('combobox', { name: /Computer Use mode/i });
+    await waitFor(() => expect(screen.getByRole('option', { name: 'System' })).toBeTruthy());
+    fireEvent.change(modePicker, { target: { value: 'system' } });
+    const runPicker = screen.getByRole('combobox', { name: /Agent run/i });
+    fireEvent.change(runPicker, { target: { value: 'run-system' } });
+    fireEvent.click(screen.getByRole('button', { name: /Start session/i }));
+
+    await waitFor(() => expect(computerUseSessionStart).toHaveBeenCalledWith(expect.objectContaining({
+      mode: 'system',
+      runId: 'run-system',
+      runCallId: 'call-system',
+      runGeneration: 4
+    })));
   });
 
   it.each([

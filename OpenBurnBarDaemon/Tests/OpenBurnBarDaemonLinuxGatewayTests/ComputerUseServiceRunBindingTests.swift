@@ -149,7 +149,27 @@ final class ComputerUseServiceRunBindingTests: XCTestCase {
     }
 
     #if os(Linux)
-    func testNonBrowserSessionCannotReserveAgentRunBinding() async throws {
+    func testAgentWatchSessionCannotReserveAgentRunBinding() async throws {
+        let service = ComputerUseService(
+            privilegedInputKillSwitchActivator: { _ in },
+            playwrightDriverFactory: { _ in nil },
+            requiresManagedBrowserRunAuthority: true
+        )
+
+        do {
+            _ = try await service.startSession(ComputerUseSessionStartRequest(
+                mode: ComputerUseMode.agentWatch.rawValue,
+                trustMode: ComputerUseTrustMode.manual.rawValue,
+                clientID: BurnBarClientID(rawValue: "linux-shell"),
+                runID: BurnBarRunID(rawValue: "browser-run")
+            ))
+            XCTFail("Agent Watch sessions must not reserve managed agent runs.")
+        } catch let error as ComputerUseService.ServiceError {
+            XCTAssertEqual(error, .unsupportedDaemonMode(ComputerUseMode.agentWatch.rawValue))
+        }
+    }
+
+    func testSystemSessionRequiresRunBinding() async throws {
         let service = ComputerUseService(
             privilegedInputKillSwitchActivator: { _ in },
             playwrightDriverFactory: { _ in nil },
@@ -160,12 +180,11 @@ final class ComputerUseServiceRunBindingTests: XCTestCase {
             _ = try await service.startSession(ComputerUseSessionStartRequest(
                 mode: ComputerUseMode.system.rawValue,
                 trustMode: ComputerUseTrustMode.manual.rawValue,
-                clientID: BurnBarClientID(rawValue: "linux-shell"),
-                runID: BurnBarRunID(rawValue: "browser-run")
+                clientID: BurnBarClientID(rawValue: "linux-shell")
             ))
-            XCTFail("Non-browser sessions must not reserve managed browser runs.")
+            XCTFail("System sessions must never start without an agent run binding.")
         } catch let error as ComputerUseService.ServiceError {
-            XCTAssertEqual(error, .runBindingUnsupportedMode(ComputerUseMode.system.rawValue))
+            XCTAssertEqual(error, .browserRunRequired)
         }
     }
     #endif

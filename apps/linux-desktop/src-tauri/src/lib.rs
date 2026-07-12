@@ -970,6 +970,23 @@ struct RuntimeMediaCapability {
     detail: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeComputerUseSystemCapability {
+    available: bool,
+    capture_ready: bool,
+    input_ready: bool,
+    active: bool,
+    reason: String,
+    source: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeComputerUsePendingSnapshot {
+    system_capability: Option<RuntimeComputerUseSystemCapability>,
+}
+
 const RUNTIME_CAPABILITY_CATALOG: &str =
     include_str!("../../../../packaging/linux/runtime-capability-catalog.json");
 
@@ -979,6 +996,7 @@ fn evaluate_runtime_capability(
     session_type: Option<&str>,
     has_session_bus: bool,
     media: Option<&RuntimeMediaCapability>,
+    system_computer_use: Option<&RuntimeComputerUseSystemCapability>,
 ) -> Result<RuntimeCapabilityEntry, String> {
     let available = |reason: &str, source: &str| {
         (
@@ -1024,6 +1042,26 @@ fn evaluate_runtime_capability(
                     .detail
                     .clone()
                     .unwrap_or_else(|| definition.unavailable_reason.clone()),
+                capability.source.clone(),
+            ),
+            None => unavailable(),
+        },
+        "computer-use-system" => match system_computer_use {
+            Some(capability)
+                if capability.available && capability.capture_ready && capability.input_ready =>
+            {
+                available(
+                    if capability.active {
+                        "PipeWire capture and Linux input are live for the active System Computer Use session."
+                    } else {
+                        "PipeWire capture and Linux input passed daemon runtime preflight."
+                    },
+                    &capability.source,
+                )
+            }
+            Some(capability) => (
+                "unavailable".to_string(),
+                format!("{}: {}", definition.unavailable_reason, capability.reason),
                 capability.source.clone(),
             ),
             None => unavailable(),
@@ -1115,6 +1153,18 @@ fn evaluate_runtime_capabilities() -> Result<RuntimeCapabilityManifest, String> 
         })
         .and_then(Result::ok)
         .and_then(|value| serde_json::from_value::<RuntimeMediaCapability>(value).ok());
+    let system_computer_use = health
+        .ok
+        .then(|| {
+            call_daemon_method_with_timeout(
+                "daemon.computer_use.approval.pending",
+                Some(serde_json::json!({})),
+                Duration::from_secs(2),
+            )
+        })
+        .and_then(Result::ok)
+        .and_then(|value| serde_json::from_value::<RuntimeComputerUsePendingSnapshot>(value).ok())
+        .and_then(|snapshot| snapshot.system_capability);
     let capabilities = catalog
         .capabilities
         .into_iter()
@@ -1125,6 +1175,7 @@ fn evaluate_runtime_capabilities() -> Result<RuntimeCapabilityManifest, String> 
                 session_type.as_deref(),
                 has_session_bus,
                 media.as_ref(),
+                system_computer_use.as_ref(),
             )
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -2760,8 +2811,8 @@ impl ComputerUseSessionBroker for DaemonComputerUseSessionBroker {
 fn validate_computer_use_broker_request(
     request: &ComputerUseBrokerSessionStartRequest,
 ) -> Result<(), String> {
-    if request.mode != "browser" {
-        return Err("Linux Computer Use authorization supports browser mode only".into());
+    if request.mode != "browser" && request.mode != "system" {
+        return Err("Linux Computer Use authorization supports browser or system mode".into());
     }
     validate_cu_trust_mode(&request.trust_mode)?;
     if request.run_id.trim().is_empty() || request.run_call_id.trim().is_empty() {
@@ -3809,15 +3860,13 @@ fn computer_use_session_start_wire(
     validate_cu_mode(&params.mode)?;
     validate_cu_trust_mode(&params.trust_mode)?;
     if require_local_auth
-        && params.mode == "browser"
+        && (params.mode == "browser" || params.mode == "system")
         && params
             .desktop_owner_authorization_request
             .as_ref()
             .is_none_or(|request| request.method != "linux_desktop_owner")
     {
-        return Err(
-            "release Browser Computer Use requires linux_desktop_owner authorization".into(),
-        );
+        return Err("release Computer Use requires linux_desktop_owner authorization".into());
     }
     let expected_session_intent_id = canonical_computer_use_session_intent_id(&params)?;
     let local_auth = acquire_computer_use_local_auth_transport(
@@ -5382,6 +5431,7 @@ mod tests {
                     | "daemon"
                     | "gateway"
                     | "media"
+                    | "computer-use-system"
                     | "trusted-cli"
                     | "secret-service"
                     | "kwallet"
@@ -5415,6 +5465,7 @@ mod tests {
             Some("wayland"),
             true,
             Some(&available),
+            None,
         )
         .unwrap();
         assert_eq!(entry.state, "available");
@@ -5443,6 +5494,7 @@ mod tests {
             Some("x11"),
             true,
             Some(&degraded),
+            None,
         )
         .unwrap();
         assert_eq!(entry.state, "degraded");
@@ -5471,6 +5523,7 @@ mod tests {
             Some("wayland"),
             true,
             Some(&unavailable),
+            None,
         )
         .unwrap();
         assert_eq!(explicit.state, "unavailable");
@@ -5482,10 +5535,60 @@ mod tests {
             Some("wayland"),
             true,
             None,
+            None,
         )
         .unwrap();
         assert_eq!(missing.state, "unavailable");
         assert_eq!(missing.reason, "Mercury is unavailable.");
+    }
+
+    #[test]
+    fn system_computer_use_capability_requires_both_live_prerequisites() {
+        let definition = || RuntimeCapabilityDefinition {
+            id: "computer-use.system".to_string(),
+            domain: "platform".to_string(),
+            evaluator: "computer-use-system".to_string(),
+            unavailable_reason: "System Computer Use is unavailable.".to_string(),
+            substitute: None,
+        };
+        let ready = RuntimeComputerUseSystemCapability {
+            available: true,
+            capture_ready: true,
+            input_ready: true,
+            active: false,
+            reason: "capture_and_input_ready".to_string(),
+            source: "linux-system-runtime".to_string(),
+        };
+        let available = evaluate_runtime_capability(
+            definition(),
+            &DaemonHealth::default(),
+            Some("wayland"),
+            true,
+            None,
+            Some(&ready),
+        )
+        .unwrap();
+        assert_eq!(available.state, "available");
+
+        let capture_missing = RuntimeComputerUseSystemCapability {
+            available: false,
+            capture_ready: false,
+            input_ready: true,
+            active: false,
+            reason: "pipewire_vp9_capture_unavailable".to_string(),
+            source: "linux-system-runtime".to_string(),
+        };
+        let blocked = evaluate_runtime_capability(
+            definition(),
+            &DaemonHealth::default(),
+            Some("wayland"),
+            true,
+            None,
+            Some(&capture_missing),
+        )
+        .unwrap();
+        assert_eq!(blocked.state, "unavailable");
+        assert!(blocked.reason.contains("pipewire_vp9_capture_unavailable"));
     }
     #[test]
     fn computer_use_approval_release_wire_requires_signed_phone_authority() {

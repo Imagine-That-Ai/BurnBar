@@ -61,7 +61,9 @@ The existing `docs/linux-port/parity-ledger.json` has 64 Tier A/B rows all marke
 
 29. **Pensieve knowledge watcher** (currently stubbed; replace with inotify implementation).
 30. **Switcher shell / CLI shim installer** (currently unavailable on Linux).
-31. **Privileged input / HID bridge** (entire subsystem excluded on Linux).
+31. **System Computer Use certification** (daemon-owned PipeWire capture and
+    Linux input/inspect are implemented; installed GNOME/KDE/wlroots and panic/
+    revocation proof remains open).
 32. **Remote access agent** (entire subsystem excluded).
 33. **Code signature verification** for peer auth (currently excluded on Linux).
 34. **IPv6 loopback** in the HTTP gateway (currently IPv4 only).
@@ -107,7 +109,8 @@ The existing `docs/linux-port/parity-ledger.json` has 64 Tier A/B rows all marke
 - Menu bar popover with tray sections.
 - Session logs / pane workspace.
 - Provider and model deep-dive surfaces.
-- Computer Use approval surface and Elder Wand / fusion UI.
+- Complete Computer Use installed certification and implement Agent Watch;
+  retain runtime capability gating per compositor.
 - Mission console and advanced onboarding.
 - Verification: surface tests pass, `npm run build`, `tsc --noEmit`.
 

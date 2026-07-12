@@ -539,6 +539,24 @@ Hermes and other agents honest: without a grant, they should say they cannot use
 desktop tools; with a grant, the prompt and tool envelope tell them exactly what
 was enabled.
 
+### Linux System Computer Use
+
+Linux System mode is daemon-owned and uses the same managed-run, approval,
+scope, panic, budget, and audit authority as Browser mode. The desktop offers
+System only when the daemon reports both PipeWire/portal capture readiness and
+a live Linux input adapter. Session start does not succeed until the capture
+pipeline produces its first encoded VP9 frame. Input and Accessibility inspect
+actions remain bound to the exact run, call, generation, client, and active
+capture session.
+
+Portal shutdown, capture failure, input-adapter loss, controller-route teardown,
+the Computer Use kill switch, or daemon shutdown revoke the session and stop
+both capture and input authority. Revocation during the first-frame handshake
+fails the start rather than returning a dead session. Agent Watch is not yet
+implemented on Linux, and System mode remains uncertified as an installed
+parity outcome until the exact candidate passes the GNOME, KDE, and wlroots
+Wayland/X11 matrix.
+
 Desktop export behavior is intentionally explicit. `desktop_export_file` copies
 a workspace file to `~/Desktop/OpenBurnBar Agent Drops/{threadId}/` and never
 lets the model choose an arbitrary absolute Desktop path. `shell_run_unrestricted`

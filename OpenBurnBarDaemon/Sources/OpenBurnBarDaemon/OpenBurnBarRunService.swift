@@ -253,7 +253,7 @@ public actor BurnBarRunService {
               run.snapshot.phase == .awaitingComputerUseSession,
               let invocation = run.pendingComputerUseInvocation,
               invocation.runID == runID,
-              invocation.tool.isBrowserComputerUse else {
+              invocation.tool.isComputerUse else {
             return nil
         }
         return BurnBarComputerUseRunRequirement(
@@ -272,7 +272,7 @@ public actor BurnBarRunService {
                   run.snapshot.phase == .awaitingComputerUseSession,
                   let invocation = run.pendingComputerUseInvocation,
                   invocation.runID == runID,
-                  invocation.tool.isBrowserComputerUse else {
+                  invocation.tool.isComputerUse else {
                 return nil
             }
             return ComputerUseRunRequirementSummary(
@@ -304,7 +304,7 @@ public actor BurnBarRunService {
               invocation.runID == runID,
               invocation.callID == expectedCallID,
               run.computerUseGeneration == expectedGeneration,
-              invocation.tool.isBrowserComputerUse else {
+              invocation.tool.isComputerUse else {
             return false
         }
         guard computerUseResumeClaims[runID] == nil else { return false }
@@ -697,7 +697,7 @@ public actor BurnBarRunService {
             )
             if let pendingInvocation {
                 try transition(&run, to: .planning, activeApprovalID: nil)
-                if pendingInvocation.tool.isBrowserComputerUse {
+                if pendingInvocation.tool.isComputerUse {
                     try await executeBrowserToolInvocation(pendingInvocation, for: &run)
                 } else {
                     try await enqueueCompanionToolCall(pendingInvocation, for: &run)
@@ -886,7 +886,7 @@ public actor BurnBarRunService {
     }
 
     /// Only legacy companion-owned calls belong in the workspace broker after
-    /// restart. Browser Computer Use calls are resumed exclusively through the
+    /// restart. Managed Computer Use calls are resumed exclusively through the
     /// exact run/call/generation handshake and must never be claimable by the
     /// extension bridge.
     func legacyWorkspaceToolCall(
@@ -895,7 +895,7 @@ public actor BurnBarRunService {
         guard checkpoint.pendingComputerUseInvocation == nil,
               checkpoint.phase == .waitingOnCompanion || checkpoint.phase == .executingTool,
               let lastToolCall = checkpoint.lastToolCall,
-              lastToolCall.tool.isBrowserComputerUse == false else {
+              lastToolCall.tool.isComputerUse == false else {
             return nil
         }
         return lastToolCall
@@ -914,7 +914,7 @@ public actor BurnBarRunService {
         guard run.snapshot.phase == .executingTool,
               run.pendingComputerUseInvocation == nil,
               let lastToolCall = run.lastToolCall,
-              lastToolCall.tool.isBrowserComputerUse else {
+              lastToolCall.tool.isComputerUse else {
             return nil
         }
         let interruptedGeneration = run.computerUseGeneration

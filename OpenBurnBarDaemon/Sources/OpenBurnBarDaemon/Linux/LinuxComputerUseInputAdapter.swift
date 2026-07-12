@@ -185,10 +185,13 @@ public struct LinuxComputerUseInputAdapter: Sendable {
     }
 
     public func dispatch(_ action: MacInputAction) async throws -> BurnBarJSONValue {
+        try Task.checkCancellation()
         try assertKillSwitchNotActive()
         let plan = try plan(for: action)
         let startedAt = Date()
         let result = try runCommand(plan.executablePath, plan.arguments)
+        try Task.checkCancellation()
+        try assertKillSwitchNotActive()
         let durationMs = Date().timeIntervalSince(startedAt) * 1000
         guard result.exitCode == 0 else {
             throw AdapterError.commandFailed(

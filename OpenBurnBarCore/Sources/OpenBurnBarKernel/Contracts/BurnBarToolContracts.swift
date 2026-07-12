@@ -62,6 +62,13 @@ public extension BurnBarToolKind {
         }
     }
 
+    /// Whether this tool is dispatched by the Computer Use coordinator.
+    /// Browser and whole-desktop tools share the same run binding, approval,
+    /// audit, and panic authority even though their concrete drivers differ.
+    var isComputerUse: Bool {
+        Self.computerUseToolKinds.contains(self)
+    }
+
     /// Whether this kind requires Accessibility permission.
     var isMacComputerUse: Bool {
         switch self {

@@ -79,19 +79,20 @@ extension BurnBarDaemonServer {
             )
             #if os(Linux)
             let sessionRequest = typedRequest.params.sessionRequest
-            guard sessionRequest.mode == ComputerUseMode.browser.rawValue,
+            guard Self.managedComputerUseMode(rawValue: sessionRequest.mode) != nil,
                   sessionRequest.grantChallengeId == nil,
                   sessionRequest.desktopOwnerAuthorizationRequest?.method == .linuxDesktopOwner,
                   let runID = sessionRequest.runID,
                   let requirement = await runService.computerUseRequirement(for: runID),
                   requirement.clientID == sessionRequest.clientID
                     || requirement.clientID == BurnBarRunService.controllerRuntimeClientID,
+                  Self.managedComputerUseMode(for: requirement.invocation.tool)?.rawValue == sessionRequest.mode,
                   sessionRequest.runCallID == requirement.invocation.callID,
                   sessionRequest.runGeneration == requirement.generation else {
                 return encodeErrorResponse(
                     id: typedRequest.id,
                     code: BurnBarRPCErrorCode.invalidParams,
-                    message: "Computer Use authority requires an exact owned run waiting for a browser session."
+                    message: "Computer Use authority requires an exact owned run waiting for the requested mode."
                 )
             }
             guard let broker = computerUseSessionGrantBroker,
@@ -180,17 +181,18 @@ extension BurnBarDaemonServer {
             var deferredStartReservation: ComputerUseSessionGrantBroker.StartReservation?
             #endif
             #if os(Linux)
-            if sessionRequest.mode == ComputerUseMode.browser.rawValue {
+            if Self.managedComputerUseMode(rawValue: sessionRequest.mode) != nil {
                 guard let runID = sessionRequest.runID,
                       let requirement = await runService.computerUseRequirement(for: runID),
                       requirement.clientID == sessionRequest.clientID
                         || requirement.clientID == BurnBarRunService.controllerRuntimeClientID,
+                      Self.managedComputerUseMode(for: requirement.invocation.tool)?.rawValue == sessionRequest.mode,
                       sessionRequest.runCallID == requirement.invocation.callID,
                       sessionRequest.runGeneration == requirement.generation else {
                     return encodeErrorResponse(
                         id: typedRequest.id,
                         code: BurnBarRPCErrorCode.invalidParams,
-                        message: "Browser Computer Use requires an owned agent run waiting for a Computer Use session."
+                        message: "Computer Use requires an owned agent run waiting for the requested mode."
                     )
                 }
                 boundClientID = requirement.clientID
@@ -209,7 +211,7 @@ extension BurnBarDaemonServer {
             // cannot consume a single-use phone proof. Proof verification stays
             // immediately adjacent to session reservation/start.
             #if os(Linux)
-            if sessionRequest.mode == ComputerUseMode.browser.rawValue,
+            if Self.managedComputerUseMode(rawValue: sessionRequest.mode) != nil,
                localAuthProofVerifier != nil {
                 guard sessionRequest.desktopOwnerAuthorizationRequest?.method == .linuxDesktopOwner,
                       let peerPID,
@@ -219,7 +221,7 @@ extension BurnBarDaemonServer {
                     return encodeErrorResponse(
                         id: typedRequest.id,
                         code: BurnBarRPCErrorCode.unauthorized,
-                        message: "Browser Computer Use requires fresh paired-phone and Linux desktop-owner authorization."
+                        message: "Computer Use requires fresh paired-phone and Linux desktop-owner authorization."
                     )
                 }
                 let preparedRequest: ComputerUseSessionStartRequest
@@ -232,7 +234,7 @@ extension BurnBarDaemonServer {
                     return encodeErrorResponse(
                         id: typedRequest.id,
                         code: BurnBarRPCErrorCode.unauthorized,
-                        message: "Browser Computer Use paired-phone authority is not ready or no longer valid."
+                        message: "Computer Use paired-phone authority is not ready or no longer valid."
                     )
                 }
                 if let denial = enforceLocalAuthProof(
@@ -251,14 +253,14 @@ extension BurnBarDaemonServer {
                     return encodeErrorResponse(
                         id: typedRequest.id,
                         code: BurnBarRPCErrorCode.unauthorized,
-                        message: "Browser Computer Use authority is incomplete."
+                        message: "Computer Use authority is incomplete."
                     )
                 }
                 do {
                     try await linuxComputerUseOwnerAuthorizer(
                         peerPID,
                         operationID,
-                        "Authorize Browser Computer Use for run \(runRequirement.runID.rawValue)"
+                        "Authorize \(sessionRequest.mode.capitalized) Computer Use for run \(runRequirement.runID.rawValue)"
                     )
                 } catch {
                     logger.warning(
@@ -272,7 +274,7 @@ extension BurnBarDaemonServer {
                     return encodeErrorResponse(
                         id: typedRequest.id,
                         code: BurnBarRPCErrorCode.unauthorized,
-                        message: "Browser Computer Use Linux desktop-owner authorization was not completed."
+                        message: "Computer Use Linux desktop-owner authorization was not completed."
                     )
                 }
                 guard await runService.computerUseRequirement(for: runRequirement.runID) == runRequirement else {
@@ -293,7 +295,7 @@ extension BurnBarDaemonServer {
                     return encodeErrorResponse(
                         id: typedRequest.id,
                         code: BurnBarRPCErrorCode.unauthorized,
-                        message: "Browser Computer Use authority expired or changed during desktop-owner authorization."
+                        message: "Computer Use authority expired or changed during desktop-owner authorization."
                     )
                 }
             }
@@ -349,7 +351,7 @@ extension BurnBarDaemonServer {
                     return encodeErrorResponse(
                         id: typedRequest.id,
                         code: BurnBarRPCErrorCode.unauthorized,
-                        message: "Browser Computer Use authority could not be committed after session creation."
+                        message: "Computer Use authority could not be committed after session creation."
                     )
                 }
                 if let denial = enforceLocalAuthProof(
@@ -381,7 +383,7 @@ extension BurnBarDaemonServer {
                         return encodeErrorResponse(
                             id: typedRequest.id,
                             code: BurnBarRPCErrorCode.unauthorized,
-                            message: "Browser Computer Use controller routing changed during session creation."
+                            message: "Computer Use controller routing changed during session creation."
                         )
                     }
                 }
@@ -480,7 +482,8 @@ extension BurnBarDaemonServer {
             let result = ComputerUseApprovalPendingResponse(
                 requests: pending.requests,
                 runRequirements: await runService.listComputerUseRequirements(),
-                sessionActive: pending.sessionActive
+                sessionActive: pending.sessionActive,
+                systemCapability: pending.systemCapability
             )
             let response = BurnBarRPCResponseEnvelope(
                 id: requestId,
@@ -991,6 +994,19 @@ extension BurnBarDaemonServer {
                 message: "OpenBurnBar RPC method '\(method.rawValue)' local-authentication proof could not be verified."
             )
         }
+    }
+
+    private static func managedComputerUseMode(rawValue: String) -> ComputerUseMode? {
+        guard let mode = ComputerUseMode(rawValue: rawValue), mode == .browser || mode == .system else {
+            return nil
+        }
+        return mode
+    }
+
+    private static func managedComputerUseMode(for tool: BurnBarToolKind) -> ComputerUseMode? {
+        if tool.isBrowserComputerUse { return .browser }
+        if tool.isMacComputerUse { return .system }
+        return nil
     }
 
     private static func brokerState(

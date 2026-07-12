@@ -93,8 +93,10 @@ signature contract. Earlier generic iOS build-for-testing coverage passes, but
 the currently assigned physical iPad is unavailable and no current
 physical-device execution or exact-candidate approval proof exists. Real
 installed browser actions, grant/approval/panic/audit/restart certification,
-Agent Watch, Linux system capture/input, and the supported-desktop matrix remain
-open.
+Agent Watch, installed Linux System Computer Use certification, and the
+supported-desktop matrix remain open. Linux System mode is now implemented in
+source with capability-gated PipeWire capture, Linux input/inspect routing,
+exact managed-run authority, first-frame admission, and fail-closed teardown.
 
 Official AppImages no longer depend on mutable environment hash pins for daemon
 peer authentication. The final embedded GUI is described by a bounded canonical
@@ -108,8 +110,8 @@ control, inbound and outbound file transfer, call/mirror state, sealed media
 frames, portal/PipeWire capture, codec probing, consent/revocation, a call HUD,
 and a runtime probe that exposes the route only when the daemon can support it.
 It is still **unproven as a parity outcome** until a real Linux-to-macOS/mobile
-two-device matrix passes. The largest remaining functional gaps are complete
-system Computer Use capture/execution, provider/auth/portal completion inside
+two-device matrix passes. The largest remaining functional gaps are Agent Watch,
+provider/auth/portal completion inside
 transactional onboarding, account/cloud/device workflows, chat and session depth, global text expansion, and richer
 Linux-native shell integrations. The largest certification gaps are an x86_64
 installed session, a prior-version update/rollback baseline, a valid public
@@ -250,7 +252,7 @@ live product state were independently reproducible.
 - `bash scripts/linux-port/run-linux-native-tests.sh` in the Docker Linux
   toolchain: **passed** on 2026-07-12, covering the Linux Swift/XCTest manifest
   with fresh-process retry isolation plus the Tauri Rust suite.
-- Fail-closed OpenBurnBar Core/security/daemon Linux manifest: **100/100 passed**.
+- Fail-closed OpenBurnBar Core/security/daemon Linux manifest: **256/256 passed**.
 - Linux media crate capability/capture/decode suite: **3/3 passed**.
 - Extension daemon-client focused suite: **213/213 passed**, including the
   Computer Use waiting phase and operator/computer-use denial projections.
@@ -366,7 +368,7 @@ required gates and were not made green by the Ed25519 result.
 | P-04 | Architecture reach | Published build covers the declared macOS architecture support contract | Native aarch64/x86_64 shard workflow exists and architecture-correct local construction/smoke is green for both; a native hosted x86_64 run, signed aggregate, and installed x86_64 evidence are not yet produced | Partial | Critical |
 | P-05 | Credential custody | Keychain-backed provider, connector, auth, and sync secrets | Secret Service, KWallet, and encrypted headless custodians are wired; live keyring/recovery matrix remains incomplete | Partial | Critical |
 | P-06 | Gateway credential boundary | Native process owns bearer credentials | Rust owns the bearer and proxies bounded authenticated HTTP/SSE; renderer receives typed data, not the token | Near parity | Critical |
-| P-07 | Computer Use | Browser, Agent Watch, Mac System, approval, audit, and three panic paths | Exact run/call/generation authority, signed session/action responses, replay protection, waiting-run selection, shared scope/panic/Playwright/audit routing, and fail-safe restart/terminal behavior are implemented. Controller-route v2 provides dual-signature bootstrap, exact-tuple same-generation transport renewal, and authoritative absence/revocation. The Linux daemon now composes that runtime with daemon-owned PKCE sign-in, secure refresh-token custody, fresh Firebase ID/App Check credentials, per-install Ed25519 App Check enrollment, account-generation invalidation, phase-safe account transition RPCs, and scoped old-account revocation. Pending approval has an explicit bounded reason and quota-safe retry; permanent rejection stops polling. Official AppImages authenticate the final GUI bytes through a signed manifest rather than mutable environment pins. Source tests cover credential expiry/failure, account switch/sign-out races, wrong-state OAuth callbacks, token redaction, peer-manifest tampering, and runtime teardown. A dedicated Linux Firebase web app exists, but the Desktop OAuth client, production callable deployment, release variables, current physical-iPad approval execution, installed browser/panic/audit/restart proof, Agent Watch, and Linux system capture/input remain missing | Partial | Critical |
+| P-07 | Computer Use | Browser, Agent Watch, Mac System, approval, audit, and three panic paths | Exact run/call/generation authority, signed session/action responses, replay protection, waiting-run selection, shared scope/panic/audit routing, and fail-safe restart/terminal behavior are implemented for Browser and Linux System modes. System mode composes capability-gated PipeWire/portal capture with Linux input/inspect, waits for the first encoded frame before success, and tears down both authorities on capture, input, route, kill-switch, or daemon revocation. Controller-route v2 and daemon-owned PKCE/Firebase/App Check authority remain fail closed. A dedicated Linux Firebase web app exists, but the Desktop OAuth client, production callable deployment, release variables, current physical-iPad execution, installed Browser/System/panic/audit/restart proof, supported-compositor certification, and Agent Watch remain missing | Partial | Critical |
 | P-08 | Mercury media | File transfer, calls, screen share, mirroring, presence, consent | Daemon-owned transport, calls, files, sealed capture, portal consent, HUD, and live capability probing are implemented; real cross-device and compositor proof remains open | Partial | Critical |
 | P-09 | Navigation and shell | Dashboard, insights, deep provider/model routes, multi-window flows | All 19 installed routes activate through AT-SPI; deep links and native multi-window behavior remain thinner | Near parity | Medium |
 | P-10 | Dashboard layouts | Six dense layouts with real live content and persisted state | All six layouts, persistence, loading/error/offline/populated states, tokens, and tests exist; the packaged six-layout visual matrix remains incomplete | Near parity | Medium |
@@ -582,16 +584,18 @@ therefore not closed.
 
 ### GAP-005 - Complete Computer Use rather than exposing unsupported modes
 
-**Implementation update (2026-07-11): controller-route v2, cross-platform mobile
+**Implementation update (2026-07-12): controller-route v2, cross-platform mobile
 renewal, macOS host policy, Linux native runtime composition, daemon-owned
 PKCE/Firebase/App Check credentials, Linux App Check enrollment and policy, and
-signed AppImage peer admission are implemented in source. The physical-iPad
+signed AppImage peer admission are implemented in source. Linux System mode now
+composes PipeWire capture with Linux input/inspect under the exact managed-run
+authority, waits for a live encoded frame, and tears down both on revocation.
+The physical-iPad
 approval surface is implemented in the active worktree. Production provisioning,
-an exact signed candidate, and installed Linux plus physical-iPad capability
-proof remain open.**
-The typed runtime manifest now marks Linux system Computer Use unavailable and
-prevents the route from offering a guaranteed-failure action. Browser is the
-only exposed source mode, but the release workflow is not yet operational.
+an exact signed candidate, installed Linux plus physical-iPad capability proof,
+supported-compositor certification, and Agent Watch remain open.**
+The typed runtime manifest exposes Linux System Computer Use only when daemon
+preflight reports both capture and input ready; absence remains fail closed.
 Daemon-managed browser tools now require a live session bound to the exact
 agent run/call/generation, reserve concurrent starts, release expired bindings,
 store that run ID in the hashed manifest, and execute through the shared
@@ -687,18 +691,19 @@ browser sign-in. The Functions error contract exposes an explicit bounded
 pending-approval reason; the daemon retries only pending approval or transient
 cloud failure on a quota-safe capped schedule, while permanent rejection stops.
 The local RPC surface exposes only redacted state. The earlier focused Linux
-verification passed 35 tests across Core token access, credential authority,
-loopback OAuth, directory, scoped revoke, cancellation, and adjacent runtime
-behavior; the newly added lifecycle and polling cases still require the final
-clean Linux-native aggregate.
+Earlier focused verification passed 35 tests across Core token access,
+credential authority, loopback OAuth, directory, scoped revoke, cancellation,
+and adjacent runtime behavior. The current 256-case Linux-native manifest also
+passes the System first-frame, revocation, exact-run, lifecycle, and polling
+regressions.
 
 The dedicated Linux Firebase web app has been created, but the separate Google
 Desktop OAuth client, GitHub public release variables, Functions deployment,
 signed release artifact, and installed physical-iPad approval/action proof are
 still missing. Source wiring cannot stand in for installed behavior. Full
 installed iPad-backed browser action/result/panic/audit/restart E2E and a real
-portal/PipeWire/AT-SPI/libei or constrained X11 system adapter are still
-required. AppImage, deb, and rpm payloads now stage
+GNOME/KDE/wlroots certification of the implemented PipeWire plus AT-SPI/libei
+or constrained X11 System path are still required. AppImage, deb, and rpm payloads now stage
 the canonical bridge under `/usr/lib/openburnbar/playwright`; deb/rpm signed
 installed manifests hash it, and the daemon launcher selects the package path
 before development overrides. A read-only probe enforces Node 18+, exact
@@ -726,9 +731,9 @@ Browser Computer Use parity.
   approvals, and panic frames
   over the installed iroh path; certify polkit-agent availability without adding
   a PAM fallback; preserve restart-safe authority state; complete browser actions
-  over the real Playwright bridge; then build portal/PipeWire
-  capture, AT-SPI inspection, libei input, constrained X11/XTest, and explicitly
-  consented uinput fallback.
+  over the real Playwright bridge; then certify the implemented portal/PipeWire
+  capture and AT-SPI/libei or constrained X11 input path on every supported
+  compositor. Implement Agent Watch as a separate bounded lane.
 - **Priority:** **Critical**.
 - **Implementation notes:** credential acquisition is native and remains out of
   the renderer; Firebase ID and App Check state refresh before directory
@@ -1631,12 +1636,19 @@ Keep one integration owner at a time for `routes.ts`, `tauriBridge.ts`, the Taur
 
 ### Computer Use, media, and extended features
 
-- [x] The source surface exposes Browser only and fails closed when signed phone
-  authority or Linux owner authorization is unavailable.
+- [x] The source surface exposes Browser and capability-gated System modes and
+  fails closed when signed phone authority, Linux owner authorization, capture,
+  or input readiness is unavailable. Agent Watch remains hidden.
 - [ ] The exact installed candidate proves unsupported Computer Use modes hidden.
 - [x] Source daemon-managed agent browser tools require an exact live run/session
   binding and use the same scope, approval, panic, Playwright, and audit
   authority as explicit Computer Use actions, with no direct-dispatch fallback.
+- [x] Source daemon-managed System tools use the same exact run/call/generation
+  authority, wait for the first PipeWire frame before session success, and stop
+  capture plus input on revocation or shutdown.
+- [ ] The exact installed candidate proves System mode on GNOME, KDE, and
+  wlroots Wayland/X11, including portal/input revocation and panic latency.
+- [ ] Linux Agent Watch is implemented and certified.
 - [x] Source session authority defines exact challenge-bound iOS/Android signing
   primitives, serialized and replay-bounded device-owner interaction, live iOS
   inbound routing, Android exact-authenticated-route reception with signed-expiry

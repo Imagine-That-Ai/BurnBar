@@ -251,6 +251,45 @@ final class LinuxComputerUseInputAdapterTests: XCTestCase {
 }
 
 final class LinuxComputerUseServiceSystemInputTests: XCTestCase {
+    func testSystemRuntimeRevocationDuringStartFailsWithoutLeavingSessionAuthority() async throws {
+        let auditDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-linux-cu-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: auditDirectory) }
+
+        let runtime = RevokingComputerUseSystemRuntime()
+        let service = try await makeService(
+            auditBaseDirectory: auditDirectory,
+            systemInputDispatcher: { _, _ in .object(["posted": .bool(true)]) },
+            systemRuntime: runtime
+        )
+
+        do {
+            _ = try await service.startSession(
+                ComputerUseSessionStartRequest(
+                    mode: ComputerUseMode.system.rawValue,
+                    trustMode: ComputerUseTrustMode.manual.rawValue,
+                    clientID: BurnBarClientID(rawValue: "linux-test-client")
+                )
+            )
+            XCTFail("a runtime revoked during start must not return an active session")
+        } catch {
+            guard let serviceError = error as? ComputerUseService.ServiceError else {
+                return XCTFail("unexpected start error: \(error)")
+            }
+            guard case .invalidSession = serviceError else {
+                return XCTFail("unexpected start error: \(error)")
+            }
+        }
+
+        let startedSessionID = await runtime.lastStartedSessionID
+        let sessionID = try XCTUnwrap(startedSessionID)
+        let pending = await service.pendingApprovals(
+            ComputerUseApprovalPendingRequest(sessionId: sessionID.rawValue)
+        )
+        XCTAssertEqual(pending.sessionActive, false)
+        XCTAssertTrue(pending.requests.isEmpty)
+    }
+
     func testSystemSessionApprovesAndDispatchesThroughInjectedLinuxInput() async throws {
         let auditDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-linux-cu-\(UUID().uuidString)", isDirectory: true)
@@ -544,7 +583,8 @@ final class LinuxComputerUseServiceSystemInputTests: XCTestCase {
         systemInputDispatcher: @escaping ComputerUseRunCoordinator.MacInputDispatcher,
         systemInputAccessibilityDeny: @escaping @Sendable (MacInputAction) async -> ComputerUseAccessibilityDenyReason? = { _ in nil },
         computerUseKillSwitchEnabled: @escaping @Sendable () -> Bool = { false },
-        privilegedInputKillSwitchActivator: (@Sendable (String) -> Void)? = nil
+        privilegedInputKillSwitchActivator: (@Sendable (String) -> Void)? = nil,
+        systemRuntime: any ComputerUseSystemRuntime = TestComputerUseSystemRuntime()
     ) async throws -> ComputerUseService {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let capabilityStateStore = ComputerUseCapabilityStateStore(
@@ -563,6 +603,8 @@ final class LinuxComputerUseServiceSystemInputTests: XCTestCase {
             systemInputAccessibilityDeny: systemInputAccessibilityDeny,
             computerUseKillSwitchEnabled: computerUseKillSwitchEnabled,
             privilegedInputKillSwitchActivator: privilegedInputKillSwitchActivator,
+            requiresManagedBrowserRunAuthority: false,
+            systemRuntime: systemRuntime,
             logger: BurnBarDaemonLogger(category: "linux-cu-service-test")
         )
     }
@@ -668,6 +710,81 @@ private final class MacInputActionRecorder: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return action
+    }
+}
+
+private actor TestComputerUseSystemRuntime: ComputerUseSystemRuntime {
+    private var activeSessionID: ComputerUseSessionID?
+
+    func capability() -> ComputerUseSystemCapabilitySnapshot {
+        ComputerUseSystemCapabilitySnapshot(
+            available: true,
+            captureReady: true,
+            inputReady: true,
+            active: activeSessionID != nil,
+            reason: activeSessionID == nil ? "capture_and_input_ready" : "capture_and_input_live"
+        )
+    }
+
+    func start(
+        sessionID: ComputerUseSessionID,
+        onRevoked: @escaping RevocationHandler
+    ) async throws {
+        _ = onRevoked
+        activeSessionID = sessionID
+    }
+
+    func stop(sessionID: ComputerUseSessionID) async {
+        if activeSessionID == sessionID { activeSessionID = nil }
+    }
+
+    func stopAll() async {
+        activeSessionID = nil
+    }
+
+    func dispatch(sessionID: ComputerUseSessionID, action: MacInputAction) async throws -> BurnBarJSONValue {
+        guard activeSessionID == sessionID else { throw CancellationError() }
+        _ = action
+        return .object(["posted": .bool(true)])
+    }
+
+    func inspect(sessionID: ComputerUseSessionID, action: MacInspectAction) async throws -> BurnBarJSONValue {
+        guard activeSessionID == sessionID else { throw CancellationError() }
+        _ = action
+        return .object(["available": .bool(true)])
+    }
+}
+
+private actor RevokingComputerUseSystemRuntime: ComputerUseSystemRuntime {
+    private(set) var lastStartedSessionID: ComputerUseSessionID?
+
+    func capability() -> ComputerUseSystemCapabilitySnapshot {
+        ComputerUseSystemCapabilitySnapshot(
+            available: true,
+            captureReady: true,
+            inputReady: true,
+            active: false,
+            reason: "capture_and_input_ready"
+        )
+    }
+
+    func start(
+        sessionID: ComputerUseSessionID,
+        onRevoked: @escaping RevocationHandler
+    ) async throws {
+        lastStartedSessionID = sessionID
+        await onRevoked(sessionID, "capture_stopped:test_revocation_during_start")
+    }
+
+    func stop(sessionID: ComputerUseSessionID) async {}
+    func stopAll() async {}
+
+    func dispatch(sessionID: ComputerUseSessionID, action: MacInputAction) async throws -> BurnBarJSONValue {
+        throw CancellationError()
+    }
+
+    func inspect(sessionID: ComputerUseSessionID, action: MacInspectAction) async throws -> BurnBarJSONValue {
+        throw CancellationError()
     }
 }
 #endif

@@ -40,13 +40,13 @@ public actor ComputerUseService {
             case .invalidSession(let sessionID):
                 return "Computer Use session is not active: \(sessionID)."
             case .browserRunRequired:
-                return "Browser Computer Use must be bound to an active agent run."
+                return "Managed Computer Use must be bound to an active agent run."
             case .runBindingUnsupportedMode(let mode):
                 return "Agent run binding is not supported for Computer Use mode: \(mode)."
             case .runAlreadyBound(let runID):
                 return "Agent run already has an active Computer Use session: \(runID)."
             case .runNotBound(let runID):
-                return "Start Browser Computer Use for agent run \(runID) before allowing browser actions."
+                return "Start Computer Use for agent run \(runID) before allowing managed actions."
             case .runIdentityMismatch(let expected, let actual):
                 return "Computer Use session is bound to run \(expected), not \(actual)."
             case .clientIdentityMismatch(let expected, let actual):
@@ -54,7 +54,7 @@ public actor ComputerUseService {
             case .authorizationExpired(let runID):
                 return "Computer Use authorization expired for agent run \(runID); authenticate and start a new session."
             case .managedRunDispatchRequired:
-                return "Browser Computer Use actions must be dispatched by the bound agent run."
+                return "Managed Computer Use actions must be dispatched by the bound agent run."
             case .bridgeScriptMissing:
                 return "The installed Playwright bridge is missing."
             case .unsupportedDaemonMode(let mode):
@@ -84,18 +84,20 @@ public actor ComputerUseService {
     private let quotaLedger: ComputerUseLocalQuotaLedger
     private let leafKillSwitch: @Sendable () -> Bool
     private let playwrightDriverFactory: (@Sendable (ComputerUseSessionManifest) async throws -> OpenBurnBarPlaywrightDriver?)?
-    private let systemInputAccessibilityTrusted: @Sendable (ComputerUseMode) -> Bool
+    private let systemInputAccessibilityTrusted: @Sendable (ComputerUseMode) async -> Bool
     private let systemInputAccessibilityDeny: @Sendable (MacInputAction) async -> ComputerUseAccessibilityDenyReason?
     private let computerUseKillSwitchEnabled: @Sendable () -> Bool
     private let privilegedInputKillSwitchActivator: @Sendable (String) -> Void
     private let requiresManagedBrowserRunAuthority: Bool
     private let approvalPublisher: ApprovalPublisher?
     private let sessionEndedObserver: SessionEndedObserver?
+    private let systemRuntime: (any ComputerUseSystemRuntime)?
     private var manifests: [ComputerUseSessionID: ComputerUseSessionManifest] = [:]
     private var pendingEndedSessions: [ComputerUseSessionEndRecord] = []
     private var sessionStartReserved = false
     private var timeoutTasks: [ComputerUseSessionID: Task<Void, Never>] = [:]
     private var revokingSessionIDs: Set<ComputerUseSessionID> = []
+    private var startingSystemSessionIDs: Set<ComputerUseSessionID> = []
 
     public init(
         auditBaseDirectory: URL = BurnBarDaemonPaths.supportDirectoryURL
@@ -109,7 +111,7 @@ public actor ComputerUseService {
         ),
         systemInputDispatcher: ComputerUseRunCoordinator.MacInputDispatcher? = nil,
         systemInspectDispatcher: ComputerUseRunCoordinator.MacInspectDispatcher? = nil,
-        systemInputAccessibilityTrusted: (@Sendable (ComputerUseMode) -> Bool)? = nil,
+        systemInputAccessibilityTrusted: (@Sendable (ComputerUseMode) async -> Bool)? = nil,
         systemInputAccessibilityDeny: (@Sendable (MacInputAction) async -> ComputerUseAccessibilityDenyReason?)? = nil,
         computerUseKillSwitchEnabled: (@Sendable () -> Bool)? = nil,
         privilegedInputKillSwitchActivator: (@Sendable (String) -> Void)? = nil,
@@ -148,6 +150,7 @@ public actor ComputerUseService {
             requiresManagedBrowserRunAuthority: requiresManagedBrowserRunAuthority,
             approvalPublisher: approvalPublisher,
             sessionEndedObserver: sessionEndedObserver,
+            systemRuntime: nil,
             logger: logger
         )
     }
@@ -165,7 +168,7 @@ public actor ComputerUseService {
         playwrightDriverFactory: (@Sendable (ComputerUseSessionManifest) async throws -> OpenBurnBarPlaywrightDriver?)? = nil,
         systemInputDispatcher: ComputerUseRunCoordinator.MacInputDispatcher? = nil,
         systemInspectDispatcher: ComputerUseRunCoordinator.MacInspectDispatcher? = nil,
-        systemInputAccessibilityTrusted: (@Sendable (ComputerUseMode) -> Bool)? = nil,
+        systemInputAccessibilityTrusted: (@Sendable (ComputerUseMode) async -> Bool)? = nil,
         systemInputAccessibilityDeny: (@Sendable (MacInputAction) async -> ComputerUseAccessibilityDenyReason?)? = nil,
         computerUseKillSwitchEnabled: (@Sendable () -> Bool)? = nil,
         privilegedInputKillSwitchActivator: (@Sendable (String) -> Void)? = nil,
@@ -174,6 +177,7 @@ public actor ComputerUseService {
         requiresManagedBrowserRunAuthority: Bool? = nil,
         approvalPublisher: ApprovalPublisher? = nil,
         sessionEndedObserver: SessionEndedObserver? = nil,
+        systemRuntime: (any ComputerUseSystemRuntime)? = nil,
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "computer-use-service")
     ) {
         let approvalBridge = ComputerUseApprovalBridge()
@@ -199,20 +203,25 @@ public actor ComputerUseService {
         self.playwrightDriverFactory = playwrightDriverFactory
         let defaultSystemInputDispatcher: ComputerUseRunCoordinator.MacInputDispatcher?
         let defaultSystemInspectDispatcher: ComputerUseRunCoordinator.MacInspectDispatcher?
-        let defaultSystemAccessibilityTrusted: @Sendable (ComputerUseMode) -> Bool
+        let defaultSystemAccessibilityTrusted: @Sendable (ComputerUseMode) async -> Bool
         let defaultSystemAccessibilityDeny: @Sendable (MacInputAction) async -> ComputerUseAccessibilityDenyReason?
         let defaultComputerUseKillSwitchEnabled: @Sendable () -> Bool
         let defaultPrivilegedInputKillSwitchActivator: @Sendable (String) -> Void
         #if os(Linux)
         let linuxInputAdapter = LinuxComputerUseInputAdapter()
-        defaultSystemInputDispatcher = { _, action in
-            try await linuxInputAdapter.dispatch(action)
+        let resolvedSystemRuntime = systemRuntime ?? LinuxSystemComputerUseRuntime(
+            inputAdapter: linuxInputAdapter
+        )
+        self.systemRuntime = resolvedSystemRuntime
+        defaultSystemInputDispatcher = { sessionID, action in
+            try await resolvedSystemRuntime.dispatch(sessionID: sessionID, action: action)
         }
-        defaultSystemInspectDispatcher = { _, action in
-            try await linuxInputAdapter.inspectAccessibility(action)
+        defaultSystemInspectDispatcher = { sessionID, action in
+            try await resolvedSystemRuntime.inspect(sessionID: sessionID, action: action)
         }
         defaultSystemAccessibilityTrusted = { mode in
-            mode == .system && linuxInputAdapter.isAvailableForSystemInput()
+            guard mode == .system else { return false }
+            return await resolvedSystemRuntime.capability().active
         }
         defaultSystemAccessibilityDeny = { action in
             linuxInputAdapter.accessibilityDenyReason(for: action)
@@ -225,6 +234,7 @@ public actor ComputerUseService {
             LinuxPrivilegedInputKillFlag.activate(reason: reason)
         }
         #else
+        self.systemRuntime = nil
         defaultSystemInputDispatcher = nil
         defaultSystemInspectDispatcher = nil
         defaultSystemAccessibilityTrusted = { _ in false }
@@ -257,7 +267,7 @@ public actor ComputerUseService {
             macInspectDispatcher: systemInspectDispatcher ?? defaultSystemInspectDispatcher,
             preDispatchAuthorizer: preDispatchAuthorizer ?? { sessionID, invocation in
                 guard resolvedComputerUseKillSwitchEnabled() == false else { return false }
-                guard invocation.tool.isBrowserComputerUse else { return true }
+                guard invocation.tool.isComputerUse else { return true }
                 guard resolvedRequiresManagedBrowserRunAuthority else { return true }
                 return await authorizationRegistry.permits(sessionID: sessionID, invocation: invocation)
             },
@@ -286,10 +296,12 @@ public actor ComputerUseService {
             // daemon wires Linux-native input adapters directly.
             throw ServiceError.unsupportedDaemonMode(mode.rawValue)
         }
-        if mode != .browser, request.runID != nil {
+        if mode == .agentWatch, request.runID != nil {
             throw ServiceError.runBindingUnsupportedMode(mode.rawValue)
         }
-        if mode == .browser, requiresManagedBrowserRunAuthority, request.runID == nil {
+        if Self.requiresManagedRunAuthority(mode),
+           requiresManagedBrowserRunAuthority,
+           request.runID == nil {
             throw ServiceError.browserRunRequired
         }
 
@@ -301,7 +313,9 @@ public actor ComputerUseService {
         sessionStartReserved = true
         defer { sessionStartReserved = false }
 
-        let reservedRunID = requiresManagedBrowserRunAuthority ? request.runID : nil
+        let reservedRunID = requiresManagedBrowserRunAuthority && Self.requiresManagedRunAuthority(mode)
+            ? request.runID
+            : nil
         if let runID = reservedRunID {
             if let existing = await authorizationRegistry.binding(runID: runID),
                let expiresAt = existing.expiresAt,
@@ -335,6 +349,7 @@ public actor ComputerUseService {
         let head: String
         var didStartCoordinatorSession = false
         var didBindRun = false
+        var didStartSystemRuntime = false
         do {
             driver = try await makePlaywrightDriverIfNeeded(for: manifest)
             // Driver construction is an actor reentrancy point. Re-read the
@@ -369,6 +384,7 @@ public actor ComputerUseService {
                 throw ServiceError.invalidSession(sessionId.rawValue)
             }
             if requiresManagedBrowserRunAuthority,
+               Self.requiresManagedRunAuthority(mode),
                let runID = request.runID {
                 guard await authorizationRegistry.bind(
                     sessionID: sessionId,
@@ -380,6 +396,20 @@ public actor ComputerUseService {
                 }
                 didBindRun = true
             }
+            if mode == .system {
+                guard let systemRuntime else {
+                    throw ServiceError.unsupportedDaemonMode(mode.rawValue)
+                }
+                startingSystemSessionIDs.insert(sessionId)
+                try await systemRuntime.start(sessionID: sessionId) { [weak self] revokedSessionID, reason in
+                    await self?.systemRuntimeRevoked(sessionID: revokedSessionID, reason: reason)
+                }
+                didStartSystemRuntime = true
+                startingSystemSessionIDs.remove(sessionId)
+                guard await coordinator.session(sessionId) != nil else {
+                    throw ServiceError.invalidSession(sessionId.rawValue)
+                }
+            }
             let quotaReservation = try quotaLedger.reserveSession(
                 idempotencyKey: sessionId.rawValue,
                 authoritativeUsage: refreshedCapabilityState.quotaUsage,
@@ -390,6 +420,10 @@ public actor ComputerUseService {
                 throw ServiceError.capabilityDenied(ComputerUseDenyReason.counterReplay.rawValue)
             }
         } catch {
+            startingSystemSessionIDs.remove(sessionId)
+            if didStartSystemRuntime {
+                await systemRuntime?.stop(sessionID: sessionId)
+            }
             if didBindRun {
                 await authorizationRegistry.revoke(sessionID: sessionId)
             }
@@ -430,7 +464,7 @@ public actor ComputerUseService {
         )
     }
 
-    /// Routes daemon-managed agent browser tools through the same session,
+    /// Routes daemon-managed agent Computer Use tools through the same session,
     /// approval, scope, panic, and audit authority used by explicit CU RPCs.
     public func invokeForRun(_ invocation: BurnBarToolInvocation) async throws -> ComputerUseInvokeResponse {
         guard let sessionID = await liveSessionID(for: invocation.runID) else {
@@ -464,6 +498,7 @@ public actor ComputerUseService {
             }
             timeoutTasks.removeValue(forKey: sessionID)?.cancel()
             await authorizationRegistry.revoke(sessionID: sessionID)
+            await systemRuntime?.stop(sessionID: sessionID)
             return nil
         }
         if manifest.sessionTimeoutSeconds > 0,
@@ -520,6 +555,7 @@ public actor ComputerUseService {
         // Revoke authority before any cleanup await. Late approvals and
         // concurrent invokes must fail closed while the driver is stopping.
         await authorizationRegistry.revoke(sessionID: sessionID)
+        await systemRuntime?.stop(sessionID: sessionID)
         if let sessionEndedObserver {
             await sessionEndedObserver(sessionID.rawValue)
         }
@@ -530,6 +566,21 @@ public actor ComputerUseService {
         manifests.removeValue(forKey: sessionID)
         revokingSessionIDs.remove(sessionID)
         return ended
+    }
+
+    private func systemRuntimeRevoked(
+        sessionID: ComputerUseSessionID,
+        reason: String
+    ) async {
+        guard manifests[sessionID]?.mode == .system || startingSystemSessionIDs.contains(sessionID),
+              revokingSessionIDs.contains(sessionID) == false else {
+            return
+        }
+        logger.warning(
+            "linux_system_computer_use_revoked",
+            metadata: ["session": sessionID.rawValue, "reason": String(reason.prefix(160))]
+        )
+        _ = await haltSession(sessionID, source: .accessibilityRevoked)
     }
 
     public func invoke(_ request: ComputerUseInvokeRequest) async throws -> ComputerUseInvokeResponse {
@@ -548,7 +599,10 @@ public actor ComputerUseService {
               let state = await coordinator.session(sessionId) else {
             throw ServiceError.invalidSession(request.sessionId)
         }
-        if manifest.mode == .browser, requiresManagedBrowserRunAuthority {
+        guard Self.mode(manifest.mode, supports: request.invocation.tool) else {
+            throw ServiceError.unsupportedDaemonMode(manifest.mode.rawValue)
+        }
+        if Self.requiresManagedRunAuthority(manifest.mode), requiresManagedBrowserRunAuthority {
             guard allowManagedRunDispatch else {
                 throw ServiceError.managedRunDispatchRequired
             }
@@ -605,7 +659,7 @@ public actor ComputerUseService {
             session: state,
             concurrentSessionActive: capabilityState.concurrentSessionActive || anotherDaemonSession,
             killSwitch: effectiveKillSwitchEnabled(capabilityState),
-            accessibilityTrusted: systemInputAccessibilityTrusted(manifest.mode)
+            accessibilityTrusted: await systemInputAccessibilityTrusted(manifest.mode)
         )
 
         // CU-021 fix: resolve scope rules against the browser action URL.
@@ -636,12 +690,41 @@ public actor ComputerUseService {
         await coordinator.hasActiveSession()
     }
 
+    func controllerRouteEnded(reason: String) async {
+        logger.warning(
+            "computer_use_controller_route_ended",
+            metadata: ["reason": String(reason.prefix(160))]
+        )
+        await terminateAllSessions(source: .revoked)
+        await systemRuntime?.stopAll()
+    }
+
+    func shutdown() async {
+        await terminateAllSessions(reason: .error)
+        await systemRuntime?.stopAll()
+    }
+
     private static var platformRequiresManagedBrowserRunAuthority: Bool {
         #if os(Linux)
         true
         #else
         false
         #endif
+    }
+
+    private static func requiresManagedRunAuthority(_ mode: ComputerUseMode) -> Bool {
+        mode == .browser || mode == .system
+    }
+
+    private static func mode(_ mode: ComputerUseMode, supports tool: BurnBarToolKind) -> Bool {
+        switch mode {
+        case .browser:
+            return tool.isBrowserComputerUse
+        case .system:
+            return tool.isMacComputerUse
+        case .agentWatch:
+            return false
+        }
     }
 
     public func pendingApprovals(
@@ -662,7 +745,8 @@ public actor ComputerUseService {
         }
         return ComputerUseApprovalPendingResponse(
             requests: await approvalBridge.pendingApprovals(sessionId: filteredSessionID),
-            sessionActive: sessionActive
+            sessionActive: sessionActive,
+            systemCapability: await systemRuntime?.capability()
         )
     }
 
@@ -712,6 +796,7 @@ public actor ComputerUseService {
         }
         if request.sessionId == "*" {
             privilegedInputKillSwitchActivator(source.rawValue)
+            await systemRuntime?.stopAll()
             let endedAt = Date()
             let manifestedSessionIDs = await revokeAllSessionAuthority()
             let haltedSessions = await coordinator.panicHaltAllWithRecords(source: source)
