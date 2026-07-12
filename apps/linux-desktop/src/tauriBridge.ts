@@ -245,11 +245,20 @@ export type DatabaseIndexActionResult = {
 // ─────────────────────────── P08: account ─────────────────────────────────
 
 export type AccountStatus = {
+  state?: 'signed-out' | 'authorizing' | 'awaiting-device-approval' | 'active' | 'unavailable';
   signedIn: boolean;
   identityLabel?: string;
   trustClass: 'linux-lower-trust';
   syncState: 'local-only' | 'paused' | 'active';
   lastSyncAt?: string;
+  authorizationOperationID?: string;
+  authorizationExpiresAt?: string;
+  deviceApprovalRequired?: boolean;
+  detail?: string;
+};
+export type AccountSignInOperation = {
+  operationID: string;
+  expiresAt: string;
 };
 
 // ─────────────────────────── P10: membership ──────────────────────────────
@@ -621,6 +630,9 @@ export interface LinuxShellBridge {
   databaseIndexProject(projectPath?: string): Promise<DatabaseIndexActionResult>;
   databaseWatchProject(projectPath?: string): Promise<DatabaseIndexActionResult>;
   accountStatus(): Promise<AccountStatus>;
+  accountBeginSignIn(): Promise<AccountSignInOperation>;
+  accountCancelSignIn(operationID: string): Promise<AccountStatus>;
+  accountSignOut(): Promise<AccountStatus>;
   membershipStatus?(): Promise<MembershipStatus>;
   membershipCheckoutUrl?(): Promise<string>;
   openExternalUrl?(url: string): Promise<void>;
@@ -1323,24 +1335,45 @@ function mapDatabaseIndexAction(raw: RawJsonValue): DatabaseIndexActionResult {
 }
 
 function mapAccountStatus(raw: RawJsonValue): AccountStatus {
-  // Derived from daemon.config.get — no daemon.account.* RPC exists.
-  const snap = pick(raw, 'snapshot', 'config') ?? raw;
-  const cloud = pick(snap, 'cloud', 'sync', 'account');
-  const signedIn = Boolean(pick(cloud, 'signedIn', 'signed_in', 'authenticated'));
-  const cloudSyncEnabled = Boolean(pick(snap, 'cloudSyncEnabled', 'cloud_sync_enabled'));
-  const syncStateRaw = str(pick(cloud, 'syncState', 'sync_state', 'status'), cloudSyncEnabled ? 'active' : 'local-only');
-  const syncState: AccountStatus['syncState'] = syncStateRaw.includes('active')
+  const status = pick(raw, 'status') ?? raw;
+  const signedIn = Boolean(pick(status, 'signedIn', 'signed_in', 'authenticated'));
+  const rawState = str(pick(status, 'state'), signedIn ? 'active' : 'signed_out');
+  const state: NonNullable<AccountStatus['state']> = rawState === 'authorizing'
+    ? 'authorizing'
+    : rawState === 'awaiting_device_approval'
+      ? 'awaiting-device-approval'
+      : rawState === 'active'
+        ? 'active'
+        : rawState === 'unavailable'
+          ? 'unavailable'
+          : 'signed-out';
+  const syncStateRaw = str(pick(status, 'syncState', 'sync_state'), signedIn ? 'active' : 'local-only');
+  const syncState: AccountStatus['syncState'] = syncStateRaw === 'active' || syncStateRaw === 'cloud-ready'
     ? 'active'
-    : syncStateRaw.includes('pause')
+    : syncStateRaw === 'paused'
       ? 'paused'
       : 'local-only';
   return {
+    state,
     signedIn,
-    identityLabel: str(pick(cloud, 'identityLabel', 'email', 'label')) || undefined,
+    identityLabel: str(pick(status, 'identityLabel', 'email', 'label')) || undefined,
     trustClass: 'linux-lower-trust',
     syncState,
-    lastSyncAt: str(pick(cloud, 'lastSyncAt', 'last_sync_at')) || undefined
+    lastSyncAt: str(pick(status, 'lastSyncAt', 'last_sync_at')) || undefined,
+    authorizationOperationID: str(pick(status, 'authorizationOperationID', 'authorization_operation_id')) || undefined,
+    authorizationExpiresAt: str(pick(status, 'authorizationExpiresAt', 'authorization_expires_at')) || undefined,
+    deviceApprovalRequired: Boolean(pick(status, 'deviceApprovalRequired', 'device_approval_required')),
+    detail: str(pick(status, 'detail')) || undefined
   };
+}
+
+function mapAccountSignInOperation(raw: RawJsonValue): AccountSignInOperation {
+  const operationID = str(pick(raw, 'operationID', 'operationId'));
+  const expiresAt = str(pick(raw, 'expiresAt'));
+  if (!operationID || !expiresAt || !Number.isFinite(Date.parse(expiresAt))) {
+    throw new Error('Daemon returned an invalid sign-in operation.');
+  }
+  return { operationID, expiresAt };
 }
 
 function mapMembershipStatus(raw: RawJsonValue): MembershipStatus {
@@ -2086,9 +2119,21 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       const raw = await invoke<RawJsonValue>('database_watch_project', { projectPath });
       return mapDatabaseIndexAction(raw);
     },
-    // P08 — derived from daemon.config.get (cloud/sync subtree)
+    // P08 — daemon-owned browser PKCE and lower-trust Linux identity.
     accountStatus: async () => {
       const raw = await invoke<RawJsonValue>('account_status');
+      return mapAccountStatus(raw);
+    },
+    accountBeginSignIn: async () => {
+      const raw = await invoke<RawJsonValue>('account_begin_sign_in');
+      return mapAccountSignInOperation(raw);
+    },
+    accountCancelSignIn: async (operationID) => {
+      const raw = await invoke<RawJsonValue>('account_cancel_sign_in', { operationId: operationID });
+      return mapAccountStatus(raw);
+    },
+    accountSignOut: async () => {
+      const raw = await invoke<RawJsonValue>('account_sign_out');
       return mapAccountStatus(raw);
     },
     // P10 — daemon-owned membership data; fail closed if absent.

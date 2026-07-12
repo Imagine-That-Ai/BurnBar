@@ -107,4 +107,22 @@ describe('VAL-RPC bridge contract', () => {
       expect(canonicalRpc, `${method} must exist in BurnBarRPCIPCCanon`).toContain(`id: "${method}"`);
     }
   });
+
+  it('wires daemon-owned Linux auth without renderer credential material', () => {
+    for (const method of [
+      'daemon.auth.status',
+      'daemon.auth.begin',
+      'daemon.auth.cancel',
+      'daemon.auth.sign_out'
+    ]) {
+      expect(rustBridge).toContain(method);
+      expect(canonicalRpc, `${method} must exist in BurnBarRPCIPCCanon`).toContain(`id: "${method}"`);
+    }
+    expect(rustBridge).toContain('object.remove("authorizationURL")');
+    const accountTypes = tsBridge.slice(
+      tsBridge.indexOf('P08: account'),
+      tsBridge.indexOf('P10: membership')
+    );
+    expect(accountTypes).not.toMatch(/\b(refreshToken|idToken|appCheckToken|sessionGeneration|deviceID)\b/);
+  });
 });

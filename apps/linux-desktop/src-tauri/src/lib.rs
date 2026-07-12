@@ -5,8 +5,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::UnixStream;
-use std::path::PathBuf;
-use std::process::Command;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::thread;
@@ -473,7 +473,24 @@ fn gateway_chat_cancel(request_id: String) -> Result<(), String> {
 }
 
 fn probe_daemon_health() -> DaemonHealth {
+    probe_daemon_health_with_timeout(Duration::from_secs(5), false)
+}
+
+fn probe_authenticated_daemon_health(timeout: Duration) -> DaemonHealth {
+    probe_daemon_health_with_timeout(timeout, true)
+}
+
+fn probe_daemon_health_with_timeout(timeout: Duration, require_auth: bool) -> DaemonHealth {
     let socket_path = linux_socket_path();
+    let auth_token = read_auth_token();
+    if require_auth && auth_token.is_none() {
+        return DaemonHealth {
+            ok: false,
+            socket_path: Some(socket_path.display().to_string()),
+            error: Some("Daemon socket auth token is unavailable".into()),
+            ..Default::default()
+        };
+    }
     let mut stream = match UnixStream::connect(&socket_path) {
         Ok(s) => s,
         Err(e) => {
@@ -485,8 +502,8 @@ fn probe_daemon_health() -> DaemonHealth {
             };
         }
     };
-    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
-    let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
+    let _ = stream.set_read_timeout(Some(timeout));
+    let _ = stream.set_write_timeout(Some(timeout));
 
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -498,7 +515,7 @@ fn probe_daemon_health() -> DaemonHealth {
         "method": "daemon.health",
         "traceId": format!("trace-{stamp}"),
     });
-    if let Some(token) = read_auth_token() {
+    if let Some(token) = auth_token {
         envelope["authToken"] = serde_json::Value::String(token);
     }
     let payload = format!("{envelope}\n");
@@ -576,6 +593,237 @@ fn probe_daemon_health() -> DaemonHealth {
             .map(|v| v as u16),
         error: None,
     }
+}
+
+const SYSTEM_DAEMON_LAUNCHER: &str = "/usr/libexec/openburnbar-daemon-launch";
+const SYSTEM_GUI_EXECUTABLE: &str = "/usr/bin/openburnbar-linux-desktop";
+const APPIMAGE_DAEMON_LAUNCHER: &str = "usr/libexec/openburnbar-daemon-launch";
+const DAEMON_STARTUP_PROBE_TIMEOUT: Duration = Duration::from_millis(250);
+const DAEMON_STARTUP_RETRY_DELAY: Duration = Duration::from_millis(250);
+const DAEMON_STARTUP_READINESS_ATTEMPTS: usize = 40;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DaemonLauncherKind {
+    AppImage,
+    SystemPackage,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum DaemonStartupOutcome {
+    AlreadyRunning,
+    Started,
+    Unpackaged,
+    SpawnFailed(String),
+    ReadinessTimedOut,
+}
+
+fn path_filesystem_is_read_only(path: &Path) -> bool {
+    use std::os::unix::ffi::OsStrExt;
+
+    let Ok(path) = std::ffi::CString::new(path.as_os_str().as_bytes()) else {
+        return false;
+    };
+    let mut stats = std::mem::MaybeUninit::<libc::statvfs>::uninit();
+    // SAFETY: `path` is NUL-terminated and `statvfs` initializes `stats` on success.
+    let result = unsafe { libc::statvfs(path.as_ptr(), stats.as_mut_ptr()) };
+    if result != 0 {
+        return false;
+    }
+    // SAFETY: a successful `statvfs` call initialized the structure.
+    let stats = unsafe { stats.assume_init() };
+    stats.f_flag & libc::ST_RDONLY as libc::c_ulong != 0
+}
+
+fn trusted_packaged_launcher(candidate: &Path, kind: DaemonLauncherKind) -> bool {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+    if !candidate.is_absolute() {
+        return false;
+    }
+    let Ok(canonical_candidate) = fs::canonicalize(candidate) else {
+        return false;
+    };
+    if canonical_candidate != candidate {
+        return false;
+    }
+    let Ok(metadata) = fs::symlink_metadata(candidate) else {
+        return false;
+    };
+    let mode = metadata.permissions().mode();
+    if !metadata.file_type().is_file() || mode & 0o111 == 0 {
+        return false;
+    }
+
+    match kind {
+        DaemonLauncherKind::AppImage => {
+            let Some(appdir) = std::env::var_os("APPDIR").map(PathBuf::from) else {
+                return false;
+            };
+            let Ok(canonical_appdir) = fs::canonicalize(&appdir) else {
+                return false;
+            };
+            if !appdir.is_absolute()
+                || canonical_appdir != appdir
+                || candidate != canonical_appdir.join(APPIMAGE_DAEMON_LAUNCHER)
+                || !path_filesystem_is_read_only(&canonical_appdir)
+                || !path_filesystem_is_read_only(candidate)
+            {
+                return false;
+            }
+            let Ok(current_exe) = std::env::current_exe().and_then(fs::canonicalize) else {
+                return false;
+            };
+            current_exe.starts_with(&canonical_appdir)
+        }
+        DaemonLauncherKind::SystemPackage => {
+            let Ok(current_exe) = std::env::current_exe().and_then(fs::canonicalize) else {
+                return false;
+            };
+            let Ok(current_exe_metadata) = fs::symlink_metadata(&current_exe) else {
+                return false;
+            };
+            let current_exe_mode = current_exe_metadata.permissions().mode();
+            if candidate != Path::new(SYSTEM_DAEMON_LAUNCHER)
+                || metadata.uid() != 0
+                || mode & 0o022 != 0
+                || current_exe != Path::new(SYSTEM_GUI_EXECUTABLE)
+                || !current_exe_metadata.file_type().is_file()
+                || current_exe_metadata.uid() != 0
+                || current_exe_mode & 0o111 == 0
+                || current_exe_mode & 0o022 != 0
+            {
+                return false;
+            }
+            [
+                Path::new("/usr"),
+                Path::new("/usr/bin"),
+                Path::new("/usr/libexec"),
+            ]
+            .into_iter()
+            .all(|directory| {
+                fs::symlink_metadata(directory).is_ok_and(|directory_metadata| {
+                    directory_metadata.file_type().is_dir()
+                        && directory_metadata.uid() == 0
+                        && directory_metadata.permissions().mode() & 0o022 == 0
+                }) && fs::canonicalize(directory).is_ok_and(|path| path == directory)
+            })
+        }
+    }
+}
+
+fn resolve_packaged_daemon_launcher_with<Verify>(
+    appdir: Option<&std::ffi::OsStr>,
+    system_package_executable: bool,
+    verify: Verify,
+) -> Option<PathBuf>
+where
+    Verify: Fn(&Path, DaemonLauncherKind) -> bool,
+{
+    if let Some(appdir) = appdir {
+        let appdir = Path::new(appdir);
+        if appdir.is_absolute() {
+            let candidate = appdir.join(APPIMAGE_DAEMON_LAUNCHER);
+            if verify(&candidate, DaemonLauncherKind::AppImage) {
+                return Some(candidate);
+            }
+        }
+    }
+
+    if system_package_executable {
+        let candidate = PathBuf::from(SYSTEM_DAEMON_LAUNCHER);
+        return verify(&candidate, DaemonLauncherKind::SystemPackage).then_some(candidate);
+    }
+    None
+}
+
+fn resolve_packaged_daemon_launcher() -> Option<PathBuf> {
+    let system_package_executable = std::env::current_exe()
+        .and_then(fs::canonicalize)
+        .is_ok_and(|path| path == Path::new(SYSTEM_GUI_EXECUTABLE));
+    resolve_packaged_daemon_launcher_with(
+        std::env::var_os("APPDIR").as_deref(),
+        system_package_executable,
+        trusted_packaged_launcher,
+    )
+}
+
+fn spawn_daemon_launcher(path: &Path) -> Result<(), String> {
+    let mut child = Command::new(path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .map_err(|error| format!("daemon launcher failed: {error}"))?;
+    thread::spawn(move || {
+        let _ = child.wait();
+    });
+    Ok(())
+}
+
+fn ensure_daemon_running_with<Probe, Spawn, Sleep>(
+    launcher: Option<PathBuf>,
+    mut probe: Probe,
+    spawn: Spawn,
+    mut sleep: Sleep,
+    readiness_attempts: usize,
+) -> DaemonStartupOutcome
+where
+    Probe: FnMut() -> bool,
+    Spawn: FnOnce(&Path) -> Result<(), String>,
+    Sleep: FnMut(),
+{
+    if probe() {
+        return DaemonStartupOutcome::AlreadyRunning;
+    }
+    let Some(launcher) = launcher else {
+        return DaemonStartupOutcome::Unpackaged;
+    };
+    if let Err(error) = spawn(&launcher) {
+        return DaemonStartupOutcome::SpawnFailed(error);
+    }
+    for attempt in 0..readiness_attempts {
+        if probe() {
+            return DaemonStartupOutcome::Started;
+        }
+        if attempt + 1 < readiness_attempts {
+            sleep();
+        }
+    }
+    DaemonStartupOutcome::ReadinessTimedOut
+}
+
+fn start_packaged_daemon_lifecycle(app: AppHandle) {
+    thread::spawn(move || {
+        let outcome = ensure_daemon_running_with(
+            resolve_packaged_daemon_launcher(),
+            || probe_authenticated_daemon_health(DAEMON_STARTUP_PROBE_TIMEOUT).ok,
+            spawn_daemon_launcher,
+            || thread::sleep(DAEMON_STARTUP_RETRY_DELAY),
+            DAEMON_STARTUP_READINESS_ATTEMPTS,
+        );
+        match outcome {
+            DaemonStartupOutcome::AlreadyRunning => {
+                tracing::debug!("authenticated daemon is already running");
+            }
+            DaemonStartupOutcome::Started => {
+                tracing::info!("packaged daemon launcher reached authenticated readiness");
+                let _ = app.emit("daemon-health", probe_daemon_health());
+            }
+            DaemonStartupOutcome::Unpackaged => {
+                tracing::debug!(
+                    "no trusted packaged daemon launcher; leaving development launch unchanged"
+                );
+            }
+            DaemonStartupOutcome::SpawnFailed(error) => {
+                tracing::warn!(error = %error, "packaged daemon launcher failed");
+            }
+            DaemonStartupOutcome::ReadinessTimedOut => {
+                tracing::warn!(
+                    "packaged daemon did not reach authenticated readiness before timeout"
+                );
+            }
+        }
+    });
 }
 
 fn call_daemon_perf_measure(name: &str) -> Result<(bool, String, Option<String>), String> {
@@ -1025,6 +1273,91 @@ fn validate_external_url(raw_url: &str) -> Result<String, String> {
     );
     if !allowed_host {
         return Err("external_url_host_refused".to_string());
+    }
+    Ok(url.to_string())
+}
+
+fn validate_auth_url(raw_url: &str) -> Result<String, String> {
+    if raw_url.len() > 4_096 {
+        return Err("auth_url_too_long".to_string());
+    }
+    let url = reqwest::Url::parse(raw_url).map_err(|_| "auth_url_invalid".to_string())?;
+    if url.scheme() != "https"
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || !matches!(url.port(), None | Some(443))
+        || url.host_str() != Some("accounts.google.com")
+        || url.path() != "/o/oauth2/v2/auth"
+    {
+        return Err("auth_url_origin_refused".to_string());
+    }
+    let mut query = BTreeMap::new();
+    for (name, value) in url.query_pairs() {
+        if query
+            .insert(name.into_owned(), value.into_owned())
+            .is_some()
+        {
+            return Err("auth_url_duplicate_parameter".to_string());
+        }
+    }
+    let expected = [
+        "client_id",
+        "code_challenge",
+        "code_challenge_method",
+        "redirect_uri",
+        "response_type",
+        "scope",
+        "state",
+    ];
+    if query.len() != expected.len() || expected.iter().any(|key| !query.contains_key(*key)) {
+        return Err("auth_url_parameters_refused".to_string());
+    }
+    let client_id = query.get("client_id").expect("required key checked");
+    let client_prefix = client_id
+        .strip_suffix(".apps.googleusercontent.com")
+        .filter(|prefix| {
+            (12..=512).contains(&prefix.len())
+                && prefix
+                    .chars()
+                    .all(|character| character.is_ascii_alphanumeric() || "._-".contains(character))
+        })
+        .ok_or_else(|| "auth_url_client_id_refused".to_string())?;
+    if client_prefix.is_empty() {
+        return Err("auth_url_client_id_refused".to_string());
+    }
+    let redirect = reqwest::Url::parse(query.get("redirect_uri").expect("required key checked"))
+        .map_err(|_| "auth_url_redirect_refused".to_string())?;
+    if redirect.scheme() != "http"
+        || redirect.host_str() != Some("127.0.0.1")
+        || redirect.port().is_none()
+        || redirect.path() != "/callback"
+        || redirect.query().is_some()
+        || redirect.fragment().is_some()
+        || !redirect.username().is_empty()
+        || redirect.password().is_some()
+    {
+        return Err("auth_url_redirect_refused".to_string());
+    }
+    let is_base64_url = |value: &str, exact_length: usize| {
+        value.len() == exact_length
+            && value.chars().all(|character| {
+                character.is_ascii_alphanumeric() || matches!(character, '-' | '_')
+            })
+    };
+    if query.get("response_type").map(String::as_str) != Some("code")
+        || query.get("code_challenge_method").map(String::as_str) != Some("S256")
+        || !is_base64_url(query.get("state").expect("required key checked"), 43)
+        || !is_base64_url(
+            query.get("code_challenge").expect("required key checked"),
+            43,
+        )
+        || !query
+            .get("scope")
+            .expect("required key checked")
+            .split_ascii_whitespace()
+            .any(|scope| scope == "openid")
+    {
+        return Err("auth_url_pkce_refused".to_string());
     }
     Ok(url.to_string())
 }
@@ -1695,11 +2028,127 @@ fn database_watch_project(project_path: Option<String>) -> Result<serde_json::Va
     )
 }
 
-// ───────────────── P08: account status ─────────────────
-// Derived from daemon.config.get (cloud/sync subtree) — no daemon.account.* RPC.
+// ───────────────── P08: daemon-owned account authority ─────────────────
 #[tauri::command]
 fn account_status() -> Result<serde_json::Value, String> {
-    call_daemon_method("daemon.config.get", None)
+    call_daemon_method("daemon.auth.status", None)
+}
+
+fn finish_account_browser_launch<Launch, Cancel, Status>(
+    mut result: serde_json::Value,
+    launch: Launch,
+    cancel: Cancel,
+    status: Status,
+) -> Result<serde_json::Value, String>
+where
+    Launch: FnOnce(String) -> Result<(), String>,
+    Cancel: FnOnce(&str) -> Result<(), String>,
+    Status: FnOnce() -> Result<serde_json::Value, String>,
+{
+    let operation_id = result
+        .get("operationID")
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.is_empty() && value.len() <= 160)
+        .ok_or_else(|| "auth_begin_missing_operation_id".to_string())?
+        .to_string();
+    let authorization_url = result
+        .get("authorizationURL")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "auth_begin_missing_authorization_url".to_string());
+    let validated = authorization_url.and_then(validate_auth_url);
+    let launch_result = validated.and_then(launch);
+    if let Err(launch_error) = launch_result {
+        if cancel(&operation_id).is_ok() {
+            return Err(launch_error);
+        }
+
+        let status = status();
+        let status_operation_id = status
+            .as_ref()
+            .ok()
+            .and_then(|value| value.get("authorizationOperationID"))
+            .and_then(serde_json::Value::as_str);
+        if status.is_ok() && status_operation_id != Some(operation_id.as_str()) {
+            return Err(launch_error);
+        }
+
+        if let Some(object) = result.as_object_mut() {
+            object.remove("authorizationURL");
+            if let Some(expires_at) = status
+                .as_ref()
+                .ok()
+                .and_then(|value| value.get("authorizationExpiresAt"))
+                .and_then(serde_json::Value::as_str)
+            {
+                object.insert(
+                    "expiresAt".to_string(),
+                    serde_json::Value::String(expires_at.to_string()),
+                );
+            }
+            object.insert(
+                "nativeBrowserLaunchFailed".to_string(),
+                serde_json::Value::Bool(true),
+            );
+            object.insert(
+                "cancelRetryRequired".to_string(),
+                serde_json::Value::Bool(true),
+            );
+            object.insert(
+                "cancelStatusVerified".to_string(),
+                serde_json::Value::Bool(status_operation_id == Some(operation_id.as_str())),
+            );
+        }
+        tracing::warn!(
+            operation_id = %operation_id,
+            cancel_status_verified = status_operation_id == Some(operation_id.as_str()),
+            "native auth browser launch and cleanup failed; preserving operation for retry"
+        );
+        return Ok(result);
+    }
+    if let Some(object) = result.as_object_mut() {
+        object.remove("authorizationURL");
+    }
+    Ok(result)
+}
+
+#[tauri::command]
+fn account_begin_sign_in(app: AppHandle) -> Result<serde_json::Value, String> {
+    let result = call_daemon_method("daemon.auth.begin", None)?;
+    finish_account_browser_launch(
+        result,
+        |validated| {
+            // reason: tauri-plugin-shell retains this Tauri 2 API while auth URLs stay natively validated.
+            #[allow(deprecated)]
+            app.shell()
+                .open(validated, None)
+                .map_err(|_| "auth_url_open_failed".to_string())
+        },
+        |operation_id| {
+            call_daemon_method(
+                "daemon.auth.cancel",
+                Some(serde_json::json!({ "operationID": operation_id })),
+            )
+            .map(|_| ())
+        },
+        || call_daemon_method("daemon.auth.status", None),
+    )
+}
+
+#[tauri::command]
+fn account_cancel_sign_in(operation_id: String) -> Result<serde_json::Value, String> {
+    let operation_id = operation_id.trim();
+    if operation_id.is_empty() || operation_id.len() > 160 {
+        return Err("auth_operation_id_invalid".to_string());
+    }
+    call_daemon_method(
+        "daemon.auth.cancel",
+        Some(serde_json::json!({ "operationID": operation_id })),
+    )
+}
+
+#[tauri::command]
+fn account_sign_out() -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.auth.sign_out", None)
 }
 
 // ───────────────── P10: membership status ─────────────────
@@ -3767,6 +4216,9 @@ pub fn run() {
             database_index_project,
             database_watch_project,
             account_status,
+            account_begin_sign_in,
+            account_cancel_sign_in,
+            account_sign_out,
             membership_status,
             membership_checkout_url,
             membership_restore,
@@ -3796,6 +4248,7 @@ pub fn run() {
             integrations_status
         ])
         .setup(|app| {
+            start_packaged_daemon_lifecycle(app.handle().clone());
             if let Err(e) = build_tray(app.handle()) {
                 TRAY_INIT_FAILED.store(true, Ordering::Relaxed);
                 eprintln!("tray init degraded: {e}");
@@ -3827,6 +4280,14 @@ mod tests {
 
     static COMPUTER_USE_BROKER_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
+    fn valid_google_pkce_url() -> String {
+        format!(
+            "https://accounts.google.com/o/oauth2/v2/auth?client_id=123456789012-desktop.apps.googleusercontent.com&response_type=code&redirect_uri=http%3A%2F%2F127.0.0.1%3A49152%2Fcallback&code_challenge={}&code_challenge_method=S256&state={}&scope=openid%20email%20profile",
+            "c".repeat(43),
+            "s".repeat(43)
+        )
+    }
+
     fn computer_use_broker_test_guard() -> std::sync::MutexGuard<'static, ()> {
         let guard = COMPUTER_USE_BROKER_TEST_LOCK
             .get_or_init(|| Mutex::new(()))
@@ -3834,6 +4295,143 @@ mod tests {
             .unwrap();
         *computer_use_broker_flow().lock().unwrap() = None;
         guard
+    }
+
+    #[test]
+    fn packaged_daemon_launcher_resolution_uses_only_fixed_package_paths() {
+        use std::cell::RefCell;
+        use std::ffi::OsStr;
+
+        let inspected = RefCell::new(Vec::new());
+        let appimage = resolve_packaged_daemon_launcher_with(
+            Some(OsStr::new("/tmp/.mount_OpenBurnBar")),
+            false,
+            |path, kind| {
+                inspected.borrow_mut().push((path.to_path_buf(), kind));
+                kind == DaemonLauncherKind::AppImage
+            },
+        );
+        assert_eq!(
+            appimage,
+            Some(PathBuf::from(
+                "/tmp/.mount_OpenBurnBar/usr/libexec/openburnbar-daemon-launch"
+            ))
+        );
+        assert_eq!(
+            inspected.into_inner(),
+            vec![(
+                PathBuf::from("/tmp/.mount_OpenBurnBar/usr/libexec/openburnbar-daemon-launch"),
+                DaemonLauncherKind::AppImage
+            )]
+        );
+
+        let inspected = RefCell::new(Vec::new());
+        let system = resolve_packaged_daemon_launcher_with(
+            Some(OsStr::new("untrusted-relative-root")),
+            true,
+            |path, kind| {
+                inspected.borrow_mut().push((path.to_path_buf(), kind));
+                kind == DaemonLauncherKind::SystemPackage
+            },
+        );
+        assert_eq!(system, Some(PathBuf::from(SYSTEM_DAEMON_LAUNCHER)));
+        assert_eq!(
+            inspected.into_inner(),
+            vec![(
+                PathBuf::from(SYSTEM_DAEMON_LAUNCHER),
+                DaemonLauncherKind::SystemPackage
+            )]
+        );
+
+        let development = resolve_packaged_daemon_launcher_with(None, false, |_, _| {
+            panic!("development builds must not inspect a system launcher")
+        });
+        assert_eq!(development, None);
+    }
+
+    #[test]
+    fn daemon_lifecycle_does_not_spawn_when_authenticated_daemon_is_live() {
+        let outcome = ensure_daemon_running_with(
+            Some(PathBuf::from(SYSTEM_DAEMON_LAUNCHER)),
+            || true,
+            |_| panic!("already-live daemon must not spawn a launcher"),
+            || panic!("already-live daemon must not sleep"),
+            3,
+        );
+        assert_eq!(outcome, DaemonStartupOutcome::AlreadyRunning);
+    }
+
+    #[test]
+    fn daemon_lifecycle_spawns_fixed_launcher_and_waits_for_readiness() {
+        use std::cell::{Cell, RefCell};
+
+        let probes = Cell::new(0usize);
+        let sleeps = Cell::new(0usize);
+        let spawned = RefCell::new(None);
+        let outcome = ensure_daemon_running_with(
+            Some(PathBuf::from(SYSTEM_DAEMON_LAUNCHER)),
+            || {
+                let probe = probes.get();
+                probes.set(probe + 1);
+                probe >= 2
+            },
+            |path| {
+                *spawned.borrow_mut() = Some(path.to_path_buf());
+                Ok(())
+            },
+            || sleeps.set(sleeps.get() + 1),
+            4,
+        );
+        assert_eq!(outcome, DaemonStartupOutcome::Started);
+        assert_eq!(
+            spawned.into_inner(),
+            Some(PathBuf::from(SYSTEM_DAEMON_LAUNCHER))
+        );
+        assert_eq!(probes.get(), 3);
+        assert_eq!(sleeps.get(), 1);
+    }
+
+    #[test]
+    fn daemon_lifecycle_reports_spawn_failure_without_retrying() {
+        use std::cell::Cell;
+
+        let probes = Cell::new(0usize);
+        let outcome = ensure_daemon_running_with(
+            Some(PathBuf::from(SYSTEM_DAEMON_LAUNCHER)),
+            || {
+                probes.set(probes.get() + 1);
+                false
+            },
+            |_| Err("permission denied".to_string()),
+            || panic!("spawn failures must not enter the readiness loop"),
+            4,
+        );
+        assert_eq!(
+            outcome,
+            DaemonStartupOutcome::SpawnFailed("permission denied".to_string())
+        );
+        assert_eq!(probes.get(), 1);
+    }
+
+    #[test]
+    fn daemon_lifecycle_readiness_timeout_is_strictly_bounded() {
+        use std::cell::Cell;
+
+        let probes = Cell::new(0usize);
+        let sleeps = Cell::new(0usize);
+        let outcome = ensure_daemon_running_with(
+            Some(PathBuf::from(SYSTEM_DAEMON_LAUNCHER)),
+            || {
+                probes.set(probes.get() + 1);
+                false
+            },
+            |_| Ok(()),
+            || sleeps.set(sleeps.get() + 1),
+            3,
+        );
+        assert_eq!(outcome, DaemonStartupOutcome::ReadinessTimedOut);
+        assert_eq!(probes.get(), 4);
+        assert_eq!(sleeps.get(), 2);
     }
 
     fn computer_use_broker_request_fixture() -> ComputerUseBrokerSessionStartRequest {
@@ -3960,6 +4558,140 @@ mod tests {
         ] {
             assert!(validate_external_url(refused).is_err(), "{refused}");
         }
+    }
+
+    #[test]
+    fn auth_url_validation_is_exact_google_pkce_endpoint_only() {
+        let valid = valid_google_pkce_url();
+        assert_eq!(validate_auth_url(&valid).unwrap(), valid);
+        for refused in [
+            valid.replacen("https://", "http://", 1),
+            valid.replacen("accounts.google.com", "accounts.google.com.evil.example", 1),
+            valid.replacen("https://", "https://user@", 1),
+            valid.replacen("/o/oauth2/v2/auth", "/o/oauth2/auth", 1),
+            valid.replacen("accounts.google.com", "accounts.google.com:444", 1),
+            valid.replacen(
+                "code_challenge_method=S256",
+                "code_challenge_method=plain",
+                1,
+            ),
+            valid.replacen(
+                "redirect_uri=http%3A%2F%2F127.0.0.1",
+                "redirect_uri=http%3A%2F%2Flocalhost",
+                1,
+            ),
+            format!("{valid}&state=duplicate"),
+            format!("{valid}&prompt=consent"),
+            "file:///etc/passwd".to_string(),
+        ] {
+            assert!(validate_auth_url(&refused).is_err(), "{refused}");
+        }
+    }
+
+    #[test]
+    fn auth_url_validation_requires_complete_pkce_query() {
+        let valid = valid_google_pkce_url();
+        for required in [
+            "client_id",
+            "response_type",
+            "redirect_uri",
+            "code_challenge",
+            "code_challenge_method",
+            "state",
+            "scope",
+        ] {
+            let mut url = reqwest::Url::parse(&valid).unwrap();
+            let retained = url
+                .query_pairs()
+                .filter(|(name, _)| name != required)
+                .map(|(name, value)| (name.into_owned(), value.into_owned()))
+                .collect::<Vec<_>>();
+            url.query_pairs_mut().clear().extend_pairs(retained);
+            assert!(
+                validate_auth_url(url.as_str()).is_err(),
+                "missing {required}"
+            );
+        }
+    }
+
+    #[test]
+    fn failed_auth_browser_launch_cancels_the_daemon_operation() {
+        let mut cancelled = None;
+        let result = finish_account_browser_launch(
+            serde_json::json!({
+                "operationID": "operation-1",
+                "authorizationURL": valid_google_pkce_url(),
+                "expiresAt": "2026-07-11T22:00:00Z"
+            }),
+            |_| Err("auth_url_open_failed".to_string()),
+            |operation_id| {
+                cancelled = Some(operation_id.to_string());
+                Ok(())
+            },
+            || panic!("successful cancellation must not query auth status"),
+        );
+
+        assert_eq!(result.unwrap_err(), "auth_url_open_failed");
+        assert_eq!(cancelled.as_deref(), Some("operation-1"));
+    }
+
+    #[test]
+    fn failed_auth_browser_launch_preserves_operation_when_cancel_fails() {
+        let result = finish_account_browser_launch(
+            serde_json::json!({
+                "operationID": "operation-1",
+                "authorizationURL": valid_google_pkce_url(),
+                "expiresAt": "2026-07-11T22:00:00Z"
+            }),
+            |_| Err("auth_url_open_failed".to_string()),
+            |operation_id| {
+                assert_eq!(operation_id, "operation-1");
+                Err("daemon_unavailable".to_string())
+            },
+            || {
+                Ok(serde_json::json!({
+                    "state": "authorizing",
+                    "authorizationOperationID": "operation-1",
+                    "authorizationExpiresAt": "2026-07-11T22:05:00Z"
+                }))
+            },
+        )
+        .unwrap();
+
+        assert_eq!(result["operationID"], "operation-1");
+        assert_eq!(result["expiresAt"], "2026-07-11T22:05:00Z");
+        assert_eq!(result["nativeBrowserLaunchFailed"], true);
+        assert_eq!(result["cancelRetryRequired"], true);
+        assert_eq!(result["cancelStatusVerified"], true);
+        assert!(result.get("authorizationURL").is_none());
+    }
+
+    #[test]
+    fn successful_auth_browser_launch_does_not_return_the_url_to_the_renderer() {
+        let mut launched = None;
+        let result = finish_account_browser_launch(
+            serde_json::json!({
+                "operationID": "operation-1",
+                "authorizationURL": valid_google_pkce_url(),
+                "expiresAt": "2026-07-11T22:00:00Z"
+            }),
+            |url| {
+                launched = Some(url);
+                Ok(())
+            },
+            |_| panic!("successful launch must not cancel"),
+            || panic!("successful launch must not query auth status"),
+        )
+        .unwrap();
+
+        assert!(launched.is_some());
+        assert!(result.get("authorizationURL").is_none());
+        assert_eq!(
+            result
+                .get("operationID")
+                .and_then(serde_json::Value::as_str),
+            Some("operation-1")
+        );
     }
 
     #[test]

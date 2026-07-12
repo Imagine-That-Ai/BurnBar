@@ -47,6 +47,82 @@ describe('VAL-RPC-002 bridge behavior', () => {
     await expect(b.runtimeCapabilities()).rejects.toThrow(/missing_ids/);
   });
 
+  it('account auth methods use native commands and return only redacted state', async () => {
+    invoke
+      .mockResolvedValueOnce({
+        state: 'awaiting_device_approval',
+        signedIn: false,
+        trustClass: 'linux-lower-trust',
+        syncState: 'local-only',
+        deviceApprovalRequired: true,
+        detail: 'Approval required.'
+      })
+      .mockResolvedValueOnce({ operationID: 'op-1', expiresAt: '2026-07-11T22:00:00Z' })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: {
+          state: 'signed_out',
+          signedIn: false,
+          trustClass: 'linux-lower-trust',
+          syncState: 'local-only',
+          deviceApprovalRequired: false
+        }
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: {
+          state: 'signed_out',
+          signedIn: false,
+          trustClass: 'linux-lower-trust',
+          syncState: 'local-only',
+          deviceApprovalRequired: false
+        }
+      });
+    const b = await bridge();
+
+    const status = await b.accountStatus();
+    expect(status).toMatchObject({
+      state: 'awaiting-device-approval',
+      deviceApprovalRequired: true
+    });
+    await expect(b.accountBeginSignIn()).resolves.toEqual({
+      operationID: 'op-1',
+      expiresAt: '2026-07-11T22:00:00Z'
+    });
+    await expect(b.accountCancelSignIn('op-1')).resolves.toMatchObject({ state: 'signed-out' });
+    await expect(b.accountSignOut()).resolves.toMatchObject({ state: 'signed-out' });
+
+    expect(invoke).toHaveBeenNthCalledWith(1, 'account_status');
+    expect(invoke).toHaveBeenNthCalledWith(2, 'account_begin_sign_in');
+    expect(invoke).toHaveBeenNthCalledWith(3, 'account_cancel_sign_in', { operationId: 'op-1' });
+    expect(invoke).toHaveBeenNthCalledWith(4, 'account_sign_out');
+    expect(JSON.stringify(status)).not.toMatch(/refreshToken|idToken|appCheckToken|deviceID|sessionGeneration/);
+  });
+
+  it('rejects a malformed native sign-in operation before UI state can accept it', async () => {
+    invoke.mockResolvedValueOnce({ operationID: 'op-1', authorizationURL: 'https://should-not-reach-renderer' });
+    const b = await bridge();
+    await expect(b.accountBeginSignIn()).rejects.toThrow(/invalid sign-in operation/i);
+  });
+
+  it('maps the daemon cloud-ready sync state to active', async () => {
+    invoke.mockResolvedValueOnce({
+      state: 'active',
+      signedIn: true,
+      identityLabel: 'user@example.com',
+      trustClass: 'linux-lower-trust',
+      syncState: 'cloud-ready',
+      deviceApprovalRequired: false
+    });
+    const b = await bridge();
+
+    await expect(b.accountStatus()).resolves.toMatchObject({
+      state: 'active',
+      signedIn: true,
+      syncState: 'active'
+    });
+  });
+
   it('toolApprovalRespond success path invokes tool_approval_respond', async () => {
     invoke.mockResolvedValueOnce({ ok: true });
     const b = await bridge();

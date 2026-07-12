@@ -8,7 +8,7 @@ import { accountPlanTier } from './accountPlanTier.js';
 import { AccountSurface } from './AccountSurface.js';
 
 function resetStores(): void {
-  useAccountStore.setState({ data: null, loading: false, error: null });
+  useAccountStore.setState({ data: null, loading: false, busyAction: null, error: null });
   useShellStore.setState({
     fixtureMode: false,
     bridge: null,
@@ -29,24 +29,44 @@ function setAccount(
 }
 
 const signedOut: AccountStatus = {
+  state: 'signed-out',
   signedIn: false,
   trustClass: 'linux-lower-trust',
-  syncState: 'local-only'
+  syncState: 'local-only',
+  deviceApprovalRequired: false
 };
 
 const signedInActive: AccountStatus = {
+  state: 'active',
   signedIn: true,
   identityLabel: 'user@example.com',
   trustClass: 'linux-lower-trust',
   syncState: 'active',
-  lastSyncAt: new Date(Date.now() - 3_600_000).toISOString()
+  lastSyncAt: new Date(Date.now() - 3_600_000).toISOString(),
+  deviceApprovalRequired: false
 };
 
 const signedInPaused: AccountStatus = {
+  state: 'active',
   signedIn: true,
   identityLabel: 'user@example.com',
   trustClass: 'linux-lower-trust',
-  syncState: 'paused'
+  syncState: 'paused',
+  deviceApprovalRequired: false
+};
+
+const awaitingApproval: AccountStatus = {
+  state: 'awaiting-device-approval',
+  signedIn: false,
+  trustClass: 'linux-lower-trust',
+  syncState: 'local-only',
+  deviceApprovalRequired: true
+};
+
+const unavailable: AccountStatus = {
+  ...signedOut,
+  state: 'unavailable',
+  detail: 'secure_store_unavailable'
 };
 
 describe('accountPlanTier', () => {
@@ -132,6 +152,45 @@ describe('AccountSurface', () => {
     render(<AccountSurface />);
     fireEvent.click(screen.getByRole('button', { name: /Check again/i }));
     expect(load).toHaveBeenCalled();
+  });
+
+  it('starts browser-mediated sign-in from the signed-out state', () => {
+    const beginSignIn = vi.fn(async () => {});
+    useShellStore.setState({ bridge: { accountStatus: async () => signedOut } as never });
+    useAccountStore.setState({ beginSignIn, data: signedOut });
+    render(<AccountSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /^Sign in$/i }));
+    expect(beginSignIn).toHaveBeenCalledOnce();
+  });
+
+  it('surfaces trusted-iPad approval without exposing credential fields', () => {
+    useShellStore.setState({ bridge: { accountStatus: async () => awaitingApproval } as never });
+    setAccount({ data: awaitingApproval });
+    const { container } = render(<AccountSurface />);
+    expect(screen.getByText(/trusted OpenBurnBar device/i)).toBeTruthy();
+    expect(container.textContent).not.toMatch(/refreshToken|idToken|appCheckToken|deviceID|sessionGeneration/);
+  });
+
+  it('renders an actionable unavailable state and prevents sign-in', () => {
+    useShellStore.setState({ bridge: { accountStatus: async () => unavailable } as never });
+    setAccount({ data: unavailable });
+    render(<AccountSurface />);
+
+    expect(screen.getByRole('alert').textContent).toMatch(/unlock or repair your desktop keyring/i);
+    expect(screen.getByRole('heading', { name: /Cloud sign-in is unavailable/i })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Sign in$/i })).toBeNull();
+    expect((screen.getByRole('button', { name: /Sign in unavailable/i }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: /Check again/i }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('requires explicit confirmation before sign-out', () => {
+    const signOut = vi.fn(async () => {});
+    useAccountStore.setState({ signOut, data: signedInActive });
+    render(<AccountSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /^Sign out$/i }));
+    expect(signOut).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /Confirm sign out/i }));
+    expect(signOut).toHaveBeenCalledOnce();
   });
 
   it('trust disclosure toggles aria-expanded and runbook link', () => {
