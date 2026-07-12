@@ -28,7 +28,7 @@ is untouched by every slice.
 
 | Target | Product | Approx LOC (end) | Contents | Deps |
 |---|---|---|---|---|
-| `OpenBurnBarKernel` | yes (exists) | ~37k | root mission contracts (NOT `OpenBurnBarSearchContracts.swift` — VectorKit-bound, see P-03 re-slice), TraceContext, pure/crypto SharedModels, MissionGroupContracts + MissionConsoleTypes (post-inversion), catalog loader + PII gate + their resources, Platform/ | FirestoreModels, crypto |
+| `OpenBurnBarKernel` | yes (exists) | ~37k | root mission contracts (NOT `OpenBurnBarSearchContracts.swift` — VectorKit-bound, see P-03 re-slice), TraceContext, pure/crypto SharedModels, catalog-model SharedModels (`CLIRuntimeModelCatalog`/`WandModelRouter` — via P-04c, after P-02 lands the loader), MissionGroupContracts + MissionConsoleTypes (post-inversion), catalog loader + PII gate + their resources, Platform/ | FirestoreModels, crypto |
 | `OpenBurnBarSQLiteReader` | **no** | 325 | `Services/SQLite/` + the SQLite backend conditional. The K3 fix. | SQLite backend |
 | `OpenBurnBarLogParsers` | yes | ~9.3k | `Services/LogParser/` + `Services/LogPath/` + 2 log-discovery SharedModels | Kernel, SQLiteReader |
 | `OpenBurnBarQuota` | yes | ~10.4k | `ProviderQuota/` + root `XAISuperGrokPacingLog.swift` | Kernel, SQLiteReader, crypto |
@@ -189,22 +189,34 @@ Wave-1 state after the S0-repair follow-up: the four systemic defects PLUS the w
 card defects (FIX-5 CloudVaultCrypto path-pin sweep, FIX-6 Insights dependency-inversion
 re-slice, FIX-8 Demo-fixture re-slice P-10→P-09, P-02 daemon staging-machinery scope) are
 fixed on `core-decomp/s0-scaffold`.
-P-06 (Pretext) has MERGED into the scaffold via #1561; P-01/#1573, P-03/#1576, P-05/#1580,
-P-07/#1579 are PR_OPEN; the remaining move packets are QUEUED-WAVE1C. (PR #1560 is the
-unrelated `ratchet-repair/mission-splitbrain-1550` ratchet, NOT a decomposition packet.)
+P-06 (Pretext) has MERGED into the scaffold via #1561; P-01/#1573, P-02/#1582, P-03/#1576,
+P-04a/#1586, P-04b/#1587, P-05/#1580, P-07/#1579 are PR_OPEN; the remaining move packets are
+QUEUED-WAVE1C. (PR #1560 is the unrelated `ratchet-repair/mission-splitbrain-1550` ratchet,
+NOT a decomposition packet.)
+
+Wave-1e compile-closure (learning 9) recorded a resource-loader dependency hub
+(`BurnBarCatalogLoader.bundledCatalog`): it created successor packet **P-04c**
+(CLIRuntimeModelCatalog + WandModelRouter → Kernel, DEPENDS-ON P-02) and added an undeclared
+**DEPENDS-ON P-02** edge to **P-08** and **P-09** (three Insights adapters do a `bundledCatalog`
+pricing lookup). P-08/P-09 are now **QUEUED-WAVE1F, blocked on #1582 (P-02) merge**. Wave-1e
+also converged the Insights adapter/registry re-slice inside S12 (see the P-08 card):
+`InsightProviderGatewayRegistry.swift` rides P-09 (registry follows its adapters);
+`AnthropicInsightAdapter.swift` + `BurnBarHostedInsightAdapter.swift` ride P-08;
+`OpenAIInsightAdapter.swift` + `OpenAICompatibleInsightAdapter.swift` stay in P-09.
 
 | Packet | Slice | Target | Lane | Card | STATE |
 |---|---|---|---|---|---|
 | P-01 | S1 | OpenBurnBarSQLiteReader | B | full | PR_OPEN #1573 (was named-blocker on marker ceiling — FIXED) |
-| P-02 | S2 | Kernel resources (catalog+PII+ops staging) | Integrator | full | QUEUED-WAVE1C |
+| P-02 | S2 | Kernel resources (catalog+PII+ops staging) | Integrator | full | PR_OPEN #1582 |
 | P-03 | S3 | root contracts → Kernel (SearchContracts re-sliced to P-14) | D | full | PR_OPEN #1576 |
-| P-04a | S4 | SharedModels pure → Kernel | D | full | QUEUED-WAVE1C |
-| P-04b | S4 | SharedModels crypto chains → Kernel | D | full | QUEUED-WAVE1C |
+| P-04a | S4 | SharedModels pure → Kernel | D | full | PR_OPEN #1586 (CODEOWNERS line flagged for security review) |
+| P-04b | S4 | SharedModels crypto chains → Kernel | D | full | PR_OPEN #1587 (stacked on p-04a-e2) |
+| P-04c | S4 | catalog-model SharedModels (CLIRuntimeModelCatalog + WandModelRouter) → Kernel (successor to P-04a; DEPENDS-ON P-02) | D | full | QUEUED-WAVE1F (blocked on #1582 merge) |
 | P-05 | S9 | OpenBurnBarHermes | D | full | PR_OPEN #1580 |
 | P-06 | S10 | OpenBurnBarPretext (+resources manifest edit) | D | full | MERGED into scaffold via #1561 |
 | P-07 | S11 | OpenBurnBarTextExpansion | A | full | PR_OPEN #1579 |
-| P-08 | S12 | Insights — Services core engine (+AgentInsightsBundleAssembler, FIX-6) | C | full | QUEUED-WAVE1C |
-| P-09 | S12 | Insights — Services remainder (Verdict/Adapters/Cadence/Trace +Demo fixture, FIX-8) | C | full | QUEUED-WAVE1C |
+| P-08 | S12 | Insights — Services core engine (+AgentInsightsBundleAssembler, FIX-6; +wave-1e P-02 edge) | C | full | QUEUED-WAVE1F (blocked on #1582 merge) |
+| P-09 | S12 | Insights — Services remainder (Verdict/Adapters/Cadence/Trace +Demo fixture, FIX-8; +wave-1e P-02 edge) | C | full | QUEUED-WAVE1F (blocked on #1582 merge) |
 | P-10 | S12 | Insights — SharedModels + AgentInsights models (FIX-6 + FIX-8 re-slices) | C | full | QUEUED-WAVE1C |
 | P-11 | S5 | MissionGroupContracts + MissionConsoleTypes inversion → Kernel | A | draft | QUEUED |
 | P-12 | S6 | OpenBurnBarLogParsers | B | draft | QUEUED |
@@ -330,6 +342,30 @@ PR #1559. Executors of wave-1b must internalize these:
    fixture/demo/sample, grep the actual symbol it invokes and follow THAT symbol's file to
    its owning packet — sub-directory ownership (P-09 vs P-08) matters, and a fixture belongs
    with its engine's packet, never merely with its models' packet.
+
+9. **Resource-loader symbols (`BurnBarCatalogLoader`) are hidden dependency hubs: any
+   file with a `bundledCatalog` default-arg or pricing lookup depends on P-02.
+   Compile-closure is mandatory before finalizing any slice.** Wave-1e compile-closure
+   surfaced a whole cluster of undeclared P-02 edges that grep-by-path missed because the
+   dependency is a `BurnBarCatalogLoader.bundledCatalog` reference, not an import.
+   `BurnBarCatalogLoader` (`OpenBurnBarCatalogLoader.swift`) is a `Bundle.module`/
+   `catalog.json` resource-backed loader that **P-02 (PR #1582)** moves Core→Kernel; until
+   P-02 lands, any file referencing `bundledCatalog` fails `cannot find 'BurnBarCatalogLoader'
+   in scope` in its destination target (`OpenBurnBarInsights` / `OpenBurnBarKernel`), and
+   pulling the loader+resource forward is a forbidden **resource-bundle STOP** (Failure
+   Playbook #3). The hub touched THREE slices: (a) P-04a already re-sliced
+   `CLIRuntimeModelCatalog.swift`/`WandModelRouter.swift` OUT to a P-02-dependent successor
+   (learning 5 / the RE-SLICED-OUT block) — now homed as **P-04c**; (b) three Insights
+   adapters carry a `bundledCatalog` pricing lookup —
+   `Services/Insights/Adapters/AnthropicInsightAdapter.swift:445`,
+   `OpenAIInsightAdapter.swift:377`, `OpenAICompatibleInsightAdapter.swift:187` — giving
+   **P-08 AND P-09 an undeclared DEPENDS-ON P-02** (`OpenBurnBarInsights` is a pure target
+   depending on Kernel, so after P-02 merges the symbol resolves via Kernel). The lesson
+   mirrors 4/5/6: a slice is not dependency-closed until its destination target COMPILES;
+   grep-by-import and grep-by-path both miss default-arg/value-level references to a
+   resource-loader hub. Run compile-closure (`swift build --target <dest>`) before
+   finalizing ANY slice, and treat every `BurnBarCatalogLoader`/`bundledCatalog`/pricing-
+   lookup reference as an implicit P-02 edge.
 
 Gate/lane/CI hardening shipped with the repair (Codex PR #1559 threads): the umbrella
 regex now matches `@testable import OpenBurnBarCore` (and `@_exported`/`@_spi(...)`

@@ -7,7 +7,7 @@ a PR, and keeps moving. Packets never self-merge; the software-factory loop revi
 as packets land. Cross-lane dependencies are noted; a lane holds a packet whose
 DEPENDS-ON is not yet MERGED.
 
-Full cards: P-01…P-10. Draft cards (enumerate mv lists at wave start): P-11…P-20, S-H.
+Full cards: P-01…P-10, P-04c. Draft cards (enumerate mv lists at wave start): P-11…P-20, S-H.
 
 **S0-repair status (2026-07-12):** the four wave-1 systemic defects (marker-size sibling
 ceilings, missing cross-module AE-IMPORT policy, missing AE-TESTABLE policy, P-03
@@ -18,20 +18,38 @@ resolved). See
 docs/CORE_DECOMPOSITION_PROGRAM.md "Wave-1 learnings" and "Standard Allowed-edit classes"
 (AE-IMPORT / AE-TESTABLE — verbatim in every move packet).
 
+**Wave-1e status (2026-07-12):** compile-closure recorded a resource-loader dependency hub
+(`BurnBarCatalogLoader.bundledCatalog`, learning 9). It created successor packet **P-04c**
+(CLIRuntimeModelCatalog + WandModelRouter → Kernel) and added an undeclared **DEPENDS-ON
+P-02 (#1582)** to **P-08** and **P-09** (three Insights adapters do a `bundledCatalog` pricing
+lookup: AnthropicInsightAdapter:445, OpenAIInsightAdapter:377, OpenAICompatibleInsightAdapter:187).
+P-04c/P-08/P-09 are QUEUED-WAVE1F, held until #1582 (P-02) merges. Wave-1e also converged the
+S12 adapter/registry re-slice: `InsightProviderGatewayRegistry.swift` rides P-09;
+`AnthropicInsightAdapter` + `BurnBarHostedInsightAdapter` (catalog-free) ride P-08;
+`OpenAIInsightAdapter` + `OpenAICompatibleInsightAdapter` stay in P-09.
+
 ## Wave 1c (parallel after the repaired cards land on scaffold)
 | Lane | Packet | Card | STATE | Notes |
 |---|---|---|---|---|
 | B | P-01 SQLiteReader | full | PR_OPEN #1573 | K3 fix; unblocks P-12/P-13. Was the marker-ceiling named blocker → FIXED (SQLiteReader planned 3/450) |
-| Integrator | P-02 Kernel resources | full | QUEUED-WAVE1C | daemon staging-machinery (3 files: Manager constant/error, BinaryResolver locator, +Lifecycle copy) + release/CI/MCP edits; stage Kernel bundle IN ADDITION to Core bundle; unblocks P-12 |
+| Integrator | P-02 Kernel resources | full | PR_OPEN #1582 | daemon staging-machinery (3 files: Manager constant/error, BinaryResolver locator, +Lifecycle copy) + release/CI/MCP edits; stage Kernel bundle IN ADDITION to Core bundle; unblocks P-12. **Wave-1e: also unblocks P-04c, P-08, P-09** (`BurnBarCatalogLoader.bundledCatalog` hub) |
 | D | P-03 root contracts → Kernel | full | PR_OPEN #1576 | 6 files (SearchContracts re-sliced to P-14); canon stays green |
-| D | P-04a SharedModels pure → Kernel | full | QUEUED-WAVE1C | after P-03 in lane D; CloudVaultCrypto path-pins (CODEOWNERS + 3 CI gates) FIX-5 — flag CODEOWNERS for security review |
-| D | P-04b SharedModels crypto → Kernel | full | QUEUED-WAVE1C | after P-04a (needs CloudVaultCrypto) |
+| D | P-04a SharedModels pure → Kernel | full | PR_OPEN #1586 | after P-03 in lane D; CloudVaultCrypto path-pins (CODEOWNERS + 3 CI gates) FIX-5 — CODEOWNERS line flagged for security review |
+| D | P-04b SharedModels crypto → Kernel | full | PR_OPEN #1587 | stacked on p-04a-e2 (needs CloudVaultCrypto) |
+| D | P-04c catalog-model SharedModels → Kernel | full | QUEUED-WAVE1F | successor to P-04a; **DEPENDS-ON P-02 (#1582)** + P-04a (#1586). CLIRuntimeModelCatalog + WandModelRouter (RE-SLICED OUT of P-04a — `bundledCatalog` default-args at :698/:709) |
 | D | P-05 Hermes | full | PR_OPEN #1580 | adds `import OpenBurnBarKernel` to HermesAtomNavigator (AE-IMPORT) |
 | D | P-06 Pretext | full | **MERGED into scaffold via #1561** | resources manifest edit; re-ran green vs Pretext planned 5/850 |
 | C | P-10 Insights models | full | QUEUED-WAVE1C | lands before P-08/P-09; FIX-6: AgentInsightsBundleAssembler re-sliced to P-08, extracts InsightProviderFamily/Entry to P-10; FIX-8: Demo fixture re-sliced OUT to P-09 |
-| C | P-08 Insights Services core | full | QUEUED-WAVE1C | after P-10; FIX-6: absorbs AgentInsightsBundleAssembler (24 files) |
-| C | P-09 Insights Services remainder | full | QUEUED-WAVE1C | after P-08; FIX-8: absorbs Demo/InsightVerdictDemoFixture (rides RuleBasedVerdictEngine in Verdict/) + owns its Package.swift exclude deletion |
+| C | P-08 Insights Services core | full | QUEUED-WAVE1F (blocked on #1582) | after P-10; FIX-6: absorbs AgentInsightsBundleAssembler. **Wave-1e: +DEPENDS-ON P-02** (AnthropicInsightAdapter:445 `bundledCatalog`); absorbs `AnthropicInsightAdapter` + `BurnBarHostedInsightAdapter` (catalog-free) from P-09's Adapters/ |
+| C | P-09 Insights Services remainder | full | QUEUED-WAVE1F (blocked on #1582) | after P-08; FIX-8: absorbs Demo/InsightVerdictDemoFixture + owns its Package.swift exclude deletion. **Wave-1e: +DEPENDS-ON P-02** (OpenAIInsightAdapter:377, OpenAICompatibleInsightAdapter:187 `bundledCatalog`); absorbs `InsightProviderGatewayRegistry` (root, rides its adapters) from P-08 |
 | A | P-07 TextExpansion | full | PR_OPEN #1579 | ui-purity --update; lane A serial |
+
+## Wave 1f (after P-02 #1582 merges — the `BurnBarCatalogLoader.bundledCatalog` hub, learning 9)
+| Lane | Packet | Card | STATE | Notes |
+|---|---|---|---|---|
+| D | P-04c catalog-model SharedModels → Kernel | full | QUEUED-WAVE1F | DEPENDS-ON P-02 (#1582) + P-04a (#1586); after P-04a/P-04b in lane D |
+| C | P-08 Insights Services core | full | QUEUED-WAVE1F | DEPENDS-ON P-10, P-02 (#1582); wave-1e adapter re-slice |
+| C | P-09 Insights Services remainder | full | QUEUED-WAVE1F | DEPENDS-ON P-10, P-08, P-02 (#1582); wave-1e adapter/registry re-slice |
 
 ## Wave 2 (after their deps merge)
 | Lane | Packet | Card | DEPENDS-ON |
@@ -68,5 +86,5 @@ docs/CORE_DECOMPOSITION_PROGRAM.md "Wave-1 learnings" and "Standard Allowed-edit
 - **A** (serial): owns `core-ui-purity-baseline.json`. P-07 → P-11 → P-15 → P-16a…f.
 - **B**: P-01 → P-12.
 - **C**: P-10 → P-08 → P-09 → P-13.
-- **D**: P-03 → P-04a → P-04b → P-14; P-05; P-06.
+- **D**: P-03 → P-04a → P-04b → P-04c (WAVE1F, after P-02 #1582) → P-14; P-05; P-06.
 - **Integrator**: P-02, S-H, P-17, P-18, P-19, P-20, ratchet-down PRs.

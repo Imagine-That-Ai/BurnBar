@@ -1,7 +1,35 @@
 # Packet P-09: move Services/Insights remainder (Adapters/Cadence/Trace/Verdict) → OpenBurnBarInsights
-STATE: QUEUED
-LANE: C          DEPENDS-ON: S0, P-10, P-08
+STATE: QUEUED-WAVE1F (blocked on #1582 / P-02 merge)
+LANE: C          DEPENDS-ON: S0, P-10, P-08, P-02 (#1582 — `BurnBarCatalogLoader.bundledCatalog`, wave-1e compile-closure edge)
 BASELINE-TOUCHING: none
+
+**Wave-1e compile-closure convergence (record faithfully, 2026-07-12).** A
+`swift build --target OpenBurnBarInsights` closure run added an undeclared **DEPENDS-ON P-02**
+and re-sliced two adapters between P-08 and P-09:
+1. **Undeclared DEPENDS-ON P-02 (resource-loader hub).** Two adapters this packet moves do a
+   pricing lookup `BurnBarCatalogLoader.bundledCatalog.pricing(forModelName:)` — verified live
+   at `Services/Insights/Adapters/OpenAIInsightAdapter.swift:377` and
+   `Services/Insights/Adapters/OpenAICompatibleInsightAdapter.swift:187`. `BurnBarCatalogLoader`
+   lives in Core until **P-02 (#1582)** moves it to the Kernel; `OpenBurnBarInsights` is a pure
+   target depending on Kernel, so the symbol resolves via Kernel only after P-02 merges. Hence
+   the P-02 edge above and the WAVE1F hold. See docs/CORE_DECOMPOSITION_PROGRAM.md Wave-1
+   learning (9).
+2. **Adapter/registry re-slice inside S12 (P-08 ⇄ P-09).**
+   - `InsightProviderGatewayRegistry.swift` (a ROOT file, originally P-08's set) **rides P-09**
+     — the registry follows its adapters (it constructs `HermesInsightAdapter`/
+     `BurnBarHostedInsightAdapter`/`OpenAIInsightAdapter`/`AnthropicInsightAdapter`/
+     `OpenAICompatibleInsightAdapter`/`OllamaInsightAdapter`, all resolved once the `Adapters/`
+     subtree lands here). So it is re-sliced OUT of P-08's root-files set INTO this packet.
+   - `AnthropicInsightAdapter.swift` (:445) + `BurnBarHostedInsightAdapter.swift` (catalog-free)
+     are re-sliced OUT of this packet's `Adapters/` subtree INTO **P-08's** mv list.
+   - `OpenAIInsightAdapter.swift` (:377) + `OpenAICompatibleInsightAdapter.swift` (:187)
+     **stay here** (they ride the `Adapters/` subtree this packet already moves).
+   TO-ENUMERATE-AT-WAVE: because P-08 now pulls `AnthropicInsightAdapter.swift` +
+   `BurnBarHostedInsightAdapter.swift` out of `Adapters/`, this packet's whole-`Adapters/`
+   `git mv` no longer moves those two (P-08 moved them first); ADD an explicit
+   `git mv OpenBurnBarCore/Sources/OpenBurnBarCore/Services/Insights/InsightProviderGatewayRegistry.swift
+   OpenBurnBarCore/Sources/OpenBurnBarInsights/Services/InsightProviderGatewayRegistry.swift`
+   (root file re-sliced in from P-08), and re-run the closure grep both directions.
 
 Second Services half: the four Insights subdirectories. `Share/` (1 file,
 InsightShareCardRenderer) STAYS in Core until S14. After this packet lands,
