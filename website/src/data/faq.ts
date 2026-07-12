@@ -1,3 +1,19 @@
+import { PROVIDERS_PRIMARY, PROVIDERS_DETECTED } from "./providers";
+
+// Computed from the provider matrix so this answer can never drift from the
+// Providers page. Balance-only rows (cost "unavailable" but shipped) are
+// called out separately.
+const exactNames = PROVIDERS_PRIMARY.filter((p) => p.cost === "exact")
+  .map((p) => p.name)
+  .join(", ");
+const estimatedNames = PROVIDERS_PRIMARY.filter((p) => p.cost === "estimated")
+  .map((p) => p.name)
+  .join(", ");
+const balanceOnlyNames = PROVIDERS_PRIMARY.filter((p) => p.cost === "unavailable")
+  .map((p) => p.name)
+  .join(", ");
+const detectionOnlyNames = PROVIDERS_DETECTED.map((p) => p.name).join(", ");
+
 export type FAQCategoryId = "router" | "privacy" | "accounts" | "billing" | "features";
 
 export interface FAQCategory {
@@ -25,7 +41,7 @@ export const FAQ_CATEGORIES: FAQCategory[] = [
   {
     id: "billing",
     label: "Plans & billing",
-    blurb: "Cloud, Cloud Pro, Cloud Ultra, allowances, and refunds."
+    blurb: "Cloud, Cloud Pro, Ultra, allowances, and refunds."
   },
   {
     id: "features",
@@ -130,8 +146,7 @@ export const FAQ: FAQItem[] = [
     id: "providers-exact",
     category: "accounts",
     question: "Which providers are exact vs estimated?",
-    answer:
-      "Exact today (counted from the vendor's own API or from local logs): Claude Code, Codex, OpenAI, Cursor, Cursor Agent, Factory, MiniMax, Xiaomi MiMo, Z.ai, Warp, Ollama, Kimi, OpenRouter, Aider, Antigravity, DeepSeek, OpenCode, Hermes, and Pi Agent.\n\nEstimated (counted, then priced from a public table): GitHub Copilot, Anthropic Console (daily lag), Forge, and xAI (Grok).\n\nDetection-only (the vendor exposes nothing, so we show only Installed / Not installed): Gemini CLI, Cline, Roo Code, Kilo Code, Augment, Windsurf, Goose, and OpenClaw.\n\nThe full matrix is on the Providers page."
+    answer: `Exact today (counted from the vendor's own API or from local logs): ${exactNames}.\n\nEstimated (counted, then priced from a public table): ${estimatedNames}.\n\nBalance-only (the vendor exposes a credit balance, not per-request usage): ${balanceOnlyNames}.\n\nDetection-only (the vendor exposes nothing, so we show only Installed / Not installed): ${detectionOnlyNames}.\n\nThe full matrix is on the Providers page.`
   },
   {
     id: "team-or-solo",
@@ -145,7 +160,7 @@ export const FAQ: FAQItem[] = [
     category: "billing",
     question: "What is BurnBar Cloud?",
     answer:
-      "BurnBar Cloud is the first paid tier. It adds hosted quota refresh, encrypted conversation backup and resume, full session-log sync, cloud search, and synced agent memory to the free local product.\n\nIt costs $7.99/month or $79/year. Monthly and annual plans are available on web, App Store, and Google Play. Purchases are verified server-side before hosted features turn on."
+      "BurnBar Cloud is the entry paid tier. It adds hosted quota refresh, encrypted conversation backup and resume, full session-log sync, cloud search, and synced agent memory to the free local product.\n\nIt costs $7.99/month or $79/year. Monthly and annual plans are available on web, App Store, and Google Play. Purchases are verified server-side before hosted features turn on."
   },
   {
     id: "burnbar-cloud-pro",
@@ -164,9 +179,9 @@ export const FAQ: FAQItem[] = [
   {
     id: "burnbar-cloud-ultra",
     category: "billing",
-    question: "What is BurnBar Cloud Ultra?",
+    question: "What is BurnBar Ultra?",
     answer:
-      "BurnBar Cloud Ultra is the top paid tier. It includes everything in BurnBar Cloud Pro — Floo, Agent Control, and the same hosted action and relay allowance — plus 10× private agent memory.\n\nAgent memory is the repo docs, notes, and chat-derived memories your agents recall while they work. Cloud Pro gives your agents 10 knowledge sources, 50,000 memory chunks, and 1 GB. Cloud Ultra raises that to 100 sources, 500,000 chunks, and 10 GB. The text is sealed on your device; hosted nearest-neighbor recall is opt-in and runs over cloaked vectors and opaque keyed hashes, which still reveal structural patterns such as recurrence, counts, and access timing.\n\nIt costs $59.99/month or $599/year. Monthly and annual plans are available on web, App Store, and Google Play. Cloud Ultra unlocks the higher memory limits after server-side purchase verification."
+      "BurnBar Ultra is the top paid tier. It includes everything in BurnBar Cloud Pro — Floo, Agent Control, and the same hosted action and relay allowance — plus 10× private agent memory.\n\nAgent memory is the repo docs, notes, and chat-derived memories your agents recall while they work. Cloud Pro gives your agents 10 knowledge sources, 50,000 memory chunks, and 1 GB. BurnBar Ultra raises that to 100 sources, 500,000 chunks, and 10 GB. The text is sealed on your device; hosted nearest-neighbor recall is opt-in and runs over cloaked vectors and opaque keyed hashes, which still reveal structural patterns such as recurrence, counts, and access timing.\n\nIt costs $59.99/month or $599/year. Monthly and annual plans are available on web, App Store, and Google Play. BurnBar Ultra unlocks the higher memory limits after server-side purchase verification."
   },
   {
     id: "grandfathered-hosted-quota",
@@ -201,7 +216,7 @@ export const FAQ: FAQItem[] = [
     category: "features",
     question: "What is Floo?",
     answer:
-      "Floo joins your phone and your Mac. From your iPhone or iPad you can see your Mac's screen, reach in and control it, send files either direction, start a voice or video call, share one clipboard across both, and even unlock your Mac with Face ID or Touch ID.\n\nIt only ever connects your own paired devices. Once paired E2EE is enabled and the runtime-readiness gate is complete, the screen, control, file, and clipboard contents are sealed end-to-end between your devices — the relay sees routing metadata, never those contents. Live voice and camera frames travel over the encrypted QUIC link itself, not the per-payload seal. Every connection asks first, and one tap ends it.\n\nFloo is built and rolling out now, included with OpenBurnBar. (For the curious: Floo stands for File & Live Object Overlay — or, if you prefer, Fast Link Over Owl.)"
+      "Floo joins your phone and your Mac. From your iPhone or iPad you can see your Mac's screen, reach in and control it, send files either direction, start a voice or video call, share one clipboard across both, and even unlock your Mac with Face ID or Touch ID.\n\nIt only ever connects your own paired devices. Once your devices finish pairing, the screen, control, file, and clipboard contents are sealed end-to-end between them — the relay sees routing metadata, never those contents. Live voice and camera frames travel over their own encrypted transport link. Every connection asks first, and one tap ends it.\n\nFloo is built and rolling out now, included with OpenBurnBar. (For the curious: Floo stands for File & Live Object Overlay — or, if you prefer, Fast Link Over Owl.)"
   },
   {
     id: "agent-control",

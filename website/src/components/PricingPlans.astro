@@ -1,5 +1,6 @@
 ---
 import { SITE } from "@data/site";
+import { PROVIDERS_ALL } from "@data/providers";
 
 interface Props {
   /** Render the Monthly / Annual billing toggle above the grid. */
@@ -9,6 +10,9 @@ interface Props {
 }
 
 const { showBillingToggle = true, showTopups = false } = Astro.props;
+
+// Computed so the bullet can never drift from the provider matrix.
+const quotaProviderCount = PROVIDERS_ALL.filter((p) => p.quota === "yes").length;
 
 const free = SITE.pricing.tiers.find((tier) => tier.id === "free")!;
 const cloud = SITE.pricing.tiers.find((tier) => tier.id === "cloud")!;
@@ -80,7 +84,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     <ul class="plan__list">
       <li>Local SQLite tracking, zero telemetry</li>
       <li>Cost &amp; token rollups — today / week / month / all-time</li>
-      <li>Quota windows for 11 providers</li>
+      <li>Quota windows for {quotaProviderCount} providers</li>
       <li>Daemon, CLI, Cursor / VS Code panel</li>
       <li>iOS, iPadOS &amp; Android companions</li>
     </ul>
@@ -183,7 +187,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     <header class="plan__head">
       <img
         class="plan__crest"
-        src="/brand/vector/tier_cloud_ultra_logo.svg"
+        src="/brand/vector/tier_cloud_pro_logo.svg"
         alt=""
         aria-hidden="true"
       />
@@ -254,7 +258,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     <header class="plan__head">
       <img
         class="plan__crest"
-        src="/brand/vector/tier_cloud_pro_logo.svg"
+        src="/brand/vector/tier_cloud_ultra_logo.svg"
         alt=""
         aria-hidden="true"
       />
@@ -283,7 +287,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
 
     <ul class="plan__list plan__list--ultra">
       <li>Everything in BurnBar Cloud Pro</li>
-      <li>100 Pensieve knowledge sources</li>
+      <li>100 knowledge sources for agent memory</li>
       <li>500,000 encrypted memory chunks · 10 GB</li>
       <li>Repo docs, notes &amp; chat memories your agents recall</li>
       <li>The Wand opens {wandCap(ultra)} agents in parallel</li>
@@ -611,7 +615,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
   }
   /* Cool aqua iridescence for Cloud Pro. */
   .plan--pro {
-    --holo-img: url("/brand/vector/tier_cloud_ultra_logo.svg");
+    --holo-img: url("/brand/vector/tier_cloud_pro_logo.svg");
     --holo-grad: linear-gradient(
       125deg,
       #5ef0c9 6%,
@@ -623,7 +627,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
   }
   /* Full-spectrum premium iridescence for Cloud Ultra. */
   .plan--ultra {
-    --holo-img: url("/brand/vector/tier_cloud_pro_logo.svg");
+    --holo-img: url("/brand/vector/tier_cloud_ultra_logo.svg");
     --holo-grad: linear-gradient(
       125deg,
       #ffd56b 6%,

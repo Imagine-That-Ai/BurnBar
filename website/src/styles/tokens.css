@@ -25,7 +25,10 @@
   --text-bright: #ffffff;
   --text-base: rgba(255, 255, 255, 0.85);
   --text-mute: rgba(255, 255, 255, 0.55);
-  --text-dim: rgba(255, 255, 255, 0.35);
+  /* 0.52 alpha ≈ 4.6:1 on the near-black base — --text-dim is used for real
+     text (footer legal line, captions, "unavailable" tags), so it must clear
+     WCAG AA, not just read as "dimmer than mute". */
+  --text-dim: rgba(255, 255, 255, 0.52);
 
   /* ---------- the core (Fire & Heat) ---------- */
   --core-fire: #fa6b06; /* Brand Orange Mid-tone */
@@ -71,10 +74,14 @@
   --t-body: 1rem;
   --t-lead: 1.25rem;
   --t-h4: 1.25rem; /* sub-heading step between body and h3 */
-  --t-h3: 2rem;
-  --t-h2: 3rem;
-  --t-h1: 4.5rem;
-  --t-display: 6rem;
+  /* Fluid headline scale: desktop keeps the original sizes (the clamp caps),
+     narrow viewports shrink smoothly so long brand words ("OpenBurnBar")
+     wrap whole instead of emergency-breaking mid-word, and heroes stop
+     rendering one word per line on phones. */
+  --t-h3: clamp(1.5rem, 1.15rem + 1.15vw, 2rem);
+  --t-h2: clamp(1.9rem, 1.2rem + 2.4vw, 3rem);
+  --t-h1: clamp(2.5rem, 1.1rem + 4.6vw, 4.5rem);
+  --t-display: clamp(2.75rem, 1.2rem + 6.4vw, 6rem);
 
   --tracking-uppercase: 0.16em; /* eyebrows / small-caps labels */
 
@@ -159,8 +166,10 @@
   /* text → ink */
   --text-bright: #16140f;
   --text-base: rgba(22, 19, 14, 0.86);
-  --text-mute: rgba(22, 19, 14, 0.6);
-  --text-dim: rgba(22, 19, 14, 0.42);
+  --text-mute: rgba(22, 19, 14, 0.66);
+  /* keep ≥4.5:1 on the paper background for the same reason as dark theme
+     (0.62 ≈ 4.9:1; the old 0.42 measured 2.69:1) */
+  --text-dim: rgba(22, 19, 14, 0.62);
 
   /* the core: keep the fire identity, darken for AA on paper
      (amber sits at ≥4.5:1 even at caption sizes) */

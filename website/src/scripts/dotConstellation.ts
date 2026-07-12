@@ -170,15 +170,16 @@
             var sized = /<svg[^>]*\swidth=/.test(svg)
               ? svg
               : svg.replace("<svg", '<svg width="' + vbw + '" height="' + vbh + '"');
-            var url = URL.createObjectURL(new Blob([sized], { type: "image/svg+xml" }));
+            // data: URL, not a blob: object URL — the marketing CSP allows
+            // img-src 'self' data:, and blob: was being blocked in production
+            // (silently killing SVG logo sampling in every browser).
+            var url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(sized);
             var img = new Image();
             img.onload = function () {
               sample(img, ci);
-              URL.revokeObjectURL(url);
             };
             img.onerror = function () {
               sampled[ci] = [];
-              URL.revokeObjectURL(url);
             };
             img.src = url;
           })
