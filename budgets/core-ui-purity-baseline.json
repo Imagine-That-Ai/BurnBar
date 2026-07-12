@@ -1,6 +1,6 @@
 {
   "note": "Files in OpenBurnBarCore/Sources/OpenBurnBarCore importing SwiftUI/AppKit. Shrink-only: entries may only be removed (audit 2026-06-30 finding #4, kernel extraction). Regenerate via scripts/debt/check-core-ui-purity-budget.sh --update.",
-  "total": 115,
+  "total": 114,
   "files": [
     {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/BrowserLaunchAdapter.swift",
@@ -46,12 +46,6 @@
     },
     {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SwitcherCLILAunchService.swift",
-      "frameworks": [
-        "AppKit"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/TextExpansion/TextExpansionKeyEventCharacters.swift",
       "frameworks": [
         "AppKit"
       ]
