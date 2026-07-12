@@ -76,9 +76,10 @@ for (const tag of ['linux-v01.2.3', 'linux-v1.2.3-01', 'linux-v1.2.3-alpha..1'])
   });
 }
 
-test('workflow contract preserves one commit and includes source in provenance and publication', () => {
+test('candidate and promotion workflows preserve one commit and separate provenance from publication', () => {
   const workflow = fs.readFileSync(path.join(root, '.github/workflows/linux-release.yml'), 'utf8');
-  const postResolverWorkflow = workflow.slice(workflow.indexOf('Build native architecture artifacts'));
+  const promotion = fs.readFileSync(path.join(root, '.github/workflows/linux-release-promote.yml'), 'utf8');
+  const postResolverWorkflow = workflow.slice(workflow.indexOf('build-architecture:'));
   assert.match(workflow, /tags:\s*\n\s*- "linux-v\*"/u);
   assert.match(workflow, /INPUT_VERSION:\s*\$\{\{ inputs\.version \}\}/u);
   assert.equal((workflow.match(/\$\{\{ inputs\.version \}\}/gu) ?? []).length, 1);
@@ -86,18 +87,20 @@ test('workflow contract preserves one commit and includes source in provenance a
   assert.match(workflow, /resolve-linux-release-version\.mjs --github-output/u);
   assert.match(workflow, /--version '\$\{\{ needs\.resolve-release\.outputs\.version \}\}'/u);
   assert.match(workflow, /OPENBURNBAR_LINUX_RELEASE_BASE_URL: https:\/\/github\.com\/Imagine-That-Ai\/BurnBar\/releases\/download\/\$\{\{ needs\.resolve-release\.outputs\.tag \}\}/u);
-  assert.match(workflow, /tag="\$\{\{ needs\.resolve-release\.outputs\.tag \}\}"/u);
-  assert.match(workflow, /release_commit="\$\(git rev-parse HEAD\)"/u);
-  assert.match(workflow, /git fetch --force origin "\+refs\/tags\/\$\{tag\}:refs\/tags\/\$\{tag\}"/u);
-  assert.match(workflow, /tag_commit="\$\(git rev-list -n 1 "refs\/tags\/\$\{tag\}\^\{commit\}"\)"/u);
-  assert.match(workflow, /if \[\[ "\$tag_commit" != "\$release_commit" \]\]; then/u);
   assert.match(workflow, /-name '\*source-\*\.tar'/u);
-  assert.match(workflow, /-name '\*parity-attestation\.json'/u);
   assert.match(workflow, /cosign attest-blob/u);
-  assert.match(workflow, /node scripts\/linux-port\/verify-linux-release\.mjs\s+--phase final\s+--version '\$\{\{ needs\.resolve-release\.outputs\.version \}\}'/u);
-  assert.match(workflow, /--verify-tag/u);
-  assert.match(workflow, /--target "\$release_commit"/u);
-  assert.match(workflow, /--latest=false/u);
+  assert.match(workflow, /node scripts\/linux-port\/verify-linux-release\.mjs\s+--candidate\s+--phase final\s+--version '\$\{\{ needs\.resolve-release\.outputs\.version \}\}'/u);
+  assert.doesNotMatch(workflow, /gh release create/u);
+  assert.match(promotion, /tag="linux-v\$\{version\}"/u);
+  assert.match(promotion, /release_commit="\$\(git rev-parse HEAD\)"/u);
+  assert.match(promotion, /git fetch --force origin "\+refs\/tags\/\$\{tag\}:refs\/tags\/\$\{tag\}"/u);
+  assert.match(promotion, /tag_commit="\$\(git rev-list -n 1 "refs\/tags\/\$\{tag\}\^\{commit\}"\)"/u);
+  assert.match(promotion, /if \[\[ "\$tag_commit" != "\$release_commit" \]\]; then/u);
+  assert.match(promotion, /--draft/u);
+  assert.match(promotion, /--verify-tag/u);
+  assert.match(promotion, /--target "\$release_commit"/u);
+  assert.match(promotion, /--latest=false/u);
+  assert.match(promotion, /gh release edit "linux-v\$\{version\}" --draft=false/u);
 });
 
 test('allow-blocked never masks release verification failures', () => {

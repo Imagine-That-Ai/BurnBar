@@ -91,22 +91,36 @@ JSON file is never promotion evidence.
 
 `run-product-requirement-validator.mjs` dispatches only to a deterministic
 `scripts/linux-port/product-validators/P-XX.mjs` module and deletes stale output
-on every failure. Those requirement-owned validators are intentionally absent
-until their installed-product acceptance packets land, so the complete ledger
-remains fail-closed at 0 ready / 40 blocked.
+on every failure. Requirement-specific validators exist for P-01 release
+integrity, P-03 installed runtime, P-04 architecture reach, and P-37 Linux
+matrix coverage. The other 36 modules remain intentionally absent until their
+installed-product acceptance packets land. Source availability is not a parity
+claim: every row remains blocked until all seven signed live receipts exist.
 
 The product workflow accepts only an immutable artifact ID resolved from the
-successful canonical Linux release workflow in `Imagine-That-Ai/BurnBar` at the
-exact target SHA. The current release artifact does not yet contain the required
-product-proof closure, so this producer boundary remains intentionally blocked
-until `LNX-PROOF-001` adds exact-candidate assembly and aggregation.
+successful canonical Linux Release Candidate workflow in
+`Imagine-That-Ai/BurnBar` at the exact target SHA.
+`finalize-product-proof-closure.mjs` emits the required exact-candidate
+aggregate only after release attestation and final verification.
+It requires signed installed manifests for deb and rpm on both architectures,
+every release sidecar, package/feed signatures, Sigstore bundles, and lifecycle
+proof. Native package shards supply signed installed-manifest records; aggregate
+assembly validates, copies, and preserves those records before product-proof
+finalization. `prepare-product-requirement-input.mjs` copies only hash-bound
+subjects from a passed aggregate into the selected requirement/environment root.
 
-The release aggregate job runs all 40 canonical attestation commands before its
-strict ledger check. That ordering prevents a checked-in or stale attestation
-from bypassing current-HEAD generation. The commands currently stop on missing
-receipt inputs, as intended: `LNX-PROOF-001` must stage the 280 signed
-requirement/environment receipts into the aggregate job before any release can
-promote.
+Release is split into three fail-closed workflows. Linux Release Candidate
+builds, signs, verifies, and uploads an immutable candidate but never evaluates
+parity or publishes. Linux Product Parity consumes that exact successful
+candidate to produce one signed requirement/environment receipt. Linux Release
+Promotion resolves exactly 280 successful first-attempt receipt artifacts at
+the candidate HEAD, regenerates all 40 row attestations, runs strict ledger
+validation, binds the candidate and all rows into `promotion-closure.json`, and
+only then stages a draft GitHub release, publishes and verifies the signed R2
+feed, and makes the GitHub release public. Missing, stale, cross-candidate,
+cross-workflow, cross-repository, or cross-HEAD artifacts stop promotion.
+Repeated successful certification for the same candidate is deterministic: the
+newest immutable artifact ID is selected and its producer is revalidated.
 
 The release verifier refuses to publish `latest-linux.json` while the package
 closure has missing artifacts, missing signatures, missing Sigstore provenance,

@@ -20,9 +20,14 @@ import {
   aggregateArchitectureLifecycle,
   validateArchitectureSessionSet
 } from './lib/linux-package-session.mjs';
+import {
+  readShardAttestationSubject,
+  validateAggregateInstalledManifest
+} from './lib/linux-aggregate-installed-attestation.mjs';
 
 const versionIndex = process.argv.indexOf('--version');
 const channelIndex = process.argv.indexOf('--channel');
+const candidate = process.argv.includes('--candidate');
 const version = versionIndex >= 0 ? process.argv[versionIndex + 1]?.trim() : null;
 const channel = channelIndex >= 0 ? process.argv[channelIndex + 1]?.trim() : 'prerelease';
 const outDir = path.resolve(process.env.OPENBURNBAR_LINUX_RELEASE_OUT ?? path.join(repoRoot, '.linux-release'));
@@ -63,9 +68,10 @@ if (!releaseBaseUrl) {
 
 const logsDir = path.join(outDir, 'logs');
 const artifactsDir = path.join(outDir, 'artifacts');
+const installedManifestsDir = path.join(outDir, 'installed-manifests');
 const sidecarsDir = path.join(outDir, 'sidecars');
 const smokeDir = path.join(outDir, 'smoke');
-for (const directory of [logsDir, artifactsDir, sidecarsDir, smokeDir]) {
+for (const directory of [logsDir, artifactsDir, installedManifestsDir, sidecarsDir, smokeDir]) {
   fs.mkdirSync(directory, { recursive: true });
 }
 
@@ -128,13 +134,47 @@ for (const shardFile of shardFiles) {
     const destination = path.join(artifactsDir, name);
     fs.copyFileSync(source, destination);
     fs.chmodSync(destination, fs.statSync(source).mode & 0o777);
-    artifacts.push({
+    const assembledArtifact = {
       type: artifact.type,
       architecture,
       file: relative(destination),
       size: fileSize(destination),
       sha256: sha256(destination)
-    });
+    };
+    if (['deb', 'rpm'].includes(artifact.type)) {
+      const manifestRecord = copyInstalledAttestationSubject({
+        shardFile,
+        record: artifact.installedManifest,
+        destination: path.join(installedManifestsDir, `${name}.installed-manifest.json`),
+        label: `${artifact.type}:${architecture} installed manifest`,
+        blockers
+      });
+      const signatureRecord = copyInstalledAttestationSubject({
+        shardFile,
+        record: artifact.installedManifestSignature,
+        destination: path.join(installedManifestsDir, `${name}.installed-manifest.json.sig`),
+        label: `${artifact.type}:${architecture} installed manifest signature`,
+        blockers
+      });
+      if (manifestRecord && signatureRecord) {
+        try {
+          validateAggregateInstalledManifest(fs.readFileSync(path.join(repoRoot, manifestRecord.file)), {
+            architecture,
+            format: artifact.type,
+            version,
+            commit: git.commit
+          });
+          assembledArtifact.installedManifest = manifestRecord;
+          assembledArtifact.installedManifestSignature = signatureRecord;
+        } catch (error) {
+          blockers.push({
+            kind: 'installed-manifest',
+            message: `${artifact.type}:${architecture} installed manifest binding is invalid: ${error.message}`
+          });
+        }
+      }
+    }
+    artifacts.push(assembledArtifact);
   }
   const smokeFile = findNamedFiles(path.dirname(shardFile), 'architecture-smoke.json')[0];
   let smoke = null;
@@ -164,19 +204,22 @@ for (const sessionFile of sessionFiles) {
     blockers.push({ kind: 'architecture-session-json', message: `Architecture session is invalid JSON: ${sessionFile}`, error: String(error) });
   }
 }
-for (const message of validateArchitectureSessionSet({
+const architectureSessionFailures = validateArchitectureSessionSet({
   manifest,
   sessions: architectureSessions,
   version,
   commit: git.commit
-})) {
+});
+for (const message of architectureSessionFailures) {
   blockers.push({ kind: 'architecture-session', message });
 }
 const architectureSessionFile = path.join(smokeDir, 'architecture-sessions.json');
 writeJson(architectureSessionFile, {
   schemaVersion: 1,
   generatedAt: new Date().toISOString(),
-  sessions: architectureSessions
+  sessions: architectureSessions,
+  failedCount: architectureSessionFailures.length,
+  passed: architectureSessionFailures.length === 0
 });
 const packageLifecycle = aggregateArchitectureLifecycle({ manifest, sessions: architectureSessions });
 const packageSmokeFile = path.join(smokeDir, 'package-smoke-summary.json');
@@ -215,13 +258,13 @@ if (vex.exitCode !== 0 || !fs.existsSync(vexFile)) blockers.push({ kind: 'vex', 
 
 const paritySource = path.join(reanchorEvidenceDir, 'parity-ledger-validation.json');
 const parityFile = path.join(sidecarsDir, `OpenBurnBar-${version}-linux.parity-attestation.json`);
-if (fs.existsSync(paritySource)) {
+if (!candidate && fs.existsSync(paritySource)) {
   fs.copyFileSync(paritySource, parityFile);
   const parity = readJson(parityFile);
   if (parity.targetHead !== git.commit || parity.promotionPassed !== true || parity.productParityClaim !== true) {
     blockers.push({ kind: 'parity-attestation', message: 'Parity attestation is not green for the assembly commit.' });
   }
-} else {
+} else if (!candidate) {
   blockers.push({ kind: 'parity-attestation', message: 'Current release-head parity attestation is missing.' });
 }
 
@@ -332,6 +375,7 @@ const closureRecord = (file) => fs.existsSync(file)
 writeJson(path.join(outDir, 'package-closure.json'), {
   schemaVersion: 3,
   generatedAt: new Date().toISOString(),
+  stage: candidate ? 'candidate' : 'promotion',
   manifest: relative(manifestPath),
   tag: `linux-v${version}`,
   git,
@@ -412,4 +456,15 @@ function writeLog(file, steps) {
     step.stderr
   ].join('\n')).join('\n\n');
   fs.writeFileSync(file, `${body}\n`, 'utf8');
+}
+
+function copyInstalledAttestationSubject({ shardFile, record, destination, label, blockers }) {
+  try {
+    const snapshot = readShardAttestationSubject(path.dirname(shardFile), record, label);
+    fs.writeFileSync(destination, snapshot.bytes, { mode: 0o600 });
+    return { file: relative(destination), sha256: snapshot.sha256, size: snapshot.size };
+  } catch (error) {
+    blockers.push({ kind: 'installed-manifest', message: `${label}: ${error.message}.` });
+    return null;
+  }
 }

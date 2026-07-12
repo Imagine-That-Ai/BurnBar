@@ -28,6 +28,7 @@ const ENVIRONMENTS = [
 const REQUIREMENT_IDS = Array.from({ length: 40 }, (_, index) => `P-${String(index + 1).padStart(2, '0')}`);
 const TARGET = 'P-01';
 const TARGET_CHECK = 'p-01.release-integrity';
+const CANDIDATE_RUN_ID = '12345';
 
 function sha256(file) {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
@@ -108,6 +109,11 @@ function refreshReceipts(value, mutate = null) {
       environmentId,
       targetHead: value.head,
       status: 'passed',
+      candidate: {
+        runId: CANDIDATE_RUN_ID,
+        artifactDigest: `sha256:${digest}`,
+        productProofClosureSha256: digest
+      },
       subject: {
         releaseClosureSha256: digest,
         packageManifestSha256: digest,
@@ -238,6 +244,11 @@ test('generates validator-compatible policy-bound evidence at the exact ledger p
   assert.equal(result.attestation.requirementId, TARGET);
   assert.equal(result.attestation.targetHead, value.head);
   assert.equal(result.attestation.status, 'passed');
+  assert.deepEqual(result.attestation.candidate, {
+    runId: CANDIDATE_RUN_ID,
+    artifactDigest: `sha256:${sha256(value.artifactAbsolute)}`,
+    productProofClosureSha256: sha256(value.artifactAbsolute)
+  });
   assert.equal(result.attestation.policy.manifestId, POLICY_MANIFEST_ID);
   assert.deepEqual(result.attestation.checks, [TARGET_CHECK]);
   assert.deepEqual(result.attestation.environments, ENVIRONMENTS);

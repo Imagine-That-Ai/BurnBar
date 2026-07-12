@@ -11,6 +11,11 @@ import {
 } from './lib/parity-ledger-validate.mjs';
 
 const HEAD = '0123456789abcdef0123456789abcdef01234567';
+const CANDIDATE = Object.freeze({
+  runId: '12345',
+  artifactDigest: `sha256:${'a'.repeat(64)}`,
+  productProofClosureSha256: '0'.repeat(64)
+});
 
 function requirements(ids = ['P-01'], environments = ['test-linux']) {
   return {
@@ -110,6 +115,7 @@ function writeReadyEvidence(repoRoot, targetRow, options = {}) {
   fs.mkdirSync(path.dirname(artifactPath), { recursive: true });
   fs.writeFileSync(artifactPath, options.artifact ?? `proof for ${targetRow.id}\n`);
   const digest = crypto.createHash('sha256').update(fs.readFileSync(artifactPath)).digest('hex');
+  const candidate = options.candidate ?? { ...CANDIDATE, productProofClosureSha256: options.sha256 ?? digest };
   const checkId = `${targetRow.id.toLowerCase()}.test`;
   const environmentId = options.environmentId ?? 'test-linux';
   const receiptRel = `docs/linux-port/evidence/validator-receipts/${targetRow.id}/${checkId}/${environmentId}.json`;
@@ -122,6 +128,7 @@ function writeReadyEvidence(repoRoot, targetRow, options = {}) {
     environmentId,
     targetHead: options.targetHead ?? HEAD,
     status: 'passed',
+    candidate,
     subject: {
       releaseClosureSha256: options.sha256 ?? digest,
       packageManifestSha256: options.sha256 ?? digest,
@@ -151,6 +158,7 @@ function writeReadyEvidence(repoRoot, targetRow, options = {}) {
     requirementId: targetRow.requirementId,
     targetHead: options.targetHead ?? HEAD,
     status: 'passed',
+    candidate,
     policy: {
       manifest: 'docs/linux-port/product-parity-evidence-policies.json',
       manifestId: PRODUCT_EVIDENCE_POLICY_ID,
@@ -163,6 +171,7 @@ function writeReadyEvidence(repoRoot, targetRow, options = {}) {
       sha256: receiptDigest,
       checkId,
       environmentId,
+      candidate,
       subject: {
         releaseClosureSha256: options.sha256 ?? digest,
         packageManifestSha256: options.sha256 ?? digest,
@@ -376,6 +385,39 @@ test('current-HEAD attestation with valid artifact hashes can promote', () => {
   assert.equal(result.structuralPassed, true);
   assert.equal(result.promotionPassed, true);
   assert.equal(result.passed, true);
+  assert.deepEqual(result.validatedAttestations, [{
+    requirementId: 'P-01',
+    path: ready.evidencePath,
+    sha256: crypto.createHash('sha256').update(fs.readFileSync(path.join(root, ready.evidencePath))).digest('hex'),
+    candidate: { ...CANDIDATE, productProofClosureSha256: crypto.createHash('sha256').update(fs.readFileSync(
+      path.join(root, 'docs/linux-port/evidence/product-parity-inputs/P-01/proof.txt')
+    )).digest('hex') }
+  }]);
+});
+
+test('strict validation rejects a product matrix that mixes release candidates', () => {
+  const root = repo();
+  const first = row('P-01', { status: 'ready' });
+  const second = row('P-02', { status: 'ready' });
+  writeReadyEvidence(root, first);
+  writeReadyEvidence(root, second, {
+    candidate: {
+      runId: '67890',
+      artifactDigest: `sha256:${'b'.repeat(64)}`,
+      productProofClosureSha256: crypto.createHash('sha256').update('proof for P-02\n').digest('hex')
+    }
+  });
+  const environment = writeReadyEnvironmentEvidence(root);
+  const catalog = requirements(['P-01', 'P-02']);
+  const result = validate(
+    ledger([first, second], { semantics: { productParityClaim: true }, environmentCoverage: [environment] }),
+    root,
+    catalog,
+    false,
+    evidencePolicies(['P-01', 'P-02'])
+  );
+  assert.equal(result.promotionPassed, false);
+  assert.ok(result.promotionFailures.some((failure) => /mix different release candidates/u.test(failure.message)));
 });
 
 test('one-byte artifact mutation fails promotion in diagnostic mode', () => {

@@ -8,11 +8,13 @@ function valid() {
       'bash scripts/linux-port/run-linux-native-tests.sh',
       'verify-linux-release.test.mjs',
       'assemble-linux-release.test.mjs',
+      'linux-aggregate-installed-attestation.test.mjs',
       'linux-package-session.test.mjs',
       'linux-installed-manifest.test.mjs',
       'linux-appimage-peer-manifest.test.mjs',
       'linux-native-package-real-tools.test.mjs',
       'sign-linux-release-requests.test.mjs',
+      'signed-installed-package-wiring.test.mjs',
       'scripts/linux-port/browser-runtime-packaging.test.mjs',
       'scripts/linux-port/aur-browser-runtime-packaging.test.mjs',
       'scripts/linux-port/embed-linux-appimage-payload.test.mjs',
@@ -21,9 +23,12 @@ function valid() {
       'attest-product-requirement.test.mjs',
       'github-artifact-provenance.test.mjs',
       'live-installed-product-evidence.test.mjs',
+      'smoke-linux-packages.test.mjs',
+      'product-proof-closure.test.mjs',
       'run-linux-matrix-harness.test.mjs',
       'run-product-requirement-validator.test.mjs',
       'resolve-product-evidence-run.test.mjs',
+      'resolve-product-receipt-artifacts.test.mjs',
       'macos-matched-performance',
       'run-matched-performance.mjs',
       '--profile pr',
@@ -37,15 +42,50 @@ function valid() {
       'artifact-metadata: write',
       'ref: ${{ github.sha }}',
       'resolve-product-evidence-run.mjs',
-      'RELEASE_RUN_ID: ${{ inputs.release_run_id }}',
+      'CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}',
       'TARGET_HEAD: ${{ github.sha }}',
-      '--run-id "$RELEASE_RUN_ID"',
+      '--run-id "$CANDIDATE_RUN_ID"',
       '--target-head "$TARGET_HEAD"',
       'artifact-ids: ${{ steps.evidence.outputs.artifact_id }}',
+      'CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}',
+      'prepare-product-requirement-input.mjs',
       'run-product-requirement-validator.mjs',
       'uses: actions/attest@',
       '.sigstore.jsonl',
       'if-no-files-found: error'
+    ].join('\n'),
+    promotionWorkflow: [
+      'resolve-product-evidence-run.mjs',
+      'resolve-product-receipt-artifacts.mjs',
+      'artifact_count }}" = "280"',
+      'attest-product-requirement.mjs --requirement "P-${number}"',
+      'validate-parity-ledger.mjs',
+      'verify-linux-release.mjs',
+      '--candidate',
+      'finalize-linux-promotion-closure.mjs',
+      'uses: actions/attest@',
+      'promotion-closure.json.sigstore.jsonl',
+      '--candidate-artifact-digest',
+      '--draft',
+      '--draft=false',
+      "'*source-*.tar'",
+      'OPENBURNBAR_R2_CUSTOM_DOMAIN: downloads.burnbar.ai',
+      'upload-linux-downloads-r2.sh',
+      'https://downloads.burnbar.ai/latest-linux.json',
+      'Resolve the immutable successful candidate artifact',
+      'Download the exact candidate',
+      'Resolve the complete immutable receipt matrix',
+      'Download all 280 exact receipt artifacts',
+      'Generate current-HEAD product parity attestations',
+      'Verify strict product parity at promotion HEAD',
+      'Reverify immutable candidate signatures and provenance',
+      'Finalize candidate-bound promotion closure',
+      'Attest the exact promotion closure',
+      'Stage exact candidate as draft Linux GitHub release',
+      'Configure branded Linux update origin',
+      'Publish signed update feed to downloads origin',
+      'Verify live Linux update feed after publish',
+      'Publish verified Linux GitHub release'
     ].join('\n'),
     nightly: [
       'OPENBURNBAR_LINUX_EVIDENCE_OUT',
@@ -82,11 +122,10 @@ function valid() {
       'finalize-linux-architecture-session.mjs',
       'linux-release-shard-${{ matrix.architecture }}',
       'assemble-linux-release.mjs',
+      '--candidate',
+      'finalize-product-proof-closure.mjs',
+      'include-hidden-files: true',
       'merge-multiple: false',
-      "-o -name 'latest-linux.json'",
-      'OPENBURNBAR_R2_CUSTOM_DOMAIN: downloads.burnbar.ai',
-      'upload-linux-downloads-r2.sh',
-      'https://downloads.burnbar.ai/latest-linux.json',
       'npm ci --prefix scripts/linux-port --ignore-scripts',
       'Resolve and validate Linux release version',
       'Assert native runner architecture',
@@ -99,17 +138,11 @@ function valid() {
       'Verify native package update, rollback, and data preservation',
       'Finalize commit-bound architecture session',
       'Download native architecture shards',
-      'Generate current-HEAD product parity attestations',
-      'attest-product-requirement.mjs --requirement "P-${number}"',
-      'Verify product parity at release HEAD',
       'Assemble signed two-architecture closure and feed',
       'Pre-attestation Linux release verification',
       'Attest Linux release sidecars and packages',
       'Final Linux release verification',
-      'Publish Linux GitHub release',
-      'Configure branded Linux update origin',
-      'Publish signed update feed to downloads origin',
-      'Verify live Linux update feed after publish'
+      'Finalize installed-product proof closure'
     ].join('\n'),
     makefile: 'release-linux:\n\tnode verify\n\nother:',
     nativeTests: [
@@ -176,6 +209,7 @@ test('product evidence dependency install and mutation suites are mandatory in t
     'npm ci --prefix scripts/linux-port --ignore-scripts',
     'attest-product-requirement.test.mjs',
     'github-artifact-provenance.test.mjs',
+    'smoke-linux-packages.test.mjs',
     'run-linux-matrix-harness.test.mjs',
     'run-product-requirement-validator.test.mjs'
   ]) {
@@ -189,7 +223,7 @@ test('product evidence producer identity and immutable artifact wiring fail clos
   for (const marker of [
     'id-token: write',
     'ref: ${{ github.sha }}',
-    '--run-id "$RELEASE_RUN_ID"',
+    '--run-id "$CANDIDATE_RUN_ID"',
     '--target-head "$TARGET_HEAD"',
     'artifact-ids: ${{ steps.evidence.outputs.artifact_id }}',
     'uses: actions/attest@',
@@ -201,25 +235,33 @@ test('product evidence producer identity and immutable artifact wiring fail clos
   }
 });
 
-test('free-form release run input cannot be interpolated directly into shell', () => {
+test('free-form candidate run input cannot be interpolated directly into shell', () => {
   const input = valid();
-  input.productParityWorkflow += "\n--run-id '${{ inputs.release_run_id }}'";
+  input.productParityWorkflow += "\n--run-id '${{ inputs.candidate_run_id }}'";
   const result = verifyLinuxWorkflowWiring(input);
   assert.equal(result.passed, false);
-  assert.match(result.failures.join('\n'), /release_run_id directly into shell/u);
+  assert.match(result.failures.join('\n'), /candidate_run_id directly into shell/u);
 });
 
-test('release must generate current-HEAD attestations before strict parity validation', () => {
+test('promotion must generate current-HEAD attestations before strict parity validation', () => {
   const missing = valid();
-  missing.release = missing.release.replace('attest-product-requirement.mjs --requirement "P-${number}"', 'removed');
+  missing.promotionWorkflow = missing.promotionWorkflow.replace('attest-product-requirement.mjs --requirement "P-${number}"', 'removed');
   assert.equal(verifyLinuxWorkflowWiring(missing).passed, false);
 
   const reordered = valid();
-  reordered.release = reordered.release.replace(
-    'Generate current-HEAD product parity attestations\nattest-product-requirement.mjs --requirement "P-${number}"\nVerify product parity at release HEAD',
-    'Verify product parity at release HEAD\nattest-product-requirement.mjs --requirement "P-${number}"\nGenerate current-HEAD product parity attestations'
+  reordered.promotionWorkflow = reordered.promotionWorkflow.replace(
+    'Generate current-HEAD product parity attestations\nVerify strict product parity at promotion HEAD',
+    'Verify strict product parity at promotion HEAD\nGenerate current-HEAD product parity attestations'
   );
   assert.equal(verifyLinuxWorkflowWiring(reordered).passed, false);
+});
+
+test('candidate workflow cannot attest parity or publish', () => {
+  for (const forbidden of ['attest-product-requirement.mjs', 'validate-parity-ledger.mjs', 'gh release create']) {
+    const input = valid();
+    input.release += `\n${forbidden}`;
+    assert.equal(verifyLinuxWorkflowWiring(input).passed, false, forbidden);
+  }
 });
 
 test('removing any native behavior or process-isolation command fails', () => {
@@ -250,18 +292,18 @@ test('legacy tag, swallowed verifier, and sealed evidence paths fail', () => {
   assert.ok(result.failures.some((failure) => /sealed mission/.test(failure)));
 });
 
-test('release closure publication cannot omit source, parity, bundles, or public key', () => {
-  for (const marker of ['*.sigstore.json', '*source-*.tar', '*parity-attestation.json']) {
+test('promotion publication cannot omit source, closure bundle, or public key', () => {
+  for (const marker of ['*source-*.tar', 'promotion-closure.json.sigstore.jsonl']) {
     const input = valid();
-    input.release = input.release.replace(`'${marker}'`, '');
+    input.promotionWorkflow = input.promotionWorkflow.replace(marker, '');
     assert.equal(verifyLinuxWorkflowWiring(input).passed, false, marker);
   }
   const input = valid();
-  input.release += '\ncp packaging/linux/openburnbar-linux-ed25519.pub.pem "$art/" || true';
+  input.promotionWorkflow += '\ncp packaging/linux/openburnbar-linux-ed25519.pub.pem "$art/" || true';
   assert.equal(verifyLinuxWorkflowWiring(input).passed, false);
 });
 
-test('architecture matrix, aggregate closure, and feed publication cannot be removed', () => {
+test('candidate architecture closure and promotion publication cannot be removed', () => {
   for (const marker of [
     'architecture: aarch64',
     'architecture: x86_64',
@@ -277,14 +319,19 @@ test('architecture matrix, aggregate closure, and feed publication cannot be rem
     '--security-opt no-new-privileges',
     'sign-linux-release-requests.mjs',
     '--phase finalize',
-    'merge-multiple: false',
-    "-o -name 'latest-linux.json'",
+    'merge-multiple: false'
+  ]) {
+    const input = valid();
+    input.release = input.release.replace(marker, '');
+    assert.equal(verifyLinuxWorkflowWiring(input).passed, false, marker);
+  }
+  for (const marker of [
     'OPENBURNBAR_R2_CUSTOM_DOMAIN: downloads.burnbar.ai',
     'upload-linux-downloads-r2.sh',
     'https://downloads.burnbar.ai/latest-linux.json'
   ]) {
     const input = valid();
-    input.release = input.release.replace(marker, '');
+    input.promotionWorkflow = input.promotionWorkflow.replace(marker, '');
     assert.equal(verifyLinuxWorkflowWiring(input).passed, false, marker);
   }
 });

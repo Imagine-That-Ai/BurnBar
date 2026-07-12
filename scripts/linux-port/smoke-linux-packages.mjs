@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { readJson, releaseEvidenceDir, repoRoot, runStep, writeJson } from './lib/linux-release-common.mjs';
@@ -9,6 +10,7 @@ import {
   linuxAppImagePeerSignatureName,
   verifyLinuxAppImagePeerManifest
 } from './lib/linux-appimage-peer-manifest.mjs';
+import { installedPackageVerificationStep } from './lib/linux-package-smoke-installed.mjs';
 
 const outDir = path.resolve(process.env.OPENBURNBAR_LINUX_RELEASE_OUT ?? releaseEvidenceDir);
 const shardMode = process.argv.includes('--architecture-shard');
@@ -47,6 +49,31 @@ function runtimeProbeEnv(label) {
     XDG_DATA_HOME: path.join(root, 'data'),
     XDG_RUNTIME_DIR: path.join(root, 'run')
   };
+}
+
+function readShardSubject(record, label) {
+  if (record === null || typeof record !== 'object' || Array.isArray(record)
+      || typeof (record.file ?? record.path) !== 'string'
+      || !/^[a-f0-9]{64}$/u.test(record.sha256 ?? '')
+      || !Number.isInteger(record.size) || record.size < 0) {
+    throw new Error(`${label} record is missing or invalid`);
+  }
+  const absolute = path.resolve(outDir, record.file ?? record.path);
+  const relative = path.relative(outDir, absolute);
+  if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new Error(`${label} is outside the architecture shard`);
+  }
+  let current = outDir;
+  for (const component of relative.split(path.sep).filter(Boolean)) {
+    current = path.join(current, component);
+    if (fs.lstatSync(current).isSymbolicLink()) throw new Error(`${label} traverses a symlink`);
+  }
+  const stat = fs.lstatSync(absolute);
+  if (!stat.isFile() || stat.size !== record.size) throw new Error(`${label} is not the recorded regular file`);
+  const bytes = fs.readFileSync(absolute);
+  const digest = crypto.createHash('sha256').update(bytes).digest('hex');
+  if (digest !== record.sha256) throw new Error(`${label} SHA-256 does not match the architecture closure`);
+  return bytes;
 }
 
 for (const artifact of closure.artifacts ?? []) {
@@ -121,6 +148,7 @@ for (const artifact of closure.artifacts ?? []) {
     } else {
       steps.push(dpkgInstall);
     }
+    steps.push(installedPackageVerificationStep({ artifact, readSubject: readShardSubject }));
     steps.push(runStep('/usr/libexec/openburnbar-daemon-launch', ['--help'], {
       env: runtimeProbeEnv(`deb-${artifact.architecture}`)
     }));
@@ -185,6 +213,7 @@ for (const artifact of closure.artifacts ?? []) {
     } else {
       steps.push(rpmInstall);
     }
+    steps.push(installedPackageVerificationStep({ artifact, readSubject: readShardSubject }));
     steps.push(runStep('/usr/libexec/openburnbar-daemon-launch', ['--help'], {
       env: runtimeProbeEnv(`rpm-${artifact.architecture}`)
     }));

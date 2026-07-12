@@ -332,6 +332,7 @@ function validateAttestation(attestation, row, policy, options, failPromotion, f
     'requirementId',
     'targetHead',
     'status',
+    'candidate',
     'policy',
     'checks',
     'environments',
@@ -344,6 +345,16 @@ function validateAttestation(attestation, row, policy, options, failPromotion, f
   if (actualFields.length !== expectedFields.length
       || actualFields.some((field, index) => field !== expectedFields[index])) {
     failStructural('ready evidence attestation fields are not canonical', row);
+  }
+  const candidateFields = attestation.candidate && typeof attestation.candidate === 'object'
+    && !Array.isArray(attestation.candidate) ? Object.keys(attestation.candidate).sort() : [];
+  const expectedCandidateFields = ['runId', 'artifactDigest', 'productProofClosureSha256'].sort();
+  if (candidateFields.length !== expectedCandidateFields.length
+      || candidateFields.some((field, index) => field !== expectedCandidateFields[index])
+      || !/^[1-9][0-9]*$/u.test(attestation.candidate?.runId ?? '')
+      || !/^sha256:[a-f0-9]{64}$/u.test(attestation.candidate?.artifactDigest ?? '')
+      || !/^[a-f0-9]{64}$/u.test(attestation.candidate?.productProofClosureSha256 ?? '')) {
+    failStructural('ready evidence candidate binding is invalid', row);
   }
   if (!policy) {
     failStructural('ready evidence attestation has no canonical policy', row);
@@ -414,6 +425,10 @@ function validateAttestation(attestation, row, policy, options, failPromotion, f
   if (artifactPaths.size < policy.minArtifactCount) {
     failPromotion(`ready evidence has fewer than ${policy.minArtifactCount} policy artifacts`, row);
   }
+  if (!artifactsByPath.size
+      || ![...artifactsByPath.values()].includes(attestation.candidate?.productProofClosureSha256)) {
+    failPromotion('ready evidence candidate product proof is not bound to an artifact', row);
+  }
 
   const receipts = Array.isArray(attestation.validatorReceipts) ? attestation.validatorReceipts : [];
   const expectedReceiptCount = policy.requiredCheckIds.length * policy.requiredEnvironmentIds.length;
@@ -429,7 +444,7 @@ function validateAttestation(attestation, row, policy, options, failPromotion, f
       ? Object.keys(receiptRef).sort()
       : [];
     const expected = [
-      'checkId', 'environmentId', 'path', 'sha256', 'subject', 'producer', 'provenance'
+      'checkId', 'environmentId', 'path', 'sha256', 'candidate', 'subject', 'producer', 'provenance'
     ].sort();
     if (fields.length !== expected.length || fields.some((field, index) => field !== expected[index])) {
       failStructural('validator receipt reference fields are not canonical', row);
@@ -483,7 +498,7 @@ function validateAttestation(attestation, row, policy, options, failPromotion, f
       : [];
     const expectedReceiptFields = [
       'schemaVersion', 'requirementId', 'checkId', 'environmentId', 'targetHead', 'status',
-      'subject', 'producer', 'artifacts'
+      'candidate', 'subject', 'producer', 'artifacts'
     ].sort();
     if (receiptFields.length !== expectedReceiptFields.length
         || receiptFields.some((field, index) => field !== expectedReceiptFields[index])) {
@@ -497,6 +512,10 @@ function validateAttestation(attestation, row, policy, options, failPromotion, f
         || receipt.targetHead !== options.currentHead
         || receipt.status !== 'passed') {
       failPromotion(`validator receipt binding is invalid: ${receiptRef.path}`, row);
+    }
+    if (JSON.stringify(receipt.candidate) !== JSON.stringify(receiptRef.candidate)
+        || JSON.stringify(receipt.candidate) !== JSON.stringify(attestation.candidate)) {
+      failPromotion(`validator receipt candidate binding is invalid: ${receiptRef.path}`, row);
     }
     const subjectFields = receipt.subject && typeof receipt.subject === 'object' && !Array.isArray(receipt.subject)
       ? Object.keys(receipt.subject).sort()
@@ -664,6 +683,7 @@ export function validateParityLedger(ledger, options) {
   const structuralFailures = [];
   const promotionFailures = [];
   const warnings = [];
+  const validatedAttestations = [];
   const productParityClaim = ledger.semantics?.productParityClaim === true;
   const requirements = options.requirements ?? null;
 
@@ -803,6 +823,8 @@ export function validateParityLedger(ledger, options) {
       continue;
     }
     if (row.status === 'ready') {
+      const structuralCount = structuralFailures.length;
+      const promotionCount = promotionFailures.length;
       validateAttestation(
         attestation,
         row,
@@ -811,6 +833,21 @@ export function validateParityLedger(ledger, options) {
         promotion,
         structural
       );
+      if (structuralFailures.length === structuralCount && promotionFailures.length === promotionCount) {
+        validatedAttestations.push({
+          requirementId: row.requirementId,
+          path: row.evidencePath,
+          sha256: sha256(evidence.path),
+          candidate: attestation.candidate
+        });
+      }
+    }
+  }
+
+  if (validatedAttestations.length > 0) {
+    const firstCandidate = JSON.stringify(validatedAttestations[0].candidate);
+    if (validatedAttestations.some((entry) => JSON.stringify(entry.candidate) !== firstCandidate)) {
+      promotion('validated product attestations mix different release candidates.');
     }
   }
 
@@ -890,6 +927,7 @@ export function validateParityLedger(ledger, options) {
     failures,
     structuralFailures,
     promotionFailures,
-    warnings
+    warnings,
+    validatedAttestations
   };
 }

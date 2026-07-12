@@ -44,11 +44,13 @@ const RECEIPT_FIELDS = [
 ];
 const RECEIPT_SCHEMA_FIELDS = [
   ...RECEIPT_FIELDS.slice(0, -1),
+  'candidate',
   'subject',
   'producer',
   'artifacts'
 ];
 const ARTIFACT_FIELDS = ['path', 'sha256'];
+const CANDIDATE_FIELDS = ['runId', 'artifactDigest', 'productProofClosureSha256'];
 const HEAD_PATTERN = /^[a-f0-9]{40,64}$/u;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
 const AREA_PATTERN = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/u;
@@ -547,7 +549,7 @@ function validateRuntimeCapabilityManifest(repoRoot, subject, installedManifest,
   return manifest;
 }
 
-function assertLiveInstallResult(result, packageManifestSubject, installedManifest) {
+function assertLiveInstallResult(result, packageManifestSubject, packageManifestSignatureSubject, installedManifest) {
   assertExactKeys(
     result,
     ['schemaVersion', 'manifestBytes', 'signatureBytes', 'publicKeyBytes', 'verification'],
@@ -560,6 +562,10 @@ function assertLiveInstallResult(result, packageManifestSubject, installedManife
   if (result.manifestBytes.length !== packageManifestSubject.bytes.length
       || !crypto.timingSafeEqual(result.manifestBytes, packageManifestSubject.bytes)) {
     throw new Error('live installed manifest bytes do not match the release closure subject');
+  }
+  if (result.signatureBytes.length !== packageManifestSignatureSubject.bytes.length
+      || !crypto.timingSafeEqual(result.signatureBytes, packageManifestSignatureSubject.bytes)) {
+    throw new Error('live installed manifest signature bytes do not match the release closure subject');
   }
   const verification = result.verification;
   assertExactKeys(
@@ -624,6 +630,12 @@ export function deriveReleaseSubjects(repoRoot, releaseClosurePath, requirementI
   if (Array.isArray(closure.blockers) && closure.blockers.length > 0) throw new Error('release closure contains blockers');
   if (Object.hasOwn(closure, 'passed') && closure.passed !== true) throw new Error('release closure is not passed');
   if (Object.hasOwn(closure, 'status') && closure.status !== 'passed') throw new Error('release closure status is not passed');
+  assertExactKeys(closure.candidate, CANDIDATE_FIELDS, 'release closure candidate');
+  if (!/^[1-9][0-9]*$/u.test(closure.candidate.runId ?? '')
+      || !/^sha256:[a-f0-9]{64}$/u.test(closure.candidate.artifactDigest ?? '')
+      || !SHA256_PATTERN.test(closure.candidate.productProofClosureSha256 ?? '')) {
+    throw new Error('release closure candidate binding is invalid');
+  }
 
   const packageRecords = normalizedRecords(closure.packages, 'release closure packages')
     ?? closureRecordsByType(closure, PACKAGE_TYPES);
@@ -631,8 +643,15 @@ export function deriveReleaseSubjects(repoRoot, releaseClosurePath, requirementI
     closure.packageManifest,
     'release closure packageManifest'
   );
+  const packageManifestSignatureRecords = normalizedRecords(
+    closure.packageManifestSignature,
+    'release closure packageManifestSignature'
+  );
   if (packageManifestRecords === null || packageManifestRecords.length !== 1) {
     throw new Error('environment release closure must identify exactly one package manifest');
+  }
+  if (packageManifestSignatureRecords === null || packageManifestSignatureRecords.length !== 1) {
+    throw new Error('environment release closure must identify exactly one package manifest signature');
   }
   if (packageRecords.length === 0) throw new Error('release closure has no package subjects');
   if (packageRecords.length !== 1) throw new Error('environment release closure must identify exactly one installed package');
@@ -645,6 +664,12 @@ export function deriveReleaseSubjects(repoRoot, releaseClosurePath, requirementI
     repoRoot,
     packageManifestRecords[0],
     'package manifest subject',
+    requirementId
+  );
+  const packageManifestSignature = validateSubjectRecord(
+    repoRoot,
+    packageManifestSignatureRecords[0],
+    'package manifest signature subject',
     requirementId
   );
   const packages = packageRecords.map((record, index) =>
@@ -660,13 +685,23 @@ export function deriveReleaseSubjects(repoRoot, releaseClosurePath, requirementI
   if (!packages[0].path.endsWith(expectedPackageSuffix)) {
     throw new Error(`installed package artifact must end in ${expectedPackageSuffix}`);
   }
-  const all = [release, packageManifest, ...packages];
+  const all = [release, packageManifest, packageManifestSignature, ...packages];
   const paths = new Set();
   for (const subject of all) {
     if (paths.has(subject.path)) throw new Error(`release closure repeats subject path: ${subject.path}`);
     paths.add(subject.path);
   }
-  return { closure, release, packageManifest, packages, runtimes: [], all, installedManifest };
+  return {
+    closure,
+    candidate: closure.candidate,
+    release,
+    packageManifest,
+    packageManifestSignature,
+    packages,
+    runtimes: [],
+    all,
+    installedManifest
+  };
 }
 
 function validateModuleResult(repoRoot, result, context, subjects) {
@@ -799,9 +834,15 @@ export async function runProductRequirementValidator(options) {
     const liveInstall = await installProbe({
       installedManifest: subjects.installedManifest,
       expectedManifestBytes: subjects.packageManifest.bytes,
+      expectedSignatureBytes: subjects.packageManifestSignature.bytes,
       installedRoot: options.installedRoot ?? '/'
     });
-    assertLiveInstallResult(liveInstall, subjects.packageManifest, subjects.installedManifest);
+    assertLiveInstallResult(
+      liveInstall,
+      subjects.packageManifest,
+      subjects.packageManifestSignature,
+      subjects.installedManifest
+    );
     atomicWriteBuffer(repoRoot, livePaths.installedManifest, liveInstall.manifestBytes);
     atomicWriteBuffer(repoRoot, livePaths.installedSignature, liveInstall.signatureBytes);
     atomicWriteBuffer(repoRoot, livePaths.releasePublicKey, liveInstall.publicKeyBytes);
@@ -882,6 +923,10 @@ export async function runProductRequirementValidator(options) {
       subjects: Object.freeze({
         release: Object.freeze({ path: subjects.release.path, sha256: subjects.release.sha256 }),
         packageManifest: Object.freeze({ path: subjects.packageManifest.path, sha256: subjects.packageManifest.sha256 }),
+        packageManifestSignature: Object.freeze({
+          path: subjects.packageManifestSignature.path,
+          sha256: subjects.packageManifestSignature.sha256
+        }),
         packages: Object.freeze(subjects.packages.map(({ path: subjectPath, sha256 }) => Object.freeze({ path: subjectPath, sha256 }))),
         runtimes: Object.freeze(subjects.runtimes.map(({ path: subjectPath, sha256 }) => Object.freeze({ path: subjectPath, sha256 }))),
         installation: Object.freeze(subjects.installation.map(({ path: subjectPath, sha256 }) => Object.freeze({ path: subjectPath, sha256 }))),
@@ -892,9 +937,15 @@ export async function runProductRequirementValidator(options) {
     const finalLiveInstall = await installProbe({
       installedManifest: subjects.installedManifest,
       expectedManifestBytes: subjects.packageManifest.bytes,
+      expectedSignatureBytes: subjects.packageManifestSignature.bytes,
       installedRoot: options.installedRoot ?? '/'
     });
-    assertLiveInstallResult(finalLiveInstall, subjects.packageManifest, subjects.installedManifest);
+    assertLiveInstallResult(
+      finalLiveInstall,
+      subjects.packageManifest,
+      subjects.packageManifestSignature,
+      subjects.installedManifest
+    );
     assertLiveEvidenceUnchanged(liveInstall, finalLiveInstall, 'live installed product');
     const finalRuntimeCapture = await runtimeProbe({
       expectedEnvironment: environment,
@@ -942,6 +993,7 @@ export async function runProductRequirementValidator(options) {
       environmentId,
       targetHead,
       status: 'passed',
+      candidate: { ...subjects.candidate },
       subject: {
         releaseClosureSha256: subjects.release.sha256,
         packageManifestSha256: subjects.packageManifest.sha256,

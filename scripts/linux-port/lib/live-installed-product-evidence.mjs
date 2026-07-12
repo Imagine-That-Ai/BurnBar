@@ -7,6 +7,7 @@ export const LIVE_INSTALLED_MANIFEST_PATH = '/usr/share/openburnbar/attestation/
 export const LIVE_INSTALLED_SIGNATURE_PATH = `${LIVE_INSTALLED_MANIFEST_PATH}.sig`;
 export const LIVE_RELEASE_PUBLIC_KEY_PATH = '/usr/share/openburnbar/attestation/release-ed25519.pub.pem';
 export const LIVE_DESKTOP_BINARY_PATH = '/usr/bin/openburnbar-linux-desktop';
+export const LIVE_INSTALLED_POLICY_ID = 'openburnbar-linux-signed-package-inventory-v1';
 
 function sha256(bytes) {
   return crypto.createHash('sha256').update(bytes).digest('hex');
@@ -33,7 +34,23 @@ function mappedPath(installedRoot, absolutePath, label) {
   return candidate;
 }
 
-function assertNoParentSymlinks(installedRoot, absolutePath, label) {
+function directoryMetadataFor(directoryMetadata, installedRoot, absolute, stat, ownership) {
+  const logical = `/${path.relative(path.resolve(installedRoot), absolute).split(path.sep).join('/')}`;
+  const override = directoryMetadata?.[logical] ?? null;
+  return {
+    uid: override?.uid ?? ownership?.uid ?? stat.uid,
+    gid: override?.gid ?? ownership?.gid ?? stat.gid,
+    mode: override?.mode ?? (stat.mode & 0o7777)
+  };
+}
+
+function assertTrustedParentDirectories(
+  installedRoot,
+  absolutePath,
+  label,
+  ownership = null,
+  directoryMetadata = null
+) {
   const root = path.resolve(installedRoot);
   const candidate = mappedPath(root, absolutePath, label);
   let current = root;
@@ -43,12 +60,24 @@ function assertNoParentSymlinks(installedRoot, absolutePath, label) {
     if (!stat.isDirectory() || stat.isSymbolicLink()) {
       throw new Error(`${label} traverses a non-directory or symlink: ${current}`);
     }
+    const metadata = directoryMetadataFor(directoryMetadata, root, current, stat, ownership);
+    if (metadata.uid !== 0 || metadata.gid !== 0 || (metadata.mode & 0o022) !== 0) {
+      throw new Error(
+        `${label} traverses a parent directory that is not root-owned or is group/world-writable: ${current}`
+      );
+    }
   }
   return candidate;
 }
 
-function readRegularSnapshot(installedRoot, absolutePath, label) {
-  const candidate = assertNoParentSymlinks(installedRoot, absolutePath, label);
+function readRegularSnapshot(installedRoot, absolutePath, label, ownership = null, directoryMetadata = null) {
+  const candidate = assertTrustedParentDirectories(
+    installedRoot,
+    absolutePath,
+    label,
+    ownership,
+    directoryMetadata
+  );
   const descriptor = fs.openSync(candidate, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
   try {
     const before = fs.fstatSync(descriptor);
@@ -77,8 +106,14 @@ function assertRootOwnedTrustFile(snapshot, absolutePath, ownership) {
   }
 }
 
-function actualFileRecord(installedRoot, expected, ownership = null) {
-  const candidate = assertNoParentSymlinks(installedRoot, expected.path, `installed file ${expected.path}`);
+function actualFileRecord(installedRoot, expected, ownership = null, directoryMetadata = null) {
+  const candidate = assertTrustedParentDirectories(
+    installedRoot,
+    expected.path,
+    `installed file ${expected.path}`,
+    ownership,
+    directoryMetadata
+  );
   const stat = fs.lstatSync(candidate);
   const uid = ownership?.uid ?? stat.uid;
   const gid = ownership?.gid ?? stat.gid;
@@ -93,7 +128,13 @@ function actualFileRecord(installedRoot, expected, ownership = null) {
       gid
     };
   }
-  const snapshot = readRegularSnapshot(installedRoot, expected.path, `installed file ${expected.path}`);
+  const snapshot = readRegularSnapshot(
+    installedRoot,
+    expected.path,
+    `installed file ${expected.path}`,
+    ownership,
+    directoryMetadata
+  );
   return {
     path: expected.path,
     type: 'file',
@@ -131,12 +172,21 @@ function listPackageOwnedPaths(installedManifest, installedRoot, runner) {
   const paths = [];
   const seen = new Set();
   for (const installedPath of listed) {
-    if (!path.posix.isAbsolute(installedPath)) {
-      throw new Error(`package manager returned a non-absolute owned path: ${installedPath}`);
+    if (!path.posix.isAbsolute(installedPath) || installedPath.includes('\\')
+        || path.posix.normalize(installedPath) !== installedPath) {
+      throw new Error(`package manager returned a non-canonical absolute owned path: ${installedPath}`);
     }
-    const candidate = path.resolve(installedRoot, installedPath.slice(1));
+    const root = path.resolve(installedRoot);
+    const candidate = path.resolve(root, installedPath.slice(1));
+    const relative = path.relative(root, candidate);
+    if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+      throw new Error(`package manager returned an owned path outside the installed root: ${installedPath}`);
+    }
     const stat = fs.lstatSync(candidate);
     if (stat.isDirectory()) continue;
+    if (!installedPath.startsWith('/usr/')) {
+      throw new Error(`package manager returned a non-directory owned path outside /usr: ${installedPath}`);
+    }
     if (seen.has(installedPath)) throw new Error(`package manager repeated owned path: ${installedPath}`);
     seen.add(installedPath);
     paths.push(installedPath);
@@ -165,15 +215,22 @@ function assertExactPackageOwnership(installedManifest, packageOwnedPaths) {
 export function verifyLiveInstalledProduct({
   installedManifest,
   expectedManifestBytes,
+  expectedSignatureBytes = null,
   installedRoot = '/',
   ownership = null,
+  directoryMetadata = null,
   packageOwnedPaths = null,
   packageListRunner = spawnSync
 }) {
+  if (installedManifest.policyId !== LIVE_INSTALLED_POLICY_ID) {
+    throw new Error(`live installed manifest policy must be ${LIVE_INSTALLED_POLICY_ID}`);
+  }
   const liveManifest = readRegularSnapshot(
     installedRoot,
     LIVE_INSTALLED_MANIFEST_PATH,
-    'live installed manifest'
+    'live installed manifest',
+    ownership,
+    directoryMetadata
   );
   if (!timingSafeBytesEqual(liveManifest.bytes, expectedManifestBytes)) {
     throw new Error('live installed manifest bytes do not match the release closure subject');
@@ -181,15 +238,23 @@ export function verifyLiveInstalledProduct({
   const signature = readRegularSnapshot(
     installedRoot,
     LIVE_INSTALLED_SIGNATURE_PATH,
-    'live installed manifest signature'
+    'live installed manifest signature',
+    ownership,
+    directoryMetadata
   );
+  if (expectedSignatureBytes !== null
+      && !timingSafeBytesEqual(signature.bytes, expectedSignatureBytes)) {
+    throw new Error('live installed manifest signature bytes do not match the release closure subject');
+  }
   assertRootOwnedTrustFile(liveManifest, LIVE_INSTALLED_MANIFEST_PATH, ownership);
   assertRootOwnedTrustFile(signature, LIVE_INSTALLED_SIGNATURE_PATH, ownership);
   if (signature.bytes.length !== 64) throw new Error('live installed manifest signature must be 64 bytes');
   const publicKey = readRegularSnapshot(
     installedRoot,
     LIVE_RELEASE_PUBLIC_KEY_PATH,
-    'live installed release public key'
+    'live installed release public key',
+    ownership,
+    directoryMetadata
   );
   assertRootOwnedTrustFile(publicKey, LIVE_RELEASE_PUBLIC_KEY_PATH, ownership);
   let key;
@@ -211,7 +276,7 @@ export function verifyLiveInstalledProduct({
 
   const actualFiles = installedManifest.files
     .map((expected) => {
-      const actual = actualFileRecord(installedRoot, expected, ownership);
+      const actual = actualFileRecord(installedRoot, expected, ownership, directoryMetadata);
       if (!exactRecordEquals(actual, expected)) {
         throw new Error(`live installed file does not match signed inventory: ${expected.path}`);
       }

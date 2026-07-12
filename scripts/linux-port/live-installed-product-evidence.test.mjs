@@ -83,6 +83,7 @@ function createFixture() {
     packageVersion: '1.2.3',
     packageFormat: 'deb',
     packageName: 'open-burn-bar',
+    policyId: 'openburnbar-linux-signed-package-inventory-v1',
     installedFilesRootSha256: fileRoot(files),
     authorizedClients: [{
       role: 'daemon',
@@ -97,10 +98,11 @@ function createFixture() {
   const manifestBytes = canonicalJson(manifest);
   const { privateKey, publicKey } = crypto.generateKeyPairSync('ed25519');
   writeInstalled(root, '/usr/share/openburnbar/attestation/installed-manifest.json', manifestBytes, 0o644);
+  const signatureBytes = crypto.sign(null, manifestBytes, privateKey);
   writeInstalled(
     root,
     '/usr/share/openburnbar/attestation/installed-manifest.json.sig',
-    crypto.sign(null, manifestBytes, privateKey),
+    signatureBytes,
     0o644
   );
   writeInstalled(
@@ -109,7 +111,7 @@ function createFixture() {
     publicKey.export({ type: 'spki', format: 'pem' }),
     0o644
   );
-  return { root, manifest, manifestBytes };
+  return { root, manifest, manifestBytes, signatureBytes };
 }
 
 function ownedPaths(fixture, extra = []) {
@@ -127,6 +129,7 @@ test('live installed verification binds exact manifest bytes, signature, metadat
   const result = verifyLiveInstalledProduct({
     installedManifest: fixture.manifest,
     expectedManifestBytes: fixture.manifestBytes,
+    expectedSignatureBytes: fixture.signatureBytes,
     installedRoot: fixture.root,
     ownership: { uid: 0, gid: 0 },
     packageOwnedPaths: ownedPaths(fixture)
@@ -158,6 +161,23 @@ test('live package ownership is queried from the native manager and rejects an e
     }
   }), /extra=\/usr\/bin\/openburnbar-extra/u);
   assert.deepEqual(calls, [{ command: 'dpkg-query', args: ['-L', 'open-burn-bar'] }]);
+});
+
+test('live package ownership rejects non-canonical and escaping manager output before lookup', async (t) => {
+  for (const installedPath of ['/usr/../etc/passwd', 'usr/bin/openburnbar-daemon']) {
+    await t.test(installedPath, () => {
+      const fixture = createFixture();
+      t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }));
+      assert.throws(() => verifyLiveInstalledProduct({
+        installedManifest: fixture.manifest,
+        expectedManifestBytes: fixture.manifestBytes,
+        expectedSignatureBytes: fixture.signatureBytes,
+        installedRoot: fixture.root,
+        ownership: { uid: 0, gid: 0 },
+        packageListRunner: () => ({ status: 0, stdout: `${installedPath}\n`, stderr: '' })
+      }), /non-canonical absolute owned path/u);
+    });
+  }
 });
 
 test('live installed verification rejects candidate, signature, payload, root, and symlink drift', async (t) => {
@@ -210,6 +230,55 @@ test('live installed verification rejects non-root installed ownership', (t) => 
     ownership: { uid: 1, gid: 0 },
     packageOwnedPaths: ownedPaths(fixture)
   }), /root-owned|signed inventory/u);
+});
+
+test('live installed verification rejects unsafe parent ownership and modes', async (t) => {
+  for (const [name, metadata, pattern] of [
+    ['non-root owner', { uid: 1000, gid: 0, mode: 0o755 }, /not root-owned/u],
+    ['group writable', { uid: 0, gid: 0, mode: 0o775 }, /group\/world-writable/u],
+    ['world writable', { uid: 0, gid: 0, mode: 0o757 }, /group\/world-writable/u]
+  ]) {
+    await t.test(name, () => {
+      const fixture = createFixture();
+      t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }));
+      assert.throws(() => verifyLiveInstalledProduct({
+        installedManifest: fixture.manifest,
+        expectedManifestBytes: fixture.manifestBytes,
+        expectedSignatureBytes: fixture.signatureBytes,
+        installedRoot: fixture.root,
+        ownership: { uid: 0, gid: 0 },
+        directoryMetadata: { '/usr/share/openburnbar': metadata },
+        packageOwnedPaths: ownedPaths(fixture)
+      }), pattern);
+    });
+  }
+});
+
+test('live installed verification rejects a release-closure signature mismatch', (t) => {
+  const fixture = createFixture();
+  t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }));
+  assert.throws(() => verifyLiveInstalledProduct({
+    installedManifest: fixture.manifest,
+    expectedManifestBytes: fixture.manifestBytes,
+    expectedSignatureBytes: Buffer.alloc(64, 7),
+    installedRoot: fixture.root,
+    ownership: { uid: 0, gid: 0 },
+    packageOwnedPaths: ownedPaths(fixture)
+  }), /signature bytes do not match/u);
+});
+
+test('live installed verification does not overclaim TPM or IMA policy', (t) => {
+  const fixture = createFixture();
+  t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }));
+  fixture.manifest.policyId = 'openburnbar-linux-tpm2-ima-v1';
+  assert.throws(() => verifyLiveInstalledProduct({
+    installedManifest: fixture.manifest,
+    expectedManifestBytes: fixture.manifestBytes,
+    expectedSignatureBytes: fixture.signatureBytes,
+    installedRoot: fixture.root,
+    ownership: { uid: 0, gid: 0 },
+    packageOwnedPaths: ownedPaths(fixture)
+  }), /signed-package-inventory-v1/u);
 });
 
 test('live installed verification rejects extra or missing package-owned files', async (t) => {

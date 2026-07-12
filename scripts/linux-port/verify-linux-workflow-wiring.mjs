@@ -24,9 +24,7 @@ export function verifyLinuxWorkflowWiring(input) {
   requireText(input.release, 'resolve-linux-release-version.mjs --github-output', 'release version resolver');
   requireText(input.release, 'OPENBURNBAR_LINUX_RELEASE_OUT', 'canonical release output');
   requireText(input.release, 'OPENBURNBAR_LINUX_EVIDENCE_OUT', 'canonical evidence output');
-  requireText(input.release, "'*.sigstore.json'", 'published Sigstore bundles');
-  requireText(input.release, "'*source-*.tar'", 'published source archive');
-  requireText(input.release, "'*parity-attestation.json'", 'published parity attestation');
+  requireText(input.release, '--candidate', 'candidate-only release assembly');
   for (const marker of [
     'architecture: aarch64',
     'runner: ubuntu-24.04-arm',
@@ -47,20 +45,50 @@ export function verifyLinuxWorkflowWiring(input) {
     'finalize-linux-architecture-session.mjs',
     'linux-release-shard-${{ matrix.architecture }}',
     'assemble-linux-release.mjs',
+    'finalize-product-proof-closure.mjs',
+    'include-hidden-files: true',
     'merge-multiple: false',
-    "-o -name 'latest-linux.json'",
+    'finalize-product-proof-closure.mjs',
+    'include-hidden-files: true'
+  ]) requireText(input.release, marker, 'two-architecture release closure');
+  for (const marker of [
+    'resolve-product-evidence-run.mjs',
+    'resolve-product-receipt-artifacts.mjs',
+    'artifact_count }}" = "280"',
+    'Generate current-HEAD product parity attestations',
+    'attest-product-requirement.mjs --requirement "P-${number}"',
+    'validate-parity-ledger.mjs',
+    'verify-linux-release.mjs',
+    '--candidate',
+    'finalize-linux-promotion-closure.mjs',
+    'uses: actions/attest@',
+    'promotion-closure.json.sigstore.jsonl',
+    '--candidate-artifact-digest',
+    '--draft',
+    '--draft=false',
+    "'*source-*.tar'",
     'OPENBURNBAR_R2_CUSTOM_DOMAIN: downloads.burnbar.ai',
     'upload-linux-downloads-r2.sh',
     'https://downloads.burnbar.ai/latest-linux.json'
-  ]) requireText(input.release, marker, 'two-architecture release closure');
+  ]) requireText(input.promotionWorkflow, marker, 'strict release promotion workflow');
+  for (const forbidden of [
+    'attest-product-requirement.mjs',
+    'validate-parity-ledger.mjs',
+    'gh release create',
+    'upload-linux-downloads-r2.sh'
+  ]) {
+    if (input.release.includes(forbidden)) failures.push(`candidate workflow may not perform promotion action: ${forbidden}`);
+  }
   requireText(input.pr, 'bash scripts/linux-port/run-linux-native-tests.sh', 'PR native behavior gate');
   requireText(input.pr, 'verify-linux-release.test.mjs', 'PR release mutation suite');
   requireText(input.pr, 'assemble-linux-release.test.mjs', 'PR architecture assembly mutation suite');
+  requireText(input.pr, 'linux-aggregate-installed-attestation.test.mjs', 'PR aggregate installed-attestation mutation suite');
   requireText(input.pr, 'linux-package-session.test.mjs', 'PR package lifecycle session suite');
   requireText(input.pr, 'linux-installed-manifest.test.mjs', 'PR installed manifest mutation suite');
   requireText(input.pr, 'linux-appimage-peer-manifest.test.mjs', 'PR AppImage peer manifest suite');
   requireText(input.pr, 'linux-native-package-real-tools.test.mjs', 'PR real native package suite');
   requireText(input.pr, 'sign-linux-release-requests.test.mjs', 'PR isolated signer mutation suite');
+  requireText(input.pr, 'signed-installed-package-wiring.test.mjs', 'PR signed package wiring suite');
   requireText(
     input.pr,
     'scripts/linux-port/browser-runtime-packaging.test.mjs',
@@ -82,9 +110,12 @@ export function verifyLinuxWorkflowWiring(input) {
     'attest-product-requirement.test.mjs',
     'github-artifact-provenance.test.mjs',
     'live-installed-product-evidence.test.mjs',
+    'smoke-linux-packages.test.mjs',
+    'product-proof-closure.test.mjs',
     'run-linux-matrix-harness.test.mjs',
     'run-product-requirement-validator.test.mjs',
-    'resolve-product-evidence-run.test.mjs'
+    'resolve-product-evidence-run.test.mjs',
+    'resolve-product-receipt-artifacts.test.mjs'
   ]) requireText(input.pr, command, 'PR product evidence gate');
   for (const marker of [
     'id-token: write',
@@ -92,24 +123,22 @@ export function verifyLinuxWorkflowWiring(input) {
     'artifact-metadata: write',
     'ref: ${{ github.sha }}',
     'resolve-product-evidence-run.mjs',
-    'RELEASE_RUN_ID: ${{ inputs.release_run_id }}',
+    'CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}',
     'TARGET_HEAD: ${{ github.sha }}',
-    '--run-id "$RELEASE_RUN_ID"',
+    '--run-id "$CANDIDATE_RUN_ID"',
     '--target-head "$TARGET_HEAD"',
     'artifact-ids: ${{ steps.evidence.outputs.artifact_id }}',
+    'CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}',
+    'prepare-product-requirement-input.mjs',
     'run-product-requirement-validator.mjs',
     'uses: actions/attest@',
     '.sigstore.jsonl',
     'if-no-files-found: error'
   ]) requireText(input.productParityWorkflow, marker, 'product parity evidence workflow');
-  if (/--run-id\s+['"]?\$\{\{\s*inputs\.release_run_id/u.test(input.productParityWorkflow)) {
-    failures.push('product parity workflow may not interpolate release_run_id directly into shell.');
+  if (/--run-id\s+['"]?\$\{\{\s*inputs\.candidate_run_id/u.test(input.productParityWorkflow)) {
+    failures.push('product parity workflow may not interpolate candidate_run_id directly into shell.');
   }
-  for (const marker of [
-    'npm ci --prefix scripts/linux-port --ignore-scripts',
-    'Generate current-HEAD product parity attestations',
-    'attest-product-requirement.mjs --requirement "P-${number}"'
-  ]) requireText(input.release, marker, 'release product evidence generation');
+  requireText(input.release, 'npm ci --prefix scripts/linux-port --ignore-scripts', 'candidate evidence dependencies');
   for (const command of [
     'macos-matched-performance',
     'run-matched-performance.mjs',
@@ -201,25 +230,36 @@ export function verifyLinuxWorkflowWiring(input) {
     'Verify native package update, rollback, and data preservation',
     'Finalize commit-bound architecture session',
     'Download native architecture shards',
-    'Generate current-HEAD product parity attestations',
-    'Verify product parity at release HEAD',
     'Assemble signed two-architecture closure and feed',
     'Pre-attestation Linux release verification',
     'Attest Linux release sidecars and packages',
     'Final Linux release verification',
-    'Publish Linux GitHub release',
+    'Finalize installed-product proof closure'
+  ], 'candidate workflow');
+  requireOrder(input.promotionWorkflow, [
+    'Resolve the immutable successful candidate artifact',
+    'Download the exact candidate',
+    'Resolve the complete immutable receipt matrix',
+    'Download all 280 exact receipt artifacts',
+    'Generate current-HEAD product parity attestations',
+    'Verify strict product parity at promotion HEAD',
+    'Reverify immutable candidate signatures and provenance',
+    'Finalize candidate-bound promotion closure',
+    'Attest the exact promotion closure',
+    'Stage exact candidate as draft Linux GitHub release',
     'Configure branded Linux update origin',
     'Publish signed update feed to downloads origin',
-    'Verify live Linux update feed after publish'
-  ], 'release workflow');
+    'Verify live Linux update feed after publish',
+    'Publish verified Linux GitHub release'
+  ], 'promotion workflow');
 
-  if (/verify-linux-release\.mjs[^\n]*--allow-blocked/.test(input.release)) {
+  if (/verify-linux-release\.mjs[^\n]*--allow-blocked/.test(input.release + input.promotionWorkflow)) {
     failures.push('release verification may not use --allow-blocked.');
   }
-  if (/continue-on-error:\s*true[\s\S]{0,200}(parity|signature|release verification)/i.test(input.release)) {
+  if (/continue-on-error:\s*true[\s\S]{0,200}(parity|signature|release verification)/i.test(input.release + input.promotionWorkflow)) {
     failures.push('release integrity steps may not continue on error.');
   }
-  if (/openburnbar-linux-ed25519\.pub\.pem[^\n]*\|\|\s*true/.test(input.release)) {
+  if (/openburnbar-linux-ed25519\.pub\.pem[^\n]*\|\|\s*true/.test(input.promotionWorkflow)) {
     failures.push('release public-key publication may not swallow copy failures.');
   }
   if (input.pr.includes('mission-001-release') || input.nightly.includes('mission-001-release')) {
@@ -265,6 +305,7 @@ function main() {
   const result = verifyLinuxWorkflowWiring({
     pr: read('.github/workflows/linux-pr-gate.yml'),
     productParityWorkflow: read('.github/workflows/linux-product-parity.yml'),
+    promotionWorkflow: read('.github/workflows/linux-release-promote.yml'),
     nightly: read('.github/workflows/linux-nightly.yml'),
     release: read('.github/workflows/linux-release.yml'),
     makefile: read('Makefile'),

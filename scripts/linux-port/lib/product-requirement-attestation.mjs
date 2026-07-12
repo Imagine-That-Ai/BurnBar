@@ -30,11 +30,13 @@ const RECEIPT_FIELDS = [
   'environmentId',
   'targetHead',
   'status',
+  'candidate',
   'subject',
   'producer',
   'artifacts'
 ];
 const ARTIFACT_FIELDS = ['path', 'sha256'];
+const CANDIDATE_FIELDS = ['runId', 'artifactDigest', 'productProofClosureSha256'];
 const SUBJECT_FIELDS = [
   'releaseClosureSha256',
   'packageManifestSha256',
@@ -387,6 +389,12 @@ function validateReceipt(receiptInput, repoRoot, requirementId, targetHead, poli
   }
   if (receipt.targetHead !== targetHead) throw new Error(`validator receipt ${source.path} does not match current HEAD`);
   if (receipt.status !== 'passed') throw new Error(`validator receipt ${source.path} status must be passed`);
+  assertExactKeys(receipt.candidate, CANDIDATE_FIELDS, `validator receipt ${source.path} candidate`);
+  if (!/^[1-9][0-9]*$/u.test(receipt.candidate.runId ?? '')
+      || !/^sha256:[a-f0-9]{64}$/u.test(receipt.candidate.artifactDigest ?? '')
+      || !SHA256_PATTERN.test(receipt.candidate.productProofClosureSha256 ?? '')) {
+    throw new Error(`validator receipt ${source.path} candidate binding is invalid`);
+  }
   assertExactKeys(receipt.subject, SUBJECT_FIELDS, `validator receipt ${source.path} subject`);
   for (const field of policy.requiredSubjectFields) {
     if (!SHA256_PATTERN.test(receipt.subject[field] ?? '')) {
@@ -416,6 +424,9 @@ function validateReceipt(receiptInput, repoRoot, requirementId, targetHead, poli
     artifacts.push(artifact);
   }
   const artifactDigests = new Set(artifacts.map((artifact) => artifact.sha256));
+  if (!artifactDigests.has(receipt.candidate.productProofClosureSha256)) {
+    throw new Error(`validator receipt ${source.path} candidate product proof is not bound to an artifact`);
+  }
   for (const field of policy.requiredSubjectFields) {
     if (!artifactDigests.has(receipt.subject[field])) {
       throw new Error(`validator receipt ${source.path} subject.${field} is not bound to an artifact`);
@@ -439,6 +450,7 @@ function validateReceipt(receiptInput, repoRoot, requirementId, targetHead, poli
     sha256: source.sha256,
     checkId: receipt.checkId,
     environmentId: receipt.environmentId,
+    candidate: receipt.candidate,
     subject: receipt.subject,
     producer: receipt.producer,
     provenance: {
@@ -550,10 +562,14 @@ export function attestProductRequirement(options) {
       for (const environmentId of policy.requiredEnvironmentIds) expectedPairs.add(`${checkId}\u0000${environmentId}`);
     }
     const actualPairs = new Set();
+    const candidate = receipts[0]?.candidate;
     for (const receipt of receipts) {
       const key = `${receipt.checkId}\u0000${receipt.environmentId}`;
       if (actualPairs.has(key)) throw new Error(`duplicate validator receipt for ${receipt.checkId}/${receipt.environmentId}`);
       actualPairs.add(key);
+      if (JSON.stringify(receipt.candidate) !== JSON.stringify(candidate)) {
+        throw new Error('validator receipt matrix mixes different release candidates');
+      }
     }
     const missing = [...expectedPairs].filter((key) => !actualPairs.has(key));
     const extra = [...actualPairs].filter((key) => !expectedPairs.has(key));
@@ -601,6 +617,7 @@ export function attestProductRequirement(options) {
       requirementId,
       targetHead,
       status: 'passed',
+      candidate,
       policy: {
         manifest: POLICIES_PATH,
         manifestId: policyManifest.id,

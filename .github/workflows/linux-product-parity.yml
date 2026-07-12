@@ -60,8 +60,8 @@ on:
           - fedora-kde-wayland-x86_64
           - fedora-kde-wayland-aarch64
           - arch-sway-wayland-x86_64
-      release_run_id:
-        description: Successful canonical Linux release workflow run at this exact commit
+      candidate_run_id:
+        description: Successful first-attempt Linux Release Candidate run at this exact commit
         required: true
         type: string
 
@@ -102,11 +102,11 @@ jobs:
         id: evidence
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
           TARGET_HEAD: ${{ github.sha }}
         run: >-
           node scripts/linux-port/resolve-product-evidence-run.mjs
-          --run-id "$RELEASE_RUN_ID"
+          --run-id "$CANDIDATE_RUN_ID"
           --target-head "$TARGET_HEAD"
 
       - name: Download exact-candidate installed evidence
@@ -114,9 +114,28 @@ jobs:
         with:
           artifact-ids: ${{ steps.evidence.outputs.artifact_id }}
           repository: Imagine-That-Ai/BurnBar
-          run-id: ${{ inputs.release_run_id }}
+          run-id: ${{ inputs.candidate_run_id }}
           github-token: ${{ github.token }}
           path: docs/linux-port/evidence/product-parity-inputs/${{ inputs.requirement }}/${{ inputs.environment }}
+
+      - name: Materialize the requirement-owned release closure
+        shell: bash
+        env:
+          REQUIREMENT_ID: ${{ inputs.requirement }}
+          ENVIRONMENT_ID: ${{ inputs.environment }}
+          TARGET_HEAD: ${{ github.sha }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}
+        run: |
+          set -euo pipefail
+          input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"
+          node scripts/linux-port/prepare-product-requirement-input.mjs \
+            --requirement "$REQUIREMENT_ID" \
+            --environment "$ENVIRONMENT_ID" \
+            --input-root "$input_root" \
+            --target-head "$TARGET_HEAD" \
+            --candidate-run-id "$CANDIDATE_RUN_ID" \
+            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"
 
       - name: Run the registered requirement validator
         id: validate
@@ -153,7 +172,7 @@ jobs:
       - name: Upload receipt, provenance, and exact installed subjects
         uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.6.1
         with:
-          name: linux-product-parity-${{ github.sha }}-${{ inputs.requirement }}-${{ inputs.environment }}
+          name: linux-product-parity-${{ github.sha }}-${{ inputs.candidate_run_id }}-${{ inputs.requirement }}-${{ inputs.environment }}
           path: |
             ${{ steps.validate.outputs.receipt }}
             ${{ steps.validate.outputs.receipt }}.sigstore.jsonl

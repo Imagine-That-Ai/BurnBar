@@ -18,6 +18,8 @@ const SOURCE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 const INSTALLED_SCHEMA = 'packaging/linux/attestation/openburnbar-installed-manifest.schema.json';
 const RUNTIME_SCHEMA = 'schemas/linux-runtime-capability-manifest.schema.json';
 const RUNTIME_CATALOG = 'packaging/linux/runtime-capability-catalog.json';
+const CANDIDATE_RUN_ID = '12345';
+const CANDIDATE_ARTIFACT_DIGEST = `sha256:${'e'.repeat(64)}`;
 
 function write(root, relativePath, contents) {
   const absolute = path.join(root, relativePath);
@@ -61,6 +63,7 @@ function validValidatorModule() {
   const artifacts = [
     context.subjects.release,
     context.subjects.packageManifest,
+    context.subjects.packageManifestSignature,
     ...context.subjects.packages,
     ...context.subjects.runtimes,
     ...context.subjects.installation,
@@ -102,6 +105,7 @@ function evidencePaths(requirementId, environmentId = ENVIRONMENT) {
     directory,
     closure: `${directory}/release-closure.json`,
     manifest: `${directory}/installed-manifest.json`,
+    manifestSignature: `${directory}/installed-manifest.json.sig`,
     package: `${directory}/OpenBurnBar.deb`,
     runtime: `${directory}/live-runtime-capabilities.json`,
     runtimeFinal: `${directory}/live-runtime-capabilities-final.json`,
@@ -152,7 +156,7 @@ function writeEvidence(root, requirementId, head, options = {}) {
     packageArchitecture: 'x86_64',
     packageFormat: 'deb',
     packageName: 'open-burn-bar',
-    policyId: 'openburnbar-linux-tpm2-ima-v1',
+    policyId: 'openburnbar-linux-signed-package-inventory-v1',
     brokerProtocolVersion: 2,
     installedFilesRootSha256: filesRoot(files),
     authorizedClients: [{
@@ -168,6 +172,7 @@ function writeEvidence(root, requirementId, head, options = {}) {
   const manifestFile = options.manifestBytes === undefined
     ? writeJson(root, paths.manifest, manifest)
     : write(root, paths.manifest, options.manifestBytes);
+  const manifestSignatureFile = write(root, paths.manifestSignature, options.manifestSignatureBytes ?? Buffer.alloc(64, 7));
   const packageFile = write(root, paths.package, options.packageBytes ?? `package:${requirementId}\n`);
   const catalog = JSON.parse(fs.readFileSync(path.join(root, RUNTIME_CATALOG), 'utf8'));
   const runtime = options.runtime ?? {
@@ -193,9 +198,18 @@ function writeEvidence(root, requirementId, head, options = {}) {
     sourceCommit: options.sourceCommit ?? head,
     passed: true,
     blockers: [],
+    candidate: {
+      runId: CANDIDATE_RUN_ID,
+      artifactDigest: CANDIDATE_ARTIFACT_DIGEST,
+      productProofClosureSha256: sha256(manifestFile)
+    },
     packageManifest: {
       path: paths.manifest,
       sha256: options.manifestSha256 ?? sha256(manifestFile)
+    },
+    packageManifestSignature: {
+      path: paths.manifestSignature,
+      sha256: options.manifestSignatureSha256 ?? sha256(manifestSignatureFile)
     },
     packages: [{ path: paths.package, sha256: options.packageSha256 ?? sha256(packageFile) }]
   };
@@ -242,8 +256,8 @@ function validHostProbe(expected, installedManifest) {
   };
 }
 
-function validLiveInstallProbe({ installedManifest, expectedManifestBytes }) {
-  const signatureBytes = Buffer.alloc(64, 7);
+function validLiveInstallProbe({ installedManifest, expectedManifestBytes, expectedSignatureBytes }) {
+  const signatureBytes = Buffer.from(expectedSignatureBytes);
   const publicKeyBytes = Buffer.from('test-ed25519-public-key\n', 'utf8');
   return {
     schemaVersion: 1,
@@ -358,6 +372,7 @@ test('dispatcher binds distinct release, package, live installed environment, an
       paths.package,
       paths.closure,
       paths.manifest,
+      paths.manifestSignature,
       paths.runtime,
       paths.runtimeFinal,
       paths.liveManifest,
@@ -402,6 +417,7 @@ test('live environment probe rejects every mismatched identity dimension', async
 test('dispatcher rejects live install evidence not bound to the signed package payload', async (t) => {
   for (const [name, mutate, pattern] of [
     ['manifest bytes', (result) => { result.manifestBytes = Buffer.from('{}\n'); }, /manifest bytes do not match/u],
+    ['signature bytes', (result) => { result.signatureBytes = Buffer.alloc(64, 9); }, /signature bytes do not match/u],
     ['signature digest', (result) => { result.verification.signatureSha256 = '0'.repeat(64); }, /summary is not bound/u],
     ['inventory root', (result) => { result.verification.installedFilesRootSha256 = '0'.repeat(64); }, /summary is not bound/u]
   ]) {
@@ -438,7 +454,7 @@ test('dispatcher rejects live installation replacement during requirement valida
   };
   await rejectsWithMessage(
     () => dispatch(args('P-01'), root, { liveInstallProbe }),
-    /changed while the requirement validator was running/u
+    /signature bytes do not match the release closure subject/u
   );
   assert.equal(calls, 2);
   assert.equal(fs.existsSync(path.join(root, canonicalOutputPath('P-01', 'p-01.test', ENVIRONMENT))), false);

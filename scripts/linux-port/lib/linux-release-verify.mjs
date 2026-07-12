@@ -39,7 +39,8 @@ export function verifyLinuxReleaseCandidate(input) {
     publicKeyPem,
     expectedHead,
     expectedVersion,
-    phase = 'pre-attestation'
+    phase = 'pre-attestation',
+    requireParity = true
   } = input;
   const failures = [];
   const fail = (message, detail = {}) => failures.push({ message, ...detail });
@@ -53,6 +54,10 @@ export function verifyLinuxReleaseCandidate(input) {
   };
 
   if (closure?.schemaVersion !== 3) fail('package closure schemaVersion must be 3.');
+  const expectedStage = requireParity ? 'promotion' : 'candidate';
+  if (closure?.stage !== expectedStage) {
+    fail(`package closure stage must be ${expectedStage}.`, { actual: closure?.stage ?? null });
+  }
   const version = expectedVersion ?? closure?.version;
   const commit = expectedHead ?? closure?.git?.commit;
   for (const [label, value] of [
@@ -186,12 +191,12 @@ export function verifyLinuxReleaseCandidate(input) {
     'vex',
     'provenancePredicate',
     'sourceArchive',
-    'parityAttestation',
     'architectureSessions',
     'packageSmoke',
     'updateFeed',
     'updateFeedSignature'
   ];
+  if (requireParity) requiredSidecars.push('parityAttestation');
   const sidecarBytes = new Map();
   for (const kind of requiredSidecars) {
     const sidecar = normalizeSidecar(closure?.sidecars?.[kind]);

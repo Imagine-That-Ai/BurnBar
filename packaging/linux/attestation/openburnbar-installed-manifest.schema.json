@@ -27,7 +27,7 @@
     "firebaseAppId": {
       "type": "string",
       "maxLength": 160,
-      "pattern": "^1:[0-9]+:web:[A-Za-z0-9]+$"
+      "pattern": "^1:[0-9]+:web:[A-Za-z0-9_-]+$"
     },
     "packageVersion": {
       "type": "string",
@@ -37,7 +37,7 @@
     "packageArchitecture": { "type": "string", "enum": ["aarch64", "x86_64"] },
     "packageFormat": { "type": "string", "enum": ["deb", "rpm"] },
     "packageName": { "const": "open-burn-bar" },
-    "policyId": { "const": "openburnbar-linux-tpm2-ima-v1" },
+    "policyId": { "const": "openburnbar-linux-signed-package-inventory-v1" },
     "brokerProtocolVersion": { "const": 2 },
     "installedFilesRootSha256": { "$ref": "#/$defs/sha256" },
     "authorizedClients": {

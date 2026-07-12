@@ -19,33 +19,45 @@ canonical schema-2 receipt. `.github/workflows/linux-product-parity.yml` signs
 the exact receipt with GitHub Artifact Attestations and preserves the adjacent
 `.sigstore.jsonl` bundle. `attest-product-requirement.mjs` independently verifies
 repository, signer workflow, source ref/commit, receipt digest, subject digests,
-and the complete environment matrix before a row can become ready. Missing
-requirement-owned validators currently leave all 40 rows blocked by design; the
-release workflow must not promote until the signed matrix is aggregated after
+and the complete environment matrix before a row can become ready. P-01, P-03,
+P-04, and P-37 have requirement-owned validators; the other modules remain
+absent until their acceptance-specific evidence exists. The release workflow
+must not promote until the complete signed matrix is aggregated after
 exact-candidate assembly.
 
-The producer accepts only `release_run_id`. It resolves the fixed
-`linux-release-evidence` artifact from the canonical successful Linux release
-workflow, verifies repository/workflow/run/head/attempt/artifact identity through
-GitHub's API, and downloads by immutable artifact ID. The dispatcher then
+The producer accepts only `candidate_run_id`. It resolves the fixed
+`linux-release-evidence` artifact from the canonical successful Linux Release
+Candidate workflow, verifies repository/workflow/run/head/attempt/artifact
+identity through GitHub's API, and downloads by immutable artifact ID. The dispatcher then
 requires the downloaded signed manifest bytes to equal the live root-owned
 manifest, verifies its Ed25519 signature and complete file inventory, compares
 the package manager's exact owned-path set, anchors the desktop through logind,
 and captures capability JSON directly from the installed desktop binary before
 and after requirement execution. It repeats installation/session checks before
 emitting a receipt; package identity must remain stable, while both valid runtime
-states are retained. The current release artifact
-does not yet emit the required product-proof closure, so promotion remains
-blocked until `LNX-PROOF-001` changes the assembly order and aggregates the
-complete signed matrix.
+states are retained. After final release verification,
+`finalize-product-proof-closure.mjs` requires the four deb/rpm architecture
+rows, exact signed installed manifests, package and feed signatures, Sigstore
+bundles, supply-chain sidecars, and lifecycle proof before it emits
+`product-proof-closure.json`. Native shards attach those signed records and the
+aggregate assembler validates confinement, exact bytes, package identity, and
+commit/version/architecture binding before preserving them.
+The product workflow materializes a requirement-owned closure from that
+aggregate before it invokes the registered validator.
 
-Inside `assemble-release`, the workflow installs the pinned evidence-tool
-dependencies and runs the canonical attester for every requirement before
-`validate-parity-ledger.mjs` executes in strict mode. This is deliberately
-fail-closed today: the first missing receipt aborts generation and no stale row
-can satisfy promotion. `LNX-PROOF-001` still owns staging all 280 immutable
-receipt plus Sigstore-bundle pairs into that job after exact-candidate proof is
-available.
+The Linux Release Candidate workflow produces the signed package graph and
+`product-proof-closure.json`, then uploads it as a successful immutable artifact;
+it neither reads parity receipts nor publishes. Linux Product Parity consumes
+that exact candidate and signs one live environment receipt. Linux Release
+Promotion resolves exactly 40 requirements by seven environments, downloads
+all 280 receipt artifacts by immutable ID, regenerates the 40 current-HEAD row
+attestations, and runs `validate-parity-ledger.mjs` in strict mode. It then
+hash-binds the candidate, strict ledger report, and all 40 seven-receipt rows in
+`promotion-closure.json`, stages a draft GitHub release, publishes and verifies
+the signed R2 feed, then makes the GitHub release public. Any missing, stale,
+wrong-candidate, wrong-producer, wrong-attempt, failed, empty, or cross-HEAD
+artifact aborts. A repeated successful certification for the same candidate is
+resolved deterministically to the newest immutable artifact ID and revalidated.
 
 ## Artifacts
 

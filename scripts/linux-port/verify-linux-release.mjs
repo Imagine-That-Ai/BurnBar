@@ -20,6 +20,7 @@ const versionIndex = argv.indexOf('--version');
 const phase = phaseIndex >= 0 ? argv[phaseIndex + 1] : 'pre-attestation';
 const requestedVersion = versionIndex >= 0 ? argv[versionIndex + 1] : null;
 const diagnostic = argv.includes('--diagnostic') || argv.includes('--allow-blocked');
+const candidate = argv.includes('--candidate');
 const outDir = path.resolve(process.env.OPENBURNBAR_LINUX_RELEASE_OUT ?? releaseEvidenceDir);
 const manifest = readJson(manifestPath);
 const failures = [];
@@ -75,7 +76,8 @@ const pure = verifyLinuxReleaseCandidate({
   publicKeyPem,
   expectedHead,
   expectedVersion,
-  phase
+  phase,
+  requireParity: !candidate
 });
 failures.push(...pure.failures);
 
@@ -107,16 +109,18 @@ if (sourceRel && expectedHead && expectedVersion) {
   fs.rmSync(tempDir, { recursive: true, force: true });
 }
 
-const ledger = runStep('node', ['scripts/linux-port/validate-parity-ledger.mjs'], {
-  cwd: repoRoot,
-  env: process.env
-});
-if (ledger.exitCode !== 0) {
-  fail('parity ledger is not green for release promotion.', {
-    command: ledger.command,
-    stdout: ledger.stdout,
-    stderr: ledger.stderr
+if (!candidate) {
+  const ledger = runStep('node', ['scripts/linux-port/validate-parity-ledger.mjs'], {
+    cwd: repoRoot,
+    env: process.env
   });
+  if (ledger.exitCode !== 0) {
+    fail('parity ledger is not green for release promotion.', {
+      command: ledger.command,
+      stdout: ledger.stdout,
+      stderr: ledger.stderr
+    });
+  }
 }
 
 if (phase === 'final' && closure.artifacts) {

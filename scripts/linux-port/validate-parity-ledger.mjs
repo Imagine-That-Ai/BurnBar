@@ -24,7 +24,8 @@ let result = {
   failures: [],
   structuralFailures: [],
   promotionFailures: [],
-  warnings: []
+  warnings: [],
+  validatedAttestations: []
 };
 let semantics = null;
 let productParityClaim = false;
@@ -92,7 +93,8 @@ const report = {
   failures: result.failures,
   structuralFailures: result.structuralFailures,
   promotionFailures: result.promotionFailures,
-  warnings: result.warnings
+  warnings: result.warnings,
+  validatedAttestations: result.validatedAttestations
 };
 
 // Write live validation under mission-002 reanchor only — never rewrite sealed mission-001 evidence.
