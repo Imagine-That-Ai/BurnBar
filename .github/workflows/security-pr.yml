@@ -512,6 +512,13 @@ jobs:
       - name: Run Storage security-rules emulator tests
         run: bash scripts/ci/test-storage-rules.sh
 
+      # PR-time tripwire: fail before firestore.rules grows large enough to break
+      # the production rules release (diligence 2026-07-12 LB-2). The emulator
+      # suites above already prove the ruleset COMPILES; this proves it stays
+      # deployable.
+      - name: Guard Firestore rules size against the release limit
+        run: node scripts/ci/check-firestore-rules-size.mjs
+
       # session-log-backup has 3 PRE-EXISTING failures (Pro-entitlement manifest
       # accept/refresh/overwrite) that fail standalone on the base tree and are
       # unrelated to this Cure53 remediation — they were previously masked because the
