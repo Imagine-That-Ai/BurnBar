@@ -4,7 +4,7 @@
     Release-side Windows appcast generator (Phase 5 · W10 · R19). The direct
     mirror of scripts/generate-macos-appcast.mjs: given a built installer
     artifact + the release metadata + the PINNED Ed25519 PRIVATE seed, it
-    computes the artifact length + SHA-256, signs the artifact BYTES, and emits
+    computes the artifact length + SHA-256, signs the canonical update descriptor, and emits
     the appcast XML + latest-windows.json feed pair through the Core writers.
 
     It reuses the SAME BouncyCastle Ed25519 primitive the client pin-verify uses

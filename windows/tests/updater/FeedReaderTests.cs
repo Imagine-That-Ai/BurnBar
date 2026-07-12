@@ -23,7 +23,9 @@ public sealed class FeedReaderTests
         Assert.Equal(FeedTestData.Artifact.LongLength, manifest.Length);
         Assert.Equal(Sha256Digest.HexOf(FeedTestData.Artifact), manifest.Sha256);
         Assert.False(string.IsNullOrEmpty(manifest.EdSignatureBase64));
+        Assert.False(string.IsNullOrEmpty(manifest.DescriptorSignatureBase64));
         Assert.True(manifest.Critical);
+        Assert.Equal("direct-download", manifest.Channel);
         Assert.Equal("10.0.19041", manifest.MinimumSystemVersion);
         Assert.StartsWith("https://", manifest.Url);
     }
@@ -108,7 +110,9 @@ public sealed class FeedReaderTests
         Assert.Equal(FeedTestData.Artifact.LongLength, manifest.Length);
         Assert.Equal(Sha256Digest.HexOf(FeedTestData.Artifact), manifest.Sha256);
         Assert.False(string.IsNullOrEmpty(manifest.EdSignatureBase64));
+        Assert.False(string.IsNullOrEmpty(manifest.DescriptorSignatureBase64));
         Assert.True(manifest.Critical);
+        Assert.Equal("direct-download", manifest.Channel);
     }
 
     [Theory]

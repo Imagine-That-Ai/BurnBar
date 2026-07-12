@@ -207,14 +207,8 @@ enum RefreshBackgroundWork {
         // Same change-gate as InsightEngine.upsertHealthIfChanged: at idle this
         // row is byte-identical every tick, and rewriting it took the
         // single-writer queue for nothing.
-        let existing: RetrievalHealthRecord?
-        do {
-            existing = try await dataStore.fetchRetrievalHealth()
-                .first(where: { $0.subsystem == .parserImport })
-        } catch {
-            AppLogger.dataStore.silentFailure("parser_import_health_fetch_failed", error: error)
-            existing = nil
-        }
+        let existing = try await dataStore.fetchRetrievalHealth()
+            .first(where: { $0.subsystem == .parserImport })
         if let existing,
            existing.status == status,
            existing.detailsJSON == detailsJSON,

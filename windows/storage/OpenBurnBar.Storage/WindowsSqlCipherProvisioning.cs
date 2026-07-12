@@ -314,7 +314,14 @@ public sealed partial class WindowsSqlCipherProvisioner
         )
         """,
         "CREATE INDEX IF NOT EXISTS conversations_indexed_at_idx ON conversations(indexedAt DESC)",
-        "CREATE VIRTUAL TABLE IF NOT EXISTS conversations_fts USING fts5(fullText, inferredTaskTitle, tokenize='porter unicode61', content='conversations', content_rowid='rowid')",
+        // Mirrors the Mac endpoint schema exactly (v6_fts_standalone_triggers):
+        // a STANDALONE FTS5 table kept in sync by the conversations_ai/ad/au
+        // triggers below. It must NOT be declared with content='conversations'
+        // (external content): plain trigger DELETEs corrupt external-content
+        // FTS5 indexes, and the column order (inferredTaskTitle first) is part
+        // of the byte-compat contract — snippet(conversations_fts, 1, …) reads
+        // column 1 = fullText. Checked by scripts/check-migrator-parity.mjs.
+        "CREATE VIRTUAL TABLE IF NOT EXISTS conversations_fts USING fts5(inferredTaskTitle, fullText, tokenize='porter unicode61')",
         """
         CREATE TRIGGER IF NOT EXISTS conversations_ai AFTER INSERT ON conversations BEGIN
             INSERT INTO conversations_fts(rowid, inferredTaskTitle, fullText)

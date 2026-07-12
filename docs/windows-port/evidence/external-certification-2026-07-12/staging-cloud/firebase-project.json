@@ -1,0 +1,11 @@
+{
+  "projectId": "burnbar-staging",
+  "projectNumber": "1079930549647",
+  "displayName": "BurnBar Staging",
+  "name": "projects/burnbar-staging",
+  "resources": {
+    "hostingSite": "burnbar-staging"
+  },
+  "state": "ACTIVE",
+  "etag": "1_63e8be5f-1c82-48df-9a2d-b18a39c9b3af"
+}
