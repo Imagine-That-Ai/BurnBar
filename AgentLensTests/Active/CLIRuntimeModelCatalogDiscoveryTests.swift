@@ -82,6 +82,6 @@ final class CLIRuntimeModelCatalogDiscoveryTests: XCTestCase {
         XCTAssertEqual(response.options.first?.modelID, "")
         XCTAssertEqual(response.options.first?.source, .cursorAgentProfile)
         XCTAssertEqual(response.options.first?.providerID, "cursor")
-        XCTAssertTrue(response.options.first?.displayName.contains("Cursor Agent default") == true)
+        XCTAssertEqual(response.options.first?.displayName.contains("Cursor Agent default"), true)
     }
 }
