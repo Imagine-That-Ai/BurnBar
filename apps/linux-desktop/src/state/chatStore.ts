@@ -184,6 +184,9 @@ function backendFromThread(thread: ChatThreadSummary | null, fallback: ChatBacke
       return 'claude';
     case 'pi':
     case 'pi-agent':
+    // macOS persists ChatBackendID.piAgent.rawValue ("piAgent"), which
+    // arrives here lowercased.
+    case 'piagent':
       return 'pi-agent';
     case 'cli':
       return 'cli';
@@ -612,6 +615,12 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       modelLabel: modelLabelForThread(get().threads.find((thread) => thread.id === threadID) ?? null, backend)
     });
 
+    // Message IDs the daemon has durably acknowledged. On failure, anything
+    // outside this set is rolled back from the in-memory transcript so a
+    // non-durable turn can never be replayed as prior context on the next
+    // send. Fixture mode has no persistence, so its turns count as committed.
+    const committedMessageIds = new Set<string>();
+
     try {
       if (!fixtureMode) {
         const appendRequest: ChatMessageAppendRequest = {
@@ -625,6 +634,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         await bridge!.chatMessageAppend(appendRequest);
         await refreshThreadSummaries(get().query);
       }
+      committedMessageIds.add(userID);
 
       const gateway = await resolveGatewayStatus(fixtureMode);
       set({ gatewayStatus: gateway.status, gatewayBaseURL: gateway.baseURL });
@@ -673,7 +683,9 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       }
 
       const finalAssistant = get().messages.find((message) => message.id === assistantID);
-      if (!fixtureMode && finalAssistant?.text.trim()) {
+      if (fixtureMode) {
+        committedMessageIds.add(assistantID);
+      } else if (finalAssistant?.text.trim()) {
         const timestamp = new Date().toISOString();
         await bridge!.chatMessageAppend({
           threadID,
@@ -683,6 +695,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           timestamp,
           backendID: backend
         });
+        committedMessageIds.add(assistantID);
         set((state) => ({
           messages: state.messages.map((message) =>
             message.id === assistantID ? { ...message, timestamp } : message
@@ -694,10 +707,18 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     } catch (error) {
       const aborted = error instanceof GatewayChatError && error.kind === 'aborted';
       const unimplemented = error instanceof GatewayChatError && error.kind === 'unimplemented';
+      // Roll back every message from this turn that the daemon did not
+      // durably acknowledge: a user append that rejected, or streamed
+      // assistant text whose terminal append rejected. Leaving them in
+      // `messages` would feed non-durable turns into the next send's history.
       set((state) => ({
-        messages: state.messages.filter(
-          (message) => message.id !== assistantID || Boolean(message.text.trim())
-        ),
+        messages: state.messages.filter((message) => {
+          if (message.id === userID) return committedMessageIds.has(userID);
+          if (message.id === assistantID) {
+            return committedMessageIds.has(assistantID) && Boolean(message.text.trim());
+          }
+          return true;
+        }),
         streaming: false,
         streamPhase: aborted ? 'aborted' : 'error',
         streamError: unimplemented

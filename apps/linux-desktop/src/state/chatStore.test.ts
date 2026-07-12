@@ -136,6 +136,70 @@ describe('exact-thread chat store', () => {
     expect(useChatStore.getState().modelLabel).not.toBe(unknown.backendID);
   });
 
+  it('maps the macOS piAgent backend id onto the Pi Agent lane', async () => {
+    // macOS threads persist ChatBackendID.piAgent.rawValue ("piAgent").
+    const pi = { ...thread('B'), backendID: 'piAgent' };
+    useShellStore.setState({
+      bridge: bridgeWith({
+        chatThreadGet: async () => ({ thread: pi, messages: [], hasMoreBefore: false })
+      }),
+      fixtureMode: false
+    });
+    useChatStore.setState({ threads: [pi], backend: 'hermes', modelLabel: 'hermes' });
+
+    await useChatStore.getState().selectThread('B');
+
+    expect(useChatStore.getState().backend).toBe('pi-agent');
+    expect(useChatStore.getState().modelLabel).toBe('pi-agent');
+  });
+
+  it('rolls back the user turn when its durable append rejects', async () => {
+    const bridge = bridgeWith({
+      chatMessageAppend: async () => {
+        throw new Error('disk full');
+      }
+    });
+    useShellStore.setState({
+      bridge,
+      fixtureMode: false,
+      health: { ok: true, gatewayEnabled: true, gatewayHost: '127.0.0.1', gatewayPort: 8642 }
+    });
+    useChatStore.setState({ threads: [thread('A')], selectedThreadId: 'A', messages: [] });
+
+    await useChatStore.getState().sendMessage('Never durable');
+
+    expect(useChatStore.getState().streamPhase).toBe('error');
+    expect(useChatStore.getState().messages).toEqual([]);
+  });
+
+  it('rolls back streamed assistant text when its terminal append rejects', async () => {
+    const bridge = bridgeWith({
+      chatMessageAppend: async (request) => {
+        if (request.role === 'assistant') throw new Error('append rejected');
+        return {
+          message: persisted(request.messageID, request.threadID, request.role, request.content),
+          inserted: true
+        };
+      }
+    });
+    useShellStore.setState({
+      bridge,
+      fixtureMode: false,
+      health: { ok: true, gatewayEnabled: true, gatewayHost: '127.0.0.1', gatewayPort: 8642 }
+    });
+    useChatStore.setState({ threads: [thread('A')], selectedThreadId: 'A', messages: [] });
+
+    await useChatStore.getState().sendMessage('Ask something');
+
+    const state = useChatStore.getState();
+    expect(state.streamPhase).toBe('error');
+    // The durable user turn survives; the non-durable assistant text must not
+    // linger where the next send would replay it as prior context.
+    expect(state.messages.map((message) => [message.role, message.text])).toEqual([
+      ['user', 'Ask something']
+    ]);
+  });
+
   it('fails closed before persistence when secure UUID generation is unavailable', async () => {
     const append = vi.fn();
     const gateway = vi.fn();
