@@ -255,6 +255,16 @@ COVERAGE_ALLOWLIST = {
         "MacEscrowCredentialProducerTests; the live collaborators require "
         "Firebase/keychain integration coverage."
     ),
+    "AgentLens/Services/DataControlCenterViewModel.swift": (
+        "macOS Data & Privacy Control Center callable hub. The changed lines "
+        "route deleteDomain through the trusted-device step-up "
+        "(ComputerUseSecurityCallableClient.callHighRiskOwnerAction) — a live "
+        "Firebase callable invocation plus device-id lookup that only executes "
+        "against the deployed Functions backend. The step-up gate itself is "
+        "unit-covered server-side (highRiskOwnerActionCallableGuards, "
+        "dataDeletion suites); this client call site needs Firebase "
+        "integration coverage, matching the other callable-hub services here."
+    ),
     "AgentLens/Services/IrohRelay/HermesIrohRelayHostClient.swift": (
         "Live iroh host client: async QUIC stream accept loops, heartbeat "
         "refreshes, and per-peer teardown run only against a live relay runtime. "

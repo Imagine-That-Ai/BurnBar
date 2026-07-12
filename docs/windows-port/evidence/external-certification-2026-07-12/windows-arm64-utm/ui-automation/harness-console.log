@@ -1,0 +1,60 @@
+﻿[route] baseline/dashboard
+[route] baseline/quota
+[route] baseline/insights
+[route] baseline/sessionLogs
+[route] baseline/memory
+[route] baseline/missionControl
+[route] baseline/budget
+[route] baseline/dataControlCenter
+[route] baseline/chat
+[route] baseline/switcher
+[route] baseline/onboarding
+[route] baseline/settings
+[route] baseline/elderWand
+[route] high-contrast/dashboard
+[route] high-contrast/chat
+[route] high-contrast/settings
+[route] high-contrast/onboarding
+[route] high-contrast/dataControlCenter
+[route] reduced-transparency/dashboard
+[route] reduced-transparency/quota
+[route] reduced-transparency/missionControl
+[route] reduced-transparency/memory
+[route] dpi-100/dashboard
+[route] dpi-100/settings
+[route] dpi-100/chat
+[semantic] main window
+{
+  "verdict": "Fail",
+  "outputDirectory": "C:\\Users\\Public\\external-cert-rehearsal-7c36229823-runner-v11\\ui-automation",
+  "summaryPath": "C:\\Users\\Public\\external-cert-rehearsal-7c36229823-runner-v11\\ui-automation\\summary.json",
+  "routeCount": 25,
+  "failedRoutes": [
+    "dashboard",
+    "quota",
+    "insights",
+    "sessionLogs",
+    "memory",
+    "missionControl",
+    "budget",
+    "dataControlCenter",
+    "chat",
+    "switcher",
+    "onboarding",
+    "settings",
+    "elderWand",
+    "dashboard",
+    "chat",
+    "settings",
+    "onboarding",
+    "dataControlCenter",
+    "dashboard",
+    "quota",
+    "missionControl",
+    "memory",
+    "dashboard",
+    "settings",
+    "chat"
+  ],
+  "semanticProbe": "Fail"
+}
