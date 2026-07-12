@@ -1,5 +1,6 @@
 import XCTest
 @testable import OpenBurnBar
+@testable import OpenBurnBarCore
 
 /// Behavioral coverage for the formerly-silent `try?` error-swallows in
 /// `UsageAggregatorParsers.swift`.
@@ -262,6 +263,25 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
             parsers[.mimo],
             "MiMo quota is refreshed via Token Plan API, not the shared Factory sessions tree."
         )
+    }
+
+    func testParserRegistryMatchesGeneratedCapabilityManifest() throws {
+        let parsers = ParserRegistry.defaultParsers()
+        let declaredProviders = Set(
+            AgentProviderCapabilities.all
+                .filter(\.localLogsSupported)
+                .map(\.provider)
+        )
+
+        XCTAssertEqual(Set(parsers.keys), declaredProviders)
+        XCTAssertEqual(parsers.count, 27)
+
+        for (provider, parser) in parsers {
+            let source = try XCTUnwrap(provider.capabilityRecord.parserSource)
+            let declaredType = source.split(separator: "(", maxSplits: 1).first.map(String.init)
+            let actualType = String(describing: type(of: parser)).split(separator: ".").last.map(String.init)
+            XCTAssertEqual(actualType, declaredType, "Parser type drifted for \(provider.rawValue).")
+        }
     }
 
     private func seedParserCache(at cacheURL: URL, marker: String) throws {

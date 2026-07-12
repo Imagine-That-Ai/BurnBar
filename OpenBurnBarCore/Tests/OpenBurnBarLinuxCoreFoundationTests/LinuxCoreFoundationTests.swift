@@ -187,10 +187,10 @@ final class LinuxCoreFoundationTests: XCTestCase {
 
         #if os(Linux)
         let home = URL(fileURLWithPath: "/tmp/openburnbar-linux-home", isDirectory: true)
-        let source = AgentProviderLogDiscovery.resolveLogSource(
+        let source = try XCTUnwrap(AgentProviderLogDiscovery.resolveLogSource(
             for: .codex,
             environment: ["HOME": home.path]
-        )
+        ))
         XCTAssertEqual(source.provider, AgentProvider.codex)
         XCTAssertTrue(source.resolvedPath.hasSuffix(".codex/sessions"))
         XCTAssertEqual(source.filePattern, "*.jsonl")

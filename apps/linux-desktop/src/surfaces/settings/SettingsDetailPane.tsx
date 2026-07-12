@@ -658,10 +658,13 @@ export function SettingsDetailPane({
         : '~';
     return LINUX_PROVIDER_PATH_REGISTRY.map((row) => ({
       ...row,
+      displayLabel: row.displayName,
+      parserSourceId: row.parserSource,
+      logicalPath: row.linuxLogicalPath,
       resolvedHint:
-        home === '~'
+        home === '~' || row.linuxLogicalPath === null
           ? undefined
-          : resolveProviderLogicalPath(row.logicalPath, home, env)
+          : resolveProviderLogicalPath(row.linuxLogicalPath, home, env)
     }));
   }, []);
 
@@ -760,12 +763,20 @@ export function SettingsDetailPane({
               <div key={row.providerId}>
                 <SettingRow
                   iconGlyph="📄"
-                  label={`${row.displayLabel} log path`}
-                  description={`Parser source ${row.parserSourceId} · pattern ${row.filePattern}`}
-                  control={<CopyPathButton path={row.logicalPath} label="Copy log path" />}
+                  label={`${row.displayLabel} ${row.logicalPath ? 'log path' : 'local logs'}`}
+                  description={
+                    row.parserSourceId && row.filePattern
+                      ? `Parser source ${row.parserSourceId} · pattern ${row.filePattern}`
+                      : row.unsupportedReasons.localLogs ?? 'Local transcript discovery unavailable.'
+                  }
+                  control={
+                    row.logicalPath ? (
+                      <CopyPathButton path={row.logicalPath} label="Copy log path" />
+                    ) : undefined
+                  }
                 />
                 <p className="system-path-row">
-                  <code>{row.logicalPath}</code>
+                  <code>{row.logicalPath ?? 'No local transcript path'}</code>
                   {row.resolvedHint ? (
                     <>
                       {' '}
