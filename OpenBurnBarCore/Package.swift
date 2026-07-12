@@ -84,6 +84,40 @@ let packageProductsBase: [Product] = [
         name: "OpenBurnBarKernel",
         targets: ["OpenBurnBarKernel"]
     ),
+    // Core-decomposition S0 (docs/CORE_DECOMPOSITION_PROGRAM.md): the cross-platform
+    // (Apple + Linux + Windows) engine-layer targets carved out of the
+    // OpenBurnBarCore monolith. At S0 each holds only a `ModuleMarker.swift`
+    // placeholder (SwiftPM rejects a product whose target has no sources); the move
+    // packets (S1/S6/S7/S8/S9/S10) fill them via `git mv`. OpenBurnBarCore
+    // `@_exported import`s each one so existing `import OpenBurnBarCore` consumers
+    // keep compiling with zero call-site changes. OpenBurnBarSQLiteReader is
+    // deliberately product-less (package-internal micro-target; the K3 fix — see
+    // its target declaration). OpenBurnBarEngine is the UI-free umbrella the
+    // daemon/CLI/parity executables link (S16/S17).
+    .library(
+        name: "OpenBurnBarLogParsers",
+        targets: ["OpenBurnBarLogParsers"]
+    ),
+    .library(
+        name: "OpenBurnBarQuota",
+        targets: ["OpenBurnBarQuota"]
+    ),
+    .library(
+        name: "OpenBurnBarVectorKit",
+        targets: ["OpenBurnBarVectorKit"]
+    ),
+    .library(
+        name: "OpenBurnBarHermes",
+        targets: ["OpenBurnBarHermes"]
+    ),
+    .library(
+        name: "OpenBurnBarPretext",
+        targets: ["OpenBurnBarPretext"]
+    ),
+    .library(
+        name: "OpenBurnBarEngine",
+        targets: ["OpenBurnBarEngine"]
+    ),
     // Windows-port WPD-0007: C-ABI dynamic library for in-process P/Invoke (C# DllImport).
     .library(
         name: "OpenBurnBarCoreCAbi",
@@ -155,7 +189,26 @@ let packageProductsBase: [Product] = [
         name: "OpenBurnBarData",
         targets: ["OpenBurnBarData"]
     )
-]) + (hasIrohXCFramework ? [
+]) + (buildApplePrunedDecompositionTargets ? [
+    // Core-decomposition S0: Apple-only presentation/insights products, pruned off
+    // the non-Apple graph like OpenBurnBarData. Populated by S11/S12/S13/S14.
+    .library(
+        name: "OpenBurnBarInsights",
+        targets: ["OpenBurnBarInsights"]
+    ),
+    .library(
+        name: "OpenBurnBarTextExpansion",
+        targets: ["OpenBurnBarTextExpansion"]
+    ),
+    .library(
+        name: "OpenBurnBarLaunchServices",
+        targets: ["OpenBurnBarLaunchServices"]
+    ),
+    .library(
+        name: "OpenBurnBarUI",
+        targets: ["OpenBurnBarUI"]
+    )
+] : []) + (hasIrohXCFramework ? [
     .library(
         name: "OpenBurnBarIrohFFI",
         targets: ["OpenBurnBarIrohFFI"]
@@ -426,6 +479,29 @@ let openBurnBarCoreExcludes = [
     "SharedModels/SwarmColorDriver.swift",
     "SharedModels/ThemePrimitives.swift"
 ]
+// Core-decomposition S0 (docs/CORE_DECOMPOSITION_PROGRAM.md): per-sibling-target
+// off-Apple exclude seams for the new decomposition targets. They are EMPTY at
+// S0 (no files have moved yet) and populated file-by-file as each move packet
+// carries a file that lives in `openBurnBarCoreExcludes` today into its new
+// target — the packet deletes the entry from `openBurnBarCoreExcludes` above and
+// appends the same relative path (rebased onto the new target's directory) to the
+// array below. Distinct-line edits so parallel packets auto-merge. Off-Apple only;
+// the `#else` (Apple) branch keeps every one of these empty so macOS/iOS compile
+// each target whole, byte-identically to the pre-decomposition baseline.
+let openBurnBarSQLiteReaderExcludes: [String] = []
+let openBurnBarLogParsersExcludes: [String] = []
+let openBurnBarQuotaExcludes: [String] = []
+let openBurnBarVectorKitExcludes: [String] = []
+let openBurnBarHermesExcludes: [String] = []
+let openBurnBarPretextExcludes: [String] = []
+let openBurnBarEngineExcludes: [String] = []
+// UI/Insights/TextExpansion/LaunchServices are pruned WHOLE off-Apple (like
+// OpenBurnBarData) rather than file-excluded, so their exclude arrays exist only
+// for symmetry and stay empty on every host.
+let openBurnBarInsightsExcludes: [String] = []
+let openBurnBarUIExcludes: [String] = []
+let openBurnBarTextExpansionExcludes: [String] = []
+let openBurnBarLaunchServicesExcludes: [String] = []
 let computerUseCoreExcludes = [
     "Mac",
     "PrivilegedInputKillSwitch.swift",
@@ -521,6 +597,20 @@ if buildOnWindows || buildForLinuxBoundary {
 }
 #else
 let openBurnBarCoreExcludes: [String] = []
+// Core-decomposition S0: Apple-side (empty) defaults for the new decomposition
+// targets' off-Apple exclude seams — same shape as `openBurnBarCoreExcludes`
+// above. On Apple every target compiles whole.
+let openBurnBarSQLiteReaderExcludes: [String] = []
+let openBurnBarLogParsersExcludes: [String] = []
+let openBurnBarQuotaExcludes: [String] = []
+let openBurnBarVectorKitExcludes: [String] = []
+let openBurnBarHermesExcludes: [String] = []
+let openBurnBarPretextExcludes: [String] = []
+let openBurnBarEngineExcludes: [String] = []
+let openBurnBarInsightsExcludes: [String] = []
+let openBurnBarUIExcludes: [String] = []
+let openBurnBarTextExpansionExcludes: [String] = []
+let openBurnBarLaunchServicesExcludes: [String] = []
 let computerUseCoreExcludes: [String] = []
 let openBurnBarCoreTestExcludes: [String] = []
 let computerUseCoreTestExcludes: [String] = []
@@ -534,6 +624,84 @@ func legacyLinuxTestExcludes(targetPath _: String) -> [String] { [] }
 let vendoredSQLiteTargets: [Target] = []
 let coreSQLiteDependencies: [Target.Dependency] = []
 #endif
+
+// Core-decomposition S0 (docs/CORE_DECOMPOSITION_PROGRAM.md): the new
+// `OpenBurnBarSQLiteReader` micro-target (S1 payload — the K3 fix) links the same
+// per-platform SQLite backend that Core links today. At S0 both Core and the new
+// reader carry this edge; S1 moves `Services/SQLite/` into the reader and drops
+// Core's copy. Mirroring `coreSQLiteDependencies` keeps the reader's off-Apple
+// backend (vendored `OpenBurnBarCoreCSQLite` on Windows/Linux-boundary, GRDB
+// `CSQLite` on the full Linux graph, system `SQLite3` on Apple) byte-identical to
+// Core's current wiring.
+let sqliteReaderSQLiteDependencies: [Target.Dependency] = coreSQLiteDependencies
+
+// Core-decomposition S0: the Apple-only presentation/insights targets
+// (OpenBurnBarUI, OpenBurnBarInsights, OpenBurnBarTextExpansion,
+// OpenBurnBarLaunchServices) and their products are pruned from the non-Apple
+// build graph exactly as `OpenBurnBarData` is pruned from the Linux-boundary
+// build: host-evaluated, so on a Linux/Windows host the target/product is absent
+// and Core does not depend on it. On Apple hosts they are present and Core links
+// them. This mirrors the existing `buildForLinuxBoundary`/`OpenBurnBarData`
+// pruning idiom rather than inventing a new seam.
+#if os(Linux) || os(Windows)
+let buildApplePrunedDecompositionTargets = false
+#else
+let buildApplePrunedDecompositionTargets = true
+#endif
+
+// Core-decomposition S0: OpenBurnBarCore depends on every decomposition target so
+// its `@_exported import` re-export shims resolve and the umbrella keeps every
+// existing consumer compiling. The cross-platform engine-layer targets are always
+// present; the Apple-only presentation/insights targets are added only on Apple
+// hosts (they are pruned from the target list off-Apple, so Core must not name
+// them there). OpenBurnBarEngine is NOT a Core dependency — Engine re-exports the
+// same leaf targets Core does and lives BELOW Core in the graph (it is what the
+// daemon links); a Core→Engine edge would be circular.
+let coreDecompositionDependencies: [Target.Dependency] = [
+    "OpenBurnBarSQLiteReader",
+    "OpenBurnBarLogParsers",
+    "OpenBurnBarQuota",
+    "OpenBurnBarVectorKit",
+    "OpenBurnBarHermes",
+    "OpenBurnBarPretext"
+] + (buildApplePrunedDecompositionTargets ? [
+    "OpenBurnBarInsights",
+    "OpenBurnBarTextExpansion",
+    "OpenBurnBarLaunchServices",
+    "OpenBurnBarUI"
+] : [])
+
+// Core-decomposition S0: the Apple-only decomposition targets, added to the
+// package target list only on Apple hosts (pruned off-Apple like OpenBurnBarData).
+let applePrunedDecompositionTargets: [Target] = buildApplePrunedDecompositionTargets ? [
+    .target(
+        name: "OpenBurnBarInsights",
+        dependencies: ["OpenBurnBarKernel"],
+        exclude: openBurnBarInsightsExcludes
+    ),
+    .target(
+        name: "OpenBurnBarTextExpansion",
+        dependencies: ["OpenBurnBarKernel"],
+        exclude: openBurnBarTextExpansionExcludes
+    ),
+    .target(
+        name: "OpenBurnBarLaunchServices",
+        dependencies: ["OpenBurnBarKernel"],
+        exclude: openBurnBarLaunchServicesExcludes
+    ),
+    .target(
+        name: "OpenBurnBarUI",
+        dependencies: [
+            "OpenBurnBarKernel",
+            "OpenBurnBarQuota",
+            "OpenBurnBarInsights",
+            "OpenBurnBarHermes",
+            "OpenBurnBarPretext",
+            "OpenBurnBarLogParsers"
+        ],
+        exclude: openBurnBarUIExcludes
+    )
+] : []
 
 #if os(Linux)
 let libsecretCFlags = [
@@ -590,13 +758,75 @@ let firstPartyTargetsBase: [Target] = [
                 swiftCryptoNonAppleDependency
             ]
         ),
+        // Core-decomposition S0 (docs/CORE_DECOMPOSITION_PROGRAM.md): cross-platform
+        // engine-layer targets carved from the OpenBurnBarCore monolith. At S0 each
+        // holds only `Sources/<Target>/ModuleMarker.swift`; move packets fill them.
+        //
+        // OpenBurnBarSQLiteReader (S1 / the K3 fix) — read-only local SQLite reader,
+        // no product (package-internal). Takes over `coreSQLiteDependencies` (mirrored
+        // as `sqliteReaderSQLiteDependencies`) so LogParsers and Quota extract on top
+        // of it without depending on each other. Deps: SQLite backend only.
+        .target(
+            name: "OpenBurnBarSQLiteReader",
+            dependencies: sqliteReaderSQLiteDependencies,
+            exclude: openBurnBarSQLiteReaderExcludes
+        ),
+        .target(
+            name: "OpenBurnBarLogParsers",
+            dependencies: ["OpenBurnBarKernel", "OpenBurnBarSQLiteReader"],
+            exclude: openBurnBarLogParsersExcludes
+        ),
+        .target(
+            name: "OpenBurnBarQuota",
+            dependencies: [
+                "OpenBurnBarKernel",
+                "OpenBurnBarSQLiteReader",
+                swiftCryptoNonAppleDependency
+            ],
+            exclude: openBurnBarQuotaExcludes
+        ),
+        .target(
+            name: "OpenBurnBarVectorKit",
+            dependencies: ["OpenBurnBarKernel"],
+            exclude: openBurnBarVectorKitExcludes
+        ),
+        .target(
+            name: "OpenBurnBarHermes",
+            dependencies: ["OpenBurnBarKernel"],
+            exclude: openBurnBarHermesExcludes
+        ),
+        // OpenBurnBarPretext gains its own `Resources/` bundle when S10 moves the
+        // Pretext HTML/JS in (adding `resources: [.process("Resources")]` — the one
+        // allowed manifest-structure edit, enumerated in packet P-06). At S0 it
+        // declares NO resources so the manifest is valid with only a marker file.
+        .target(
+            name: "OpenBurnBarPretext",
+            dependencies: ["OpenBurnBarKernel"],
+            exclude: openBurnBarPretextExcludes
+        ),
+        // OpenBurnBarEngine (S16) — UI-free umbrella the daemon/CLI/parity
+        // executables link. Its single source file `@_exported import`s the leaf
+        // engine targets. It depends on those leaves but NOT on OpenBurnBarCore
+        // (Core→Engine would be circular; Engine sits below Core).
+        .target(
+            name: "OpenBurnBarEngine",
+            dependencies: [
+                "OpenBurnBarKernel",
+                "OpenBurnBarLogParsers",
+                "OpenBurnBarQuota",
+                "OpenBurnBarVectorKit",
+                "OpenBurnBarHermes",
+                "OpenBurnBarPretext"
+            ],
+            exclude: openBurnBarEngineExcludes
+        ),
         .target(
             name: "OpenBurnBarCore",
             dependencies: [
                 "OpenBurnBarKernel",
                 "OpenBurnBarFirestoreModels",
                 swiftCryptoNonAppleDependency
-            ] + coreSQLiteDependencies,
+            ] + coreSQLiteDependencies + coreDecompositionDependencies,
             exclude: openBurnBarCoreExcludes,
             resources: [
                 // SwiftPM's `.process` rule flattens nested resource folders
@@ -903,7 +1133,11 @@ let platformFirstPartyTargetsBase = firstPartyTargetsBase.filter {
 let platformFirstPartyTargetsBase = firstPartyTargetsBase
 #endif
 
-let firstPartyTargets: [Target] = platformFirstPartyTargetsBase + (buildForLinuxBoundary ? [] : [
+let firstPartyTargets: [Target] = platformFirstPartyTargetsBase
+    // Core-decomposition S0: Apple-only presentation/insights targets, appended on
+    // Apple hosts and pruned off-Apple (mirrors the OpenBurnBarData pruning below).
+    + applePrunedDecompositionTargets
+    + (buildForLinuxBoundary ? [] : [
     .target(
         name: "OpenBurnBarData",
         dependencies: [

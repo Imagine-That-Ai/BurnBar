@@ -81,6 +81,8 @@ budgets/swift-file-size-baseline.json
 budgets/windows-tree-baseline.json
 budgets/core-ui-purity-baseline.json
 budgets/mission-splitbrain-baseline.json
+budgets/core-target-membership-baseline.json
+budgets/core-umbrella-imports-baseline.json
 budgets/linux-desktop.perf.json
 
 # --- File-level TypeScript suppressions (token-scoped) ---

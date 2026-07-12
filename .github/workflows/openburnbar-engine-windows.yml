@@ -45,6 +45,16 @@ on:
     branches: [main]
     paths:
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/**"
+      # Core-decomposition (docs/CORE_DECOMPOSITION_PROGRAM.md): engine-layer
+      # targets carved out of OpenBurnBarCore. Pin their source paths so the
+      # cross-platform Engine subset stays under this Windows gate as code moves
+      # out of the main target — coverage must not silently detach mid-program.
+      - "OpenBurnBarCore/Sources/OpenBurnBarSQLiteReader/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarLogParsers/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarQuota/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarVectorKit/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarHermes/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarEngine/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarWindowsParserPathParity/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarG2ParserParity/**"
       - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/**"
@@ -57,6 +67,13 @@ on:
   pull_request:
     paths:
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/**"
+      # Core-decomposition engine-layer targets (see the push block above).
+      - "OpenBurnBarCore/Sources/OpenBurnBarSQLiteReader/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarLogParsers/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarQuota/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarVectorKit/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarHermes/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarEngine/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarWindowsParserPathParity/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarG2ParserParity/**"
       - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/**"

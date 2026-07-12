@@ -205,3 +205,4 @@ Not blocked by (and not blocking) the phases above:
 | K1 kernel target | PR in flight (this program) |
 | M1 characterization + M2 authorization RPC | PR in flight (this program) |
 | K2–K4, M3–M5 | staged behind the above |
+| **K3/K4 completion (Core god-module decomposition)** | **Split into its own program — see [`docs/CORE_DECOMPOSITION_PROGRAM.md`](CORE_DECOMPOSITION_PROGRAM.md). S0 scaffold + regrowth gates landed; ~26 parallel move packets QUEUED. K3 unblocked by extracting the SQLite reader first; K4 (Views→OpenBurnBarUI) is the final wave.** |
