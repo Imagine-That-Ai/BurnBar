@@ -435,7 +435,7 @@ actor ArtifactDiscoveryService {
         // Change-gate (same pattern as InsightEngine): at idle — and always
         // while the feature is disabled — this row is byte-identical every
         // refresh tick; skip the pointless writer transaction.
-        let existing = try? await store.fetchRetrievalHealth()
+        let existing = try await store.fetchRetrievalHealth()
             .first(where: { $0.subsystem == .discovery })
         if let existing,
            existing.status == status,
