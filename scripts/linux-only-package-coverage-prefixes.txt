@@ -1,13 +1,17 @@
-# Swift package source prefixes whose executable code is compiled only on Linux.
+# Swift package source prefixes whose behavior is owned by the Linux test lane.
 #
 # The macOS package diff-coverage lane defers exactly these paths to the Linux
-# package lane. Keep mixed-platform files out of this list even when their names
-# contain "Linux": macOS coverage still owns any code it can compile.
+# package lane. Entries are exact platform implementations or contracts whose
+# production consumers and substantive tests are Linux-only. Keep mixed-platform
+# files out even when their names contain "Linux": their portable lines remain
+# owned by macOS coverage and their Linux-only conditional lines are split by the
+# gate's conditional-compilation classifier.
 OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/LinuxSecretStorage.swift
 OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/LinuxCloudAuthHTTPClient.swift
 OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/LinuxComputerUseOwnerAuthorizationCoordinator.swift
 OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/LinuxDaemonCloudCredentialAuthority.swift
 OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/LinuxIrohControllerDirectoryClient.swift
+OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/LinuxIrohControllerCredentials.swift
 OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/LinuxIrohControllerRuntime.swift
 OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/LinuxIrohHostIdentityStore.swift
 OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/LinuxOAuthLoopbackListener.swift

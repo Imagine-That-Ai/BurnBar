@@ -794,7 +794,7 @@ cat > "$linux_dir/LinuxCloudAuthHTTPClient.swift" <<'EOF'
 public enum LinuxOnlyClient {
 }
 EOF
-cat > "$linux_dir/LinuxIrohControllerCredentials.swift" <<'EOF'
+cat > "$linux_dir/LinuxNamedPortableCredentials.swift" <<'EOF'
 public enum PortableLinuxNamedCredentials {
 }
 EOF
@@ -815,7 +815,7 @@ public enum LinuxOnlyClient {
     }
 }
 EOF
-cat > "$linux_dir/LinuxIrohControllerCredentials.swift" <<'EOF'
+cat > "$linux_dir/LinuxNamedPortableCredentials.swift" <<'EOF'
 public enum PortableLinuxNamedCredentials {
     public static func value() -> Int {
         return 42
@@ -838,7 +838,7 @@ SF:$linux_dir/LinuxCloudAuthHTTPClient.swift
 DA:5,1
 DA:6,0
 end_of_record
-SF:$linux_dir/LinuxIrohControllerCredentials.swift
+SF:$linux_dir/LinuxNamedPortableCredentials.swift
 DA:2,1
 DA:3,1
 end_of_record
@@ -857,8 +857,8 @@ check "macOS package lane defers the exact Linux-only file" \
   "linux-packages" \
   "$(json_get "$verdict" '[d for d in v["outOfScope"] if d["file"].endswith("LinuxCloudAuthHTTPClient.swift")][0]["gatedBy"]')"
 check "portable Linux-named near miss remains macOS package-owned" \
-  "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/LinuxIrohControllerCredentials.swift" \
-  "$(json_get "$verdict" '[d for d in v["details"] if d["file"].endswith("LinuxIrohControllerCredentials.swift")][0]["file"]')"
+  "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/LinuxNamedPortableCredentials.swift" \
+  "$(json_get "$verdict" '[d for d in v["details"] if d["file"].endswith("LinuxNamedPortableCredentials.swift")][0]["file"]')"
 check "exact Linux-only file policy does not match a longer filename" \
   "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/LinuxCloudAuthHTTPClient.swiftExtra.swift" \
   "$(json_get "$verdict" '[d for d in v["details"] if d["file"].endswith("LinuxCloudAuthHTTPClient.swiftExtra.swift")][0]["file"]')"
@@ -872,7 +872,7 @@ check "multiline callable signature lines without LLVM counters are non-executab
   "2" "$(json_get "$verdict" 'v["diffCoverage"]["changedLines"]')"
 check "Linux-only package lane defers portable package files to macOS" \
   "packages" \
-  "$(json_get "$verdict" '[d for d in v["outOfScope"] if d["file"].endswith("LinuxIrohControllerCredentials.swift")][0]["gatedBy"]')"
+  "$(json_get "$verdict" '[d for d in v["outOfScope"] if d["file"].endswith("LinuxNamedPortableCredentials.swift")][0]["gatedBy"]')"
 check "Linux-only package lane defers longer exact-file near miss to macOS" \
   "packages" \
   "$(json_get "$verdict" '[d for d in v["outOfScope"] if d["file"].endswith("LinuxCloudAuthHTTPClient.swiftExtra.swift")][0]["gatedBy"]')"
@@ -949,6 +949,81 @@ check "one-line callable body cannot be classified as declaration syntax" \
   "True" "$(json_get "$verdict" '(lambda d: d["executableLines"] > d["coveredLines"])([d for d in v["details"] if d["file"].endswith("LinuxIrohControllerRuntime.swift")][0])')"
 check "default closure body cannot be classified as declaration syntax" \
   "True" "$(json_get "$verdict" '(lambda d: d["executableLines"] > d["coveredLines"])([d for d in v["details"] if d["file"].endswith("LinuxIrohHostIdentityStore.swift")][0])')"
+
+# --- fixture 14: line-level ownership inside a mixed-platform Swift file -----
+repo_mixed="$tmp_root/repo-mixed-platform"
+mixed_dir="$repo_mixed/OpenBurnBarDaemon/Sources/OpenBurnBarDaemon"
+mkdir -p "$mixed_dir"
+git -C "$repo_mixed" init -q -b main
+git -C "$repo_mixed" config user.email selftest@openburnbar.invalid
+git -C "$repo_mixed" config user.name "Diff Coverage Self-Test"
+cat > "$mixed_dir/MixedPlatform.swift" <<'EOF'
+public enum MixedPlatform {
+}
+EOF
+git -C "$repo_mixed" add -A
+git -C "$repo_mixed" commit -qm base
+base_mixed="$(git -C "$repo_mixed" rev-parse HEAD)"
+cat > "$mixed_dir/MixedPlatform.swift" <<'EOF'
+public enum MixedPlatform {
+#if os(macOS)
+    public static func value() -> Int {
+        let result = 40
+        return result + 2
+    }
+#elseif os(Linux) && DEBUG
+    public static func value() -> Int {
+        let result = 41
+        return result + 1
+    }
+#else
+    public static func fallback() -> Int {
+        return 0
+    }
+#endif
+#if DEBUG
+    public static func diagnostic() -> Int {
+        let marker = 1
+        return marker
+    }
+#endif
+}
+EOF
+git -C "$repo_mixed" add -A
+git -C "$repo_mixed" commit -qm mixed-platform-change
+
+lcov_mixed="$tmp_root/fixture-mixed-platform.lcov"
+cat > "$lcov_mixed" <<EOF
+SF:$mixed_dir/MixedPlatform.swift
+DA:4,1
+DA:5,1
+DA:9,1
+DA:10,0
+DA:14,1
+DA:19,1
+DA:20,1
+end_of_record
+EOF
+pkg_mixed="$tmp_root/pkg-mixed-platform.json"
+extract_pkg "$lcov_mixed" "$repo_mixed" "$pkg_mixed"
+
+verdict="$tmp_root/verdict-mixed-macos.json"
+rc="$(run_gate "$repo_mixed" "$base_mixed" packages 80 "$pkg_mixed" "$verdict" "$tmp_root/err-mixed-macos.log")"
+check "macOS package lane passes covered macOS and unknown-flag branches" "0" "$rc"
+check "macOS package lane owns four executable lines in mixed file" \
+  "4" "$(json_get "$verdict" 'v["diffCoverage"]["changedLines"]')"
+check "macOS package lane defers only Linux-exclusive mixed-file lines" \
+  "9" "$(json_get "$verdict" '[d for d in v["deferredLines"] if d["file"].endswith("MixedPlatform.swift")][0]["changedLines"]')"
+
+verdict="$tmp_root/verdict-mixed-linux.json"
+rc="$(run_gate "$repo_mixed" "$base_mixed" linux-packages 80 "$pkg_mixed" "$verdict" "$tmp_root/err-mixed-linux.log")"
+check "Linux package lane independently fails its uncovered mixed-file branch" "1" "$rc"
+check "Linux mixed-file coverage uses only three executable Linux lines" \
+  "3" "$(json_get "$verdict" 'v["diffCoverage"]["changedLines"]')"
+check "Linux mixed-file coverage remains exact" \
+  "66.67" "$(json_get "$verdict" 'v["diffCoverage"]["percent"]')"
+check "unknown build-flag branch remains portable instead of moving to Linux" \
+  "12" "$(json_get "$verdict" '[d for d in v["deferredLines"] if d["file"].endswith("MixedPlatform.swift")][0]["changedLines"]')"
 
 # -----------------------------------------------------------------------------
 

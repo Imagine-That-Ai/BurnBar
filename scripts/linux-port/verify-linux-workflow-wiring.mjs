@@ -74,7 +74,10 @@ export function verifyLinuxWorkflowWiring(input) {
     'scripts/linux-port/export-linux-swift-coverage-self-test.sh',
     'scripts/diff-coverage-self-test.sh',
     'scripts/diff-coverage.sh origin/main',
-    'linux-package-diff-coverage.json'
+    'linux-package-diff-coverage.json',
+    'name: linux-pr-gate-evidence',
+    'include-hidden-files: true',
+    'if-no-files-found: error'
   ]) requireText(input.pr, command, 'PR Linux-only package coverage gate');
   for (const command of [
     '--enable-code-coverage',

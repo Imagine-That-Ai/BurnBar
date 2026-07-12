@@ -155,6 +155,7 @@ export DIFF_OUTPUT="${DIFF_COVERAGE_OUTPUT:-}"
 export LINUX_ONLY_PREFIXES_FILE="$scripts_dir/linux-only-package-coverage-prefixes.txt"
 
 python3 - <<'PY'
+import ast
 import difflib
 import json
 import os
@@ -474,6 +475,172 @@ def partition(rel_path):
     return "packages" if rel_path.startswith(PACKAGE_PREFIXES) else "app"
 
 
+_platform_partition_cache = {}
+
+
+def _tri_not(value):
+    return None if value is None else not value
+
+
+def _tri_and(left, right):
+    if left is False or right is False:
+        return False
+    if left is True and right is True:
+        return True
+    return None
+
+
+def _tri_or(left, right):
+    if left is True or right is True:
+        return True
+    if left is False and right is False:
+        return False
+    return None
+
+
+def _conditional_atom_value(name, argument, platform):
+    argument = re.sub(r"\s+", "", argument)
+    if name == "os":
+        expected = "Linux" if platform == "linux" else "macOS"
+        return argument == expected
+    if name == "canImport":
+        known = {
+            "linux": {"Glibc": True, "Darwin": False, "AppKit": False, "UIKit": False, "WinSDK": False},
+            "macos": {"Glibc": False, "Darwin": True, "AppKit": True, "UIKit": False, "WinSDK": False},
+        }
+        return known[platform].get(argument)
+    return None
+
+
+def _conditional_expression_value(expression, platform):
+    """Evaluate Swift platform predicates conservatively for one CI platform.
+
+    Unknown build flags remain tri-state. This lets `os(Linux) && DEBUG` be
+    recognized as impossible on macOS without pretending DEBUG is enabled,
+    while a plain `#if DEBUG` remains owned by the portable package lane.
+    """
+    atom_values = []
+
+    def replace_atom(match):
+        value = _conditional_atom_value(match.group(1), match.group(2), platform)
+        atom_values.append(value)
+        return f"__atom_{len(atom_values) - 1}"
+
+    rendered = re.sub(
+        r"\b(os|canImport|arch|targetEnvironment|compiler|swift)\s*\(([^()]*)\)",
+        replace_atom,
+        expression,
+    )
+    rendered = rendered.replace("&&", " and ").replace("||", " or ")
+    rendered = re.sub(r"!(?!=)", " not ", rendered).strip()
+    rendered = re.sub(r"\btrue\b", "True", rendered, flags=re.IGNORECASE)
+    rendered = re.sub(r"\bfalse\b", "False", rendered, flags=re.IGNORECASE)
+    try:
+        tree = ast.parse(rendered, mode="eval")
+    except SyntaxError:
+        return None
+
+    def evaluate(node):
+        if isinstance(node, ast.Expression):
+            return evaluate(node.body)
+        if isinstance(node, ast.Constant) and isinstance(node.value, bool):
+            return node.value
+        if isinstance(node, ast.Name):
+            if node.id.startswith("__atom_"):
+                try:
+                    return atom_values[int(node.id.removeprefix("__atom_"))]
+                except (ValueError, IndexError):
+                    return None
+            return None
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+            return _tri_not(evaluate(node.operand))
+        if isinstance(node, ast.BoolOp):
+            result = True if isinstance(node.op, ast.And) else False
+            for value_node in node.values:
+                value = evaluate(value_node)
+                result = _tri_and(result, value) if isinstance(node.op, ast.And) else _tri_or(result, value)
+            return result
+        return None
+
+    return evaluate(tree)
+
+
+def _platform_line_partitions(rel_path):
+    if rel_path in _platform_partition_cache:
+        return _platform_partition_cache[rel_path]
+    if is_linux_only_package_path(rel_path):
+        _platform_partition_cache[rel_path] = None
+        return None
+
+    abs_path = os.path.join(repo_root, rel_path)
+    try:
+        with open(abs_path, encoding="utf-8", errors="replace") as handle:
+            source = handle.read().splitlines()
+    except OSError:
+        _platform_partition_cache[rel_path] = {}
+        return {}
+
+    active = {"macos": True, "linux": True}
+    stack = []
+    owners = {}
+    for line_number, text in enumerate(source, start=1):
+        stripped = text.strip()
+        directive = re.match(r"^#(if|elseif)\s+(.+)$", stripped)
+        if directive and directive.group(1) == "if":
+            parent = dict(active)
+            condition = {
+                platform: _conditional_expression_value(directive.group(2), platform)
+                for platform in ("macos", "linux")
+            }
+            active = {
+                platform: _tri_and(parent[platform], condition[platform])
+                for platform in ("macos", "linux")
+            }
+            remaining = {
+                platform: _tri_and(parent[platform], _tri_not(condition[platform]))
+                for platform in ("macos", "linux")
+            }
+            stack.append({"parent": parent, "remaining": remaining})
+        elif directive and directive.group(1) == "elseif" and stack:
+            frame = stack[-1]
+            condition = {
+                platform: _conditional_expression_value(directive.group(2), platform)
+                for platform in ("macos", "linux")
+            }
+            active = {
+                platform: _tri_and(frame["remaining"][platform], condition[platform])
+                for platform in ("macos", "linux")
+            }
+            frame["remaining"] = {
+                platform: _tri_and(frame["remaining"][platform], _tri_not(condition[platform]))
+                for platform in ("macos", "linux")
+            }
+        elif stripped == "#else" and stack:
+            active = dict(stack[-1]["remaining"])
+            stack[-1]["remaining"] = {"macos": False, "linux": False}
+        elif stripped == "#endif" and stack:
+            active = dict(stack.pop()["parent"])
+
+        # Reassign only when a line is provably impossible on macOS and can be
+        # compiled by Linux. Unknown or malformed conditions stay portable.
+        owners[line_number] = (
+            "linux-packages"
+            if active["macos"] is False and active["linux"] is not False
+            else "packages"
+        )
+
+    _platform_partition_cache[rel_path] = owners
+    return owners
+
+
+def line_partition(rel_path, line_number):
+    if is_linux_only_package_path(rel_path):
+        return "linux-packages"
+    if not rel_path.startswith(PACKAGE_PREFIXES):
+        return "app"
+    return _platform_line_partitions(rel_path).get(line_number, "packages")
+
+
 def load_lines_payload(path):
     if not path or not os.path.isfile(path):
         return {}
@@ -657,6 +824,7 @@ changed_file_list = [line.strip() for line in changed_file_list if line.strip()]
 
 waived = []
 out_of_scope = []
+deferred_lines = []
 gated_files = []
 for rel_path in changed_file_list:
     reason = allowlist_reason(rel_path)
@@ -668,10 +836,20 @@ for rel_path in changed_file_list:
         })
         continue
     file_partition = partition(rel_path)
-    if scope != "all" and file_partition != scope:
-        out_of_scope.append({"file": rel_path, "gatedBy": file_partition})
-        continue
-    gated_files.append(rel_path)
+    if scope == "all":
+        gated_files.append(rel_path)
+    elif scope == "app":
+        if file_partition == "app":
+            gated_files.append(rel_path)
+        else:
+            out_of_scope.append({"file": rel_path, "gatedBy": file_partition})
+    elif rel_path.startswith(PACKAGE_PREFIXES):
+        # Mixed-platform Swift files can contain both macOS-portable and
+        # Linux-only changed lines. Both package lanes inspect the file; exact
+        # ownership is applied after changed-line hunks are enumerated.
+        gated_files.append(rel_path)
+    else:
+        out_of_scope.append({"file": rel_path, "gatedBy": "app"})
 
 git_output = ""
 if gated_files:
@@ -710,6 +888,30 @@ for line in git_output.splitlines():
             continue
         for ln in range(start, start + count):
             file_blocks[current_file].append(ln)
+
+if scope in {"packages", "linux-packages"}:
+    retained_files = []
+    for rel_path in gated_files:
+        changed = sorted(set(file_blocks.get(rel_path, [])))
+        owned = [ln for ln in changed if line_partition(rel_path, ln) == scope]
+        deferred = [ln for ln in changed if line_partition(rel_path, ln) != scope]
+        if deferred:
+            deferred_owners = sorted({line_partition(rel_path, ln) for ln in deferred})
+            deferred_lines.append({
+                "file": rel_path,
+                "changedLines": len(deferred),
+                "gatedBy": deferred_owners[0] if len(deferred_owners) == 1 else deferred_owners,
+            })
+        if owned:
+            file_blocks[rel_path] = owned
+            retained_files.append(rel_path)
+        else:
+            owner = partition(rel_path)
+            if changed:
+                owners = sorted({line_partition(rel_path, ln) for ln in changed})
+                owner = owners[0] if len(owners) == 1 else owners
+            out_of_scope.append({"file": rel_path, "gatedBy": owner})
+    gated_files = retained_files
 
 # In-source waivers: `cov:ignore -- <reason>` on a changed line excludes that
 # line. `cov:ignore-start -- <reason>` / `cov:ignore-end` excludes changed
@@ -1032,6 +1234,7 @@ output = {
     "details": details,
     "waived": waived,
     "outOfScope": out_of_scope,
+    "deferredLines": deferred_lines,
     "pureMove": {"movedLines": pure_move_total, "gatedLines": total_exc},
 }
 rendered = json.dumps(output, indent=2)

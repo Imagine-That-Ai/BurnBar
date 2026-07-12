@@ -27,7 +27,10 @@ function valid() {
       'scripts/linux-port/export-linux-swift-coverage-self-test.sh',
       'scripts/diff-coverage-self-test.sh',
       'scripts/diff-coverage.sh origin/main',
-      'linux-package-diff-coverage.json'
+      'linux-package-diff-coverage.json',
+      'name: linux-pr-gate-evidence',
+      'include-hidden-files: true',
+      'if-no-files-found: error'
     ].join('\n'),
     nightly: [
       'OPENBURNBAR_LINUX_EVIDENCE_OUT',
@@ -218,6 +221,18 @@ test('package lifecycle finalizer regression suite cannot be removed', () => {
   const input = valid();
   input.pr = input.pr.replace('linux-package-session.test.mjs', '');
   assert.equal(verifyLinuxWorkflowWiring(input).passed, false);
+});
+
+test('hidden Linux gate evidence must upload fail-closed', () => {
+  for (const marker of [
+    'name: linux-pr-gate-evidence',
+    'include-hidden-files: true',
+    'if-no-files-found: error'
+  ]) {
+    const input = valid();
+    input.pr = input.pr.replace(marker, '');
+    assert.equal(verifyLinuxWorkflowWiring(input).passed, false, marker);
+  }
 });
 
 test('each Browser Computer Use package-family suite is independently required', () => {
