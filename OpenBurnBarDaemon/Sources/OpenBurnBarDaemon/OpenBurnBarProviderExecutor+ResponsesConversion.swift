@@ -510,6 +510,7 @@ extension BurnBarOpenAICompatibleProviderExecutor {
         return BurnBarProviderProxyResponse(
             statusCode: 200,
             contentType: "text/event-stream",
+            headers: chatResponse.headers,
             body: sse,
             usage: chatResponse.usage
         )

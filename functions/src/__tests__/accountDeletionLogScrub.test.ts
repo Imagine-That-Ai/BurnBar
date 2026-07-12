@@ -6,6 +6,7 @@
  * failure and storage-purge failure) and assert that the emitted structured log
  * payload is free of raw UIDs/paths and carries only hashed correlation fields.
  */
+import { createHash } from "node:crypto";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import { eraseUserCloudData } from "../accountDeletion.js";
@@ -74,7 +75,9 @@ describe("account deletion log scrubbing (OPUS-F-005)", () => {
     const { db } = fakeFirestore();
     await eraseUserCloudData(db, FULL_UID, {
       destroyCredential: vi.fn(async () => {
-        throw new Error("secret manager rejected destroy");
+        throw new Error(
+          `secret manager rejected projects/openburnbar/secrets/${FULL_UID}/versions/1 for users/${FULL_UID}`,
+        );
       }),
       deleteStorageObjects: vi.fn(async () => undefined),
     });
@@ -83,10 +86,13 @@ describe("account deletion log scrubbing (OPUS-F-005)", () => {
     expect(emitted).not.toContain(FULL_UID);
     expect(emitted).not.toContain(`users/${FULL_UID}`);
     expect(emitted).not.toContain(`avatars/${FULL_UID}`);
+    expect(emitted).not.toContain("projects/openburnbar/secrets/");
+    expect(emitted).not.toContain("versions/1");
     expect(emitted).not.toContain(secretRefDocId());
     expect(emitted).toContain("account_deletion_warning");
     expect(emitted).toContain("user_id_hash");
-    expect(emitted).toContain('"account_id_hash":"stripe_a"'); // 8-char account correlation hash
+    expect(emitted).toContain('"error_code":"Error"');
+    expect(emitted).toContain(`"account_id_hash":"${correlationHash("stripe_abc123")}"`);
   });
 
   it("does not log full UID or raw path when Cloud Storage purge fails", async () => {
@@ -103,8 +109,8 @@ describe("account deletion log scrubbing (OPUS-F-005)", () => {
     expect(emitted).not.toContain(`users/${FULL_UID}`);
     expect(emitted).not.toContain(`avatars/${FULL_UID}`);
     expect(emitted).toContain("storage_prefix_kind");
-    expect(emitted).toContain("users");
-    expect(emitted).toContain("avatars");
+    expect(emitted).toContain("user_data");
+    expect(emitted).toContain("avatar");
   });
 
   it("hashes the account identifier instead of logging the full provider_secret_ref doc id", async () => {
@@ -117,12 +123,16 @@ describe("account deletion log scrubbing (OPUS-F-005)", () => {
     });
 
     const payload = JSON.parse(String(warnSpy.mock.calls[0]?.[0]));
-    expect(payload.account_id_hash).toBe("stripe_a");
-    expect(payload.user_id_hash).toBe(FULL_UID.slice(0, 8));
+    expect(payload.account_id_hash).toBe(correlationHash("stripe_abc123"));
+    expect(payload.user_id_hash).toBe(correlationHash(FULL_UID));
     expect(payload.document_id).toBeUndefined();
   });
 });
 
 function secretRefDocId(): string {
   return `${FULL_UID}_stripe_abc123`;
+}
+
+function correlationHash(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex").slice(0, 12);
 }

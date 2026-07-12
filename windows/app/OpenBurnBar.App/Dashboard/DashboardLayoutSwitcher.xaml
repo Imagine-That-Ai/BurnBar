@@ -13,6 +13,7 @@
     x:Class="OpenBurnBar.App.Dashboard.DashboardLayoutSwitcher"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:theme="using:OpenBurnBar.App.Theme"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
@@ -23,10 +24,8 @@
         <Border x:Name="SegmentedHost"
                 Padding="4"
                 HorizontalAlignment="Left"
-                CornerRadius="{StaticResource PensieveRadiusPillCorner}"
-                Background="{StaticResource OBBSurfaceBrush}"
-                BorderThickness="0.75"
-                BorderBrush="{StaticResource OBBStrokeBrush}">
+                Style="{StaticResource LiquidGlassPillStyle}"
+                theme:LiquidGlass.Surface="True">
             <StackPanel x:Name="SegmentPanel"
                         Orientation="Horizontal"
                         Spacing="3" />

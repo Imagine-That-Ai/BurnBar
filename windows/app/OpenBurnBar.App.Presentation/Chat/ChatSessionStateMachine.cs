@@ -53,6 +53,8 @@ public sealed class ChatSessionStateMachine
     /// Last non-cancellation stream error surfaced to the composer (peer of `streamError`).
     public string? StreamError { get; private set; }
 
+    public ChatFailureKind? LastFailureKind { get; private set; }
+
     /// Synchronous reentrancy sentinel for a send in its await window before
     /// IsStreaming flips (peer of `sendInFlight`).
     public bool SendInFlight { get; private set; }
@@ -108,8 +110,27 @@ public sealed class ChatSessionStateMachine
     /// clear `streamError`, append user).
     public ChatMessageRecord? TryBeginUserTurn(string text, IReadOnlyList<string>? attachmentIds = null)
     {
+        IReadOnlyList<ChatAttachmentRecord>? attachments = null;
+        if (attachmentIds is { Count: > 0 })
+        {
+            var records = new ChatAttachmentRecord[attachmentIds.Count];
+            for (var i = 0; i < attachmentIds.Count; i++)
+            {
+                records[i] = ChatAttachmentRecord.ReferenceOnly(attachmentIds[i]);
+            }
+
+            attachments = records;
+        }
+
+        return TryBeginUserTurnWithAttachments(text, attachments);
+    }
+
+    public ChatMessageRecord? TryBeginUserTurnWithAttachments(
+        string text,
+        IReadOnlyList<ChatAttachmentRecord>? attachments = null)
+    {
         var trimmed = (text ?? string.Empty).Trim();
-        var hasAttachments = attachmentIds is { Count: > 0 };
+        var hasAttachments = attachments is { Count: > 0 };
         if (trimmed.Length == 0 && !hasAttachments)
         {
             return null;
@@ -121,8 +142,9 @@ public sealed class ChatSessionStateMachine
 
         SendInFlight = true;
         StreamError = null;
+        LastFailureKind = null;
 
-        var user = new ChatMessageRecord(ChatMessageRole.User, trimmed, attachmentIds: attachmentIds);
+        var user = new ChatMessageRecord(ChatMessageRole.User, trimmed, attachments: attachments);
         _messages.Add(user);
         RaiseChanged();
         return user;
@@ -146,6 +168,8 @@ public sealed class ChatSessionStateMachine
         ActiveStreamMessageId = assistantId;
         SendInFlight = false;
         LatestUsage = null;
+        StreamError = null;
+        LastFailureKind = null;
         StreamStartedAt = startedAt ?? DateTimeOffset.UtcNow;
         Phase = ChatStreamPhase.Streaming;
 
@@ -199,6 +223,11 @@ public sealed class ChatSessionStateMachine
                 // the empty-content re-render below is still applied (parity: the
                 // Swift loop rebuilds content every event).
                 break;
+            case ChatStreamEvent.StreamFailure failure:
+                pieces.Add(new ChatTranscriptPiece(ChatTranscriptPieceKind.Refusal, failure.Message));
+                active.Content = ChatMessageRecord.JoinedText(pieces);
+                FailStream(cancelled: failure.Kind == ChatFailureKind.Cancelled, failure.Kind, failure.Message);
+                return;
         }
 
         active.Content = ChatMessageRecord.JoinedText(pieces);
@@ -225,10 +254,17 @@ public sealed class ChatSessionStateMachine
     /// Terminal failure (peer of the `catch` arm). A cancellation is NOT surfaced
     /// as an error (`shouldPersistFailure = !(error is CancellationError)`); a
     /// genuine failure records <paramref name="errorMessage"/> in StreamError.
-    public ChatStreamSettleOutcome FailStream(bool cancelled, string? errorMessage = null)
+    public ChatStreamSettleOutcome FailStream(bool cancelled, string? errorMessage = null) =>
+        FailStream(cancelled, cancelled ? ChatFailureKind.Cancelled : ChatFailureKind.StreamError, errorMessage);
+
+    public ChatStreamSettleOutcome FailStream(
+        bool cancelled,
+        ChatFailureKind failureKind,
+        string? errorMessage = null)
     {
         IsStreaming = false;
         ActiveStreamMessageId = null;
+        LastFailureKind = failureKind;
         if (!cancelled)
         {
             StreamError = errorMessage;
@@ -253,6 +289,7 @@ public sealed class ChatSessionStateMachine
         CancelRequested?.Invoke();
         IsStreaming = false;
         ActiveStreamMessageId = null;
+        LastFailureKind = ChatFailureKind.Cancelled;
         Phase = ChatStreamPhase.Cancelled;
         RaiseChanged();
         StreamSettled?.Invoke(ChatStreamSettleOutcome.Failed(cancelled: true));
@@ -320,6 +357,24 @@ public sealed class ChatSessionStateMachine
     public void ClearMemoryJump()
     {
         PendingMemoryJumpMessageId = null;
+        RaiseChanged();
+    }
+
+    public void LoadTranscript(IReadOnlyList<ChatMessageRecord> messages)
+    {
+        ArgumentNullException.ThrowIfNull(messages);
+        _messages.Clear();
+        _messages.AddRange(messages);
+        IsStreaming = false;
+        ActiveStreamMessageId = null;
+        StreamingTick = 0;
+        StreamError = null;
+        LastFailureKind = null;
+        SendInFlight = false;
+        LatestUsage = null;
+        StreamStartedAt = null;
+        Phase = ChatStreamPhase.Idle;
+        FirstAssistantBadgeShown = _messages.Exists(m => m.Role == ChatMessageRole.Assistant);
         RaiseChanged();
     }
 

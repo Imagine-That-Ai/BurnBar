@@ -1,0 +1,20 @@
+# syntax=docker/dockerfile:1.7
+
+FROM openburnbar-linux-toolchain:mission-001
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 update \
+    && apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 install -y --no-install-recommends \
+        libgstreamer1.0-dev \
+        gstreamer1.0-tools \
+        libgstreamer-plugins-base1.0-dev \
+        gstreamer1.0-plugins-base \
+        gstreamer1.0-plugins-good \
+        gstreamer1.0-plugins-bad \
+        libgstreamer-plugins-bad1.0-dev \
+        gstreamer1.0-pipewire \
+        libglib2.0-dev \
+        libpam0g-dev \
+    && rm -rf /var/lib/apt/lists/*

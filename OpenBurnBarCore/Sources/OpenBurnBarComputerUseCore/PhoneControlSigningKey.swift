@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// F2 — hardware-bind the phone-control signing key.
 ///

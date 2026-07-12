@@ -185,6 +185,7 @@ extension DashboardView {
                 Divider()
 
                 Button("Settings…") { showingSettings = true }
+                    .accessibilityIdentifier(OBBAccessibilityID.dashboardSettingsButton)
             }
         } label: {
             HStack(spacing: 4) {
@@ -203,6 +204,7 @@ extension DashboardView {
                 Capsule(style: .continuous)
                     .fill(DesignSystem.Colors.surface.opacity(0.4))
             )
+            .accessibilityIdentifier(OBBAccessibilityID.dashboardOverflowButton)
             .overlay(
                 Capsule(style: .continuous)
                     .stroke(DesignSystem.Colors.border.opacity(0.4), lineWidth: 0.5)

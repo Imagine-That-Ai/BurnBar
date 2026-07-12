@@ -1,6 +1,5 @@
 using System;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
+using OpenBurnBar.App.Configuration;
 
 namespace OpenBurnBar.App.CloudSync;
 
@@ -15,28 +14,15 @@ public interface IBrowserLauncher
 }
 
 /// <summary>
-/// Launches the OS default browser. Uses <see cref="ProcessStartInfo.UseShellExecute"/>
-/// on Windows/macOS and falls back to <c>xdg-open</c> on Linux, so the same portable
-/// assembly opens a browser on every desktop target.
+/// Launches the OS default browser through the reviewed child-process policy.
+/// Windows activation uses <c>explorer.exe &lt;url&gt;</c> with a scrubbed
+/// environment instead of shell execution from the OpenBurnBar process.
 /// </summary>
 public sealed class SystemBrowserLauncher : IBrowserLauncher
 {
     public void Launch(Uri authorizationUrl)
     {
         if (authorizationUrl is null) throw new ArgumentNullException(nameof(authorizationUrl));
-        string url = authorizationUrl.ToString();
-
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
-            return;
-        }
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-        {
-            Process.Start("open", url);
-            return;
-        }
-        // Linux / other X11 desktops.
-        Process.Start("xdg-open", url);
+        ChildProcessLaunchPolicy.StartDefaultBrowser(authorizationUrl);
     }
 }

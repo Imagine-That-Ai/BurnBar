@@ -78,4 +78,21 @@ public sealed class RuntimeDataModeTests
             Environment.SetEnvironmentVariable(SampleEnv, null);
         }
     }
+
+    [Fact]
+    public void EmptyStateDetail_sample_mode_with_live_data_uses_connect_copy_not_demo_labeled()
+    {
+        try
+        {
+            Environment.SetEnvironmentVariable(SampleEnv, "1");
+            string detail = RuntimeDataMode.EmptyStateDetail("SQLCipher usage database", hasLiveData: true);
+            Assert.Contains("Connect SQLCipher usage database", detail);
+            Assert.DoesNotContain("Demo data is labeled", detail);
+            Assert.DoesNotContain("Sample mode is enabled", detail);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(SampleEnv, null);
+        }
+    }
 }

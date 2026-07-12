@@ -98,22 +98,54 @@ public sealed class LiquidGlassEnvironment
 {
     private static readonly UISettings SharedUiSettings = new();
     private readonly ILiquidGlassPreferenceStore _store;
+    private static LiquidGlassEnvironment _current =
+        new LiquidGlassEnvironment(new InMemoryPreferenceStore());
+
+    /// <summary>
+    /// Raised when any glass preference mutates (transparency, content surfaces, or a
+    /// custom key via <see cref="NotifyChanged"/>). ThemeService and glass surfaces
+    /// re-apply backdrop + plate brushes on this event.
+    /// </summary>
+    public static event EventHandler? PreferencesChanged;
 
     /// <summary>The process-wide environment used by the attached properties and window
-    /// backdrop helper. Settings surfaces mutate this; changes take effect on next apply.</summary>
-    public static LiquidGlassEnvironment Current { get; set; } =
-        new LiquidGlassEnvironment(new InMemoryPreferenceStore());
+    /// backdrop helper. Settings surfaces mutate this; changes re-apply via
+    /// <see cref="PreferencesChanged"/>.</summary>
+    public static LiquidGlassEnvironment Current
+    {
+        get => _current;
+        set
+        {
+            _current = value ?? throw new ArgumentNullException(nameof(value));
+            RaisePreferencesChanged();
+        }
+    }
 
     public LiquidGlassEnvironment(ILiquidGlassPreferenceStore store)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
     }
 
+    /// <summary>The backing store (registry / in-memory / test double).</summary>
+    public ILiquidGlassPreferenceStore Store => _store;
+
     /// <summary>Raw, unclamped stored preference. Swift: <c>@AppStorage(storageKey) rawTransparency</c>.</summary>
     public double RawTransparency
     {
         get => _store.GetDouble(LiquidGlassTransparency.StorageKey, 0);
-        set => _store.SetDouble(LiquidGlassTransparency.StorageKey, value);
+        set
+        {
+            double clamped = double.IsNaN(value) || double.IsInfinity(value)
+                ? 0
+                : Math.Min(Math.Max(value, LiquidGlassTransparency.RangeLowerBound), LiquidGlassTransparency.RangeUpperBound);
+            if (Math.Abs(RawTransparency - clamped) < 1e-12)
+            {
+                return;
+            }
+
+            _store.SetDouble(LiquidGlassTransparency.StorageKey, clamped);
+            RaisePreferencesChanged();
+        }
     }
 
     /// <summary>Whether content-level surfaces use glass. Swift:
@@ -123,7 +155,16 @@ public sealed class LiquidGlassEnvironment
         get => _store.GetBool(
             LiquidGlassTransparency.ContentSurfacesEnabledKey,
             LiquidGlass.DefaultContentSurfacesEnabled);
-        set => _store.SetBool(LiquidGlassTransparency.ContentSurfacesEnabledKey, value);
+        set
+        {
+            if (ContentSurfacesEnabled == value)
+            {
+                return;
+            }
+
+            _store.SetBool(LiquidGlassTransparency.ContentSurfacesEnabledKey, value);
+            RaisePreferencesChanged();
+        }
     }
 
     /// <summary>
@@ -153,38 +194,53 @@ public sealed class LiquidGlassEnvironment
     /// <c>LiquidGlassTransparency.effective(rawTransparency, reduceTransparency:)</c>.</summary>
     public double EffectiveTransparency =>
         LiquidGlassTransparency.Effective(RawTransparency, ReduceTransparency);
-}
 
-/// <summary>Persistence seam mirroring macOS <c>UserDefaults</c> — the shim stores the
-/// same two keys (<see cref="LiquidGlassTransparency.StorageKey"/> /
-/// <see cref="LiquidGlassTransparency.ContentSurfacesEnabledKey"/>). Wiring this to a
-/// concrete registry / settings-file store is a Settings-surface follow-up (W7); the
-/// default is process-local in-memory so the shim works standalone and in tests.</summary>
-public interface ILiquidGlassPreferenceStore
-{
-    double GetDouble(string key, double defaultValue);
-    void SetDouble(string key, double value);
-    bool GetBool(string key, bool defaultValue);
-    void SetBool(string key, bool value);
-}
+    /// <summary>Read a string preference (e.g. kernel backdrop id).</summary>
+    public string GetString(string key, string defaultValue) => _store.GetString(key, defaultValue);
 
-/// <summary>Default in-memory preference store (UserDefaults analog).</summary>
-public sealed class InMemoryPreferenceStore : ILiquidGlassPreferenceStore
-{
-    private readonly System.Collections.Generic.Dictionary<string, object> _values = new();
+    /// <summary>Write a string preference and raise <see cref="PreferencesChanged"/>.</summary>
+    public void SetString(string key, string value)
+    {
+        string next = value ?? string.Empty;
+        if (string.Equals(_store.GetString(key, string.Empty), next, StringComparison.Ordinal))
+        {
+            return;
+        }
 
-    public double GetDouble(string key, double defaultValue) =>
-        _values.TryGetValue(key, out var v) && v is double d ? d : defaultValue;
+        _store.SetString(key, next);
+        RaisePreferencesChanged();
+    }
 
-    public void SetDouble(string key, double value) => _values[key] = value;
+    /// <summary>Read a bool preference (e.g. kernel backdrop enabled).</summary>
+    public bool GetBool(string key, bool defaultValue) => _store.GetBool(key, defaultValue);
 
-    public bool GetBool(string key, bool defaultValue) =>
-        _values.TryGetValue(key, out var v) && v is bool b ? b : defaultValue;
+    /// <summary>Write a bool preference and raise <see cref="PreferencesChanged"/>.</summary>
+    public void SetBool(string key, bool value)
+    {
+        // Skip no-op writes when the key is already explicitly stored as value.
+        // Probe with both defaults: if both return the same value, the key is present.
+        // First write from an implicit default still persists (defaults disagree).
+        if (_store.GetBool(key, value) == value && _store.GetBool(key, !value) == value)
+        {
+            return;
+        }
 
-    public void SetBool(string key, bool value) => _values[key] = value;
+        _store.SetBool(key, value);
+        RaisePreferencesChanged();
+    }
+
+    /// <summary>Force a re-apply (e.g. after OS transparency setting changes).</summary>
+    public static void NotifyChanged() => RaisePreferencesChanged();
+
+    private static void RaisePreferencesChanged()
+    {
+        LiquidGlass.InvalidateRegisteredSurfaces();
+        PreferencesChanged?.Invoke(null, EventArgs.Empty);
+    }
 }
 
 // MARK: - Fluent style (drop-in for direct glassEffect call sites)
+
 
 /// <summary>
 /// Mirror of the Swift <c>LiquidGlassStyle</c> fluent configuration, so call sites keep
@@ -241,6 +297,8 @@ public readonly struct LiquidGlassStyle
 /// </summary>
 public static class LiquidGlass
 {
+    private static readonly System.Collections.Generic.List<WeakReference<Border>> SurfaceTargets = new();
+
     /// <summary>
     /// Default for the content-surface toggle: true when the OS can render a glass
     /// backdrop (Windows 11 / DesktopAcrylic-capable), false otherwise (Windows 10 solid).
@@ -285,9 +343,57 @@ public static class LiquidGlass
 
     private static void OnSurfaceChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        if (d is Border border && e.NewValue is true)
+        if (d is not Border border)
         {
-            border.Background = ResolveSurfaceBrush(LiquidGlassEnvironment.Current, tint: null);
+            return;
+        }
+
+        if (e.NewValue is true)
+        {
+            RegisterSurface(border);
+            ApplySurfaceBrush(border);
+        }
+    }
+
+    private static void RegisterSurface(Border border)
+    {
+        for (int i = SurfaceTargets.Count - 1; i >= 0; i--)
+        {
+            if (!SurfaceTargets[i].TryGetTarget(out Border? existing) || ReferenceEquals(existing, border))
+            {
+                if (existing is null)
+                {
+                    SurfaceTargets.RemoveAt(i);
+                }
+                else
+                {
+                    return; // already tracked
+                }
+            }
+        }
+
+        SurfaceTargets.Add(new WeakReference<Border>(border));
+    }
+
+    private static void ApplySurfaceBrush(Border border) =>
+        border.Background = ResolveSurfaceBrush(LiquidGlassEnvironment.Current, tint: null);
+
+    /// <summary>
+    /// Re-resolve every registered glass plate after a transparency preference change.
+    /// Dead weak refs are pruned.
+    /// </summary>
+    public static void InvalidateRegisteredSurfaces()
+    {
+        for (int i = SurfaceTargets.Count - 1; i >= 0; i--)
+        {
+            if (SurfaceTargets[i].TryGetTarget(out Border? border) && border is not null)
+            {
+                ApplySurfaceBrush(border);
+            }
+            else
+            {
+                SurfaceTargets.RemoveAt(i);
+            }
         }
     }
 
@@ -474,6 +580,8 @@ public static class LiquidGlass
 /// (an <c>NSVisualEffectView</c> with <c>.underWindowBackground</c> / <c>.behindWindow</c>).
 /// On Windows that behind-window blend IS <see cref="DesktopAcrylicBackdrop"/>. Assign the
 /// result to a window's <see cref="Window.SystemBackdrop"/> at the "Clear" end of the pref.
+/// The in-tree <see cref="Border"/> host is a frost/clear scrim layer so XAML can place
+/// content over the system backdrop without an opaque ink root.
 /// </summary>
 /// <remarks>Swift original: <c>struct LiquidGlassWindowBlend : NSViewRepresentable</c>.</remarks>
 public static class LiquidGlassWindowBlend
@@ -481,6 +589,40 @@ public static class LiquidGlassWindowBlend
     /// <summary>The behind-window blurred-desktop backdrop.
     /// Swift: <c>LiquidGlassWindowBlend.makeVisualEffectView()</c>.</summary>
     public static SystemBackdrop MakeBackdrop() => new DesktopAcrylicBackdrop();
+
+    /// <summary>
+    /// Build a full-bleed, hit-test-disabled scrim Border whose opacity tracks
+    /// <see cref="LiquidGlass.ResolveScrimOpacity"/>. Layer this behind content so Clear
+    /// lets the Mica/Acrylic desktop show through and Frost adds a thick plate.
+    /// </summary>
+    public static Border CreateScrimLayer(LiquidGlassEnvironment? env = null)
+    {
+        env ??= LiquidGlassEnvironment.Current;
+        double opacity = LiquidGlass.ResolveScrimOpacity(env);
+        return new Border
+        {
+            IsHitTestVisible = false,
+            Background = new SolidColorBrush(Color.FromArgb(
+                (byte)Math.Round(Math.Clamp(opacity, 0, 1) * 255),
+                0x0A, 0x0A, 0x0E)),
+            Opacity = opacity <= 0 ? 0 : 1,
+        };
+    }
+
+    /// <summary>Update an existing scrim layer after a preference change.</summary>
+    public static void ApplyScrim(Border scrim, LiquidGlassEnvironment? env = null)
+    {
+        if (scrim is null)
+        {
+            throw new ArgumentNullException(nameof(scrim));
+        }
+
+        env ??= LiquidGlassEnvironment.Current;
+        double opacity = LiquidGlass.ResolveScrimOpacity(env);
+        byte alpha = (byte)Math.Round(Math.Clamp(opacity, 0, 1) * 255);
+        scrim.Background = new SolidColorBrush(Color.FromArgb(alpha, 0x0A, 0x0A, 0x0E));
+        scrim.Opacity = opacity <= 0 ? 0 : 1;
+    }
 }
 
 // MARK: - Grouping container

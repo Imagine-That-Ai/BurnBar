@@ -22,6 +22,7 @@ private struct MercuryDroplet: View {
     let delay: Double
 
     @State private var phase: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Circle()
@@ -31,12 +32,16 @@ private struct MercuryDroplet: View {
             .offset(y: offsetForPhase(phase))
             .opacity(opacityForPhase(phase))
             .animation(
-                .linear(duration: 1.8)
-                .repeatForever(autoreverses: false)
-                .delay(delay),
+                reduceMotion
+                    ? nil
+                    : .linear(duration: 1.8)
+                        .repeatForever(autoreverses: false)
+                        .delay(delay),
                 value: phase
             )
-            .onAppear { phase = 1 }
+            .onAppear {
+                if !reduceMotion { phase = 1 }
+            }
     }
 
     private func scaleForPhase(_ p: CGFloat) -> CGFloat {

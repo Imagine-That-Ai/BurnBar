@@ -20,8 +20,13 @@ async function initPretextShrinkwrap() {
   }
 
   // Query all key copy elements for tight word wrapping
+  // NOTE: the homepage hero (.hero__h / .hero__copy .lead / .hero__attest)
+  // is deliberately NOT treated. The engine runs after document.fonts.ready,
+  // ~170ms after first paint, and re-wrapping the hero moved both hero
+  // columns — a single 0.24 CLS on the most-visited page. The pill chrome is
+  // invisible on the hero anyway; native text-wrap: balance handles it.
   const elements = document.querySelectorAll(
-    ".pretext-wrap, .glass-wrap-text, .hero__h, .hero__copy .lead, .hero__attest > span, .trust__head h2, .trust__head .lead, .trust__quote blockquote p, .endcta__h, .endcta__inner h2, .endcta__inner p, .endcta__inner .lead, .pagehead__inner h1, .pagehead__inner p, .pagehead__inner .lead, .pagehead__lead"
+    ".pretext-wrap, .glass-wrap-text, .trust__head h2, .trust__head .lead, .trust__quote blockquote p, .endcta__h, .endcta__inner h2, .endcta__inner p, .endcta__inner .lead, .pagehead__inner h1, .pagehead__inner p, .pagehead__inner .lead, .pagehead__lead"
   );
 
   // Styling reconstructor to restore semantic styling highlights on wrapped lines
@@ -217,6 +222,10 @@ async function initPretextShrinkwrap() {
               container.appendChild(span);
 
               if (lineIndex < lines.length - 1) {
+                // Whitespace between line spans: without it, screen readers
+                // and copy/paste see the words at line joins mashed together
+                // ("…OpenBurnBarcollects…"). A collapsed space is invisible.
+                container.appendChild(document.createTextNode(" "));
                 container.appendChild(document.createElement("br"));
               }
             });
@@ -224,6 +233,7 @@ async function initPretextShrinkwrap() {
 
           // Add a newline between blocks if it's not the last block and not followed by a BR block
           if (blockIndex < blocks.length - 1 && !blocks[blockIndex + 1].isBr) {
+            el.appendChild(document.createTextNode(" "));
             el.appendChild(document.createElement("br"));
           }
         });

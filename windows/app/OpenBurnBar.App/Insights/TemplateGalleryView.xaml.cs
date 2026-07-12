@@ -14,11 +14,21 @@ public sealed partial class TemplateGalleryView : UserControl
     public TemplateGalleryView()
     {
         InitializeComponent();
-        Gallery.ItemsSource = InsightsBuiltInTemplates.All;
+        ReloadTemplates();
     }
 
     /// <summary>Raised with the chosen template when a gallery card is clicked.</summary>
     public event EventHandler<InsightCanvasTemplate>? TemplateSelected;
+
+    /// <summary>
+    /// Rebind the gallery to the current <see cref="InsightsBuiltInTemplates.All"/> snapshot
+    /// (call after production composition reinstall so cards match live usage mode).
+    /// </summary>
+    public void ReloadTemplates()
+    {
+        Gallery.ItemsSource = null;
+        Gallery.ItemsSource = InsightsBuiltInTemplates.All;
+    }
 
     private void OnTemplateClick(object sender, ItemClickEventArgs e)
     {

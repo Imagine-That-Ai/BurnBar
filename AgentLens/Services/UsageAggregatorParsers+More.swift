@@ -6,19 +6,19 @@ import OpenBurnBarCore
 // Model-filter, OpenCode, and Pi-agent log parsers.
 // Extracted from UsageAggregatorParsers.swift (god-file decomposition) — same module, verbatim.
 
-final class ModelFilterParser: LogParser, Sendable {
+final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
     let provider: AgentProvider
     private let modelPattern: String
     private let fileManager: FileManager
-    private let appPaths: OpenBurnBarAppPaths
+    private let appPaths: OpenBurnBarCore.OpenBurnBarAppPaths
     private let cacheURL: URL
-    private let cacheStore: ParserDiskCacheStore<ModelFilterCacheEntry>
+    private let cacheStore: OpenBurnBarCore.ParserDiskCacheStore<ModelFilterCacheEntry>
 
     init(
         modelPattern: String,
         provider: AgentProvider,
         fileManager: FileManager = .default,
-        appPaths: OpenBurnBarAppPaths = .live()
+        appPaths: OpenBurnBarCore.OpenBurnBarAppPaths = .live()
     ) {
         self.modelPattern = modelPattern.lowercased()
         self.provider = provider
@@ -30,7 +30,7 @@ final class ModelFilterParser: LogParser, Sendable {
             .replacingOccurrences(of: " ", with: "_")
         self.cacheURL = appPaths.supportDirectory
             .appendingPathComponent("model_filter_parser_\(providerKey).json")
-        self.cacheStore = ParserDiskCacheStore(
+        self.cacheStore = OpenBurnBarCore.ParserDiskCacheStore(
             cacheURL: cacheURL,
             fileManager: fileManager,
             schemaVersion: 2,
@@ -39,21 +39,21 @@ final class ModelFilterParser: LogParser, Sendable {
         ParserSupportDirectoryWarmUp.prepare(fileManager: fileManager, appPaths: appPaths)
     }
 
-    func parse() async throws -> ParseResult {
+    func parse() async throws -> OpenBurnBarCore.ParseResult {
         try await parse(options: .default)
     }
 
-    func parse(options: LogParseOptions) async throws -> ParseResult {
+    func parse(options: OpenBurnBarCore.LogParseOptions) async throws -> OpenBurnBarCore.ParseResult {
         let sessionsPath = "~/.factory/sessions"
         let sessionsURL = URL(fileURLWithPath: (sessionsPath as NSString).expandingTildeInPath)
         let includeConversationBodies = options.includeConversationBodies
 
         guard fileManager.fileExists(atPath: sessionsURL.path) else {
-            return ParseResult(usages: [], conversations: [])
+            return OpenBurnBarCore.ParseResult(usages: [], conversations: [])
         }
 
         var usages: [TokenUsage] = []
-        var conversations: [ConversationRecord] = []
+        var conversations: [OpenBurnBarCore.ConversationRecord] = []
         var parseCache = cacheStore.load()
         var activePaths = Set<String>()
         var cacheMutated = false
@@ -133,7 +133,7 @@ final class ModelFilterParser: LogParser, Sendable {
             cacheStore.persist(parseCache)
         }
 
-        return ParseResult(usages: usages, conversations: conversations)
+        return OpenBurnBarCore.ParseResult(usages: usages, conversations: conversations)
     }
 
     private func decodeProjectName(_ encoded: String) -> String {
@@ -146,14 +146,14 @@ final class ModelFilterParser: LogParser, Sendable {
         return decoded
     }
 
-    private func parseSession(file: URL, projectName: String) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
+    private func parseSession(file: URL, projectName: String) throws -> (usage: TokenUsage?, conversation: OpenBurnBarCore.ConversationRecord?)? {
         guard let handle = try? FileHandle(forReadingFrom: file) else { // try?-ok(log open, skip if absent)
             return nil
         }
         defer { try? handle.close() } // try?-ok(handle teardown)
 
         let mtime = (try? fileManager.attributesOfItem(atPath: file.path)[.modificationDate]) as? Date // try?-ok(optional mtime)
-        let conv = ClaudeConversationAccumulator()
+        let conv = OpenBurnBarCore.ClaudeConversationAccumulator()
 
         let baseName = file.deletingPathExtension().lastPathComponent
         let settingsURL = file.deletingLastPathComponent().appendingPathComponent("\(baseName).settings.json")
@@ -171,10 +171,10 @@ final class ModelFilterParser: LogParser, Sendable {
         if let data = try? Data(contentsOf: settingsURL), // try?-ok(optional sidecar read)
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { // try?-ok(sidecar decode)
             if let m = json["model"] as? String {
-                settingsModel = TokenExtractionUtility.normalizeModelName(m)
+                settingsModel = OpenBurnBarCore.TokenExtractionUtility.normalizeModelName(m)
             }
             if let tokenUsage = json["tokenUsage"] as? [String: Any] {
-                let extracted = TokenExtractionUtility.extractUsageTokens(tokenUsage)
+                let extracted = OpenBurnBarCore.TokenExtractionUtility.extractUsageTokens(tokenUsage)
                 if extracted.input > 0 || extracted.output > 0 || extracted.cacheCreation > 0 || extracted.cacheRead > 0 {
                     inputTokens = extracted.input
                     outputTokens = extracted.output
@@ -189,10 +189,10 @@ final class ModelFilterParser: LogParser, Sendable {
            let data = try? Data(contentsOf: metadataURL), // try?-ok(optional sidecar read)
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { // try?-ok(sidecar decode)
             if settingsModel == nil, let m = json["model"] as? String {
-                settingsModel = TokenExtractionUtility.normalizeModelName(m)
+                settingsModel = OpenBurnBarCore.TokenExtractionUtility.normalizeModelName(m)
             }
             if let tokenUsage = json["tokenUsage"] as? [String: Any] ?? json["usage"] as? [String: Any] {
-                let extracted = TokenExtractionUtility.extractUsageTokens(tokenUsage)
+                let extracted = OpenBurnBarCore.TokenExtractionUtility.extractUsageTokens(tokenUsage)
                 if extracted.input > 0 || extracted.output > 0 || extracted.cacheCreation > 0 || extracted.cacheRead > 0 {
                     inputTokens = extracted.input
                     outputTokens = extracted.output
@@ -222,7 +222,7 @@ final class ModelFilterParser: LogParser, Sendable {
             if let message = json["message"] as? [String: Any] {
                 let role = (message["role"] as? String)?.lowercased()
                 if let content = message["content"] {
-                    let metrics = TokenExtractionUtility.contentMetrics(from: content)
+                    let metrics = OpenBurnBarCore.TokenExtractionUtility.contentMetrics(from: content)
                     if role == "user" {
                         let chars = metrics.visibleChars + metrics.reasoningChars
                         if chars > 0 {
@@ -238,8 +238,8 @@ final class ModelFilterParser: LogParser, Sendable {
                         assistantReasoningCharCount += metrics.reasoningChars
                     }
 
-                    if inlineModel == nil, let detectedModel = TokenExtractionUtility.detectModelHint(from: content) {
-                        inlineModel = TokenExtractionUtility.normalizeModelName(detectedModel)
+                    if inlineModel == nil, let detectedModel = OpenBurnBarCore.TokenExtractionUtility.detectModelHint(from: content) {
+                        inlineModel = OpenBurnBarCore.TokenExtractionUtility.normalizeModelName(detectedModel)
                     }
                 }
             }
@@ -259,7 +259,7 @@ final class ModelFilterParser: LogParser, Sendable {
 
             if let message = json["message"] as? [String: Any],
                let usage = message["usage"] as? [String: Any] {
-                let extracted = TokenExtractionUtility.extractUsageTokens(
+                let extracted = OpenBurnBarCore.TokenExtractionUtility.extractUsageTokens(
                     usage,
                     inputHint: userCharCount,
                     outputHint: assistantCharCount + assistantReasoningCharCount
@@ -283,7 +283,7 @@ final class ModelFilterParser: LogParser, Sendable {
 
         if inputTokens == 0 && outputTokens == 0 && cacheCreationTokens == 0 && cacheReadTokens == 0 {
             guard userCharCount + assistantCharCount + assistantReasoningCharCount > 0 else { return nil }
-            let estimated = TokenExtractionUtility.estimateFallbackTokens(
+            let estimated = OpenBurnBarCore.TokenExtractionUtility.estimateFallbackTokens(
                 userVisibleChars: userCharCount,
                 assistantVisibleChars: assistantCharCount,
                 assistantReasoningChars: assistantReasoningCharCount,
@@ -310,7 +310,7 @@ final class ModelFilterParser: LogParser, Sendable {
         let resolvedStart = startTime ?? conv.startTime ?? Date()
         let resolvedEnd = endTime ?? conv.endTime ?? resolvedStart
 
-        let cost = ModelPricing.lookup(model: model).cost(
+        let cost = OpenBurnBarCore.ModelPricing.lookup(model: model).cost(
             inputTokens: inputTokens,
             outputTokens: outputTokens,
             cacheCreationTokens: cacheCreationTokens,
@@ -332,11 +332,11 @@ final class ModelFilterParser: LogParser, Sendable {
             endTime: resolvedEnd,
             provenanceMethod: usedFallbackEstimate ? .heuristicEstimate : .providerLog,
             provenanceConfidence: usedFallbackEstimate ? .lowConfidenceEstimate : .exact,
-            estimatorVersion: usedFallbackEstimate ? TokenExtractionUtility.currentEstimatorVersion : ""
+            estimatorVersion: usedFallbackEstimate ? OpenBurnBarCore.TokenExtractionUtility.currentEstimatorVersion : ""
         )
 
-        let conversation = ConversationRecord(
-            id: ConversationRecord.stableId(provider: provider, sessionId: sessionId),
+        let conversation = OpenBurnBarCore.ConversationRecord(
+            id: OpenBurnBarCore.ConversationRecord.stableId(provider: provider, sessionId: sessionId),
             provider: provider,
             sessionId: sessionId,
             projectName: projectName,
@@ -367,7 +367,7 @@ final class ModelFilterParser: LogParser, Sendable {
         _ cached: ModelFilterCacheEntry,
         includeConversation: Bool,
         usages: inout [TokenUsage],
-        conversations: inout [ConversationRecord]
+        conversations: inout [OpenBurnBarCore.ConversationRecord]
     ) {
         if let usage = cached.usage {
             usages.append(usage)
@@ -378,10 +378,10 @@ final class ModelFilterParser: LogParser, Sendable {
     }
 
     private func appendParsed(
-        _ parsed: (usage: TokenUsage?, conversation: ConversationRecord?)?,
+        _ parsed: (usage: TokenUsage?, conversation: OpenBurnBarCore.ConversationRecord?)?,
         includeConversation: Bool,
         usages: inout [TokenUsage],
-        conversations: inout [ConversationRecord]
+        conversations: inout [OpenBurnBarCore.ConversationRecord]
     ) {
         guard let parsed else { return }
         if let usage = parsed.usage {
@@ -396,18 +396,18 @@ final class ModelFilterParser: LogParser, Sendable {
         jsonlFile: URL,
         settingsFile: URL,
         metadataFile: URL
-    ) -> CompositeFileSignature<FileSignature>? {
-        guard let jsonl = FileSignature(for: jsonlFile) else { return nil }
-        let settings = FileSignature(for: settingsFile)
-        let metadata = FileSignature(for: metadataFile)
-        return CompositeFileSignature(primary: jsonl, settings: settings, metadata: metadata)
+    ) -> OpenBurnBarCore.CompositeFileSignature<OpenBurnBarCore.FileSignature>? {
+        guard let jsonl = OpenBurnBarCore.FileSignature(for: jsonlFile) else { return nil }
+        let settings = OpenBurnBarCore.FileSignature(for: settingsFile)
+        let metadata = OpenBurnBarCore.FileSignature(for: metadataFile)
+        return OpenBurnBarCore.CompositeFileSignature(primary: jsonl, settings: settings, metadata: metadata)
     }
 }
 
 struct ModelFilterCacheEntry: Codable, Equatable {
-    let signature: CompositeFileSignature<FileSignature>
+    let signature: OpenBurnBarCore.CompositeFileSignature<OpenBurnBarCore.FileSignature>
     let usage: TokenUsage?
-    let conversation: ConversationRecord?
+    let conversation: OpenBurnBarCore.ConversationRecord?
 }
 
 /// Parses OpenCode sessions from the local SQLite store (`~/.local/share/opencode/opencode.db`).
@@ -415,10 +415,10 @@ struct ModelFilterCacheEntry: Codable, Equatable {
 /// OpenCode persists three tables — `session`, `message`, and `part` — where each row stores a
 /// JSON `data` blob. Messages carry role / token / cost / model metadata; parts carry the text
 /// content. This parser stitches them into per-session `TokenUsage` rows plus full
-/// `ConversationRecord` transcripts so OpenCode conversations back up and search like every
+/// `OpenBurnBarCore.ConversationRecord` transcripts so OpenCode conversations back up and search like every
 /// other CLI agent. Schema discovery is defensive (column and JSON-key fallbacks) so future
 /// OpenCode storage tweaks degrade gracefully instead of dropping data.
-final class OpenCodeParser: LogParser, Sendable {
+final class OpenCodeParser: OpenBurnBarCore.LogParser, Sendable {
     let provider: AgentProvider = .openCode
 
     /// When set, the parser reads this exact `opencode.db` path instead of
@@ -430,12 +430,12 @@ final class OpenCodeParser: LogParser, Sendable {
         self.databasePathOverride = databasePathOverride
     }
 
-    func parse() async throws -> ParseResult {
+    func parse() async throws -> OpenBurnBarCore.ParseResult {
         let fm = FileManager.default
         let resolved = databasePathOverride.map { ($0 as NSString).expandingTildeInPath }
             ?? Self.resolvedDatabasePath()
         guard let dbPath = resolved, fm.fileExists(atPath: dbPath) else {
-            return ParseResult(usages: [], conversations: [])
+            return OpenBurnBarCore.ParseResult(usages: [], conversations: [])
         }
         return try parseDatabase(dbPath: dbPath)
     }
@@ -473,7 +473,7 @@ final class OpenCodeParser: LogParser, Sendable {
         var cost: Double?
     }
 
-    private func parseDatabase(dbPath: String) throws -> ParseResult {
+    private func parseDatabase(dbPath: String) throws -> OpenBurnBarCore.ParseResult {
         var config = Configuration()
         config.readonly = true
         let db = try DatabaseQueue(path: dbPath, configuration: config)
@@ -543,7 +543,7 @@ final class OpenCodeParser: LogParser, Sendable {
         }
 
         var usages: [TokenUsage] = []
-        var conversations: [ConversationRecord] = []
+        var conversations: [OpenBurnBarCore.ConversationRecord] = []
 
         for (sessionID, rawMessages) in messagesBySession {
             let messages = rawMessages.sorted { $0.time < $1.time }
@@ -579,7 +579,7 @@ final class OpenCodeParser: LogParser, Sendable {
                     .filter { $0.role == "assistant" }
                     .reduce(0) { $0 + (textByMessage[$1.messageID]?.count ?? 0) }
                 guard userChars + assistantChars > 0 else { continue }
-                let estimated = TokenExtractionUtility.estimateFallbackTokens(
+                let estimated = OpenBurnBarCore.TokenExtractionUtility.estimateFallbackTokens(
                     userVisibleChars: userChars,
                     assistantVisibleChars: assistantChars,
                     assistantReasoningChars: 0,
@@ -592,7 +592,7 @@ final class OpenCodeParser: LogParser, Sendable {
             }
 
             if cost <= 0 {
-                cost = ModelPricing.lookup(model: model).cost(
+                cost = OpenBurnBarCore.ModelPricing.lookup(model: model).cost(
                     inputTokens: input,
                     outputTokens: output,
                     cacheCreationTokens: cacheCreation,
@@ -615,7 +615,7 @@ final class OpenCodeParser: LogParser, Sendable {
                     endTime: endTime,
                     provenanceMethod: usedFallback ? .heuristicEstimate : .providerLog,
                     provenanceConfidence: usedFallback ? .lowConfidenceEstimate : .exact,
-                    estimatorVersion: usedFallback ? TokenExtractionUtility.currentEstimatorVersion : ""
+                    estimatorVersion: usedFallback ? OpenBurnBarCore.TokenExtractionUtility.currentEstimatorVersion : ""
                 )
             )
 
@@ -636,13 +636,13 @@ final class OpenCodeParser: LogParser, Sendable {
                     if firstUser == nil { firstUser = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120)) }
                 }
                 if !fullText.isEmpty { fullText += "\n\n" }
-                fullText += SessionLogMarkdownFormatter.transcriptTurnMarkdown(isAssistant: isAssistant, body: text)
+                fullText += OpenBurnBarCore.SessionLogMarkdownFormatter.transcriptTurnMarkdown(isAssistant: isAssistant, body: text)
                 renderedMessages += 1
             }
 
             conversations.append(
-                ConversationRecord(
-                    id: ConversationRecord.stableId(provider: .openCode, sessionId: sessionID),
+                OpenBurnBarCore.ConversationRecord(
+                    id: OpenBurnBarCore.ConversationRecord.stableId(provider: .openCode, sessionId: sessionID),
                     provider: .openCode,
                     sessionId: sessionID,
                     projectName: projectName,
@@ -665,7 +665,7 @@ final class OpenCodeParser: LogParser, Sendable {
             )
         }
 
-        return ParseResult(usages: usages, conversations: conversations)
+        return OpenBurnBarCore.ParseResult(usages: usages, conversations: conversations)
     }
 
     // MARK: - JSON / column helpers
@@ -705,9 +705,9 @@ final class OpenCodeParser: LogParser, Sendable {
 
     private static func resolvedModel(_ json: [String: Any]) -> String? {
         let modelID = (json["modelID"] as? String ?? json["model"] as? String ?? json["model_id"] as? String)?.nonEmpty
-        if let modelID { return TokenExtractionUtility.normalizeModelName(modelID) }
+        if let modelID { return OpenBurnBarCore.TokenExtractionUtility.normalizeModelName(modelID) }
         if let provider = (json["providerID"] as? String ?? json["provider"] as? String)?.nonEmpty {
-            return TokenExtractionUtility.normalizeModelName(provider)
+            return OpenBurnBarCore.TokenExtractionUtility.normalizeModelName(provider)
         }
         return nil
     }
@@ -715,7 +715,7 @@ final class OpenCodeParser: LogParser, Sendable {
     private static func openCodeTokens(_ json: [String: Any]) -> (input: Int, output: Int, cacheCreation: Int, cacheRead: Int)? {
         guard let tokens = json["tokens"] as? [String: Any] else {
             if let usage = json["usage"] as? [String: Any] {
-                let extracted = TokenExtractionUtility.extractUsageTokens(usage)
+                let extracted = OpenBurnBarCore.TokenExtractionUtility.extractUsageTokens(usage)
                 return (extracted.input, extracted.output, extracted.cacheCreation, extracted.cacheRead)
             }
             return nil
@@ -775,7 +775,7 @@ final class OpenCodeParser: LogParser, Sendable {
 
     private static func date(fromEpoch epoch: Double) -> Date? {
         guard epoch > 0 else { return nil }
-        return TimestampNormalizationUtility.date(fromEpoch: epoch)
+        return OpenBurnBarCore.TimestampNormalizationUtility.date(fromEpoch: epoch)
     }
 }
 
@@ -783,16 +783,16 @@ final class OpenCodeParser: LogParser, Sendable {
 ///
 /// Pi writes one JSONL file per session with user/assistant turns and optional inline `usage`
 /// blocks. This parser extracts exact tokens when present, estimates from transcript volume
-/// otherwise, and always emits a full `ConversationRecord` so Pi conversations back up and
+/// otherwise, and always emits a full `OpenBurnBarCore.ConversationRecord` so Pi conversations back up and
 /// search alongside every other agent.
-final class PiAgentParser: LogParser, Sendable {
+final class PiAgentParser: OpenBurnBarCore.LogParser, Sendable {
     let provider: AgentProvider = .piAgent
 
-    func parse() async throws -> ParseResult {
+    func parse() async throws -> OpenBurnBarCore.ParseResult {
         let fm = FileManager.default
         let sessionsPath = (provider.logDirectory as NSString).expandingTildeInPath
         guard fm.fileExists(atPath: sessionsPath) else {
-            return ParseResult(usages: [], conversations: [])
+            return OpenBurnBarCore.ParseResult(usages: [], conversations: [])
         }
 
         let sessionsURL = URL(fileURLWithPath: sessionsPath)
@@ -800,7 +800,7 @@ final class PiAgentParser: LogParser, Sendable {
             .filter { $0.pathExtension == "jsonl" } ?? []
 
         var usages: [TokenUsage] = []
-        var conversations: [ConversationRecord] = []
+        var conversations: [OpenBurnBarCore.ConversationRecord] = []
 
         for file in jsonlFiles {
             let sessionId = file.deletingPathExtension().lastPathComponent
@@ -810,10 +810,10 @@ final class PiAgentParser: LogParser, Sendable {
             }
         }
 
-        return ParseResult(usages: usages, conversations: conversations)
+        return OpenBurnBarCore.ParseResult(usages: usages, conversations: conversations)
     }
 
-    private func parseSession(file: URL, sessionId: String) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
+    private func parseSession(file: URL, sessionId: String) -> (usage: TokenUsage?, conversation: OpenBurnBarCore.ConversationRecord?)? {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return nil } // try?-ok(log open, skip if absent)
         defer { try? handle.close() } // try?-ok(handle teardown)
 
@@ -848,7 +848,7 @@ final class PiAgentParser: LogParser, Sendable {
                 endTime = date
             }
             if let m = (json["model"] as? String ?? (json["message"] as? [String: Any])?["model"] as? String)?.nonEmpty {
-                model = TokenExtractionUtility.normalizeModelName(m)
+                model = OpenBurnBarCore.TokenExtractionUtility.normalizeModelName(m)
             }
             if let cwd = (json["cwd"] as? String ?? json["workingDirectory"] as? String ?? json["directory"] as? String)?.nonEmpty {
                 workingDirectory = cwd
@@ -856,7 +856,7 @@ final class PiAgentParser: LogParser, Sendable {
 
             if let usage = json["usage"] as? [String: Any]
                 ?? (json["message"] as? [String: Any])?["usage"] as? [String: Any] {
-                let extracted = TokenExtractionUtility.extractUsageTokens(usage)
+                let extracted = OpenBurnBarCore.TokenExtractionUtility.extractUsageTokens(usage)
                 inputTokens += extracted.input
                 outputTokens += extracted.output
                 cacheCreationTokens += extracted.cacheCreation
@@ -874,14 +874,14 @@ final class PiAgentParser: LogParser, Sendable {
                 userWords += content.split { $0.isWhitespace || $0.isNewline }.count
                 if firstUser == nil { firstUser = String(content.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120)) }
                 if !fullText.isEmpty { fullText += "\n\n" }
-                fullText += SessionLogMarkdownFormatter.transcriptTurnMarkdown(isAssistant: false, body: content)
+                fullText += OpenBurnBarCore.SessionLogMarkdownFormatter.transcriptTurnMarkdown(isAssistant: false, body: content)
                 messageCount += 1
             } else if role == "assistant" || role == "ai" || role == "assistant_message" {
                 assistantChars += content.count
                 assistantWords += content.split { $0.isWhitespace || $0.isNewline }.count
                 lastAssistant = content
                 if !fullText.isEmpty { fullText += "\n\n" }
-                fullText += SessionLogMarkdownFormatter.transcriptTurnMarkdown(isAssistant: true, body: content)
+                fullText += OpenBurnBarCore.SessionLogMarkdownFormatter.transcriptTurnMarkdown(isAssistant: true, body: content)
                 messageCount += 1
             }
         }
@@ -890,7 +890,7 @@ final class PiAgentParser: LogParser, Sendable {
         var usedFallback = false
         if !hasUsage {
             guard userChars + assistantChars > 0 else { return nil }
-            let estimated = TokenExtractionUtility.estimateFallbackTokens(
+            let estimated = OpenBurnBarCore.TokenExtractionUtility.estimateFallbackTokens(
                 userVisibleChars: userChars,
                 assistantVisibleChars: assistantChars,
                 assistantReasoningChars: 0,
@@ -904,7 +904,7 @@ final class PiAgentParser: LogParser, Sendable {
 
         guard inputTokens > 0 || outputTokens > 0 || cacheCreationTokens > 0 || cacheReadTokens > 0 else { return nil }
 
-        let cost = ModelPricing.lookup(model: model).cost(
+        let cost = OpenBurnBarCore.ModelPricing.lookup(model: model).cost(
             inputTokens: inputTokens,
             outputTokens: outputTokens,
             cacheCreationTokens: cacheCreationTokens,
@@ -926,11 +926,11 @@ final class PiAgentParser: LogParser, Sendable {
             endTime: endTime ?? mtime ?? Date(),
             provenanceMethod: usedFallback ? .heuristicEstimate : .providerLog,
             provenanceConfidence: usedFallback ? .lowConfidenceEstimate : .exact,
-            estimatorVersion: usedFallback ? TokenExtractionUtility.currentEstimatorVersion : ""
+            estimatorVersion: usedFallback ? OpenBurnBarCore.TokenExtractionUtility.currentEstimatorVersion : ""
         )
 
-        let conversation = ConversationRecord(
-            id: ConversationRecord.stableId(provider: .piAgent, sessionId: sessionId),
+        let conversation = OpenBurnBarCore.ConversationRecord(
+            id: OpenBurnBarCore.ConversationRecord.stableId(provider: .piAgent, sessionId: sessionId),
             provider: .piAgent,
             sessionId: sessionId,
             projectName: projectName,

@@ -183,11 +183,16 @@ enum CLIArgumentBuilder {
 
     static func cursorAgentArguments(
         prompt: String,
+        model: String = "",
         workspaceDirectory: URL? = nil,
         capabilityGrant: AgentCapabilityGrant? = nil,
         hasFreshLocalAuthProof: Bool = false
     ) -> [String] {
         var arguments: [String] = []
+        let trimmedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedModel.isEmpty {
+            arguments.append(contentsOf: ["--model", trimmedModel])
+        }
         if let workspaceDirectory {
             arguments.append(contentsOf: ["--add-dir", workspaceDirectory.path])
         }
@@ -256,7 +261,17 @@ enum CLIArgumentBuilder {
             let dedupedTools = (Array(NSOrderedSet(array: tools)) as? [String] ?? tools)
                 .joined(separator: ",")
             arguments.append(contentsOf: ["--tools", dedupedTools])
-            arguments.append("--auto-approve")
+            if capabilityGrant.trustMode == .trusted {
+                arguments.append("--auto-approve")
+            } else {
+                // OMP defaults tools.approvalMode to "yolo", so merely omitting
+                // --auto-approve still auto-approves every tool call. Force the
+                // strictest mode for non-trusted grants: read-only tools run,
+                // write/exec tools (edit, write, bash) require approval — and
+                // fail closed in headless `--mode json` runs where no UI exists
+                // to grant them.
+                arguments.append(contentsOf: ["--approval-mode", "always-ask"])
+            }
         } else {
             arguments.append("--no-tools")
         }
@@ -445,12 +460,14 @@ extension CLIBridge {
 
     nonisolated static func cursorAgentArguments(
         prompt: String,
+        model: String = "",
         workspaceDirectory: URL? = nil,
         capabilityGrant: AgentCapabilityGrant? = nil,
         hasFreshLocalAuthProof: Bool = false
     ) -> [String] {
         CLIArgumentBuilder.cursorAgentArguments(
             prompt: prompt,
+            model: model,
             workspaceDirectory: workspaceDirectory,
             capabilityGrant: capabilityGrant,
             hasFreshLocalAuthProof: hasFreshLocalAuthProof

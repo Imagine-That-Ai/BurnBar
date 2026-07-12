@@ -18,7 +18,7 @@ import {
   connectProviderAccountInternal,
 } from "./shared.js";
 import { destroyCredential } from "../secrets.js";
-import { eraseUserAccount } from "../accountDeletion.js";
+import { eraseUserAccount, isAccountErasureResumable } from "../accountDeletion.js";
 import { auditActorLabel } from "./auditLog.js";
 import type { ProviderAccountConnectContext } from "../types.js";
 import { FUNCTIONS_REGION, HOT_PATH_OPTIONS } from "../runtimeOptions.js";
@@ -363,25 +363,35 @@ export const deleteUserCloudData = onCall(
       throw new HttpsError("unauthenticated", "Sign in before deleting cloud data.");
     }
     enforceAuthAndAppCheck(request, uid);
-    await enforceHighRiskOwnerAction(request, uid, {
-      actionKind: "user_cloud_data_delete",
-      subjectId: uid,
-    });
+    // The first attempt requires the full fresh high-risk proof. A server-only
+    // nonterminal erasure record authorizes retries for this same authenticated
+    // uid, even if a partial Firestore cleanup removed trusted-device records.
+    const resumeExistingIntent = await isAccountErasureResumable(db, uid);
+    if (!resumeExistingIntent) {
+      await enforceHighRiskOwnerAction(request, uid, {
+        actionKind: "user_cloud_data_delete",
+        subjectId: uid,
+      });
+    }
 
     const summary = await eraseUserAccount(db, uid, {
       destroyCredential,
+      revokeAuthTokens: async (targetUID) => {
+        await auth.revokeRefreshTokens(targetUID);
+      },
       deleteAuthUser: async (targetUID) => {
         await auth.deleteUser(targetUID);
       },
+      resumeExistingIntent,
       audit: {
         actor: auditActorLabel(request),
         domain: "account",
       },
     });
-    if (summary.failedSecretDestroys > 0) {
+    if (summary.retryRequired) {
       throw new HttpsError(
-        "internal",
-        "Cloud data was deleted, but one or more hosted credential secrets could not be destroyed. Contact support.",
+        "unavailable",
+        "Account erasure is incomplete because one or more external artifacts could not be deleted. Retry account deletion; your sign-in remains active until cleanup completes.",
         summary,
       );
     }

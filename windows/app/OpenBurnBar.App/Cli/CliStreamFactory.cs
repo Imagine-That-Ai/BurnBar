@@ -9,7 +9,7 @@ namespace OpenBurnBar.App.Cli;
 /// </summary>
 public static class CliStreamFactory
 {
-    /// <summary>Default command line for the ConPTY session (overridable via <c>OPENBURNBAR_CLI_COMMAND</c>).</summary>
+    /// <summary>Default command line for the ConPTY session.</summary>
     public const string DefaultCommandLine = "claude --output-format stream-json --print \"\"";
 
     /// <summary>
@@ -25,13 +25,7 @@ public static class CliStreamFactory
 
         if (OperatingSystem.IsWindows())
         {
-            var command = Environment.GetEnvironmentVariable("OPENBURNBAR_CLI_COMMAND");
-            if (string.IsNullOrWhiteSpace(command))
-            {
-                command = DefaultCommandLine;
-            }
-
-            return new ConPtyCliStream(command);
+            return new ConPtyCliStream(DefaultCommandLine);
         }
 
         return new StubCliStream();

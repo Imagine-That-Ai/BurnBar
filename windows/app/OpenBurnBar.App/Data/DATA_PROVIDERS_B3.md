@@ -2,17 +2,19 @@
 
 ## Wired (this branch)
 
-| Surface | Source | Env / notes |
+| Surface | Source | Policy / notes |
 |---------|--------|-------------|
-| Session Logs | `SqlCipherSessionLogReadSource` → `conversations` + FTS | `OPENBURNBAR_SQLCIPHER_PATH`, `OPENBURNBAR_SQLCIPHER_PASSPHRASE` |
-| Dashboard (Classic stat tiles) | `TokenUsageReadSeam` aggregates on `token_usage` | Same SQLCipher env |
-| Budget / Switcher / Elder Wand | B2 `SqlCipher*` stores via `WindowsStorageDevHost` | Same |
+| Session Logs | `SqlCipherSessionLogReadSource` → `conversations` + FTS | `WindowsStorageDevHost` provisions `%LOCALAPPDATA%\OpenBurnBar\openburnbar.sqlite`; SQLCipher passphrase lives in protected storage. |
+| Dashboard (Classic stat tiles) | `TokenUsageReadSeam` aggregates on `token_usage` | Same protected SQLCipher runtime. |
+| Budget / Switcher / Elder Wand | B2 `SqlCipher*` stores via `WindowsStorageDevHost` | Same protected SQLCipher runtime. |
 | Quota workspace | B4 CloudSyncQuotaSnapshotStore → Firestore quota_snapshots (Mac-computed); sample fallback | OPENBURNBAR_FIREBASE_UID (+ project / vault as for Memory) |
 
 ## Interim engine compute (macOS dev host)
 
 - `SwiftEngineInterim.RunG2ParserParityAsync` shells out to `swift run --package-path OpenBurnBarCore OpenBurnBarG2ParserParity`.
 - Optional: `OPENBURNBAR_CORE_PACKAGE_PATH`.
+- `SwiftEngineInterim` launches through `ChildProcessLaunchPolicy` with the
+  `ReleaseTool` environment allowlist.
 - Does **not** use `crates/burnbar-remote` UniFFI C# (`BurnBarRemote.Ffi`); that crate is remote relay transport, not the OpenBurnBar Swift Engine.
 
 ## Deferred

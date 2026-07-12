@@ -1,0 +1,23 @@
+  Determining projects to restore...
+  Restored /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/b0-spike/OpenBurnBar.B0Spike.Tests.csproj (in 225 ms).
+  3 of 4 projects are up-to-date for restore.
+  OpenBurnBar.Pal.Ipc -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/pal/ipc/bin/Release/net10.0/OpenBurnBar.Pal.Ipc.dll
+  OpenBurnBar.Storage -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/storage/OpenBurnBar.Storage/bin/Release/net10.0/OpenBurnBar.Storage.dll
+  OpenBurnBar.Pal.Ipc.Windows -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/pal/ipc-windows/bin/Release/net10.0/OpenBurnBar.Pal.Ipc.Windows.dll
+  OpenBurnBar.B0Spike.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/b0-spike/bin/Release/net10.0/OpenBurnBar.B0Spike.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/b0-spike/bin/Release/net10.0/OpenBurnBar.B0Spike.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: The specified inactivity time of 60 seconds has elapsed. Collecting hang dumps from testhost and its child processes.
+
+
+
+Attachments:
+  /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/b0-spike/TestResults/7e630d46-4522-425a-a80c-6d463c74fee5/dotnet_49171_20260711T160118_hangdump.dmp
+  /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/b0-spike/TestResults/7e630d46-4522-425a-a80c-6d463c74fee5/Sequence_94d2e0f9d2f94c1ba6e1637a3ac00b71.xml
+The active test run was aborted. Reason: Test host process crashed
+Test Run Aborted.
+The active Test Run was aborted because the host process exited unexpectedly. Please inspect the call stack above, if available, to get more information about where the exception originated from.
+The test running when the crash occurred: 
+OpenBurnBar.B0Spike.Tests.B0EndToEndSpikeTests.SwiftEngine_ParseStep_G2ParityPasses
+
+This test may, or may not be the source of the crash.

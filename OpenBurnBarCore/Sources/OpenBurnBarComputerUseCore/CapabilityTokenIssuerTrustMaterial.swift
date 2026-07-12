@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Published issuer trust for offline bridge verification (public key only).
 public struct CapabilityTokenIssuerTrustMaterial: Codable, Sendable, Equatable {

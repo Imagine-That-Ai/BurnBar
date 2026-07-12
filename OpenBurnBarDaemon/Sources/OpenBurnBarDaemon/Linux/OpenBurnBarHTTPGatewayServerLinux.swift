@@ -33,6 +33,7 @@ public actor BurnBarHTTPGatewayServer {
     let configStore: BurnBarConfigStore
     let usageRecorder: BurnBarUsageRecorder?
     let proxyRouteLogStore: BurnBarProxyRouteLogStore?
+    let quotaSignalStore: BurnBarQuotaSignalStore?
     let providerExecutor: BurnBarOpenAICompatibleProviderExecutor
     let anthropicExecutor: BurnBarAnthropicProviderExecutor
     let factoryExecutor: FactoryDroidProviderExecutor
@@ -48,6 +49,7 @@ public actor BurnBarHTTPGatewayServer {
         configStore: BurnBarConfigStore,
         usageRecorder: BurnBarUsageRecorder? = nil,
         proxyRouteLogStore: BurnBarProxyRouteLogStore? = nil,
+        quotaSignalStore: BurnBarQuotaSignalStore? = nil,
         providerExecutor: BurnBarOpenAICompatibleProviderExecutor = BurnBarOpenAICompatibleProviderExecutor(),
         anthropicExecutor: BurnBarAnthropicProviderExecutor = BurnBarAnthropicProviderExecutor(),
         factoryExecutor: FactoryDroidProviderExecutor = FactoryDroidProviderExecutor(),
@@ -60,6 +62,7 @@ public actor BurnBarHTTPGatewayServer {
         self.configStore = configStore
         self.usageRecorder = usageRecorder
         self.proxyRouteLogStore = proxyRouteLogStore
+        self.quotaSignalStore = quotaSignalStore
         self.providerExecutor = providerExecutor
         self.anthropicExecutor = anthropicExecutor
         self.factoryExecutor = factoryExecutor
@@ -260,11 +263,9 @@ public actor BurnBarHTTPGatewayServer {
             let body = (try? String(data: JSONEncoder().encode(snapshot), encoding: .utf8)) ?? #"{"gatewayEnabled":true}"#
             return .buffered(httpResponse(status: 200, headers: ["Content-Type": "application/json"], body: body))
         case ("GET", "/v1/models"):
-            return .buffered(httpResponse(
-                status: 200,
-                headers: ["Content-Type": "application/json"],
-                body: #"{"object":"list","data":[]}"#
-            ))
+            return .buffered(await linuxModelsListResponse(catalog: false))
+        case ("GET", "/v1/models/catalog"):
+            return .buffered(await linuxModelsListResponse(catalog: true))
         case ("POST", "/v1/chat/completions"):
             return await handleModelEndpoint(.chatCompletions, request: request, fileDescriptor: fileDescriptor)
         case ("POST", "/v1/responses"):
@@ -344,6 +345,14 @@ public actor BurnBarHTTPGatewayServer {
                                     streamCommit: streamCommit,
                                     fileDescriptor: fileDescriptor
                                 )
+                                await recordQuotaSignalIfAvailable(
+                                    headers: proxyStream.headers,
+                                    route: route,
+                                    requestPath: endpoint.requestPath,
+                                    endpoint: endpoint.displayName,
+                                    httpStatus: proxyStream.statusCode,
+                                    streamed: true
+                                )
                                 attempts.append(routeAttempt(
                                     sequence: attempts.count + 1,
                                     startedAt: attemptStartedAt,
@@ -377,6 +386,14 @@ public actor BurnBarHTTPGatewayServer {
                             formatFamily: formatFamily,
                             variant: resolvedModel.variant
                         )
+                        await recordQuotaSignalIfAvailable(
+                            headers: response.headers,
+                            route: route,
+                            requestPath: endpoint.requestPath,
+                            endpoint: endpoint.displayName,
+                            httpStatus: response.statusCode,
+                            streamed: false
+                        )
                         await recordUsageIfAvailable(
                             response.usage,
                             route: route,
@@ -408,6 +425,17 @@ public actor BurnBarHTTPGatewayServer {
                         ))
                     } catch {
                         lastFailedRoute = route
+                        if let providerError = error as? BurnBarProviderExecutorError,
+                           !providerError.upstreamHeaders.isEmpty {
+                            await recordQuotaSignalIfAvailable(
+                                headers: providerError.upstreamHeaders,
+                                route: route,
+                                requestPath: endpoint.requestPath,
+                                endpoint: endpoint.displayName,
+                                httpStatus: Self.httpStatus(from: error),
+                                streamed: streamCommit.responseStarted
+                            )
+                        }
                         attempts.append(routeAttempt(
                             sequence: attempts.count + 1,
                             startedAt: attemptStartedAt,
@@ -506,6 +534,71 @@ public actor BurnBarHTTPGatewayServer {
     private struct LinuxGatewayResolvedModel {
         var modelID: String
         var variant: BurnBarModelVariant?
+    }
+
+    /// Build OpenAI-compatible `/v1/models` (+ catalog) from configured providers (VAL-DAEMON-002).
+    private func linuxModelsListResponse(catalog: Bool) async -> Data {
+        var data: [[String: Any]] = []
+        if let configurations = try? await configStore.resolvedConfigurations() {
+            var seen = Set<String>()
+            for configuration in configurations {
+                let owner = configuration.settings.providerID
+                for variant in configuration.settings.modelVariants {
+                    let id = variant.variantID
+                    guard seen.insert(id).inserted else { continue }
+                    var row: [String: Any] = [
+                        "id": id,
+                        "object": "model",
+                        "owned_by": owner,
+                        "created": Int(Date().timeIntervalSince1970)
+                    ]
+                    if catalog {
+                        row["base_model"] = variant.baseModelID
+                        row["provider"] = owner
+                    }
+                    data.append(row)
+                }
+                for alias in configuration.settings.modelAliases {
+                    let id = alias.aliasID
+                    guard seen.insert(id).inserted else { continue }
+                    var row: [String: Any] = [
+                        "id": id,
+                        "object": "model",
+                        "owned_by": owner,
+                        "created": Int(Date().timeIntervalSince1970)
+                    ]
+                    if catalog {
+                        row["base_model"] = alias.baseModelID
+                        row["provider"] = owner
+                        row["alias"] = true
+                    }
+                    data.append(row)
+                }
+                // Prefer advertised catalog models when variants empty.
+                if configuration.settings.modelVariants.isEmpty {
+                    for model in configuration.preferredModels {
+                        let id = model.id
+                        guard seen.insert(id).inserted else { continue }
+                        data.append([
+                            "id": id,
+                            "object": "model",
+                            "owned_by": owner,
+                            "created": Int(Date().timeIntervalSince1970)
+                        ])
+                    }
+                }
+            }
+        }
+        let bodyObj: [String: Any] = [
+            "object": "list",
+            "data": data,
+            "platform": "linux",
+            "catalog": catalog
+        ]
+        let body = (try? JSONSerialization.data(withJSONObject: bodyObj, options: []))
+            .flatMap { String(data: $0, encoding: .utf8) }
+            ?? #"{"object":"list","data":[]}"#
+        return httpResponse(status: 200, headers: ["Content-Type": "application/json"], body: body)
     }
 
     private func resolveLinuxGatewayModel(_ requested: String) async -> LinuxGatewayResolvedModel {
@@ -626,32 +719,53 @@ public actor BurnBarHTTPGatewayServer {
     }
 
     private func shouldFailOverProviderError(_ error: Error) -> Bool {
-        if let providerError = error as? BurnBarProviderExecutorError {
-            switch providerError {
-            case .upstreamError(let statusCode, let body):
-                if BurnBarProviderExecutorError.isTransientCapacityFailure(statusCode: statusCode, body: body) {
-                    return true
-                }
-                if statusCode == 429 || statusCode == 401 || statusCode == 403 || statusCode == 402 {
-                    return true
-                }
-                let normalizedBody = body.lowercased()
-                return normalizedBody.contains("quota")
-                    || normalizedBody.contains("rate limit")
-                    || normalizedBody.contains("rate_limit")
-                    || normalizedBody.contains("insufficient_quota")
-                    || normalizedBody.contains("insufficient funds")
-                    || normalizedBody.contains("insufficient balance")
-                    || normalizedBody.contains("exhaust")
-            case .invalidBaseURL, .invalidResponse:
-                return false
+        if let providerError = error as? BurnBarProviderExecutorError,
+           let statusAndBody = providerError.upstreamStatusAndBody {
+            let statusCode = statusAndBody.statusCode
+            let body = statusAndBody.body
+            if BurnBarProviderExecutorError.isTransientCapacityFailure(statusCode: statusCode, body: body) {
+                return true
             }
+            if statusCode == 429 || statusCode == 401 || statusCode == 403 || statusCode == 402 {
+                return true
+            }
+            let normalizedBody = body.lowercased()
+            return normalizedBody.contains("quota")
+                || normalizedBody.contains("rate limit")
+                || normalizedBody.contains("rate_limit")
+                || normalizedBody.contains("insufficient_quota")
+                || normalizedBody.contains("insufficient funds")
+                || normalizedBody.contains("insufficient balance")
+                || normalizedBody.contains("exhaust")
+        } else if error is BurnBarProviderExecutorError {
+            return false
+        }
+
+        if Self.isRetryableProviderTransportError(error) {
+            return true
         }
 
         let description = error.localizedDescription.lowercased()
         return description.contains("quota")
             || description.contains("rate limit")
             || description.contains("429")
+    }
+
+    private static func isRetryableProviderTransportError(_ error: Error) -> Bool {
+        guard let urlError = error as? URLError else { return false }
+        switch urlError.code {
+        case .cannotConnectToHost,
+             .cannotFindHost,
+             .dnsLookupFailed,
+             .networkConnectionLost,
+             .notConnectedToInternet,
+             .timedOut,
+             .secureConnectionFailed,
+             .badServerResponse:
+            return true
+        default:
+            return false
+        }
     }
 
     private func recordUsageIfAvailable(
@@ -683,6 +797,28 @@ public actor BurnBarHTTPGatewayServer {
         } catch {
             logger.silentFailure("gateway_usage_record", error: error)
         }
+    }
+
+    private func recordQuotaSignalIfAvailable(
+        headers: [String: String],
+        route: BurnBarProviderRoute,
+        requestPath: String?,
+        endpoint: String?,
+        httpStatus: Int?,
+        streamed: Bool
+    ) async {
+        guard let quotaSignalStore,
+              let signal = BurnBarQuotaSignalStore.signal(
+                  from: headers,
+                  route: route,
+                  requestPath: requestPath,
+                  endpoint: endpoint,
+                  httpStatus: httpStatus,
+                  streamed: streamed
+              ) else {
+            return
+        }
+        await quotaSignalStore.append(signal)
     }
 
     private func recordProxyRouteLogEntry(
@@ -814,7 +950,9 @@ public actor BurnBarHTTPGatewayServer {
 
     private func providerFailureResponse(_ error: Error, modelID: String) -> Data {
         if let providerError = error as? BurnBarProviderExecutorError,
-           case .upstreamError(let statusCode, let body) = providerError {
+           let statusAndBody = providerError.upstreamStatusAndBody {
+            let statusCode = statusAndBody.statusCode
+            let body = statusAndBody.body
             let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmedBody.isEmpty {
                 return httpResponse(status: statusCode, headers: ["Content-Type": "application/json"], body: trimmedBody)
@@ -838,15 +976,17 @@ public actor BurnBarHTTPGatewayServer {
     }
 
     private nonisolated static func httpStatus(from error: Error) -> Int? {
-        if case let BurnBarProviderExecutorError.upstreamError(status, _) = error {
-            return status
+        if let providerError = error as? BurnBarProviderExecutorError,
+           let statusAndBody = providerError.upstreamStatusAndBody {
+            return statusAndBody.statusCode
         }
         return nil
     }
 
     private nonisolated static func routeLogFailureMessage(from error: Error) -> String {
-        if case let BurnBarProviderExecutorError.upstreamError(statusCode, _) = error {
-            return "OpenBurnBar provider request failed with status \(statusCode)."
+        if let providerError = error as? BurnBarProviderExecutorError,
+           let statusAndBody = providerError.upstreamStatusAndBody {
+            return "OpenBurnBar provider request failed with status \(statusAndBody.statusCode)."
         }
         return sanitizedFailureMessage(error.localizedDescription) ?? "OpenBurnBar provider request failed."
     }
@@ -1013,9 +1153,6 @@ private func httpResponse(status: Int, headers: [String: String], body: Data) ->
 
 private func httpResponseHead(status: Int, headers: [String: String], contentLength: Int? = nil) -> Data {
     var responseHeaders = headers
-    responseHeaders["Access-Control-Allow-Origin"] = "*"
-    responseHeaders["Access-Control-Allow-Headers"] = "Authorization, Content-Type, X-API-Key"
-    responseHeaders["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     if let contentLength {
         responseHeaders["Content-Length"] = "\(contentLength)"
     }

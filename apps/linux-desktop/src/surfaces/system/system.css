@@ -50,9 +50,12 @@
 .setting-group {
   margin: var(--space-5) 0;
   padding: var(--space-4);
-  border: 1px solid var(--color-glass-line);
+  border: 1px solid var(--glass-panel-stroke, var(--color-glass-line));
   border-radius: var(--radius-md);
-  background: var(--color-glass-bg);
+  background: var(--glass-panel, var(--color-glass-bg));
+  backdrop-filter: var(--glass-panel-blur, blur(22px) saturate(165%));
+  -webkit-backdrop-filter: var(--glass-panel-blur, blur(22px) saturate(165%));
+  box-shadow: var(--glass-panel-shadow, inset 0 1px 0 var(--color-frost-line));
 }
 
 .setting-group-title {
@@ -120,8 +123,11 @@
   margin-right: var(--space-2);
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-pill);
-  border: 1px solid var(--color-glass-line);
-  background: var(--color-mercury-wash);
+  border: 1px solid var(--glass-pill-stroke, var(--color-glass-line));
+  background: var(--glass-pill, var(--color-mercury-wash));
+  backdrop-filter: var(--glass-pill-blur, blur(12px));
+  -webkit-backdrop-filter: var(--glass-pill-blur, blur(12px));
+  box-shadow: var(--glass-inner-light, inset 0 1px 0 var(--color-frost-line));
   font-size: 0.75rem;
   font-family: var(--font-mono);
   color: var(--color-text-mute);
@@ -143,6 +149,9 @@ body.reduced-motion .system-skeleton-line {
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-glass-line);
   background: color-mix(in srgb, var(--color-brass-core) 14%, transparent);
+  backdrop-filter: blur(var(--glass-blur-sm, 12px));
+  -webkit-backdrop-filter: blur(var(--glass-blur-sm, 12px));
+  box-shadow: var(--glass-inner-light, inset 0 1px 0 var(--color-frost-line));
   font-size: 0.95rem;
   line-height: 1;
   flex-shrink: 0;
@@ -169,6 +178,9 @@ body.reduced-motion .system-skeleton-line {
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-glass-line);
   background: color-mix(in srgb, var(--color-glass-bg) 55%, transparent);
+  backdrop-filter: blur(var(--glass-blur-sm, 12px)) saturate(var(--glass-saturate, 160%));
+  -webkit-backdrop-filter: blur(var(--glass-blur-sm, 12px)) saturate(var(--glass-saturate, 160%));
+  box-shadow: var(--glass-inner-light, inset 0 1px 0 var(--color-frost-line));
 }
 
 .system-segmented-item {
@@ -198,8 +210,9 @@ body.reduced-motion .system-skeleton-line {
 
 .system-segmented-item[aria-pressed='true'] {
   color: var(--color-text-bright);
-  background: color-mix(in srgb, var(--color-mercury-wash) 90%, transparent);
-  border-color: var(--color-frost-line);
+  background: color-mix(in srgb, var(--color-brass-core) 14%, var(--color-glass-bg-elevated));
+  border-color: color-mix(in srgb, var(--color-brass-core) 35%, var(--color-frost-line));
+  box-shadow: var(--glass-inner-light, inset 0 1px 0 var(--color-frost-line));
 }
 
 .database-mode-glyph {

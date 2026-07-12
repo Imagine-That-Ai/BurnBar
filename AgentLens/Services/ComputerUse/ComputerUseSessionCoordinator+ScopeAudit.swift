@@ -389,7 +389,24 @@ extension ComputerUseSessionCoordinator {
                 actionLogEntry: actionTimeline.last
             )
         )
-        _ = invocation
+        if let cloudMeteringRecorder {
+            // cov:ignore-start -- fire-and-forget cloud action metering; action payload privacy and gateway writes are covered by ComputerUseCloudMeteringServiceTests.
+            let userID = configuration.currentUserId
+            Task { @MainActor in
+                do {
+                    try await cloudMeteringRecorder.recordAction(
+                        userID: userID,
+                        invocation: invocation,
+                        response: response
+                    )
+                } catch {
+                    Self.log.error(
+                        "computer_use_action_cloud_metering_failed reason=\(String(describing: error), privacy: .public)"
+                    )
+                }
+            }
+            // cov:ignore-end
+        }
     }
 
     func appendTimeline(

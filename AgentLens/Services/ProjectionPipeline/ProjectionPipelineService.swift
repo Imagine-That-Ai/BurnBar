@@ -110,7 +110,7 @@ actor ProjectionPipelineService {
         }
     }
 
-    func projectConversation(_ conversation: ConversationRecord, sourceVersionID: String) async throws {
+    func projectConversation(_ conversation: OpenBurnBarCore.ConversationRecord, sourceVersionID: String) async throws {
         let now = nowProvider()
         let title = projectedConversationTitle(conversation)
         let subtitle = "\(conversation.provider.rawValue) • \(conversation.projectName)"
@@ -302,13 +302,13 @@ actor ProjectionPipelineService {
         }
     }
 
-    func projectedConversationTitle(_ conversation: ConversationRecord) -> String {
+    func projectedConversationTitle(_ conversation: OpenBurnBarCore.ConversationRecord) -> String {
         let inferred = conversation.inferredTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         if inferred.isEmpty == false { return inferred }
         return conversation.sessionId
     }
 
-    func projectedConversationPreview(_ conversation: ConversationRecord) -> String {
+    func projectedConversationPreview(_ conversation: OpenBurnBarCore.ConversationRecord) -> String {
         let assistant = conversation.lastAssistantMessage.trimmingCharacters(in: .whitespacesAndNewlines)
         if assistant.isEmpty == false {
             return String(assistant.prefix(320))

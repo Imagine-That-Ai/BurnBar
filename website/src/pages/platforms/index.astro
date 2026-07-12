@@ -53,7 +53,7 @@ const statusTint = (s: Surface["status"]) => {
   <PlatformShowcase
     variant="hero"
     eyebrow="The smart-display showcase"
-    heading="Faithful re-renders. Live data. Today's pick."
+    heading="Faithful re-renders. Live data. The board's latest pick."
   />
 
   <section class="surfacematrix" aria-labelledby="surfacematrix-h" id="surface-matrix">
@@ -135,7 +135,7 @@ const statusTint = (s: Surface["status"]) => {
       <div class="monitor-screen">
         <div class="crt-scanlines"></div>
         <div class="monitor-header">
-          <span class="monitor-title mono">[SYSTEM PORT STATUS // DATA PIPELINE CAST]</span>
+          <span class="monitor-title mono">[SURFACE REGISTRY // SHIPPING STATUS]</span>
           <div class="monitor-indicators">
             <span class="indicator-led pulse-fast green"></span>
             <span class="indicator-label mono">DAEMON LINK: OK</span>
@@ -308,7 +308,6 @@ const statusTint = (s: Surface["status"]) => {
               >
             </g>
 
-            <!-- Channels from Steps to Destination Shipped Core -->
             <!-- Step 1 Out -->
             <path
               d="M 440 30 Q 510 30 580 60"
@@ -639,7 +638,7 @@ const statusTint = (s: Surface["status"]) => {
                 </div>
                 <div class="terminal__line">
                   <span class="term-time">[00:42:02]</span>
-                  <span class="term-sys">[SYSTEM]</span> Pinging Apple TV 4K at 192.168.1.144:8080...
+                  <span class="term-sys">[SYSTEM]</span> Pinging Apple TV 4K at apple-tv.local:8080...
                 </div>
                 <div class="terminal__line">
                   <span class="term-time">[00:42:02]</span>
@@ -679,28 +678,28 @@ const statusTint = (s: Surface["status"]) => {
       </div>
     </div>
   </div>
-</BaseLayout>
 
-<section class="endcta endcta--inline">
-  <div class="container container--narrow">
-    <h2>Pick the screen you'll actually look at.</h2>
-    <p class="lead">
-      Free menu-bar app, $400 of hosted quota per month covered by the included plans, every surface
-      optional.
-    </p>
-    <div class="endcta__ctas">
-      <a class="btn btn--ember" href="/download"
-        >Download for macOS <span aria-hidden="true">→</span></a
-      >
-      <a
-        class="btn btn--ghost"
-        href={`${SITE.github}/blob/main/docs/SMART_DISPLAY_DEVICE_QA.md`}
-        target="_blank"
-        rel="noopener noreferrer">Smart display QA matrix</a
-      >
+  <section class="endcta endcta--inline">
+    <div class="container container--narrow">
+      <h2>Pick the screen you'll actually look at.</h2>
+      <p class="lead">
+        Free menu-bar app, one shared daemon, every surface optional — add the paid cloud tiers only
+        if you want them.
+      </p>
+      <div class="endcta__ctas">
+        <a class="btn btn--ember" href="/download"
+          >Download for macOS <span aria-hidden="true">→</span></a
+        >
+        <a
+          class="btn btn--ghost"
+          href={`${SITE.github}/blob/main/docs/SMART_DISPLAY_DEVICE_QA.md`}
+          target="_blank"
+          rel="noopener noreferrer">Smart display QA matrix</a
+        >
+      </div>
     </div>
-  </div>
-</section>
+  </section>
+</BaseLayout>
 
 <style>
   .pagehead--platforms {
@@ -754,6 +753,9 @@ const statusTint = (s: Surface["status"]) => {
   }
   .surfacecard--id-android {
     --brand-color: #3ddc84;
+  }
+  .surfacecard--id-linux {
+    --brand-color: #fcb827;
   }
 
   .surfacecard {

@@ -301,6 +301,7 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
                 "deviceId": deviceId,
                 "isOnline": true,
                 "lastSyncAt": Timestamp(date: now),
+                "lastAttemptAt": Timestamp(date: now),
                 "collectionsInSync": collectionsInSync,
                 "lastErrorCode": FieldValue.delete(),
                 "updatedAt": Timestamp(date: now)
@@ -366,7 +367,17 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
         }
 
         if nsError.domain == NSURLErrorDomain {
-            return "network_unavailable"
+            switch nsError.code {
+            case NSURLErrorNotConnectedToInternet,
+                 NSURLErrorTimedOut,
+                 NSURLErrorCannotFindHost,
+                 NSURLErrorCannotConnectToHost,
+                 NSURLErrorNetworkConnectionLost,
+                 NSURLErrorDNSLookupFailed:
+                return "network_unavailable"
+            default:
+                break
+            }
         }
 
         return "other"
@@ -393,6 +404,25 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
             return
         }
         await context.suppressSync(for: CloudSyncBackoffPolicy.permissionDeniedCooldown)
+    }
+
+    private func publishSyncBlockedStatusBestEffort(uid: String, deviceId: String, error: Error) async {
+        let now = Date()
+        do {
+            try await context.firestoreGateway.collection("users").document(uid)
+                .collection("sync_status").document(deviceId).setData([
+                    "deviceId": deviceId,
+                    "isOnline": true,
+                    "lastAttemptAt": Timestamp(date: now),
+                    "lastErrorCode": Self.syncBlockedCode(for: error),
+                    "updatedAt": Timestamp(date: now)
+                ], merge: true)
+        } catch {
+            AppLogger.sync.error(
+                "usage_sync_status_error_failed",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+        }
     }
 
     private func encodeUsage(

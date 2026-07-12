@@ -36,6 +36,155 @@ final class BurnBarDaemonServerTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: socketPath))
     }
 
+    func testLinuxOnboardingSnapshotActionAndResetRoundTripOverSocket() async throws {
+        let socketPath = makeSocketPath(name: "linux-onboarding")
+        let stateURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-onboarding-rpc-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("state.json", isDirectory: false)
+        let onboardingService = BurnBarLinuxOnboardingService(
+            stateURL: stateURL,
+            now: { Date(timeIntervalSince1970: 1_700_000_000) },
+            daemonProbe: { "daemon RPC verified" },
+            secretStoreProbe: { "secret store verified" },
+            providerPathsProbe: { "provider paths verified" }
+        )
+        let server = BurnBarDaemonServer(
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: socketPath,
+                socketAuthToken: "test-token",
+                startsMissionControlBackgroundLoops: false
+            ),
+            linuxOnboardingService: onboardingService
+        )
+
+        try await server.start()
+        addTeardownBlock { await server.stop() }
+
+        let initial: BurnBarRPCResponseEnvelope<BurnBarLinuxOnboardingSnapshot> = try sendRequest(
+            BurnBarRPCRequestEnvelope(
+                id: "onboarding-snapshot",
+                method: .linuxOnboardingSnapshot,
+                authToken: "test-token"
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(initial.error)
+        XCTAssertEqual(initial.result?.currentStepID, .daemon)
+
+        let action: BurnBarRPCResponseEnvelope<BurnBarLinuxOnboardingSnapshot> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "onboarding-action",
+                method: .linuxOnboardingAction,
+                authToken: "test-token",
+                params: BurnBarLinuxOnboardingActionRequest(stepID: .daemon, action: .verify)
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(action.error)
+        XCTAssertEqual(action.result?.currentStepID, .secretStore)
+        XCTAssertEqual(action.result?.steps.first?.state, .verified)
+
+        let reset: BurnBarRPCResponseEnvelope<BurnBarLinuxOnboardingSnapshot> = try sendRequest(
+            BurnBarRPCRequestEnvelope(
+                id: "onboarding-reset",
+                method: .linuxOnboardingReset,
+                authToken: "test-token"
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(reset.error)
+        XCTAssertEqual(reset.result?.currentStepID, .daemon)
+        XCTAssertEqual(reset.result?.steps.allSatisfy { $0.state == .pending }, true)
+    }
+
+    func testSubscriptionStartResumeAndStopRoundTripOverSocket() async throws {
+        let socketPath = makeSocketPath(name: "subscription")
+        let subscriptionService = BurnBarSubscriptionService(
+            daemonVersion: "test-daemon",
+            daemonSessionID: "socket-daemon-session"
+        )
+        let server = BurnBarDaemonServer(
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: socketPath,
+                socketAuthToken: "test-token",
+                daemonVersion: "test-daemon",
+                startsMissionControlBackgroundLoops: false
+            ),
+            subscriptionService: subscriptionService
+        )
+
+        try await server.start()
+        addTeardownBlock { await server.stop() }
+
+        let started: BurnBarRPCResponseEnvelope<BurnBarSubscriptionResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "subscription-start",
+                method: .subscriptionStart,
+                authToken: "test-token",
+                params: BurnBarSubscriptionStartRequest(
+                    topic: "data",
+                    requestedSubscriptionID: "linux-desktop-data",
+                    clientID: "linux-desktop"
+                )
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(started.error)
+        XCTAssertEqual(started.result?.seq, 1)
+        XCTAssertEqual(started.result?.events.first?.snapshot["daemon_session_id"], "socket-daemon-session")
+        XCTAssertEqual(started.result?.terminalStateDelivered, false)
+
+        let duplicate: BurnBarRPCResponseEnvelope<BurnBarEmptyResult> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "subscription-duplicate",
+                method: .subscriptionStart,
+                authToken: "test-token",
+                params: BurnBarSubscriptionStartRequest(
+                    topic: "data",
+                    requestedSubscriptionID: "linux-desktop-data",
+                    clientID: "linux-desktop"
+                )
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertEqual(duplicate.id, "subscription-duplicate")
+        XCTAssertEqual(duplicate.error?.code, BurnBarRPCErrorCode.invalidParams)
+
+        let resumed: BurnBarRPCResponseEnvelope<BurnBarSubscriptionResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "subscription-resume",
+                method: .subscriptionResume,
+                authToken: "test-token",
+                params: BurnBarSubscriptionResumeRequest(
+                    subscriptionID: "linux-desktop-data",
+                    topic: "data",
+                    afterSeq: 1,
+                    clientID: "linux-desktop"
+                )
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(resumed.error)
+        XCTAssertEqual(resumed.result?.seq, 2)
+        XCTAssertEqual(resumed.result?.events.first?.kind, "data.tick")
+
+        let stopped: BurnBarRPCResponseEnvelope<BurnBarSubscriptionStopResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "subscription-stop",
+                method: .subscriptionStop,
+                authToken: "test-token",
+                params: BurnBarSubscriptionStopRequest(
+                    subscriptionID: "linux-desktop-data",
+                    clientID: "linux-desktop"
+                )
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(stopped.error)
+        XCTAssertEqual(stopped.result?.stopped, true)
+        XCTAssertEqual(stopped.result?.lastSeq, 2)
+    }
+
     func testDaemonRemovesStaleSocketBeforeBinding() async throws {
         let socketPath = makeSocketPath(name: "stale")
         let staleSocket = try makeStaleSocket(at: socketPath)

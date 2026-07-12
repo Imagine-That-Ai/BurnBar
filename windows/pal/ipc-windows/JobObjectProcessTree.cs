@@ -109,9 +109,23 @@ public sealed class JobObjectProcessTree : IDisposable
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
+        psi.Environment.Clear();
+        AddIfPresent(psi, "SystemRoot");
+        AddIfPresent(psi, "WINDIR");
+        AddIfPresent(psi, "PATH");
+        AddIfPresent(psi, "PATHEXT");
 
         using Process? killer = Process.Start(psi);
         killer?.WaitForExit(5_000);
+    }
+
+    private static void AddIfPresent(ProcessStartInfo psi, string name)
+    {
+        string? value = Environment.GetEnvironmentVariable(name);
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            psi.Environment[name] = value;
+        }
     }
 
     public void Dispose()

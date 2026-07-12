@@ -9,37 +9,37 @@ export const SUPPORT_MACROS: SupportMacro[] = [
     id: "refund",
     title: "Refund request",
     summary:
-      "Ask where the purchase was made, route Apple/Google purchases to store policy, and handle eligible Stripe refunds through support."
+      "Tell us where you bought. App Store and Google Play purchases follow the store's refund policy; Stripe Checkout purchases are refunded by support when eligible."
   },
   {
     id: "chargeback",
     title: "Chargeback or disputed payment",
     summary:
-      "Explain that confirmed disputes revoke the matching entitlement and ask for the Stripe payment or store transaction reference."
+      "A confirmed payment dispute revokes the matching subscription or top-up. Include your Stripe payment or store transaction reference so we can trace it quickly."
   },
   {
     id: "cancellation",
     title: "Cancel a subscription",
     summary:
-      "Send the user to Apple, Google Play, or Stripe billing management; cancellation stops renewal but keeps access until the paid period expires."
+      "Cancel anytime in your Apple subscriptions, Google Play, or Stripe billing portal. Cancelling stops renewal; access continues until the paid period ends."
   },
   {
     id: "top-up-exhausted",
     title: "Cloud Pro top-up exhausted",
     summary:
-      "Explain that hosted actions and relay are prepaid before use, BYOK actions do not consume hosted action credits, and monthly caps still apply."
+      "Hosted actions and relay transfer are prepaid before use. Bring-your-own-key actions never consume hosted action credits, and monthly caps still apply."
   },
   {
     id: "permission-denied",
     title: "App Check or permission denied",
     summary:
-      "Confirm sign-in, app version, entitlement status, and device trust before escalating with UID and timestamp."
+      "Check that you're signed in, on the latest app version, and that your subscription is active. Still stuck? Email us the account address and roughly when it happened — we can trace the exact denial."
   },
   {
     id: "grandfathered-subscriber",
     title: "Grandfathered Hosted Quota Sync",
     summary:
-      "Clarify that legacy subscribers keep Group A Cloud features, but the legacy $4.99 plan is not a new purchase path and does not unlock Cloud Pro."
+      "Legacy $4.99 Hosted Quota Sync subscribers keep BurnBar Cloud's core sync features. That plan is no longer sold and does not unlock Cloud Pro."
   },
   {
     id: "trial-conversion",

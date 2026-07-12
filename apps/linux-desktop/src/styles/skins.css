@@ -1,0 +1,17 @@
+/**
+ * Linux skin layer — semantic token overrides only (no ad-hoc hex).
+ * Allowlisted for VAL-TOKENS-002; app surface CSS must not introduce new hex.
+ */
+
+:root[data-skin='aurora'] {
+  --color-ink-void: color-mix(in srgb, var(--color-ink-base) 70%, black);
+  --color-brass-core: var(--color-skin-aurora-core);
+  --ds-accent-gradient: linear-gradient(
+    135deg,
+    var(--color-skin-aurora-core),
+    var(--color-skin-aurora-bright)
+  );
+  --mesh-blob-a: color-mix(in srgb, var(--color-skin-aurora-core) 13%, transparent);
+  --mesh-blob-b: color-mix(in srgb, var(--color-skin-aurora-bright) 9%, transparent);
+  --mesh-blob-c: color-mix(in srgb, var(--color-skin-aurora-violet) 8%, transparent);
+}

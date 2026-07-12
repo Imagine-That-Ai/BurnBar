@@ -4,18 +4,18 @@ import OpenBurnBarCore
 // MARK: - Session Log Markdown Formatter (macOS app renderers)
 //
 // Windows-port Phase-2 (G2 parser lift). The parser-safe `transcriptTurnMarkdown`
-// lives in `OpenBurnBarCore` (it feeds `ConversationRecord.fullText`). These
+// lives in `OpenBurnBarCore` (it feeds `OpenBurnBarCore.ConversationRecord.fullText`). These
 // app-facing renderers stay here because they depend on macOS-app chat types
 // (`ChatMessageRecord`, `ChatTranscriptPiece`) and `AgentProvider.displayName`, a
-// macOS UI accessor. They extend the Engine's `SessionLogMarkdownFormatter` enum
-// so every existing call site (`SessionLogMarkdownFormatter.markdown(for:)`,
+// macOS UI accessor. They extend the Engine's `OpenBurnBarCore.SessionLogMarkdownFormatter` enum
+// so every existing call site (`OpenBurnBarCore.SessionLogMarkdownFormatter.markdown(for:)`,
 // `.cliMarkdown(from:)`) is unchanged.
-extension SessionLogMarkdownFormatter {
+extension OpenBurnBarCore.SessionLogMarkdownFormatter {
 
-    /// Returns Markdown for a persisted `ConversationRecord`.
+    /// Returns Markdown for a persisted `OpenBurnBarCore.ConversationRecord`.
     /// - Provider logs: metadata table + transcript body.
     /// - CLI assistant: pre-built Markdown stored in `record.fullText`.
-    static func markdown(for record: ConversationRecord) -> String {
+    static func markdown(for record: OpenBurnBarCore.ConversationRecord) -> String {
         switch record.sourceType {
         case .providerLog:
             return providerMarkdown(record)
@@ -25,7 +25,7 @@ extension SessionLogMarkdownFormatter {
     }
 
     /// Builds role-aware Markdown from a list of persisted chat messages.
-    /// Used when synthesizing the `cli_assistant` ConversationRecord for storage.
+    /// Used when synthesizing the `cli_assistant` OpenBurnBarCore.ConversationRecord for storage.
     static func cliMarkdown(from messages: [ChatMessageRecord]) -> String {
         guard !messages.isEmpty else { return "" }
 
@@ -98,7 +98,7 @@ extension SessionLogMarkdownFormatter {
 
     // MARK: - Provider Log Markdown
 
-    private static func providerMarkdown(_ record: ConversationRecord) -> String {
+    private static func providerMarkdown(_ record: OpenBurnBarCore.ConversationRecord) -> String {
         var lines: [String] = []
 
         let title = displayTitle(for: record)
@@ -165,7 +165,7 @@ extension SessionLogMarkdownFormatter {
         dateFormatter.string(from: date)
     }
 
-    private static func displayTitle(for record: ConversationRecord) -> String {
+    private static func displayTitle(for record: OpenBurnBarCore.ConversationRecord) -> String {
         if let summaryTitle = record.summaryTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
            !summaryTitle.isEmpty {
             return summaryTitle

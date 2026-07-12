@@ -1,23 +1,30 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import {
   eraseUserAccount,
   eraseUserCloudData,
   isFirebaseAuthUserNotFound,
+  isSecretVersionAlreadyErased,
   providerSecretRefDocumentID,
   userWorkspaceID,
 } from "../lib/accountDeletion.js";
 
 class FakeDocument {
-  constructor(path, data = {}) {
+  constructor(path, data = {}, exists = false) {
     this.path = path;
     this.id = path.split("/").pop();
     this.data = data;
+    this.exists = exists;
     this.collections = new Map();
     this.ref = this;
   }
 
   get(field) {
-    return this.data[field];
+    if (arguments.length > 0) return this.data[field];
+    return Promise.resolve({
+      exists: this.exists,
+      get: (name) => this.data[name],
+    });
   }
 
   async listCollections() {
@@ -26,6 +33,7 @@ class FakeDocument {
 
   async set(data, options = {}) {
     this.data = options.merge ? { ...this.data, ...data } : { ...data };
+    this.exists = true;
   }
 }
 
@@ -60,6 +68,17 @@ class FakeBatch {
     this.pending.push(ref.path);
   }
 
+  create(ref, data) {
+    if (ref.exists) throw new Error(`document already exists: ${ref.path}`);
+    ref.data = { ...data };
+    ref.exists = true;
+  }
+
+  set(ref, data, options = {}) {
+    ref.data = options.merge ? { ...ref.data, ...data } : { ...data };
+    ref.exists = true;
+  }
+
   async commit() {
     this.deletedPaths.push(...this.pending);
     this.pending = [];
@@ -69,6 +88,7 @@ class FakeBatch {
 class FakeFirestore {
   constructor() {
     this.rootCollections = new Map();
+    this.documents = new Map();
     this.deletedPaths = [];
   }
 
@@ -77,7 +97,15 @@ class FakeFirestore {
     // queues (voip_outbound / fcm_outbound) — T-PRV-02. Return a registered
     // collection if present, otherwise an empty one so the walk is a no-op.
     assert.ok(
-      ["provider_account_secret_refs", "voip_outbound", "fcm_outbound"].includes(path),
+      [
+        "provider_account_secret_refs",
+        "voip_outbound",
+        "fcm_outbound",
+        "credential_transfers",
+        "hermes_gateway_token_index",
+        "hermes_gateway_device_sessions",
+        "cli_link_sessions",
+      ].includes(path),
       `unexpected root collection read: ${path}`,
     );
     return this.rootCollections.get(path) ?? new FakeCollection(path);
@@ -86,7 +114,10 @@ class FakeFirestore {
   doc(path) {
     const [collectionID, docID] = path.split("/");
     const collection = this.rootCollections.get(collectionID);
-    return collection?.docs.find((doc) => doc.id === docID) ?? new FakeDocument(path);
+    const rooted = collection?.docs.find((doc) => doc.id === docID);
+    if (rooted) return rooted;
+    if (!this.documents.has(path)) this.documents.set(path, new FakeDocument(path));
+    return this.documents.get(path);
   }
 
   batch() {
@@ -105,7 +136,7 @@ function collection(path, docs = []) {
 }
 
 function doc(path, data = {}, childCollections = []) {
-  const value = new FakeDocument(path, data);
+  const value = new FakeDocument(path, data, true);
   for (const child of childCollections) {
     value.collections.set(child.path, child);
   }
@@ -113,11 +144,22 @@ function doc(path, data = {}, childCollections = []) {
 }
 
 function auditOptions() {
+  const intent = {
+    seq: 0,
+    ts: "2026-07-10T00:00:00.000Z",
+    actor: "user:test",
+    action: "account.delete.intent",
+    domain: "account",
+    prevHash: "",
+  };
+  const canonical = JSON.stringify(intent);
   return {
     actor: "user:test",
     domain: "account",
-    appendAuditEventRequired: async () => ({ seq: 0, hash: "intent" }),
-    appendAuditEvent: async () => ({ seq: 1, hash: "complete" }),
+    appendAuditEventRequired: async () => ({
+      ...intent,
+      hash: createHash("sha256").update(canonical).digest("hex"),
+    }),
   };
 }
 
@@ -154,13 +196,24 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
       doc("fcm_outbound/fcm-bob-1", { uid: "bob", status: "pending" }),
     ]),
   );
+  for (const [name, ownerField] of [
+    ["credential_transfers", "ownerUid"],
+    ["hermes_gateway_token_index", "uid"],
+    ["hermes_gateway_device_sessions", "uid"],
+    ["cli_link_sessions", "ownerUid"],
+  ]) {
+    db.addRootCollection(
+      collection(name, [
+        doc(`${name}/alice-owned`, { [ownerField]: "alice" }),
+        doc(`${name}/bob-owned`, { [ownerField]: "bob" }),
+      ]),
+    );
+  }
 
   const chunks = collection("users/alice/session_logs/log1/chunks", [
     doc("users/alice/session_logs/log1/chunks/chunk1"),
   ]);
-  const sessionLogs = collection("users/alice/session_logs", [
-    doc("users/alice/session_logs/log1", {}, [chunks]),
-  ]);
+  const sessionLogs = collection("users/alice/session_logs", [doc("users/alice/session_logs/log1", {}, [chunks])]);
   const user = doc("users/alice", {}, [sessionLogs]);
   db.addRootCollection(collection("users", [user]));
 
@@ -203,6 +256,10 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
   assert.deepEqual(destroyedSecrets, ["projects/p/secrets/codex/versions/1"]);
   assert.equal(summary.destroyedSecrets, 1);
   assert.equal(summary.failedSecretDestroys, 0);
+  assert.equal(summary.deletedStoragePrefixes, 2);
+  assert.equal(summary.failedStorageDeletes, 0);
+  assert.equal(summary.cloudDataDeleted, true);
+  assert.equal(summary.retryRequired, false);
   assert.ok(db.deletedPaths.includes("provider_account_secret_refs/alice_codex"));
   assert.ok(db.deletedPaths.includes("users/alice/session_logs/log1/chunks/chunk1"));
   assert.ok(db.deletedPaths.includes("users/alice/session_logs/log1"));
@@ -215,16 +272,27 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
   assert.ok(db.deletedPaths.includes("fcm_outbound/f-alice-1"));
   assert.ok(!db.deletedPaths.includes("voip_outbound/v-bob-1"));
   assert.ok(!db.deletedPaths.includes("fcm_outbound/f-bob-1"));
+  for (const name of [
+    "credential_transfers",
+    "hermes_gateway_token_index",
+    "hermes_gateway_device_sessions",
+    "cli_link_sessions",
+  ]) {
+    assert.ok(db.deletedPaths.includes(`${name}/alice-owned`), `${name} owner record must be erased`);
+    assert.ok(!db.deletedPaths.includes(`${name}/bob-owned`), `${name} cross-user record must remain`);
+  }
 }
 
 {
   const db = new FakeFirestore();
-  db.addRootCollection(collection("provider_account_secret_refs", [
-    doc("provider_account_secret_refs/alice_codex", {
-      uid: "alice",
-      secretVersionName: "projects/p/secrets/codex/versions/1",
-    }),
-  ]));
+  db.addRootCollection(
+    collection("provider_account_secret_refs", [
+      doc("provider_account_secret_refs/alice_codex", {
+        uid: "alice",
+        secretVersionName: "projects/p/secrets/codex/versions/1",
+      }),
+    ]),
+  );
   db.addRootCollection(collection("users", [doc("users/alice")]));
   db.addRootCollection(collection("workspaces", []));
 
@@ -239,9 +307,14 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
 
   assert.equal(summary.destroyedSecrets, 0);
   assert.equal(summary.failedSecretDestroys, 1);
+  assert.equal(summary.cloudDataDeleted, false);
+  assert.equal(summary.retryRequired, true);
   assert.equal(warnings.length, 1);
-  assert.ok(db.deletedPaths.includes("provider_account_secret_refs/alice_codex"));
-  assert.ok(db.deletedPaths.includes("users/alice"));
+  assert.ok(
+    !db.deletedPaths.includes("provider_account_secret_refs/alice_codex"),
+    "failed secret ref remains for retry",
+  );
+  assert.ok(!db.deletedPaths.includes("users/alice"), "identity and trusted-device subtree remain for retry");
 }
 
 {
@@ -254,6 +327,7 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
   const summary = await eraseUserAccount(db, "alice", {
     deleteStorageObjects: async () => {},
     destroyCredential: async () => {},
+    revokeAuthTokens: async () => {},
     deleteAuthUser: async (uid) => {
       deletedAuthUsers.push(uid);
     },
@@ -264,17 +338,21 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
   assert.deepEqual(deletedAuthUsers, ["alice"]);
   assert.equal(summary.deletedAuthUser, true);
   assert.equal(summary.authUserAlreadyMissing, false);
+  assert.equal(summary.cloudDataDeleted, true);
+  assert.equal(summary.retryRequired, false);
   assert.ok(db.deletedPaths.includes("users/alice"));
 }
 
 {
   const db = new FakeFirestore();
-  db.addRootCollection(collection("provider_account_secret_refs", [
-    doc("provider_account_secret_refs/alice_codex", {
-      uid: "alice",
-      secretVersionName: "projects/p/secrets/codex/versions/1",
-    }),
-  ]));
+  db.addRootCollection(
+    collection("provider_account_secret_refs", [
+      doc("provider_account_secret_refs/alice_codex", {
+        uid: "alice",
+        secretVersionName: "projects/p/secrets/codex/versions/1",
+      }),
+    ]),
+  );
   db.addRootCollection(collection("users", [doc("users/alice")]));
   db.addRootCollection(collection("workspaces", []));
 
@@ -284,6 +362,7 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
     destroyCredential: async () => {
       throw new Error("destroy failed");
     },
+    revokeAuthTokens: async () => {},
     deleteAuthUser: async (uid) => {
       deletedAuthUsers.push(uid);
     },
@@ -293,8 +372,11 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
 
   assert.deepEqual(deletedAuthUsers, []);
   assert.equal(summary.failedSecretDestroys, 1);
+  assert.equal(summary.retryRequired, true);
+  assert.equal(summary.cloudDataDeleted, false);
   assert.equal(summary.deletedAuthUser, false);
   assert.equal(summary.authUserAlreadyMissing, false);
+  assert.ok(!db.deletedPaths.includes("users/alice"));
 }
 
 {
@@ -308,6 +390,7 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
   const summary = await eraseUserAccount(db, "alice", {
     deleteStorageObjects: async () => {},
     destroyCredential: async () => {},
+    revokeAuthTokens: async () => {},
     deleteAuthUser: async () => {
       throw userNotFound;
     },
@@ -323,6 +406,73 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
   assert.equal(isFirebaseAuthUserNotFound({ code: "auth/user-not-found" }), true);
   assert.equal(isFirebaseAuthUserNotFound({ errorInfo: { code: "auth/user-not-found" } }), true);
   assert.equal(isFirebaseAuthUserNotFound({ code: "auth/too-many-requests" }), false);
+  assert.equal(isSecretVersionAlreadyErased({ code: 404 }), true);
+  assert.equal(
+    isSecretVersionAlreadyErased({
+      code: 9,
+      message: "Secret Version projects/p/secrets/s/versions/1 has been destroyed.",
+    }),
+    true,
+  );
+  assert.equal(isSecretVersionAlreadyErased({ code: 9, message: "secret is disabled" }), false);
+}
+
+// A crash can happen after Secret Manager destroys the version but before the
+// Firestore ref commit. The retry must treat "already destroyed" as success.
+{
+  const db = new FakeFirestore();
+  db.addRootCollection(
+    collection("provider_account_secret_refs", [
+      doc("provider_account_secret_refs/alice_codex", {
+        uid: "alice",
+        secretVersionName: "projects/p/secrets/codex/versions/1",
+      }),
+    ]),
+  );
+  db.addRootCollection(collection("users", [doc("users/alice")]));
+  db.addRootCollection(collection("workspaces", []));
+
+  const summary = await eraseUserCloudData(db, "alice", {
+    destroyCredential: async () => {
+      throw Object.assign(new Error("Secret Version has been destroyed"), { code: 9 });
+    },
+    deleteStorageObjects: async () => {},
+  });
+
+  assert.equal(summary.destroyedSecrets, 1);
+  assert.equal(summary.failedSecretDestroys, 0);
+  assert.equal(summary.cloudDataDeleted, true);
+  assert.ok(db.deletedPaths.includes("provider_account_secret_refs/alice_codex"));
+}
+
+// A malformed ref is the last link to an external secret. It must remain as an
+// operator-visible retry manifest instead of being deleted as if no secret existed.
+{
+  const db = new FakeFirestore();
+  db.addRootCollection(
+    collection("provider_account_secret_refs", [
+      doc("provider_account_secret_refs/alice_codex", {
+        uid: "alice",
+        secretVersionName: " ",
+      }),
+    ]),
+  );
+  db.addRootCollection(collection("users", [doc("users/alice")]));
+  db.addRootCollection(collection("workspaces", []));
+
+  const warnings = [];
+  const summary = await eraseUserCloudData(db, "alice", {
+    destroyCredential: async () => assert.fail("malformed ref must not call Secret Manager"),
+    deleteStorageObjects: async () => {},
+    logger: { warn: (message) => warnings.push(message) },
+  });
+
+  assert.equal(summary.failedSecretDestroys, 1);
+  assert.equal(summary.cloudDataDeleted, false);
+  assert.equal(summary.retryRequired, true);
+  assert.equal(warnings.length, 1);
+  assert.ok(!db.deletedPaths.includes("provider_account_secret_refs/alice_codex"));
+  assert.ok(!db.deletedPaths.includes("users/alice"));
 }
 
 // Storage-orphan fix: account erase must also purge the user's Cloud Storage prefixes.
@@ -341,10 +491,11 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
   });
 
   assert.ok(deletedPrefixes.includes("users/alice/"), "must delete the user storage prefix");
-  assert.ok(deletedPrefixes.includes("avatars/alice"), "must delete the avatar object");
+  assert.ok(deletedPrefixes.includes("avatars/alice/"), "must delete only this user's avatar directory");
 }
 
-// A storage deletion failure must NOT fail the erase (best-effort), but must warn.
+// A storage deletion failure is fail-closed: Firestore/Auth identity remains so
+// the same authenticated user can retry the idempotent prefix cleanup.
 {
   const db = new FakeFirestore();
   db.addRootCollection(collection("provider_account_secret_refs", []));
@@ -361,8 +512,52 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
   });
 
   assert.equal(summary.failedSecretDestroys, 0, "storage failure is not a secret failure");
+  assert.equal(summary.failedStorageDeletes, 2);
+  assert.deepEqual(summary.failedStoragePrefixKinds, ["user_data", "avatar"]);
+  assert.equal(summary.cloudDataDeleted, false);
+  assert.equal(summary.retryRequired, true);
   assert.equal(warnings.length, 2, "one warning per failed storage prefix");
-  assert.ok(db.deletedPaths.includes("users/alice"), "Firestore tree still erased despite storage failure");
+  assert.ok(!db.deletedPaths.includes("users/alice"), "Firestore identity must remain after storage failure");
 }
 
-console.log("account-deletion storage-prefix tests passed");
+// A partial storage failure can be retried. Both deterministic prefixes are
+// attempted again; only the successful retry permits Firestore erasure.
+{
+  const db = new FakeFirestore();
+  db.addRootCollection(collection("provider_account_secret_refs", []));
+  db.addRootCollection(collection("users", [doc("users/alice")]));
+  db.addRootCollection(collection("workspaces", []));
+
+  let attempt = 0;
+  const calls = [];
+  const deleteStorageObjects = async (prefix) => {
+    calls.push(prefix);
+    if (attempt === 0 && prefix.startsWith("users/")) {
+      throw new Error("transient storage failure");
+    }
+  };
+
+  const first = await eraseUserCloudData(db, "alice", {
+    destroyCredential: async () => {},
+    deleteStorageObjects,
+    logger: { warn() {} },
+  });
+  assert.equal(first.failedStorageDeletes, 1);
+  assert.equal(first.cloudDataDeleted, false);
+  assert.ok(!db.deletedPaths.includes("users/alice"));
+
+  attempt += 1;
+  const second = await eraseUserCloudData(db, "alice", {
+    destroyCredential: async () => {},
+    deleteStorageObjects,
+    logger: { warn() {} },
+  });
+  assert.equal(second.failedStorageDeletes, 0);
+  assert.equal(second.deletedStoragePrefixes, 2);
+  assert.equal(second.cloudDataDeleted, true);
+  assert.equal(second.retryRequired, false);
+  assert.ok(db.deletedPaths.includes("users/alice"));
+  assert.deepEqual(calls, ["users/alice/", "avatars/alice/", "users/alice/", "avatars/alice/"]);
+}
+
+console.log("account-deletion fail-closed retry tests passed");

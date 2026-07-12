@@ -10,6 +10,7 @@
     x:Class="OpenBurnBar.App.DataControlCenter.YoursVsServerFlip"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:theme="using:OpenBurnBar.App.Theme"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
@@ -37,10 +38,7 @@
 
     <StackPanel Spacing="12">
         <!-- Face toggle (two pills). -->
-        <Border CornerRadius="{StaticResource PensieveRadiusPillCorner}"
-                Background="{StaticResource OBBSurfaceBrush}"
-                BorderBrush="{StaticResource OBBStrokeBrush}"
-                BorderThickness="1"
+        <Border Style="{StaticResource LiquidGlassSurfaceStyle}" theme:LiquidGlass.Surface="True" CornerRadius="{StaticResource PensieveRadiusPillCorner}"
                 Padding="3">
             <Grid ColumnSpacing="0">
                 <Grid.ColumnDefinitions>

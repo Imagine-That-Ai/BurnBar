@@ -25,7 +25,7 @@ enum ProviderQuotaPersistenceLoadResult<Value> {
 }
 
 struct ProviderQuotaSnapshotStore {
-    let appPaths: OpenBurnBarAppPaths
+    let appPaths: OpenBurnBarCore.OpenBurnBarAppPaths
     let fileManager: FileManager
 
     func loadPersistedSnapshots() -> ProviderQuotaPersistenceLoadResult<(snapshots: [AgentProvider: ProviderQuotaSnapshot], accountSnapshots: [String: ProviderQuotaSnapshot], lastFetch: Date?)> {

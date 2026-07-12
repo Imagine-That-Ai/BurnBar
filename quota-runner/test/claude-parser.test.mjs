@@ -25,6 +25,48 @@ Resets May 6 at 12:59am (America/Chicago)
   assert.equal(buckets[2].window, "weekly-sonnet");
 });
 
+test("parseClaudeUsage extracts explicit JSON usage buckets", () => {
+  const buckets = parseClaudeUsage(JSON.stringify({
+    buckets: [
+      {
+        name: "Current session",
+        used: 4,
+        limit: 20,
+        remaining: 16,
+        window: "5h",
+        resetAt: "2026-07-04T08:00:00Z",
+      },
+      {
+        label: "Current week (Opus only)",
+        used_percent: "73%",
+        period: "weekly-opus",
+      },
+    ],
+  }));
+
+  assert.equal(buckets.length, 2);
+  assert.deepEqual(
+    {
+      name: buckets[0].name,
+      used: buckets[0].used,
+      limit: buckets[0].limit,
+      remaining: buckets[0].remaining,
+      window: buckets[0].window,
+    },
+    {
+      name: "Current session",
+      used: 4,
+      limit: 20,
+      remaining: 16,
+      window: "5h",
+    },
+  );
+  assert.equal(buckets[1].name, "Current week (Opus only)");
+  assert.equal(buckets[1].used, 73);
+  assert.equal(buckets[1].remaining, 27);
+  assert.equal(buckets[1].window, "weekly-opus");
+});
+
 test("fetchClaudeQuota attempts hosted credential path with a credential", async () => {
   // With a credential present, the adapter now tries the hosted credential
   // flow (writing to a temp CLAUDE_CONFIG_DIR). Since there's no real

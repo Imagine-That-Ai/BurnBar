@@ -11,8 +11,42 @@ enum OnboardingWizardStep: Int, CaseIterable {
     case chatEngine
     case complete
 
+    /// Steps that exist in this build. The system-permissions step hosts
+    /// direct-download-only flows and is compiled out of Mac App Store builds,
+    /// so navigation must skip it there instead of showing an empty page.
+    var isAvailableInThisBuild: Bool {
+        switch self {
+        case .systemPermissions:
+            #if canImport(AppKit) && !DISTRIBUTION_MAS
+            return true
+            #else
+            return false
+            #endif
+        default:
+            return true
+        }
+    }
+
+    static var availableCases: [OnboardingWizardStep] {
+        allCases.filter(\.isAvailableInThisBuild)
+    }
+
     var progressFraction: Double {
-        Double(rawValue) / Double(Self.allCases.count - 1)
+        let available = Self.availableCases
+        guard available.count > 1, let index = available.firstIndex(of: self) else { return 0 }
+        return Double(index) / Double(available.count - 1)
+    }
+
+    var nextAvailable: OnboardingWizardStep? {
+        let available = Self.availableCases
+        guard let index = available.firstIndex(of: self) else { return nil }
+        return index + 1 < available.count ? available[index + 1] : nil
+    }
+
+    var previousAvailable: OnboardingWizardStep? {
+        let available = Self.availableCases
+        guard let index = available.firstIndex(of: self), index > 0 else { return nil }
+        return available[index - 1]
     }
 }
 
@@ -219,10 +253,10 @@ struct OnboardingWizardView: View {
             return
         }
 
-        guard let nextIndex = OnboardingWizardStep(rawValue: currentStep.rawValue + 1) else { return }
+        guard let nextStep = currentStep.nextAvailable else { return }
         navigationDirection = .trailing
         withAnimation(DesignSystem.Animation.gentle) {
-            currentStep = nextIndex
+            currentStep = nextStep
         }
     }
 
@@ -235,10 +269,10 @@ struct OnboardingWizardView: View {
             return
         }
 
-        guard let prevIndex = OnboardingWizardStep(rawValue: currentStep.rawValue - 1) else { return }
+        guard let previousStep = currentStep.previousAvailable else { return }
         navigationDirection = .leading
         withAnimation(DesignSystem.Animation.gentle) {
-            currentStep = prevIndex
+            currentStep = previousStep
         }
     }
 

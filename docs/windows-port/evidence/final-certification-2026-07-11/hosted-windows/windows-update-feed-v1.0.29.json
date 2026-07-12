@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "feed": "openburnbar-windows",
+  "generatedAtUtc": "2026-07-11T21:06:28Z",
+  "entries": [
+    {
+      "version": "1.0.29",
+      "platform": "win-x64",
+      "channel": "stable",
+      "url": "https://dl.openburnbar.dev/OpenBurnBar-1.0.29-win-x64.zip",
+      "sizeBytes": 131101156,
+      "sha256": "06cbe949bb3497d572f3aef4d8f2a1045fdbde6f07f486c5bef07e9bc783f9e1",
+      "minimumOsBuild": 17763,
+      "critical": false,
+      "publishedAtUtc": "2026-07-11T21:06:22Z",
+      "releaseNotesUrl": "",
+      "ed25519Signature": "037ieCO/Hn7G2I5iG78J9UVd53fYlo0mObgXAQOFUEjSsuUGq1nKhVSicC3fj9RVZkYoyITCqE88sMMUNFS9AA=="
+    },
+    {
+      "version": "1.0.29",
+      "platform": "win-arm64",
+      "channel": "stable",
+      "url": "https://dl.openburnbar.dev/OpenBurnBar-1.0.29-win-arm64.zip",
+      "sizeBytes": 127274185,
+      "sha256": "eba13d15b99854ab5bae482e1599c315766e7f1f854947ddbf6bdab7cc168300",
+      "minimumOsBuild": 17763,
+      "critical": false,
+      "publishedAtUtc": "2026-07-11T21:06:25Z",
+      "releaseNotesUrl": "",
+      "ed25519Signature": "yjyFGHqUx57Kt24Jt79wuB0hhMepjiW/pDj0mCXIGBmUW2QtFts7fUd2bknCwzxdKdjdidwQmgu3GgRY4J6lBQ=="
+    }
+  ]
+}

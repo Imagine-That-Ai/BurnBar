@@ -276,10 +276,19 @@ extension IrohHostKeyPinStore {
     /// Production default: the device Keychain.
     public static func defaultBacking() -> ControllerKeyPinBacking { IrohHostKeyKeychainPinBacking() }
 }
+#elseif os(Linux)
+extension IrohHostKeyPinStore {
+    /// Linux production default: freedesktop Secret Service, with an encrypted
+    /// 0600 file fallback when no session secret service is available. Never
+    /// silently degrades to in-memory persistence.
+    public static func defaultBacking() -> ControllerKeyPinBacking {
+        LinuxSecretControllerKeyPinBacking(service: LinuxPersistentSecretStore.irohHostPinService)
+    }
+}
 #else
 extension IrohHostKeyPinStore {
-    /// On platforms without the Security framework (Linux CI) the default backing
-    /// is in-memory; the shipping iOS app always resolves to the Keychain.
+    /// Non-production fallback for platforms without Security or the Linux
+    /// secret backend. Production Apple and Linux resolve above.
     public static func defaultBacking() -> ControllerKeyPinBacking { InMemoryControllerKeyPinBacking() }
 }
 #endif

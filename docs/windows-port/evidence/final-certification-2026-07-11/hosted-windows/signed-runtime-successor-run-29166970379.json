@@ -1,0 +1,68 @@
+{
+  "conclusion": "success",
+  "createdAt": "2026-07-11T20:24:34Z",
+  "databaseId": 29166970379,
+  "displayTitle": "OpenBurnBar Windows Release",
+  "event": "workflow_dispatch",
+  "headBranch": "codex/windows-signed-install-gate",
+  "headSha": "9dbcaa791794944326ce9ffb18ed4d9771f31ecc",
+  "status": "completed",
+  "updatedAt": "2026-07-11T21:08:53Z",
+  "url": "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29166970379",
+  "jobs": [
+    {
+      "completedAt": "2026-07-11T20:24:57Z",
+      "conclusion": "success",
+      "databaseId": 86581670853,
+      "name": "Resolve release version",
+      "startedAt": "2026-07-11T20:24:53Z",
+      "status": "completed",
+      "url": "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29166970379/job/86581670853"
+    },
+    {
+      "completedAt": "2026-07-11T20:50:06Z",
+      "conclusion": "success",
+      "databaseId": 86581670973,
+      "name": "Build native parser engine / swift build --target OpenBurnBarCore (aarch64-unknown-windows-msvc)",
+      "startedAt": "2026-07-11T20:24:51Z",
+      "status": "completed",
+      "url": "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29166970379/job/86581670973"
+    },
+    {
+      "completedAt": "2026-07-11T20:56:05Z",
+      "conclusion": "success",
+      "databaseId": 86581670976,
+      "name": "Build native parser engine / swift build --target OpenBurnBarCore (x86_64-unknown-windows-msvc)",
+      "startedAt": "2026-07-11T20:24:52Z",
+      "status": "completed",
+      "url": "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29166970379/job/86581670976"
+    },
+    {
+      "completedAt": "2026-07-11T20:25:52Z",
+      "conclusion": "success",
+      "databaseId": 86581680995,
+      "name": "Verify distribution core",
+      "startedAt": "2026-07-11T20:25:00Z",
+      "status": "completed",
+      "url": "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29166970379/job/86581680995"
+    },
+    {
+      "completedAt": "2026-07-11T21:07:06Z",
+      "conclusion": "success",
+      "databaseId": 86584150466,
+      "name": "Build + Authenticode sign",
+      "startedAt": "2026-07-11T20:56:07Z",
+      "status": "completed",
+      "url": "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29166970379/job/86584150466"
+    },
+    {
+      "completedAt": "2026-07-11T21:08:52Z",
+      "conclusion": "success",
+      "databaseId": 86584985552,
+      "name": "SBOM + OpenVEX + Sigstore",
+      "startedAt": "2026-07-11T21:07:08Z",
+      "status": "completed",
+      "url": "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29166970379/job/86584985552"
+    }
+  ]
+}

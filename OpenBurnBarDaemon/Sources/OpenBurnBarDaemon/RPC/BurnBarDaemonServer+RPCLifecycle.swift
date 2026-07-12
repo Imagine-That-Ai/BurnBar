@@ -39,6 +39,13 @@ extension BurnBarDaemonServer {
                 result: BurnBarCatalogResponse(catalog: configuration.catalog)
             )
             return encode(response)
+        case .linuxOnboardingSnapshot:
+            let response = BurnBarRPCResponseEnvelope(
+                id: request.id,
+                protocolVersion: BurnBarProtocolVersion.current,
+                result: try await linuxOnboardingService.snapshot()
+            )
+            return encode(response)
         case .authBootstrap:
             return encodeErrorResponse(
                 id: request.id,

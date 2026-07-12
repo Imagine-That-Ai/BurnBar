@@ -93,7 +93,7 @@ final class WindowManager: ObservableObject {
             backing: .buffered,
             defer: false
         )
-        window.title = OpenBurnBarIdentity.productName
+        window.title = OpenBurnBarCore.OpenBurnBarIdentity.productName
         // Keep a real title for the Window menu / accessibility; hide the redundant title text
         // in the title bar now that the in-toolbar brand mark carries the product name.
         window.titleVisibility = .hidden
@@ -105,6 +105,9 @@ final class WindowManager: ObservableObject {
         )
         window.contentView = NSHostingView(rootView: contentView)
         window.center()
+        // Restore the user's last frame; center() above is only the
+        // first-launch fallback before a saved frame exists.
+        window.setFrameAutosaveName("openburnbar.dashboard")
         window.makeKeyAndOrderFront(nil)
         window.isReleasedWhenClosed = false
         let lifecycleDelegate = DashboardWindowLifecycleDelegate()
@@ -152,6 +155,7 @@ final class WindowManager: ObservableObject {
         window.contentMinSize = NSSize(width: 780, height: 560)
         window.contentView = NSHostingView(rootView: contentView)
         window.center()
+        window.setFrameAutosaveName("openburnbar.settings")
         window.makeKeyAndOrderFront(nil)
         window.isReleasedWhenClosed = false
 

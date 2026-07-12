@@ -6,23 +6,30 @@ pkgdesc="Local-first AI agent cost and control dashboard"
 arch=("x86_64" "aarch64")
 url="https://github.com/Imagine-That-Ai/BurnBar"
 license=("AGPL-3.0-only")
-depends=("webkit2gtk" "gtk3" "libayatana-appindicator")
+depends=("webkit2gtk" "gtk3" "libayatana-appindicator" "libsecret" "sqlcipher" "swift-language")
+optdepends=("kwallet: KDE Wallet credential backend")
 source=(
-  "OpenBurnBar-${pkgver}.AppImage::https://github.com/Imagine-That-Ai/BurnBar/releases/download/v${pkgver}/OpenBurnBar-${pkgver}-linux-${CARCH}.AppImage"
-  "openburnbar-daemon-${pkgver}-${CARCH}::https://github.com/Imagine-That-Ai/BurnBar/releases/download/v${pkgver}/openburnbar-daemon-${pkgver}-linux-${CARCH}"
+  "OpenBurnBar_${pkgver}_${CARCH}.AppImage::https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v${pkgver}/OpenBurnBar_${pkgver}_${CARCH}.AppImage"
+  "openburnbar-daemon-${pkgver}-${CARCH}::https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v${pkgver}/openburnbar-daemon-${pkgver}-linux-${CARCH}"
   "openburnbar.desktop"
+  "openburnbar-safe-mode.desktop"
   "openburnbar-daemon.service"
+  "openburnbar-daemon-launch"
 )
 sha256sums=(
   "REPLACE_WITH_APPIMAGE_SHA256"
   "REPLACE_WITH_DAEMON_SHA256"
   "REPLACE_WITH_DESKTOP_SHA256"
+  "REPLACE_WITH_SAFE_MODE_DESKTOP_SHA256"
   "REPLACE_WITH_SERVICE_SHA256"
+  "REPLACE_WITH_LAUNCH_SHA256"
 )
 
 package() {
-  install -Dm755 "${srcdir}/OpenBurnBar-${pkgver}.AppImage" "${pkgdir}/usr/bin/openburnbar-linux-desktop"
+  install -Dm755 "${srcdir}/OpenBurnBar_${pkgver}_${CARCH}.AppImage" "${pkgdir}/usr/bin/openburnbar-linux-desktop"
   install -Dm755 "${srcdir}/openburnbar-daemon-${pkgver}-${CARCH}" "${pkgdir}/usr/bin/openburnbar-daemon"
+  install -Dm755 "${srcdir}/openburnbar-daemon-launch" "${pkgdir}/usr/libexec/openburnbar-daemon-launch"
   install -Dm644 "${srcdir}/openburnbar.desktop" "${pkgdir}/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop"
+  install -Dm644 "${srcdir}/openburnbar-safe-mode.desktop" "${pkgdir}/usr/share/applications/dev.openburnbar.OpenBurnBar.SafeMode.desktop"
   install -Dm644 "${srcdir}/openburnbar-daemon.service" "${pkgdir}/usr/lib/systemd/user/openburnbar-daemon.service"
 }

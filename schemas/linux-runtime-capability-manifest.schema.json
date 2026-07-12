@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openburnbar.dev/schemas/linux-runtime-capability-manifest.schema.json",
+  "title": "OpenBurnBar Linux runtime capability manifest",
+  "type": "object",
+  "required": ["schemaVersion", "catalogVersion", "shellVersion", "capabilities"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "catalogVersion": { "type": "string", "minLength": 1 },
+    "shellVersion": { "type": "string", "minLength": 1 },
+    "daemonVersion": { "type": ["string", "null"] },
+    "daemonProtocolVersion": { "type": ["integer", "null"], "minimum": 1 },
+    "sessionType": { "type": ["string", "null"] },
+    "desktop": { "type": ["string", "null"] },
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "domain", "state", "reason", "source"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "domain": { "enum": ["product", "platform", "security", "delivery"] },
+          "state": { "enum": ["available", "degraded", "unavailable", "blocked"] },
+          "reason": { "type": "string" },
+          "substitute": { "type": ["string", "null"] },
+          "source": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

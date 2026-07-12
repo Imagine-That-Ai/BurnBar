@@ -6,10 +6,10 @@ import Foundation
 final class TestableCodexParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider = .codex
     private let fileManager: FileManager
-    private let appPaths: OpenBurnBarAppPaths
+    private let appPaths: OpenBurnBar.OpenBurnBarAppPaths
     private let homeDirectoryURL: URL
 
-    init(fileManager: FileManager = .default, codexRoot: URL, appPaths: OpenBurnBarAppPaths) {
+    init(fileManager: FileManager = .default, codexRoot: URL, appPaths: OpenBurnBar.OpenBurnBarAppPaths) {
         self.fileManager = fileManager
         self.appPaths = appPaths
         self.homeDirectoryURL = codexRoot.deletingLastPathComponent()

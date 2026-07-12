@@ -13,9 +13,10 @@
     xmlns:local="using:OpenBurnBar.App.MissionControl"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    mc:Ignorable="d">
+    mc:Ignorable="d"
+    AutomationProperties.AutomationId="RouteRoot.missionControl">
 
-    <Grid Background="{StaticResource PensieveColorInkBaseBrush}">
+    <Grid Background="Transparent">
         <!-- Ambient particle backdrop (added in code-behind: SwarmCanvasHost.Control). -->
         <Border x:Name="BackdropHost" IsHitTestVisible="False" Opacity="0.7" />
 
@@ -45,7 +46,7 @@
                 <Border Grid.Column="1" Background="{StaticResource PensieveColorGlassLineBrush}" Opacity="0.6" />
 
                 <local:MissionSituationRoomView x:Name="SituationRoom" Grid.Column="2"
-                                                Background="{StaticResource PensieveColorInkBaseBrush}" />
+                                                Background="Transparent" />
             </Grid>
         </Grid>
 

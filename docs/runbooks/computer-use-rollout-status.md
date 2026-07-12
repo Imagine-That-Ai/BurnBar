@@ -6,6 +6,38 @@ Phase rollout log. One entry per phase ship — appended-to as flags advance thr
 
 ---
 
+## Quota and cloud-metering hardening (2026-07-10)
+
+- The macOS app and daemon now reserve sessions and actions through the same
+  locked, file-backed `ComputerUseLocalQuotaLedger` before dispatch. Accepted
+  usage survives restarts; duplicate call IDs are denied without redispatch;
+  delayed cloud snapshots merge monotonically and cannot lower local usage.
+- Authenticated app and daemon paths mirror session start, immutable action,
+  and session end headers into Firestore. Functions triggers fold those headers
+  into server-owned daily quota usage with transaction markers for retry-safe
+  idempotency. Firestore rules enforce entitlement, owner namespace, bounded
+  schemas, monotonic session updates, immutable action records, and server-only
+  quota documents.
+- These aggregates are operator telemetry, not anti-abuse billing authority:
+  source headers remain owner-created and have no daemon-signed provenance.
+  Ring analysis must assume honest, non-compromised clients until an attested
+  executor event format is deployed.
+- Direct phone-control input is tracked but excluded from hosted metered-action
+  totals. Cloud records omit descriptors, arguments, results, URLs, titles,
+  evidence, clipboard data, and raw errors; unknown failures become the fixed
+  `dispatch_error` taxonomy value.
+- Verification: 7 local-ledger tests, 9 audit-chain tests, 3 app cloud-payload
+  tests, the daemon replay-idempotency test, 55 focused Functions tests, and 25
+  Computer Use Firestore emulator cases passed. The full macOS app build and
+  generated BurnBarRPC canon check also passed under Xcode 26.6.
+
+**Rollout constraint:** keep hosted Computer Use flags at their current ring
+until the branch has passed protected CI and the production Functions/rules
+deploy has completed. Local fail-closed admission does not substitute for live
+deployment proof.
+
+---
+
 ## Cross-agent desktop permission grants
 
 - **Permanent remote-control trust-boundary remediation (2026-06-09):**

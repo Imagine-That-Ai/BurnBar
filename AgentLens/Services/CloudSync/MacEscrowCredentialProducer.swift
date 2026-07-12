@@ -416,16 +416,16 @@ struct MacLiveEscrowCredentialSecretReader: MacEscrowCredentialSecretReader {
     /// This Mac's stable install id, used as the switcher profile scope. Mirrors
     /// `MacLiveDeviceTrustGateway.loadOrCreateDeviceId`.
     static func installProfileID(defaults: UserDefaults = .standard) -> String {
-        if let stored = defaults.string(forKey: OpenBurnBarIdentity.deviceIDKey), !stored.isEmpty {
+        if let stored = defaults.string(forKey: OpenBurnBarCore.OpenBurnBarIdentity.deviceIDKey), !stored.isEmpty {
             return stored
         }
-        for legacyKey in OpenBurnBarIdentity.legacyDeviceIDKeys {
+        for legacyKey in OpenBurnBarCore.OpenBurnBarIdentity.legacyDeviceIDKeys {
             if let stored = defaults.string(forKey: legacyKey), !stored.isEmpty {
                 return stored
             }
         }
         let created = UUID().uuidString
-        defaults.set(created, forKey: OpenBurnBarIdentity.deviceIDKey)
+        defaults.set(created, forKey: OpenBurnBarCore.OpenBurnBarIdentity.deviceIDKey)
         return created
     }
 }

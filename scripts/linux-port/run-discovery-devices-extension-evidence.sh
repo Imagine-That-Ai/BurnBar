@@ -151,33 +151,37 @@ if grep -q 'dbus_system_bus=missing' "$AVahi_LOG" 2>/dev/null; then
   LIVE_AVAHI_BLOCKER+="D-Bus system bus socket missing (/run/dbus/system_bus_socket)"
 fi
 
-LINUX_XDG_CONFIG="${LINUX_XDG_CONFIG:-/tmp/openburnbar-w08-xdg}"
-LINUX_SUPPORT="${LINUX_XDG_CONFIG}/OpenBurnBar"
+LINUX_XDG_DATA="${LINUX_XDG_DATA:-/tmp/openburnbar-w08-xdg-data}"
+LINUX_XDG_RUNTIME="${LINUX_XDG_RUNTIME:-/tmp/openburnbar-w08-xdg-runtime}"
+LINUX_SUPPORT="${LINUX_XDG_DATA}/openburnbar"
 cat >"$PATHS_JSON" <<JSON
 {
   "platform": "linux",
-  "xdg_config_home": "${LINUX_XDG_CONFIG}",
+  "xdg_data_home": "${LINUX_XDG_DATA}",
+  "xdg_runtime_dir": "${LINUX_XDG_RUNTIME}",
   "daemon_support_directory_default": "${LINUX_SUPPORT}",
-  "daemon_socket_default": "${LINUX_SUPPORT}/openburnbar-daemon.sock",
+  "daemon_socket_default": "${LINUX_XDG_RUNTIME}/openburnbar/daemon.sock",
   "daemon_auth_token_file_default": "${LINUX_SUPPORT}/daemon-socket-auth-token",
   "swift_source": "OpenBurnBarLinuxPaths.supportDirectoryURL + defaultDaemonSocketURL",
   "override_env": [
     "OPENBURNBAR_DAEMON_SUPPORT_DIR",
     "BURNBAR_DAEMON_SUPPORT_DIR",
+    "OPENBURNBAR_SOCKET_PATH",
     "OPENBURNBAR_DAEMON_SOCKET_PATH",
     "BURNBAR_DAEMON_SOCKET_PATH",
-    "XDG_CONFIG_HOME"
+    "XDG_DATA_HOME",
+    "XDG_RUNTIME_DIR"
   ],
-  "note": "Sample uses Linux-style XDG_CONFIG_HOME for mission evidence; host macOS HOME is not claimed as Linux proof."
+  "note": "VAL-PATH-001: support under XDG_DATA_HOME/openburnbar; socket under XDG_RUNTIME_DIR/openburnbar/daemon.sock."
 }
 JSON
 
 cat >"$EXT_JSON" <<JSON
 {
   "platform": "linux",
-  "default_support_dir": "~/.config/OpenBurnBar",
-  "default_socket_path": "~/.config/OpenBurnBar/openburnbar-daemon.sock",
-  "default_auth_token_file": "~/.config/OpenBurnBar/daemon-socket-auth-token",
+  "default_support_dir": "~/.local/share/openburnbar",
+  "default_socket_path": "\$XDG_RUNTIME_DIR/openburnbar/daemon.sock",
+  "default_auth_token_file": "~/.local/share/openburnbar/daemon-socket-auth-token",
   "override_env": [
     "OPENBURNBAR_DAEMON_SOCKET_PATH",
     "BURNBAR_DAEMON_SOCKET_PATH",
@@ -186,7 +190,7 @@ cat >"$EXT_JSON" <<JSON
   ],
   "health_alert": "state/controller.ts invokes alertDaemonUnreachable(socketPath) on sustained disconnect",
   "no_parallel_health_stack": true,
-  "source": "extensions/openburnbar/src/platform/paths.ts"
+  "source": "apps/linux-desktop/src/linuxPaths.ts + OpenBurnBarCore/.../OpenBurnBarLinuxPaths.swift + extensions/openburnbar/src/daemon/client.ts"
 }
 JSON
 
@@ -610,7 +614,7 @@ if [[ -x "$ROOT/extensions/openburnbar/node_modules/.bin/vitest" ]]; then
 else
   {
     echo "blocker=extensions/openburnbar/node_modules missing; run npm ci --prefix extensions/openburnbar before extension-focused evidence."
-    echo "paths_source=extensions/openburnbar/src/platform/paths.ts (static sample in extension-linux-path-sample.json)"
+    echo "paths_source=linuxPaths.ts / OpenBurnBarLinuxPaths.swift / extension daemon client (static sample in extension-linux-path-sample.json)"
     echo "health_alert=state/controller.ts -> alertDaemonUnreachable(socketPath)"
   } >>"$EXT_TEST_LOG"
   EXT_TEST_RC=127

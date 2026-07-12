@@ -1,0 +1,40 @@
+[package]
+name = "openburnbar-media"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+description = "Linux Mercury media capture and decode pipelines for OpenBurnBar"
+publish = false
+
+[lib]
+name = "openburnbar_media"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[features]
+default = ["gstreamer"]
+gstreamer = [
+    "dep:glib",
+    "dep:gst",
+    "dep:gst_app",
+    "dep:gst_video",
+]
+
+[dependencies]
+glib = { version = "=0.21.5", optional = true }
+gst = { package = "gstreamer", version = "=0.24.5", optional = true, features = ["v1_24"] }
+gst_app = { package = "gstreamer-app", version = "=0.24.5", optional = true, features = ["v1_24"] }
+gst_video = { package = "gstreamer-video", version = "=0.24.5", optional = true, features = ["v1_24"] }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+
+[profile.dev]
+panic = "abort"

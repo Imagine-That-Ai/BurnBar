@@ -248,7 +248,10 @@ public struct BurnBarLiveModelCatalog: Sendable {
                     providerID: providerID,
                     rawSecret: resolvedSlot.apiKey
                 )
-                let hasCredential = hasUsableSecret(apiKey)
+                let hasCredential = configuration.provider.local
+                    && configuration.settings.ollamaEndpoints.contains(where: { $0.id == slot.slotID })
+                    ? true
+                    : hasUsableSecret(apiKey)
                 let account = BurnBarLiveModelAccountDescriptor(
                     providerID: providerID,
                     providerName: providerName,
@@ -458,8 +461,16 @@ public struct BurnBarLiveModelCatalog: Sendable {
         configuration: BurnBarResolvedProviderConfiguration,
         account: BurnBarLiveModelAccountDescriptor
     ) -> Bool {
-        configuration.provider.id.caseInsensitiveCompare("anthropic") == .orderedSame
-            && account.accountID.caseInsensitiveCompare("current-claude-code-login") == .orderedSame
+        guard configuration.provider.id.caseInsensitiveCompare("anthropic") == .orderedSame else {
+            return false
+        }
+        if account.accountID.caseInsensitiveCompare("current-claude-code-login") == .orderedSame {
+            return true
+        }
+        return configuration.settings.credentialSlots.contains { slot in
+            slot.slotID.caseInsensitiveCompare(account.accountID) == .orderedSame
+                && slot.authMethodID?.caseInsensitiveCompare("anthropic-claude-oauth") == .orderedSame
+        }
     }
 
     /// Emit one synthetic advertised row per `BurnBarModelVariant` whose
@@ -795,7 +806,10 @@ public struct BurnBarLiveModelCatalog: Sendable {
         // Discover installed models from Ollama's canonical `/api/tags` endpoint
         // (always present, richer than the `/v1/models` compat shim) by deriving
         // the server root from the provider's `/v1` base URL.
-        guard let baseURL = URL(string: configuration.settings.baseURL),
+        let rawBaseURL = configuration.settings.ollamaEndpoints
+            .first(where: { $0.id == account.accountID })?
+            .baseURL ?? configuration.settings.baseURL
+        guard let baseURL = URL(string: rawBaseURL),
               var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
             return failure("\(configuration.provider.displayName) has an invalid local base URL.")
         }

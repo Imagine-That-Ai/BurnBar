@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - Anthropic Usage API
 
@@ -114,7 +115,7 @@ final class AnthropicUsageAPI: ProviderUsageAPI, Sendable {
         guard input > 0 || output > 0 || cachedInput > 0 || cacheCreation > 0 else { return [] }
 
         // Anthropic doesn't return cost directly — compute from pricing
-        let pricing = ModelPricing.lookup(model: model)
+        let pricing = OpenBurnBarCore.ModelPricing.lookup(model: model)
         let cost = pricing.cost(
             inputTokens: input,
             outputTokens: output,

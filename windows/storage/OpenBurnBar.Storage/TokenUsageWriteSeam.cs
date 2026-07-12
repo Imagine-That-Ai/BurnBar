@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Microsoft.Data.Sqlite;
 
 namespace OpenBurnBar.Storage;
@@ -27,6 +28,52 @@ public static class TokenUsageWriteSeam
     public static int WriteTokenUsage(SqliteConnection connection, TokenUsageRecord record)
     {
         using var transaction = connection.BeginTransaction();
+        int affected = WriteTokenUsage(connection, transaction, record);
+        transaction.Commit();
+        return affected;
+    }
+
+    /// <summary>Compatibility entry point for existing scan callers.</summary>
+    public static int WriteTokenUsages(
+        SqliteConnection connection,
+        IReadOnlyList<TokenUsageRecord> records) =>
+        WriteTokenUsageBatch(connection, records);
+
+    /// <summary>
+    /// Atomically upsert a complete parser scan without opening one transaction
+    /// per row. An exception rolls back every row in the batch.
+    /// </summary>
+    public static int WriteTokenUsageBatch(
+        SqliteConnection connection,
+        IEnumerable<TokenUsageRecord> records)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(records);
+
+        using var transaction = connection.BeginTransaction();
+        int affected = WriteTokenUsageBatch(connection, transaction, records);
+        transaction.Commit();
+        return affected;
+    }
+
+    internal static int WriteTokenUsageBatch(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        IEnumerable<TokenUsageRecord> records)
+    {
+        int affected = 0;
+        foreach (TokenUsageRecord record in records)
+        {
+            affected += WriteTokenUsage(connection, transaction, record);
+        }
+        return affected;
+    }
+
+    private static int WriteTokenUsage(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        TokenUsageRecord record)
+    {
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText =
@@ -88,9 +135,7 @@ public static class TokenUsageWriteSeam
         Bind(command, "$estimatorVersion", record.EstimatorVersion);
         Bind(command, "$parentRequestID", (object?)record.ParentRequestID ?? DBNull.Value);
 
-        int affected = command.ExecuteNonQuery();
-        transaction.Commit();
-        return affected;
+        return command.ExecuteNonQuery();
     }
 
     /// <summary>

@@ -32,11 +32,27 @@ export const SURFACES: Surface[] = [
     cta: { href: "/download", label: "Download for macOS" }
   },
   {
+    id: "linux",
+    name: "Linux desktop app",
+    platform: "Linux aarch64 (ARM64)",
+    status: "shipping",
+    statusLabel: "Available · 0.1.0",
+    description:
+      "Tauri desktop shell over the native OpenBurnBar daemon. First public Linux release — signed AppImage, deb, and rpm for ARM64.",
+    bullets: [
+      "AppImage, .deb (Debian/Ubuntu), and .rpm (Fedora/RHEL)",
+      "Ed25519 detached signatures + keyless Sigstore/cosign attestations",
+      "Talks to the OpenBurnBar daemon over a local AF_UNIX socket",
+      "aarch64/ARM64 first — x86_64 lane is next"
+    ],
+    cta: { href: "/download#linux", label: "Download for Linux" }
+  },
+  {
     id: "ios",
     name: "iPhone & iPad companion",
     platform: "iOS 17+",
-    status: "review",
-    statusLabel: "In App Store review",
+    status: "shipping",
+    statusLabel: "On the App Store",
     description:
       "Your whole burn picture, in your pocket. The Mac does the work; the phone and tablet show it — and reach back to it.",
     bullets: [
@@ -46,7 +62,7 @@ export const SURFACES: Surface[] = [
       "Watch an agent work, or approve its moves, on the go",
       "Ask your Mac's assistant from anywhere — privately (paid)"
     ],
-    cta: { href: "/download#ios", label: "iOS launch status" }
+    cta: { href: "/download#ios", label: "Get the iOS app" }
   },
   {
     id: "cursor",
@@ -145,7 +161,7 @@ export const SURFACES: Surface[] = [
       "Three Model Context Protocol surfaces let Codex, Claude Code, Cursor, Droid, Kimi, Forge, and Hermes query your OpenBurnBar history as grounded evidence — local SQLite for free, encrypted hosted memory for Pro.",
     bullets: [
       "Local Python MCP — 26 tools over your OpenBurnBar SQLite, read-mostly by default",
-      "Hosted Remote MCP — live at https://mcp.burnbar.ai/mcp, 8 tools, BurnBar Pro entitlement",
+      "Hosted Remote MCP — live at https://mcp.burnbar.ai/mcp, 8 tools, BurnBar Cloud entitlement",
       "Local stdio shim — bridges stdio-only clients to the hosted endpoint, decrypts on-device",
       "Default privacy mode is local_decrypt_shim — server never sees plaintext queries or bodies"
     ],

@@ -219,10 +219,8 @@ test: ## Run all test suites (Swift packages + macOS + mobile + Android when con
 	@./scripts/test-openburnbar-app.sh
 	@echo "==> Running iOS mobile tests (Simulator when CI=true; physical iPhone otherwise)…"
 	@CI=true ./scripts/test-openburnbar-mobile.sh
-	@if [ -x android/gradlew ] && [ -n "$${JAVA_HOME:-}" -o -d "$$HOME/.homebrew/opt/openjdk@21" -o -d /opt/homebrew/opt/openjdk@21 ]; then \
-		echo "==> Running Android unit tests…"; \
-		./scripts/test-openburnbar-android.sh || echo "WARNING: Android tests failed or SDK missing."; \
-	fi
+	@echo "==> Running Android unit tests…"
+	@./scripts/test-openburnbar-android.sh
 
 test-full: lint ## Full CI parity (core + Functions + extension evals + supply chain)
 	@echo "==> Running Functions tests…"
@@ -241,7 +239,8 @@ lint: ## Run SwiftLint
 	@if command -v swiftlint >/dev/null 2>&1; then \
 		swiftlint lint --quiet; \
 	else \
-		echo "WARNING: swiftlint not found; skipping lint."; \
+		echo "ERROR: swiftlint is required for make lint." >&2; \
+		exit 1; \
 	fi
 
 debt-check: ## Enforce debt budgets + refresh tech-debt metrics
@@ -291,3 +290,45 @@ sbom: ## Generate SPDX Software Bill of Materials
 	@VERSION=$$(grep -m1 'MARKETING_VERSION' project.yml | sed 's/.*: *//;s/ *//;s/"//g'); \
 	echo "==> Generating SBOM for v$$VERSION…"; \
 	python3 scripts/generate-sbom.py --version "$$VERSION" --repo-root .
+
+.PHONY: linux-gate linux-diagnostic linux-performance-smoke release-linux linux-matrix
+
+linux-gate: ## Linux structural, frontend, and native behavior gate
+	node scripts/linux-port/validate-parity-ledger.mjs --allow-blocked
+	node scripts/linux-port/render-parity-ledger.mjs --check
+	node --test scripts/linux-port/validate-parity-ledger.test.mjs scripts/linux-port/render-parity-ledger.test.mjs
+	node --test scripts/linux-port/check-linux-update-feed.test.mjs
+	node --test scripts/linux-port/assemble-linux-release.test.mjs scripts/linux-port/prepare-linux-package-payload.test.mjs scripts/linux-port/credential-storage-contract.test.mjs scripts/linux-port/verify-linux-release.test.mjs scripts/linux-port/resolve-linux-release-version.test.mjs scripts/linux-port/verify-linux-workflow-wiring.test.mjs scripts/linux-port/runtime-capability-contract.test.mjs scripts/linux-port/accessibility-harness-contract.test.mjs scripts/linux-port/matched-performance-contract.test.mjs scripts/linux-port/perf-budget-contract.test.mjs
+	node scripts/linux-port/verify-linux-workflow-wiring.mjs
+	npm test --prefix apps/linux-desktop
+	npm run build --prefix apps/linux-desktop
+	node tools/ipc/generate-burnbarrpc-canon.mjs --check
+	bash scripts/linux-port/run-linux-native-tests.sh
+
+linux-diagnostic: ## Non-promotional Linux readiness report
+	node scripts/linux-port/validate-linux-release-config.mjs
+	node scripts/linux-port/validate-parity-ledger.mjs --allow-blocked
+	node scripts/linux-port/render-parity-ledger.mjs --check
+	node scripts/linux-port/check-linux-docs.mjs
+
+linux-performance-smoke: ## Run identical short macOS/Linux workloads (requires Docker on macOS)
+	docker build -t openburnbar-linux-toolchain:mission-001 tools/linux-toolchain
+	OB_MATCHED_PERF_PROFILE=smoke node scripts/linux-port/run-matched-performance.mjs --profile smoke
+
+release-linux: ## Linux release gate entry (strict verifier when artifacts present)
+	@echo "==> Linux release config + packaging sync + feed schema"
+	node scripts/linux-port/validate-linux-release-config.mjs
+	node scripts/linux-port/check-packaging-path-sync.mjs
+	node scripts/linux-port/check-linux-docs.mjs
+	@echo "==> Frontend unit tests"
+	npm test --prefix apps/linux-desktop
+	@echo "==> Product parity promotion ledger"
+	node scripts/linux-port/validate-parity-ledger.mjs
+	@echo "==> Update feed unit tests"
+	node --test scripts/linux-port/check-linux-update-feed.test.mjs
+	@echo "==> Strict release verifier"
+	node scripts/linux-port/verify-linux-release.mjs
+	@echo "release-linux promotion gates complete."
+
+linux-matrix: ## Record local matrix probe under mission-002 evidence
+	node scripts/linux-port/run-linux-matrix-harness.mjs

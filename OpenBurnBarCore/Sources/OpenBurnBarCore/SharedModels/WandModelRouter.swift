@@ -149,7 +149,7 @@ public enum WandModelRouter {
              .antigravityProfile, .cursorAgentProfile:
             return 0
         case .codexModelCatalog, .claudeModelCatalog, .grokModelCatalog,
-             .antigravityModelCatalog, .ollamaLocalCatalog:
+             .antigravityModelCatalog, .cursorAgentModelCatalog, .ollamaLocalCatalog:
             return 1
         case .droidCustomModel, .ollamaCloudCatalog:
             return 2
@@ -164,7 +164,7 @@ public enum WandModelRouter {
              .antigravityProfile, .cursorAgentProfile:
             return 0
         case .codexModelCatalog, .claudeModelCatalog, .grokModelCatalog,
-             .antigravityModelCatalog, .ollamaLocalCatalog:
+             .antigravityModelCatalog, .cursorAgentModelCatalog, .ollamaLocalCatalog:
             return 1
         case .ollamaCloudCatalog, .droidCustomModel:
             return 2

@@ -1,0 +1,9 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  OpenBurnBar.CloudSync.Crypto -> C:\candidate-7e346b2c7d\windows\cloudsync\OpenBurnBar.CloudSync.Crypto\bin\Release\net8.0\OpenBurnBar.CloudSync.Crypto.dll
+  OpenBurnBar.CloudSync.Crypto.Tests -> C:\candidate-7e346b2c7d\windows\tests\cloudsync\bin\Release\net10.0\OpenBurnBar.CloudSync.Crypto.Tests.dll
+Test run for C:\candidate-7e346b2c7d\windows\tests\cloudsync\bin\Release\net10.0\OpenBurnBar.CloudSync.Crypto.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    45, Skipped:     0, Total:    45, Duration: 269 ms - OpenBurnBar.CloudSync.Crypto.Tests.dll (net10.0)

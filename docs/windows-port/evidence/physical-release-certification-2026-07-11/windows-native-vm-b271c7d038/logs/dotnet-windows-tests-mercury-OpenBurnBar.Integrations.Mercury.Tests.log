@@ -1,0 +1,9 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  OpenBurnBar.Integrations.Mercury -> C:\candidate-7e346b2c7d\windows\integrations\mercury\OpenBurnBar.Integrations.Mercury\bin\Release\net8.0\OpenBurnBar.Integrations.Mercury.dll
+  OpenBurnBar.Integrations.Mercury.Tests -> C:\candidate-7e346b2c7d\windows\tests\mercury\bin\Release\net10.0\OpenBurnBar.Integrations.Mercury.Tests.dll
+Test run for C:\candidate-7e346b2c7d\windows\tests\mercury\bin\Release\net10.0\OpenBurnBar.Integrations.Mercury.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:   152, Skipped:     0, Total:   152, Duration: 1 s - OpenBurnBar.Integrations.Mercury.Tests.dll (net10.0)

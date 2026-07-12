@@ -143,7 +143,7 @@ final class CLIAgentSessionMirror: Sendable {
     /// This row also seals its private title/preview/transcript/resume fields
     /// before Firestore receives them; only non-content routing/count metadata
     /// stays top-level so iOS can list and route the session.
-    func mirrorArchivedLog(_ conversation: ConversationRecord, cloudLogDocumentID: String? = nil) async {
+    func mirrorArchivedLog(_ conversation: OpenBurnBarCore.ConversationRecord, cloudLogDocumentID: String? = nil) async {
         let account = await MainActor.run {
             (
                 accountManager.isFirebaseAvailable,
@@ -283,7 +283,7 @@ final class CLIAgentSessionMirror: Sendable {
     }
 
     nonisolated static func buildArchivedLogRecord(
-        conversation: ConversationRecord,
+        conversation: OpenBurnBarCore.ConversationRecord,
         cloudLogDocumentID: String? = nil
     ) -> CLIAgentSessionRecord? {
         guard conversation.sourceType == .providerLog,
@@ -363,13 +363,13 @@ final class CLIAgentSessionMirror: Sendable {
         return sanitized.isEmpty ? UUID().uuidString : String(sanitized.prefix(512))
     }
 
-    nonisolated private static func archivedTitle(for conversation: ConversationRecord) -> String {
+    nonisolated private static func archivedTitle(for conversation: OpenBurnBarCore.ConversationRecord) -> String {
         if let title = conversation.summaryTitle?.nilIfBlank { return String(title.prefix(120)) }
         if let summary = conversation.summary?.nilIfBlank { return String(summary.prefix(120)) }
         return String((conversation.inferredTaskTitle.nilIfBlank ?? conversation.sessionId).prefix(120))
     }
 
-    nonisolated private static func archivedPreview(for conversation: ConversationRecord) -> String {
+    nonisolated private static func archivedPreview(for conversation: OpenBurnBarCore.ConversationRecord) -> String {
         let preview = conversation.lastAssistantMessage.nilIfBlank
             ?? conversation.summary?.nilIfBlank
             ?? conversation.fullText.nilIfBlank
@@ -401,7 +401,7 @@ final class CLIAgentSessionMirror: Sendable {
         }
     }
 
-    nonisolated private static func archivedMessages(for conversation: ConversationRecord) -> [CLIAgentMessage] {
+    nonisolated private static func archivedMessages(for conversation: OpenBurnBarCore.ConversationRecord) -> [CLIAgentMessage] {
         let raw = conversation.fullText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !raw.isEmpty else {
             return conversation.lastAssistantMessage.nilIfBlank.map { message in

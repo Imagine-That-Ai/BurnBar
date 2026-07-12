@@ -1,0 +1,22 @@
+{
+  "generatedAt": "2026-07-09T18:18:59.860Z",
+  "rowId": "VAL-DASHBOARD-004",
+  "layouts": [
+    "classic",
+    "aurora",
+    "nebula",
+    "constellation",
+    "cockpit",
+    "atelier"
+  ],
+  "matrixScreenshot": "all-layouts-matrix.png",
+  "perLayout": [
+    "layout-classic.png",
+    "layout-aurora.png",
+    "layout-nebula.png",
+    "layout-constellation.png",
+    "layout-cockpit.png",
+    "layout-atelier.png"
+  ],
+  "sourceContract": "apps/linux-desktop/src/dashboard/dashboardLayout.ts"
+}

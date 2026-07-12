@@ -2,37 +2,240 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { readJson, releaseEvidenceDir, repoRoot, runStep, writeJson } from './lib/linux-release-common.mjs';
+import { findAppImageFilesystemOffset } from './lib/appimage-filesystem.mjs';
 
 const outDir = path.resolve(process.env.OPENBURNBAR_LINUX_RELEASE_OUT ?? releaseEvidenceDir);
-const closurePath = path.join(outDir, 'package-closure.json');
+const shardMode = process.argv.includes('--architecture-shard');
+const closurePath = path.join(outDir, shardMode ? 'architecture-closure.json' : 'package-closure.json');
 const smokeDir = path.join(outDir, 'smoke');
 fs.mkdirSync(smokeDir, { recursive: true });
 
 if (!fs.existsSync(closurePath)) {
-  console.error('package-closure.json missing; run build-linux-release first.');
+  console.error(`${path.basename(closurePath)} missing; run build-linux-release first.`);
   process.exit(1);
 }
 
 const closure = readJson(closurePath);
 const steps = [];
+
+function assertContains(command, haystack, needle, stderr) {
+  const ok = typeof haystack === 'string' && haystack.includes(needle);
+  steps.push({
+    command,
+    cwd: '.',
+    exitCode: ok ? 0 : 1,
+    stdout: ok ? `found ${needle}` : '',
+    stderr: ok ? '' : stderr
+  });
+  return ok;
+}
+
+function runtimeProbeEnv(label) {
+  const root = path.join(smokeDir, 'runtime-probes', label);
+  fs.rmSync(root, { recursive: true, force: true });
+  fs.mkdirSync(root, { recursive: true });
+  return {
+    ...process.env,
+    HOME: root,
+    XDG_CONFIG_HOME: path.join(root, 'config'),
+    XDG_DATA_HOME: path.join(root, 'data'),
+    XDG_RUNTIME_DIR: path.join(root, 'run')
+  };
+}
+
 for (const artifact of closure.artifacts ?? []) {
   const full = path.join(repoRoot, artifact.file);
+  if (!fs.existsSync(full)) {
+    steps.push({
+      command: `assert artifact exists ${artifact.type}`,
+      cwd: '.',
+      exitCode: 1,
+      stdout: '',
+      stderr: `missing artifact file: ${artifact.file}`
+    });
+    continue;
+  }
   if (artifact.type === 'deb') {
     steps.push(runStep('dpkg-deb', ['--info', full]));
-    steps.push(runStep('dpkg-deb', ['--contents', full]));
-    steps.push(runStep('dpkg', ['-i', full]));
-    steps.push(runStep('dpkg', ['-r', 'openburnbar']));
+    const contents = runStep('dpkg-deb', ['--contents', full]);
+    steps.push(contents);
+    // Unit ExecStart=/usr/libexec/openburnbar-daemon-launch must ship in the package.
+    assertContains(
+      'assert deb contains openburnbar-daemon-launch',
+      contents.stdout,
+      'openburnbar-daemon-launch',
+      'deb package missing /usr/libexec/openburnbar-daemon-launch (203/EXEC risk)'
+    );
+    assertContains(
+      'assert deb contains openburnbar-daemon binary',
+      contents.stdout,
+      'usr/bin/openburnbar-daemon',
+      'deb package missing /usr/bin/openburnbar-daemon'
+    );
+    assertContains(
+      'assert deb contains openburnbar-daemon.service',
+      contents.stdout,
+      'openburnbar-daemon.service',
+      'deb package missing systemd user unit'
+    );
+    assertContains(
+      'assert deb contains Swift runtime under usr/lib/openburnbar/swift',
+      contents.stdout,
+      'usr/lib/openburnbar/swift',
+      'deb package missing Swift runtime at /usr/lib/openburnbar/swift'
+    );
+    assertContains(
+      'assert deb contains SQLCipher runtime under usr/lib/openburnbar/native',
+      contents.stdout,
+      'usr/lib/openburnbar/native/libsqlcipher.so.0',
+      'deb package missing SQLCipher runtime at /usr/lib/openburnbar/native'
+    );
+    // Prefer sudo when non-root (guest packaging smoke).
+    const dpkgInstall = runStep('sudo', ['dpkg', '-i', full]);
+    if (dpkgInstall.exitCode !== 0) {
+      steps.push(runStep('dpkg', ['-i', full]));
+    } else {
+      steps.push(dpkgInstall);
+    }
+    steps.push(runStep('/usr/libexec/openburnbar-daemon-launch', ['--help'], {
+      env: runtimeProbeEnv(`deb-${artifact.architecture}`)
+    }));
+    // Derive the real package name from the artifact so uninstall targets the
+    // exact installed package (Tauri names it `open-burn-bar`, not `openburnbar`).
+    const debName = runStep('dpkg-deb', ['-f', full, 'Package']).stdout.trim() || 'open-burn-bar';
+    const dpkgRemove = runStep('sudo', ['dpkg', '-r', debName]);
+    if (dpkgRemove.exitCode !== 0) {
+      steps.push(runStep('dpkg', ['-r', debName]));
+    } else {
+      steps.push(dpkgRemove);
+    }
   } else if (artifact.type === 'rpm') {
     steps.push(runStep('rpm', ['-qip', full]));
-    steps.push(runStep('rpm', ['-qlp', full]));
-    steps.push(runStep('rpm', ['-i', '--nodeps', full]));
-    steps.push(runStep('rpm', ['-e', 'openburnbar']));
+    const listing = runStep('rpm', ['-qlp', full]);
+    steps.push(listing);
+    assertContains(
+      'assert rpm contains openburnbar-daemon-launch',
+      listing.stdout,
+      'openburnbar-daemon-launch',
+      'rpm package missing /usr/libexec/openburnbar-daemon-launch (203/EXEC risk)'
+    );
+    assertContains(
+      'assert rpm contains openburnbar-daemon binary',
+      listing.stdout,
+      '/usr/bin/openburnbar-daemon',
+      'rpm package missing /usr/bin/openburnbar-daemon'
+    );
+    assertContains(
+      'assert rpm contains Swift runtime under /usr/lib/openburnbar/swift',
+      listing.stdout,
+      '/usr/lib/openburnbar/swift',
+      'rpm package missing Swift runtime at /usr/lib/openburnbar/swift'
+    );
+    assertContains(
+      'assert rpm contains SQLCipher runtime under /usr/lib/openburnbar/native',
+      listing.stdout,
+      '/usr/lib/openburnbar/native/libsqlcipher.so.0',
+      'rpm package missing SQLCipher runtime at /usr/lib/openburnbar/native'
+    );
+    const rpmInstall = runStep('sudo', ['rpm', '-i', '--nodeps', '--force', full]);
+    if (rpmInstall.exitCode !== 0) {
+      steps.push(runStep('rpm', ['-i', '--nodeps', '--force', full]));
+    } else {
+      steps.push(rpmInstall);
+    }
+    steps.push(runStep('/usr/libexec/openburnbar-daemon-launch', ['--help'], {
+      env: runtimeProbeEnv(`rpm-${artifact.architecture}`)
+    }));
+    const rpmName = runStep('rpm', ['-qp', '--queryformat', '%{NAME}', full]).stdout.trim() || 'open-burn-bar';
+    const rpmErase = runStep('sudo', ['rpm', '-e', rpmName]);
+    if (rpmErase.exitCode !== 0) {
+      steps.push(runStep('rpm', ['-e', rpmName]));
+    } else {
+      steps.push(rpmErase);
+    }
   } else if (artifact.type === 'appimage') {
     fs.chmodSync(full, 0o755);
-    steps.push(runStep(full, ['--appimage-extract']));
-    // --version fast-exits before any GTK init (see src-tauri run()), so it needs
-    // no display; --appimage-extract-and-run avoids the FUSE requirement in CI.
-    steps.push(runStep(full, ['--appimage-extract-and-run', '--version']));
+    const appDir = path.join(repoRoot, 'squashfs-root');
+    fs.rmSync(appDir, { recursive: true, force: true });
+    let filesystemOffset = null;
+    try {
+      filesystemOffset = findAppImageFilesystemOffset(full);
+    } catch (error) {
+      steps.push({
+        command: `locate AppImage SquashFS filesystem ${artifact.architecture}`,
+        cwd: '.',
+        exitCode: 1,
+        stdout: '',
+        stderr: error.message
+      });
+    }
+    const extract = filesystemOffset === null
+      ? null
+      : runStep('unsquashfs', [
+        '-quiet',
+        '-no-progress',
+        '-dest',
+        appDir,
+        '-offset',
+        String(filesystemOffset),
+        full
+      ]);
+    if (extract) steps.push(extract);
+    if (extract?.exitCode === 0) {
+      for (const requiredPath of [
+        'usr/bin/openburnbar-daemon',
+        'usr/libexec/openburnbar-daemon-launch',
+        'usr/lib/openburnbar/swift',
+        'usr/lib/openburnbar/native/libsqlcipher.so.0'
+      ]) {
+        const present = fs.existsSync(path.join(appDir, requiredPath));
+        steps.push({
+          command: `assert AppImage contains ${requiredPath}`,
+          cwd: '.',
+          exitCode: present ? 0 : 1,
+          stdout: present ? `found ${requiredPath}` : '',
+          stderr: present ? '' : `AppImage missing ${requiredPath}`
+        });
+      }
+      steps.push(runStep(path.join(appDir, 'usr/libexec/openburnbar-daemon-launch'), ['--help'], {
+        env: {
+          ...runtimeProbeEnv(`appimage-${artifact.architecture}`),
+          APPDIR: appDir
+        }
+      }));
+    }
+    // Native CI exercises the AppImage runtime. Cross-architecture local shards
+    // can explicitly probe the extracted AppRun while retaining byte-level
+    // SquashFS and payload verification above.
+    const runtimeProbe = process.env.OPENBURNBAR_APPIMAGE_RUNTIME_PROBE?.trim() || 'appimage';
+    if (runtimeProbe === 'appimage') {
+      steps.push(runStep(full, ['--appimage-extract-and-run', '--version']));
+    } else if (runtimeProbe === 'extracted' && extract?.exitCode === 0) {
+      steps.push(runStep(path.join(appDir, 'AppRun'), ['--version'], {
+        env: { ...runtimeProbeEnv(`appimage-runtime-${artifact.architecture}`), APPDIR: appDir }
+      }));
+    } else {
+      steps.push({
+        command: 'validate OPENBURNBAR_APPIMAGE_RUNTIME_PROBE',
+        cwd: '.',
+        exitCode: 1,
+        stdout: '',
+        stderr: `invalid or unavailable AppImage runtime probe: ${runtimeProbe}`
+      });
+    }
+    // Remove the extraction dir so the release verifier's clean-worktree check
+    // binds to the committed release commit.
+    fs.rmSync(path.join(repoRoot, 'squashfs-root'), { recursive: true, force: true });
+  } else if (artifact.type === 'daemon') {
+    fs.chmodSync(full, 0o755);
+    const help = runStep(full, ['--help']);
+    steps.push(help);
+    assertContains(
+      'assert daemon binary responds to --help',
+      `${help.stdout}\n${help.stderr}`,
+      'socket-path',
+      'daemon binary --help did not print expected usage'
+    );
   }
 }
 
@@ -64,6 +267,48 @@ const update = {
 writeJson(path.join(smokeDir, 'package-update-rollback.json'), update);
 fs.writeFileSync(path.join(smokeDir, 'package-update-rollback.log'), `${JSON.stringify(update, null, 2)}\n`, 'utf8');
 
-const failed = steps.find((step) => step.exitCode !== 0);
-console.log(JSON.stringify({ steps: steps.length, failed: failed ?? null, update }, null, 2));
-process.exit(failed ? failed.exitCode : 0);
+const failed = steps.filter((step) => step.exitCode !== 0);
+if (shardMode) {
+  const architectureSummary = {
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    architecture: closure.architecture,
+    steps: steps.length,
+    failedCount: failed.length,
+    failed: failed.slice(0, 20),
+    passed: failed.length === 0
+  };
+  writeJson(path.join(smokeDir, 'architecture-smoke.json'), architectureSummary);
+  console.log(JSON.stringify(architectureSummary, null, 2));
+  process.exit(architectureSummary.passed ? 0 : 1);
+}
+const lifecycle = {
+  guiLaunch: {
+    status: 'blocked',
+    reason: 'Package inspection and --version do not prove a painted interactive GUI launch.'
+  },
+  daemonLaunch: {
+    status: 'blocked',
+    reason: 'Daemon --help does not prove package-owned service launch and health.'
+  },
+  versionReadback: {
+    status: 'blocked',
+    reason: 'Smoke does not yet read both package version and source commit from the running GUI and daemon.'
+  },
+  update: { status: update.status, reason: update.reason },
+  rollback: { status: update.status, reason: update.reason },
+  dataPreservation: { status: update.status, reason: update.reason }
+};
+const lifecyclePassed = Object.values(lifecycle).every((step) => step.status === 'passed');
+const summary = {
+  steps: steps.length,
+  failedCount: failed.length,
+  failed: failed.slice(0, 20),
+  update,
+  lifecycle,
+  passed: failed.length === 0 && lifecyclePassed
+};
+writeJson(path.join(smokeDir, 'package-smoke-summary.json'), summary);
+console.log(JSON.stringify(summary, null, 2));
+// Fail closed: any assert/install failure is a hard smoke failure.
+process.exit(summary.passed ? 0 : 1);

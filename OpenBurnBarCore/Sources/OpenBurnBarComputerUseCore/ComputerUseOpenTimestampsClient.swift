@@ -2,7 +2,7 @@ import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Pure-Swift OpenTimestamps client for Phase 13 chain notarization.
 ///

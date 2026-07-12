@@ -44,6 +44,7 @@ struct SettingsView: View {
         NavigationSplitView {
             VStack(spacing: 0) {
                 commandBar
+                    .accessibilityIdentifier(OBBAccessibilityID.settingsCommandBar)
                     .padding(.horizontal, DesignSystem.Spacing.md)
                     .padding(.top, DesignSystem.Spacing.sm)
                     .padding(.bottom, DesignSystem.Spacing.xs)
@@ -54,6 +55,7 @@ struct SettingsView: View {
                         sidebarRow(for: .home)
                     }
                     .tag(SettingsTab.home)
+                    .accessibilityIdentifier(OBBAccessibilityID.settingsRow(SettingsTab.home.rawValue))
 
                     // Grouped sections
                     ForEach(SettingsSection.visibleSections) { section in
@@ -63,11 +65,13 @@ struct SettingsView: View {
                                     sidebarRow(for: tab)
                                 }
                                 .tag(tab)
+                                .accessibilityIdentifier(OBBAccessibilityID.settingsRow(tab.rawValue))
                             }
                         }
                     }
                 }
                 .listStyle(.sidebar)
+                .accessibilityIdentifier(OBBAccessibilityID.settingsSidebar)
             }
             .navigationTitle("Settings")
             .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
@@ -106,6 +110,7 @@ struct SettingsView: View {
             minHeight: 600,
             idealHeight: 720
         )
+        .accessibilityIdentifier(OBBAccessibilityID.settingsRoot)
         .openBurnBarPreferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
         .environment(settingsManager)
         .background(SettingsWindowReader(window: $presentationWindow))
@@ -450,7 +455,7 @@ struct SettingsView: View {
                     try await accountManager.deleteCurrentUser()
                 },
                 onSignOut: {
-                    try? accountManager.signOut()
+                    try accountManager.signOut()
                 }
             )
             .navigationTitle("Account")

@@ -3,6 +3,7 @@
     x:Class="OpenBurnBar.App.Onboarding.ScanStepPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:theme="using:OpenBurnBar.App.Theme"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
@@ -21,7 +22,7 @@
                        Opacity="0.7"
                        FontSize="12.5"
                        TextWrapping="Wrap" />
-            <Border Background="{StaticResource OBBSurfaceBrush}" CornerRadius="8" Padding="10">
+            <Border Style="{StaticResource LiquidGlassSurfaceStyle}" theme:LiquidGlass.Surface="True" CornerRadius="8" Padding="10">
                 <TextBlock Text="The first scan parses your entire log history and may take a moment. Your dashboard fills in as sessions are discovered."
                            Opacity="0.55"
                            FontSize="11"
