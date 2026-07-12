@@ -177,14 +177,18 @@ public struct LinuxHeadlessSecretStoreBackend: LinuxSecretStoreBackend {
     public var backendName: String { "headless" }
     public var trustLevel: LinuxSecretTrustLevel
     public var environment: [String: String]
-    public var credentialReader: @Sendable (String) throws -> String
+    /// Reads the systemd credential at the given path. Returning `nil` means
+    /// the credential is not provided to this service (absent file), so the
+    /// custodian can fall through to other backends; throwing reports a
+    /// genuine backend anomaly and stays fail-closed.
+    public var credentialReader: @Sendable (String) throws -> String?
     public var nowMillis: Int64
     public var allowsEnvironmentSecrets: Bool
 
     public init(
         trustLevel: LinuxSecretTrustLevel = .headlessPassphrase,
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        credentialReader: (@Sendable (String) throws -> String)? = nil,
+        credentialReader: (@Sendable (String) throws -> String?)? = nil,
         nowMillis: Int64 = 1_800_000_000_000,
         allowsEnvironmentSecrets: Bool = false
     ) {
@@ -209,12 +213,19 @@ public struct LinuxHeadlessSecretStoreBackend: LinuxSecretStoreBackend {
             )
         } else if let directory = environment["CREDENTIALS_DIRECTORY"]?.trimmedNonEmpty {
             let path = try Self.confinedCredentialPath(directory: directory, id: id)
-            let secret = try Self.normalizedCredentialSecret(credentialReader(path), id: id)
-            resolved = (
-                secret,
-                .systemdCredential,
-                "Headless secret resolved from a validated systemd credential."
-            )
+            if let raw = try credentialReader(path) {
+                let secret = try Self.normalizedCredentialSecret(raw, id: id)
+                resolved = (
+                    secret,
+                    .systemdCredential,
+                    "Headless secret resolved from a validated systemd credential."
+                )
+            } else {
+                // The unit simply does not provide this credential. Report no
+                // record so reads fall through to other backends (or surface
+                // `.missingSecret`) and deletes do not treat it as a match.
+                resolved = nil
+            }
         } else {
             resolved = nil
         }
@@ -318,41 +329,64 @@ public struct LinuxHeadlessSecretStoreBackend: LinuxSecretStoreBackend {
 private enum LinuxSystemdCredentialReader {
     static let maximumBytes = 16_384
 
-    static func read(path: String) throws -> String {
+    static func read(path: String) throws -> String? {
 #if os(Linux)
         let url = URL(fileURLWithPath: path).standardizedFileURL
         let directoryPath = url.deletingLastPathComponent().path
         let credentialName = url.lastPathComponent
-        let directoryDescriptor = Glibc.open(
-            directoryPath,
-            O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW
-        )
-        guard directoryDescriptor >= 0 else {
+        let directoryOpen: (descriptor: Int32, errorNumber: Int32) = {
+            let descriptor = Glibc.open(
+                directoryPath,
+                O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW
+            )
+            return (descriptor, descriptor >= 0 ? 0 : errno)
+        }()
+        guard directoryOpen.descriptor >= 0 else {
+            if directoryOpen.errorNumber == ENOENT {
+                // No credentials directory exists, so no systemd credential is
+                // provided. Treat as missing rather than a backend anomaly.
+                return nil
+            }
             throw LinuxSecretStoreError.backendUnavailable("systemd credential directory is unavailable")
         }
+        let directoryDescriptor = directoryOpen.descriptor
         defer { _ = Glibc.close(directoryDescriptor) }
 
         var directoryMetadata = stat()
         guard fstat(directoryDescriptor, &directoryMetadata) == 0,
               directoryMetadata.st_mode & S_IFMT == S_IFDIR,
               directoryMetadata.st_uid == 0 || directoryMetadata.st_uid == geteuid(),
-              directoryMetadata.st_mode & 0o077 == 0 else {
+              modeAllowsCredentialAccess(
+                  directoryMetadata.st_mode,
+                  ownerIsRoot: directoryMetadata.st_uid == 0
+              ) else {
             throw LinuxSecretStoreError.backendUnavailable("systemd credential directory failed ownership or mode validation")
         }
 
-        let descriptor = credentialName.withCString { name in
-            Glibc.openat(directoryDescriptor, name, O_RDONLY | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW)
+        let credentialOpen: (descriptor: Int32, errorNumber: Int32) = credentialName.withCString { name in
+            let descriptor = Glibc.openat(
+                directoryDescriptor,
+                name,
+                O_RDONLY | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW
+            )
+            return (descriptor, descriptor >= 0 ? 0 : errno)
         }
-        guard descriptor >= 0 else {
+        guard credentialOpen.descriptor >= 0 else {
+            if credentialOpen.errorNumber == ENOENT {
+                // The unit does not provide this particular credential; report
+                // it as missing so callers can fall through to other backends.
+                return nil
+            }
             throw LinuxSecretStoreError.backendUnavailable("systemd credential is unavailable")
         }
+        let descriptor = credentialOpen.descriptor
         defer { _ = Glibc.close(descriptor) }
 
         var metadata = stat()
         guard fstat(descriptor, &metadata) == 0,
               metadata.st_mode & S_IFMT == S_IFREG,
               metadata.st_uid == 0 || metadata.st_uid == geteuid(),
-              metadata.st_mode & 0o077 == 0,
+              modeAllowsCredentialAccess(metadata.st_mode, ownerIsRoot: metadata.st_uid == 0),
               metadata.st_size > 0,
               metadata.st_size <= maximumBytes else {
             throw LinuxSecretStoreError.backendUnavailable(
@@ -385,6 +419,23 @@ private enum LinuxSystemdCredentialReader {
         throw LinuxSecretStoreError.backendUnavailable("systemd credentials are available only on Linux")
 #endif
     }
+
+#if os(Linux)
+    /// Fail-closed credential mode policy.
+    ///
+    /// Classic systemd credentials are private to their owner (`0600`-style),
+    /// so non-root-owned entries must have no group or other bits at all. On
+    /// systemd 254+, `DynamicUser=true` services receive root-owned entries
+    /// (files `0440`, directory `0550`) whose group bits mirror the POSIX ACL
+    /// mask that grants the service user read access, so group read/execute
+    /// bits are accepted for root-owned entries. Any world access or any
+    /// group-write bit is always rejected.
+    private static func modeAllowsCredentialAccess(_ mode: mode_t, ownerIsRoot: Bool) -> Bool {
+        guard mode & 0o007 == 0 else { return false }
+        guard mode & 0o020 == 0 else { return false }
+        return ownerIsRoot || mode & 0o077 == 0
+    }
+#endif
 }
 
 public struct LinuxCommandSecretStoreBackend: LinuxSecretStoreBackend {

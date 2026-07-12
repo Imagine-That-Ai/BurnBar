@@ -312,16 +312,50 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
         XCTAssertEqual(record.secret, "  audit-secret  ")
         XCTAssertEqual(record.metadata.trustLevel, .systemdCredential)
 
+        // Group read/execute bits mirror the POSIX ACL mask that systemd 254+
+        // sets for DynamicUser=true services, but only root-owned entries may
+        // carry them; user-owned entries stay strictly private.
         try fileManager.setAttributes([.posixPermissions: 0o750], ofItemAtPath: directory.path)
+        if geteuid() == 0 {
+            XCTAssertNoThrow(
+                try backend.readSecret(id: "audit-signing-key", secretClass: .auditSigningKey)
+            )
+        } else {
+            XCTAssertThrowsError(
+                try backend.readSecret(id: "audit-signing-key", secretClass: .auditSigningKey)
+            )
+        }
+
+        // World access and group-write are rejected for every owner.
+        try fileManager.setAttributes([.posixPermissions: 0o705], ofItemAtPath: directory.path)
+        XCTAssertThrowsError(
+            try backend.readSecret(id: "audit-signing-key", secretClass: .auditSigningKey)
+        )
+        try fileManager.setAttributes([.posixPermissions: 0o770], ofItemAtPath: directory.path)
         XCTAssertThrowsError(
             try backend.readSecret(id: "audit-signing-key", secretClass: .auditSigningKey)
         )
         try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
 
         try fileManager.setAttributes([.posixPermissions: 0o640], ofItemAtPath: credential.path)
+        if geteuid() == 0 {
+            XCTAssertNoThrow(
+                try backend.readSecret(id: "audit-signing-key", secretClass: .auditSigningKey)
+            )
+        } else {
+            XCTAssertThrowsError(
+                try backend.readSecret(id: "audit-signing-key", secretClass: .auditSigningKey)
+            )
+        }
+        try fileManager.setAttributes([.posixPermissions: 0o644], ofItemAtPath: credential.path)
         XCTAssertThrowsError(
             try backend.readSecret(id: "audit-signing-key", secretClass: .auditSigningKey)
         )
+        try fileManager.setAttributes([.posixPermissions: 0o660], ofItemAtPath: credential.path)
+        XCTAssertThrowsError(
+            try backend.readSecret(id: "audit-signing-key", secretClass: .auditSigningKey)
+        )
+        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: credential.path)
 
         try fileManager.removeItem(at: credential)
         let symlinkTarget = directory.appendingPathComponent("symlink-target")
@@ -337,6 +371,32 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
         try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: credential.path)
         XCTAssertThrowsError(
             try backend.readSecret(id: "audit-signing-key", secretClass: .auditSigningKey)
+        )
+    }
+
+    func testSystemdCredentialReaderTreatsAbsentCredentialsAsMissing() throws {
+        let fileManager = FileManager.default
+        let directory = fileManager.temporaryDirectory
+            .appendingPathComponent("openburnbar-systemd-absent-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: false)
+        try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+        defer { try? fileManager.removeItem(at: directory) }
+
+        // A valid credentials directory that does not provide this credential
+        // reports no record instead of a backend failure.
+        let backend = LinuxHeadlessSecretStoreBackend(
+            environment: ["CREDENTIALS_DIRECTORY": directory.path]
+        )
+        XCTAssertNil(
+            try backend.readSecret(id: "audit-signing-key", secretClass: .auditSigningKey)
+        )
+
+        // An absent credentials directory means no systemd credentials at all.
+        let absentDirectoryBackend = LinuxHeadlessSecretStoreBackend(
+            environment: ["CREDENTIALS_DIRECTORY": directory.appendingPathComponent("absent").path]
+        )
+        XCTAssertNil(
+            try absentDirectoryBackend.readSecret(id: "audit-signing-key", secretClass: .auditSigningKey)
         )
     }
 
@@ -791,6 +851,75 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
         )
         XCTAssertEqual(record.secret, "systemd-copy")
         XCTAssertEqual(record.metadata.trustLevel, .systemdCredential)
+    }
+
+    func testAbsentSystemdCredentialFallsThroughOnRead() throws {
+        let headless = LinuxHeadlessSecretStoreBackend(
+            environment: ["CREDENTIALS_DIRECTORY": "/run/credentials/openburnbar.service"],
+            credentialReader: { _ in nil }
+        )
+        XCTAssertNil(
+            try headless.readSecret(id: "provider-token", secretClass: .providerCredential)
+        )
+
+        let fallback = LinuxInMemorySecretStoreBackend(secrets: ["provider-token": "wallet-copy"])
+        let record = try LinuxSecretCustodian(backends: [headless, fallback])
+            .requireHighValueSecret(id: "provider-token", secretClass: .providerCredential)
+        XCTAssertEqual(record.secret, "wallet-copy")
+
+        XCTAssertThrowsError(
+            try LinuxSecretCustodian(backends: [headless]).requireHighValueSecret(
+                id: "provider-token",
+                secretClass: .providerCredential
+            )
+        ) { error in
+            XCTAssertEqual(error as? LinuxSecretStoreError, .missingSecret("provider-token"))
+        }
+    }
+
+    func testDeletingSecretTreatsAbsentSystemdCredentialAsMissing() throws {
+        let writable = LinuxSecretMutationProbeBackend(
+            backendName: "secret-service",
+            initialSecret: "mutable-copy"
+        )
+        let headless = LinuxHeadlessSecretStoreBackend(
+            environment: ["CREDENTIALS_DIRECTORY": "/run/credentials/openburnbar.service"],
+            credentialReader: { _ in nil }
+        )
+        let custodian = LinuxSecretCustodian(backends: [writable, headless])
+
+        try custodian.deleteHighValueSecret(id: "provider-token", secretClass: .providerCredential)
+
+        XCTAssertEqual(writable.deleteCount, 1)
+        XCTAssertNil(try writable.readSecret(id: "provider-token", secretClass: .providerCredential))
+    }
+
+    func testDeletingSecretStillFailsClosedWhenSystemdCredentialProbeErrors() throws {
+        let writable = LinuxSecretMutationProbeBackend(
+            backendName: "secret-service",
+            initialSecret: "mutable-copy"
+        )
+        let headless = LinuxHeadlessSecretStoreBackend(
+            environment: ["CREDENTIALS_DIRECTORY": "/run/credentials/openburnbar.service"],
+            credentialReader: { _ in
+                throw LinuxSecretStoreError.backendUnavailable(
+                    "systemd credential failed type, ownership, mode, or size validation"
+                )
+            }
+        )
+        let custodian = LinuxSecretCustodian(backends: [writable, headless])
+
+        XCTAssertThrowsError(
+            try custodian.deleteHighValueSecret(id: "provider-token", secretClass: .providerCredential)
+        ) { error in
+            XCTAssertEqual(
+                error as? LinuxSecretStoreError,
+                .backendUnavailable(
+                    "systemd credential failed type, ownership, mode, or size validation"
+                )
+            )
+        }
+        XCTAssertEqual(writable.deleteCount, 0)
     }
 
     func testSignOutClearsLocalTokenWhenRemoteRevocationFails() async throws {
