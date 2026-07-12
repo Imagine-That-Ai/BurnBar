@@ -142,7 +142,7 @@ extension BurnBarHTTPGatewayServer {
                         httpStatus: relay.httpStatus,
                         streamed: true
                     )
-                    let attemptStatus: BurnBarProxyRouteFinalStatus = relay.interrupted ? .interrupted : .exact
+                    let attemptStatus = BurnBarProxyRouteFinalStatus.streamRelayOutcome(interrupted: relay.interrupted)
                     routeLogAttempts.append(routeAttempt(
                         sequence: routeLogAttempts.nextSequence,
                         startedAt: attemptStartedAt,
@@ -152,7 +152,7 @@ extension BurnBarHTTPGatewayServer {
                         httpStatus: relay.httpStatus
                     ))
                     let finalStatus = relay.interrupted
-                        ? BurnBarProxyRouteFinalStatus.interrupted
+                        ? BurnBarProxyRouteFinalStatus.streamRelayOutcome(interrupted: true)
                         : routeFinalStatus(
                             route: route,
                             requestedCanonicalModelID: requiredCanonicalModelID,

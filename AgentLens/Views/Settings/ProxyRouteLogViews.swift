@@ -204,7 +204,7 @@ private struct ProxyRouteLogRow: View {
                 ForEach(entry.attempts) { attempt in
                     Text("#\(attempt.sequence) \(attempt.providerName) → \(attempt.upstreamModelSlug) (\(attempt.status.rawValue.replacingOccurrences(of: "_", with: " ")))")
                         .font(DesignSystem.Typography.monoTiny)
-                        .foregroundStyle(attempt.status == .failed ? DesignSystem.Colors.error : DesignSystem.Colors.textSecondary)
+                        .foregroundStyle(attemptTint(for: attempt.status))
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
@@ -305,6 +305,21 @@ private struct ProxyRouteLogRow: View {
         entry.finalStatus != .exact
     }
 
+    /// Per-attempt tint in the expanded attempt list. Exhaustive so a new
+    /// status case cannot silently render with the neutral secondary style.
+    private func attemptTint(for status: BurnBarProxyRouteFinalStatus) -> Color {
+        switch status {
+        case .failed:
+            return DesignSystem.Colors.error
+        case .interrupted:
+            // Interrupted attempts are amber, matching the row chip: the
+            // stream broke mid-flight, but the route was not at fault.
+            return DesignSystem.Colors.warning
+        case .exact, .sameModelFailover, .crossVendorFallback, .rejected:
+            return DesignSystem.Colors.textSecondary
+        }
+    }
+
     private var providerReportedMismatch: Bool {
         guard let reported = entry.providerReportedModelSlug else { return false }
         return reported != entry.upstreamModelSlug
@@ -361,38 +376,79 @@ private struct ProxyRouteLogRow: View {
     }
 
     private var statusLabel: String {
-        switch entry.finalStatus {
-        case .exact: return "Exact"
-        case .sameModelFailover: return "Same model failover"
-        case .crossVendorFallback: return "Cross-vendor fallback"
-        case .failed: return "Failed"
-        case .rejected: return "No route"
-        case .interrupted: return "Interrupted"
-        }
+        ProxyRouteStatusPresentation(status: entry.finalStatus).label
     }
 
     private var statusImage: String {
-        switch entry.finalStatus {
-        case .exact: return "checkmark.seal.fill"
-        case .sameModelFailover: return "arrow.triangle.branch"
-        case .crossVendorFallback: return "exclamationmark.triangle.fill"
-        case .failed: return "xmark.octagon.fill"
-        case .rejected: return "minus.circle.fill"
-        case .interrupted: return "waveform.path.ecg"
-        }
+        ProxyRouteStatusPresentation(status: entry.finalStatus).systemImage
     }
 
     private var statusTint: Color {
-        switch entry.finalStatus {
-        case .exact: return DesignSystem.Colors.success
+        ProxyRouteStatusPresentation(status: entry.finalStatus).tone.color
+    }
+}
+
+/// Single source of truth for how a proxy-route final status is presented.
+/// Exhaustive over `BurnBarProxyRouteFinalStatus` on purpose — a new status
+/// case must fail this switch at compile time instead of silently falling
+/// through to some default rendering.
+struct ProxyRouteStatusPresentation: Equatable {
+    /// Semantic tone, resolved to a concrete `DesignSystem` token by `color`.
+    /// Kept as a separate enum so unit tests can pin the semantics without
+    /// comparing SwiftUI `Color` values.
+    enum Tone: Equatable {
+        case success
+        case warning
+        case error
+        case muted
+
+        var color: Color {
+            switch self {
+            case .success: return DesignSystem.Colors.success
+            case .warning: return DesignSystem.Colors.warning
+            case .error: return DesignSystem.Colors.error
+            case .muted: return DesignSystem.Colors.textMuted
+            }
+        }
+    }
+
+    let label: String
+    let systemImage: String
+    let tone: Tone
+
+    init(status: BurnBarProxyRouteFinalStatus) {
+        switch status {
+        case .exact:
+            label = "Exact"
+            systemImage = "checkmark.seal.fill"
+            tone = .success
         // Same-model failover is benign — you still got the model you asked for,
         // just from another account — so it stays amber. Cross-vendor fallback is
         // the dangerous "Opus actually went to GLM" case this whole view exists to
         // surface, so it gets the loud error treatment, not a shared amber.
-        case .sameModelFailover: return DesignSystem.Colors.warning
-        case .crossVendorFallback: return DesignSystem.Colors.error
-        case .failed, .interrupted: return DesignSystem.Colors.error
-        case .rejected: return DesignSystem.Colors.textMuted
+        case .sameModelFailover:
+            label = "Same model failover"
+            systemImage = "arrow.triangle.branch"
+            tone = .warning
+        case .crossVendorFallback:
+            label = "Cross-vendor fallback"
+            systemImage = "exclamationmark.triangle.fill"
+            tone = .error
+        case .failed:
+            label = "Failed"
+            systemImage = "xmark.octagon.fill"
+            tone = .error
+        case .rejected:
+            label = "No route"
+            systemImage = "minus.circle.fill"
+            tone = .muted
+        // Interrupted is not a failure: bytes were flowing and the stream ended
+        // early (client hang-up or upstream drop). The request is retryable and
+        // the route stayed healthy, so it reads as amber, never failure-red.
+        case .interrupted:
+            label = "Interrupted"
+            systemImage = "waveform.path.ecg"
+            tone = .warning
         }
     }
 }

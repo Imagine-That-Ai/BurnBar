@@ -75,6 +75,21 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
         XCTAssertTrue(response.body.contains("data: {\"id\":\"chatcmpl-linux\""))
         XCTAssertFalse(response.body.contains("HTTP/1.1 "), "gateway must not append a second buffered HTTP response after streaming starts")
         XCTAssertEqual(response.rawText.components(separatedBy: "HTTP/1.1 ").count - 1, 1)
+
+        // Parity with the macOS gateway: the client sees a terminal SSE error
+        // event instead of a silent hang-up.
+        XCTAssertTrue(response.body.contains("event: error"), response.body)
+        XCTAssertTrue(response.body.contains("upstream stream interrupted"), response.body)
+
+        // Producer → persisted: a committed stream that breaks mid-flight is
+        // first-class `interrupted` — never `failed` — and flags the stream.
+        let routeLog = try await harness.proxyRouteLogStore.recent(limit: 1)
+        let entry = try XCTUnwrap(routeLog.first)
+        XCTAssertEqual(entry.finalStatus, .interrupted)
+        XCTAssertTrue(entry.streamed)
+        XCTAssertTrue(entry.streamInterrupted)
+        XCTAssertEqual(entry.attempts.first?.status, .interrupted)
+        XCTAssertFalse(entry.finalStatus.countsAgainstRouteHealth)
     }
 
     func testStreamsAnthropicChatCompletionsThroughMessagesTransformerAndRecordsUsage() async throws {

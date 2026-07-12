@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 import type { ConfigSnapshot, NotificationConfig, ProviderSettings } from '../../tauriBridge.js';
+import { PROXY_ROUTE_FINAL_STATUS_COPY } from '../../tauriBridge.js';
 import type { DaemonStatusCopy } from '../../daemonStatusCopy.js';
 import { Banner } from '../../components/Banner.js';
 import { OfflineNotice } from '../../components/OfflineNotice.js';
@@ -436,7 +437,7 @@ function AgentsDetail({ config }: { config: ConfigSnapshot }) {
             key={entry.id}
             iconGlyph="⇢"
             label={`${entry.clientModelSlug || 'unknown'} → ${entry.routingModelSlug ?? entry.upstreamModelSlug ?? 'unresolved'}`}
-            description={`${entry.finalStatus} · ${entry.rewriteKind} · ${entry.providerName ?? 'No provider'} · ${entry.occurredAt}`}
+            description={`${PROXY_ROUTE_FINAL_STATUS_COPY[entry.finalStatus]}${entry.streamInterrupted ? ' · stream interrupted' : ''} · ${entry.rewriteKind} · ${entry.providerName ?? 'No provider'} · ${entry.occurredAt}`}
             control={<span className="muted mono">{entry.httpStatus ?? 'n/a'}</span>}
           />
         ))}

@@ -1,9 +1,15 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { bridgeStubDefaults } from './testing/bridgeStubs';
 import {
   computeCacheHitRatePct,
   decodeDaemonSubscriptionResponse,
-  decodeDaemonSubscriptionStopResponse
+  decodeDaemonSubscriptionStopResponse,
+  mapProxyRouteLog,
+  normalizeProxyRouteFinalStatus,
+  PROXY_ROUTE_FINAL_STATUS_COPY
 } from './tauriBridge';
 
 describe('computeCacheHitRatePct', () => {
@@ -103,5 +109,63 @@ describe('daemon subscription wire decoding', () => {
       stopped: true,
       last_seq: 8
     })).toEqual({ subscriptionId: 'sub-data', stopped: true, lastSeq: 8 });
+  });
+});
+
+const INTERRUPTED_FIXTURE_PATH = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../../docs/linux-port/fixtures/proxy-route-log-interrupted.fixture.json'
+);
+
+describe('proxy route log interrupted status (cross-platform contract)', () => {
+  it('normalizes every canon wire name and falls back to unknown', () => {
+    // Mirrors BurnBarProxyRouteFinalStatus in
+    // OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarProxyRouteLogContracts.swift.
+    const wireNames = [
+      'exact',
+      'same_model_failover',
+      'cross_vendor_fallback',
+      'failed',
+      'rejected',
+      'interrupted'
+    ] as const;
+    for (const wireName of wireNames) {
+      expect(normalizeProxyRouteFinalStatus(wireName)).toBe(wireName);
+    }
+    expect(normalizeProxyRouteFinalStatus('brand_new_status')).toBe('unknown');
+    expect(normalizeProxyRouteFinalStatus('')).toBe('unknown');
+  });
+
+  it('decodes the shared interrupted fixture exactly as the Swift daemon persists it', () => {
+    // Same fixture is decoded by OpenBurnBarDaemonTests
+    // (BurnBarProxyRouteInterruptedStatusTests) — both sides fail if the wire
+    // contract for status `interrupted` drifts.
+    const fixture = JSON.parse(readFileSync(INTERRUPTED_FIXTURE_PATH, 'utf8'));
+    const entries = mapProxyRouteLog(fixture);
+    expect(entries).toHaveLength(1);
+    const entry = entries[0];
+    expect(entry.finalStatus).toBe('interrupted');
+    expect(entry.streamed).toBe(true);
+    expect(entry.streamInterrupted).toBe(true);
+    expect(entry.failureMessage).toBe('upstream stream interrupted');
+    expect(entry.providerName).toBe('Anthropic');
+    expect(entry.httpStatus).toBe(200);
+  });
+
+  it('renders interrupted with its own retryable copy, distinct from failed', () => {
+    expect(PROXY_ROUTE_FINAL_STATUS_COPY.interrupted).toBe('Interrupted — retryable');
+    expect(PROXY_ROUTE_FINAL_STATUS_COPY.interrupted).not.toBe(PROXY_ROUTE_FINAL_STATUS_COPY.failed);
+    // Every status the contract can produce has human copy (Record is
+    // compile-time exhaustive; this guards the runtime values too).
+    for (const value of Object.values(PROXY_ROUTE_FINAL_STATUS_COPY)) {
+      expect(value.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('keeps interrupted entries out of the failed bucket when filtering', () => {
+    const fixture = JSON.parse(readFileSync(INTERRUPTED_FIXTURE_PATH, 'utf8'));
+    const entries = mapProxyRouteLog(fixture);
+    expect(entries.filter((e) => e.finalStatus === 'failed')).toHaveLength(0);
+    expect(entries.filter((e) => e.finalStatus === 'interrupted')).toHaveLength(1);
   });
 });

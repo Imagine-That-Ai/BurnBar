@@ -676,7 +676,27 @@ export function fixtureProxyRouteLog(): ProxyRouteLogEntry[] {
       rewriteKind: 'model_alias',
       exactModelInvariant: 'passed',
       streamed: true,
+      streamInterrupted: false,
       httpStatus: 200
+    },
+    {
+      id: 'fx-route-2',
+      occurredAt: new Date(Date.now() - 120_000).toISOString(),
+      endpoint: '/v1/chat/completions',
+      clientModelSlug: 'openburnbar/primary',
+      routingModelSlug: 'claude-opus-4-8',
+      upstreamModelSlug: 'claude-opus-4-8',
+      providerName: 'Anthropic',
+      accountLabel: 'Team workspace',
+      // First-class interrupted status: the stream broke after delivery began.
+      // Distinct from `failed` — retryable, route stays healthy.
+      finalStatus: 'interrupted',
+      rewriteKind: 'none',
+      exactModelInvariant: 'passed',
+      streamed: true,
+      streamInterrupted: true,
+      httpStatus: 200,
+      failureMessage: 'upstream stream interrupted'
     }
   ];
 }
