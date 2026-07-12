@@ -23,7 +23,7 @@ const ED25519_SIGNATURE_BYTE_LENGTH = 64;
 const ED25519_SPKI_DER_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
 const LINUX_DEVICE_ID_PREFIX = "linux_";
 
-export interface LinuxAppCheckEnrollmentProof {
+interface LinuxAppCheckEnrollmentProof {
   appId: string;
   deviceId: string;
   publicKeyBase64: string;
@@ -31,7 +31,7 @@ export interface LinuxAppCheckEnrollmentProof {
   signatureBase64: string;
 }
 
-export interface LinuxAppCheckChallengePayload {
+interface LinuxAppCheckChallengePayload {
   appId: string;
   challengeId: string;
   challengeNonce: string;
