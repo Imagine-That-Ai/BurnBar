@@ -760,57 +760,6 @@ struct BurnRailWorkspaceContextPill: View {
 // `ToolbarItem` can render a calendar pill with the same visual language
 // as the rest of the BurnRail primitives.
 
-struct BurnRailTimeRangeMenuChip: View {
-    @Binding var selected: TimeRange
-    @State private var hover = false
-
-    var body: some View {
-        Menu {
-            ForEach(TimeRange.allCases) { range in
-                Button {
-                    selected = range
-                } label: {
-                    if selected == range {
-                        Label(range.displayName, systemImage: "checkmark")
-                    } else {
-                        Text(range.displayName)
-                    }
-                }
-            }
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "calendar")
-                    .font(.system(size: 10, weight: .semibold))
-                Text(selected.displayName)
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 8, weight: .bold))
-                    .opacity(0.7)
-            }
-            .foregroundStyle(DesignSystem.Colors.textSecondary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(hover
-                          ? DesignSystem.Colors.ember.opacity(0.08)
-                          : DesignSystem.Colors.surface.opacity(0.35))
-            )
-            .overlay(
-                Capsule(style: .continuous)
-                    .stroke(DesignSystem.Colors.border.opacity(0.55), lineWidth: 0.5)
-            )
-            .contentShape(Capsule(style: .continuous))
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .onHover { hover = $0 }
-        .animation(DesignSystem.Animation.hover, value: hover)
-        .help("Filter time range — currently \(selected.displayName)")
-    }
-}
-
 #if DEBUG
 #Preview("Workspace context pill — Quota near edge") {
     BurnRailWorkspaceContextPill(

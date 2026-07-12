@@ -11,17 +11,6 @@ struct CloudVaultRotationRewrapProgress: Equatable, Sendable {
     let rewrappedStorageBlobs: Int
 }
 
-enum CloudVaultRotationRewrapWorkerError: LocalizedError {
-    case storageDomainRequiresSeparateWorker(domainID: String)
-
-    var errorDescription: String? {
-        switch self {
-        case .storageDomainRequiresSeparateWorker(let domainID):
-            return "CloudVault rotation for \(domainID) includes Storage blobs and cannot be marked complete by the document worker alone."
-        }
-    }
-}
-
 private struct CloudVaultNestedDocumentRewrapTarget {
     let parentCollectionID: String
     let childCollectionID: String

@@ -479,13 +479,3 @@ final class CLICrossEncoderReranker: RetrievalRerankProviding {
 
 // MARK: - Mock Reversing Reranker (for testing)
 
-final class MockReversingReranker: RetrievalRerankProviding {
-    func rerank(
-        query: String,
-        candidates: [RetrievalResult],
-        limit: Int
-    ) async throws -> [RetrievalResult] {
-        let reversed = candidates.reversed()
-        return Array(reversed.prefix(limit))
-    }
-}
