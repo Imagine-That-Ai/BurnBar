@@ -23,6 +23,10 @@ public struct InsightRadarView: View {
             }
         }
         .frame(maxWidth: .infinity, minHeight: 200)
+        // The polygon overlay is color-only — collapse to a single element
+        // that reads each series' strongest axis.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(InsightChartAccessibility.radarSummary(data))
     }
 
     private func gridRings(center: CGPoint, radius: CGFloat) -> some View {

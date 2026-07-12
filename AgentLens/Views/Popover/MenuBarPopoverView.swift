@@ -777,8 +777,12 @@ struct MenuBarPopoverView: View {
 
             HStack {
                 Spacer()
-                MiniSparkline(data: menuBarSparklineSeries)
-                    .popoverTooltip("7-day spending trend")
+                MiniSparkline(
+                    data: menuBarSparklineSeries,
+                    accessibilityTitle: "7-day spending trend",
+                    accessibilityValueFormatter: { String(format: "$%.2f", $0) }
+                )
+                .popoverTooltip("7-day spending trend")
             }
         }
         .padding(DesignSystem.Spacing.lg)

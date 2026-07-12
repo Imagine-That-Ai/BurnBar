@@ -51,5 +51,18 @@ public struct InsightForecastView: View {
             }
         }
         .frame(maxWidth: .infinity, minHeight: 160)
+        .accessibilityChartDescriptor(self)
+        .accessibilityLabel(InsightChartAccessibility.forecastSummary(data))
+    }
+}
+
+// MARK: - Accessibility
+
+extension InsightForecastView: @preconcurrency AXChartDescriptorRepresentable {
+    /// VoiceOver audio-graph descriptor (actual + projected series).
+    /// Mapping lives in `InsightChartAccessibility` so it is
+    /// unit-testable without a view.
+    public func makeChartDescriptor() -> AXChartDescriptor {
+        InsightChartAccessibility.forecastDescriptor(data)
     }
 }

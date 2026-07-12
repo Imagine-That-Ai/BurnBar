@@ -11,6 +11,7 @@ public struct InsightTimeSeriesView: View {
     }
 
     @State private var selectedDate: Date?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public var body: some View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
@@ -29,11 +30,14 @@ public struct InsightTimeSeriesView: View {
 
     private var legend: some View {
         FlowLayout(spacing: 10) {
-            ForEach(data.series) { series in
+            ForEach(Array(data.series.enumerated()), id: \.element.id) { index, series in
                 HStack(spacing: 4) {
-                    Circle()
+                    // Marker shape mirrors the chart's per-series symbol so
+                    // series identity never relies on hue alone.
+                    Self.symbolShape(forSeriesIndex: index)
                         .fill(color(for: series))
-                        .frame(width: 8, height: 8)
+                        .frame(width: 9, height: 9)
+                        .accessibilityHidden(true)
                     Text(series.name)
                         .font(UnifiedDesignSystem.Typography.tiny)
                         .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
@@ -41,6 +45,21 @@ public struct InsightTimeSeriesView: View {
                 }
             }
         }
+        .accessibilityElement(children: .combine)
+    }
+
+    /// Deterministic per-series symbol shapes shared by the chart marks
+    /// and the legend swatches.
+    static func symbolShape(forSeriesIndex index: Int) -> BasicChartSymbolShape {
+        let shapes: [BasicChartSymbolShape] = [
+            .circle, .square, .triangle, .diamond, .pentagon, .plus, .asterisk, .cross
+        ]
+        let wrapped = ((index % shapes.count) + shapes.count) % shapes.count
+        return shapes[wrapped]
+    }
+
+    private var symbolScaleRange: [BasicChartSymbolShape] {
+        data.series.indices.map { Self.symbolShape(forSeriesIndex: $0) }
     }
 
     // MARK: - Chart
@@ -74,6 +93,12 @@ public struct InsightTimeSeriesView: View {
         .chartForegroundStyleScale(
             domain: data.series.map(\.name),
             range: data.series.map { color(for: $0) }
+        )
+        // Pin symbol assignment to series order so the legend swatches and
+        // the plotted marks always show the same shape per series.
+        .chartSymbolScale(
+            domain: data.series.map(\.name),
+            range: symbolScaleRange
         )
         .chartLegend(.hidden)
         .chartYScale(domain: yDomain)
@@ -111,7 +136,9 @@ public struct InsightTimeSeriesView: View {
         }
         .chartXSelection(value: $selectedDate)
         .frame(maxWidth: .infinity, minHeight: 200)
-        .animation(.easeInOut(duration: 0.25), value: data.series.count)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: data.series.count)
+        .accessibilityChartDescriptor(self)
+        .accessibilityLabel(InsightChartAccessibility.timeSeriesSummary(data))
     }
 
     // MARK: - Mark families
@@ -170,6 +197,7 @@ public struct InsightTimeSeriesView: View {
                     x: .value("Date", point.date),
                     y: .value(data.yAxisLabel, point.value)
                 )
+                .symbol(by: .value("Series", series.name))
                 .symbolSize(symbolSize)
                 .foregroundStyle(by: .value("Series", series.name))
             }
@@ -236,6 +264,7 @@ public struct InsightTimeSeriesView: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(UnifiedDesignSystem.Colors.surface.opacity(0.35))
         )
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Selection callout
@@ -391,5 +420,15 @@ public struct InsightTimeSeriesView: View {
         case .warning: return UnifiedDesignSystem.Colors.warning
         case .negative: return UnifiedDesignSystem.Colors.error
         }
+    }
+}
+
+// MARK: - Accessibility
+
+extension InsightTimeSeriesView: @preconcurrency AXChartDescriptorRepresentable {
+    /// VoiceOver audio-graph descriptor. Mapping lives in
+    /// `InsightChartAccessibility` so it is unit-testable without a view.
+    public func makeChartDescriptor() -> AXChartDescriptor {
+        InsightChartAccessibility.timeSeriesDescriptor(data)
     }
 }

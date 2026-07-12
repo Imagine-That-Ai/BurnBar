@@ -30,5 +30,17 @@ public struct InsightRankingView: View {
             }
         }
         .frame(maxWidth: .infinity, minHeight: CGFloat(max(60, data.rows.count * 22)))
+        .accessibilityChartDescriptor(self)
+        .accessibilityLabel(InsightChartAccessibility.rankingSummary(data))
+    }
+}
+
+// MARK: - Accessibility
+
+extension InsightRankingView: @preconcurrency AXChartDescriptorRepresentable {
+    /// VoiceOver audio-graph descriptor. Mapping lives in
+    /// `InsightChartAccessibility` so it is unit-testable without a view.
+    public func makeChartDescriptor() -> AXChartDescriptor {
+        InsightChartAccessibility.rankingDescriptor(data)
     }
 }
