@@ -1,0 +1,154 @@
+{
+  "schema": "openburnbar.windows.signed-arm64-lifecycle.v1",
+  "status": "invalidated",
+  "completedAt": "2026-07-11T18:48:00.9643942Z",
+  "invalidatedAt": "2026-07-11T19:20:00.0000000Z",
+  "invalidation": {
+    "reason": "The launch samples were captured about 0.1 seconds after process creation and did not prove sustained runtime. Repeated later launches exited with a WinUI XAML parse failure.",
+    "exceptionType": "Microsoft.UI.Xaml.Markup.XamlParseException",
+    "hresult": "0x802B000A",
+    "failingFrame": "OpenBurnBar.App.FlyoutWindow.InitializeComponent",
+    "applicationErrorEventId": 1000,
+    "exceptionCode": "0xc000027b",
+    "werBucket": "bfae76252e0ce6847ef68a752b846826",
+    "rootCause": "The manual MSIX packager omitted package-root resources.pri, so packaged XAML resources could not be resolved."
+  },
+  "release": {
+    "version": "1.0.29",
+    "commit": "778e735a69ea9d812db87146630223ac1a3a49d7",
+    "workflowRun": 29160512069,
+    "artifact": "windows-release-v1.0.29"
+  },
+  "steps": [
+    {
+      "name": "host",
+      "completedAt": "2026-07-11T18:47:26.4468127Z",
+      "details": {
+        "user": "win-migc91i3akq\\alberto",
+        "computerName": "WIN-MIGC91I3AKQ",
+        "processArchitecture": "Arm64",
+        "os": {
+          "Caption": "Microsoft Windows 11 Pro",
+          "Version": "10.0.26200",
+          "OSArchitecture": "ARM 64-bit Processor"
+        },
+        "sessionId": 1,
+        "freeBytesBefore": 3274240000
+      }
+    },
+    {
+      "name": "preinstall-inventory",
+      "completedAt": "2026-07-11T18:47:26.7146949Z",
+      "details": {
+        "package": null
+      }
+    },
+    {
+      "name": "download",
+      "completedAt": "2026-07-11T18:47:27.9609227Z",
+      "details": {
+        "url": "http://192.168.64.1:8876/OpenBurnBar-1.0.29-arm64.msix",
+        "bytes": 133969633
+      }
+    },
+    {
+      "name": "sha256",
+      "completedAt": "2026-07-11T18:47:28.4858240Z",
+      "details": {
+        "expected": "964d661defde9b9f7953295e5b60827099f5e3e4834a67109fa7a7e46f48116a",
+        "actual": "964d661defde9b9f7953295e5b60827099f5e3e4834a67109fa7a7e46f48116a",
+        "passed": true
+      }
+    },
+    {
+      "name": "authenticode",
+      "completedAt": "2026-07-11T18:47:30.6878294Z",
+      "details": {
+        "status": "Valid",
+        "statusMessage": "Signature verified.",
+        "signerSubject": "CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US",
+        "signerIssuer": "CN=Microsoft ID Verified CS EOC CA 03, O=Microsoft Corporation, C=US",
+        "signerThumbprint": "D2E11619C5E7C31ABD8AAB4643D7D25DC3039F21",
+        "signerNotBeforeUtc": "2026-07-11T00:48:38.0000000Z",
+        "signerNotAfterUtc": "2026-07-14T00:48:38.0000000Z",
+        "timestampSubject": "CN=Microsoft Public RSA Time Stamping Authority, OU=nShield TSS ESN:7800-05E0-D947, OU=Microsoft America Operations, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+        "timestampIssuer": "CN=Microsoft Public RSA Timestamping CA 2020, O=Microsoft Corporation, C=US",
+        "timestampNotAfterUtc": "2026-10-22T20:46:53.0000000Z"
+      }
+    },
+    {
+      "name": "clean-install",
+      "completedAt": "2026-07-11T18:47:42.1301473Z",
+      "details": {
+        "name": "ImagineThat.OpenBurnBar",
+        "version": "1.0.29.0",
+        "architecture": "Arm64",
+        "publisher": "CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US",
+        "packageFamilyName": "ImagineThat.OpenBurnBar_h8fy5g99tgfa4",
+        "packageFullName": "ImagineThat.OpenBurnBar_1.0.29.0_arm64__h8fy5g99tgfa4",
+        "installLocation": "C:\\Program Files\\WindowsApps\\ImagineThat.OpenBurnBar_1.0.29.0_arm64__h8fy5g99tgfa4",
+        "signatureKind": "Developer",
+        "status": "Ok"
+      }
+    },
+    {
+      "name": "first-launch",
+      "completedAt": "2026-07-11T18:47:43.3218643Z",
+      "details": {
+        "id": 4616,
+        "processName": "OpenBurnBar.App",
+        "startTimeUtc": "2026-07-11T18:47:43.1701324Z",
+        "responding": true,
+        "sessionId": 1,
+        "workingSetBytes": 9732096
+      }
+    },
+    {
+      "name": "protocol-activation",
+      "completedAt": "2026-07-11T18:47:45.6809652Z",
+      "details": {
+        "id": 4120,
+        "processName": "OpenBurnBar.App",
+        "startTimeUtc": "2026-07-11T18:47:45.6185747Z",
+        "responding": true,
+        "sessionId": 1,
+        "workingSetBytes": 4071424
+      }
+    },
+    {
+      "name": "uninstall",
+      "completedAt": "2026-07-11T18:47:49.6664000Z",
+      "details": {
+        "packagePresent": false
+      }
+    },
+    {
+      "name": "reinstall",
+      "completedAt": "2026-07-11T18:47:59.8680040Z",
+      "details": {
+        "name": "ImagineThat.OpenBurnBar",
+        "version": "1.0.29.0",
+        "architecture": "Arm64",
+        "publisher": "CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US",
+        "packageFamilyName": "ImagineThat.OpenBurnBar_h8fy5g99tgfa4",
+        "packageFullName": "ImagineThat.OpenBurnBar_1.0.29.0_arm64__h8fy5g99tgfa4",
+        "installLocation": "C:\\Program Files\\WindowsApps\\ImagineThat.OpenBurnBar_1.0.29.0_arm64__h8fy5g99tgfa4",
+        "signatureKind": "Developer",
+        "status": "Ok"
+      }
+    },
+    {
+      "name": "final-launch",
+      "completedAt": "2026-07-11T18:48:00.9643942Z",
+      "details": {
+        "id": 4740,
+        "processName": "OpenBurnBar.App",
+        "startTimeUtc": "2026-07-11T18:48:00.8585265Z",
+        "responding": true,
+        "sessionId": 1,
+        "workingSetBytes": 9273344
+      }
+    }
+  ],
+  "freeBytesAfter": 2939637760
+}

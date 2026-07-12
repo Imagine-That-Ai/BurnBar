@@ -62,15 +62,14 @@
           var sized = /<svg[^>]*\swidth=/.test(svg)
             ? svg
             : svg.replace("<svg", '<svg width="' + vbw + '" height="' + vbh + '"');
-          var url = URL.createObjectURL(new Blob([sized], { type: "image/svg+xml" }));
+          // data: URL instead of blob: — img-src 'self' data: permits it,
+          // blob: is blocked by the production CSP (see dotConstellation.ts).
+          var url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(sized);
           var img = new Image();
           img.onload = function () {
             into[i] = img;
-            URL.revokeObjectURL(url);
           };
-          img.onerror = function () {
-            URL.revokeObjectURL(url);
-          };
+          img.onerror = function () {};
           img.src = url;
         })
         .catch(function () {});

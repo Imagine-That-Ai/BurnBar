@@ -1,9 +1,25 @@
 ---
+import { execSync } from "node:child_process";
 import BaseLayout from "@layouts/BaseLayout.astro";
 import { SITE } from "@data/site";
 
-const sourceCommit =
-  import.meta.env.PUBLIC_SOURCE_COMMIT ?? import.meta.env.PUBLIC_SITE_VERSION ?? "unknown";
+// Resolve the published commit at build time. Env vars win (release pipeline
+// sets them); otherwise ask git directly. An AGPL compliance page must never
+// ship the literal string "unknown".
+let sourceCommit = import.meta.env.PUBLIC_SOURCE_COMMIT ?? import.meta.env.PUBLIC_SITE_VERSION;
+if (!sourceCommit) {
+  try {
+    sourceCommit = execSync("git rev-parse HEAD", { encoding: "utf8" }).trim();
+  } catch {
+    sourceCommit = undefined;
+  }
+}
+if (!sourceCommit) {
+  throw new Error(
+    "legal/source: no PUBLIC_SOURCE_COMMIT / PUBLIC_SITE_VERSION and git rev-parse failed — " +
+      "refusing to publish the corresponding-source page with commit 'unknown'."
+  );
+}
 const sourceOfferUrl = `${SITE.url}/legal/source`;
 ---
 

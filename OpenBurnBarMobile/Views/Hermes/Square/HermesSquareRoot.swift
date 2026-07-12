@@ -219,7 +219,10 @@ struct HermesSquareRoot: View {
     // MARK: Body
 
     var body: some View {
-        navigationContent
+        missionDialogContent
+            .navigationDestination(item: $navTarget) { target in
+                navigationDestination(for: target)
+            }
     }
 
     private var lifecycleContent: some View {
@@ -285,7 +288,7 @@ struct HermesSquareRoot: View {
         }
     }
 
-    private var modalContent: some View {
+    private var presentedContent: some View {
         lifecycleContent
         .sheet(isPresented: $isShowingDiscover) {
             discoverDrawerSheet
@@ -316,83 +319,94 @@ struct HermesSquareRoot: View {
         } message: {
             Text("Enter a new title for this conversation.")
         }
+    }
+
+    private var missionDialogContent: some View {
+        presentedContent
         .confirmationDialog(
             "Manage Mission",
-            isPresented: missionActionSheetPresentation,
+            isPresented: missionManagementIsPresented,
             titleVisibility: .visible
         ) {
-            Button("Cancel & Dismiss", role: .destructive) {
-                cancelAndDismissSelectedMission()
-            }
-
-            Button("Just Dismiss", role: .none) {
-                dismissSelectedMission()
-            }
-
-            Button("Keep Running", role: .cancel) {
-                missionForActionSheet = nil
-            }
+            missionManagementActions
         } message: {
-            if let mission = missionForActionSheet {
-                Text("Manage mission \"\(mission.title)\". Aborting will stop the processes on the Mac immediately.")
-            }
+            missionManagementMessage
         }
     }
 
-    private var navigationContent: some View {
-        modalContent
-        .navigationDestination(item: $navTarget) { target in
-            switch target {
-            case .thread(let id):
-                threadDetailView(id: id)
-            case .brandZone(let uri):
-                brandZoneView(uri: uri)
-            case .runtimeNative(let runtime):
-                runtimeNativeView(for: runtime)
-            case .runtimeThread(let runtime):
-                runtimeThreadView(for: runtime)
-            case .cloudSession(let hitID):
-                if let row = cloudSearchRowsByID[hitID] {
-                    HermesSquareCloudSessionDetailView(row: row)
-                } else {
-                    Text("Session unavailable")
+    @ViewBuilder
+    private func navigationDestination(for target: NavTarget) -> some View {
+        switch target {
+        case .thread(let id):
+            threadDetailView(id: id)
+        case .brandZone(let uri):
+            brandZoneView(uri: uri)
+        case .runtimeNative(let runtime):
+            runtimeNativeView(for: runtime)
+        case .runtimeThread(let runtime):
+            runtimeThreadView(for: runtime)
+        case .cloudSession(let hitID):
+            if let row = cloudSearchRowsByID[hitID] {
+                HermesSquareCloudSessionDetailView(row: row)
+            } else {
+                Text("Session unavailable")
+            }
+        case .projectMemory(let projectID):
+            projectMemoryView(projectID: projectID)
+        case .mercuryLive(let connectionID):
+            MercuryLiveDetailView(
+                connectionID: connectionID,
+                peer: mercuryPeerSource.peer,
+                bootError: mercuryBootError,
+                isBooting: bootingMercuryConnectionID != nil,
+                ensureMercuryLive: { id in
+                    await ensureMercuryLive(connectionID: id)
                 }
-            case .projectMemory(let projectID):
-                projectMemoryView(projectID: projectID)
-            case .mercuryLive(let connectionID):
-                MercuryLiveDetailView(
-                    connectionID: connectionID,
-                    peer: mercuryPeerSource.peer,
-                    bootError: mercuryBootError,
-                    isBooting: bootingMercuryConnectionID != nil,
-                    ensureMercuryLive: { id in
-                        await ensureMercuryLive(connectionID: id)
-                    }
-                )
-            }
+            )
         }
     }
 
-    private var missionActionSheetPresentation: Binding<Bool> {
+    private var missionManagementIsPresented: Binding<Bool> {
         Binding(
             get: { missionForActionSheet != nil },
             set: { if !$0 { missionForActionSheet = nil } }
         )
     }
 
-    private func cancelAndDismissSelectedMission() {
-        guard let mission = missionForActionSheet else { return }
-        missionForActionSheet = nil
-        Task {
-            await missionHost.cancelMission(id: mission.id)
-            missionHost.dismissMission(id: mission.id)
+    @ViewBuilder
+    private var missionManagementActions: some View {
+        Button("Cancel & Dismiss", role: .destructive) {
+            if let mission = missionForActionSheet {
+                cancelAndDismissMission(mission)
+            }
+            missionForActionSheet = nil
+        }
+
+        Button("Just Dismiss", role: .none) {
+            if let mission = missionForActionSheet {
+                missionHost.dismissMission(id: mission.id)
+            }
+            missionForActionSheet = nil
+        }
+
+        Button("Keep Running", role: .cancel) {
+            missionForActionSheet = nil
         }
     }
 
-    private func dismissSelectedMission() {
-        guard let mission = missionForActionSheet else { return }
-        missionHost.dismissMission(id: mission.id)
-        missionForActionSheet = nil
+    @ViewBuilder
+    private var missionManagementMessage: some View {
+        if let mission = missionForActionSheet {
+            Text("Manage mission \"\(mission.title)\". Aborting will stop the processes on the Mac immediately.")
+        }
+    }
+
+    private func cancelAndDismissMission(_ mission: MissionConsoleActiveTile) {
+        let missionID = mission.id
+        Task {
+            await missionHost.cancelMission(id: missionID)
+            missionHost.dismissMission(id: missionID)
+        }
     }
 
     // MARK: Subviews

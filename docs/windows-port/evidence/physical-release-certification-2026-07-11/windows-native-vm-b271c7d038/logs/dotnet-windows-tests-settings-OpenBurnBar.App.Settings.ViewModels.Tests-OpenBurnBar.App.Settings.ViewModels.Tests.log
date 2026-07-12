@@ -1,0 +1,19 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  OpenBurnBar.App.Settings -> C:\candidate-7e346b2c7d\windows\app\OpenBurnBar.App.Settings\bin\Release\net8.0\OpenBurnBar.App.Settings.dll
+  OpenBurnBar.App.Configuration -> C:\candidate-7e346b2c7d\windows\app\OpenBurnBar.App.Configuration\bin\Release\net8.0\OpenBurnBar.App.Configuration.dll
+  OpenBurnBar.ComputerUse.Core -> C:\candidate-7e346b2c7d\windows\computeruse\OpenBurnBar.ComputerUse.Core\bin\Release\net8.0\OpenBurnBar.ComputerUse.Core.dll
+  OpenBurnBar.App.TextExpansion -> C:\candidate-7e346b2c7d\windows\app\OpenBurnBar.App.TextExpansion\bin\Release\net8.0\OpenBurnBar.App.TextExpansion.dll
+  OpenBurnBar.Storage -> C:\candidate-7e346b2c7d\windows\storage\OpenBurnBar.Storage\bin\Release\net8.0\OpenBurnBar.Storage.dll
+  OpenBurnBar.App.Presentation -> C:\candidate-7e346b2c7d\windows\app\OpenBurnBar.App.Presentation\bin\Release\net8.0\OpenBurnBar.App.Presentation.dll
+  OpenBurnBar.App.ManagedAgentRuntime -> C:\candidate-7e346b2c7d\windows\app\OpenBurnBar.App.ManagedAgentRuntime\bin\Release\net8.0\OpenBurnBar.App.ManagedAgentRuntime.dll
+  OpenBurnBar.App.Quota.Acquisition -> C:\candidate-7e346b2c7d\windows\app\OpenBurnBar.App.Quota.Acquisition\bin\Release\net8.0\OpenBurnBar.App.Quota.Acquisition.dll
+  OpenBurnBar.App.CursorConnector -> C:\candidate-7e346b2c7d\windows\app\OpenBurnBar.App.CursorConnector\bin\Release\net8.0\OpenBurnBar.App.CursorConnector.dll
+  OpenBurnBar.App.Settings.ViewModels -> C:\candidate-7e346b2c7d\windows\app\OpenBurnBar.App.Settings.ViewModels\bin\Release\net8.0\OpenBurnBar.App.Settings.ViewModels.dll
+  OpenBurnBar.Storage -> C:\candidate-7e346b2c7d\windows\storage\OpenBurnBar.Storage\bin\Release\net10.0\OpenBurnBar.Storage.dll
+  OpenBurnBar.App.Settings.ViewModels.Tests -> C:\candidate-7e346b2c7d\windows\tests\settings\OpenBurnBar.App.Settings.ViewModels.Tests\bin\Release\net10.0\OpenBurnBar.App.Settings.ViewModels.Tests.dll
+Test run for C:\candidate-7e346b2c7d\windows\tests\settings\OpenBurnBar.App.Settings.ViewModels.Tests\bin\Release\net10.0\OpenBurnBar.App.Settings.ViewModels.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:   128, Skipped:     0, Total:   128, Duration: 3 s - OpenBurnBar.App.Settings.ViewModels.Tests.dll (net10.0)

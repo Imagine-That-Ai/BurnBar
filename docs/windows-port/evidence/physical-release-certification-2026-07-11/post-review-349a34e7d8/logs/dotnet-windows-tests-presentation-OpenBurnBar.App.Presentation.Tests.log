@@ -1,0 +1,12 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  OpenBurnBar.Storage -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/storage/OpenBurnBar.Storage/bin/Release/net10.0/OpenBurnBar.Storage.dll
+  OpenBurnBar.Storage -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/storage/OpenBurnBar.Storage/bin/Release/net8.0/OpenBurnBar.Storage.dll
+  OpenBurnBar.App.Presentation -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.Presentation/bin/Release/net8.0/OpenBurnBar.App.Presentation.dll
+  OpenBurnBar.Storage.SessionLogs -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/storage/OpenBurnBar.Storage.SessionLogs/bin/Release/net10.0/OpenBurnBar.Storage.SessionLogs.dll
+  OpenBurnBar.App.Presentation.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/presentation/bin/Release/net10.0/OpenBurnBar.App.Presentation.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/presentation/bin/Release/net10.0/OpenBurnBar.App.Presentation.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:   742, Skipped:     0, Total:   742, Duration: 6 s - OpenBurnBar.App.Presentation.Tests.dll (net10.0)
