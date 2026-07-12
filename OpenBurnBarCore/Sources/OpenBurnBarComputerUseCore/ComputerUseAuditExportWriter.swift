@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 #if os(Windows)
 #elseif canImport(zlib)
 import zlib

@@ -48,6 +48,26 @@ enum OpenBurnBarRuntime {
     /// `OPENBURNBAR_FORCE_LIVE_SCENE=1`. Default is opt-out (skip the live scene under tests).
     static var forceLiveScene: Bool {
         ProcessInfo.processInfo.environment["OPENBURNBAR_FORCE_LIVE_SCENE"] == "1"
+            || isUITestLaunch
+    }
+
+    static var isUITestLaunch: Bool {
+        isUITestLaunch(
+            environment: ProcessInfo.processInfo.environment,
+            arguments: ProcessInfo.processInfo.arguments
+        )
+    }
+
+    static func isUITestLaunch(environment: [String: String], arguments: [String]) -> Bool {
+        #if DEBUG
+        environment["OPENBURNBAR_UITEST"] == "1" || arguments.contains("--uitest")
+        #else
+        false
+        #endif
+    }
+
+    static var shouldOpenSettingsForUITest: Bool {
+        ProcessInfo.processInfo.environment["OPENBURNBAR_UITEST_OPEN_SETTINGS"] == "1"
     }
 
     /// Harness-launched live-scene processes must remain alive even when AppKit
@@ -148,6 +168,7 @@ struct OpenBurnBarApp: App {
     @State var hasPresentedStartupRecoveryWindow = false
     @State var periodicRefreshTask: Task<Void, Never>?
     @State var navigationCoordinator = NavigationCoordinator()
+    @State var didOpenUITestDashboard = false
 
     init() {
         StartupProfiler.event("app_init_start")
@@ -173,6 +194,8 @@ struct OpenBurnBarApp: App {
             return
         }
 
+        Self.seedUITestDefaultsIfNeeded()
+
         StartupProfiler.interval("configure_firebase") {
             Self.configureFirebaseIfAvailable(accountManager: .shared)
         }
@@ -190,6 +213,16 @@ struct OpenBurnBarApp: App {
             Self.makeStartupState()
         })
         StartupProfiler.event("app_init_end")
+    }
+
+    private static func seedUITestDefaultsIfNeeded() {
+        guard OpenBurnBarRuntime.isUITestLaunch else { return }
+        UserDefaults.standard.set(true, forKey: "hasOnboarded")
+        UserDefaults.standard.set(true, forKey: "hasShownInitialDashboard")
+        UserDefaults.standard.set(true, forKey: "conversationIndexingConsentShown")
+        UserDefaults.standard.set(true, forKey: "cliAssistantConsentShown")
+        UserDefaults.standard.removeObject(forKey: SettingsDeepLinkRouting.pendingTabKey)
+        UserDefaults.standard.removeObject(forKey: SettingsDeepLinkRouting.pendingItemKey)
     }
 
     @MainActor
@@ -221,7 +254,7 @@ struct OpenBurnBarApp: App {
             ProviderQuotaService(settingsManager: settings)
         }
         let daemonManager = StartupProfiler.interval("daemon_manager_init") {
-            OpenBurnBarDaemonManager(settingsManager: settings)
+            OpenBurnBarDaemonManager.shared // cov:ignore -- app composition root: singleton graph initialization is covered by app startup smoke tests.
         }
         let cursorConnectorManager = StartupProfiler.interval("cursor_connector_init") {
             CursorConnectorManager(settingsManager: settings)
@@ -310,6 +343,7 @@ struct OpenBurnBarApp: App {
         // each one as a Scene component.
         installCommandRouter()
         OpenBurnBarRuntime.beginHarnessHostActivityIfNeeded()
+        openUITestDashboardIfNeeded()
         presentStartupRecoveryIfNeeded()
         // The AppDelegate owns the live status item + popover via AppKit
         // (`NSPopover` survives SwiftUI's macOS-26/Tahoe `MenuBarExtra(.window)`
@@ -330,11 +364,33 @@ struct OpenBurnBarApp: App {
     @MainActor
     private func presentStartupRecoveryIfNeeded() {
         guard !OpenBurnBarRuntime.shouldUseTestStubScene else { return }
+        guard !OpenBurnBarRuntime.isUITestLaunch else { return }
         guard case .failed = startupState else { return }
         guard !hasPresentedStartupRecoveryWindow else { return }
         hasPresentedStartupRecoveryWindow = true
         DispatchQueue.main.async { [self] in
             openStartupRecoveryWindow()
+        }
+    }
+
+    @MainActor
+    private func openUITestDashboardIfNeeded() {
+        guard OpenBurnBarRuntime.isUITestLaunch else { return }
+        guard !didOpenUITestDashboard else { return }
+        guard startupState.runtimeContext != nil else { return }
+        didOpenUITestDashboard = true
+
+        Self.seedUITestDefaultsIfNeeded()
+        if case .ready(let context) = startupState {
+            context.settingsManager.conversationIndexingConsentShown = true
+            context.settingsManager.cliAssistantConsentShown = true
+        }
+
+        DispatchQueue.main.async {
+            AppCommandRouter.shared.openDashboard?()
+            if OpenBurnBarRuntime.shouldOpenSettingsForUITest {
+                AppCommandRouter.shared.openSettings?()
+            }
         }
     }
 

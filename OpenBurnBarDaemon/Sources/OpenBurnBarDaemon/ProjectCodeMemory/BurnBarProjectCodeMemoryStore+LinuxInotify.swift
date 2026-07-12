@@ -18,8 +18,6 @@ extension BurnBarProjectCodeMemoryStore {
         private let onRebuild: (@Sendable () -> Void)?
         private var watchDescriptorsByPath: [String: Int32] = [:]
         private var pathsByWatchDescriptor: [Int32: String] = [:]
-        private var cancelled = false
-
         private static let eventBufferSize = 64 * 1_024
         private static let watchMask = UInt32(
             IN_ATTRIB
@@ -44,7 +42,8 @@ extension BurnBarProjectCodeMemoryStore {
 
             let stream = LinuxFileSystemEventStream(fd: fd, roots: roots, queue: queue, onEvent: onEvent, onRebuild: onRebuild)
             guard stream.installInitialWatches() else {
-                stream.cancel()
+                stream.source.cancel()
+                stream.source.resume()
                 return nil
             }
             stream.source.setEventHandler { [weak stream] in
@@ -73,10 +72,6 @@ extension BurnBarProjectCodeMemoryStore {
         }
 
         func cancel() {
-            guard cancelled == false else { return }
-            cancelled = true
-            watchDescriptorsByPath.removeAll()
-            pathsByWatchDescriptor.removeAll()
             source.cancel()
         }
 
@@ -88,13 +83,19 @@ extension BurnBarProjectCodeMemoryStore {
         }
 
         private func rebuildWatches() {
-            guard cancelled == false else { return }
+            guard source.isCancelled == false else { return }
             onRebuild?()
-            for wd in pathsByWatchDescriptor.keys {
-                _ = inotify_rm_watch(fd, wd)
+
+            // Keep live watches installed. Removing them all queues IN_IGNORED
+            // records whose descriptors can be reused by the replacement set,
+            // causing the stale records to invalidate fresh watches repeatedly.
+            let staleWatches = watchDescriptorsByPath.filter {
+                Self.isDirectory(URL(fileURLWithPath: $0.key)) == false
             }
-            watchDescriptorsByPath.removeAll()
-            pathsByWatchDescriptor.removeAll()
+            for (path, wd) in staleWatches {
+                watchDescriptorsByPath.removeValue(forKey: path)
+                pathsByWatchDescriptor.removeValue(forKey: wd)
+            }
             _ = installInitialWatches()
         }
 
@@ -138,7 +139,7 @@ extension BurnBarProjectCodeMemoryStore {
             var shouldRebuild = false
             var buffer = [UInt8](repeating: 0, count: Self.eventBufferSize)
 
-            while cancelled == false {
+            while source.isCancelled == false {
                 let bytesRead = Glibc.read(fd, &buffer, buffer.count)
                 if bytesRead > 0 {
                     parseEvents(buffer: buffer, byteCount: bytesRead, shouldNotify: &shouldNotify, shouldRebuild: &shouldRebuild)
@@ -153,6 +154,7 @@ extension BurnBarProjectCodeMemoryStore {
                 break
             }
 
+            guard source.isCancelled == false else { return }
             if shouldRebuild {
                 rebuildWatches()
             }

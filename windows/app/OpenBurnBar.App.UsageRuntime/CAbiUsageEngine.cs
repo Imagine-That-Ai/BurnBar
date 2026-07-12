@@ -17,6 +17,9 @@ public sealed class CAbiUsageEngine : IUsageEngine, IDisposable
 {
     private const string WindowsLibraryName = "OpenBurnBarCoreCAbi.dll";
     private const string MacLibraryName = "libOpenBurnBarCoreCAbi.dylib";
+    private static readonly object LibraryCacheGate = new();
+    private static readonly Dictionary<string, NativeBindings> LibraryCache =
+        new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
 
     private readonly object _gate = new();
     private readonly Func<string?> _libraryPathResolver;
@@ -36,6 +39,11 @@ public sealed class CAbiUsageEngine : IUsageEngine, IDisposable
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate void StringFreeDelegate(IntPtr value);
+
+    private sealed record NativeBindings(
+        IntPtr Handle,
+        ScanUsageDelegate ScanUsage,
+        StringFreeDelegate StringFree);
 
     public CAbiUsageEngine(Func<string?>? libraryPathResolver = null)
     {
@@ -130,29 +138,43 @@ public sealed class CAbiUsageEngine : IUsageEngine, IDisposable
                 "The OpenBurnBar parser engine is not installed. Repair or reinstall OpenBurnBar.");
         }
 
-        try
+        path = Path.GetFullPath(path);
+        lock (LibraryCacheGate)
         {
-            _libraryHandle = NativeLibrary.Load(path);
-            _scanUsage = Marshal.GetDelegateForFunctionPointer<ScanUsageDelegate>(
-                NativeLibrary.GetExport(_libraryHandle, "obb_scan_usage"));
-            _stringFree = Marshal.GetDelegateForFunctionPointer<StringFreeDelegate>(
-                NativeLibrary.GetExport(_libraryHandle, "obb_string_free"));
-        }
-        catch (Exception ex) when (ex is DllNotFoundException
-                                   or BadImageFormatException
-                                   or EntryPointNotFoundException)
-        {
-            if (_libraryHandle != IntPtr.Zero)
+            if (LibraryCache.TryGetValue(path, out NativeBindings? cached))
             {
-                NativeLibrary.Free(_libraryHandle);
-                _libraryHandle = IntPtr.Zero;
+                _libraryHandle = cached.Handle;
+                _scanUsage = cached.ScanUsage;
+                _stringFree = cached.StringFree;
+                return;
             }
-            _scanUsage = null;
-            _stringFree = null;
-            throw new UsageRuntimeException(
-                UsageRuntimeFailureKind.NativeEngineUnavailable,
-                "The OpenBurnBar parser engine could not be loaded. Repair or reinstall OpenBurnBar.",
-                ex);
+
+            try
+            {
+                IntPtr handle = NativeLibrary.Load(path);
+                _ = NativeLibrary.GetExport(handle, "obb_parse_cli_stdout");
+                var scanUsage = Marshal.GetDelegateForFunctionPointer<ScanUsageDelegate>(
+                    NativeLibrary.GetExport(handle, "obb_scan_usage"));
+                var stringFree = Marshal.GetDelegateForFunctionPointer<StringFreeDelegate>(
+                    NativeLibrary.GetExport(handle, "obb_string_free"));
+                var bindings = new NativeBindings(handle, scanUsage, stringFree);
+                LibraryCache.Add(path, bindings);
+                _libraryHandle = bindings.Handle;
+                _scanUsage = bindings.ScanUsage;
+                _stringFree = bindings.StringFree;
+            }
+            catch (Exception ex) when (ex is DllNotFoundException
+                                       or BadImageFormatException
+                                       or EntryPointNotFoundException)
+            {
+                _libraryHandle = IntPtr.Zero;
+                _scanUsage = null;
+                _stringFree = null;
+                throw new UsageRuntimeException(
+                    UsageRuntimeFailureKind.NativeEngineUnavailable,
+                    "The OpenBurnBar parser engine could not be loaded. Repair or reinstall OpenBurnBar.",
+                    ex);
+            }
         }
     }
 
@@ -225,11 +247,10 @@ public sealed class CAbiUsageEngine : IUsageEngine, IDisposable
             _disposed = true;
             _scanUsage = null;
             _stringFree = null;
-            if (_libraryHandle != IntPtr.Zero)
-            {
-                NativeLibrary.Free(_libraryHandle);
-                _libraryHandle = IntPtr.Zero;
-            }
+            // Swift runtime globals and delegates are process-scoped. Unloading the
+            // DLL deadlocks in its Windows shutdown path, so cached bindings live
+            // until normal process teardown releases the module.
+            _libraryHandle = IntPtr.Zero;
         }
     }
 }

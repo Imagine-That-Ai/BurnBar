@@ -100,7 +100,7 @@ export function SettingsHomeView({
                     description={item.detail}
                     iconGlyph={item.iconGlyph}
                     actionLabel="Fix"
-                    role="status"
+                    role="none"
                     onClick={() => onSelectTab(item.tab)}
                   />
                 </li>

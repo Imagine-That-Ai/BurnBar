@@ -17,10 +17,17 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
     func test_highRiskMethodsMapToExpectedGroups() {
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .computerUseInvoke), .computerUse)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .computerUseSessionStart), .computerUse)
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .computerUseCapabilityStateUpdate), .computerUse)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .configUpdate), .config)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .providerCredentialSlotUpsert), .config)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .runCreate), .run)
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .subscriptionStart), .run)
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .subscriptionResume), .run)
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .subscriptionStop), .run)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .health), .lifecycle)
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .linuxOnboardingSnapshot), .lifecycle)
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .linuxOnboardingAction), .config)
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .linuxOnboardingReset), .config)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .searchQuery), .search)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .memoryRecall), .memoryRead)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .memoryRemember), .memoryWrite)
@@ -39,6 +46,7 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         let profile = BurnBarPeerCapabilityProfile.readOnly
         // Allowed: read posture.
         XCTAssertTrue(profile.permits(.health))
+        XCTAssertTrue(profile.permits(.linuxOnboardingSnapshot))
         XCTAssertTrue(profile.permits(.usageRecent))
         XCTAssertTrue(profile.permits(.searchQuery))
         XCTAssertTrue(profile.permits(.memoryRecall))
@@ -46,10 +54,13 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertTrue(profile.permits(.codeIndexStatus))
         // Refused: every agency-bearing surface.
         XCTAssertFalse(profile.permits(.configUpdate))
+        XCTAssertFalse(profile.permits(.linuxOnboardingAction))
+        XCTAssertFalse(profile.permits(.linuxOnboardingReset))
         XCTAssertFalse(profile.permits(.providerCredentialSlotUpsert))
         XCTAssertFalse(profile.permits(.runCreate))
         XCTAssertFalse(profile.permits(.computerUseInvoke))
         XCTAssertFalse(profile.permits(.computerUseSessionStart))
+        XCTAssertFalse(profile.permits(.computerUseCapabilityStateUpdate))
         XCTAssertFalse(profile.permits(.browserAction))
         XCTAssertFalse(profile.permits(.memoryRemember))
         XCTAssertFalse(profile.permits(.memoryForget))
@@ -65,6 +76,7 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertTrue(profile.permits(.codeSearch))
         // A compromised run client must NOT reach the HID-adjacent computer-use
         // surface or rewrite stored provider credentials.
+        XCTAssertFalse(profile.permits(.computerUseCapabilityStateUpdate))
         XCTAssertFalse(profile.permits(.computerUseInvoke))
         XCTAssertFalse(profile.permits(.configUpdate))
         XCTAssertFalse(profile.permits(.providerCredentialSlotUpsert))
@@ -94,9 +106,13 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         // The CLI must not inherit whole capability groups just because one
         // supported command lives there.
         XCTAssertFalse(profile.permits(.configUpdate))
+        XCTAssertFalse(profile.permits(.linuxOnboardingSnapshot))
+        XCTAssertFalse(profile.permits(.linuxOnboardingAction))
+        XCTAssertFalse(profile.permits(.linuxOnboardingReset))
         XCTAssertFalse(profile.permits(.providerCredentialSlotUpsert))
         XCTAssertFalse(profile.permits(.computerUseSessionStart))
         XCTAssertFalse(profile.permits(.computerUseInvoke))
+        XCTAssertFalse(profile.permits(.computerUseCapabilityStateUpdate))
         XCTAssertFalse(profile.permits(.workspaceExecuteTool))
         XCTAssertFalse(profile.permits(.missionCreate))
         XCTAssertFalse(profile.permits(.missionCancel))
@@ -111,6 +127,30 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         // Intersecting with full cannot widen readOnly.
         let stillNarrow = BurnBarPeerCapabilityProfile.readOnly.attenuated(to: .full)
         XCTAssertEqual(stillNarrow.permittedMethods, BurnBarPeerCapabilityProfile.readOnly.permittedMethods)
+    }
+
+    func test_missionAuthorizeRemoteIsMissionControlScopedAndRefusedForAttenuatedPeers() {
+        // M2 (split-brain remediation): the new remote-mission authorization
+        // verdict is a mission-control-capability surface. Peers outside that
+        // group — read-only posture and the exact-allowlist CLI profile — must
+        // be refused fail-closed BEFORE the handler runs.
+        XCTAssertEqual(
+            BurnBarRPCCapability.capability(for: .missionAuthorizeRemote),
+            .missionControl
+        )
+        XCTAssertTrue(BurnBarPeerCapabilityProfile.full.permits(.missionAuthorizeRemote))
+        XCTAssertTrue(BurnBarPeerCapabilityProfile.runClient.permits(.missionAuthorizeRemote))
+        XCTAssertFalse(
+            BurnBarPeerCapabilityProfile.readOnly.permits(.missionAuthorizeRemote),
+            "a read-only peer must not obtain mission authorization verdicts"
+        )
+        XCTAssertFalse(
+            BurnBarPeerCapabilityProfile.cliSupport.permits(.missionAuthorizeRemote),
+            "the CLI allowlist must not inherit the new method implicitly"
+        )
+        // Attenuation can only ever narrow away the new method, never add it.
+        let narrowed = BurnBarPeerCapabilityProfile.full.attenuated(to: .readOnly)
+        XCTAssertFalse(narrowed.permits(.missionAuthorizeRemote))
     }
 
     func test_attenuationPreservesMethodScopedCLIBoundary() {

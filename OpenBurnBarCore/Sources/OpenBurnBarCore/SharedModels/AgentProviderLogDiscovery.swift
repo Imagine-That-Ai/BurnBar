@@ -163,7 +163,6 @@ public enum AgentProviderLogDiscovery {
         let homeDirectory = environment["HOME"]
             .flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty }
             .map { URL(fileURLWithPath: $0, isDirectory: true) }
-        // VAL-PARSER-002: XDG-aware expansion so display paths match discovery.
         let resolved = OpenBurnBarLinuxPaths.expandPath(
             logical,
             homeDirectory: homeDirectory,

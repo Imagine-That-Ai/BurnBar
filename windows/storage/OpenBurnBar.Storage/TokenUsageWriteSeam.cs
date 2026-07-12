@@ -33,6 +33,12 @@ public static class TokenUsageWriteSeam
         return affected;
     }
 
+    /// <summary>Compatibility entry point for existing scan callers.</summary>
+    public static int WriteTokenUsages(
+        SqliteConnection connection,
+        IReadOnlyList<TokenUsageRecord> records) =>
+        WriteTokenUsageBatch(connection, records);
+
     /// <summary>
     /// Atomically upsert a complete parser scan without opening one transaction
     /// per row. An exception rolls back every row in the batch.

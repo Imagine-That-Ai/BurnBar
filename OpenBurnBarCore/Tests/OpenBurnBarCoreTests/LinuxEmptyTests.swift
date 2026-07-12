@@ -1,5 +1,8 @@
 import XCTest
 @testable import OpenBurnBarCore
+#if os(Linux)
+import OpenBurnBarLinuxSecurity
+#endif
 
 #if os(Linux)
 final class OpenBurnBarCoreLinuxPathContractTests: XCTestCase {
@@ -18,7 +21,10 @@ final class OpenBurnBarCoreLinuxPathContractTests: XCTestCase {
     }
 
     func testSupportDirectoryIsLowercaseOpenburnbar() {
-        let support = OpenBurnBarLinuxPaths.supportDirectoryURL()
+        let support = OpenBurnBarLinuxPaths.supportDirectoryURL(
+            environment: ["HOME": "/tmp/openburnbar-path-contract-home"]
+        )
+        XCTAssertEqual(support.path, "/tmp/openburnbar-path-contract-home/.local/share/openburnbar")
         XCTAssertTrue(
             support.path.lowercased().contains("openburnbar"),
             "support path should use openburnbar segment: \(support.path)"

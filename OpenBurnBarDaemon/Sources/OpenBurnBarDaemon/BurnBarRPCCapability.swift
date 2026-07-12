@@ -31,6 +31,8 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
     /// Computer-use / HID-adjacent agency (session start, invoke, approvals,
     /// panic-halt, audit export). The highest-risk group.
     case computerUse = "computer_use"
+    /// Mercury media session status and user call actions.
+    case media
     /// Mission-control + controller surface (missions, questions, followups,
     /// notifications, simulator).
     case missionControl = "mission_control"
@@ -58,9 +60,9 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
     /// RPC method that is not classified here will fail to compile this switch.
     public static func capability(for method: BurnBarRPCMethod) -> BurnBarRPCCapability {
         switch method {
-        case .health, .catalog, .authBootstrap:
+        case .health, .catalog, .authBootstrap, .linuxOnboardingSnapshot:
             return .lifecycle
-        case .configGet, .configUpdate,
+        case .configGet, .configUpdate, .linuxOnboardingAction, .linuxOnboardingReset,
              .providerCredentialSlotUpsert, .providerCredentialSlotRemove,
              .providerModelVariantUpsert, .providerModelVariantRemove,
              .providerModelAliasUpsert, .providerModelAliasRemove,
@@ -77,7 +79,8 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
         case .connectorPlaneGet, .connectorConfigUpdate, .connectorAction,
              .browserToolingGet, .browserToolingUpdate, .browserAction:
             return .tooling
-        case .computerUseSessionStart, .computerUseInvoke,
+        case .computerUseCapabilityStateUpdate,
+             .computerUseSessionStart, .computerUseInvoke,
              .computerUseApprovalPending, .computerUseApprovalRespond,
              .computerUsePanicHalt, .computerUseAuditExport:
             return .computerUse
@@ -86,20 +89,25 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
             // config-credential writes so only a fully-trusted first-party peer
             // can pin a phone key.
             return .config
+        case .daemonMediaSessionState, .daemonMediaCapabilityGet, .daemonMediaStatus,
+             .daemonMediaCallAccept, .daemonMediaCallDecline, .daemonMediaCallEnd,
+             .daemonMediaFileOfferList, .daemonMediaFileAccept, .daemonMediaFileDecline,
+             .daemonMediaFileSend:
+            return .media
         case .controllerSummary, .controllerRuntimeSnapshot,
              .controllerProjectsList, .controllerProjectGet,
              .controllerProjectUpsert, .reviewRunRecord,
              .questionCreate, .questionGet, .questionsList, .questionAnswer,
              .followupCreate, .followupsList, .followupDone, .followupSnooze, .followupCalendar,
              .missionCreate, .missionsList, .missionGet, .missionApprove, .missionCancel,
-             .missionDispatchPacket, .missionRecordResult,
+             .missionDispatchPacket, .missionRecordResult, .missionAuthorizeRemote,
              .notificationConfigGet, .notificationConfigUpdate, .notificationHealth, .notificationCommand,
              .simulatorRun, .simulatorList, .simulatorReplay, .projectionRebuild:
             return .missionControl
         case .clientAttach, .clientClaimControl, .clientDetach:
             return .client
         case .runCreate, .runList, .runGet, .runPoll, .runCancel, .runRetry, .runResume,
-             .subscriptionStart, .subscriptionResume,
+             .subscriptionStart, .subscriptionResume, .subscriptionStop,
              .workspaceExecuteTool, .workspaceToolResult, .approvalRespond:
             return .run
         case .searchQuery:

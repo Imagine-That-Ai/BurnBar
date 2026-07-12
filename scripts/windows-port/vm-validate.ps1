@@ -32,6 +32,16 @@ $sln = Join-Path $RepoRoot 'windows\OpenBurnBar.sln'
 
 function Section($t) { Write-Host "`n=== $t ===" -ForegroundColor Cyan }
 function Resolve-Platform {
+    try {
+        $os = Get-CimInstance Win32_OperatingSystem | Select-Object -First 1
+        if ($os.OSArchitecture -match 'ARM') { 'ARM64'; return }
+        if ($os.OSArchitecture -match '64') { 'x64'; return }
+        if ($os.OSArchitecture -match '32' -or $os.OSArchitecture -match 'x86') { 'x86'; return }
+    }
+    catch {
+        # Fall back to the process environment below.
+    }
+
     switch ($env:PROCESSOR_ARCHITECTURE) {
         'ARM64' { 'ARM64'; break }
         'AMD64' { 'x64'; break }

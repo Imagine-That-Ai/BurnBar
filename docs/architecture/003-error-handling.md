@@ -11,7 +11,7 @@ The codebase historically swallowed failures via empty `catch` blocks, `try?`, a
 
 ### Domains
 
-All new thrown errors map to **`OpenBurnBarError`** domains (`OpenBurnBarCore/Sources/OpenBurnBarCore/Errors/OpenBurnBarError.swift`):
+All new thrown errors map to **`OpenBurnBarError`** domains (`OpenBurnBarCore/Sources/OpenBurnBarKernel/Errors/OpenBurnBarError.swift`):
 
 | Domain | Examples | User surface |
 |--------|----------|--------------|

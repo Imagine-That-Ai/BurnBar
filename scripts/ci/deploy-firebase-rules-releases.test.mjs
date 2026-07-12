@@ -30,8 +30,12 @@ assert.deepEqual(JSON.parse(patch.body), {
     name: releaseName,
     rulesetName,
   },
-  updateMask: "rulesetName",
 });
+assert.equal(
+  Object.hasOwn(JSON.parse(patch.body), "updateMask"),
+  false,
+  "PATCH must match firebase-tools and omit the Rules API-invalid updateMask",
+);
 
 const create = buildReleaseCreateRequest(releaseName, rulesetName);
 assert.equal(create.method, "POST");

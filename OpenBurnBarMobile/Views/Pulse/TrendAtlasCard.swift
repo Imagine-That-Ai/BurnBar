@@ -24,6 +24,18 @@ struct TrendAtlasCard: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.chartStudioPresenter) private var presenter
 
+    /// Round-4 perf sweep: memoized digest + insights cache.
+    ///
+    /// `TrendDataDigest.build(...)` and `TrendInsightEngine.insights(...)` are
+    /// pure functions over the card's inputs. The old computed properties
+    /// rebuilt both on every access — and `digest` was accessed ≥2× per body
+    /// pass (from `sceneContent`, `insights`, and `openStudio`). This cache
+    /// computes once per input change and reuses across all accesses within
+    /// the same body evaluation and across subsequent evaluations with
+    /// unchanged inputs. The cache is reference-typed (`@StateObject`) so
+    /// mutating it does not trigger a SwiftUI re-render.
+    @StateObject private var digestCache = DigestCacheStore()
+
     enum AtlasScene: String, Hashable, CaseIterable, Identifiable {
         case spend, models, cache
         var id: String { rawValue }
@@ -43,22 +55,30 @@ struct TrendAtlasCard: View {
         }
     }
 
-    // MARK: - Digest
+    // MARK: - Digest (memoized)
 
     private var digest: TrendDataDigest {
-        TrendDataDigest.build(
+        digestCache.digest(
+            dailyPoints: dailyPoints,
+            displayMode: displayMode,
             windowTotals: windowTotals,
             providerSummaries: providerSummaries,
             modelSummaries: modelSummaries,
             deviceSummaries: deviceSummaries,
-            dailyPoints: dailyPoints,
-            recentUsages: recentUsages,
-            displayMode: displayMode
+            recentUsages: recentUsages
         )
     }
 
     private var insights: [TrendInsight] {
-        TrendInsightEngine.insights(from: digest)
+        digestCache.insights(
+            dailyPoints: dailyPoints,
+            displayMode: displayMode,
+            windowTotals: windowTotals,
+            providerSummaries: providerSummaries,
+            modelSummaries: modelSummaries,
+            deviceSummaries: deviceSummaries,
+            recentUsages: recentUsages
+        )
     }
 
     // MARK: - Body
@@ -235,5 +255,98 @@ struct TrendAtlasCard: View {
         } else {
             showingStudio = true
         }
+    }
+}
+
+// MARK: - Digest Cache Store
+
+/// Reference-typed cache for `TrendAtlasCard`'s digest + insights compute.
+///
+/// `@StateObject`-backed so mutations don't trigger SwiftUI re-renders. The
+/// cache recomputes only when the input hash changes (inputs are all
+/// `Hashable` value types). This eliminates the ≥2× per-body-pass rebuild
+/// of `TrendDataDigest.build(...)` + `TrendInsightEngine.insights(...)`.
+@MainActor
+private final class DigestCacheStore: ObservableObject {
+    private var cachedDigest: TrendDataDigest?
+    private var cachedInsights: [TrendInsight] = []
+    private var cachedHash: Int = 0
+
+    func digest(
+        dailyPoints: [RollupDailyPoint],
+        displayMode: UsageDisplayMode,
+        windowTotals: [RollupWindowKey: RollupTotals],
+        providerSummaries: [RollupProviderSummary],
+        modelSummaries: [RollupModelSummary],
+        deviceSummaries: [RollupDeviceSummary],
+        recentUsages: [TokenUsage]
+    ) -> TrendDataDigest {
+        let hash = Self.inputHash(
+            dailyPoints: dailyPoints,
+            displayMode: displayMode,
+            windowTotals: windowTotals,
+            providerSummaries: providerSummaries,
+            modelSummaries: modelSummaries,
+            deviceSummaries: deviceSummaries,
+            recentUsages: recentUsages
+        )
+        if hash != cachedHash {
+            let d = TrendDataDigest.build(
+                windowTotals: windowTotals,
+                providerSummaries: providerSummaries,
+                modelSummaries: modelSummaries,
+                deviceSummaries: deviceSummaries,
+                dailyPoints: dailyPoints,
+                recentUsages: recentUsages,
+                displayMode: displayMode
+            )
+            cachedDigest = d
+            cachedInsights = TrendInsightEngine.insights(from: d)
+            cachedHash = hash
+        }
+        return cachedDigest!
+    }
+
+    func insights(
+        dailyPoints: [RollupDailyPoint],
+        displayMode: UsageDisplayMode,
+        windowTotals: [RollupWindowKey: RollupTotals],
+        providerSummaries: [RollupProviderSummary],
+        modelSummaries: [RollupModelSummary],
+        deviceSummaries: [RollupDeviceSummary],
+        recentUsages: [TokenUsage]
+    ) -> [TrendInsight] {
+        // Ensure the cache is populated (digest computes insights as a side
+        // effect).
+        _ = digest(
+            dailyPoints: dailyPoints,
+            displayMode: displayMode,
+            windowTotals: windowTotals,
+            providerSummaries: providerSummaries,
+            modelSummaries: modelSummaries,
+            deviceSummaries: deviceSummaries,
+            recentUsages: recentUsages
+        )
+        return cachedInsights
+    }
+
+    private static func inputHash(
+        dailyPoints: [RollupDailyPoint],
+        displayMode: UsageDisplayMode,
+        windowTotals: [RollupWindowKey: RollupTotals],
+        providerSummaries: [RollupProviderSummary],
+        modelSummaries: [RollupModelSummary],
+        deviceSummaries: [RollupDeviceSummary],
+        recentUsages: [TokenUsage]
+    ) -> Int {
+        var hasher = Hasher()
+        hasher.combine(dailyPoints)
+        hasher.combine(displayMode)
+        hasher.combine(windowTotals)
+        hasher.combine(providerSummaries)
+        hasher.combine(modelSummaries)
+        hasher.combine(deviceSummaries)
+        hasher.combine(recentUsages)
+        return hasher.finalize()
     }
 }

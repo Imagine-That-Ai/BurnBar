@@ -19,7 +19,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:* ipc: tauri:; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ipc: tauri:; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'"
     }
   },
   "bundle": {
@@ -28,7 +28,12 @@
     "icon": ["icons/icon.png"],
     "linux": {
       "deb": {
+        "depends": ["libsecret-tools"],
+        "recommends": ["gnome-keyring | libkf5wallet-bin | libkf6wallet-bin"],
         "files": {
+          "/usr/bin/openburnbar-daemon": "target/openburnbar-package-payload/openburnbar-daemon",
+          "/usr/lib/openburnbar/swift": "target/openburnbar-package-payload/swift",
+          "/usr/lib/openburnbar/native": "target/openburnbar-package-payload/native",
           "/usr/libexec/openburnbar-daemon-launch": "../../../packaging/linux/openburnbar-daemon-launch.sh",
           "/usr/lib/systemd/user/openburnbar-daemon.service": "../../../packaging/linux/openburnbar-daemon.service",
           "/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop": "../../../packaging/linux/openburnbar.desktop",
@@ -38,7 +43,11 @@
         }
       },
       "rpm": {
+        "depends": ["libsecret"],
         "files": {
+          "/usr/bin/openburnbar-daemon": "target/openburnbar-package-payload/openburnbar-daemon",
+          "/usr/lib/openburnbar/swift": "target/openburnbar-package-payload/swift",
+          "/usr/lib/openburnbar/native": "target/openburnbar-package-payload/native",
           "/usr/libexec/openburnbar-daemon-launch": "../../../packaging/linux/openburnbar-daemon-launch.sh",
           "/usr/lib/systemd/user/openburnbar-daemon.service": "../../../packaging/linux/openburnbar-daemon.service",
           "/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop": "../../../packaging/linux/openburnbar.desktop",
@@ -49,8 +58,8 @@
       },
       "appimage": {
         "files": {
-          "usr/libexec/openburnbar-daemon-launch": "../../../packaging/linux/openburnbar-daemon-launch.sh",
-          "usr/lib/systemd/user/openburnbar-daemon.service": "../../../packaging/linux/openburnbar-daemon.service"
+          "/usr/libexec/openburnbar-daemon-launch": "../../../packaging/linux/openburnbar-daemon-launch.sh",
+          "/usr/lib/systemd/user/openburnbar-daemon.service": "../../../packaging/linux/openburnbar-daemon.service"
         }
       }
     }

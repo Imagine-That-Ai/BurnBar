@@ -92,9 +92,7 @@ FORBIDDEN_TOKEN_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     ),
     # Production unavailable substitutes — not domain enums like SourceKind.Unavailable.
     (
-        re.compile(
-            r"\bUnavailable(?:ChatStreamDriver|Host|Source|Driver|Service|Client)\b"
-        ),
+        re.compile(r"\bUnavailable(?:ChatStreamDriver|Host|Source|Driver|Service|Client)\b"),
         "Unavailable",
     ),
 ]
@@ -313,9 +311,7 @@ def collect_token_hits(repo: Path, rel_paths: list[str]) -> list[str]:
         code_files = [f for f in files if f.suffix.lower() in CODE_SUFFIXES]
         scan_files = code_files if code_files else files
         if root.is_dir() and not scan_files:
-            messages.append(
-                f"blocking path has zero scannable text files: {norm}"
-            )
+            messages.append(f"blocking path has zero scannable text files: {norm}")
             continue
         if root.is_file() and not scan_files:
             messages.append(f"blocking path is not a scannable text file: {norm}")
@@ -332,9 +328,7 @@ def collect_token_hits(repo: Path, rel_paths: list[str]) -> list[str]:
             for token, line_no in hits:
                 # Log path + line + token only — never dump full source lines
                 # (avoids leaking secrets/snippets into CI logs).
-                messages.append(
-                    f"Real-row forbidden token {token!r} in {shown}:{line_no}"
-                )
+                messages.append(f"Real-row forbidden token {token!r} in {shown}:{line_no}")
     return messages
 
 
@@ -362,15 +356,10 @@ def validate_evidence_file(repo: Path, rid: str, rel: str) -> list[str]:
     # Primary evidence under docs/windows-port/evidence/ must be substantive + marked.
     if norm.startswith("docs/windows-port/evidence/"):
         if len(stripped) < EVIDENCE_MIN_CHARS:
-            errors.append(
-                f"{rid}: Real evidence file too short "
-                f"(<{EVIDENCE_MIN_CHARS} non-whitespace chars): {norm}"
-            )
+            errors.append(f"{rid}: Real evidence file too short (<{EVIDENCE_MIN_CHARS} non-whitespace chars): {norm}")
         for marker in EVIDENCE_REQUIRED_MARKERS:
             if marker not in etext:
-                errors.append(
-                    f"{rid}: Real evidence missing required marker {marker!r}: {norm}"
-                )
+                errors.append(f"{rid}: Real evidence missing required marker {marker!r}: {norm}")
     elif len(stripped) < 40:
         errors.append(f"{rid}: Real evidence file too short: {norm}")
     if PLACEHOLDER_CELL.search(etext):
@@ -440,8 +429,7 @@ def main(argv: list[str] | None = None) -> int:
             continue
         if status in FORBIDDEN_STATUSES or status not in VALID_STATUSES:
             errors.append(
-                f"{rid}: illegal status {status!r} "
-                f"(allowed: {sorted(VALID_STATUSES)}; Authored is never parity)"
+                f"{rid}: illegal status {status!r} (allowed: {sorted(VALID_STATUSES)}; Authored is never parity)"
             )
             continue
         status_counts[status] += 1
@@ -466,13 +454,9 @@ def main(argv: list[str] | None = None) -> int:
         if status == "DeferredApproved":
             revive = row.get("revive_trigger")
             if not isinstance(revive, str) or not revive.strip():
-                errors.append(
-                    f"{rid}: DeferredApproved row requires non-empty 'revive_trigger'"
-                )
+                errors.append(f"{rid}: DeferredApproved row requires non-empty 'revive_trigger'")
             if not evidence:
-                errors.append(
-                    f"{rid}: DeferredApproved row requires ≥1 evidence path"
-                )
+                errors.append(f"{rid}: DeferredApproved row requires ≥1 evidence path")
             for e in evidence:
                 if not isinstance(e, str):
                     errors.append(f"{rid}: evidence entry must be string")
@@ -483,9 +467,7 @@ def main(argv: list[str] | None = None) -> int:
                     continue
                 assert norm is not None
                 if not (repo / norm).is_file():
-                    errors.append(
-                        f"{rid}: DeferredApproved evidence file missing: {norm}"
-                    )
+                    errors.append(f"{rid}: DeferredApproved evidence file missing: {norm}")
 
         if status == "Real":
             if not evidence:
@@ -493,9 +475,7 @@ def main(argv: list[str] | None = None) -> int:
             if not tests:
                 errors.append(f"{rid}: Real row requires ≥1 test path")
             if not blocking:
-                errors.append(
-                    f"{rid}: Real row requires ≥1 blocking_paths entry for token scan"
-                )
+                errors.append(f"{rid}: Real row requires ≥1 blocking_paths entry for token scan")
 
             for e in evidence:
                 if not isinstance(e, str):
@@ -550,13 +530,9 @@ def main(argv: list[str] | None = None) -> int:
                     prod_count += 1
                     files = iter_scan_files(root, code_only=False)
                     if root.is_dir() and not files:
-                        errors.append(
-                            f"{rid}: production blocking dir has zero scannable text files: {norm}"
-                        )
+                        errors.append(f"{rid}: production blocking dir has zero scannable text files: {norm}")
                     if root.is_file() and root.suffix.lower() not in TEXT_SUFFIXES:
-                        errors.append(
-                            f"{rid}: production blocking file is not scannable text: {norm}"
-                        )
+                        errors.append(f"{rid}: production blocking file is not scannable text: {norm}")
                 elif is_production_prefix(norm) and is_test_tree_path(norm):
                     # Still token-scan test paths if listed, but they earn no credit.
                     pass
@@ -608,10 +584,7 @@ def main(argv: list[str] | None = None) -> int:
                             "replace with honest blocked wording (no fake paths)"
                         )
                     if args.production and PLACEHOLDER_CELL.search(btext):
-                        errors.append(
-                            f"{bnorm}: --production forbids any PLACEHOLDER cell "
-                            "in the certification bundle"
-                        )
+                        errors.append(f"{bnorm}: --production forbids any PLACEHOLDER cell in the certification bundle")
             else:
                 errors.append(f"certification bundle missing: {bnorm}")
 

@@ -39,7 +39,7 @@ Centralize metadata about supported agents so parsers, UI, and cost calculations
 
 ## Adding a new provider
 
-1. Add a case to the canonical `AgentProvider` enum in `OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/AgentProvider.swift` (set `bundledLogoName`, `iconName`, and membership in `swarmGlyphProviders` — test-enforced to cover `allCases`).
+1. Add a case to the canonical `AgentProvider` enum in `OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/AgentProvider.swift` (set `bundledLogoName`, `iconName`, and membership in `swarmGlyphProviders` — test-enforced to cover `allCases`).
 2. Set `logDirectory`, `filePattern`, `supportLevel`, and `dataConfidence` in the Mac-only extension `AgentLens/Models/AgentProvider.swift`.
 3. Add brand colors to `DesignSystemColors.primary/accent(for:)` (`ThemePrimitives.swift`), the Mac duplicate in `AgentLens/Theme/DesignSystem.swift`, and `SwarmColorDriver.swift`.
 4. Implement the `LogParser` protocol in `AgentLens/Services/LogParser/`.

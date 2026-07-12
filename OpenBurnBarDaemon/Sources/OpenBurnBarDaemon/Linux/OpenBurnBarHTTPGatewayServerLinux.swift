@@ -1153,9 +1153,6 @@ private func httpResponse(status: Int, headers: [String: String], body: Data) ->
 
 private func httpResponseHead(status: Int, headers: [String: String], contentLength: Int? = nil) -> Data {
     var responseHeaders = headers
-    responseHeaders["Access-Control-Allow-Origin"] = "*"
-    responseHeaders["Access-Control-Allow-Headers"] = "Authorization, Content-Type, X-API-Key"
-    responseHeaders["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     if let contentLength {
         responseHeaders["Content-Length"] = "\(contentLength)"
     }

@@ -1,25 +1,77 @@
 {
-  "mission": "mission-001",
-  "lane": "W06LinuxShellUx",
-  "thresholdsMs": {
-    "app.start": 2500,
-    "route.navigation": 120,
-    "ipc.health.roundtrip": 800,
-    "tray.click.open": 400,
-    "chat.firstToken.progress": 2500,
-    "db.migration.open.query": 1200,
-    "parser.incremental.run": 900,
-    "memory.search": 650,
-    "media.control.stage": 500
+  "schemaVersion": 2,
+  "reason": "Replace boot-time synthetic diagnostics with measured packaged-shell percentiles and identical macOS/Linux workloads.",
+  "nativeShell": {
+    "requiredMetrics": [
+      "app.start",
+      "route.navigation",
+      "ipc.health.roundtrip",
+      "tray.click.open"
+    ],
+    "thresholdsP95Ms": {
+      "app.start": 2500,
+      "route.navigation": 120,
+      "ipc.health.roundtrip": 800,
+      "tray.click.open": 400
+    },
+    "minimumSamples": {
+      "app.start": 10,
+      "route.navigation": 19,
+      "ipc.health.roundtrip": 10,
+      "tray.click.open": 10
+    }
+  },
+  "matched": {
+    "protocolVersion": "openburnbar-matched-workload-v1",
+    "expectedWorkloads": [
+      "sqlite.range-query",
+      "sqlite.fts-memory-search",
+      "jsonl.incremental-decode",
+      "stream.first-visible-delta-decode"
+    ],
+    "profiles": {
+      "smoke": {
+        "rows": 100,
+        "samples": 5,
+        "warmups": 1,
+        "soakSeconds": 1,
+        "seed": 20260709
+      },
+      "pr": {
+        "rows": 10000,
+        "samples": 15,
+        "warmups": 3,
+        "soakSeconds": 5,
+        "seed": 20260709
+      },
+      "nightly": {
+        "rows": 100000,
+        "samples": 30,
+        "warmups": 5,
+        "soakSeconds": 1800,
+        "seed": 20260709
+      }
+    },
+    "workloadThresholdsMs": {
+      "sqlite.range-query": { "p95": 250, "p99": 400 },
+      "sqlite.fts-memory-search": { "p95": 250, "p99": 400 },
+      "jsonl.incremental-decode": { "p95": 2000, "p99": 3000 },
+      "stream.first-visible-delta-decode": { "p95": 50, "p99": 100 }
+    },
+    "linuxParity": {
+      "p95Multiplier": 3,
+      "p95AdditiveFloorMs": 5,
+      "p99Multiplier": 4,
+      "p99AdditiveFloorMs": 10
+    },
+    "resourceThresholds": {
+      "maximumRssBytes": 1610612736,
+      "maximumRssGrowthBytes": 268435456,
+      "maximumCpuUtilizationPercent": 150
+    }
   },
   "trendPolicy": {
-    "name": "current-threshold-enforced-until-baseline",
-    "baselineSource": "none",
-    "rule": "Every current sample must stay under threshold; add historical p50/p95 rows once mission-001 has two validated Linux runs."
-  },
-  "macosComparison": {
-    "status": "blocked",
-    "reason": "The macOS app does not expose an equivalent Linux-shell Tauri runner or tray/AppIndicator path; the comparison is recorded as an explicit blocker instead of a silent pass.",
-    "acceptedBlocker": "VAL-PERF-001-macos-source-comparison-unavailable"
+    "name": "p95-p99-and-matched-platform-enforcement",
+    "rule": "Native shell p95 must stay under its budget; matched macOS/Linux correctness, tail latency, and resource constraints must all pass. Nightly runs the same workloads for 30 minutes on each platform."
   }
 }

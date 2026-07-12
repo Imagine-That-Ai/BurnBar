@@ -1,18 +1,6 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-/**
- * Canonical Linux path contract (XDG).
- *
- * - Runtime socket: `$XDG_RUNTIME_DIR/openburnbar/daemon.sock`
- * - Support / data: `$XDG_DATA_HOME/openburnbar` (default `~/.local/share/openburnbar`)
- * - Config: `$XDG_CONFIG_HOME/openburnbar` (default `~/.config/openburnbar`)
- * - Auth token: `<support>/daemon-socket-auth-token`
- *
- * Casing is lowercase `openburnbar` for XDG segments. Overrides:
- * - `OPENBURNBAR_SOCKET_PATH` / `OPENBURNBAR_DAEMON_SOCKET_PATH`
- * - `OPENBURNBAR_DAEMON_SUPPORT_DIR` / `BURNBAR_DAEMON_SUPPORT_DIR`
- */
 export const LINUX_APP_DIR_NAME = 'openburnbar';
 export const LINUX_SOCKET_FILE_NAME = 'daemon.sock';
 export const LINUX_SOCKET_FALLBACK_FILE_NAME = 'openburnbar-daemon.sock';
@@ -65,17 +53,18 @@ export function linuxConfigDir(
   return join(home, '.config', LINUX_APP_DIR_NAME);
 }
 
-/** Path contract snapshot for settings / onboarding / diagnostics. */
-export function linuxPathContract(
-  env: NodeJS.ProcessEnv = process.env,
-  home: string = homedir()
-): {
+export type LinuxPathContract = {
   supportDir: string;
   socketPath: string;
   configDir: string;
   authTokenPath: string;
   runtimeDir: string | null;
-} {
+};
+
+export function linuxPathContract(
+  env: NodeJS.ProcessEnv = process.env,
+  home: string = homedir()
+): LinuxPathContract {
   return {
     supportDir: linuxSupportDir(env, home),
     socketPath: linuxSocketPath(env, home),

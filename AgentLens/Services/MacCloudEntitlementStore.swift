@@ -4,6 +4,7 @@ import Combine
 import FirebaseCore
 @preconcurrency import FirebaseFirestore
 import OpenBurnBarCore
+import OpenBurnBarComputerUseCore
 import StoreKit
 
 // MARK: - Mac Cloud Entitlement Store
@@ -329,6 +330,18 @@ private enum MacCloudMembershipSourceState {
     }
 }
 
+struct MacCloudEntitlementDocument {
+    private let fields: [String: Any]
+
+    init(_ fields: [String: Any]) {
+        self.fields = fields
+    }
+
+    subscript(key: String) -> Any? {
+        fields[key]
+    }
+}
+
 @MainActor
 final class MacCloudEntitlementStore: ObservableObject {
     @Published private(set) var isActive: Bool = false
@@ -364,10 +377,21 @@ final class MacCloudEntitlementStore: ObservableObject {
     private var signedInUID: String?
     private var hostedQuotaSourceState: MacCloudMembershipSourceState = .missing
     private var hostedComputerUseSourceState: MacCloudMembershipSourceState = .missing
+    private var hostedQuotaProvenance: ComputerUseAuthorityProvenance?
+    private var hostedComputerUseProvenance: ComputerUseAuthorityProvenance?
     private var proMaxSourceState: MacCloudMembershipSourceState = .missing
     private var ultraSourceState: MacCloudMembershipSourceState = .missing
+    private var proMaxProvenance: ComputerUseAuthorityProvenance?
+    private var ultraProvenance: ComputerUseAuthorityProvenance?
     private var localStoreKitMembershipState = MacMembershipEntitlementState()
     private(set) var hasVerifiedStoreKitEntitlementSnapshot = false
+    private var storeKitProvenance: ComputerUseAuthorityProvenance?
+    private(set) var computerUseAuthorityProvenance: ComputerUseAuthorityProvenance?
+    private var hasCompletedComputerUseServerResolution = false
+
+    var hasAuthoritativeComputerUseEntitlementSnapshot: Bool {
+        computerUseAuthorityProvenance != nil
+    }
 
     /// Highest tier the member currently holds, resolved from live entitlement
     /// docs with a verified StoreKit 2 fallback. Ultra implies Pro implies Cloud.
@@ -435,6 +459,47 @@ final class MacCloudEntitlementStore: ObservableObject {
         restartListener(uid: Auth.auth().currentUser?.uid)
     }
 
+    func refreshComputerUseAuthorityIfNeeded(now: Date = Date()) async {
+        if let computerUseAuthorityProvenance,
+           computerUseAuthorityProvenance.source == .firestoreServer
+            || hasCompletedComputerUseServerResolution,
+           now.timeIntervalSince(computerUseAuthorityProvenance.observedAt)
+            < ComputerUseCapabilityFreshness.maximumSourceObservationAge / 2 {
+            return
+        }
+        guard FirebaseApp.app() != nil,
+              let uid = signedInUID,
+              !uid.isEmpty else { return }
+
+        let entitlements = Firestore.firestore()
+            .collection("users").document(uid)
+            .collection("entitlements")
+        do {
+            for documentID in [
+                "hosted_quota_sync",
+                "hosted_computer_use_sync",
+                "burnbar_pro_max",
+                "burnbar_ultra"
+            ] {
+                let snapshot = try await entitlements
+                    .document(documentID)
+                    .getDocument(source: .server)
+                guard !snapshot.metadata.isFromCache else { continue }
+                applyServerMembershipSnapshot(
+                    documentID: documentID,
+                    data: snapshot.data().map(MacCloudEntitlementDocument.init),
+                    exists: snapshot.exists,
+                    observedAt: now
+                )
+            }
+            hasCompletedComputerUseServerResolution = true
+            await refreshStoreKitEntitlements()
+        } catch {
+            hasCompletedComputerUseServerResolution = false
+            self.error = error.localizedDescription
+        }
+    }
+
     private func restartListener(uid: String?) {
         let uidChanged = signedInUID != uid
         signedInUID = uid
@@ -450,15 +515,22 @@ final class MacCloudEntitlementStore: ObservableObject {
         ultraListener = nil
         hostedQuotaSourceState = .missing
         hostedComputerUseSourceState = .missing
+        hostedQuotaProvenance = nil
+        hostedComputerUseProvenance = nil
+        hasCompletedComputerUseServerResolution = false
         proMaxSourceState = .missing
         ultraSourceState = .missing
+        proMaxProvenance = nil
+        ultraProvenance = nil
         if uidChanged {
             localStoreKitMembershipState = MacMembershipEntitlementState()
             hasVerifiedStoreKitEntitlementSnapshot = false
+            storeKitProvenance = nil
         }
         guard let uid else {
             localStoreKitMembershipState = MacMembershipEntitlementState()
             hasVerifiedStoreKitEntitlementSnapshot = false
+            storeKitProvenance = nil
             publishMembershipEntitlements()
             clearHostedMediaEntitlement()
             return
@@ -473,36 +545,40 @@ final class MacCloudEntitlementStore: ObservableObject {
             .document("hosted_quota_sync")
             .addSnapshotListener { [weak self] snapshot, error in
                 Task { @MainActor in
-                    guard let self else { return }
+                    guard let self, self.signedInUID == uid else { return }
                     if let error {
                         self.error = error.localizedDescription
                         return
                     }
+                    guard snapshot?.metadata.isFromCache == false else { return }
                     guard let data = snapshot?.data(), snapshot?.exists == true else {
                         // No entitlement doc — leave the local StoreKit 2
                         // snapshot authoritative when it has been verified.
                         self.hostedQuotaSourceState = .missing
+                        self.hostedQuotaProvenance = nil
                         self.publishMembershipEntitlements()
                         return
                     }
-                    self.applyHostedQuota(data: data)
+                    self.applyHostedQuota(data: MacCloudEntitlementDocument(data), observedAt: Date())
                 }
             }
         computerUseListener = entitlements
             .document("hosted_computer_use_sync")
             .addSnapshotListener { [weak self] snapshot, error in
                 Task { @MainActor in
-                    guard let self else { return }
+                    guard let self, self.signedInUID == uid else { return }
                     if let error {
                         self.error = error.localizedDescription
                         return
                     }
+                    guard snapshot?.metadata.isFromCache == false else { return }
                     guard let data = snapshot?.data(), snapshot?.exists == true else {
                         self.hostedComputerUseSourceState = .missing
+                        self.hostedComputerUseProvenance = nil
                         self.publishMembershipEntitlements()
                         return
                     }
-                    self.applyHostedComputerUse(data: data)
+                    self.applyHostedComputerUse(data: MacCloudEntitlementDocument(data), observedAt: Date())
                 }
             }
         // cov:ignore-start -- Firebase snapshot callback delivery is integration-only; parser/clear paths are unit-tested
@@ -510,7 +586,7 @@ final class MacCloudEntitlementStore: ObservableObject {
             .document("hosted_media_sync")
             .addSnapshotListener { [weak self] snapshot, error in
                 Task { @MainActor in
-                    guard let self else { return }
+                    guard let self, self.signedInUID == uid else { return }
                     if let error {
                         self.error = error.localizedDescription
                         return
@@ -519,7 +595,7 @@ final class MacCloudEntitlementStore: ObservableObject {
                         self.clearHostedMediaEntitlement()
                         return
                     }
-                    self.applyHostedMedia(data: data)
+                    self.applyHostedMedia(data: MacCloudEntitlementDocument(data))
                 }
             }
         // cov:ignore-end
@@ -527,18 +603,24 @@ final class MacCloudEntitlementStore: ObservableObject {
             .document("burnbar_pro_max")
             .addSnapshotListener { [weak self] snapshot, error in
                 Task { @MainActor in
-                    guard let self else { return }
+                    guard let self, self.signedInUID == uid else { return }
                     if let error {
                         self.error = error.localizedDescription
                         return
                     }
+                    guard snapshot?.metadata.isFromCache == false else { return }
                     guard let data = snapshot?.data(), snapshot?.exists == true else {
                         self.proMaxSourceState = .missing
+                        self.proMaxProvenance = nil
                         self.publishMembershipEntitlements()
                         return
                     }
                     self.proMaxSourceState = .present(
-                        self.membershipState(data: data, defaultTier: .pro)
+                        self.membershipState(data: MacCloudEntitlementDocument(data), defaultTier: .pro)
+                    )
+                    self.proMaxProvenance = self.serverProvenance(
+                        data: MacCloudEntitlementDocument(data),
+                        observedAt: Date()
                     )
                     self.publishMembershipEntitlements()
                 }
@@ -547,35 +629,93 @@ final class MacCloudEntitlementStore: ObservableObject {
             .document("burnbar_ultra")
             .addSnapshotListener { [weak self] snapshot, error in
                 Task { @MainActor in
-                    guard let self else { return }
+                    guard let self, self.signedInUID == uid else { return }
                     if let error {
                         self.error = error.localizedDescription
                         return
                     }
+                    guard snapshot?.metadata.isFromCache == false else { return }
                     guard let data = snapshot?.data(), snapshot?.exists == true else {
                         self.ultraSourceState = .missing
+                        self.ultraProvenance = nil
                         self.publishMembershipEntitlements()
                         return
                     }
                     self.ultraSourceState = .present(
-                        self.membershipState(data: data, defaultTier: .ultra)
+                        self.membershipState(data: MacCloudEntitlementDocument(data), defaultTier: .ultra)
+                    )
+                    self.ultraProvenance = self.serverProvenance(
+                        data: MacCloudEntitlementDocument(data),
+                        observedAt: Date()
                     )
                     self.publishMembershipEntitlements()
                 }
             }
     }
 
-    func applyHostedQuota(data: [String: Any]) {
+    func applyHostedQuota(data: MacCloudEntitlementDocument, observedAt: Date = Date()) {
         hostedQuotaSourceState = .present(membershipState(data: data, defaultTier: .cloud))
+        hostedQuotaProvenance = serverProvenance(data: data, observedAt: observedAt)
         publishMembershipEntitlements()
     }
 
-    private func applyHostedComputerUse(data: [String: Any]) {
+    func applyHostedComputerUse(
+        data: MacCloudEntitlementDocument,
+        isFromCache: Bool = false,
+        observedAt: Date = Date()
+    ) {
+        guard !isFromCache else { return }
         hostedComputerUseSourceState = .present(membershipState(data: data, defaultTier: .pro))
+        hostedComputerUseProvenance = serverProvenance(data: data, observedAt: observedAt)
         publishMembershipEntitlements()
     }
 
-    func applyHostedMedia(data: [String: Any]) {
+    private func applyServerMembershipSnapshot(
+        documentID: String,
+        data: MacCloudEntitlementDocument?,
+        exists: Bool,
+        observedAt: Date
+    ) {
+        guard exists, let data else {
+            switch documentID {
+            case "hosted_quota_sync":
+                hostedQuotaSourceState = .missing
+                hostedQuotaProvenance = nil
+            case "hosted_computer_use_sync":
+                hostedComputerUseSourceState = .missing
+                hostedComputerUseProvenance = nil
+            case "burnbar_pro_max":
+                proMaxSourceState = .missing
+                proMaxProvenance = nil
+            case "burnbar_ultra":
+                ultraSourceState = .missing
+                ultraProvenance = nil
+            default:
+                return
+            }
+            publishMembershipEntitlements()
+            return
+        }
+
+        switch documentID {
+        case "hosted_quota_sync":
+            applyHostedQuota(data: data, observedAt: observedAt)
+        case "hosted_computer_use_sync":
+            applyHostedComputerUse(data: data, observedAt: observedAt)
+        case "burnbar_pro_max":
+            proMaxSourceState = .present(membershipState(data: data, defaultTier: .pro))
+            proMaxProvenance = serverProvenance(data: data, observedAt: observedAt)
+            publishMembershipEntitlements()
+        case "burnbar_ultra":
+            ultraSourceState = .present(membershipState(data: data, defaultTier: .ultra))
+            ultraProvenance = serverProvenance(data: data, observedAt: observedAt)
+            publishMembershipEntitlements()
+        default:
+            return
+        }
+    }
+
+    func applyHostedMedia(data: MacCloudEntitlementDocument) {
         let state = activeEntitlementState(data: data)
         hostedMediaIsActive = state.isActive
         hostedMediaExpirationDate = state.expiresAt
@@ -588,7 +728,7 @@ final class MacCloudEntitlementStore: ObservableObject {
         hostedMediaPurchaseDate = nil
     }
 
-    private func activeEntitlementState(data: [String: Any]) -> MacEntitlementActiveState {
+    private func activeEntitlementState(data: MacCloudEntitlementDocument) -> MacEntitlementActiveState {
         let active = (data["active"] as? Bool) ?? false
         let expiresAt = parseDate(data["expireAt"])
             ?? parseDate(data["expiresAt"])
@@ -603,7 +743,10 @@ final class MacCloudEntitlementStore: ObservableObject {
         )
     }
 
-    private func membershipState(data: [String: Any], defaultTier: MacCloudTier) -> MacMembershipEntitlementState {
+    private func membershipState(
+        data: MacCloudEntitlementDocument,
+        defaultTier: MacCloudTier
+    ) -> MacMembershipEntitlementState {
         let entitlement = activeEntitlementState(data: data)
         let productID = (data["productID"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let tier = MacCloudStoreKitProductCatalog.tier(for: productID) ?? defaultTier
@@ -613,17 +756,31 @@ final class MacCloudEntitlementStore: ObservableObject {
     }
 
     private func publishMembershipEntitlements() {
-        let cloudStates = [
-            hostedQuotaSourceState.membership,
-            hostedComputerUseSourceState.membership,
-            proMaxSourceState.membership,
-            ultraSourceState.membership
-        ].compactMap { $0 }
+        let cloudSources: [(MacMembershipEntitlementState?, ComputerUseAuthorityProvenance?)] = [
+            (hostedQuotaSourceState.membership, hostedQuotaProvenance),
+            (hostedComputerUseSourceState.membership, hostedComputerUseProvenance),
+            (proMaxSourceState.membership, proMaxProvenance),
+            (ultraSourceState.membership, ultraProvenance)
+        ]
+        let authoritativeCloudSources: [(MacMembershipEntitlementState, ComputerUseAuthorityProvenance)] =
+            cloudSources.compactMap { membership, provenance in
+                guard let membership, let provenance else { return nil }
+                return (membership, provenance)
+            }
+        let cloudStates = authoritativeCloudSources.map { $0.0 }
         let cloudEffective = MacMembershipEntitlementState.combined(cloudStates)
 
-        let effective = cloudEffective.isEmpty
-            ? localStoreKitMembershipState
-            : cloudEffective
+        let effective = cloudStates.isEmpty ? localStoreKitMembershipState : cloudEffective
+        if cloudStates.isEmpty {
+            computerUseAuthorityProvenance = storeKitProvenance
+        } else {
+            let provenances = authoritativeCloudSources.map { $0.1 }
+            computerUseAuthorityProvenance = ComputerUseAuthorityProvenance(
+                source: .firestoreServer,
+                observedAt: provenances.map { $0.observedAt }.min() ?? .distantPast,
+                updatedAt: provenances.compactMap { $0.updatedAt }.min()
+            )
+        }
 
         isActive = effective.cloud.isActive
         expirationDate = effective.cloud.expiresAt
@@ -658,6 +815,7 @@ final class MacCloudEntitlementStore: ObservableObject {
         guard let signedInUID else {
             localStoreKitMembershipState = MacMembershipEntitlementState()
             hasVerifiedStoreKitEntitlementSnapshot = false
+            storeKitProvenance = nil
             publishMembershipEntitlements()
             return
         }
@@ -668,6 +826,10 @@ final class MacCloudEntitlementStore: ObservableObject {
             appAccountTokenBindingProvider: appAccountTokenBindingProvider
         )
         hasVerifiedStoreKitEntitlementSnapshot = true
+        storeKitProvenance = ComputerUseAuthorityProvenance(
+            source: .verifiedStoreKit,
+            observedAt: Date()
+        )
         publishMembershipEntitlements()
     }
 
@@ -719,6 +881,17 @@ final class MacCloudEntitlementStore: ObservableObject {
         default:
             return nil
         }
+    }
+
+    private func serverProvenance(
+        data: MacCloudEntitlementDocument,
+        observedAt: Date
+    ) -> ComputerUseAuthorityProvenance {
+        ComputerUseAuthorityProvenance(
+            source: .firestoreServer,
+            observedAt: observedAt,
+            updatedAt: parseDate(data["updatedAt"])
+        )
     }
 
     // MARK: - Derived copy helpers

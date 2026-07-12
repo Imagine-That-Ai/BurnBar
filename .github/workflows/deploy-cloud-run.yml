@@ -120,8 +120,25 @@ jobs:
           npm ci --prefix services/hosted-mcp
           npm --prefix services/hosted-mcp test
 
+      - name: Prime Docker base image with bounded registry retry
+        run: |
+          set -euo pipefail
+          image="node:22-bookworm-slim@sha256:53ada149d435c38b14476cb57e4a7da73c15595aba79bd6971b547ceb6d018bf"
+          for attempt in 1 2 3; do
+            if docker pull "$image"; then
+              exit 0
+            fi
+            if [[ "$attempt" -eq 3 ]]; then
+              echo "::error::Docker registry did not serve ${image} after ${attempt} attempts."
+              exit 1
+            fi
+            delay=$((attempt * 10))
+            echo "Docker registry pull failed; retrying in ${delay}s (attempt ${attempt}/3)."
+            sleep "$delay"
+          done
+
       - name: Docker build smoke
-        run: docker build -f services/hosted-mcp/Dockerfile -t openburnbar-hosted-mcp:deploy-smoke .
+        run: docker build -f services/hosted-mcp/Dockerfile --pull=false -t openburnbar-hosted-mcp:deploy-smoke .
 
       - name: Stage deploy artifact
         id: artifact
@@ -179,7 +196,7 @@ jobs:
       storage_bucket: ${{ steps.current.outputs.storage_bucket }}
     steps:
       - name: Download deploy artifact
-        uses: actions/download-artifact@abefc31eafcfbdf6c5336127a9045ea00bc7c9e4 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
         with:
           name: hosted-mcp-deploy-artifact-${{ needs.resolve-release.outputs.tag }}
           path: ${{ runner.temp }}/hosted-mcp-artifact-download

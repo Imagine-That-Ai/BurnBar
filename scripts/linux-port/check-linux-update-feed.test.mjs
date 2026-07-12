@@ -1,111 +1,92 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { classifyFeedResponse, finalizeFeedReport, looksLikeHtml } from './lib/linux-update-feed.mjs';
+import { classifyFeedResponse, finalizeFeedReport, looksLikeHtml, validateFeedDocument } from './lib/linux-update-feed.mjs';
 
-test('looksLikeHtml: content-type text/html', () => {
+function validFeed() {
+  const artifact = (type, architecture) => ({
+    type,
+    architecture,
+    url: `https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v1.2.3/app-${type}-${architecture}`,
+    sha256: 'a'.repeat(64),
+    size: 100,
+    signatureUrl: `https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v1.2.3/app-${type}-${architecture}.sig`
+  });
+  return {
+    schemaVersion: 1,
+    product: 'OpenBurnBar',
+    platform: 'linux',
+    version: '1.2.3',
+    gitCommit: 'b'.repeat(40),
+    publishedAt: '2026-07-09T00:00:00Z',
+    channel: 'prerelease',
+    artifacts: [artifact('appimage', 'aarch64'), artifact('appimage', 'x86_64')],
+    signature: {
+      algorithm: 'Ed25519',
+      publicKeySpkiSha256: 'c'.repeat(64),
+      url: 'https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v1.2.3/latest-linux.json.ed25519.sig'
+    }
+  };
+}
+
+test('HTML hard-fails even with allow-missing', () => {
   assert.equal(looksLikeHtml('{}', 'text/html; charset=utf-8'), true);
+  const result = classifyFeedResponse({ status: 200, contentType: 'text/html', text: '<!doctype html>', allowMissing: true });
+  assert.equal(result.passed, false);
+  assert.equal(result.bodyKind, 'html');
 });
 
-test('looksLikeHtml: body doctype', () => {
-  assert.equal(looksLikeHtml('<!DOCTYPE html><html></html>', 'application/json'), true);
+test('strict valid JSON feed passes schema classification', () => {
+  const feed = validFeed();
+  const result = classifyFeedResponse({ status: 200, contentType: 'application/json; charset=utf-8', text: JSON.stringify(feed) });
+  assert.equal(result.passed, true);
+  assert.deepEqual(result.document, feed);
 });
 
-test('looksLikeHtml: plain json', () => {
-  assert.equal(looksLikeHtml('{"version":"1"}', 'application/json'), false);
+test('wrong MIME fails even when body is valid JSON', () => {
+  const result = classifyFeedResponse({ status: 200, contentType: 'text/plain', text: JSON.stringify(validFeed()) });
+  assert.equal(result.passed, false);
+  assert.equal(result.bodyKind, 'wrong-mime');
 });
 
-test('classify: HTML hard-fails even with allow-missing', () => {
-  const r = classifyFeedResponse({
-    status: 200,
-    contentType: 'text/html',
-    text: '<!doctype html><html><body>OpenBurnBar</body></html>',
-    allowMissing: true
-  });
-  assert.equal(r.bodyKind, 'html');
-  assert.equal(r.passed, false);
-  assert.ok(r.failures.some((f) => /HTML/i.test(f)));
+test('empty object and legacy weak fixture fail schema', () => {
+  for (const document of [{}, { version: '0.1.0', url: 'https://github.com/app.AppImage' }]) {
+    const result = classifyFeedResponse({ status: 200, contentType: 'application/json', text: JSON.stringify(document) });
+    assert.equal(result.passed, false);
+    assert.ok(result.failures.length > 5);
+  }
 });
 
-test('classify: valid JSON object passes', () => {
-  const r = classifyFeedResponse({
-    status: 200,
-    contentType: 'application/json',
-    text: '{"version":"0.1.0","url":"https://example.com/app.AppImage"}',
-    allowMissing: false
-  });
-  assert.equal(r.bodyKind, 'json');
-  assert.equal(r.passed, true);
-  assert.deepEqual(r.keys, ['version', 'url']);
+test('invalid architecture, sha, URL, duplicate, and missing x86 AppImage fail', () => {
+  const feed = validFeed();
+  feed.artifacts[0].architecture = 'mips';
+  feed.artifacts[0].sha256 = 'bad';
+  feed.artifacts[0].url = 'http://localhost/app';
+  feed.artifacts[1] = { ...feed.artifacts[0] };
+  const failures = validateFeedDocument(feed);
+  assert.ok(failures.some((failure) => /architecture is invalid/.test(failure)));
+  assert.ok(failures.some((failure) => /SHA-256 is invalid/.test(failure)));
+  assert.ok(failures.some((failure) => /not allowlisted HTTPS/.test(failure)));
+  assert.ok(failures.some((failure) => /duplicate/.test(failure)));
+  assert.ok(failures.some((failure) => /missing AppImage architecture/.test(failure)));
 });
 
-test('classify: JSON array fails', () => {
-  const r = classifyFeedResponse({
-    status: 200,
-    contentType: 'application/json',
-    text: '[]',
-    allowMissing: false
-  });
-  assert.equal(r.bodyKind, 'json-non-object');
-  assert.equal(r.passed, false);
+test('replayed or non-monotonic version fails', () => {
+  assert.ok(validateFeedDocument(validFeed(), { previousVersion: '1.2.3' }).some((failure) => /not monotonic/.test(failure)));
+  assert.ok(validateFeedDocument(validFeed(), { previousVersion: '2.0.0' }).some((failure) => /not monotonic/.test(failure)));
 });
 
-test('classify: 404 allow-missing soft pass', () => {
-  const r = classifyFeedResponse({
-    status: 404,
-    contentType: 'text/plain',
-    text: 'not found',
-    allowMissing: true
-  });
-  assert.equal(r.bodyKind, 'missing');
-  assert.equal(r.passed, true);
-  assert.ok(r.warnings.length > 0);
+test('JSON array and non-JSON bodies fail', () => {
+  assert.equal(classifyFeedResponse({ status: 200, contentType: 'application/json', text: '[]' }).passed, false);
+  assert.equal(classifyFeedResponse({ status: 200, contentType: 'application/json', text: 'nope' }).passed, false);
 });
 
-test('classify: 404 without allow-missing fails', () => {
-  const r = classifyFeedResponse({
-    status: 404,
-    contentType: 'text/plain',
-    text: 'not found',
-    allowMissing: false
-  });
-  assert.equal(r.passed, false);
+test('404 is soft only with allow-missing; other HTTP errors fail', () => {
+  assert.equal(classifyFeedResponse({ status: 404, contentType: 'text/plain', text: '', allowMissing: true }).passed, true);
+  assert.equal(classifyFeedResponse({ status: 404, contentType: 'text/plain', text: '', allowMissing: false }).passed, false);
+  assert.equal(classifyFeedResponse({ status: 500, contentType: 'text/plain', text: '', allowMissing: true }).passed, false);
 });
 
-test('classify: non-json body fails', () => {
-  const r = classifyFeedResponse({
-    status: 200,
-    contentType: 'text/plain',
-    text: 'not-json',
-    allowMissing: false
-  });
-  assert.equal(r.bodyKind, 'non-json');
-  assert.equal(r.passed, false);
-});
-
-test('finalizeFeedReport: passed iff no failures', () => {
+test('finalize report passes only without failures', () => {
   assert.equal(finalizeFeedReport({ failures: [] }).passed, true);
   assert.equal(finalizeFeedReport({ failures: ['x'] }).passed, false);
-});
-
-test('classify: HTTP 500 fails', () => {
-  const r = classifyFeedResponse({
-    status: 500,
-    contentType: 'text/plain',
-    text: 'error',
-    allowMissing: true
-  });
-  assert.equal(r.bodyKind, 'http-error');
-  assert.equal(r.passed, false);
-});
-
-test('classify: application/xhtml+xml is HTML', () => {
-  assert.equal(looksLikeHtml('<html/>', 'application/xhtml+xml'), true);
-  const r = classifyFeedResponse({
-    status: 200,
-    contentType: 'application/xhtml+xml',
-    text: '<html><body>x</body></html>',
-    allowMissing: true
-  });
-  assert.equal(r.bodyKind, 'html');
-  assert.equal(r.passed, false);
 });

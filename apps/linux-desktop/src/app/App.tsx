@@ -7,6 +7,11 @@ import { SurfaceRouter } from '../surfaces/SurfaceRouter.js';
 import { readPersistedKernelId, writePersistedKernelId } from '../state/kernelPrefs.js';
 import { useShellStore } from '../state/shellStore.js';
 
+function isComputerUsePanicHotkey(event: KeyboardEvent): boolean {
+  const isPeriod = event.key === '.' || event.code === 'Period';
+  return isPeriod && event.ctrlKey && event.altKey && (event.metaKey || event.shiftKey);
+}
+
 /**
  * Shell layout. A11y landmark contract (pinned by evidence harness):
  * `a.skip-link[href="#main"]` → `nav[aria-label="Primary"]` (tab strip) → `main#main`.
@@ -17,6 +22,7 @@ export function App() {
   const route = useShellStore((s) => s.route);
   const skin = useShellStore((s) => s.skin);
   const syncRouteFromHash = useShellStore((s) => s.syncRouteFromHash);
+  const bridge = useShellStore((s) => s.bridge);
 
   useEffect(() => {
     window.addEventListener('hashchange', syncRouteFromHash);
@@ -39,13 +45,26 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!isComputerUsePanicHotkey(event)) return;
+      if (!bridge?.computerUsePanicHalt) return;
+      event.preventDefault();
+      void bridge.computerUsePanicHalt({ sessionId: '*', source: 'hotkey' }).catch((error) => {
+        console.error('computer_use_panic_hotkey_failed', error);
+      });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [bridge]);
+
+  useEffect(() => {
     document.documentElement.dataset.skin = skin;
     document.documentElement.style.setProperty('--ds-skin', skin);
   }, [skin]);
 
   return (
     <>
-      {/* Outside .shell so fixed positioning is never trapped by shell stacking. */}
+      {/* Keep the fixed backdrop outside the shell stacking context. */}
       <KernelBackdrop skin={skin} kernelId={kernelId} />
       <div className="shell">
         <div className="shell-key-capture" tabIndex={0} aria-hidden="true" />

@@ -36,15 +36,13 @@ public sealed class ProtectedFileSecretStore : IAppSecretStore
 
     public string BackendName => _protector.BackendName;
 
+    internal string RootDirectory => _rootDirectory;
+
     public static ProtectedFileSecretStore CreateDefault()
     {
-        string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(local))
-        {
-            local = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "AppData", "Local");
-        }
-
-        return new ProtectedFileSecretStore(Path.Combine(local, "OpenBurnBar", "protected-secrets"));
+        string configDirectory = Path.GetDirectoryName(AppConfiguration.DefaultFilePath())
+            ?? throw new InvalidOperationException("OpenBurnBar configuration directory could not be resolved.");
+        return new ProtectedFileSecretStore(Path.Combine(configDirectory, "protected-secrets"));
     }
 
     internal static ProtectedFileSecretStore CreateForTests(string rootDirectory) =>

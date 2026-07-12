@@ -1,7 +1,10 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.UI.Xaml.Controls;
+using OpenBurnBar.App.Presentation.SessionLogs;
+using OpenBurnBar.App.Storage;
 using Windows.System;
 
 namespace OpenBurnBar.App.Shell;
@@ -11,27 +14,29 @@ namespace OpenBurnBar.App.Shell;
 /// box unifying section navigation ("Go to") with session jumps, keyboard-first (Up/Down/Enter,
 /// Esc to dismiss), and case-insensitive substring + subsequence matching.
 ///
-/// Sessions are stub data here; wiring the real search results is deferred to the storage read
-/// seam (#1198). The chosen destination is exposed via <see cref="ChosenDestinationKey"/> so the
+/// Session results come from the encrypted local conversation index. The chosen destination is
+/// exposed via <see cref="ChosenDestinationKey"/> so the
 /// caller can drive <c>AppShell.Navigate</c> after <c>ShowAsync</c> completes.
 /// </summary>
 public sealed partial class CommandPalette : ContentDialog
 {
     private readonly ObservableCollection<CommandPaletteItem> _results = new();
     private readonly IReadOnlyList<CommandPaletteItem> _sections;
-    private readonly IReadOnlyList<CommandPaletteItem> _recentSessions;
+    private IReadOnlyList<CommandPaletteItem> _recentSessions = Array.Empty<CommandPaletteItem>();
 
     public CommandPalette()
     {
         InitializeComponent();
 
         _sections = BuildSections();
-        _recentSessions = BuildRecentSessionsStub();
-
         ResultsList.ItemsSource = _results;
         Rebuild(string.Empty);
 
-        Opened += (_, _) => QueryBox.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
+        Opened += async (_, _) =>
+        {
+            QueryBox.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
+            await LoadRecentSessionsAsync();
+        };
     }
 
     /// <summary>The destination key the user activated, or <c>null</c> if the palette was dismissed.</summary>
@@ -77,17 +82,32 @@ public sealed partial class CommandPalette : ContentDialog
         return items;
     }
 
-    private static IReadOnlyList<CommandPaletteItem> BuildRecentSessionsStub()
+    private async Task LoadRecentSessionsAsync()
     {
-        // Stub recents until the search/storage read seam (#1198) is consumed. Activating one
-        // jumps to Session Logs — the real target once session records are wired.
-        const string sessionGlyph = "\uE8BD"; // Message
-        return new List<CommandPaletteItem>
+        ISessionLogReadSource? source = null;
+        try
         {
-            new(PaletteItemKind.Session, sessionGlyph, "Windows port — W6 shell", "Claude Code · windows-port", "sessionLogs"),
-            new(PaletteItemKind.Session, sessionGlyph, "Refactor auth flow", "Codex · burnbar", "sessionLogs"),
-            new(PaletteItemKind.Session, sessionGlyph, "Quota sync repair", "Claude Code · burnbar", "sessionLogs"),
-        };
+            source = WindowsStorageDevHost.CreateSessionLogReadSource();
+            IReadOnlyList<SessionLogRecord> sessions = await source.ListAsync(limit: 12);
+            const string sessionGlyph = "\uE8BD";
+            _recentSessions = sessions.Select(session => new CommandPaletteItem(
+                PaletteItemKind.Session,
+                sessionGlyph,
+                string.IsNullOrWhiteSpace(session.InferredTaskTitle) ? session.SessionId : session.InferredTaskTitle,
+                $"{session.ProviderDisplayName} · {session.ProjectName}",
+                "sessionLogs")).ToArray();
+        }
+        catch (Exception ex)
+        {
+            OpenBurnBar.App.Diagnostics.AppDiagnostics.LogException("command-palette.sessions", ex);
+            _recentSessions = Array.Empty<CommandPaletteItem>();
+        }
+        finally
+        {
+            (source as IDisposable)?.Dispose();
+        }
+
+        Rebuild(QueryBox.Text);
     }
 
     private void QueryBox_TextChanged(object sender, TextChangedEventArgs e) => Rebuild(QueryBox.Text);

@@ -80,7 +80,7 @@ export function GlassAlert({
     </>
   );
 
-  const liveRole = role === 'none' ? undefined : role;
+  const liveRole = as === 'button' || role === 'none' ? undefined : role;
 
   if (as === 'button') {
     return (

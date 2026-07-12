@@ -1,8 +1,8 @@
 # H3 — Mac CLIBridge → Windows `ChatStreamEvent` mapping
 
-**Phase:** H3 Chat F1 (authoring table; production driver lands after H2 ConPTY proof)  
-**Mac source:** `AgentLens/Services/CLIBridge/CLIBridgeTypes.swift` — `CLIChatStreamEvent`  
-**Windows consumer:** `windows/app/OpenBurnBar.App.Presentation/Chat/ChatStreamEvent.cs`  
+**Phase:** H3 Chat F1 (authoring table; production driver lands after H2 ConPTY proof)
+**Mac source:** `AgentLens/Services/CLIBridge/CLIBridgeTypes.swift` — `CLIChatStreamEvent`
+**Windows consumer:** `windows/app/OpenBurnBar.App.Presentation/Chat/ChatStreamEvent.cs`
 **State machine:** `ChatSessionStateMachine` (`windows/app/OpenBurnBar.App.Presentation/Chat/`)
 
 This table is the contract for a production `IChatStreamDriver` that adapts CLI
@@ -48,7 +48,7 @@ Mac maps `HermesStreamEvent` → `CLIChatStreamEvent` in `CLIChatStreamEvent.ini
 
 Windows F1 drivers should either:
 
-1. Parse CLI `stream-json` directly into `ChatStreamEvent`, or  
+1. Parse CLI `stream-json` directly into `ChatStreamEvent`, or
 2. Parse Hermes-compatible events through an equivalent drop table before the state machine.
 
 ## Terminal / control outcomes (not stream events)

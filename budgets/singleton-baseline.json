@@ -1,7 +1,7 @@
 {
   "settingsAccountSharedReferences": 1,
-  "staticSharedSingletons": 56,
-  "total": 57,
-  "generatedAt": "2026-06-17T17:40:00Z",
-  "note": "Baseline for scripts/debt/check-singleton-budget.sh after the accretive main catch-up merge. Counts production AgentLens SettingsManager.shared and AccountManager.shared references plus total static let shared singletons, excluding the runtime-context construction site. Live additional reference at capture: AgentLens/Services/CLIAgentRelayChatExecutor.swift uses SettingsManager.shared/AccountManager.shared once for relay wiring. Lower as that path moves to runtime-context injection; staticSharedSingletons remains a guard against adding new global singleton owners."
+  "staticSharedSingletons": 55,
+  "total": 56,
+  "generatedAt": "2026-07-10T20:20:00Z",
+  "note": "Baseline for scripts/debt/check-singleton-budget.sh after the PR #1435 repair removed the AgentToolBroker revocation registry, Computer Use quota usage store, and Computer Use cloud metering service static shared owners. Counts production AgentLens SettingsManager.shared and AccountManager.shared references plus total static let shared singletons, excluding the runtime-context construction site. Lower as singleton paths move to runtime-context injection; staticSharedSingletons remains a guard against adding new global singleton owners."
 }

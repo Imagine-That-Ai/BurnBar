@@ -29,7 +29,7 @@ test('smoke summary is green when present', () => {
   assert.equal(s.failedCount, 0);
 });
 
-test('deb artifact ships daemon, launch, and Swift runtime', () => {
+test('deb artifact ships daemon, launch, Swift, and SQLCipher runtime', () => {
   const deb = path.join(artDir, 'OpenBurnBar_0.1.0_arm64.deb');
   assert.ok(fs.existsSync(deb), 'deb missing');
   assert.ok(fs.statSync(deb).size > 40_000_000, 'deb too small to contain daemon+runtime');
@@ -38,15 +38,17 @@ test('deb artifact ships daemon, launch, and Swift runtime', () => {
     // Host without dpkg-deb: rely on smoke log produced on Linux guest.
     const log = fs.readFileSync(path.join(outDir, 'smoke/package-install-uninstall.log'), 'utf8');
     assert.match(log, /assert deb contains openburnbar-daemon-launch[\s\S]*?exit_code=0/);
-    assert.match(log, /opt\/openburnbar\/lib\/swift/);
+    assert.match(log, /usr\/lib\/openburnbar\/swift/);
+    assert.match(log, /usr\/lib\/openburnbar\/native\/libsqlcipher\.so\.0/);
     return;
   }
   assert.match(listing, /openburnbar-daemon-launch/);
   assert.match(listing, /usr\/bin\/openburnbar-daemon/);
-  assert.match(listing, /opt\/openburnbar\/lib\/swift/);
+  assert.match(listing, /usr\/lib\/openburnbar\/swift/);
+  assert.match(listing, /usr\/lib\/openburnbar\/native\/libsqlcipher\.so\.0/);
 });
 
-test('rpm artifact ships daemon, launch, and Swift runtime', () => {
+test('rpm artifact ships daemon, launch, Swift, and SQLCipher runtime', () => {
   const rpm = path.join(artDir, 'OpenBurnBar-0.1.0-1.aarch64.rpm');
   assert.ok(fs.existsSync(rpm), 'rpm missing');
   assert.ok(fs.statSync(rpm).size > 40_000_000, 'rpm too small to contain daemon+runtime');
@@ -54,12 +56,14 @@ test('rpm artifact ships daemon, launch, and Swift runtime', () => {
   if (listing === null) {
     const log = fs.readFileSync(path.join(outDir, 'smoke/package-install-uninstall.log'), 'utf8');
     assert.match(log, /assert rpm contains openburnbar-daemon-launch[\s\S]*?exit_code=0/);
-    assert.match(log, /opt\/openburnbar\/lib\/swift|\/opt\/openburnbar\/lib\/swift/);
+    assert.match(log, /usr\/lib\/openburnbar\/swift/);
+    assert.match(log, /usr\/lib\/openburnbar\/native\/libsqlcipher\.so\.0/);
     return;
   }
   assert.match(listing, /openburnbar-daemon-launch/);
   assert.match(listing, /openburnbar-daemon/);
-  assert.match(listing, /opt\/openburnbar\/lib\/swift/);
+  assert.match(listing, /usr\/lib\/openburnbar\/swift/);
+  assert.match(listing, /usr\/lib\/openburnbar\/native\/libsqlcipher\.so\.0/);
 });
 
 test('VAL-DASHBOARD-004 six-layout screenshots exist', () => {

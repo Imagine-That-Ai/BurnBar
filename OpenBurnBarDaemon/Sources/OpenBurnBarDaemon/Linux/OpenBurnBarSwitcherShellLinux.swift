@@ -202,7 +202,7 @@ public final class BurnBarSwitcherSQLiteProfileStore: BurnBarSwitcherProfileStor
         case .omp: return ["omp"]
         case .kimi: return ["kimi"]
         case .junie: return ["junie"]
-        case .antigravity: return ["antigravity"]
+        case .antigravity: return ["agy", "antigravity"]
         }
     }
 }
@@ -229,15 +229,18 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
     }
 
     public func execute(_ request: BurnBarCLIShellLaunchRequest) async throws -> BurnBarCLIShellExecutionResult {
+        let environment = environmentProvider()
+        let pathDirectories = (environment["PATH"] ?? "/usr/local/bin:/usr/bin:/bin")
+            .split(separator: ":")
+            .map(String.init)
         let profiles = profileStore.fetchAllProfiles().filter {
             $0.targetKind == .cli && $0.cliType == request.cliType && !$0.isDisabled
         }
         guard !profiles.isEmpty else {
             // PATH-only fallback even without stored profiles.
             if let binary = BurnBarSwitcherSQLiteProfileStore.defaultBinaryNames(for: request.cliType)
-                .compactMap({ BurnBarSwitcherSQLiteProfileStore.resolveExecutable($0) })
-                .first
-            {
+                .compactMap({ BurnBarSwitcherSQLiteProfileStore.resolveExecutable($0, pathDirs: pathDirectories) })
+                .first {
                 let result = try await runProcess(executable: binary, arguments: request.forwardedArguments, workingDirectory: nil)
                 return BurnBarCLIShellExecutionResult(
                     exitCode: result.status,
@@ -271,7 +274,7 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
             attempted.append(profile.id)
             guard let cliType = profile.cliType,
                   let binary = BurnBarSwitcherSQLiteProfileStore.defaultBinaryNames(for: cliType)
-                    .compactMap({ BurnBarSwitcherSQLiteProfileStore.resolveExecutable($0) })
+                    .compactMap({ BurnBarSwitcherSQLiteProfileStore.resolveExecutable($0, pathDirs: pathDirectories) })
                     .first
             else { continue }
             let cwd = profile.cliMetadata?.workingDirectory
@@ -363,24 +366,32 @@ public struct BurnBarCLIShellShimInstaller: BurnBarCLIShellShimInstalling, Senda
     public static let defaultInstallDirectory = BurnBarDaemonPaths.supportDirectoryURL
         .appendingPathComponent("bin", isDirectory: true)
 
-    public init() {}
+    private let installDirectory: URL
+
+    public init(installDirectory: URL = Self.defaultInstallDirectory) {
+        self.installDirectory = installDirectory
+    }
 
     public func installShims(invokedExecutablePath: String) throws -> BurnBarCLIShellShimInstallResult {
-        let dir = Self.defaultInstallDirectory
+        let dir = installDirectory
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let commands = ["codex", "claude", "gemini", "opencode", "goose", "droid", "pi"]
+        let commands = SwitcherCLIProfileType.allCases.map(\.rawValue)
         var installed: [String] = []
         for command in commands {
             let shim = dir.appendingPathComponent(command)
             let script = """
             #!/usr/bin/env bash
-            exec "\(invokedExecutablePath)" switcher run --cli \(command) -- "$@"
+            exec \(Self.shellQuote(invokedExecutablePath)) exec \(command) -- "$@"
             """
             try script.write(to: shim, atomically: true, encoding: .utf8)
             try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: shim.path)
             installed.append(command)
         }
         return BurnBarCLIShellShimInstallResult(installDirectory: dir, installedCommands: installed)
+    }
+
+    private static func shellQuote(_ value: String) -> String {
+        "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 }
 #endif

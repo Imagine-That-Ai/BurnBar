@@ -1,0 +1,147 @@
+{
+  "schema": "openburnbar.windows.exact-signed-release-evidence.v1",
+  "status": "SIGNED_EXACT_CANDIDATE_VERIFIED_NOT_PHYSICAL_CERTIFICATION",
+  "recordedAt": "2026-07-12T04:09:28.0932972Z",
+  "source": {
+    "pullRequest": 1545,
+    "mergeCommitSha": "7c362298230e14bfd51dcdcbaf9476cd86cefa66",
+    "workflow": "OpenBurnBar Windows Release",
+    "workflowFile": ".github/workflows/openburnbar-release-windows.yml",
+    "workflowRunId": 29177583506,
+    "workflowRunAttempt": 1,
+    "workflowRunUrl": "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29177583506",
+    "event": "workflow_dispatch",
+    "ref": "refs/heads/main",
+    "version": "1.0.29",
+    "allowUnsigned": false,
+    "conclusion": "success"
+  },
+  "workflowArtifacts": [
+    {
+      "name": "windows-release-v1.0.29",
+      "artifactId": 8255689966,
+      "apiDigest": "sha256:fe876fc865523fd631febbadee16ad305ad79206152d61135981e78ee13e59b6",
+      "sizeBytes": 526938757,
+      "expiresAt": "2026-07-19T03:40:18Z"
+    },
+    {
+      "name": "windows-provenance-v1.0.29",
+      "artifactId": 8255700463,
+      "apiDigest": "sha256:84feabad0f3ea4ee365a356f6390025bc2c79acc62572b1ff38274c195d443a2",
+      "sizeBytes": 303837,
+      "expiresAt": "2026-07-19T03:42:09Z"
+    }
+  ],
+  "distributionObjects": [
+    {
+      "fileName": "OpenBurnBar-1.0.29-x64.msix",
+      "architecture": "x64",
+      "sizeBytes": 138060154,
+      "sha256": "9f3f085250d551dccf7ad887d2e7dc996edbcc25217c067b02cf9729ae9e8327"
+    },
+    {
+      "fileName": "OpenBurnBar-1.0.29-arm64.msix",
+      "architecture": "ARM64",
+      "sizeBytes": 134420807,
+      "sha256": "d8cd1423827e54b777a85cf58962b5c18ae6ae1118676b8255749894815c597e"
+    },
+    {
+      "fileName": "OpenBurnBar-1.0.29-win-x64.zip",
+      "architecture": "x64",
+      "sizeBytes": 131101555,
+      "sha256": "27435a3b8f37e21536a9f6dff6e0e941b3da3946eab19562407d7a39a958a682"
+    },
+    {
+      "fileName": "OpenBurnBar-1.0.29-win-arm64.zip",
+      "architecture": "ARM64",
+      "sizeBytes": 127217809,
+      "sha256": "6c9f78242996c69d4a6d54b8f52c0aa7809907755ce926bfeaa031ce190184e0"
+    }
+  ],
+  "authenticode": {
+    "workflowPortableBinaryVerification": "passed",
+    "workflowMsixVerification": "passed",
+    "independentWindowsMsixVerification": "passed",
+    "signerSubject": "CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US",
+    "signerThumbprint": "D2E11619C5E7C31ABD8AAB4643D7D25DC3039F21",
+    "packages": [
+      {
+        "fileName": "OpenBurnBar-1.0.29-x64.msix",
+        "status": "Valid",
+        "statusMessage": "Signature verified.",
+        "timestampSubject": "CN=Microsoft Public RSA Time Stamping Authority, OU=nShield TSS ESN:A500-05E0-D947, OU=Microsoft America Operations, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+        "timestampThumbprint": "FF73F729152A9059805E5E0832449D996EF60411"
+      },
+      {
+        "fileName": "OpenBurnBar-1.0.29-arm64.msix",
+        "status": "Valid",
+        "statusMessage": "Signature verified.",
+        "timestampSubject": "CN=Microsoft Public RSA Time Stamping Authority, OU=nShield TSS ESN:7D00-05E0-D947, OU=Microsoft America Operations, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+        "timestampThumbprint": "1D3B54018265BFB6E0595791068E17EC57870DEA"
+      }
+    ]
+  },
+  "signedLifecycle": {
+    "receipt": "signed-x64-msix-lifecycle.json",
+    "receiptSha256": "8760c2b64a2741c4878b5c6f00dc6bae563a1c2d6a0ca30237400efba727c9d1",
+    "schema": "openburnbar.windows.signed-msix-lifecycle.v2",
+    "status": "passed",
+    "package": "OpenBurnBar-1.0.29-x64.msix",
+    "packageSha256": "9f3f085250d551dccf7ad887d2e7dc996edbcc25217c067b02cf9729ae9e8327",
+    "expectedArchitecture": "X64",
+    "holdSeconds": 20,
+    "cleanInstallSustainedLaunch": "passed",
+    "uninstall": "passed",
+    "reinstallSustainedLaunch": "passed",
+    "crashEventCount": 0
+  },
+  "updateFeed": {
+    "fileName": "windows-update-feed-v1.0.29.json",
+    "sha256": "07decf6f7dab82744463dbdbed77d469ec183d1579eefd9226e9aed278c80cbc",
+    "entryCount": 2,
+    "architectures": [
+      "win-x64",
+      "win-arm64"
+    ],
+    "pinnedEd25519Verification": "passed"
+  },
+  "supplyChain": {
+    "sbom": {
+      "fileName": "sbom-windows-v1.0.29.spdx.json",
+      "sha256": "430533608a1d7cb282443c7e173c0c32411ff7ff8b02a1900e769896bc7927d2",
+      "packageCount": 449
+    },
+    "openVex": {
+      "fileName": "openburnbar-windows-v1.0.29.vex.json",
+      "sha256": "0c7969c0a12f0773231d02180cadf6fecfa067b4d7a036f0ecc599dfcb977308",
+      "statementCount": 1
+    },
+    "sigstore": {
+      "attestationCount": 13,
+      "verification": "passed",
+      "oidcIssuer": "https://token.actions.githubusercontent.com",
+      "certificateIdentity": "https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/openburnbar-release-windows.yml@refs/heads/main",
+      "workflowRepository": "Imagine-That-Ai/BurnBar",
+      "workflowRef": "refs/heads/main",
+      "workflowSha": "7c362298230e14bfd51dcdcbaf9476cd86cefa66",
+      "workflowTrigger": "workflow_dispatch"
+    }
+  },
+  "independentVerification": {
+    "releaseChecksumEntriesVerified": 4,
+    "predicateArtifactHashesVerified": 13,
+    "predicateCommitRunRefBindingsVerified": 13,
+    "sigstoreAttestationsVerified": 13,
+    "updateFeedEntriesVerifiedUnderPinnedKey": 2,
+    "windowsMsixSignaturesVerified": 2,
+    "windowsVerifierDeviceKind": "windows-native-unattested",
+    "cosignVersion": "3.0.6",
+    "cosignBinaryChecksumVerified": true
+  },
+  "boundaries": [
+    "This receipt proves exact-candidate build, signing, package integrity, hosted x64 lifecycle, update-feed authentication, and supply-chain provenance only.",
+    "The Windows verifier is a UTM guest and is not physical hardware evidence.",
+    "Physical x64, physical ARM64, manual accessibility/display, live staging cloud, Mercury/Computer Use safety, and Store/update lifecycle gates remain separate and blocked until their named protocols have fresh receipts.",
+    "No Store submission, public update-feed publication, or broad rollout occurred."
+  ]
+}

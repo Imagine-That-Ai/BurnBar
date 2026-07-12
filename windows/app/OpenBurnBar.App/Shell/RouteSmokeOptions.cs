@@ -6,20 +6,22 @@ namespace OpenBurnBar.App.Shell;
 
 internal sealed class RouteSmokeOptions
 {
-    private RouteSmokeOptions(string routeKey, string outputDirectory, int timeoutMilliseconds)
+    private RouteSmokeOptions(string routeKey, string outputDirectory, int timeoutMilliseconds, int holdMilliseconds)
     {
         RouteKey = routeKey;
         OutputDirectory = outputDirectory;
         TimeoutMilliseconds = timeoutMilliseconds;
+        HoldMilliseconds = holdMilliseconds;
     }
 
     public string RouteKey { get; }
     public string OutputDirectory { get; }
     public int TimeoutMilliseconds { get; }
+    public int HoldMilliseconds { get; }
 
     public static RouteSmokeOptions? Parse(string? arguments)
     {
-        IReadOnlyList<string> parts = Split(arguments);
+        IReadOnlyList<string> parts = CommandLineParts.Split(arguments);
         if (parts.Count == 0)
         {
             return null;
@@ -28,6 +30,7 @@ internal sealed class RouteSmokeOptions
         string? route = null;
         string? output = null;
         int timeout = 8000;
+        int hold = 0;
         for (var i = 0; i < parts.Count; i++)
         {
             string token = parts[i];
@@ -46,6 +49,13 @@ internal sealed class RouteSmokeOptions
             {
                 timeout = parsed;
             }
+            else if (string.Equals(token, "--route-smoke-hold-ms", StringComparison.OrdinalIgnoreCase)
+                && i + 1 < parts.Count
+                && int.TryParse(parts[++i], out int parsedHold)
+                && parsedHold > 0)
+            {
+                hold = Math.Min(parsedHold, 60_000);
+            }
         }
 
         if (string.IsNullOrWhiteSpace(route))
@@ -56,48 +66,7 @@ internal sealed class RouteSmokeOptions
         output = string.IsNullOrWhiteSpace(output)
             ? Path.Combine(Path.GetTempPath(), "openburnbar-route-smoke")
             : output;
-        return new RouteSmokeOptions(route.Trim(), output, timeout);
+        return new RouteSmokeOptions(route.Trim(), output, timeout, hold);
     }
 
-    private static IReadOnlyList<string> Split(string? arguments)
-    {
-        if (string.IsNullOrWhiteSpace(arguments))
-        {
-            return Array.Empty<string>();
-        }
-
-        var parts = new List<string>();
-        var current = new System.Text.StringBuilder();
-        var quoted = false;
-        foreach (char c in arguments)
-        {
-            if (c == '"')
-            {
-                quoted = !quoted;
-                continue;
-            }
-
-            if (char.IsWhiteSpace(c) && !quoted)
-            {
-                Flush();
-                continue;
-            }
-
-            current.Append(c);
-        }
-
-        Flush();
-        return parts;
-
-        void Flush()
-        {
-            if (current.Length == 0)
-            {
-                return;
-            }
-
-            parts.Add(current.ToString());
-            current.Clear();
-        }
-    }
 }

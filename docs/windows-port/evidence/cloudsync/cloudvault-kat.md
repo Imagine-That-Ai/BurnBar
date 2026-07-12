@@ -1,8 +1,8 @@
 # Evidence — CloudVault crypto KAT parity (Real)
 
-**Ledger row:** `cloudvault-crypto-kat`  
-**Status claim:** Real  
-**Date recorded:** 2026-07-09  
+**Ledger row:** `cloudvault-crypto-kat`
+**Status claim:** Real
+**Date recorded:** 2026-07-09
 
 ## What this proves
 

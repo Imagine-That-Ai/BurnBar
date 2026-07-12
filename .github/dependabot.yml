@@ -48,6 +48,27 @@ updates:
     open-pull-requests-limit: 5
 
   - package-ecosystem: "npm"
+    directory: "/apps/console"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "nuget"
+    directory: "/windows"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+
+  - package-ecosystem: "npm"
     directory: "/firestore-rules-tests"
     schedule:
       interval: "weekly"
@@ -73,6 +94,18 @@ updates:
       time: "09:00"
       timezone: "America/Los_Angeles"
     open-pull-requests-limit: 3
+
+  - package-ecosystem: "docker"
+    directory: "/services/hosted-mcp"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "deps"
+      include: "scope"
 
   - package-ecosystem: "npm"
     directory: "/services/hermes-realtime-relay"

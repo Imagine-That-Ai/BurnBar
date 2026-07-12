@@ -1,0 +1,13 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  OpenBurnBar.Pal.Overlay -> C:\candidate-7e346b2c7d\windows\pal\overlay\bin\Release\net8.0\OpenBurnBar.Pal.Overlay.dll
+  OpenBurnBar.Storage -> C:\candidate-7e346b2c7d\windows\storage\OpenBurnBar.Storage\bin\Release\net8.0\OpenBurnBar.Storage.dll
+  OpenBurnBar.App.Presentation -> C:\candidate-7e346b2c7d\windows\app\OpenBurnBar.App.Presentation\bin\Release\net8.0\OpenBurnBar.App.Presentation.dll
+  OpenBurnBar.App.Pet -> C:\candidate-7e346b2c7d\windows\app\OpenBurnBar.App.Pet\bin\Release\net8.0\OpenBurnBar.App.Pet.dll
+  OpenBurnBar.Storage -> C:\candidate-7e346b2c7d\windows\storage\OpenBurnBar.Storage\bin\Release\net10.0\OpenBurnBar.Storage.dll
+  OpenBurnBar.App.Pet.Tests -> C:\candidate-7e346b2c7d\windows\tests\pet\bin\Release\net10.0\OpenBurnBar.App.Pet.Tests.dll
+Test run for C:\candidate-7e346b2c7d\windows\tests\pet\bin\Release\net10.0\OpenBurnBar.App.Pet.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    74, Skipped:     0, Total:    74, Duration: 865 ms - OpenBurnBar.App.Pet.Tests.dll (net10.0)

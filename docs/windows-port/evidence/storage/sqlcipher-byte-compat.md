@@ -1,8 +1,8 @@
 # Evidence — SQLCipher storage byte-compat (Real)
 
-**Ledger row:** `storage-sqlcipher-byte-compat`  
-**Status claim:** Real  
-**Date recorded:** 2026-07-09  
+**Ledger row:** `storage-sqlcipher-byte-compat`
+**Status claim:** Real
+**Date recorded:** 2026-07-09
 **Architecture:** WPD-0005 (`docs/windows-port/decisions/0005-windows-storage-architecture.md`)
 
 ## What this proves

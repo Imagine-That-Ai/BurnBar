@@ -12,7 +12,7 @@
 2. **Honest degraded states, always.** A surface renders exactly one of: live daemon data (labelled), fixture data (labelled `fixture transcript`), or `OfflineNotice`. Never mock data silently. This is a parity invariant (master plan §2.2), not a style choice.
 3. **Design tokens only.** Colors, spacing, radii, fonts come from `src/styles/tokens.css` (generated from `packages/design-tokens/`) and the skin layer in `app.css`. Hex literals in surface code are a review-blocking defect (provider accent colors live in `src/providerGlyphs.ts`).
 4. **Evidence contracts are load-bearing.** Do not rename or restructure without reading §5:
-   - perf sample names (`app.start`, `route.navigation`, `ipc.health.roundtrip`, `chat.firstToken.progress`, `db.migration.open.query`, `parser.incremental.run`, `memory.search`, `media.control.stage`);
+   - native perf sample names (`app.start`, `route.navigation`, `ipc.health.roundtrip`, `tray.click.open`) and matched workload IDs (`sqlite.range-query`, `sqlite.fts-memory-search`, `jsonl.incremental-decode`, `stream.first-visible-delta-decode`);
    - a11y landmarks (`a.skip-link[href="#main"]`, `nav[aria-label="Primary"]`, `main#main`, `#route-title`, `button.nav-link[aria-current="page"]`, `.status-pill[role="status"]`);
    - localStorage keys (`openburnbar.linux.onboarding.v1`, `openburnbar.linux.textExpansion.v1`, `openburnbar.linux.textExpansion.consent.v1`, `openburnbar.linux.daemonFixture`, `openburnbar.linux.skin.v1`);
    - the literal CSS strings `body.reduced-motion *`, `animation: none`, `transition: none` in `app.css`.
@@ -121,8 +121,8 @@ A packet is done when all of the following are true:
 ## 5. Evidence and gate wiring
 
 - Unit/component/evidence-harness: `npm test` (harness emits artifacts when `OB_EVIDENCE_OUT` is set).
-- Packaged desktop session (screenshots, AT-SPI tree, tray transcript, runtime perf): `node scripts/linux-port/run-shell-smoke.mjs` → artifacts in `docs/linux-port/evidence/mission-001-shell-ux/`.
-- Perf budgets: `npm run perf:budget` after a packaged session (`budgets/linux-desktop.perf.json` thresholds).
+- Packaged desktop session (screenshots, AT-SPI tree, tray transcript, repeated native percentiles, and matched macOS/Linux workloads): `node scripts/linux-port/run-shell-smoke.mjs` -> artifacts in `docs/linux-port/evidence/mission-001-shell-ux/`.
+- Performance and soak contract: [`../performance-reliability-validation.md`](../performance-reliability-validation.md); run `npm run perf:budget` only after a packaged session and matched comparison exist.
 - G3 exit (master plan §7.2): every surface renders real fixture data; interaction scripts pass; Aurora/Editorial proof book green; keyboard-only + AT-SPI2 snapshots green; reduced-motion verified.
 - Parity ledger: `node scripts/linux-port/validate-parity-ledger.mjs --allow-blocked` structural check on every PR.
 

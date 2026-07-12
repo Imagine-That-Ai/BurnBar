@@ -1,0 +1,9 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  OpenBurnBar.Storage -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/storage/OpenBurnBar.Storage/bin/Release/net10.0/OpenBurnBar.Storage.dll
+  OpenBurnBar.Storage.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/storage/OpenBurnBar.Storage.Tests/bin/Release/net10.0/OpenBurnBar.Storage.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/storage/OpenBurnBar.Storage.Tests/bin/Release/net10.0/OpenBurnBar.Storage.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    21, Skipped:     0, Total:    21, Duration: 10 s - OpenBurnBar.Storage.Tests.dll (net10.0)

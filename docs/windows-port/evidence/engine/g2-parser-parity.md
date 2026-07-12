@@ -1,8 +1,8 @@
 # Evidence — Engine G2 parser parity (Real)
 
-**Ledger row:** `engine-parsers-g2`  
-**Status claim:** Real  
-**Date recorded:** 2026-07-09  
+**Ledger row:** `engine-parsers-g2`
+**Status claim:** Real
+**Date recorded:** 2026-07-09
 
 ## What this proves
 

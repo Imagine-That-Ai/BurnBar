@@ -95,6 +95,7 @@ export function ChatWorkspacePanel({
               warnings={warnings}
               sharedFeaturesAvailable={sharedFeaturesAvailable}
               streamError={streamError}
+              streaming={streaming}
             />
           ) : (
             (mainFallback ?? (

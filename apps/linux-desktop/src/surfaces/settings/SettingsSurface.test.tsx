@@ -103,7 +103,10 @@ function bridge(overrides: Partial<LinuxShellBridge> = {}): LinuxShellBridge {
     }),
     notificationCommand: async (command) => ({ command, ok: true, message: `${command} ok` }),
     sessionEnv: async () => ({}),
-    ...overrides
+    ...overrides,
+    onboardingSnapshot: overrides.onboardingSnapshot ?? bridgeStubDefaults.onboardingSnapshot,
+    onboardingAction: overrides.onboardingAction ?? bridgeStubDefaults.onboardingAction,
+    onboardingReset: overrides.onboardingReset ?? bridgeStubDefaults.onboardingReset
   };
 }
 
@@ -115,6 +118,16 @@ describe('SettingsSurface', () => {
     const { container } = render(<SettingsSurface />);
     expect(container.querySelector('[data-failure-state="secret-store"]')).not.toBeNull();
     expect(container.querySelector('[data-failure-state="permission-denied"]')).not.toBeNull();
+  });
+
+  it('does not assertively announce each healthy subscription cadence update', () => {
+    useShellStore.setState({
+      health: { ok: true, gatewayEnabled: true, gatewayHost: '127.0.0.1', gatewayPort: 8317 },
+      subscriptionState: 'pull',
+      lastDaemonEventAt: '2026-07-10T12:00:00.000Z'
+    });
+    const { container } = render(<SettingsSurface />);
+    expect(container.querySelector('.banner.ok')?.getAttribute('role')).toBeNull();
   });
 
   it('renders home landing with hero and sidebar sections', () => {
@@ -188,14 +201,14 @@ describe('SettingsSurface', () => {
     expect(useShellStore.getState().route).toBe('overview');
   });
 
-  it('General pane exposes appearance controls and onboarding wizard', () => {
-    useShellStore.setState({ fixtureMode: true });
+  it('General pane exposes appearance controls and daemon-owned onboarding wizard', async () => {
+    useShellStore.setState({ fixtureMode: true, bridge: bridge(), bridgeReady: true });
     useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
     render(<SettingsSurface />);
     fireEvent.click(screen.getByRole('button', { name: /^General/i }));
     expect(screen.getByRole('radiogroup', { name: 'Color scheme' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Refresh' })).toBeTruthy();
-    expect(screen.getByText(/Step 1 of/i)).toBeTruthy();
+    expect(await screen.findByText(/Step 1 of/i)).toBeTruthy();
   });
 
   it('sidebar search filters sections', () => {

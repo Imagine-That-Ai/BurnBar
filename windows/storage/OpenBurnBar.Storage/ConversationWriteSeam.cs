@@ -13,7 +13,7 @@ public sealed record ConversationWriteRecord
     public required string ProjectName { get; init; }
     public required string InferredTaskTitle { get; init; }
     public required string FullText { get; init; }
-    public required string IndexedAt { get; init; }
+    public string? IndexedAt { get; init; }
     public long MessageCount { get; init; }
     public string? WorkingDirectory { get; init; }
 }
@@ -25,6 +25,31 @@ public sealed record ConversationWriteRecord
 /// </summary>
 public static class ConversationWriteSeam
 {
+    /// <summary>Compatibility entry point for existing storage callers.</summary>
+    public static int WriteConversations(
+        SqliteConnection connection,
+        IReadOnlyList<ConversationRecord> records)
+    {
+        ArgumentNullException.ThrowIfNull(records);
+        var writable = new ConversationWriteRecord[records.Count];
+        for (int index = 0; index < records.Count; index++)
+        {
+            ConversationRecord record = records[index];
+            writable[index] = new ConversationWriteRecord
+            {
+                Id = record.Id,
+                Provider = record.Provider,
+                SessionId = record.SessionId,
+                ProjectName = record.ProjectName,
+                InferredTaskTitle = record.InferredTaskTitle,
+                FullText = record.FullText,
+                IndexedAt = record.IndexedAt,
+                MessageCount = record.MessageCount,
+            };
+        }
+        return WriteConversationBatch(connection, writable);
+    }
+
     public static int WriteConversationBatch(
         SqliteConnection connection,
         IEnumerable<ConversationWriteRecord> records)
@@ -86,7 +111,7 @@ public static class ConversationWriteSeam
         Bind(command, "$projectName", record.ProjectName);
         Bind(command, "$inferredTaskTitle", record.InferredTaskTitle);
         Bind(command, "$fullText", record.FullText);
-        Bind(command, "$indexedAt", record.IndexedAt);
+        Bind(command, "$indexedAt", (object?)record.IndexedAt ?? DBNull.Value);
         Bind(command, "$messageCount", record.MessageCount);
         Bind(command, "$workingDirectory", (object?)record.WorkingDirectory ?? DBNull.Value);
         return command.ExecuteNonQuery();
@@ -96,6 +121,7 @@ public static class ConversationWriteSeam
         SqliteConnection connection,
         SqliteTransaction transaction)
     {
+        bool needsRebuild = !TriggerExists(connection, transaction, "conversations_ai");
         string[] statements =
         [
             """
@@ -106,12 +132,14 @@ public static class ConversationWriteSeam
             """,
             """
             CREATE TRIGGER IF NOT EXISTS conversations_ad AFTER DELETE ON conversations BEGIN
-                DELETE FROM conversations_fts WHERE rowid = old.rowid;
+                INSERT INTO conversations_fts(conversations_fts, rowid, inferredTaskTitle, fullText)
+                VALUES ('delete', old.rowid, old.inferredTaskTitle, old.fullText);
             END
             """,
             """
             CREATE TRIGGER IF NOT EXISTS conversations_au AFTER UPDATE ON conversations BEGIN
-                DELETE FROM conversations_fts WHERE rowid = old.rowid;
+                INSERT INTO conversations_fts(conversations_fts, rowid, inferredTaskTitle, fullText)
+                VALUES ('delete', old.rowid, old.inferredTaskTitle, old.fullText);
                 INSERT INTO conversations_fts(rowid, inferredTaskTitle, fullText)
                 VALUES (new.rowid, new.inferredTaskTitle, new.fullText);
             END
@@ -125,6 +153,26 @@ public static class ConversationWriteSeam
             command.CommandText = statement;
             command.ExecuteNonQuery();
         }
+
+        if (needsRebuild)
+        {
+            using var rebuild = connection.CreateCommand();
+            rebuild.Transaction = transaction;
+            rebuild.CommandText = "INSERT INTO conversations_fts(conversations_fts) VALUES ('rebuild')";
+            rebuild.ExecuteNonQuery();
+        }
+    }
+
+    private static bool TriggerExists(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string name)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = $name LIMIT 1";
+        Bind(command, "$name", name);
+        return command.ExecuteScalar() is not null;
     }
 
     private static void Bind(SqliteCommand command, string name, object value)

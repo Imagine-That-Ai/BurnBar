@@ -2,64 +2,108 @@
 
 | Audit field | Value |
 |---|---|
-| Date | 2026-07-09 |
+| Date | Baseline audit: 2026-07-09; remediation evidence: 2026-07-10 UTC |
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
-| Audited checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
+| Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
+| Remediation evidence | `codex/linux-parity-final`; clean aarch64 and architecture-correct x86_64 release shards at `391fe2847d` |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
 ## Executive Summary
 
-The Linux app has a substantial foundation: a 19-route Tauri shell, the six
-dashboard layouts, shared daemon RPC access, live usage/quota data, missions,
-database indexing, a Computer Use control surface, packaging for three formats,
-and 375 passing frontend tests. That is meaningful progress. It is not macOS
-product parity.
+The Linux app now has a substantial production implementation: a 19-route Tauri
+shell, all six persisted dashboard layouts, shared daemon RPC access, canonical
+XDG path handling, live usage/quota data, missions, durable memory decisions,
+database indexing/watch recovery, Browser Computer Use plus guarded system input,
+and AppImage/deb/rpm construction. The remediation wave also replaced the false-
+green certification baseline, added Linux-native secret custody, moved gateway
+authentication behind native proxies, introduced a runtime capability manifest,
+added installed-app accessibility and matched-performance gates, and implemented
+a signed update-feed verifier plus two-architecture release assembly.
 
-The active Linux experience is still a mixture of implemented behavior,
-read-only projections, platform substitutes, disabled controls, fixture-backed
-proof, and explicitly missing capabilities. The largest functional gaps are
-secure credential custody, chat workflow depth, Computer Use execution, Mercury
-media, account/cloud/device workflows, session and memory semantics, native
-desktop integrations, and complete onboarding. The largest quality gaps are
-release-integrity validation, real installed-app E2E, accessibility proof,
-multi-desktop support, performance baselines, and visual reliability.
+Mercury is no longer a missing code path: Linux now has daemon-owned iroh session
+control, inbound and outbound file transfer, call/mirror state, sealed media
+frames, portal/PipeWire capture, codec probing, consent/revocation, a call HUD,
+and a runtime probe that exposes the route only when the daemon can support it.
+It is still **unproven as a parity outcome** until a real Linux-to-macOS/mobile
+two-device matrix passes. The largest remaining functional gaps are complete
+system Computer Use capture/execution, provider/auth/portal completion inside
+transactional onboarding, account/cloud/device workflows, chat and session depth, global text expansion, and richer
+Linux-native shell integrations. The largest certification gaps are an x86_64
+installed session, a prior-version update/rollback baseline, a valid public
+signed feed, and real GNOME Wayland/KDE/wlroots proof. Package construction is
+now green for both architectures, but that does not substitute for those live
+installed-product outcomes.
 
-The current parity certification is not trustworthy:
+The old parity claim is now disabled. The generated product ledger contains all
+40 audited requirements, reports **0 ready / 40 blocked**, and cannot promote a
+stale or incomplete claim. Release verification now checks artifact bytes,
+detached signatures, provenance, source/SBOM/VEX inputs, architecture sessions,
+and signed-feed closure. This fixes the audit mechanism; it does not turn blocked
+product rows into parity.
 
-- all four public GitHub prerelease artifacts pass Ed25519 verification, but the
-  checked-in mission-002 candidate/evidence diverges from those public bytes and
-  all four of its recorded artifact/signature pairs fail verification;
-- the strict release verifier checks that signature metadata exists but does
-  not cryptographically verify any artifact;
-- update/rollback evidence is `blocked`, yet the package smoke summary and
-  release verifier report success;
-- `https://burnbar.ai/latest-linux.json` returns HTTP 200 with HTML content
-  rather than signed JSON, while a public ARM64 prerelease exists separately on
-  GitHub;
-- the machine-readable ledger marks all 73 rows ready and claims product parity,
-  but only 9 rows are product-scoped and 64 are historical infrastructure rows;
-  both populations point to `bf829967...`, seven commits behind the audited
-  head, and all 73 explicitly disable HEAD-drift enforcement;
-- the Markdown ledger still says `productParityClaim: false`;
-- one inspected mutable UTM guest had a running app whose executable was marked
-  deleted, two daemon processes, no detected user service, and black screenshot
-  output; package provenance for those live processes was not established, so
-  this is a failed proof surface rather than a generalized package verdict. The
-  six-layout matrix is a static HTML evidence board rather than packaged-app
-  proof.
+The strongest installed-product baseline remains an aarch64 `.deb` session from
+commit `9886a6ac0b`:
+
+- exact package GUI and daemon binaries launched from `/usr/bin`;
+- shell version `OpenBurnBar 0.1.0` and daemon version `0.1.0` matched;
+- native AF_UNIX health passed and uninstall completed cleanly;
+- all 19 routes were activated through installed AT-SPI actions with route
+  screenshots and accessibility trees;
+- Orca 46.1 was active, keyboard traversal produced 10 named focus targets, and
+  requested 200% zoom passed;
+- 28 package-smoke steps passed with zero failures;
+- 10-sample p95 results were 349.2 ms process start, 61.85 ms tray reopen, and
+  112.55 ms daemon health round-trip.
+
+The current integration branch adds measured source and package evidence beyond
+that historical installed baseline:
+
+- **95** focused Swift Core/daemon tests passed across XDG paths, provider
+  discovery, gateway, switcher, Pensieve/inotify, Computer Use, and Mercury;
+- **59 files / 394 tests** passed in the Linux desktop suite, including every
+  route under axe, six-layout state, provider-path parity, durable memory, and
+  real Mercury RPC decoding;
+- **17/17** Tauri Rust tests, **3/3** media-crate tests, **40/40** extension
+  daemon-client tests, and **78/78** release/workflow contract tests passed;
+- clean aarch64 and architecture-correct x86_64 shards at `391fe2847d` each
+  produced AppImage, deb, rpm, and daemon artifacts with SHA-256 closure, zero
+  blockers, and **28/28** package-smoke steps passed;
+- the x86_64 toolchain produced real x86_64 binaries under Rosetta-assisted
+  construction rather than relabeling ARM output. A native hosted runner and an
+  exact installed x86_64 user session remain required.
+
+Promotion remains blocked for three explicit reasons: no previous same-architecture
+Linux package exists to prove update, rollback, and data preservation; no x86_64
+installed architecture session has been produced; and the minimum compositor,
+desktop, keyring, and portal matrix is not green. The public update endpoint also
+remains invalid until it serves the signed JSON contract rather than website HTML.
 
 The correct release posture is therefore:
 
-1. Disable the machine-readable parity claim and correct any public parity claim
-   found during release/public-surface review.
-2. Treat the GitHub build as an ARM64 prerelease, not a stable Linux release.
-3. Repair the certification and installed-runtime baseline before adding more
-   surface area.
-4. Implement parity in the order defined below, with real Linux-native adapters.
+1. Keep the product-parity claim false and treat the public build as a prerelease.
+2. Run the installed x86_64 architecture session and supply a prior version to
+   the package lifecycle gate.
+3. Complete the Critical product capabilities, then the High daily-use workflows.
+4. Certify the exact signed candidate on the declared Linux desktop matrix.
 5. Promote only when every required product row is current, reproducible, and
-   exercised in installed packages on the supported desktop matrix.
+   exercised in installed packages.
+
+### Remediation Progress Snapshot
+
+| Workstream | Current measured state | Remaining promotion work |
+|---|---|---|
+| Truth and release gates | Implemented; 40 requirements fail closed and the parity claim is false | Produce a fully green exact-candidate evidence graph |
+| Credential custody | Secret Service, KWallet, and explicit encrypted headless backends are wired | Prove unlocked, locked, missing, rotation, and recovery behavior on GNOME/KDE/headless |
+| Gateway/IPC boundary | Bearer remains native; HTTP/SSE is proxied; production fixture activation is disabled | Complete adversarial installed-package review on every supported build profile |
+| Capability honesty | Typed runtime manifest gates unavailable and substitute routes | Add the missing native adapters rather than leaving capability-gated substitutes |
+| Accessibility | Route axe plus installed AT-SPI/Orca/keyboard/200% proof passed on aarch64 X11 | Repeat on GNOME Wayland, KDE Wayland, wlroots, x86_64, and high-contrast rows |
+| Performance/reliability | Matched harness, supervisor, percentiles, and nightly soak contracts implemented | Produce final same-hardware macOS/Linux candidate results and desktop-matrix runs |
+| Updates | Native signed-feed verification implemented; invalid endpoint fails honestly | Serve valid signed feed and prove package-manager update/rollback/data preservation |
+| Packaging | aarch64 and x86_64 AppImage/deb/rpm/daemon construction and smoke passed; aarch64 installed `.deb` session passed | Produce installed x86_64 session, signed aggregate, rpm/AppImage lifecycle, and prior-version proof |
+| Core product workflows | Six dashboard layouts, XDG/provider paths, and daemon-authoritative memory decisions are implemented; several routes remain partial/read-only | Complete onboarding, chat, sessions, account/cloud, and workspace depth |
+| Advanced platform features | Mercury implementation and guarded Linux input/panic paths exist; unsupported outcomes remain capability-gated | Certify Mercury; complete system CU capture, SmartHub devices, IBus/Fcitx, and companion overlay |
 
 ### What "full parity" means
 
@@ -92,11 +136,16 @@ live product state were independently reproducible.
 
 ### Verification performed
 
-- `npm test --prefix apps/linux-desktop`: **52 files, 375 tests passed**.
+- `npm test --prefix apps/linux-desktop -- --maxWorkers=2`: **61 files, 411 tests passed**.
 - `npm run build --prefix apps/linux-desktop`: **passed**; the main JavaScript
-  chunk is **621.05 kB** minified and Vite reports a chunk-size warning.
+  chunk is **655.47 kB** minified and Vite reports a chunk-size warning.
 - `cargo test --manifest-path apps/linux-desktop/src-tauri/Cargo.toml`:
-  **passed**, but contains only **one** Rust unit test.
+  **19/19 passed**, including capability-catalog, Mercury-probe, update-feed,
+  URL, gateway, panic-shortcut, and wire-contract coverage.
+- Fail-closed OpenBurnBar Core/security/daemon Linux manifest: **100/100 passed**.
+- Linux media crate capability/capture/decode suite: **3/3 passed**.
+- Extension daemon-client suite: **40/40 passed**.
+- Linux release/config/packaging/matrix contract suites: **78/78 passed**.
 - Current source comparison of macOS routes, settings, chat, parser registry,
   daemon lifecycle, cloud/account, Computer Use, Mercury, SmartHub, text
   expansion, accessibility, and recovery behavior.
@@ -107,6 +156,28 @@ live product state were independently reproducible.
 - Independent checksum and Ed25519 verification of both the four mission-002
   local candidate artifacts and the four downloaded public prerelease assets.
 - Live check of `https://burnbar.ai/latest-linux.json` and the public website.
+
+### Exact architecture-construction snapshot
+
+The current source-bound construction proof targets commit
+`391fe2847d7a9f1446174575e533112952f99e82`. Both closures report a clean
+checkout, four required artifacts, zero blockers, and 28 passed smoke steps.
+Hashes were recomputed independently after closure generation:
+
+| Architecture | Artifact | SHA-256 |
+|---|---|---|
+| aarch64 | `OpenBurnBar_0.1.0_aarch64.AppImage` | `389fd6ec5814037d0c748738ce5370d084054714def2c360d9d63bb996ea291e` |
+| aarch64 | `OpenBurnBar_0.1.0_arm64.deb` | `2cd2e2966394cbd76061b0177b4d8215ab2e841fe48b9ef221cb82659f48a1ff` |
+| aarch64 | `OpenBurnBar-0.1.0-1.aarch64.rpm` | `cd32744330cc6da29a9e3e304bbf6ada4535b715b157f2f9ce41d486f35b9e38` |
+| aarch64 | `openburnbar-daemon-0.1.0-linux-aarch64` | `82f5c9ce5bc3484fcddbd8d6bbd1d3b0946354e38b7b279d774bd9a87de7a11a` |
+| x86_64 | `OpenBurnBar_0.1.0_amd64.AppImage` | `6b5152717ff77f6ced25a1fe059d11f56fc1431079a393637c67ee8666ee9aa3` |
+| x86_64 | `OpenBurnBar_0.1.0_amd64.deb` | `900af78f61842341ebc4e4087192cbb61b88b594f1c3b129b340dd62fff055f6` |
+| x86_64 | `OpenBurnBar-0.1.0-1.x86_64.rpm` | `c1c9e52370e49ffc884b30a0d6120d4c2a868c2412a1564d5ad28b854de3c119` |
+| x86_64 | `openburnbar-daemon-0.1.0-linux-x86_64` | `95890f08f130f75a3a76f5119f464d08c5c98b84f8203780bbf0fd25703a58a6` |
+
+This closes architecture-correct local package construction. It does **not**
+close installed x86_64 GUI/compositor/keyring/portal behavior, native hosted
+runner evidence, candidate signing, public-feed activation, or lifecycle proof.
 
 ### Release-integrity snapshot
 
@@ -159,44 +230,44 @@ required gates and were not made green by the Ed25519 result.
 
 | ID | Area | macOS gold standard | Linux current state | Status | Priority |
 |---|---|---|---|---|---|
-| P-01 | Release integrity | Signed, notarized, release/update path with installed-app proof | Public Ed25519 pairs pass; local closure diverges and fails while verifier reports green; feed/update/rollback remain blocked | Broken | Critical |
-| P-02 | Parity certification | Product inventory tied to release head and real behavior | 73 ready rows, only 9 product rows, evidence seven commits stale, Markdown/JSON disagree | Broken | Critical |
-| P-03 | Installed runtime | Owned app/daemon lifecycle with recovery and one authoritative supervisor | One mutable guest showed a deleted live executable, duplicate daemons, no detected service, and black captures; clean-package lineage is absent | Unproven | Critical |
-| P-04 | Architecture reach | Published build covers the declared macOS architecture support contract | Linux workflow publishes ARM64 only | Missing | Critical |
-| P-05 | Credential custody | Keychain-backed provider, connector, auth, and sync secrets | Core stores still default to Apple Keychain paths; Linux writes can fail closed without a usable backend | Broken | Critical |
-| P-06 | Gateway credential boundary | Native process owns bearer credentials | Gateway bearer token is returned to WebView JavaScript | Partial | Critical |
-| P-07 | Computer Use | Browser, Agent Watch, Mac System, approval, audit, and three panic paths | UI exposes modes the daemon rejects; no Linux capture/input adapter or action workflow | Partial | Critical |
-| P-08 | Mercury media | File transfer, calls, screen share, mirroring, presence, consent | Tauri reports `capabilityAvailable: false`; status-only UI | Missing | Critical |
-| P-09 | Navigation and shell | Dashboard, insights, deep provider/model routes, multi-window flows | 19 routes and seven primaries exist; deep-link and native multi-window behavior thinner | Near parity | Medium |
-| P-10 | Dashboard layouts | Six dense layouts with real live content and persisted state | Six React layouts and unit tests exist; installed-app visual proof is absent and current runtime captures are black | Unproven | Medium |
-| P-11 | Usage ingestion | 27 parser registrations, API/quota aggregation, recount, projections, cloud mirror | Linux UI path registry has 15 rows; shared-parser wiring and full Linux path coverage are inconsistent/unproven, not proven absent | Unproven | High |
+| P-01 | Release integrity | Signed, notarized, release/update path with installed-app proof | Strict crypto/closure/feed verification and dual-architecture aggregation implemented; clean unsigned construction closures passed for aarch64 and x86_64; final signed two-architecture candidate and update/rollback remain blocked | Partial | Critical |
+| P-02 | Parity certification | Product inventory tied to release head and real behavior | Complete 40-row generated inventory now reports 0 ready/40 blocked and fail-closes stale, missing, contradictory, or self-referential proof | Partial | Critical |
+| P-03 | Installed runtime | Owned app/daemon lifecycle with recovery and one authoritative supervisor | Package-owned aarch64 GUI/daemon/version/uninstall session passed; x86_64 and prior-version lifecycle remain open | Partial | Critical |
+| P-04 | Architecture reach | Published build covers the declared macOS architecture support contract | Native aarch64/x86_64 shard workflow exists and architecture-correct local construction/smoke is green for both; a native hosted x86_64 run, signed aggregate, and installed x86_64 evidence are not yet produced | Partial | Critical |
+| P-05 | Credential custody | Keychain-backed provider, connector, auth, and sync secrets | Secret Service, KWallet, and encrypted headless custodians are wired; live keyring/recovery matrix remains incomplete | Partial | Critical |
+| P-06 | Gateway credential boundary | Native process owns bearer credentials | Rust owns the bearer and proxies bounded authenticated HTTP/SSE; renderer receives typed data, not the token | Near parity | Critical |
+| P-07 | Computer Use | Browser, Agent Watch, Mac System, approval, audit, and three panic paths | Runtime manifest hides unsupported system mode; complete browser action proof and Linux system capture/input adapter remain missing | Partial | Critical |
+| P-08 | Mercury media | File transfer, calls, screen share, mirroring, presence, consent | Daemon-owned transport, calls, files, sealed capture, portal consent, HUD, and live capability probing are implemented; real cross-device and compositor proof remains open | Partial | Critical |
+| P-09 | Navigation and shell | Dashboard, insights, deep provider/model routes, multi-window flows | All 19 installed routes activate through AT-SPI; deep links and native multi-window behavior remain thinner | Near parity | Medium |
+| P-10 | Dashboard layouts | Six dense layouts with real live content and persisted state | All six layouts, persistence, loading/error/offline/populated states, tokens, and tests exist; the packaged six-layout visual matrix remains incomplete | Near parity | Medium |
+| P-11 | Usage ingestion | 27 parser registrations, API/quota aggregation, recount, projections, cloud mirror | One 15-row Linux path registry now drives shell discovery copy and is contract-tested against Swift; the full macOS/Linux normalized parser corpus remains unproven | Partial | High |
 | P-12 | Quota | Provider quotas, histories, account switching, alerts | Strong read surface; account profiles, drain targets, and switching lag | Partial | Medium |
-| P-13 | Onboarding | Provider connection, scan, permissions, chat engine, recovery, completion gates | Informational localStorage wizard; only daemon retry is active | Broken | High |
+| P-13 | Onboarding | Provider connection, scan, permissions, chat engine, recovery, completion gates | Daemon-owned state, required-step gates, restart recovery, Secret Service readback, XDG write verification, privacy persistence, and strict native/WebView RPC decoding are implemented; provider connection/scan, auth, portal, tray, update, and first-data readback remain incomplete | Partial | High |
 | P-14 | Chat | Persisted threads, search, streaming, models, attachments, citations, approvals, panes/pop-out | Synthetic transcript rows and multiple disabled controls; five vs twelve backends | Partial | High |
 | P-15 | Account and billing | Sign-in/link/sign-out, membership, subscription, recovery | Status/checkout projection; browser auth must happen elsewhere; preview actions inert | Partial | High |
 | P-16 | Cloud and devices | Backup, sync, conflict handling, remote access, trusted device management | Cloud/trusted-device mutation RPCs explicitly absent | Partial | High |
 | P-17 | Activity/session logs | Indexed transcript, search, body, replay, resume, export, source resolution | Recent usage is wrapped as session metadata; no real body/resume/export | Substitute | High |
-| P-18 | Memory review | Quarantined candidates, approve/reject, durable state, audit | Recalled durable memories are labeled approved; review state partly localStorage | Substitute | High |
+| P-18 | Memory review | Quarantined candidates, approve/reject, durable state, audit | Approve/reject/forget now use idempotent daemon RPCs and survive reload; Linux still lacks a proven first-class quarantine feed and cross-device review matrix | Partial | High |
 | P-19 | Projects | Registered projects, exact associations, detail, management | Read-only cards inferred with fuzzy title matching; no CRUD | Partial | Medium |
 | P-20 | Missions | Full run/task state, approvals, questions, evidence, history, health | List/create/approve works; history/evidence/freshness/questions lag | Partial | Medium |
 | P-21 | Insights | Editorial brief, evidence, citations, follow-ups, comparison, audit | Usage charts and anomaly-like summaries only | Partial | Medium |
 | P-22 | Database | Search/inspect indexed sessions, snapshots, watch/recovery, encrypted storage UX | Index/watch foundation exists; inspector, snapshot, and recovery depth lag | Partial | Medium |
 | P-23 | Provider/model workspace | Provider and model deep dives, health, catalog, failover, routing | Quota-centric provider route; no equivalent model workspace/failover flow | Partial | Medium |
 | P-24 | Settings | 16 searchable tabs with deep links and writable state | 13 tabs; Model Proxy, Computer Use, Pets omitted; several controls read-only | Partial | Medium |
-| P-25 | Updates | Automatic checks, channel, install/restart truth | Package-manager guidance; update check reports unavailable | Partial | High |
+| P-25 | Updates | Automatic checks, channel, install/restart truth | Native signed-feed availability check fails closed; valid public feed and package-manager install/restart/rollback proof remain open | Partial | High |
 | P-26 | Tray and native shell | Rich live menu-bar status, quick switch, chat, quota, update state | Open/Reconnect/Quit tray only | Partial | High |
 | P-27 | Notifications/deep links | Actionable notifications, OAuth return, global commands, login start | No complete freedesktop notification, deep-link, shortcut, or autostart adapter | Missing | High |
-| P-28 | SmartHub | Discovery, status, allowlisted device actions | Surface calls an optional `runCli` bridge that does not exist | Broken | High |
+| P-28 | SmartHub | Discovery, status, allowlisted device actions | Runtime requires a trusted root-owned packaged CLI and otherwise fails closed; real device outcomes remain unproven | Partial | High |
 | P-29 | Text expansion | Global, secure-field-aware expansion, persistence, sync, previews | Preview-only in-app engine, plaintext localStorage, no normal composer hook | Substitute | High |
 | P-30 | Pet companion | Animated ambient overlay, click-through, summon, selection, interactions | Route-contained point-cloud preview with optimistic capability detection | Partial | High |
-| P-31 | Accessibility | Semantic UI, keyboard flows, assistive announcements, reduced effects | Good ARIA foundation; current scan/tree evidence is synthetic or window-only | Unproven | High |
-| P-32 | Performance | Startup/recovery/frame/cadence budgets and mature profiling | Synthetic one-sample probes, no comparable macOS baseline, 621 kB main chunk | Unproven | High |
-| P-33 | Reliability | Backoff, supervisor, recovery, subscriptions, migrations, long-idle stability | Mount/manual refresh bias, synchronous IPC, weak installed-shell soak coverage | Partial | High |
-| P-34 | Security hardening | Native URL/secret/process boundaries | CSP exists, but broad `shell:default`, WebView bearer exposure, release fixture path | Partial | Critical |
+| P-31 | Accessibility | Semantic UI, keyboard flows, assistive announcements, reduced effects | All routes pass axe; installed aarch64 AT-SPI/Orca/keyboard/200% evidence passed; desktop/architecture breadth remains | Near parity | High |
+| P-32 | Performance | Startup/recovery/frame/cadence budgets and mature profiling | Matched macOS/Linux harness and ARM installed percentiles exist; final candidate and environment matrix remain | Partial | High |
+| P-33 | Reliability | Backoff, supervisor, recovery, subscriptions, migrations, long-idle stability | Daemon-owned bounded start/resume/stop subscriptions, monotonic restart recovery, offline-aware single-flight cadence, cancellation, coalesced route refresh, and soak contracts exist; native push and installed suspend/portal/keyring/matrix certification remain | Partial | High |
+| P-34 | Security hardening | Native URL/secret/process boundaries | Generic renderer shell permission and token exposure removed; production fixtures disabled; full installed adversarial matrix remains | Near parity | Critical |
 | P-35 | Diagnostics/support | Native export, privacy choices, accurate runtime/package facts | Useful redaction base; copy and save behavior differ; fixture toggle exposed | Partial | Medium |
-| P-36 | Visual/interaction polish | Consistent components, responsive density, animations, native affordances | Some diagnostic/raw JSON surfaces, glyph controls, static/black proof, limited regressions | Unproven | Medium |
-| P-37 | Linux matrix | N/A; macOS supported versions are exercised | Ubuntu GNOME ARM64 only live; KDE, Wayland, wlroots, x86_64 unproven/blocked | Missing | Critical |
-| P-38 | CI/release automation | Test, sign, package, and promotion jobs fail closed | Swift behavior tests omitted; allow-blocked and Make paths can return green; tag/version and evidence-directory wiring disagree | Broken | Critical |
+| P-36 | Visual/interaction polish | Consistent components, responsive density, animations, native affordances | Nonblack installed route captures now exist; raw diagnostics, interaction polish, and multi-environment regressions remain | Partial | Medium |
+| P-37 | Linux matrix | N/A; macOS supported versions are exercised | Environment-bound fail-closed harness exists and aarch64 X11/XFCE passed; GNOME Wayland, KDE Wayland, wlroots, x86_64, and real portal/keyring rows remain open | Partial | Critical |
+| P-38 | CI/release automation | Test, sign, package, and promotion jobs fail closed | Strict gates, mutation tests, native architecture shards, sessions, and aggregate closure are implemented; a full hosted two-architecture release run remains unproven | Partial | Critical |
 | P-39 | Cross-platform differential proof | Same contract/corpus compared at the same product version | Later Linux-labeled canonical evidence reuses preexisting fixtures rather than producing a current macOS-vs-Linux diff | Unproven | High |
 | P-40 | Data and Privacy | Vault/export/deletion/retention/recovery/consent/telemetry/panic workflows | Inventory/copy exists, but important controls are read-only or no complete local/account destructive and recovery workflow is proven | Partial | High |
 
@@ -240,6 +311,16 @@ Every matrix row maps to a detailed record containing all six requested fields:
 
 ### GAP-001 - Repair release integrity and parity certification
 
+**Implementation update (2026-07-10): partially closed in the implementation
+branch.** The parity claim is now false, the generated ledger has all 40 audit
+requirements at 0 ready/40 blocked, and strict verification cryptographically
+binds artifacts, signatures, source, SBOM/VEX, provenance, feed, architecture
+sessions, and Sigstore inputs. Clean aarch64 and architecture-correct x86_64
+shards at `391fe2847d` each produced all four required artifacts and passed 28
+package-smoke steps. Promotion remains blocked until an installed x86_64
+session, native hosted x86_64 run, final signed aggregate, valid public feed,
+and prior-version update/rollback/data-preservation proof all exist.
+
 - **Difference:** macOS release confidence comes from a signed product and a
   delivery path that can be exercised. Linux's four public Ed25519 artifact pairs
   pass, but the mission-002 local closure diverges and all four local pairs fail.
@@ -272,6 +353,14 @@ Every matrix row maps to a detailed record containing all six requested fields:
 
 ### GAP-002 - Establish a healthy installed runtime
 
+**Implementation update (2026-07-10): partially closed in the implementation
+branch.** A clean aarch64 `.deb` installed and launched the exact package-owned
+GUI and daemon from `/usr/bin`, returned matching `0.1.0` versions over the native
+AF_UNIX health path, exercised tray reopen/quit, and uninstalled cleanly. All 19
+routes produced nonblack installed-app screenshots. This closes the observed
+deleted-binary/duplicate-daemon baseline for that package session, but not the
+x86_64, prior-version, suspend/resume, or compositor matrix.
+
 - **Difference:** macOS owns its daemon lifecycle, startup recovery, and app
   executable. One inspected mutable UTM guest had a running deleted executable,
   two daemons, no detected `systemd --user` unit, and completely black desktop
@@ -295,6 +384,14 @@ Every matrix row maps to a detailed record containing all six requested fields:
   under hardware and software rendering.
 
 ### GAP-003 - Implement Linux credential custody and contain gateway tokens
+
+**Implementation update (2026-07-10): implementation complete; environment
+certification remains.** Provider and connector paths now use one Linux secret
+custodian with root-owned Secret Service and KWallet command discovery plus an
+explicit encrypted headless backend. The renderer no longer receives the gateway
+bearer; Rust performs bounded authenticated HTTP/SSE proxying. The remaining work
+is live GNOME/KDE/headless verification for locked, missing, rotate, recovery,
+and diagnostics-redaction states.
 
 - **Difference:** macOS uses Keychain-backed secret stores and keeps privileged
   credentials in native code. Linux provider and connector services still
@@ -320,7 +417,23 @@ Every matrix row maps to a detailed record containing all six requested fields:
 
 ### GAP-004 - Ship the architectures and desktop environments users have
 
-- **Difference:** the current Linux release workflow produces ARM64 artifacts
+**Implementation update (2026-07-10): partially closed in the implementation
+branch.** The release workflow now builds native `aarch64` and `x86_64` shards
+on separate GitHub runners, asserts runner architecture, runs per-architecture
+package inspection/install/uninstall smoke, and aggregates only after both
+hash-bound shard closures pass. The schema-3 verifier requires every
+AppImage/deb/rpm/daemon and architecture pair, exact detached-signature and
+checksum coverage, a hash-bound signed feed, source/SBOM/VEX/provenance/parity,
+and final Sigstore bundles. Mutation tests cover missing, duplicate,
+cross-commit, dirty, cross-architecture, and extra shard inputs. Clean local
+construction at `391fe2847d` now proves four architecture-correct artifacts and
+28/28 smoke checks for both aarch64 and x86_64. The x86_64 run used
+Rosetta-assisted construction and extracted AppImage inspection, so a native
+hosted x86_64 workflow run, installed x86_64 session, and the GNOME Wayland,
+KDE Wayland, and wlroots certification rows remain open. GAP-004 and P-37 are
+therefore not closed.
+
+- **Difference:** the audited baseline Linux release workflow produced ARM64 artifacts
   only, and live evidence covers Ubuntu 24.04 GNOME ARM64. macOS parity is being
   claimed without x86_64, KDE Wayland, GNOME Wayland, or wlroots proof.
 - **Why it matters:** most desktop Linux users cannot install the current build,
@@ -338,6 +451,12 @@ Every matrix row maps to a detailed record containing all six requested fields:
   architectures and every supported desktop row.
 
 ### GAP-005 - Complete Computer Use rather than exposing unsupported modes
+
+**Implementation update (2026-07-10): honesty gap closed; capability gap open.**
+The typed runtime manifest now marks Linux system Computer Use unavailable and
+prevents the route from offering a guaranteed-failure action. Browser Computer
+Use remains the supported Linux mode. Full browser action/result E2E and a real
+portal/PipeWire/AT-SPI/libei or constrained X11 system adapter are still required.
 
 - **Difference:** macOS ships Browser, Agent Watch, and Mac System behavior with
   approval, audit, and panic paths. Linux presents browser, agent-watch, and
@@ -361,20 +480,33 @@ Every matrix row maps to a detailed record containing all six requested fields:
 
 ### GAP-006 - Build the Mercury Linux media host
 
-- **Difference:** macOS supports Mercury file transfer, calls, screen share,
-  mirroring, presence, consent, and partner preferences. Linux reports the media
-  capability as absent and renders a status-only surface.
-- **Why it matters:** an entire first-class product family is missing.
-- **Recommended solution:** define shared daemon media contracts over existing
-  iroh/remote-access components; implement PipeWire portal capture, a supported
-  codec pipeline, device presence, and complete consent/session controls.
+**Implementation update (2026-07-10): core implementation closed; parity
+certification open.** Linux now owns Mercury sessions in the daemon, handles
+call/mirror control, inbound and outbound files, portal/PipeWire capture,
+GStreamer codec probing, bounded frame queues, sealed outbound frames, consent
+and revocation, and exposes the resulting state through typed daemon/Tauri/UI
+contracts. The shell capability catalog now probes the real daemon rather than
+hard-disabling the route.
+
+- **Difference:** macOS has production-proven Mercury behavior across supported
+  Apple/mobile peers. Linux now implements the same core outcomes, but no current
+  installed two-device/compositor matrix proves calls, mirroring, and transfers
+  end to end against the exact candidate.
+- **Why it matters:** media failures are permission-, portal-, codec-, network-,
+  and peer-dependent; source and unit tests alone cannot certify the user outcome.
+- **Recommended solution:** preserve the current daemon-owned architecture, then
+  close the installed Linux-to-macOS/iOS/Android matrix and feed any observed
+  portal, codec-negotiation, notification, or lifecycle defects back into the
+  shared contracts.
 - **Priority:** **Critical**.
-- **Implementation notes:** separate transport, media engine, portal capture,
-  codec negotiation, and UI state; allow system-installed codecs where licensing
-  requires it; expose reasoned capability states rather than a Boolean.
+- **Implementation notes:** transport, media engine, portal capture, codec probe,
+  sealed-frame boundary, file service, and UI state are separate. Runtime
+  capability is available/degraded/unavailable with a reason; absence of the
+  daemon probe fails closed. Keep fixture paths disabled in production.
 - **QA verification:** Linux-to-macOS/iOS/Android pair/unpair, file send/receive,
   call, screen share, cancel/reject, packet loss, reconnect, suspend, permission
-  denial/revocation, cleanup, and multi-monitor selection.
+  denial/revocation, codec absence, cleanup, and multi-monitor selection on each
+  supported compositor and architecture.
 
 ### GAP-007 - Make usage/provider coverage authoritative
 
@@ -399,6 +531,29 @@ Every matrix row maps to a detailed record containing all six requested fields:
   migration tests.
 
 ### GAP-008 - Replace informational onboarding with transactional setup
+
+**Implementation update (2026-07-10): authority foundation complete; end-to-end
+setup remains partial.** Linux onboarding no longer trusts browser completion.
+The daemon owns a schema-versioned atomic state file with `0600` permissions in
+a daemon-enforced `0700` support directory,
+derives completion from fixed required/optional invariants, rejects future-step
+mutation and required-step skips, and exposes capability-scoped
+`snapshot`/`action`/`reset` RPCs through narrow Tauri commands. Required probes
+now prove authenticated daemon reachability, perform an ephemeral approved
+Secret Service/KWallet write-read-delete cycle on Linux, verify writable XDG
+support storage, and persist explicit telemetry/cloud-sync choices. Failed probes
+remain blocked with bounded diagnostics and can retry after restart; the WebView
+cache is non-authoritative and strict decoding rejects forged completion,
+reordered requirements, and prerequisite jumps. The full native Linux manifest
+passes 98 Swift XCTest selectors and 18 Rust tests; the desktop suite passes all
+400 TypeScript/React tests plus its production bundle verifier.
+
+This does **not** close GAP-008 or P-13. Provider account connection and real log
+scan, cloud authentication, portal permission readback, tray host verification,
+update-channel verification, chat-engine selection, and first-data confirmation
+are still explicit optional acknowledgements or separate workflows. Installed
+Ubuntu/Fedora keyboard, screen-reader, restart, denial, and repair evidence also
+remains required.
 
 - **Difference:** macOS onboarding connects providers, scans, requests system
   permissions, configures chat, and gates completion. Linux advances local state
@@ -464,14 +619,14 @@ Every matrix row maps to a detailed record containing all six requested fields:
 ### GAP-011 - Replace activity and memory substitutes with true domain state
 
 - **Difference:** macOS exposes indexed session transcripts and a real memory
-  review queue. Linux wraps recent usage as session entries and maps recalled
-  durable memories to approved rows, while some review decisions live in
-  localStorage.
+  review queue. Linux still wraps recent usage as session entries. Memory
+  approve/reject/forget decisions are now daemon-authoritative and idempotent,
+  but recalled durable memories do not yet prove a first-class quarantine feed.
 - **Why it matters:** users cannot inspect or resume actual work, and the memory
   UI describes semantics the backend does not provide.
 - **Recommended solution:** add session list/body/search/source/resume/export RPCs
-  and a daemon-owned memory quarantine/approve/reject/forget/audit model. Until
-  then, rename recalled memory as durable memory and remove review claims.
+  and complete the daemon-owned memory quarantine source and cross-device audit
+  model; retain the implemented durable decision path.
 - **Priority:** **High**.
 - **Implementation notes:** preserve exact source/session/project IDs; support
   local/cloud conflict and missing-body recovery; make review decisions
@@ -601,6 +756,18 @@ Every matrix row maps to a detailed record containing all six requested fields:
 
 ### GAP-015 - Implement honest update UX
 
+**Implementation update (2026-07-09): partially closed in the implementation
+branch.** The Linux shell now performs the availability check in native Rust,
+pins the release-signing public key and SPKI fingerprint, verifies detached
+Ed25519 signatures, validates schema/product/platform/channel/semantic version,
+requires both supported architectures, rejects downgrade/replay and untrusted
+URLs, and exposes only typed validated state to the renderer. The installed
+`.deb` route was exercised through AT-SPI and correctly rendered **Update
+metadata rejected** against the currently invalid public endpoint. The
+package-manager-owned install/rollback lifecycle, signed public feed,
+two-architecture artifacts, and prior-version upgrade/rollback evidence remain
+open; this row is therefore still **Partial**, not closed.
+
 - **Difference:** macOS exposes version, automatic checks, channel, install, and
   restart behavior. Linux appropriately delegates installation to package
   mechanisms but cannot check signed availability or present reliable
@@ -675,6 +842,13 @@ Every matrix row maps to a detailed record containing all six requested fields:
 
 ### GAP-019 - Replace synthetic accessibility evidence with assistive-tech proof
 
+**Implementation update (2026-07-09): closed in the implementation branch.**
+All 19 routes and important states now run through axe; the installed `.deb`
+is exercised through AT-SPI actions, Orca process/focus observation,
+keyboard-only traversal, and requested 200% zoom. The full shell verifier
+rejects missing or synthetic accessibility artifacts. GNOME/KDE matrix breadth
+remains tracked under GAP-004 rather than keeping this implementation gap open.
+
 - **Difference:** macOS has broad semantic labels/actions and targeted tests.
   Linux has useful landmarks, a skip link, ARIA live regions, focus styling, and
   reduced-motion CSS, but its automated scan returns hardcoded rows and its
@@ -696,20 +870,34 @@ Every matrix row maps to a detailed record containing all six requested fields:
 
 ### GAP-020 - Add real reliability, performance, and installed-shell gates
 
-- **Difference:** macOS has cadence, supervisor, startup recovery, prewarming,
-  migration, and frame-budget coverage. Many Linux surfaces refresh on mount or
-  manual action; `apps/linux-desktop/src/state/shellStore.ts:170` runs required
-  daemon performance probes during boot; the Rust suite currently executes one
-  unit test; and the built main chunk is 621.05 kB minified. The daemon probes in
-  `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC/BurnBarDaemonServer+RPCObservability.swift:76-139`
-  serialize small hardcoded/in-memory payloads rather than real user workloads,
-  and current evidence has no matched macOS p95/p99 or resource baseline.
+**Implementation update (2026-07-10): foundation implemented; certification remains open.**
+Linux now records repeated packaged process-start, tray-open, daemon-reconnect,
+and post-paint route percentiles. A production-linked Swift harness runs the
+same deterministic SQLite, FTS, JSONL, and Hermes stream-parser workloads on
+macOS and Linux and compares correctness, p95/p99, RSS, CPU, and soak duration.
+PR and nightly workflows fail closed on missing or malformed evidence; nightly
+uses 100,000 rows and a 30-minute soak. The daemon now owns bounded
+start/resume/stop subscription state with monotonic cursors, restart recovery,
+cancellation tombstones, and explicit degraded-pull metadata. The renderer has
+one offline-aware, lifecycle-aware data supervisor with bounded exponential
+backoff and coalesced mounted-route reloads. See
+`performance-reliability-validation.md` and
+`LINUX_EVENT_SUBSCRIPTION_AUTHORITY.md`.
+
+- **Difference:** Linux now has daemon-owned bounded pull subscriptions, a
+  single-flight data supervisor, packaged startup/reopen/reconnect percentiles,
+  a matched Swift workload harness, Rust boundary tests, and a 30-minute soak
+  contract. It still lacks a native push stream. The built main chunk is 655.47
+  kB minified and still triggers the Vite size warning. Exact-candidate
+  suspend/portal/keyring recovery, comparable-hardware macOS/Linux p95/p99, and
+  the full desktop matrix remain unproven.
 - **Why it matters:** UI stalls, stale data, daemon death, suspend/resume, leaks,
   and renderer failures will escape the current unit suite.
-- **Recommended solution:** add daemon event subscriptions, lifecycle-aware
-  cadence, cancellable async IPC, bounded backoff, startup recovery, route code
-  splitting, and comparable real-workload budgets. Gate on packaged-shell E2E
-  and Linux Swift behavior tests.
+- **Recommended solution:** certify the implemented cursor/cancellation contract
+  in installed packages, add native push delivery without weakening bounded
+  backpressure or degraded-state truth, split route code, and enforce comparable
+  real-workload budgets. Gate on packaged-shell E2E and Linux Swift behavior
+  tests.
 - **Priority:** **High**.
 - **Implementation notes:** remove diagnostic probes from the critical boot path
   or run them asynchronously with cache/timeouts; measure cold/warm startup,
@@ -721,6 +909,13 @@ Every matrix row maps to a detailed record containing all six requested fields:
   macOS-relative workflow budgets on equivalent hardware.
 
 ### GAP-021 - Harden the Tauri command boundary and remove fixture leakage
+
+**Implementation update (2026-07-10): closed in the implementation branch.**
+The renderer capability set is `core:default`; generic shell execution is not
+granted. Native URL opening stays behind scheme/host validation, gateway secrets
+stay in Rust, and production builds replace daemon fixtures with a fail-closed
+module whose activation is unavailable. Mutation tests cover the IPC, URL,
+fixture, and production-bundle boundaries.
 
 - **Difference:** macOS uses narrow native service APIs. Linux has CSP, but still
   grants broad `shell:default`; the support UI exposes a persistent daemon
@@ -765,6 +960,14 @@ Every matrix row maps to a detailed record containing all six requested fields:
   and token/path/session-content redaction.
 
 ### GAP-023 - Make CI and release automation fail closed
+
+**Implementation update (2026-07-10): implementation complete; hosted closure
+pending.** PR/nightly/release workflows run Linux-native behavior gates, preserve
+strict failures, resolve versions on tag and manual paths, build native aarch64
+and x86_64 shards, finalize package lifecycle sessions, and assemble only when
+both commit-bound sessions pass. Workflow mutation tests protect this wiring.
+The remaining proof is a real hosted two-architecture candidate run with a prior
+version and final signing/publication credentials.
 
 - **Difference:** macOS release automation has mature behavioral gates. Linux PR
   CI builds Swift targets without running their behavior tests; the
@@ -815,12 +1018,19 @@ Every matrix row maps to a detailed record containing all six requested fields:
 
 ### GAP-025 - Prove dashboard, navigation, and window behavior in the product
 
+**Implementation update (2026-07-10): partially closed in the implementation
+branch.** The installed aarch64 `.deb` activated all 19 routes through AT-SPI
+command-palette actions and captured a screenshot, window record, and accessible
+tree for each route. The remaining gap is the six-layout live-data visual matrix,
+deep-link/secondary-window behavior, responsive sizes, and supported compositor
+coverage.
+
 - **Difference:** Linux registers 19 routes, aligns the seven primary sections,
   and implements six React dashboard layouts with unit tests. macOS additionally
   provides provider/model deep navigation, mature multi-window/pop-out behavior,
   persisted live layout state, and proven dense content. Linux's current six-
-  layout visual evidence is a static contract board; installed runtime captures
-  are black.
+  layout visual evidence is incomplete; installed route captures are now
+  nonblank, but do not cover every layout/state/viewport combination.
 - **Why it matters:** source and JSDOM tests do not prove that users can see,
   navigate, resize, restore, deep-link, or use the real packaged dashboard.
 - **Recommended solution:** complete typed deep links and Linux-native secondary
@@ -875,6 +1085,22 @@ Every matrix row maps to a detailed record containing all six requested fields:
   queueing, locked keyring, and redaction.
 
 ## Linux Parity Implementation Plan
+
+### Execution status after the remediation wave
+
+| Task group | State | Evidence/acceptance reached | Remaining dependency |
+|---|---|---|---|
+| LNX-GATE-001, LNX-REL-VERIFY-001, LNX-CI-001 | Implemented | Complete blocked inventory, crypto/closure mutations, strict workflow wiring | Exact signed candidate and all required rows green |
+| LNX-SEC-001, LNX-IPC-001, LNX-CAP-001 | Implemented | Native secret custodian, native gateway proxy, production fixture boundary, runtime capability manifest | GNOME/KDE/headless environment certification |
+| LNX-A11Y-HARNESS-001 | Implemented | All-route axe plus installed AT-SPI/Orca/keyboard/zoom contract | Full architecture/desktop/high-contrast matrix |
+| LNX-PERF-HARNESS-001 | Implemented | Matched workload tools, p50/p95/p99/resource capture, nightly soak contract | Final candidate results on comparable hardware and environments |
+| LNX-RUN-001 | Partially proven | Clean aarch64 package-owned GUI/daemon/version/uninstall session | x86_64, prior-version lifecycle, suspend/resume, compositor breadth |
+| LNX-PKG-001 | Implemented in workflow; construction proven | Four-artifact aarch64 and architecture-correct x86_64 shards green with 28/28 smoke checks each; native dual-architecture aggregation is fail closed | Native hosted x86_64 run, installed x86_64 session, signed aggregate, and channel lifecycle |
+| LNX-UPD-001 | Partially implemented | Native signed-feed availability verifier rejects invalid public metadata | Valid feed plus deb/rpm/AppImage update, rollback, and data preservation |
+| LNX-CHANNEL-001 through LNX-DIFF-001 | Open/partial | Existing package/channel/product foundations retained | Daily-use platform foundation and current macOS/Linux differential proof |
+| Phase 2 core workflows | Open/partial | Existing routes and bounded mutations retained | Complete product outcomes and daemon-authoritative state |
+| Phase 3 native features | In progress | Mercury core, Linux CU input, panic, and outbound capture foundations are implemented; unsupported outcomes remain capability-gated | Cross-device Mercury proof, system CU capture, SmartHub, IBus/Fcitx, pet adapters |
+| Phase 4 certification/promotion | Blocked by design | No false stable promotion is possible | All product work plus exact-candidate environment matrix |
 
 ### Architectural target
 
@@ -935,8 +1161,8 @@ truth-sync, not the first time behavior is documented.
 |---|---|---|---|
 | LNX-PKG-001 | LNX-REL-VERIFY-001, LNX-CI-001, LNX-RUN-001 | Dual-architecture AppImage/deb/rpm construction and architecture-aware manifest | Unsigned/local x86_64 and aarch64 lifecycle green on Ubuntu/Fedora before candidate signing |
 | LNX-CHANNEL-001 | LNX-PKG-001, LNX-REL-VERIFY-001 | apt and rpm repository metadata/signing, correct AUR recipe, and a portal-safe Flatpak channel | Each declared channel installs the correct architecture and verifies repository/package metadata; unpromoted channels are explicitly labeled |
-| LNX-EVT-001 | LNX-CAP-001 | Daemon subscriptions, cadence, cancellable IPC, supervisor, recovery, migrations | Kill/stall/suspend/offline tests recover without stale or frozen UI |
-| LNX-ONB-001 | LNX-SEC-001, LNX-RUN-001, LNX-CAP-001 | Transactional onboarding with readback and repair | A clean user cannot finish required setup while prerequisites are missing |
+| LNX-EVT-001 | LNX-CAP-001 | Bounded pull subscription authority, cadence, cancellation, restart/offline recovery, and coalesced route refresh are implemented; add native push and exact-candidate installed certification | Kill/stall/suspend/offline tests recover without stale or frozen UI |
+| LNX-ONB-001 | LNX-SEC-001, LNX-RUN-001, LNX-CAP-001 | Daemon-owned transactional state/readback foundation is implemented; add provider/auth/portal/tray/update/chat/first-data probes | A clean user cannot finish required setup while any declared required prerequisite is missing |
 | LNX-AUTH-001 | LNX-SEC-001, LNX-IPC-001 | PKCE/device auth, membership, App Check, sync, trusted devices, safe billing callbacks | Full sign-in/out/device/backup/restore/checkout matrix passes |
 | LNX-NATIVE-001 | LNX-CAP-001 | Tray/status window, notifications, deep links, shortcuts, startup | Repeated native workflows pass on GNOME/KDE and icon-only fallback |
 | LNX-UPD-001 | LNX-PKG-001, LNX-CHANNEL-001, LNX-NATIVE-001 | Signed check, compatibility, package/channel-native install/restart/rollback UX | Tamper/replay/arch/version tests fail; prior-version update and rollback succeed for every declared channel |
@@ -982,19 +1208,19 @@ truth-sync, not the first time behavior is documented.
 
 ## Prioritized Roadmap
 
-| Order | Milestone | Included tasks | Exit gate |
-|---|---|---|---|
-| 0 | **Disable false parity** | LNX-GATE-001 | Machine claim is off; public/internal status says ARM64 prerelease; ledger cannot certify current head |
-| 1 | **Trustworthy engineering baseline** | LNX-REL-VERIFY-001, LNX-CI-001, LNX-RUN-001, LNX-A11Y-HARNESS-001, LNX-PERF-HARNESS-001 | Bad signatures/feed/evidence fail; development/current baseline is nonblank and single-daemon; early quality gates run |
-| 2 | **Security foundation** | LNX-SEC-001, LNX-IPC-001, LNX-CAP-001 | Secure credentials; no bearer/shell/fixture exposure; honest capabilities |
-| 3 | **Mainstream install** | LNX-PKG-001, LNX-CHANNEL-001 | Dual architecture and declared package/repository channels install locally |
-| 4 | **Daily-use native foundation** | LNX-EVT-001, LNX-ONB-001, LNX-AUTH-001, LNX-NATIVE-001, LNX-UPD-001, LNX-CAT-001, LNX-DIFF-001 | Setup, auth, data freshness, native alerts/tray, update lifecycle, current cross-platform provider truth |
-| 5 | **Core product workflows** | LNX-SESS-001, LNX-CHAT-001, LNX-MEM-001, LNX-PROJ-001, LNX-MISSION-001, LNX-INSIGHT-001, LNX-DB-001, LNX-PROVIDER-001, LNX-PRIV-001, LNX-SET-001 | No synthetic transcript/review state; every primary workspace and privacy workflow completes |
-| 6 | **Browser automation parity** | LNX-CU-BROWSER-001 | Real actions, approval, panic, audit, restart recovery |
-| 7 | **Media and system integration** | LNX-CU-SYSTEM-001, LNX-MEDIA-001 | Supported compositor safety and two-device media proof |
-| 8 | **Extended features** | LNX-IOT-001, LNX-TEXT-001, LNX-PET-001 | SmartHub, input-method, and companion outcomes proven or honestly substituted |
-| 9 | **Candidate and certification** | LNX-REL-CANDIDATE-001, LNX-A11Y-CERT-001, LNX-PERF-CERT-001, LNX-QA-001, LNX-DOC-001 | Exact signed candidate, assistive-tech, performance, architecture, desktop matrix, and docs green |
-| 10 | **Stable promotion** | LNX-PROMOTE-001 | Zero Critical/High gaps and a current reproducible evidence graph |
+| Order | Milestone | Current state | Included tasks | Exit gate |
+|---|---|---|---|---|
+| 0 | **Disable false parity** | Complete | LNX-GATE-001 | Machine claim is off; ledger cannot certify stale/incomplete evidence |
+| 1 | **Trustworthy engineering baseline** | Complete in code; dual-architecture construction and aarch64 installed proof live | LNX-REL-VERIFY-001, LNX-CI-001, LNX-RUN-001, LNX-A11Y-HARNESS-001, LNX-PERF-HARNESS-001 | Add installed x86_64 and prior-version package sessions without regressing strict gates |
+| 2 | **Security foundation** | Complete in code; matrix pending | LNX-SEC-001, LNX-IPC-001, LNX-CAP-001 | GNOME/KDE/headless credential and installed adversarial verification green |
+| 3 | **Mainstream install** | Package construction complete; installed/channel proof in progress | LNX-PKG-001, LNX-CHANNEL-001 | Both architectures and every declared package/repository channel install locally |
+| 4 | **Daily-use native foundation** | In progress; onboarding and bounded event-refresh foundations implemented, installed matrix pending | LNX-EVT-001, LNX-ONB-001, LNX-AUTH-001, LNX-NATIVE-001, LNX-UPD-001, LNX-CAT-001, LNX-DIFF-001 | Setup, auth, data freshness, alerts/tray, update lifecycle, and current provider diff green |
+| 5 | **Core product workflows** | Pending | LNX-SESS-001, LNX-CHAT-001, LNX-MEM-001, LNX-PROJ-001, LNX-MISSION-001, LNX-INSIGHT-001, LNX-DB-001, LNX-PROVIDER-001, LNX-PRIV-001, LNX-SET-001 | No synthetic state; every primary workspace and privacy workflow completes |
+| 6 | **Browser automation parity** | Pending | LNX-CU-BROWSER-001 | Real actions, approval, panic, audit, restart recovery |
+| 7 | **Media and system integration** | In progress; Mercury code complete | LNX-CU-SYSTEM-001, LNX-MEDIA-001 | Supported compositor safety and two-device media proof |
+| 8 | **Extended features** | Pending | LNX-IOT-001, LNX-TEXT-001, LNX-PET-001 | SmartHub, input-method, and companion outcomes proven or honestly substituted |
+| 9 | **Candidate and certification** | Blocked on milestones 3-8 | LNX-REL-CANDIDATE-001, LNX-A11Y-CERT-001, LNX-PERF-CERT-001, LNX-QA-001, LNX-DOC-001 | Exact signed candidate, assistive-tech, performance, architecture, desktop matrix, and docs green |
+| 10 | **Stable promotion** | Blocked by design | LNX-PROMOTE-001 | Zero Critical/High gaps and a current reproducible evidence graph |
 
 ### Parallelization and ownership
 
@@ -1176,16 +1402,39 @@ Primary current evidence and implementation references:
 - Linux chat controls/state: `apps/linux-desktop/src/surfaces/chat/` and
   `apps/linux-desktop/src/state/chatStore.ts`
 - Linux Tauri capability/commands: `apps/linux-desktop/src-tauri/src/lib.rs`
+- Linux Mercury runtime: `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/MercuryLinux*`,
+  `apps/linux-desktop/src/state/mediaStore.ts`, and
+  `apps/linux-desktop/src/surfaces/media/`
+- Canonical Linux paths/provider registry:
+  `OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/OpenBurnBarLinuxPaths.swift`
+  and `apps/linux-desktop/src/providerPathRegistry.ts`
 - Linux daemon secret stores: `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/`
 - Current ledger: `docs/linux-port/parity-ledger.json` and
   `docs/linux-port/parity-ledger.md`
 - Ledger validator: `scripts/linux-port/lib/parity-ledger-validate.mjs`
 - Release verifier: `scripts/linux-port/verify-linux-release.mjs`
+- Environment-bound matrix harness: `scripts/linux-port/run-linux-matrix-harness.mjs`
+- Packaging path drift gate: `scripts/linux-port/check-packaging-path-sync.mjs`
 - Release evidence: `docs/linux-port/evidence/mission-002-reanchor/`
+- Current aarch64 installed-session audit summary:
+  `docs/linux-port/evidence/parity-audit-2026-07-10/aarch64-installed-session-summary.json`
+- Current clean aarch64 package closure and smoke:
+  `docs/linux-port/evidence/parity-audit-2026-07-10/aarch64-391fe2847d-architecture-closure.json`
+  and `docs/linux-port/evidence/parity-audit-2026-07-10/aarch64-391fe2847d-architecture-smoke.json`
+- Current architecture-correct x86_64 package closure and smoke:
+  `docs/linux-port/evidence/parity-audit-2026-07-10/x86_64-391fe2847d-architecture-closure.json`
+  and `docs/linux-port/evidence/parity-audit-2026-07-10/x86_64-391fe2847d-architecture-smoke.json`
+- Earlier clean aarch64 remediation closure retained for history:
+  `docs/linux-port/evidence/parity-audit-2026-07-10/aarch64-c4e85dbbd0-architecture-closure.json`
 - Existing implementation plan and accepted substitutions:
   `docs/linux-port/FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md`
 - Public prerelease: `https://github.com/Imagine-That-Ai/BurnBar/releases/tag/linux-v0.1.0`
-- Public update-feed target: `https://burnbar.ai/latest-linux.json`
+- Historical failing marketing-root probe:
+  `https://burnbar.ai/latest-linux.json`
+- Production update-feed target after remediation:
+  `https://downloads.burnbar.ai/latest-linux.json`. Live DNS/R2 activation is
+  still a named release blocker until the release environment runs the
+  Cloudflare domain-setup and verified upload steps successfully.
 
 This audit intentionally treats source existence and generated evidence as
 necessary but insufficient. A parity row becomes ready only when its real user

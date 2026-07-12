@@ -13,18 +13,26 @@ package → sign the update feed → SBOM + OpenVEX + Sigstore — adapted to Wi
 Manual dispatch has an `allow_unsigned` switch for Windows-runner build/package validation only. It
 lets the workflow publish the WinUI app, stage portable zips, and try MSIX packaging up to the
 signing boundary without Authenticode or update-feed signing. It is rejected for `windows-v*` tag
-releases: real tags must have Azure Trusted Signing plus the pinned update-feed key configured.
+releases: real tags must have Azure Artifact Signing plus the pinned update-feed key configured.
 
 ## Jobs
 
 1. **resolve-release** — derive `X.Y.Z` from the tag/input.
 2. **portable-verify** *(ubuntu, always runs)* — the security kernel proof: `dotnet test` over
    `windows/tests/dist`, an end-to-end signer round-trip (good pin verifies, wrong pin fails
-   closed), `xmllint` on the props, and `verify-version-consistency.sh` with
-   `OPENBURNBAR_REQUIRE_CURRENT_WINDOWS_VERSION=1`.
-3. **build-sign** *(windows-latest)* — `dotnet publish` the WinUI app for `win-x64` + `win-arm64`,
-   **Authenticode-sign** via Azure Trusted Signing, package zips + checksums, then **sign the
-   update feed** with the pinned Ed25519 key and self-verify it.
+   closed), dependency-free XML parsing on the props, and `verify-version-consistency.sh`. The
+   resolved release version must always equal the repo marketing version. Tag and signed manual
+   releases also require the Windows app manifest to match; explicit unsigned rehearsals retain
+   the documented deferred manifest version so they can prove the build/package boundary before
+   the first Windows release bump.
+3. **build-sign** *(windows-latest)* — `dotnet publish` the unpackaged WinUI app for `win-x64` +
+   `win-arm64`, then stage those exact outputs through `New-MsixPackage.ps1` + the Windows SDK's
+   `MakeAppx`. The script stamps the resolved version and processor architecture into the package
+   identity before building x64 + ARM64 MSIX files. CI then **Authenticode-signs** via Azure
+   Artifact Signing, packages zips + checksums, and **signs the update feed** with the pinned
+   Ed25519 key and self-verifies it. The WAP project remains the Visual Studio authoring wrapper;
+   release CI packages the already-proven unpackaged outputs directly so WAP globals cannot change
+   the app build contract.
 4. **supply-chain** *(ubuntu)* — SPDX **SBOM** over the artifacts, **OpenVEX** sidecar, and keyless
    **Sigstore** (`cosign attest-blob`) provenance over every artifact.
 
@@ -39,8 +47,8 @@ pipeline therefore signs **and timestamps in one step** (`timestamp-rfc3161`) an
 
 | Secret | Purpose |
 | --- | --- |
-| `WINDOWS_CODESIGN_ENDPOINT` | Azure Trusted Signing endpoint (region URL) |
-| `WINDOWS_CODESIGN_ACCOUNT_NAME` | Trusted Signing account name |
+| `WINDOWS_CODESIGN_ENDPOINT` | Azure Artifact Signing endpoint (region URL) |
+| `WINDOWS_CODESIGN_ACCOUNT_NAME` | Artifact Signing account name |
 | `WINDOWS_CODESIGN_CERT_PROFILE_NAME` | Certificate profile name |
 | `WINDOWS_CODESIGN_AZURE_TENANT_ID` | Azure AD tenant (auth) |
 | `WINDOWS_CODESIGN_AZURE_CLIENT_ID` | Service-principal client id (auth) |
@@ -52,8 +60,8 @@ pipeline therefore signs **and timestamps in one step** (`timestamp-rfc3161`) an
 | `WINDOWS_UPDATE_PUBLIC_KEY` | The matching public key (`publicKeyBase64`) the updater pins; release CI confirms it matches `WINDOWS_UPDATE_SIGNING_KEY`. |
 
 The signed-release path is fail-closed. `scripts/ci/verify-windows-release-signing-preflight.sh`
-runs before build/signing and exits with a specific error if the Azure identity validation is still
-pending (`WINDOWS_CODESIGN_CERT_PROFILE_NAME` missing), if the Trusted Signing secrets are partial,
+runs before build/signing and exits with a specific error if the Azure Artifact Signing certificate
+profile is not configured (`WINDOWS_CODESIGN_CERT_PROFILE_NAME` missing), if signing secrets are partial,
 if `WINDOWS_UPDATE_SIGNING_KEY` is absent, or if `WINDOWS_UPDATE_PUBLIC_KEY` is absent. The only
 path that can continue unsigned is an explicit manual `allow_unsigned` dry-run, and that path never
 applies to `windows-v*` tag releases.
@@ -80,18 +88,18 @@ The release only needs the private secret — it recovers the public pin with
 
 | Concern | macOS | Windows (this lane) |
 | --- | --- | --- |
-| Code signing | Developer-ID codesign | Authenticode (Azure Trusted Signing) |
+| Code signing | Developer-ID codesign | Authenticode (Azure Artifact Signing) |
 | Post-sign ticket | notarize + **staple** | RFC-3161 timestamp at sign time (**no staple**) |
 | Update authenticity | Sparkle EdDSA + pinned `SUPublicEDKey` | pinned Ed25519 over a canonical descriptor (`WINDOWS_UPDATE_SIGNING_KEY`) |
 | Content integrity | Sparkle signs the DMG bytes | signed descriptor binds the artifact `sha256` (+ url/size/version/critical) |
 | Library validation | hardened-runtime library validation | R19 hardening trio ([`DLL_HARDENING.md`](DLL_HARDENING.md)) |
 | Supply chain | SBOM + OpenVEX + Sigstore | SBOM + OpenVEX + Sigstore (same tools) |
 
-## Deferred (needs the W0 cert + Windows runner)
+## Release gates
 
-- Real signed MSIX/EXE release (`azure/trusted-signing-action`) until Azure identity validation is
-  accepted and `WINDOWS_CODESIGN_CERT_PROFILE_NAME` is set. Unsigned manual dry-runs can still prove
-  the build/package path up to that boundary.
+- Real signed MSIX/EXE release (`azure/artifact-signing-action`) requires a Windows runner, the
+  Azure Artifact Signing profile secret, and the pinned update-feed key. Unsigned manual dry-runs can
+  still prove the build/package path up to that boundary.
 - winget manifest + Microsoft Store submission (a follow-up channel on top of the signed zip).
 - Bumping `windows/app/OpenBurnBar.App/app.manifest` `assemblyIdentity version` to the release
   version at tag time (the version-consistency gate enforces this once the tag is cut).

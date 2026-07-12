@@ -72,6 +72,18 @@ let packageProductsBase: [Product] = [
         name: "OpenBurnBarCore",
         targets: ["OpenBurnBarCore"]
     ),
+    // Phase-1 K1 of docs/SURFACE_SPRAWL_AND_SPLITBRAIN_REMEDIATION_PLAN.md: the
+    // UI-free contract/model kernel (RPC contracts, canon, budget/membership/
+    // entitlement/metrics primitives, Foundation-only SharedModels). Leaf
+    // target: Foundation (+ swift-crypto off-Apple, CryptoKit on Apple via
+    // canImport) + OpenBurnBarFirestoreModels only — ZERO SwiftUI/AppKit.
+    // OpenBurnBarCore `@_exported import`s it so existing consumers keep
+    // compiling unchanged; K2 repoints the daemon/ComputerUseCore at this
+    // product directly.
+    .library(
+        name: "OpenBurnBarKernel",
+        targets: ["OpenBurnBarKernel"]
+    ),
     // Windows-port WPD-0007: C-ABI dynamic library for in-process P/Invoke (C# DllImport).
     .library(
         name: "OpenBurnBarCoreCAbi",
@@ -162,9 +174,15 @@ let packageProducts: [Product] = buildLinuxSecurityOnly ? [
     )
 ] : packageProductsBase
 
+// Phase-1 K2 of docs/SURFACE_SPRAWL_AND_SPLITBRAIN_REMEDIATION_PLAN.md: the
+// privileged-input sibling chain (IrohRelay -> Media -> ComputerUseCore, linked
+// by RemoteAccessAgentCore and the HID-entitled privileged binaries) depends on
+// the UI-free OpenBurnBarKernel, NOT the SwiftUI/AppKit-carrying OpenBurnBarCore
+// target. This is where audit finding #4's link-surface win lands: the most
+// security-sensitive binaries stop transitively linking the UI monolith.
 let irohRelayDependencies: [Target.Dependency] = hasIrohXCFramework
-    ? ["OpenBurnBarCore", "OpenBurnBarIrohFFI"]
-    : ["OpenBurnBarCore"]
+    ? ["OpenBurnBarKernel", "OpenBurnBarIrohFFI"]
+    : ["OpenBurnBarKernel"]
 
 let irohBinaryTargets: [Target] = hasIrohXCFramework ? [
     .binaryTarget(
@@ -327,6 +345,15 @@ let swiftTestingAppleDependency: Target.Dependency = .product(
     package: "swift-testing",
     condition: .when(platforms: [.macOS, .iOS])
 )
+#if os(Linux)
+let swiftTestingAppleDependencies: [Target.Dependency] = []
+let swiftTestingPackageDependencies: [Package.Dependency] = []
+#else
+let swiftTestingAppleDependencies: [Target.Dependency] = [swiftTestingAppleDependency]
+let swiftTestingPackageDependencies: [Package.Dependency] = [
+    .package(url: "https://github.com/swiftlang/swift-testing", from: "0.11.0")
+]
+#endif
 let swiftCryptoDependency: Target.Dependency = .product(name: "Crypto", package: "swift-crypto")
 // Windows-port Tier-A seam (PHASE1_CORE_SPLIT_PLAN.md, PR-2): OpenBurnBarCore's
 // crypto is centralized in `Platform/PlatformSupport.swift`, which resolves to
@@ -376,7 +403,6 @@ let openBurnBarCoreExcludes = [
     // TextExpansion is an Apple keyboard-extension feature (App Group stores); not
     // in the Engine subset and not referenced outside its own directory.
     "TextExpansion",
-    "UIMode.swift",
     "SharedModels/AgentProvider+LogoBackdrop.swift",
     "SharedModels/AgentWatchLiveActivityAttributes.swift",
     "SharedModels/BurnBarLiveActivityAttributes.swift",
@@ -429,7 +455,18 @@ let computerUseCoreTestExcludes = [
     "RemoteUnlockPolicyTests.swift"
 ]
 let legacyLinuxTestSources: [String]? = ["LinuxEmptyTests.swift"]
+#if os(Linux)
+let openBurnBarCoreOffAppleTestSources: [String]? = ["LLMSafeWrapVectorTests.swift"]
+let openBurnBarCorePlaceholderExcludes = ["LinuxEmptyTests.swift"]
+let computerUseCoreOffAppleTestSources: [String]? = [
+    "LinuxSecretStorageTests.swift",
+    "LinuxRemoteUnlockCapabilitySigningKeyStoreTests.swift"
+]
+#else
 let openBurnBarCoreOffAppleTestSources: [String]? = ["LinuxEmptyTests.swift", "LLMSafeWrapVectorTests.swift"]
+let openBurnBarCorePlaceholderExcludes: [String] = []
+let computerUseCoreOffAppleTestSources: [String]? = ["LinuxEmptyTests.swift"]
+#endif
 func legacyLinuxTestExcludes(targetPath: String) -> [String] {
     let targetURL = packageRoot.appendingPathComponent(targetPath, isDirectory: true)
     guard let enumerator = FileManager.default.enumerator(
@@ -444,33 +481,44 @@ func legacyLinuxTestExcludes(targetPath: String) -> [String] {
             return nil
         }
         let relativePath = String(url.path.dropFirst(targetURL.path.count + 1))
-        return relativePath == "LinuxEmptyTests.swift" ? nil : relativePath
+        return [
+            "LinuxEmptyTests.swift",
+            "LLMSafeWrapVectorTests.swift",
+            "LinuxSecretStorageTests.swift",
+            "LinuxRemoteUnlockCapabilitySigningKeyStoreTests.swift"
+        ].contains(relativePath)
+            ? nil
+            : relativePath
     }.sorted()
 }
 // Windows-port Phase-2 (G2 parser lift): the off-Apple SQLite backend for the
-// read-only reader seam (`Sources/OpenBurnBarCore/Services/SQLite/`). The Swift
-// Windows SDK ships NO system SQLite, so the Foundation-only Engine subset compiles
-// the vendored public-domain SQLite amalgamation (`Sources/CSQLite/sqlite3.c`) as a
-// first-party C target. The module is intentionally named `OpenBurnBarCoreCSQLite`
-// instead of `CSQLite` so it can coexist with GRDB-SQLCipher's own system-library
-// `CSQLite` target in Linux package graphs. On Apple this target is ABSENT and
-// the reader links the system `SQLite3` module instead (`#if canImport(SQLite3)`),
-// so the 8.8 MB amalgamation never compiles on macOS/iOS. Host-evaluated, so it
-// is included only on the non-Apple Windows/Linux CI hosts — exactly where the
-// Engine is exercised.
-let vendoredSQLiteTargets: [Target] = [
-    .target(
-        name: "OpenBurnBarCoreCSQLite",
-        path: "Sources/CSQLite",
-        // No run-time extension loading (no dlopen/LoadLibrary) — the parsers only
-        // read a plain local file. Serialized threadsafe mode is the SQLite default.
-        cSettings: [
-            .define("SQLITE_OMIT_LOAD_EXTENSION"),
-            .define("SQLITE_THREADSAFE", to: "1")
-        ]
-    )
-]
-let coreSQLiteDependencies: [Target.Dependency] = ["OpenBurnBarCoreCSQLite"]
+// read-only reader seam (`Sources/OpenBurnBarCore/Services/SQLite/`). Windows and
+// the dependency-minimal Linux daemon boundary compile the vendored amalgamation.
+// The full Linux graph instead imports GRDB-SQLCipher's `CSQLite` system module.
+// Linking both implementations into one process is not safe: their identical
+// `sqlite3_*` symbols let the plaintext amalgamation preempt SQLCipher at runtime.
+let vendoredSQLiteTargets: [Target]
+let coreSQLiteDependencies: [Target.Dependency]
+if buildOnWindows || buildForLinuxBoundary {
+    vendoredSQLiteTargets = [
+        .target(
+            name: "OpenBurnBarCoreCSQLite",
+            path: "Sources/CSQLite",
+            // No run-time extension loading (no dlopen/LoadLibrary) — the parsers only
+            // read a plain local file. Serialized threadsafe mode is the SQLite default.
+            cSettings: [
+                .define("SQLITE_OMIT_LOAD_EXTENSION"),
+                .define("SQLITE_THREADSAFE", to: "1")
+            ]
+        )
+    ]
+    coreSQLiteDependencies = ["OpenBurnBarCoreCSQLite"]
+} else {
+    vendoredSQLiteTargets = []
+    coreSQLiteDependencies = [
+        .product(name: "CSQLite", package: "GRDB-SQLCipher")
+    ]
+}
 #else
 let openBurnBarCoreExcludes: [String] = []
 let computerUseCoreExcludes: [String] = []
@@ -478,11 +526,45 @@ let openBurnBarCoreTestExcludes: [String] = []
 let computerUseCoreTestExcludes: [String] = []
 let legacyLinuxTestSources: [String]? = nil
 let openBurnBarCoreOffAppleTestSources: [String]? = nil
+let openBurnBarCorePlaceholderExcludes: [String] = []
+let computerUseCoreOffAppleTestSources: [String]? = nil
 func legacyLinuxTestExcludes(targetPath _: String) -> [String] { [] }
 // On Apple the reader links the system `SQLite3` module, so no vendored C target
 // and no Core dependency edge — the amalgamation is not compiled on Apple builds.
 let vendoredSQLiteTargets: [Target] = []
 let coreSQLiteDependencies: [Target.Dependency] = []
+#endif
+
+#if os(Linux)
+let libsecretCFlags = [
+    "-I/usr/include/libsecret-1",
+    "-I/usr/include/glib-2.0",
+    "-I/usr/lib/aarch64-linux-gnu/glib-2.0/include",
+    "-I/usr/lib/x86_64-linux-gnu/glib-2.0/include",
+    "-I/usr/include/libmount",
+    "-I/usr/include/blkid",
+    "-I/usr/include/gio-unix-2.0"
+]
+let linuxSecretServiceTargets: [Target] = [
+    .target(
+        name: "COpenBurnBarSecretService",
+        path: "Sources/COpenBurnBarSecretService",
+        publicHeadersPath: ".",
+        cSettings: [
+            .unsafeFlags(libsecretCFlags)
+        ],
+        linkerSettings: [
+            .linkedLibrary("secret-1"),
+            .linkedLibrary("gio-2.0"),
+            .linkedLibrary("gobject-2.0"),
+            .linkedLibrary("glib-2.0")
+        ]
+    )
+]
+let linuxSecretServiceDependencies: [Target.Dependency] = ["COpenBurnBarSecretService"]
+#else
+let linuxSecretServiceTargets: [Target] = []
+let linuxSecretServiceDependencies: [Target.Dependency] = []
 #endif
 
 let firstPartyTargetsBase: [Target] = [
@@ -494,16 +576,24 @@ let firstPartyTargetsBase: [Target] = [
                 .brew(["zlib"])
             ]
         ),
+        // Phase-1 K1 kernel (see the OpenBurnBarKernel product comment above).
+        // remediation(typespec-strangler): the generated Firestore canon stays
+        // linked into the production graph — the `import OpenBurnBarFirestoreModels`
+        // consumer (ProviderAccountDeviceLinkTypes+Generated.swift) moved here,
+        // so anything that links the kernel (which includes OpenBurnBarCore and
+        // everything downstream) still transitively links the generated models
+        // and drift in the generated wire schema still fails the production build.
+        .target(
+            name: "OpenBurnBarKernel",
+            dependencies: [
+                "OpenBurnBarFirestoreModels",
+                swiftCryptoNonAppleDependency
+            ]
+        ),
         .target(
             name: "OpenBurnBarCore",
-            // remediation(typespec-strangler): link the generated Firestore
-            // canon into the production graph so it is no longer test-only.
-            // Core gains a real `import OpenBurnBarFirestoreModels` consumer
-            // (ProviderAccountDeviceLinkTypes+Generated.swift); anything that
-            // links OpenBurnBarCore now transitively links the generated
-            // models, so drift in the generated wire schema fails the
-            // production build, not just the test target.
             dependencies: [
+                "OpenBurnBarKernel",
                 "OpenBurnBarFirestoreModels",
                 swiftCryptoNonAppleDependency
             ] + coreSQLiteDependencies,
@@ -549,7 +639,7 @@ let firstPartyTargetsBase: [Target] = [
         ),
         .target(
             name: "OpenBurnBarMedia",
-            dependencies: ["OpenBurnBarCore", "OpenBurnBarIrohRelay", swiftCryptoDependency]
+            dependencies: ["OpenBurnBarKernel", "OpenBurnBarIrohRelay", swiftCryptoDependency]
         ),
         .target(
             name: "BurnBarRemoteEngine",
@@ -557,7 +647,8 @@ let firstPartyTargetsBase: [Target] = [
         ),
         .target(
             name: "OpenBurnBarComputerUseCore",
-            dependencies: ["OpenBurnBarCore", "OpenBurnBarMedia", swiftCryptoDependency]
+            dependencies: ["OpenBurnBarKernel", "OpenBurnBarMedia", swiftCryptoDependency]
+                + linuxSecretServiceDependencies
                 + (buildOnWindows ? [] : ["Czlib"]),
             exclude: computerUseCoreExcludes,
             linkerSettings: [
@@ -577,7 +668,10 @@ let firstPartyTargetsBase: [Target] = [
         ),
         .target(
             name: "OpenBurnBarLinuxSecurity",
-            dependencies: [swiftCryptoDependency]
+            dependencies: [swiftCryptoDependency],
+            linkerSettings: [
+                .linkedLibrary("pam", .when(platforms: [.linux]))
+            ]
         ),
         .target(
             name: "OpenBurnBarSignalCore",
@@ -665,9 +759,8 @@ let firstPartyTargetsBase: [Target] = [
                 "OpenBurnBarComputerUseCore",
                 "OpenBurnBarSignalCore",
                 "OpenBurnBarSignalSessionTransport",
-                swiftCryptoDependency,
-                swiftTestingAppleDependency
-            ],
+                swiftCryptoDependency
+            ] + swiftTestingAppleDependencies,
             resources: [
                 .process("Fixtures")
             ],
@@ -678,9 +771,11 @@ let firstPartyTargetsBase: [Target] = [
             dependencies: [
                 "OpenBurnBarCore",
                 "OpenBurnBarFirestoreModels",
-                swiftTestingDependency
-            ],
-            exclude: openBurnBarCoreTestExcludes + legacyLinuxTestExcludes(targetPath: "Tests/OpenBurnBarCoreTests"),
+                "OpenBurnBarLinuxSecurity"
+            ] + swiftTestingAppleDependencies,
+            exclude: openBurnBarCoreTestExcludes
+                + openBurnBarCorePlaceholderExcludes
+                + legacyLinuxTestExcludes(targetPath: "Tests/OpenBurnBarCoreTests"),
             sources: openBurnBarCoreOffAppleTestSources,
             resources: [
                 .process("Fixtures")
@@ -706,9 +801,8 @@ let firstPartyTargetsBase: [Target] = [
             name: "OpenBurnBarLinuxSecurityTests",
             dependencies: [
                 "OpenBurnBarLinuxSecurity",
-                swiftCryptoDependency,
-                swiftTestingAppleDependency
-            ],
+                swiftCryptoDependency
+            ] + swiftTestingAppleDependencies,
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(
@@ -743,11 +837,10 @@ let firstPartyTargetsBase: [Target] = [
             dependencies: [
                 "OpenBurnBarComputerUseCore",
                 "OpenBurnBarCore",
-                "OpenBurnBarMedia",
-                swiftTestingDependency
-            ],
+                "OpenBurnBarMedia"
+            ] + swiftTestingAppleDependencies,
             exclude: computerUseCoreTestExcludes + legacyLinuxTestExcludes(targetPath: "Tests/OpenBurnBarComputerUseCoreTests"),
-            sources: legacyLinuxTestSources,
+            sources: computerUseCoreOffAppleTestSources,
             resources: [
                 .process("Fixtures")
             ],
@@ -792,7 +885,25 @@ let firstPartyTargetsBase: [Target] = [
         )
     ]
 
-let firstPartyTargets: [Target] = firstPartyTargetsBase + (buildForLinuxBoundary ? [] : [
+#if os(Linux)
+// Placeholder-only targets are not tests. Keeping them in the Linux SwiftPM
+// graph lets `swift test` report success while exercising no supported code.
+let linuxPlaceholderTestTargetNames: Set<String> = [
+    "OpenBurnBarAnalyticsTests",
+    "OpenBurnBarIrohRelayTests",
+    "OpenBurnBarMediaTests",
+    "BurnBarRemoteEngineTests",
+    "OpenBurnBarSignalCoreTests",
+    "OpenBurnBarSignalSessionTransportTests"
+]
+let platformFirstPartyTargetsBase = firstPartyTargetsBase.filter {
+    !linuxPlaceholderTestTargetNames.contains($0.name)
+}
+#else
+let platformFirstPartyTargetsBase = firstPartyTargetsBase
+#endif
+
+let firstPartyTargets: [Target] = platformFirstPartyTargetsBase + (buildForLinuxBoundary ? [] : [
     .target(
         name: "OpenBurnBarData",
         dependencies: [
@@ -803,9 +914,8 @@ let firstPartyTargets: [Target] = firstPartyTargetsBase + (buildForLinuxBoundary
         name: "OpenBurnBarDataTests",
         dependencies: [
             "OpenBurnBarData",
-            .product(name: "GRDB", package: "GRDB-SQLCipher"),
-            swiftTestingAppleDependency
-        ],
+            .product(name: "GRDB", package: "GRDB-SQLCipher")
+        ] + swiftTestingAppleDependencies,
         resources: [
             .process("Fixtures")
         ],
@@ -816,7 +926,10 @@ let firstPartyTargets: [Target] = firstPartyTargetsBase + (buildForLinuxBoundary
 let linuxSecurityOnlyTargets: [Target] = [
     .target(
         name: "OpenBurnBarLinuxSecurity",
-        dependencies: [swiftCryptoDependency]
+        dependencies: [swiftCryptoDependency],
+        linkerSettings: [
+            .linkedLibrary("pam", .when(platforms: [.linux]))
+        ]
     ),
     .testTarget(
         name: "OpenBurnBarLinuxSecurityTests",
@@ -830,7 +943,7 @@ let linuxSecurityOnlyTargets: [Target] = [
 
 let allTargets: [Target] = buildLinuxSecurityOnly
     ? linuxSecurityOnlyTargets
-    : irohBinaryTargets + burnBarRemoteBinaryTargets + signalBinaryTargets + firstPartyTargets + vendoredSQLiteTargets
+    : irohBinaryTargets + burnBarRemoteBinaryTargets + signalBinaryTargets + linuxSecretServiceTargets + firstPartyTargets + vendoredSQLiteTargets
 
 let package = Package(
     name: "OpenBurnBarCore",
@@ -842,8 +955,7 @@ let package = Package(
         .package(name: "LibSignalClient", path: "../Vendor/libsignal/swift")
     ] : []) + (buildForLinuxBoundary ? [] : [
         .package(path: "../Vendor/GRDB-SQLCipher")
-    ]) + [
-        .package(url: "https://github.com/swiftlang/swift-testing", from: "0.11.0"),
+    ]) + swiftTestingPackageDependencies + [
         .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0")
     ],
     targets: allTargets,

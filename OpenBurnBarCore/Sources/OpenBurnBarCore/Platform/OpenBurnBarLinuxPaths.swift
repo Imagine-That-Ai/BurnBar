@@ -27,7 +27,7 @@ public enum OpenBurnBarLinuxPaths {
             return URL(fileURLWithPath: xdg, isDirectory: true)
                 .appendingPathComponent(defaultAppDirName, isDirectory: true)
         }
-        return currentHomeDirectory
+        return currentHomeDirectory(environment: environment)
             .appendingPathComponent(".local/share/\(defaultAppDirName)", isDirectory: true)
     }
 
@@ -36,7 +36,7 @@ public enum OpenBurnBarLinuxPaths {
             return URL(fileURLWithPath: xdg, isDirectory: true)
                 .appendingPathComponent(defaultConfigRelativeComponents[0], isDirectory: true)
         }
-        return currentHomeDirectory
+        return currentHomeDirectory(environment: environment)
             .appendingPathComponent(".config/\(defaultAppDirName)", isDirectory: true)
     }
 
@@ -71,36 +71,36 @@ public enum OpenBurnBarLinuxPaths {
     }
 
     /// Expand `~` and apply XDG_CONFIG_HOME / XDG_DATA_HOME rewrites so UI display
-    /// paths and parser discovery agree under custom XDG layouts (VAL-PARSER-002).
+    /// paths and parser discovery agree under custom XDG layouts.
     public static func expandPath(
         _ path: String,
         homeDirectory: URL? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> String {
         guard path.hasPrefix("~") else { return path }
-        let home = homeDirectory ?? currentHomeDirectory
+        let home = homeDirectory ?? currentHomeDirectory(environment: environment)
         if path == "~" {
             return home.path
         }
         guard path.hasPrefix("~/") else { return path }
-        let rest = String(path.dropFirst(2)) // path after ~/
-
+        let rest = String(path.dropFirst(2))
         if rest.hasPrefix(".config/"),
            let xdg = trimmedNonEmpty(environment["XDG_CONFIG_HOME"]) {
             let suffix = String(rest.dropFirst(".config/".count))
-            return (suffix.isEmpty ? URL(fileURLWithPath: xdg, isDirectory: true)
-                    : URL(fileURLWithPath: xdg, isDirectory: true).appendingPathComponent(suffix)).path
+            return URL(fileURLWithPath: xdg, isDirectory: true)
+                .appendingPathComponent(suffix)
+                .path
         }
         if rest.hasPrefix(".local/share/"),
            let xdg = trimmedNonEmpty(environment["XDG_DATA_HOME"]) {
             let suffix = String(rest.dropFirst(".local/share/".count))
-            return (suffix.isEmpty ? URL(fileURLWithPath: xdg, isDirectory: true)
-                    : URL(fileURLWithPath: xdg, isDirectory: true).appendingPathComponent(suffix)).path
+            return URL(fileURLWithPath: xdg, isDirectory: true)
+                .appendingPathComponent(suffix)
+                .path
         }
         return home.appendingPathComponent(rest).path
     }
 
-    /// Detect legacy support dir from pre-VAL-PATH-001 layouts (`~/.config/OpenBurnBar`).
     public static func legacySupportDirectoryURL(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> URL? {
@@ -112,7 +112,8 @@ public enum OpenBurnBarLinuxPaths {
             )
         }
         candidates.append(
-            currentHomeDirectory.appendingPathComponent(".config/OpenBurnBar", isDirectory: true)
+            currentHomeDirectory(environment: environment)
+                .appendingPathComponent(".config/OpenBurnBar", isDirectory: true)
         )
         for url in candidates {
             var isDir: ObjCBool = false
@@ -123,14 +124,14 @@ public enum OpenBurnBarLinuxPaths {
         return nil
     }
 
-    /// Human-readable migration hint when legacy support data exists and the new path is empty.
     public static func legacySupportMigrationHint(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> String? {
         guard let legacy = legacySupportDirectoryURL(environment: environment) else { return nil }
         let modern = supportDirectoryURL(environment: environment)
-        if legacy.path == modern.path { return nil }
-        if FileManager.default.fileExists(atPath: modern.path) { return nil }
+        if legacy.path == modern.path || FileManager.default.fileExists(atPath: modern.path) {
+            return nil
+        }
         return "Legacy support data found at \(legacy.path). Set OPENBURNBAR_DAEMON_SUPPORT_DIR=\(legacy.path) or move it to \(modern.path)."
     }
 
@@ -140,11 +141,10 @@ public enum OpenBurnBarLinuxPaths {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    private static var currentHomeDirectory: URL {
-        #if os(iOS) || os(tvOS) || os(watchOS) || os(visionOS)
-        URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
-        #else
-        FileManager.default.homeDirectoryForCurrentUser
-        #endif
+    private static func currentHomeDirectory(environment: [String: String]) -> URL {
+        if let home = trimmedNonEmpty(environment["HOME"]) {
+            return URL(fileURLWithPath: home, isDirectory: true)
+        }
+        return URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
     }
 }

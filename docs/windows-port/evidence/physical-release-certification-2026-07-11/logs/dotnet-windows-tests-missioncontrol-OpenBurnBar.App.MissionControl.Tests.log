@@ -1,0 +1,14 @@
+  Determining projects to restore...
+  Restored /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/missioncontrol/OpenBurnBar.App.MissionControl.Tests.csproj (in 231 ms).
+  4 of 5 projects are up-to-date for restore.
+  OpenBurnBar.CloudSync -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/cloudsync/OpenBurnBar.CloudSync/bin/Release/net8.0/OpenBurnBar.CloudSync.dll
+  OpenBurnBar.App.Configuration -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/app/OpenBurnBar.App.Configuration/bin/Release/net8.0/OpenBurnBar.App.Configuration.dll
+  OpenBurnBar.Storage -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/storage/OpenBurnBar.Storage/bin/Release/net8.0/OpenBurnBar.Storage.dll
+  OpenBurnBar.App.Presentation -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/app/OpenBurnBar.App.Presentation/bin/Release/net8.0/OpenBurnBar.App.Presentation.dll
+  OpenBurnBar.Storage -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/storage/OpenBurnBar.Storage/bin/Release/net10.0/OpenBurnBar.Storage.dll
+  OpenBurnBar.App.MissionControl.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/missioncontrol/bin/Release/net10.0/OpenBurnBar.App.MissionControl.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/missioncontrol/bin/Release/net10.0/OpenBurnBar.App.MissionControl.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:     4, Skipped:     0, Total:     4, Duration: 31 ms - OpenBurnBar.App.MissionControl.Tests.dll (net10.0)

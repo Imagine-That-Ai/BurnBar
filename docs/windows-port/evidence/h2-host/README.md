@@ -1,7 +1,7 @@
 # H2 host validation evidence (pre-VM scaffolding)
 
-**Status:** Output directories prepared before Win11 VM access (master plan §18.4 / H2).  
-**Runner:** `pwsh scripts/windows-port/vm-validate.ps1 -RepoRoot <checkout>`  
+**Status:** Output directories prepared before Win11 VM access (master plan §18.4 / H2).
+**Runner:** `pwsh scripts/windows-port/vm-validate.ps1 -RepoRoot <checkout>`
 **Rule:** Do not promote host-gated ledger rows to `Real` without files committed here (or linked from the certification bundle) that name the proof that passed.
 
 ## Expected layout
@@ -27,6 +27,6 @@
 
 ## Related
 
-- Current full-product audit: [`docs/windows-port/WINDOWS_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md`](../../WINDOWS_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md)
+- Master plan: `docs/windows-port/WINDOWS_FULL_PARITY_MASTER_PLAN_2026-07-09.md` §6
 - VM script: `scripts/windows-port/vm-validate.ps1`
 - Human gates: `docs/windows-port/TONIGHT_PUNCHLIST.md`, `ALBERTO_PARITY_CHECKLIST.md`

@@ -6,11 +6,14 @@ import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const rustBridge = fs.readFileSync(path.join(here, '../src-tauri/src/lib.rs'), 'utf8');
 const tsBridge = fs.readFileSync(path.join(here, 'tauriBridge.ts'), 'utf8');
+const canonicalRpc = fs.readFileSync(
+  path.join(here, '../../../OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarRPCIPCCanon.generated.swift'),
+  'utf8'
+);
 
 /** Invented method families that must not appear unless added to BurnBarRPCMethod. */
 const FORBIDDEN_RAW = [
   'daemon.hermes.',
-  'daemon.media.',
   'daemon.mercury.',
   'daemon.smarthub.',
   'daemon.textexpansion.',
@@ -47,7 +50,6 @@ describe('VAL-RPC bridge contract', () => {
         `lib.rs must not call_daemon_method ${needle}`
       ).toBe(false);
     }
-    expect(calls).not.toContain('daemon.media.status');
     const tsLive = stripComments(tsBridge);
     for (const needle of FORBIDDEN_RAW) {
       expect(tsLive.includes(needle), `tauriBridge.ts must not call ${needle}`).toBe(false);
@@ -91,9 +93,16 @@ describe('VAL-RPC bridge contract', () => {
     expect(tsBridge).toContain('computer_use_session_start');
   });
 
-  it('media_status returns capability-absent without inventing RPC', () => {
-    expect(rustBridge).toContain('capabilityAvailable');
-    expect(rustBridge).toMatch(/fn media_status[\s\S]*capabilityAvailable[\s\S]*false/);
-    expect(rustBridge).not.toMatch(/call_daemon_method\(\s*"daemon\.media/);
+  it('wires media commands only to canonical daemon RPC methods', () => {
+    const mediaCalls = daemonMethodCalls(rustBridge).filter((method) =>
+      method.startsWith('daemon.media.')
+    );
+    expect(mediaCalls).toContain('daemon.media.status');
+    expect(mediaCalls).toContain('daemon.media.session.state');
+    expect(mediaCalls).toContain('daemon.media.call.accept');
+    expect(mediaCalls).toContain('daemon.media.file.send');
+    for (const method of new Set(mediaCalls)) {
+      expect(canonicalRpc, `${method} must exist in BurnBarRPCIPCCanon`).toContain(`id: "${method}"`);
+    }
   });
 });

@@ -273,7 +273,12 @@ jobs:
       - name: Run managed-to-Swift usage scan integration
         env:
           OPENBURNBAR_REQUIRE_NATIVE_ENGINE_INTEGRATION: "1"
-        run: dotnet test windows/tests/usage-runtime/OpenBurnBar.App.UsageRuntime.Tests.csproj -c Release --filter FullyQualifiedName~NativeUsageEngineIntegrationTests
+        run: >-
+          dotnet test windows/tests/usage-runtime/OpenBurnBar.App.UsageRuntime.Tests.csproj
+          -c Release
+          --filter FullyQualifiedName~NativeUsageEngineIntegrationTests
+          --blame-hang
+          --blame-hang-timeout 5m
 
       - name: Upload x64 native engine bundle
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
@@ -503,7 +508,12 @@ jobs:
       - name: Run managed-to-Swift usage scan integration (ARM64)
         env:
           OPENBURNBAR_REQUIRE_NATIVE_ENGINE_INTEGRATION: "1"
-        run: dotnet test windows/tests/usage-runtime/OpenBurnBar.App.UsageRuntime.Tests.csproj -c Release --filter FullyQualifiedName~NativeUsageEngineIntegrationTests
+        run: >-
+          dotnet test windows/tests/usage-runtime/OpenBurnBar.App.UsageRuntime.Tests.csproj
+          -c Release
+          --filter FullyQualifiedName~NativeUsageEngineIntegrationTests
+          --blame-hang
+          --blame-hang-timeout 5m
 
       - name: Upload ARM64 native engine bundle
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0

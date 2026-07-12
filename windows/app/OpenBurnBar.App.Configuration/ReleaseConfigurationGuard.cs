@@ -13,6 +13,9 @@ public static class ReleaseConfigurationGuard
         {
             "OPENBURNBAR_SQLCIPHER_PATH",
             "OPENBURNBAR_SQLCIPHER_PASSPHRASE",
+            "OPENBURNBAR_FIREBASE_ID_TOKEN",
+            "OPENBURNBAR_APP_CHECK_TOKEN",
+            "OPENBURNBAR_VAULT_KEY_B64",
         };
 
     public static void ThrowIfPlaintextCredentialEnvironmentPresent(

@@ -1,8 +1,8 @@
 # Evidence — Named-pipe signed-nonce IPC handshake (Real)
 
-**Ledger row:** `pal-ipc-named-pipe`  
-**Status claim:** Real  
-**Date recorded:** 2026-07-09  
+**Ledger row:** `pal-ipc-named-pipe`
+**Status claim:** Real
+**Date recorded:** 2026-07-09
 **Design:** `docs/windows-port/design/0004-named-pipe-peer-auth.md`
 
 ## What this proves

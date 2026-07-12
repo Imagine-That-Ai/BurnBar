@@ -3,34 +3,41 @@
   "$id": "https://burnbar.ai/schemas/latest-linux.json",
   "title": "OpenBurnBar Linux update feed",
   "type": "object",
-  "required": ["version", "publishedAt", "channel", "artifacts"],
-  "additionalProperties": true,
+  "additionalProperties": false,
+  "required": ["schemaVersion", "product", "platform", "version", "gitCommit", "publishedAt", "channel", "artifacts", "signature"],
   "properties": {
-    "version": { "type": "string", "minLength": 1 },
-    "publishedAt": { "type": "string", "minLength": 1 },
-    "channel": { "type": "string", "enum": ["stable", "prerelease", "nightly"] },
-    "notes": { "type": "string" },
-    "gitCommit": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "product": { "const": "OpenBurnBar" },
+    "platform": { "const": "linux" },
+    "version": { "type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$" },
+    "gitCommit": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "publishedAt": { "type": "string", "format": "date-time" },
+    "channel": { "enum": ["stable", "prerelease", "nightly"] },
     "artifacts": {
       "type": "array",
-      "minItems": 1,
+      "minItems": 2,
       "items": {
         "type": "object",
-        "required": ["type", "url", "sha256"],
+        "additionalProperties": false,
+        "required": ["type", "architecture", "url", "sha256", "size", "signatureUrl"],
         "properties": {
-          "type": { "type": "string", "enum": ["appimage", "deb", "rpm", "daemon"] },
-          "url": { "type": "string", "minLength": 1 },
-          "sha256": { "type": "string", "minLength": 64, "maxLength": 64 },
-          "size": { "type": "integer", "minimum": 0 },
-          "signatureUrl": { "type": "string" }
+          "type": { "enum": ["appimage", "deb", "rpm", "daemon"] },
+          "architecture": { "enum": ["aarch64", "x86_64"] },
+          "url": { "type": "string", "format": "uri" },
+          "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "size": { "type": "integer", "minimum": 1 },
+          "signatureUrl": { "type": "string", "format": "uri" }
         }
       }
     },
-    "ed25519": {
+    "signature": {
       "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "publicKeySpkiSha256", "url"],
       "properties": {
-        "publicKeyId": { "type": "string" },
-        "signatureBase64": { "type": "string" }
+        "algorithm": { "const": "Ed25519" },
+        "publicKeySpkiSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "url": { "type": "string", "format": "uri" }
       }
     }
   }

@@ -30,6 +30,7 @@ public sealed class WindowsUsageRuntime : IUsageRuntime
     private CancellationTokenSource? _lifetimeCancellation;
     private CancellationTokenSource? _debounceCancellation;
     private Task? _periodicTask;
+    private Task? _startupTask;
     private bool _started;
     private bool _disposed;
 
@@ -88,7 +89,25 @@ public sealed class WindowsUsageRuntime : IUsageRuntime
 
         RebuildWatchers();
         _periodicTask = RunPeriodicScansAsync(_lifetimeCancellation.Token);
-        await ScanAsync(UsageScanReason.Startup, cancellationToken).ConfigureAwait(false);
+        Task startupTask = ScanAsync(UsageScanReason.Startup, cancellationToken);
+        lock (_stateGate)
+        {
+            _startupTask = startupTask;
+        }
+        try
+        {
+            await startupTask.ConfigureAwait(false);
+        }
+        finally
+        {
+            lock (_stateGate)
+            {
+                if (ReferenceEquals(_startupTask, startupTask))
+                {
+                    _startupTask = null;
+                }
+            }
+        }
     }
 
     public async Task ScanAsync(
@@ -195,6 +214,7 @@ public sealed class WindowsUsageRuntime : IUsageRuntime
     {
         CancellationTokenSource? lifetime;
         Task? periodic;
+        Task? startup;
         lock (_stateGate)
         {
             if (!_started)
@@ -206,6 +226,8 @@ public sealed class WindowsUsageRuntime : IUsageRuntime
             _lifetimeCancellation = null;
             periodic = _periodicTask;
             _periodicTask = null;
+            startup = _startupTask;
+            _startupTask = null;
         }
 
         lifetime?.Cancel();
@@ -220,6 +242,10 @@ public sealed class WindowsUsageRuntime : IUsageRuntime
             catch (OperationCanceledException) when (lifetime?.IsCancellationRequested == true)
             {
             }
+        }
+        if (startup is not null)
+        {
+            await startup.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
         lifetime?.Dispose();
         Publish(State with

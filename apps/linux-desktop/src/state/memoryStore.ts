@@ -118,11 +118,8 @@ export const useMemoryStore = create<MemoryState>()((set, get) => ({
       const item = get().inbox?.items.find((entry) => entry.id === id);
       if (bridge.memorySetStatus) {
         if (status === 'rejected') {
-          // Permanent forget — not a soft "return to pending".
           await bridge.memorySetStatus('reject', { memoryID: id });
         } else {
-          // Already-durable rows (approved status, audit hash, or recall origin):
-          // local-mark only — never re-persist via remember (Issue 9).
           const alreadyDurable =
             item?.status === 'approved' ||
             Boolean(item?.auditHash) ||
@@ -145,7 +142,6 @@ export const useMemoryStore = create<MemoryState>()((set, get) => ({
             }));
             return;
           }
-          // "Save as durable memory" via remember — fail closed without body.
           const text = item?.body?.trim() ?? '';
           if (!text) {
             throw new Error(
@@ -155,12 +151,9 @@ export const useMemoryStore = create<MemoryState>()((set, get) => ({
           if (text.startsWith('approved:')) {
             throw new Error('Refusing invented approved:<id> placeholder text.');
           }
-          // Dedupe: if another inbox item already approved with same body, local-mark only.
           const duplicate = get().inbox?.items.some(
             (entry) =>
-              entry.id !== id &&
-              entry.status === 'approved' &&
-              entry.body.trim() === text
+              entry.id !== id && entry.status === 'approved' && entry.body.trim() === text
           );
           if (duplicate) {
             writeStoredStatus(id, 'approved');
@@ -188,13 +181,8 @@ export const useMemoryStore = create<MemoryState>()((set, get) => ({
           });
         }
       } else if (bridge.memoryReviewDecision) {
-        if (status === 'approved') {
-          const text = item?.body?.trim() ?? '';
-          if (!text) {
-            throw new Error(
-              'Cannot approve/save memory without body text (fail-closed).'
-            );
-          }
+        if (status === 'approved' && !(item?.body?.trim())) {
+          throw new Error('Cannot approve/save memory without body text (fail-closed).');
         }
         await bridge.memoryReviewDecision(id, status);
       } else {

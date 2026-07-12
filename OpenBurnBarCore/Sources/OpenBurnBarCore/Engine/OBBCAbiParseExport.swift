@@ -107,7 +107,7 @@ enum OBBCAbiClaudeStdoutParser {
     static let projectDir = "-Users-test-Documents-ParserContract"
     static let sessionId = "claude-basic-session"
 
-    static func parse(stdout: String, provider: AgentProvider) async throws -> [TokenUsage] {
+    static func parseSynchronously(stdout: String, provider: AgentProvider) throws -> [TokenUsage] {
         guard provider == .claudeCode else {
             throw OBBCAbiParseError.unsupportedProvider(provider.rawValue)
         }
@@ -128,7 +128,7 @@ enum OBBCAbiClaudeStdoutParser {
             appPaths: appPaths,
             projectsDirectoryOverride: projectsRoot
         )
-        let result = try await parser.parse()
+        let result = try parser.parseSynchronously(options: .default)
         return result.usages
     }
 }
@@ -151,7 +151,6 @@ enum OBBCAbiParseError: Error, CustomStringConvertible {
     }
 }
 
-@_cdecl("obb_parse_cli_stdout")
 public func obb_parse_cli_stdout(
     stdout: UnsafePointer<CChar>?,
     provider: UnsafePointer<CChar>?
@@ -189,48 +188,10 @@ enum OBBCAbiParseExport {
             throw OBBCAbiParseError.unknownProvider(providerToken)
         }
 
-        let usages = try awaitBlocking {
-            try await OBBCAbiClaudeStdoutParser.parse(stdout: stdoutString, provider: agentProvider)
-        }
+        let usages = try OBBCAbiClaudeStdoutParser.parseSynchronously(
+            stdout: stdoutString,
+            provider: agentProvider
+        )
         return .success(usages)
-    }
-
-    /// Bridge async parser into the synchronous C ABI (export blocks until parse completes).
-    private static func awaitBlocking<T: Sendable>(_ operation: @Sendable @escaping () async throws -> T) throws -> T {
-        let holder = OBBCAbiBlockingOutcome<T>()
-        let semaphore = DispatchSemaphore(value: 0)
-        Task {
-            do {
-                holder.store(.success(try await operation()))
-            } catch {
-                holder.store(.failure(error))
-            }
-            semaphore.signal()
-        }
-        semaphore.wait()
-        return try holder.take()
-    }
-}
-
-// NSLock-protected blocking outcome result; safe for concurrent access.
-// sendable-allowlist: nslock-blocking-outcome
-private final class OBBCAbiBlockingOutcome<T>: @unchecked Sendable {
-    private let lock = NSLock()
-    private var outcome: Result<T, Error>?
-
-    func store(_ value: Result<T, Error>) {
-        lock.lock()
-        defer { lock.unlock() }
-        outcome = value
-    }
-
-    func take() throws -> T {
-        lock.lock()
-        defer { lock.unlock() }
-        switch outcome {
-        case .success(let value): return value
-        case .failure(let error): throw error
-        case .none: throw OBBCAbiParseError.encodeFailed
-        }
     }
 }

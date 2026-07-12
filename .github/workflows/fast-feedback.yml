@@ -572,7 +572,7 @@ jobs:
             packages/hermes-wire-protocol/gen/HermesWireProtocol.kt \
             packages/hermes-wire-protocol/gen/wire_protocol.rs \
             android/openburnbar-iroh-relay/src/main/java/com/openburnbar/irohrelay/Generated/HermesRealtimeRelayGeneratedTypes.kt \
-            OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/Generated
+            OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Generated
           node packages/hermes-wire-protocol/codegen.mjs
           # codegen.mjs writes ALL generated surfaces (the gen/ references AND the real
           # consumed payload types: Kotlin android Generated/ + Swift SharedModels/Generated/).
@@ -582,7 +582,7 @@ jobs:
             services/hermes-realtime-relay/src/generated/wireProtocol.ts \
             packages/hermes-wire-protocol/gen \
             android/openburnbar-iroh-relay/src/main/java/com/openburnbar/irohrelay/Generated \
-            OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/Generated \
+            OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Generated \
             || { echo "::error::Hermes wire-protocol generated files are stale — run 'node packages/hermes-wire-protocol/codegen.mjs' and commit."; exit 1; }
           node packages/hermes-wire-protocol/parity.mjs
           node --test packages/hermes-wire-protocol/protocol.test.mjs
@@ -1043,7 +1043,7 @@ jobs:
           sparse-checkout: |
             AgentLens/Services/DataStore
             OpenBurnBarMobile/Models
-            OpenBurnBarCore/Sources/OpenBurnBarCore/Budget
+            OpenBurnBarCore/Sources/OpenBurnBarKernel/Budget
             scripts/ci/check-budget-fork-drift.sh
             scripts/ci/budget-fork-baselines
 
@@ -1101,13 +1101,8 @@ jobs:
         run: bash scripts/ci/verify-windows-storage-architecture.sh
 
   # ── Windows parity ledger (Phase 0 anti-false-green gate) ───────────────────
-  # Machine-readable macOS↔Windows parity ledger + scanner. Fails if:
-  #   • any row uses Authored (or other non-Real/Substituted/DeferredApproved/Blocked)
-  #   • any Real row lacks tests/evidence or its blocking paths contain sample/stub/
-  #     demo/mock/dev-host/placeholder tokens
-  #   • any macOS primary Command Deck route is unmapped
-  #   • the certification bundle reintroduces fake screenshot path claims
-  # Full checkout (not sparse): Real-row token scan walks listed production paths.
+  # The machine-readable macOS↔Windows ledger rejects non-approved states, Real
+  # rows without tests/evidence, fake production paths, and unmapped primary routes.
   windows-parity-ledger:
     name: Windows parity ledger (Phase 0)
     runs-on: ubuntu-latest
@@ -1121,7 +1116,6 @@ jobs:
         with:
           python-version: "3.11"
 
-      # Explicit install — do not assume ubuntu-latest ships PyYAML.
       - name: Install PyYAML for ledger scanner
         run: python3 -m pip install --user 'pyyaml>=6,<7'
 
@@ -1221,11 +1215,30 @@ jobs:
       - name: Swift file-size debt budget (shrink-only)
         run: ./scripts/debt/check-swift-file-size-budget.sh
 
+      # Structural remediation ratchets (audit 2026-06-30 findings #4/#5).
+      # Core UI purity: no new SwiftUI/AppKit imports in OpenBurnBarCore's main
+      # module; pure sibling targets assert-zero. Mission split-brain: the
+      # GUI-side mission-authority cluster may only shrink as authority moves
+      # to the daemon MissionControl.
+      - name: Core UI-purity budget (shrink-only ratchet)
+        run: ./scripts/debt/check-core-ui-purity-budget.sh
+
+      - name: Mission split-brain budget (shrink-only ratchet)
+        run: ./scripts/debt/check-mission-splitbrain-budget.sh
+
       # Windows per-tree size ratchet (rooted at windows/, partitioned by
       # app/pal/native/tests). Blocking Windows check on every PR — a red
       # Windows budget fails HERE at merge time. Pure bash + python3.
       - name: Windows tree budget (per-tree shrink-only ratchet)
         run: ./scripts/debt/check-windows-tree-budget.sh
+
+      - name: BurnBarRPC IPC canon is current
+        run: node tools/ipc/generate-burnbarrpc-canon.mjs --check
+
+      - name: Migration rollback catalog covers both migrators
+        run: |
+          node --test scripts/ci/verify-migration-rollback-catalog.test.mjs
+          node scripts/ci/verify-migration-rollback-catalog.mjs
 
   # ── Fast summary gate ──────────────────────────────────────────────────────
   fast-feedback-gate:

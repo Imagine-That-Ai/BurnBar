@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Mints short-lived, domain-tagged capability tokens for privileged input leaves.
 public struct CapabilityTokenIssuer: Sendable {

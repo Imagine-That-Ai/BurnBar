@@ -865,7 +865,7 @@ record_ipc_drift() {
       echo "generator_source=tools/ipc/generate-burnbarrpc-canon.mjs"
       node tools/ipc/generate-burnbarrpc-canon.mjs
       echo "generator_exit_code=$?"
-      echo "generated_swift=OpenBurnBarCore/Sources/OpenBurnBarCore/Contracts/BurnBarRPCIPCCanon.generated.swift"
+      echo "generated_swift=OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarRPCIPCCanon.generated.swift"
       echo "generated_typescript=extensions/openburnbar/src/generated/burnbar-rpc-ipc-canon.generated.ts"
       echo "generated_json=docs/linux-port/generated/burnbar-rpc-ipc-canon.linux.json"
       echo
@@ -923,7 +923,7 @@ record_source_scans() {
     echo
     echo "### capability/subscription classification scan"
     search_source 'subscriptionStart|subscriptionResume|case subscription|cliSupport|capability_denied' \
-      OpenBurnBarCore/Sources/OpenBurnBarCore/Contracts/BurnBarRPCContracts.swift \
+      OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarRPCContracts.swift \
       OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarRPCCapability.swift \
       OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC \
       OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift

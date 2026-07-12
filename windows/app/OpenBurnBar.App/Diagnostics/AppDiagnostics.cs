@@ -22,19 +22,27 @@ public static class AppDiagnostics
     {
         get
         {
-            string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            if (string.IsNullOrWhiteSpace(local))
-            {
-                local = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "AppData", "Local");
-            }
-
-            return Path.Combine(local, "OpenBurnBar", "logs");
+            return RuntimePaths.AppDataSubdirectory("logs");
         }
     }
 
     public static string CrashLogPath => Path.Combine(LogDirectory, "winui-crash.log");
 
     public static string RouteLogPath => Path.Combine(LogDirectory, "route-breadcrumbs.log");
+
+    public static string SupportBundleDirectory
+    {
+        get
+        {
+            string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (string.IsNullOrWhiteSpace(local))
+            {
+                local = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "AppData", "Local");
+            }
+
+            return Path.Combine(local, "OpenBurnBar", "support-bundles");
+        }
+    }
 
     public static string ActiveRouteKey
     {
@@ -109,6 +117,30 @@ public static class AppDiagnostics
 
     public static void NativeCapabilitySkipped(string feature, string reason) =>
         LogEvent("native.skipped", $"{feature}: {reason}");
+
+    public static SupportBundleResult CreateSupportBundle(string? outputDirectory = null)
+    {
+        string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (string.IsNullOrWhiteSpace(local))
+        {
+            local = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "AppData", "Local");
+        }
+
+        string root = Path.Combine(local, "OpenBurnBar");
+        string destination = outputDirectory ?? SupportBundleDirectory;
+        Directory.CreateDirectory(destination);
+        string bundlePath = Path.Combine(destination, $"openburnbar-support-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.zip");
+        return SupportBundleBuilder.Create(
+            bundlePath,
+            new[]
+            {
+                LogDirectory,
+                Path.Combine(root, "app_config.json"),
+                Path.Combine(root, "openburnbar.sqlite.recovery.log"),
+                Path.Combine(root, "openburnbar.sqlite.key-provenance.json"),
+                Path.Combine(root, "openburnbar.sqlite.windows-migration-journal.json"),
+            });
+    }
 
     private static string Format(string category, string message)
     {

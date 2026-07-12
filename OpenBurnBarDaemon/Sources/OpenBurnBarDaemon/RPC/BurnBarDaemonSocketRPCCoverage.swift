@@ -7,12 +7,15 @@ enum BurnBarDaemonSocketRPCCoverage {
     static let lifecycle: Set<BurnBarRPCMethod> = [
         .health,
         .catalog,
-        .authBootstrap
+        .authBootstrap,
+        .linuxOnboardingSnapshot
     ]
 
     static let config: Set<BurnBarRPCMethod> = [
         .configGet,
         .configUpdate,
+        .linuxOnboardingAction,
+        .linuxOnboardingReset,
         .providerCredentialSlotUpsert,
         .providerCredentialSlotRemove,
         .providerModelVariantUpsert,
@@ -54,6 +57,7 @@ enum BurnBarDaemonSocketRPCCoverage {
     ]
 
     static let computerUse: Set<BurnBarRPCMethod> = [
+        .computerUseCapabilityStateUpdate,
         .computerUseSessionStart,
         .computerUseInvoke,
         .computerUseApprovalPending,
@@ -61,6 +65,19 @@ enum BurnBarDaemonSocketRPCCoverage {
         .computerUsePanicHalt,
         .computerUseAuditExport,
         .phoneControlPinProvision
+    ]
+
+    static let media: Set<BurnBarRPCMethod> = [
+        .daemonMediaSessionState,
+        .daemonMediaCallAccept,
+        .daemonMediaCallDecline,
+        .daemonMediaCallEnd,
+        .daemonMediaCapabilityGet,
+        .daemonMediaStatus,
+        .daemonMediaFileOfferList,
+        .daemonMediaFileAccept,
+        .daemonMediaFileDecline,
+        .daemonMediaFileSend
     ]
 
     static let missionControl: Set<BurnBarRPCMethod> = [
@@ -86,6 +103,7 @@ enum BurnBarDaemonSocketRPCCoverage {
         .missionCancel,
         .missionDispatchPacket,
         .missionRecordResult,
+        .missionAuthorizeRemote,
         .notificationConfigGet,
         .notificationConfigUpdate,
         .notificationHealth,
@@ -112,6 +130,7 @@ enum BurnBarDaemonSocketRPCCoverage {
         .runResume,
         .subscriptionStart,
         .subscriptionResume,
+        .subscriptionStop,
         .workspaceExecuteTool,
         .workspaceToolResult,
         .approvalRespond
@@ -151,6 +170,7 @@ enum BurnBarDaemonSocketRPCCoverage {
             .union(membership)
             .union(tooling)
             .union(computerUse)
+            .union(media)
             .union(missionControl)
             .union(client)
             .union(runWorkspaceApproval)
@@ -167,6 +187,7 @@ enum BurnBarDaemonSocketRPCCoverage {
         if membership.contains(method) { return "membership" }
         if tooling.contains(method) { return "tooling" }
         if computerUse.contains(method) { return "computer_use" }
+        if media.contains(method) { return "media" }
         if missionControl.contains(method) { return "mission_control" }
         if client.contains(method) { return "client" }
         if runWorkspaceApproval.contains(method) { return "run_workspace_approval" }

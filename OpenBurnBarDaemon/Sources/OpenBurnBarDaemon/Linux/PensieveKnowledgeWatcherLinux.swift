@@ -60,7 +60,8 @@ public final class PensieveKnowledgeWatcher: Sendable {
         var lastEnqueueDate: Date?
         var lastEnqueuedCount = 0
         var lastError: String?
-        var running = false
+        var started = false
+        var scanning = false
     }
 
     private let mutable = MutableState()
@@ -109,29 +110,47 @@ public final class PensieveKnowledgeWatcher: Sendable {
 
     public func start() {
         workQueue.async { [weak self] in
-            self?.installInotify()
-            self?.installBackstop()
-            self?.scheduleScan()
+            guard let self, !self.mutable.started else { return }
+            self.mutable.started = true
+            self.installInotify()
+            self.installBackstop()
+            self.scheduleScan()
         }
     }
 
     public func stop() {
         workQueue.async { [weak self] in
             guard let self else { return }
+            guard self.mutable.started else { return }
+            self.mutable.started = false
             self.mutable.debounceWorkItem?.cancel()
+            self.mutable.debounceWorkItem = nil
             self.mutable.backstopTimer?.cancel()
             self.mutable.backstopTimer = nil
-            self.mutable.readSource?.cancel()
+            let readSource = self.mutable.readSource
+            let fileDescriptor = self.mutable.inotifyFD
             self.mutable.readSource = nil
-            if self.mutable.inotifyFD >= 0 {
-                close(self.mutable.inotifyFD)
-                self.mutable.inotifyFD = -1
+            self.mutable.inotifyFD = -1
+            if let readSource {
+                readSource.cancel()
+            } else if fileDescriptor >= 0 {
+                close(fileDescriptor)
             }
             self.mutable.watchDescriptorsByPath.removeAll()
         }
     }
 
-    deinit { stop() }
+    deinit {
+        mutable.debounceWorkItem?.cancel()
+        mutable.backstopTimer?.cancel()
+        if let readSource = mutable.readSource {
+            mutable.inotifyFD = -1
+            readSource.cancel()
+        } else if mutable.inotifyFD >= 0 {
+            close(mutable.inotifyFD)
+            mutable.inotifyFD = -1
+        }
+    }
 
     private func installInotify() {
         let fd = inotify_init1(Int32(IN_NONBLOCK | IN_CLOEXEC))
@@ -170,10 +189,9 @@ public final class PensieveKnowledgeWatcher: Sendable {
                 includingPropertiesForKeys: [.isDirectoryKey],
                 options: [.skipsHiddenFiles]
             ) else { continue }
-            for child in kids {
-                if (try? child.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true {
-                    stack.append(child)
-                }
+            for child in kids
+            where (try? child.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true {
+                stack.append(child)
             }
         }
     }
@@ -206,9 +224,9 @@ public final class PensieveKnowledgeWatcher: Sendable {
     }
 
     private func runScan() {
-        guard !mutable.running else { return }
-        mutable.running = true
-        defer { mutable.running = false }
+        guard mutable.started, !mutable.scanning else { return }
+        mutable.scanning = true
+        defer { mutable.scanning = false }
 
         var enqueued = 0
         for root in roots {

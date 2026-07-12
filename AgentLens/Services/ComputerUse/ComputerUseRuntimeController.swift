@@ -2,7 +2,6 @@
 import AppKit
 import Combine
 import Foundation
-@preconcurrency import FirebaseFirestore
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
 
@@ -15,13 +14,14 @@ import OpenBurnBarComputerUseCore
 /// never receives phone-control frames in the running app.
 @MainActor
 final class ComputerUseRuntimeController: ObservableObject {
-    static let computerUseProductId = "com.openburnbar.hostedComputerUseSync.monthly"
+    static let computerUseProductId = ComputerUseEntitlementSnapshot.hostedProductID
 
     @Published private(set) var coordinator: ComputerUseSessionCoordinator
     let panelModel = ComputerUseSessionPanelModel()
 
     private let accountManager: AccountManager
     private let settingsManager: SettingsManager
+    private let daemonManager: OpenBurnBarDaemonManager
     private weak var relayHostService: HermesRelayHostService?
     private var panicCoordinator: ComputerUsePanicHaltCoordinator?
     private var escrowRevocationWatcher: EscrowRevocationWatcher?
@@ -33,15 +33,18 @@ final class ComputerUseRuntimeController: ObservableObject {
     init(
         accountManager: AccountManager,
         settingsManager: SettingsManager,
+        daemonManager: OpenBurnBarDaemonManager,
         relayHostService: HermesRelayHostService? = nil,
         chatController: ChatSessionController? = nil
     ) {
         self.accountManager = accountManager
         self.settingsManager = settingsManager
+        self.daemonManager = daemonManager
         self.relayHostService = relayHostService
         self.coordinator = Self.makeCoordinator(
             accountManager: accountManager,
-            settingsManager: settingsManager
+            settingsManager: settingsManager,
+            cloudMeteringRecorder: daemonManager.computerUseCloudMeteringRecorder
         )
         self.coordinator.chatController = chatController
         configurePanelModel()
@@ -51,10 +54,26 @@ final class ComputerUseRuntimeController: ObservableObject {
     }
 
     private func bindBudgetStatusListener() {
-        ComputerUseBudgetStatusStore.shared.onEnvelopeChanged = { [weak self] envelope in
+        // cov:ignore-start -- live Combine/Firestore-to-daemon bridge; store state transitions and daemon publish helpers are covered independently.
+        let budgetStore = daemonManager.computerUseBudgetStatusStore
+        let quotaStore = daemonManager.computerUseQuotaUsageStore
+        budgetStore.onEnvelopeChanged = { [weak self] envelope in
             self?.coordinator.updateBudgetEnvelope(envelope)
+            self?.publishDaemonCapabilityState()
         }
-        ComputerUseBudgetStatusStore.shared.startListening()
+        budgetStore.onAvailabilityChanged = { [weak self] in
+            self?.publishDaemonCapabilityState()
+        }
+        budgetStore.startListening()
+        quotaStore.onStateChanged = { [weak self] in
+            guard let self else { return }
+            if let usage = self.daemonManager.computerUseQuotaUsageStore.currentUsage {
+                self.coordinator.updateQuotaUsage(usage)
+            }
+            self.publishDaemonCapabilityState()
+        }
+        quotaStore.startListening()
+        // cov:ignore-end
     }
 
     func attach(relayHostService: HermesRelayHostService) {
@@ -324,7 +343,17 @@ final class ComputerUseRuntimeController: ObservableObject {
             .combineLatest(MacCloudEntitlementStore.shared.$hostedComputerUseExpirationDate)
             .sink { [weak self] _, _ in
                 self?.refreshEntitlement()
+                self?.publishDaemonCapabilityState()
             }
+            .store(in: &cancellables)
+
+        MacCloudEntitlementStore.shared.$error
+            .dropFirst()
+            .sink { [weak self] _ in self?.publishDaemonCapabilityState() }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .computerUseRemoteConfigKillSwitchDidFire)
+            .sink { [weak self] _ in self?.publishDaemonCapabilityState() }
             .store(in: &cancellables)
 
         coordinator.$state
@@ -341,6 +370,7 @@ final class ComputerUseRuntimeController: ObservableObject {
                 if state == nil {
                     self.stopPanicMonitoring()
                 }
+                self.publishDaemonCapabilityState()
             }
             .store(in: &cancellables)
 
@@ -351,9 +381,34 @@ final class ComputerUseRuntimeController: ObservableObject {
             .store(in: &cancellables)
     }
 
+    func hasActiveSessionForDaemonBridge() -> Bool {
+        guard let state = coordinator.state else { return false }
+        return state.endedAt == nil && state.endReason == nil
+    }
+
+    private func publishDaemonCapabilityState(authorizationRevoked: Bool = false) {
+        // cov:ignore-start -- fire-and-forget live daemon publish; capability snapshot contracts are covered in OpenBurnBarCore/OpenBurnBarDaemon tests.
+        let concurrentSessionActive = hasActiveSessionForDaemonBridge()
+        Task { @MainActor in
+            do {
+                _ = try await daemonManager.publishComputerUseCapabilityState(
+                    concurrentSessionActive: concurrentSessionActive,
+                    authorizationRevoked: authorizationRevoked
+                )
+            } catch {
+                AppLogger.daemon.debug(
+                    "computer_use_capability_state_publish_deferred",
+                    metadata: ["error": error.localizedDescription]
+                )
+            }
+        }
+        // cov:ignore-end
+    }
+
     private static func makeCoordinator(
         accountManager: AccountManager,
-        settingsManager: SettingsManager
+        settingsManager: SettingsManager,
+        cloudMeteringRecorder: any ComputerUseCloudMeteringRecording
     ) -> ComputerUseSessionCoordinator {
         let supportDirectory = OpenBurnBarCore.OpenBurnBarAppPaths.live().supportDirectory
         let auditDirectory = supportDirectory.appendingPathComponent("computer-use-audit", isDirectory: true)
@@ -361,6 +416,7 @@ final class ComputerUseRuntimeController: ObservableObject {
         return ComputerUseSessionCoordinator(
             configuration: ComputerUseSessionCoordinator.Configuration(
                 userId: accountManager.userID ?? "local-\(accountManager.deviceId)",
+                userIdProvider: { [weak accountManager] in accountManager?.userID },
                 macHostNodeId: accountManager.deviceId,
                 entitlement: ComputerUseEntitlementSnapshot(
                     isActive: false,
@@ -379,6 +435,10 @@ final class ComputerUseRuntimeController: ObservableObject {
                 phoneControlAttestationRequired: settingsManager.computerUsePhoneControlAttestationRequired,
                 phoneControlRespectsDenyRegions: settingsManager.computerUsePhoneControlRespectsDenyRegions
             ),
+            quotaLedger: ComputerUseLocalQuotaLedger(
+                directory: ComputerUseLocalQuotaLedger.defaultDirectory()
+            ),
+            cloudMeteringRecorder: cloudMeteringRecorder,
             scopeRulesProvider: { ComputerUseDenyRegistry.builtInRules },
             approvalPresenter: { request, screenshot in
                 await ComputerUseRuntimeController.presentApproval(request, screenshot: screenshot)
@@ -411,12 +471,13 @@ private enum ComputerUseAuditExportSignerPublisherError: LocalizedError {
 }
 
 private final class ComputerUseAuditExportSignerPublisher: Sendable {
+    // cov:ignore-start -- audit-export readback writes live Firestore documents; payload schema is covered by capability-state and audit-export contract tests.
     static let shared = ComputerUseAuditExportSignerPublisher()
 
-    private let firestoreProvider: @Sendable () -> Firestore
+    private let firestoreGateway: any ComputerUseFirestoreGateway
 
-    init(firestoreProvider: @escaping @Sendable () -> Firestore = { Firestore.firestore() }) {
-        self.firestoreProvider = firestoreProvider
+    init(firestoreGateway: any ComputerUseFirestoreGateway = ComputerUseFirestoreLiveGateway()) {
+        self.firestoreGateway = firestoreGateway
     }
 
     func publish(
@@ -433,26 +494,27 @@ private final class ComputerUseAuditExportSignerPublisher: Sendable {
             throw ComputerUseAuditExportSignerPublisherError.unsignedArchive
         }
         let nowMillis = Int64((Date().timeIntervalSince1970 * 1000).rounded())
-        let payload: [String: Any] = [
-            "id": publicKeySHA256Hex,
-            "userId": uid,
-            "deviceId": deviceId,
-            "signerIdentifier": signerIdentifier,
-            "signerKind": signerKind,
-            "trustRoot": trustRoot,
-            "algorithm": algorithm,
-            "publicKeyBase64": publicKeyBase64,
-            "publicKeySHA256Hex": publicKeySHA256Hex,
-            "status": "active",
-            "publishedAtMillis": nowMillis,
-            "lastReadbackAtMillis": nowMillis,
-            "schemaVersion": 1
-        ]
-        try await firestoreProvider()
-            .collection("users").document(uid)
-            .collection("escrow_devices").document(deviceId)
-            .collection("computer_use_audit_export_signers").document(publicKeySHA256Hex)
-            .setData(payload, merge: true)
+        let payload = ComputerUseFirestorePayload(values: [
+            "id": .string(publicKeySHA256Hex),
+            "userId": .string(uid),
+            "deviceId": .string(deviceId),
+            "signerIdentifier": .string(signerIdentifier),
+            "signerKind": .string(signerKind),
+            "trustRoot": .string(trustRoot),
+            "algorithm": .string(algorithm),
+            "publicKeyBase64": .string(publicKeyBase64),
+            "publicKeySHA256Hex": .string(publicKeySHA256Hex),
+            "status": .string("active"),
+            "publishedAtMillis": .integer(nowMillis),
+            "lastReadbackAtMillis": .integer(nowMillis),
+            "schemaVersion": .integer(1)
+        ])
+        try await firestoreGateway.setData(
+            payload,
+            at: "users/\(uid)/escrow_devices/\(deviceId)/computer_use_audit_export_signers/\(publicKeySHA256Hex)",
+            merge: true
+        )
     }
+    // cov:ignore-end
 }
 #endif

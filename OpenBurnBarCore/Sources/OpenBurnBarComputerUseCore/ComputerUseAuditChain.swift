@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// One entry in the Computer Use audit chain. The field set is locked at
 /// Phase 10 ship and never reordered — the chain hashes a canonical-JSON
@@ -75,6 +75,25 @@ public struct ComputerUseAuditEntry: Codable, Hashable, Sendable {
         self.parentEntryHashHex = parentEntryHashHex
         self.macAppVersion = macAppVersion
         self.macHostNodeId = macHostNodeId
+    }
+}
+
+public extension ComputerUseActionMeteringHeader {
+    init(auditEntry: ComputerUseAuditEntry) {
+        self.init(
+            entryIndex: auditEntry.entryIndex,
+            actionKind: auditEntry.actionKind,
+            approvedBy: auditEntry.approvedBy.rawValue,
+            scopeRuleId: auditEntry.scopeRuleId,
+            denyReason: Self.privacySafeDenyReason(auditEntry.denyReason),
+            parentEntryHashHex: auditEntry.parentEntryHashHex,
+            recordedAt: auditEntry.timestamp
+        )
+    }
+
+    private static func privacySafeDenyReason(_ rawValue: String?) -> String? {
+        guard let rawValue else { return nil }
+        return ComputerUseDenyReason(rawValue: rawValue)?.rawValue ?? "dispatch_error"
     }
 }
 

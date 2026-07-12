@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import Foundation
+import OpenBurnBarKernel
 
 /// Paths supplied by the Windows host. Keeping discovery outside the parser engine
 /// lets packaged, portable, and test hosts use the same parser implementation.
@@ -151,7 +152,6 @@ private struct OBBCAbiProviderOutput: Sendable {
     let conversations: [ConversationRecord]
 }
 
-@_cdecl("obb_scan_usage")
 public func obb_scan_usage(requestJSON: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>? {
     let response: OBBCAbiUsageScanResponse
     do {
@@ -188,7 +188,7 @@ public enum OBBCAbiUsageScanExport {
         }
 
         try validate(request)
-        return try awaitBlocking { try await scan(request) }
+        return scan(request)
     }
 
     private static func validate(_ request: OBBCAbiUsageScanRequest) throws {
@@ -199,14 +199,14 @@ public enum OBBCAbiUsageScanExport {
             request.codexHomeDirectory,
             request.cursorSessionsDirectory,
             request.factorySessionsDirectory,
-            request.hermesHomeDirectory,
+            request.hermesHomeDirectory
         ]
         guard required.allSatisfy({ !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
             throw OBBCAbiUsageScanError.invalidRequest
         }
     }
 
-    private static func scan(_ request: OBBCAbiUsageScanRequest) async throws -> OBBCAbiUsageScanResponse {
+    private static func scan(_ request: OBBCAbiUsageScanRequest) -> OBBCAbiUsageScanResponse {
         let fileManager = FileManager.default
         let appPaths = OpenBurnBarAppPaths(
             applicationSupportRoot: URL(fileURLWithPath: request.supportDirectory, isDirectory: true)
@@ -214,56 +214,56 @@ public enum OBBCAbiUsageScanExport {
         let options = LogParseOptions(includeConversationBodies: request.includeConversationBodies)
 
         var outputs: [OBBCAbiProviderOutput] = []
-        outputs.append(await scanProvider(
+        outputs.append(scanProvider(
             .claudeCode,
             requiredPath: request.claudeProjectsDirectory,
             fileManager: fileManager
         ) {
-            try await ClaudeCodeParser(
+            try ClaudeCodeParser(
                 fileManager: fileManager,
                 appPaths: appPaths,
                 projectsDirectoryOverride: URL(fileURLWithPath: request.claudeProjectsDirectory, isDirectory: true)
-            ).parse(options: options)
+            ).parseSynchronously(options: options)
         })
-        outputs.append(await scanProvider(
+        outputs.append(scanProvider(
             .codex,
             requiredPath: URL(fileURLWithPath: request.codexHomeDirectory, isDirectory: true)
                 .appendingPathComponent(".codex/state_5.sqlite", isDirectory: false).path,
             fileManager: fileManager
         ) {
-            try await CodexParser(
+            try CodexParser(
                 fileManager: fileManager,
                 appPaths: appPaths,
                 homeDirectoryURL: URL(fileURLWithPath: request.codexHomeDirectory, isDirectory: true)
-            ).parse(options: options)
+            ).parseSynchronously(options: options)
         })
-        outputs.append(await scanProvider(
+        outputs.append(scanProvider(
             .cursorAgent,
             requiredPath: request.cursorSessionsDirectory,
             fileManager: fileManager
         ) {
-            try await CursorAgentParser(logDirectoryOverride: request.cursorSessionsDirectory).parse(options: options)
+            try CursorAgentParser(logDirectoryOverride: request.cursorSessionsDirectory).parseSynchronously()
         })
-        outputs.append(await scanProvider(
+        outputs.append(scanProvider(
             .factory,
             requiredPath: request.factorySessionsDirectory,
             fileManager: fileManager
         ) {
-            try await FactoryDroidParser(
+            try FactoryDroidParser(
                 fileManager: fileManager,
                 appPaths: appPaths,
                 sessionsDirectoryOverride: URL(fileURLWithPath: request.factorySessionsDirectory, isDirectory: true)
-            ).parse(options: options)
+            ).parseSynchronously(options: options)
         })
-        outputs.append(await scanProvider(
+        outputs.append(scanProvider(
             .hermes,
             requiredPath: request.hermesHomeDirectory,
             fileManager: fileManager
         ) {
-            try await HermesParser(
+            try HermesParser(
                 fileManager: fileManager,
                 hermesRootURL: URL(fileURLWithPath: request.hermesHomeDirectory, isDirectory: true)
-            ).parse(options: options)
+            ).parseSynchronously()
         })
 
         let usages = outputs
@@ -297,8 +297,8 @@ public enum OBBCAbiUsageScanExport {
         _ provider: AgentProvider,
         requiredPath: String,
         fileManager: FileManager,
-        operation: () async throws -> ParseResult
-    ) async -> OBBCAbiProviderOutput {
+        operation: () throws -> ParseResult
+    ) -> OBBCAbiProviderOutput {
         guard fileManager.fileExists(atPath: requiredPath) else {
             return OBBCAbiProviderOutput(
                 status: OBBCAbiProviderScanResult(
@@ -314,7 +314,7 @@ public enum OBBCAbiUsageScanExport {
         }
 
         do {
-            let result = try await operation()
+            let result = try operation()
             return OBBCAbiProviderOutput(
                 status: OBBCAbiProviderScanResult(
                     provider: provider.rawValue,
@@ -341,22 +341,6 @@ public enum OBBCAbiUsageScanExport {
         }
     }
 
-    private static func awaitBlocking<T: Sendable>(
-        _ operation: @Sendable @escaping () async throws -> T
-    ) throws -> T {
-        let holder = OBBCAbiUsageScanOutcome<T>()
-        let semaphore = DispatchSemaphore(value: 0)
-        Task {
-            do {
-                holder.store(.success(try await operation()))
-            } catch {
-                holder.store(.failure(error))
-            }
-            semaphore.signal()
-        }
-        semaphore.wait()
-        return try holder.take()
-    }
 }
 
 public enum OBBCAbiUsageScanError: Error, CustomStringConvertible, Equatable {
@@ -368,25 +352,5 @@ public enum OBBCAbiUsageScanError: Error, CustomStringConvertible, Equatable {
         case .missingRequest: return "missing required argument: requestJSON"
         case .invalidRequest: return "invalid usage scan request"
         }
-    }
-}
-
-private final class OBBCAbiUsageScanOutcome<T>: @unchecked Sendable {
-    private let lock = NSLock()
-    private var outcome: Result<T, Error>?
-
-    func store(_ value: Result<T, Error>) {
-        lock.lock()
-        defer { lock.unlock() }
-        outcome = value
-    }
-
-    func take() throws -> T {
-        lock.lock()
-        defer { lock.unlock() }
-        guard let outcome else {
-            throw OBBCAbiUsageScanError.invalidRequest
-        }
-        return try outcome.get()
     }
 }

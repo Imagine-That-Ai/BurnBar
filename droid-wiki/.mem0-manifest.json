@@ -527,8 +527,8 @@
       "content_hash": "5cca36d598765992dbbfb0db7eed97092f5bb35eeeed8dcf6f54c1c5fd3a7bce"
     },
     "primitives/agent-provider.md#0": {
-      "memory_id": "47cae9cc-a980-4942-8b47-39a35ab174bd",
-      "content_hash": "8f85fa62088a891fffcd59ebfe247bb45fbfa2a83469a80fe2b3e5dc04243bb8"
+      "memory_id": "17d49efd-57a7-4ec2-8a33-defd020e4c3a",
+      "content_hash": "bf73331ae30d8065e7ea7c5b2e2308b7ccc6ed258fed67596b1cb1243d9ceb8a"
     },
     "primitives/design-system.md#0": {
       "memory_id": "f80049e4-fa4a-4357-8fa7-05905ca66fff",
@@ -611,8 +611,8 @@
       "content_hash": "2589f44bdef619a9e3a1dd61fed46314350ed7cb32f8d6fc9b9ec028948b3a84"
     },
     "reference/data-models.md#1": {
-      "memory_id": "6ca0a8c2-2a05-4223-a75b-15dcce161357",
-      "content_hash": "ea6a0823a2386556b27670ee42a80a33e558ea67b47acc7c4d59df516fcebfd3"
+      "memory_id": "a1b5c675-4643-4d39-883c-adf961172381",
+      "content_hash": "da6024117bca2168c3e2ae185bcc27dd94738254b4e7cbd13edc1bc5493e0bcc"
     },
     "reference/data-models.md#2": {
       "memory_id": "2be39246-f094-4f00-aa17-dd677bac751b",
@@ -663,8 +663,8 @@
       "content_hash": "51c7fb5277043eb30d46945fe56cb19ae14a3a3f8a0fa79afeb6b68a518a9e26"
     },
     "reference/rpc-surface.md#2": {
-      "memory_id": "60c5adc9-77c2-4e6c-a902-0dc03c44a8dd",
-      "content_hash": "31895b6f3cc6d078767a83da87a4b7896a3d2d9875fb22d964f6f2b2b5f9981e"
+      "memory_id": "c79082e3-fe31-40ee-9876-ec9879f01e09",
+      "content_hash": "2b59aca05d2119bfc02c68794dd033955171ffdf002aec968e7605fb49173e82"
     },
     "reference/rpc-surface.md#3": {
       "memory_id": "51de6c5e-318a-44b5-af84-b8a19fb44c41",

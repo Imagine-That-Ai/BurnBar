@@ -201,7 +201,16 @@ public sealed class AppConfiguration
                 _securityState = new(AppConfigurationSecurityStatus.Clean);
             }
 
-            RegisterReferencedSecretsForRedaction(model);
+            try
+            {
+                RegisterReferencedSecretsForRedaction(model);
+            }
+            catch (SecretStoreException ex)
+            {
+                // Keep non-secret configuration available so the app can present typed recovery UI.
+                // Individual secret getters still throw, so no missing credential becomes an empty fallback.
+                _securityState = new(AppConfigurationSecurityStatus.ProtectedStorageUnavailable, ex.Message);
+            }
             return ClearLegacyPlaintext(model);
         }
         catch (SecretStoreException ex)

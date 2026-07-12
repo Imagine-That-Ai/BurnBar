@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Terminal audit chain head with an Ed25519 signature for offline verification (WS3).
 public struct ComputerUseAuditSignedHead: Codable, Hashable, Sendable {

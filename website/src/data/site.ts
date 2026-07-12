@@ -127,7 +127,10 @@ export const SITE = {
   linuxPubKeyFile: "openburnbar-linux-ed25519.pub.pem",
   linuxDownloadBaseUrl: "https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v0.1.0",
   linuxArch: "aarch64 (ARM64)",
-  linuxStatus: "preview · signed prerelease",
+  // Shown on download cards and jump pills — lead with Available so it doesn't
+  // read like a blocked/pending platform next to macOS.
+  linuxStatus: "Available · 0.1.0 · ARM64",
+  linuxStatusDetail: "Signed prerelease — AppImage, deb, and rpm on GitHub Releases",
   iosMin: "iOS 17",
   iosStatus: "on the App Store",
   iosAppStoreUrl: "https://apps.apple.com/us/app/openburnbar/id6766366964",

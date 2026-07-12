@@ -16,6 +16,9 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .authBootstrap: "auth.bootstrap",
         .health: "daemon.health",
         .catalog: "daemon.catalog",
+        .linuxOnboardingSnapshot: "daemon.onboarding.snapshot",
+        .linuxOnboardingAction: "daemon.onboarding.action",
+        .linuxOnboardingReset: "daemon.onboarding.reset",
         .configGet: "daemon.config.get",
         .configUpdate: "daemon.config.update",
         .providerCredentialSlotUpsert: "daemon.provider.credential_slot.upsert",
@@ -40,6 +43,7 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .browserToolingGet: "daemon.browser.tooling.get",
         .browserToolingUpdate: "daemon.browser.tooling.update",
         .browserAction: "daemon.browser.action",
+        .computerUseCapabilityStateUpdate: "daemon.computer_use.capability_state.update",
         .computerUseSessionStart: "daemon.computer_use.session.start",
         .computerUseInvoke: "daemon.computer_use.invoke",
         .computerUseApprovalPending: "daemon.computer_use.approval.pending",
@@ -69,6 +73,9 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .missionCancel: "daemon.mission.cancel",
         .missionDispatchPacket: "daemon.mission.packet.dispatch",
         .missionRecordResult: "daemon.mission.result.record",
+        // Added with M2 of the split-brain remediation (Phase 2): daemon-side
+        // remote-mission authorization. Additive; the GUI wires it in M3.
+        .missionAuthorizeRemote: "daemon.mission.authorizeRemote",
         .notificationConfigGet: "daemon.notification.config.get",
         .notificationConfigUpdate: "daemon.notification.config.update",
         .notificationHealth: "daemon.notification.health",
@@ -107,6 +114,16 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .codeExplore: "daemon.code.explore",
         .codeOpsDiagnostics: "daemon.code.ops_diagnostics",
         .runResume: "run.resume",
+        .daemonMediaSessionState: "daemon.media.session.state",
+        .daemonMediaCallAccept: "daemon.media.call.accept",
+        .daemonMediaCallDecline: "daemon.media.call.decline",
+        .daemonMediaCallEnd: "daemon.media.call.end",
+        .daemonMediaCapabilityGet: "daemon.media.capability.get",
+        .daemonMediaStatus: "daemon.media.status",
+        .daemonMediaFileOfferList: "daemon.media.file.offer.list",
+        .daemonMediaFileAccept: "daemon.media.file.accept",
+        .daemonMediaFileDecline: "daemon.media.file.decline",
+        .daemonMediaFileSend: "daemon.media.file.send",
         // Added with the 98-method canon regen (main 69e2a41deb): membership +
         // subscription lifecycle + perf.measure. Wire names pinned to the enum rawValues.
         .membershipStatus: "daemon.membership.status",
@@ -114,6 +131,7 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .membershipRestore: "daemon.membership.restore",
         .subscriptionStart: "subscription.start",
         .subscriptionResume: "subscription.resume",
+        .subscriptionStop: "subscription.stop",
         .perfMeasure: "perf.measure"
     ]
 

@@ -1,220 +1,249 @@
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { validateParityLedger } from './lib/parity-ledger-validate.mjs';
 
-function tmpEvidence(repoRoot) {
-  const rel = 'docs/linux-port/evidence/mission-002-reanchor/README.md';
-  const full = path.join(repoRoot, rel);
-  fs.mkdirSync(path.dirname(full), { recursive: true });
-  fs.writeFileSync(full, 'evidence\n');
-  return rel;
+const HEAD = '0123456789abcdef0123456789abcdef01234567';
+
+function requirements(ids = ['P-01'], environments = []) {
+  return {
+    schemaVersion: 1,
+    id: 'test-requirements',
+    requirements: ids.map((id) => ({
+      id,
+      area: 'test',
+      priority: 'Critical',
+      minimumEvidenceTier: 'A'
+    })),
+    minimumSupportMatrix: environments.map((id) => ({ id }))
+  };
 }
 
-function baseRow(evidencePath, overrides = {}) {
+function row(id = 'P-01', overrides = {}) {
   return {
-    id: 'VAL-TEST-001',
+    id,
+    requirementId: id,
     tier: 'A',
-    status: 'ready',
-    scope: 'historical-infrastructure',
-    staleWhenHeadDiffers: false,
-    evidencePath,
-    command: 'echo',
-    platform: 'test',
-    sourceOracle: 'test',
-    acceptedDivergence: 'none',
+    status: 'blocked',
+    scope: 'product-parity',
+    evidencePath: `evidence/${id}.json`,
+    command: `attest ${id}`,
+    platform: 'Linux',
+    sourceOracle: `macOS ${id}`,
+    acceptedDivergence: 'None.',
     owner: 'test',
-    promotionCriterion: 'test',
-    commit: 'abc123',
+    promotionCriterion: `Prove ${id}`,
     environment: 'test',
     ...overrides
   };
 }
 
-test('missing evidence fails ready rows', () => {
-  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'obb-ledger-'));
-  const ledger = {
+function ledger(rows = [row()], overrides = {}) {
+  return {
+    schemaVersion: 2,
+    requirementsManifest: 'docs/linux-port/product-parity-requirements.json',
     semantics: { productParityClaim: false },
-    git: { commit: 'abc123' },
-    rows: [baseRow('missing/path.json')]
+    rows,
+    environmentCoverage: [],
+    ...overrides
   };
-  const r = validateParityLedger(ledger, { currentHead: 'abc123', repoRoot, allowBlocked: false });
-  assert.equal(r.passed, false);
-  assert.ok(r.failures.some((f) => /evidence path does not exist/.test(f.message)));
-});
+}
 
-test('bad scope fails', () => {
-  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'obb-ledger-'));
-  const evidencePath = tmpEvidence(repoRoot);
-  const ledger = {
-    semantics: { productParityClaim: false },
-    git: { commit: 'abc123' },
-    rows: [baseRow(evidencePath, { scope: 'weird' })]
-  };
-  const r = validateParityLedger(ledger, { currentHead: 'abc123', repoRoot });
-  assert.equal(r.passed, false);
-  assert.ok(r.failures.some((f) => /scope must be/.test(f.message)));
-});
+function repo() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'obb-ledger-'));
+  fs.mkdirSync(path.join(root, 'docs/linux-port'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'docs/linux-port/parity-ledger.json'), '{}\n');
+  return root;
+}
 
-test('product ready stale head fails strict, warns allow-blocked', () => {
-  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'obb-ledger-'));
-  const evidencePath = tmpEvidence(repoRoot);
-  const ledger = {
-    semantics: { productParityClaim: false },
-    git: { commit: 'abc123' },
-    rows: [
-      baseRow(evidencePath, {
-        id: 'VAL-PROD-1',
-        scope: 'product-parity',
-        staleWhenHeadDiffers: true,
-        evidenceHead: 'oldhead',
-        status: 'ready'
-      })
-    ]
-  };
-  const strict = validateParityLedger(ledger, {
-    currentHead: 'newhead',
+function writeReadyEvidence(repoRoot, targetRow, options = {}) {
+  const artifactRel = `artifacts/${targetRow.id}.txt`;
+  const artifactPath = path.join(repoRoot, artifactRel);
+  fs.mkdirSync(path.dirname(artifactPath), { recursive: true });
+  fs.writeFileSync(artifactPath, options.artifact ?? `proof for ${targetRow.id}\n`);
+  const digest = crypto.createHash('sha256').update(fs.readFileSync(artifactPath)).digest('hex');
+  const evidencePath = path.join(repoRoot, targetRow.evidencePath);
+  fs.mkdirSync(path.dirname(evidencePath), { recursive: true });
+  fs.writeFileSync(evidencePath, `${JSON.stringify({
+    schemaVersion: 1,
+    rowId: targetRow.id,
+    requirementId: targetRow.requirementId,
+    targetHead: options.targetHead ?? HEAD,
+    status: 'passed',
+    artifacts: [{ path: artifactRel, sha256: options.sha256 ?? digest }]
+  }, null, 2)}\n`);
+  return artifactPath;
+}
+
+function validate(value, repoRoot, catalog = requirements(), allowBlocked = false) {
+  return validateParityLedger(value, {
+    allowBlocked,
+    currentHead: HEAD,
     repoRoot,
-    allowBlocked: false
+    ledgerPath: 'docs/linux-port/parity-ledger.json',
+    requirements: catalog
   });
-  assert.equal(strict.passed, false);
-  assert.ok(strict.failures.some((f) => /differs from current HEAD/.test(f.message)));
+}
 
-  const soft = validateParityLedger(ledger, {
-    currentHead: 'newhead',
-    repoRoot,
-    allowBlocked: true
-  });
-  assert.equal(soft.passed, true);
-  assert.ok(soft.warnings.some((w) => /differs from current HEAD/.test(w.message)));
+test('blocked complete inventory is structurally valid but never promotable', () => {
+  const result = validate(ledger(), repo(), requirements(), true);
+  assert.equal(result.passed, true);
+  assert.equal(result.structuralPassed, true);
+  assert.equal(result.promotionPassed, false);
+  assert.ok(result.promotionFailures.some((failure) => /P-01 is blocked/.test(failure.message)));
 });
 
-test('productParityClaim true with no product rows fails', () => {
-  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'obb-ledger-'));
-  const evidencePath = tmpEvidence(repoRoot);
-  const ledger = {
+test('missing catalog row fails structural validation', () => {
+  const result = validate(ledger([]), repo(), requirements(), true);
+  assert.equal(result.structuralPassed, false);
+  assert.ok(result.structuralFailures.some((failure) => /P-01 has no ledger row/.test(failure.message)));
+});
+
+test('unknown extra product row fails structural validation', () => {
+  const result = validate(ledger([row('P-01'), row('P-02')]), repo(), requirements(), true);
+  assert.equal(result.structuralPassed, false);
+  assert.ok(result.structuralFailures.some((failure) => /unknown product parity requirement id: P-02/.test(failure.message)));
+});
+
+test('duplicate requirement mapping fails exact one-to-one coverage', () => {
+  const duplicate = row('P-01', { id: 'P-01-copy' });
+  const result = validate(ledger([row('P-01'), duplicate]), repo(), requirements(), true);
+  assert.equal(result.structuralPassed, false);
+  assert.ok(result.structuralFailures.some((failure) => /expected exactly one/.test(failure.message)));
+});
+
+test('historical rows cannot satisfy product coverage', () => {
+  const result = validate(ledger([row('P-01', { scope: 'historical-infrastructure' })]), repo(), requirements(), true);
+  assert.equal(result.structuralPassed, false);
+  assert.ok(result.structuralFailures.some((failure) => /scope product-parity/.test(failure.message)));
+});
+
+test('lexical path traversal fails even for a blocked row', () => {
+  const result = validate(ledger([row('P-01', { evidencePath: '../outside.json' })]), repo(), requirements(), true);
+  assert.equal(result.structuralPassed, false);
+  assert.ok(result.structuralFailures.some((failure) => /escapes the repository/.test(failure.message)));
+});
+
+test('symlink escape fails even when the target exists', () => {
+  const root = repo();
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'obb-outside-'));
+  fs.writeFileSync(path.join(outside, 'P-01.json'), '{}\n');
+  fs.symlinkSync(outside, path.join(root, 'evidence'));
+  const result = validate(ledger(), root, requirements(), true);
+  assert.equal(result.structuralPassed, false);
+  assert.ok(result.structuralFailures.some((failure) => /through a symlink/.test(failure.message)));
+});
+
+test('tracked HEAD fields are forbidden and cannot disable drift checks', () => {
+  const result = validate(
+    ledger([row('P-01', { staleWhenHeadDiffers: false, commit: HEAD })]),
+    repo(),
+    requirements(),
+    true
+  );
+  assert.equal(result.structuralPassed, false);
+  assert.ok(result.structuralFailures.some((failure) => /staleWhenHeadDiffers is forbidden/.test(failure.message)));
+});
+
+test('current-HEAD attestation with valid artifact hashes can promote', () => {
+  const root = repo();
+  const ready = row('P-01', { status: 'ready' });
+  writeReadyEvidence(root, ready);
+  const result = validate(
+    ledger([ready], { semantics: { productParityClaim: true } }),
+    root,
+    requirements(),
+    false
+  );
+  assert.equal(result.structuralPassed, true);
+  assert.equal(result.promotionPassed, true);
+  assert.equal(result.passed, true);
+});
+
+test('one-byte artifact mutation fails promotion in diagnostic mode', () => {
+  const root = repo();
+  const ready = row('P-01', { status: 'ready' });
+  const artifact = writeReadyEvidence(root, ready);
+  fs.appendFileSync(artifact, 'x');
+  const result = validate(
+    ledger([ready], { semantics: { productParityClaim: false } }),
+    root,
+    requirements(),
+    true
+  );
+  assert.equal(result.structuralPassed, true);
+  assert.equal(result.promotionPassed, false);
+  assert.ok(result.promotionFailures.some((failure) => /artifact hash mismatch/.test(failure.message)));
+});
+
+test('stale attestation makes claim=true structurally contradictory even in diagnostic mode', () => {
+  const root = repo();
+  const ready = row('P-01', { status: 'ready' });
+  writeReadyEvidence(root, ready, { targetHead: 'old-head' });
+  const result = validate(
+    ledger([ready], { semantics: { productParityClaim: true } }),
+    root,
+    requirements(),
+    true
+  );
+  assert.equal(result.passed, false);
+  assert.equal(result.structuralPassed, false);
+  assert.ok(result.promotionFailures.some((failure) => /differs from current HEAD/.test(failure.message)));
+  assert.ok(result.structuralFailures.some((failure) => /contradicts/.test(failure.message)));
+});
+
+test('ledger cannot cite itself as evidence', () => {
+  const result = validate(
+    ledger([row('P-01', { evidencePath: 'docs/linux-port/parity-ledger.json' })]),
+    repo(),
+    requirements(),
+    true
+  );
+  assert.equal(result.structuralPassed, false);
+  assert.ok(result.structuralFailures.some((failure) => /self-referential proof/.test(failure.message)));
+});
+
+test('structured accepted divergence requires ownership and review fields', () => {
+  const result = validate(
+    ledger([row('P-01', { acceptedDivergence: { reason: 'native substitute' } })]),
+    repo(),
+    requirements(),
+    true
+  );
+  assert.equal(result.structuralPassed, false);
+  assert.ok(result.structuralFailures.some((failure) => /acceptedDivergence.owner is required/.test(failure.message)));
+});
+
+test('minimum support environment requires exactly one coverage row', () => {
+  const result = validate(ledger(), repo(), requirements(['P-01'], ['ubuntu']), true);
+  assert.equal(result.structuralPassed, false);
+  assert.ok(result.structuralFailures.some((failure) => /ubuntu has no coverage row/.test(failure.message)));
+});
+
+test('ready environment evidence must be current-HEAD and artifact-hash bound', () => {
+  const root = repo();
+  const ready = row('P-01', { status: 'ready' });
+  writeReadyEvidence(root, ready);
+  const artifactRel = 'artifacts/environment.txt';
+  const artifactPath = path.join(root, artifactRel);
+  fs.writeFileSync(artifactPath, 'environment proof\n');
+  const hash = crypto.createHash('sha256').update(fs.readFileSync(artifactPath)).digest('hex');
+  const evidenceRel = 'evidence/environment.json';
+  fs.writeFileSync(path.join(root, evidenceRel), `${JSON.stringify({
+    schemaVersion: 1,
+    environmentId: 'ubuntu',
+    targetHead: 'old-head',
+    status: 'passed',
+    artifacts: [{ path: artifactRel, sha256: hash }]
+  })}\n`);
+  const value = ledger([ready], {
     semantics: { productParityClaim: true },
-    git: { commit: 'abc123' },
-    rows: [baseRow(evidencePath, { scope: 'historical-infrastructure' })]
-  };
-  const r = validateParityLedger(ledger, { currentHead: 'abc123', repoRoot });
-  assert.equal(r.passed, false);
-  assert.ok(r.failures.some((f) => /no product-parity/.test(f.message)));
-});
-
-test('ready historical row commit must match ledger git commit', () => {
-  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'obb-ledger-'));
-  const evidencePath = tmpEvidence(repoRoot);
-  const ledger = {
-    semantics: { productParityClaim: false },
-    git: { commit: 'ledger-head' },
-    rows: [baseRow(evidencePath, { commit: 'other' })]
-  };
-  const r = validateParityLedger(ledger, { currentHead: 'ledger-head', repoRoot });
-  assert.equal(r.passed, false);
-  assert.ok(r.failures.some((f) => /does not match ledger git commit/.test(f.message)));
-});
-
-test('self-referential evidence (ledger cites itself) fails strict, warns allow-blocked', () => {
-  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'obb-ledger-'));
-  const ledgerRel = 'docs/linux-port/parity-ledger.json';
-  const ledgerFull = path.join(repoRoot, ledgerRel);
-  fs.mkdirSync(path.dirname(ledgerFull), { recursive: true });
-  fs.writeFileSync(ledgerFull, '{"rows":[]}\n');
-  const ledger = {
-    semantics: { productParityClaim: false },
-    git: { commit: 'abc123' },
-    rows: [baseRow(ledgerRel, { id: 'VAL-SELF-001' })]
-  };
-  const strict = validateParityLedger(ledger, {
-    currentHead: 'abc123',
-    repoRoot,
-    ledgerPath: ledgerRel,
-    allowBlocked: false
+    environmentCoverage: [{ id: 'ubuntu', status: 'ready', evidencePath: evidenceRel }]
   });
-  assert.equal(strict.passed, false);
-  assert.ok(strict.failures.some((f) => /self-referential proof/.test(f.message)));
-
-  const soft = validateParityLedger(ledger, {
-    currentHead: 'abc123',
-    repoRoot,
-    ledgerPath: ledgerRel,
-    allowBlocked: true
-  });
-  assert.ok(soft.warnings.some((w) => /self-referential proof/.test(w.message)));
-});
-
-test('ready row whose evidence never names it fails strict, warns allow-blocked', () => {
-  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'obb-ledger-'));
-  const rel = 'docs/linux-port/evidence/mission-002-reanchor/other.json';
-  const full = path.join(repoRoot, rel);
-  fs.mkdirSync(path.dirname(full), { recursive: true });
-  fs.writeFileSync(full, JSON.stringify({ targetStatus: ['VAL-OTHER-999'] }));
-  const ledger = {
-    semantics: { productParityClaim: false },
-    git: { commit: 'abc123' },
-    rows: [baseRow(rel, { id: 'VAL-ABSENT-001', status: 'ready' })]
-  };
-  const strict = validateParityLedger(ledger, {
-    currentHead: 'abc123',
-    repoRoot,
-    allowBlocked: false
-  });
-  assert.equal(strict.passed, false);
-  assert.ok(strict.failures.some((f) => /does not mention row id VAL-ABSENT-001/.test(f.message)));
-
-  const soft = validateParityLedger(ledger, {
-    currentHead: 'abc123',
-    repoRoot,
-    allowBlocked: true
-  });
-  assert.ok(soft.warnings.some((w) => /does not mention row id VAL-ABSENT-001/.test(w.message)));
-});
-
-test('evidence file naming the row passes the id-presence check', () => {
-  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'obb-ledger-'));
-  const rel = 'docs/linux-port/evidence/mission-002-reanchor/named.json';
-  const full = path.join(repoRoot, rel);
-  fs.mkdirSync(path.dirname(full), { recursive: true });
-  fs.writeFileSync(full, JSON.stringify({ targetStatus: ['VAL-NAMED-001'] }));
-  const ledger = {
-    semantics: { productParityClaim: false },
-    git: { commit: 'abc123' },
-    rows: [baseRow(rel, { id: 'VAL-NAMED-001', status: 'ready' })]
-  };
-  const r = validateParityLedger(ledger, { currentHead: 'abc123', repoRoot, allowBlocked: false });
-  assert.ok(!r.failures.some((f) => /does not mention row id/.test(f.message)));
-  assert.ok(!r.warnings.some((w) => /does not mention row id/.test(w.message)));
-});
-
-test('over-shared evidence file warns', () => {
-  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'obb-ledger-'));
-  const rel = 'docs/linux-port/evidence/mission-002-reanchor/shared.json';
-  const full = path.join(repoRoot, rel);
-  fs.mkdirSync(path.dirname(full), { recursive: true });
-  // Name every row so id-presence passes; the point under test is the sharing count.
-  const ids = ['VAL-S-1', 'VAL-S-2', 'VAL-S-3', 'VAL-S-4'];
-  fs.writeFileSync(full, JSON.stringify({ rows: ids }));
-  const ledger = {
-    semantics: { productParityClaim: false },
-    git: { commit: 'abc123' },
-    rows: ids.map((id) => baseRow(rel, { id, status: 'blocked', tier: 'C' }))
-  };
-  const r = validateParityLedger(ledger, { currentHead: 'abc123', repoRoot, allowBlocked: true });
-  assert.ok(r.warnings.some((w) => /shared by 4 rows/.test(w.message)));
-});
-
-test('duplicate row id fails', () => {
-  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'obb-ledger-'));
-  const evidencePath = tmpEvidence(repoRoot);
-  const ledger = {
-    semantics: { productParityClaim: false },
-    git: { commit: 'abc123' },
-    rows: [baseRow(evidencePath), baseRow(evidencePath)]
-  };
-  const r = validateParityLedger(ledger, { currentHead: 'abc123', repoRoot });
-  assert.equal(r.passed, false);
-  assert.ok(r.failures.some((f) => /duplicate row id/.test(f.message)));
+  const result = validate(value, root, requirements(['P-01'], ['ubuntu']), true);
+  assert.equal(result.passed, false);
+  assert.ok(result.promotionFailures.some((failure) => /does not match current HEAD/.test(failure.message)));
 });

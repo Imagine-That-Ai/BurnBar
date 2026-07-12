@@ -4,7 +4,7 @@
   "databasePath": "C:\\WINDOWS\\SystemTemp\\obb-storage-4902576db67c4084bb6360d89b9a3f8a\\openburnbar.sqlite",
   "pathOwner": "WORKGROUP\\WIN-MIGC91I3AKQ$",
   "keyProvenance": "protected-generated:openburnbar.windows.sqlcipher.passphrase",
-  "keyFingerprint": "9333edf7c2a19889c8391e301aa9597b9c0a4a4ef11ea9da39d5287d308ac686",
+  "keyFingerprint": "redacted",
   "targetEndpoint": "v54_provider_quota_snapshots",
   "targetMigrationCount": 55,
   "schemaEndpoint": "v54_provider_quota_snapshots",

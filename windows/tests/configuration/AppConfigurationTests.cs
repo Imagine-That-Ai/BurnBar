@@ -1,11 +1,35 @@
 using Xunit;
 using OpenBurnBar.App.Configuration;
 using System.Text;
+using System.IO.Compression;
 
 namespace OpenBurnBar.App.Configuration.Tests;
 
 public sealed class AppConfigurationTests
 {
+    [Fact]
+    public void Default_secret_store_uses_the_configuration_local_app_data_root()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "obb-profile-test-" + Guid.NewGuid().ToString("N"));
+        string? originalLocalAppData = Environment.GetEnvironmentVariable("LOCALAPPDATA");
+
+        try
+        {
+            Environment.SetEnvironmentVariable("LOCALAPPDATA", dir);
+
+            var store = ProtectedFileSecretStore.CreateDefault();
+            string secretDirectory = Path.GetDirectoryName(store.PathFor(AppSecretNames.SqlCipherPassphrase))!;
+
+            Assert.Equal(Path.Combine(dir, "OpenBurnBar", "app_config.json"), AppConfiguration.DefaultFilePath());
+            Assert.Equal(Path.Combine(dir, "OpenBurnBar", "protected-secrets"), secretDirectory);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("LOCALAPPDATA", originalLocalAppData);
+            try { Directory.Delete(dir, recursive: true); } catch { /* best effort */ }
+        }
+    }
+
     [Fact]
     public void Sqlcipher_environment_is_rejected_by_release_guard_and_ignored_by_configuration()
     {
@@ -88,7 +112,7 @@ public sealed class AppConfigurationTests
           "firebaseUid": "uid-1",
           "firebaseIdToken": "legacy-firebase-id-token-canary",
           "appCheckToken": "legacy-app-check-canary",
-          "vaultKeyB64": "bGVnYWN5LXZhdWx0LWtleS1jYW5hcnk="
+          "vaultKeyB64": "dGVzdA=="
         }
         """);
 
@@ -101,7 +125,7 @@ public sealed class AppConfigurationTests
             Assert.Equal("legacy-db-pass-canary", config.EffectiveSqlCipherPassphrase());
             Assert.Equal("legacy-firebase-id-token-canary", config.EffectiveFirebaseIdToken());
             Assert.Equal("legacy-app-check-canary", config.EffectiveAppCheckToken());
-            Assert.Equal("bGVnYWN5LXZhdWx0LWtleS1jYW5hcnk=", config.EffectiveVaultKeyB64());
+            Assert.Equal("dGVzdA==", config.EffectiveVaultKeyB64());
 
             string migrated = File.ReadAllText(path);
             Assert.DoesNotContain("legacy-db-pass-canary", migrated, StringComparison.Ordinal);
@@ -170,7 +194,7 @@ public sealed class AppConfigurationTests
     }
 
     [Fact]
-    public void Missing_protected_ref_fails_closed_instead_of_empty_fallback()
+    public void Missing_protected_ref_preserves_recovery_state_and_fails_closed_at_access()
     {
         string dir = Path.Combine(Path.GetTempPath(), "obb-config-test-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
@@ -180,7 +204,52 @@ public sealed class AppConfigurationTests
         try
         {
             var store = ProtectedFileSecretStore.CreateForTests(Path.Combine(dir, "protected-secrets"));
-            var ex = Assert.Throws<SecretStoreException>(() => new AppConfiguration(path, store));
+            var config = new AppConfiguration(path, store);
+            Assert.Equal(AppConfigurationSecurityStatus.ProtectedStorageUnavailable, config.SecurityState.Status);
+
+            var ex = Assert.Throws<SecretStoreException>(() => config.EffectiveAppCheckToken());
+            Assert.Equal(SecretStoreFailureKind.SecretMissing, ex.Failure);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, recursive: true); } catch { /* best effort */ }
+        }
+    }
+
+    [Fact]
+    public void Default_protected_store_honors_local_app_data_override()
+    {
+        string localAppData = Path.Combine(Path.GetTempPath(), "obb-local-app-data-" + Guid.NewGuid().ToString("N"));
+        string? previous = Environment.GetEnvironmentVariable("LOCALAPPDATA");
+        try
+        {
+            Environment.SetEnvironmentVariable("LOCALAPPDATA", localAppData);
+
+            ProtectedFileSecretStore store = ProtectedFileSecretStore.CreateDefault();
+
+            Assert.Equal(Path.Combine(localAppData, "OpenBurnBar", "protected-secrets"), store.RootDirectory);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("LOCALAPPDATA", previous);
+        }
+    }
+
+    [Fact]
+    public void Missing_sqlcipher_ref_loads_typed_recovery_state_without_empty_fallback()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "obb-config-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        string path = Path.Combine(dir, "app_config.json");
+        File.WriteAllText(path, """{"sqlCipherPassphraseRef":"openburnbar.windows.sqlcipher.passphrase"}""");
+
+        try
+        {
+            var store = ProtectedFileSecretStore.CreateForTests(Path.Combine(dir, "protected-secrets"));
+            var config = new AppConfiguration(path, store);
+
+            Assert.Equal(AppConfigurationSecurityStatus.ProtectedStorageUnavailable, config.SecurityState.Status);
+            var ex = Assert.Throws<SecretStoreException>(() => config.EffectiveSqlCipherPassphrase());
             Assert.Equal(SecretStoreFailureKind.SecretMissing, ex.Failure);
         }
         finally
@@ -241,6 +310,56 @@ public sealed class AppConfigurationTests
         Assert.DoesNotContain("OPENBURNBAR_SQLCIPHER_PASSPHRASE", env.Keys);
         Assert.DoesNotContain("WINDOWS_UPDATE_SIGNING_KEY", env.Keys);
         Assert.DoesNotContain("DIAGNOSTIC_CANARY_SECRET", env.Keys);
+    }
+
+    [Fact]
+    public void Support_bundle_redacts_text_and_skips_secret_envelopes_and_databases()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "obb-support-test-" + Guid.NewGuid().ToString("N"));
+        string source = Path.Combine(dir, "OpenBurnBar");
+        string logs = Path.Combine(source, "logs");
+        string protectedSecrets = Path.Combine(source, "protected-secrets");
+        Directory.CreateDirectory(logs);
+        Directory.CreateDirectory(protectedSecrets);
+
+        string secret = "support-bundle-canary-secret-1234567890";
+        SecretRedactor.Shared.Register(secret);
+        File.WriteAllText(Path.Combine(logs, "winui-crash.log"), "token=" + secret + Environment.NewLine);
+        File.WriteAllText(Path.Combine(source, "app_config.json"), """{"firebaseIdToken":"support-bundle-canary-secret-1234567890"}""");
+        File.WriteAllText(Path.Combine(protectedSecrets, "deadbeef.secret.json"), secret);
+        File.WriteAllBytes(Path.Combine(source, "openburnbar.sqlite"), Encoding.UTF8.GetBytes(secret));
+        File.WriteAllText(Path.Combine(source, "openburnbar.sqlite.recovery.log"), "recovered");
+
+        try
+        {
+            string bundle = Path.Combine(dir, "bundle.zip");
+            SupportBundleResult result = SupportBundleBuilder.Create(bundle, new[] { source });
+
+            Assert.True(File.Exists(bundle));
+            Assert.Contains(result.IncludedArtifacts, artifact => artifact.EndsWith("winui-crash.log", StringComparison.Ordinal));
+            Assert.Contains(result.IncludedArtifacts, artifact => artifact.EndsWith("app_config.json", StringComparison.Ordinal));
+            Assert.Contains(result.IncludedArtifacts, artifact => artifact.EndsWith("openburnbar.sqlite.recovery.log", StringComparison.Ordinal));
+            Assert.Contains(result.SkippedArtifacts, artifact => artifact.Contains("protected secret", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(result.SkippedArtifacts, artifact => artifact.Contains("database file", StringComparison.OrdinalIgnoreCase));
+
+            using ZipArchive archive = ZipFile.OpenRead(bundle);
+            string combined = string.Join(
+                Environment.NewLine,
+                archive.Entries.Select(entry =>
+                {
+                    using Stream stream = entry.Open();
+                    using var reader = new StreamReader(stream, Encoding.UTF8);
+                    return reader.ReadToEnd();
+                }));
+
+            Assert.DoesNotContain(secret, combined, StringComparison.Ordinal);
+            Assert.Contains("[REDACTED]", combined, StringComparison.Ordinal);
+            Assert.Contains("recovered", combined, StringComparison.Ordinal);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, recursive: true); } catch { /* best effort */ }
+        }
     }
 
     private sealed class ThrowingSecretStore : IAppSecretStore

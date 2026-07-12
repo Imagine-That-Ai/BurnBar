@@ -32,6 +32,21 @@ describe('VAL-RPC-002 bridge behavior', () => {
     return b;
   }
 
+  it('runtimeCapabilities invokes and validates the native manifest', async () => {
+    const { makeAvailableRuntimeCapabilityManifest } = await import('./testing/bridgeStubs.js');
+    const manifest = makeAvailableRuntimeCapabilityManifest();
+    invoke.mockResolvedValueOnce(manifest);
+    const b = await bridge();
+    await expect(b.runtimeCapabilities()).resolves.toEqual(manifest);
+    expect(invoke).toHaveBeenCalledWith('runtime_capabilities');
+  });
+
+  it('runtimeCapabilities rejects malformed native data', async () => {
+    invoke.mockResolvedValueOnce({ schemaVersion: 1, capabilities: [] });
+    const b = await bridge();
+    await expect(b.runtimeCapabilities()).rejects.toThrow(/missing_ids/);
+  });
+
   it('toolApprovalRespond success path invokes tool_approval_respond', async () => {
     invoke.mockResolvedValueOnce({ ok: true });
     const b = await bridge();
@@ -81,10 +96,10 @@ describe('VAL-RPC-002 bridge behavior', () => {
     await b.computerUseSessionStart?.({
       mode: 'browser',
       trustMode: 'step',
-      clientID: 'linux-shell'
+      clientId: 'linux-shell'
     });
     expect(invoke).toHaveBeenCalledWith('computer_use_session_start', {
-      params: { mode: 'browser', trustMode: 'step', clientID: 'linux-shell' }
+      params: { mode: 'browser', trustMode: 'step', clientId: 'linux-shell' }
     });
   });
 
@@ -148,7 +163,8 @@ describe('VAL-RPC-002 bridge behavior', () => {
     const b = await bridge();
     await b.computerUsePanicHalt?.({ sessionId: 's1', source: 'hotkey' });
     expect(invoke).toHaveBeenCalledWith('computer_use_panic_halt', {
-      params: { sessionId: 's1', source: 'hotkey' }
+      sessionId: 's1',
+      source: 'hotkey'
     });
   });
 
@@ -225,6 +241,118 @@ describe('VAL-RPC-002 bridge behavior', () => {
     const status = await b.mediaStatus();
     expect(status.capabilityAvailable).toBe(false);
     expect(status.pairedDevices).toEqual([]);
+  });
+
+  it('mediaStatus decodes the daemon capability, session, and nested peer contract', async () => {
+    invoke.mockResolvedValueOnce({
+      capability: {
+        platform: 'linux',
+        available: true,
+        codecsKnown: true,
+        source: 'COpenBurnBarMediaCapture.media_capability_probe'
+      },
+      session: {
+        phase: 'streaming',
+        kind: 'mirror',
+        requestID: 'mirror-1',
+        peer: {
+          connectionID: 'phone-1',
+          displayName: 'Alberto iPhone',
+          isOnline: true,
+          lastSeenAt: '2026-07-10T00:00:00Z',
+          capabilities: ['mirror.viewer', 'file.receive']
+        },
+        startedAt: '2026-07-10T00:00:01Z'
+      }
+    });
+    const b = await bridge();
+    await expect(b.mediaStatus()).resolves.toEqual({
+      capabilityAvailable: true,
+      pairedDevices: [
+        {
+          id: 'phone-1',
+          name: 'Alberto iPhone',
+          platform: 'unknown',
+          isOnline: true,
+          lastSeenAt: '2026-07-10T00:00:00Z',
+          capabilities: ['mirror.viewer', 'file.receive']
+        }
+      ],
+      activeSession: {
+        kind: 'screen-share',
+        state: 'active',
+        peer: 'Alberto iPhone',
+        requestId: 'mirror-1',
+        startedAt: '2026-07-10T00:00:01Z'
+      }
+    });
+  });
+
+  it('mediaStatus fails closed when the nested daemon capability is unavailable', async () => {
+    invoke.mockResolvedValueOnce({
+      capability: {
+        available: false,
+        codecsKnown: false,
+        source: 'MercuryLinuxCapabilityProbe.stub',
+        detail: 'XDG_RUNTIME_DIR is not set.'
+      },
+      session: { phase: 'idle', updatedAt: '2026-07-10T00:00:00Z' }
+    });
+    const b = await bridge();
+    await expect(b.mediaStatus()).resolves.toEqual({
+      capabilityAvailable: false,
+      pairedDevices: [],
+      activeSession: undefined
+    });
+  });
+
+  it('mediaStatus fails closed when the daemon omits the required availability field', async () => {
+    invoke.mockResolvedValueOnce({
+      capability: {
+        codecsKnown: true,
+        source: 'COpenBurnBarMediaCapture.media_capability_probe'
+      },
+      session: { phase: 'idle', updatedAt: '2026-07-10T00:00:00Z' }
+    });
+    const b = await bridge();
+    await expect(b.mediaStatus()).resolves.toMatchObject({
+      capabilityAvailable: false,
+      activeSession: undefined
+    });
+  });
+
+  it('mediaCapabilityGet maps the native media probe to actionable shell support', async () => {
+    invoke.mockResolvedValueOnce({
+      available: true,
+      codecsKnown: true,
+      supportsDaemonToShellFrames: true,
+      source: 'COpenBurnBarMediaCapture.media_capability_probe',
+      detail: 'VP9 capture is ready.'
+    });
+    const b = await bridge();
+    await expect(b.mediaCapabilityGet()).resolves.toEqual({
+      available: true,
+      renderer: 'media-gst',
+      canReceiveCalls: true,
+      canViewScreenShare: true,
+      reason: 'VP9 capture is ready.'
+    });
+  });
+
+  it('mediaCapabilityGet fails closed when the probe omits availability', async () => {
+    invoke.mockResolvedValueOnce({
+      codecsKnown: true,
+      supportsDaemonToShellFrames: true,
+      source: 'COpenBurnBarMediaCapture.media_capability_probe'
+    });
+    const b = await bridge();
+    await expect(b.mediaCapabilityGet()).resolves.toEqual({
+      available: false,
+      renderer: 'media-gst',
+      canReceiveCalls: false,
+      canViewScreenShare: false,
+      reason: undefined
+    });
   });
 });
 

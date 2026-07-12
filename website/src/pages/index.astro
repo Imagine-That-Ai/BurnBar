@@ -22,7 +22,17 @@ const previewProviders = PROVIDERS_PRIMARY.filter((p) =>
   )
 );
 const surfaceShowcase = SURFACES.filter((s) =>
-  ["macos", "ios", "cursor", "daemon", "cli", "widgets", "smart-display", "android"].includes(s.id)
+  [
+    "macos",
+    "linux",
+    "ios",
+    "cursor",
+    "daemon",
+    "cli",
+    "widgets",
+    "smart-display",
+    "android"
+  ].includes(s.id)
 );
 // The heading below spells this count out in words — fail the build if the
 // showcase drifts so the copy can't silently go stale.
@@ -46,9 +56,9 @@ const detectedCount = totalCount - primaryCount;
     <div class="container container--wide hero__grid">
       <div class="hero__copy">
         <div class="hero__eyebrow eyebrow">
-          <span>v{SITE.macReleaseLatest}</span>
+          <span>v{SITE.macReleaseLatest} macOS</span>
           <span aria-hidden="true">·</span>
-          <span>macOS release</span>
+          <a class="hero__agpl" href="/download#linux">Linux {SITE.linuxReleaseLatest} ARM64</a>
           <span aria-hidden="true">·</span>
           <span>iOS {SITE.iosStatus}</span>
           <span aria-hidden="true">·</span>
@@ -109,6 +119,10 @@ const detectedCount = totalCount - primaryCount;
         <div class="hero__ctas">
           <a class="btn btn--ember" href="/download">
             Download for macOS
+            <span class="btn-arrow" aria-hidden="true">→</span>
+          </a>
+          <a class="btn btn--ghost" href="/download#linux">
+            Download for Linux
             <span class="btn-arrow" aria-hidden="true">→</span>
           </a>
           <a class="btn btn--ghost" href="/privacy"> Read the privacy model </a>
@@ -640,12 +654,16 @@ const detectedCount = totalCount - primaryCount;
       <h2 class="endcta__h">Don't get burned. Keep building.</h2>
       <div class="lead-glass-wrap glass-pane">
         <p class="lead">
-          OpenBurnBar is AGPL-licensed, signed and notarized for macOS, and ready to run today.
+          OpenBurnBar is AGPL-licensed, signed for macOS and Linux, and ready to run today.
         </p>
       </div>
       <div class="endcta__ctas">
         <a class="btn btn--ember" href="/download">
           Download for macOS
+          <span class="btn-arrow" aria-hidden="true">→</span>
+        </a>
+        <a class="btn btn--ghost" href="/download#linux">
+          Download for Linux
           <span class="btn-arrow" aria-hidden="true">→</span>
         </a>
         <a class="btn btn--ghost" href={SITE.github} target="_blank" rel="noopener noreferrer">

@@ -1,11 +1,14 @@
 using System;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Microsoft.Windows.AppLifecycle;
 using System.Threading.Tasks;
 using OpenBurnBar.App.Shell;
 using OpenBurnBar.App.Theme;
 using OpenBurnBar.App.CloudSync;
 using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Diagnostics;
+using OpenBurnBar.App.Settings.Winui;
 using OpenBurnBar.App.Storage;
 using OpenBurnBar.App.Tray;
 using OpenBurnBar.App.UsageRuntime;
@@ -26,19 +29,22 @@ namespace OpenBurnBar.App;
 /// </summary>
 public partial class App : Application
 {
-    private readonly AppStatePersistence _state = new();
     private readonly GlobalHotkeyService _hotkey = new();
 
+    private AppStatePersistence? _state;
     private ThemeService? _theme;
     private TrayIcon? _tray;
     private MainWindow? _mainWindow;
     private FlyoutWindow? _flyout;
+    private DispatcherQueue? _dispatcherQueue;
     private IUsageRuntime? _usageRuntime;
     private bool _hotkeyRegistered;
+    private bool _activationRegistered;
     private bool _isExiting;
 
     public App()
     {
+        AutomationLaunchOptions.Parse(Environment.CommandLine)?.ApplyEnvironment();
         AppDiagnostics.Install(this);
         InitializeComponent();
     }
@@ -46,8 +52,11 @@ public partial class App : Application
     /// <summary>The single running app instance (WinUI has no typed Application.Current).</summary>
     public static new App Current => (App)Application.Current;
 
-    protected override void OnLaunched(LaunchActivatedEventArgs args)
+    protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
+        _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
+        var automation = AutomationLaunchOptions.Parse(args.Arguments) ?? AutomationLaunchOptions.Parse(Environment.CommandLine);
+        automation?.ApplyEnvironment();
         AppDiagnostics.LogEvent("launch", args.Arguments ?? string.Empty);
         try
         {
@@ -65,13 +74,24 @@ public partial class App : Application
             AppDiagnostics.LogEvent("storage.recovery-required", $"{recovery.Kind}: {recovery.Title}");
         }
 
+        WindowsUpdateService.Configure(WindowsSettingsComposition.SharedPersistence);
+        _ = WindowsUpdateService.RunAutomaticCheckIfDueAsync(WindowsSettingsComposition.SharedPersistence);
         WinAppCloudSyncHost.ConfigureFromAppConfiguration();
         Quota.Acquisition.Windows.WindowsQuotaAcquisitionHost.ConfigureDefault();
 
         // Production Liquid Glass prefs (registry) — InMemory is reserved for unit tests.
         LiquidGlassEnvironment.Current = new LiquidGlassEnvironment(new RegistryLiquidGlassPreferenceStore());
 
+        _state = new AppStatePersistence();
+        automation?.ApplyStateSeed(_state);
         _theme = new ThemeService(_state);
+        automation?.WriteLaunchMarker();
+
+        if (storageStatus.IsReady)
+        {
+            _usageRuntime = CreateUsageRuntime();
+            _ = StartUsageRuntimeAsync(_usageRuntime);
+        }
 
         if ((RouteSmokeOptions.Parse(args.Arguments) ?? RouteSmokeOptions.Parse(Environment.CommandLine)) is { } smoke)
         {
@@ -80,15 +100,16 @@ public partial class App : Application
             return;
         }
 
-        if (storageStatus.IsReady)
+        RegisterActivationRouting();
+        if (automation?.MainWindow == true)
         {
-            _usageRuntime = CreateUsageRuntime();
-            _ = StartUsageRuntimeAsync(_usageRuntime);
+            ShowMainWindow();
+            return;
         }
 
         // Windows are created eagerly but stay hidden — the tray owns visibility, exactly like
         // NSStatusItem owning the menu-bar popover on macOS.
-        _flyout = new FlyoutWindow(_state, _usageRuntime);
+        _flyout = new FlyoutWindow(State, _usageRuntime);
         _theme.Register(_flyout);
 
         // The flyout is the always-alive window, so anchor the global Ctrl+K hotkey there.
@@ -100,6 +121,11 @@ public partial class App : Application
             onOpenMainWindow: ShowMainWindow,
             onExit: ExitApp);
         _tray.Show();
+
+        WindowsActivationRequest initialActivation = WindowsActivationRouter.FromAppLifecycleArguments(
+            AppInstance.GetCurrent().GetActivatedEventArgs().Kind.ToString(),
+            AppInstance.GetCurrent().GetActivatedEventArgs().Data);
+        HandleActivation(initialActivation, isInitialLaunch: true);
     }
 
     private void StartRouteSmoke(RouteSmokeOptions smoke)
@@ -109,6 +135,42 @@ public partial class App : Application
         _mainWindow.Activate();
         _mainWindow.Shell.Navigate(smoke.RouteKey);
         _ = RouteSmokeHost.CaptureAndExitAsync(_mainWindow, smoke);
+    }
+
+    private void RegisterActivationRouting()
+    {
+        if (_activationRegistered)
+        {
+            return;
+        }
+
+        AppInstance.GetCurrent().Activated += (_, args) =>
+        {
+            WindowsActivationRequest request = WindowsActivationRouter.FromAppLifecycleArguments(
+                args.Kind.ToString(),
+                args.Data);
+            (_dispatcherQueue ?? DispatcherQueue.GetForCurrentThread())
+                .TryEnqueue(() => HandleActivation(request, isInitialLaunch: false));
+        };
+        _activationRegistered = true;
+    }
+
+    private void HandleActivation(WindowsActivationRequest request, bool isInitialLaunch)
+    {
+        WindowsActivationRoute? route = WindowsActivationRouter.Resolve(request);
+        AppDiagnostics.LogEvent(
+            "activation.route",
+            $"{request.Kind} initial={isInitialLaunch} route={route?.RouteKey ?? "tray"} raw={request.Raw ?? string.Empty}");
+        if (route is null)
+        {
+            return;
+        }
+
+        if (route.OpensMainWindow)
+        {
+            ShowMainWindow();
+            _mainWindow?.Shell.Navigate(route.RouteKey);
+        }
     }
 
     /// <summary>Open the full main window from the flyout's "Open full window" action.</summary>
@@ -122,7 +184,7 @@ public partial class App : Application
 
     private void ToggleFlyout()
     {
-        _flyout ??= new FlyoutWindow(_state, _usageRuntime);
+        _flyout ??= new FlyoutWindow(State, _usageRuntime);
         _flyout.ToggleNearTray();
     }
 
@@ -224,4 +286,7 @@ public partial class App : Application
         _mainWindow?.Close();
         Exit();
     }
+
+    private AppStatePersistence State =>
+        _state ?? throw new InvalidOperationException("App state was requested before launch initialization completed.");
 }

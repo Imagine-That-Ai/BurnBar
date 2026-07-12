@@ -18,17 +18,23 @@ describe('useLaneLoad', () => {
       fixtureMode: false,
       health: null,
       healthError: null,
-      healthBusy: false
+      healthBusy: false,
+      dataRevision: 0,
+      lastDaemonEventAt: null,
+      subscriptionRecoveredAfterRestart: false,
+      subscriptionState: 'stopped',
+      subscriptionError: null
     });
   });
   afterEach(cleanup);
 
-  it('fires load on mount and re-fires when bridgeReady flips to true', () => {
+  it('fires load on mount and re-fires when bridgeReady flips to true', async () => {
     const spy = vi.fn(() => Promise.resolve());
     render(<Probe load={spy} />);
 
     // Initial mount fires once.
     expect(spy).toHaveBeenCalledTimes(1);
+    await act(async () => { await Promise.resolve(); });
 
     // Simulate boot completing: bridge becomes available, bridgeReady flips.
     act(() => {
@@ -37,6 +43,7 @@ describe('useLaneLoad', () => {
 
     // The re-fire is the entire point — without bridgeReady in the dep
     // array this second call never happens and every lane sticks offline.
+    await act(async () => { await Promise.resolve(); });
     expect(spy).toHaveBeenCalledTimes(2);
   });
 
@@ -50,5 +57,37 @@ describe('useLaneLoad', () => {
       useShellStore.setState({ healthBusy: true });
     });
     expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-fires when the daemon data revision advances', async () => {
+    const spy = vi.fn(() => Promise.resolve());
+    render(<Probe load={spy} />);
+    await act(async () => { await Promise.resolve(); });
+
+    act(() => {
+      useShellStore.setState({ dataRevision: 1 });
+    });
+
+    await act(async () => { await Promise.resolve(); });
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it('coalesces revisions while a load is in flight', async () => {
+    let resolveLoad: (() => void) | undefined;
+    const spy = vi.fn(() => new Promise<void>((resolve) => { resolveLoad = resolve; }));
+    render(<Probe load={spy} />);
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      useShellStore.setState({ dataRevision: 1 });
+      useShellStore.setState({ dataRevision: 2 });
+    });
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveLoad?.();
+      await Promise.resolve();
+    });
+    expect(spy).toHaveBeenCalledTimes(2);
   });
 });

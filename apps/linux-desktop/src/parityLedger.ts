@@ -26,8 +26,8 @@ export const PARITY_LEDGER: ParityRow[] = [
   {
     feature: 'Mercury media engine (calls, screen share, file transfer)',
     macos: 'In-process Mercury engine with live call UX',
-    linux: 'Observe + stage surface only; capability-absent state until the Mercury/Computer-Use engine reaches Linux (W5).',
-    substitution: 'Paired-device list and session status render from daemon.media.status when the daemon grows the RPC.'
+    linux: 'Daemon-owned iroh sessions, call controls, portal/PipeWire capture, encrypted media frames, and bidirectional file transfer.',
+    substitution: 'Runtime capability probing keeps the route available for calls and files when capture codecs are degraded, and blocks it when the daemon media runtime is absent.'
   },
   {
     feature: 'Chat tool approvals',

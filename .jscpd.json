@@ -1,8 +1,8 @@
 {
-  "threshold": 10,
+  "threshold": 6,
   "minTokens": 50,
   "minLines": 5,
-  "skip": [
+  "ignore": [
     "**/*.json",
     "**/*.md",
     "**/node_modules/**",
@@ -21,10 +21,22 @@
     "**/*.xcscheme",
     "**/Package.resolved",
     "**/*.storyboard",
-    "**/*.xib"
+    "**/*.xib",
+    "**/__mocks__/**",
+    "**/__test__/**",
+    "**/__tests__/**",
+    "**/Fixtures/**",
+    "**/Quarantine/**",
+    "**/Tests/**",
+    "**/test/**",
+    "**/tests/**",
+    "**/*Tests/**",
+    "**/*.test.*",
+    "**/*.spec.*",
+    "**/generated/**",
+    "**/*.generated.*"
   ],
-  "ignore": ["**/__mocks__/**", "**/Fixtures/**", "**/Quarantine/**"],
   "reporters": ["console"],
-  "formatsExts": ["swift", "kt", "ts", "tsx", "js", "jsx"],
+  "format": ["swift", "kotlin", "typescript", "tsx", "javascript", "jsx"],
   "gitignore": true
 }

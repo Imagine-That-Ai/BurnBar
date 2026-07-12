@@ -15,7 +15,7 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="../../ci/WindowsFullGateComposition.cs" Link="WindowsFullGateComposition.cs" />
+    <Compile Include="WindowsFullGateComposition.cs" />
     <Compile Include="WindowsFullGateCompositionTests.cs" />
   </ItemGroup>
 </Project>

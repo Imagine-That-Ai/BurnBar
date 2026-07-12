@@ -6,17 +6,17 @@
   "description": "OpenBurnBar Linux desktop shell (Tauri + WebView)",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node ../../scripts/linux-port/verify-linux-production-bundle.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "tauri:dev": "tauri dev",
+    "pretauri:build": "node ../../scripts/linux-port/prepare-linux-package-payload.mjs",
     "tauri:build": "tauri build",
     "perf:budget": "node ../../scripts/linux-port/run-perf-budget.mjs"
   },
   "dependencies": {
     "@openburnbar/design-tokens": "file:../../packages/design-tokens",
     "@tauri-apps/api": "^2.2.0",
-    "@tauri-apps/plugin-shell": "^2.2.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "zustand": "5.0.5"
@@ -29,6 +29,7 @@
     "@types/react": "19.1.8",
     "@types/react-dom": "19.1.6",
     "@vitejs/plugin-react": "4.6.0",
+    "axe-core": "4.12.1",
     "jsdom": "^25.0.1",
     "playwright": "1.49.1",
     "typescript": "^5.7.3",

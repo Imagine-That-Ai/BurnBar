@@ -1,7 +1,7 @@
 # H0 sample / demo / stub / unavailable production-path audit
 
-**Date:** 2026-07-09 (refreshed after IA-2/IA-4 + F2 finish-line reclassification)  
-**Scope:** Windows app production defaults after H0 honesty + chat driver + Database/Projects product pages  
+**Date:** 2026-07-09 (refreshed after IA-2/IA-4 + F2 finish-line reclassification)
+**Scope:** Windows app production defaults after H0 honesty + chat driver + Database/Projects product pages
 **Rule:** Sample/demo/stub fiction must not be production default; empty/deferred/unavailable must be explicit and labeled.
 
 ## Legend
