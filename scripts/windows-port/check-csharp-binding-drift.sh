@@ -73,7 +73,12 @@ check_binding() {
   echo "==> [${label}] building the cdylib (cargo build -p ${package})"
   ( cd "${repo_root}/${crate_dir}" && cargo build -p "${package}" )
 
-  local lib_path="${repo_root}/${crate_dir}/target/debug/${lib_file}"
+  local target_dir
+  target_dir="$(
+    cd "${repo_root}/${crate_dir}" && cargo metadata --no-deps --format-version 1 \
+      | python3 -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])'
+  )"
+  local lib_path="${target_dir}/debug/${lib_file}"
   if [[ ! -f "${lib_path}" ]]; then
     echo "ERROR: [${label}] cdylib not found after build: ${lib_path}" >&2
     exit 1
@@ -90,7 +95,12 @@ check_binding() {
       --out-dir "${out_dir}" >/dev/null )
 
   generated_name="$(basename "${committed}")"
-  if ! diff -u "${repo_root}/${committed}" "${out_dir}/${generated_name}"; then
+  local normalized_committed="${tmp_root}/${label}.committed.normalized.cs"
+  local normalized_generated="${tmp_root}/${label}.generated.normalized.cs"
+  cp "${repo_root}/${committed}" "${normalized_committed}"
+  cp "${out_dir}/${generated_name}" "${normalized_generated}"
+  perl -0pi -e 's/[ \t]+$//mg' "${normalized_committed}" "${normalized_generated}"
+  if ! diff -u "${normalized_committed}" "${normalized_generated}"; then
     echo "" >&2
     echo "ERROR: [${label}] the committed C# binding is stale — the Rust" >&2
     echo "#[uniffi::export] surface changed without regenerating it." >&2

@@ -1,0 +1,7 @@
+﻿{
+    "name":  "configuration-tests",
+    "command":  "dotnet test windows\\tests\\configuration\\OpenBurnBar.App.Configuration.Tests.csproj --configuration Debug --no-build --nologo --logger trx;LogFileName=configuration.trx",
+    "exitCode":  0,
+    "log":  "C:\\Users\\Public\\openburnbar-candidate-7d5f1c4\\arm64-evidence-current\\configuration-tests.log",
+    "completedAt":  "2026-07-10T02:46:00.9925457Z"
+}

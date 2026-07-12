@@ -492,6 +492,7 @@ extension ChatSessionController {
                             systemPrompt: augmentedSystem,
                             userMessage: trimmed,
                             workspaceDirectory: self.chatWorkspaceURL,
+                            model: requestModel,
                             capabilityGrant: activeDesktopGrant
                         )
                     case .openClaude:
@@ -504,6 +505,14 @@ extension ChatSessionController {
                         )
                     case .omp:
                         return self.cliBridge.chatOMPStream(
+                            systemPrompt: augmentedSystem,
+                            userMessage: trimmed,
+                            workspaceDirectory: self.chatWorkspaceURL,
+                            model: requestModel,
+                            capabilityGrant: activeDesktopGrant
+                        )
+                    case .junie:
+                        return self.cliBridge.chatJunieStream(
                             systemPrompt: augmentedSystem,
                             userMessage: trimmed,
                             workspaceDirectory: self.chatWorkspaceURL,

@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Capabilities that a human can grant to one assistant runtime for one
 /// chat thread. No assistant receives any of these by default.

@@ -1,0 +1,7 @@
+﻿{
+    "name":  "chat-evidence",
+    "command":  "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\\windows-port\\chat-evidence.ps1 -RepoRoot C:\\candidate7d5f1c4_run -OutputDir C:\\Users\\Public\\openburnbar-candidate-7d5f1c4\\arm64-evidence-current\\chat-evidence",
+    "exitCode":  0,
+    "log":  "C:\\Users\\Public\\openburnbar-candidate-7d5f1c4\\arm64-evidence-current\\chat-evidence.log",
+    "completedAt":  "2026-07-10T02:48:21.6899278Z"
+}

@@ -8,7 +8,7 @@ Generated: 2026-07-04T15:02:00Z
 - `OB_EVIDENCE_OUT=/private/tmp/openburnbar-cu-evidence-qemu-final-20260704-092426 OB_CU_ALLOW_REUSED_OUT=1 OB_CU_TARGET_STATUS_ONLY=1 OB_CU_MOBILE_LIVE_PROBE_SOURCE=/private/tmp/openburnbar-cu-evidence-portal-20260704-1054/mobile-live-surface-probe.json node scripts/linux-port/run-computer-use-evidence.mjs` exited `0`; raw-verified and imported the accepted terminal mobile probe, then resynthesized target status from artifacts in this bundle.
 - `node --check scripts/linux-port/run-computer-use-evidence.mjs` exited `0`.
 - `bash -n scripts/linux-port/portal-consent-lifecycle.sh` exited `0`.
-- `PYTHONPYCACHEPREFIX=/private/tmp/ltf-pycache python3 -m py_compile src/linuxtest/portal_evidence.py` exited `0` in `/Users/albertonunez/linux-test-framework`.
+- `PYTHONPYCACHEPREFIX=/private/tmp/ltf-pycache python3 -m py_compile src/linuxtest/portal_evidence.py` exited `0` in `$LINUX_TEST_FRAMEWORK`.
 - `git diff --check` exited `0` in `/private/tmp/openburnbar-linux-mission-001`.
 
 ## Target Status

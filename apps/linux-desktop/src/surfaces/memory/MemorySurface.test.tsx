@@ -87,30 +87,31 @@ describe('MemorySurface', () => {
     render(<MemorySurface />);
     const row = screen.getByText(/Prefer Rust for daemon IPC/i).closest('article');
     expect(row).toBeTruthy();
-    fireEvent.click(within(row!).getByRole('button', { name: /^approve$/i }));
+    fireEvent.click(within(row!).getByRole('button', { name: /save as memory/i }));
     fireEvent.click(screen.getByRole('button', { name: /^approved$/i }));
     expect(screen.getAllByText('Approved').length).toBeGreaterThan(0);
   });
 
-  it('renders live recalled memories as approved and revokes through daemon forget', async () => {
+  it('renders live recalled memories as approved and forgets through memorySetStatus', async () => {
     vi.spyOn(useSystemStore.getState(), 'loadMemory').mockImplementation(async () => {});
-    const memoryReviewDecision = vi.fn().mockResolvedValue(undefined);
+    const memorySetStatus = vi.fn().mockResolvedValue({});
+    const memoryReviewInbox = vi.fn().mockResolvedValue({
+      items: [
+        {
+          id: 'mem-live-1',
+          body: 'Use daemon RPCs for Linux parity wiring.',
+          kind: 'fact',
+          confidence: 0.9,
+          sourceLabel: 'Daemon memory recall',
+          status: 'approved',
+          canApprove: false
+        }
+      ],
+      auditEvents: []
+    });
     const bridge = {
-      memoryReviewInbox: vi.fn().mockResolvedValue({
-        items: [
-          {
-            id: 'mem-live-1',
-            body: 'Use daemon RPCs for Linux parity wiring.',
-            kind: 'fact',
-            confidence: 0.9,
-            sourceLabel: 'Daemon memory recall',
-            status: 'approved',
-            canApprove: false
-          }
-        ],
-        auditEvents: []
-      }),
-      memoryReviewDecision
+      memoryReviewInbox,
+      memorySetStatus
     } as unknown as LinuxShellBridge;
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     useShellStore.setState({ bridge, fixtureMode: false });
@@ -118,8 +119,10 @@ describe('MemorySurface', () => {
     render(<MemorySurface />);
     fireEvent.click(screen.getByRole('button', { name: /^approved$/i }));
     await waitFor(() => expect(screen.getByText(/Use daemon RPCs/i)).toBeTruthy());
-    fireEvent.click(screen.getByRole('button', { name: /revoke/i }));
-    await waitFor(() => expect(memoryReviewDecision).toHaveBeenCalledWith('mem-live-1', 'rejected'));
+    fireEvent.click(screen.getByRole('button', { name: /forget permanently/i }));
+    await waitFor(() =>
+      expect(memorySetStatus).toHaveBeenCalledWith('reject', { memoryID: 'mem-live-1' })
+    );
   });
 
   it('shows degraded memory RPC errors without fixture fallback', async () => {

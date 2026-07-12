@@ -54,8 +54,8 @@ export function ThreadRail({
   return (
     <aside className="chat-rail" aria-label="Conversation threads">
       <div className="chat-rail-header">
-        <button type="button" className="primary chat-new-button" onClick={onNewChat}>
-          + New chat
+        <button type="button" className="chat-new-button" onClick={onNewChat}>
+          New chat
         </button>
       </div>
       <div className="chat-thread-search">

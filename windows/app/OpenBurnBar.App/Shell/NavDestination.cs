@@ -4,14 +4,13 @@ using System.Linq;
 namespace OpenBurnBar.App.Shell;
 
 /// <summary>
-/// One sidebar destination in the WinUI <c>NavigationView</c> app frame — the Windows
-/// analog of a macOS <c>NavigationSplitView</c> sidebar row / <c>DashboardMainRoute</c>
+/// One top-level app destination — the Windows peer of a macOS
+/// <c>DashboardMainRoute</c> / Command Deck section
 /// (<c>AgentLens/Views/Dashboard/DashboardNavigationModel.swift</c>).
 ///
-/// Phase 3 W6-SHELL ships the frame with all 12 destinations <b>stubbed</b>: selecting one
-/// navigates a content <c>Frame</c> to a placeholder that names the surface. The real
-/// surfaces (Buckets A/B/C of the Phase-3 plan) replace those placeholders one by one; the
-/// catalog here is the stable seam they plug into.
+/// These are <b>not</b> the Dashboard Command sidebar rows (those are Overview /
+/// providers / models, owned by <c>DashboardCommandSidebar</c>). Catalog entries
+/// feed the section switcher menu + Command Palette.
 /// </summary>
 public sealed class NavDestination
 {
@@ -41,24 +40,31 @@ public sealed class NavDestination
 }
 
 /// <summary>
-/// The canonical, ordered set of the 12 top-level surfaces the shell exposes. Kept in one
+/// The canonical, ordered set of top-level surfaces the shell exposes. Kept in one
 /// place so the NavigationView, the Command Palette, and later the real pages all agree.
 /// Glyphs are Segoe MDL2 Assets code points (approximate; final icon parity is a design pass).
 /// </summary>
 public static class NavCatalog
 {
-    /// <summary>The 12 destinations named in the W6-SHELL lane, in sidebar order.</summary>
+    /// <summary>
+    /// Sidebar/menu destinations in switcher order. Includes IA-1 route keys
+    /// <c>database</c> and <c>projects</c> (macOS primary sections) which resolve to an
+    /// explicit deferred-disclosure surface until IA-2+ depth lands — not fake Real pages.
+    /// </summary>
     public static IReadOnlyList<NavDestination> All { get; } = new List<NavDestination>
     {
         new("dashboard",         "Dashboard",          "All providers + models",          "\uE80F"),
         new("chat",              "Chat",               "Full-canvas chat",                "\uE8BD"),
         new("insights",          "Insights",           "Editorial brief & anomalies",     "\uE9D2"),
         new("quota",             "Quota",              "Subscriptions & limits",          "\uE9D9"),
+        // macOS primary sections: IA-2 System browse + IA-4 list-level projects.
+        new("database",          "Database",           "Browse tracked sessions (System mode)", "\uE8F1"),
+        new("projects",          "Projects",           "Group by project (list-level peer)",      "\uE8B7"),
         new("sessionLogs",       "Session Logs",       "Indexed conversations",           "\uE81C"),
         new("memory",            "Memory",             "Review what OpenBurnBar learned", "\uEA37"),
         new("missionControl",    "Mission Control",    "Active runs & tasks",             "\uE7C1"),
         new("budget",            "Budget",             "Spend rules & limits",            "\uE8C7"),
-        new("dataControlCenter", "Data Control Center","Local & synced data",             "\uE964"),
+        new("dataControlCenter", "Data & Privacy",     "Govern every data domain",        "\uE964"),
         new("switcher",          "Switcher",           "Accounts & sign-in",              "\uE748"),
         new("onboarding",        "Onboarding",         "First-run setup",                 "\uE897"),
         new("settings",          "Settings",           "Preferences & configuration",     "\uE713", isFooter: true),
@@ -67,8 +73,8 @@ public static class NavCatalog
     /// <summary>
     /// Secondary surfaces that are resolvable + navigable but are NOT sidebar rows — the Windows
     /// analog of macOS surfaces gated behind a Settings leaf / chat-header entry rather than one of
-    /// the 12 top-level nav destinations. Kept out of <see cref="All"/> so the 12-row sidebar +
-    /// Ctrl 1..9 parity holds; surfaced through the Command Palette so they stay reachable, and
+    /// the primary nav destinations. Kept out of <see cref="All"/> so Ctrl 1..9 primary shortcuts
+    /// stay scannable; surfaced through the Command Palette so they stay reachable, and
     /// resolved by <see cref="SurfacePageResolver"/> the same as any destination.
     ///
     /// Elder Wand (<c>.gatedFeature(.elderWand)</c>, macOS "Analysis Models") is the first: reached

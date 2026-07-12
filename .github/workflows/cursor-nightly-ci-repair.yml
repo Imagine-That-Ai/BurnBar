@@ -35,8 +35,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: cursor-nightly-ci-repair-singleton
-  cancel-in-progress: true
+  group: cursor-nightly-ci-repair-${{ github.event_name == 'workflow_run' && format('continuation-{0}', github.event.workflow_run.id) || format('{0}-{1}', github.event_name, github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'workflow_run' }}
 
 env:
   GH_REPO: ${{ github.repository }}
@@ -285,13 +285,22 @@ jobs:
             "codeql.yml"
             "ops-confidence.yml"
             "ops-plane-verify.yml"
+            "deploy-firestore.yml"
+            "deploy-production.yml"
+            "deploy-cloud-run.yml"
+            "nightly-dast-sandbox.yml"
+            "linux-nightly.yml"
           )
 
           failed_count=0
           for workflow in "${workflows[@]}"; do
+            branch_args=(--branch main)
+            case "$workflow" in
+              deploy-production.yml|deploy-cloud-run.yml) branch_args=() ;;
+            esac
             run_json="$(gh run list \
               --workflow "$workflow" \
-              --branch main \
+              "${branch_args[@]}" \
               --limit 1 \
               --json databaseId,conclusion,createdAt,event,headSha,name,status,url)"
 

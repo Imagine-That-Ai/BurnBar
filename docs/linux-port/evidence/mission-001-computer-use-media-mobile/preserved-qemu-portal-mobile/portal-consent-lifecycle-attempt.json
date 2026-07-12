@@ -50,7 +50,7 @@
   "target": "VAL-CU-001",
   "skipped": false,
   "decisiveSurface": "QEMU aarch64 VM with virtio-gpu DRM, Sway, PipeWire, xdg-desktop-portal, and xdg-desktop-portal-wlr",
-  "frameworkPath": "/Users/albertonunez/linux-test-framework",
+  "frameworkPath": "$LINUX_TEST_FRAMEWORK",
   "fallbackUsed": false,
   "command": {
     "exitCode": 0,

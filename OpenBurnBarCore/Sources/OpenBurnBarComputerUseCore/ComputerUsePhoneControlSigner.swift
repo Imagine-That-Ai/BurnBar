@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Pure Ed25519 signer / verifier for `PhoneControlAuthority`
 /// envelopes. Phase 12. Lives in `OpenBurnBarComputerUseCore` so iOS

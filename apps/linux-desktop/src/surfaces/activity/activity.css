@@ -31,7 +31,10 @@
   padding-right: calc(var(--space-3) + 1.75rem);
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-glass-line);
-  background: var(--color-glass-bg);
+  background: var(--glass-panel, color-mix(in srgb, var(--color-glass-bg) 62%, transparent));
+  backdrop-filter: var(--glass-panel-blur, blur(22px) saturate(165%));
+  -webkit-backdrop-filter: var(--glass-panel-blur, blur(22px) saturate(165%));
+  box-shadow: var(--glass-panel-shadow, 0 8px 24px rgba(0,0,0,0.22), inset 0 1px 0 var(--color-frost-line));
   color: var(--color-text-base);
   font-family: var(--font-body);
 }
@@ -78,7 +81,10 @@
 
 .activity-metric-toggle button {
   border: none;
-  background: var(--color-mercury-wash);
+  background: color-mix(in srgb, var(--color-mercury-wash) 85%, transparent);
+  backdrop-filter: blur(var(--glass-blur-sm, 12px)) saturate(var(--glass-saturate, 160%));
+  -webkit-backdrop-filter: blur(var(--glass-blur-sm, 12px)) saturate(var(--glass-saturate, 160%));
+  box-shadow: var(--glass-inner-light, inset 0 1px 0 var(--color-frost-line));
   color: var(--color-text-mute);
   font: inherit;
   font-size: 0.85rem;
@@ -127,7 +133,10 @@
 .activity-row {
   border: 1px solid var(--color-glass-line);
   border-radius: var(--radius-sm);
-  background: var(--color-mercury-wash);
+  background: color-mix(in srgb, var(--color-mercury-wash) 85%, transparent);
+  backdrop-filter: blur(var(--glass-blur-sm, 12px)) saturate(var(--glass-saturate, 160%));
+  -webkit-backdrop-filter: blur(var(--glass-blur-sm, 12px)) saturate(var(--glass-saturate, 160%));
+  box-shadow: var(--glass-inner-light, inset 0 1px 0 var(--color-frost-line));
   padding: var(--space-3);
   display: grid;
   gap: var(--space-3);

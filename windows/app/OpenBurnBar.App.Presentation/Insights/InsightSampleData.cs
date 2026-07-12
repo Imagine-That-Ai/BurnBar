@@ -5,13 +5,14 @@ using System.Linq;
 namespace OpenBurnBar.App.Presentation.Insights;
 
 /// <summary>
-/// Deterministic sample data for every chart kind, so the Windows template gallery → canvas
-/// flow renders real, non-empty charts immediately — before the (later) Insights data engine
-/// lane wires the live provider/session data source.
+/// Deterministic sample data for every chart kind — opt-in demonstration only.
+/// Production paths must not call this unless <c>OPENBURNBAR_SAMPLE_MODE</c> is on
+/// (see <see cref="InsightsBuiltInTemplates.SampleFallbackEnabled"/> and
+/// <c>CloudSyncInsightSource</c>). Prefer <see cref="InsightEmptyData"/> for
+/// production no-data widgets.
 ///
-/// This is honest demonstration data, clearly labeled in the UI as a preview. Every generator
-/// is a pure function of a small integer seed + an anchor date, so the unit tests can pin the
-/// exact output (a known seed → known bar heights / radar values / heatmap cells).
+/// Every generator is a pure function of a small integer seed + an anchor date so
+/// unit tests can pin exact output (known seed → known bar heights / radar values).
 /// </summary>
 public static class InsightSampleData
 {

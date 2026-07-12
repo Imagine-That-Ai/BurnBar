@@ -11,27 +11,78 @@ if [[ ! -f "$site_config" ]]; then
 fi
 
 read_site_metadata() {
-  node --input-type=module - "$site_config" <<'NODE'
+  OPENBURNBAR_REPO_ROOT="$repo_root" node --input-type=module - "$site_config" <<'NODE'
+import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 const siteConfig = process.argv[2];
 const source = readFileSync(siteConfig, "utf8");
-const withoutComments = source
-  .replace(/\/\*[\s\S]*?\*\//g, "")
-  .replace(/(^|[^:])\/\/.*$/gm, "$1");
-const siteMatch = withoutComments.match(/export\s+const\s+SITE\s*=\s*\{([\s\S]*)\}\s*(?:as\s+const\s*)?;?\s*$/m);
-if (!siteMatch) {
+const require = createRequire(import.meta.url);
+const repoRoot = process.env.OPENBURNBAR_REPO_ROOT;
+if (!repoRoot) {
+  throw new Error("OPENBURNBAR_REPO_ROOT must be set by the verifier wrapper");
+}
+const ts = require(resolve(repoRoot, "website/node_modules/typescript"));
+const sourceFile = ts.createSourceFile(siteConfig, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+
+function unwrapExpression(expression) {
+  let current = expression;
+  while (
+    ts.isAsExpression(current) ||
+    ts.isTypeAssertionExpression(current) ||
+    ts.isSatisfiesExpression(current) ||
+    ts.isParenthesizedExpression(current)
+  ) {
+    current = current.expression;
+  }
+  return current;
+}
+
+function exportedSiteObject() {
+  for (const statement of sourceFile.statements) {
+    if (!ts.isVariableStatement(statement)) {
+      continue;
+    }
+    const isExported = statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword);
+    if (!isExported) {
+      continue;
+    }
+    for (const declaration of statement.declarationList.declarations) {
+      if (declaration.name.getText(sourceFile) !== "SITE" || !declaration.initializer) {
+        continue;
+      }
+      const initializer = unwrapExpression(declaration.initializer);
+      if (!ts.isObjectLiteralExpression(initializer)) {
+        throw new Error("website/src/data/site.ts must export SITE as a declarative object literal");
+      }
+      return initializer;
+    }
+  }
   throw new Error("website/src/data/site.ts must export a declarative SITE object");
 }
-const siteObject = siteMatch[1];
+
+const siteObject = exportedSiteObject();
+
+function propertyNameText(name) {
+  if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) {
+    return name.text;
+  }
+  return undefined;
+}
 
 function stringField(name) {
-  const pattern = new RegExp(`(?:^|[,\\n])\\s*${name}\\s*:\\s*([\"'])([^\"'\\\\]*(?:\\\\.[^\"'\\\\]*)*)\\1\\s*(?:,|$)`, "m");
-  const match = siteObject.match(pattern);
-  if (!match) {
+  const property = siteObject.properties.find(
+    (entry) => ts.isPropertyAssignment(entry) && propertyNameText(entry.name) === name,
+  );
+  if (!property) {
     throw new Error(`SITE.${name} must be a literal string`);
   }
-  return JSON.parse(`"${match[2].replace(/"/g, '\\"')}"`);
+  const value = unwrapExpression(property.initializer);
+  if (!ts.isStringLiteral(value) && !ts.isNoSubstitutionTemplateLiteral(value)) {
+    throw new Error(`SITE.${name} must be a literal string`);
+  }
+  return value.text;
 }
 
 const base = stringField("macDownloadBaseUrl").replace(/\/+$/, "");

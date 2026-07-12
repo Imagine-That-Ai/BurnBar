@@ -18,11 +18,18 @@ struct AssistantConnectionSheet: View {
     let piService: PiService?
     let focusedRuntime: AssistantRuntimeID
 
+    /// Runtimes `addDirect()` can actually add today. Hermes direct URLs
+    /// go through HermesService's own pairing flow, and bridged CLI
+    /// runtimes are paired via the macOS host — offering them in the
+    /// Direct URL picker would silently discard the user's input.
+    static let directURLRuntimes: [AssistantRuntimeID] = [.pi]
+
     @Environment(\.dismiss) private var dismiss
     @State private var directRuntime: AssistantRuntimeID
     @State private var directName: String = ""
     @State private var directURL: String = ""
     @State private var directBearer: String = ""
+    @State private var directAddError: String?
 
     init(
         hermesService: HermesService?,
@@ -32,7 +39,11 @@ struct AssistantConnectionSheet: View {
         self.hermesService = hermesService
         self.piService = piService
         self.focusedRuntime = focusedRuntime
-        _directRuntime = State(initialValue: focusedRuntime)
+        _directRuntime = State(
+            initialValue: Self.directURLRuntimes.contains(focusedRuntime)
+                ? focusedRuntime
+                : (Self.directURLRuntimes.first ?? .pi)
+        )
     }
 
     var body: some View {
@@ -152,12 +163,20 @@ struct AssistantConnectionSheet: View {
 
     private var directURLSection: some View {
         Section {
-            Picker("Runtime", selection: $directRuntime) {
-                ForEach(AssistantRuntimeID.allCases, id: \.self) { runtime in
-                    Text("\(runtime.glyph) \(runtime.displayName)").tag(runtime)
+            // Only runtimes `addDirect()` implements are offered — a picker
+            // full of no-op runtimes silently discarded the user's input.
+            if Self.directURLRuntimes.count > 1 {
+                Picker("Runtime", selection: $directRuntime) {
+                    ForEach(Self.directURLRuntimes, id: \.self) { runtime in
+                        Text("\(runtime.glyph) \(runtime.displayName)").tag(runtime)
+                    }
                 }
+                .pickerStyle(.segmented)
+            } else {
+                Text("\(directRuntime.glyph) \(directRuntime.displayName) — Hermes and bridged CLI runtimes pair from your Mac instead.")
+                    .font(MobileTheme.Typography.caption)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
             }
-            .pickerStyle(.segmented)
 
             TextField("Name (e.g. Home Mac)", text: $directName)
                 .textFieldStyle(.roundedBorder)
@@ -172,6 +191,12 @@ struct AssistantConnectionSheet: View {
             SecureField("Bearer token (optional)", text: $directBearer)
                 .textFieldStyle(.roundedBorder)
 
+            if let directAddError {
+                Text(directAddError)
+                    .font(MobileTheme.Typography.caption)
+                    .foregroundStyle(MobileTheme.Colors.error)
+            }
+
             Button {
                 addDirect()
             } label: {
@@ -185,25 +210,31 @@ struct AssistantConnectionSheet: View {
 
     private func addDirect() {
         switch directRuntime {
-        case .hermes:
-            // Hermes direct URL adds happen through HermesService's own
-            // pairing flow today; keep this branch as a no-op so the
-            // segmented picker stays usable but doesn't double-write.
-            break
         case .pi:
-            _ = piService?.addDirectConnection(
+            guard let piService else {
+                directAddError = "Pi isn't available from this surface. Open the Pi tab and add the connection there."
+                return
+            }
+            guard piService.addDirectConnection(
                 name: directName,
                 urlString: directURL,
                 bearerToken: directBearer.isEmpty ? nil : directBearer
-            )
-        case .codex, .claude, .openClaw, .droid, .forge, .antigravity, .grok, .cursorAgent, .openClaude, .omp:
-            // Bridged runtimes are paired via the macOS host — direct URL
-            // entry from mobile is intentionally a no-op for now.
-            break
+            ) != nil else {
+                // Invalid name/URL — keep the fields so the user can fix
+                // them instead of silently discarding the input.
+                directAddError = "Enter a name and a full URL including http:// or https://."
+                return
+            }
+            directAddError = nil
+            directName = ""
+            directURL = ""
+            directBearer = ""
+        default:
+            // Defensive: only runtimes in `directURLRuntimes` are
+            // selectable. Anything else keeps the user's input untouched
+            // and says why nothing happened.
+            directAddError = "\(directRuntime.displayName) connections are paired from your Mac, not by direct URL."
         }
-        directName = ""
-        directURL = ""
-        directBearer = ""
     }
 
     // MARK: - This Device section

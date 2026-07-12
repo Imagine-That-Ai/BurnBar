@@ -7,8 +7,8 @@ struct KeychainQuotaSecretStore: SecretStore {
     private let keychain: KeychainStore
 
     init(keychain: KeychainStore = KeychainStore(
-        service: OpenBurnBarIdentity.cursorConnectorKeychainService,
-        legacyServices: OpenBurnBarIdentity.legacyCursorConnectorKeychainServices
+        service: OpenBurnBarCore.OpenBurnBarIdentity.cursorConnectorKeychainService,
+        legacyServices: OpenBurnBarCore.OpenBurnBarIdentity.legacyCursorConnectorKeychainServices
     )) {
         self.keychain = keychain
     }

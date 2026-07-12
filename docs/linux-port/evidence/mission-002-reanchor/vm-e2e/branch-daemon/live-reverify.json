@@ -1,0 +1,35 @@
+{
+  "generatedAt": "2026-07-09T18:10:52Z",
+  "daemonHealth": {
+    "protocolVersion": 1,
+    "result": {
+      "gatewayPort": 8317,
+      "gatewayHost": "127.0.0.1",
+      "socketPath": "/run/user/1000/openburnbar/daemon.sock",
+      "gatewayEnabled": true,
+      "daemonVersion": "1.0.29",
+      "protocolVersion": 1,
+      "ok": true
+    },
+    "id": "daemon.health"
+  },
+  "cuPending": {
+    "id": "daemon.computer_use.approval.pending",
+    "protocolVersion": 1,
+    "result": {
+      "requests": []
+    }
+  },
+  "gatewayHealth": {
+    "ok": true,
+    "gateway": "openburnbar",
+    "platform": "linux"
+  },
+  "modelsCatalog": {
+    "catalog": true,
+    "platform": "linux",
+    "count": 67
+  },
+  "pensieve": "pensieve_watcher_configured root_count=1",
+  "secretService": "parity-ok"
+}

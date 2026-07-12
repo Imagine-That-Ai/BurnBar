@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// One entry in the Computer Use audit chain. The field set is locked at
 /// Phase 10 ship and never reordered — the chain hashes a canonical-JSON
@@ -75,6 +75,25 @@ public struct ComputerUseAuditEntry: Codable, Hashable, Sendable {
         self.parentEntryHashHex = parentEntryHashHex
         self.macAppVersion = macAppVersion
         self.macHostNodeId = macHostNodeId
+    }
+}
+
+public extension ComputerUseActionMeteringHeader {
+    init(auditEntry: ComputerUseAuditEntry) {
+        self.init(
+            entryIndex: auditEntry.entryIndex,
+            actionKind: auditEntry.actionKind,
+            approvedBy: auditEntry.approvedBy.rawValue,
+            scopeRuleId: auditEntry.scopeRuleId,
+            denyReason: Self.privacySafeDenyReason(auditEntry.denyReason),
+            parentEntryHashHex: auditEntry.parentEntryHashHex,
+            recordedAt: auditEntry.timestamp
+        )
+    }
+
+    private static func privacySafeDenyReason(_ rawValue: String?) -> String? {
+        guard let rawValue else { return nil }
+        return ComputerUseDenyReason(rawValue: rawValue)?.rawValue ?? "dispatch_error"
     }
 }
 
@@ -176,6 +195,27 @@ public struct ComputerUseAuditChain: Sendable {
         /// (`signed_head.json`) was supplied, so a truncation of the final
         /// entry could not be ruled out. Fail closed rather than pass.
         case headAnchorMissing = "head_anchor_missing"
+
+        /// Human-readable explanation for operator-facing surfaces (settings
+        /// validation status, alerts). Raw values stay wire/log-stable.
+        public var userFacingDescription: String {
+            switch self {
+            case .parentHashMismatch:
+                return "an entry's parent hash does not match the previous entry"
+            case .unexpectedEntryIndex:
+                return "entries are out of order or missing"
+            case .decodeFailure:
+                return "an entry could not be decoded"
+            case .truncatedFile:
+                return "the log file is truncated"
+            case .unsupportedSchema:
+                return "the log uses an unsupported schema version"
+            case .headHashMismatch:
+                return "the signed head hash does not match the final entry"
+            case .headAnchorMissing:
+                return "no signed head was supplied, so truncation of the final entry cannot be ruled out"
+            }
+        }
     }
 
     public let hasher: ComputerUseAuditHasher

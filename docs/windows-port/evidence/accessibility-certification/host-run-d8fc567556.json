@@ -1,0 +1,68 @@
+{
+  "schema": "openburnbar.windows.accessibility-host-evidence-receipt.v1",
+  "generatedAtUtc": "2026-07-10T20:34:25.7323575Z",
+  "candidate": {
+    "branch": "codex/windows-certification-accessibility",
+    "commit": "d8fc5675568f6eeb6ac6e11ca2fc0e14b0aab98f",
+    "tree": "e42c602a583c9841058a1ea78173779741509bd7",
+    "archiveSha256": "69f633ee3d9ed79ed6cb41809d1a3fabd2d71e275bddfdb610f9f816f43ed9ec",
+    "manifestSha256": "96efc458b8ead9972bf390e5b2736846755d5483b8c0d2fbeda24fafd37d1021",
+    "expectedFiles": 10255,
+    "checkedFiles": 10255,
+    "mismatchCount": 0,
+    "importStatus": "passed"
+  },
+  "host": {
+    "os": "Microsoft Windows NT 10.0.26200.0",
+    "processorArchitectureCode": 12,
+    "processorArchitecture": "ARM64",
+    "hostShellEmulated": true,
+    "hostShellProcessArchitecture": "X64",
+    "appBuildPlatform": "ARM64",
+    "activeConsoleSessionId": 1,
+    "launchMethod": "WTSQueryUserToken/CreateProcessAsUser"
+  },
+  "run": {
+    "certificationProfile": "accessibility",
+    "verdict": "passed",
+    "routeCount": 25,
+    "passedRoutes": 25,
+    "failedRoutes": 0,
+    "scenarioCounts": {
+      "baseline": 13,
+      "high-contrast": 5,
+      "reduced-transparency": 4,
+      "dpi-100": 3
+    },
+    "dpi": [
+      { "route": "dashboard", "expectedPercent": 100, "actualPercent": 100, "matches": true },
+      { "route": "settings", "expectedPercent": 100, "actualPercent": 100, "matches": true },
+      { "route": "chat", "expectedPercent": 100, "actualPercent": 100, "matches": true }
+    ],
+    "semanticUiAutomation": "passed",
+    "inputRouteCount": 9,
+    "failedInputRoutes": 0,
+    "screenshotCount": 26,
+    "routeResultCount": 25
+  },
+  "bundle": {
+    "fileName": "openburnbar-accessibility-evidence-d8fc5675568f.zip",
+    "sizeBytes": 2045133,
+    "sha256": "ea53024c64534edc3fe6a731c2a9b501b0a5c04d80d74f755b15654fbe728275",
+    "fileCount": 200,
+    "committed": false
+  },
+  "independentValidation": {
+    "gitleaks": "passed; no leaks found",
+    "uiAutomationHarnessTests": "10 passed",
+    "shellTests": "49 passed",
+    "noNewSuppressions": "passed"
+  },
+  "remainingBoundary": [
+    "physical x64 and ARM64 device certification",
+    "Narrator manual protocol",
+    "150 and 200 percent DPI sweeps",
+    "Windows OS high-contrast theme protocol",
+    "manual keyboard-only interaction protocol"
+  ]
+}

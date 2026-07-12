@@ -152,7 +152,7 @@ final class MimoQuotaAdapterTests: XCTestCase {
         billingCycle: MimoTokenPlanBillingCycle = .monthly,
         secretStore: any SecretStore = NoOpSecretStore()
     ) throws -> ProviderQuotaAdapterContext {
-        let appPaths = OpenBurnBarAppPaths.live()
+        let appPaths = OpenBurnBar.OpenBurnBarAppPaths.live()
         let snapshotStore = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)
 
         let configuration = URLSessionConfiguration.ephemeral

@@ -62,7 +62,8 @@ public struct ParserConversationCacheScrubber {
         var urls = [
             appPaths.supportDirectory.appendingPathComponent("codex_parser_cache.json"),
             appPaths.claudeCodeParserCacheURL,
-            appPaths.factoryDroidParserCacheURL
+            appPaths.factoryDroidParserCacheURL,
+            appPaths.junieParserCacheURL
         ]
 
         if let dynamicURLs = try? fileManager.contentsOfDirectory( // try?-ok(optional cache directory scan)
@@ -82,8 +83,43 @@ public struct ParserConversationCacheScrubber {
 
     private func scrubCache(at cacheURL: URL) {
         guard fileManager.fileExists(atPath: cacheURL.path),
-              let data = try? Data(contentsOf: cacheURL), // try?-ok(best-effort cache read)
-              var root = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(best-effort cache decode)
+              let data = try? Data(contentsOf: cacheURL) else { // try?-ok(best-effort cache read)
+            return
+        }
+
+        // Dual-format read: the round-4 perf sweep moved parser caches from
+        // pretty-printed JSON to binary plist. Both shapes carry the same
+        // `fileEntries` dictionary; scrub whichever one is on disk.
+        if let plistRoot = try? PropertyListSerialization.propertyList(
+            from: data,
+            options: [],
+            format: nil
+        ) as? [String: Any],
+           var entries = plistRoot["fileEntries"] as? [String: Any] {
+            var mutated = false
+            for (key, value) in entries {
+                guard var entry = value as? [String: Any],
+                      entry["conversation"] != nil else { continue }
+                entry.removeValue(forKey: "conversation")
+                entries[key] = entry
+                mutated = true
+            }
+            guard mutated else { return }
+            var root = plistRoot
+            root["fileEntries"] = entries
+            guard let scrubbedData = try? PropertyListSerialization.data( // try?-ok(best-effort cache encode)
+                fromPropertyList: root,
+                format: .binary,
+                options: 0
+            ) else {
+                return
+            }
+            try? scrubbedData.write(to: cacheURL, options: .atomic) // try?-ok(best-effort cache rewrite)
+            return
+        }
+
+        // Legacy JSON fallback for caches not yet re-persisted as binary plist.
+        guard var root = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(best-effort cache decode)
               var entries = root["fileEntries"] as? [String: Any] else {
             return
         }
@@ -92,7 +128,7 @@ public struct ParserConversationCacheScrubber {
         for (key, value) in entries {
             guard var entry = value as? [String: Any],
                   entry["conversation"] != nil else { continue }
-            entry["conversation"] = NSNull()
+            entry.removeValue(forKey: "conversation")
             entries[key] = entry
             mutated = true
         }

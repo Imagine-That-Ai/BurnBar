@@ -25,6 +25,10 @@ public final class CursorAgentParser: LogParser, Sendable {
     }
 
     public func parse() async throws -> ParseResult {
+        try parseSynchronously()
+    }
+
+    func parseSynchronously() throws -> ParseResult {
         let fm = FileManager.default
         let sessionsRoot = logDirectoryOverride ?? NSString(string: provider.logDirectory).expandingTildeInPath
 

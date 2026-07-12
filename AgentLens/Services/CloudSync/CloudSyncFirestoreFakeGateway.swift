@@ -262,6 +262,39 @@ private final class CloudSyncCollectionFakeGateway: CloudSyncCollectionGateway, 
         )
     }
 
+    func whereDocumentID(isGreaterThan value: String) -> CloudSyncQueryGateway {
+        CloudSyncQueryFakeGateway(
+            store: store,
+            collectionPath: path,
+            predicates: [.whereDocumentIDIsGreaterThan(value)],
+            sort: nil,
+            limit: nil,
+            nextError: nextError
+        )
+    }
+
+    func whereDocumentID(isLessThan value: String) -> CloudSyncQueryGateway {
+        CloudSyncQueryFakeGateway(
+            store: store,
+            collectionPath: path,
+            predicates: [.whereDocumentIDIsLessThan(value)],
+            sort: nil,
+            limit: nil,
+            nextError: nextError
+        )
+    }
+
+    func orderByDocumentID(descending: Bool) -> CloudSyncQueryGateway {
+        CloudSyncQueryFakeGateway(
+            store: store,
+            collectionPath: path,
+            predicates: [],
+            sort: SortDescriptor(field: nil, descending: descending),
+            limit: nil,
+            nextError: nextError
+        )
+    }
+
     func order(by field: String, descending: Bool) -> CloudSyncQueryGateway {
         CloudSyncQueryFakeGateway(
             store: store,
@@ -386,6 +419,43 @@ private final class CloudSyncQueryFakeGateway: CloudSyncQueryGateway, Sendable {
         )
     }
 
+    func whereDocumentID(isGreaterThan value: String) -> CloudSyncQueryGateway {
+        var newPredicates = predicates
+        newPredicates.append(.whereDocumentIDIsGreaterThan(value))
+        return CloudSyncQueryFakeGateway(
+            store: store,
+            collectionPath: collectionPath,
+            predicates: newPredicates,
+            sort: sort,
+            limit: limit,
+            nextError: nextError
+        )
+    }
+
+    func whereDocumentID(isLessThan value: String) -> CloudSyncQueryGateway {
+        var newPredicates = predicates
+        newPredicates.append(.whereDocumentIDIsLessThan(value))
+        return CloudSyncQueryFakeGateway(
+            store: store,
+            collectionPath: collectionPath,
+            predicates: newPredicates,
+            sort: sort,
+            limit: limit,
+            nextError: nextError
+        )
+    }
+
+    func orderByDocumentID(descending: Bool) -> CloudSyncQueryGateway {
+        CloudSyncQueryFakeGateway(
+            store: store,
+            collectionPath: collectionPath,
+            predicates: predicates,
+            sort: SortDescriptor(field: nil, descending: descending),
+            limit: limit,
+            nextError: nextError
+        )
+    }
+
     func order(by field: String, descending: Bool) -> CloudSyncQueryGateway {
         CloudSyncQueryFakeGateway(
             store: store,
@@ -437,15 +507,20 @@ private final class CloudSyncQuerySnapshotFakeGateway: CloudSyncQuerySnapshotGat
 
         // Apply predicates
         for predicate in predicates {
-            docs = docs.filter { _, data in
-                predicate.matches(data: data)
+            docs = docs.filter { path, data in
+                predicate.matches(documentID: path.lastPathComponent, data: data)
             }
         }
 
         // Apply sort
         if let sort {
             docs.sort { lhs, rhs in
-                let comparison = FakeQueryEngine.compare(lhs: lhs.1, rhs: rhs.1, field: sort.field)
+                let comparison: Int
+                if let field = sort.field {
+                    comparison = FakeQueryEngine.compare(lhs: lhs.1, rhs: rhs.1, field: field)
+                } else {
+                    comparison = lhs.0.lastPathComponent.compare(rhs.0.lastPathComponent).rawValue
+                }
                 return sort.descending ? comparison > 0 : comparison < 0
             }
         }
@@ -612,8 +687,10 @@ private final class CloudSyncTransactionFakeGateway: CloudSyncTransactionGateway
 private enum QueryPredicate: @unchecked Sendable {
     case whereFieldIsGreaterThan(String, Any)
     case whereFieldIsEqualTo(String, Any)
+    case whereDocumentIDIsGreaterThan(String)
+    case whereDocumentIDIsLessThan(String)
 
-    func matches(data: [String: Any]) -> Bool {
+    func matches(documentID: String, data: [String: Any]) -> Bool {
         switch self {
         case .whereFieldIsGreaterThan(let field, let value):
             guard let fieldValue = data[field] else { return false }
@@ -621,12 +698,16 @@ private enum QueryPredicate: @unchecked Sendable {
         case .whereFieldIsEqualTo(let field, let value):
             guard let fieldValue = data[field] else { return false }
             return FakeQueryEngine.compare(lhs: fieldValue, rhs: value) == 0
+        case .whereDocumentIDIsGreaterThan(let value):
+            return documentID.compare(value).rawValue > 0
+        case .whereDocumentIDIsLessThan(let value):
+            return documentID.compare(value).rawValue < 0
         }
     }
 }
 
 private struct SortDescriptor {
-    let field: String
+    let field: String?
     let descending: Bool
 }
 

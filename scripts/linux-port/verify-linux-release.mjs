@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import {
   manifestPath,
@@ -11,131 +12,105 @@ import {
   sha256,
   writeJson
 } from './lib/linux-release-common.mjs';
+import { verifyLinuxReleaseCandidate } from './lib/linux-release-verify.mjs';
 
-const args = new Set(process.argv.slice(2));
-const allowBlocked = args.has('--allow-blocked');
+const argv = process.argv.slice(2);
+const phaseIndex = argv.indexOf('--phase');
+const versionIndex = argv.indexOf('--version');
+const phase = phaseIndex >= 0 ? argv[phaseIndex + 1] : 'pre-attestation';
+const requestedVersion = versionIndex >= 0 ? argv[versionIndex + 1] : null;
+const diagnostic = argv.includes('--diagnostic') || argv.includes('--allow-blocked');
 const outDir = path.resolve(process.env.OPENBURNBAR_LINUX_RELEASE_OUT ?? releaseEvidenceDir);
 const manifest = readJson(manifestPath);
 const failures = [];
 const warnings = [];
+const fail = (message, detail = {}) => failures.push({ message, ...detail });
 
-function fail(message, detail = {}) {
-  failures.push({ message, ...detail });
+if (argv.includes('--allow-blocked')) {
+  warnings.push({ message: '--allow-blocked is deprecated; diagnostic output never downgrades release failures.' });
 }
 
-function warn(message, detail = {}) {
-  warnings.push({ message, ...detail });
-}
-
-function requireFile(relPath, label) {
-  const full = path.join(repoRoot, relPath);
-  if (!fs.existsSync(full)) {
-    fail(`${label} is missing`, { file: relPath });
-    return false;
+function safeReadJson(file, label) {
+  if (!fs.existsSync(file)) {
+    fail(`${label} is missing.`, { file: relative(file) });
+    return {};
   }
-  return true;
+  try {
+    return readJson(file);
+  } catch (error) {
+    fail(`${label} is not valid JSON.`, { file: relative(file), error: String(error) });
+    return {};
+  }
 }
 
 const closurePath = path.join(outDir, 'package-closure.json');
+const closure = safeReadJson(closurePath, 'package closure');
 const latestPath = path.join(outDir, manifest.updateMetadata.draftName);
-if (!fs.existsSync(closurePath)) fail('package-closure.json is missing; run build-linux-release first.');
-if (!fs.existsSync(latestPath)) fail(`${manifest.updateMetadata.draftName} is missing; run build-linux-release first.`);
+const latest = safeReadJson(latestPath, 'latest-linux draft');
+const provenanceRecord = closure.sidecars?.provenancePredicate;
+const provenanceRel = typeof provenanceRecord === 'string' ? provenanceRecord : provenanceRecord?.file;
+const provenance = provenanceRel
+  ? safeReadJson(path.join(repoRoot, provenanceRel), 'provenance predicate')
+  : (fail('provenance predicate is absent from the package closure.'), {});
+const smokeSummary = safeReadJson(
+  path.join(outDir, 'smoke/package-smoke-summary.json'),
+  'package smoke summary'
+);
+const publicKeyPath = path.join(repoRoot, manifest.signing.publicKey);
+const publicKeyPem = fs.existsSync(publicKeyPath) ? fs.readFileSync(publicKeyPath, 'utf8') : '';
+if (!publicKeyPem) fail('pinned Linux release public key is missing.', { file: manifest.signing.publicKey });
 
-const closure = fs.existsSync(closurePath) ? readJson(closurePath) : { artifacts: [], blockers: [] };
-const latest = fs.existsSync(latestPath) ? readJson(latestPath) : { blockers: [] };
+const headStep = runStep('git', ['rev-parse', 'HEAD']);
+const expectedHead = process.env.OPENBURNBAR_GIT_COMMIT?.trim() || headStep.stdout.trim();
+if (headStep.exitCode !== 0 && !process.env.OPENBURNBAR_GIT_COMMIT) fail('release verifier cannot determine target git HEAD.');
+const expectedVersion = requestedVersion?.trim() || closure.version;
 
-for (const required of manifest.requiredArtifacts) {
-  const artifact = closure.artifacts?.find((row) => row.type === required);
-  if (!artifact) {
-    fail(`Required ${required} artifact is absent from package closure.`);
-    continue;
-  }
-  if (!requireFile(artifact.file, `${required} artifact`)) continue;
-  const actual = sha256(path.join(repoRoot, artifact.file));
-  if (actual !== artifact.sha256) {
-    fail(`${required} artifact checksum drifted`, { file: artifact.file, expected: artifact.sha256, actual });
-  }
-}
-
-for (const [kind, relPath] of Object.entries(manifest.tailMetadata)) {
-  if (!requireFile(relPath, `${kind} metadata`)) continue;
-  if (kind === 'desktopEntry') {
-    const desktopFile = fs.readFileSync(path.join(repoRoot, relPath), 'utf8');
-    if (!desktopFile.includes('Type=Application') || !desktopFile.includes('Exec=')) {
-      fail('desktop entry lacks Type=Application or Exec=', { file: relPath });
-    }
-  }
-}
-
-const checksumRel = closure.sidecars?.checksums;
-if (checksumRel && requireFile(checksumRel, 'checksums sidecar')) {
-  const lines = fs.readFileSync(path.join(repoRoot, checksumRel), 'utf8').split('\n').filter(Boolean);
-  for (const line of lines) {
-    const match = line.match(/^([a-f0-9]{64})  (.+)$/);
-    if (!match) {
-      fail('checksum sidecar contains an invalid line', { line });
-      continue;
-    }
-    const [, expected, file] = match;
-    if (!requireFile(file, 'checksum target')) continue;
-    const actual = sha256(path.join(repoRoot, file));
-    if (actual !== expected) fail('checksum sidecar mismatch', { file, expected, actual });
-  }
-} else {
-  fail('checksums sidecar is missing from package closure.');
-}
-
-for (const sidecar of ['sbom', 'vex', 'provenancePredicate']) {
-  const relPath = closure.sidecars?.[sidecar];
-  if (!relPath) {
-    fail(`${sidecar} sidecar is missing from package closure.`);
-  } else {
-    requireFile(relPath, `${sidecar} sidecar`);
-  }
-}
-
-const signatures = readJsonOrNull(path.join(repoRoot, closure.sidecars?.provenancePredicate ?? ''));
-if (!signatures?.signatures?.length) {
-  fail('No Ed25519/minisign-compatible detached signatures are recorded.');
-}
-
-if (!latest.primaryArtifact || latest.promotionState !== 'candidate') {
-  fail('latest-linux draft is not promotable.', {
-    promotionState: latest.promotionState ?? null,
-    primaryArtifact: latest.primaryArtifact ?? null
-  });
-}
-
-const publicLatest = path.join(repoRoot, 'website/public/downloads/latest-linux.json');
-if (fs.existsSync(publicLatest)) {
-  if (failures.length > 0 || latest.promotionState !== 'candidate') {
-    fail('public latest-linux.json exists while release verification is not green.', {
-      file: relative(publicLatest)
-    });
-  }
-} else {
-  warn('public latest-linux.json is absent, as expected until promotion is green.');
-}
-
-const smokeDir = path.join(outDir, 'smoke');
-for (const smoke of ['package-install-uninstall.log', 'package-update-rollback.log']) {
-  if (!fs.existsSync(path.join(smokeDir, smoke))) {
-    fail('required package smoke log is missing', { file: relative(path.join(smokeDir, smoke)) });
-  }
-}
-
-const gitStatus = runStep('git', ['status', '--porcelain=v1']).stdout.split('\n').filter(Boolean);
-const unexpectedDirty = gitStatus.filter((entry) => {
-  const path = entry.slice(3);
-  return !path.startsWith(relative(outDir) + '/');
+const pure = verifyLinuxReleaseCandidate({
+  repoRoot,
+  manifest,
+  closure,
+  provenance,
+  latest,
+  smokeSummary,
+  publicKeyPem,
+  expectedHead,
+  expectedVersion,
+  phase
 });
-if (unexpectedDirty.length > 0) {
-  fail('release checkout has unexpected dirty files outside generated Linux release evidence.', {
-    dirtyEntries: unexpectedDirty.slice(0, 40)
-  });
+failures.push(...pure.failures);
+
+for (const [kind, relPath] of Object.entries(manifest.tailMetadata ?? {})) {
+  const full = path.resolve(repoRoot, relPath);
+  if (!full.startsWith(`${repoRoot}${path.sep}`) || !fs.existsSync(full)) {
+    fail(`${kind} release metadata is missing or outside the repository.`, { file: relPath });
+  }
 }
 
-const ledger = runStep('node', ['scripts/linux-port/validate-parity-ledger.mjs'], { cwd: repoRoot });
+const sourceRecord = closure.sidecars?.sourceArchive;
+const sourceRel = typeof sourceRecord === 'string' ? sourceRecord : sourceRecord?.file;
+if (sourceRel && expectedHead && expectedVersion) {
+  const sourcePath = path.join(repoRoot, sourceRel);
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'obb-source-verify-'));
+  const expectedArchive = path.join(tempDir, 'expected.tar');
+  const archive = runStep('git', [
+    'archive',
+    '--format=tar',
+    `--prefix=OpenBurnBar-${expectedVersion}/`,
+    `--output=${expectedArchive}`,
+    expectedHead
+  ]);
+  if (archive.exitCode !== 0) {
+    fail('failed to regenerate the release source archive from target HEAD.', { stderr: archive.stderr });
+  } else if (!fs.existsSync(sourcePath) || sha256(expectedArchive) !== sha256(sourcePath)) {
+    fail('source archive does not equal a fresh git archive of the release commit.');
+  }
+  fs.rmSync(tempDir, { recursive: true, force: true });
+}
+
+const ledger = runStep('node', ['scripts/linux-port/validate-parity-ledger.mjs'], {
+  cwd: repoRoot,
+  env: process.env
+});
 if (ledger.exitCode !== 0) {
   fail('parity ledger is not green for release promotion.', {
     command: ledger.command,
@@ -144,39 +119,65 @@ if (ledger.exitCode !== 0) {
   });
 }
 
-const allBlockers = uniqueBlockers([...(closure.blockers ?? []), ...(latest.blockers ?? [])]);
-if (allBlockers.length > 0) {
-  const blocker = allowBlocked ? warn : fail;
-  blocker('release blockers are recorded in package metadata.', { blockers: allBlockers });
+if (phase === 'final' && closure.artifacts) {
+  const identity = manifest.signing.cosignIdentityTemplate.replace('{version}', expectedVersion);
+  for (const artifact of closure.artifacts) {
+    const bundle = `${artifact.file}.sigstore.json`;
+    if (!fs.existsSync(path.join(repoRoot, bundle))) continue;
+    const verification = runStep('cosign', [
+      'verify-blob-attestation',
+      '--bundle',
+      path.join(repoRoot, bundle),
+      '--type',
+      'https://openburnbar.dev/attestations/linux-release-artifact/v1',
+      '--certificate-identity',
+      identity,
+      '--certificate-oidc-issuer',
+      manifest.signing.cosignIssuer,
+      path.join(repoRoot, artifact.file)
+    ]);
+    if (verification.exitCode !== 0) {
+      fail('Sigstore bundle verification failed.', {
+        artifact: artifact.file,
+        stderr: verification.stderr
+      });
+    }
+  }
+}
+
+const gitStatus = runStep('git', ['status', '--porcelain=v1']).stdout.split('\n').filter(Boolean);
+const outRelative = relative(outDir);
+const generatedPrefixes = [
+  outRelative,
+  process.env.OPENBURNBAR_LINUX_SHARDS_DIR
+    ? relative(path.resolve(process.env.OPENBURNBAR_LINUX_SHARDS_DIR))
+    : null,
+  process.env.OPENBURNBAR_LINUX_EVIDENCE_OUT
+    ? relative(path.resolve(process.env.OPENBURNBAR_LINUX_EVIDENCE_OUT))
+    : null
+].filter((value) => value && !value.startsWith('..'));
+const unexpectedDirty = gitStatus.filter((entry) => {
+  const dirtyPath = entry.slice(3);
+  return !generatedPrefixes.some((prefix) => dirtyPath.startsWith(`${prefix.replace(/\/$/, '')}/`));
+});
+if (unexpectedDirty.length > 0) {
+  fail('release checkout has unexpected dirty files outside generated release output.', {
+    dirtyEntries: unexpectedDirty.slice(0, 40)
+  });
 }
 
 const report = {
   generatedAt: new Date().toISOString(),
+  phase,
+  diagnostic,
   outDir: relative(outDir),
-  allowBlocked,
-  passed: failures.length === 0 || (allowBlocked && failures.every((item) => item.message.includes('blocker'))),
+  expectedHead,
+  expectedVersion,
+  passed: failures.length === 0,
   failures,
   warnings
 };
+fs.mkdirSync(outDir, { recursive: true });
 writeJson(path.join(outDir, 'release-verification.json'), report);
 console.log(JSON.stringify(report, null, 2));
-process.exit(failures.length === 0 || allowBlocked ? 0 : 1);
-
-function readJsonOrNull(file) {
-  try {
-    if (!file || !fs.existsSync(file)) return null;
-    return JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch {
-    return null;
-  }
-}
-
-function uniqueBlockers(blockers) {
-  const seen = new Set();
-  return blockers.filter((blocker) => {
-    const key = `${blocker.kind ?? ''}\0${blocker.message ?? ''}\0${blocker.log ?? ''}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
+process.exit(report.passed ? 0 : 1);

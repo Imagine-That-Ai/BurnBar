@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// The setup action a Remote Unlock blocker most directly maps to.
 ///

@@ -12,7 +12,9 @@ extension BurnBarProviderRouter {
         var status: BurnBarProviderCredentialSlotStatus?
         var cooldownUntil: Date?
         if let providerError = error as? BurnBarProviderExecutorError,
-           case .upstreamError(let statusCode, let body) = providerError {
+           let statusAndBody = providerError.upstreamStatusAndBody {
+            let statusCode = statusAndBody.statusCode
+            let body = statusAndBody.body
             if FactoryDroidProviderExecutor.isStrictStandardUsageExhaustion(error: error, route: route) {
                 return
             }
@@ -53,6 +55,9 @@ extension BurnBarProviderRouter {
                 }
                 status = .coolingDown
                 cooldownUntil = cooldown
+            } else if Self.isLocalOllamaConnectivityFailure(error, route: route) {
+                status = .coolingDown
+                cooldownUntil = cooldown
             } else if lowercasedDescription.contains("401")
                 || lowercasedDescription.contains("403")
                 || lowercasedDescription.contains("invalid api key") {
@@ -87,6 +92,29 @@ extension BurnBarProviderRouter {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
         return normalizedKey.hasPrefix("sk-ant-oat")
+    }
+
+    private static func isLocalOllamaConnectivityFailure(_ error: Error, route: BurnBarProviderRoute) -> Bool {
+        guard route.providerID.caseInsensitiveCompare("ollama-local") == .orderedSame else {
+            return false
+        }
+
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain {
+            let code = URLError.Code(rawValue: nsError.code)
+            switch code {
+            case .cannotConnectToHost, .cannotFindHost, .networkConnectionLost,
+                 .notConnectedToInternet, .timedOut, .cannotLoadFromNetwork:
+                return true
+            default:
+                break
+            }
+        }
+
+        let lowercasedDescription = error.localizedDescription.lowercased()
+        return lowercasedDescription.contains("cannot connect")
+            || lowercasedDescription.contains("connection refused")
+            || lowercasedDescription.contains("timed out")
     }
 
     public func markRouteSuccess(_ route: BurnBarProviderRoute) async {

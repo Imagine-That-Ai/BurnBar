@@ -17,7 +17,7 @@ import OpenBurnBarMedia
 /// `OpenBurnBarComputerUseCore`.
 @MainActor
 public final class ComputerUseSessionCoordinator: ObservableObject {
-    static let log = Logger(subsystem: "com.openburnbar.app", category: "ComputerUse")
+    nonisolated static let log = Logger(subsystem: "com.openburnbar.app", category: "ComputerUse")
 
     static let phoneControlActionCap = 10_000
 
@@ -27,6 +27,10 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
 
     public struct Configuration: Sendable {
         public var userId: String
+        /// Resolves the signed-in identity at enqueue time. The coordinator is
+        /// created before Firebase login can complete, so a launch-time
+        /// fallback must not become the permanent metering UID.
+        public var userIdProvider: (@MainActor @Sendable () -> String?)?
         public var macHostNodeId: String?
         public var entitlement: ComputerUseEntitlementSnapshot
         public var budgetEnvelope: ComputerUseBudgetEnvelope
@@ -49,6 +53,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
 
         public init(
             userId: String,
+            userIdProvider: (@MainActor @Sendable () -> String?)? = nil,
             macHostNodeId: String? = nil,
             entitlement: ComputerUseEntitlementSnapshot,
             budgetEnvelope: ComputerUseBudgetEnvelope = .initialNormal,
@@ -61,6 +66,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
             clipboardConsentGranted: Bool = false
         ) {
             self.userId = userId
+            self.userIdProvider = userIdProvider
             self.macHostNodeId = macHostNodeId
             self.entitlement = entitlement
             self.budgetEnvelope = budgetEnvelope
@@ -72,6 +78,10 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
             self.phoneControlRespectsDenyRegions = phoneControlRespectsDenyRegions
             self.clipboardConsentGranted = clipboardConsentGranted
         }
+
+        @MainActor var currentUserId: String {
+            userIdProvider?() ?? userId
+        }
     }
 
     public enum CoordinatorError: Error, Sendable, Equatable {
@@ -82,6 +92,9 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
         case missingEntitlementProduct
         case missingBrowserDispatcher
         case missingControlReplySender
+        case dailySessionLimit
+        case quotaAuthorityUnavailable
+        case reservationReplay
     }
 
     public typealias ApprovalPresenter = @MainActor (
@@ -107,6 +120,10 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
     var configuration: Configuration
 
     let gate: ComputerUseCapabilityGate
+
+    let quotaLedger: ComputerUseLocalQuotaLedger
+
+    let cloudMeteringRecorder: (any ComputerUseCloudMeteringRecording)?
 
     let macDispatcher: MacActionDispatcher
 
@@ -228,6 +245,8 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
     public init(
         configuration: Configuration,
         gate: ComputerUseCapabilityGate = DefaultComputerUseCapabilityGate(),
+        quotaLedger: ComputerUseLocalQuotaLedger? = nil,
+        cloudMeteringRecorder: (any ComputerUseCloudMeteringRecording)? = nil,
         macDispatcher: MacActionDispatcher = MacActionDispatcher(),
         inputController: MacInputController = MacInputController(),
         remoteClipboardController: RemoteClipboardController? = nil,
@@ -256,6 +275,11 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
     ) {
         self.configuration = configuration
         self.gate = gate
+        self.quotaLedger = quotaLedger ?? ComputerUseLocalQuotaLedger(
+            directory: configuration.auditBaseDirectory
+                .appendingPathComponent(".quota-ledger", isDirectory: true)
+        )
+        self.cloudMeteringRecorder = cloudMeteringRecorder
         self.macDispatcher = macDispatcher
         self.inputController = inputController
         self.remoteClipboardController = remoteClipboardController ?? RemoteClipboardController(
@@ -324,7 +348,13 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
     }
 
     public func updateQuotaUsage(_ usage: ComputerUseQuotaUsage) {
-        configuration.quotaUsage = usage
+        do {
+            configuration.quotaUsage = try quotaLedger.reconcile(usage)
+        } catch {
+            Self.log.error(
+                "computer_use_quota_reconcile_failed reason=\(String(describing: error), privacy: .public)"
+            )
+        }
     }
 
     public func updateKillSwitch(_ enabled: Bool) {
@@ -511,6 +541,22 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
         )
         try logger.beginSession(manifest: manifest)
 
+        let quotaReservation: ComputerUseLocalQuotaLedger.Reservation
+        do {
+            quotaReservation = try quotaLedger.reserveSession(
+                idempotencyKey: sessionId.rawValue,
+                authoritativeUsage: configuration.quotaUsage,
+                maximumSessions: configuration.budgetEnvelope.activeSessionsPerDay,
+                startedAt: manifest.startedAt
+            )
+        } catch ComputerUseLocalQuotaLedger.LedgerError.quotaExceeded {
+            throw CoordinatorError.dailySessionLimit
+        } catch {
+            throw CoordinatorError.quotaAuthorityUnavailable
+        }
+        guard quotaReservation.inserted else { throw CoordinatorError.reservationReplay }
+        configuration.quotaUsage = quotaReservation.usage
+
         activeSessionId = sessionId
         auditLogger = logger
         state = ComputerUseSessionState(
@@ -600,13 +646,38 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
         )
         focusFollowController?.start(sessionId: sessionId.rawValue, mode: focusFollowMode)
 
-        return ComputerUseSessionStartResponse(
+        let response = ComputerUseSessionStartResponse(
             sessionId: sessionId.rawValue,
             manifestHashHex: logger.headHashHex,
             startedAt: manifest.startedAt,
             entitlementProductId: productId,
             actionCap: request.actionCap
         )
+        enqueueCloudSessionStart(request: request, response: response)
+        return response
+    }
+
+    private func enqueueCloudSessionStart(
+        request: ComputerUseSessionStartRequest,
+        response: ComputerUseSessionStartResponse
+    ) {
+        guard let cloudMeteringRecorder else { return }
+        let userID = configuration.currentUserId
+        let macAppVersion = configuration.macAppVersion
+        Task { @MainActor in
+            do {
+                try await cloudMeteringRecorder.recordSessionStart(
+                    userID: userID,
+                    request: request,
+                    response: response,
+                    macAppVersion: macAppVersion
+                )
+            } catch {
+                Self.log.error(
+                    "computer_use_session_start_cloud_metering_failed reason=\(String(describing: error), privacy: .public)"
+                )
+            }
+        }
     }
 
     static func agentGrantReceipt(

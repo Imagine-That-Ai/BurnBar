@@ -2,7 +2,6 @@ import FirebaseCore
 import FirebaseFirestore
 import Foundation
 import OpenBurnBarIrohRelay
-import os.log
 
 /// Loads NodeIds that may dial the Mac iroh host for a given connection.
 enum FirestoreIrohInboundPeerAllowlist {
@@ -74,8 +73,10 @@ enum FirestoreIrohInboundPeerAllowlist {
                 allowed.insert(nodeId)
             }
         } catch {
-            // Fail closed: trusted-device node ids simply aren't added.
-            os_log("FirestoreIrohInboundPeerAllowlist: failed to load trusted-device node ids — %{public}@", log: .default, type: .error, String(describing: error))
+            AppLogger.network.error(
+                "iroh_inbound_trusted_device_allowlist_load_failed",
+                metadata: AppLogger.publicErrorMetadata(error)
+            )
         }
 
         return IrohInboundPeerPolicy(allowedPeerNodeIds: allowed)

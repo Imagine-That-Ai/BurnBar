@@ -6,9 +6,25 @@ import OpenBurnBarCore
 /// Represents a search result with conversation metadata and ranking information.
 struct SearchResult: Identifiable {
     var id: String { conversation.id }
-    let conversation: ConversationRecord
+    let conversation: OpenBurnBarCore.ConversationRecord
     let snippet: String
     let rank: Double
+    let startOffset: Int
+    let endOffset: Int
+
+    init(
+        conversation: ConversationRecord,
+        snippet: String,
+        rank: Double,
+        startOffset: Int = 0,
+        endOffset: Int? = nil
+    ) {
+        self.conversation = conversation
+        self.snippet = snippet
+        self.rank = rank
+        self.startOffset = startOffset
+        self.endOffset = endOffset ?? snippet.count
+    }
 }
 
 // MARK: - Retrieval Degraded Modes

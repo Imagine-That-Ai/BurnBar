@@ -1,16 +1,23 @@
 import { useMemo } from 'react';
 import { create } from 'zustand';
 import {
+  DAEMON_FIXTURE_AVAILABLE,
   fixtureDaemonHealth,
   isDaemonFixtureMode,
   setDaemonFixtureMode
 } from '../daemonFixture.js';
 import { buildDaemonStatusCopy, type DaemonStatusCopy } from '../daemonStatusCopy.js';
-import { markStart, recordPerfSample } from '../perfMarks.js';
+import { markAfterPaint, markStart } from '../perfMarks.js';
 import { routeFromHash, type ShellRoute } from '../routes.js';
 import { displayLinuxSocketPath } from '../shellPaths.js';
-import { loadShellBridge, type LinuxShellBridge } from '../tauriBridge.js';
+import {
+  loadShellBridge,
+  type DaemonSubscriptionResponse,
+  type LinuxShellBridge
+} from '../tauriBridge.js';
 import type { DaemonHealth } from '../daemonClient.js';
+import type { RuntimeCapabilityManifest } from '../runtimeCapabilities.js';
+import type { DaemonSubscriptionStatus } from './daemonSubscriptionSupervisor.js';
 
 export type ShellSkin = 'editorial' | 'aurora';
 
@@ -24,38 +31,6 @@ function readPersistedSkin(): ShellSkin {
   }
 }
 
-/**
- * Required perf operations measured once through the packaged Tauri bridge.
- * Names are pinned by budgets/linux-desktop.perf.json and
- * scripts/linux-port/run-perf-budget.mjs — never rename without updating both.
- */
-export const REQUIRED_PERF_OPERATIONS: { name: string; source: string }[] = [
-  { name: 'chat.firstToken.progress', source: 'packaged-startup-chat-hermes-daemon-measurement' },
-  { name: 'db.migration.open.query', source: 'packaged-startup-db-daemon-measurement' },
-  { name: 'parser.incremental.run', source: 'packaged-startup-parser-daemon-measurement' },
-  { name: 'memory.search', source: 'packaged-startup-memory-daemon-measurement' },
-  { name: 'media.control.stage', source: 'packaged-startup-media-control-daemon-measurement' }
-];
-
-export function routeSurfaceMetric(route: ShellRoute): { name: string; source: string } | null {
-  switch (route) {
-    case 'chat':
-      return { name: 'chat.firstToken.progress', source: 'packaged-chat-route-daemon-measurement' };
-    case 'database':
-      return { name: 'db.migration.open.query', source: 'packaged-database-route-daemon-measurement' };
-    case 'activity':
-      return { name: 'parser.incremental.run', source: 'packaged-parser-route-daemon-measurement' };
-    case 'memory':
-      return { name: 'memory.search', source: 'packaged-memory-route-daemon-measurement' };
-    case 'support':
-      return { name: 'media.control.stage', source: 'packaged-support-route-daemon-measurement' };
-    default:
-      return null;
-  }
-}
-
-const measuredRouteOperations = new Set<string>();
-
 export type ShellState = {
   route: ShellRoute;
   health: DaemonHealth | null;
@@ -65,29 +40,23 @@ export type ShellState = {
   skin: ShellSkin;
   bridge: LinuxShellBridge | null;
   bridgeReady: boolean;
+  dataRevision: number;
+  lastDaemonEventAt: string | null;
+  subscriptionRecoveredAfterRestart: boolean;
+  subscriptionState: DaemonSubscriptionStatus['state'];
+  subscriptionError: string | null;
+  runtimeCapabilities: RuntimeCapabilityManifest | null;
+  capabilityError: string | null;
   fixtureMode: boolean;
   setRoute(route: ShellRoute): void;
   syncRouteFromHash(): void;
   refreshHealth(): Promise<void>;
   toggleSkin(): void;
   setFixtureMode(enabled: boolean): void;
+  recordDaemonSubscription(response: DaemonSubscriptionResponse): void;
+  recordDaemonSubscriptionStatus(status: DaemonSubscriptionStatus): void;
   boot(): Promise<void>;
 };
-
-async function measurePerfOperation(
-  bridge: LinuxShellBridge | null,
-  name: string,
-  source: string
-): Promise<void> {
-  if (!bridge || measuredRouteOperations.has(name)) return;
-  measuredRouteOperations.add(name);
-  const result = await bridge.measurePerfOperation(name);
-  if (!result.ok) {
-    recordPerfSample(name, result.ms, `${source};${result.source};blocked=${result.detail ?? 'unknown'}`);
-    return;
-  }
-  recordPerfSample(name, result.ms, `${source};${result.source}`);
-}
 
 export const useShellStore = create<ShellState>()((set, get) => ({
   route: routeFromHash(typeof location === 'undefined' ? '' : location.hash),
@@ -98,22 +67,25 @@ export const useShellStore = create<ShellState>()((set, get) => ({
   skin: readPersistedSkin(),
   bridge: null,
   bridgeReady: false,
+  dataRevision: 0,
+  lastDaemonEventAt: null,
+  subscriptionRecoveredAfterRestart: false,
+  subscriptionState: 'stopped',
+  subscriptionError: null,
+  runtimeCapabilities: null,
+  capabilityError: null,
   fixtureMode: false,
 
   setRoute(route) {
-    const end = markStart('route.navigation', `packaged-ui-route:${route}`);
+    markAfterPaint('route.navigation', `packaged-ui-route-after-paint:${route}`);
     location.hash = `#/${route}`;
     set({ route });
-    end();
-    const metric = routeSurfaceMetric(route);
-    if (metric) void measurePerfOperation(get().bridge, metric.name, metric.source);
   },
 
   syncRouteFromHash() {
     const route = routeFromHash(location.hash);
+    markAfterPaint('route.navigation', `packaged-ui-hash-route-after-paint:${route}`);
     set({ route });
-    const metric = routeSurfaceMetric(route);
-    if (metric) void measurePerfOperation(get().bridge, metric.name, metric.source);
   },
 
   async refreshHealth() {
@@ -162,25 +134,57 @@ export const useShellStore = create<ShellState>()((set, get) => ({
   },
 
   setFixtureMode(enabled) {
-    setDaemonFixtureMode(enabled);
-    set({ fixtureMode: enabled });
+    const next = enabled && DAEMON_FIXTURE_AVAILABLE;
+    setDaemonFixtureMode(next);
+    set({ fixtureMode: next });
     void get().refreshHealth();
+  },
+
+  recordDaemonSubscription(response) {
+    set((state) => ({
+      dataRevision: state.dataRevision + 1,
+      lastDaemonEventAt: new Date().toISOString(),
+      subscriptionRecoveredAfterRestart: response.recoveredAfterRestart
+    }));
+  },
+
+  recordDaemonSubscriptionStatus(status) {
+    set({
+      subscriptionState: status.state,
+      subscriptionError: status.error ?? null
+    });
   },
 
   async boot() {
     set({ fixtureMode: isDaemonFixtureMode() });
     const bridge = await loadShellBridge();
-    set({ bridge, bridgeReady: true });
-    if (bridge) {
-      const trayDegraded = await bridge.trayDegraded();
-      set({ trayDegraded });
+    if (!bridge) {
+      set({
+        bridge: null,
+        bridgeReady: true,
+        runtimeCapabilities: null,
+        capabilityError: null
+      });
+    } else {
+      const [manifestResult, trayResult] = await Promise.allSettled([
+        bridge.runtimeCapabilities(),
+        bridge.trayDegraded()
+      ]);
+      set({
+        bridge,
+        bridgeReady: true,
+        runtimeCapabilities:
+          manifestResult.status === 'fulfilled' ? manifestResult.value : null,
+        capabilityError:
+          manifestResult.status === 'rejected'
+            ? manifestResult.reason instanceof Error
+              ? manifestResult.reason.message
+              : 'Runtime capability probe failed.'
+            : null,
+        trayDegraded: trayResult.status === 'fulfilled' ? trayResult.value : true
+      });
     }
     await get().refreshHealth();
-    for (const operation of REQUIRED_PERF_OPERATIONS) {
-      await measurePerfOperation(get().bridge, operation.name, operation.source);
-    }
-    const metric = routeSurfaceMetric(get().route);
-    if (metric) void measurePerfOperation(get().bridge, metric.name, metric.source);
   }
 }));
 

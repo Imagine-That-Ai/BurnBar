@@ -13,8 +13,8 @@ import { SUPPORT_MACROS } from "@data/supportMacros";
       <span class="eyebrow eyebrow--ember">Support</span>
       <h1>OpenBurnBar support</h1>
       <p class="lead">
-        Get help with the macOS app, iPhone and iPad companion app, BurnBar Cloud, BurnBar Cloud
-        Pro, provider connections, account deletion, or privacy requests.
+        Get help with the macOS app, iPhone and iPad companion app, BurnBar Cloud, Cloud Pro, and
+        Ultra plans, provider connections, account deletion, or privacy requests.
       </p>
 
       <div class="supportgrid">
@@ -34,7 +34,7 @@ import { SUPPORT_MACROS } from "@data/supportMacros";
         <article class="supportcard">
           <h2>Subscription help</h2>
           <p>
-            BurnBar Cloud and BurnBar Cloud Pro are auto-renewable subscriptions. Billing is handled
+            BurnBar Cloud, Cloud Pro, and Ultra are auto-renewable subscriptions. Billing is handled
             by the purchase platform: Apple App Store, Google Play, or Stripe. Manage, cancel, or
             request refunds from the platform where you purchased.
           </p>
@@ -80,7 +80,11 @@ import { SUPPORT_MACROS } from "@data/supportMacros";
       </div>
 
       <section class="macros" aria-labelledby="support-macros-h">
-        <h2 id="support-macros-h">Support macros</h2>
+        <h2 id="support-macros-h">Billing &amp; account answers</h2>
+        <p class="macros__note">
+          The same playbook our support inbox works from — published so you know what to expect
+          before you write in.
+        </p>
         <div class="supportgrid">
           {
             SUPPORT_MACROS.map((macro) => (
@@ -97,6 +101,11 @@ import { SUPPORT_MACROS } from "@data/supportMacros";
 </BaseLayout>
 
 <style>
+  .macros__note {
+    color: var(--text-mute);
+    margin-bottom: var(--s-4);
+    max-width: 60ch;
+  }
   .supportpage {
     padding-block: var(--s-9);
   }

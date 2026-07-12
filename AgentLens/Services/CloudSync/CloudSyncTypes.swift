@@ -34,10 +34,11 @@ protocol CloudSyncing: AnyObject {
     func uploadPendingChatThreads() async
     func uploadPendingSessionLogs() async
     func syncSharedArtifacts(maxRemoteArtifacts: Int) async
+    func syncRoamingProfile() async
     func downloadRemoteData(uid: String?) async
     func updateLocalDeviceName(_ name: String) async
     func fetchCloudTotal(uid: String?) async
-    func fetchCloudSessionLogs(limit: Int) async throws -> [ConversationRecord]
+    func fetchCloudSessionLogs(limit: Int) async throws -> [OpenBurnBarCore.ConversationRecord]
     func fetchCloudSessionLogBody(docId: String) async throws -> String
     func memorySyncBoundarySnapshot() async -> OpenBurnBarMemorySyncBoundarySnapshot
 }
@@ -55,7 +56,7 @@ extension CloudSyncing {
         await fetchCloudTotal(uid: nil)
     }
 
-    func fetchCloudSessionLogs() async throws -> [ConversationRecord] {
+    func fetchCloudSessionLogs() async throws -> [OpenBurnBarCore.ConversationRecord] {
         try await fetchCloudSessionLogs(limit: 200)
     }
 }

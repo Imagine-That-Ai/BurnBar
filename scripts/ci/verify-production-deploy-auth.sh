@@ -351,6 +351,19 @@ def validate_cloud_run(text: str) -> None:
         if marker not in build_job:
             fail(f"{path} build-hosted-mcp-artifact is missing artifact guard marker {marker!r}")
 
+    dockerfile_path = Path("services/hosted-mcp/Dockerfile")
+    dockerfile = read(dockerfile_path)
+    base_images = re.findall(r"(?m)^FROM\s+(node:22-bookworm-slim@sha256:[a-f0-9]{64})(?:\s|$)", dockerfile)
+    all_from_lines = re.findall(r"(?m)^FROM\s+([^\s]+)", dockerfile)
+    if len(base_images) != 2 or len(all_from_lines) != 2:
+        fail(f"{dockerfile_path} must pin both build stages to node:22-bookworm-slim by sha256 digest")
+    elif len(set(base_images)) != 1:
+        fail(f"{dockerfile_path} build and runtime stages must use the same immutable base digest")
+    else:
+        pinned_base = base_images[0]
+        if f'image="{pinned_base}"' not in build_job:
+            fail(f"{path} must prime the exact immutable base used by {dockerfile_path}")
+
     if "needs:" not in deploy_job or "build-hosted-mcp-artifact" not in deploy_job:
         fail(f"{path} deploy-hosted-mcp must need build-hosted-mcp-artifact")
     if "environment: production" not in deploy_job:
@@ -444,6 +457,14 @@ def validate_production_functions(text: str) -> None:
     ):
         if marker not in deploy_job:
             fail(f"{path} deploy-functions is missing release tag provenance guard marker {marker!r}")
+
+    for marker in (
+        "google-github-actions/setup-gcloud@",
+        "Require matching rules before Functions deploy",
+        'node scripts/ci/check-firestore-deploy-drift.mjs "$FIREBASE_PROJECT"',
+    ):
+        if marker not in deploy_job:
+            fail(f"{path} deploy-functions is missing rules-first deploy guard marker {marker!r}")
 
     if '"${{ inputs.tag }}"' in deploy_job or "'${{ inputs.tag }}'" in deploy_job:
         fail(f"{path} deploy-functions must pass workflow_dispatch tag input through env, not interpolate it into shell")

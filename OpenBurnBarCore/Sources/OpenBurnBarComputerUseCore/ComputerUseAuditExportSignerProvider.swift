@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 #if os(macOS)
 import LocalAuthentication
 #if canImport(Security)

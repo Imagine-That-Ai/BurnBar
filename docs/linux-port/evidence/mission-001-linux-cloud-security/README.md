@@ -5,13 +5,13 @@ This directory holds the worker-owned evidence for the Linux lower-trust cloud/s
 ## Commands
 
 ```bash
-(cd functions && OPENBURNBAR_LINUX_SECURITY_EVIDENCE_DIR=/Users/albertonunez/Documents/Developer/BurnBar/docs/linux-port/evidence/mission-001-linux-cloud-security npm exec -- vitest run src/__tests__/highRiskOwnerActionAuditPersistence.test.ts --reporter=verbose)
+(cd functions && OPENBURNBAR_LINUX_SECURITY_EVIDENCE_DIR=$WORKSPACE/docs/linux-port/evidence/mission-001-linux-cloud-security npm exec -- vitest run src/__tests__/highRiskOwnerActionAuditPersistence.test.ts --reporter=verbose)
 (cd functions && npm exec -- vitest run src/__tests__/appCheckAttestation.test.ts src/__tests__/highRiskOwnerAction.test.ts src/__tests__/highRiskOwnerActionAuditPersistence.test.ts src/__tests__/windowsAppCheckConfig.test.ts src/__tests__/linuxAppCheck.test.ts --reporter=verbose)
 (cd functions && npm exec -- vitest run src/__tests__/endpointAuthorizationMatrix.test.ts src/__tests__/publicRateLimit.test.ts src/__tests__/bola/authOnly.bola.test.ts --reporter=verbose)
 npm --prefix functions run build
-docker run --rm -v /Users/albertonunez/Documents/Developer/BurnBar:/workspace -w /workspace openburnbar-linux-toolchain:mission-001-fts5 swift build --build-path /workspace/OpenBurnBarCore/.build-linux-security --package-path OpenBurnBarCore --target OpenBurnBarLinuxSecurity
-docker run --rm -v /Users/albertonunez/Documents/Developer/BurnBar:/workspace -w /workspace -e OPENBURNBAR_LINUX_SECURITY_ONLY_BUILD=1 openburnbar-linux-toolchain:mission-001-fts5 swift test --build-path /workspace/OpenBurnBarCore/.build-linux-security-only-tests --package-path OpenBurnBarCore --filter OpenBurnBarLinuxSecurityTests
-docker run --rm -v /Users/albertonunez/Documents/Developer/BurnBar:/workspace -w /workspace -e OPENBURNBAR_LINUX_SECURITY_EVIDENCE_DIR=/workspace/docs/linux-port/evidence/mission-001-linux-cloud-security openburnbar-linux-toolchain:mission-001-fts5 swift run --package-path docs/linux-port/evidence/mission-001-linux-cloud-security/harness --scratch-path /workspace/OpenBurnBarCore/.build-linux-security-harness LinuxSecurityEvidence
+docker run --rm -v $WORKSPACE:/workspace -w /workspace openburnbar-linux-toolchain:mission-001-fts5 swift build --build-path /workspace/OpenBurnBarCore/.build-linux-security --package-path OpenBurnBarCore --target OpenBurnBarLinuxSecurity
+docker run --rm -v $WORKSPACE:/workspace -w /workspace -e OPENBURNBAR_LINUX_SECURITY_ONLY_BUILD=1 openburnbar-linux-toolchain:mission-001-fts5 swift test --build-path /workspace/OpenBurnBarCore/.build-linux-security-only-tests --package-path OpenBurnBarCore --filter OpenBurnBarLinuxSecurityTests
+docker run --rm -v $WORKSPACE:/workspace -w /workspace -e OPENBURNBAR_LINUX_SECURITY_EVIDENCE_DIR=/workspace/docs/linux-port/evidence/mission-001-linux-cloud-security openburnbar-linux-toolchain:mission-001-fts5 swift run --package-path docs/linux-port/evidence/mission-001-linux-cloud-security/harness --scratch-path /workspace/OpenBurnBarCore/.build-linux-security-harness LinuxSecurityEvidence
 ```
 
 ## Observed Results

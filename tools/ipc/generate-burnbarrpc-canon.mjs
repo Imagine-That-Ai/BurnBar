@@ -7,10 +7,10 @@ const scriptPath = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(scriptPath), "../..");
 
 const files = {
-  contracts: path.join(root, "OpenBurnBarCore/Sources/OpenBurnBarCore/Contracts/BurnBarRPCContracts.swift"),
+  contracts: path.join(root, "OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarRPCContracts.swift"),
   capability: path.join(root, "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarRPCCapability.swift"),
   coverage: path.join(root, "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC/BurnBarDaemonSocketRPCCoverage.swift"),
-  swift: path.join(root, "OpenBurnBarCore/Sources/OpenBurnBarCore/Contracts/BurnBarRPCIPCCanon.generated.swift"),
+  swift: path.join(root, "OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarRPCIPCCanon.generated.swift"),
   typescript: path.join(root, "extensions/openburnbar/src/generated/burnbar-rpc-ipc-canon.generated.ts"),
   json: path.join(root, "docs/linux-port/generated/burnbar-rpc-ipc-canon.linux.json")
 };
@@ -110,6 +110,16 @@ const explicitTypes = {
   "daemon.catalog": ["BurnBarRPCRequestEnvelope", "BurnBarCatalogResponse"],
   "daemon.config.get": ["BurnBarConfigGetRequest", "BurnBarConfigResponse"],
   "daemon.config.update": ["BurnBarConfigUpdateRequest", "BurnBarConfigResponse"],
+  "daemon.media.session.state": ["BurnBarRPCRequestEnvelope", "DaemonMediaSessionStateResponse"],
+  "daemon.media.call.accept": ["DaemonMediaCallAcceptRequest", "DaemonMediaCallActionResponse"],
+  "daemon.media.call.decline": ["DaemonMediaCallDeclineRequest", "DaemonMediaCallActionResponse"],
+  "daemon.media.call.end": ["DaemonMediaCallEndRequest", "DaemonMediaCallActionResponse"],
+  "daemon.media.capability.get": ["BurnBarRPCRequestEnvelope", "DaemonMediaCapabilityResponse"],
+  "daemon.media.status": ["BurnBarRPCRequestEnvelope", "DaemonMediaStatusResponse"],
+  "daemon.media.file.offer.list": ["BurnBarRPCRequestEnvelope", "DaemonMediaFileOfferListResponse"],
+  "daemon.media.file.accept": ["DaemonMediaFileAcceptRequest", "DaemonMediaFileActionResponse"],
+  "daemon.media.file.decline": ["DaemonMediaFileDeclineRequest", "DaemonMediaFileActionResponse"],
+  "daemon.media.file.send": ["DaemonMediaFileSendRequest", "DaemonMediaFileActionResponse"],
   "daemon.provider.credential_slot.upsert": ["BurnBarProviderCredentialSlotUpsertRequest", "BurnBarProviderCredentialSlotMutationResponse"],
   "daemon.provider.credential_slot.remove": ["BurnBarProviderCredentialSlotRemoveRequest", "BurnBarProviderCredentialSlotMutationResponse"],
   "client.attach": ["BurnBarClientAttachRequest", "BurnBarClientAttachResponse"],
@@ -126,7 +136,8 @@ const explicitTypes = {
   "workspace.toolResult": ["BurnBarToolResultSubmissionRequest", "BurnBarRunDetailResponse"],
   "approval.respond": ["BurnBarApprovalRespondRequest", "BurnBarRunDetailResponse"],
   "subscription.start": ["BurnBarSubscriptionStartRequest", "BurnBarSubscriptionResponse"],
-  "subscription.resume": ["BurnBarSubscriptionResumeRequest", "BurnBarSubscriptionResponse"]
+  "subscription.resume": ["BurnBarSubscriptionResumeRequest", "BurnBarSubscriptionResponse"],
+  "subscription.stop": ["BurnBarSubscriptionStopRequest", "BurnBarSubscriptionStopResponse"]
 };
 
 function inferTypes(method) {

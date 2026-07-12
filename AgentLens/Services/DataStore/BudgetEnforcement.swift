@@ -116,7 +116,7 @@ final class BudgetEnforcement {
     /// `token_usage` insert refines the ledger to exact pricing.
     nonisolated static func estimateCost(model: String, inputCharacters: Int, assumedOutputTokens: Int = 1024) -> Double {
         let inputTokens = max(0, inputCharacters) / 4
-        let pricing = ModelPricing.lookup(model: model)
+        let pricing = OpenBurnBarCore.ModelPricing.lookup(model: model)
         let inputUSD = Double(inputTokens) * pricing.inputPerMToken / 1_000_000.0
         let outputUSD = Double(assumedOutputTokens) * pricing.outputPerMToken / 1_000_000.0
         return inputUSD + outputUSD

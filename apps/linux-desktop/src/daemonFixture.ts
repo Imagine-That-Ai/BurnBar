@@ -22,6 +22,12 @@ import type {
 } from './tauriBridge.js';
 import { ENTITLEMENT_DOC_IDS } from '@openburnbar/entitlements';
 
+export function fixtureActivationAllowed(input: { development: boolean; explicitlyEnabled: boolean }): boolean {
+  return input.development || input.explicitlyEnabled;
+}
+
+export const DAEMON_FIXTURE_AVAILABLE = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DAEMON_FIXTURE === '1';
+
 export type DaemonRouteFixture = {
   route: string;
   label: string;
@@ -120,7 +126,7 @@ export function fixtureIntegrationsStatus(): IntegrationsStatus {
 }
 
 export function isDaemonFixtureMode(): boolean {
-  if (typeof window === 'undefined') return false;
+  if (!DAEMON_FIXTURE_AVAILABLE || typeof window === 'undefined') return false;
   const params = new URLSearchParams(window.location.search);
   if (params.get('daemonFixture') === '1') return true;
   try {
@@ -130,7 +136,17 @@ export function isDaemonFixtureMode(): boolean {
   }
 }
 
-export function fixtureMercuryMediaStatus(): MercuryMediaStatus {
+/**
+ * Default fixture matches live capability-absent posture (VAL-MEDIA-001).
+ * Pass `{ rich: true }` only when a test needs populated peers/session.
+ */
+export function fixtureMercuryMediaStatus(options?: { rich?: boolean }): MercuryMediaStatus {
+  if (!options?.rich) {
+    return {
+      capabilityAvailable: false,
+      pairedDevices: []
+    };
+  }
   const now = Date.now();
   return {
     capabilityAvailable: true,
@@ -161,6 +177,10 @@ export function fixtureMercuryMediaStatus(): MercuryMediaStatus {
 }
 
 export function setDaemonFixtureMode(enabled: boolean): void {
+  if (!DAEMON_FIXTURE_AVAILABLE) {
+    localStorage.removeItem('openburnbar.linux.daemonFixture');
+    return;
+  }
   localStorage.setItem('openburnbar.linux.daemonFixture', enabled ? '1' : '0');
 }
 
@@ -536,9 +556,15 @@ export function fixtureConfigSnapshot(): ConfigSnapshot {
   return {
     paths: {
       supportDir: '~/.local/share/openburnbar',
-      socketPath: '~/.local/share/openburnbar/openburnbar-daemon.sock',
+      socketPath: '$XDG_RUNTIME_DIR/openburnbar/daemon.sock',
       configDir: '~/.config/openburnbar',
-      providerLogPaths: ['~/.local/share/openburnbar/logs/anthropic', '~/.local/share/openburnbar/logs/openai']
+      providerLogPaths: [
+        '~/.codex/sessions',
+        '~/.claude/projects',
+        '~/.grok/sessions',
+        '~/.local/share/opencode',
+        '~/.local/share/goose/sessions'
+      ]
     },
     secretServiceStatus: 'locked',
     telemetryEnabled: false,

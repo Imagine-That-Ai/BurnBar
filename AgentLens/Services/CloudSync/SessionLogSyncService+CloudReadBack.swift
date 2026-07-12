@@ -5,7 +5,7 @@ import OpenBurnBarCore
 extension SessionLogSyncService {
     /// Fetches session log manifests from Firestore for the signed-in user.
     /// Returns ConversationRecords with empty fullText; body is fetched lazily via DownloadSyncService.
-    func fetchCloudSessionLogs(limit: Int = 200) async throws -> [ConversationRecord] {
+    func fetchCloudSessionLogs(limit: Int = 200) async throws -> [OpenBurnBarCore.ConversationRecord] {
         let gate = await context.syncGate()
         guard gate.account.isFirebaseAvailable,
               gate.account.isSignedIn,
@@ -25,15 +25,15 @@ extension SessionLogSyncService {
             .limit(to: limit)
             .getDocuments()
 
-        return snapshot.documents.compactMap { doc -> ConversationRecord? in
+        return snapshot.documents.compactMap { doc -> OpenBurnBarCore.ConversationRecord? in
             let data = doc.data()
             if let deletedAt = data["deletedAt"], !(deletedAt is NSNull) { return nil }
             guard let rawProvider = data["provider"] as? String,
                   let provider = AgentProvider(rawValue: rawProvider) else { return nil }
 
             let id = data["id"] as? String ?? doc.documentID
-            let sourceTypeRaw = data["sourceType"] as? String ?? ConversationSourceType.providerLog.rawValue
-            let sourceType = ConversationSourceType(rawValue: sourceTypeRaw) ?? .providerLog
+            let sourceTypeRaw = data["sourceType"] as? String ?? OpenBurnBarCore.ConversationSourceType.providerLog.rawValue
+            let sourceType = OpenBurnBarCore.ConversationSourceType(rawValue: sourceTypeRaw) ?? .providerLog
             let decryptedTitle: String? = vaultKey.flatMap { key in
                 guard let envelope = Self.decodeSealedText(data["sealedTitle"]) else { return nil }
                 do {
@@ -53,7 +53,7 @@ extension SessionLogSyncService {
             }
             let title = decryptedTitle ?? data["inferredTaskTitle"] as? String ?? ""
 
-            return ConversationRecord(
+            return OpenBurnBarCore.ConversationRecord(
                 id: id,
                 provider: provider,
                 sessionId: doc.documentID,

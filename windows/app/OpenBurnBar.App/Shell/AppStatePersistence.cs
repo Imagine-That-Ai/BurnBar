@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using OpenBurnBar.App.Configuration;
 using Path = System.IO.Path;
 
 namespace OpenBurnBar.App.Shell;
@@ -65,12 +66,8 @@ public sealed class AppStatePersistence
     /// <summary>The current in-memory state. Mutate then call <see cref="Save"/>.</summary>
     public AppStateModel State => _state;
 
-    /// <summary>The default JSON location: <c>%LOCALAPPDATA%\OpenBurnBar\shell-state.json</c>.</summary>
-    public static string DefaultPath()
-    {
-        var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        return Path.Combine(root, "OpenBurnBar", "shell-state.json");
-    }
+    /// <summary>The default JSON location: <c>%LOCALAPPDATA%\OpenBurnBar\shell-state.json</c>, or the automation profile root when set.</summary>
+    public static string DefaultPath() => RuntimePaths.AppDataFile("shell-state.json");
 
     /// <summary>Persist the current state; swallows IO/serialization errors (best-effort).</summary>
     public void Save()

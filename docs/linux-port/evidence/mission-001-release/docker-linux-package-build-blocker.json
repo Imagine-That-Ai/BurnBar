@@ -1,9 +1,9 @@
 {
   "generatedAt": "2026-07-05T12:53:18.759Z",
-  "attemptedCommand": "docker run --rm --user 501:20 -e HOME=/tmp/openburnbar-build-home -v /Users/albertonunez/Documents/Developer/BurnBar:/workspace -w /workspace openburnbar-linux-toolchain:mission-001 node scripts/linux-port/build-linux-release.mjs",
+  "attemptedCommand": "docker run --rm --user 501:20 -e HOME=/tmp/openburnbar-build-home -v $WORKSPACE:/workspace -w /workspace openburnbar-linux-toolchain:mission-001 node scripts/linux-port/build-linux-release.mjs",
   "status": "blocked",
   "dockerVersionExitCode": 1,
-  "socket": "/Users/albertonunez/.docker/run/docker.sock",
+  "socket": "$DOCKER_SOCKET",
   "observedError": "failed to connect to the docker API: connect: no such file or directory",
   "context": "desktop-linux",
   "impact": "Linux-container release package build could not run; macOS host Tauri build is not authoritative for deb/rpm/appimage packaging."

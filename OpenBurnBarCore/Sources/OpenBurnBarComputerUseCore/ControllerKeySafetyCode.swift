@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Signal-style safety number for the phone-control trust binding (F1).
 ///

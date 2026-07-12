@@ -187,6 +187,16 @@ jobs:
           token_format: access_token
           access_token_lifetime: 900s
 
+      - name: Set up gcloud for rules-first readback
+        if: steps.tag.outputs.dry_run != 'true'
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1 (node24-native)
+
+      - name: Require matching rules before Functions deploy
+        if: steps.tag.outputs.dry_run != 'true'
+        env:
+          FIREBASE_PROJECT: burnbar
+        run: node scripts/ci/check-firestore-deploy-drift.mjs "$FIREBASE_PROJECT"
+
       - name: Deploy Cloud Functions
         id: deploy
         if: steps.tag.outputs.dry_run != 'true'

@@ -1,0 +1,12 @@
+{
+  "status": "passed",
+  "checks": {
+    "credentialPatterns": "passed",
+    "gitDiffCheck": "passed",
+    "noSuppressions": "passed"
+  },
+  "notes": [
+    "Credential scan covers private-key headers, AWS access keys, GitHub tokens, OpenAI key forms, and Google API keys.",
+    "The Windows-produced artifact-secret-scan.json independently reports no findings."
+  ]
+}

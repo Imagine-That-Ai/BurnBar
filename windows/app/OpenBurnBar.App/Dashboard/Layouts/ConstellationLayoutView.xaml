@@ -8,6 +8,7 @@
     x:Class="OpenBurnBar.App.Dashboard.Layouts.ConstellationLayoutView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:theme="using:OpenBurnBar.App.Theme"
     xmlns:layouts="using:OpenBurnBar.App.Dashboard.Layouts"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -35,11 +36,8 @@
             </StackPanel>
 
             <!-- Data readiness. -->
-            <Border Padding="14,10"
-                    CornerRadius="{StaticResource PensieveRadiusPillCorner}"
-                    Background="{StaticResource OBBSurfaceBrush}"
-                    BorderThickness="0.75"
-                    BorderBrush="{StaticResource OBBStrokeBrush}">
+            <Border Style="{StaticResource LiquidGlassSurfaceStyle}" theme:LiquidGlass.Surface="True" Padding="14,10"
+                    CornerRadius="{StaticResource PensieveRadiusPillCorner}">
                 <TextBlock x:Name="ProviderStatusText"
                            Text="Connect a SQLCipher database for live provider data"
                            TextWrapping="Wrap"

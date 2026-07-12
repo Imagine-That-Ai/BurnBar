@@ -12,7 +12,7 @@ protocol SessionLogVaultKeyProviding: Sendable {
 extension CloudVaultKeyStore: SessionLogVaultKeyProviding {}
 
 protocol SessionLogArchivedSessionMirroring {
-    func mirrorArchivedLog(_ conversation: ConversationRecord, cloudLogDocumentID: String?) async
+    func mirrorArchivedLog(_ conversation: OpenBurnBarCore.ConversationRecord, cloudLogDocumentID: String?) async
 }
 
 extension CLIAgentSessionMirror: SessionLogArchivedSessionMirroring {}

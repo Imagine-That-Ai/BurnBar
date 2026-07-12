@@ -4,86 +4,127 @@ import BaseLayout from "@layouts/BaseLayout.astro";
 
 <BaseLayout
   title="Link CLI"
-  description="Link your terminal command line interface with your OpenBurnBar account."
+  description="Link the OpenBurnBar CLI to your BurnBar account with a one-time code."
+  noindex={true}
 >
   <section class="pagehead">
     <div class="container pagehead__inner">
       <span class="eyebrow eyebrow--ember">Integration</span>
-      <h1 class="pagehead__h">Link CLI to Cloud</h1>
+      <h1 class="pagehead__h">Link your CLI to BurnBar Cloud</h1>
     </div>
   </section>
 
   <section class="link-container">
     <div class="container container--narrow">
-      <div class="glass-pane link-card">
+      <div class="glass-pane link-card" aria-live="polite">
         <!-- Loader / Checking Auth State -->
         <div id="state-checking" class="link-state">
-          <div class="spinner"></div>
-          <p>Securing connection...</p>
+          <div class="spinner" aria-hidden="true"></div>
+          <p>Checking your session…</p>
         </div>
 
         <!-- State: Signed Out -->
         <div id="state-signed-out" class="link-state hidden">
-          <div class="icon-wrap">
-            <span class="icon-flame">🔑</span>
+          <div class="icon-wrap" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              width="28"
+              height="28"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <circle cx="8" cy="14" r="4.5"></circle>
+              <path d="M11.5 10.5 20 2m-3.5 3.5L19 8m-5-2.5L16.5 8"></path>
+            </svg>
           </div>
-          <h2>Authentication Required</h2>
-          <p>Please sign in with your BurnBar account to authorize this CLI connection.</p>
-          <button id="btn-signin" class="btn btn--ember"> Sign In with Google </button>
+          <h2>Sign in to link your CLI</h2>
+          <p>Use the same account as the BurnBar app. Signing in authorizes this one connection.</p>
+          <button id="btn-signin" class="btn btn--ember"> Sign in with Google </button>
+          <button id="btn-signin-apple" class="btn btn--secondary"> Sign in with Apple </button>
         </div>
 
         <!-- State: Signed In, Enter/Confirm Code -->
         <div id="state-confirm" class="link-state hidden">
           <div class="user-badge" id="user-badge">
-            <img id="user-avatar" src="" alt="Avatar" class="avatar hidden" />
+            <img id="user-avatar" src="" alt="" class="avatar hidden" />
             <span id="user-email" class="mono">...</span>
           </div>
-          <h2>Confirm Link Code</h2>
-          <p>Please enter or confirm the 8-character code shown in your terminal.</p>
+          <h2>Confirm your link code</h2>
+          <p>Enter or confirm the 8-character code shown in your terminal.</p>
 
           <div class="code-input-wrap">
+            <label class="code-label mono" for="code-input">Link code</label>
             <input
               type="text"
               id="code-input"
               placeholder="WDJB-MQXK"
               maxlength="9"
+              autocomplete="one-time-code"
+              spellcheck="false"
               class="mono-input"
             />
+            <p id="code-hint" class="code-hint hidden" role="alert">
+              Enter the full 8-character code from your terminal.
+            </p>
           </div>
 
-          <button id="btn-confirm" class="btn btn--ember"> Link CLI Device </button>
+          <button id="btn-confirm" class="btn btn--ember"> Link this terminal </button>
 
           <button id="btn-signout" class="btn-text"> Sign out of this account </button>
         </div>
 
         <!-- State: Submitting / Linking -->
         <div id="state-linking" class="link-state hidden">
-          <div class="spinner"></div>
-          <h2>Connecting CLI...</h2>
+          <div class="spinner" aria-hidden="true"></div>
+          <h2>Linking your terminal…</h2>
           <p>Provisioning credentials and preparing secure sync endpoints.</p>
         </div>
 
         <!-- State: Success -->
         <div id="state-success" class="link-state hidden">
-          <div class="success-glow"></div>
-          <div class="icon-wrap success">
-            <span class="icon-check">✔</span>
+          <div class="success-glow" aria-hidden="true"></div>
+          <div class="icon-wrap success" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              width="28"
+              height="28"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="m4.5 12.5 5 5 10-11"></path>
+            </svg>
           </div>
-          <h2>CLI Linked Successfully!</h2>
-          <p>Your terminal is now authorized and ready to run.</p>
+          <h2>CLI linked</h2>
+          <p>This terminal is now authorized with your account.</p>
           <div class="next-step-box">
-            <p class="mono small">Return to your terminal to complete the flow.</p>
+            <p class="mono small">Return to your terminal to finish.</p>
           </div>
         </div>
 
         <!-- State: Error -->
         <div id="state-error" class="link-state hidden">
-          <div class="icon-wrap error">
-            <span class="icon-cross">❌</span>
+          <div class="icon-wrap error" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              width="28"
+              height="28"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            >
+              <path d="M6 6l12 12M18 6L6 18"></path>
+            </svg>
           </div>
-          <h2>Linking Failed</h2>
-          <p id="error-message">An unexpected error occurred.</p>
-          <button id="btn-retry" class="btn btn--secondary"> Try Again </button>
+          <h2>Linking failed</h2>
+          <p id="error-message">Something went wrong on our side. Try again in a moment.</p>
+          <button id="btn-retry" class="btn btn--secondary"> Try again </button>
         </div>
       </div>
     </div>
@@ -162,6 +203,7 @@ import BaseLayout from "@layouts/BaseLayout.astro";
     background: var(--ink-surface);
     border: 1px solid var(--ink-line);
     color: var(--text-bright);
+    margin-top: 0.75rem;
   }
   .btn--secondary:hover {
     background: var(--ink-surface-2);
@@ -248,6 +290,24 @@ import BaseLayout from "@layouts/BaseLayout.astro";
     width: 100%;
     max-width: 320px;
   }
+  .code-label {
+    display: block;
+    text-align: left;
+    margin-bottom: 0.4rem;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--text-mute);
+  }
+  .code-hint {
+    margin: 0.6rem 0 0;
+    font-size: 0.82rem;
+    color: var(--status-burn);
+    text-align: left;
+  }
+  .code-hint.hidden {
+    display: none;
+  }
   .mono-input {
     width: 100%;
     background: var(--ink-surface);
@@ -262,9 +322,13 @@ import BaseLayout from "@layouts/BaseLayout.astro";
     text-transform: uppercase;
     transition: border-color 0.2s ease;
   }
-  .mono-input:focus {
-    outline: none;
+  .mono-input:focus-visible {
+    outline: 2px solid var(--ember-bright);
+    outline-offset: 2px;
     border-color: var(--ember-bright);
+  }
+  .mono-input[aria-invalid="true"] {
+    border-color: var(--status-burn);
   }
 
   /* Success Glow */
@@ -295,7 +359,7 @@ import BaseLayout from "@layouts/BaseLayout.astro";
 </style>
 
 <script>
-  import { auth, googleProvider, functions } from "../lib/firebaseClient";
+  import { auth, googleProvider, appleProvider, functions } from "../lib/firebaseClient";
   import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
   import type { User } from "firebase/auth";
   import { httpsCallable } from "firebase/functions";
@@ -311,6 +375,7 @@ import BaseLayout from "@layouts/BaseLayout.astro";
   };
 
   const btnSignin = document.getElementById("btn-signin");
+  const btnSigninApple = document.getElementById("btn-signin-apple");
   const btnConfirm = document.getElementById("btn-confirm");
   const btnSignout = document.getElementById("btn-signout");
   const btnRetry = document.getElementById("btn-retry");
@@ -376,11 +441,11 @@ import BaseLayout from "@layouts/BaseLayout.astro";
     }
   });
 
-  // Action: Sign In
-  btnSignin?.addEventListener("click", async () => {
+  // Action: Sign In (Google or Apple — same Firebase account either way)
+  const signIn = async (provider: typeof googleProvider | typeof appleProvider) => {
     try {
       showState("checking");
-      await signInWithPopup(auth, googleProvider);
+      await signInWithPopup(auth, provider);
     } catch (err: unknown) {
       const errorLike = err as { message?: unknown };
       if (errorMessage) {
@@ -389,7 +454,9 @@ import BaseLayout from "@layouts/BaseLayout.astro";
       }
       showState("error");
     }
-  });
+  };
+  btnSignin?.addEventListener("click", () => signIn(googleProvider));
+  btnSigninApple?.addEventListener("click", () => signIn(appleProvider));
 
   // Action: Sign Out
   btnSignout?.addEventListener("click", async () => {
@@ -402,12 +469,17 @@ import BaseLayout from "@layouts/BaseLayout.astro";
   });
 
   // Action: Complete link
+  const codeHint = document.getElementById("code-hint");
   btnConfirm?.addEventListener("click", async () => {
     const code = (codeInput?.value || "").replace("-", "").trim();
     if (code.length !== 8) {
-      alert("Please enter a valid 8-character linking code.");
+      codeHint?.classList.remove("hidden");
+      codeInput?.setAttribute("aria-invalid", "true");
+      codeInput?.focus();
       return;
     }
+    codeHint?.classList.add("hidden");
+    codeInput?.removeAttribute("aria-invalid");
 
     try {
       showState("linking");

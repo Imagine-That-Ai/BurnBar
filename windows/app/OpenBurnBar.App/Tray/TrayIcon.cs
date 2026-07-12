@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using static OpenBurnBar.App.Tray.TrayNativeMethods;
 
 namespace OpenBurnBar.App.Tray;
@@ -20,12 +21,14 @@ internal sealed class TrayIcon : IDisposable
     private readonly Action _onPrimaryClick;
     private readonly Action _onOpenMainWindow;
     private readonly Action _onExit;
+    private readonly uint _taskbarCreatedMessage;
 
     // The delegate MUST be held so the GC never collects the marshaled thunk under Win32.
     private readonly WndProc _wndProcDelegate;
     private readonly string _className;
 
     private IntPtr _hwnd;
+    private IntPtr _brandedIcon;
     private bool _iconAdded;
     private bool _disposed;
 
@@ -36,6 +39,7 @@ internal sealed class TrayIcon : IDisposable
         _onOpenMainWindow = onOpenMainWindow;
         _onExit = onExit;
         _wndProcDelegate = WindowProc;
+        _taskbarCreatedMessage = RegisterWindowMessageW("TaskbarCreated");
         _className = "OpenBurnBar.TrayHost." + Environment.ProcessId;
     }
 
@@ -43,12 +47,7 @@ internal sealed class TrayIcon : IDisposable
     public void Show()
     {
         EnsureHostWindow();
-        AddOrModifyIcon(NIM_ADD);
-
-        // Opt into v4 behavior (rich callback packing, reliable NIN_* events).
-        var data = BuildIconData();
-        data.uVersion = NOTIFYICON_VERSION_4;
-        Shell_NotifyIconW(NIM_SETVERSION, ref data);
+        AddOrRefreshIcon();
     }
 
     private void EnsureHostWindow()
@@ -68,11 +67,12 @@ internal sealed class TrayIcon : IDisposable
         };
         RegisterClassExW(ref wndClass);
 
-        // Message-only window (HWND_MESSAGE): no UI, just a pump target for the callback.
+        // Hidden top-level window: it remains invisible, receives tray callbacks, and also
+        // receives Explorer's TaskbarCreated broadcast after shell restarts.
         _hwnd = CreateWindowExW(
             0, _className, "OpenBurnBar Tray Host", 0,
             0, 0, 0, 0,
-            HWND_MESSAGE, IntPtr.Zero, hInstance, IntPtr.Zero);
+            IntPtr.Zero, IntPtr.Zero, hInstance, IntPtr.Zero);
     }
 
     private NOTIFYICONDATAW BuildIconData()
@@ -84,11 +84,40 @@ internal sealed class TrayIcon : IDisposable
             uID = TrayId,
             uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_SHOWTIP,
             uCallbackMessage = CallbackMessage,
-            // System app icon keeps the spike text-only (no binary .ico blob). WINUI-017
-            // swaps in the branded ember icon loaded from Assets/OpenBurnBar.ico.
-            hIcon = LoadIconW(IntPtr.Zero, IDI_APPLICATION),
+            // Branded AppLogo flame when packaged; generic Windows icon only as last resort.
+            hIcon = ResolveTrayIcon(),
             szTip = _tooltip,
         };
+    }
+
+    private IntPtr ResolveTrayIcon()
+    {
+        if (_brandedIcon != IntPtr.Zero)
+        {
+            return _brandedIcon;
+        }
+
+        string[] candidates =
+        {
+            Path.Combine(AppContext.BaseDirectory, "Assets", "AppLogo.ico"),
+            Path.Combine(AppContext.BaseDirectory, "AppLogo.ico"),
+        };
+        foreach (string path in candidates)
+        {
+            if (!File.Exists(path))
+            {
+                continue;
+            }
+
+            IntPtr handle = LoadImageW(IntPtr.Zero, path, IMAGE_ICON, 0, 0, LR_LOADFROMFILE | LR_DEFAULTSIZE);
+            if (handle != IntPtr.Zero)
+            {
+                _brandedIcon = handle;
+                return handle;
+            }
+        }
+
+        return LoadIconW(IntPtr.Zero, IDI_APPLICATION);
     }
 
     private void AddOrModifyIcon(uint message)
@@ -100,8 +129,25 @@ internal sealed class TrayIcon : IDisposable
         }
     }
 
+    private void AddOrRefreshIcon()
+    {
+        AddOrModifyIcon(NIM_ADD);
+
+        // Opt into v4 behavior (rich callback packing, reliable NIN_* events). Explorer
+        // drops notify icons on restart, so this runs both at launch and TaskbarCreated.
+        var data = BuildIconData();
+        data.uVersion = NOTIFYICON_VERSION_4;
+        Shell_NotifyIconW(NIM_SETVERSION, ref data);
+    }
+
     private IntPtr WindowProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
     {
+        if (_taskbarCreatedMessage != 0 && msg == _taskbarCreatedMessage)
+        {
+            AddOrRefreshIcon();
+            return IntPtr.Zero;
+        }
+
         if (msg == CallbackMessage)
         {
             // v4 packing: LOWORD(lParam) is the mouse/keyboard event; WPARAM holds the
@@ -194,6 +240,12 @@ internal sealed class TrayIcon : IDisposable
         {
             DestroyWindow(_hwnd);
             _hwnd = IntPtr.Zero;
+        }
+
+        if (_brandedIcon != IntPtr.Zero)
+        {
+            DestroyIcon(_brandedIcon);
+            _brandedIcon = IntPtr.Zero;
         }
     }
 }

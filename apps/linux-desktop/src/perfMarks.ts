@@ -28,6 +28,17 @@ export function markStart(name: string, source = 'linux-shell-render'): PerfMark
   };
 }
 
+export function markAfterPaint(name: string, source = 'linux-shell-render'): void {
+  const end = markStart(name, source);
+  const schedule = typeof requestAnimationFrame === 'function'
+    ? requestAnimationFrame
+    : (callback: FrameRequestCallback) => {
+        queueMicrotask(() => callback(performance.now()));
+        return 0;
+      };
+  schedule(() => schedule(() => end()));
+}
+
 export function listPerfSamples(): PerfSample[] {
   return [...samples];
 }

@@ -25,7 +25,8 @@ public enum TelemetryOutcome: String, Sendable {
 
 /// A sink that mirrors each recorded feature event downstream (e.g. to the
 /// consent-gated Amplitude wrapper). Registered once at app launch.
-public typealias TelemetryForwardHandler = @Sendable (TelemetryFeature, TelemetryOutcome, Int?) -> Void
+public typealias TelemetryAttributes = [String: String]
+public typealias TelemetryForwardHandler = @Sendable (TelemetryFeature, TelemetryOutcome, Int?, TelemetryAttributes) -> Void
 
 // MARK: - Telemetry Event
 
@@ -33,6 +34,7 @@ private struct TelemetryEvent: Sendable {
     let feature: TelemetryFeature
     let outcome: TelemetryOutcome
     let durationMs: Int?
+    let attributes: TelemetryAttributes
     let timestamp: Date
 }
 
@@ -65,13 +67,15 @@ public final class TelemetryService: Sendable {
     public func record(
         feature: TelemetryFeature,
         outcome: TelemetryOutcome,
-        durationMs: Int? = nil
+        durationMs: Int? = nil,
+        attributes: TelemetryAttributes = [:]
     ) {
         let bucketedDuration = durationMs.map { ($0 / 100) * 100 }
         let event = TelemetryEvent(
             feature: feature,
             outcome: outcome,
             durationMs: bucketedDuration,
+            attributes: attributes,
             timestamp: Date()
         )
         let shouldFlush = events.withLock { events -> Bool in
@@ -81,7 +85,7 @@ public final class TelemetryService: Sendable {
         // Fan out to the consent-gated Amplitude wrapper, if wired. The handler
         // itself drops everything unless analytics consent has been granted.
         if let handler = forwarder.withLock({ $0 }) {
-            handler(feature, outcome, bucketedDuration)
+            handler(feature, outcome, bucketedDuration, attributes)
         }
         if shouldFlush {
             flush()
@@ -95,10 +99,14 @@ public final class TelemetryService: Sendable {
             return pending
         }
         for event in pending {
+            let attributes = event.attributes
+                .sorted { $0.key < $1.key }
+                .map { "\($0.key)=\($0.value)" }
+                .joined(separator: " ")
             if let duration = event.durationMs {
-                logger.info("feature=\(event.feature.rawValue) outcome=\(event.outcome.rawValue) duration_ms=\(duration)")
+                logger.info("feature=\(event.feature.rawValue) outcome=\(event.outcome.rawValue) duration_ms=\(duration) attributes=\(attributes)")
             } else {
-                logger.info("feature=\(event.feature.rawValue) outcome=\(event.outcome.rawValue)")
+                logger.info("feature=\(event.feature.rawValue) outcome=\(event.outcome.rawValue) attributes=\(attributes)")
             }
         }
     }

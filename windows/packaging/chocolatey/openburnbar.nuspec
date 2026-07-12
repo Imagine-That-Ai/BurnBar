@@ -2,8 +2,8 @@
 <!--
   OpenBurnBar — Chocolatey package manifest.
 
-  Installs the DIRECT-DOWNLOAD portable zip (no Authenticode dependency, works before
-  the W0 cert lands), so this channel is unblocked independent of MSIX signing. The
+  Installs the DIRECT-DOWNLOAD portable zip, so this channel is unblocked independent
+  of MSIX packaging. The
   tools\chocolateyinstall.ps1 script fetches the per-arch portable zip from the GitHub
   release, verifies its SHA256, and extracts + shims OpenBurnBar.App.exe.
 

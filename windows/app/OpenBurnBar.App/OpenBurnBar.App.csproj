@@ -42,7 +42,29 @@
       (restore / project evaluation / schema checks). Real compile stays on Windows.
     -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <OpenBurnBarNativeEngineDirectory
+      Condition="'$(OpenBurnBarNativeEngineDirectory)' == ''">$(MSBuildProjectDirectory)\..\..\native-engine\$(RuntimeIdentifier)</OpenBurnBarNativeEngineDirectory>
   </PropertyGroup>
+
+  <ItemGroup Condition="Exists('$(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCoreCAbi.dll')">
+    <Content Include="$(OpenBurnBarNativeEngineDirectory)\*.dll"
+             Link="%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(OpenBurnBarNativeEngineDirectory)\native-engine-manifest.json"
+             Condition="Exists('$(OpenBurnBarNativeEngineDirectory)\native-engine-manifest.json')"
+             Link="native-engine-manifest.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="RequireOpenBurnBarNativeEngine"
+          BeforeTargets="Publish"
+          Condition="'$(OpenBurnBarRequireNativeEngine)' == 'true'">
+    <Error
+      Condition="!Exists('$(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCoreCAbi.dll')"
+      Text="Required Windows parser engine is missing: $(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCoreCAbi.dll" />
+  </Target>
 
   <ItemGroup>
     <Using Include="Microsoft.UI" />
@@ -103,6 +125,7 @@
       (windows/tests/settings/); the WinUI XAML that binds it is XamlCompiler-deferred.
     -->
     <ProjectReference Include="../OpenBurnBar.App.Settings/OpenBurnBar.App.Settings.csproj" />
+    <ProjectReference Include="../OpenBurnBar.App.Settings.ViewModels/OpenBurnBar.App.Settings.ViewModels.csproj" />
     <!--
       Portable presentation layer (net8.0, no WinUI) for the SessionLogs + Memory
       surfaces (Phase 3 · W7): view-models, ported record types, grouping passes, and
@@ -111,8 +134,12 @@
       render of that same logic.
     -->
     <ProjectReference Include="../OpenBurnBar.App.Presentation/OpenBurnBar.App.Presentation.csproj" />
+    <ProjectReference Include="../OpenBurnBar.App.UsageRuntime/OpenBurnBar.App.UsageRuntime.csproj" />
     <ProjectReference Include="../OpenBurnBar.App.Configuration/OpenBurnBar.App.Configuration.csproj" />
+    <ProjectReference Include="../OpenBurnBar.App.UsageRuntime/OpenBurnBar.App.UsageRuntime.csproj" />
     <ProjectReference Include="../OpenBurnBar.App.CloudSync/OpenBurnBar.App.CloudSync.csproj" />
+    <ProjectReference Include="../../packaging/updater/OpenBurnBar.Updater.Windows/OpenBurnBar.Updater.Windows.csproj" />
+    <ProjectReference Include="../../storage/OpenBurnBar.Storage/OpenBurnBar.Storage.csproj" />
     <!--
       Quota ACQUISITION layer (Wave 1 item 5): the portable sources + coordinator
       feeding the landed Presentation/Quota parsers, and the Windows host half
@@ -160,6 +187,35 @@
       for the exact wiring. The P/Invoke declarations restore on macOS; they only execute on Windows.
     -->
     <ProjectReference Include="../../dist/OpenBurnBar.Dist.Hardening/OpenBurnBar.Dist.Hardening.csproj" />
+  </ItemGroup>
+
+  <!--
+    Shared WebGL2 kernel backdrop field (AgentLens/Resources/KernelBackdrop/).
+    Copied beside the exe so KernelBackdropHost can map a virtual host to the folder
+    and Navigate to index.html — the same offline bundle macOS WKWebView loads.
+  -->
+  <ItemGroup>
+    <Content Include="..\..\..\AgentLens\Resources\KernelBackdrop\index.html"
+             Link="Resources\KernelBackdrop\index.html"
+             CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\..\AgentLens\Resources\KernelBackdrop\kernel-backdrop.js"
+             Link="Resources\KernelBackdrop\kernel-backdrop.js"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- Brand + provider logos (macOS AppLogo / Linux openburnbar.png parity). -->
+  <ItemGroup>
+    <Content Include="Assets\AppLogo.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\AppLogo-32.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\AppLogo-64.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\AppLogo.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\ProviderLogos\*.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\packaging\updater\feed\latest-windows.json"
+             Link="Resources\Updates\latest-windows.json"
+             CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\packaging\updater\feed\pinned-update-key.pub"
+             Link="Resources\Updates\pinned-update-key.pub"
+             CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!--

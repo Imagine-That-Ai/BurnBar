@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// F7 — per-frame AEAD for media/screen frames (defense-in-depth beyond the iroh
 /// QUIC transport seal).

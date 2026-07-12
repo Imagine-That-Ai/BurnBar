@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Cross-platform HPKE envelope used by Remote Unlock credential frames.
 ///

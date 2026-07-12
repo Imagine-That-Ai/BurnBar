@@ -4,8 +4,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const defaultEvidenceDir = process.env.OB_EVIDENCE_OUT
-  ? path.resolve(process.env.OB_EVIDENCE_OUT)
+const evidenceOutput = process.env.OB_EVIDENCE_OUT ?? process.env.OPENBURNBAR_LINUX_EVIDENCE_OUT;
+const defaultEvidenceDir = evidenceOutput
+  ? path.resolve(evidenceOutput)
   : path.join(root, 'docs/linux-port/evidence/mission-001-shell-ux');
 
 const arg = process.argv[2];
@@ -45,15 +46,51 @@ const requiredPerfRows = [
   'app.start',
   'route.navigation',
   'ipc.health.roundtrip',
-  'tray.click.open',
-  'chat.firstToken.progress',
-  'db.migration.open.query',
-  'parser.incremental.run',
-  'memory.search',
-  'media.control.stage'
+  'tray.click.open'
 ];
 
-const targetRoutes = ['settings', 'account', 'updates', 'support', 'onboarding', 'pet', 'text-expansion'];
+const requiredRoutes = [
+  'overview',
+  'insights',
+  'database',
+  'providers',
+  'projects',
+  'missions',
+  'activity',
+  'chat',
+  'memory',
+  'settings',
+  'account',
+  'updates',
+  'support',
+  'onboarding',
+  'pet',
+  'text-expansion',
+  'computer-use',
+  'mercury',
+  'smarthub'
+];
+const requiredRouteLabels = new Map([
+  ['overview', 'Overview'],
+  ['insights', 'Insights'],
+  ['database', 'Database'],
+  ['providers', 'Providers & models'],
+  ['projects', 'Projects'],
+  ['missions', 'Missions'],
+  ['activity', 'Activity & logs'],
+  ['chat', 'Chat / Hermes'],
+  ['memory', 'Memory'],
+  ['settings', 'Settings'],
+  ['account', 'Account & sync'],
+  ['updates', 'Updates'],
+  ['support', 'Support & diagnostics'],
+  ['onboarding', 'First-run setup'],
+  ['pet', 'Pet companion'],
+  ['text-expansion', 'Text expansion'],
+  ['computer-use', 'Computer Use'],
+  ['mercury', 'Mercury'],
+  ['smarthub', 'SmartHub / IoT']
+]);
 const forbiddenPerfSources = [
   'route-state-loop',
   'progress-chunk-reducer',
@@ -65,6 +102,7 @@ const forbiddenPerfSources = [
 ];
 
 const targetErrors = new Map([
+  ['VAL-A11Y-001', []],
   ['VAL-SHELL-005', []],
   ['VAL-ONBOARDING-001', []],
   ['VAL-PET-001', []],
@@ -120,6 +158,14 @@ function requirePackagedRoute(route, target) {
   checkFile(xwininfo, target);
 }
 
+function packagedRouteTarget(route) {
+  if (route === 'onboarding') return 'VAL-ONBOARDING-001';
+  if (route === 'pet') return 'VAL-PET-001';
+  if (route === 'text-expansion') return 'VAL-TEXTEXP-001';
+  if (['settings', 'account', 'updates', 'support'].includes(route)) return 'VAL-SHELL-005';
+  return 'VAL-A11Y-001';
+}
+
 function checkPackagedRoutes() {
   if (mode === 'json') return null;
   const transcript = readJson('packaged-route-session-transcript.json', 'VAL-SHELL-005');
@@ -128,17 +174,133 @@ function checkPackagedRoutes() {
     common(`packaged-route-session-transcript.json has unexpected mode ${transcript.mode}`);
   }
   const routes = new Set((transcript.routes ?? []).map((row) => row.route));
-  for (const route of targetRoutes) {
-    if (!routes.has(route)) common(`packaged route transcript missing ${route}`);
+  for (const route of requiredRoutes) {
+    const target = packagedRouteTarget(route);
+    if (!routes.has(route)) add(target, `packaged route transcript missing ${route}`);
+    const row = (transcript.routes ?? []).find((candidate) => candidate.route === route);
+    if (row && row.navMethod !== 'atspi-command-palette-actions') {
+      add(target, `packaged route ${route} used unexpected navigation method ${row.navMethod ?? 'missing'}`);
+    }
+    requirePackagedRoute(route, target);
   }
-  requirePackagedRoute('settings', 'VAL-SHELL-005');
-  requirePackagedRoute('account', 'VAL-SHELL-005');
-  requirePackagedRoute('updates', 'VAL-SHELL-005');
-  requirePackagedRoute('support', 'VAL-SHELL-005');
-  requirePackagedRoute('onboarding', 'VAL-ONBOARDING-001');
-  requirePackagedRoute('pet', 'VAL-PET-001');
-  requirePackagedRoute('text-expansion', 'VAL-TEXTEXP-001');
   return transcript;
+}
+
+function checkAxeRouteMatrix() {
+  if (mode === 'desktop') return;
+  const scan = readJson('axe-route-accessibility-scan.json', 'VAL-A11Y-001');
+  if (!scan) return;
+  if (scan.method !== 'axe-core-jsdom-route-and-capability-state-matrix') {
+    add('VAL-A11Y-001', `unexpected axe scan method ${scan.method ?? 'missing'}`);
+  }
+  if (scan.allPass !== true) add('VAL-A11Y-001', 'axe route matrix did not pass');
+  if (!String(scan.axeVersion ?? '').match(/^4\./)) {
+    add('VAL-A11Y-001', `axe version is missing or unsupported: ${scan.axeVersion ?? 'missing'}`);
+  }
+  const states = Array.isArray(scan.states) ? scan.states : [];
+  if (states.length !== requiredRoutes.length + 2) {
+    add('VAL-A11Y-001', `axe route matrix must contain 21 states, got ${states.length}`);
+  }
+  const browserRoutes = new Set(
+    states.filter((row) => row.state === 'browser-preview').map((row) => row.route)
+  );
+  for (const route of requiredRoutes) {
+    if (!browserRoutes.has(route)) add('VAL-A11Y-001', `axe route matrix missing ${route}`);
+  }
+  for (const state of ['capability-unavailable', 'capability-degraded']) {
+    if (!states.some((row) => row.state === state)) {
+      add('VAL-A11Y-001', `axe route matrix missing ${state}`);
+    }
+  }
+  for (const row of states) {
+    if (row.violationCount !== 0 || (row.violations ?? []).length !== 0) {
+      add('VAL-A11Y-001', `axe violations remain for ${row.state}:${row.route}`);
+    }
+  }
+}
+
+function validateAtspiSummary(file, expectedRoute = null) {
+  const capture = readJson(file, 'VAL-A11Y-001');
+  if (!capture) return null;
+  if (capture.pass !== true) add('VAL-A11Y-001', `${file} did not pass`);
+  if (expectedRoute && capture.route !== expectedRoute) {
+    add('VAL-A11Y-001', `${file} route must be ${expectedRoute}, got ${capture.route ?? 'missing'}`);
+  }
+  if (capture.expectedNamePresent !== true) {
+    add('VAL-A11Y-001', `${file} is missing its expected accessible name`);
+  }
+  if ((capture.nodeCount ?? 0) < 20) add('VAL-A11Y-001', `${file} has fewer than 20 nodes`);
+  if ((capture.namedNodeCount ?? 0) < 8) add('VAL-A11Y-001', `${file} has fewer than 8 named nodes`);
+  if ((capture.actionableNodeCount ?? 0) < 5) add('VAL-A11Y-001', `${file} has fewer than 5 actionable nodes`);
+  if (capture.truncated !== false) add('VAL-A11Y-001', `${file} tree is truncated or unreported`);
+  return capture;
+}
+
+function validateAtspiAction(file, expectedName, withinRole) {
+  const action = readJson(file, 'VAL-A11Y-001');
+  if (!action) return;
+  if (action.pass !== true || action.activation?.activated !== true) {
+    add('VAL-A11Y-001', `${file} did not activate its target`);
+  }
+  if (action.expectedName !== expectedName || action.withinRole !== withinRole) {
+    add('VAL-A11Y-001', `${file} has an unexpected target or scope`);
+  }
+  if (!Array.isArray(action.activation?.availableActions) || action.activation.availableActions.length === 0) {
+    add('VAL-A11Y-001', `${file} does not record an exposed AT-SPI action`);
+  }
+}
+
+function checkPackagedAccessibility() {
+  if (mode === 'json') return;
+  checkFile('atspi-bus-address.txt', 'VAL-A11Y-001');
+  checkFile('accessibility-tree-linux-desktop.txt', 'VAL-A11Y-001', 256);
+  validateAtspiSummary('atspi-tree-linux-desktop.json');
+
+  for (const route of requiredRoutes) {
+    validateAtspiAction(`atspi-command-open-${route}.json`, 'Open command palette', null);
+    validateAtspiAction(
+      `atspi-command-route-${route}.json`,
+      requiredRouteLabels.get(route),
+      'dialog'
+    );
+    validateAtspiSummary(`atspi-route-${route}.json`, route);
+  }
+
+  const focus = readJson('atspi-keyboard-focus-sequence.json', 'VAL-A11Y-001');
+  if (focus) {
+    if (focus.pass !== true) add('VAL-A11Y-001', 'keyboard focus sequence did not pass');
+    if (focus.method !== 'xdotool-tab-plus-orca-atspi-focus-events') {
+      add('VAL-A11Y-001', `unexpected keyboard focus method ${focus.method ?? 'missing'}`);
+    }
+    if (focus.physicalTabPressCount !== 14) {
+      add('VAL-A11Y-001', `keyboard focus sequence must record 14 physical Tab presses, got ${focus.physicalTabPressCount ?? 'missing'}`);
+    }
+    if (focus.stepCount !== 10) add('VAL-A11Y-001', `keyboard focus sequence must contain 10 steps, got ${focus.stepCount ?? 'missing'}`);
+    if ((focus.distinctFocusedTargets ?? 0) < 3) add('VAL-A11Y-001', 'keyboard focus sequence reached fewer than 3 distinct targets');
+    if ((focus.namedFocusedTargets ?? 0) < 3) add('VAL-A11Y-001', 'keyboard focus sequence reached fewer than 3 named targets');
+  }
+
+  for (const file of ['orca-version.txt', 'orca-process.txt', 'orca-applications.txt', 'orca-debug.log']) {
+    checkFile(file, 'VAL-A11Y-001');
+  }
+  if (exists('orca-version.txt') && !/^\d+\.\d+(?:\.\d+)?\s*$/i.test(fs.readFileSync(path.join(evidenceDir, 'orca-version.txt'), 'utf8'))) {
+    add('VAL-A11Y-001', 'orca-version.txt does not contain an Orca version');
+  }
+  if (exists('orca-applications.txt') && !/OpenBurnBar/i.test(fs.readFileSync(path.join(evidenceDir, 'orca-applications.txt'), 'utf8'))) {
+    add('VAL-A11Y-001', 'Orca did not list OpenBurnBar as an accessible application');
+  }
+
+  const zoom = readJson('zoom-accessibility-evidence.json', 'VAL-A11Y-001');
+  if (zoom) {
+    if (zoom.pass !== true || zoom.method !== 'packaged-webkitgtk-keyboard-zoom') {
+      add('VAL-A11Y-001', 'packaged keyboard zoom evidence did not pass');
+    }
+    if (zoom.requestedApproximatePercent !== 200 || zoom.exactScaleObservable !== false) {
+      add('VAL-A11Y-001', 'zoom evidence must record approximate 200% request and the exact-scale limitation');
+    }
+  }
+  checkFile('screenshot-linux-desktop-zoom-200-requested.png', 'VAL-A11Y-001', 256);
+  validateAtspiSummary('atspi-zoom-200-requested.json', 'overview');
 }
 
 function checkDaemonOracle() {
@@ -278,13 +440,14 @@ function checkTextExpansion() {
 function checkPerf() {
   const perf = readJson('perf-budget.json', 'VAL-PERF-001');
   const trend = readJson('perf-threshold-enforcement.json', 'VAL-PERF-001');
-  if (!perf || !trend) return;
+  const matched = readJson('matched-performance-comparison.json', 'VAL-PERF-001');
+  if (!perf || !trend || !matched) return;
   if (perf.allPass !== true) add('VAL-PERF-001', 'perf-budget.json allPass is not true');
   if (perf.measurements?.desktopSessionPresent !== true) {
     add('VAL-PERF-001', 'perf budget is not tied to a packaged desktop session');
   }
-  if ((perf.measurements?.runtimeSampleCount ?? 0) < 5) {
-    add('VAL-PERF-001', 'runtime sample count is too low for subsystem evidence');
+  if ((perf.measurements?.runtimeSampleCount ?? 0) < 19) {
+    add('VAL-PERF-001', 'runtime sample count is too low for post-paint route evidence');
   }
   const verdicts = new Map((perf.verdicts ?? []).map((row) => [row.name, row]));
   for (const rowName of requiredPerfRows) {
@@ -293,13 +456,29 @@ function checkPerf() {
       add('VAL-PERF-001', `missing perf verdict ${rowName}`);
       continue;
     }
-    if (row.measured !== true || typeof row.ms !== 'number' || !Number.isFinite(row.ms)) {
+    if (row.measured !== true || typeof row.stats?.p95 !== 'number' || !Number.isFinite(row.stats.p95)) {
       add('VAL-PERF-001', `perf verdict ${rowName} is not measured`);
+    }
+    if ((row.sampleCount ?? 0) < (row.minimumSamples ?? Number.POSITIVE_INFINITY)) {
+      add('VAL-PERF-001', `perf verdict ${rowName} has insufficient samples`);
     }
     if (row.pass !== true) add('VAL-PERF-001', `perf verdict ${rowName} did not pass threshold`);
     if (forbiddenPerfSources.some((fragment) => String(row.source ?? '').includes(fragment))) {
       add('VAL-PERF-001', `perf verdict ${rowName} uses forbidden placeholder source ${row.source}`);
     }
+  }
+  if (matched.pass !== true) add('VAL-PERF-001', 'matched macOS/Linux performance did not pass');
+  if (matched.profile !== 'pr' && matched.profile !== 'nightly') {
+    add('VAL-PERF-001', `matched performance profile must be pr or nightly, got ${matched.profile ?? 'missing'}`);
+  }
+  if ((matched.workloads ?? []).length !== 4) {
+    add('VAL-PERF-001', `matched performance must contain four workloads, got ${(matched.workloads ?? []).length}`);
+  }
+  if (!(matched.workloads ?? []).every((row) => row.pass === true && row.checks?.checksumMatch === true)) {
+    add('VAL-PERF-001', 'matched workload correctness or tail checks failed');
+  }
+  if (matched.resources?.macos?.pass !== true || matched.resources?.linux?.pass !== true) {
+    add('VAL-PERF-001', 'matched resource soak checks failed');
   }
   if (trend.pass !== true) add('VAL-PERF-001', 'trend/threshold enforcement did not pass');
 }
@@ -309,6 +488,8 @@ if (!fs.existsSync(evidenceDir)) {
 } else {
   checkPackagedRoutes();
   checkDaemonOracle();
+  checkAxeRouteMatrix();
+  checkPackagedAccessibility();
   if (mode === 'json' || mode === 'full') {
     checkShell005();
     checkOnboarding();

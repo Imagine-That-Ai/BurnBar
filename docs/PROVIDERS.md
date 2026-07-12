@@ -16,6 +16,7 @@
 | **Cursor** | `CursorQuotaAdapter.swift` | `.estimated` | `GET cursor.com/api/usage-summary` | Included usage, limits, and USD spent |
 | **Cursor Agent CLI**| `CursorAgentParser.swift` | `.exact` | `~/.cursor-agent/sessions/` (`transcript.jsonl`, `summary.json`, `*.jsonl`) | Local session tokens; exact token limits |
 | **Factory** | `FactoryQuotaAdapter.swift` | `.exact` / `.estimated` | `POST app.factory.ai/api/...` | Plan tier, rolling usage, and lane metrics |
+| **Junie (JetBrains)** | `JunieParser.swift` | `.exact` / `.estimated` | `~/.junie/sessions/index.jsonl` + `<sessionId>/events.jsonl` (+ live latches in `~/.junie/processes/*.json`) | Local session tokens (explicit usage buckets when present, character-estimate fallback otherwise); no vendor quota API |
 | **MiniMax** | `MiniMaxQuotaAdapter.swift` | `.exact` | `GET minimax.io coding-plan remains` | Remaining quota counts per model |
 | **MiMo (Xiaomi)**| `MimoQuotaAdapter.swift` | `.exact` / `.estimated` | `GET token-plan-{cn,sgp,ams}.xiaomimimo.com` | Regional Token Plan remaining credits |
 | **Z.ai** | `ZAIQuotaAdapter.swift` | `.exact` | `GET api.z.ai monitor/usage/quota` | Undocumented monitor limits and MCP usage |
@@ -76,6 +77,34 @@
 | **xAI (Grok)** | API key / Management key | `xai-…` inference key; `xai-mgmt-…` for GrokBuild balance | `Authorization: Bearer {key}` | SuperGrok pacing log + Management API; daemon gateway emits pacing events on routed xAI traffic |
 | **Grok Build CLI** | Local CLI + optional `XAI_API_KEY` | `grok` binary; sessions under `~/.grok/` | OpenBurnBar gateway block in `config.toml` | Switcher profile `Grok Build`; vendor identity stays `AgentProvider.xAI` |
 | **OMP** | Local CLI | `omp` binary | N/A | Uses installed Oh My Pi CLI; OpenBurnBar stores no provider credential |
+
+---
+
+## Ollama Local Endpoints
+
+`ollama-local` supports multiple local or LAN Ollama daemons through
+`ollamaEndpoints` on the provider config:
+
+```json
+{
+  "providerID": "ollama-local",
+  "baseURL": "http://localhost:11434/v1",
+  "ollamaEndpoints": [
+    {"id": "desktop", "label": "Desktop", "baseURL": "http://localhost:11434", "priority": 0, "enabled": true},
+    {"id": "studio", "label": "Studio", "baseURL": "http://studio.local:11434", "priority": 10, "enabled": true}
+  ]
+}
+```
+
+When the array is absent, the daemon synthesizes one enabled `default` endpoint
+from `OLLAMA_HOST`, then the legacy provider base URL with `/v1` stripped, then
+`http://localhost:11434`. Each enabled endpoint becomes its own route slot
+(`credentialSlotID == endpoint.id`), so cooldown on one local daemon does not
+remove the others from routing.
+
+Endpoint `baseURL` values must be `http` or `https`. `apiKeyRef` is optional and
+points at a daemon secret-store key for secured LAN proxies; local Ollama uses an
+empty key by default.
 
 ---
 

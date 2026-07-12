@@ -12,7 +12,7 @@ plugins {
     // configuration-cache bugs. Compatible with Kotlin 2.2.x and Gradle 9.x.
     id("org.jlleitschuh.gradle.ktlint") version "12.3.0" apply false
     // Kotlin static analysis: dead code, complexity, naming, style.
-    id("dev.detekt") version "2.0.0-alpha.3" apply false
+    id("dev.detekt") version "2.0.0-alpha.5" apply false
     // dependency-analysis: detect unused Android Gradle dependencies
     id("com.autonomousapps.dependency-analysis") version "3.15.0" apply false
     // Macrobenchmark + baseline-profile capture (:macrobenchmark, on-device only).

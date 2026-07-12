@@ -64,6 +64,15 @@ public struct OpenBurnBarAppPaths: Sendable {
     }
 
     public static func live(fileManager: FileManager = .default) -> OpenBurnBarAppPaths {
+        // UI-test builds redirect the support root to an isolated directory so
+        // each run gets a fresh, ephemerally-keyed store — no dependence on (or
+        // mutation of) the operator's real database.
+        if let override = ProcessInfo.processInfo.environment["OPENBURNBAR_SUPPORT_ROOT"],
+           !override.isEmpty {
+            let root = URL(fileURLWithPath: override, isDirectory: true)
+            try? fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+            return OpenBurnBarAppPaths(applicationSupportRoot: root)
+        }
         let appSupportRoot = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         return OpenBurnBarAppPaths(applicationSupportRoot: appSupportRoot)
     }
@@ -126,6 +135,10 @@ public struct OpenBurnBarAppPaths: Sendable {
 
     public var factoryDroidParserCacheURL: URL {
         supportDirectory.appendingPathComponent("factory_droid_parser_cache.json")
+    }
+
+    public var junieParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("junie_parser_cache.json")
     }
 
     public var claudeStatuslineBridgeScriptURL: URL {

@@ -28,7 +28,10 @@ final class SwitcherPopoverUITests: XCTestCase {
 
         // Create adapter for launch services
         let adapter = PopoverTestSwitcherProfileAdapter(store: store)
-        browserLaunchService = SwitcherBrowserLaunchService(profileStore: adapter)
+        browserLaunchService = SwitcherBrowserLaunchService(
+            profileStore: adapter,
+            browserProvider: PopoverUnavailableBrowserProvider()
+        )
         cliLaunchService = SwitcherCLILAunchService(profileStore: adapter)
     }
 
@@ -1457,6 +1460,28 @@ private final class PopoverTestSwitcherProfileAdapter: SwitcherProfileStoreAdapt
 
     func updateProfile(_ profile: SwitcherProfileRecord) {
         try? store.update(profile)
+    }
+}
+
+private struct PopoverUnavailableBrowserProvider: BrowserAvailabilityProviding {
+    func isBrowserAvailable(_ browserType: SwitcherBrowserProfileType) -> Bool {
+        false
+    }
+
+    func browserURL(for browserType: SwitcherBrowserProfileType) -> URL? {
+        nil
+    }
+
+    func bundleIdentifier(for browserType: SwitcherBrowserProfileType) -> String? {
+        browserType.bundleIdentifier
+    }
+
+    func resolveBrowserURL(_ browserType: SwitcherBrowserProfileType) -> Result<URL, BrowserLaunchError> {
+        .failure(.browserNotInstalled(browserType))
+    }
+
+    func isProfileBrowserAvailable(_ profile: SwitcherProfileRecord) -> Bool {
+        false
     }
 }
 

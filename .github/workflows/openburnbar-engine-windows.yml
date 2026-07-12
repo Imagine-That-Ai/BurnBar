@@ -37,6 +37,7 @@ permissions:
   contents: read
 
 on:
+  workflow_call:
   # Primary entry point until the lane becomes a required gate (PR-5).
   workflow_dispatch:
   # Wired so it becomes a real gate once this file is on the default branch.
@@ -49,6 +50,9 @@ on:
       - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/**"
       - "OpenBurnBarCore/Package.swift"
       - "OpenBurnBarCore/Package.resolved"
+      - "windows/app/OpenBurnBar.App.UsageRuntime/**"
+      - "windows/tests/usage-runtime/**"
+      - "scripts/windows-port/stage-swift-runtime.py"
       - ".github/workflows/openburnbar-engine-windows.yml"
   pull_request:
     paths:
@@ -58,6 +62,9 @@ on:
       - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/**"
       - "OpenBurnBarCore/Package.swift"
       - "OpenBurnBarCore/Package.resolved"
+      - "windows/app/OpenBurnBar.App.UsageRuntime/**"
+      - "windows/tests/usage-runtime/**"
+      - "scripts/windows-port/stage-swift-runtime.py"
       - ".github/workflows/openburnbar-engine-windows.yml"
 
 concurrency:
@@ -97,6 +104,13 @@ jobs:
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
 
       # Python 3.10 — part of the documented Windows toolchain recipe
       # (PHASE1_CORE_SPLIT_PLAN.md §"Windows build recipe"); also backs SwiftPM's
@@ -246,6 +260,34 @@ jobs:
       - name: swift build --target OpenBurnBarCore
         run: swift build --package-path OpenBurnBarCore --target OpenBurnBarCore
 
+      - name: Build and stage production C ABI engine
+        run: |
+          swift build --package-path OpenBurnBarCore -c release --product OpenBurnBarCoreCAbi
+          $bin = swift build --package-path OpenBurnBarCore -c release --show-bin-path
+          $engine = Join-Path $bin "OpenBurnBarCoreCAbi.dll"
+          $stage = Join-Path $env:RUNNER_TEMP "openburnbar-native-engine-win-x64"
+          python scripts/windows-port/stage-swift-runtime.py --engine $engine --destination $stage --search-path $bin
+          "OPENBURNBAR_CORE_CABI_PATH=$engine" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "OPENBURNBAR_NATIVE_ENGINE_STAGE=$stage" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Run managed-to-Swift usage scan integration
+        env:
+          OPENBURNBAR_REQUIRE_NATIVE_ENGINE_INTEGRATION: "1"
+        run: >-
+          dotnet test windows/tests/usage-runtime/OpenBurnBar.App.UsageRuntime.Tests.csproj
+          -c Release
+          --filter FullyQualifiedName~NativeUsageEngineIntegrationTests
+          --blame-hang
+          --blame-hang-timeout 5m
+
+      - name: Upload x64 native engine bundle
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: openburnbar-native-engine-win-x64
+          path: ${{ env.OPENBURNBAR_NATIVE_ENGINE_STAGE }}
+          if-no-files-found: error
+          retention-days: 7
+
       # Phase-1 walking skeleton (PR-5): run the Foundation-only executable that
       # drives provider -> parse -> guard -> auth -> tile over real Core APIs.
       # This is the automated Windows evidence for the G1 gate.
@@ -306,6 +348,13 @@ jobs:
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
 
       # Python backs SwiftPM's plugin/lldb tooling on Windows. The x64 leg pins
       # 3.10 per the recipe, but win-arm64 has no official CPython before 3.11, so
@@ -446,6 +495,34 @@ jobs:
       - name: swift build --target OpenBurnBarCore
         run: swift build --package-path OpenBurnBarCore --target OpenBurnBarCore
 
+      - name: Build and stage production C ABI engine (ARM64)
+        run: |
+          swift build --package-path OpenBurnBarCore -c release --product OpenBurnBarCoreCAbi
+          $bin = swift build --package-path OpenBurnBarCore -c release --show-bin-path
+          $engine = Join-Path $bin "OpenBurnBarCoreCAbi.dll"
+          $stage = Join-Path $env:RUNNER_TEMP "openburnbar-native-engine-win-arm64"
+          python scripts/windows-port/stage-swift-runtime.py --engine $engine --destination $stage --search-path $bin
+          "OPENBURNBAR_CORE_CABI_PATH=$engine" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "OPENBURNBAR_NATIVE_ENGINE_STAGE=$stage" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Run managed-to-Swift usage scan integration (ARM64)
+        env:
+          OPENBURNBAR_REQUIRE_NATIVE_ENGINE_INTEGRATION: "1"
+        run: >-
+          dotnet test windows/tests/usage-runtime/OpenBurnBar.App.UsageRuntime.Tests.csproj
+          -c Release
+          --filter FullyQualifiedName~NativeUsageEngineIntegrationTests
+          --blame-hang
+          --blame-hang-timeout 5m
+
+      - name: Upload ARM64 native engine bundle
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: openburnbar-native-engine-win-arm64
+          path: ${{ env.OPENBURNBAR_NATIVE_ENGINE_STAGE }}
+          if-no-files-found: error
+          retention-days: 7
+
       # Walking skeleton, RUN natively on ARM64 — the G1 evidence for aarch64.
       # `swift run` produces + executes an aarch64 binary on this host and exits 0
       # only when all walking-skeleton assertions pass.
@@ -472,4 +549,3 @@ jobs:
       # Exits 0 only when all five XCTest cases pass (full corpus + semantic guards).
       - name: Run LLM-safe wrap vector contract (C3)
         run: swift test --package-path OpenBurnBarCore --filter LLMSafeWrapVectorTests
-

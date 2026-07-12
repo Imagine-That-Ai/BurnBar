@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCHEMA_PATH = join(HERE, "relay-message-types.json");
-const SWIFT_GEN_DIR = join(HERE, "..", "..", "OpenBurnBarCore", "Sources", "OpenBurnBarCore", "SharedModels", "Generated");
+const SWIFT_GEN_DIR = join(HERE, "..", "..", "OpenBurnBarCore", "Sources", "OpenBurnBarKernel", "SharedModels", "Generated");
 
 export const DATE_CODEC = "HermesRealtimeRelayDateCodec";
 // Deterministic file/domain order (stable generated output → clean drift gate).

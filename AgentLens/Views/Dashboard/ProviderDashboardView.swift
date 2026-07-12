@@ -814,8 +814,8 @@ struct ProviderDashboardView: View {
         )
     }
 
-    private func conversationForUsage(_ usage: TokenUsage) async -> ConversationRecord? {
-        let conversationID = ConversationRecord.stableId(provider: usage.provider, sessionId: usage.sessionId)
+    private func conversationForUsage(_ usage: TokenUsage) async -> OpenBurnBarCore.ConversationRecord? {
+        let conversationID = OpenBurnBarCore.ConversationRecord.stableId(provider: usage.provider, sessionId: usage.sessionId)
         if let conversation = try? await dataStore.fetchConversation(id: conversationID) {
             return conversation
         }

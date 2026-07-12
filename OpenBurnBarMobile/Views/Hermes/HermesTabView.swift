@@ -1127,27 +1127,50 @@ struct HermesChatView: View {
     }
 
     private var sendButton: some View {
-        Button(action: send) {
+        // While a stream is in flight the button becomes a stop control
+        // (matching the macOS chat) instead of a dead disabled circle —
+        // the only way out of a hung generation used to be losing the
+        // whole chat via "New chat".
+        Button {
+            if service.isStreaming {
+                HapticBus.threshold()
+                if let placeholderID = pendingGatewayPlaceholderID {
+                    // Gateway turns aren't driven by the service's stream
+                    // task — stop waiting on the pending reply instead.
+                    service.failBurnBarGatewayTurn(
+                        placeholderID: placeholderID,
+                        message: "Stopped waiting for the BurnBar Cloud Gateway reply."
+                    )
+                    pendingGatewayPlaceholderID = nil
+                    pendingGatewayEventID = nil
+                } else {
+                    service.cancelGeneration()
+                }
+            } else {
+                send()
+            }
+        } label: {
             ZStack {
                 Circle()
                     .fill(sendDisabled
                           ? AnyShapeStyle(MobileTheme.Colors.surfaceElevated.opacity(0.8))
                           : AnyShapeStyle(MobileTheme.Colors.textPrimary))
                     .frame(width: 32, height: 32)
-                Image(systemName: "arrow.up")
-                    .font(.system(size: 15, weight: .semibold))
+                Image(systemName: service.isStreaming ? "stop.fill" : "arrow.up")
+                    .font(.system(size: service.isStreaming ? 13 : 15, weight: .semibold))
                     .foregroundStyle(sendDisabled ? MobileTheme.Colors.textMuted : MobileTheme.Colors.background)
             }
             .frame(width: 34, height: 34)
         }
         .buttonStyle(.plain)
         .disabled(sendDisabled)
-        .accessibilityLabel("Send")
+        .accessibilityLabel(service.isStreaming ? "Stop generating" : "Send")
     }
 
     private var sendDisabled: Bool {
-        service.isStreaming
-            || (input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && pendingAttachments.isEmpty)
+        !service.isStreaming
+            && input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && pendingAttachments.isEmpty
     }
 
     private var bottomReserveHeight: CGFloat {
