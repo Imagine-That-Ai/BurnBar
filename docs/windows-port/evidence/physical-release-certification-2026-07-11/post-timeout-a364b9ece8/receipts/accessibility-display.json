@@ -1,0 +1,61 @@
+{
+  "schema": "openburnbar.windows.release-certification-receipt.v1",
+  "status": "BLOCKED",
+  "gate": "accessibility-display",
+  "target": "accessibility-display",
+  "source": {
+    "commitSha": "a364b9ece892f93463d0d804eba47cebe8f4efd0",
+    "dirtyTree": false
+  },
+  "artifact": {
+    "name": "source-checkout",
+    "architecture": "darwin-arm64",
+    "availability": "not-applicable",
+    "sha256": null,
+    "workflowRunId": "not-applicable-local",
+    "workflowRunUrl": "not-applicable",
+    "signature": {
+      "result": "not-applicable",
+      "identity": "not-applicable"
+    }
+  },
+  "device": {
+    "kind": "macos-authoring-host",
+    "manufacturer": "Apple",
+    "model": "Apple M5 Max",
+    "architecture": "arm64",
+    "osBuild": "darwin 27.0.0",
+    "tpm": "not-applicable",
+    "cpu": "Apple M5 Max",
+    "ramBytes": 51539607552
+  },
+  "protocol": {
+    "commands": [],
+    "manualSteps": [
+      "No signed-in physical Windows desktop session with Narrator operator, UIA inspection, 150%/200% DPI, OS high contrast, reduced motion/transparency, and mixed-DPI monitors is available here.",
+      "Run the accessibility profile plus the manual receipt protocol on both physical architectures; attach machine-readable UIA trees, screenshots, focus/live-region results, and Narrator/keyboard observations."
+    ]
+  },
+  "time": {
+    "startedAtUtc": "2026-07-11T23:27:09.876Z",
+    "endedAtUtc": "2026-07-11T23:30:24.342Z",
+    "durationSeconds": 194.466
+  },
+  "expected": "The complete physical/live/private-flight protocol passes with exact signed artifact and raw evidence.",
+  "observed": "The required external device, account, permission, or approval is unavailable in this session; no pass is claimed.",
+  "exitCode": null,
+  "evidence": {
+    "files": [
+      {
+        "path": "blockers/accessibility-display.md",
+        "sha256": "fc4c49c2c79b73815d0359500d72e13c78f0a32b1675bb7f628e5bceb345bc80"
+      }
+    ]
+  },
+  "blocker": {
+    "id": "EXT-WINDOWS-ACCESSIBILITY-OPERATOR",
+    "owner": "Alberto",
+    "missing": "No signed-in physical Windows desktop session with Narrator operator, UIA inspection, 150%/200% DPI, OS high contrast, reduced motion/transparency, and mixed-DPI monitors is available here.",
+    "recovery": "Run the accessibility profile plus the manual receipt protocol on both physical architectures; attach machine-readable UIA trees, screenshots, focus/live-region results, and Narrator/keyboard observations."
+  }
+}

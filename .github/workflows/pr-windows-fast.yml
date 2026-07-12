@@ -72,7 +72,7 @@ jobs:
           echo "${changed}"
 
           if echo "${changed}" | grep -Eq \
-            '^(windows/|\.github/workflows/pr-windows-fast\.yml|budgets/windows-tree-baseline\.json|scripts/debt/check-windows-tree-budget\.sh|docs/windows-port/|scripts/ci/verify-windows-parity-ledger)'; then
+            '^(windows/|\.github/workflows/pr-windows-fast\.yml|budgets/windows-tree-baseline\.json|scripts/debt/check-windows-tree-budget\.sh|docs/windows-port/|scripts/ci/verify-windows-parity-ledger|scripts/windows-port/)'; then
             echo "windows=true" >> "$GITHUB_OUTPUT"
             echo "Windows surface changed: running the skeleton, x64, and parity ledger lanes."
           else
@@ -148,6 +148,20 @@ jobs:
           }
           Write-Host "Windows solution present."
 
+      - name: Parse physical certification PowerShell
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path "scripts/windows-port/run-physical-release-certification.ps1"),
+            [ref]$tokens,
+            [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            throw "Physical certification PowerShell has parse errors."
+          }
+          Write-Host "Physical certification PowerShell parsed successfully."
+
       - name: Restore Windows solution
         run: dotnet restore windows/OpenBurnBar.sln
 
@@ -194,6 +208,12 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v5
         with:
           python-version: "3.11"
+
+      - name: Validate physical certification harness contract
+        run: |
+          node scripts/windows-port/test-validate-release-certification-evidence.mjs
+          node scripts/windows-port/test-physical-release-certification.mjs
+          node scripts/windows-port/test-stage-exact-candidate-rehearsal.mjs
 
       - name: Install PyYAML for ledger scanner
         run: python3 -m pip install --user 'pyyaml>=6,<7'

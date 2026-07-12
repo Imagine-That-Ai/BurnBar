@@ -1,0 +1,10 @@
+windows-parity-ledger: scan
+  ledger: /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/docs/windows-port/WINDOWS_PARITY_LEDGER.yml
+  rows:   46
+  status histogram:
+    Real: 46
+    Substituted: 0
+    DeferredApproved: 0
+    Blocked: 0
+windows-parity-ledger: PASS
+  All Real rows have tests + evidence; no Authored statuses; macOS primary routes mapped; Real blocking paths clean of false-green tokens.

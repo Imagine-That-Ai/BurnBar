@@ -20,14 +20,14 @@ const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
 
 <BaseLayout
   title="Download"
-  description="Download OpenBurnBar for macOS and Linux (ARM64). iOS in App Store review; Cursor/VS Code extension source-only; Android Play Store pending."
+  description="Download OpenBurnBar. macOS by direct download, iPhone & iPad on the App Store, Linux ARM64 builds, Cursor/VS Code extension source-only."
 >
   <section class="pagehead">
     <div class="container pagehead__inner">
       <span class="eyebrow eyebrow--ember">Download</span>
       <h1 class="pagehead__h">Get OpenBurnBar</h1>
       <p class="lead pagehead__lead">
-        <strong>macOS</strong> and <strong>Linux</strong> ship today. iOS is in App Store review — Android
+        <strong>macOS</strong>, <strong>iOS</strong>, and <strong>Linux</strong> ship today — Android
         and the editor extension are buildable from source.
       </p>
 
@@ -45,11 +45,11 @@ const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
           <span class="platcard__status">Available now</span>
           <span class="platcard__cta">AppImage · deb · rpm →</span>
         </a>
-        <a class="platcard platcard--pending" href="#ios">
+        <a class="platcard platcard--live" href="#ios">
           <span class="platcard__os">iOS · iPadOS</span>
           <span class="platcard__ver mono">App Store</span>
-          <span class="platcard__status">In review</span>
-          <span class="platcard__cta">See status →</span>
+          <span class="platcard__status">Available now</span>
+          <span class="platcard__cta">Get the app →</span>
         </a>
         <a class="platcard platcard--pending" href="#editor">
           <span class="platcard__os">Cursor · VS Code</span>
@@ -68,7 +68,7 @@ const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
       <nav class="jump" aria-label="Jump to platform">
         <a class="jump--live" href="#macos">macOS</a>
         <a class="jump--live" href="#linux">Linux</a>
-        <a href="#ios">iOS · iPadOS</a>
+        <a class="jump--live" href="#ios">iOS · iPadOS</a>
         <a href="#editor">Editor</a>
         <a href="#android">Android</a>
       </nav>
@@ -83,14 +83,22 @@ const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
           <span class="tag tag--exact tag--plain mono">Release · {SITE.macReleaseLatest}</span>
           <h2>macOS app</h2>
           <p class="lead">
-            Native Swift app. Runs as a menu-bar utility. macOS {SITE.macMin} or later. Apple Silicon
-            supported.
+            Native Swift app. Runs as a menu-bar utility. Requires {SITE.macMin} or later on an Apple
+            Silicon Mac.
           </p>
         </div>
-        <a class="btn btn--ember dlsec__primary" href={macDownloadHref}>
-          Download DMG · {SITE.macReleaseLatest}
-          <span class="btn-arrow" aria-hidden="true">↓</span>
-        </a>
+        <div class="dlsec__primarywrap">
+          <a class="btn btn--ember dlsec__primary" href={macDownloadHref}>
+            Download DMG · {SITE.macReleaseLatest}
+            <span class="btn-arrow" aria-hidden="true">↓</span>
+          </a>
+          <a
+            class="dlsec__verify mono"
+            href={`${SITE.releasesUrl}/tag/v${SITE.macReleaseLatest}`}
+            target="_blank"
+            rel="noopener noreferrer">Verify this download — checksums &amp; SBOM ↗</a
+          >
+        </div>
       </div>
 
       <ol class="steps" data-animate-onview>
@@ -167,8 +175,9 @@ make install</code></pre>
           <h2>Linux desktop app</h2>
           <p class="lead">
             Available now. Tauri + WebView shell over the native OpenBurnBar daemon. First public
-            release ships <strong>{SITE.linuxArch}</strong> builds — AppImage, deb, and rpm, every artifact
-            Ed25519-signed with keyless Sigstore/cosign attestation.
+            release ships <strong>{SITE.linuxArch}</strong> artifacts only — the AppImage is portable
+            across ARM64 distros, with deb and rpm for Debian/Ubuntu and Fedora/RHEL on the same architecture.
+            Every artifact is Ed25519-signed with a keyless Sigstore/cosign attestation.
           </p>
         </div>
       </div>
@@ -279,25 +288,29 @@ make install</code></pre>
     <div class="container dlsec__shell">
       <div class="dlsec__head">
         <div class="dlsec__intro">
-          <span class="tag tag--review tag--plain mono">In App Store review</span>
+          <span class="tag tag--exact tag--plain mono">On the App Store</span>
           <h2>iPhone &amp; iPad companion</h2>
           <p class="lead">
-            iOS &amp; iPadOS {SITE.iosMin} or later. Companion to the Mac app — the phone or tablet renders
-            what the Mac records. Native widgets, Live Activity, Siri shortcut.
+            Requires {SITE.iosMin} or later on iPhone or iPad. Companion to the Mac app — the phone or
+            tablet renders what the Mac records. Native widgets, Live Activity, Siri shortcut.
           </p>
         </div>
-        <span class="btn btn--ghost dlsec__primary is-disabled" aria-disabled="true">
-          App Store · pending review
-        </span>
+        <a
+          class="btn btn--ember dlsec__primary"
+          href={SITE.iosAppStoreUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Get it on the App Store
+          <span class="btn-arrow" aria-hidden="true">→</span>
+        </a>
       </div>
 
       <div class="callout">
         <p>
-          <strong>What "in review" means:</strong>
-          OpenBurnBar 1.0 is submitted to App Store Connect with manual release enabled — Apple's approval
-          doesn't auto-publish. We'll flip the switch and update this page the moment it's live.
+          Free download; BurnBar Cloud subscriptions are available in-app. The iPhone and iPad app
+          renders what your Mac's daemon records — install the macOS app first.
         </p>
-        <p class="muted small">App Store subscriptions are gated on the same review.</p>
       </div>
     </div>
   </section>
@@ -931,7 +944,7 @@ npm run build</code></pre>
     display: grid;
     gap: var(--s-5);
     justify-items: center;
-    padding: var(--s-4) 0;
+    padding-block: var(--s-4);
   }
 
   /* ---------- reveal motion ---------- */
@@ -984,5 +997,19 @@ npm run build</code></pre>
       opacity: 1 !important;
       translate: none !important;
     }
+  }
+  .dlsec__primarywrap {
+    display: grid;
+    gap: var(--s-2);
+    justify-items: start;
+  }
+  .dlsec__verify {
+    font-size: 0.78rem;
+    color: var(--text-mute);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .dlsec__verify:hover {
+    color: var(--text-bright);
   }
 </style>

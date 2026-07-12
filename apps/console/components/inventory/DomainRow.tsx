@@ -39,13 +39,11 @@ export function DomainRow({
   count,
   bytes,
   index = 0,
-  onChanged,
 }: {
   domain: DataDomain;
   count: number;
   bytes: number;
   index?: number;
-  onChanged?: () => void;
 }) {
   const [side, setSide] = useState<FlipSide>("yours");
   const [exporting, setExporting] = useState(false);
@@ -158,7 +156,7 @@ export function DomainRow({
               {exporting ? "Exporting…" : "Export"}
             </Button>
           )}
-          {canDelete && <DeleteDomainDialog domain={domain} onDeleted={() => onChanged?.()} />}
+          {canDelete && <DeleteDomainDialog domain={domain} />}
         </div>
       </div>
       {exportError && (

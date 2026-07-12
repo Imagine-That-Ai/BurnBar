@@ -37,106 +37,133 @@ struct PulseView: View {
             )
             PulseDepthBackdrop()
             ScrollView {
-                VStack(spacing: MobileTheme.Spacing.lg) {
-                    if shouldShowCloudBanner {
-                        CloudUpsellBanner(
-                            priceText: cloudStore?.product?.displayPrice,
-                            onTap: { showCloudStore = true },
-                            onDismiss: { cloudBannerDismissed = true }
-                        )
-                        .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                    }
-
-                    HStack(alignment: .center, spacing: MobileTheme.Spacing.sm) {
-                        TimelineScopePicker(selection: $timelineScope)
-                        Spacer(minLength: MobileTheme.Spacing.sm)
-                        PulseDisplayModeToggle(displayMode: $displayMode)
-                    }
-                    .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                    .staggeredEntrance(delay: 0.0)
-
-                    // The hero owns the 1Hz live clock (TimelineView inside
-                    // PulseHeroBurnCard) so ticking never invalidates the
-                    // rest of the feed.
-                    PulseHeroBurnCard(
-                        rollupTotals: dashboard.windowTotals,
-                        dailyPoints: dashboard.dailyPoints,
-                        liveUsages: liveUsagesForPulse,
-                        topProvider: topProvider,
-                        displayMode: displayMode,
-                        scope: timelineScope,
-                        clockPaused: !shouldRunLivePulseClock
+                if let dashboardError = dashboard.error, !hasDashboardData {
+                    // Blocking error state — the load failed and there is no
+                    // cached rollup data worth painting. Mirrors BurnView's
+                    // AuroraStatePane error treatment.
+                    AuroraStatePane(
+                        kind: .error,
+                        icon: "exclamationmark.icloud.fill",
+                        title: "Pulse couldn't load",
+                        message: dashboardError,
+                        ctaLabel: "Try Again",
+                        onCTA: {
+                            Task { await dashboard.refresh() }
+                        }
                     )
+                    .padding(.top, MobileTheme.Spacing.xxl)
                     .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                    .staggeredEntrance(delay: 0.05)
+                } else {
+                    VStack(spacing: MobileTheme.Spacing.lg) {
+                        if let dashboardError = dashboard.error {
+                            // Non-blocking: cached data is still on screen but
+                            // the latest refresh failed — say so instead of
+                            // silently showing stale numbers.
+                            dashboardErrorBanner(dashboardError)
+                                .padding(.horizontal, AuroraDesign.Layout.cardInset)
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
 
-                    VelocityForecastCard(
-                        todayTotals: dashboard.windowTotals[.today],
-                        trailingTotals: dashboard.windowTotals[.sevenDays],
-                        displayMode: displayMode,
-                        liveUsages: liveUsagesForPulse
-                    )
-                    .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                    .staggeredEntrance(delay: 0.10)
+                        if shouldShowCloudBanner {
+                            CloudUpsellBanner(
+                                priceText: cloudStore?.product?.displayPrice,
+                                onTap: { showCloudStore = true },
+                                onDismiss: { cloudBannerDismissed = true }
+                            )
+                            .padding(.horizontal, AuroraDesign.Layout.cardInset)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
 
-                    // Pro vocabulary — forecast moment. Free users see a
-                    // foil band hinting at the extended cloud forecast.
-                    if shouldShowForecastBand {
-                        MembershipBand(
-                            title: "30-day forecast, on every device",
-                            detail: "Cloud syncs your full burn history — see your spend curve a month out, anywhere you sign in.",
-                            variant: .upsell,
-                            icon: "chart.line.uptrend.xyaxis",
-                            ctaLabel: "UNLOCK"
-                        ) {
-                            showCloudStore = true
+                        HStack(alignment: .center, spacing: MobileTheme.Spacing.sm) {
+                            TimelineScopePicker(selection: $timelineScope)
+                            Spacer(minLength: MobileTheme.Spacing.sm)
+                            PulseDisplayModeToggle(displayMode: $displayMode)
                         }
                         .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                        .staggeredEntrance(delay: 0.12)
+                        .staggeredEntrance(delay: 0.0)
+
+                        // The hero owns the 1Hz live clock (TimelineView inside
+                        // PulseHeroBurnCard) so ticking never invalidates the
+                        // rest of the feed.
+                        PulseHeroBurnCard(
+                            rollupTotals: dashboard.windowTotals,
+                            dailyPoints: dashboard.dailyPoints,
+                            liveUsages: liveUsagesForPulse,
+                            topProvider: topProvider,
+                            displayMode: displayMode,
+                            scope: timelineScope,
+                            clockPaused: !shouldRunLivePulseClock
+                        )
+                        .padding(.horizontal, AuroraDesign.Layout.cardInset)
+                        .staggeredEntrance(delay: 0.05)
+
+                        VelocityForecastCard(
+                            todayTotals: dashboard.windowTotals[.today],
+                            trailingTotals: dashboard.windowTotals[.sevenDays],
+                            displayMode: displayMode,
+                            liveUsages: liveUsagesForPulse
+                        )
+                        .padding(.horizontal, AuroraDesign.Layout.cardInset)
+                        .staggeredEntrance(delay: 0.10)
+
+                        // Pro vocabulary — forecast moment. Free users see a
+                        // foil band hinting at the extended cloud forecast.
+                        if shouldShowForecastBand {
+                            MembershipBand(
+                                title: "30-day forecast, on every device",
+                                detail: "Cloud syncs your full burn history — see your spend curve a month out, anywhere you sign in.",
+                                variant: .upsell,
+                                icon: "chart.line.uptrend.xyaxis",
+                                ctaLabel: "UNLOCK"
+                            ) {
+                                showCloudStore = true
+                            }
+                            .padding(.horizontal, AuroraDesign.Layout.cardInset)
+                            .staggeredEntrance(delay: 0.12)
+                        }
+
+                        QuotaPulseCard(
+                            snapshots: quotaStore.snapshots,
+                            onSelect: { providerKey in
+                                router.openBurn(focus: providerKey)
+                            },
+                            onOpenBurn: { router.openBurn(focus: nil) }
+                        )
+                        .padding(.horizontal, AuroraDesign.Layout.cardInset)
+                        .staggeredEntrance(delay: 0.15)
+
+                        TrendAtlasCard(
+                            dailyPoints: dashboard.dailyPoints,
+                            displayMode: displayMode,
+                            windowTotals: dashboard.windowTotals,
+                            providerSummaries: dashboard.topProviders,
+                            modelSummaries: dashboard.topModels,
+                            deviceSummaries: dashboard.topDevices,
+                            recentUsages: sessionsStore.rawUsages.isEmpty ? sessionsStore.usages : sessionsStore.rawUsages,
+                            hermesService: hermesService
+                        )
+                        .padding(.horizontal, AuroraDesign.Layout.cardInset)
+                        .staggeredEntrance(delay: 0.20)
+
+                        HermesQuickAskCard(
+                            service: hermesService,
+                            suggestedPrompts: suggestedPrompts,
+                            onOpenHermes: { router.openHermes() }
+                        )
+                        .padding(.horizontal, AuroraDesign.Layout.cardInset)
+                        .staggeredEntrance(delay: 0.25)
+
+                        RecentSessionsStripCard(
+                            sessions: sessionsStore.usages,
+                            onSelect: { router.openSession($0) },
+                            onSeeAll: { router.openStreams() }
+                        )
+                        .padding(.horizontal, AuroraDesign.Layout.cardInset)
+                        .staggeredEntrance(delay: 0.30)
                     }
-
-                    QuotaPulseCard(
-                        snapshots: quotaStore.snapshots,
-                        onSelect: { providerKey in
-                            router.openBurn(focus: providerKey)
-                        },
-                        onOpenBurn: { router.openBurn(focus: nil) }
-                    )
-                    .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                    .staggeredEntrance(delay: 0.15)
-
-                    TrendAtlasCard(
-                        dailyPoints: dashboard.dailyPoints,
-                        displayMode: displayMode,
-                        windowTotals: dashboard.windowTotals,
-                        providerSummaries: dashboard.topProviders,
-                        modelSummaries: dashboard.topModels,
-                        deviceSummaries: dashboard.topDevices,
-                        recentUsages: sessionsStore.rawUsages.isEmpty ? sessionsStore.usages : sessionsStore.rawUsages,
-                        hermesService: hermesService
-                    )
-                    .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                    .staggeredEntrance(delay: 0.20)
-
-                    HermesQuickAskCard(
-                        service: hermesService,
-                        suggestedPrompts: suggestedPrompts,
-                        onOpenHermes: { router.openHermes() }
-                    )
-                    .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                    .staggeredEntrance(delay: 0.25)
-
-                    RecentSessionsStripCard(
-                        sessions: sessionsStore.usages,
-                        onSelect: { router.openSession($0) },
-                        onSeeAll: { router.openStreams() }
-                    )
-                    .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                    .staggeredEntrance(delay: 0.30)
+                    .padding(.top, MobileTheme.Spacing.sm)
+                    .padding(.bottom, MobileTheme.Spacing.xxl)
                 }
-                .padding(.top, MobileTheme.Spacing.sm)
-                .padding(.bottom, MobileTheme.Spacing.xxl)
             }
             .scrollDismissesKeyboard(.interactively)
             .trackEasterEggScroll(tag: "pulse")
@@ -262,6 +289,51 @@ struct PulseView: View {
         async let live: Void = sessionsStore.loadLiveUsage(since: liveUsageStart)
         async let h: Void = hermesService.refreshRuntime()
         _ = await (d, q, s, live, h)
+    }
+
+    // MARK: - Error surfacing
+
+    /// True when the store holds any cached rollup docs worth painting.
+    /// Gates the blocking error pane: with cached data on screen a failed
+    /// refresh only earns the compact banner.
+    private var hasDashboardData: Bool {
+        !dashboard.rollupsByWindow.isEmpty
+    }
+
+    /// Compact, non-blocking refresh-failure banner shown above the feed
+    /// while cached dashboard data is still visible.
+    private func dashboardErrorBanner(_ message: String) -> some View {
+        HStack(spacing: MobileTheme.Spacing.sm) {
+            Image(systemName: "exclamationmark.icloud.fill")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(MobileTheme.Colors.warning)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Couldn't refresh usage")
+                    .font(MobileTheme.Typography.caption.bold())
+                    .foregroundStyle(MobileTheme.Colors.textPrimary)
+                Text(message)
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: MobileTheme.Spacing.sm)
+            Button("Retry") {
+                Task { await dashboard.refresh() }
+            }
+            .font(MobileTheme.Typography.caption.bold())
+            .foregroundStyle(MobileTheme.Colors.accent)
+            .buttonStyle(.plain)
+        }
+        .padding(MobileTheme.Spacing.md)
+        .background(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                .fill(MobileTheme.Colors.warning.opacity(0.10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                        .stroke(MobileTheme.Colors.warning.opacity(0.35), lineWidth: 0.5)
+                )
+        )
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Derived

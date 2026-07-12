@@ -221,6 +221,38 @@ final class CLIRuntimeModelCatalogTests: XCTestCase {
         XCTAssertEqual(rows[0].displayName, "grok-build · xAI · via OpenBurnBar · Reasoning: CLI default")
     }
 
+    func test_cursorAgentModelsParserUsesAvailableModelsSection() {
+        let output = """
+        Available models
+
+        auto - Auto (default)
+        composer-2.5 - Composer 2.5 (current)
+        claude-opus-4-8-high - Opus 4.8 1M
+        gpt-5.4-high - GPT-5.4 1M High
+        grok-4.5-xhigh - Cursor Grok 4.5
+
+        Tip: use --model <id> (or /model <id> in interactive mode) to switch.
+        """
+
+        let rows = CLIRuntimeModelCatalog.parseCursorAgentModels(output)
+
+        XCTAssertEqual(rows.map(\.modelID), [
+            "auto",
+            "composer-2.5",
+            "claude-opus-4-8-high",
+            "gpt-5.4-high",
+            "grok-4.5-xhigh"
+        ])
+        XCTAssertEqual(Set(rows.map(\.source)), [.cursorAgentModelCatalog])
+        XCTAssertEqual(rows[0].providerID, "cursor")
+        XCTAssertEqual(rows[1].providerID, "cursor")
+        XCTAssertEqual(rows[2].providerID, "anthropic")
+        XCTAssertEqual(rows[3].providerID, "openai")
+        XCTAssertEqual(rows[4].providerID, "xai")
+        XCTAssertEqual(rows[0].displayName, "Auto · Cursor · via OpenBurnBar · Reasoning: CLI default")
+        XCTAssertEqual(rows[1].displayName, "Composer 2.5 · Cursor · via OpenBurnBar · Reasoning: CLI default")
+    }
+
     func test_grokModelsCacheParserUsesLocalCatalogAndFiltersHiddenRows() {
         let json = """
         {

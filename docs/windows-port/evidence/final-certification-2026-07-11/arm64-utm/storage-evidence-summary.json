@@ -1,0 +1,32 @@
+{
+    "status":  "passed",
+    "evidenceCases":  [
+                          "corrupt-archive-reset",
+                          "fault-AccessDenied",
+                          "fault-FullDisk",
+                          "fault-LockedFile",
+                          "fresh-install",
+                          "generated-db-write-seams",
+                          "interrupted-retry",
+                          "restart-idempotency",
+                          "unsupported-schema-recovery",
+                          "wrong-key-recovery"
+                      ],
+    "forbiddenCredentialEnv":  [
+                                   "OPENBURNBAR_SQLCIPHER_PATH",
+                                   "OPENBURNBAR_SQLCIPHER_PASSPHRASE"
+                               ],
+    "credentialPolicy":  "SQLCipher path/passphrase must come from protected configuration or generated protected storage, not environment variables.",
+    "requiredCases":  [
+                          "fresh-install",
+                          "restart-idempotency",
+                          "generated-db-write-seams",
+                          "wrong-key-recovery",
+                          "corrupt-archive-reset",
+                          "fault-LockedFile",
+                          "fault-FullDisk",
+                          "fault-AccessDenied",
+                          "interrupted-retry",
+                          "unsupported-schema-recovery"
+                      ]
+}

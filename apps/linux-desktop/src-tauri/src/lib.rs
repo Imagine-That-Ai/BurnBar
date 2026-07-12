@@ -437,6 +437,10 @@ async fn run_gateway_chat_stream(
     Ok(())
 }
 
+/// Returns the gateway bearer for the HTTP gateway client (chat stream).
+/// Security note (Issue 20): this enters the renderer JS heap. Mitigations:
+/// restrictive CSP (tauri.conf.json), token file over env, short-lived tokens.
+/// Full fix is a Rust-side gateway proxy (Phase 4) that never returns the secret.
 #[tauri::command]
 async fn gateway_chat_stream(
     request: GatewayProxyRequest,
@@ -1338,11 +1342,23 @@ fn mission_create(
 // BurnBarMissionApproveRequest/CancelRequest require `missionID` (capital ID —
 // matches the Swift property name verbatim, no CodingKeys remap) and a
 // non-optional `actor: String`. Missing either → Swift Codable decode throws.
-fn mission_decision_wire(id: &str, decision: &str) -> (&'static str, serde_json::Value) {
-    let method = if decision == "deny" {
-        "daemon.mission.cancel"
-    } else {
-        "daemon.mission.approve"
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum MissionApprovalDecision { Approve, Deny }
+
+impl MissionApprovalDecision {
+    fn parse(decision: &str) -> Result<Self, String> {
+        match decision {
+            "approve" => Ok(Self::Approve),
+            "deny" => Ok(Self::Deny),
+            _ => Err("Mission approval decision must be exactly 'approve' or 'deny'.".to_string()),
+        }
+    }
+}
+
+fn mission_decision_wire(id: &str, decision: MissionApprovalDecision) -> (&'static str, serde_json::Value) {
+    let method = match decision {
+        MissionApprovalDecision::Approve => "daemon.mission.approve",
+        MissionApprovalDecision::Deny => "daemon.mission.cancel",
     };
     (
         method,
@@ -1350,9 +1366,65 @@ fn mission_decision_wire(id: &str, decision: &str) -> (&'static str, serde_json:
     )
 }
 
+// Wire truth (Swift daemon): `daemon.mission.list` encodes
+// `BurnBarMissionListResponse { missions: [BurnBarMissionSnapshot] }` — there are
+// NO top-level `pendingApprovals`/`approvals`/`questions` arrays. Approval state
+// lives per mission: `id` (BurnBarMissionID encodes as a bare string), `status`
+// (BurnBarMissionStatus raw value, `"awaiting_approval"` when decidable) and
+// `approval: BurnBarMissionApprovalSnapshot { approved, approvedAt, approvedBy,
+// note }`. The daemon's JSONEncoder uses default keys, so property names arrive
+// verbatim camelCase.
+fn mission_pending_approval<'a>(mission_list: &'a serde_json::Value, mission_id: &str) -> Option<&'a serde_json::Value> {
+    let pending_mission = mission_list.get("missions").and_then(|value| value.as_array())
+        .and_then(|missions| missions.iter().find(|mission| {
+            mission.get("id").and_then(|value| value.as_str()) == Some(mission_id)
+                && mission.get("status").and_then(|value| value.as_str()) == Some("awaiting_approval")
+                && mission.get("approval").and_then(|approval| approval.get("approved"))
+                    .and_then(|value| value.as_bool()) != Some(true)
+        }));
+    // Fallback for flat approval feeds (shell fixtures / future daemon payloads):
+    // top-level pendingApprovals/approvals/questions entries keyed by missionId.
+    pending_mission.or_else(|| {
+        mission_list.get("pendingApprovals").or_else(|| mission_list.get("approvals"))
+            .or_else(|| mission_list.get("questions")).and_then(|value| value.as_array())
+            .and_then(|approvals| approvals.iter().find(|approval| {
+                approval.get("missionId").or_else(|| approval.get("mission_id"))
+                    .and_then(|value| value.as_str()) == Some(mission_id)
+            }))
+    })
+}
+
+fn mission_approval_is_high_risk(approval: &serde_json::Value) -> bool {
+    // Mission snapshots carry risk in `metadata` (the daemon's enterprise policy
+    // key, see BurnBarEnterprisePolicyMetadataKey.defaultPacketRiskLevel); flat
+    // approval entries carry `risk`/`severity` directly. Treat "high" anywhere as
+    // high risk.
+    let metadata = approval.get("metadata");
+    [
+        approval.get("risk"),
+        approval.get("severity"),
+        metadata.and_then(|m| m.get("enterprise_default_packet_risk_level")),
+        metadata.and_then(|m| m.get("risk")),
+        metadata.and_then(|m| m.get("severity")),
+    ]
+    .into_iter()
+    .flatten()
+    .filter_map(|value| value.as_str())
+    .any(|risk| risk.to_ascii_lowercase().contains("high"))
+}
+
 #[tauri::command]
 fn mission_approval_decision(id: String, decision: String) -> Result<serde_json::Value, String> {
-    let (method, params) = mission_decision_wire(&id, &decision);
+    let id = id.trim();
+    if id.is_empty() { return Err("Mission id is required for approval decisions.".to_string()); }
+    let decision = MissionApprovalDecision::parse(&decision)?;
+    let mission_list = mission_list()?;
+    let approval = mission_pending_approval(&mission_list, id).ok_or_else(||
+        "Mission approval decision rejected: no matching pending approval.".to_string())?;
+    if decision == MissionApprovalDecision::Approve && mission_approval_is_high_risk(approval) {
+        return Err("High-risk mission approval requires trusted-device step-up and cannot be approved from the Linux shell.".to_string());
+    }
+    let (method, params) = mission_decision_wire(id, decision);
     call_daemon_method(method, Some(params))
 }
 
@@ -1818,7 +1890,396 @@ fn session_env() -> serde_json::Value {
 // ───────────────── P12: Mercury media ─────────────────
 #[tauri::command]
 fn media_status() -> Result<serde_json::Value, String> {
-    call_daemon_method("daemon.media.status", None)
+    Ok(serde_json::json!({
+        "capabilityAvailable": false,
+        "capability": "media",
+        "reason": "No BurnBarRPCMethod media-control contract; Mercury uses iroh + remote-access-agent when available.",
+        "pairedDevices": [],
+        "activeSession": null
+    }))
+}
+
+// ───────────────── Tool approval respond ─────────────────
+// Wire: approval.respond (BurnBarRPCMethod.approvalRespond)
+// Params: BurnBarApprovalRespondRequest { response: BurnBarApprovalResponse }
+// respondedAt is Foundation reference-date seconds (f64), matching the extension.
+#[tauri::command]
+fn tool_approval_respond(
+    approval_id: String,
+    decision: String,
+    note: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let decision = match decision.as_str() {
+        "approve" | "reject" | "cancel" => decision,
+        other => {
+            return Err(format!(
+                "approval decision must be approve|reject|cancel, got {other}"
+            ))
+        }
+    };
+    if approval_id.trim().is_empty() {
+        return Err("approvalID is required".into());
+    }
+    let responded_at = foundation_reference_date_seconds();
+    call_daemon_method(
+        "approval.respond",
+        Some(serde_json::json!({
+            "response": {
+                "approvalID": approval_id,
+                "clientID": "linux-shell",
+                "decision": decision,
+                "note": note,
+                "respondedAt": responded_at
+            }
+        })),
+    )
+}
+
+// ───────────────── Memory set status ─────────────────
+// Wire: remember → daemon.memory.remember, reject/forget → daemon.memory.forget,
+// audit → daemon.memory.audit_trail. "approve" is an alias for remember and
+// requires non-empty text/body (fail-closed; never invent placeholder text).
+#[tauri::command]
+fn memory_set_status(
+    action: String,
+    payload: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    match action.as_str() {
+        "approve" | "remember" => {
+            let text = payload
+                .get("text")
+                .and_then(|v| v.as_str())
+                .or_else(|| payload.get("body").and_then(|v| v.as_str()))
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            if text.is_empty() {
+                return Err(
+                    "memory remember requires non-empty text/body (fail-closed; no placeholder)".into(),
+                );
+            }
+            // Reject invented placeholder patterns from older shell versions.
+            if text.starts_with("approved:") {
+                return Err(
+                    "memory remember refuses invented approved:<id> placeholders".into(),
+                );
+            }
+            call_daemon_method(
+                "daemon.memory.remember",
+                Some(serde_json::json!({
+                    "text": text,
+                    "projectPath": payload.get("projectPath").cloned().unwrap_or(serde_json::Value::Null),
+                    "kind": payload.get("kind").and_then(|v| v.as_str()).unwrap_or("note"),
+                    "scope": payload.get("scope").and_then(|v| v.as_str()).unwrap_or("personal"),
+                    "tags": payload.get("tags").cloned().unwrap_or_else(|| serde_json::json!([])),
+                    "confidence": payload.get("confidence").and_then(|v| v.as_f64()).unwrap_or(1.0),
+                    "sourcePath": payload.get("sourcePath").cloned().unwrap_or(serde_json::Value::Null)
+                })),
+            )
+        }
+        "reject" | "forget" => {
+            let memory_id = payload
+                .get("memoryID")
+                .or_else(|| payload.get("memoryId"))
+                .or_else(|| payload.get("id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if memory_id.is_empty() {
+                return Err("memory reject requires memoryID".into());
+            }
+            call_daemon_method(
+                "daemon.memory.forget",
+                Some(serde_json::json!({
+                    "memoryID": memory_id,
+                    "projectPath": payload.get("projectPath").cloned().unwrap_or(serde_json::Value::Null),
+                    "requireCloudDelete": payload.get("requireCloudDelete").and_then(|v| v.as_bool()).unwrap_or(false)
+                })),
+            )
+        }
+        "audit" => call_daemon_method(
+            "daemon.memory.audit_trail",
+            Some(serde_json::json!({
+                "projectPath": payload.get("projectPath").cloned().unwrap_or(serde_json::Value::Null),
+                "limit": payload.get("limit").and_then(|v| v.as_u64()).unwrap_or(50)
+            })),
+        ),
+        other => Err(format!(
+            "memory_set_status action must be approve|reject|audit (or remember|forget), got {other}"
+        )),
+    }
+}
+
+// ───────────────── Computer Use wrappers ─────────────────
+// Wire bodies MUST match BurnBarComputerUseContracts.swift exactly.
+// Params are typed allowlisted structs (deny_unknown_fields).
+
+const CU_MAX_ARGS_BYTES: usize = 64 * 1024;
+const CU_CLIENT_ID: &str = "linux-shell";
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ComputerUseSessionStartParams {
+    /// ComputerUseMode raw: agent_watch | browser | system
+    mode: String,
+    /// ComputerUseTrustMode raw: manual | step | trusted
+    trust_mode: String,
+    #[serde(default)]
+    scope_rule_ids: Vec<String>,
+    phone_viewer_node_id: Option<String>,
+    mac_host_node_id: Option<String>,
+    action_cap: Option<u32>,
+    session_timeout_seconds: Option<u32>,
+    /// BurnBarClientID; defaults to linux-shell
+    client_id: Option<String>,
+    run_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ComputerUseInvokeParams {
+    session_id: String,
+    /// BurnBarToolInvocation — required nested object (not flat tool/args).
+    invocation: ComputerUseInvocationParams,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ComputerUseInvocationParams {
+    call_id: String,
+    run_id: String,
+    tool: String,
+    #[serde(default)]
+    arguments: serde_json::Value,
+    requested_by: Option<String>,
+    /// Foundation reference-date seconds when provided; shell fills if absent.
+    requested_at: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ComputerUseApprovalPendingParams {
+    session_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ComputerUseApprovalRespondParams {
+    session_id: Option<String>,
+    /// HermesRealtimeRelayApprovalResponse fields (nested under `response` on the wire).
+    approval_id: String,
+    decision: String,
+    responded_by: Option<String>,
+    note: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ComputerUsePanicHaltParams {
+    session_id: String,
+    /// ComputerUsePanicSource raw: hotkey | phone_gesture | mac_lock | remote_config | ...
+    source: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ComputerUseAuditExportParams {
+    session_id: String,
+    include_screenshots: Option<bool>,
+    anchor_open_timestamps: Option<bool>,
+}
+
+fn validate_cu_mode(mode: &str) -> Result<(), String> {
+    match mode {
+        "agent_watch" | "browser" | "system" => Ok(()),
+        other => Err(format!(
+            "computer use mode must be agent_watch|browser|system, got {other}"
+        )),
+    }
+}
+
+fn validate_cu_trust_mode(mode: &str) -> Result<(), String> {
+    match mode {
+        "manual" | "step" | "trusted" => Ok(()),
+        other => Err(format!(
+            "computer use trustMode must be manual|step|trusted, got {other}"
+        )),
+    }
+}
+
+fn validate_cu_approval_decision(decision: &str) -> Result<(), String> {
+    match decision {
+        "approve" | "reject" | "reject_and_halt" => Ok(()),
+        other => Err(format!(
+            "computer use approval decision must be approve|reject|reject_and_halt, got {other}"
+        )),
+    }
+}
+
+fn validate_cu_panic_source(source: &str) -> Result<(), String> {
+    match source {
+        "hotkey" | "phone_gesture" | "mac_lock" | "remote_config" | "accessibility_revoked"
+        | "stalled" | "revoked" => Ok(()),
+        other => Err(format!(
+            "computer use panic source must be a ComputerUsePanicSource raw value, got {other}"
+        )),
+    }
+}
+
+fn cap_json_value_size(value: &serde_json::Value, label: &str) -> Result<(), String> {
+    let encoded = serde_json::to_vec(value).map_err(|e| e.to_string())?;
+    if encoded.len() > CU_MAX_ARGS_BYTES {
+        return Err(format!(
+            "{label} exceeds {CU_MAX_ARGS_BYTES} byte shell cap (got {})",
+            encoded.len()
+        ));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn computer_use_session_start(params: ComputerUseSessionStartParams) -> Result<serde_json::Value, String> {
+    validate_cu_mode(&params.mode)?;
+    validate_cu_trust_mode(&params.trust_mode)?;
+    let client_id = params
+        .client_id
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| CU_CLIENT_ID.to_string());
+    // ComputerUseSessionStartRequest — required: mode, trustMode, clientID (+ defaults).
+    call_daemon_method(
+        "daemon.computer_use.session.start",
+        Some(serde_json::json!({
+            "mode": params.mode,
+            "trustMode": params.trust_mode,
+            "scopeRuleIds": params.scope_rule_ids,
+            "phoneViewerNodeId": params.phone_viewer_node_id,
+            "macHostNodeId": params.mac_host_node_id,
+            "actionCap": params.action_cap.unwrap_or(50),
+            "sessionTimeoutSeconds": params.session_timeout_seconds.unwrap_or(1800),
+            "clientID": client_id,
+            "runID": params.run_id
+        })),
+    )
+}
+
+#[tauri::command]
+fn computer_use_invoke(params: ComputerUseInvokeParams) -> Result<serde_json::Value, String> {
+    if params.session_id.trim().is_empty() {
+        return Err("computer_use_invoke requires sessionId".into());
+    }
+    let inv = &params.invocation;
+    if inv.call_id.trim().is_empty() || inv.run_id.trim().is_empty() || inv.tool.trim().is_empty() {
+        return Err("computer_use_invoke.invocation requires callID, runID, and tool".into());
+    }
+    cap_json_value_size(&inv.arguments, "invocation.arguments")?;
+    let requested_by = inv
+        .requested_by
+        .clone()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| CU_CLIENT_ID.to_string());
+    let requested_at = inv
+        .requested_at
+        .unwrap_or_else(foundation_reference_date_seconds);
+    // ComputerUseInvokeRequest { sessionId, invocation: BurnBarToolInvocation }
+    call_daemon_method(
+        "daemon.computer_use.invoke",
+        Some(serde_json::json!({
+            "sessionId": params.session_id,
+            "invocation": {
+                "callID": inv.call_id,
+                "runID": inv.run_id,
+                "tool": inv.tool,
+                "arguments": inv.arguments,
+                "requestedBy": requested_by,
+                "requestedAt": requested_at
+            }
+        })),
+    )
+}
+
+#[tauri::command]
+fn computer_use_approval_pending(
+    params: Option<ComputerUseApprovalPendingParams>,
+) -> Result<serde_json::Value, String> {
+    // ComputerUseApprovalPendingRequest { sessionId? } — no limit field.
+    let session_id = params.and_then(|p| p.session_id);
+    call_daemon_method(
+        "daemon.computer_use.approval.pending",
+        Some(serde_json::json!({ "sessionId": session_id })),
+    )
+}
+
+#[tauri::command]
+fn computer_use_approval_respond(
+    params: ComputerUseApprovalRespondParams,
+) -> Result<serde_json::Value, String> {
+    validate_cu_approval_decision(&params.decision)?;
+    if params.approval_id.trim().is_empty() {
+        return Err("computer_use_approval_respond requires approvalId".into());
+    }
+    let responded_by = params
+        .responded_by
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| CU_CLIENT_ID.to_string());
+    // ComputerUseApprovalRespondRequest { sessionId?, response: HermesRealtimeRelayApprovalResponse }
+    call_daemon_method(
+        "daemon.computer_use.approval.respond",
+        Some(serde_json::json!({
+            "sessionId": params.session_id,
+            "response": {
+                "approvalId": params.approval_id,
+                "decision": params.decision,
+                "respondedBy": responded_by,
+                "respondedAt": foundation_reference_date_seconds(),
+                "note": params.note
+            }
+        })),
+    )
+}
+
+#[tauri::command]
+fn computer_use_panic_halt(params: ComputerUsePanicHaltParams) -> Result<serde_json::Value, String> {
+    if params.session_id.trim().is_empty() {
+        return Err("computer_use_panic_halt requires sessionId".into());
+    }
+    validate_cu_panic_source(&params.source)?;
+    // ComputerUsePanicHaltRequest { sessionId, source }
+    call_daemon_method(
+        "daemon.computer_use.panic_halt",
+        Some(serde_json::json!({
+            "sessionId": params.session_id,
+            "source": params.source
+        })),
+    )
+}
+
+#[tauri::command]
+fn computer_use_audit_export(
+    params: ComputerUseAuditExportParams,
+) -> Result<serde_json::Value, String> {
+    if params.session_id.trim().is_empty() {
+        return Err("computer_use_audit_export requires sessionId".into());
+    }
+    // ComputerUseAuditExportRequest { sessionId, includeScreenshots, anchorOpenTimestamps }
+    call_daemon_method(
+        "daemon.computer_use.audit_export",
+        Some(serde_json::json!({
+            "sessionId": params.session_id,
+            "includeScreenshots": params.include_screenshots.unwrap_or(true),
+            "anchorOpenTimestamps": params.anchor_open_timestamps.unwrap_or(false)
+        })),
+    )
+}
+
+/// Apple Foundation reference-date seconds since 2001-01-01 UTC.
+/// Matches extension `toBurnBarTimestamp`: `Date.now()/1000 - 978307200`.
+fn foundation_reference_date_seconds() -> f64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let unix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0);
+    unix - 978_307_200.0
 }
 
 #[tauri::command]
@@ -2623,14 +3084,14 @@ mod tests {
     // silently breaking approvals. This test pins the wire shape.
     #[test]
     fn mission_decision_wire_contract_is_pinned() {
-        let (method, params) = mission_decision_wire("m-42", "approve");
+        let (method, params) = mission_decision_wire("m-42", MissionApprovalDecision::Approve);
         assert_eq!(method, "daemon.mission.approve");
         assert_eq!(params["missionID"], "m-42");
         assert_eq!(params["actor"], "linux-shell");
         assert!(params.get("missionId").is_none());
         assert!(params.get("id").is_none());
 
-        let (method, params) = mission_decision_wire("m-43", "deny");
+        let (method, params) = mission_decision_wire("m-43", MissionApprovalDecision::Deny);
         assert_eq!(method, "daemon.mission.cancel");
         assert_eq!(params["missionID"], "m-43");
         assert_eq!(params["actor"], "linux-shell");
@@ -2870,5 +3331,75 @@ mod tests {
         .unwrap();
         assert_eq!(missing.state, "unavailable");
         assert_eq!(missing.reason, "Mercury is unavailable.");
+    }
+
+    #[test]
+    fn mission_decision_rejects_unknown_values() {
+        assert_eq!(MissionApprovalDecision::parse("approve"), Ok(MissionApprovalDecision::Approve));
+        assert_eq!(MissionApprovalDecision::parse("deny"), Ok(MissionApprovalDecision::Deny));
+        assert!(MissionApprovalDecision::parse("not-deny-means-approve").is_err());
+        assert!(MissionApprovalDecision::parse("APPROVE").is_err());
+    }
+
+    // Pins the REAL `daemon.mission.list` wire shape: the daemon returns
+    // BurnBarMissionListResponse { missions: [BurnBarMissionSnapshot] } where
+    // each snapshot carries `id` (bare string), `status` ("awaiting_approval"
+    // when decidable) and `approval: { approved, ... }`. There are no top-level
+    // pendingApprovals/approvals/questions arrays in that contract.
+    #[test]
+    fn mission_pending_approval_matches_daemon_mission_list_contract() {
+        let mission_list = serde_json::json!({"missions": [
+            {"id": "m-1", "status": "awaiting_approval",
+             "approval": {"approved": false, "approvedAt": null, "approvedBy": null, "note": null},
+             "title": "Deploy packet", "projectSlug": "burnbar", "metadata": {}},
+            {"id": "m-2", "status": "approved",
+             "approval": {"approved": true, "approvedBy": "operator"},
+             "title": "Already decided", "projectSlug": "burnbar", "metadata": {}},
+            {"id": "m-3", "status": "in_progress",
+             "approval": {"approved": true},
+             "title": "Running", "projectSlug": "burnbar", "metadata": {}}
+        ]});
+        let approval = mission_pending_approval(&mission_list, "m-1").expect("pending approval");
+        assert_eq!(approval["id"], "m-1");
+        // Already-decided or running missions are not decidable from the shell.
+        assert!(mission_pending_approval(&mission_list, "m-2").is_none());
+        assert!(mission_pending_approval(&mission_list, "m-3").is_none());
+        assert!(mission_pending_approval(&mission_list, "attacker-chosen-mission-id").is_none());
+        // An empty daemon response fails closed.
+        assert!(mission_pending_approval(&serde_json::json!({"missions": []}), "m-1").is_none());
+    }
+
+    #[test]
+    fn mission_pending_approval_requires_matching_pending_mission() {
+        // Flat approval-feed fallback (shell fixtures / future daemon payloads).
+        let mission_list = serde_json::json!({"pendingApprovals": [
+            {"id": "approval-1", "missionId": "m-1", "risk": "standard"},
+            {"id": "approval-2", "missionId": "m-2", "risk": "high"}
+        ]});
+        let approval = mission_pending_approval(&mission_list, "m-2").expect("pending approval");
+        assert_eq!(approval["id"], "approval-2");
+        assert!(mission_pending_approval(&mission_list, "attacker-chosen-mission-id").is_none());
+    }
+
+    #[test]
+    fn mission_high_risk_detection_matches_daemon_aliases() {
+        assert!(mission_approval_is_high_risk(&serde_json::json!({"risk": "high"})));
+        assert!(mission_approval_is_high_risk(&serde_json::json!({"severity": "HIGH_RISK"})));
+        assert!(!mission_approval_is_high_risk(&serde_json::json!({"risk": "standard"})));
+        // Mission snapshots carry risk in metadata: the daemon's enterprise policy
+        // key (BurnBarEnterprisePolicyMetadataKey.defaultPacketRiskLevel) or plain
+        // risk/severity entries.
+        assert!(mission_approval_is_high_risk(&serde_json::json!(
+            {"id": "m-1", "metadata": {"enterprise_default_packet_risk_level": "high"}}
+        )));
+        assert!(mission_approval_is_high_risk(&serde_json::json!(
+            {"id": "m-1", "metadata": {"risk": "HIGH"}}
+        )));
+        assert!(!mission_approval_is_high_risk(&serde_json::json!(
+            {"id": "m-1", "metadata": {"enterprise_default_packet_risk_level": "low"}}
+        )));
+        assert!(!mission_approval_is_high_risk(&serde_json::json!(
+            {"id": "m-1", "status": "awaiting_approval", "approval": {"approved": false}, "metadata": {}}
+        )));
     }
 }

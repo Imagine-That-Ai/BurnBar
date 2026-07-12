@@ -62,7 +62,12 @@ final class MacAppStoreReviewComplianceTests: XCTestCase {
         XCTAssertTrue(settingsSource.contains("router.selectedTab = .cloud"))
         XCTAssertTrue(settingsSource.contains("router.path.removeAll()"))
         XCTAssertTrue(accountSource.contains("account.subscriptionLegalLinks"))
-        XCTAssertTrue(accountSource.contains("OpenBurnBar Cloud Monthly is an optional 1 month auto-renewable subscription"))
+        // Disclosure must name the auto-renewable subscriptions and Apple
+        // billing next to the upgrade entry point (Guideline 3.1.2). The
+        // account panel now shows the live entitlement tier, so the copy
+        // covers all three tiers instead of the retired Cloud-Monthly-only
+        // sentence.
+        XCTAssertTrue(accountSource.contains("BurnBar Cloud, Cloud Pro, and Cloud Ultra are optional auto-renewable subscriptions billed through the App Store."))
         XCTAssertFalse(settingsSource.contains("https://apps.apple.com/app/id6766366964"))
     }
 

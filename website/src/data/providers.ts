@@ -87,12 +87,12 @@ export const PROVIDERS_PRIMARY: ProviderRow[] = [
     id: "cursor-agent",
     name: "Cursor Agent (CLI)",
     blurb: "Cursor's terminal agent — distinct from the editor",
-    source: "Local session logs",
-    cost: "exact",
+    source: "~/.cursor-agent/sessions/ transcript JSONL",
+    cost: "estimated",
     quota: "no",
     cred: "none (local)",
     notes:
-      "Separate from the Cursor editor row above — this tracks the standalone cursor-agent CLI. Exact tokens, models, and transcripts read straight from disk.",
+      "Separate from the Cursor editor row above — this tracks the standalone cursor-agent CLI. Models and transcripts read straight from disk; token counts are estimated from transcript volume.",
     category: "agent",
     shippedToday: true
   },
@@ -237,26 +237,26 @@ export const PROVIDERS_PRIMARY: ProviderRow[] = [
   {
     id: "antigravity",
     name: "Antigravity",
-    blurb: "Google Gemini-based advanced agent — reads ~/.gemini/antigravity-cli/history.jsonl",
-    source: "Local history JSONL + API metrics",
-    cost: "exact",
-    quota: "yes",
-    cred: "none (local) or Google Gemini API key",
+    blurb: "Google Gemini-based advanced agent — reads ~/.gemini/antigravity-cli transcripts",
+    source: "Local transcript JSONL + history.jsonl",
+    cost: "estimated",
+    quota: "partial",
+    cred: "none (local)",
     notes:
-      "Features detailed per-token usage, full session breakdowns, and direct local history logging.",
+      "Token counts are estimated from local transcripts; quota pacing uses rolling 5-hour windows against community-estimated per-model caps.",
     category: "agent",
     shippedToday: true
   },
   {
     id: "deepseek",
     name: "DeepSeek",
-    blurb: "Organization-wide usage and spend from the official platform",
-    source: "api.deepseek.com/v1",
-    cost: "exact",
+    blurb: "API credit balance from the official platform",
+    source: "api.deepseek.com/user/balance",
+    cost: "unavailable",
     quota: "partial",
     cred: "API key (sk-…)",
     notes:
-      "Supports exact cost calculations from the global pricing table. Hard limits are balance-dependent.",
+      "Reads your remaining credit balance; DeepSeek does not expose per-request usage, so no spend breakdown is shown.",
     category: "api",
     shippedToday: true
   },
@@ -266,7 +266,7 @@ export const PROVIDERS_PRIMARY: ProviderRow[] = [
     blurb: "Self-hosted coding agent — reads ~/.local/share/opencode/opencode.db",
     source: "Local SQLite database",
     cost: "exact",
-    quota: "yes",
+    quota: "partial",
     cred: "none (local)",
     notes:
       "Tracks exact conversation tokens, files touched, and active local models straight from the client database.",
@@ -276,8 +276,8 @@ export const PROVIDERS_PRIMARY: ProviderRow[] = [
   {
     id: "hermes",
     name: "Hermes",
-    blurb: "BurnBar's native computer-use companion — reads ~/.hermes/sessions/*.jsonl",
-    source: "Local session JSONL",
+    blurb: "BurnBar's native computer-use companion — reads ~/.hermes/state.db",
+    source: "Local SQLite + session snapshots",
     cost: "exact",
     quota: "no",
     cred: "none (local)",
@@ -306,7 +306,7 @@ export const PROVIDERS_PRIMARY: ProviderRow[] = [
     source: "SuperGrok Event Log + xAI Management API",
     cost: "estimated",
     quota: "yes",
-    cred: "xAI API key",
+    cred: "xAI management key (xai-mgmt-…); none for SuperGrok",
     notes:
       "Spend telemetry and rate limits are managed through the xAI Management API and event logs written by Hermes.",
     category: "api",

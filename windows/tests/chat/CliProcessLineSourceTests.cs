@@ -221,6 +221,32 @@ public sealed class CliProcessLineSourceTests
     }
 
     [Fact]
+    public async System.Threading.Tasks.Task ReadLinesAsync_StillWatchesStderrAfterStdoutCloses()
+    {
+        string dotnet = ResolveDotnetHost();
+        string helper = Path.Combine(System.AppContext.BaseDirectory, "OpenBurnBar.Chat.ProcessTestHelper.dll");
+        Assert.True(File.Exists(helper), $"Process helper not found: {helper}");
+
+        async System.Threading.Tasks.Task<System.Collections.Generic.List<string>> ReadAsync()
+        {
+            var output = new System.Collections.Generic.List<string>();
+            await foreach (string line in CliProcessLineSource.ReadLinesAsync(
+                new ChildProcessSpec(dotnet, new[] { helper, "close-stdout-overflow-stderr" }),
+                CatalogFor(dotnet),
+                new ChatProcessLimits(256, 128),
+                System.Threading.CancellationToken.None))
+            {
+                output.Add(line);
+            }
+
+            return output;
+        }
+
+        System.Collections.Generic.List<string> lines = await ReadAsync().WaitAsync(System.TimeSpan.FromSeconds(5));
+        Assert.Contains(lines, line => line.Contains("OutputLimitExceeded", System.StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async System.Threading.Tasks.Task ReadLinesAsync_CancellationReturnsTypedFailure()
     {
         string? sleep = ExistingExecutable("/bin/sleep", "/usr/bin/sleep");
@@ -293,6 +319,28 @@ public sealed class CliProcessLineSourceTests
         }
 
         return null;
+    }
+
+    private static string ResolveDotnetHost()
+    {
+        string? configured = System.Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
+        if (!string.IsNullOrWhiteSpace(configured) && File.Exists(configured))
+        {
+            return configured;
+        }
+
+        string executable = System.OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet";
+        foreach (string directory in (System.Environment.GetEnvironmentVariable("PATH") ?? string.Empty)
+                     .Split(Path.PathSeparator, System.StringSplitOptions.RemoveEmptyEntries))
+        {
+            string candidate = Path.Combine(directory, executable);
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        throw new FileNotFoundException("Unable to locate the dotnet host for the process helper.");
     }
 
     private sealed class MemorySecretStore : IAppSecretStore

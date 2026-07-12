@@ -65,8 +65,14 @@ assert.match(publicPricingCopy, /\$59\.99/, "Ultra monthly price must be public"
 assert.match(publicPricingCopy, /\$599\/year|\$599\/yr/, "Ultra annual price must be public");
 assert.match(
   publicPricingCopy,
-  /100 Pensieve knowledge sources|100 knowledge sources/,
+  /100 knowledge sources/,
   "Ultra source limit must be public"
+);
+// CLAIMS.md may reference internal source naming; the rendered surfaces may not.
+assert.doesNotMatch(
+  [pricing, plans, wandModule, faq, supportMacros].join("\n"),
+  /Pensieve/,
+  "Internal codename 'Pensieve' must not appear in rendered pricing copy"
 );
 assert.match(
   publicPricingCopy,

@@ -1,0 +1,11 @@
+{
+"generatedAt": "2026-07-09T16:29:59Z",
+"daemonHealth": {"id":"daemon.health","protocolVersion":1,"result":{"gatewayPort":8317,"socketPath":"\/run\/user\/1000\/openburnbar\/daemon.sock","ok":true,"protocolVersion":1,"gatewayEnabled":true,"daemonVersion":"1.0.29","gatewayHost":"127.0.0.1"}},
+"gatewayHealth": {"ok":true,"gateway":"openburnbar","platform":"linux"},
+"models": {"object":"list","data":[]},
+"modelsCatalog": {"error":{"message":"not found"}},
+"cuPending": {"id":"daemon.computer_use.approval.pending","protocolVersion":1,"result":{"requests":[]}},
+"secretService": "secret-tool lookup ok",
+"unitTests": "375 pass",
+"viteBuild": "pass"
+}

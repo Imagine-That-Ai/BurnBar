@@ -26,7 +26,14 @@ const {
   noindex = false
 } = Astro.props;
 
-const canonical = new URL(pathname ?? Astro.url.pathname, SITE.url).toString();
+// Firebase Hosting serves these pages without a trailing slash
+// (firebase.json marketing target: "trailingSlash": false), so canonical,
+// og:url, and the sitemap must all use the slash-less form — otherwise every
+// page self-canonicalizes to a URL that 301-redirects.
+const rawPath = pathname ?? Astro.url.pathname;
+const normalizedPath = rawPath.replace(/\/+$/, "") || "/";
+const canonical = new URL(normalizedPath, SITE.url).toString();
+const isHome = normalizedPath === "/";
 const fullTitle =
   title === SITE.name ? `${SITE.name} — ${SITE.tagline}` : `${title} — ${SITE.name}`;
 ---
@@ -45,6 +52,9 @@ const fullTitle =
     <script is:inline>
       (function () {
         try {
+          // Scroll-reveal styles hide content until JS reveals it; mark the
+          // root so those rules only ever apply when JS is actually running.
+          document.documentElement.classList.add("js");
           var stored = localStorage.getItem("burnbar-theme");
           var prefersLight =
             window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
@@ -70,6 +80,8 @@ const fullTitle =
     <meta property="og:image" content={new URL(ogImage, SITE.url).toString()} />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content={`${SITE.name} — ${SITE.tagline}`} />
+    <meta property="og:locale" content="en_US" />
 
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
@@ -78,6 +90,7 @@ const fullTitle =
     <meta name="twitter:image" content={new URL(ogImage, SITE.url).toString()} />
 
     <!-- Icons (the real OpenBurnBar app icon at multiple sizes) -->
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
     <link rel="icon" type="image/png" sizes="32x32" href="/brand/logo-32.png" />
     <link rel="icon" type="image/png" sizes="64x64" href="/brand/favicon-64.png" />
     <link rel="icon" type="image/png" sizes="256x256" href="/brand/logo-256.png" />
@@ -94,26 +107,32 @@ const fullTitle =
     <link rel="preload" as="font" type="font/woff2" crossorigin href={frauncesLatinUrl} />
     <link rel="preload" as="font" type="font/woff2" crossorigin href={frauncesLatinItalicUrl} />
 
-    <!-- JSON-LD -->
-    <script
-      is:inline
-      type="application/ld+json"
-      set:html={JSON.stringify({
-        "@context": "https://schema.org",
-        "@type": "SoftwareApplication",
-        name: SITE.name,
-        applicationCategory: "DeveloperApplication",
-        operatingSystem: "macOS 14+, iOS 17+",
-        description,
-        url: SITE.url,
-        offers: SITE.pricing.tiers.map((tier) => ({
-          "@type": "Offer",
-          price: tier.priceMonthlyUSD,
-          priceCurrency: "USD",
-          name: tier.priceMonthlyUSD === "0" ? tier.name : `${tier.name} monthly`
-        }))
-      })}
-    />
+    <!-- JSON-LD: the SoftwareApplication entity belongs to the homepage only.
+         Emitting it on every page published 30+ copies of the same entity,
+         each with a different (page-local) description. -->
+    {
+      isHome && (
+        <script
+          is:inline
+          type="application/ld+json"
+          set:html={JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "SoftwareApplication",
+            name: SITE.name,
+            applicationCategory: "DeveloperApplication",
+            operatingSystem: "macOS 14+, iOS 17+, Linux (preview)",
+            description: SITE.description,
+            url: SITE.url,
+            offers: SITE.pricing.tiers.map((tier) => ({
+              "@type": "Offer",
+              price: tier.priceMonthlyUSD,
+              priceCurrency: "USD",
+              name: tier.priceMonthlyUSD === "0" ? tier.name : `${tier.name} monthly`
+            }))
+          })}
+        />
+      )
+    }
   </head>
   <body>
     <!-- Interactive Token Ember Swarm Canvas Background (DARK theme) -->

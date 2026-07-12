@@ -207,6 +207,11 @@ final class SettingsManagerSecretStorageTests: XCTestCase {
                 legacyServices: [],
                 backend: SettingsManagerTestKeychainBackend()
             ),
+            // Without this stub the default reader picks up the REAL
+            // LaunchAgent gateway token on developer machines running
+            // OpenBurnBar, seeding `gatewayAuthToken` and breaking the
+            // fail-closed assertions (green in CI, red locally).
+            launchAgentGatewayAuthTokenReader: { nil },
             flushDelayNanoseconds: 0
         )
     }

@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -12,57 +11,21 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { deleteDomainData, type DeleteDomainDataResponse } from "@/lib/api";
+import { DOMAIN_DELETE_TRUSTED_DEVICE_MESSAGE } from "@/lib/api";
 import type { DataDomain } from "@/lib/domains";
-import { useAnalytics } from "@/lib/analytics/AnalyticsProvider";
-import { EVENT } from "@/lib/analytics";
 
 /**
- * Scoped-delete confirmation. Breaking a wax seal is irreversible — the only
- * place the crimson destructive token appears. Requires typing the domain title
- * to confirm (defence against fat-finger deletes).
+ * Scoped-delete entry point. Breaking a wax seal is irreversible, so the
+ * `deleteDomainData` callable is gated behind trusted-device step-up (a fresh
+ * high-risk nonce + a device action proof) that the web console cannot
+ * produce. Rather than exposing a confirm flow that is guaranteed to fail the
+ * server's precondition, this dialog keeps the member's deletion right
+ * discoverable and points at the surface where it actually completes: BurnBar
+ * on a trusted device.
  */
-export function DeleteDomainDialog({
-  domain,
-  onDeleted,
-}: {
-  domain: DataDomain;
-  onDeleted?: (res: DeleteDomainDataResponse) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [confirmText, setConfirmText] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const { track } = useAnalytics();
-  const armed = confirmText.trim().toLowerCase() === domain.title.toLowerCase();
-
-  const onConfirm = async () => {
-    if (!armed) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await deleteDomainData(domain.id);
-      onDeleted?.(res);
-      setOpen(false);
-      setConfirmText("");
-      // Bounded enum (encryption_tier) + outcome only — never the deleted contents.
-      track(EVENT.inventoryDomainDeleted, {
-        encryption_tier: domain.encryptionTier,
-        outcome: "success",
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed.");
-      track(EVENT.inventoryDomainDeleted, {
-        encryption_tier: domain.encryptionTier,
-        outcome: "failure",
-      });
-    } finally {
-      setBusy(false);
-    }
-  };
-
+export function DeleteDomainDialog({ domain }: { domain: DataDomain }) {
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog>
       <DialogTrigger asChild>
         <Button variant="destructive" size="sm">
           Delete
@@ -70,35 +33,21 @@ export function DeleteDomainDialog({
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Break the seal on “{domain.title}”?</DialogTitle>
+          <DialogTitle>Deleting “{domain.title}” needs a trusted device</DialogTitle>
           <DialogDescription>
-            This permanently deletes this domain&apos;s data
+            Breaking the seal permanently deletes this domain&apos;s data
             {domain.encryptionTier === "end_to_end"
-              ? " — including genuine ciphertext deletion of sealed content."
-              : "."}{" "}
-            This cannot be undone.
+              ? " — including genuine ciphertext deletion of sealed content —"
+              : ""}{" "}
+            and cannot be undone. {DOMAIN_DELETE_TRUSTED_DEVICE_MESSAGE}
           </DialogDescription>
         </DialogHeader>
-        <label className="text-xs text-content-mute">
-          Type <span className="font-mono text-content-bright">{domain.title}</span> to confirm
-          <input
-            value={confirmText}
-            onChange={(e) => setConfirmText(e.target.value)}
-            className="mt-1 w-full rounded-md border border-glass-line bg-ink-base px-token-3 py-token-2 font-mono text-sm text-content-bright outline-none focus:border-[color:var(--color-seal-crimson)]"
-            placeholder={domain.title}
-            autoComplete="off"
-          />
-        </label>
-        {error && <p className="text-xs text-[color:var(--color-seal-crimson)]">{error}</p>}
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="ghost" size="sm">
-              Cancel
+            <Button variant="secondary" size="sm">
+              Got it
             </Button>
           </DialogClose>
-          <Button variant="destructive" size="sm" disabled={!armed || busy} onClick={onConfirm}>
-            {busy ? "Deleting…" : "Delete permanently"}
-          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
