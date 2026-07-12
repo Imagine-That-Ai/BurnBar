@@ -142,7 +142,6 @@
 		0D4E56581D55986F17D1F8E1 /* OpenBurnBarConnectorSecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D7AD97848EEB1063D5AA7BF /* OpenBurnBarConnectorSecretStore.swift */; };
 		0D4F295D586687DCB08BC44A /* QuotaRefreshActor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4273C28B33EF41A099966C09 /* QuotaRefreshActor.swift */; };
 		0DAE247A1C119E512ED5C7CB /* UsageSyncPresenceDecouplingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8BD2E6E095F857DBD60A31D /* UsageSyncPresenceDecouplingTests.swift */; };
-		0DBD8C6CBF93A3C60BA1C9FA /* OpenBurnBarCore in Frameworks */ = {isa = PBXBuildFile; productRef = 7C6404809803AAB447B155E0 /* OpenBurnBarCore */; };
 		0DD957126FB6F4CA2D5858E0 /* MicrophoneCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B19A36CC660D0E0A80DDF96 /* MicrophoneCaptureService.swift */; };
 		0DE26600775B6CA96A3B6664 /* LocalMetricsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A67224E60A68DDF632014874 /* LocalMetricsView.swift */; };
 		0E416FB7281059FA290E86D1 /* CLIAgentMissionRequestListener+VaultState.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE91E89B0BC4C9F9324DD0ED /* CLIAgentMissionRequestListener+VaultState.swift */; };
@@ -333,7 +332,6 @@
 		22A6520C7097A91F6075D7B4 /* CLIStreamParsers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F8C0363908CC9B2B080E50E /* CLIStreamParsers.swift */; };
 		22AFAE02D141200914584C5A /* AccessibilityIdentifiers.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC58B9EBAE68F089ED0FCD8 /* AccessibilityIdentifiers.swift */; };
 		22C0817ABDC37F073B84EAE0 /* MembershipCardChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1CF579FCAEC76C0B530513D /* MembershipCardChrome.swift */; };
-		22C92178BF7B2F0C75333730 /* OpenBurnBarAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 6D760E14D606C8768F4843B6 /* OpenBurnBarAnalytics */; };
 		22D51BE00DC64B8EA3B363EC /* PiPairingAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 915B465CA7A83BCFCF2BB6EE /* PiPairingAPI.swift */; };
 		22DBDE02F40E61B87ACF9633 /* UsageStore+Summaries.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A841E4DF6BE14F801F40C19 /* UsageStore+Summaries.swift */; };
 		23BC3825FCC7BAE61B3DBCE0 /* DirectDownloadUpdateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C26AD5DC23872C8E58D6AD7 /* DirectDownloadUpdateService.swift */; };
@@ -1600,7 +1598,6 @@
 		B2D6B360124433E99DAD581A /* test_hermesToolCard_completed.hermesToolCard-completed-light.png in Resources */ = {isa = PBXBuildFile; fileRef = C3FD4ED55BB587BA9BA35F00 /* test_hermesToolCard_completed.hermesToolCard-completed-light.png */; };
 		B2D76359CA686AF47574970D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C58E189D22843BD248EE83BF /* Assets.xcassets */; };
 		B2E057EC041BA7056D8E6788 /* ChatSessionController+SearchHistoryNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98BE461D3783A71CD846FBF4 /* ChatSessionController+SearchHistoryNavigation.swift */; };
-		B3119A847022104B31FC7DAD /* OpenBurnBarSignalCore in Frameworks */ = {isa = PBXBuildFile; productRef = D68D88E9FDDE5FF36F222EC4 /* OpenBurnBarSignalCore */; };
 		B33887456E3482F3DBB1BF4E /* pc-hermes-tool-heavy-snapshot.json in Resources */ = {isa = PBXBuildFile; fileRef = 9FBF861365CB59FBC3CB8191 /* pc-hermes-tool-heavy-snapshot.json */; };
 		B33AC570E88A25C645AF4F6D /* OpenBurnBarCLI.swift in Sources */ = {isa = PBXBuildFile; fileRef = C79EA0238C1438D91B46A759 /* OpenBurnBarCLI.swift */; };
 		B33D74B19A607197CECC9503 /* HermesThinkingViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE7E10DD5344DE2449F1E816 /* HermesThinkingViewTests.swift */; };
@@ -4817,16 +4814,6 @@
 				E63059BEA69509D6D0CBD140 /* FirebaseStorage in Frameworks */,
 				6C6EB9A1C73341AC91A84F46 /* GoogleSignIn in Frameworks */,
 				92FA6CDEF8D3F1AAFE9E8120 /* Sentry in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		E9CDA0217A0F035C2F71CE46 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				0DBD8C6CBF93A3C60BA1C9FA /* OpenBurnBarCore in Frameworks */,
-				22C92178BF7B2F0C75333730 /* OpenBurnBarAnalytics in Frameworks */,
-				B3119A847022104B31FC7DAD /* OpenBurnBarSignalCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -9106,7 +9093,6 @@
 			buildPhases = (
 				2D8814837B36BCC7F8EE4D64 /* Sources */,
 				556765E5FA2A3E0CA45B44D5 /* Resources */,
-				E9CDA0217A0F035C2F71CE46 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -9115,9 +9101,6 @@
 			);
 			name = OpenBurnBarMobileTests;
 			packageProductDependencies = (
-				7C6404809803AAB447B155E0 /* OpenBurnBarCore */,
-				6D760E14D606C8768F4843B6 /* OpenBurnBarAnalytics */,
-				D68D88E9FDDE5FF36F222EC4 /* OpenBurnBarSignalCore */,
 			);
 			productName = OpenBurnBarMobileTests;
 			productReference = 920BF1E7F762C42C695DEC01 /* OpenBurnBarMobileTests.xctest */;
@@ -12018,11 +12001,11 @@
 		};
 		3D86C882AF3E0903D2B6AEC1 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_9B952AC5-DB8C-4710-84A5-1C01A863A186" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_CFEEEA43-0F76-44D9-A19D-57BC84389123" /* OpenBurnBarComputerUseCore */;
 		};
 		443FF277670BA948D441326F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_597E0BC5-A538-415D-9812-D1027FE5289A" /* OpenBurnBarCore */;
+			productRef = "TEMP_A7D1DD6A-422D-4B62-8E61-B56DCF5F355E" /* OpenBurnBarCore */;
 		};
 		5499EFD4C8229C93F39C16E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -12055,7 +12038,7 @@
 		};
 		8229DDE642E5DC615FF30C8F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_8BCC9963-0133-44E7-B93D-8D40CD7B65DD" /* OpenBurnBarLinuxSecurity */;
+			productRef = "TEMP_C02DA3EA-ED4C-4394-AF3A-119DA0C4CD99" /* OpenBurnBarLinuxSecurity */;
 		};
 		8DA8E1A1A0D1FEBA7474F3C7 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -12079,7 +12062,7 @@
 		};
 		A6FB5F544F37FA83D0398F77 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_CB4240C3-BEFA-469C-83BF-DEFABC8ED891" /* OpenBurnBarCore */;
+			productRef = "TEMP_4A795887-C4C4-4246-B489-339E44C8E508" /* OpenBurnBarCore */;
 		};
 		D357B802CF30473CCCF84A7B /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -12106,11 +12089,11 @@
 		};
 		F34772D139441B426AAE80E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_2F1D0CE2-C1AA-4105-913F-396BDDC27AE7" /* OpenBurnBarMedia */;
+			productRef = "TEMP_AE47A2B6-D615-41D8-8E45-5DA178B77FC7" /* OpenBurnBarMedia */;
 		};
 		FF93F13225A86244B6415A4C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_5D6BB4E7-0EE1-4DB6-8518-F281F69DC1A1" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_F1FEB84D-0295-4580-AEE0-AB1602FC4475" /* OpenBurnBarComputerUseCore */;
 		};
 /* End PBXTargetDependency section */
 
@@ -13281,10 +13264,6 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarAnalytics;
 		};
-		6D760E14D606C8768F4843B6 /* OpenBurnBarAnalytics */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarAnalytics;
-		};
 		7795E740F7AE12FC6B8F1E10 /* GRDB */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = GRDB;
@@ -13293,10 +13272,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = F7ED8DA2789DCAFECCAE84D3 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseFunctions;
-		};
-		7C6404809803AAB447B155E0 /* OpenBurnBarCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarCore;
 		};
 		7E2C1D6895DEDB7A59CECE36 /* ViewInspector */ = {
 			isa = XCSwiftPackageProductDependency;
@@ -13417,10 +13392,6 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarCore;
 		};
-		D68D88E9FDDE5FF36F222EC4 /* OpenBurnBarSignalCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarSignalCore;
-		};
 		DAB0CEB2329470D35FDBD4DB /* OpenBurnBarCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarCore;
@@ -13452,29 +13423,29 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
 		};
-		"TEMP_2F1D0CE2-C1AA-4105-913F-396BDDC27AE7" /* OpenBurnBarMedia */ = {
+		"TEMP_4A795887-C4C4-4246-B489-339E44C8E508" /* OpenBurnBarCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarCore;
+		};
+		"TEMP_A7D1DD6A-422D-4B62-8E61-B56DCF5F355E" /* OpenBurnBarCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarCore;
+		};
+		"TEMP_AE47A2B6-D615-41D8-8E45-5DA178B77FC7" /* OpenBurnBarMedia */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarMedia;
 		};
-		"TEMP_597E0BC5-A538-415D-9812-D1027FE5289A" /* OpenBurnBarCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarCore;
-		};
-		"TEMP_5D6BB4E7-0EE1-4DB6-8518-F281F69DC1A1" /* OpenBurnBarComputerUseCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarComputerUseCore;
-		};
-		"TEMP_8BCC9963-0133-44E7-B93D-8D40CD7B65DD" /* OpenBurnBarLinuxSecurity */ = {
+		"TEMP_C02DA3EA-ED4C-4394-AF3A-119DA0C4CD99" /* OpenBurnBarLinuxSecurity */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarLinuxSecurity;
 		};
-		"TEMP_9B952AC5-DB8C-4710-84A5-1C01A863A186" /* OpenBurnBarComputerUseCore */ = {
+		"TEMP_CFEEEA43-0F76-44D9-A19D-57BC84389123" /* OpenBurnBarComputerUseCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
 		};
-		"TEMP_CB4240C3-BEFA-469C-83BF-DEFABC8ED891" /* OpenBurnBarCore */ = {
+		"TEMP_F1FEB84D-0295-4580-AEE0-AB1602FC4475" /* OpenBurnBarComputerUseCore */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarCore;
+			productName = OpenBurnBarComputerUseCore;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
