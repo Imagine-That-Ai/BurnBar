@@ -6,14 +6,13 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
 using OpenBurnBar.App.Configuration;
+using OpenBurnBar.App.Data;
 using OpenBurnBar.App.Interop;
 using OpenBurnBar.App.Presentation.Dashboard;
 using OpenBurnBar.App.Presentation.Flyout;
 using OpenBurnBar.App.Shell;
-using OpenBurnBar.App.Storage;
 using OpenBurnBar.App.Theme;
 using OpenBurnBar.App.UsageRuntime;
-using OpenBurnBar.Storage;
 using Windows.Graphics;
 using Windows.UI;
 
@@ -34,14 +33,16 @@ public sealed partial class FlyoutWindow : Window
 
     private readonly AppStatePersistence _persistence;
     private readonly AppWindow _appWindow;
+    private readonly IUsageRuntime? _usageRuntime;
 
     private double _width;
     private double _height;
     private bool _isOpen;
 
-    public FlyoutWindow(AppStatePersistence persistence)
+    public FlyoutWindow(AppStatePersistence persistence, IUsageRuntime? usageRuntime)
     {
         _persistence = persistence;
+        _usageRuntime = usageRuntime;
 
         InitializeComponent();
 
@@ -58,8 +59,11 @@ public sealed partial class FlyoutWindow : Window
 
         ViewModel = new FlyoutViewModel(persistence);
         ApplySnapshot(LoadSnapshot());
-        WindowsUsageRuntimeHost.SnapshotChanged += OnUsageSnapshotChanged;
-        WindowsUsageRuntimeHost.StatusChanged += OnUsageStatusChanged;
+
+        if (_usageRuntime is not null)
+        {
+            _usageRuntime.StateChanged += OnUsageRuntimeStateChanged;
+        }
 
         Activated += OnActivated;
         Closed += OnClosed;
@@ -91,13 +95,24 @@ public sealed partial class FlyoutWindow : Window
         _isOpen = false;
     }
 
-    private static FlyoutTraySnapshot LoadSnapshot() =>
-        RuntimeDataMode.SampleModeEnabled
-            ? FlyoutTraySampleData.Snapshot()
-            : WindowsUsageRuntimeHost.FlyoutSnapshot();
+    private FlyoutTraySnapshot LoadSnapshot()
+    {
+        if (RuntimeDataMode.SampleModeEnabled)
+        {
+            return FlyoutTraySampleData.Snapshot();
+        }
+
+        return _usageRuntime is null
+            ? FlyoutTraySnapshot.Empty with
+            {
+                FreshnessLabel = "Encrypted storage needs attention. Open Data & Privacy settings.",
+            }
+            : UsageRuntimePresentationMapper.ToFlyoutSnapshot(_usageRuntime.State);
+    }
 
     private void ApplySnapshot(FlyoutTraySnapshot snap)
     {
+        ScanButton.IsEnabled = _usageRuntime is not null && _usageRuntime.State.IsScanning is false;
         FreshnessText.Text = snap.FreshnessLabel;
         FreshnessMetric.Text = snap.TodayMetricLabel;
         FreshnessSessions.Text = $"{snap.SessionCount} session{(snap.SessionCount == 1 ? string.Empty : "s")}";
@@ -331,8 +346,21 @@ public sealed partial class FlyoutWindow : Window
     private void OnClosed(object sender, WindowEventArgs args)
     {
         LiquidGlassEnvironment.PreferencesChanged -= OnGlassPreferencesChanged;
-        WindowsUsageRuntimeHost.SnapshotChanged -= OnUsageSnapshotChanged;
-        WindowsUsageRuntimeHost.StatusChanged -= OnUsageStatusChanged;
+        if (_usageRuntime is not null)
+        {
+            _usageRuntime.StateChanged -= OnUsageRuntimeStateChanged;
+        }
+    }
+
+    private void OnUsageRuntimeStateChanged(object? sender, UsageRuntimeStateChangedEventArgs args)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!RuntimeDataMode.SampleModeEnabled)
+            {
+                ApplySnapshot(UsageRuntimePresentationMapper.ToFlyoutSnapshot(args.Current));
+            }
+        });
     }
 
     private void OpenFull_Click(object sender, RoutedEventArgs e)
@@ -350,35 +378,25 @@ public sealed partial class FlyoutWindow : Window
 
     private async void Scan_Click(object sender, RoutedEventArgs e)
     {
-        Button? scanButton = sender as Button;
-        if (scanButton is not null) scanButton.IsEnabled = false;
-        FreshnessText.Text = "Scanning...";
+        if (_usageRuntime is null || _usageRuntime.State.IsScanning)
+        {
+            return;
+        }
+
         try
         {
-            await WindowsUsageRuntimeHost.ScanAsync();
-            ApplySnapshot(LoadSnapshot());
+            await _usageRuntime.ScanAsync(UsageScanReason.Manual);
+        }
+        catch (OperationCanceledException)
+        {
         }
         catch (Exception ex)
         {
-            OpenBurnBar.App.Diagnostics.AppDiagnostics.LogException("usage-runtime.manual-scan", ex);
-            FreshnessText.Text = "Scan failed - open Settings for recovery";
-        }
-        finally
-        {
-            if (scanButton is not null) scanButton.IsEnabled = true;
+            Diagnostics.AppDiagnostics.LogException("usage-runtime.manual-scan", ex);
         }
     }
 
-    private void OnUsageSnapshotChanged(object? sender, TokenUsageAggregateSnapshot snapshot) =>
-        DispatcherQueue.TryEnqueue(() => ApplySnapshot(LoadSnapshot()));
-
-    private void OnUsageStatusChanged(object? sender, UsageRuntimeStatus status)
-    {
-        if (!status.IsBusy && status.Phase != UsageRuntimePhase.Failed) return;
-        DispatcherQueue.TryEnqueue(() => FreshnessText.Text = status.Message);
-    }
-
-    private void Quit_Click(object sender, RoutedEventArgs e) => App.Current.Exit();
+    private void Quit_Click(object sender, RoutedEventArgs e) => App.Current.RequestExit();
 
     private void ResizeGrip_DragDelta(object sender, DragDeltaEventArgs e)
     {

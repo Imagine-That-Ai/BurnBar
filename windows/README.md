@@ -8,13 +8,12 @@ shared `packages/` — nothing here collides with those trees.
 This tree now carries **real product code** (~950 `.cs`/`.xaml` source files, ~126K LOC): a full
 WinUI 3 shell + views, portable `net8.0` cores for every subsystem, and ~27 test projects that run
 on real Windows CI (x64 + ARM64, [`pr-windows-full.yml`](../.github/workflows/pr-windows-full.yml)).
-**Honest status:** the portable-logic layer is broad and genuinely tested, but the OS-integration
-halves (live cloud, TPM App Check, input synthesis, Win2D GPU render, WebView2 hosts, MSIX
-signing, auto-update round-trip) are explicitly *deferred* — see the per-tree notes below and the
-authoritative status ledger in
-[`docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md`](../docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md)
-plus the gap/remediation plan in
-[`docs/windows-port/PARITY_100_REMEDIATION_PLAN.md`](../docs/windows-port/PARITY_100_REMEDIATION_PLAN.md).
+**Current status:** the portable-logic layer is broad and genuinely tested, but the Windows product
+does not yet have full macOS parity. The independent source audit is the current gap and remediation
+plan: [`WINDOWS_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md`](../docs/windows-port/WINDOWS_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md).
+The [`PARITY_CERTIFICATION_BUNDLE.md`](../docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md) and
+[`WINDOWS_PARITY_LEDGER.yml`](../docs/windows-port/WINDOWS_PARITY_LEDGER.yml) remain scoped evidence,
+not end-to-end product certification.
 
 ## Layout
 

@@ -1,0 +1,138 @@
+{
+  "title": "Test - OpenBurnBarMobileUnitTests",
+  "result": "Failed",
+  "totalTestCount": 1281,
+  "passedTests": 1240,
+  "failedTests": 13,
+  "skippedTests": 28,
+  "expectedFailures": 0,
+  "startTime": 1783791001.029,
+  "finishTime": 1783791301.559,
+  "devicesAndConfigurations": [
+    {
+      "device": {
+        "architecture": "arm64",
+        "deviceId": "<IOS_USB_UDID>",
+        "deviceName": "Physical iPhone 17 Pro Max",
+        "modelName": "iPhone 17 Pro Max",
+        "osBuildNumber": "24A5380h",
+        "osVersion": "27.0",
+        "platform": "iOS"
+      },
+      "expectedFailures": 0,
+      "failedTests": 13,
+      "passedTests": 1240,
+      "skippedTests": 28,
+      "testPlanConfiguration": {
+        "configurationId": "1",
+        "configurationName": "Test Scheme Action"
+      }
+    }
+  ],
+  "testFailures": [
+    {
+      "failureText": "Crash: OpenBurnBarMobile",
+      "targetName": "OpenBurnBarMobileTests",
+      "testIdentifier": 744,
+      "testIdentifierString": "MissionGroupObserverTests/test_applySynthesizeIgnoresConcurrentDuplicateTap()",
+      "testIdentifierURL": "test://com.apple.xcode/OpenBurnBar/OpenBurnBarMobileTests/MissionGroupObserverTests/test_applySynthesizeIgnoresConcurrentDuplicateTap",
+      "testName": "test_applySynthesizeIgnoresConcurrentDuplicateTap()"
+    },
+    {
+      "failureText": "XCTAssertNotNil failed",
+      "targetName": "OpenBurnBarMobileTests",
+      "testIdentifier": 354,
+      "testIdentifierString": "FirestoreNormalizationTests/test_decodeWithDocID_normalizesCostAndCostUsd()",
+      "testIdentifierURL": "test://com.apple.xcode/OpenBurnBar/OpenBurnBarMobileTests/FirestoreNormalizationTests/test_decodeWithDocID_normalizesCostAndCostUsd",
+      "testName": "test_decodeWithDocID_normalizesCostAndCostUsd()"
+    },
+    {
+      "failureText": "XCTAssertNotNil failed",
+      "targetName": "OpenBurnBarMobileTests",
+      "testIdentifier": 355,
+      "testIdentifierString": "FirestoreNormalizationTests/test_decodeWithDocID_preservesExistingID()",
+      "testIdentifierURL": "test://com.apple.xcode/OpenBurnBar/OpenBurnBarMobileTests/FirestoreNormalizationTests/test_decodeWithDocID_preservesExistingID",
+      "testName": "test_decodeWithDocID_preservesExistingID()"
+    },
+    {
+      "failureText": "Crash: OpenBurnBarMobile at specialized static XCTSwiftErrorObservation._observeErrors(in:). libsystem_c.dylib: abort() called",
+      "targetName": "OpenBurnBarMobileTests",
+      "testIdentifier": 911,
+      "testIdentifierString": "OpenBurnBarMobileTests/testAgentWatchOverlayCoordinatorClassifiesApprovalStreamAndResponds()",
+      "testIdentifierURL": "test://com.apple.xcode/OpenBurnBar/OpenBurnBarMobileTests/OpenBurnBarMobileTests/testAgentWatchOverlayCoordinatorClassifiesApprovalStreamAndResponds",
+      "testName": "testAgentWatchOverlayCoordinatorClassifiesApprovalStreamAndResponds()"
+    },
+    {
+      "failureText": "Crash: OpenBurnBarMobile at specialized static XCTSwiftErrorObservation._observeErrors(in:). libsystem_c.dylib: abort() called",
+      "targetName": "OpenBurnBarMobileTests",
+      "testIdentifier": 914,
+      "testIdentifierString": "OpenBurnBarMobileTests/testAgentWatchReceiverSendsSignedTapAndScrollIntents()",
+      "testIdentifierURL": "test://com.apple.xcode/OpenBurnBar/OpenBurnBarMobileTests/OpenBurnBarMobileTests/testAgentWatchReceiverSendsSignedTapAndScrollIntents",
+      "testName": "testAgentWatchReceiverSendsSignedTapAndScrollIntents()"
+    },
+    {
+      "failureText": "failed: caught error: \"Error Domain=NSCocoaErrorDomain Code=513 \"You don’t have permission to save the file “obb-round2-screens” in the folder “tmp”.\" UserInfo={NSFilePath=/tmp/obb-round2-screens, NSURL=file:///tmp/obb-round2-screens, NSUnderlyingError=0x167242e20 {Error Domain=NSPOSIXErrorDomain Code=1 \"Operation not permitted\"}}\"",
+      "targetName": "OpenBurnBarMobileTests",
+      "testIdentifier": 1036,
+      "testIdentifierString": "PerfAuditScreenshotTests/testCapturePulseHeroBurnCard()",
+      "testIdentifierURL": "test://com.apple.xcode/OpenBurnBar/OpenBurnBarMobileTests/PerfAuditScreenshotTests/testCapturePulseHeroBurnCard",
+      "testName": "testCapturePulseHeroBurnCard()"
+    },
+    {
+      "failureText": "failed: caught error: \"Error Domain=NSCocoaErrorDomain Code=513 \"You don’t have permission to save the file “obb-round2-screens” in the folder “tmp”.\" UserInfo={NSFilePath=/tmp/obb-round2-screens, NSURL=file:///tmp/obb-round2-screens, NSUnderlyingError=0x163082910 {Error Domain=NSPOSIXErrorDomain Code=1 \"Operation not permitted\"}}\"",
+      "targetName": "OpenBurnBarMobileTests",
+      "testIdentifier": 1037,
+      "testIdentifierString": "PerfAuditScreenshotTests/testCaptureVerdictHeroFromMobilePipeline()",
+      "testIdentifierURL": "test://com.apple.xcode/OpenBurnBar/OpenBurnBarMobileTests/PerfAuditScreenshotTests/testCaptureVerdictHeroFromMobilePipeline",
+      "testName": "testCaptureVerdictHeroFromMobilePipeline()"
+    },
+    {
+      "failureText": "XCTAssertEqual failed: (\"nil\") is not equal to (\"Optional(\"hermes:gateway-thread-123\")\")",
+      "targetName": "OpenBurnBarMobileTests",
+      "testIdentifier": 964,
+      "testIdentifierString": "OpenBurnBarMobileTests/testHermesGatewayReplyPendingThreadBuildsSquareInboxRoute()",
+      "testIdentifierURL": "test://com.apple.xcode/OpenBurnBar/OpenBurnBarMobileTests/OpenBurnBarMobileTests/testHermesGatewayReplyPendingThreadBuildsSquareInboxRoute",
+      "testName": "testHermesGatewayReplyPendingThreadBuildsSquareInboxRoute()"
+    },
+    {
+      "failureText": "XCTUnwrap failed: expected non-nil value of type \"URL\"",
+      "targetName": "OpenBurnBarMobileTests",
+      "testIdentifier": 93,
+      "testIdentifierString": "AppStoreReviewComplianceTests/testMobileInfoPlistDeclaresGoogleClientIDMatchingFirebasePlist()",
+      "testIdentifierURL": "test://com.apple.xcode/OpenBurnBar/OpenBurnBarMobileTests/AppStoreReviewComplianceTests/testMobileInfoPlistDeclaresGoogleClientIDMatchingFirebasePlist",
+      "testName": "testMobileInfoPlistDeclaresGoogleClientIDMatchingFirebasePlist()"
+    },
+    {
+      "failureText": "The default `FirebaseApp` instance must be configured before the default Remote Config instance can be initialized. One way to ensure this is to call `FirebaseApp.configure()` in the App Delegate's `application(_:didFinishLaunchingWithOptions:)` or the `@main` struct's initializer in SwiftUI. (FIRAppNotConfigured)",
+      "targetName": "OpenBurnBarMobileTests",
+      "testIdentifier": 992,
+      "testIdentifierString": "OpenBurnBarMobileTests/testPhoneControlSenderCancelsQueuedIntentBeforeItWritesAFrame()",
+      "testIdentifierURL": "test://com.apple.xcode/OpenBurnBar/OpenBurnBarMobileTests/OpenBurnBarMobileTests/testPhoneControlSenderCancelsQueuedIntentBeforeItWritesAFrame",
+      "testName": "testPhoneControlSenderCancelsQueuedIntentBeforeItWritesAFrame()"
+    },
+    {
+      "failureText": "The default `FirebaseApp` instance must be configured before the default Remote Config instance can be initialized. One way to ensure this is to call `FirebaseApp.configure()` in the App Delegate's `application(_:didFinishLaunchingWithOptions:)` or the `@main` struct's initializer in SwiftUI. (FIRAppNotConfigured)",
+      "targetName": "OpenBurnBarMobileTests",
+      "testIdentifier": 994,
+      "testIdentifierString": "OpenBurnBarMobileTests/testPhoneControlSenderSerializesConcurrentInputIntentsBeforeWritingFrames()",
+      "testIdentifierURL": "test://com.apple.xcode/OpenBurnBar/OpenBurnBarMobileTests/OpenBurnBarMobileTests/testPhoneControlSenderSerializesConcurrentInputIntentsBeforeWritingFrames",
+      "testName": "testPhoneControlSenderSerializesConcurrentInputIntentsBeforeWritingFrames()"
+    },
+    {
+      "failureText": "Crash: OpenBurnBarMobile at specialized static XCTSwiftErrorObservation._observeErrors(in:). libsystem_c.dylib: abort() called",
+      "targetName": "OpenBurnBarMobileTests",
+      "testIdentifier": 551,
+      "testIdentifierString": "HermesServiceTests/testUnaryControlPlaneStillFallsBackToFirestoreOnIrohFailure()",
+      "testIdentifierURL": "test://com.apple.xcode/OpenBurnBar/OpenBurnBarMobileTests/HermesServiceTests/testUnaryControlPlaneStillFallsBackToFirestoreOnIrohFailure",
+      "testName": "testUnaryControlPlaneStillFallsBackToFirestoreOnIrohFailure()"
+    },
+    {
+      "failureText": "XCTAssertNotNil failed",
+      "targetName": "OpenBurnBarMobileTests",
+      "testIdentifier": 396,
+      "testIdentifierString": "FirestoreNormalizationTests/testUsageEventNormalizesDeviceIdToSourceDeviceId()",
+      "testIdentifierURL": "test://com.apple.xcode/OpenBurnBar/OpenBurnBarMobileTests/FirestoreNormalizationTests/testUsageEventNormalizesDeviceIdToSourceDeviceId",
+      "testName": "testUsageEventNormalizesDeviceIdToSourceDeviceId()"
+    }
+  ]
+}

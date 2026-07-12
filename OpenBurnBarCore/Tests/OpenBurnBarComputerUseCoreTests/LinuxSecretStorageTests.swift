@@ -1,6 +1,5 @@
 #if os(Linux)
 import Foundation
-import Glibc
 import OpenBurnBarCore
 @testable import OpenBurnBarComputerUseCore
 import XCTest
@@ -103,7 +102,7 @@ final class LinuxSecretStorageTests: XCTestCase {
         let files = try FileManager.default.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles]
+            options: []
         )
         XCTAssertGreaterThanOrEqual(files.count, 2, "fallback writes a master key and one sealed record")
         for file in files {
@@ -175,11 +174,14 @@ final class LinuxSecretStorageTests: XCTestCase {
         }
     }
 
-    private func permissions(_ url: URL) throws -> mode_t {
-        var info = stat()
-        let status = url.path.withCString { Glibc.stat($0, &info) }
-        XCTAssertEqual(status, 0)
-        return info.st_mode & 0o777
+    private func permissions(_ url: URL) throws -> Int {
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        let value = try XCTUnwrap(attributes[.posixPermissions])
+        if let permissions = value as? UInt {
+            return Int(permissions & 0o777)
+        }
+        let permissions = try XCTUnwrap(value as? NSNumber)
+        return permissions.intValue & 0o777
     }
 }
 

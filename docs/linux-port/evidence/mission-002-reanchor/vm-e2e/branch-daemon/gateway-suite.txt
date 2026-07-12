@@ -1,0 +1,10 @@
+=== health noauth ===
+{"error":{"message":"unauthorized"}}
+http=401
+=== health auth ===
+{"ok":true,"gateway":"openburnbar","platform":"linux"}
+http=200
+=== models count ===
+models 67 object list catalog False
+=== catalog ===
+catalog True platform linux n 67

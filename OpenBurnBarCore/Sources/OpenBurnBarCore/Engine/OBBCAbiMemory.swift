@@ -25,7 +25,6 @@ enum OBBCAbiMemory {
     }
 }
 
-@_cdecl("obb_string_free")
 public func obb_string_free(_ ptr: UnsafeMutablePointer<CChar>?) {
     guard let ptr else { return }
     free(ptr)

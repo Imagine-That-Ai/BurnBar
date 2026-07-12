@@ -231,37 +231,12 @@ struct HermesSquareLeftColumn: View {
         }
         .confirmationDialog(
             "Manage Mission",
-            isPresented: Binding(
-                get: { missionForActionSheet != nil },
-                set: { if !$0 { missionForActionSheet = nil } }
-            ),
+            isPresented: missionManagementIsPresented,
             titleVisibility: .visible
         ) {
-            Button("Cancel & Dismiss", role: .destructive) {
-                if let mission = missionForActionSheet {
-                    let mid = mission.id
-                    Task {
-                        await missionHost.cancelMission(id: mid)
-                        missionHost.dismissMission(id: mid)
-                    }
-                }
-                missionForActionSheet = nil
-            }
-
-            Button("Just Dismiss", role: .none) {
-                if let mission = missionForActionSheet {
-                    missionHost.dismissMission(id: mission.id)
-                }
-                missionForActionSheet = nil
-            }
-
-            Button("Keep Running", role: .cancel) {
-                missionForActionSheet = nil
-            }
+            missionManagementActions
         } message: {
-            if let mission = missionForActionSheet {
-                Text("Manage mission \"\(mission.title)\". Aborting will stop the processes on the Mac immediately.")
-            }
+            missionManagementMessage
         }
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
@@ -305,6 +280,49 @@ struct HermesSquareLeftColumn: View {
         }
         .sheet(isPresented: $isShowingSubscriptions) {
             HermesSquareSubscriptionsFolder()
+        }
+    }
+
+    private var missionManagementIsPresented: Binding<Bool> {
+        Binding(
+            get: { missionForActionSheet != nil },
+            set: { if !$0 { missionForActionSheet = nil } }
+        )
+    }
+
+    @ViewBuilder
+    private var missionManagementActions: some View {
+        Button("Cancel & Dismiss", role: .destructive) {
+            if let mission = missionForActionSheet {
+                cancelAndDismissMission(mission)
+            }
+            missionForActionSheet = nil
+        }
+
+        Button("Just Dismiss", role: .none) {
+            if let mission = missionForActionSheet {
+                missionHost.dismissMission(id: mission.id)
+            }
+            missionForActionSheet = nil
+        }
+
+        Button("Keep Running", role: .cancel) {
+            missionForActionSheet = nil
+        }
+    }
+
+    @ViewBuilder
+    private var missionManagementMessage: some View {
+        if let mission = missionForActionSheet {
+            Text("Manage mission \"\(mission.title)\". Aborting will stop the processes on the Mac immediately.")
+        }
+    }
+
+    private func cancelAndDismissMission(_ mission: MissionConsoleActiveTile) {
+        let missionID = mission.id
+        Task {
+            await missionHost.cancelMission(id: missionID)
+            missionHost.dismissMission(id: missionID)
         }
     }
 

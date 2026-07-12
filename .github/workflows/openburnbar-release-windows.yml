@@ -156,12 +156,17 @@ jobs:
           OPENBURNBAR_REQUIRE_CURRENT_WINDOWS_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.allow_unsigned == 'true' && '0' || '1' }}
         run: bash scripts/verify-version-consistency.sh
 
+  native-engine:
+    name: Build native parser engine
+    uses: ./.github/workflows/openburnbar-engine-windows.yml
+
   # ── Windows runner: build + Authenticode sign + sign the update feed ────────
   build-sign:
     name: Build + Authenticode sign
     needs:
       - resolve-release
       - portable-verify
+      - native-engine
     runs-on: windows-latest
     timeout-minutes: 60
     permissions:
@@ -182,8 +187,8 @@ jobs:
             8.0.x
             10.0.x
 
-      - name: Locate MakeAppx
-        id: makeappx
+      - name: Locate Windows SDK packaging tools
+        id: packaging-tools
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -195,8 +200,30 @@ jobs:
           if (-not $makeappx) {
             throw "MakeAppx.exe is missing from the Windows SDK on this runner."
           }
-          "path=$makeappx" >> $env:GITHUB_OUTPUT
+          $makepri = Get-ChildItem `
+            "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\makepri.exe" `
+            -ErrorAction SilentlyContinue |
+            Sort-Object { [version]$_.Directory.Parent.Name } -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $makepri) {
+            throw "MakePri.exe is missing from the Windows SDK on this runner."
+          }
+          "makeappx=$makeappx" >> $env:GITHUB_OUTPUT
+          "makepri=$makepri" >> $env:GITHUB_OUTPUT
           "MakeAppx: $makeappx"
+          "MakePri: $makepri"
+
+      - name: Download x64 native engine bundle
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: openburnbar-native-engine-win-x64
+          path: windows/native-engine/win-x64
+
+      - name: Download ARM64 native engine bundle
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: openburnbar-native-engine-win-arm64
+          path: windows/native-engine/win-arm64
 
       - name: Preflight signing configuration
         id: config
@@ -232,6 +259,8 @@ jobs:
               -p:Platform="$plat" -p:WindowsPackageType=None \
               -p:Version="$VERSION" -p:AssemblyVersion="${VERSION}.0" \
               -p:FileVersion="${VERSION}.0" -p:InformationalVersion="$VERSION" \
+              -p:OpenBurnBarNativeEngineDirectory="$GITHUB_WORKSPACE/windows/native-engine/$rid" \
+              -p:OpenBurnBarRequireNativeEngine=true \
               -o "publish/$rid"
           done
 
@@ -306,7 +335,8 @@ jobs:
         # the app keeps WindowsPackageType=None so the portable build is unchanged).
         run: |
           set -euo pipefail
-          makeappx='${{ steps.makeappx.outputs.path }}'
+          makeappx='${{ steps.packaging-tools.outputs.makeappx }}'
+          makepri='${{ steps.packaging-tools.outputs.makepri }}'
           publisher="CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US"
           for rid in win-x64 win-arm64; do
             arch="x64"
@@ -314,7 +344,8 @@ jobs:
             output="artifacts/OpenBurnBar-${VERSION}-${arch}.msix"
             pwsh -NoProfile -NonInteractive -File windows/packaging/msix/New-MsixPackage.ps1 \
               -PublishDir "publish/$rid" -Architecture "$arch" -Version "$VERSION" \
-              -OutputPath "$output" -MakeAppxPath "$makeappx" -Publisher "$publisher"
+              -OutputPath "$output" -MakeAppxPath "$makeappx" -MakePriPath "$makepri" \
+              -Publisher "$publisher"
           done
 
       - name: Authenticode sign the MSIX (Azure Artifact Signing)
@@ -363,6 +394,22 @@ jobs:
             }
             Write-Host "MSIX Authenticode valid: $relativePath :: $($signature.SignerCertificate.Subject)"
           }
+
+      - name: Exercise signed x64 MSIX install and sustained-launch lifecycle
+        if: steps.config.outputs.codesign == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $expectedPublisher = "CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US"
+          $packagePath = Join-Path $env:GITHUB_WORKSPACE "artifacts/OpenBurnBar-${env:VERSION}-x64.msix"
+          $receiptPath = Join-Path $env:GITHUB_WORKSPACE "artifacts/signed-x64-msix-lifecycle.json"
+          & windows/packaging/msix/Test-SignedMsixLifecycle.ps1 `
+            -PackagePath $packagePath `
+            -ExpectedVersion "${env:VERSION}.0" `
+            -ExpectedArchitecture X64 `
+            -ExpectedPublisher $expectedPublisher `
+            -ReceiptPath $receiptPath `
+            -HoldSeconds 20
 
       - name: Finalize checksums after signing
         run: |

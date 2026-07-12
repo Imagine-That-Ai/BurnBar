@@ -503,7 +503,11 @@ public final class RemoteClipboardController {
 final class RemoteUnlockCredentialController {
     private static let log = Logger(subsystem: "com.openburnbar.app", category: "RemoteUnlock")
     private static func debugTrace(_ message: String) {
+        // Session/peer identifiers and lock-state transitions are debug
+        // diagnostics; keep them out of the unified log in release builds.
+        #if DEBUG
         NSLog("OpenBurnBarMercury \(message)")
+        #endif
     }
 
     struct RuntimeContext {

@@ -3,7 +3,87 @@
 **Date:** 2026-07-09
 **Reference product:** shipping macOS OpenBurnBar
 **Audit target:** local windows/liquid-glass-kernel-reskin checkout
-**Status:** source, release, CI, and available VM audit; not a Windows release certification
+**Status:** implementation and automated signed-runtime certification complete; physical/manual/live-staging release gates remain
+
+## Certification Update - 2026-07-11
+
+The remediation plan in this audit has now been implemented through the F2
+source/product ledger: 46 rows are Real, with zero DeferredApproved, Blocked,
+or Substituted rows. That is implementation parity, not an unconditional public
+release claim.
+
+Current evidence materially supersedes the original source-only findings:
+
+- Native Windows usage runtime, storage recovery, protected configuration,
+  direct-process chat, settings/onboarding, activation, distribution, and the
+  remaining declared parity surfaces are integrated on `main`.
+- [Signed release run 29160512069](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29160512069)
+  succeeded for x64 and ARM64 with unsigned output forbidden. Azure Artifact
+  Signing, Authenticode verification, timestamps, checksums, Ed25519 feed,
+  SBOM, OpenVEX, and Sigstore steps all passed.
+- [Exact-candidate x64 run 29160940577](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29160940577)
+  verified 10,476/10,476 exported blobs with zero mismatches and passed the
+  Windows foundation harness and secret scan.
+- [Signed hosted x64 run 29162867538](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29162867538)
+  passed clean signed-MSIX registration, package identity checks, uninstall
+  with absence verification, and reinstall. It did not launch the app and is
+  registration evidence only, not a runtime certification result.
+- An exact `778e735a69ea9d812db87146630223ac1a3a49d7` candidate was imported into
+  Windows 11 Pro ARM64 under UTM with 10,475/10,475 files verified and zero
+  mismatches. The ARM64 solution build, 180 focused tests, all ten storage
+  failure/recovery cases, chat evidence, and a zero-finding artifact secret scan
+  passed. The evidence archive SHA-256 is
+  `1a276bd023f5d6078fee4501ced80a94da9ba1db0414b774fd184fb4a843c7ad`.
+- The decisive foundation host pass for the same exact candidate captured all
+  53 required scenarios: 17 process cases and 14 interactive UIA cases in
+  signed-in session 1. Its manifest indexes 94 artifacts with no missing
+  scenarios and zero secret findings. The evidence collector is independently
+  bound to PR #1546 commit `05e6a0bb5c` by matching expected/actual SHA-256
+  `8844a50251d2239d6d8a0f4120436c3f143ce6f5006bf10c498ac953ec3ed137`.
+  The committed evidence includes the exact aggregate UIA result, all 34
+  manifest-indexed UIA/route JSON artifacts, and a process trace with signed-in
+  profile paths deterministically redacted; raw and committed hashes are in
+  `arm64-utm/foundation-host-v6/host-evidence-provenance.json`.
+- The initial signed ARM64 receipt was invalidated. Its process samples were
+  taken about 0.1 seconds after creation; repeated sustained launches later
+  exited with `Microsoft.UI.Xaml.Markup.XamlParseException` at
+  `FlyoutWindow.InitializeComponent` because the manual MSIX lacked a
+  package-root `resources.pri`. Signature, identity, install, uninstall, and
+  reinstall evidence remain valid, but runtime launch did not pass. PR #1541
+  fixes the resource index and adds 20-second clean-install and reinstall
+  launch holds with WER and WinUI diagnostic rejection. Exact signed successor
+  [run 29166970379](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29166970379)
+  completed successfully from `9dbcaa791794944326ce9ffb18ed4d9771f31ecc`.
+  Its hosted x64 receipt passed both responsive launch holds with zero crash
+  events. The exact ARM64 MSIX was then hash-verified, signature-verified, and
+  independently passed the same lifecycle on Windows 11 Pro ARM64 under UTM
+  with zero crash events or fatal WinUI diagnostics. The corrected package
+  hashes are `ac5b63a258c2151c7f1c8f3092ff54720d8c97b375efa38754a2e4a1857e0f43`
+  for x64 and `7350fd248f65fd9de6eb3b2b5804508d9b47386a9fa0d9028526d70791874d8b`
+  for ARM64.
+- These are related but deliberately separate proof candidates. Foundation
+  candidate `778e735a69ea9d812db87146630223ac1a3a49d7` proves source import,
+  build/tests, storage, process, and interactive UIA behavior. Descendant signed
+  runtime candidate `9dbcaa791794944326ce9ffb18ed4d9771f31ecc` proves corrected
+  package signing, install, sustained launch, uninstall, and reinstall. Its
+  ARM64 import independently verified 10,477/10,477 files with zero mismatches.
+  Git ancestry establishes `778e735a` as the successor's merge base and
+  ancestor. Their exact eight-file delta is confined to release workflows,
+  candidate export/evidence tooling, and MSIX packaging/lifecycle gates; no
+  Windows app/product source file differs. The collector fix does not change
+  product behavior.
+- The physical iPhone companion built, signed, installed, and launched. Its
+  suite recorded 1,240 passed, 13 failed, and 28 skipped tests, so this is
+  physical compile/install evidence rather than a green-suite claim.
+
+The committed evidence index is
+[`evidence/final-certification-2026-07-11/README.md`](evidence/final-certification-2026-07-11/README.md).
+The remaining blockers to a 100% certification statement are physical Windows
+x64/ARM64 hardware performance and graphics coverage; Narrator, keyboard, DPI,
+and high-contrast manual protocols; live staging OAuth/App Check/CloudVault and
+cross-device flows; physical Computer Use/media/file-safety validation; and the
+public update/rollback/Store release lifecycle. The QA checklist below remains
+unchecked where a row combines any of these unproven requirements.
 
 ## Implementation Update - 2026-07-10
 
@@ -59,7 +139,10 @@ coverage. It does not replace the remaining physical-device Narrator protocol,
 150%/200% DPI sweeps, high-contrast OS theme validation, or manual keyboard
 certification required before a parity release claim.
 
-## Executive Summary
+## Original Executive Summary (Superseded)
+
+The following was the audit-time finding on 2026-07-09. It is retained as the
+remediation baseline and is superseded by the certification update above.
 
 Windows is a substantial code port, but it is not at macOS product parity or
 ready for a parity release. The shell, tray foundation, WinUI navigation,
@@ -83,7 +166,7 @@ The public v1.0.29 release has macOS artifacts but no Windows installer or
 MSIX package. A passing scoped ledger and portable C# tests must not be
 treated as end-to-end product parity evidence.
 
-## Audit Evidence and Limitations
+## Original Audit Evidence and Limitations (Superseded)
 
 - The selected Windows Settings, Shell, and Dashboard suites passed: 233 tests.
 - scripts/ci/verify-windows-parity-ledger.sh passed for its 46 scoped rows; its
@@ -98,7 +181,7 @@ treated as end-to-end product parity evidence.
   daemon lifecycle, update/recovery, chat, notifications, Computer Use, and
   Mercury/media behavior where supported by its distribution channel.
 
-## Detailed Parity Matrix
+## Original Detailed Parity Matrix (Remediation Baseline)
 
 | Area | What differs and why it matters | Recommended fix and implementation notes | Priority | Test steps |
 |---|---|---|---|---|
@@ -188,9 +271,26 @@ and release acceptance fixtures between Swift and C#.
 
 ## Conclusion
 
-The audit now has a concrete Windows foundation implementation covering the
-live data plane, settings/onboarding, activation/updater composition, package
-assets, tray recovery, diagnostics, and exact-candidate host evidence. A parity
-release must still satisfy every applicable QA item with signed artifacts and
-independent Windows-host or physical-device evidence; source composition and a
-single VM run do not lower that bar.
+The audit's implementation plan is complete under the repository's F2 ledger.
+The x64/ARM64 build, signing/provenance, hosted x64 registration, ARM64 UTM
+foundation, and corrected signed-runtime gates are proven. The corrected x64
+and ARM64 packages each passed clean-install and reinstall 20-second responsive
+launch holds with zero crash events. The evidence does not yet close every row
+in the QA checklist.
+
+Accordingly, the accurate current claim is: **100% source/product parity and
+substantially complete automated certification, but not 100% physical release
+certification**. A public parity release remains gated on the explicitly named
+physical Windows, manual accessibility/display, live staging/cross-device,
+advanced safety, and public lifecycle evidence above.
+
+## Independent physical-release certification addendum - 2026-07-11
+
+The independent release-certification lane is recorded under
+[`evidence/physical-release-certification-2026-07-11/CERTIFICATION_REPORT.md`](evidence/physical-release-certification-2026-07-11/CERTIFICATION_REPORT.md).
+Its post-fix macOS-reachable matrix is green, but the overall verdict remains
+**NO-GO**: physical x64/ARM64 performance, manual accessibility/display,
+live staging OAuth/App Check/CloudVault, advanced media/Computer Use safety,
+and Store/update lifecycle evidence are each explicitly blocked by named
+external prerequisites. The UTM ARM64 guest is retained for preparation only
+and is not counted as physical ARM64 certification.

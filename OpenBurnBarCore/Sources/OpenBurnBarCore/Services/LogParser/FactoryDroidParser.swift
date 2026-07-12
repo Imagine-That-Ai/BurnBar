@@ -35,6 +35,10 @@ public final class FactoryDroidParser: LogParser, Sendable {
     }
 
     public func parse(options: LogParseOptions) async throws -> ParseResult {
+        try parseSynchronously(options: options)
+    }
+
+    func parseSynchronously(options: LogParseOptions) throws -> ParseResult {
         let sessionsURL = sessionsDirectoryOverride
             ?? URL(fileURLWithPath: NSString(string: provider.logDirectory).expandingTildeInPath)
         let sessionsPath = sessionsURL.path

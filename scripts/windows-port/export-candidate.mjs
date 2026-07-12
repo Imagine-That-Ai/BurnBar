@@ -140,10 +140,14 @@ function hashBlobObjects(records) {
   return hashed;
 }
 
-async function runArchive(ref, archivePath) {
+export async function runArchive(ref, archivePath, cwd = repoRoot) {
   await new Promise((resolvePromise, reject) => {
-    const child = spawn('git', ['archive', '--format=tar', '--prefix=BurnBar/', '-o', archivePath, ref], {
-      cwd: repoRoot,
+    const child = spawn('git', [
+      '-c', 'core.autocrlf=false',
+      '-c', 'core.eol=lf',
+      'archive', '--format=tar', '--prefix=BurnBar/', '-o', archivePath, ref,
+    ], {
+      cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let stderr = '';
@@ -234,7 +238,9 @@ async function main() {
   console.log(JSON.stringify(summary, null, 2));
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
-});
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  });
+}

@@ -1,0 +1,35 @@
+{
+  "schema": "openburnbar.windows.release-artifact-reference.v1",
+  "status": "REFERENCE_ONLY_NOT_PHYSICAL_CERTIFICATION",
+  "source": "PR #1541 and PR #1542 recorded workflow/artifact state",
+  "references": [
+    {
+      "pullRequest": 1541,
+      "workflowRunId": 29166970379,
+      "workflowRunUrl": "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29166970379",
+      "commitSha": "9dbcaa791794944326ce9ffb18ed4d9771f31ecc",
+      "workflowArtifactName": "windows-release-v1.0.29",
+      "workflowArtifactArchitecture": "x64+ARM64 release bundle",
+      "packageArchitecture": "x64",
+      "packageSha256": "ac5b63a258c2151c7f1c8f3092ff54720d8c97b375efa38754a2e4a1857e0f43",
+      "signatureResult": "verified",
+      "signatureIdentity": "recorded signed release result; see PR #1542 exact receipt",
+      "runtimeReceipt": "PR #1542 signed-x64-msix-lifecycle-v2.json",
+      "note": "Recorded artifact identity only; no physical x64 certification is claimed by this bundle."
+    },
+    {
+      "pullRequest": 1541,
+      "workflowRunId": 29166970379,
+      "workflowRunUrl": "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29166970379",
+      "commitSha": "9dbcaa791794944326ce9ffb18ed4d9771f31ecc",
+      "workflowArtifactName": "windows-release-v1.0.29",
+      "workflowArtifactArchitecture": "x64+ARM64 release bundle",
+      "packageArchitecture": "ARM64",
+      "packageSha256": "7350fd248f65fd9de6eb3b2b5804508d9b47386a9fa0d9028526d70791874d8b",
+      "signatureResult": "verified",
+      "signatureIdentity": "Imagine That AI LLC; Microsoft timestamp recorded in PR #1542",
+      "runtimeReceipt": "PR #1542 signed-arm64-msix-integrity-v2.json and lifecycle v2 receipt",
+      "note": "Recorded artifact identity only; UTM/vTPM evidence is not physical ARM64 certification."
+    }
+  ]
+}

@@ -7,6 +7,9 @@ import Foundation
 let packageRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
 let buildForLinuxBoundary = ProcessInfo.processInfo.environment["OPENBURNBAR_DAEMON_LINUX_BOUNDARY_BUILD"] == "1"
 let buildLinuxSecurityOnly = ProcessInfo.processInfo.environment["OPENBURNBAR_LINUX_SECURITY_ONLY_BUILD"] == "1"
+let disableBurnBarRemoteXCFramework = ProcessInfo.processInfo.environment[
+    "OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK"
+] == "1"
 #if os(Windows)
 let buildOnWindows = true
 #else
@@ -56,7 +59,7 @@ let hasLibSignalSwiftPackage = FileManager.default.fileExists(
         .standardizedFileURL
         .path
 )
-let hasBurnBarRemoteXCFramework = FileManager.default.fileExists(
+let hasBurnBarRemoteXCFramework = !disableBurnBarRemoteXCFramework && FileManager.default.fileExists(
     atPath: packageRoot
         .appendingPathComponent("../Vendor/BurnBarRemote.xcframework")
         .standardizedFileURL

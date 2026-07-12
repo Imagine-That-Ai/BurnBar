@@ -34,6 +34,10 @@ public final class ClaudeCodeParser: LogParser, Sendable {
     }
 
     public func parse(options: LogParseOptions) async throws -> ParseResult {
+        try parseSynchronously(options: options)
+    }
+
+    func parseSynchronously(options: LogParseOptions) throws -> ParseResult {
         let projectsURL = projectsDirectoryOverride
             ?? URL(fileURLWithPath: (provider.logDirectory as NSString).expandingTildeInPath)
         let projectsPath = projectsURL.path

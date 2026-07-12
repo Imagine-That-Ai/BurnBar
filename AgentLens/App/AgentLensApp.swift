@@ -406,6 +406,15 @@ struct OpenBurnBarApp: App {
     var body: some Scene {
         liveMenuBarScene
             .commands {
+                // Standard macOS Cmd-, binding. Without this, Settings only
+                // opens from the status-item menu's key equivalent, which is
+                // active solely while that menu is open.
+                CommandGroup(replacing: .appSettings) {
+                    Button("Settings…") {
+                        AppCommandRouter.shared.openSettings?()
+                    }
+                    .keyboardShortcut(",", modifiers: .command)
+                }
                 #if DEBUG
                 CommandMenu("Debug") {
                     Button(

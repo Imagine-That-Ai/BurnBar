@@ -136,9 +136,11 @@ describe('OverviewSurface', () => {
   it('renders offline notice when bridge is unavailable', () => {
     freezeLoads();
     render(<OverviewSurface />);
-    expect(
-      screen.getByText(/Start or reconnect the local daemon to populate health, activity, and provider data./)
-    ).toBeTruthy();
+    const matches = screen.getAllByText(
+      /Start or reconnect the local daemon to populate health, activity, and provider data./
+    );
+    expect(matches.length).toBeGreaterThanOrEqual(1);
+    expect(document.querySelector('[data-overview-shell-state]') || document.querySelector('.dashboard-layout-shell')).toBeTruthy();
   });
 
   it('reconnect refreshes health and both lane loads', async () => {

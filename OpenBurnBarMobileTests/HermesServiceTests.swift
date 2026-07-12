@@ -118,6 +118,49 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertTrue(service.isStreaming)
     }
 
+    func testCancelGenerationFinalizesStreamingTurnWithoutClearingChat() {
+        let service = HermesService()
+        service.sendMessage("Hello Hermes")
+        XCTAssertTrue(service.isStreaming)
+        // Stage the placeholder the streaming engine would be driving.
+        service.messages.append(
+            HermesChatMessage(role: .assistant, text: "Partial reply", isStreaming: true)
+        )
+
+        service.cancelGeneration()
+
+        XCTAssertFalse(service.isStreaming)
+        XCTAssertEqual(service.messages.count, 2)
+        XCTAssertEqual(service.messages.first?.text, "Hello Hermes")
+        XCTAssertEqual(service.messages.last?.text, "Partial reply")
+        XCTAssertEqual(service.messages.last?.isStreaming, false)
+        XCTAssertFalse(service.messages.last?.isError ?? true)
+    }
+
+    func testCancelGenerationDropsEmptyStreamingPlaceholder() {
+        let service = HermesService()
+        service.sendMessage("Hello Hermes")
+        service.messages.append(
+            HermesChatMessage(role: .assistant, text: "", isStreaming: true)
+        )
+
+        service.cancelGeneration()
+
+        XCTAssertFalse(service.isStreaming)
+        XCTAssertEqual(service.messages.count, 1)
+        XCTAssertEqual(service.messages.first?.role, .user)
+    }
+
+    func testCancelGenerationWithoutActiveStreamIsANoOp() {
+        let service = HermesService()
+        service.messages = [HermesChatMessage(role: .assistant, text: "Done")]
+
+        service.cancelGeneration()
+
+        XCTAssertEqual(service.messages.count, 1)
+        XCTAssertFalse(service.isStreaming)
+    }
+
     func testSendEmptyMessageIsNoOp() {
         let service = HermesService()
         service.sendMessage("   ")

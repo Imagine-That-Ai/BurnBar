@@ -133,7 +133,7 @@ struct DashboardChatWorkspaceView: View {
             }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("This starts a new chat. Previous Burn Bar chats stay in History.")
+            Text("This starts a new chat. Previous BurnBar chats stay in History.")
         }
         .hermesRuntimeGate(
             controller: activeController,

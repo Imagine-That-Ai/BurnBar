@@ -1,0 +1,82 @@
+{
+  "generatedAt": "2026-07-09T15:10:13.400Z",
+  "source": "apps/linux-desktop/src/providerPathRegistry.ts",
+  "xdg_notes": "Daemon support dir uses XDG_DATA_HOME/openburnbar (lowercase); runtime socket is XDG_RUNTIME_DIR/openburnbar/daemon.sock; VS Code globalStorage uses ~/.config or XDG_CONFIG_HOME on Linux.",
+  "providers": {
+    "codex": {
+      "logical": "~/.codex/sessions",
+      "filePattern": "*.jsonl",
+      "providerId": "codex"
+    },
+    "claudeCode": {
+      "logical": "~/.claude/projects",
+      "filePattern": "*.jsonl",
+      "providerId": "claude"
+    },
+    "xAI": {
+      "logical": "~/.grok/sessions",
+      "filePattern": "summary.json",
+      "providerId": "grok"
+    },
+    "openCode": {
+      "logical": "~/.local/share/opencode",
+      "filePattern": "opencode.db",
+      "providerId": "opencode"
+    },
+    "goose": {
+      "logical": "~/.local/share/goose/sessions",
+      "filePattern": "sessions.db",
+      "providerId": "goose"
+    },
+    "cline": {
+      "logical": "~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/tasks",
+      "filePattern": "*.json",
+      "providerId": "cline"
+    },
+    "cursor": {
+      "logical": "~/.cursor/ai-tracking",
+      "filePattern": "*.db",
+      "providerId": "cursor"
+    },
+    "geminiCLI": {
+      "logical": "~/.gemini/tmp",
+      "filePattern": "*.json",
+      "providerId": "gemini"
+    },
+    "kimi": {
+      "logical": "~/.kimi/sessions",
+      "filePattern": "*.jsonl",
+      "providerId": "kimi"
+    },
+    "piAgent": {
+      "logical": "~/.pi/sessions",
+      "filePattern": "*.jsonl",
+      "providerId": "pi"
+    },
+    "omp": {
+      "logical": "~/.omp/agent/sessions",
+      "filePattern": "*.jsonl",
+      "providerId": "omp"
+    },
+    "factory": {
+      "logical": "~/.factory/sessions",
+      "filePattern": "*.jsonl",
+      "providerId": "droid"
+    },
+    "forgeDev": {
+      "logical": "~/.forge/sessions",
+      "filePattern": "*.jsonl",
+      "providerId": "forge"
+    },
+    "antigravity": {
+      "logical": "~/.gemini/antigravity-cli",
+      "filePattern": "history.jsonl",
+      "providerId": "antigravity"
+    },
+    "junie": {
+      "logical": "~/.junie/sessions",
+      "filePattern": "*.jsonl",
+      "providerId": "junie"
+    }
+  }
+}

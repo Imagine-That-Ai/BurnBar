@@ -1,4 +1,4 @@
-# OpenBurnBar Windows — Parity Certification Bundle (G5 evidence)
+# OpenBurnBar Windows — Scoped Parity Evidence Bundle
 
 **Status:** Living evidence ledger for Phase 5 gate **G5** (`docs/WINDOWS_PORT_MASTER_PLAN.md` §7.3).
 **Role:** Single source of truth for an independent reviewer to decide **GO / FIX** on launch certification — not the gate verdict itself.
@@ -19,8 +19,9 @@
 > **Achieved 2026-07-09 under ledger laws:** **46 Real / 0 DeferredApproved / 0 Blocked /
 > 0 Substituted.** F1/F2 column cells below remain historical **exit-criteria** language
 > from plan authoring; **current** production-parity status is only the ledger row + §1
-> Status column (all primary nav **Real**). Operational host steps (Authenticode private
-> key, required GH check flip, physical TPM claim) sit outside the in-repo ledger gate.
+> Status column (all primary nav **Real**). Artifact Signing is proven by release
+> run 29160512069; Store/winget publication, required GH check configuration, and
+> physical TPM claims remain outside the in-repo ledger gate.
 
 | Area | F1 — Ship Peer **exit criteria** (default) | F2 — True 1:1 **exit criteria** |
 |------|--------------------------------------------|----------------------------------|
@@ -45,6 +46,34 @@
 | winget manifest merged | §6 Open dependencies (W0) |
 | Every parity-matrix row green with committed evidence | §1–§3 matrices + §5 checklist |
 | Launch bundle: installer hash, update recording, parity results, KAT/DB/parser/wrap logs, SBOM/Sigstore, crash-free session | §5 + §3 |
+
+## 0.2 Certification checkpoint - 2026-07-11
+
+The F2 implementation ledger remains complete at 46 Real rows. Signed x64 and
+ARM64 candidate production, Authenticode verification, timestamps, checksums,
+Ed25519 feed generation, SBOM, OpenVEX, and Sigstore passed in release run
+[29160512069](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29160512069).
+Exact-candidate hosted x64 and Windows 11 Pro ARM64 UTM foundation evidence is
+indexed under
+[`evidence/final-certification-2026-07-11/`](evidence/final-certification-2026-07-11/README.md).
+The decisive ARM64 foundation run verified candidate
+`778e735a69ea9d812db87146630223ac1a3a49d7` and captured 53/53 required
+scenarios, including 17 process cases and 14 interactive UIA cases, with 94
+artifacts indexed and zero secret findings. Its separately bound collector is
+PR #1546 commit `05e6a0bb5c` at SHA-256
+`8844a50251d2239d6d8a0f4120436c3f143ce6f5006bf10c498ac953ec3ed137`.
+Corrected signed runtime evidence remains owned by descendant candidate
+`9dbcaa791794944326ce9ffb18ed4d9771f31ecc`; the bundle does not collapse these
+different proof scopes into a false single-candidate claim. Its ARM64 import
+verified 10,477/10,477 files with zero mismatches before package lifecycle
+validation.
+
+G5 is not yet a public GO. Physical Windows performance/graphics, the manual
+accessibility and display matrix, live staging account/cloud/cross-device
+flows, physical advanced-safety workflows, and the public update/Store/winget
+lifecycle remain open. Historical matrix cells below are retained for
+provenance; this checkpoint and the final-certification index are the current
+evidence boundary.
 
 ---
 
@@ -114,10 +143,10 @@
 | **PAL: IPC** | B | Unix socket + codesign | Named pipe + signed-nonce handshake | `OpenBurnBar.Pal.Ipc.Tests` (20/20 cited HANDOFF) | **Proven** | `design/0004-named-pipe-peer-auth.md`; B1 `windows/b1-conpty-cli-stream` |
 | **PAL: ConPTY** | B | `openpty` | `ConPtySession` | IPC Windows project + runbook `CONPTY-019-dev-host-runbook.md` | **Harness built** | B1 in flight |
 | **PAL: input / CU policy** | B | CGEvent / AX | `SendInput` + UIA (advisory per R17) | `OpenBurnBar.Pal.Input.Tests` | **Policy tests**; G4 for full loop | Phase 4 |
-| **Distribution: MSIX** | B | DMG + notarize | MSIX + Authenticode | `openburnbar-release-windows.yml`, `pr-windows-dist.yml` | **Pipeline authored** | **#1255** (E2 MSIX) |
+| **Distribution: MSIX** | B | DMG + notarize | MSIX + Authenticode | `openburnbar-release-windows.yml`, `pr-windows-dist.yml` | **Signed x64 + ARM64 artifacts proven** — run [29160512069](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29160512069) | **#1255** (E2 MSIX); final certification bundle |
 | **Distribution: update feed** | A | Ed25519 appcast | Pinned Ed25519 feed verifier | `OpenBurnBar.Updater.Tests`, `OpenBurnBar.Dist.Tests` | **Verifier tests green** | R19; dist tests |
 | **Distribution: winget/choco** | B | Homebrew cask | winget + Chocolatey manifests | Release workflow + §6 W0 | **Pending** external publisher | W0 Alberto |
-| **SBOM / Sigstore** | A | Release pipeline | Windows release job (keyless attest) | `release.yml` pattern / `openburnbar-release-windows.yml` | **Blocked** (pipeline present — not Real until signed release evidence in §5) | G5 bundle |
+| **SBOM / Sigstore** | A | Release pipeline | Windows release job (keyless attest) | `release.yml` pattern / `openburnbar-release-windows.yml` | **Proven for signed candidate** — run [29160512069](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29160512069) | G5 bundle; final certification bundle |
 | **Integrations: Cast** | B | `Services/Cast/` | `OpenBurnBar.Integrations.Cast.Tests` | Protocol + mDNS tests | **Unit parity** | W9 |
 | **Integrations: Home Assistant** | B | `Services/HomeAssistant/` | `OpenBurnBar.Integrations.Tests` | Client + mapper tests | **Unit parity** | W9 |
 | **Integrations: Mercury** | B | AVFoundation pipeline | RFB + media codec port | `OpenBurnBar.Integrations.Mercury.Tests` | **Protocol tests**; AV G4 | W9 |
@@ -165,7 +194,7 @@ Each row: **(a)** screenshot — Win11 Pro pass; **(b)** test/command; **(c)** a
 
 | Flow / surface | Screenshot (Win11 Pro) | Automated evidence | Drift |
 |----------------|------------------------|--------------------|-------|
-| Cold install signed MSIX | _(blocked — Win11 Pro pass pending; also W0 signing cert)_ | `openburnbar-release-windows.yml` run ID + installer SHA256 in release notes | D10 |
+| Cold install signed MSIX | Corrected hosted x64 and ARM64 UTM signed-user lifecycles passed; physical Win11 Pro pass remains | Corrected signed packages/hashes and hosted x64 lifecycle: run [29166970379](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29166970379) plus `evidence/final-certification-2026-07-11/hosted-windows/signed-x64-msix-lifecycle-v2.json`; exact ARM64 install/sustained-launch/uninstall/reinstall receipt: `evidence/final-certification-2026-07-11/arm64-utm/signed-arm64-msix-lifecycle-v2.json`. The earlier run and v1 receipts are preserved as integrity/registration evidence and explicitly invalidated for runtime. | D10 |
 | Auto-update from Ed25519 feed | _(blocked — Win11 Pro pass pending)_ | `OpenBurnBar.Updater.Tests` + recorded feed apply log | — |
 | Tray → flyout → main window | _(blocked — Win11 Pro pass pending)_ | `DEV_HOST_RUNBOOK.md` / validation pass script | — |
 | Dashboard populated | _(blocked — Win11 Pro pass pending)_ | `dotnet test windows/tests/dashboard` | D1 |
@@ -198,7 +227,7 @@ Each row: **(a)** screenshot — Win11 Pro pass; **(b)** test/command; **(c)** a
 
 | Item | Blocks | Notes |
 |------|--------|-------|
-| **W0 Authenticode / Trusted Signing cert** | Signed MSIX in production | Calendar-bound; start Phase 0 (`HANDOFF.md` §W0) |
+| ~~**W0 Authenticode / Trusted Signing identity**~~ **RESOLVED 2026-07-11** | Signed MSIX in production | Identity validation passed; x64 and ARM64 Authenticode signing and timestamp verification passed in run [29160512069](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29160512069). |
 | **W0 Microsoft Store + winget publisher** | Store + manifest merge | External humans, not agents |
 | **Win11 Pro validation pass** | §5 screenshots + D2 TPM proof | GPU fidelity = WS-D; this bundle only reserves paths |
 | **CI required-gate flip (A2)** | `pr-windows-full.yml` blocking merge | After green history on `windows-latest` |

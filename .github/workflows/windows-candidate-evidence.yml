@@ -40,7 +40,9 @@ jobs:
             10.0.x
 
       - name: Export history-independent candidate
-        run: node scripts/windows-port/export-candidate.mjs --output-dir "$env:RUNNER_TEMP\candidate-export"
+        run: |
+          node --test scripts/windows-port/export-candidate.test.mjs
+          node scripts/windows-port/export-candidate.mjs --output-dir "$env:RUNNER_TEMP\candidate-export"
 
       - name: Import and verify candidate in disposable checkout
         run: |

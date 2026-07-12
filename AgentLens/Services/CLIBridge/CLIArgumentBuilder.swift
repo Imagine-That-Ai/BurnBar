@@ -183,11 +183,16 @@ enum CLIArgumentBuilder {
 
     static func cursorAgentArguments(
         prompt: String,
+        model: String = "",
         workspaceDirectory: URL? = nil,
         capabilityGrant: AgentCapabilityGrant? = nil,
         hasFreshLocalAuthProof: Bool = false
     ) -> [String] {
         var arguments: [String] = []
+        let trimmedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedModel.isEmpty {
+            arguments.append(contentsOf: ["--model", trimmedModel])
+        }
         if let workspaceDirectory {
             arguments.append(contentsOf: ["--add-dir", workspaceDirectory.path])
         }
@@ -445,12 +450,14 @@ extension CLIBridge {
 
     nonisolated static func cursorAgentArguments(
         prompt: String,
+        model: String = "",
         workspaceDirectory: URL? = nil,
         capabilityGrant: AgentCapabilityGrant? = nil,
         hasFreshLocalAuthProof: Bool = false
     ) -> [String] {
         CLIArgumentBuilder.cursorAgentArguments(
             prompt: prompt,
+            model: model,
             workspaceDirectory: workspaceDirectory,
             capabilityGrant: capabilityGrant,
             hasFreshLocalAuthProof: hasFreshLocalAuthProof
