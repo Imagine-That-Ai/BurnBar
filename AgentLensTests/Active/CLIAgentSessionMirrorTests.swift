@@ -1123,7 +1123,9 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
             "fileEditsAllowed": false,
             "requestedModelID": "junie-default"
         ]
-        XCTAssertFalse(CLIAgentMissionRuntimePlanner.junieMissionHasFullDesktopCapabilities(data: readOnlyData))
+        XCTAssertFalse(CLIAgentJunieMissionPolicy.hasFullDesktopCapabilities(
+            CLIAgentMissionRuntimePlanner.capabilityGrant(for: CLIAgentMissionBackend(chatBackend: .junie), data: readOnlyData)
+        ))
         XCTAssertNil(CLIAgentMissionRuntimePlanner.visibleTerminalLaunchPlan(
             title: "Restricted Junie mission",
             prompt: "Inspect without edits or commands.",
@@ -1133,7 +1135,9 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
 
         var editOnlyData = readOnlyData
         editOnlyData["fileEditsAllowed"] = true
-        XCTAssertFalse(CLIAgentMissionRuntimePlanner.junieMissionHasFullDesktopCapabilities(data: editOnlyData))
+        XCTAssertFalse(CLIAgentJunieMissionPolicy.hasFullDesktopCapabilities(
+            CLIAgentMissionRuntimePlanner.capabilityGrant(for: CLIAgentMissionBackend(chatBackend: .junie), data: editOnlyData)
+        ))
         XCTAssertNil(CLIAgentMissionRuntimePlanner.visibleTerminalLaunchPlan(
             title: "Edit-only Junie mission",
             prompt: "Edit without commands.",
@@ -1152,7 +1156,9 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
             "requestedModelID": "junie-default"
         ]
 
-        XCTAssertTrue(CLIAgentMissionRuntimePlanner.junieMissionHasFullDesktopCapabilities(data: data))
+        XCTAssertTrue(CLIAgentJunieMissionPolicy.hasFullDesktopCapabilities(
+            CLIAgentMissionRuntimePlanner.capabilityGrant(for: CLIAgentMissionBackend(chatBackend: .junie), data: data)
+        ))
         let plan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.visibleTerminalLaunchPlan(
             title: "Full Junie mission",
             prompt: "Run with explicit full desktop approval.",
@@ -1163,6 +1169,31 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         XCTAssertTrue(plan.arguments.contains("--task"))
         XCTAssertTrue(plan.arguments.contains("--model"))
         XCTAssertTrue(plan.arguments.contains("junie-default"))
+    }
+
+    func test_junieMissionPolicy_directExecutionRefusalFailsClosed() throws {
+        let junie = CLIAgentMissionBackend(chatBackend: .junie)
+        let restricted: [String: Any] = ["commandsAllowed": true, "fileEditsAllowed": false]
+        let refusal = try XCTUnwrap(CLIAgentJunieMissionPolicy.directExecutionRefusal(
+            backend: junie,
+            grant: CLIAgentMissionRuntimePlanner.capabilityGrant(for: junie, data: restricted)
+        ))
+        XCTAssertEqual(refusal.status, "failed")
+        XCTAssertTrue(refusal.sessionID.hasPrefix("policy-junie-"))
+        XCTAssertEqual(refusal.errorMessage?.contains("command execution and file-edit approval"), true)
+
+        let full: [String: Any] = ["commandsAllowed": true, "fileEditsAllowed": true]
+        XCTAssertNil(CLIAgentJunieMissionPolicy.directExecutionRefusal(
+            backend: junie,
+            grant: CLIAgentMissionRuntimePlanner.capabilityGrant(for: junie, data: full)
+        ))
+
+        // Non-Junie backends are never refused by the Junie policy.
+        let codex = CLIAgentMissionBackend(chatBackend: .codex)
+        XCTAssertNil(CLIAgentJunieMissionPolicy.directExecutionRefusal(
+            backend: codex,
+            grant: CLIAgentMissionRuntimePlanner.capabilityGrant(for: codex, data: restricted)
+        ))
     }
 
     func test_missionRuntimePlanner_buildsVisibleTerminalPlansForGrantBackedRuntimes() throws {

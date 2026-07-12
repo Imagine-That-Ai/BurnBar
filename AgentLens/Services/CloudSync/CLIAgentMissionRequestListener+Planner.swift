@@ -371,8 +371,6 @@ enum CLIAgentMissionRuntimePlanner {
                 arguments: arguments,
                 extraEnvironment: [:]
             )
-        case ChatBackendID.codex.rawValue, ChatBackendID.claude.rawValue:
-            return nil
         default:
             return nil
         }
@@ -422,9 +420,7 @@ enum CLIAgentMissionRuntimePlanner {
                 extraEnvironment: [:]
             )
         case ChatBackendID.junie.rawValue:
-            guard junieMissionHasFullDesktopCapabilities(data: data) else {
-                return nil
-            }
+            guard CLIAgentJunieMissionPolicy.hasFullDesktopCapabilities(grant) else { return nil }
             return CLIAgentMissionDirectLaunchPlan(
                 executableName: "junie",
                 arguments: CLIArgumentBuilder.junieArguments(
@@ -476,11 +472,6 @@ enum CLIAgentMissionRuntimePlanner {
         default:
             return nil
         }
-    }
-
-    static func junieMissionHasFullDesktopCapabilities(data: [String: Any]) -> Bool {
-        ((data["commandsAllowed"] as? Bool) ?? false) &&
-            ((data["fileEditsAllowed"] as? Bool) ?? false)
     }
 
     static func capabilityGrant(
