@@ -4,7 +4,7 @@
   "files": [
     {
       "path": "apps/linux-desktop/src-tauri/src/lib.rs",
-      "lines": 3267
+      "lines": 3405
     },
     {
       "path": "android/app/src/main/java/com/openburnbar/ui/components/SwarmBackground.kt",

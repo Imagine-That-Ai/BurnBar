@@ -30,7 +30,7 @@ jobs:
           leaked="$(git ls-remote --tags "https://github.com/${GITHUB_REPOSITORY}.git" 'refs/tags/preserve/*' || true)"
           if [[ -n "${leaked}" ]]; then
             echo "::error::SECRET LEAK: preserve/* tag(s) present on origin. These carry V-47 secrets."
-            echo "${leaked}" | sed 's/^/  /'
+            echo "${leaked}" | awk '{ print "  " $0 }'
             echo "Rotate the affected credentials and delete the tag(s): git push origin --delete <tag>" >&2
             exit 1
           fi
