@@ -56,6 +56,13 @@ final class DataStoreCoordinator {
     #endif
     private var lastAppliedFingerprint: UsageContentFingerprint?
     private var nextWindowBoundary: Date = .distantPast
+    /// Usage-table write marker observed by the most recent
+    /// `reloadUsagesIfChanged()` reload (see `UsageTableWriteMarker`). `nil`
+    /// until the first tick reload, which therefore always runs.
+    private var lastReloadedUsageWriteMarker: Int?
+    #if DEBUG
+    var debugLastReloadedUsageWriteMarkerForTesting: Int? { lastReloadedUsageWriteMarker }
+    #endif
     /// Injectable clock so boundary-crossing behavior is unit-testable.
     @ObservationIgnored var nowProvider: () -> Date = Date.init
 
@@ -400,8 +407,8 @@ final class DataStoreCoordinator {
     }
 
     /// No-change short-circuit shared by BOTH replace paths (the periodic
-    /// cadence tick lands in `replaceUsages` via the billing reconcile's
-    /// `fetchAllUsage`, while init/deleteAll land in
+    /// cadence tick lands in `replaceUsages` via `reloadUsagesIfChanged`
+    /// when the usage write marker advanced, while init/deleteAll land in
     /// `replaceUsageSnapshot`). A content-identical replacement before the
     /// next time-window boundary only refreshes `lastRefresh`; everything
     /// downstream (sorts, aggregate caches, `usagesVersion` consumers) is
@@ -442,5 +449,39 @@ final class DataStoreCoordinator {
     func deleteAll() async throws {
         try await actor.deleteAllUsageRows()
         await refresh()
+    }
+
+    /// Periodic-tick apply: reloads the full usage set ONLY when the usage
+    /// table content changed since the last reload (write marker advanced)
+    /// or a rendered time-window boundary passed (midnight / rolling 7d/30d
+    /// decay — the same boundary contract as `UsageReplaceGate`).
+    ///
+    /// This is what makes the refresh tick O(delta) instead of
+    /// O(total-history): an idle tick previously refetched + re-sorted +
+    /// re-aggregated every `token_usage` row before the fingerprint gate
+    /// could discard the result; now it performs one actor hop to read an
+    /// integer and returns. When content DID change, the reload runs the
+    /// exact same full `fetchAllUsage` → `replaceUsages` path as before, so
+    /// displayed numbers are bit-identical to the previous architecture.
+    func reloadUsagesIfChanged() async {
+        let marker = await actor.usageTableWriteMarker
+        let now = nowProvider()
+        if let lastReloadedUsageWriteMarker,
+           lastReloadedUsageWriteMarker == marker,
+           now < nextWindowBoundary {
+            lastRefresh = now
+            return
+        }
+        do {
+            // Marker is sampled BEFORE the fetch: a write racing the fetch
+            // may already be visible in the rows, and the next tick then
+            // reloads once more. Never the reverse (stale rows recorded
+            // under a newer marker).
+            let allUsages = try await actor.usageStore.fetchAllUsage()
+            lastReloadedUsageWriteMarker = marker
+            replaceUsages(allUsages)
+        } catch {
+            AppLogger.dataStore.silentFailure("reload_usages_if_changed_failed", error: error)
+        }
     }
 }

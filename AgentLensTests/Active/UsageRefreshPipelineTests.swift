@@ -22,7 +22,6 @@ final class UsageRefreshPipelineTests: XCTestCase {
                     refreshProviders: []
                 )
             ),
-            existingUsages: [],
             settings: RefreshSettingsSnapshot(
                 conversationIndexingEnabled: false,
                 snapshotAPIs: []
@@ -51,7 +50,6 @@ final class UsageRefreshPipelineTests: XCTestCase {
                     refreshProviders: []
                 )
             ),
-            existingUsages: [],
             settings: RefreshSettingsSnapshot(
                 conversationIndexingEnabled: false,
                 snapshotAPIs: []
@@ -77,7 +75,6 @@ final class UsageRefreshPipelineTests: XCTestCase {
                     refreshProviders: []
                 )
             ),
-            existingUsages: [],
             settings: RefreshSettingsSnapshot(
                 conversationIndexingEnabled: false,
                 snapshotAPIs: []
@@ -103,7 +100,6 @@ final class UsageRefreshPipelineTests: XCTestCase {
                     refreshProviders: []
                 )
             ),
-            existingUsages: [],
             settings: RefreshSettingsSnapshot(
                 conversationIndexingEnabled: false,
                 snapshotAPIs: []

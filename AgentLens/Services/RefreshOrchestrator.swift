@@ -6,7 +6,10 @@ struct PostPersistenceResult {
     var apiUsages: [ProviderUsageRecord] = []
     var parserImportError: String?
     var postPersistencePhaseDuration: TimeInterval = 0
-    var refreshedRecords: [TokenUsage]?
+    /// True when billing reconciliation changed `token_usage` content this
+    /// cycle. Informational — the aggregator's reload decision is driven by
+    /// `UsageTableWriteMarker`, which those writes bump.
+    var usageRowsChanged = false
     var supplementalUsageCount: Int = 0
     var pendingProjectionJobs: Int = 0
 }
@@ -126,22 +129,28 @@ actor RefreshOrchestrator {
         let billingResult = await BillingRefreshCoordinator.reconcile(
             usageAPIService: usageAPIService,
             allParsedUsages: allUsages,
-            fetchCanonicalUsage: { @Sendable [dataStore] in
-                try await dataStore.fetchAllUsage()
+            // Bounded-window baseline: only rows whose [startTime, endTime]
+            // can intersect a fetched billing record's day window — never the
+            // whole history. See BillingRefreshCoordinator.reconcile docs.
+            fetchReconciliationBaseline: { @Sendable [dataStore] cutoff in
+                try await dataStore.fetchUsage(in: cutoff...Date.distantFuture, limit: Int.max)
+            },
+            fetchCredentialCostTotals: { @Sendable [dataStore] in
+                try await dataStore.driftCredentialCostTotals()
             },
             // `@Sendable` makes these closures nonisolated, so `reconcile`
             // (itself `nonisolated`) runs the blocking GRDB work on the
             // cooperative pool — off this actor and off the main actor (SE-0338)
             // — without an unstructured detached task.
-            persistAndReload: { @Sendable [dataStore] newRecords in
-                try await dataStore.actor.insertUsageAndFetchAll(newRecords)
+            persistSupplemental: { @Sendable [dataStore] newRecords in
+                try await dataStore.insert(newRecords)
             },
-            deleteAndReload: { @Sendable [dataStore] sessionIDPrefix in
-                try await dataStore.actor.deleteUsageAndFetchAll(sessionIDPrefix: sessionIDPrefix)
+            deleteReconciled: { @Sendable [dataStore] sessionIDPrefix in
+                try await dataStore.deleteUsage(sessionIDPrefix: sessionIDPrefix)
             }
         )
 
-        result.refreshedRecords = billingResult.refreshedRecords
+        result.usageRowsChanged = billingResult.usageRowsChanged
         result.supplementalUsageCount = billingResult.supplementalUsages.count
         if let firstError = billingResult.errors.first {
             result.parserImportError = firstError

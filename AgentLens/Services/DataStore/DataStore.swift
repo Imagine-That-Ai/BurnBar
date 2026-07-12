@@ -101,14 +101,11 @@ actor DataStoreActor {
         try await usageStore.deleteAll()
     }
 
-    func insertUsageAndFetchAll(_ newRecords: [TokenUsage]) async throws -> [TokenUsage] {
-        try await usageStore.insert(newRecords)
-        return try await usageStore.fetchAllUsage()
-    }
-
-    func deleteUsageAndFetchAll(sessionIDPrefix: String) async throws -> [TokenUsage] {
-        try await usageStore.deleteUsage(sessionIDPrefix: sessionIDPrefix)
-        return try await usageStore.fetchAllUsage()
+    /// Current usage-table new-event marker (see `UsageTableWriteMarker`).
+    /// The periodic refresh tick compares this against the last value it
+    /// reloaded at to skip O(total-history) refetches when nothing changed.
+    var usageTableWriteMarker: Int {
+        usageStore.writeMarker.value
     }
 
 }

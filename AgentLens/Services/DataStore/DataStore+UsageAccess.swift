@@ -59,8 +59,23 @@ extension DataStore {
         try await actor.usageStore.checkpointTruncate()
     }
 
-    func deleteUsage(sessionIDPrefix: String) async throws {
+    /// Deletes prior API-reconciled rows; returns the number of rows removed
+    /// so callers can distinguish a no-op cleanup from a content change.
+    @discardableResult
+    func deleteUsage(sessionIDPrefix: String) async throws -> Int {
         try await actor.usageStore.deleteUsage(sessionIDPrefix: sessionIDPrefix)
+    }
+
+    /// Usage-table new-event marker (see `UsageTableWriteMarker`).
+    func usageTableWriteMarker() async -> Int {
+        await actor.usageTableWriteMarker
+    }
+
+    /// Per-credential all-time cost totals for billing drift detection,
+    /// aggregated in SQL (`GROUP BY`) instead of materializing the full
+    /// usage history. Keys match `"providerID:providerAccountID-or-default"`.
+    func driftCredentialCostTotals() async throws -> [String: Double] {
+        try await actor.usageStore.driftCredentialCostTotals()
     }
 
     func fetchUnsynced() async throws -> [TokenUsage] {

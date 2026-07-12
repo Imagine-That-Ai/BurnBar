@@ -6,17 +6,22 @@ extension UsageStore {
     // MARK: - Delete
 
     func deleteAll() async throws {
-        try await dbQueue.write { db in
+        let changedRows = try await dbQueue.write { db -> Int in
             try db.execute(sql: "DELETE FROM token_usage")
+            return db.changesCount
         }
+        noteUsageWrite(changedRows: changedRows)
     }
 
     // VAL-PERSIST-013: Reconciliation cleanup is source-scoped.
     // Cleanup of prior API-reconciliation rows must be constrained by source semantics
     // (billing_api) in addition to identifier prefix policy, so non-reconciliation rows
     // are never deleted accidentally.
-    func deleteUsage(sessionIDPrefix: String) async throws {
-        try await dbQueue.write { db in
+    /// Returns the number of rows deleted so callers (billing reconcile) can
+    /// tell a no-op cleanup from a content change without refetching the table.
+    @discardableResult
+    func deleteUsage(sessionIDPrefix: String) async throws -> Int {
+        let deletedRows = try await dbQueue.write { db -> Int in
             try db.execute(
                 sql: """
                     DELETE FROM token_usage
@@ -26,7 +31,10 @@ extension UsageStore {
                     """,
                 arguments: ["\(sessionIDPrefix)%"]
             )
+            return db.changesCount
         }
+        noteUsageWrite(changedRows: deletedRows)
+        return deletedRows
     }
 
     // MARK: - Sync

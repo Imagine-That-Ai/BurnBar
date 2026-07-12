@@ -125,7 +125,7 @@ extension UsageStore {
     /// Precedence is still respected: higher-confidence data wins over lower-confidence.
     /// Cloud sync data with equal or higher confidence than existing row will update it.
     func insertRemoteUsage(_ usage: TokenUsage) async throws {
-        try await dbQueue.write { db in
+        let changedRows = try await dbQueue.write { db -> Int in
             let usagePartition = Self.usagePartitionToken(from: usage.providerAccountID)
             try db.execute(
                 sql: """
@@ -275,7 +275,9 @@ extension UsageStore {
                     usage.parentRequestID
                 ]
             )
+            return db.changesCount
         }
+        noteUsageWrite(changedRows: changedRows)
         SearchQueryCache.shared.clear()
     }
 }

@@ -82,6 +82,7 @@ budgets/windows-tree-baseline.json
 budgets/core-ui-purity-baseline.json
 budgets/mission-splitbrain-baseline.json
 budgets/linux-desktop.perf.json
+budgets/usage-refresh-tick-baseline.json
 
 # --- File-level TypeScript suppressions (token-scoped) ---
 functions/src/types/legacy.ts | eslint-disable

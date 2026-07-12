@@ -63,6 +63,13 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
     }
 
     /// Fetch sum of cost across all devices for this user (last 90 days).
+    ///
+    /// Uses a server-side `SUM(cost)` aggregation query, so each sync cycle
+    /// transfers ONE aggregate result instead of downloading every 90-day
+    /// usage document just to add up a single field. If the aggregation RPC
+    /// fails (older emulator/backend without aggregate support, transient
+    /// server rejection), the legacy document scan runs as a fallback so the
+    /// displayed total keeps the exact same value either way.
     func fetchCloudTotal(uid: String? = nil) async {
         let gate = await context.syncGate()
         guard gate.account.isFirebaseAvailable else { return }
@@ -70,6 +77,28 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
         guard let resolvedUid else { return }
 
         let cutoff = Calendar.current.date(byAdding: .day, value: -90, to: Date()) ?? Date()
+        let query = context.firestoreGateway
+            .collection("users")
+            .document(resolvedUid)
+            .collection("usage")
+            .whereField("startTime", isGreaterThan: Timestamp(date: cutoff))
+
+        do {
+            let total = try await withCloudSyncRetry(
+                policy: context.retryPolicy,
+                circuitBreaker: context.circuitBreaker,
+                domain: "download.usageAggregate"
+            ) {
+                try await query.aggregateSum(field: "cost")
+            }
+            cloudTotalCostBox.write(total)
+            return
+        } catch {
+            AppLogger.sync.error(
+                "download_sync_aggregate_sum_unavailable_falling_back",
+                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
+            )
+        }
 
         do {
             let snapshot = try await withCloudSyncRetry(
@@ -77,12 +106,7 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
                 circuitBreaker: context.circuitBreaker,
                 domain: "download.usageAggregate"
             ) {
-                try await context.firestoreGateway
-                    .collection("users")
-                    .document(resolvedUid)
-                    .collection("usage")
-                    .whereField("startTime", isGreaterThan: Timestamp(date: cutoff))
-                    .getDocuments()
+                try await query.getDocuments()
             }
 
             cloudTotalCostBox.write(snapshot.documents.compactMap { doc -> Double? in
