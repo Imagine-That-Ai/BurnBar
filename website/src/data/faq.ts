@@ -146,8 +146,7 @@ export const FAQ: FAQItem[] = [
     id: "providers-exact",
     category: "accounts",
     question: "Which providers are exact vs estimated?",
-    answer:
-      `Exact today (counted from the vendor's own API or from local logs): ${exactNames}.\n\nEstimated (counted, then priced from a public table): ${estimatedNames}.\n\nBalance-only (the vendor exposes a credit balance, not per-request usage): ${balanceOnlyNames}.\n\nDetection-only (the vendor exposes nothing, so we show only Installed / Not installed): ${detectionOnlyNames}.\n\nThe full matrix is on the Providers page.`
+    answer: `Exact today (counted from the vendor's own API or from local logs): ${exactNames}.\n\nEstimated (counted, then priced from a public table): ${estimatedNames}.\n\nBalance-only (the vendor exposes a credit balance, not per-request usage): ${balanceOnlyNames}.\n\nDetection-only (the vendor exposes nothing, so we show only Installed / Not installed): ${detectionOnlyNames}.\n\nThe full matrix is on the Providers page.`
   },
   {
     id: "team-or-solo",
