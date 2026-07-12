@@ -30,6 +30,99 @@ enum ComputerUseSecurityCallableClient {
         let callListDevices: (_ approverDeviceId: String) async throws -> Any
     }
 
+    private struct EmptyCallableRequest: Encodable {}
+
+    private struct OkCallableResponse: Decodable {
+        let ok: Bool
+    }
+
+    private struct HighRiskNonceResponse: Decodable {
+        let nonce: String
+    }
+
+    private struct LinuxAppCheckDevicesRequest: Encodable {
+        let approverDeviceId: String
+    }
+
+    private struct LinuxAppCheckDevicesResponse: Decodable {
+        let ok: Bool
+        let devices: [LinuxAppCheckDevicePayload]
+    }
+
+    private struct LinuxAppCheckDevicePayload: Decodable {
+        let deviceId: String
+        let deviceName: String
+        let platform: String
+        let publicKeyBase64: String
+        let safetyFingerprint: String
+        let trustState: String
+        let createdAtMillis: Int64
+        let approvedAtMillis: Int64?
+        let revokedAtMillis: Int64?
+    }
+
+    private struct PublishPhoneControlAuthorityRequest: Encodable {
+        let deviceId: String
+        let connectionId: String
+        let peerNodeId: String
+        let publicKeyBase64: String
+        let publishedAtMillis: Int64
+        let protocolVersion: Int
+        let expectedUid: String
+        let nonce: String
+        let keyKind: String?
+    }
+
+    private struct IssueIrohControllerRouteChallengeRequest: Encodable {
+        let sourceDeviceId: String
+        let connectionId: String
+        let authorityPeerNodeId: String
+        let transportNodeId: String
+        let expectedUid: String
+        let nonce: String
+    }
+
+    private struct IrohControllerRouteChallengeResponse: Decodable {
+        let challengeId: String
+        let canonicalPayloadBase64: String
+        let signatureAlgorithm: String
+        let proofKind: String
+        let registrationGeneration: Int64
+        let issuedAtMillis: Int64
+        let expiresAtMillis: Int64
+    }
+
+    private struct RegisterIrohControllerRouteRequest: Encodable {
+        let challengeId: String
+        let transportSignatureBase64: String
+        let expectedUid: String
+        let authoritySignatureBase64: String?
+    }
+
+    private struct IrohControllerRouteRegistrationResponse: Decodable {
+        let ok: Bool
+        let connectionId: String
+        let sourceDeviceId: String
+        let transportNodeId: String
+        let authorityPeerNodeId: String
+        let generation: Int64
+        let expiresAtMillis: Int64
+    }
+
+    private struct RevokeIrohControllerRouteRequest: Encodable {
+        let sourceDeviceId: String
+        let connectionId: String
+        let expectedUid: String
+        let nonce: String
+    }
+
+    private struct RevokeIrohControllerRouteResponse: Decodable {
+        let ok: Bool
+        let sourceDeviceId: String
+        let connectionId: String
+        let generation: Int64
+    }
+
     struct EscrowDeviceTrustRevocationResult: Sendable, Equatable {
         let revokedCloudVaultWrappers: Int
         let cloudVaultRotationRequired: Bool
@@ -182,10 +275,12 @@ enum ComputerUseSecurityCallableClient {
                 authenticatedUID: { authenticatedUID },
                 bindAppCheckAttestation: { try await bindAppCheckAttestation() },
                 callListDevices: { approverDeviceId in
-                    let result = try await functions.httpsCallable("listLinuxAppCheckDevices").call([
-                        "approverDeviceId": approverDeviceId
-                    ])
-                    return result.data
+                    try await typedCallable(
+                        "listLinuxAppCheckDevices",
+                        LinuxAppCheckDevicesRequest(approverDeviceId: approverDeviceId),
+                        invalidMessage: "Linux device list response was invalid.",
+                        as: LinuxAppCheckDevicesResponse.self
+                    )
                 }
             )
         )
@@ -230,7 +325,12 @@ enum ComputerUseSecurityCallableClient {
             ],
             approve: descriptor.approve
         )
-        guard let response = result.data as? [String: Any], response["ok"] as? Bool == true else {
+        let response = try decodeCallableResponse(
+            OkCallableResponse.self,
+            from: result.data,
+            invalidMessage: approve ? "Linux device approval failed." : "Linux device revocation failed."
+        )
+        guard response.ok else {
             throw ClientError.invalidResponse(
                 approve ? "Linux device approval failed." : "Linux device revocation failed."
             )
@@ -253,13 +353,20 @@ enum ComputerUseSecurityCallableClient {
     }
 
     static func parseLinuxAppCheckDevicesResponse(_ raw: Any) throws -> [LinuxAppCheckDeviceRecord] {
-        guard let response = raw as? [String: Any],
-              response["ok"] as? Bool == true,
-              let devices = response["devices"] as? [[String: Any]]
-        else {
+        let response: LinuxAppCheckDevicesResponse
+        if let typed = raw as? LinuxAppCheckDevicesResponse {
+            response = typed
+        } else {
+            response = try decodeCallableResponse(
+                LinuxAppCheckDevicesResponse.self,
+                from: raw,
+                invalidMessage: "Linux device list response was invalid."
+            )
+        }
+        guard response.ok else {
             throw ClientError.invalidResponse("Linux device list response was invalid.")
         }
-        return try devices.map { try LinuxAppCheckDeviceRecord(callablePayload: $0) }
+        return try response.devices.map(validatedLinuxAppCheckDevice)
     }
 
     static func registerEscrowDevice(
@@ -443,25 +550,24 @@ enum ComputerUseSecurityCallableClient {
         try await bindAppCheckAttestation()
         _ = try requireSignedInUser(expectedUID: expectedUID)
         let nonce = try await issueHighRiskActionNonce(expectedUID: expectedUID)
-        var payload: [String: Any] = [
-            "deviceId": deviceId,
-            "connectionId": connectionId,
-            "peerNodeId": peerNodeId,
-            "publicKeyBase64": publicKeyBase64,
-            "publishedAtMillis": publishedAtMillis,
-            "protocolVersion": protocolVersion,
-            "expectedUid": expectedUID,
-            "nonce": nonce
-        ]
-        // F2: legacy publishes stay byte-identical (no keyKind field); an
-        // SE-P256 identity sends the discriminator the server persists as
-        // `signingKeyKind` (schemaVersion 3).
-        if keyKind != .ed25519 {
-            payload["keyKind"] = keyKind.rawValue
-        }
-        let result = try await functions.httpsCallable("publishPhoneControlAuthority").call(payload)
+        let response = try await typedCallable(
+            "publishPhoneControlAuthority",
+            PublishPhoneControlAuthorityRequest(
+                deviceId: deviceId,
+                connectionId: connectionId,
+                peerNodeId: peerNodeId,
+                publicKeyBase64: publicKeyBase64,
+                publishedAtMillis: publishedAtMillis,
+                protocolVersion: protocolVersion,
+                expectedUid: expectedUID,
+                nonce: nonce,
+                keyKind: keyKind == .ed25519 ? nil : keyKind.rawValue
+            ),
+            invalidMessage: "Phone-control authority publication failed.",
+            as: OkCallableResponse.self
+        )
         _ = try requireSignedInUser(expectedUID: expectedUID)
-        guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
+        guard response.ok else {
             throw ClientError.invalidResponse("Phone-control authority publication failed.")
         }
     }
@@ -477,25 +583,27 @@ enum ComputerUseSecurityCallableClient {
         try await bindAppCheckAttestation()
         _ = try requireSignedInUser(expectedUID: expectedUID)
         let nonce = try await issueHighRiskActionNonce(expectedUID: expectedUID)
-        let result = try await functions.httpsCallable("issueIrohControllerRouteChallenge").call([
-            "sourceDeviceId": sourceDeviceId,
-            "connectionId": connectionId,
-            "authorityPeerNodeId": authorityPeerNodeId,
-            "transportNodeId": transportNodeId,
-            "expectedUid": expectedUID,
-            "nonce": nonce
-        ])
+        let response = try await typedCallable(
+            "issueIrohControllerRouteChallenge",
+            IssueIrohControllerRouteChallengeRequest(
+                sourceDeviceId: sourceDeviceId,
+                connectionId: connectionId,
+                authorityPeerNodeId: authorityPeerNodeId,
+                transportNodeId: transportNodeId,
+                expectedUid: expectedUID,
+                nonce: nonce
+            ),
+            invalidMessage: "Controller-route challenge response was malformed.",
+            as: IrohControllerRouteChallengeResponse.self
+        )
         _ = try requireSignedInUser(expectedUID: expectedUID)
-        guard let dict = result.data as? [String: Any],
-              let challengeId = requiredNonemptyString(dict, key: "challengeId"),
-              let canonicalPayloadBase64 = requiredNonemptyString(dict, key: "canonicalPayloadBase64"),
-              let signatureAlgorithm = requiredNonemptyString(dict, key: "signatureAlgorithm"),
-              let proofKindRaw = requiredNonemptyString(dict, key: "proofKind"),
-              let proofKind = IrohControllerRouteProofKind(rawValue: proofKindRaw),
-              let registrationGeneration = positiveInt64(dict, key: "registrationGeneration"),
-              let issuedAtMillis = positiveInt64(dict, key: "issuedAtMillis"),
-              let expiresAtMillis = positiveInt64(dict, key: "expiresAtMillis"),
-              expiresAtMillis > issuedAtMillis else {
+        guard let challengeId = nonempty(response.challengeId),
+              let canonicalPayloadBase64 = nonempty(response.canonicalPayloadBase64),
+              let signatureAlgorithm = nonempty(response.signatureAlgorithm),
+              let proofKind = IrohControllerRouteProofKind(rawValue: response.proofKind),
+              response.registrationGeneration > 0,
+              response.issuedAtMillis > 0,
+              response.expiresAtMillis > response.issuedAtMillis else {
             throw ClientError.invalidResponse("Controller-route challenge response was malformed.")
         }
         return IrohControllerRouteChallenge(
@@ -503,9 +611,9 @@ enum ComputerUseSecurityCallableClient {
             canonicalPayloadBase64: canonicalPayloadBase64,
             signatureAlgorithm: signatureAlgorithm,
             proofKind: proofKind,
-            registrationGeneration: registrationGeneration,
-            issuedAtMillis: issuedAtMillis,
-            expiresAtMillis: expiresAtMillis
+            registrationGeneration: response.registrationGeneration,
+            issuedAtMillis: response.issuedAtMillis,
+            expiresAtMillis: response.expiresAtMillis
         )
     }
 
@@ -516,24 +624,25 @@ enum ComputerUseSecurityCallableClient {
         authoritySignatureBase64: String?
     ) async throws -> IrohControllerRouteRegistration {
         _ = try requireSignedInUser(expectedUID: expectedUID)
-        var payload: [String: Any] = [
-            "challengeId": challengeId,
-            "transportSignatureBase64": transportSignatureBase64,
-            "expectedUid": expectedUID
-        ]
-        if let authoritySignatureBase64 {
-            payload["authoritySignatureBase64"] = authoritySignatureBase64
-        }
-        let result = try await functions.httpsCallable("registerIrohControllerRoute").call(payload)
+        let response = try await typedCallable(
+            "registerIrohControllerRoute",
+            RegisterIrohControllerRouteRequest(
+                challengeId: challengeId,
+                transportSignatureBase64: transportSignatureBase64,
+                expectedUid: expectedUID,
+                authoritySignatureBase64: authoritySignatureBase64
+            ),
+            invalidMessage: "Controller-route registration response was malformed.",
+            as: IrohControllerRouteRegistrationResponse.self
+        )
         _ = try requireSignedInUser(expectedUID: expectedUID)
-        guard let dict = result.data as? [String: Any],
-              dict["ok"] as? Bool == true,
-              let connectionId = requiredNonemptyString(dict, key: "connectionId"),
-              let sourceDeviceId = requiredNonemptyString(dict, key: "sourceDeviceId"),
-              let transportNodeId = requiredNonemptyString(dict, key: "transportNodeId"),
-              let authorityPeerNodeId = requiredNonemptyString(dict, key: "authorityPeerNodeId"),
-              let generation = positiveInt64(dict, key: "generation"),
-              let expiresAtMillis = positiveInt64(dict, key: "expiresAtMillis") else {
+        guard response.ok,
+              let connectionId = nonempty(response.connectionId),
+              let sourceDeviceId = nonempty(response.sourceDeviceId),
+              let transportNodeId = nonempty(response.transportNodeId),
+              let authorityPeerNodeId = nonempty(response.authorityPeerNodeId),
+              response.generation > 0,
+              response.expiresAtMillis > 0 else {
             throw ClientError.invalidResponse("Controller-route registration response was malformed.")
         }
         return IrohControllerRouteRegistration(
@@ -541,8 +650,8 @@ enum ComputerUseSecurityCallableClient {
             sourceDeviceId: sourceDeviceId,
             transportNodeId: transportNodeId,
             authorityPeerNodeId: authorityPeerNodeId,
-            generation: generation,
-            expiresAtMillis: expiresAtMillis
+            generation: response.generation,
+            expiresAtMillis: response.expiresAtMillis
         )
     }
 
@@ -555,18 +664,22 @@ enum ComputerUseSecurityCallableClient {
         try await bindAppCheckAttestation()
         _ = try requireSignedInUser(expectedUID: expectedUID)
         let nonce = try await issueHighRiskActionNonce(expectedUID: expectedUID)
-        let result = try await functions.httpsCallable("revokeIrohControllerRoute").call([
-            "sourceDeviceId": sourceDeviceId,
-            "connectionId": connectionId,
-            "expectedUid": expectedUID,
-            "nonce": nonce
-        ])
+        let response = try await typedCallable(
+            "revokeIrohControllerRoute",
+            RevokeIrohControllerRouteRequest(
+                sourceDeviceId: sourceDeviceId,
+                connectionId: connectionId,
+                expectedUid: expectedUID,
+                nonce: nonce
+            ),
+            invalidMessage: "Controller-route revocation response was malformed.",
+            as: RevokeIrohControllerRouteResponse.self
+        )
         _ = try requireSignedInUser(expectedUID: expectedUID)
-        guard let dict = result.data as? [String: Any],
-              dict["ok"] as? Bool == true,
-              requiredNonemptyString(dict, key: "sourceDeviceId") == sourceDeviceId,
-              requiredNonemptyString(dict, key: "connectionId") == connectionId,
-              nonnegativeInt64(dict, key: "generation") != nil else {
+        guard response.ok,
+              response.sourceDeviceId == sourceDeviceId,
+              response.connectionId == connectionId,
+              response.generation >= 0 else {
             throw ClientError.invalidResponse("Controller-route revocation response was malformed.")
         }
     }
@@ -575,24 +688,19 @@ enum ComputerUseSecurityCallableClient {
         _ = try requireSignedInUser(expectedUID: expectedUID)
         let result = try await functions.httpsCallable("issueHighRiskActionNonce").call([:])
         _ = try requireSignedInUser(expectedUID: expectedUID)
-        guard let dict = result.data as? [String: Any],
-              let nonce = dict["nonce"] as? String,
-              !nonce.isEmpty else {
+        let response = try decodeCallableResponse(
+            HighRiskNonceResponse.self,
+            from: result.data,
+            invalidMessage: "Could not obtain a high-risk action nonce."
+        )
+        guard !response.nonce.isEmpty else {
             throw ClientError.invalidResponse("Could not obtain a high-risk action nonce.")
         }
-        return nonce
+        return response.nonce
     }
 
-    private static func requiredNonemptyString(_ dictionary: [String: Any], key: String) -> String? {
-        guard let value = dictionary[key] as? String,
-              !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return nil
-        }
-        return value
-    }
-
-    static func positiveInt64(_ dictionary: [String: Any], key: String) -> Int64? {
-        if let number = dictionary[key] as? NSNumber {
+    static func positiveInt64(_ raw: Any?) -> Int64? {
+        if let number = raw as? NSNumber {
             guard CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
             let doubleValue = number.doubleValue
             let decimalValue = number.decimalValue
@@ -607,23 +715,70 @@ enum ComputerUseSecurityCallableClient {
             }
             return NSDecimalNumber(decimal: decimalValue).int64Value
         }
-        if let integer = dictionary[key] as? Int64, integer > 0 { return integer }
-        if let integer = dictionary[key] as? Int, integer > 0 { return Int64(integer) }
+        if let integer = raw as? Int64, integer > 0 { return integer }
+        if let integer = raw as? Int, integer > 0 { return Int64(integer) }
         return nil
     }
 
-    private static func nonnegativeInt64(_ dictionary: [String: Any], key: String) -> Int64? {
-        guard let number = dictionary[key] as? NSNumber,
-              CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
-        let decimalValue = number.decimalValue
-        var integralValue = Decimal()
-        var valueToRound = decimalValue
-        NSDecimalRound(&integralValue, &valueToRound, 0, .down)
-        guard number.doubleValue.isFinite,
-              decimalValue >= 0,
-              decimalValue <= Decimal(Int64.max),
-              integralValue == decimalValue else { return nil }
-        return NSDecimalNumber(decimal: decimalValue).int64Value
+    private static func nonempty(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : value
+    }
+
+    private static func typedCallable<Request: Encodable, Response: Decodable>(
+        _ name: String,
+        _ request: Request,
+        invalidMessage: String,
+        as responseType: Response.Type
+    ) async throws -> Response {
+        do {
+            return try await FirebaseCallableExecutor.call(name, request, using: functions)
+        } catch FunctionsError.responseDecodingFailed {
+            throw ClientError.invalidResponse(invalidMessage)
+        }
+    }
+
+    private static func decodeCallableResponse<Response: Decodable>(
+        _ responseType: Response.Type,
+        from raw: Any?,
+        invalidMessage: String
+    ) throws -> Response {
+        do {
+            return try FirebaseCallableExecutor.decodeResponse(responseType, from: raw)
+        } catch FunctionsError.responseDecodingFailed {
+            throw ClientError.invalidResponse(invalidMessage)
+        }
+    }
+
+    private static func validatedLinuxAppCheckDevice(
+        _ payload: LinuxAppCheckDevicePayload
+    ) throws -> LinuxAppCheckDeviceRecord {
+        guard !payload.deviceId.isEmpty,
+              !payload.deviceName.isEmpty,
+              payload.platform == "Linux",
+              let publicKey = Data(base64Encoded: payload.publicKeyBase64),
+              publicKey.count == 32,
+              let trustState = LinuxAppCheckDeviceTrustState(rawValue: payload.trustState)
+        else {
+            throw ClientError.invalidResponse("A Linux device record was invalid.")
+        }
+        let digestHex = SHA256.hash(data: publicKey)
+            .map { String(format: "%02x", $0) }
+            .joined()
+        let safetyFingerprint = groupedFingerprint(digestHex.uppercased())
+        guard payload.deviceId == "linux_\(digestHex)",
+              payload.safetyFingerprint == safetyFingerprint else {
+            throw ClientError.invalidResponse("A Linux device safety fingerprint did not match its public key.")
+        }
+        return LinuxAppCheckDeviceRecord(
+            deviceId: payload.deviceId,
+            deviceName: payload.deviceName,
+            safetyFingerprint: safetyFingerprint,
+            trustState: trustState,
+            createdAtMillis: payload.createdAtMillis,
+            approvedAtMillis: payload.approvedAtMillis,
+            revokedAtMillis: payload.revokedAtMillis
+        )
     }
 
     static func publishRelaySenderKey(

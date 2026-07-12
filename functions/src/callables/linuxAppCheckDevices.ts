@@ -35,8 +35,6 @@ import {
 import { checkPublicHttpEndpointRateLimit } from "./publicRateLimit.js";
 import { boundedTrimmedString } from "./shared.js";
 
-export const LINUX_APP_CHECK_DEVICE_COLLECTION = "linux_app_check_devices" as const;
-export const LINUX_APP_CHECK_CHALLENGE_COLLECTION = "linux_app_check_challenges" as const;
 export const LINUX_APP_CHECK_REJECTION_REASON = {
   appNotAllowlisted: "linux_app_not_allowlisted",
   approvalRequired: "linux_device_approval_required",
@@ -46,6 +44,8 @@ export const LINUX_APP_CHECK_REJECTION_REASON = {
   recordMismatch: "linux_device_record_mismatch",
   revoked: "linux_device_revoked",
 } as const;
+const LINUX_APP_CHECK_DEVICE_COLLECTION = "linux_app_check_devices" as const;
+const LINUX_APP_CHECK_CHALLENGE_COLLECTION = "linux_app_check_challenges" as const;
 const LINUX_APP_CHECK_SCHEMA_VERSION = 1;
 const MAX_LISTED_LINUX_DEVICES = 100;
 const APPROVE_ACTION_KIND = "linux_app_check_device_approve";
@@ -528,10 +528,3 @@ function linuxDeviceTrustMutationCallable(approve: boolean) {
 
 export const approveLinuxAppCheckDevice = linuxDeviceTrustMutationCallable(true);
 export const revokeLinuxAppCheckDevice = linuxDeviceTrustMutationCallable(false);
-
-export const __testing__ = {
-  APPROVE_ACTION_KIND,
-  REVOKE_ACTION_KIND,
-  mutateLinuxDeviceTrust,
-  requireNativeAppCheckCaller,
-};

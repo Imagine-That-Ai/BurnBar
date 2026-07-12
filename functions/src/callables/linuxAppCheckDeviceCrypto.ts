@@ -13,11 +13,11 @@ import { boundedTrimmedString } from "./shared.js";
 
 export const LINUX_APP_CHECK_ATTESTATION_KIND = "device-key-v1" as const;
 export const LINUX_APP_CHECK_ENROLLMENT_DOMAIN = "openburnbar.linux.appcheck.enroll.v1" as const;
-export const LINUX_APP_CHECK_CHALLENGE_DOMAIN = "openburnbar.linux.appcheck.challenge.v1" as const;
-export const LINUX_APP_CHECK_ENROLLMENT_MAX_AGE_MS = 5 * 60 * 1000;
-export const LINUX_APP_CHECK_CLOCK_SKEW_MS = 60 * 1000;
 export const LINUX_APP_CHECK_CHALLENGE_TTL_MS = 2 * 60 * 1000;
 
+const LINUX_APP_CHECK_CHALLENGE_DOMAIN = "openburnbar.linux.appcheck.challenge.v1" as const;
+const LINUX_APP_CHECK_ENROLLMENT_MAX_AGE_MS = 5 * 60 * 1000;
+const LINUX_APP_CHECK_CLOCK_SKEW_MS = 60 * 1000;
 const ED25519_PUBLIC_KEY_BYTE_LENGTH = 32;
 const ED25519_SIGNATURE_BYTE_LENGTH = 64;
 const ED25519_SPKI_DER_PREFIX = Buffer.from("302a300506032b6570032100", "hex");

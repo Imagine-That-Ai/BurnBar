@@ -2,13 +2,13 @@ import CryptoKit
 import Foundation
 import OpenBurnBarCore
 
-enum LinuxAppCheckDeviceTrustState: String, Sendable, Equatable {
+enum LinuxAppCheckDeviceTrustState: String, Codable, Sendable, Equatable {
     case pending
     case approved
     case revoked
 }
 
-struct LinuxAppCheckDeviceRecord: Identifiable, Sendable, Equatable {
+struct LinuxAppCheckDeviceRecord: Identifiable, Decodable, Sendable, Equatable {
     let deviceId: String
     let deviceName: String
     let platform: String
@@ -40,19 +40,26 @@ struct LinuxAppCheckDeviceRecord: Identifiable, Sendable, Equatable {
         self.revokedAtMillis = revokedAtMillis
     }
 
-    init(callablePayload: [String: Any]) throws {
-        guard let deviceId = callablePayload["deviceId"] as? String, !deviceId.isEmpty,
-              let deviceName = callablePayload["deviceName"] as? String, !deviceName.isEmpty,
-              let platform = callablePayload["platform"] as? String, platform == "Linux",
-              let publicKeyBase64 = callablePayload["publicKeyBase64"] as? String,
-              let publicKey = Data(base64Encoded: publicKeyBase64), publicKey.count == 32,
-              let claimedSafetyFingerprint = callablePayload["safetyFingerprint"] as? String,
-              let rawTrustState = callablePayload["trustState"] as? String,
-              let trustState = LinuxAppCheckDeviceTrustState(rawValue: rawTrustState),
-              let createdAtMillis = Self.int64(callablePayload["createdAtMillis"])
-        else {
-            throw ComputerUseSecurityCallableClient.ClientError.invalidResponse(
-                "A Linux device record was invalid."
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let deviceId = try container.decode(String.self, forKey: .deviceId)
+        let deviceName = try container.decode(String.self, forKey: .deviceName)
+        let platform = try container.decode(String.self, forKey: .platform)
+        let publicKeyBase64 = try container.decode(String.self, forKey: .publicKeyBase64)
+        let claimedSafetyFingerprint = try container.decode(String.self, forKey: .safetyFingerprint)
+        let trustState = try container.decode(LinuxAppCheckDeviceTrustState.self, forKey: .trustState)
+        let createdAtMillis = try container.decode(Int64.self, forKey: .createdAtMillis)
+        let approvedAtMillis = try container.decodeIfPresent(Int64.self, forKey: .approvedAtMillis)
+        let revokedAtMillis = try container.decodeIfPresent(Int64.self, forKey: .revokedAtMillis)
+        guard !deviceId.isEmpty,
+              !deviceName.isEmpty,
+              platform == "Linux",
+              let publicKey = Data(base64Encoded: publicKeyBase64),
+              publicKey.count == 32 else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .deviceId,
+                in: container,
+                debugDescription: "A Linux App Check device record was invalid."
             )
         }
         let digestHex = SHA256.hash(data: publicKey)
@@ -62,8 +69,10 @@ struct LinuxAppCheckDeviceRecord: Identifiable, Sendable, Equatable {
         guard deviceId == "linux_\(digestHex)",
               claimedSafetyFingerprint == safetyFingerprint
         else {
-            throw ComputerUseSecurityCallableClient.ClientError.invalidResponse(
-                "A Linux device safety fingerprint did not match its public key."
+            throw DecodingError.dataCorruptedError(
+                forKey: .safetyFingerprint,
+                in: container,
+                debugDescription: "A Linux device safety fingerprint did not match its public key."
             )
         }
         self.init(
@@ -73,16 +82,21 @@ struct LinuxAppCheckDeviceRecord: Identifiable, Sendable, Equatable {
             safetyFingerprint: safetyFingerprint,
             trustState: trustState,
             createdAtMillis: createdAtMillis,
-            approvedAtMillis: Self.int64(callablePayload["approvedAtMillis"]),
-            revokedAtMillis: Self.int64(callablePayload["revokedAtMillis"])
+            approvedAtMillis: approvedAtMillis,
+            revokedAtMillis: revokedAtMillis
         )
     }
 
-    private static func int64(_ value: Any?) -> Int64? {
-        if let value = value as? Int64 { return value }
-        if let value = value as? Int { return Int64(value) }
-        if let value = value as? NSNumber { return value.int64Value }
-        return nil
+    private enum CodingKeys: String, CodingKey {
+        case deviceId
+        case deviceName
+        case platform
+        case publicKeyBase64
+        case safetyFingerprint
+        case trustState
+        case createdAtMillis
+        case approvedAtMillis
+        case revokedAtMillis
     }
 
     private static func groupedFingerprint(_ hex: String) -> String {

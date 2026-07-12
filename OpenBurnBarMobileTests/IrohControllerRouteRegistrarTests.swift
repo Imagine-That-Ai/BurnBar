@@ -12,15 +12,14 @@ final class IrohControllerRouteRegistrarTests: XCTestCase {
     }
 
     func testStrictPositiveInt64DecoderRejectsBooleanFractionAndOverflow() {
-        XCTAssertNil(ComputerUseSecurityCallableClient.positiveInt64(["value": true], key: "value"))
-        XCTAssertNil(ComputerUseSecurityCallableClient.positiveInt64(["value": 1.5], key: "value"))
-        XCTAssertNil(ComputerUseSecurityCallableClient.positiveInt64(["value": 0], key: "value"))
+        XCTAssertNil(ComputerUseSecurityCallableClient.positiveInt64(true))
+        XCTAssertNil(ComputerUseSecurityCallableClient.positiveInt64(1.5))
+        XCTAssertNil(ComputerUseSecurityCallableClient.positiveInt64(0))
         XCTAssertNil(ComputerUseSecurityCallableClient.positiveInt64(
-            ["value": NSNumber(value: Double(Int64.max))],
-            key: "value"
+            NSNumber(value: Double(Int64.max))
         ))
         XCTAssertEqual(
-            ComputerUseSecurityCallableClient.positiveInt64(["value": NSNumber(value: 42.0)], key: "value"),
+            ComputerUseSecurityCallableClient.positiveInt64(NSNumber(value: 42.0)),
             42
         )
     }

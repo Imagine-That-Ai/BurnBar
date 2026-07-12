@@ -771,16 +771,16 @@ enum ComputerUseSecurityCallableClient {
         uid: String,
         connectionId: String,
         authenticatedUID: () throws -> String = { try requireSignedInUser().uid },
-        invokeCallable: ([String: Any]) async throws -> Any = { payload in
-            try await functions.httpsCallable("resolveActiveIrohControllerRoutes").call(payload).data
+        invokeCallable: (String) async throws -> Any = { connectionId in
+            try await functions.httpsCallable("resolveActiveIrohControllerRoutes").call([
+                "connectionId": connectionId
+            ]).data
         }
     ) async throws -> [IrohControllerRouteBinding] {
         guard try authenticatedUID() == uid else {
             throw ClientError.invalidResponse("The active account changed before controller-route resolution.")
         }
-        let raw = try await invokeCallable([
-            "connectionId": connectionId
-        ])
+        let raw = try await invokeCallable(connectionId)
         guard try authenticatedUID() == uid else {
             throw ClientError.invalidResponse("The active account changed during controller-route resolution.")
         }
@@ -797,56 +797,75 @@ enum ComputerUseSecurityCallableClient {
         expectedConnectionId: String,
         nowMillis: Int64 = Int64(Date().timeIntervalSince1970 * 1_000)
     ) throws -> [IrohControllerRouteBinding] {
-        guard let response = raw as? [String: Any],
-              response["uid"] as? String == expectedUID,
-              response["connectionId"] as? String == expectedConnectionId,
-              let resolvedAtMillis = int64Value(response["resolvedAtMillis"]),
+        let response = try decodeCallableJSON(
+            ActiveIrohControllerRoutesResponse.self,
+            from: raw,
+            invalidResponseMessage: "Active iroh controller-route resolution was malformed or stale."
+        )
+        guard response.uid == expectedUID,
+              response.connectionId == expectedConnectionId,
+              let resolvedAtMillis = response.resolvedAtMillis,
               resolvedAtMillis >= nowMillis - 60_000,
               resolvedAtMillis <= nowMillis + 30_000,
-              let routes = response["routes"] as? [[String: Any]],
-              routes.count <= 1 else {
+              response.routes.count <= 1 else {
             throw ClientError.invalidResponse("Active iroh controller-route resolution was malformed or stale.")
         }
-        guard let route = routes.first else { return [] }
+        guard let route = response.routes.first else { return [] }
         guard
-              route["connectionId"] as? String == expectedConnectionId,
-              let sourceDeviceId = route["sourceDeviceId"] as? String,
-              let transportNodeId = route["transportNodeId"] as? String,
-              let authorityPeerNodeId = route["authorityPeerNodeId"] as? String,
-              let generationValue = int64Value(route["generation"]),
-              generationValue > 0,
-              let generation = UInt64(exactly: generationValue),
-              let registeredAtMillis = int64Value(route["registeredAtMillis"]),
-              let expiresAtMillis = int64Value(route["expiresAtMillis"]),
-              registeredAtMillis <= resolvedAtMillis,
-              expiresAtMillis > resolvedAtMillis,
-              expiresAtMillis > nowMillis,
-              let binding = IrohControllerRouteBinding(
-                  sourceDeviceId: sourceDeviceId,
-                  transportNodeId: transportNodeId,
-                  authorityPeerNodeId: authorityPeerNodeId,
-                  generation: generation,
-                  registeredAtMillis: registeredAtMillis,
-                  expiresAtMillis: expiresAtMillis
-              ) else {
+            route.connectionId == expectedConnectionId,
+            route.generation > 0,
+            route.registeredAtMillis <= resolvedAtMillis,
+            route.expiresAtMillis > resolvedAtMillis,
+            route.expiresAtMillis > nowMillis,
+            let binding = IrohControllerRouteBinding(
+                sourceDeviceId: route.sourceDeviceId,
+                transportNodeId: route.transportNodeId,
+                authorityPeerNodeId: route.authorityPeerNodeId,
+                generation: route.generation,
+                registeredAtMillis: route.registeredAtMillis,
+                expiresAtMillis: route.expiresAtMillis
+            ) else {
             throw ClientError.invalidResponse("Active iroh controller-route resolution was malformed or stale.")
         }
         return [binding]
     }
 
-    private static func int64Value(_ raw: Any?) -> Int64? {
-        if let value = raw as? Int64 { return value }
-        if let value = raw as? Int, let exact = Int64(exactly: value) { return exact }
-        if let value = raw as? NSNumber {
-            guard CFGetTypeID(value) != CFBooleanGetTypeID() else { return nil }
-            let double = value.doubleValue
-            guard double.isFinite,
-                  double.rounded(.towardZero) == double,
-                  double >= Double(Int64.min),
-                  double <= Double(Int64.max) else { return nil }
-            return value.int64Value
+    private struct ActiveIrohControllerRoutesResponse: Decodable {
+        let uid: String
+        let connectionId: String
+        let resolvedAtMillis: Int64?
+        let routes: [ActiveIrohControllerRouteResponse]
+    }
+
+    private struct ActiveIrohControllerRouteResponse: Decodable {
+        let connectionId: String
+        let sourceDeviceId: String
+        let transportNodeId: String
+        let authorityPeerNodeId: String
+        let generation: UInt64
+        let registeredAtMillis: Int64
+        let expiresAtMillis: Int64
+    }
+
+    private static func decodeCallableJSON<Response: Decodable>(
+        _ type: Response.Type,
+        from raw: Any,
+        invalidResponseMessage: String
+    ) throws -> Response {
+        guard JSONSerialization.isValidJSONObject(raw) else {
+            throw ClientError.invalidResponse(invalidResponseMessage)
         }
-        return nil
+        let data: Data
+        do {
+            data = try JSONSerialization.data(withJSONObject: raw)
+        } catch {
+            throw ClientError.invalidResponse(invalidResponseMessage)
+        }
+        do {
+            return try JSONDecoder().decode(type, from: data)
+        } catch {
+            throw ClientError.invalidResponse(invalidResponseMessage)
+        }
     }
 
     static func loadOrCreateLocalDeviceId(defaults: UserDefaults = .standard) -> String {

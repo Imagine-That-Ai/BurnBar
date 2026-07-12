@@ -77,12 +77,12 @@ final class PhoneControlAuthorityPublisher: PhoneControlAuthorityPublishing, Sen
     }
 }
 
-enum IrohControllerRouteProofKind: String, Sendable, Equatable {
+enum IrohControllerRouteProofKind: String, Codable, Sendable, Equatable {
     case bootstrap
     case transportRenewal = "transport-renewal"
 }
 
-struct IrohControllerRouteChallenge: Sendable, Equatable {
+struct IrohControllerRouteChallenge: Codable, Sendable, Equatable {
     let challengeId: String
     let canonicalPayloadBase64: String
     let signatureAlgorithm: String
@@ -92,7 +92,7 @@ struct IrohControllerRouteChallenge: Sendable, Equatable {
     let expiresAtMillis: Int64
 }
 
-struct IrohControllerRouteRegistration: Sendable, Equatable {
+struct IrohControllerRouteRegistration: Codable, Sendable, Equatable {
     let connectionId: String
     let sourceDeviceId: String
     let transportNodeId: String

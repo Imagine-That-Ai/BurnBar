@@ -1123,6 +1123,8 @@ private extension LinuxIrohControllerRuntime.SessionRoute {
 /// Synchronous secret-provider bridge required by `IrohXcframeworkTransport`.
 /// Values are published only after the daemon has loaded them from an approved
 /// Linux SecretStore backend and are removed when the owning runtime deallocates.
+/// AUDIT(@unchecked Sendable): mutable key material is read/published/cleared
+/// only under `lock`. sendable-allowlist: nslock-protected-storage
 final class LinuxIrohEndpointSecretBox: @unchecked Sendable {
     private let lock = NSLock()
     private var secret: IrohSecretKeyMaterial?

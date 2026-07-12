@@ -2,7 +2,19 @@ import { generateKeyPairSync, randomBytes, sign } from "node:crypto";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { base32NoPad, callableRunner, rawEd25519PublicKey } from "./irohControllerRouteTestSupport.js";
+import {
+  base32NoPad,
+  invokeCallable,
+  invokeCallableForApp,
+  rawEd25519PublicKey,
+  requireActiveRouteResolution,
+  requireNumber,
+  requireRecord,
+  requireRouteChallenge,
+  seedRouteTrustGraph,
+  snapshotTenantPaths,
+  type RouteChallenge,
+} from "./irohControllerRouteTestSupport.js";
 
 const { store } = vi.hoisted(() => ({ store: new Map<string, Record<string, unknown>>() }));
 
@@ -90,139 +102,19 @@ const HOST_DEVICE_ID = "linux-host-fixture";
 const SOURCE_DEVICE_ID = "phone-controller";
 const BOB_UID = "route-attacker";
 
-type RouteChallenge = {
-  challengeId: string;
-  canonicalPayloadBase64: string;
-  proofKind: "bootstrap" | "transport-renewal";
-  requiresAuthorityProof: boolean;
-  registrationGeneration: number;
-};
-
-function callableRequest(uid: string, data: Record<string, unknown>) {
-  return {
-    auth: { uid, token: {} },
-    app: { appId: "1:123:ios:route-test" },
-    data,
-    rawRequest: { headers: {} },
-  };
-}
-
-function invoke(callable: unknown, uid: string, data: Record<string, unknown>): Promise<unknown> {
-  return callableRunner(callable)(callableRequest(uid, data));
-}
-
-function invokeForApp(callable: unknown, uid: string, appId: string, data: Record<string, unknown>): Promise<unknown> {
-  return callableRunner(callable)({ ...callableRequest(uid, data), app: { appId } });
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function requireRecord(value: unknown, label: string): Record<string, unknown> {
-  if (isRecord(value)) return value;
-  throw new Error(`${label} must be an object`);
-}
-
-function requireString(value: unknown, label: string): string {
-  if (typeof value === "string") return value;
-  throw new Error(`${label} must be a string`);
-}
-
-function requireBoolean(value: unknown, label: string): boolean {
-  if (typeof value === "boolean") return value;
-  throw new Error(`${label} must be a boolean`);
-}
-
-function requireNumber(value: unknown, label: string): number {
-  if (typeof value === "number") return value;
-  throw new Error(`${label} must be a number`);
-}
-
-function requireRouteChallenge(value: unknown): RouteChallenge {
-  const record = requireRecord(value, "route challenge");
-  const proofKind = record.proofKind;
-  if (proofKind !== "bootstrap" && proofKind !== "transport-renewal") {
-    throw new Error("route challenge proofKind is invalid");
-  }
-  return {
-    challengeId: requireString(record.challengeId, "route challenge challengeId"),
-    canonicalPayloadBase64: requireString(record.canonicalPayloadBase64, "route challenge canonicalPayloadBase64"),
-    proofKind,
-    requiresAuthorityProof: requireBoolean(record.requiresAuthorityProof, "route challenge requiresAuthorityProof"),
-    registrationGeneration: requireNumber(record.registrationGeneration, "route challenge registrationGeneration"),
-  };
-}
-
-function requireActiveRouteResolution(value: unknown): { uid: string; routes: Array<Record<string, unknown>> } {
-  const record = requireRecord(value, "route resolution");
-  const routesValue = record.routes;
-  if (!Array.isArray(routesValue)) throw new Error("route resolution routes must be an array");
-  return {
-    uid: requireString(record.uid, "route resolution uid"),
-    routes: routesValue.map((route, index) => requireRecord(route, `route resolution route ${index}`)),
-  };
-}
-
-function snapshotTenantPaths(uid: string): Map<string, Record<string, unknown>> {
-  return new Map([...store].filter(([path]) => path.startsWith(`users/${uid}/`)));
-}
-
 function seedTrustGraph() {
-  const host = generateKeyPairSync("ed25519");
-  const hostPublic = rawEd25519PublicKey(host.publicKey);
-  const hostNodeId = randomBytes(32).toString("hex");
-  const publishedAtMillis = Date.now();
-  const canonicalPairing = Buffer.from(
-    `openburnbar.iroh.pairing.v1|${UID}|${CONNECTION_ID}|${hostNodeId}|||${publishedAtMillis}`,
-    "utf8",
-  );
-  const authority = generateKeyPairSync("ed25519");
-  const authorityPublic = rawEd25519PublicKey(authority.publicKey);
-  const authorityPeerNodeId = `ios-phone-${authorityPublic.subarray(0, 12).toString("hex")}`;
-  const transport = generateKeyPairSync("ed25519");
-  const transportNodeId = rawEd25519PublicKey(transport.publicKey).toString("hex");
-
-  store.set(`users/${UID}/escrow_devices/${HOST_DEVICE_ID}`, {
-    deviceId: HOST_DEVICE_ID,
-    platform: "Linux",
-    trustState: "trusted",
-  });
-  store.set(`users/${UID}/escrow_devices/${SOURCE_DEVICE_ID}`, {
-    deviceId: SOURCE_DEVICE_ID,
-    platform: "iOS",
-    trustState: "trusted",
-    peerNodeId: authorityPeerNodeId,
-  });
-  store.set(`users/${UID}/iroh_pairing_keys/host`, {
-    id: "host",
-    publicKeyBase64: hostPublic.toString("base64"),
-    publishedByDeviceId: HOST_DEVICE_ID,
-  });
-  store.set(`users/${UID}/iroh_pairing/${CONNECTION_ID}`, {
-    id: CONNECTION_ID,
-    nodeId: hostNodeId,
-    directAddresses: [],
-    publishedAtMillis,
-    protocolVersion: 1,
-    signature: sign(null, canonicalPairing, host.privateKey).toString("base64"),
-    publishedByDeviceId: HOST_DEVICE_ID,
-    authorizedControllerDeviceIds: [SOURCE_DEVICE_ID],
-  });
-  store.set(`users/${UID}/iroh_pairing/${CONNECTION_ID}/controllers/${authorityPeerNodeId}`, {
-    id: authorityPeerNodeId,
+  return seedRouteTrustGraph({
     connectionId: CONNECTION_ID,
-    peerNodeId: authorityPeerNodeId,
-    deviceId: SOURCE_DEVICE_ID,
-    publicKeyBase64: authorityPublic.toString("base64"),
-    signingKeyKind: "ed25519",
+    hostDeviceId: HOST_DEVICE_ID,
+    sourceDeviceId: SOURCE_DEVICE_ID,
+    store,
+    uid: UID,
   });
-  return { authority, authorityPeerNodeId, transport, transportNodeId };
 }
 
 async function issueChallenge(authorityPeerNodeId: string, transportNodeId: string) {
   return requireRouteChallenge(
-    await invoke(issueIrohControllerRouteChallenge, UID, {
+    await invokeCallable(issueIrohControllerRouteChallenge, UID, {
       sourceDeviceId: SOURCE_DEVICE_ID,
       connectionId: CONNECTION_ID,
       authorityPeerNodeId,
@@ -234,12 +126,12 @@ async function issueChallenge(authorityPeerNodeId: string, transportNodeId: stri
 }
 
 async function registerChallenge(
-  challenge: { challengeId: string; canonicalPayloadBase64: string },
+  challenge: Pick<RouteChallenge, "challengeId" | "canonicalPayloadBase64">,
   transportPrivateKey: ReturnType<typeof generateKeyPairSync>["privateKey"],
   authorityPrivateKey?: ReturnType<typeof generateKeyPairSync>["privateKey"],
 ) {
   const payload = Buffer.from(challenge.canonicalPayloadBase64, "base64");
-  return invoke(registerIrohControllerRoute, UID, {
+  return invokeCallable(registerIrohControllerRoute, UID, {
     challengeId: challenge.challengeId,
     transportSignatureBase64: sign(null, payload, transportPrivateKey).toString("base64"),
     ...(authorityPrivateKey
@@ -261,7 +153,7 @@ describe("verified iroh controller route registry", () => {
       trustState: "trusted",
     });
     await expect(
-      invoke(publishIrohPairingPublicKey, UID, {
+      invokeCallable(publishIrohPairingPublicKey, UID, {
         deviceId: HOST_DEVICE_ID,
         roleId: "host",
         publicKeyBase64: rawEd25519PublicKey(host.publicKey).toString("base64"),
@@ -269,7 +161,7 @@ describe("verified iroh controller route registry", () => {
       }),
     ).resolves.toEqual({ ok: true, roleId: "host" });
     await expect(
-      invoke(publishIrohPairingRecord, UID, {
+      invokeCallable(publishIrohPairingRecord, UID, {
         deviceId: HOST_DEVICE_ID,
         connectionId: CONNECTION_ID,
         nodeId: hostNodeId,
@@ -294,7 +186,7 @@ describe("verified iroh controller route registry", () => {
     });
     expect(store.has(`users/${UID}/escrow_devices/${HOST_DEVICE_ID}`)).toBe(false);
     await expect(
-      invokeForApp(publishIrohPairingPublicKey, UID, linuxAppId, {
+      invokeCallableForApp(publishIrohPairingPublicKey, UID, linuxAppId, {
         deviceId: HOST_DEVICE_ID,
         roleId: "host",
         publicKeyBase64: rawEd25519PublicKey(host.publicKey).toString("base64"),
@@ -336,7 +228,7 @@ describe("verified iroh controller route registry", () => {
     });
 
     const resolution = requireActiveRouteResolution(
-      await invoke(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID }),
+      await invokeCallable(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID }),
     );
     expect(resolution.uid).toBe(UID);
     expect(resolution.routes).toEqual([
@@ -421,7 +313,7 @@ describe("verified iroh controller route registry", () => {
     store.set(routePath, { ...eligibleRoute, registeredAtMillis: eligibleRegisteredAtMillis + 1 });
     await expect(registerChallenge(renewal, fixture.transport.privateKey)).rejects.toMatchObject({ code: "aborted" });
     store.set(routePath, eligibleRoute ?? {});
-    await invoke(revokeIrohControllerRoute, UID, {
+    await invokeCallable(revokeIrohControllerRoute, UID, {
       sourceDeviceId: SOURCE_DEVICE_ID,
       connectionId: CONNECTION_ID,
       expectedUid: UID,
@@ -511,7 +403,7 @@ describe("verified iroh controller route registry", () => {
     const sourceDevicePath = `users/${UID}/escrow_devices/${SOURCE_DEVICE_ID}`;
     store.set(sourceDevicePath, { ...store.get(sourceDevicePath), peerNodeId: "ios-phone-rotated" });
     await expect(
-      invoke(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID }),
+      invokeCallable(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID }),
     ).resolves.toMatchObject({ routes: [] });
     store.set(sourceDevicePath, {
       ...store.get(sourceDevicePath),
@@ -520,7 +412,7 @@ describe("verified iroh controller route registry", () => {
     const controllerPath = `users/${UID}/iroh_pairing/${CONNECTION_ID}/controllers/${registered.authorityPeerNodeId}`;
     store.set(controllerPath, { ...store.get(controllerPath), publicKeyBase64: randomBytes(32).toString("base64") });
     await expect(
-      invoke(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID }),
+      invokeCallable(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID }),
     ).resolves.toMatchObject({ routes: [] });
 
     store.clear();
@@ -530,13 +422,13 @@ describe("verified iroh controller route registry", () => {
     const routePath = `users/${UID}/iroh_pairing/${CONNECTION_ID}/controller_routes/${SOURCE_DEVICE_ID}`;
     store.set(routePath, { ...store.get(routePath), expiresAtMillis: Date.now() - 1 });
     await expect(
-      invoke(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID }),
+      invokeCallable(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID }),
     ).resolves.toMatchObject({ routes: [] });
   });
 
   it("returns empty for negative trust state but still rejects malformed active routes", async () => {
     await expect(
-      invoke(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID }),
+      invokeCallable(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID }),
     ).resolves.toMatchObject({ uid: UID, connectionId: CONNECTION_ID, routes: [] });
 
     const fixture = seedTrustGraph();
@@ -548,7 +440,7 @@ describe("verified iroh controller route registry", () => {
       authorizedControllerDeviceIds: [SOURCE_DEVICE_ID, "other-phone"],
     });
     await expect(
-      invoke(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID }),
+      invokeCallable(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID }),
     ).resolves.toMatchObject({ routes: [] });
 
     store.set(pairingPath, {
@@ -557,11 +449,11 @@ describe("verified iroh controller route registry", () => {
       publishedAtMillis: Date.now() - 4 * 60 * 1000,
     });
     await expect(
-      invoke(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID }),
+      invokeCallable(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID }),
     ).resolves.toMatchObject({ routes: [] });
     const routePath = `users/${UID}/iroh_pairing/${CONNECTION_ID}/controller_routes/${SOURCE_DEVICE_ID}`;
     store.set(routePath, { ...store.get(routePath), transportNodeId: "malformed-node-id" });
-    await expect(invoke(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID })).rejects.toMatchObject(
+    await expect(invokeCallable(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID })).rejects.toMatchObject(
       { code: "invalid-argument" },
     );
   });
@@ -571,7 +463,7 @@ describe("verified iroh controller route registry", () => {
     const challenge = await issueChallenge(fixture.authorityPeerNodeId, fixture.transportNodeId);
     await registerChallenge(challenge, fixture.transport.privateKey, fixture.authority.privateKey);
     await expect(
-      invoke(revokeIrohControllerRoute, UID, {
+      invokeCallable(revokeIrohControllerRoute, UID, {
         sourceDeviceId: SOURCE_DEVICE_ID,
         connectionId: CONNECTION_ID,
         expectedUid: UID,
@@ -579,7 +471,7 @@ describe("verified iroh controller route registry", () => {
       }),
     ).resolves.toMatchObject({ ok: true, generation: 2 });
     await expect(
-      invoke(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID }),
+      invokeCallable(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID }),
     ).resolves.toMatchObject({ routes: [] });
   });
 
@@ -587,7 +479,7 @@ describe("verified iroh controller route registry", () => {
     const fixture = seedTrustGraph();
     const challenge = await issueChallenge(fixture.authorityPeerNodeId, fixture.transportNodeId);
     await expect(
-      invoke(revokeIrohControllerRoute, UID, {
+      invokeCallable(revokeIrohControllerRoute, UID, {
         sourceDeviceId: SOURCE_DEVICE_ID,
         connectionId: CONNECTION_ID,
         expectedUid: UID,
@@ -612,7 +504,7 @@ describe("verified iroh controller route registry", () => {
     const challenge = await issueChallenge(fixture.authorityPeerNodeId, fixture.transportNodeId);
     await registerChallenge(challenge, fixture.transport.privateKey, fixture.authority.privateKey);
     await expect(
-      invoke(revokeIrohPairingRecord, UID, {
+      invokeCallable(revokeIrohPairingRecord, UID, {
         deviceId: HOST_DEVICE_ID,
         connectionId: CONNECTION_ID,
         nonce: "host-pairing-revoke-nonce",
@@ -622,15 +514,15 @@ describe("verified iroh controller route registry", () => {
       { status: "revoked", generation: 2 },
     );
     await expect(
-      invoke(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID }),
+      invokeCallable(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID }),
     ).resolves.toMatchObject({ routes: [] });
   });
 
   it("issue challenge scopes every lookup to request.auth.uid", async () => {
     const fixture = seedTrustGraph();
-    const before = snapshotTenantPaths(UID);
+    const before = snapshotTenantPaths(store, UID);
     await expect(
-      invoke(issueIrohControllerRouteChallenge, BOB_UID, {
+      invokeCallable(issueIrohControllerRouteChallenge, BOB_UID, {
         sourceDeviceId: SOURCE_DEVICE_ID,
         connectionId: CONNECTION_ID,
         authorityPeerNodeId: fixture.authorityPeerNodeId,
@@ -639,15 +531,15 @@ describe("verified iroh controller route registry", () => {
         nonce: "attacker-nonce",
       }),
     ).rejects.toMatchObject({ code: "failed-precondition" });
-    expect(snapshotTenantPaths(UID)).toEqual(before);
+    expect(snapshotTenantPaths(store, UID)).toEqual(before);
   });
 
   it("registration cannot consume a cross-user challenge", async () => {
     const fixture = seedTrustGraph();
     const challenge = await issueChallenge(fixture.authorityPeerNodeId, fixture.transportNodeId);
-    const before = snapshotTenantPaths(UID);
+    const before = snapshotTenantPaths(store, UID);
     await expect(
-      invoke(registerIrohControllerRoute, BOB_UID, {
+      invokeCallable(registerIrohControllerRoute, BOB_UID, {
         challengeId: challenge.challengeId,
         transportSignatureBase64: sign(
           null,
@@ -662,37 +554,37 @@ describe("verified iroh controller route registry", () => {
         expectedUid: BOB_UID,
       }),
     ).rejects.toMatchObject({ code: "failed-precondition" });
-    expect(snapshotTenantPaths(UID)).toEqual(before);
+    expect(snapshotTenantPaths(store, UID)).toEqual(before);
   });
 
   it("resolution cannot read a cross-user route", async () => {
     seedTrustGraph();
-    const before = snapshotTenantPaths(UID);
+    const before = snapshotTenantPaths(store, UID);
     await expect(
-      invoke(resolveActiveIrohControllerRoutes, BOB_UID, { connectionId: CONNECTION_ID }),
+      invokeCallable(resolveActiveIrohControllerRoutes, BOB_UID, { connectionId: CONNECTION_ID }),
     ).resolves.toMatchObject({ uid: BOB_UID, connectionId: CONNECTION_ID, routes: [] });
-    expect(snapshotTenantPaths(UID)).toEqual(before);
+    expect(snapshotTenantPaths(store, UID)).toEqual(before);
   });
 
   it("revocation cannot mutate a cross-user route", async () => {
     seedTrustGraph();
-    const before = snapshotTenantPaths(UID);
+    const before = snapshotTenantPaths(store, UID);
     await expect(
-      invoke(revokeIrohControllerRoute, BOB_UID, {
+      invokeCallable(revokeIrohControllerRoute, BOB_UID, {
         sourceDeviceId: SOURCE_DEVICE_ID,
         connectionId: CONNECTION_ID,
         expectedUid: BOB_UID,
         nonce: "attacker-revoke-nonce",
       }),
     ).rejects.toMatchObject({ code: "failed-precondition" });
-    expect(snapshotTenantPaths(UID)).toEqual(before);
+    expect(snapshotTenantPaths(store, UID)).toEqual(before);
   });
 
   it("rejects a stale expected account before any route mutation", async () => {
     const fixture = seedTrustGraph();
-    const before = snapshotTenantPaths(UID);
+    const before = snapshotTenantPaths(store, UID);
     await expect(
-      invoke(issueIrohControllerRouteChallenge, UID, {
+      invokeCallable(issueIrohControllerRouteChallenge, UID, {
         sourceDeviceId: SOURCE_DEVICE_ID,
         connectionId: CONNECTION_ID,
         authorityPeerNodeId: fixture.authorityPeerNodeId,
@@ -701,6 +593,6 @@ describe("verified iroh controller route registry", () => {
         nonce: "stale-account-nonce",
       }),
     ).rejects.toMatchObject({ code: "permission-denied" });
-    expect(snapshotTenantPaths(UID)).toEqual(before);
+    expect(snapshotTenantPaths(store, UID)).toEqual(before);
   });
 });

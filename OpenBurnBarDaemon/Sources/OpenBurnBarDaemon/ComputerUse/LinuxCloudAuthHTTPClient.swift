@@ -418,6 +418,9 @@ struct LinuxCloudAuthHTTPClient: Sendable {
     }
 }
 
+// AUDIT(@unchecked Sendable): URLSession retains this NSObject delegate; mutable
+// response/continuation/session state is guarded by `lock`.
+// sendable-allowlist: nslock-protected-storage
 final class LinuxCloudAuthBoundedDataDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     private let lock = NSLock()
     private let configuration: URLSessionConfiguration

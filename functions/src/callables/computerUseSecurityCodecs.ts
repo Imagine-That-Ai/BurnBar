@@ -16,7 +16,6 @@ import { boundedTrimmedString } from "./shared.js";
 
 export const ESCROW_PLATFORMS = new Set(["macOS", "iOS", "iPadOS", "Android", "Linux"]);
 export const ESCROW_WEB_PLATFORM = "Web";
-export const MAC_ESCROW_PLATFORMS = new Set(["macOS"]);
 export const IROH_HOST_ESCROW_PLATFORMS = new Set(["macOS", "Linux"]);
 export const PHONE_CONTROL_ESCROW_PLATFORMS = new Set(["iOS", "iPadOS", "Android"]);
 export const LOCAL_AUTH_PROOF_FRESHNESS_SECONDS = 5 * 60;

@@ -19,8 +19,8 @@ final class ComputerUseSecurityCallableClientTests: XCTestCase {
                 authenticationChecks += 1
                 return "user-1"
             },
-            invokeCallable: { payload in
-                capturedConnectionID = payload["connectionId"] as? String
+            invokeCallable: { connectionID in
+                capturedConnectionID = connectionID
                 return [
                     "uid": "user-1",
                     "connectionId": "connection-1",

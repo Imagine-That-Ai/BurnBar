@@ -17,6 +17,8 @@ import OpenBurnBarComputerUseCore
 /// implementation the Mac validator also calls into. This class is
 /// the iOS-flavored wrapper that adds the counter persistence and the
 /// `IrohPairingKeyStore` plumbing.
+// AUDIT(@unchecked Sendable): only non-Sendable stored property is UserDefaults
+// (thread-safe, not yet Sendable-annotated). sendable-allowlist: foundation-sdk-shim
 public final class PhoneControlAuthorityIssuer: @unchecked Sendable {
     public enum IssuerError: Error, Sendable, Equatable {
         case signingKeyMissing

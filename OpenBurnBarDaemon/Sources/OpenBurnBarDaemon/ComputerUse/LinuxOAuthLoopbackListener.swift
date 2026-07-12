@@ -11,6 +11,8 @@ enum LinuxOAuthLoopbackError: Error, Equatable, Sendable {
 
 /// Single-use loopback HTTP listener for RFC 8252 desktop OAuth callbacks.
 /// It binds only 127.0.0.1, accepts one bounded GET, and never logs the URL.
+/// AUDIT(@unchecked Sendable): descriptor/cancel state is guarded by `lock`;
+/// blocking socket work runs on a detached task. sendable-allowlist: nslock-protected-storage
 final class LinuxOAuthLoopbackListener: @unchecked Sendable {
     let port: Int
     let callbackPath: String
