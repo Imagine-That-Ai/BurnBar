@@ -53,7 +53,6 @@ export function TransparencyInventory() {
               count={loading ? 0 : u.count}
               bytes={loading ? 0 : u.bytes}
               index={i}
-              onChanged={reload}
             />
           );
         })}
