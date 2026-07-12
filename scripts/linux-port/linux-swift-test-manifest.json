@@ -84,7 +84,7 @@
         "OpenBurnBarDaemonLinuxGatewayTests.LinuxComputerUseOwnerAuthorizationCoordinatorTests",
         "OpenBurnBarDaemonLinuxGatewayTests.LinuxComputerUseServiceSystemInputTests",
         "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testAccount",
-        "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testApp",
+        "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testAppCheckTTLAboveThirtyMinutesFailsBeforeBind",
         "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testApproval",
         "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testBounded",
         "OpenBurnBarDaemonLinuxGatewayTests.LinuxDaemonCloudCredentialAuthorityTests/testCancel",

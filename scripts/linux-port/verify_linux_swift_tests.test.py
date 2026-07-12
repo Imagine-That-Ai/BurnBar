@@ -220,18 +220,38 @@ sleep 5
         manifest = copy.deepcopy(VERIFIER.load_manifest(root))
         owner = next(suite for suite in manifest["suites"] if suite["id"] == "daemon-linux")
         owner["linuxCoverageFilters"].pop()
-        with self.assertRaisesRegex(VERIFIER.VerificationError, "filter set shrank below its pinned contract"):
+        with self.assertRaisesRegex(VERIFIER.VerificationError, "pinned coverage-filter set"):
             VERIFIER.validate_contract(root, manifest)
 
-    def test_real_contract_rejects_removing_mandatory_stable_filter(self) -> None:
+    def test_real_contract_rejects_same_count_coverage_filter_substitution(self) -> None:
         root = MODULE_PATH.parents[2]
         manifest = copy.deepcopy(VERIFIER.load_manifest(root))
         owner = next(suite for suite in manifest["suites"] if suite["id"] == "daemon-linux")
-        owner["linuxCoverageFilters"].remove(
-            "OpenBurnBarDaemonLinuxGatewayTests.ComputerUseSessionGrantRPCCompositionTests"
-        )
-        owner["linuxCoverageFilters"].append("OpenBurnBarDaemonLinuxGatewayTests.ComputerUseSessionGrantBrokerTests")
-        with self.assertRaisesRegex(VERIFIER.VerificationError, "missing mandatory stable filters"):
+        owner["linuxCoverageFilters"][-1] = "OpenBurnBarDaemonLinuxGatewayTests.BurnBarDaemonPortableRPCFallbackTests"
+        with self.assertRaisesRegex(VERIFIER.VerificationError, "pinned coverage-filter set"):
+            VERIFIER.validate_contract(root, manifest)
+
+    def test_real_contract_rejects_deleting_a_pinned_suite(self) -> None:
+        root = MODULE_PATH.parents[2]
+        manifest = copy.deepcopy(VERIFIER.load_manifest(root))
+        manifest["suites"] = [suite for suite in manifest["suites"] if suite["id"] != "daemon-linux"]
+        with self.assertRaisesRegex(VERIFIER.VerificationError, "suite identities"):
+            VERIFIER.validate_contract(root, manifest)
+
+    def test_real_contract_rejects_suite_identity_substitution(self) -> None:
+        root = MODULE_PATH.parents[2]
+        manifest = copy.deepcopy(VERIFIER.load_manifest(root))
+        suite = next(suite for suite in manifest["suites"] if suite["id"] == "daemon-linux")
+        suite["target"] = "OpenBurnBarDaemonTests"
+        with self.assertRaisesRegex(VERIFIER.VerificationError, "identity contract drifted"):
+            VERIFIER.validate_contract(root, manifest)
+
+    def test_real_contract_rejects_overlapping_prefix_filters(self) -> None:
+        root = MODULE_PATH.parents[2]
+        manifest = copy.deepcopy(VERIFIER.load_manifest(root))
+        owner = next(suite for suite in manifest["suites"] if suite["id"] == "daemon-linux")
+        owner["linuxCoverageFilters"][-1] = "OpenBurnBarDaemonLinuxGatewayTests.BurnBarDaemonLinuxAuthSocket"
+        with self.assertRaisesRegex(VERIFIER.VerificationError, "overlapping linuxCoverageFilters"):
             VERIFIER.validate_contract(root, manifest)
 
     def test_real_contract_rejects_self_attested_coverage_floor(self) -> None:

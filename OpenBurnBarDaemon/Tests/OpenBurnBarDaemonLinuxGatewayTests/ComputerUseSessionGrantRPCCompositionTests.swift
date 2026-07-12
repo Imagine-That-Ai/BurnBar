@@ -6,7 +6,10 @@ import OpenBurnBarCore
 import XCTest
 
 final class ComputerUseSessionGrantRPCCompositionTests: XCTestCase {
-    private func makeCapabilityStateStore(at root: URL) async throws -> ComputerUseCapabilityStateStore {
+    private func makeCapabilityStateStore(
+        at root: URL,
+        entitlementIsActive: Bool = true
+    ) async throws -> ComputerUseCapabilityStateStore {
         let now = Date()
         let store = ComputerUseCapabilityStateStore(
             fileURL: root.appendingPathComponent("capability-state.json"),
@@ -23,7 +26,7 @@ final class ComputerUseSessionGrantRPCCompositionTests: XCTestCase {
             generatedAt: now,
             userID: "linux-test-user",
             entitlement: ComputerUseEntitlementSnapshot(
-                isActive: true,
+                isActive: entitlementIsActive,
                 productId: ComputerUseEntitlementSnapshot.hostedProductID,
                 expireAt: now.addingTimeInterval(3_600),
                 allowsBrowser: true,
@@ -163,9 +166,29 @@ final class ComputerUseSessionGrantRPCCompositionTests: XCTestCase {
         )
         XCTAssertEqual(missingRunStart.error?.code, BurnBarRPCErrorCode.invalidParams)
 
+        let inactiveAuditRoot = root.appendingPathComponent("inactive-entitlement", isDirectory: true)
+        let inactiveService = ComputerUseService(
+            auditBaseDirectory: inactiveAuditRoot,
+            capabilityStateStore: try await makeCapabilityStateStore(
+                at: inactiveAuditRoot,
+                entitlementIsActive: false
+            ),
+            leafKillSwitch: { false },
+            systemInputDispatcher: { _, _ in throw CompositionTestFailure.unexpectedDispatch },
+            privilegedInputKillSwitchActivator: { _ in }
+        )
+        let inactiveServer = BurnBarDaemonServer(
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: root.appendingPathComponent("inactive-entitlement.sock").path,
+                socketAuthToken: "test-token",
+                startsMissionControlBackgroundLoops: false
+            ),
+            logger: BurnBarDaemonLogger(category: "cu-inactive-entitlement-rpc-composition-tests"),
+            computerUseService: inactiveService
+        )
         do {
             let _: BurnBarRPCResponseEnvelope<ComputerUseSessionStartResponse> = try await rpc(
-                server: defaultServer,
+                server: inactiveServer,
                 method: .computerUseSessionStart,
                 id: "unentitled-system-start",
                 params: ComputerUseSessionStartRequest(
@@ -176,8 +199,13 @@ final class ComputerUseSessionGrantRPCCompositionTests: XCTestCase {
             )
             XCTFail("An unentitled system session must fail closed")
         } catch {
-            XCTAssertFalse(String(describing: error).isEmpty)
+            XCTAssertEqual(
+                error as? ComputerUseService.ServiceError,
+                .capabilityDenied(ComputerUseDenyReason.entitlement.rawValue)
+            )
         }
+        let inactiveSessionExists = await inactiveService.hasActiveSession()
+        XCTAssertFalse(inactiveSessionExists)
 
         let barePending = BurnBarRPCRequestEnvelope(
             id: "bare-pending",
