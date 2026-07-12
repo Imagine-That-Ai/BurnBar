@@ -143,11 +143,6 @@ enum CLIAgentMissionPersonaScopeResolution: Equatable {
     case resolved(CLIAgentMissionPersonaScopeApplier.RuntimeOverrides)
     case refused(String)
 
-    var isRefused: Bool {
-        if case .refused = self { return true }
-        return false
-    }
-
     static func resolve(from data: [String: Any]) -> CLIAgentMissionPersonaScopeResolution {
         do {
             return .resolved(try CLIAgentMissionPersonaScopeApplier.overrides(from: data))

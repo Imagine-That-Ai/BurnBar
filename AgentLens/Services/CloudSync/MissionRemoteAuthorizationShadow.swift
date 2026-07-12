@@ -397,4 +397,78 @@ enum MissionRemoteAuthorizationShadow {
         // (AgentLens/Utilities/AgentLensStringNilIfBlank.swift).
         (data[key] as? String)?.nilIfBlank
     }
+
+    // MARK: Fire-and-forget observation helpers
+
+    /// Extract the common shadow-observation fields from a mission payload,
+    /// then fire the observation detached so `processingDocs` is released
+    /// promptly and approval transitions are not swallowed.
+    private static func fireAndForget(
+        missionID: String,
+        data: [String: Any],
+        guiDecision: GUIMissionAuthorizationDecision,
+        executorTrustState: String,
+        fanOutCount: Int
+    ) {
+        let prompt = (data["prompt"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? ""
+        let runtime = (data["requestedRuntime"] as? String) ?? "auto"
+        let modelID = (data["requestedModelID"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        Task { @MainActor in
+            await observe(
+                missionID: missionID, data: data, prompt: prompt,
+                guiDecision: guiDecision, executorTrustState: executorTrustState,
+                requestedRuntime: runtime, requestedModelID: modelID,
+                requestedFanOutCount: fanOutCount
+            )
+        }
+    }
+
+    /// Shadow-observe a deny at the fan-out validation failure path.
+    static func observeDeny(
+        missionID: String, data: [String: Any],
+        executorTrustState: String, fanOutCount: Int = 1
+    ) {
+        fireAndForget(
+            missionID: missionID, data: data,
+            guiDecision: .deny, executorTrustState: executorTrustState,
+            fanOutCount: fanOutCount
+        )
+    }
+
+    /// Shadow-observe the trusted-path authorization outcome, computing the
+    /// GUI decision (including terminal-denial and persona-scope logic)
+    /// inside the shadow module so the call site stays compact.
+    static func observeTrustedDecision(
+        missionID: String, data: [String: Any],
+        willPauseForApproval: Bool,
+        backend: CLIAgentMissionBackend, cliAssistantAllowed: Bool,
+        fanOutCount: Int
+    ) {
+        let isTerminalDenial = willPauseForApproval
+            && CLIAgentMissionRuntimePlanner.requiresMacCLIAssistantConsentForRemoteMission(backend: backend)
+            && !cliAssistantAllowed
+        let personaMalformed = personaScopeIsMalformed(in: data)
+        let decision = personaMalformed
+            ? .deny
+            : reduceGUIDecision(
+                data: data, willPauseForApproval: willPauseForApproval,
+                isTerminalDenial: isTerminalDenial
+            )
+        fireAndForget(
+            missionID: missionID, data: data,
+            guiDecision: decision, executorTrustState: "trusted",
+            fanOutCount: fanOutCount
+        )
+    }
+
+    /// Check whether the mission's persona scope is malformed (present but
+    /// unresolvable). Kept here so Handling.swift does not need to import or
+    /// duplicate the resolution enum.
+    static func personaScopeIsMalformed(in data: [String: Any]) -> Bool {
+        guard data["personaScopeJSON"] != nil else { return false }
+        if case .refused = CLIAgentMissionPersonaScopeResolution.resolve(from: data) { return true }
+        return false
+    }
 }
