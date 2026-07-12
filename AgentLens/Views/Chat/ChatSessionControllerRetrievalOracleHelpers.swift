@@ -152,9 +152,11 @@ extension ChatSessionController {
     ) {
         guard !chunk.isEmpty else { return }
         if let i = pieces.indices.last, pieces[i].kind == kind {
-            var last = pieces[i]
-            last.value += chunk
-            pieces[i] = last
+            // Mutate through the subscript so the append stays amortized
+            // O(1). The old copy-out (`var last = pieces[i]`) shared string
+            // storage with the array element, forcing a full copy-on-write
+            // of the accumulated value on EVERY chunk — O(n²) per stream.
+            pieces[i].value += chunk
         } else {
             pieces.append(ChatTranscriptPiece(kind: kind, value: chunk, detail: nil))
         }

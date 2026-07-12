@@ -521,49 +521,32 @@ extension ChatSessionController {
                         )
                     }
                 }
-                for try await event in stream {
-                    switch event {
-                    case .text(let chunk):
-                        Self.appendStreamingText(chunk, to: &pieces)
-                    case .reasoning(let chunk):
-                        Self.appendStreamingTranscriptChunk(chunk, kind: .reasoning, to: &pieces)
-                    case .refusal(let chunk):
-                        Self.appendStreamingTranscriptChunk(chunk, kind: .refusal, to: &pieces)
-                    case .toolUse(let name, let detail):
-                        pieces.append(ChatTranscriptPiece(kind: .toolUse, value: name, detail: detail))
-                        Task { @MainActor in
-                            Analytics.shared.track(.chatToolInvoked, [
-                                "tool_name": .string(AnalyticsBuckets.toolName(name)),
-                                "backend": .string(self.chatBackend.rawValue)
-                            ])
-                        }
-                    case .toolResult(let name, let detail):
-                        pieces.append(ChatTranscriptPiece(kind: .toolResult, value: name, detail: detail))
-                        #if canImport(AppKit) && !DISTRIBUTION_MAS
-                        if let detail {
-                            Task { @MainActor in
-                                await SystemPermissionToolFailureWatcher.shared.observe(
-                                    toolName: name,
-                                    detail: detail,
-                                    toolCallId: assistantId
-                                )
-                            }
-                        }
-                        #endif
-                    case .usage(let usage):
-                        if let prev = usageSnapshot {
-                            usageSnapshot = usage.totalTokens >= prev.totalTokens ? usage : prev
-                        } else {
-                            usageSnapshot = usage
-                        }
-                    }
-                    let joined = ChatMessageRecord.joinedText(from: pieces)
+                // remediation(chat-streaming-o2): the old loop did O(n) work
+                // per SSE event — `joinedText(from:)` re-concatenated every
+                // text piece, `pieces` was snapshotted, and a MainActor
+                // commit + `streamingTick` bump re-invalidated every
+                // transcript observer PER TOKEN, making a full stream O(n²).
+                // Now:
+                //   • the joined text is maintained incrementally (O(delta)),
+                //   • commits are throttled to ~80ms (the same cadence as the
+                //     iOS `HermesStreamingEngine`), with the first visible
+                //     delta and structural events (tool pills) committing
+                //     immediately so the bubble/pill still appears instantly,
+                //   • an unconditional flush runs after the loop — and before
+                //     rethrowing on a mid-stream error — so no staged text is
+                //     ever lost.
+                var joinedTextAccumulator = ""
+                let streamCommitInterval: Duration = .milliseconds(80)
+                var lastStreamCommit = ContinuousClock.now - streamCommitInterval
+
+                func commitStagedPieces() async {
+                    let joined = joinedTextAccumulator
                     let snapshot = pieces
                     await Task { @MainActor in
                         if let idx = self.messages.firstIndex(where: { $0.id == assistantId }) {
-                            // Per-token mutation: assigning `content` and
-                            // `transcriptPieces` in place avoids allocating a
-                            // fresh `ChatMessageRecord` per chunk. The
+                            // In-place mutation: assigning `content` and
+                            // `transcriptPieces` avoids allocating a fresh
+                            // `ChatMessageRecord` per commit. The
                             // `streamingTick` bump remains the single
                             // observation broadcast for views that mirror
                             // the in-flight content without reading
@@ -575,6 +558,69 @@ extension ChatSessionController {
                         }
                     }.value
                 }
+
+                do {
+                    for try await event in stream {
+                        var forceCommit = false
+                        switch event {
+                        case .text(let chunk):
+                            forceCommit = pieces.isEmpty
+                            Self.appendStreamingText(chunk, to: &pieces)
+                            joinedTextAccumulator += chunk
+                        case .reasoning(let chunk):
+                            forceCommit = pieces.isEmpty
+                            Self.appendStreamingTranscriptChunk(chunk, kind: .reasoning, to: &pieces)
+                        case .refusal(let chunk):
+                            forceCommit = pieces.isEmpty
+                            Self.appendStreamingTranscriptChunk(chunk, kind: .refusal, to: &pieces)
+                        case .toolUse(let name, let detail):
+                            pieces.append(ChatTranscriptPiece(kind: .toolUse, value: name, detail: detail))
+                            forceCommit = true
+                            Task { @MainActor in
+                                Analytics.shared.track(.chatToolInvoked, [
+                                    "tool_name": .string(AnalyticsBuckets.toolName(name)),
+                                    "backend": .string(self.chatBackend.rawValue)
+                                ])
+                            }
+                        case .toolResult(let name, let detail):
+                            pieces.append(ChatTranscriptPiece(kind: .toolResult, value: name, detail: detail))
+                            forceCommit = true
+                            #if canImport(AppKit) && !DISTRIBUTION_MAS
+                            if let detail {
+                                Task { @MainActor in
+                                    await SystemPermissionToolFailureWatcher.shared.observe(
+                                        toolName: name,
+                                        detail: detail,
+                                        toolCallId: assistantId
+                                    )
+                                }
+                            }
+                            #endif
+                        case .usage(let usage):
+                            if let prev = usageSnapshot {
+                                usageSnapshot = usage.totalTokens >= prev.totalTokens ? usage : prev
+                            } else {
+                                usageSnapshot = usage
+                            }
+                            // Usage never changes the visible transcript —
+                            // skip the commit entirely.
+                            continue
+                        }
+                        let now = ContinuousClock.now
+                        if forceCommit || now - lastStreamCommit >= streamCommitInterval {
+                            lastStreamCommit = now
+                            await commitStagedPieces()
+                        }
+                    }
+                } catch {
+                    // The commit throttle can hold back up to ~80ms of
+                    // streamed text; flush the staged pieces before
+                    // rethrowing so the partial bubble keeps everything
+                    // that arrived.
+                    await commitStagedPieces()
+                    throw error
+                }
+                await commitStagedPieces()
                 await Task { @MainActor in
                     self.isStreaming = false
                     self.activeStreamMessageId = nil

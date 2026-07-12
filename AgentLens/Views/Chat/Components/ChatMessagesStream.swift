@@ -78,7 +78,10 @@ struct ChatMessagesStream: View {
                 if performPendingMemoryJump(using: proxy) { return }
                 scrollToLatestMessage(using: proxy)
             }
-            .onChange(of: controller.messages.last?.content.count ?? 0) { _, _ in
+            // `utf8.count` is O(1); `.count` walked every grapheme of the
+            // accumulated reply per body evaluation. Both grow monotonically
+            // on append, so the tail-scroll trigger fires identically.
+            .onChange(of: controller.messages.last?.content.utf8.count ?? 0) { _, _ in
                 scrollToLatestMessage(using: proxy)
             }
             // E1: a citation tap bumps `memoryJumpRequestToken` (even when the id
@@ -168,10 +171,14 @@ struct ChatMessagesStream: View {
                     .foregroundStyle(DesignSystem.Colors.warning)
                     .padding(.horizontal, DesignSystem.Spacing.sm)
             }
+            // Hoisted out of the per-row closure: the trailing-assistant scan
+            // is O(n), so running it inside `ForEach` made every transcript
+            // render O(n²) in message count.
+            let latestAssistantID = controller.isStreaming
+                ? nil
+                : controller.messages.last(where: { $0.role == .assistant })?.id
             ForEach(controller.messages) { msg in
-                let isLatestAssistant = !controller.isStreaming
-                    && msg.role == .assistant
-                    && msg.id == controller.messages.last(where: { $0.role == .assistant })?.id
+                let isLatestAssistant = msg.role == .assistant && msg.id == latestAssistantID
                 ChatMessageView(
                     message: msg,
                     isStreaming: controller.isStreaming && msg.id == controller.activeStreamMessageId && msg.role == .assistant,
@@ -190,6 +197,10 @@ struct ChatMessagesStream: View {
                         Task { await controller.jumpToMemoryCitation(messageID: messageID) }
                     }
                 )
+                // Skip re-rendering unchanged rows on every streaming
+                // commit — the row's semantic Equatable ignores the jump
+                // closure identity (see `ChatMessageView: Equatable`).
+                .equatable()
                 .id(msg.id)
                 .modifier(MemoryJumpHighlight(isActive: controller.memoryJumpHighlightMessageID == msg.id))
             }
