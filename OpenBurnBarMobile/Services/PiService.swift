@@ -215,17 +215,17 @@ final class PiConnectionSecretStore: HermesConnectionSecretStoring {
 
     func save(_ value: String, connectionID: String) throws {
         let data = Data(value.utf8)
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: connectionID
+        let query: [CFString: Any] = [
+            kSecClass: kSecClassGenericPassword,
+            kSecAttrService: keychainService,
+            kSecAttrAccount: connectionID
         ]
-        let attrs: [String: Any] = [kSecValueData as String: data]
+        let attrs: [CFString: Any] = [kSecValueData: data]
         let status = SecItemUpdate(query as CFDictionary, attrs as CFDictionary)
         if status == errSecItemNotFound {
             var create = query
-            create[kSecValueData as String] = data
-            create[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            create[kSecValueData] = data
+            create[kSecAttrAccessible] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
             let addStatus = SecItemAdd(create as CFDictionary, nil)
             guard addStatus == errSecSuccess else { throw PiServiceError.keychain(addStatus) }
         } else if status != errSecSuccess {
@@ -234,11 +234,11 @@ final class PiConnectionSecretStore: HermesConnectionSecretStoring {
     }
 
     func load(connectionID: String) throws -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: connectionID,
-            kSecReturnData as String: true
+        let query: [CFString: Any] = [
+            kSecClass: kSecClassGenericPassword,
+            kSecAttrService: keychainService,
+            kSecAttrAccount: connectionID,
+            kSecReturnData: true
         ]
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
@@ -251,10 +251,10 @@ final class PiConnectionSecretStore: HermesConnectionSecretStoring {
     }
 
     func delete(connectionID: String) throws {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: connectionID
+        let query: [CFString: Any] = [
+            kSecClass: kSecClassGenericPassword,
+            kSecAttrService: keychainService,
+            kSecAttrAccount: connectionID
         ]
         let status = SecItemDelete(query as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
