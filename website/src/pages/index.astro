@@ -36,9 +36,9 @@ const surfaceShowcase = SURFACES.filter((s) =>
 );
 // The heading below spells this count out in words — fail the build if the
 // showcase drifts so the copy can't silently go stale.
-if (surfaceShowcase.length !== 8) {
+if (surfaceShowcase.length !== 9) {
   throw new Error(
-    `index surfaces heading says "Eight" but the showcase now has ${surfaceShowcase.length} entries — update both.`
+    `index surfaces heading says "Nine" but the showcase now has ${surfaceShowcase.length} entries — update both.`
   );
 }
 
@@ -75,12 +75,7 @@ const detectedCount = totalCount - primaryCount;
             <span class="hero__providers-title mono">MONITORED INTEGRATIONS</span>
             <div class="hero__providers-list">
               <div class="hero__provider-pill" title="Claude Code">
-                <img
-                  src="/brand/providers/claude-code.png"
-                  alt=""
-                  width="16"
-                  height="16"
-                />
+                <img src="/brand/providers/claude-code.png" alt="" width="16" height="16" />
                 <span class="mono">Claude Code</span>
               </div>
               <div class="hero__provider-pill" title="Codex">
@@ -96,12 +91,7 @@ const detectedCount = totalCount - primaryCount;
                 <span class="mono">OpenAI</span>
               </div>
               <div class="hero__provider-pill" title="GitHub Copilot">
-                <img
-                  src="/brand/providers/copilot.png"
-                  alt=""
-                  width="16"
-                  height="16"
-                />
+                <img src="/brand/providers/copilot.png" alt="" width="16" height="16" />
                 <span class="mono">Copilot</span>
               </div>
               <div class="hero__provider-pill" title="Factory">
@@ -307,7 +297,7 @@ const detectedCount = totalCount - primaryCount;
     <div class="container container--wide">
       <header class="sec-head">
         <span class="eyebrow eyebrow--ember">Where it shows up</span>
-        <h2 id="surfaces-h">Eight surfaces, one daemon.</h2>
+        <h2 id="surfaces-h">Nine surfaces, one daemon.</h2>
         <p class="lead">
           Every screen you care about — and a few you didn't expect — talks to the same local
           daemon. Multi-agent work needs multi-surface visibility.
