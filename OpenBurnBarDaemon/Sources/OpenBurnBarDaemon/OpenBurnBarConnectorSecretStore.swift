@@ -130,10 +130,10 @@ public actor BurnBarConnectorKeychainSecretStore: BurnBarConnectorSecretStoring 
         }
 #elseif os(Linux)
         let id = "\(service):connector.\(connector.rawValue).credential"
-        if let normalized = secret?.trimmingCharacters(in: .whitespacesAndNewlines),
-           normalized.isEmpty == false {
+        if let secret,
+           secret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
             _ = try linuxSecretCustodian.storeHighValueSecret(
-                normalized,
+                secret,
                 id: id,
                 secretClass: .connectorCredential
             )

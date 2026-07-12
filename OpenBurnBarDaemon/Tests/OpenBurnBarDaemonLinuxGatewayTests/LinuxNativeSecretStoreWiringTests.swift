@@ -22,17 +22,31 @@ final class LinuxNativeSecretStoreWiringTests: XCTestCase {
             linuxSecretCustodian: custodian
         )
 
-        try await providerStore.setSecret("zai-secret", for: "zai")
+        try await providerStore.setSecret("  zai-secret  ", for: "zai")
         let providerSecret = try await providerStore.secret(for: "zai")
         XCTAssertEqual(providerSecret, "zai-secret")
+        let storedProviderRecord = try XCTUnwrap(
+            backend.readSecret(
+                id: "com.openburnbar.test.providers:provider.zai.apiKey",
+                secretClass: .providerCredential
+            )
+        )
+        XCTAssertEqual(storedProviderRecord.secret, "  zai-secret  ")
         XCTAssertEqual(
             backend.secretClass(for: "com.openburnbar.test.providers:provider.zai.apiKey"),
             .providerCredential
         )
 
-        try await connectorStore.setSecret("github-secret", for: .github)
+        try await connectorStore.setSecret("\tgithub-secret\t", for: .github)
         let connectorSecret = try await connectorStore.secret(for: .github)
-        XCTAssertEqual(connectorSecret, "github-secret")
+        XCTAssertEqual(connectorSecret, "\tgithub-secret\t")
+        let storedConnectorRecord = try XCTUnwrap(
+            backend.readSecret(
+                id: "com.openburnbar.test.connectors:connector.github.credential",
+                secretClass: .connectorCredential
+            )
+        )
+        XCTAssertEqual(storedConnectorRecord.secret, "\tgithub-secret\t")
         XCTAssertEqual(
             backend.secretClass(for: "com.openburnbar.test.connectors:connector.github.credential"),
             .connectorCredential
@@ -44,6 +58,28 @@ final class LinuxNativeSecretStoreWiringTests: XCTestCase {
         let deletedConnectorSecret = try await connectorStore.secret(for: .github)
         XCTAssertNil(deletedProviderSecret)
         XCTAssertNil(deletedConnectorSecret)
+    }
+
+    func testNotificationStoreUsesLinuxSecretCustodianForCRUD() throws {
+        let backend = MutableLinuxSecretBackend()
+        let store = BurnBarNotificationKeychainSecretStore(
+            service: "com.openburnbar.test.notifications",
+            linuxSecretCustodian: LinuxSecretCustodian(backends: [backend])
+        )
+
+        XCTAssertNil(try store.telegramBotToken())
+        try store.setTelegramBotToken("  telegram-token  ")
+
+        XCTAssertEqual(try store.telegramBotToken(), "telegram-token")
+        XCTAssertEqual(
+            backend.secretClass(
+                for: "com.openburnbar.test.notifications:mission-control.telegram.bot-token"
+            ),
+            .connectorCredential
+        )
+
+        try store.setTelegramBotToken(nil)
+        XCTAssertNil(try store.telegramBotToken())
     }
 }
 

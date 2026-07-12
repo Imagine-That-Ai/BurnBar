@@ -1,5 +1,8 @@
 import Crypto
 import Foundation
+#if os(Linux)
+import Glibc
+#endif
 
 public enum LinuxSecretTrustLevel: String, Codable, CaseIterable, Sendable {
     case secretService = "secret_service"
@@ -70,6 +73,7 @@ public enum LinuxSecretStoreError: Error, Equatable, CustomStringConvertible {
     case missingSecret(String)
     case backendUnavailable(String)
     case mutationUnavailable(String)
+    case readOnlySecretRemains(id: String, backends: [String])
     case commandFailed(backend: String, operation: String, detail: String)
     case invalidSecretID(String)
     case invalidSecretValue(String)
@@ -85,6 +89,8 @@ public enum LinuxSecretStoreError: Error, Equatable, CustomStringConvertible {
             return "SecretStore backend unavailable: \(reason)"
         case let .mutationUnavailable(backend):
             return "SecretStore backend \(backend) does not support secret mutations."
+        case let .readOnlySecretRemains(id, backends):
+            return "Secret \(id) remains in read-only SecretStore backend(s): \(backends.joined(separator: ", "))."
         case let .commandFailed(backend, operation, detail):
             return "SecretStore backend \(backend) failed to \(operation): \(detail)"
         case let .invalidSecretID(id):
@@ -171,50 +177,265 @@ public struct LinuxHeadlessSecretStoreBackend: LinuxSecretStoreBackend {
     public var backendName: String { "headless" }
     public var trustLevel: LinuxSecretTrustLevel
     public var environment: [String: String]
-    public var credentialReader: @Sendable (String) throws -> String
+    /// Reads the systemd credential at the given path. Returning `nil` means
+    /// the credential is not provided to this service (absent file), so the
+    /// custodian can fall through to other backends; throwing reports a
+    /// genuine backend anomaly and stays fail-closed.
+    public var credentialReader: @Sendable (String) throws -> String?
     public var nowMillis: Int64
     public var allowsEnvironmentSecrets: Bool
 
     public init(
         trustLevel: LinuxSecretTrustLevel = .headlessPassphrase,
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        credentialReader: @escaping @Sendable (String) throws -> String = { path in
-            try String(contentsOfFile: path, encoding: .utf8)
-        },
+        credentialReader: (@Sendable (String) throws -> String?)? = nil,
         nowMillis: Int64 = 1_800_000_000_000,
         allowsEnvironmentSecrets: Bool = false
     ) {
         self.trustLevel = trustLevel
         self.environment = environment
-        self.credentialReader = credentialReader
+        self.credentialReader = credentialReader ?? { path in
+            try LinuxSystemdCredentialReader.read(path: path)
+        }
         self.nowMillis = nowMillis
         self.allowsEnvironmentSecrets = allowsEnvironmentSecrets
     }
 
     public func readSecret(id: String, secretClass: LinuxHighValueSecretClass) throws -> LinuxSecretRecord? {
-        let envKey = "OPENBURNBAR_\(id.uppercased().replacingOccurrences(of: "-", with: "_"))"
-        let value: String?
-        if allowsEnvironmentSecrets, let env = environment[envKey]?.trimmedNonEmpty {
-            value = env
+        try Self.validateCredentialID(id)
+        let envKey = "OPENBURNBAR_\(Self.environmentKeySuffix(for: id))"
+        let resolved: (secret: String, trustLevel: LinuxSecretTrustLevel, note: String)?
+        if allowsEnvironmentSecrets, let env = Self.nonEmptySecret(environment[envKey]) {
+            resolved = (
+                env,
+                trustLevel,
+                "Headless secret resolved from an explicitly enabled process environment value."
+            )
         } else if let directory = environment["CREDENTIALS_DIRECTORY"]?.trimmedNonEmpty {
-            let path = URL(fileURLWithPath: directory).appendingPathComponent(id).path
-            value = try credentialReader(path).trimmingCharacters(in: .whitespacesAndNewlines).trimmedNonEmpty
+            let path = try Self.confinedCredentialPath(directory: directory, id: id)
+            if let raw = try credentialReader(path) {
+                let secret = try Self.normalizedCredentialSecret(raw, id: id)
+                resolved = (
+                    secret,
+                    .systemdCredential,
+                    "Headless secret resolved from a validated systemd credential."
+                )
+            } else {
+                // The unit simply does not provide this credential. Report no
+                // record so reads fall through to other backends (or surface
+                // `.missingSecret`) and deletes do not treat it as a match.
+                resolved = nil
+            }
         } else {
-            value = nil
+            resolved = nil
         }
-        guard let secret = value else { return nil }
+        guard let resolved else { return nil }
         return LinuxSecretRecord(
-            secret: secret,
+            secret: resolved.secret,
             metadata: LinuxSecretMetadata(
                 id: id,
                 secretClass: secretClass,
-                trustLevel: trustLevel,
+                trustLevel: resolved.trustLevel,
                 backend: backendName,
                 createdAtMillis: nowMillis,
-                note: "Headless secret resolved from process environment or systemd credentials."
+                note: resolved.note
             )
         )
     }
+
+    private static func validateCredentialID(_ id: String) throws {
+        let bytes = Array(id.utf8)
+        guard bytes.isEmpty == false,
+              bytes.count <= 128,
+              bytes.first.map(isASCIILetterOrDigit) == true,
+              bytes.allSatisfy({ $0 >= 0x20 && $0 <= 0x7E && $0 != 47 && $0 != 92 }) else {
+            throw LinuxSecretStoreError.invalidSecretID(id)
+        }
+    }
+
+    private static func isASCIILetterOrDigit(_ byte: UInt8) -> Bool {
+        (byte >= 48 && byte <= 57) || (byte >= 65 && byte <= 90) || (byte >= 97 && byte <= 122)
+    }
+
+    private static func confinedCredentialPath(directory: String, id: String) throws -> String {
+        guard directory.hasPrefix("/"),
+              directory.contains("\0") == false,
+              directory.utf8.count <= 4_096 else {
+            throw LinuxSecretStoreError.backendUnavailable("systemd credential directory is invalid")
+        }
+        let directoryURL = URL(fileURLWithPath: directory, isDirectory: true).standardizedFileURL
+        let credentialURL = directoryURL
+            .appendingPathComponent(credentialFileName(for: id), isDirectory: false)
+            .standardizedFileURL
+        guard credentialURL.deletingLastPathComponent() == directoryURL else {
+            throw LinuxSecretStoreError.invalidSecretID(id)
+        }
+        return credentialURL.path
+    }
+
+    private static func credentialFileName(for id: String) -> String {
+        id.utf8.map { byte in
+            guard isASCIILetterOrDigit(byte) || byte == 45 || byte == 46 else {
+                return String(format: "_%02X", byte)
+            }
+            return String(UnicodeScalar(byte))
+        }.joined()
+    }
+
+    private static func environmentKeySuffix(for id: String) -> String {
+        id.utf8.map { byte in
+            if isASCIILetterOrDigit(byte) {
+                return String(UnicodeScalar(byte)).uppercased()
+            }
+            if byte == 45 { return "_" }
+            return String(format: "_%02X", byte)
+        }.joined()
+    }
+
+    private static func normalizedCredentialSecret(_ raw: String, id: String) throws -> String {
+        var secret = raw
+        if secret.hasSuffix("\n") {
+            secret.removeLast()
+            if secret.hasSuffix("\r") {
+                secret.removeLast()
+            }
+        }
+        guard nonEmptySecret(secret) != nil else {
+            throw LinuxSecretStoreError.missingSecret(id)
+        }
+        guard secret.contains("\0") == false,
+              secret.contains("\n") == false,
+              secret.contains("\r") == false else {
+            throw LinuxSecretStoreError.invalidSecretValue(
+                "systemd credentials must contain one non-NUL line"
+            )
+        }
+        guard secret.utf8.count <= LinuxSystemdCredentialReader.maximumBytes else {
+            throw LinuxSecretStoreError.secretTooLarge(secret.utf8.count)
+        }
+        return secret
+    }
+
+    private static func nonEmptySecret(_ value: String?) -> String? {
+        guard let value,
+              value.isEmpty == false,
+              value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+            return nil
+        }
+        return value
+    }
+}
+
+private enum LinuxSystemdCredentialReader {
+    static let maximumBytes = 16_384
+
+    static func read(path: String) throws -> String? {
+#if os(Linux)
+        let url = URL(fileURLWithPath: path).standardizedFileURL
+        let directoryPath = url.deletingLastPathComponent().path
+        let credentialName = url.lastPathComponent
+        let directoryOpen: (descriptor: Int32, errorNumber: Int32) = {
+            let descriptor = Glibc.open(
+                directoryPath,
+                O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW
+            )
+            return (descriptor, descriptor >= 0 ? 0 : errno)
+        }()
+        guard directoryOpen.descriptor >= 0 else {
+            if directoryOpen.errorNumber == ENOENT {
+                // No credentials directory exists, so no systemd credential is
+                // provided. Treat as missing rather than a backend anomaly.
+                return nil
+            }
+            throw LinuxSecretStoreError.backendUnavailable("systemd credential directory is unavailable")
+        }
+        let directoryDescriptor = directoryOpen.descriptor
+        defer { _ = Glibc.close(directoryDescriptor) }
+
+        var directoryMetadata = stat()
+        guard fstat(directoryDescriptor, &directoryMetadata) == 0,
+              directoryMetadata.st_mode & S_IFMT == S_IFDIR,
+              directoryMetadata.st_uid == 0 || directoryMetadata.st_uid == geteuid(),
+              modeAllowsCredentialAccess(
+                  directoryMetadata.st_mode,
+                  ownerIsRoot: directoryMetadata.st_uid == 0
+              ) else {
+            throw LinuxSecretStoreError.backendUnavailable("systemd credential directory failed ownership or mode validation")
+        }
+
+        let credentialOpen: (descriptor: Int32, errorNumber: Int32) = credentialName.withCString { name in
+            let descriptor = Glibc.openat(
+                directoryDescriptor,
+                name,
+                O_RDONLY | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW
+            )
+            return (descriptor, descriptor >= 0 ? 0 : errno)
+        }
+        guard credentialOpen.descriptor >= 0 else {
+            if credentialOpen.errorNumber == ENOENT {
+                // The unit does not provide this particular credential; report
+                // it as missing so callers can fall through to other backends.
+                return nil
+            }
+            throw LinuxSecretStoreError.backendUnavailable("systemd credential is unavailable")
+        }
+        let descriptor = credentialOpen.descriptor
+        defer { _ = Glibc.close(descriptor) }
+
+        var metadata = stat()
+        guard fstat(descriptor, &metadata) == 0,
+              metadata.st_mode & S_IFMT == S_IFREG,
+              metadata.st_uid == 0 || metadata.st_uid == geteuid(),
+              modeAllowsCredentialAccess(metadata.st_mode, ownerIsRoot: metadata.st_uid == 0),
+              metadata.st_size > 0,
+              metadata.st_size <= maximumBytes else {
+            throw LinuxSecretStoreError.backendUnavailable(
+                "systemd credential failed type, ownership, mode, or size validation"
+            )
+        }
+
+        var data = Data()
+        data.reserveCapacity(Int(metadata.st_size))
+        var buffer = [UInt8](repeating: 0, count: 4_096)
+        while true {
+            let count = buffer.withUnsafeMutableBytes { bytes in
+                Glibc.read(descriptor, bytes.baseAddress, bytes.count)
+            }
+            if count == 0 { break }
+            if count < 0 {
+                if errno == EINTR { continue }
+                throw LinuxSecretStoreError.backendUnavailable("systemd credential read failed")
+            }
+            guard data.count <= maximumBytes - Int(count) else {
+                throw LinuxSecretStoreError.secretTooLarge(data.count + Int(count))
+            }
+            data.append(contentsOf: buffer.prefix(Int(count)))
+        }
+        guard let value = String(data: data, encoding: .utf8) else {
+            throw LinuxSecretStoreError.invalidSecretValue("systemd credential is not valid UTF-8")
+        }
+        return value
+#else
+        throw LinuxSecretStoreError.backendUnavailable("systemd credentials are available only on Linux")
+#endif
+    }
+
+#if os(Linux)
+    /// Fail-closed credential mode policy.
+    ///
+    /// Classic systemd credentials are private to their owner (`0600`-style),
+    /// so non-root-owned entries must have no group or other bits at all. On
+    /// systemd 254+, `DynamicUser=true` services receive root-owned entries
+    /// (files `0440`, directory `0550`) whose group bits mirror the POSIX ACL
+    /// mask that grants the service user read access, so group read/execute
+    /// bits are accepted for root-owned entries. Any world access or any
+    /// group-write bit is always rejected.
+    private static func modeAllowsCredentialAccess(_ mode: mode_t, ownerIsRoot: Bool) -> Bool {
+        guard mode & 0o007 == 0 else { return false }
+        guard mode & 0o020 == 0 else { return false }
+        return ownerIsRoot || mode & 0o077 == 0
+    }
+#endif
 }
 
 public struct LinuxCommandSecretStoreBackend: LinuxSecretStoreBackend {
@@ -287,26 +508,21 @@ public struct LinuxSecretCustodian: Sendable {
         id: String,
         secretClass: LinuxHighValueSecretClass
     ) throws -> LinuxSecretMetadata {
-        guard let normalized = secret.trimmedNonEmpty else {
+        guard secret.isEmpty == false,
+              secret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
             throw LinuxSecretStoreError.missingSecret(id)
         }
-        var lastError: Error?
-        for backend in backends where backend.supportsMutations {
-            guard backend.trustLevel.approvedForHighValueSecrets else {
-                throw LinuxSecretStoreError.trustLevelRefused(
-                    secretClass: secretClass,
-                    trustLevel: backend.trustLevel
-                )
-            }
-            do {
-                try backend.healthCheck()
-                return try backend.storeSecret(normalized, id: id, secretClass: secretClass)
-            } catch {
-                lastError = error
-            }
+        guard let backend = backends.first(where: \.supportsMutations) else {
+            throw LinuxSecretStoreError.mutationUnavailable("no writable approved backend")
         }
-        if let lastError { throw lastError }
-        throw LinuxSecretStoreError.mutationUnavailable("no writable approved backend")
+        guard backend.trustLevel.approvedForHighValueSecrets else {
+            throw LinuxSecretStoreError.trustLevelRefused(
+                secretClass: secretClass,
+                trustLevel: backend.trustLevel
+            )
+        }
+        try backend.healthCheck()
+        return try backend.storeSecret(secret, id: id, secretClass: secretClass)
     }
 
     public func deleteHighValueSecret(
@@ -314,22 +530,61 @@ public struct LinuxSecretCustodian: Sendable {
         secretClass: LinuxHighValueSecretClass
     ) throws {
         var foundWritableBackend = false
-        var lastError: Error?
-        for backend in backends where backend.supportsMutations {
+        var mutableMatches: [any LinuxSecretStoreBackend] = []
+        var readOnlyMatches: [String] = []
+        var firstDiscoveryError: Error?
+
+        // Complete discovery before deleting anything so an unreadable backend
+        // cannot hide a stale copy behind a partially completed deletion.
+        for backend in backends {
             guard backend.trustLevel.approvedForHighValueSecrets else { continue }
-            foundWritableBackend = true
+            if backend.supportsMutations {
+                foundWritableBackend = true
+            }
             do {
-                guard try backend.readSecret(id: id, secretClass: secretClass) != nil else {
-                    continue
+                try backend.healthCheck()
+                if try backend.readSecret(id: id, secretClass: secretClass) != nil {
+                    if backend.supportsMutations {
+                        mutableMatches.append(backend)
+                    } else {
+                        readOnlyMatches.append(backend.backendName)
+                    }
                 }
-                try backend.deleteSecret(id: id, secretClass: secretClass)
             } catch {
-                lastError = error
+                if firstDiscoveryError == nil {
+                    firstDiscoveryError = error
+                }
             }
         }
-        if let lastError { throw lastError }
+
+        if let firstDiscoveryError {
+            throw firstDiscoveryError
+        }
+
         if foundWritableBackend == false {
-            throw LinuxSecretStoreError.mutationUnavailable("no writable approved backend")
+            if readOnlyMatches.isEmpty {
+                throw LinuxSecretStoreError.mutationUnavailable("no writable approved backend")
+            }
+        }
+
+        var firstDeletionError: Error?
+        for backend in mutableMatches {
+            do {
+                try backend.deleteSecret(id: id, secretClass: secretClass)
+            } catch {
+                if firstDeletionError == nil {
+                    firstDeletionError = error
+                }
+            }
+        }
+        if let firstDeletionError {
+            throw firstDeletionError
+        }
+        if readOnlyMatches.isEmpty == false {
+            throw LinuxSecretStoreError.readOnlySecretRemains(
+                id: id,
+                backends: readOnlyMatches
+            )
         }
     }
 
@@ -339,6 +594,8 @@ public struct LinuxSecretCustodian: Sendable {
             return "Connect GNOME Secret Service, KWallet, systemd credentials, or set the documented headless passphrase before starting cloud features."
         case .backendUnavailable, .commandFailed:
             return "Install and unlock Secret Service or KWallet, then retry. Headless servers may use systemd credentials."
+        case .readOnlySecretRemains:
+            return "Remove the matching systemd credential from the service configuration, restart the service, then retry."
         case .trustLevelRefused, .plaintextFallbackRefused, .mutationUnavailable,
              .invalidSecretID, .invalidSecretValue, .secretTooLarge:
             return "OpenBurnBar refused to place high-value secrets in plaintext. Choose an approved SecretStore trust level."
