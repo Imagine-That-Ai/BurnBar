@@ -18,6 +18,7 @@ on:
       - "scripts/ci/check-firestore-deploy-drift.mjs"
       - "scripts/ci/check-firestore-rules-size.mjs"
       - "scripts/ci/compact-firestore-rules-inplace.mjs"
+      - "scripts/ci/propagate-storage-rules-secondary-buckets.mjs"
       - "scripts/ci/firebase-rules-source.mjs"
       - "functions/scripts/test-firestore-rules.mjs"
       - "firestore-rules-tests/package.json"
@@ -127,6 +128,14 @@ jobs:
             --project "$FIREBASE_PROJECT" \
             --config "$FIREBASE_FIRESTORE_CI_CONFIG" \
             --non-interactive
+
+      # firebase deploy --only storage only ships rules to the default bucket.
+      # The deleted helper enumerated every firebase.storage/ release; the drift
+      # checker still verifies them all. Propagate storage.rules to secondary
+      # buckets so the drift gate does not catch them (LB-2).
+      - name: Propagate Storage rules to secondary buckets
+        if: ${{ env.SHOULD_DEPLOY == 'true' }}
+        run: node scripts/ci/propagate-storage-rules-secondary-buckets.mjs "$FIREBASE_PROJECT"
 
       - name: Drift check deployed Firestore rules and indexes
         run: node scripts/ci/check-firestore-deploy-drift.mjs "$FIREBASE_PROJECT"
