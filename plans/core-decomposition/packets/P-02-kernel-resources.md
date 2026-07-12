@@ -48,6 +48,17 @@ because the SVGs + Pretext remain.
   Update both to `OpenBurnBarCore/Sources/OpenBurnBarKernel/Resources/catalog.json`.
   (Also re-check `tools/openburnbar-mcp/tests/test_ministry.py` line ~22 which asserts
   the same path.)
+- **AE-IMPORT** (standard, docs/CORE_DECOMPOSITION_PROGRAM.md): the two moved files
+  become Kernel members; if the Kernel build (V1) demands an `import <Dep>` for a
+  symbol that used to resolve inside Core, add it (`<Dep>` MUST be a Kernel-declared
+  dep — none expected; these are catalog/PII utilities the Kernel is the natural home
+  for). Never `import OpenBurnBarCore`. Enumerate any added line in the PR body.
+- **AE-TESTABLE** (standard): add `@testable import OpenBurnBarKernel` beneath the
+  existing `@testable import OpenBurnBarCore` in any Core test reaching an INTERNAL
+  symbol of `MemorySecretPIIGate.swift` / `OpenBurnBarCatalogLoader.swift`. Anticipated:
+  `MemorySecretPIIGateTests.swift`, `OpenBurnBarCatalogTests.swift` (and possibly
+  `ProviderAccountContractTests.swift`). Add ONLY where compile fails; enumerate each in
+  the PR body.
 
 ## Shim
 None. Catalog loader + PII gate become Kernel symbols; Core already re-exports Kernel

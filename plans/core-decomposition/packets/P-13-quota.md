@@ -21,6 +21,15 @@ Enumerate + verify each. Remove `OpenBurnBarQuota/ModuleMarker.swift`.
 - `OpenBurnBarCore/Package.swift` — NONE expected (`ProviderQuota/` not in
   `openBurnBarCoreExcludes`; it compiles off-Apple today via FoundationNetworking guards).
   If a Quota file is excluded, add to `openBurnBarQuotaExcludes`.
+- **AE-IMPORT / AE-TESTABLE** (standard, docs/CORE_DECOMPOSITION_PROGRAM.md): EXPECTED
+  here. The 3 SQLite-backed quota adapters reference `SQLiteConnection` (an
+  `OpenBurnBarSQLiteReader` symbol post-P-01) and Quota references Kernel/crypto symbols,
+  so those moved files need `import OpenBurnBarSQLiteReader` and/or `import
+  OpenBurnBarKernel` — add exactly what V1 demands (both are declared deps of
+  `OpenBurnBarQuota`); never `import OpenBurnBarCore`. Add `@testable import
+  OpenBurnBarQuota` beneath the existing `@testable import OpenBurnBarCore` in any Core
+  quota test reaching an INTERNAL moved symbol. Enumerate every added line/file in the
+  PR body.
 
 ## Slice-specific validation
 - Linux-boundary build (`OPENBURNBAR_DAEMON_LINUX_BOUNDARY_BUILD=1 swift build`) — the

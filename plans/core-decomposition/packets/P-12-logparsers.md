@@ -20,6 +20,15 @@ Whole `Services/LogParser/` (23) + `Services/LogPath/` (2) into
 - `OpenBurnBarCore/Package.swift` — NONE expected (none of these paths is in
   `openBurnBarCoreExcludes`; verify at execution — the LogParser cluster compiles
   off-Apple today). If a file IS excluded, add it to `openBurnBarLogParsersExcludes`.
+- **AE-IMPORT / AE-TESTABLE** (standard, docs/CORE_DECOMPOSITION_PROGRAM.md): EXPECTED
+  here. The 5 SQLite-backed parsers (Windsurf/ForgeDev/Goose/Hermes/Codex) reference
+  `SQLiteConnection` (an `OpenBurnBarSQLiteReader` symbol post-P-01) and `ModelPricing`
+  resolves `BurnBarCatalogLoader` (a Kernel symbol post-P-02), so those moved files need
+  `import OpenBurnBarSQLiteReader` and/or `import OpenBurnBarKernel` — add exactly what
+  V1 demands (both are declared deps of `OpenBurnBarLogParsers`); never `import
+  OpenBurnBarCore`. Add `@testable import OpenBurnBarLogParsers` beneath the existing
+  `@testable import OpenBurnBarCore` in any Core parser test reaching an INTERNAL moved
+  symbol. Enumerate every added line/file in the PR body.
 
 ## Slice-specific validation (byte-identical parser output)
 - `swift run OpenBurnBarG2ParserParity`

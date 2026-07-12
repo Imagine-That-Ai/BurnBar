@@ -54,6 +54,10 @@ on:
       - "OpenBurnBarCore/Sources/OpenBurnBarQuota/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarVectorKit/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarHermes/**"
+      # OpenBurnBarEngine re-exports OpenBurnBarPretext (Package.swift), so a PR
+      # touching ONLY Pretext changes the Windows Engine build graph and must wake
+      # this gate too (Codex PR #1559 thread: Pretext was missing from the filter).
+      - "OpenBurnBarCore/Sources/OpenBurnBarPretext/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarEngine/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarWindowsParserPathParity/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarG2ParserParity/**"
@@ -73,6 +77,8 @@ on:
       - "OpenBurnBarCore/Sources/OpenBurnBarQuota/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarVectorKit/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarHermes/**"
+      # OpenBurnBarEngine re-exports OpenBurnBarPretext (see the push block above).
+      - "OpenBurnBarCore/Sources/OpenBurnBarPretext/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarEngine/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarWindowsParserPathParity/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarG2ParserParity/**"
@@ -276,6 +282,17 @@ jobs:
       # verification item; scope-building the single target keeps the compile narrow.
       - name: swift build --target OpenBurnBarCore
         run: swift build --package-path OpenBurnBarCore --target OpenBurnBarCore
+
+      # Compile the OpenBurnBarEngine umbrella target itself. Core deliberately
+      # does NOT depend on Engine (an Engine->Core edge would be circular), so the
+      # `--target OpenBurnBarCore` step above never builds Engine (Codex PR #1559
+      # thread: adding Engine to the path filter only WAKES this workflow; a PR
+      # editing only OpenBurnBarEngine.swift would otherwise pass the Windows lane
+      # without ever compiling the new Engine target). Engine re-exports the
+      # cross-platform leaves (Kernel/LogParsers/Quota/VectorKit/Hermes/Pretext),
+      # which prune to the Foundation(+swift-crypto) subset on this Windows host.
+      - name: swift build --target OpenBurnBarEngine
+        run: swift build --package-path OpenBurnBarCore --target OpenBurnBarEngine
 
       - name: Build and stage production C ABI engine
         run: |
@@ -511,6 +528,12 @@ jobs:
       # `os(Windows)` is true on this ARM64 host too).
       - name: swift build --target OpenBurnBarCore
         run: swift build --package-path OpenBurnBarCore --target OpenBurnBarCore
+
+      # Compile the OpenBurnBarEngine umbrella target itself, natively on aarch64
+      # (see the x64 leg's note — Core does not depend on Engine, so the Core
+      # build above never compiles it). Same Foundation(+swift-crypto) subset.
+      - name: swift build --target OpenBurnBarEngine (ARM64)
+        run: swift build --package-path OpenBurnBarCore --target OpenBurnBarEngine
 
       - name: Build and stage production C ABI engine (ARM64)
         run: |

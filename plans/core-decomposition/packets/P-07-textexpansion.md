@@ -31,6 +31,15 @@ Remove the now-empty `TextExpansion/` source dir.
   off-Apple exclude is needed. Delete the exclude entry's explanatory comment too.
 - `budgets/core-ui-purity-baseline.json` — regenerate via `--update` (see validation).
   This is the ONLY packet-time write to this baseline besides P-11/P-15/P-16.
+- **AE-IMPORT** (standard, docs/CORE_DECOMPOSITION_PROGRAM.md): if the TextExpansion
+  build (V1) demands `import <Dep>` in a moved file, add it (`<Dep>` a
+  `OpenBurnBarTextExpansion`-declared dep — Kernel). The 5 files are Foundation/AppKit/
+  CoreGraphics-based with no obvious Kernel-symbol use; none expected. Never `import
+  OpenBurnBarCore`. Enumerate any added line in the PR body.
+- **AE-TESTABLE** (standard): add `@testable import OpenBurnBarTextExpansion` beneath
+  the existing `@testable import OpenBurnBarCore` in any Core test reaching an INTERNAL
+  TextExpansion symbol. Anticipated: `TextExpansionTests.swift`. Add ONLY if it fails to
+  compile; enumerate in the PR body.
 
 ## Shim
 None. `@_exported import OpenBurnBarTextExpansion` (Apple-guarded) already exists in

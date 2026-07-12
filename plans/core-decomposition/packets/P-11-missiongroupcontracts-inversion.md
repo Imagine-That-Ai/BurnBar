@@ -27,6 +27,12 @@ git mv OpenBurnBarCore/Sources/OpenBurnBarCore/Contracts/MissionGroupContracts.s
   compiles off-Apple). Delete the associated comment lines.
 - `budgets/core-ui-purity-baseline.json` — `--update` (MissionConsoleTypes leaves the
   UI-import set; note it must NOT be in the baseline AFTER its import is deleted).
+- **AE-IMPORT / AE-TESTABLE** (standard, docs/CORE_DECOMPOSITION_PROGRAM.md): add
+  `import OpenBurnBarKernel` (or another Kernel-declared dep) to a moved file only if
+  the Kernel build (V1) demands it; never `import OpenBurnBarCore`. Add `@testable
+  import OpenBurnBarKernel` beneath the existing `@testable import OpenBurnBarCore` in
+  any Core test reaching an INTERNAL moved symbol (anticipated: MissionGroupContracts /
+  MissionConsoleTypes tests). Enumerate every added line/file in the PR body.
 
 ## CANON CAUTION
 `MissionGroupContracts.swift` moves INTO `OpenBurnBarKernel/Contracts/`. The canon

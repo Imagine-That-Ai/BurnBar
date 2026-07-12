@@ -98,10 +98,53 @@ function scanTarget(target) {
 
 const mainLive = scanTarget(mainTarget);
 
-// Per-sibling ceilings at ceil(1.25 x current size).
+// PLANNED ceilings for the decomposition-DESTINATION siblings (the targets the
+// move packets FILL). Captured at S0 the marker files are ~8 LOC, so a measured
+// 1.25x ceiling (2 files / 10 LOC) makes it impossible for the very first packet
+// to move real code in — the gate would fail on its own program (Codex PR #1559
+// thread 1 / P-01 named-blocker on PR #1561). Seed each destination's ceiling at
+// ~1.25x its ARCHITECTURE end-state size (docs/CORE_DECOMPOSITION_PROGRAM.md
+// "End-state target map") so a packet FILLING a sibling passes, while a sibling
+// growing past its planned end-state still FAILS (no sibling becomes the next
+// god module). `--update` must NOT clobber these with the measured 1.25x — a
+// planned ceiling always WINS over the measured one (a destination sibling at
+// marker size would otherwise ratchet its own ceiling back down to 10 LOC on the
+// first integrator ratchet-down PR and re-block the program). Non-destination
+// siblings (Kernel's peers that are NOT decomposition targets — Media, IrohRelay,
+// SignalCore, etc.) keep the measured 1.25x ceiling.
+//
+// Kernel IS a decomposition destination (P-02/P-03/P-04a/P-04b/P-11 move ~35
+// files + several thousand LOC into it); its marker-era measured ceiling
+// (133 files / 35955 LOC) has ZERO headroom for those moves, so it is seeded
+// from the ~37k end-state (1.25x = 46250 LOC) with file headroom.
+const PLANNED_CEILINGS = {
+  OpenBurnBarKernel: { maxFiles: 185, maxLines: 46250 },
+  OpenBurnBarSQLiteReader: { maxFiles: 3, maxLines: 450 },
+  OpenBurnBarLogParsers: { maxFiles: 35, maxLines: 11700 },
+  OpenBurnBarQuota: { maxFiles: 55, maxLines: 13000 },
+  // VectorKit gains OpenBurnBarSearchContracts.swift (P-03 re-slice / FIX 4) on
+  // top of the vector indexes + SearchPlanner + Pensieve, so its ceiling covers
+  // SearchContracts too.
+  OpenBurnBarVectorKit: { maxFiles: 12, maxLines: 5800 },
+  OpenBurnBarInsights: { maxFiles: 100, maxLines: 20000 },
+  OpenBurnBarHermes: { maxFiles: 10, maxLines: 1800 },
+  OpenBurnBarPretext: { maxFiles: 5, maxLines: 850 },
+  OpenBurnBarTextExpansion: { maxFiles: 8, maxLines: 1100 },
+  OpenBurnBarLaunchServices: { maxFiles: 12, maxLines: 6100 },
+  OpenBurnBarUI: { maxFiles: 160, maxLines: 40000 },
+  OpenBurnBarEngine: { maxFiles: 3, maxLines: 60 },
+};
+
+// Per-sibling ceilings: PLANNED wins for decomposition destinations, else
+// ceil(1.25 x current measured size). A `planned: true` flag makes it obvious in
+// the JSON which ceilings are end-state-seeded (and must not be ratcheted down).
 function ceilings() {
   const out = {};
   for (const t of siblingTargets) {
+    if (PLANNED_CEILINGS[t]) {
+      out[t] = { ...PLANNED_CEILINGS[t], planned: true };
+      continue;
+    }
     const s = scanTarget(t);
     out[t] = {
       maxFiles: Math.ceil(s.fileCount * 1.25),
@@ -114,17 +157,26 @@ function ceilings() {
 if (mode === "update") {
   const baseline = {
     note:
-      "OpenBurnBarCore main-target membership snapshot + per-sibling {files, LOC} " +
-      "ceilings (docs/CORE_DECOMPOSITION_PROGRAM.md). Deny-gate: no NEW .swift file " +
-      "may be added to OpenBurnBarCore/Sources/OpenBurnBarCore/ (new code lands in a " +
-      "sibling target); main-target totals may only shrink; no sibling may exceed its " +
-      "1.25x ceiling. Shrink is non-fatal (run --update to ratchet down). Regenerate " +
-      "via scripts/debt/check-core-target-membership-budget.sh --update.",
+      "OpenBurnBarCore main-target membership snapshot (per-file line counts) + " +
+      "per-sibling {files, LOC} ceilings (docs/CORE_DECOMPOSITION_PROGRAM.md). " +
+      "Deny-gate: no NEW .swift file may be added to " +
+      "OpenBurnBarCore/Sources/OpenBurnBarCore/ (new code lands in a sibling target); " +
+      "main-target totals may only shrink AND no individual baselined main-target " +
+      "file may grow (per-file check — a removed big file cannot mask regrowth in " +
+      "another file); no sibling may exceed its ceiling (decomposition-destination " +
+      "siblings use a PLANNED end-state ceiling that --update never ratchets down, " +
+      "others use 1.25x measured). Shrink is non-fatal (run --update to ratchet " +
+      "down). Regenerate via scripts/debt/check-core-target-membership-budget.sh " +
+      "--update.",
     main: {
       target: mainTarget,
       totalLines: mainLive.totalLines,
       fileCount: mainLive.fileCount,
       files: mainLive.files.map((f) => f.path),
+      // Per-file line counts so existing-file growth cannot hide behind an
+      // unrelated file move (Codex PR #1559 thread: "Compare Core files per-file,
+      // not only aggregate LOC"). Path -> line count.
+      fileLines: Object.fromEntries(mainLive.files.map((f) => [f.path, f.lines])),
     },
     siblingCeilings: ceilings(),
   };
@@ -143,7 +195,9 @@ if (!fs.existsSync(baselinePath)) {
 }
 const baseline = JSON.parse(fs.readFileSync(baselinePath, "utf8"));
 const baseMainFiles = new Set(baseline.main.files);
+const baseFileLines = baseline.main.fileLines || {};
 const liveMainFiles = new Set(mainLive.files.map((f) => f.path));
+const liveLineByPath = new Map(mainLive.files.map((f) => [f.path, f.lines]));
 
 let failed = false;
 
@@ -176,6 +230,33 @@ if (mainLive.fileCount > baseline.main.fileCount) {
     `\nFAIL: ${mainTarget} file count grew (${baseline.main.fileCount} -> ${mainLive.fileCount}); ` +
       "the main target may only shrink."
   );
+}
+
+// Per-file growth check (Codex PR #1559 thread: aggregate LOC alone lets a
+// removed big file mask regrowth in another file during the exact extraction PRs
+// this gate polices). For every baselined main-target file that STILL lives in
+// the main target, its live line count may not exceed its baselined count.
+// Removed files are handled by the shrink path below; new files already FAIL
+// above. Baselines predating fileLines skip this (fall back to aggregate only)
+// until the integrator runs --update once.
+if (Object.keys(baseFileLines).length) {
+  const grown = [];
+  for (const [p, baseLines] of Object.entries(baseFileLines)) {
+    if (!liveMainFiles.has(p)) continue; // moved out — non-fatal shrink path
+    const live = liveLineByPath.get(p);
+    if (typeof live === "number" && live > baseLines) {
+      grown.push({ path: p, from: baseLines, to: live });
+    }
+  }
+  if (grown.length) {
+    failed = true;
+    console.error(
+      `\nFAIL: ${grown.length} baselined ${mainTarget} file(s) grew in place ` +
+        "(existing-file growth may not hide behind an unrelated file move — new code " +
+        "lands in a sibling target; see docs/CORE_DECOMPOSITION_PROGRAM.md):"
+    );
+    for (const g of grown) console.error(`  ${g.path} (${g.from} -> ${g.to} lines)`);
+  }
 }
 
 for (const target of siblingTargets) {

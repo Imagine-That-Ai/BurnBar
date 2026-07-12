@@ -37,6 +37,18 @@ deviations.
   `SwitcherProfile`/`CLIAuthDiscovery` go to Kernel and must compile off-Apple (they
   are not in excludes today — confirm).
 - `budgets/core-ui-purity-baseline.json` — `--update` (any AppKit launcher leaving Core).
+- **AE-IMPORT / AE-TESTABLE** (standard, docs/CORE_DECOMPOSITION_PROGRAM.md): EXPECTED
+  here — the 6 LaunchServices files that reference the Kernel-diverted `SwitcherProfile`/
+  `CLIAuthDiscovery` (or other Kernel symbols) need `import OpenBurnBarKernel`; add
+  exactly what V1 demands (a `OpenBurnBarLaunchServices`-declared dep). The two
+  Kernel-diverted files add `import OpenBurnBarKernel`-declared deps only if their build
+  demands it. Never `import OpenBurnBarCore`. Add `@testable import
+  OpenBurnBarLaunchServices` (or `OpenBurnBarKernel` for the diverted pair) beneath the
+  existing `@testable import OpenBurnBarCore` in any Core test reaching an INTERNAL
+  moved symbol (anticipated: `ChromeProfileDiscoveryTests.swift`,
+  `CLIAuthDiscoveryTests.swift`, `CLITerminalSessionSupervisorTests.swift`,
+  `AppCheckDebugTokenEnvironmentTests.swift`, `CLILaunchAdapter*Tests.swift`). Enumerate
+  every added line/file in the PR body.
 
 ## Validation
 V1–V11; ui-purity `--update`; V-linux boundary (daemon must still see SwitcherProfile/

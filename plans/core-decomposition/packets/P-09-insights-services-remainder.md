@@ -34,6 +34,14 @@ remain in Core.
 ## Shim
 None. Do NOT edit `OpenBurnBarInsightsReexport.swift`.
 
+## Standard Allowed-edit classes (docs/CORE_DECOMPOSITION_PROGRAM.md)
+- **AE-IMPORT / AE-TESTABLE** as in P-08: add `import OpenBurnBarKernel` to any moved
+  Adapters/Cadence/Trace/Verdict file the Insights build flags for a Kernel symbol
+  (never `import OpenBurnBarCore`); add `@testable import OpenBurnBarInsights` beneath
+  the existing `@testable import OpenBurnBarCore` in any Core test reaching an INTERNAL
+  moved symbol (anticipated: any `Insights/Adapters|Cadence|Trace|Verdict` test that
+  fails to compile). Enumerate every added line in the PR body.
+
 ## Forbidden actions
 Standard. Do NOT move `Share/`.
 

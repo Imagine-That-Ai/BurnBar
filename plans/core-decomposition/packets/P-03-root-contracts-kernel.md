@@ -1,4 +1,4 @@
-# Packet P-03: move root mission/search contracts → OpenBurnBarKernel
+# Packet P-03: move root mission contracts → OpenBurnBarKernel
 STATE: QUEUED
 LANE: D          DEPENDS-ON: S0
 BASELINE-TOUCHING: none
@@ -10,22 +10,53 @@ S17 daemon repoint.
 
 ## Scope — the ONLY files you may touch
 
-### git mv list (run exactly these, from repo root)
+### git mv list (run exactly these, from repo root) — 6 files
 ```
 git mv OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarMissionControlContracts.swift OpenBurnBarCore/Sources/OpenBurnBarKernel/OpenBurnBarMissionControlContracts.swift
 git mv OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarMissionControlMissionsContracts.swift OpenBurnBarCore/Sources/OpenBurnBarKernel/OpenBurnBarMissionControlMissionsContracts.swift
 git mv OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarMissionNextActionPlanner.swift OpenBurnBarCore/Sources/OpenBurnBarKernel/OpenBurnBarMissionNextActionPlanner.swift
-git mv OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarSearchContracts.swift OpenBurnBarCore/Sources/OpenBurnBarKernel/OpenBurnBarSearchContracts.swift
 git mv OpenBurnBarCore/Sources/OpenBurnBarCore/OpenBurnBarDistributedNotifications.swift OpenBurnBarCore/Sources/OpenBurnBarKernel/OpenBurnBarDistributedNotifications.swift
 git mv OpenBurnBarCore/Sources/OpenBurnBarCore/TraceContext.swift OpenBurnBarCore/Sources/OpenBurnBarKernel/TraceContext.swift
 git mv OpenBurnBarCore/Sources/OpenBurnBarCore/ClientTelemetrySanitizer.swift OpenBurnBarCore/Sources/OpenBurnBarKernel/ClientTelemetrySanitizer.swift
 ```
+
+### RE-SLICE (S0-repair FIX 4): `OpenBurnBarSearchContracts.swift` is NOT in this packet
+`OpenBurnBarSearchContracts.swift` was originally listed here but is **dependency-
+UNCLOSED against Kernel**: it references `BurnBarEmbeddingDistanceMetric` (defined in
+`OpenBurnBarVectorKit.swift`, lines 31/47) and `BurnBarSearchPlan` (defined in
+`OpenBurnBarSearchPlanner.swift`, lines 116/127) — both are VectorKit symbols that
+STAY in Core until P-14. It therefore cannot precede them into the Kernel. It moves to
+**OpenBurnBarVectorKit** with SearchPlanner + the vector-index files in **P-14**
+(daemon reaches it via the Engine umbrella, which re-exports VectorKit). Do NOT move
+it in this packet.
+
+Symbol-level closure check on the remaining 6 (verified at S0-repair): all six are
+`import Foundation`-only and reference NO VectorKit-bound symbols
+(`grep -nE 'BurnBarEmbeddingDistanceMetric|BurnBarSearchPlan|BurnBarHNSW|BurnBarPersistentVector|BurnBarSignpost|VectorIndexDelta|Pensieve|SearchPlanner'`
+over the six files → EMPTY). Their public API is consumed by the daemon, so it is
+already `public`; they are dependency-closed for the Kernel move. AT EXECUTION re-run
+the grep; any new hit → a sibling PR raced the source, re-check before moving.
 
 ### Allowed edit files
 - `OpenBurnBarCore/Package.swift` — ONLY if the Core build (V2) reveals one of these
   files was in `openBurnBarCoreExcludes` (none are, verified at S0). If a compile error
   says a moved type is now missing off-Apple, STOP and report — do NOT invent excludes.
 - Enumerated `public` keywords below (if any).
+- **AE-IMPORT** (standard, docs/CORE_DECOMPOSITION_PROGRAM.md): add `import <Dep>` to
+  MOVED files if the Kernel build demands a Kernel-declared dep (none expected — these
+  6 are `import Foundation`-only and their referenced types are all Core→Kernel movers
+  or already in Kernel; if the compiler asks for one, it must be a module Kernel
+  declares, else STOP). Never `import OpenBurnBarCore`.
+- **AE-TESTABLE** (standard): add `@testable import OpenBurnBarKernel` beneath the
+  existing `@testable import OpenBurnBarCore` in any Core test file that reaches an
+  INTERNAL symbol of a moved file. Anticipated (grep of the Core test tree):
+  `OpenBurnBarMissionControlContractsTests.swift`,
+  `OpenBurnBarMissionControlMissionsContractsTests.swift`,
+  `ClientTelemetrySanitizerTests.swift` (and possibly
+  `BurnBarRemoteMissionAuthorizationContractsTests.swift`,
+  `BurnBarRPCContractsTests.swift` if they reach moved internals) — add `@testable
+  import OpenBurnBarKernel` ONLY to the ones that actually fail to compile; enumerate
+  each in the PR body.
 
 ## Shim
 None. Core re-exports Kernel via `KernelReexport.swift`. Do NOT edit it.
@@ -55,11 +86,14 @@ These contracts are consumed by the daemon, so their public API is already `publ
 
 ## Local validation
 V1 `swift build --target OpenBurnBarKernel` · V2 `swift build --target OpenBurnBarCore` ·
-V3 PURE on Kernel new files · V4 `swift test` · V5 daemon build · V6–V9b ratchets
-(membership = shrink) · V10 `node tools/ipc/generate-burnbarrpc-canon.mjs --check`
-(must be green, NO diff) · V11 scope check (7 R100 + at most 1 M Package.swift).
+V3 PURE on Kernel new files · V4 `swift test` (with any AE-TESTABLE lines added) · V5
+daemon build · V6–V9b ratchets (membership = shrink) · V10 `node
+tools/ipc/generate-burnbarrpc-canon.mjs --check` (must be green, NO diff) · V11 scope
+check (6 R100 + at most 1 M Package.swift + any enumerated AE-TESTABLE test-file M's +
+any enumerated AE-IMPORT moved-file M's).
 
 ## PR body / Acceptance
-Per template. Title: "P-03: move root mission/search contracts into OpenBurnBarKernel".
+Per template. Title: "P-03: move root mission contracts into OpenBurnBarKernel".
 Invariants: byte-identical wire canon (no contract files in scope), zero call-site
-changes, daemon still builds. A1–A6.
+changes, daemon still builds, SearchContracts deferred to P-14/VectorKit (dependency
+closure). Enumerate any AE-IMPORT / AE-TESTABLE lines. A1–A6.

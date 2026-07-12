@@ -29,6 +29,16 @@ sources): `git rm OpenBurnBarCore/Sources/OpenBurnBarSQLiteReader/ModuleMarker.s
     `sqliteReaderSQLiteDependencies` (an alias of `coreSQLiteDependencies`), declared
     by S0.
   - Do NOT add/remove targets, products, or the reader's dependency line (S0 did that).
+- **AE-IMPORT** (standard, docs/CORE_DECOMPOSITION_PROGRAM.md): if the reader build
+  (V1) demands an `import <Dep>` in a MOVED file for a symbol that used to resolve
+  inside Core (`<Dep>` MUST be a module `OpenBurnBarSQLiteReader` declares — its
+  SQLite backend deps; none expected, the two files are self-contained), add it to the
+  moved file and enumerate it in the PR body. Never `import OpenBurnBarCore`.
+- **AE-TESTABLE** (standard): add `@testable import OpenBurnBarSQLiteReader` beneath the
+  existing `@testable import OpenBurnBarCore` in any Core test that reaches an INTERNAL
+  symbol of a moved file. Anticipated: `SQLiteSeamParityTests.swift`. Add ONLY if it
+  actually fails to compile (the reader's API is `public`, so it may need none);
+  enumerate in the PR body.
 
 ## Shim
 None to create. `@_exported import OpenBurnBarSQLiteReader` already exists in
@@ -74,7 +84,7 @@ because Core's parsers and quota adapters — in other files — use them.)
 - V8: `./scripts/debt/check-swift-file-size-budget.sh`
 - V9: `./scripts/debt/check-core-target-membership-budget.sh` → prints "Improved: 2 file(s) left … run --update"; exit 0 (non-fatal shrink — do NOT run --update; the integrator ratchets)
 - V9b: `./scripts/debt/check-core-umbrella-imports-budget.sh`
-- V11: `git diff --name-status -M100 origin/main | sort` → 2 lines R100 (the mv), 1 line D (ModuleMarker.swift), 1 line M (Package.swift). Nothing else.
+- V11: `git diff --name-status -M100 origin/main | sort` → 2 lines R100 (the mv), 1 line D (ModuleMarker.swift), 1 line M (Package.swift), plus any enumerated AE-TESTABLE test-file M's / AE-IMPORT moved-file content-M's (each named in the PR body). Nothing else.
 
 Linux boundary (env-gated SQLite backend): the reader's off-Apple backend rides
 `sqliteReaderSQLiteDependencies`; run `OPENBURNBAR_DAEMON_LINUX_BOUNDARY_BUILD=1 swift build`
