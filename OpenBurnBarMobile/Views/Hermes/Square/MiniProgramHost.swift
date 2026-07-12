@@ -130,37 +130,3 @@ struct MiniProgramHostView: UIViewRepresentable {
 
 // MARK: - Card glue
 
-/// Wraps `MiniProgramHostView` with the chrome the Hermes Square inbox
-/// expects (rounded corner, height hint, agent palette accent).
-struct MiniProgramCard: View {
-    let card: CardCustom
-    let agent: AgentIdentity
-    let installedAgentURIs: Set<String>
-    let onPrimitive: (MiniProgramHostCall) async -> MiniProgramHostResponse
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Image(systemName: "shippingbox.fill")
-                    .foregroundStyle(Color(hex: agent.paletteHex))
-                Text(agent.displayName + " · mini-program")
-                    .font(.caption.bold())
-                    .foregroundStyle(DesignSystemColors.textSecondary)
-            }
-            MiniProgramHostView(
-                payload: card,
-                agentURI: agent.id,
-                installedAgentURIs: installedAgentURIs,
-                onPrimitive: onPrimitive
-            )
-            .frame(height: CGFloat(card.heightHint))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-        }
-        .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color(hex: agent.paletteHex).opacity(0.4),
-                        style: StrokeStyle(lineWidth: 0.5, dash: [3, 2]))
-        )
-    }
-}

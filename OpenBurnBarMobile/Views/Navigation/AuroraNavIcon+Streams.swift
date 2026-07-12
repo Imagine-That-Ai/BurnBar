@@ -160,43 +160,6 @@ struct StreamsTVScanlineShape: Shape {
     }
 }
 
-/// Reserved for future bar-based screen content. The active TV uses
-/// `StreamsTVColorBarsShape` instead, but we keep this entry here in case
-/// future product flows want a vertical bar-graph-style fallback.
-struct StreamsTVSignalBarsShape: Shape {
-    var phase: CGFloat
-    var animatableData: CGFloat {
-        get { phase }
-        set { phase = newValue }
-    }
-
-    func path(in rect: CGRect) -> Path {
-        let screen = StreamsTVMetrics.screen(in: rect)
-        let count: CGFloat = 4
-        let inset = screen.width * 0.16
-        let usable = screen.width - inset * 2
-        let gap = usable * 0.08
-        let barWidth = (usable - gap * (count - 1)) / count
-        let baseY = screen.maxY - screen.height * 0.18
-        let maxBarH = screen.height * 0.62
-        let baseRatios: [CGFloat] = [0.42, 0.78, 0.55, 0.92]
-
-        var path = Path()
-        for i in 0..<Int(count) {
-            let cosOffset = cos(phase * .pi * 2 + CGFloat(i) * .pi * 0.55)
-            let ratio = max(0.30, min(1.0, baseRatios[i] + cosOffset * 0.10))
-            let h = maxBarH * ratio
-            let x = screen.minX + inset + (barWidth + gap) * CGFloat(i)
-            let r = CGRect(x: x, y: baseY - h, width: barWidth, height: h)
-            path.addRoundedRect(
-                in: r,
-                cornerSize: CGSize(width: rect.width * 0.014, height: rect.width * 0.014)
-            )
-        }
-        return path
-    }
-}
-
 /// Combined silhouette of TV (cabinet + antennae + feet) — used for halo glow.
 struct StreamsGlyphShape: Shape {
     func path(in rect: CGRect) -> Path {
