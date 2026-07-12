@@ -514,21 +514,16 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
 
 /// Lock-boxed accumulation buffer for `readabilityHandler` callbacks, which
 /// arrive on a background queue while the discovery task polls for exit.
-private final class PipeDrainBuffer: @unchecked Sendable {
-    private let lock = NSLock()
-    private var data = Data()
+private final class PipeDrainBuffer: Sendable {
+    private let data = Locked(Data())
 
     func append(_ chunk: Data) {
         guard !chunk.isEmpty else { return }
-        lock.lock()
-        data.append(chunk)
-        lock.unlock()
+        data.withLock { $0.append(chunk) }
     }
 
     func string() -> String {
-        lock.lock()
-        defer { lock.unlock() }
-        return String(data: data, encoding: .utf8) ?? ""
+        data.withLock { String(data: $0, encoding: .utf8) ?? "" }
     }
 }
 
