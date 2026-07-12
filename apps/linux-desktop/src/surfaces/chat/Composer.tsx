@@ -6,6 +6,10 @@ type ComposerProps = {
   disabled: boolean;
   disabledReason: string;
   streaming: boolean;
+  /** True while a send is still composing (persist + gateway probe) before
+   * streaming starts. Blocks submits so an Enter in that window cannot clear
+   * the draft while the store's composing guard silently drops the text. */
+  busy: boolean;
   onSend: (text: string) => void;
   onStop: () => void;
 };
@@ -15,18 +19,19 @@ export function Composer({
   disabled,
   disabledReason,
   streaming,
+  busy,
   onSend,
   onStop
 }: ComposerProps) {
   const areaId = useId();
   const [draft, setDraft] = useState('');
   const placeholder = composerPlaceholder(backend);
-  const sendDisabled = disabled || streaming || draft.trim().length === 0;
+  const sendDisabled = disabled || streaming || busy || draft.trim().length === 0;
 
   const submit = (ev?: FormEvent) => {
     ev?.preventDefault();
     const message = draft.trim();
-    if (!message || disabled || streaming) return;
+    if (!message || disabled || streaming || busy) return;
     setDraft('');
     onSend(message);
   };
@@ -80,7 +85,7 @@ export function Composer({
               aria-label="Send message"
               title={
                 sendDisabled
-                  ? disabledReason || 'Enter a message before sending'
+                  ? disabledReason || (busy ? 'Sending…' : 'Enter a message before sending')
                   : 'Send message'
               }
               onClick={() => submit()}
@@ -94,7 +99,9 @@ export function Composer({
             ? disabledReason
             : streaming
               ? 'Streaming in progress — Stop cancels the active turn.'
-              : 'Shift+Enter newline'}
+              : busy
+                ? 'Sending…'
+                : 'Shift+Enter newline'}
         </p>
       </div>
     </form>

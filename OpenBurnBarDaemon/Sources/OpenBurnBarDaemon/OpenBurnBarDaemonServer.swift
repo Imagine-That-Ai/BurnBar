@@ -473,48 +473,72 @@ public actor BurnBarDaemonServer {
         self.membershipService = membershipService ?? BurnBarMembershipService()
 
         if let path = configuration.indexDatabasePath?.trimmingCharacters(in: .whitespacesAndNewlines),
-           path.isEmpty == false,
-           FileManager.default.fileExists(atPath: path) {
-            // RR-1: one-time plaintext→encrypted migration of the shared SQLite
-            // file BEFORE any service opens it. No-op on a stock-SQLite build or
-            // when no key is provisioned, so the disclosed-plaintext file is left
-            // exactly as-is (do-not-brick). On failure we log and continue —
-            // the original plaintext file is untouched and still opens below.
-            do {
-                _ = try BurnBarDaemonDatabaseCipher.migratePlaintextDatabaseIfNeeded(
-                    at: path,
-                    logger: BurnBarDaemonLogger(category: "database-cipher")
-                )
-            } catch {
-                logger.warning(
-                    "daemon_database_encrypted_migration_failed",
-                    metadata: ["path": path, "error": "\(error)"]
-                )
-            }
-            do {
-                self.indexedSearch = try BurnBarIndexedSearchService(
-                    databasePath: path,
-                    logger: BurnBarDaemonLogger(category: "indexed-search")
-                )
-            } catch {
-                logger.warning(
-                    "indexed_search_init_failed",
-                    metadata: ["path": path, "error": "\(error)"]
-                )
+           path.isEmpty == false {
+            if FileManager.default.fileExists(atPath: path) {
+                // RR-1: one-time plaintext→encrypted migration of the shared SQLite
+                // file BEFORE any service opens it. No-op on a stock-SQLite build or
+                // when no key is provisioned, so the disclosed-plaintext file is left
+                // exactly as-is (do-not-brick). On failure we log and continue —
+                // the original plaintext file is untouched and still opens below.
+                do {
+                    _ = try BurnBarDaemonDatabaseCipher.migratePlaintextDatabaseIfNeeded(
+                        at: path,
+                        logger: BurnBarDaemonLogger(category: "database-cipher")
+                    )
+                } catch {
+                    logger.warning(
+                        "daemon_database_encrypted_migration_failed",
+                        metadata: ["path": path, "error": "\(error)"]
+                    )
+                }
+                do {
+                    self.indexedSearch = try BurnBarIndexedSearchService(
+                        databasePath: path,
+                        logger: BurnBarDaemonLogger(category: "indexed-search")
+                    )
+                } catch {
+                    logger.warning(
+                        "indexed_search_init_failed",
+                        metadata: ["path": path, "error": "\(error)"]
+                    )
+                    self.indexedSearch = nil
+                }
+                do {
+                    self.resumeService = try BurnBarResumeService(
+                        databasePath: path,
+                        logger: BurnBarDaemonLogger(category: "resume-service")
+                    )
+                } catch {
+                    logger.warning(
+                        "resume_service_init_failed",
+                        metadata: ["path": path, "error": "\(error)"]
+                    )
+                    self.resumeService = nil
+                }
+                do {
+                    self.projectCodeMemory = try BurnBarProjectCodeMemoryStore(
+                        databasePath: path,
+                        logger: BurnBarDaemonLogger(category: "project-code-memory")
+                    )
+                } catch {
+                    logger.warning(
+                        "project_code_memory_init_failed",
+                        metadata: ["path": path, "error": "\(error)"]
+                    )
+                    self.projectCodeMemory = nil
+                }
+            } else {
+                // Read-oriented services (search, resume, code memory) genuinely
+                // need an existing indexed database; a fresh profile has nothing
+                // for them to serve yet.
                 self.indexedSearch = nil
-            }
-            do {
-                self.resumeService = try BurnBarResumeService(
-                    databasePath: path,
-                    logger: BurnBarDaemonLogger(category: "resume-service")
-                )
-            } catch {
-                logger.warning(
-                    "resume_service_init_failed",
-                    metadata: ["path": path, "error": "\(error)"]
-                )
                 self.resumeService = nil
+                self.projectCodeMemory = nil
             }
+            // The chat thread store must NOT be gated on the file existing: it
+            // opens with SQLITE_OPEN_CREATE so the very first chat on a fresh
+            // profile creates `openburnbar.sqlite`. Gating it above left fresh
+            // Linux profiles with permanently unavailable chat RPCs.
             if self.chatThreadService == nil {
                 do {
                     self.chatThreadService = try BurnBarChatThreadService(
@@ -527,18 +551,6 @@ public actor BurnBarDaemonServer {
                         metadata: ["path": path, "error": "\(error)"]
                     )
                 }
-            }
-            do {
-                self.projectCodeMemory = try BurnBarProjectCodeMemoryStore(
-                    databasePath: path,
-                    logger: BurnBarDaemonLogger(category: "project-code-memory")
-                )
-            } catch {
-                logger.warning(
-                    "project_code_memory_init_failed",
-                    metadata: ["path": path, "error": "\(error)"]
-                )
-                self.projectCodeMemory = nil
             }
         } else {
             self.indexedSearch = nil

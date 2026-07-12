@@ -272,7 +272,14 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
             return BurnBarChatMessageAppendResponse(message: existing, inserted: false)
         }
 
-        let storedTimestamp = timestamp.timeIntervalSince1970
+        // Store timestamps in GRDB's default `Date` text representation
+        // ("yyyy-MM-dd HH:mm:ss.SSS", UTC) — the exact format the macOS app
+        // writes through GRDB. SQLite orders storage classes before values,
+        // so writing REAL here would rank every Linux row after (or before)
+        // all macOS TEXT rows in `ORDER BY timestamp` / `MAX(timestamp)`,
+        // scrambling mixed macOS/Linux threads. Lexicographic order of this
+        // fixed-width format is chronological, so text comparisons stay valid.
+        let storedTimestamp = Self.grdbStorageTimestamp(timestamp)
         try execute(
             """
             INSERT INTO chat_threads (id, createdAt, updatedAt)
@@ -283,7 +290,7 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
                     ELSE chat_threads.updatedAt
                 END
             """,
-            bindings: [.text(threadID), .double(storedTimestamp), .double(storedTimestamp)]
+            bindings: [.text(threadID), .text(storedTimestamp), .text(storedTimestamp)]
         )
         try execute(
             """
@@ -294,7 +301,7 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
                 .text(messageID),
                 .text(request.role.rawValue),
                 .text(request.content),
-                .double(storedTimestamp),
+                .text(storedTimestamp),
                 backendID.map(BindValue.text) ?? .null,
                 .text(threadID)
             ]
@@ -533,6 +540,32 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
             db: db,
             sql: "CREATE INDEX IF NOT EXISTS chat_threads_updated_idx ON chat_threads(updatedAt DESC)"
         )
+        // Earlier Linux daemon builds wrote REAL Unix timestamps while the
+        // macOS app writes GRDB TEXT ("yyyy-MM-dd HH:mm:ss.SSS" UTC). SQLite
+        // orders storage classes before values, so normalize any numeric rows
+        // to the GRDB text format once, before the thread backfill below reads
+        // MIN/MAX. `> 1200000000` mirrors the read-path heuristic separating
+        // Unix-epoch values from timeIntervalSinceReferenceDate values.
+        // No-op on macOS-written databases (already TEXT).
+        for (table, columns) in [
+            ("chat_messages", ["timestamp"]),
+            ("chat_threads", ["createdAt", "updatedAt"])
+        ] {
+            for column in columns {
+                try execute(
+                    db: db,
+                    sql: """
+                    UPDATE \(table)
+                    SET \(column) = strftime(
+                        '%Y-%m-%d %H:%M:%f',
+                        CASE WHEN \(column) > 1200000000 THEN \(column) ELSE \(column) + 978307200 END,
+                        'unixepoch'
+                    )
+                    WHERE typeof(\(column)) IN ('integer', 'real')
+                    """
+                )
+            }
+        }
         try execute(
             db: db,
             sql: """
@@ -653,6 +686,24 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
         let basic = ISO8601DateFormatter()
         basic.formatOptions = [.withInternetDateTime]
         return basic.date(from: raw)
+    }
+
+    /// Mirrors GRDB's default `Date` storage representation (see the vendored
+    /// `GRDB/Core/Support/Foundation/Date.swift` `storageDateFormatter`):
+    /// "yyyy-MM-dd HH:mm:ss.SSS" in UTC, en_US_POSIX. The macOS app persists
+    /// chat rows through GRDB, so Linux appends must write byte-compatible
+    /// TEXT for mixed threads to sort as one storage class.
+    private static let grdbStorageDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        return formatter
+    }()
+
+    static func grdbStorageTimestamp(_ date: Date) -> String {
+        grdbStorageDateFormatter.string(from: date)
     }
 
     private static func iso8601(_ date: Date) -> String {
