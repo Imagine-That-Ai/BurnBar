@@ -233,6 +233,35 @@ extension CLIAgentMissionRequestListener {
             return
         }
         var data = mergePrivateMissionPayload(privatePayload, into: rawData)
+        // Build the authorization context from current data at call time (reads
+        // post-wand-routing values). `runtimeOverride` forwards the RESOLVED
+        // backend runtime (consent parity); `trustedFanOutCap` forwards the
+        // GUI-resolved server-signed cap. Split-brain M4.
+        func shadowCtx(
+            _ id: String,
+            _ p: String,
+            _ fanOut: Int,
+            runtimeOverride: String? = nil,
+            trustedFanOutCap: Int? = nil
+        ) -> MissionRemoteAuthorizationShadow.ShadowContext {
+            MissionRemoteAuthorizationShadow.ShadowContext(
+                missionID: id, prompt: p,
+                runtime: runtimeOverride ?? (data["requestedRuntime"] as? String) ?? "auto",
+                modelID: (data["requestedModelID"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                commandsAllowed: (data["commandsAllowed"] as? Bool) ?? false,
+                fileEditsAllowed: (data["fileEditsAllowed"] as? Bool) ?? false,
+                originDeviceID: (data["originDeviceID"] as? String)?.nilIfBlank ?? (data["createdBy"] as? String)?.nilIfBlank ?? "unknown",
+                originPlatform: (data["originPlatform"] as? String)?.nilIfBlank ?? (data["source"] as? String)?.nilIfBlank ?? "unknown",
+                personaScopeJSON: (data["personaScopeJSON"] as? String)?.nilIfBlank,
+                approvalMode: (data["approvalMode"] as? String)?.nilIfBlank,
+                approvalStatus: (data["approvalStatus"] as? String) ?? "",
+                approverDeviceID: (data["approverDeviceID"] as? String)?.nilIfBlank,
+                entitlementTier: (data["entitlementTier"] as? String)?.nilIfBlank ?? "none",
+                workingDirectory: (data["workingDirectory"] as? String)?.nilIfBlank,
+                fanOutCount: fanOut,
+                trustedFanOutCap: trustedFanOutCap
+            )
+        }
         let missionGroupContext: MissionGroupClaimContext?
         do {
             missionGroupContext = try await validateMissionGroupClaimIfNeeded(
@@ -301,7 +330,6 @@ extension CLIAgentMissionRequestListener {
             await fail(document: document, message: error.localizedDescription)
             return
         }
-
         // Persona scope: a malformed present scope is an execution-side
         // fail-closed refusal, independent of the daemon's verdict.
         let personaScopeIsMalformed: Bool = {
@@ -333,14 +361,14 @@ extension CLIAgentMissionRequestListener {
         }
         let fanOutCap = try? await resolvedWandFanOutCap(uid: uid)
         let authorization = await MissionRemoteAuthorizationShadow.authorize(
-            missionID: document.documentID,
-            data: data,
-            prompt: prompt,
-            executorTrustState: executorTrustState,
-            requestedRuntime: backend.rawValue,
-            requestedModelID: requestedModelID,
-            requestedFanOutCount: missionGroupContext?.siblingCount ?? 1,
-            trustedFanOutCap: fanOutCap
+            ctx: shadowCtx(
+                document.documentID,
+                prompt,
+                missionGroupContext?.siblingCount ?? 1,
+                runtimeOverride: backend.rawValue,
+                trustedFanOutCap: fanOutCap
+            ),
+            executorTrustState: executorTrustState
         )
         switch authorization {
         case .authorized:

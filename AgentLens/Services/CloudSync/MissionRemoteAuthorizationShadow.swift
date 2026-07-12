@@ -100,9 +100,7 @@ enum MissionRemoteAuthorizationShadow {
 
     /// Authorization mode, resolved from `OBB_MISSION_AUTHORIZE_SHADOW`:
     ///   - `.enforce` (DEFAULT): the daemon's `daemon.mission.authorizeRemote`
-    ///     verdict is the SOLE authority. `.authorized` proceeds, `.requiresApproval`
-    ///     drives the approval flow, `.denied` refuses with the daemon's reason,
-    ///     and a daemon-unreachable/error FAILS CLOSED (deny). Split-brain M4.
+    ///     verdict is the SOLE authority. Split-brain M4.
     ///   - `.shadow`: the M3 observe-only path — ask the daemon, telemeter
     ///     divergence, but the GUI decision governs. (Rollback lever.)
     ///   - `.off`: disable the daemon call entirely. Because M4 deleted the GUI's
@@ -206,48 +204,35 @@ enum MissionRemoteAuthorizationShadow {
 
     // MARK: Request construction
 
-    /// Build the authoritative-decision inputs from the decoded mission
-    /// document. Carries ONLY a prompt summary + SHA-256, never the sealed
-    /// payload or the full prompt.
+    /// Build the authoritative-decision inputs from the typed shadow context.
+    /// Carries ONLY a prompt summary + SHA-256, never the sealed payload or
+    /// the full prompt.
     static func makeRequest(
-        missionID: String,
-        data: [String: Any],
-        prompt: String,
-        executorTrustState: String,
-        requestedRuntime: String?,
-        requestedModelID: String?,
-        requestedFanOutCount: Int,
-        trustedFanOutCap: Int? = nil
+        ctx: ShadowContext,
+        executorTrustState: String
     ) -> BurnBarRemoteMissionAuthorizeRequest {
-        let commandsAllowed = (data["commandsAllowed"] as? Bool) ?? false
-        let fileEditsAllowed = (data["fileEditsAllowed"] as? Bool) ?? false
         let grant = BurnBarRemoteMissionCapabilityGrantRequest(
-            commandsAllowed: commandsAllowed,
-            fileEditsAllowed: fileEditsAllowed
+            commandsAllowed: ctx.commandsAllowed,
+            fileEditsAllowed: ctx.fileEditsAllowed
         )
-
         return BurnBarRemoteMissionAuthorizeRequest(
-            missionID: missionID,
-            originDeviceID: stringField(data, "originDeviceID")
-                ?? stringField(data, "createdBy")
-                ?? "unknown",
-            originPlatform: stringField(data, "originPlatform")
-                ?? stringField(data, "source")
-                ?? "unknown",
+            missionID: ctx.missionID,
+            originDeviceID: ctx.originDeviceID,
+            originPlatform: ctx.originPlatform,
             executorTrustState: executorTrustState,
-            promptSummary: promptSummary(from: prompt),
-            promptSHA256: sha256Hex(prompt),
-            requestedRuntime: requestedRuntime?.nilIfBlank,
-            requestedModelID: requestedModelID?.nilIfBlank,
+            promptSummary: promptSummary(from: ctx.prompt),
+            promptSHA256: sha256Hex(ctx.prompt),
+            requestedRuntime: ctx.runtime?.nilIfBlank,
+            requestedModelID: ctx.modelID?.nilIfBlank,
             requestedGrant: grant,
-            personaScope: personaScope(from: data),
-            approvalMode: stringField(data, "approvalMode"),
-            approvalStatus: stringField(data, "approvalStatus"),
-            approverDeviceID: stringField(data, "approverDeviceID"),
-            entitlementTier: stringField(data, "entitlementTier") ?? "none",
-            requestedFanOutCount: max(1, requestedFanOutCount),
-            trustedFanOutCap: trustedFanOutCap,
-            workingDirectory: stringField(data, "workingDirectory")
+            personaScope: personaScope(from: ctx.personaScopeJSON),
+            approvalMode: ctx.approvalMode,
+            approvalStatus: ctx.approvalStatus.nilIfBlank,
+            approverDeviceID: ctx.approverDeviceID,
+            entitlementTier: ctx.entitlementTier,
+            requestedFanOutCount: max(1, ctx.fanOutCount),
+            trustedFanOutCap: ctx.trustedFanOutCap,
+            workingDirectory: ctx.workingDirectory
         )
     }
 
@@ -268,11 +253,8 @@ enum MissionRemoteAuthorizationShadow {
         return String(collapsed.prefix(limit)) + "…"
     }
 
-    private static func personaScope(from data: [String: Any]) -> PersonaScopeEnvelope? {
-        guard let json = stringField(data, "personaScopeJSON"),
-              let payload = json.data(using: .utf8) else {
-            return nil
-        }
+    private static func personaScope(from json: String?) -> PersonaScopeEnvelope? {
+        guard let json, let payload = json.data(using: .utf8) else { return nil }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         // Best-effort: a malformed envelope is left nil here (the GUI's own
@@ -298,16 +280,13 @@ enum MissionRemoteAuthorizationShadow {
                 "mission_authorize_shadow daemon_unreachable mission=\(signal.missionID, privacy: .public) gui=\(signal.guiDecision.rawValue, privacy: .public) detail=\(signal.unreachableDetail ?? "", privacy: .public) sha=\(signal.promptSHA256, privacy: .public)"
             )
         case .daemonStricter, .guiStricter:
-            // Pre-format into one non-sensitive string so the OSLog literal stays
-            // short (line-length) and type-checks fast (a `+`-concatenated OSLog
-            // interpolation is pathologically slow to type-check here).
-            let daemonVerdict = signal.daemonVerdict?.rawValue ?? "nil"
-            let daemonReason = signal.daemonDeniedReason?.rawValue ?? "none"
-            let detail = "kind=\(signal.kind.rawValue) gui=\(signal.guiDecision.rawValue) "
-                + "daemon=\(daemonVerdict) daemonReason=\(daemonReason)"
-            logger.warning(
-                "mission_authorize_shadow DIVERGENCE \(detail, privacy: .public) mission=\(signal.missionID, privacy: .public) sha=\(signal.promptSHA256, privacy: .public)"
-            )
+            let kind = signal.kind.rawValue
+            let mission = signal.missionID
+            let gui = signal.guiDecision.rawValue
+            let daemon = signal.daemonVerdict?.rawValue ?? "nil"
+            let reason = signal.daemonDeniedReason?.rawValue ?? "none"
+            let sha = signal.promptSHA256
+            logger.warning("mission_authorize_shadow DIVERGENCE kind=\(kind, privacy: .public) mission=\(mission, privacy: .public) gui=\(gui, privacy: .public) daemon=\(daemon, privacy: .public) daemonReason=\(reason, privacy: .public) sha=\(sha, privacy: .public)")
         }
     }
 
@@ -322,36 +301,21 @@ enum MissionRemoteAuthorizationShadow {
     /// entirely in charge. A no-op when `mode == .off`.
     @MainActor
     static func observe(
-        missionID: String,
-        data: [String: Any],
-        prompt: String,
+        ctx: ShadowContext,
         guiDecision: GUIMissionAuthorizationDecision,
         executorTrustState: String,
-        requestedRuntime: String?,
-        requestedModelID: String?,
-        requestedFanOutCount: Int,
-        trustedFanOutCap: Int? = nil,
         manager: OpenBurnBarDaemonManager = .shared
     ) async {
         guard mode == .shadow else { return }
 
-        let request = makeRequest(
-            missionID: missionID,
-            data: data,
-            prompt: prompt,
-            executorTrustState: executorTrustState,
-            requestedRuntime: requestedRuntime,
-            requestedModelID: requestedModelID,
-            requestedFanOutCount: requestedFanOutCount,
-            trustedFanOutCap: trustedFanOutCap
-        )
+        let request = makeRequest(ctx: ctx, executorTrustState: executorTrustState)
         let promptSHA = request.promptSHA256
 
         // Only reach for the daemon when it is healthy; otherwise classify as
         // unreachable (fail-safe) without a socket attempt.
         guard case .healthy = manager.status else {
             emit(compare(
-                missionID: missionID,
+                missionID: ctx.missionID,
                 gui: guiDecision,
                 daemon: nil,
                 promptSHA256: promptSHA,
@@ -373,7 +337,7 @@ enum MissionRemoteAuthorizationShadow {
         }
 
         emit(compare(
-            missionID: missionID,
+            missionID: ctx.missionID,
             gui: guiDecision,
             daemon: daemonResponse,
             promptSHA256: promptSHA,
@@ -388,14 +352,9 @@ enum MissionRemoteAuthorizationShadow {
     /// way to `.authorized` / `.requiresApproval` is a live daemon verdict; any
     /// unreachability collapses to `.denied` with a `daemonUnreachable` reason.
     enum AuthorizationOutcome: Equatable, Sendable {
-        /// The daemon authorized execution.
         case authorized
-        /// The daemon requires pre-dispatch operator approval before execution.
         case requiresApproval
-        /// The daemon refused; carries the daemon's typed reason when present.
         case denied(reason: BurnBarRemoteMissionDenialReason?, detail: String?)
-        /// The daemon could not be reached / errored — FAIL CLOSED. The GUI must
-        /// surface the "daemon required for remote missions" state and not run.
         case daemonUnreachable(detail: String)
 
         var isDaemonUnreachable: Bool {
@@ -406,38 +365,20 @@ enum MissionRemoteAuthorizationShadow {
 
     /// ENFORCE-mode authorization. Asks the daemon for its authoritative verdict
     /// over the decoded mission and returns it as an `AuthorizationOutcome` the
-    /// GUI call site obeys. FAILS CLOSED: an unhealthy daemon, a socket error,
-    /// or a non-enforcing mode all resolve to `.daemonUnreachable` (the caller
-    /// then refuses the mission and surfaces the needs-repair state). Never
-    /// throws. Mirrors `observe`'s daemon-reach logic so shadow and enforce use
-    /// one code path to talk to the daemon.
+    /// GUI call site obeys. FAILS CLOSED: an unhealthy daemon or a socket error
+    /// resolves to `.daemonUnreachable`. Never throws. Mirrors `observe`'s
+    /// daemon-reach logic so shadow and enforce share one daemon path.
     @MainActor
     static func authorize(
-        missionID: String,
-        data: [String: Any],
-        prompt: String,
+        ctx: ShadowContext,
         executorTrustState: String,
-        requestedRuntime: String?,
-        requestedModelID: String?,
-        requestedFanOutCount: Int,
-        trustedFanOutCap: Int? = nil,
         manager: OpenBurnBarDaemonManager = .shared
     ) async -> AuthorizationOutcome {
-        let request = makeRequest(
-            missionID: missionID,
-            data: data,
-            prompt: prompt,
-            executorTrustState: executorTrustState,
-            requestedRuntime: requestedRuntime,
-            requestedModelID: requestedModelID,
-            requestedFanOutCount: requestedFanOutCount,
-            trustedFanOutCap: trustedFanOutCap
-        )
+        let request = makeRequest(ctx: ctx, executorTrustState: executorTrustState)
 
-        // Only reach for the daemon when it is healthy; otherwise fail closed.
         guard case .healthy = manager.status else {
             logger.warning(
-                "mission_authorize enforce fail_closed mission=\(missionID, privacy: .public) reason=daemon_not_healthy sha=\(request.promptSHA256, privacy: .public)"
+                "mission_authorize enforce fail_closed mission=\(ctx.missionID, privacy: .public) reason=daemon_not_healthy sha=\(request.promptSHA256, privacy: .public)"
             )
             return .daemonUnreachable(detail: "daemon not healthy")
         }
@@ -450,7 +391,7 @@ enum MissionRemoteAuthorizationShadow {
             }
         } catch {
             logger.warning(
-                "mission_authorize enforce fail_closed mission=\(missionID, privacy: .public) reason=rpc_error detail=\(error.localizedDescription, privacy: .public) sha=\(request.promptSHA256, privacy: .public)"
+                "mission_authorize enforce fail_closed mission=\(ctx.missionID, privacy: .public) reason=rpc_error detail=\(error.localizedDescription, privacy: .public) sha=\(request.promptSHA256, privacy: .public)"
             )
             return .daemonUnreachable(detail: error.localizedDescription)
         }
@@ -458,18 +399,18 @@ enum MissionRemoteAuthorizationShadow {
         switch response.verdict {
         case .authorized:
             logger.info(
-                "mission_authorize enforce authorized mission=\(missionID, privacy: .public) sha=\(request.promptSHA256, privacy: .public)"
+                "mission_authorize enforce authorized mission=\(ctx.missionID, privacy: .public) sha=\(request.promptSHA256, privacy: .public)"
             )
             return .authorized
         case .requiresApproval:
             logger.info(
-                "mission_authorize enforce requires_approval mission=\(missionID, privacy: .public) sha=\(request.promptSHA256, privacy: .public)"
+                "mission_authorize enforce requires_approval mission=\(ctx.missionID, privacy: .public) sha=\(request.promptSHA256, privacy: .public)"
             )
             return .requiresApproval
         case .denied:
             let reason = response.deniedReason?.rawValue ?? "none"
             logger.warning(
-                "mission_authorize enforce denied mission=\(missionID, privacy: .public) reason=\(reason, privacy: .public) sha=\(request.promptSHA256, privacy: .public)"
+                "mission_authorize enforce denied mission=\(ctx.missionID, privacy: .public) reason=\(reason, privacy: .public) sha=\(request.promptSHA256, privacy: .public)"
             )
             return .denied(reason: response.deniedReason, detail: response.detail)
         }
@@ -485,14 +426,12 @@ enum MissionRemoteAuthorizationShadow {
     ///   - otherwise "would pause for approval" → `.requiresApproval`
     ///   - otherwise (would execute now) → `.allow`
     static func reduceGUIDecision(
-        data: [String: Any],
+        approvalStatus: String,
         willPauseForApproval: Bool,
         isTerminalDenial: Bool = false
     ) -> GUIMissionAuthorizationDecision {
-        let approvalStatus = ((data["approvalStatus"] as? String) ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        if approvalStatus == "rejected" || approvalStatus == "canceled" || approvalStatus == "cancelled" {
+        let normalized = approvalStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if normalized == "rejected" || normalized == "canceled" || normalized == "cancelled" {
             return .deny
         }
         if isTerminalDenial {
@@ -501,11 +440,110 @@ enum MissionRemoteAuthorizationShadow {
         return willPauseForApproval ? .requiresApproval : .allow
     }
 
-    // MARK: Field helpers
+    // MARK: Typed shadow context
 
-    private static func stringField(_ data: [String: Any], _ key: String) -> String? {
-        // `String.nilIfBlank` is the shared AgentLens trim-or-nil helper
-        // (AgentLens/Utilities/AgentLensStringNilIfBlank.swift).
-        (data[key] as? String)?.nilIfBlank
+    /// All data-derived fields the shadow observation needs, extracted as
+    /// typed values at the call site. This keeps the shadow module free of
+    /// any `[String: Any]` boundary access.
+    struct ShadowContext {
+        let missionID: String
+        let prompt: String
+        let runtime: String?
+        let modelID: String?
+        let commandsAllowed: Bool
+        let fileEditsAllowed: Bool
+        let originDeviceID: String
+        let originPlatform: String
+        let personaScopeJSON: String?
+        let approvalMode: String?
+        let approvalStatus: String
+        let approverDeviceID: String?
+        let entitlementTier: String
+        let workingDirectory: String?
+        let fanOutCount: Int
+        /// GUI-resolved trusted Wand fan-out cap (server-signed Firestore
+        /// entitlement docs). Forwarded to the daemon, which honors it clamped to
+        /// a hard ceiling; `nil` fails closed to the free cap. Split-brain M4.
+        /// Defaulted so existing shadow call sites need no change.
+        let trustedFanOutCap: Int?
+
+        init(
+            missionID: String,
+            prompt: String,
+            runtime: String?,
+            modelID: String?,
+            commandsAllowed: Bool,
+            fileEditsAllowed: Bool,
+            originDeviceID: String,
+            originPlatform: String,
+            personaScopeJSON: String?,
+            approvalMode: String?,
+            approvalStatus: String,
+            approverDeviceID: String?,
+            entitlementTier: String,
+            workingDirectory: String?,
+            fanOutCount: Int,
+            trustedFanOutCap: Int? = nil
+        ) {
+            self.missionID = missionID
+            self.prompt = prompt
+            self.runtime = runtime
+            self.modelID = modelID
+            self.commandsAllowed = commandsAllowed
+            self.fileEditsAllowed = fileEditsAllowed
+            self.originDeviceID = originDeviceID
+            self.originPlatform = originPlatform
+            self.personaScopeJSON = personaScopeJSON
+            self.approvalMode = approvalMode
+            self.approvalStatus = approvalStatus
+            self.approverDeviceID = approverDeviceID
+            self.entitlementTier = entitlementTier
+            self.workingDirectory = workingDirectory
+            self.fanOutCount = fanOutCount
+            self.trustedFanOutCap = trustedFanOutCap
+        }
+    }
+
+    // MARK: Fire-and-forget observation helpers
+
+    private static func fireAndForget(
+        ctx: ShadowContext,
+        guiDecision: GUIMissionAuthorizationDecision,
+        executorTrustState: String
+    ) {
+        let c = ctx
+        Task { @MainActor in
+            await observe(
+                ctx: c,
+                guiDecision: guiDecision,
+                executorTrustState: executorTrustState
+            )
+        }
+    }
+
+    /// Shadow-observe a deny at the fan-out validation or untrusted-device path.
+    static func observeDeny(
+        ctx: ShadowContext,
+        executorTrustState: String
+    ) {
+        fireAndForget(ctx: ctx, guiDecision: .deny, executorTrustState: executorTrustState)
+    }
+
+    /// Shadow-observe the trusted-path authorization outcome. All derived
+    /// values are pre-computed by the caller.
+    static func observeTrustedDecision(
+        ctx: ShadowContext,
+        isTerminalDenial: Bool,
+        personaScopeMalformed: Bool,
+        willPauseForApproval: Bool
+    ) {
+        let decision = personaScopeMalformed
+            ? .deny
+            : reduceGUIDecision(
+                approvalStatus: ctx.approvalStatus,
+                willPauseForApproval: willPauseForApproval,
+                isTerminalDenial: isTerminalDenial
+            )
+        fireAndForget(ctx: ctx, guiDecision: decision, executorTrustState: "trusted")
     }
 }
