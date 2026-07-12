@@ -1057,13 +1057,23 @@ targets:
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
     dependencies:
+      # Depend ONLY on the host app. On iOS, SwiftPM products link statically, so
+      # declaring `- package: OpenBurnBarCore` here linked a SECOND copy of
+      # OpenBurnBarCore into the test bundle on top of the copy already inside the
+      # OpenBurnBarMobile host app. Two Core copies split every Core-owned
+      # singleton, actor, and type identity in the test process (`T.self ==
+      # TokenUsage.self` metatype checks fail, `AssistantPendingThread.shared`
+      # forks, real-Keychain -34018), which is why MediaControlStreamPresenceTests
+      # never observed `.live` and each such test hung to its per-test timeout —
+      # blowing the whole iOS Mobile harness job past the 3h cap (cancelled), and
+      # why FirestoreNormalization/Hermes tests failed. The app already links
+      # OpenBurnBarCore, OpenBurnBarAnalytics, and OpenBurnBarSignalCore; with
+      # TEST_HOST/BUNDLE_LOADER (auto-wired for this app-hosted unit-test target),
+      # `@testable import OpenBurnBarMobile` plus `import OpenBurnBarCore` resolve
+      # against that single host copy at runtime. This matches how the other
+      # transitively-imported Core products (OpenBurnBarIrohRelay, Media,
+      # ComputerUseCore) are already consumed here without a direct dependency.
       - target: OpenBurnBarMobile
-      - package: OpenBurnBarCore
-        product: OpenBurnBarCore
-      - package: OpenBurnBarCore
-        product: OpenBurnBarAnalytics
-      - package: OpenBurnBarCore
-        product: OpenBurnBarSignalCore
 
   OpenBurnBarMobileUITests:
     type: bundle.ui-testing
