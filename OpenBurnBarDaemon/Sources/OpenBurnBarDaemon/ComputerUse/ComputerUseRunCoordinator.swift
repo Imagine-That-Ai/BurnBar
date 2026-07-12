@@ -51,6 +51,15 @@ public actor ComputerUseRunCoordinator {
 
     public typealias BrowserHostResolver = @Sendable (_ host: String) -> [String]
 
+    /// Closure that surfaces the newest System (whole-desktop) capture frame
+    /// for a live session so `mac_input_*` approvals carry before-action
+    /// visual evidence, mirroring the browser path's driver screenshot.
+    /// `nil` result publishes the approval without evidence (fail-open on
+    /// evidence, never on authority).
+    public typealias SystemEvidenceProvider = @Sendable (
+        _ sessionId: ComputerUseSessionID
+    ) async -> ComputerUseSystemCaptureEvidence?
+
     public typealias PreDispatchAuthorizer = @Sendable (
         _ sessionId: ComputerUseSessionID,
         _ invocation: BurnBarToolInvocation
@@ -83,6 +92,7 @@ public actor ComputerUseRunCoordinator {
     private let approvalIssuer: ApprovalIssuer
     private let macInputDispatcher: MacInputDispatcher?
     private let macInspectDispatcher: MacInspectDispatcher?
+    private let systemEvidenceProvider: SystemEvidenceProvider?
     private let browserHostResolver: BrowserHostResolver
     private let preDispatchAuthorizer: PreDispatchAuthorizer?
     private let macAppVersion: String
@@ -100,6 +110,7 @@ public actor ComputerUseRunCoordinator {
         approvalIssuer: @escaping ApprovalIssuer,
         macInputDispatcher: MacInputDispatcher? = nil,
         macInspectDispatcher: MacInspectDispatcher? = nil,
+        systemEvidenceProvider: SystemEvidenceProvider? = nil,
         browserHostResolver: BrowserHostResolver? = nil,
         preDispatchAuthorizer: PreDispatchAuthorizer? = nil,
         macAppVersion: String,
@@ -111,6 +122,7 @@ public actor ComputerUseRunCoordinator {
         self.approvalIssuer = approvalIssuer
         self.macInputDispatcher = macInputDispatcher
         self.macInspectDispatcher = macInspectDispatcher
+        self.systemEvidenceProvider = systemEvidenceProvider
         self.browserHostResolver = browserHostResolver ?? OpenBurnBarBrowserTargetPolicy.systemResolvedAddresses
         self.preDispatchAuthorizer = preDispatchAuthorizer
         self.macAppVersion = macAppVersion
@@ -471,7 +483,7 @@ public actor ComputerUseRunCoordinator {
                         generation: generation,
                         invocationId: invocationId
                     ) { [self, activeDriver = active.driver] in
-                        await approvalEvidence(for: action, activeDriver: activeDriver)
+                        await approvalEvidence(for: action, sessionId: sessionId, activeDriver: activeDriver)
                     }
                 } catch {
                     return revokedResponse(sessionId: sessionId, invocation: invocation)
@@ -1359,8 +1371,27 @@ public actor ComputerUseRunCoordinator {
 
     private func approvalEvidence(
         for action: ComputerUseAction,
+        sessionId: ComputerUseSessionID,
         activeDriver: OpenBurnBarPlaywrightDriver?
     ) async -> ApprovalEvidence? {
+        // System (whole-desktop) input approvals: attach the newest live
+        // capture frame so the operator approves coordinates/text with the
+        // same before-action visual context browser approvals get from the
+        // driver screenshot.
+        if case .macInput = action {
+            guard let systemEvidenceProvider,
+                  let evidence = await systemEvidenceProvider(sessionId),
+                  evidence.data.isEmpty == false else {
+                return nil
+            }
+            return ApprovalEvidence(
+                pngBase64: evidence.data.base64EncodedString(),
+                mimeType: evidence.mimeType,
+                sizeBytes: evidence.data.count,
+                hashHex: Self.sha256Hex(data: evidence.data)
+            )
+        }
+
         guard case .browser = action,
               let activeDriver else {
             return nil

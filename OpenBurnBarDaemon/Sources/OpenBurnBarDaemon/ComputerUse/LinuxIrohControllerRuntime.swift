@@ -454,12 +454,27 @@ actor LinuxIrohControllerRuntime {
     ) async throws -> ComputerUseSessionGrantBroker.AcquisitionMetadata {
         guard await isReady(now: now), let route else { throw RuntimeError.routeUnavailable }
         let capabilities: Set<AgentDesktopCapability>
+        let preset: AgentPermissionPreset
         switch ComputerUseMode(rawValue: request.mode) {
         case .browser:
             capabilities = [.desktopBrowser, .desktopScreenshot]
+            preset = .desktop
         case .system:
+            // `.desktop` intentionally excludes `desktopSystemInput`, and both
+            // the grant broker and the phone-side challenge validator fail
+            // closed unless the requested capabilities are a subset of the
+            // preset. System sessions therefore ride the `.all` (bounded)
+            // preset while still requesting ONLY the narrow input+screenshot
+            // capability pair — the phone authorizes exactly those two
+            // capabilities, never the whole preset.
             capabilities = [.desktopSystemInput, .desktopScreenshot]
+            preset = .all
         case .agentWatch, nil:
+            throw RuntimeError.frameRejected
+        }
+        guard capabilities.isSubset(of: preset.capabilities) else {
+            // Fail closed here instead of letting the broker reject every
+            // phone-grant acquisition with an opaque `invalidMetadata`.
             throw RuntimeError.frameRejected
         }
         return ComputerUseSessionGrantBroker.AcquisitionMetadata(
@@ -470,7 +485,7 @@ actor LinuxIrohControllerRuntime {
             sourceDeviceID: route.sourceDeviceID,
             runtimeID: .hermes,
             threadID: requirement.sessionID.rawValue,
-            preset: .desktop,
+            preset: preset,
             capabilities: capabilities,
             routeGeneration: route.generation,
             routeExpiresAt: route.expiresAt,

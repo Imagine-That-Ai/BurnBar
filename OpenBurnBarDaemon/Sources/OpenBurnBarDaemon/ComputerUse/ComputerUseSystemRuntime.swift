@@ -14,6 +14,36 @@ protocol ComputerUseSystemRuntime: Sendable {
     func stopAll() async
     func dispatch(sessionID: ComputerUseSessionID, action: MacInputAction) async throws -> BurnBarJSONValue
     func inspect(sessionID: ComputerUseSessionID, action: MacInspectAction) async throws -> BurnBarJSONValue
+    /// The most recent independently-decodable capture frame for the live
+    /// session, used as before-action evidence on phone approvals. `nil`
+    /// when the session is not live or no keyframe has arrived yet —
+    /// approvals then publish without visual evidence (previous behavior).
+    func latestCaptureEvidence(sessionID: ComputerUseSessionID) async -> ComputerUseSystemCaptureEvidence?
+}
+
+/// Before-action visual evidence captured from the System (whole-desktop)
+/// capture pipeline. The payload is the newest encoded keyframe — an
+/// intra-coded frame that decodes to a full image on its own — plus the
+/// exact MIME type of the encoding so approval surfaces never have to
+/// guess what they were handed.
+public struct ComputerUseSystemCaptureEvidence: Sendable, Equatable {
+    public let data: Data
+    public let mimeType: String
+    public let presentationTimestampMillis: UInt64
+
+    public init(data: Data, mimeType: String, presentationTimestampMillis: UInt64) {
+        self.data = data
+        self.mimeType = mimeType
+        self.presentationTimestampMillis = presentationTimestampMillis
+    }
+}
+
+extension ComputerUseSystemRuntime {
+    /// Fail-closed default: runtimes that do not surface capture evidence
+    /// publish approvals without a screenshot rather than fabricating one.
+    func latestCaptureEvidence(sessionID: ComputerUseSessionID) async -> ComputerUseSystemCaptureEvidence? {
+        nil
+    }
 }
 
 #if os(Linux)
@@ -52,6 +82,10 @@ actor LinuxSystemComputerUseRuntime: ComputerUseSystemRuntime {
         let onRevoked: RevocationHandler
         var captureLive: Bool
         var monitorTask: Task<Void, Never>?
+        /// Newest independently-decodable (keyframe) capture frame, written
+        /// synchronously from the capture callback so approval evidence never
+        /// waits on the actor.
+        let latestKeyframe: Locked<MediaFrame?>
     }
 
     private let captureAdapter: any MercuryLinuxCaptureAdapterProtocol
@@ -132,22 +166,36 @@ actor LinuxSystemComputerUseRuntime: ComputerUseSystemRuntime {
         guard readiness.available else { throw RuntimeError.unavailable(readiness.reason) }
 
         let frameQueue = MercuryLinuxCaptureFrameQueue(bufferingNewest: 1)
+        let latestKeyframe = Locked<MediaFrame?>(nil)
         active = ActiveSession(
             sessionID: sessionID,
             onRevoked: onRevoked,
             captureLive: false,
-            monitorTask: nil
+            monitorTask: nil,
+            latestKeyframe: latestKeyframe
         )
+        // `startOutboundCapture` suspends across portal consent, so a
+        // stop/revoke can clear `active` (and no-op its capture teardown)
+        // before the adapter has a live pipeline. Track that the pipeline
+        // actually came up so the catch path below can stop it even after
+        // `active` was already cleared by that racing stop.
+        var captureStarted = false
         do {
             try await captureAdapter.startOutboundCapture(
                 targetBitrateBps: 1_500_000,
                 codec: .vp9,
-                onFrame: { frame in frameQueue.offer(frame) },
+                onFrame: { frame in
+                    if frame.kind == .videoNAL, frame.flags.contains(.keyframe) {
+                        latestKeyframe.withLock { $0 = frame }
+                    }
+                    frameQueue.offer(frame)
+                },
                 onStopped: { [weak self] reason in
                     frameQueue.finish()
                     Task { await self?.captureStopped(sessionID: sessionID, reason: reason) }
                 }
             )
+            captureStarted = true
             try await waitForFirstFrame(frameQueue.stream)
             guard var current = active, current.sessionID == sessionID else {
                 throw CancellationError()
@@ -162,9 +210,33 @@ actor LinuxSystemComputerUseRuntime: ComputerUseSystemRuntime {
                 active?.monitorTask?.cancel()
                 active = nil
                 captureAdapter.stopOutboundCapture()
+            } else if captureStarted, active == nil {
+                // A stop/revoke won the race while capture start was
+                // suspended: its `stopOutboundCapture()` ran before the
+                // pipeline existed, so the pipeline that just came up
+                // belongs to no session. Tear it down instead of leaving
+                // PipeWire capture running outside any session. (When a
+                // NEWER session is already active it owns the adapter —
+                // leave it alone.)
+                captureAdapter.stopOutboundCapture()
             }
             throw error
         }
+    }
+
+    func latestCaptureEvidence(sessionID: ComputerUseSessionID) async -> ComputerUseSystemCaptureEvidence? {
+        guard let active,
+              active.sessionID == sessionID,
+              active.captureLive,
+              let frame = active.latestKeyframe.withLock({ $0 }),
+              frame.payload.isEmpty == false else {
+            return nil
+        }
+        return ComputerUseSystemCaptureEvidence(
+            data: frame.payload,
+            mimeType: "video/vp9",
+            presentationTimestampMillis: frame.presentationTimestampMillis
+        )
     }
 
     func stop(sessionID: ComputerUseSessionID) async {

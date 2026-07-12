@@ -147,8 +147,38 @@ final class BurnBarRunServiceComputerUseRoutingTests: XCTestCase {
     }
     #endif
 
+    func testMacSystemToolsStayOffCoordinatorPathWithoutInstalledDispatcher() async throws {
+        // Non-Linux daemon builds install no Computer Use dispatcher; a Mac
+        // System tool must keep riding the app/companion path instead of
+        // falling into the browser dispatcher and failing as an unsupported
+        // browser action.
+        let service = try makeRunService(dispatcher: nil)
+        let browserRouted = await service.routesThroughComputerUseCoordinator(.browserExtract)
+        let macInputRouted = await service.routesThroughComputerUseCoordinator(.macInputClick)
+        let macInspectRouted = await service.routesThroughComputerUseCoordinator(.macInspectAccessibility)
+        let companionRouted = await service.routesThroughComputerUseCoordinator(.runTerminal)
+        XCTAssertTrue(browserRouted)
+        XCTAssertFalse(macInputRouted)
+        XCTAssertFalse(macInspectRouted)
+        XCTAssertFalse(companionRouted)
+    }
+
+    func testMacSystemToolsRouteThroughInstalledComputerUseDispatcher() async throws {
+        let service = try makeRunService { _ in
+            throw CancellationError()
+        }
+        let browserRouted = await service.routesThroughComputerUseCoordinator(.browserExtract)
+        let macInputRouted = await service.routesThroughComputerUseCoordinator(.macInputClick)
+        let macInspectRouted = await service.routesThroughComputerUseCoordinator(.macInspectAccessibility)
+        let companionRouted = await service.routesThroughComputerUseCoordinator(.runTerminal)
+        XCTAssertTrue(browserRouted)
+        XCTAssertTrue(macInputRouted)
+        XCTAssertTrue(macInspectRouted)
+        XCTAssertFalse(companionRouted)
+    }
+
     private func makeRunService(
-        dispatcher: @escaping @Sendable (BurnBarToolInvocation) async throws -> ComputerUseInvokeResponse
+        dispatcher: (@Sendable (BurnBarToolInvocation) async throws -> ComputerUseInvokeResponse)?
     ) throws -> BurnBarRunService {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-run-cu-routing-\(UUID().uuidString)", isDirectory: true)
@@ -171,11 +201,13 @@ final class BurnBarRunServiceComputerUseRoutingTests: XCTestCase {
             clientRegistry: BurnBarClientRegistry(
                 logger: BurnBarDaemonLogger(category: "run-cu-routing-tests")
             ),
-            computerUseBrowserDispatcher: { invocation in
-                BurnBarComputerUseBrowserDispatchResult(
-                    expectedSessionID: ComputerUseSessionID("cu-session"),
-                    response: try await dispatcher(invocation)
-                )
+            computerUseBrowserDispatcher: dispatcher.map { dispatcher in
+                { invocation in
+                    BurnBarComputerUseBrowserDispatchResult(
+                        expectedSessionID: ComputerUseSessionID("cu-session"),
+                        response: try await dispatcher(invocation)
+                    )
+                }
             },
             logger: BurnBarDaemonLogger(category: "run-cu-routing-tests")
         )

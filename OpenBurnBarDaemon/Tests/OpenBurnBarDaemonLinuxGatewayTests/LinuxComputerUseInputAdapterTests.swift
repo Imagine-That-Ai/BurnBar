@@ -290,6 +290,48 @@ final class LinuxComputerUseServiceSystemInputTests: XCTestCase {
         XCTAssertTrue(pending.requests.isEmpty)
     }
 
+    func testBulkAuthorityRevocationStopsSystemRuntime() async throws {
+        let auditDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-linux-cu-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: auditDirectory) }
+
+        let runtime = TestComputerUseSystemRuntime()
+        let service = try await makeService(
+            auditBaseDirectory: auditDirectory,
+            systemInputDispatcher: { _, _ in .object(["posted": .bool(true)]) },
+            systemRuntime: runtime
+        )
+        let start = try await service.startSession(
+            ComputerUseSessionStartRequest(
+                mode: ComputerUseMode.system.rawValue,
+                trustMode: ComputerUseTrustMode.manual.rawValue,
+                clientID: BurnBarClientID(rawValue: "linux-test-client")
+            )
+        )
+        let liveCapability = await runtime.capability()
+        XCTAssertTrue(liveCapability.active)
+
+        // A remote kill switch arrives through the shared bulk-termination
+        // path (`terminateAllSessions`) — NOT through route loss or daemon
+        // shutdown. It must still stop the PipeWire/input runtime, or the
+        // orphaned capture blocks later starts with `sessionAlreadyActive`.
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        _ = try await service.updateCapabilityState(
+            ComputerUseCapabilityStateUpdateRequest(
+                state: capabilityState(generatedAt: now, revision: 2, killSwitch: true)
+            )
+        )
+
+        let stopAllCount = await runtime.stopAllCount
+        XCTAssertGreaterThanOrEqual(stopAllCount, 1)
+        let stoppedCapability = await runtime.capability()
+        XCTAssertFalse(stoppedCapability.active)
+        let pending = await service.pendingApprovals(
+            ComputerUseApprovalPendingRequest(sessionId: start.sessionId)
+        )
+        XCTAssertEqual(pending.sessionActive, false)
+    }
+
     func testSystemSessionApprovesAndDispatchesThroughInjectedLinuxInput() async throws {
         let auditDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-linux-cu-\(UUID().uuidString)", isDirectory: true)
@@ -609,7 +651,11 @@ final class LinuxComputerUseServiceSystemInputTests: XCTestCase {
         )
     }
 
-    private func capabilityState(generatedAt: Date) -> ComputerUseCapabilityStateSnapshot {
+    private func capabilityState(
+        generatedAt: Date,
+        revision: UInt64 = 1,
+        killSwitch: Bool = false
+    ) -> ComputerUseCapabilityStateSnapshot {
         let provenance = ComputerUseAuthorityProvenance(
             source: .firestoreServer,
             observedAt: generatedAt,
@@ -617,7 +663,7 @@ final class LinuxComputerUseServiceSystemInputTests: XCTestCase {
         )
         return ComputerUseCapabilityStateSnapshot(
             publisherInstanceID: "linux-system-input-tests",
-            revision: 1,
+            revision: revision,
             generatedAt: generatedAt,
             userID: "linux-test-user",
             entitlement: ComputerUseEntitlementSnapshot(
@@ -648,7 +694,7 @@ final class LinuxComputerUseServiceSystemInputTests: XCTestCase {
             ),
             quotaProvenance: provenance,
             concurrentSessionActive: false,
-            killSwitch: false,
+            killSwitch: killSwitch,
             isComplete: true
         )
     }
@@ -715,6 +761,7 @@ private final class MacInputActionRecorder: @unchecked Sendable {
 
 private actor TestComputerUseSystemRuntime: ComputerUseSystemRuntime {
     private var activeSessionID: ComputerUseSessionID?
+    private(set) var stopAllCount = 0
 
     func capability() -> ComputerUseSystemCapabilitySnapshot {
         ComputerUseSystemCapabilitySnapshot(
@@ -739,6 +786,7 @@ private actor TestComputerUseSystemRuntime: ComputerUseSystemRuntime {
     }
 
     func stopAll() async {
+        stopAllCount += 1
         activeSessionID = nil
     }
 

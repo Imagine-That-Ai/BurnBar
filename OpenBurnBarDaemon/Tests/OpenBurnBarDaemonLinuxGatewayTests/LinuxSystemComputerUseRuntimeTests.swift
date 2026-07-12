@@ -29,6 +29,14 @@ final class LinuxSystemComputerUseRuntimeTests: XCTestCase {
         XCTAssertTrue(activeCapability.available)
         XCTAssertTrue(activeCapability.active)
 
+        let evidence = await runtime.latestCaptureEvidence(sessionID: sessionID)
+        XCTAssertEqual(evidence?.data, Data([1, 2, 3]))
+        XCTAssertEqual(evidence?.mimeType, "video/vp9")
+        let wrongSessionEvidence = await runtime.latestCaptureEvidence(
+            sessionID: ComputerUseSessionID("someone-else")
+        )
+        XCTAssertNil(wrongSessionEvidence)
+
         let result = try await runtime.dispatch(
             sessionID: sessionID,
             action: MacInputAction(kind: .click, displayX: 10, displayY: 20)
@@ -46,6 +54,35 @@ final class LinuxSystemComputerUseRuntimeTests: XCTestCase {
                 action: MacInputAction(kind: .click, displayX: 10, displayY: 20)
             )
         }
+        let stoppedEvidence = await runtime.latestCaptureEvidence(sessionID: sessionID)
+        XCTAssertNil(stoppedEvidence)
+    }
+
+    func testStopDuringSuspendedCaptureStartStillTearsDownThePipeline() async throws {
+        let capture = GatedLinuxSystemCaptureAdapter()
+        let runtime = makeRuntime(capture: capture)
+        let sessionID = ComputerUseSessionID("raced-session")
+
+        let startTask = Task {
+            try await runtime.start(sessionID: sessionID) { _, _ in }
+        }
+        // Wait until start(...) is suspended inside the adapter's portal
+        // consent, then let a stop win the race. Its stopOutboundCapture()
+        // runs before any pipeline exists.
+        await capture.waitUntilStartRequested()
+        await runtime.stop(sessionID: sessionID)
+        let stopsBeforePipeline = capture.stopCount
+
+        // Portal consent completes: the pipeline comes up owned by no
+        // session. start(...) must fail AND tear the orphan pipeline down.
+        capture.releaseStart()
+        await XCTAssertThrowsErrorAsync {
+            try await startTask.value
+        }
+
+        XCTAssertGreaterThan(capture.stopCount, stopsBeforePipeline)
+        let capability = await runtime.capability()
+        XCTAssertFalse(capability.active)
     }
 
     func testCaptureStopRevokesSessionAndInputAuthority() async throws {
@@ -83,7 +120,7 @@ final class LinuxSystemComputerUseRuntimeTests: XCTestCase {
     }
 
     private func makeRuntime(
-        capture: TestLinuxSystemCaptureAdapter,
+        capture: any MercuryLinuxCaptureAdapterProtocol,
         portalReady: Bool = true,
         firstFrameTimeout: Duration = .seconds(1)
     ) -> LinuxSystemComputerUseRuntime {
@@ -163,6 +200,61 @@ private final class TestLinuxSystemCaptureAdapter: MercuryLinuxCaptureAdapterPro
     func triggerStop(reason: String) {
         let callback = lock.withLock { stoppedCallback }
         callback?(reason)
+    }
+}
+
+/// Capture adapter whose `startOutboundCapture` suspends (like the real
+/// portal-consent round trip) until the test releases it, so stop/revoke
+/// races against a still-starting capture can be exercised deterministically.
+private final class GatedLinuxSystemCaptureAdapter: MercuryLinuxCaptureAdapterProtocol, @unchecked Sendable {
+    private let lock = NSLock()
+    private var stops = 0
+    private var startRequested = false
+    private var releaseContinuation: CheckedContinuation<Void, Never>?
+
+    var stopCount: Int {
+        lock.withLock { stops }
+    }
+
+    func startOutboundCapture(
+        targetBitrateBps: UInt32,
+        codec: MercuryLinuxCaptureCodec,
+        onFrame: @escaping @Sendable (MediaFrame) -> Void,
+        onStopped: @escaping @Sendable (String) -> Void
+    ) async throws {
+        _ = targetBitrateBps
+        _ = codec
+        _ = onStopped
+        lock.withLock { startRequested = true }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            lock.withLock { releaseContinuation = continuation }
+        }
+        // Pipeline is now "live" — emit a frame so the first-frame wait
+        // resolves and the race lands on the post-start session guard.
+        onFrame(MediaFrame(kind: .videoNAL, flags: .keyframe, payload: Data([7, 7, 7])))
+    }
+
+    func stopOutboundCapture() {
+        lock.withLock { stops += 1 }
+    }
+
+    func setOutboundCaptureBitrate(_ targetBitrateBps: UInt32) throws {
+        _ = targetBitrateBps
+    }
+
+    func waitUntilStartRequested() async {
+        while lock.withLock({ startRequested }) == false {
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+    }
+
+    func releaseStart() {
+        let continuation = lock.withLock { () -> CheckedContinuation<Void, Never>? in
+            let stored = releaseContinuation
+            releaseContinuation = nil
+            return stored
+        }
+        continuation?.resume()
     }
 }
 

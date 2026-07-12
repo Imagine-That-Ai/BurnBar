@@ -72,7 +72,7 @@ extension BurnBarRunService {
             }
 
             if let deterministicAction = try deterministicContextAction(for: run) {
-                if deterministicAction.tool.isComputerUse {
+                if routesThroughComputerUseCoordinator(deterministicAction.tool) {
                     try await dispatchBrowserToolCall(
                         for: &run,
                         toolKind: deterministicAction.tool,
@@ -231,7 +231,7 @@ extension BurnBarRunService {
                     lastExecutedTool: tool,
                     terminalPending: tool == .runTerminal
                 )
-                if tool.isComputerUse {
+                if routesThroughComputerUseCoordinator(tool) {
                     try await dispatchBrowserToolCall(
                         for: &run,
                         toolKind: tool,

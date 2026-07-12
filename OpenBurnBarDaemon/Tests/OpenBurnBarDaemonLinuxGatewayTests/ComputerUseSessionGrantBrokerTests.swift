@@ -73,6 +73,52 @@ final class ComputerUseSessionGrantBrokerTests: XCTestCase {
         }
     }
 
+    func testSystemModeAcquisitionUsesPresetCoveringSystemInput() async throws {
+        let published = PublishedFrames()
+        let broker = makeBroker(published: published)
+
+        // The exact metadata shape LinuxIrohControllerRuntime builds for
+        // `mode == .system`: the narrow input+screenshot capability pair
+        // under the bounded `.all` preset, because `.desktop` intentionally
+        // excludes `desktopSystemInput`.
+        let acquired = try await broker.acquire(
+            metadata: metadata(
+                preset: .all,
+                capabilities: [.desktopSystemInput, .desktopScreenshot]
+            ),
+            request: sessionRequest(mode: .system),
+            now: now
+        )
+        XCTAssertEqual(acquired.state, .awaitingPhone)
+        let firstPublication = await published.first()
+        let publication = try XCTUnwrap(firstPublication)
+        let challenge = try XCTUnwrap(publication.frame.control?.sessionGrantChallenge)
+        XCTAssertEqual(challenge.mode, ComputerUseMode.system.rawValue)
+        XCTAssertEqual(challenge.preset, AgentPermissionPreset.all.rawValue)
+        XCTAssertEqual(challenge.capabilities, ["desktop_screenshot", "desktop_system_input"])
+    }
+
+    func testSystemInputUnderDesktopPresetFailsClosedBeforePhonePublication() async throws {
+        let published = PublishedFrames()
+        let broker = makeBroker(published: published)
+
+        // Regression guard for the PR #1554 review finding: the `.desktop`
+        // preset does not cover `desktopSystemInput`, so that pairing must
+        // keep failing closed before any phone round-trip.
+        await assertBrokerError(.invalidMetadata) {
+            _ = try await broker.acquire(
+                metadata: self.metadata(
+                    preset: .desktop,
+                    capabilities: [.desktopSystemInput, .desktopScreenshot]
+                ),
+                request: self.sessionRequest(mode: .system),
+                now: self.now
+            )
+        }
+        let publication = await published.first()
+        XCTAssertNil(publication)
+    }
+
     func testRejectsWrongPeerWithoutBurningChallenge() async throws {
         let published = PublishedFrames()
         let broker = makeBroker(published: published)
@@ -466,7 +512,10 @@ final class ComputerUseSessionGrantBrokerTests: XCTestCase {
         )
     }
 
-    private func metadata() -> ComputerUseSessionGrantBroker.AcquisitionMetadata {
+    private func metadata(
+        preset: AgentPermissionPreset = .desktop,
+        capabilities: Set<AgentDesktopCapability> = [.desktopBrowser, .desktopScreenshot]
+    ) -> ComputerUseSessionGrantBroker.AcquisitionMetadata {
         .init(
             uid: "user-1",
             connectionID: "connection-1",
@@ -475,18 +524,19 @@ final class ComputerUseSessionGrantBrokerTests: XCTestCase {
             sourceDeviceID: "phone-device-1",
             runtimeID: .codex,
             threadID: "thread-1",
-            preset: .desktop,
-            capabilities: [.desktopBrowser, .desktopScreenshot]
+            preset: preset,
+            capabilities: capabilities
         )
     }
 
     private func sessionRequest(
+        mode: ComputerUseMode = .browser,
         actionCap: Int = 50,
         grantChallengeID: String? = nil,
         localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof? = nil
     ) -> ComputerUseSessionStartRequest {
         ComputerUseSessionStartRequest(
-            mode: ComputerUseMode.browser.rawValue,
+            mode: mode.rawValue,
             trustMode: ComputerUseTrustMode.step.rawValue,
             scopeRuleIds: ["workspace-only"],
             phoneViewerNodeId: "phone-transport-1",

@@ -203,6 +203,7 @@ public actor ComputerUseService {
         self.playwrightDriverFactory = playwrightDriverFactory
         let defaultSystemInputDispatcher: ComputerUseRunCoordinator.MacInputDispatcher?
         let defaultSystemInspectDispatcher: ComputerUseRunCoordinator.MacInspectDispatcher?
+        let defaultSystemEvidenceProvider: ComputerUseRunCoordinator.SystemEvidenceProvider?
         let defaultSystemAccessibilityTrusted: @Sendable (ComputerUseMode) async -> Bool
         let defaultSystemAccessibilityDeny: @Sendable (MacInputAction) async -> ComputerUseAccessibilityDenyReason?
         let defaultComputerUseKillSwitchEnabled: @Sendable () -> Bool
@@ -218,6 +219,9 @@ public actor ComputerUseService {
         }
         defaultSystemInspectDispatcher = { sessionID, action in
             try await resolvedSystemRuntime.inspect(sessionID: sessionID, action: action)
+        }
+        defaultSystemEvidenceProvider = { sessionID in
+            await resolvedSystemRuntime.latestCaptureEvidence(sessionID: sessionID)
         }
         defaultSystemAccessibilityTrusted = { mode in
             guard mode == .system else { return false }
@@ -237,6 +241,7 @@ public actor ComputerUseService {
         self.systemRuntime = nil
         defaultSystemInputDispatcher = nil
         defaultSystemInspectDispatcher = nil
+        defaultSystemEvidenceProvider = nil
         defaultSystemAccessibilityTrusted = { _ in false }
         defaultSystemAccessibilityDeny = { _ in nil }
         defaultComputerUseKillSwitchEnabled = {
@@ -265,6 +270,7 @@ public actor ComputerUseService {
             },
             macInputDispatcher: systemInputDispatcher ?? defaultSystemInputDispatcher,
             macInspectDispatcher: systemInspectDispatcher ?? defaultSystemInspectDispatcher,
+            systemEvidenceProvider: defaultSystemEvidenceProvider,
             preDispatchAuthorizer: preDispatchAuthorizer ?? { sessionID, invocation in
                 guard resolvedComputerUseKillSwitchEnabled() == false else { return false }
                 guard invocation.tool.isComputerUse else { return true }
@@ -696,12 +702,10 @@ public actor ComputerUseService {
             metadata: ["reason": String(reason.prefix(160))]
         )
         await terminateAllSessions(source: .revoked)
-        await systemRuntime?.stopAll()
     }
 
     func shutdown() async {
         await terminateAllSessions(reason: .error)
-        await systemRuntime?.stopAll()
     }
 
     private static var platformRequiresManagedBrowserRunAuthority: Bool {
@@ -1013,12 +1017,21 @@ public actor ComputerUseService {
 
     private func terminateAllSessions(source: ComputerUsePanicSource) async {
         let manifestedSessionIDs = await revokeAllSessionAuthority()
+        // Every bulk revoke (remote kill switch, entitlement revocation,
+        // budget hard caps, incomplete capability state, route loss,
+        // shutdown) must also tear down the Linux PipeWire/input runtime —
+        // otherwise capture stays live outside any session authority and
+        // blocks later starts with `sessionAlreadyActive`.
+        await systemRuntime?.stopAll()
         let terminated = await coordinator.panicHaltAllWithRecords(source: source)
         recordEndedSessions(terminated, including: manifestedSessionIDs)
     }
 
     private func terminateAllSessions(reason: ComputerUseEndReason) async {
         let manifestedSessionIDs = await revokeAllSessionAuthority()
+        // See terminateAllSessions(source:) — bulk revokes stop the System
+        // capture/input runtime on every path, not just route loss/shutdown.
+        await systemRuntime?.stopAll()
         let terminated = await coordinator.endAllWithRecords(reason: reason)
         recordEndedSessions(terminated, including: manifestedSessionIDs)
     }

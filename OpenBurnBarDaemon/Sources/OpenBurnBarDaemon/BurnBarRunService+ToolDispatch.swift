@@ -10,6 +10,24 @@ struct BurnBarBrowserExecutionOutcome {
 
 extension BurnBarRunService {
 
+    /// Whether a Computer Use tool call is executed by the daemon's own
+    /// Computer Use path (`dispatchBrowserToolCall`) instead of being
+    /// enqueued to the app/companion path.
+    ///
+    /// Browser tools always route here — the daemon owns Playwright on every
+    /// platform (via the coordinator dispatcher when installed, otherwise the
+    /// legacy browser tool service). Mac System (`mac_input_*` /
+    /// `mac_inspect_*`) tools route here ONLY when the composition root
+    /// installed a Computer Use dispatcher (the Linux daemon). On macOS no
+    /// dispatcher is installed and System tools stay on the app/companion
+    /// path that owns Mac System Computer Use — routing them into the
+    /// browser path would fail them as unsupported browser actions.
+    func routesThroughComputerUseCoordinator(_ tool: BurnBarToolKind) -> Bool {
+        guard tool.isComputerUse else { return false }
+        if tool.isBrowserComputerUse { return true }
+        return computerUseBrowserDispatcher != nil
+    }
+
     func dispatchCompanionToolCall(
         for run: inout BurnBarManagedRun,
         toolKind: BurnBarToolKind,

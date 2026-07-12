@@ -131,6 +131,84 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
         XCTAssertEqual(state.actionsRejected, 0)
     }
 
+    func testMacInputApprovalCarriesSystemCaptureEvidence() async throws {
+        let sessionId = ComputerUseSessionID.newRandom()
+        let approvals = ApprovalRecorder(decision: .approve)
+        let inputs = MacInputRecorder()
+        let framePayload = Data([0x9d, 0x01, 0x2a, 0x40, 0x01, 0xf0, 0x00, 0x42])
+        let coordinator = makeCoordinator(
+            approvalIssuer: { request in
+                try await approvals.issue(request)
+            },
+            macInputDispatcher: { _, action in
+                inputs.record(action)
+                return .object(["posted": .bool(true)])
+            },
+            systemEvidenceProvider: { requestedSessionId in
+                XCTAssertEqual(requestedSessionId, sessionId)
+                return ComputerUseSystemCaptureEvidence(
+                    data: framePayload,
+                    mimeType: "video/vp9",
+                    presentationTimestampMillis: 12_345
+                )
+            }
+        )
+        let manifest = manifest(sessionId: sessionId, mode: .system, trustMode: .manual)
+        _ = try await coordinator.startSession(manifest: manifest)
+
+        let response = await coordinator.invoke(
+            sessionId: sessionId,
+            invocation: invocation(tool: .macInputClick, arguments: macClickArguments()),
+            scopeContext: ComputerUseScopeContext(bundleId: "com.apple.finder"),
+            scopeOutcome: .notMatched,
+            accessibilityDeny: nil,
+            capability: capability(
+                for: makeState(sessionId: sessionId, manifest: manifest),
+                accessibilityTrusted: true
+            )
+        )
+
+        XCTAssertEqual(response.status, .executed)
+        XCTAssertEqual(approvals.requests.count, 1)
+        let request = try XCTUnwrap(approvals.requests.first)
+        XCTAssertEqual(request.beforeScreenshotPNGBase64, framePayload.base64EncodedString())
+        XCTAssertEqual(request.beforeScreenshotMimeType, "video/vp9")
+        XCTAssertEqual(request.beforeScreenshotSizeBytes, framePayload.count)
+        XCTAssertNotNil(request.beforeScreenshotBlake3)
+    }
+
+    func testMacInputApprovalWithoutEvidenceProviderPublishesWithoutScreenshot() async throws {
+        let sessionId = ComputerUseSessionID.newRandom()
+        let approvals = ApprovalRecorder(decision: .approve)
+        let coordinator = makeCoordinator(
+            approvalIssuer: { request in
+                try await approvals.issue(request)
+            },
+            macInputDispatcher: { _, _ in .object(["posted": .bool(true)]) }
+        )
+        let manifest = manifest(sessionId: sessionId, mode: .system, trustMode: .manual)
+        _ = try await coordinator.startSession(manifest: manifest)
+
+        let response = await coordinator.invoke(
+            sessionId: sessionId,
+            invocation: invocation(tool: .macInputClick, arguments: macClickArguments()),
+            scopeContext: ComputerUseScopeContext(bundleId: "com.apple.finder"),
+            scopeOutcome: .notMatched,
+            accessibilityDeny: nil,
+            capability: capability(
+                for: makeState(sessionId: sessionId, manifest: manifest),
+                accessibilityTrusted: true
+            )
+        )
+
+        // Evidence is additive: absence of a provider (or of a live frame)
+        // must not block the approval path itself.
+        XCTAssertEqual(response.status, .executed)
+        let request = try XCTUnwrap(approvals.requests.first)
+        XCTAssertNil(request.beforeScreenshotPNGBase64)
+        XCTAssertNil(request.beforeScreenshotMimeType)
+    }
+
     func testRepeatedCallIDIsDeniedWithoutRedispatch() async throws {
         let sessionId = ComputerUseSessionID.newRandom()
         let inputs = MacInputRecorder()
@@ -1304,6 +1382,7 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
         },
         macInputDispatcher: ComputerUseRunCoordinator.MacInputDispatcher? = nil,
         macInspectDispatcher: ComputerUseRunCoordinator.MacInspectDispatcher? = nil,
+        systemEvidenceProvider: ComputerUseRunCoordinator.SystemEvidenceProvider? = nil,
         auditBaseDirectory: URL? = nil,
         browserHostResolver: @escaping ComputerUseRunCoordinator.BrowserHostResolver = { _ in ["93.184.216.34"] }
     ) -> ComputerUseRunCoordinator {
@@ -1312,6 +1391,7 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
             approvalIssuer: approvalIssuer,
             macInputDispatcher: macInputDispatcher,
             macInspectDispatcher: macInspectDispatcher,
+            systemEvidenceProvider: systemEvidenceProvider,
             browserHostResolver: browserHostResolver,
             macAppVersion: "test",
             auditBaseDirectory: auditBaseDirectory,
