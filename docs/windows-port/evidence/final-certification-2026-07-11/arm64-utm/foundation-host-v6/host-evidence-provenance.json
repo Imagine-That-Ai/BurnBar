@@ -1,0 +1,97 @@
+{
+  "schema": "openburnbar.windows.foundation-host-evidence-provenance.v1",
+  "importedAtUtc": "2026-07-11T22:39:43Z",
+  "foundationCandidate": {
+    "commit": "778e735a69ea9d812db87146630223ac1a3a49d7",
+    "tree": "97a56caca0f60cf62ecb027f24334899d21d2f72",
+    "manifestSha256": "42e395c739a9f0b5ee861d7f6bc4f8c8dc9e2e600d6e8eb2c4b57d81700e4d00",
+    "archiveSha256": "4f9d400448c30a3f18d2cc1b0f9e0c8cdac3f637840bdfe968b2bbd05ceac845"
+  },
+  "signedRuntimeCandidate": {
+    "commit": "9dbcaa791794944326ce9ffb18ed4d9771f31ecc",
+    "workflowRun": 29166970379,
+    "note": "Separate descendant package/runtime candidate; not represented as the foundation source candidate.",
+    "importVerification": {
+      "committedReceiptSha256": "07204ebc909d59e306caedae0e109055039806cf7a251f982a3a4208672bad94",
+      "status": "passed",
+      "tree": "e884419af6b85610e0ea978c9c35a932e032c7ec",
+      "checkedFiles": 10477,
+      "expectedFiles": 10477,
+      "mismatches": 0,
+      "manifestSha256": "86045eee5dbeb1f9a21c264586966d6dabfdcde4bf60fa25a6be103db04d3c8d",
+      "archiveSha256": "d33f75687eff55c69bccc25556f7764a1297252fe131a403b3d0ab30ffa09f6a"
+    },
+    "lineage": {
+      "foundationIsAncestor": true,
+      "mergeBase": "778e735a69ea9d812db87146630223ac1a3a49d7",
+      "productSourceDeltaFiles": [],
+      "workflowPackagingAndEvidenceDeltaFiles": [
+        ".github/workflows/openburnbar-release-windows.yml",
+        ".github/workflows/pr-windows-dist.yml",
+        ".github/workflows/windows-candidate-evidence.yml",
+        "scripts/ci/verify-ops-script-hardening.test.mjs",
+        "scripts/windows-port/export-candidate.mjs",
+        "scripts/windows-port/export-candidate.test.mjs",
+        "windows/packaging/msix/New-MsixPackage.ps1",
+        "windows/packaging/msix/Test-SignedMsixLifecycle.ps1"
+      ]
+    }
+  },
+  "collector": {
+    "commit": "05e6a0bb5c",
+    "pullRequest": 1546,
+    "expectedSha256": "8844a50251d2239d6d8a0f4120436c3f143ce6f5006bf10c498ac953ec3ed137",
+    "actualSha256": "8844a50251d2239d6d8a0f4120436c3f143ce6f5006bf10c498ac953ec3ed137"
+  },
+  "host": {
+    "vmUuid": "84079ADD-AD6D-4270-9B8A-07D499AD3F23",
+    "vmIdentitySha256": "1b0a8fa086ef0afceec7c0d6fc45f692176bce8fbedc45d7fc49f3fa9881c26d",
+    "os": "Microsoft Windows 11 Pro 10.0.26200",
+    "platform": "ARM64",
+    "runnerIdentity": "NT AUTHORITY\\SYSTEM",
+    "runnerSessionId": 0,
+    "interactiveSessionId": 1
+  },
+  "result": {
+    "status": "passed",
+    "requiredScenarios": 53,
+    "capturedScenarios": 53,
+    "processScenarios": 17,
+    "interactiveUiaScenarios": 14,
+    "artifactsIndexed": 94,
+    "missingScenarios": 0,
+    "secretFindings": 0
+  },
+  "processEvidence": {
+    "rawSha256": "53acffa82bc75148fb67f7454bf6efa9505284b29dee621d001d8f1525090072",
+    "committedSha256": "2ecd8ce896fbcc27f599edefe39036e7054dfd0fbf70ed543db5c3356cdfa7a3",
+    "redaction": {
+      "replacement": "C:\\Users\\<signed-in-user> -> %USERPROFILE%",
+      "occurrences": 34
+    }
+  },
+  "interactiveUia": {
+    "archiveSha256": "e37b3739113873cad27ed98ef212da388f6761b050619ed016656f57217e62c6",
+    "committedJsonArtifacts": 34,
+    "allCommittedJsonHashesMatchManifest": true,
+    "screenshotArtifacts": 34,
+    "screenshotsCommitted": false,
+    "screenshotIntegrityIndex": "foundation-host-evidence-manifest.json"
+  },
+  "exactRawFiles": [
+    { "path": "artifact-secret-scan.json", "sha256": "b93ee966e9ec9f62b0d7e328077fedb4e24176f3e17534e0a92b32d3ef231586" },
+    { "path": "candidate-tree-verification.json", "sha256": "1bd78b5b20fdcf736b22560445dd8083b4357d1eaa690cf1e4f2c2b3587235f6" },
+    { "path": "foundation-host-evidence-manifest.json", "sha256": "1ef6ae0a9c4628717267383f8c07ebfe414956f400cd885f30a1c88bcfb1a18d" },
+    { "path": "foundation-host-wrapper.json", "sha256": "4ee923dd044a0528f49a0618885d9ba9dcb512e33084f62b950a10f2ff1e2979" },
+    { "path": "interactive-result.json", "sha256": "c5a9c2bcc800851db24a5aeb0140684b962ebbc3456703406573ac03ea541e3c" },
+    { "path": "signed-candidate-import-verification.json", "sha256": "665051f0b91623f0c21327adfac69c9795b5954bece4f8ac31830f86cd5cf395" }
+  ],
+  "committedNormalizedFiles": [
+    { "path": "artifact-secret-scan.json", "sha256": "a0452033729b08a289eea2c1954d1d7d7125ed23c3b1985f745a580784619309" },
+    { "path": "candidate-tree-verification.json", "sha256": "68a42bd21d21414c1b6d5f077127a548fd7646577a8f9161228b289c19372f4f" },
+    { "path": "foundation-host-evidence-manifest.json", "sha256": "2f7d15fc74d44f0a86737124394010062c977a9894180515bb6933fe91c47ddf" },
+    { "path": "foundation-host-wrapper.json", "sha256": "9f0fd81df725914b31c333e1739d23a02c018ee680f0de25164c0e06a81b2bfa" },
+    { "path": "interactive-result.json", "sha256": "b9b816fa68605ae52bcc0a044fcf59990b4b5436af5a965624ca225a1372d8e0" },
+    { "path": "signed-candidate-import-verification.json", "sha256": "07204ebc909d59e306caedae0e109055039806cf7a251f982a3a4208672bad94" }
+  ]
+}
