@@ -4,8 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   base32NoPad,
-  invokeCallable,
-  invokeCallableForApp,
+  callableRequest,
+  callableRunner,
   rawEd25519PublicKey,
   requireActiveRouteResolution,
   requireNumber,
@@ -18,6 +18,19 @@ import {
 const { store } = vi.hoisted(() => ({ store: new Map<string, Record<string, unknown>>() }));
 
 type Ref = { path: string };
+
+function invokeCallable(callable: unknown, uid: string, data: Record<string, unknown>): Promise<unknown> {
+  return callableRunner(callable)(callableRequest(uid, data));
+}
+
+function invokeCallableForApp(
+  callable: unknown,
+  uid: string,
+  appId: string,
+  data: Record<string, unknown>,
+): Promise<unknown> {
+  return callableRunner(callable)(callableRequest(uid, data, appId));
+}
 
 function snapshot(path: string) {
   const data = store.get(path);

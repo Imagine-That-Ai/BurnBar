@@ -4,19 +4,19 @@ import CryptoKit
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
 
-/// Builds + signs `PhoneControlAuthority` envelopes on the phone.
-/// Phase 12.
-///
-/// Storage: monotonic counter persisted in `UserDefaults` under a
-/// per-peer key so a phone-reboot does not reset the counter.
-/// Signing key: Curve25519 private key vended by the iOS-side
-/// `IrohPairingKeyStore`.
-///
-/// The actual signing is delegated to `ComputerUsePhoneControlSigner`
-/// in `OpenBurnBarComputerUseCore` — that's the canonical
-/// implementation the Mac validator also calls into. This class is
-/// the iOS-flavored wrapper that adds the counter persistence and the
-/// `IrohPairingKeyStore` plumbing.
+// Builds + signs `PhoneControlAuthority` envelopes on the phone.
+// Phase 12.
+//
+// Storage: monotonic counter persisted in `UserDefaults` under a
+// per-peer key so a phone-reboot does not reset the counter.
+// Signing key: Curve25519 private key vended by the iOS-side
+// `IrohPairingKeyStore`.
+//
+// The actual signing is delegated to `ComputerUsePhoneControlSigner`
+// in `OpenBurnBarComputerUseCore`; that's the canonical
+// implementation the Mac validator also calls into. This class is
+// the iOS-flavored wrapper that adds the counter persistence and the
+// `IrohPairingKeyStore` plumbing.
 // AUDIT(@unchecked Sendable): only non-Sendable stored property is UserDefaults
 // (thread-safe, not yet Sendable-annotated). sendable-allowlist: foundation-sdk-shim
 public final class PhoneControlAuthorityIssuer: @unchecked Sendable {

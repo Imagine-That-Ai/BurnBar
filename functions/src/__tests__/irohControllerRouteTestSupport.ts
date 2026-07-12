@@ -23,7 +23,7 @@ export function base32NoPad(raw: Buffer): string {
   return encoded;
 }
 
-function callableRunner(callable: unknown): (request: unknown) => Promise<unknown> {
+export function callableRunner(callable: unknown): (request: unknown) => Promise<unknown> {
   const run =
     callable && (typeof callable === "object" || typeof callable === "function")
       ? Reflect.get(callable, "run")
@@ -32,26 +32,13 @@ function callableRunner(callable: unknown): (request: unknown) => Promise<unknow
   return (request: unknown) => run.call(callable, request);
 }
 
-function callableRequest(uid: string, data: Record<string, unknown>, appId = "1:123:ios:route-test") {
+export function callableRequest(uid: string, data: Record<string, unknown>, appId = "1:123:ios:route-test") {
   return {
     auth: { uid, token: {} },
     app: { appId },
     data,
     rawRequest: { headers: {} },
   };
-}
-
-export function invokeCallable(callable: unknown, uid: string, data: Record<string, unknown>): Promise<unknown> {
-  return callableRunner(callable)(callableRequest(uid, data));
-}
-
-export function invokeCallableForApp(
-  callable: unknown,
-  uid: string,
-  appId: string,
-  data: Record<string, unknown>,
-): Promise<unknown> {
-  return callableRunner(callable)(callableRequest(uid, data, appId));
 }
 
 type RouteChallenge = {
