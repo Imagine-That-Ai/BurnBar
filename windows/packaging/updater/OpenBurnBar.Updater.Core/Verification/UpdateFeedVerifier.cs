@@ -3,9 +3,12 @@
 // This is the ONE place the client decides whether to install. It is
 // FAIL-CLOSED at every branch: it installs iff (1) the feed parses, (2) its
 // version is dotted-numeric and strictly newer than the installed build, (3)
-// the downloaded artifact's byte length matches, (4) its SHA-256 matches, and
-// (5) its Ed25519 signature verifies the canonical update descriptor against
-// the PINNED public key. ANY other
+// the downloaded artifact's byte length matches, (4) its SHA-256 matches,
+// (5) the feed's DESCRIPTOR signature verifies the canonical update descriptor
+// (version/URL/length/sha256/critical/channel/…) against the PINNED public
+// key, and (6) the feed's ARTIFACT signature (Sparkle's sparkle:edSignature —
+// the same value WinSparkle verifies natively) verifies the downloaded bytes
+// against that key. ANY other
 // path returns UpToDate / DowngradeBlocked / Rejected — never an install.
 //
 // The pinned key is Ed25519 and INDEPENDENT of the Authenticode signing
@@ -97,16 +100,20 @@ public sealed class UpdateFeedVerifier
 
     /// <summary>
     /// Stage 2 — verify a downloaded artifact against a candidate manifest:
-    /// signature present, length matches, SHA-256 matches, and the Ed25519
-    /// signature verifies the canonical descriptor against the PINNED key. The signature check is the
-    /// authoritative gate; the others are fail-fast integrity checks that run
-    /// first.
+    /// both signatures present, length matches, SHA-256 matches, the Ed25519
+    /// DESCRIPTOR signature verifies the canonical metadata descriptor against
+    /// the PINNED key, and the Ed25519 ARTIFACT signature (Sparkle's
+    /// <c>sparkle:edSignature</c> semantics — the same value WinSparkle checks
+    /// natively) verifies the downloaded bytes against the same key. BOTH
+    /// signature checks are authoritative gates; the length / SHA-256 checks
+    /// are fail-fast integrity checks that run first.
     /// </summary>
     public ArtifactVerification VerifyArtifact(UpdateManifest manifest, ReadOnlySpan<byte> artifactBytes)
     {
         ArgumentNullException.ThrowIfNull(manifest);
 
-        if (string.IsNullOrWhiteSpace(manifest.EdSignatureBase64))
+        if (string.IsNullOrWhiteSpace(manifest.EdSignatureBase64) ||
+            string.IsNullOrWhiteSpace(manifest.DescriptorSignatureBase64))
         {
             return ArtifactVerification.Fail(RejectionReason.MissingSignature);
         }
@@ -136,17 +143,29 @@ public sealed class UpdateFeedVerifier
             return ArtifactVerification.Fail(RejectionReason.SignatureInvalid);
         }
 
-        byte[] signature;
+        byte[] descriptorSignature;
+        byte[] artifactSignature;
         try
         {
-            signature = Convert.FromBase64String(manifest.EdSignatureBase64!.Trim());
+            descriptorSignature = Convert.FromBase64String(manifest.DescriptorSignatureBase64!.Trim());
+            artifactSignature = Convert.FromBase64String(manifest.EdSignatureBase64!.Trim());
         }
         catch (FormatException)
         {
             return ArtifactVerification.Fail(RejectionReason.SignatureInvalid);
         }
 
-        if (!_pinnedVerifier.Verify(signedDescriptor, signature))
+        // Gate 1: the metadata descriptor (version / URL / length / sha256 /
+        // critical / channel / …) is exactly what the pinned key signed.
+        if (!_pinnedVerifier.Verify(signedDescriptor, descriptorSignature))
+        {
+            return ArtifactVerification.Fail(RejectionReason.SignatureInvalid);
+        }
+
+        // Gate 2: the downloaded bytes themselves are what the pinned key
+        // signed (Sparkle semantics — keeps parity with WinSparkle's native
+        // check and defends even if SHA-256 were ever weakened).
+        if (!_pinnedVerifier.Verify(artifactBytes, artifactSignature))
         {
             return ArtifactVerification.Fail(RejectionReason.SignatureInvalid);
         }

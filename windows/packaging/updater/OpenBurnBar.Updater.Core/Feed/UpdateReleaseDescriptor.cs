@@ -33,8 +33,16 @@ public sealed record UpdateReleaseDescriptor
     /// <summary>Lowercase-hex SHA-256 of the artifact bytes.</summary>
     public required string Sha256 { get; init; }
 
-    /// <summary>Base64 Ed25519 signature over the canonical update descriptor (pinned key).</summary>
+    /// <summary>Base64 Ed25519 signature over the RAW ARTIFACT BYTES — exactly
+    /// Sparkle's <c>sparkle:edSignature</c> semantics, so WinSparkle's native
+    /// verifier keeps accepting the appcast.</summary>
     public required string EdSignatureBase64 { get; init; }
+
+    /// <summary>Base64 Ed25519 signature over the CANONICAL UPDATE DESCRIPTOR
+    /// (see <see cref="UpdateDescriptorCanonicalizer"/>) — binds version, build,
+    /// URL, length, SHA-256, critical, channel, minimum system version, and
+    /// release-notes URL so feed metadata cannot be rebound to a signed artifact.</summary>
+    public required string DescriptorSignatureBase64 { get; init; }
 
     /// <summary>MIME type of the enclosure; MSIX defaults below.</summary>
     public string ArtifactMimeType { get; init; } = "application/msix";

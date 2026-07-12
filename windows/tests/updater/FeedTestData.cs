@@ -20,7 +20,8 @@ internal static class FeedTestData
         byte[] artifact,
         string version = "1.4.2",
         string build = "1420",
-        bool critical = false)
+        bool critical = false,
+        string channel = "direct-download")
     {
         var unsigned = new UpdateReleaseDescriptor
         {
@@ -32,16 +33,21 @@ internal static class FeedTestData
             Length = artifact.LongLength,
             Sha256 = Sha256Digest.HexOf(artifact),
             EdSignatureBase64 = string.Empty,
+            DescriptorSignatureBase64 = string.Empty,
             Critical = critical,
             MinimumSystemVersion = "10.0.19041",
             ReleaseNotesUrl = "https://dl.openburnbar.app/windows/release-metadata.json",
             AppcastUrl = "https://dl.openburnbar.app/windows/appcast-windows.xml",
             Commit = "0000000000000000000000000000000000000000",
+            Channel = channel,
         };
 
         return unsigned with
         {
-            EdSignatureBase64 = signer.SignBase64(
+            // Same dual-signature shape the release generator emits: artifact
+            // bytes (Sparkle/WinSparkle semantics) + canonical descriptor.
+            EdSignatureBase64 = signer.SignBase64(artifact),
+            DescriptorSignatureBase64 = signer.SignBase64(
                 UpdateDescriptorCanonicalizer.CanonicalBytes(unsigned)),
         };
     }

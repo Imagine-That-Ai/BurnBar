@@ -1,6 +1,8 @@
 // Release-side Windows appcast generator — the mirror of
-// scripts/generate-macos-appcast.mjs. Signs a canonical update descriptor with the pinned
-// Ed25519 PRIVATE seed and emits appcast XML + latest-windows.json.
+// scripts/generate-macos-appcast.mjs. Signs the artifact bytes (Sparkle's
+// sparkle:edSignature semantics, kept WinSparkle-native-compatible) AND a
+// canonical update descriptor (metadata binding) with the pinned Ed25519
+// PRIVATE seed, then emits appcast XML + latest-windows.json.
 //
 // Usage:
 //   dotnet run --project OpenBurnBar.Updater.Generator -- \
@@ -48,6 +50,7 @@ internal static class Program
                 Length = artifactBytes.LongLength,
                 Sha256 = Sha256Digest.HexOf(artifactBytes),
                 EdSignatureBase64 = string.Empty,
+                DescriptorSignatureBase64 = string.Empty,
                 Critical = options.ContainsKey("critical"),
                 MinimumSystemVersion =
                     options.GetValueOrDefault("min-system-version") ?? "10.0.19041",
@@ -59,9 +62,15 @@ internal static class Program
                 CreatedAt = options.GetValueOrDefault("created-at"),
             };
 
+            // Two signatures from the same pinned key:
+            //  - edSignature: over the RAW ARTIFACT BYTES (Sparkle semantics) so
+            //    WinSparkle's native EdDSA gate keeps accepting the appcast;
+            //  - descriptorSignature: over the canonical metadata descriptor so
+            //    feed metadata cannot be rebound to a signed artifact.
             var signedDescriptor = descriptor with
             {
-                EdSignatureBase64 = keyPair.SignBase64(
+                EdSignatureBase64 = keyPair.SignBase64(artifactBytes),
+                DescriptorSignatureBase64 = keyPair.SignBase64(
                     UpdateDescriptorCanonicalizer.CanonicalBytes(descriptor)),
             };
 

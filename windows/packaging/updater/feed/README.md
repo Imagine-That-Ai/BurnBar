@@ -11,15 +11,26 @@ certificate**.
 
 | File | Role |
 |------|------|
-| [`appcast-windows.xml`](appcast-windows.xml) | The Sparkle/WinSparkle appcast (RSS 2.0 + `sparkle:` namespace). The `<enclosure>` carries `url` / `length` / `type` / `sparkle:sha256` / `sparkle:edSignature`. WinSparkle 0.8+ verifies `sparkle:edSignature` natively against the pinned EdDSA key. |
-| [`latest-windows.json`](latest-windows.json) | The JSON companion (mirror of `latest-macos.json`): `version` / `build` / `downloadUrl` / `length` / `sha256` / `edSignature` / `critical` / `channel` / `minimumSystemVersion` / `releaseNotesUrl`. Drives the direct-download JSON channel + the custom in-app updater. |
+| [`appcast-windows.xml`](appcast-windows.xml) | The Sparkle/WinSparkle appcast (RSS 2.0 + `sparkle:` namespace). The `<enclosure>` carries `url` / `length` / `type` / `sparkle:sha256` / `sparkle:edSignature` / `sparkle:edDescriptorSignature`; non-default channels are carried by `<sparkle:channel>`. WinSparkle 0.8+ verifies `sparkle:edSignature` natively against the pinned EdDSA key. |
+| [`latest-windows.json`](latest-windows.json) | The JSON companion (mirror of `latest-macos.json`): `version` / `build` / `downloadUrl` / `length` / `sha256` / `edSignature` / `descriptorSignature` / `critical` / `channel` / `minimumSystemVersion` / `releaseNotesUrl`. Drives the direct-download JSON channel + the custom in-app updater. |
 | [`pinned-update-key.pub`](pinned-update-key.pub) | The base64 raw (32-byte) Ed25519 **public** key the client pins. **This one is the throwaway DEV/sample pin**; the production pin is injected at build time from the W0 secret. |
 | [`sample-artifact.txt`](sample-artifact.txt) | A deterministic stand-in for the installer artifact so the committed sample feed carries a **real** signature + SHA-256 over concrete bytes. |
 
-## What the Ed25519 signature covers (the R19 crux)
+## What the Ed25519 signatures cover (the R19 crux)
 
-`sparkle:edSignature` / `edSignature` is a base64 Ed25519 (RFC 8032) signature
-over a canonical descriptor that binds the advertised version, build, download URL, length, SHA-256, critical flag, channel, minimum system version, and release-notes URL.
+The feed carries **two** base64 Ed25519 (RFC 8032) signatures from the same
+pinned key:
+
+- `sparkle:edSignature` / `edSignature` — over the **raw bytes of the download
+  artifact**, exactly Sparkle's semantics. This is the value WinSparkle 0.8+
+  verifies **natively** before the managed verifier ever runs, so it must stay
+  artifact-bytes-only for the native gate to keep accepting the appcast.
+- `sparkle:edDescriptorSignature` / `descriptorSignature` — over a **canonical
+  descriptor** that binds the advertised version (max 4 dotted components, all
+  of which participate in ordering), build, download URL, length, SHA-256,
+  critical flag, channel, minimum system version, and release-notes URL, so
+  feed metadata cannot be rebound to a signed artifact.
+
 The client
 ([`OpenBurnBar.Updater.Core`](../OpenBurnBar.Updater.Core)) refuses to install
 unless, in order:
@@ -28,8 +39,11 @@ unless, in order:
 2. its version is dotted-numeric and **strictly newer** than the installed build
    (older ⇒ **downgrade-blocked**; equal ⇒ up-to-date),
 3. the downloaded artifact's **byte length** matches,
-4. its **SHA-256** matches, and
-5. the feed's **Ed25519 signature verifies against the pinned key** over that canonical descriptor.
+4. its **SHA-256** matches,
+5. the **descriptor signature verifies against the pinned key** over the
+   canonical descriptor, and
+6. the **artifact signature verifies against the pinned key** over the
+   downloaded bytes.
 
 The pinned key is **independent of the Authenticode certificate**. An attacker
 who tampers the feed transport, swaps the artifact, or even re-signs the
