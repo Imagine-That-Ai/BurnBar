@@ -430,4 +430,3 @@ public struct ComputerUseAuditExportResponse: Codable, Hashable, Sendable {
         self.openTimestampsProofBase64 = openTimestampsProofBase64
     }
 }
-

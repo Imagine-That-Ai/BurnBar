@@ -965,4 +965,3 @@ public struct BurnBarProtocolHandshakeRequest: Codable, Hashable, Sendable {
         self.supportedProtocolVersions = supportedProtocolVersions
     }
 }
-

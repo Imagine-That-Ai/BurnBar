@@ -478,4 +478,3 @@ final class CLICrossEncoderReranker: RetrievalRerankProviding {
 }
 
 // MARK: - Mock Reversing Reranker (for testing)
-

@@ -146,4 +146,3 @@ struct PulseDepthBackdrop: View {
 //
 // Thin gradient divider used between major Pulse sections to give the
 // stack a sense of vertical rhythm without adding new chrome.
-
