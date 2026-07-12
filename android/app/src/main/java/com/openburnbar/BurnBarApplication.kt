@@ -31,7 +31,6 @@ import com.openburnbar.diagnostics.CrashReportingConsentStore
 import com.openburnbar.irohrelay.IrohDialTarget
 import com.openburnbar.irohrelay.IrohPairingPublisher
 import com.openburnbar.irohrelay.IrohRelayStream
-import com.openburnbar.irohrelay.OpenBurnBarIrohBlobFfiBackend
 import com.openburnbar.irohrelay.OpenBurnBarIrohFfiBackend
 import com.openburnbar.irohrelay.OpenBurnBarIrohNativeContext
 import com.openburnbar.remote.BurnBarRemoteBridge

@@ -2,9 +2,9 @@ package com.openburnbar.data.computeruse
 
 import com.google.crypto.tink.subtle.Ed25519Sign.KeyPair
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantRequest
-import com.openburnbar.irohrelay.HermesRealtimeRelaySessionGrantChallenge
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockCredentialEnvelope
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockSession
+import com.openburnbar.irohrelay.HermesRealtimeRelaySessionGrantChallenge
 import java.security.SecureRandom
 
 private const val ED25519_SEED_BYTES = 32

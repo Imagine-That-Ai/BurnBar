@@ -51,11 +51,11 @@ internal fun BurnBarApplication.installFileTransferService() {
         MediaFileTransferService(
             backend = OpenBurnBarIrohBlobFfiBackend(),
             configuration =
-                MediaFileTransferService.Configuration(
-                    storeDirectory = File(filesDir, "mercury_blob_store"),
-                    inboxDirectory = File(filesDir, "mercury_blob_inbox"),
-                    secretKeyProvider = { blobKeyStore.secretKeyMaterial() },
-                ),
+            MediaFileTransferService.Configuration(
+                storeDirectory = File(filesDir, "mercury_blob_store"),
+                inboxDirectory = File(filesDir, "mercury_blob_inbox"),
+                secretKeyProvider = { blobKeyStore.secretKeyMaterial() },
+            ),
         )
     registerFileTransferService(
         AndroidFileTransferService(

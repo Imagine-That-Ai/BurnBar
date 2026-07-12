@@ -41,8 +41,7 @@ import { callableRunner, tier2CallableProof } from "./bola/callableBolaHarness.j
 const bolaStore = new Map<string, Record<string, unknown>>();
 
 function invoke(data: Record<string, unknown>, uid = "linux-owner"): Promise<unknown> {
-  const run = Reflect.get(mintLinuxAppCheckToken as object, "run") as (request: unknown) => Promise<unknown>;
-  return run({ auth: { uid, token: {} }, data, rawRequest: { headers: {} } });
+  return callableRunner(mintLinuxAppCheckToken)({ auth: { uid, token: {} }, data, rawRequest: { headers: {} } });
 }
 
 describe("production Linux device-key App Check mint handler", () => {

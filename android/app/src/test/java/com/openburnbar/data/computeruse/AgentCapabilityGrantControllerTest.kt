@@ -8,8 +8,8 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.FirebaseFirestore
 import com.openburnbar.BurnBarApplication
-import com.openburnbar.irohrelay.HermesRealtimeRelaySessionGrantChallenge
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
+import com.openburnbar.irohrelay.HermesRealtimeRelaySessionGrantChallenge
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest

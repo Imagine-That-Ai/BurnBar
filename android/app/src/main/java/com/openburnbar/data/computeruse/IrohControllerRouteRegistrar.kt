@@ -147,11 +147,7 @@ class IrohControllerRouteRegistrar(
         }
     }
 
-    private fun registrationInputs(
-        uid: String,
-        connectionId: String,
-        endpointIdentity: IrohEndpointIdentity,
-    ): RegistrationInputs {
+    private fun registrationInputs(uid: String, connectionId: String, endpointIdentity: IrohEndpointIdentity): RegistrationInputs {
         val normalizedUid = uid.trim().also { require(it.isNotEmpty()) { "uid is required to register an iroh controller route" } }
         val normalizedConnectionId = connectionId.trim().also {
             require(it.isNotEmpty()) { "connectionId is required to register an iroh controller route" }
@@ -364,12 +360,7 @@ class IrohControllerRouteRegistrar(
         }
     }
 
-    private suspend fun runRenewalLoop(
-        routeScope: RouteScope,
-        key: RouteKey,
-        endpointIdentity: IrohEndpointIdentity,
-        expectedLifecycleEpoch: Long,
-    ): Boolean {
+    private suspend fun runRenewalLoop(routeScope: RouteScope, key: RouteKey, endpointIdentity: IrohEndpointIdentity, expectedLifecycleEpoch: Long): Boolean {
         while (true) {
             val current = lock.withLock {
                 if (activeKeys[routeScope] == key) cached[key] else null
@@ -397,10 +388,7 @@ class IrohControllerRouteRegistrar(
         }
     }
 
-    private suspend fun waitForRenewalRetry(
-        key: RouteKey,
-        current: IrohControllerRouteRegistration,
-    ): Boolean {
+    private suspend fun waitForRenewalRetry(key: RouteKey, current: IrohControllerRouteRegistration): Boolean {
         val remaining = current.expiresAtMillis - nowMillis()
         if (remaining <= 0L) {
             lock.withLock {
@@ -665,10 +653,9 @@ private fun decodeControllerRouteCanonicalPayload(encoded: String): ByteArray {
     return decoded
 }
 
-private fun IrohControllerRouteRegistration.matches(key: IrohControllerRouteRegistrar.RouteKey): Boolean =
-    sourceDeviceId == key.sourceDeviceId &&
-        transportNodeId == key.transportNodeId &&
-        authorityPeerNodeId == key.authorityPeerNodeId
+private fun IrohControllerRouteRegistration.matches(key: IrohControllerRouteRegistrar.RouteKey): Boolean = sourceDeviceId == key.sourceDeviceId &&
+    transportNodeId == key.transportNodeId &&
+    authorityPeerNodeId == key.authorityPeerNodeId
 
 /** One process-wide cache so Hermes chat and retained Mercury control share the same route lease. */
 object IrohControllerRouteRegistrarProvider {

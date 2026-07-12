@@ -89,6 +89,15 @@ const CONNECTION_ID = "linux-browser-cu";
 const HOST_DEVICE_ID = "linux-host-fixture";
 const SOURCE_DEVICE_ID = "phone-controller";
 const BOB_UID = "route-attacker";
+
+type RouteChallenge = {
+  challengeId: string;
+  canonicalPayloadBase64: string;
+  proofKind: "bootstrap" | "transport-renewal";
+  requiresAuthorityProof: boolean;
+  registrationGeneration: number;
+};
+
 function callableRequest(uid: string, data: Record<string, unknown>) {
   return {
     auth: { uid, token: {} },
@@ -98,12 +107,61 @@ function callableRequest(uid: string, data: Record<string, unknown>) {
   };
 }
 
-function invoke<T>(callable: unknown, uid: string, data: Record<string, unknown>): Promise<T> {
-  return callableRunner(callable)(callableRequest(uid, data)) as Promise<T>;
+function invoke(callable: unknown, uid: string, data: Record<string, unknown>): Promise<unknown> {
+  return callableRunner(callable)(callableRequest(uid, data));
 }
 
-function invokeForApp<T>(callable: unknown, uid: string, appId: string, data: Record<string, unknown>): Promise<T> {
-  return callableRunner(callable)({ ...callableRequest(uid, data), app: { appId } }) as Promise<T>;
+function invokeForApp(callable: unknown, uid: string, appId: string, data: Record<string, unknown>): Promise<unknown> {
+  return callableRunner(callable)({ ...callableRequest(uid, data), app: { appId } });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function requireRecord(value: unknown, label: string): Record<string, unknown> {
+  if (isRecord(value)) return value;
+  throw new Error(`${label} must be an object`);
+}
+
+function requireString(value: unknown, label: string): string {
+  if (typeof value === "string") return value;
+  throw new Error(`${label} must be a string`);
+}
+
+function requireBoolean(value: unknown, label: string): boolean {
+  if (typeof value === "boolean") return value;
+  throw new Error(`${label} must be a boolean`);
+}
+
+function requireNumber(value: unknown, label: string): number {
+  if (typeof value === "number") return value;
+  throw new Error(`${label} must be a number`);
+}
+
+function requireRouteChallenge(value: unknown): RouteChallenge {
+  const record = requireRecord(value, "route challenge");
+  const proofKind = record.proofKind;
+  if (proofKind !== "bootstrap" && proofKind !== "transport-renewal") {
+    throw new Error("route challenge proofKind is invalid");
+  }
+  return {
+    challengeId: requireString(record.challengeId, "route challenge challengeId"),
+    canonicalPayloadBase64: requireString(record.canonicalPayloadBase64, "route challenge canonicalPayloadBase64"),
+    proofKind,
+    requiresAuthorityProof: requireBoolean(record.requiresAuthorityProof, "route challenge requiresAuthorityProof"),
+    registrationGeneration: requireNumber(record.registrationGeneration, "route challenge registrationGeneration"),
+  };
+}
+
+function requireActiveRouteResolution(value: unknown): { uid: string; routes: Array<Record<string, unknown>> } {
+  const record = requireRecord(value, "route resolution");
+  const routesValue = record.routes;
+  if (!Array.isArray(routesValue)) throw new Error("route resolution routes must be an array");
+  return {
+    uid: requireString(record.uid, "route resolution uid"),
+    routes: routesValue.map((route, index) => requireRecord(route, `route resolution route ${index}`)),
+  };
 }
 
 function snapshotTenantPaths(uid: string): Map<string, Record<string, unknown>> {
@@ -163,20 +221,16 @@ function seedTrustGraph() {
 }
 
 async function issueChallenge(authorityPeerNodeId: string, transportNodeId: string) {
-  return invoke<{
-    challengeId: string;
-    canonicalPayloadBase64: string;
-    proofKind: "bootstrap" | "transport-renewal";
-    requiresAuthorityProof: boolean;
-    registrationGeneration: number;
-  }>(issueIrohControllerRouteChallenge, UID, {
-    sourceDeviceId: SOURCE_DEVICE_ID,
-    connectionId: CONNECTION_ID,
-    authorityPeerNodeId,
-    transportNodeId,
-    expectedUid: UID,
-    nonce: "high-risk-nonce",
-  });
+  return requireRouteChallenge(
+    await invoke(issueIrohControllerRouteChallenge, UID, {
+      sourceDeviceId: SOURCE_DEVICE_ID,
+      connectionId: CONNECTION_ID,
+      authorityPeerNodeId,
+      transportNodeId,
+      expectedUid: UID,
+      nonce: "high-risk-nonce",
+    }),
+  );
 }
 
 async function registerChallenge(
@@ -185,7 +239,7 @@ async function registerChallenge(
   authorityPrivateKey?: ReturnType<typeof generateKeyPairSync>["privateKey"],
 ) {
   const payload = Buffer.from(challenge.canonicalPayloadBase64, "base64");
-  return invoke<Record<string, unknown>>(registerIrohControllerRoute, UID, {
+  return invoke(registerIrohControllerRoute, UID, {
     challengeId: challenge.challengeId,
     transportSignatureBase64: sign(null, payload, transportPrivateKey).toString("base64"),
     ...(authorityPrivateKey
@@ -281,10 +335,8 @@ describe("verified iroh controller route registry", () => {
       generation: 1,
     });
 
-    const resolution = await invoke<{ uid: string; routes: Array<Record<string, unknown>> }>(
-      resolveActiveIrohControllerRoutes,
-      UID,
-      { connectionId: CONNECTION_ID },
+    const resolution = requireActiveRouteResolution(
+      await invoke(resolveActiveIrohControllerRoutes, UID, { connectionId: CONNECTION_ID }),
     );
     expect(resolution.uid).toBe(UID);
     expect(resolution.routes).toEqual([
@@ -328,8 +380,10 @@ describe("verified iroh controller route registry", () => {
       transportNodeId: fixture.transportNodeId,
       authorityPeerNodeId: fixture.authorityPeerNodeId,
     });
-    expect(store.get(routePath)?.expiresAtMillis).toEqual(expect.any(Number));
-    expect(store.get(routePath)?.expiresAtMillis as number).toBeGreaterThan(shortenedExpiry);
+    const route = requireRecord(store.get(routePath), "stored controller route");
+    const expiresAtMillis = requireNumber(route.expiresAtMillis, "stored controller route expiresAtMillis");
+    expect(expiresAtMillis).toEqual(expect.any(Number));
+    expect(expiresAtMillis).toBeGreaterThan(shortenedExpiry);
   });
 
   it("requires a new bootstrap proof and generation when the transport tuple changes", async () => {
@@ -359,8 +413,12 @@ describe("verified iroh controller route registry", () => {
     await registerChallenge(bootstrap, fixture.transport.privateKey, fixture.authority.privateKey);
     const renewal = await issueChallenge(fixture.authorityPeerNodeId, fixture.transportNodeId);
     const routePath = `users/${UID}/iroh_pairing/${CONNECTION_ID}/controller_routes/${SOURCE_DEVICE_ID}`;
-    const eligibleRoute = store.get(routePath);
-    store.set(routePath, { ...eligibleRoute, registeredAtMillis: (eligibleRoute?.registeredAtMillis as number) + 1 });
+    const eligibleRoute = requireRecord(store.get(routePath), "eligible controller route");
+    const eligibleRegisteredAtMillis = requireNumber(
+      eligibleRoute.registeredAtMillis,
+      "eligible controller route registeredAtMillis",
+    );
+    store.set(routePath, { ...eligibleRoute, registeredAtMillis: eligibleRegisteredAtMillis + 1 });
     await expect(registerChallenge(renewal, fixture.transport.privateKey)).rejects.toMatchObject({ code: "aborted" });
     store.set(routePath, eligibleRoute ?? {});
     await invoke(revokeIrohControllerRoute, UID, {

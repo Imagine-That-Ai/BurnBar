@@ -352,10 +352,7 @@ class HermesIrohRelayTransport(
         relayExchangeTimeout()
     }
 
-    private fun handleSessionGrantChallenge(
-        frame: HermesRealtimeRelayFrame,
-        request: RelayExchangeRequest,
-    ) {
+    private fun handleSessionGrantChallenge(frame: HermesRealtimeRelayFrame, request: RelayExchangeRequest) {
         val challenge = frame.control?.sessionGrantChallenge ?: return
         sessionGrantChallengeHandler(
             ComputerUseSessionGrantChallengeDelivery(

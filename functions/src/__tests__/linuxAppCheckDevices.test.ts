@@ -1,7 +1,6 @@
 import { generateKeyPairSync, sign } from "node:crypto";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { CallableRequest } from "firebase-functions/v2/https";
 
 const { store, highRisk, actionProof, trustedDevice, rateLimit } = vi.hoisted(() => ({
   store: new Map<string, Record<string, unknown>>(),
@@ -17,6 +16,23 @@ const { store, highRisk, actionProof, trustedDevice, rateLimit } = vi.hoisted(()
 }));
 
 type Ref = { path: string };
+type TestCallableRequest = {
+  auth: { uid: string; token: Record<string, unknown>; rawToken: string };
+  app: {
+    appId: string;
+    token: {
+      app_id: string;
+      aud: string[];
+      exp: number;
+      iat: number;
+      iss: string;
+      sub: string;
+    };
+  };
+  data: Record<string, unknown>;
+  rawRequest: { headers: Record<string, string> };
+  acceptsStreaming: false;
+};
 
 function snapshot(path: string) {
   const data = store.get(path);
@@ -44,9 +60,10 @@ vi.mock("../adminRuntime.js", () => ({
     },
     collection(path: string) {
       const documents = (limit: number, newestFirst: boolean, trustState?: string) => {
-        const entries = [...store]
-          .filter(([candidate, data]) =>
-            candidate.startsWith(`${path}/`) && (trustState === undefined || data.trustState === trustState));
+        const entries = [...store].filter(
+          ([candidate, data]) =>
+            candidate.startsWith(`${path}/`) && (trustState === undefined || data.trustState === trustState),
+        );
         if (newestFirst) {
           entries.sort((left, right) => {
             const createdOrder = Number(right[1].createdAtMillis ?? 0) - Number(left[1].createdAtMillis ?? 0);
@@ -148,7 +165,7 @@ function rawPublicKey(key: ReturnType<typeof generateKeyPairSync>["publicKey"]):
   return key.export({ format: "der", type: "spki" }).subarray(-32);
 }
 
-function request(data: Record<string, unknown>, appId = "1:123:ios:native"): CallableRequest<Record<string, unknown>> {
+function request(data: Record<string, unknown>, appId = "1:123:ios:native"): TestCallableRequest {
   return {
     auth: { uid: UID, token: {}, rawToken: "test-id-token" },
     app: {
@@ -165,12 +182,40 @@ function request(data: Record<string, unknown>, appId = "1:123:ios:native"): Cal
     data,
     rawRequest: { headers: {} },
     acceptsStreaming: false,
-  } as unknown as CallableRequest<Record<string, unknown>>;
+  };
 }
 
-function invoke<T>(callable: unknown, data: Record<string, unknown>, appId?: string): Promise<T> {
-  const run = Reflect.get(callable as object, "run") as (request: unknown) => Promise<T>;
-  return run(request(data, appId));
+function invoke(callable: unknown, data: Record<string, unknown>, appId?: string): Promise<unknown> {
+  return callableRunner(callable)(request(data, appId));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function requireRecord(value: unknown, label: string): Record<string, unknown> {
+  if (isRecord(value)) return value;
+  throw new Error(`${label} must be an object`);
+}
+
+function requireString(value: unknown, label: string): string {
+  if (typeof value === "string") return value;
+  throw new Error(`${label} must be a string`);
+}
+
+function requireChallenge(value: unknown): { challengeId: string; canonicalPayloadBase64: string } {
+  const record = requireRecord(value, "Linux App Check challenge");
+  return {
+    challengeId: requireString(record.challengeId, "Linux App Check challengeId"),
+    canonicalPayloadBase64: requireString(record.canonicalPayloadBase64, "Linux App Check canonicalPayloadBase64"),
+  };
+}
+
+function requireDeviceList(value: unknown): { devices: Array<Record<string, unknown>> } {
+  const record = requireRecord(value, "Linux App Check device list");
+  const devices = record.devices;
+  if (!Array.isArray(devices)) throw new Error("Linux App Check device list must include devices");
+  return { devices: devices.map((device, index) => requireRecord(device, `Linux App Check device ${index}`)) };
 }
 
 function enrollment(deviceName = "Workstation", uid = UID) {
@@ -250,9 +295,7 @@ describe("Linux App Check approved-device lifecycle", () => {
     ).rejects.toMatchObject({ code: "failed-precondition" });
 
     write(`users/${UID}/linux_app_check_devices/${fixture.data.deviceId}`, { trustState: "revoked" }, true);
-    await expect(
-      invoke(registerLinuxAppCheckDevice, fixture.data),
-    ).rejects.toMatchObject({
+    await expect(invoke(registerLinuxAppCheckDevice, fixture.data)).rejects.toMatchObject({
       code: "failed-precondition",
       details: { reason: "linux_device_revoked" },
     });
@@ -315,11 +358,9 @@ describe("Linux App Check approved-device lifecycle", () => {
       details: { reason: "linux_device_revoked" },
     });
     write(`users/${UID}/linux_app_check_devices/${fixture.data.deviceId}`, { trustState: "approved" }, true);
-    const challenge = await invoke<{
-      challengeId: string;
-      canonicalPayloadBase64: string;
-      expiresAtMillis: number;
-    }>(issueLinuxAppCheckChallenge, { appId: APP_ID, deviceId: fixture.data.deviceId }, undefined);
+    const challenge = requireChallenge(
+      await invoke(issueLinuxAppCheckChallenge, { appId: APP_ID, deviceId: fixture.data.deviceId }, undefined),
+    );
     expect(rateLimit).toHaveBeenLastCalledWith("issueLinuxAppCheckChallenge", UID);
     const signatureBase64 = sign(
       null,
@@ -352,10 +393,8 @@ describe("Linux App Check approved-device lifecycle", () => {
     await invoke(registerLinuxAppCheckDevice, fixture.data);
     const devicePath = `users/${UID}/linux_app_check_devices/${fixture.data.deviceId}`;
     write(devicePath, { trustState: "approved" }, true);
-    const challenge = await invoke<{ challengeId: string; canonicalPayloadBase64: string }>(
-      issueLinuxAppCheckChallenge,
-      { appId: APP_ID, deviceId: fixture.data.deviceId },
-      undefined,
+    const challenge = requireChallenge(
+      await invoke(issueLinuxAppCheckChallenge, { appId: APP_ID, deviceId: fixture.data.deviceId }, undefined),
     );
     const challengePath = `users/${UID}/linux_app_check_challenges/${challenge.challengeId}`;
     const validSignature = sign(
@@ -413,22 +452,21 @@ describe("Linux App Check approved-device lifecycle", () => {
     await invoke(registerLinuxAppCheckDevice, fixture.data);
     const devicePath = `users/${UID}/linux_app_check_devices/${fixture.data.deviceId}`;
     write(devicePath, { trustState: "approved" }, true);
-    const challenge = await invoke<{ challengeId: string; canonicalPayloadBase64: string }>(
-      issueLinuxAppCheckChallenge,
-      { appId: APP_ID, deviceId: fixture.data.deviceId },
-      undefined,
+    const challenge = requireChallenge(
+      await invoke(issueLinuxAppCheckChallenge, { appId: APP_ID, deviceId: fixture.data.deviceId }, undefined),
     );
-    const consume = () => consumeLinuxAppCheckChallenge({
-      appId: APP_ID,
-      challengeId: challenge.challengeId,
-      deviceId: fixture.data.deviceId,
-      signatureBase64: sign(
-        null,
-        Buffer.from(challenge.canonicalPayloadBase64, "base64"),
-        fixture.key.privateKey,
-      ).toString("base64"),
-      uid: UID,
-    });
+    const consume = () =>
+      consumeLinuxAppCheckChallenge({
+        appId: APP_ID,
+        challengeId: challenge.challengeId,
+        deviceId: fixture.data.deviceId,
+        signatureBase64: sign(
+          null,
+          Buffer.from(challenge.canonicalPayloadBase64, "base64"),
+          fixture.key.privateKey,
+        ).toString("base64"),
+        uid: UID,
+      });
 
     store.delete(devicePath);
     await expect(consume()).rejects.toMatchObject({
@@ -459,9 +497,7 @@ describe("Linux App Check approved-device lifecycle", () => {
   it("lists public review material and revokes without ever returning private material", async () => {
     const fixture = enrollment("Linux Desktop");
     await invoke(registerLinuxAppCheckDevice, fixture.data);
-    const listed = await invoke<{ devices: Array<Record<string, unknown>> }>(listLinuxAppCheckDevices, {
-      approverDeviceId: APPROVER_ID,
-    });
+    const listed = requireDeviceList(await invoke(listLinuxAppCheckDevices, { approverDeviceId: APPROVER_ID }));
     expect(listed.devices).toEqual([
       expect.objectContaining({
         deviceId: fixture.data.deviceId,
@@ -507,9 +543,7 @@ describe("Linux App Check approved-device lifecycle", () => {
       createdAtMillis: 1,
     });
 
-    const listed = await invoke<{ devices: Array<Record<string, unknown>> }>(listLinuxAppCheckDevices, {
-      approverDeviceId: APPROVER_ID,
-    });
+    const listed = requireDeviceList(await invoke(listLinuxAppCheckDevices, { approverDeviceId: APPROVER_ID }));
 
     expect(listed.devices).toHaveLength(100);
     expect(listed.devices[0]).toMatchObject({ deviceId: "rotated-pending", trustState: "pending" });
@@ -532,9 +566,7 @@ describe("Linux App Check approved-device lifecycle", () => {
       createdAtMillis: 10_000,
     });
 
-    const listed = await invoke<{ devices: Array<Record<string, unknown>> }>(listLinuxAppCheckDevices, {
-      approverDeviceId: APPROVER_ID,
-    });
+    const listed = requireDeviceList(await invoke(listLinuxAppCheckDevices, { approverDeviceId: APPROVER_ID }));
 
     expect(listed.devices).toHaveLength(100);
     expect(listed.devices[0]).toMatchObject({ deviceId: "rotated-newest", trustState: "pending" });
@@ -560,8 +592,8 @@ describe("Linux App Check approved-device lifecycle", () => {
     const nativeRunner = (callable: unknown) => {
       const run = callableRunner(callable);
       return (candidate: unknown) => {
-        const app = Reflect.get(candidate as object, "app") as Record<string, unknown>;
-        app.appId = "1:123:ios:native";
+        const app = requireRecord(Reflect.get(requireRecord(candidate, "callable request"), "app"), "callable app");
+        Reflect.set(app, "appId", "1:123:ios:native");
         return run(candidate);
       };
     };

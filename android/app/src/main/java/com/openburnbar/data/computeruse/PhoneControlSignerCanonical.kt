@@ -3,9 +3,9 @@ package com.openburnbar.data.computeruse
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayApprovalRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayApprovalResponse
-import com.openburnbar.irohrelay.HermesRealtimeRelaySessionGrantChallenge
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockCredentialEnvelope
 import com.openburnbar.irohrelay.HermesRealtimeRelayRemoteUnlockSession
+import com.openburnbar.irohrelay.HermesRealtimeRelaySessionGrantChallenge
 
 internal object PhoneControlSignerCanonical {
     fun intentHashHex(intent: PhoneControlIntent): String = hashJson(PhoneControlSignerCanonicalJson.canonicalIntentJson(intent))

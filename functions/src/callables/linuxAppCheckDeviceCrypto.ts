@@ -75,12 +75,15 @@ export function deriveLinuxAppCheckDeviceId(publicKey: Buffer): string {
 }
 
 export function linuxAppCheckSafetyFingerprint(publicKey: Buffer): string {
-  return createHash("sha256")
+  const groups = createHash("sha256")
     .update(publicKey)
     .digest("hex")
     .toUpperCase()
-    .match(/.{1,4}/gu)!
-    .join(" ");
+    .match(/.{1,4}/gu);
+  if (!groups || groups.length === 0) {
+    throw new Error("Linux App Check safety fingerprint could not be grouped.");
+  }
+  return groups.join(" ");
 }
 
 export function linuxAppCheckEnrollmentPayload(input: {

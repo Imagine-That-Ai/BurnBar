@@ -53,6 +53,10 @@ const REVOKE_ACTION_KIND = "linux_app_check_device_revoke";
 
 type LinuxDeviceTrustState = "pending" | "approved" | "revoked";
 
+function isLinuxDeviceTrustState(value: unknown): value is LinuxDeviceTrustState {
+  return value === "pending" || value === "approved" || value === "revoked";
+}
+
 function deviceRef(uid: string, deviceId: string) {
   return db.doc(`users/${uid}/${LINUX_APP_CHECK_DEVICE_COLLECTION}/${deviceId}`);
 }
@@ -64,11 +68,9 @@ function challengeRef(uid: string, challengeId: string) {
 function requireExactLinuxAppId(raw: unknown): string {
   const appId = boundedTrimmedString(raw, "appId", 160, true);
   if (appId !== getConfig().linuxAppCheckAppID) {
-    throw new HttpsError(
-      "permission-denied",
-      "Linux App Check request used an unexpected app id.",
-      { reason: LINUX_APP_CHECK_REJECTION_REASON.appNotAllowlisted },
-    );
+    throw new HttpsError("permission-denied", "Linux App Check request used an unexpected app id.", {
+      reason: LINUX_APP_CHECK_REJECTION_REASON.appNotAllowlisted,
+    });
   }
   return appId;
 }
@@ -91,18 +93,16 @@ async function enforceTrustedNativeManager(args: {
 }
 
 export async function requireApprovedLinuxAppCheckIrohHost(
-  request: CallableRequest,
+  request: { app?: { appId?: string } },
   uid: string,
   deviceId: string,
 ): Promise<{ deviceId: string; platform: "Linux" }> {
   const liveAppId = readAppIdFromCallableRequest(request);
   const expectedAppId = getConfig().linuxAppCheckAppID;
   if (liveAppId !== expectedAppId) {
-    throw new HttpsError(
-      "permission-denied",
-      "Linux host approval requires the configured Linux App Check app.",
-      { reason: LINUX_APP_CHECK_REJECTION_REASON.appNotAllowlisted },
-    );
+    throw new HttpsError("permission-denied", "Linux host approval requires the configured Linux App Check app.", {
+      reason: LINUX_APP_CHECK_REJECTION_REASON.appNotAllowlisted,
+    });
   }
   const snapshot = await deviceRef(uid, deviceId).get();
   if (
@@ -111,15 +111,11 @@ export async function requireApprovedLinuxAppCheckIrohHost(
     snapshot.get("appId") !== expectedAppId ||
     snapshot.get("deviceId") !== deviceId
   ) {
-    throw new HttpsError(
-      "permission-denied",
-      "This Linux host is not approved for App Check and iroh publication.",
-      {
-        reason: !snapshot.exists
-          ? LINUX_APP_CHECK_REJECTION_REASON.notRegistered
-          : LINUX_APP_CHECK_REJECTION_REASON.recordMismatch,
-      },
-    );
+    throw new HttpsError("permission-denied", "This Linux host is not approved for App Check and iroh publication.", {
+      reason: !snapshot.exists
+        ? LINUX_APP_CHECK_REJECTION_REASON.notRegistered
+        : LINUX_APP_CHECK_REJECTION_REASON.recordMismatch,
+    });
   }
   return { deviceId, platform: "Linux" };
 }
@@ -134,11 +130,9 @@ export async function consumeLinuxAppCheckChallenge(args: {
 }): Promise<void> {
   const nowMillis = args.nowMillis ?? Date.now();
   if (args.appId !== getConfig().linuxAppCheckAppID) {
-    throw new HttpsError(
-      "permission-denied",
-      "Linux App Check challenge used an unexpected app id.",
-      { reason: LINUX_APP_CHECK_REJECTION_REASON.appNotAllowlisted },
-    );
+    throw new HttpsError("permission-denied", "Linux App Check challenge used an unexpected app id.", {
+      reason: LINUX_APP_CHECK_REJECTION_REASON.appNotAllowlisted,
+    });
   }
   const device = deviceRef(args.uid, args.deviceId);
   const challenge = challengeRef(args.uid, args.challengeId);
@@ -146,37 +140,28 @@ export async function consumeLinuxAppCheckChallenge(args: {
     const deviceSnapshot = await transaction.get(device);
     const challengeSnapshot = await transaction.get(challenge);
     if (!deviceSnapshot.exists) {
-      throw new HttpsError(
-        "permission-denied",
-        "Linux App Check device is not registered.",
-        { reason: LINUX_APP_CHECK_REJECTION_REASON.notRegistered },
-      );
+      throw new HttpsError("permission-denied", "Linux App Check device is not registered.", {
+        reason: LINUX_APP_CHECK_REJECTION_REASON.notRegistered,
+      });
     }
     const trustState = deviceSnapshot.get("trustState");
     if (trustState === "pending") {
-      throw new HttpsError(
-        "permission-denied",
-        "Linux App Check device is not approved.",
-        { reason: LINUX_APP_CHECK_REJECTION_REASON.approvalRequired },
-      );
+      throw new HttpsError("permission-denied", "Linux App Check device is not approved.", {
+        reason: LINUX_APP_CHECK_REJECTION_REASON.approvalRequired,
+      });
     }
     if (trustState !== "approved") {
-      throw new HttpsError(
-        "permission-denied",
-        "Linux App Check device is not eligible for challenge consumption.",
-        {
-          reason: trustState === "revoked"
+      throw new HttpsError("permission-denied", "Linux App Check device is not eligible for challenge consumption.", {
+        reason:
+          trustState === "revoked"
             ? LINUX_APP_CHECK_REJECTION_REASON.revoked
             : LINUX_APP_CHECK_REJECTION_REASON.invalidTrustState,
-        },
-      );
+      });
     }
     if (deviceSnapshot.get("appId") !== args.appId || deviceSnapshot.get("deviceId") !== args.deviceId) {
-      throw new HttpsError(
-        "permission-denied",
-        "Linux App Check device record does not match the challenge.",
-        { reason: LINUX_APP_CHECK_REJECTION_REASON.recordMismatch },
-      );
+      throw new HttpsError("permission-denied", "Linux App Check device record does not match the challenge.", {
+        reason: LINUX_APP_CHECK_REJECTION_REASON.recordMismatch,
+      });
     }
     if (!challengeSnapshot.exists) {
       throw new HttpsError("not-found", "Linux App Check challenge was not found.");
@@ -216,18 +201,14 @@ export async function consumeLinuxAppCheckChallenge(args: {
     try {
       publicKey = parseLinuxAppCheckPublicKey(deviceSnapshot.get("publicKeyBase64")).bytes;
     } catch {
-      throw new HttpsError(
-        "failed-precondition",
-        "Linux App Check device identity is corrupt.",
-        { reason: LINUX_APP_CHECK_REJECTION_REASON.recordMismatch },
-      );
+      throw new HttpsError("failed-precondition", "Linux App Check device identity is corrupt.", {
+        reason: LINUX_APP_CHECK_REJECTION_REASON.recordMismatch,
+      });
     }
     if (deriveLinuxAppCheckDeviceId(publicKey) !== args.deviceId) {
-      throw new HttpsError(
-        "failed-precondition",
-        "Linux App Check device identity is corrupt.",
-        { reason: LINUX_APP_CHECK_REJECTION_REASON.recordMismatch },
-      );
+      throw new HttpsError("failed-precondition", "Linux App Check device identity is corrupt.", {
+        reason: LINUX_APP_CHECK_REJECTION_REASON.recordMismatch,
+      });
     }
     if (
       !verifyLinuxAppCheckEd25519Signature({
@@ -283,25 +264,21 @@ export const registerLinuxAppCheckDevice = onCallProduction(
         }
         const existingState = existing.get("trustState");
         if (existingState === "revoked") {
-          throw new HttpsError(
-            "failed-precondition",
-            "Revoked Linux App Check keys cannot be re-enrolled.",
-            { reason: LINUX_APP_CHECK_REJECTION_REASON.revoked },
-          );
+          throw new HttpsError("failed-precondition", "Revoked Linux App Check keys cannot be re-enrolled.", {
+            reason: LINUX_APP_CHECK_REJECTION_REASON.revoked,
+          });
         }
-        if (existingState !== "pending" && existingState !== "approved") {
-          throw new HttpsError(
-            "failed-precondition",
-            "Linux App Check device has an invalid trust state.",
-            { reason: LINUX_APP_CHECK_REJECTION_REASON.invalidTrustState },
-          );
+        if (!isLinuxDeviceTrustState(existingState)) {
+          throw new HttpsError("failed-precondition", "Linux App Check device has an invalid trust state.", {
+            reason: LINUX_APP_CHECK_REJECTION_REASON.invalidTrustState,
+          });
         }
         transaction.set(
           ref,
           { deviceName, lastEnrollmentProofAtMillis: proof.issuedAtMillis, updatedAt: FieldValue.serverTimestamp() },
           { merge: true },
         );
-        return existingState as LinuxDeviceTrustState;
+        return existingState;
       }
       transaction.create(ref, {
         appId: proof.appId,
@@ -355,37 +332,28 @@ export const issueLinuxAppCheckChallenge = onCallProduction(
     await db.runTransaction(async (transaction) => {
       const device = await transaction.get(deviceRef(uid, deviceId));
       if (!device.exists) {
-        throw new HttpsError(
-          "permission-denied",
-          "Linux App Check device is not registered.",
-          { reason: LINUX_APP_CHECK_REJECTION_REASON.notRegistered },
-        );
+        throw new HttpsError("permission-denied", "Linux App Check device is not registered.", {
+          reason: LINUX_APP_CHECK_REJECTION_REASON.notRegistered,
+        });
       }
       const trustState = device.get("trustState");
       if (trustState === "pending") {
-        throw new HttpsError(
-          "permission-denied",
-          "Linux App Check device is not approved.",
-          { reason: LINUX_APP_CHECK_REJECTION_REASON.approvalRequired },
-        );
+        throw new HttpsError("permission-denied", "Linux App Check device is not approved.", {
+          reason: LINUX_APP_CHECK_REJECTION_REASON.approvalRequired,
+        });
       }
       if (trustState !== "approved") {
-        throw new HttpsError(
-          "permission-denied",
-          "Linux App Check device is not eligible for challenges.",
-          {
-            reason: trustState === "revoked"
+        throw new HttpsError("permission-denied", "Linux App Check device is not eligible for challenges.", {
+          reason:
+            trustState === "revoked"
               ? LINUX_APP_CHECK_REJECTION_REASON.revoked
               : LINUX_APP_CHECK_REJECTION_REASON.invalidTrustState,
-          },
-        );
+        });
       }
       if (device.get("appId") !== appId || device.get("deviceId") !== deviceId) {
-        throw new HttpsError(
-          "permission-denied",
-          "Linux App Check device record does not match the request.",
-          { reason: LINUX_APP_CHECK_REJECTION_REASON.recordMismatch },
-        );
+        throw new HttpsError("permission-denied", "Linux App Check device record does not match the request.", {
+          reason: LINUX_APP_CHECK_REJECTION_REASON.recordMismatch,
+        });
       }
       transaction.create(challengeRef(uid, challengeId), {
         appId,
@@ -427,33 +395,37 @@ export const listLinuxAppCheckDevices = onCallProduction(
       .orderBy(FieldPath.documentId(), "desc")
       .limit(MAX_LISTED_LINUX_DEVICES)
       .get();
-    const newestSnapshots = pendingSnapshots.docs.length < MAX_LISTED_LINUX_DEVICES
-      ? await collection.orderBy("createdAtMillis", "desc").limit(MAX_LISTED_LINUX_DEVICES).get()
-      : { docs: [] };
+    const newestSnapshots =
+      pendingSnapshots.docs.length < MAX_LISTED_LINUX_DEVICES
+        ? await collection.orderBy("createdAtMillis", "desc").limit(MAX_LISTED_LINUX_DEVICES).get()
+        : { docs: [] };
     const snapshots = new Map(
       [...pendingSnapshots.docs, ...newestSnapshots.docs].map((snapshot) => [snapshot.id, snapshot]),
     );
-    const devices = [...snapshots.values()].map((snapshot) =>
-      stripUndefinedObject({
-        deviceId: snapshot.get("deviceId"),
-        deviceName: snapshot.get("deviceName"),
-        platform: "Linux",
-        publicKeyBase64: snapshot.get("publicKeyBase64"),
-        safetyFingerprint: snapshot.get("safetyFingerprint"),
-        trustState: snapshot.get("trustState"),
-        createdAtMillis: snapshot.get("createdAtMillis"),
-        approvedAtMillis: snapshot.get("approvedAtMillis") ?? undefined,
-        revokedAtMillis: snapshot.get("revokedAtMillis") ?? undefined,
-        approvedByDeviceId: snapshot.get("approvedByDeviceId") ?? undefined,
-        revokedByDeviceId: snapshot.get("revokedByDeviceId") ?? undefined,
-      }),
-    ).sort((left, right) => {
-      const pendingOrder = Number(right.trustState === "pending") - Number(left.trustState === "pending");
-      if (pendingOrder !== 0) return pendingOrder;
-      const createdOrder = Number(right.createdAtMillis ?? 0) - Number(left.createdAtMillis ?? 0);
-      if (createdOrder !== 0) return createdOrder;
-      return String(left.deviceId ?? "").localeCompare(String(right.deviceId ?? ""));
-    }).slice(0, MAX_LISTED_LINUX_DEVICES);
+    const devices = [...snapshots.values()]
+      .map((snapshot) =>
+        stripUndefinedObject({
+          deviceId: snapshot.get("deviceId"),
+          deviceName: snapshot.get("deviceName"),
+          platform: "Linux",
+          publicKeyBase64: snapshot.get("publicKeyBase64"),
+          safetyFingerprint: snapshot.get("safetyFingerprint"),
+          trustState: snapshot.get("trustState"),
+          createdAtMillis: snapshot.get("createdAtMillis"),
+          approvedAtMillis: snapshot.get("approvedAtMillis") ?? undefined,
+          revokedAtMillis: snapshot.get("revokedAtMillis") ?? undefined,
+          approvedByDeviceId: snapshot.get("approvedByDeviceId") ?? undefined,
+          revokedByDeviceId: snapshot.get("revokedByDeviceId") ?? undefined,
+        }),
+      )
+      .sort((left, right) => {
+        const pendingOrder = Number(right.trustState === "pending") - Number(left.trustState === "pending");
+        if (pendingOrder !== 0) return pendingOrder;
+        const createdOrder = Number(right.createdAtMillis ?? 0) - Number(left.createdAtMillis ?? 0);
+        if (createdOrder !== 0) return createdOrder;
+        return String(left.deviceId ?? "").localeCompare(String(right.deviceId ?? ""));
+      })
+      .slice(0, MAX_LISTED_LINUX_DEVICES);
     return { ok: true, devices };
   },
 );

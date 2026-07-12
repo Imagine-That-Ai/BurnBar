@@ -318,13 +318,7 @@ class IrohControllerRouteRegistrarTest {
 
     @Test
     fun `p256 authority proof stays separate from the iroh transport proof`() = runTest {
-        val generator = KeyPairGenerator.getInstance("EC")
-        generator.initialize(ECGenParameterSpec("secp256r1"))
-        val keyPair = generator.generateKeyPair()
-        val p256 = PhoneControlSigningIdentity.SecureEnclaveP256(
-            privateKey = keyPair.private,
-            publicKey = keyPair.public as ECPublicKey,
-        )
+        val p256 = secureEnclaveP256Identity()
         val callables = FakeCallables(nowMillis = { 40_000L })
         val registrar = registrar(
             callables = callables,
@@ -359,13 +353,7 @@ class IrohControllerRouteRegistrarTest {
     fun `p256 authority renews autonomously with transport proof only`() = runTest {
         var now = 45_000L
         var promptAvailabilityChecks = 0
-        val generator = KeyPairGenerator.getInstance("EC")
-        generator.initialize(ECGenParameterSpec("secp256r1"))
-        val keyPair = generator.generateKeyPair()
-        val p256 = PhoneControlSigningIdentity.SecureEnclaveP256(
-            privateKey = keyPair.private,
-            publicKey = keyPair.public as ECPublicKey,
-        )
+        val p256 = secureEnclaveP256Identity()
         val callables = FakeCallables(nowMillis = { now })
         val registrar = registrar(
             callables = callables,
@@ -397,13 +385,7 @@ class IrohControllerRouteRegistrarTest {
     fun `background renewal rejects an unexpected bootstrap before signing or registration`() = runTest {
         var now = 46_000L
         var promptAvailabilityChecks = 0
-        val generator = KeyPairGenerator.getInstance("EC")
-        generator.initialize(ECGenParameterSpec("secp256r1"))
-        val keyPair = generator.generateKeyPair()
-        val p256 = PhoneControlSigningIdentity.SecureEnclaveP256(
-            privateKey = keyPair.private,
-            publicKey = keyPair.public as ECPublicKey,
-        )
+        val p256 = secureEnclaveP256Identity()
         val callables = FakeCallables(nowMillis = { now })
         val registrar = registrar(
             callables = callables,
@@ -431,13 +413,7 @@ class IrohControllerRouteRegistrarTest {
 
     @Test
     fun `p256 route registration rejects without a prompt bound signer`() = runTest {
-        val generator = KeyPairGenerator.getInstance("EC")
-        generator.initialize(ECGenParameterSpec("secp256r1"))
-        val keyPair = generator.generateKeyPair()
-        val p256 = PhoneControlSigningIdentity.SecureEnclaveP256(
-            privateKey = keyPair.private,
-            publicKey = keyPair.public as ECPublicKey,
-        )
+        val p256 = secureEnclaveP256Identity()
         val callables = FakeCallables(nowMillis = { 47_000L })
         val registrar = registrar(
             callables = callables,
@@ -454,6 +430,20 @@ class IrohControllerRouteRegistrarTest {
         assertTrue(error?.message?.contains("BiometricPrompt CryptoObject") == true)
         assertEquals(listOf("publish", "issue"), callables.events)
         assertEquals(0, callables.registerCalls)
+    }
+
+    private fun secureEnclaveP256Identity(): PhoneControlSigningIdentity.SecureEnclaveP256 {
+        val generator = KeyPairGenerator.getInstance("EC")
+        generator.initialize(ECGenParameterSpec("secp256r1"))
+        val keyPair = generator.generateKeyPair()
+        val publicKey = when (val candidate = keyPair.public) {
+            is ECPublicKey -> candidate
+            else -> error("Expected generated EC key pair to expose an ECPublicKey, got ${candidate.algorithm}")
+        }
+        return PhoneControlSigningIdentity.SecureEnclaveP256(
+            privateKey = keyPair.private,
+            publicKey = publicKey,
+        )
     }
 
     @Test

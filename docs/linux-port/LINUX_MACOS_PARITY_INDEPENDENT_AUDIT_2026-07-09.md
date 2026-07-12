@@ -262,7 +262,7 @@ live product state were independently reproducible.
   compilation and strict Detekt pass with no suppressions. Canonical Hermes relay
   schema/codegen checks passed **18/18**, strict SwiftLint passed, and earlier
   generic iOS build-for-testing coverage passed. On 2026-07-12 CoreDevice listed
-  the assigned physical iPad `407C0B12-010B-5970-8E85-D0E43DA8F457` as
+  the assigned physical iPad `<IOS_DEVICE_ID>` as
   unavailable, while an iPhone and simulator were visible but explicitly not
   accepted for this gate. There is no current physical-iPad execution claim. The
   earlier Linux daemon packet passed
@@ -1662,7 +1662,7 @@ Keep one integration owner at a time for `routes.ts`, `tauriBridge.ts`, the Taur
 - [ ] The focused parser/store/mutation tests execute on the physical iPad
   without using an iPhone or simulator as a substitute. On 2026-07-12
   CoreDevice listed the assigned physical iPad
-  `407C0B12-010B-5970-8E85-D0E43DA8F457` as unavailable, while the visible
+  `<IOS_DEVICE_ID>` as unavailable, while the visible
   iPhone and simulator targets remained invalid substitutes.
 - [ ] The dedicated Desktop OAuth client and public release variables are set,
   and the Linux App Check callables/rules are deployed to production.

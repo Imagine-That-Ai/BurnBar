@@ -96,10 +96,7 @@ internal suspend fun MediaControlStreamCoordinator.dispatchMercuryInboundFrame(
     }
 }
 
-private suspend fun MediaControlStreamCoordinator.handleSessionGrantChallenge(
-    frame: HermesRealtimeRelayFrame,
-    sourceStream: IrohRelayStream?,
-) {
+private suspend fun MediaControlStreamCoordinator.handleSessionGrantChallenge(frame: HermesRealtimeRelayFrame, sourceStream: IrohRelayStream?) {
     val challenge = frame.control?.sessionGrantChallenge ?: return
     val stream = checkNotNull(sourceStream) { "A session grant challenge requires its authenticated source stream." }
     val remoteNodeId = stream.authenticatedRemoteNodeId()?.trim().orEmpty()

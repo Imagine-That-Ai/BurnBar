@@ -93,21 +93,15 @@ object ComputerUseSessionGrantChallengeValidator {
         if (modeError != null) throw modeError
     }
 
-    private fun validatedPreset(raw: String): AgentPermissionPreset =
-        AgentPermissionPreset.entries.firstOrNull { it.wireValue == raw }
-            ?: throw ValidationError.UnsupportedPreset(raw)
+    private fun validatedPreset(raw: String): AgentPermissionPreset = AgentPermissionPreset.entries.firstOrNull { it.wireValue == raw }
+        ?: throw ValidationError.UnsupportedPreset(raw)
 
-    private fun validatedCapabilities(rawCapabilities: List<String>): Set<AgentDesktopCapability> =
-        rawCapabilities.map { raw ->
-            AgentDesktopCapability.entries.firstOrNull { it.wireValue == raw }
-                ?: throw ValidationError.UnsupportedCapability(raw)
-        }.toSet()
+    private fun validatedCapabilities(rawCapabilities: List<String>): Set<AgentDesktopCapability> = rawCapabilities.map { raw ->
+        AgentDesktopCapability.entries.firstOrNull { it.wireValue == raw }
+            ?: throw ValidationError.UnsupportedCapability(raw)
+    }.toSet()
 
-    private fun validatePresetCapabilities(
-        preset: AgentPermissionPreset,
-        capabilities: Set<AgentDesktopCapability>,
-        rawCapabilityCount: Int,
-    ) {
+    private fun validatePresetCapabilities(preset: AgentPermissionPreset, capabilities: Set<AgentDesktopCapability>, rawCapabilityCount: Int) {
         val invalid =
             preset == AgentPermissionPreset.OFF ||
                 capabilities.isEmpty() ||
@@ -136,8 +130,7 @@ object ComputerUseSessionGrantChallengeValidator {
         }
     }
 
-    private fun isBoundedIdentifier(value: String): Boolean =
-        value.isNotEmpty() &&
-            value.toByteArray(Charsets.UTF_8).size <= MAXIMUM_IDENTIFIER_BYTES &&
-            value.all { it.code <= MAXIMUM_ASCII_CODE_POINT && it != '\n' && it != '\r' }
+    private fun isBoundedIdentifier(value: String): Boolean = value.isNotEmpty() &&
+        value.toByteArray(Charsets.UTF_8).size <= MAXIMUM_IDENTIFIER_BYTES &&
+        value.all { it.code <= MAXIMUM_ASCII_CODE_POINT && it != '\n' && it != '\r' }
 }

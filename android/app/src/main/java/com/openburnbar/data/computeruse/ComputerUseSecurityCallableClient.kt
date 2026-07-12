@@ -598,14 +598,11 @@ class ComputerUseSecurityCallableClient(
         check(map["ok"] == true) { failureMessage }
         return map
     }
-
 }
 
-private fun Map<*, *>.requiredString(key: String, failureMessage: String): String =
-    (this[key] as? String)?.takeIf { it.isNotBlank() } ?: error(failureMessage)
+private fun Map<*, *>.requiredString(key: String, failureMessage: String): String = (this[key] as? String)?.takeIf { it.isNotBlank() } ?: error(failureMessage)
 
-private fun Map<*, *>.requiredBoolean(key: String, failureMessage: String): Boolean =
-    this[key] as? Boolean ?: error(failureMessage)
+private fun Map<*, *>.requiredBoolean(key: String, failureMessage: String): Boolean = this[key] as? Boolean ?: error(failureMessage)
 
 private fun Map<*, *>.requiredLong(key: String, failureMessage: String): Long {
     val value = this[key] as? Number ?: error(failureMessage)
