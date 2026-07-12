@@ -87,6 +87,9 @@ test('Arch pacman smoke verifies the live signed inventory before uninstall', ()
   assert.match(source, /inspectArchPackageDependencies/u);
   assert.match(source, /\['-Syu', '--noconfirm', '--needed'/u);
   assert.match(source, /\/usr\/bin\/openburnbar-linux-desktop/u);
+  assert.match(source, /\/usr\/lib\/openburnbar\/appdir\/AppRun/u);
+  assert.match(source, /\/usr\/share\/icons\/hicolor\/256x256\/apps\/dev\.openburnbar\.OpenBurnBar\.png/u);
+  assert.doesNotMatch(source, /--appimage-extract-and-run/u);
   assert.match(source, /\/usr\/bin\/openburnbar-daemon/u);
   assert.match(source, /pacman -Q openburnbar expects package absence/u);
   assert.match(source, /package-owned filesystem entries removed/u);

@@ -13,7 +13,12 @@ import {
   main,
   queryInstalledPackage
 } from './run-product-requirement-validator.mjs';
-import { environmentPackage } from './lib/product-proof-closure.mjs';
+import {
+  environmentPackage,
+  NATIVE_PACKAGE_TYPES,
+  RELEASE_ARTIFACT_TYPES,
+  RELEASE_ATTESTED_SIDECARS
+} from './lib/product-proof-closure.mjs';
 
 const ENVIRONMENT = CANONICAL_ENVIRONMENT_IDS[0];
 const SOURCE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -271,9 +276,25 @@ function writeRegisteredFeatureEvidence(root, head) {
     sha256: sha256(path.join(root, registryPath)),
     size: fs.statSync(path.join(root, registryPath)).size
   };
-  const releaseTypes = ['appimage', 'daemon', 'deb', 'rpm'];
   const architectures = ['aarch64', 'x86_64'];
   const placeholder = { path: 'unused', sha256: 'a'.repeat(64) };
+  const attestationSubjects = [
+    ...RELEASE_ARTIFACT_TYPES.flatMap((format) => architectures.map((architecture) => ({
+      role: 'release-artifact', format, architecture
+    }))),
+    ...NATIVE_PACKAGE_TYPES.flatMap((format) => architectures.flatMap((architecture) => [
+      { role: 'installed-manifest', format, architecture },
+      { role: 'installed-manifest-signature', format, architecture }
+    ])),
+    ...RELEASE_ATTESTED_SIDECARS.map(([role]) => ({ role }))
+  ].map((row, index) => {
+    const subjectPath = `attestation/subject-${index}`;
+    return {
+      ...row,
+      subject: { path: subjectPath, sha256: 'b'.repeat(64), size: 1 },
+      bundle: { path: `${subjectPath}.sigstore.json`, sha256: 'c'.repeat(64), size: 1 }
+    };
+  });
   const aggregate = {
     schemaVersion: 2,
     stage: 'candidate',
@@ -284,14 +305,14 @@ function writeRegisteredFeatureEvidence(root, head) {
     git: { dirty: false },
     architectures,
     supportEnvironments: CANONICAL_ENVIRONMENT_IDS,
-    releaseArtifacts: releaseTypes.flatMap((type) => architectures.map((architecture) => ({
+    releaseArtifacts: RELEASE_ARTIFACT_TYPES.flatMap((type) => architectures.map((architecture) => ({
       type,
       architecture,
       artifact: placeholder,
       detachedSignature: placeholder,
       sigstore: placeholder
     }))),
-    packages: ['deb', 'rpm'].flatMap((format) => architectures.map((architecture) => ({
+    packages: NATIVE_PACKAGE_TYPES.flatMap((format) => architectures.map((architecture) => ({
       format,
       architecture,
       artifact: placeholder,
@@ -299,6 +320,7 @@ function writeRegisteredFeatureEvidence(root, head) {
       installedManifestSignature: placeholder
     }))),
     featureProofRegistry: registryAggregateRecord,
+    attestationSubjects,
     proofs: [{ role: 'fixture' }],
     blockers: []
   };

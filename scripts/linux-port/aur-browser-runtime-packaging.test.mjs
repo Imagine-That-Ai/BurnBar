@@ -69,7 +69,8 @@ test('AUR package staging installs canonical Browser Computer Use resources with
     'openburnbar.desktop',
     'openburnbar-safe-mode.desktop',
     'openburnbar-daemon.service',
-    'openburnbar-daemon-launch'
+    'openburnbar-daemon-launch',
+    'openburnbar-linux-desktop'
   ];
   for (const asset of localAssets) {
     fs.copyFileSync(path.join(repoRoot, 'packaging/linux/aur', asset), path.join(srcdir, asset));
@@ -79,7 +80,11 @@ test('AUR package staging installs canonical Browser Computer Use resources with
     '#!/bin/bash',
     'set -euo pipefail',
     'test "$1" = --appimage-extract',
-    'test "$2" = usr/lib/openburnbar',
+    'test "$#" = 1',
+    'mkdir -p squashfs-root/usr/bin',
+    'printf "#!/bin/bash\\nprintf OpenBurnBar\\ 0.1.0\\n" >squashfs-root/usr/bin/openburnbar-linux-desktop',
+    'chmod 755 squashfs-root/usr/bin/openburnbar-linux-desktop',
+    'ln -s usr/bin/openburnbar-linux-desktop squashfs-root/AppRun',
     'mkdir -p squashfs-root/usr/lib/openburnbar/native',
     'mkdir -p squashfs-root/usr/lib/openburnbar/swift/linux',
     'printf iroh >squashfs-root/usr/lib/openburnbar/native/libopenburnbar_iroh.so',
@@ -91,6 +96,10 @@ test('AUR package staging installs canonical Browser Computer Use resources with
   fs.copyFileSync(
     path.join(repoRoot, 'packaging/linux/com.openburnbar.computer-use.policy'),
     path.join(srcdir, 'com.openburnbar.computer-use.policy')
+  );
+  fs.copyFileSync(
+    path.join(repoRoot, 'apps/linux-desktop/src-tauri/icons/icon.png'),
+    path.join(srcdir, 'openburnbar-icon.png')
   );
   for (const [alias, sourcePath] of canonicalInputs) {
     fs.copyFileSync(path.join(repoRoot, sourcePath), path.join(srcdir, alias));
@@ -127,6 +136,8 @@ test('AUR package staging installs canonical Browser Computer Use resources with
       ,['installed-manifest.json', ['usr/share/openburnbar/attestation/installed-manifest.json', 0o644]]
       ,['installed-manifest.ed25519', ['usr/share/openburnbar/attestation/installed-manifest.json.sig', 0o644]]
       ,['release-ed25519.pub.pem', ['usr/share/openburnbar/attestation/release-ed25519.pub.pem', 0o644]]
+      ,['openburnbar-linux-desktop', ['usr/bin/openburnbar-linux-desktop', 0o755]]
+      ,['openburnbar-icon.png', ['usr/share/icons/hicolor/256x256/apps/dev.openburnbar.OpenBurnBar.png', 0o644]]
     ]);
     for (const [alias, [relativePath, mode]] of installed) {
       const output = path.join(pkgdir, relativePath);
@@ -136,6 +147,11 @@ test('AUR package staging installs canonical Browser Computer Use resources with
     const iroh = path.join(pkgdir, 'usr/lib/openburnbar/native/libopenburnbar_iroh.so');
     assert.equal(fs.readFileSync(iroh, 'utf8'), 'iroh');
     assert.equal(fs.statSync(iroh).mode & 0o777, 0o644);
+    const appRun = path.join(pkgdir, 'usr/lib/openburnbar/appdir/AppRun');
+    assert.equal(fs.statSync(appRun).mode & 0o777, 0o755);
+    assert.equal(fs.lstatSync(appRun).isSymbolicLink(), true);
+    assert.match(fs.readFileSync(path.join(pkgdir, 'usr/bin/openburnbar-linux-desktop'), 'utf8'),
+      /exec "\$\{APPDIR\}\/AppRun" "\$@"/u);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -150,7 +166,10 @@ test('AUR PKGBUILD remains valid Bash and does not bypass source verification', 
   assert.doesNotMatch(pkgbuild, /noextract/);
   assert.match(
     pkgbuild,
-    /--appimage-extract usr\/lib\/openburnbar/u
+    /--appimage-extract >\/dev\/null/u
   );
+  assert.doesNotMatch(pkgbuild, /install -Dm755 "\$\{appimage\}" "\$\{pkgdir\}\/usr\/bin\/openburnbar-linux-desktop"/u);
+  assert.match(pkgbuild, /usr\/lib\/openburnbar\/appdir/u);
+  assert.match(pkgbuild, /dev\.openburnbar\.OpenBurnBar\.png/u);
   assert.doesNotMatch(pkgbuild, /libopenburnbar_iroh\.so::https?:/u);
 });

@@ -7,6 +7,8 @@ export const archPkgbuildCommonSources = Object.freeze([
   ['SAFE_MODE_DESKTOP', 'packaging/linux/aur/openburnbar-safe-mode.desktop'],
   ['SERVICE', 'packaging/linux/aur/openburnbar-daemon.service'],
   ['LAUNCH', 'packaging/linux/aur/openburnbar-daemon-launch'],
+  ['DESKTOP_LAUNCHER', 'packaging/linux/aur/openburnbar-linux-desktop'],
+  ['ICON', 'apps/linux-desktop/src-tauri/icons/icon.png'],
   ['COMPUTER_USE_POLKIT_POLICY', 'packaging/linux/com.openburnbar.computer-use.policy'],
   ['PLAYWRIGHT_BRIDGE', 'OpenBurnBarDaemon/Resources/PlaywrightBridge/openburnbar-playwright-bridge.js'],
   ['BROWSER_RUNTIME_PROBE', 'packaging/linux/openburnbar-browser-runtime-probe'],

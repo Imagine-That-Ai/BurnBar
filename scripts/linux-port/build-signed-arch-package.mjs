@@ -145,6 +145,8 @@ function sourceInputs({ version, architecture, manifestBytes, signatureBytes }) 
     ['SAFE_MODE_DESKTOP', 'openburnbar-safe-mode.desktop'],
     ['SERVICE', 'openburnbar-daemon.service'],
     ['LAUNCH', 'openburnbar-daemon-launch'],
+    ['DESKTOP_LAUNCHER', 'openburnbar-linux-desktop'],
+    ['ICON', 'openburnbar-icon.png'],
     ['COMPUTER_USE_POLKIT_POLICY', 'com.openburnbar.computer-use.policy'],
     ['PLAYWRIGHT_BRIDGE', 'openburnbar-playwright-bridge.js'],
     ['BROWSER_RUNTIME_PROBE', 'openburnbar-browser-runtime-probe'],

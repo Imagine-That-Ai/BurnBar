@@ -41,9 +41,21 @@ if (install.exitCode === 0) {
     artifact,
     readSubject: (record, label) => readRecordedFile(record, label).bytes
   }));
-  steps.push(runStep('/usr/bin/openburnbar-linux-desktop', ['--appimage-extract-and-run', '--version'], {
+  const desktop = runStep('/usr/bin/openburnbar-linux-desktop', ['--version'], {
     env: isolatedRuntimeEnvironment()
+  });
+  steps.push(desktop);
+  steps.push(assertionStep(
+    'installed package-native desktop version readback',
+    desktop.exitCode === 0 && desktop.stdout.includes(closure.version),
+    desktop.stdout,
+    desktop.stderr
+  ));
+  steps.push(installedFileStep('/usr/lib/openburnbar/appdir/AppRun', {
+    executable: true,
+    allowSymlink: true
   }));
+  steps.push(installedFileStep('/usr/share/icons/hicolor/256x256/apps/dev.openburnbar.OpenBurnBar.png'));
   steps.push(runStep('/usr/bin/openburnbar-daemon', ['--help'], {
     env: isolatedRuntimeEnvironment()
   }));
@@ -109,6 +121,24 @@ function isolatedRuntimeEnvironment() {
 
 function assertionStep(command, passed, stdout = '', stderr = '') {
   return { command, cwd: '.', exitCode: passed ? 0 : 1, stdout, stderr };
+}
+
+function installedFileStep(file, { executable = false, allowSymlink = false } = {}) {
+  let passed = false;
+  try {
+    const link = fs.lstatSync(file);
+    const target = fs.statSync(file);
+    passed = target.isFile() && (allowSymlink || !link.isSymbolicLink())
+      && (!executable || (target.mode & 0o111) !== 0);
+  } catch {
+    passed = false;
+  }
+  return assertionStep(
+    `installed regular file ${file}`,
+    passed,
+    passed ? `${file}\n` : '',
+    passed ? '' : `${file} is missing, not a file, unexpectedly symlinked, or has the wrong mode\n`
+  );
 }
 
 function readRecordedFile(record, label) {

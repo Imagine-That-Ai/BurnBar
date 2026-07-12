@@ -160,10 +160,12 @@ if (process.env.OPENBURNBAR_LINUX_APP_CHECK_APP_ID
   failures.push('Linux release App Check app id must match the Functions production app id');
 }
 const aurPkgbuild = fs.readFileSync(path.join(repoRoot, 'packaging/linux/aur/PKGBUILD.in'), 'utf8');
-if (!aurPkgbuild.includes('--appimage-extract usr/lib/openburnbar')
+if (!aurPkgbuild.includes('--appimage-extract >/dev/null')
     || !aurPkgbuild.includes('usr/lib/openburnbar/native/libopenburnbar_iroh.so')
-    || !aurPkgbuild.includes('cp -a "${srcdir}/squashfs-root/usr/lib/openburnbar/native"')) {
-  failures.push('Arch release template must install the Linux iroh runtime from the checksum-pinned AppImage');
+    || !aurPkgbuild.includes('cp -a "${srcdir}/squashfs-root/." "${pkgdir}/usr/lib/openburnbar/appdir/"')
+    || !aurPkgbuild.includes('openburnbar-linux-desktop" "${pkgdir}/usr/bin/openburnbar-linux-desktop"')
+    || !aurPkgbuild.includes('dev.openburnbar.OpenBurnBar.png')) {
+  failures.push('Arch release template must install the native AppDir, fixed launcher, icon, and iroh runtime from checksum-pinned sources');
 }
 if (/libopenburnbar_iroh\.so::https?:/u.test(aurPkgbuild)) {
   failures.push('Arch release template must not introduce an independent iroh runtime download');

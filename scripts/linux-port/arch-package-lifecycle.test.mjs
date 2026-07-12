@@ -36,6 +36,7 @@ const checksumSlots = [
   'INSTALLED_MANIFEST_SIGNATURE_X86_64', 'APPIMAGE_AARCH64', 'DAEMON_AARCH64',
   'INSTALLED_MANIFEST_AARCH64', 'INSTALLED_MANIFEST_SIGNATURE_AARCH64',
   'DESKTOP', 'SAFE_MODE_DESKTOP', 'SERVICE', 'LAUNCH',
+  'DESKTOP_LAUNCHER', 'ICON',
   'COMPUTER_USE_POLKIT_POLICY', 'PLAYWRIGHT_BRIDGE', 'BROWSER_RUNTIME_PROBE',
   'BROWSER_RUNTIME_REQUIREMENTS', 'RELEASE_PUBLIC_KEY'
 ];
@@ -52,6 +53,9 @@ test('release PKGBUILD rendering fills every checksum slot without bypasses', ()
   assert.doesNotMatch(rendered, /\bSKIP\b/u);
   assert.match(rendered, /installed-manifest\.ed25519/u);
   assert.match(rendered, /release-ed25519\.pub\.pem/u);
+  assert.match(rendered, /squashfs-root\/AppRun/u);
+  assert.match(rendered, /usr\/lib\/openburnbar\/appdir/u);
+  assert.match(rendered, /dev\.openburnbar\.OpenBurnBar\.png/u);
 });
 
 test('Arch prepare atomically extends the signing transaction with its fourth subject', (t) => {
@@ -290,7 +294,7 @@ test('release assembly renders a two-architecture PKGBUILD from published assets
     status: 'operator-required',
     note: 'Release assets are consumable directly; publishing to the AUR requires a separate operator action.'
   });
-  assert.equal(metadata.sources.length, 17);
+  assert.equal(metadata.sources.length, 19);
 });
 
 function record(installedPath, value, mode) {

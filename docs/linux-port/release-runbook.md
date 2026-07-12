@@ -189,17 +189,23 @@ native smoke result.
 
 Architecture-shard smoke must inspect and install each native package, execute
 the package-owned daemon launcher against the embedded Swift/SQLCipher runtime,
-run the AppImage version path, and uninstall cleanly. Candidate certification
-must additionally prove the painted GUI, long-running daemon health, and
-update/rollback lifecycle.
+run the package-owned desktop path, and uninstall cleanly. The Arch package
+installs the extracted AppDir under `/usr/lib/openburnbar/appdir`, a fixed
+`/usr/bin/openburnbar-linux-desktop` launcher, and the canonical hicolor icon;
+it does not require FUSE or retain the AppImage as its installed executable.
+Candidate certification must additionally prove the painted GUI, long-running
+daemon health, and both deb and pacman update/rollback lifecycles.
 
 ```bash
 node scripts/linux-port/smoke-linux-packages.mjs
 ```
 
-The current first-release update path is blocked until a previous stable or
-prerelease Linux artifact exists. The smoke script records that blocker instead
-of inventing update success.
+The current first-release update path is blocked until previous same-architecture
+deb and Arch artifacts exist. The pacman proof installs the previous package,
+updates to the exact candidate closure artifact, rolls back, restores the
+candidate, and verifies package-manager identity plus persisted-data hashes at
+every transition. Missing prior artifacts remain explicit blockers instead of
+inventing update success.
 
 ### In-app update availability
 
@@ -288,7 +294,7 @@ This must exit 0 before `website/public/downloads/latest-linux.json` or any
 public website/download metadata is added. The verifier checks:
 
 - required artifacts and package metadata exist;
-- each deb/rpm embeds the same signed installed manifest recorded by its native
+- each deb/rpm/Arch package embeds the same signed installed manifest recorded by its native
   architecture shard;
 - checksums match artifact bytes;
 - SBOM, VEX, provenance predicate, and exact-commit source archive exist;
