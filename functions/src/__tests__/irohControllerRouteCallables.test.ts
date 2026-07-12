@@ -13,7 +13,6 @@ import {
   requireRouteChallenge,
   seedRouteTrustGraph,
   snapshotTenantPaths,
-  type RouteChallenge,
 } from "./irohControllerRouteTestSupport.js";
 
 const { store } = vi.hoisted(() => ({ store: new Map<string, Record<string, unknown>>() }));
@@ -126,7 +125,7 @@ async function issueChallenge(authorityPeerNodeId: string, transportNodeId: stri
 }
 
 async function registerChallenge(
-  challenge: Pick<RouteChallenge, "challengeId" | "canonicalPayloadBase64">,
+  challenge: Pick<ReturnType<typeof requireRouteChallenge>, "challengeId" | "canonicalPayloadBase64">,
   transportPrivateKey: ReturnType<typeof generateKeyPairSync>["privateKey"],
   authorityPrivateKey?: ReturnType<typeof generateKeyPairSync>["privateKey"],
 ) {

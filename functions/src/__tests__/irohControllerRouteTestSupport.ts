@@ -54,7 +54,7 @@ export function invokeCallableForApp(
   return callableRunner(callable)(callableRequest(uid, data, appId));
 }
 
-export type RouteChallenge = {
+type RouteChallenge = {
   challengeId: string;
   canonicalPayloadBase64: string;
   proofKind: "bootstrap" | "transport-renewal";
