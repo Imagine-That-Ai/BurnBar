@@ -134,9 +134,7 @@ def stage(
 
     resource_bundle = engine.parent / REQUIRED_RESOURCE_BUNDLE
     if not resource_bundle.is_dir():
-        raise ValueError(
-            f"required Swift resource bundle is missing: {resource_bundle}"
-        )
+        raise ValueError(f"required Swift resource bundle is missing: {resource_bundle}")
 
     for source in sorted(resource_bundle.rglob("*"), key=lambda item: item.as_posix().casefold()):
         if not source.is_file():
