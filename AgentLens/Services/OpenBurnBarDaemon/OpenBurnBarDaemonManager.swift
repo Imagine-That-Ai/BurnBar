@@ -683,6 +683,12 @@ final class OpenBurnBarDaemonManager {
     }
 
     nonisolated static let resourceBundleName = "OpenBurnBarCore_OpenBurnBarCore.bundle"
+    // Core-decomposition S2 (P-02): the catalog loader + secret PII gate moved to the
+    // OpenBurnBarKernel target, which now carries its own resource bundle with
+    // `catalog.json` + `secret-pattern-corpus.json`. `Bundle.module` in that Kernel
+    // code path resolves to this bundle, so the daemon installer stages it alongside
+    // the OpenBurnBarCore bundle (which still carries the SVGs + Pretext HTML/JS).
+    nonisolated static let kernelResourceBundleName = "OpenBurnBarCore_OpenBurnBarKernel.bundle"
     nonisolated static let legacyResourceBundleNames = ["BurnBarCore_BurnBarCore.bundle"]
     nonisolated static let projectCodeMemoryResourceDirectoryName = "ProjectCodeMemory"
     nonisolated static let projectCodeMemorySecretCorpusFileName = "secret-pattern-corpus.json"

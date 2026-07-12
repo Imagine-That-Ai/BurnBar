@@ -247,6 +247,26 @@ extension OpenBurnBarDaemonManager {
             )
         }
 
+        // Core-decomposition S2 (P-02): the catalog loader + secret PII gate moved to
+        // OpenBurnBarKernel with their JSON resources, so `Bundle.module` in that code
+        // path now resolves to OpenBurnBarCore_OpenBurnBarKernel.bundle. Stage it next
+        // to the daemon binary alongside the OpenBurnBarCore bundle (which keeps the
+        // SVGs + Pretext HTML/JS). Best-effort: the release/smoke pipeline fatally
+        // asserts the Kernel bundle is present in the packaged app, so a locally staged
+        // layout that predates the Kernel bundle still installs.
+        let installedKernelBundleURL = paths.daemonDirectory
+            .appendingPathComponent(Self.kernelResourceBundleName)
+        if let sourceKernelBundleURL = OpenBurnBarDaemonBinaryResolver.resolveKernelResourceBundle(
+            nearBinaryURL: sourceBinaryURL,
+            appBundleURL: Bundle.main.bundleURL,
+            fileManager: dependencies.fileManager
+        ), sourceKernelBundleURL.standardizedFileURL != installedKernelBundleURL.standardizedFileURL {
+            if dependencies.fileManager.fileExists(atPath: installedKernelBundleURL.path) {
+                try dependencies.fileManager.removeItem(at: installedKernelBundleURL)
+            }
+            try dependencies.fileManager.copyItem(at: sourceKernelBundleURL, to: installedKernelBundleURL)
+        }
+
         let installedProjectCodeMemoryDirectory = paths.daemonDirectory
             .appendingPathComponent(Self.projectCodeMemoryResourceDirectoryName, isDirectory: true)
         let installedSecretCorpusURL = installedProjectCodeMemoryDirectory

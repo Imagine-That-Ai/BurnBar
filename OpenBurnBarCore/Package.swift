@@ -756,7 +756,14 @@ let firstPartyTargetsBase: [Target] = [
             dependencies: [
                 "OpenBurnBarFirestoreModels",
                 swiftCryptoNonAppleDependency
-            ]
+            ],
+            // Core-decomposition S2 (P-02): the catalog loader + secret PII gate moved
+            // here with their JSON resources (catalog.json, secret-pattern-corpus.json).
+            // Both use `Bundle.module`, which now resolves to
+            // `OpenBurnBarCore_OpenBurnBarKernel.bundle`. `.process` flattens the folder
+            // so both files land at the bundle root (looked up by flat filename). The
+            // SVGs + Pretext HTML/JS stay in OpenBurnBarCore's own resource bundle.
+            resources: [.process("Resources")]
         ),
         // Core-decomposition S0 (docs/CORE_DECOMPOSITION_PROGRAM.md): cross-platform
         // engine-layer targets carved from the OpenBurnBarCore monolith. At S0 each

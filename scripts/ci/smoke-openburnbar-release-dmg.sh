@@ -121,9 +121,15 @@ app_path="$mountpoint/OpenBurnBar.app"
 daemon_bin="$app_path/Contents/Helpers/OpenBurnBarDaemon"
 cli_bin="$app_path/Contents/Helpers/OpenBurnBarCLI"
 daemon_resource_bundle="$app_path/Contents/Resources/OpenBurnBarCore_OpenBurnBarCore.bundle"
+# Core-decomposition S2 (P-02): catalog.json + secret-pattern-corpus.json moved to the
+# OpenBurnBarKernel resource bundle; assert it is staged beside the OpenBurnBarCore
+# bundle (which keeps the SVGs + Pretext HTML/JS) in every daemon-adjacent layout.
+daemon_kernel_resource_bundle="$app_path/Contents/Resources/OpenBurnBarCore_OpenBurnBarKernel.bundle"
 project_code_memory_corpus="$app_path/Contents/Resources/ProjectCodeMemory/secret-pattern-corpus.json"
 helper_resource_bundle="$app_path/Contents/Helpers/OpenBurnBarCore_OpenBurnBarCore.bundle"
+helper_kernel_resource_bundle="$app_path/Contents/Helpers/OpenBurnBarCore_OpenBurnBarKernel.bundle"
 installed_resource_bundle="$installed_daemon_dir/OpenBurnBarCore_OpenBurnBarCore.bundle"
+installed_kernel_resource_bundle="$installed_daemon_dir/OpenBurnBarCore_OpenBurnBarKernel.bundle"
 installed_project_code_memory_corpus="$installed_daemon_dir/ProjectCodeMemory/secret-pattern-corpus.json"
 
 if [[ ! -d "$app_path" ]]; then
@@ -142,6 +148,10 @@ if [[ ! -d "$daemon_resource_bundle" ]]; then
   echo "::error::Embedded daemon resource bundle not found at $daemon_resource_bundle"
   exit 1
 fi
+if [[ ! -d "$daemon_kernel_resource_bundle" ]]; then
+  echo "::error::Embedded daemon Kernel resource bundle not found at $daemon_kernel_resource_bundle"
+  exit 1
+fi
 if [[ ! -f "$project_code_memory_corpus" ]]; then
   echo "::error::Embedded Project Code Memory corpus not found at $project_code_memory_corpus"
   exit 1
@@ -150,13 +160,18 @@ if [[ ! -d "$helper_resource_bundle" ]]; then
   echo "::error::Helper-side daemon resource bundle not found at $helper_resource_bundle"
   exit 1
 fi
+if [[ ! -d "$helper_kernel_resource_bundle" ]]; then
+  echo "::error::Helper-side daemon Kernel resource bundle not found at $helper_kernel_resource_bundle"
+  exit 1
+fi
 
 mkdir -p "$installed_daemon_dir" "$installed_frameworks_dir" "$(dirname "$installed_project_code_memory_corpus")"
 cp "$daemon_bin" "$installed_daemon_bin"
 cp "$cli_bin" "$installed_cli_bin"
 chmod 755 "$installed_daemon_bin" "$installed_cli_bin"
-rm -rf "$installed_resource_bundle"
+rm -rf "$installed_resource_bundle" "$installed_kernel_resource_bundle"
 cp -R "$daemon_resource_bundle" "$installed_resource_bundle"
+cp -R "$daemon_kernel_resource_bundle" "$installed_kernel_resource_bundle"
 cp "$project_code_memory_corpus" "$installed_project_code_memory_corpus"
 find "$installed_frameworks_dir" -mindepth 1 -maxdepth 1 -name "*.framework" -exec rm -rf {} +
 for framework in "$app_path"/Contents/Frameworks/*.framework; do
@@ -178,6 +193,10 @@ if [[ ! -x "$installed_cli_bin" ]]; then
 fi
 if [[ ! -d "$installed_resource_bundle" ]]; then
   echo "::error::Installed-layout daemon resource bundle not found at $installed_resource_bundle"
+  exit 1
+fi
+if [[ ! -d "$installed_kernel_resource_bundle" ]]; then
+  echo "::error::Installed-layout daemon Kernel resource bundle not found at $installed_kernel_resource_bundle"
   exit 1
 fi
 if [[ ! -f "$installed_project_code_memory_corpus" ]]; then

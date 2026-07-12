@@ -121,6 +121,29 @@ enum OpenBurnBarDaemonBinaryResolver {
         return candidates.first { fileManager.fileExists(atPath: $0.path) }
     }
 
+    /// Locates the OpenBurnBarKernel resource bundle (`catalog.json` +
+    /// `secret-pattern-corpus.json`) that P-02 (core-decomposition S2) moved out of
+    /// the OpenBurnBarCore bundle. Mirrors `resolveResourceBundle`'s candidate search
+    /// so the Kernel bundle installs next to the daemon binary too.
+    static func resolveKernelResourceBundle(
+        nearBinaryURL: URL,
+        appBundleURL: URL,
+        fileManager: FileManager
+    ) -> URL? {
+        let binaryDirectory = nearBinaryURL.deletingLastPathComponent()
+        let appParent = appBundleURL.deletingLastPathComponent()
+        let bundleName = OpenBurnBarDaemonManager.kernelResourceBundleName
+        let candidates = [
+            binaryDirectory.appendingPathComponent(bundleName),
+            binaryDirectory.appendingPathComponent("Resources").appendingPathComponent(bundleName),
+            appBundleURL.appendingPathComponent("Contents/Resources/\(bundleName)"),
+            appBundleURL.appendingPathComponent("Contents/Frameworks/\(bundleName)"),
+            appParent.appendingPathComponent(bundleName),
+            appParent.appendingPathComponent("PackageFrameworks").appendingPathComponent(bundleName)
+        ]
+        return candidates.first { fileManager.fileExists(atPath: $0.path) }
+    }
+
     static func resolveProjectCodeMemorySecretCorpus(
         nearBinaryURL: URL,
         appBundleURL: URL,
