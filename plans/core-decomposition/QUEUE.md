@@ -12,8 +12,9 @@ Full cards: P-01…P-10. Draft cards (enumerate mv lists at wave start): P-11…
 **S0-repair status (2026-07-12):** the four wave-1 systemic defects (marker-size sibling
 ceilings, missing cross-module AE-IMPORT policy, missing AE-TESTABLE policy, P-03
 SearchContracts closure) plus the wave-1b card defects (FIX-5 path-pin sweep, FIX-6
-Insights dependency-inversion re-slice, P-02 staging-machinery scope) are FIXED on
-`core-decomp/s0-scaffold` (PR #1559 threads resolved). See
+Insights dependency-inversion re-slice, FIX-8 Demo-fixture re-slice to P-09, P-02
+staging-machinery scope) are FIXED on `core-decomp/s0-scaffold` (PR #1559 threads
+resolved). See
 docs/CORE_DECOMPOSITION_PROGRAM.md "Wave-1 learnings" and "Standard Allowed-edit classes"
 (AE-IMPORT / AE-TESTABLE — verbatim in every move packet).
 
@@ -27,9 +28,9 @@ docs/CORE_DECOMPOSITION_PROGRAM.md "Wave-1 learnings" and "Standard Allowed-edit
 | D | P-04b SharedModels crypto → Kernel | full | QUEUED-WAVE1C | after P-04a (needs CloudVaultCrypto) |
 | D | P-05 Hermes | full | PR_OPEN #1580 | adds `import OpenBurnBarKernel` to HermesAtomNavigator (AE-IMPORT) |
 | D | P-06 Pretext | full | **MERGED into scaffold via #1561** | resources manifest edit; re-ran green vs Pretext planned 5/850 |
-| C | P-10 Insights models | full | QUEUED-WAVE1C | lands before P-08/P-09; FIX-6: AgentInsightsBundleAssembler re-sliced to P-08, extracts InsightProviderFamily/Entry to P-10 |
+| C | P-10 Insights models | full | QUEUED-WAVE1C | lands before P-08/P-09; FIX-6: AgentInsightsBundleAssembler re-sliced to P-08, extracts InsightProviderFamily/Entry to P-10; FIX-8: Demo fixture re-sliced OUT to P-09 |
 | C | P-08 Insights Services core | full | QUEUED-WAVE1C | after P-10; FIX-6: absorbs AgentInsightsBundleAssembler (24 files) |
-| C | P-09 Insights Services remainder | full | QUEUED-WAVE1C | after P-08 |
+| C | P-09 Insights Services remainder | full | QUEUED-WAVE1C | after P-08; FIX-8: absorbs Demo/InsightVerdictDemoFixture (rides RuleBasedVerdictEngine in Verdict/) + owns its Package.swift exclude deletion |
 | A | P-07 TextExpansion | full | PR_OPEN #1579 | ui-purity --update; lane A serial |
 
 ## Wave 2 (after their deps merge)

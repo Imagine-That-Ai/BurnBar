@@ -187,7 +187,8 @@ Every packet ends as `MERGED`, `CLOSED`, or `OPEN_WITH_NAMED_BLOCKER`. Full card
 
 Wave-1 state after the S0-repair follow-up: the four systemic defects PLUS the wave-1b
 card defects (FIX-5 CloudVaultCrypto path-pin sweep, FIX-6 Insights dependency-inversion
-re-slice, P-02 daemon staging-machinery scope) are fixed on `core-decomp/s0-scaffold`.
+re-slice, FIX-8 Demo-fixture re-slice P-10→P-09, P-02 daemon staging-machinery scope) are
+fixed on `core-decomp/s0-scaffold`.
 P-06 (Pretext) has MERGED into the scaffold via #1561; P-01/#1573, P-03/#1576, P-05/#1580,
 P-07/#1579 are PR_OPEN; the remaining move packets are QUEUED-WAVE1C. (PR #1560 is the
 unrelated `ratchet-repair/mission-splitbrain-1550` ratchet, NOT a decomposition packet.)
@@ -203,8 +204,8 @@ unrelated `ratchet-repair/mission-splitbrain-1550` ratchet, NOT a decomposition 
 | P-06 | S10 | OpenBurnBarPretext (+resources manifest edit) | D | full | MERGED into scaffold via #1561 |
 | P-07 | S11 | OpenBurnBarTextExpansion | A | full | PR_OPEN #1579 |
 | P-08 | S12 | Insights — Services core engine (+AgentInsightsBundleAssembler, FIX-6) | C | full | QUEUED-WAVE1C |
-| P-09 | S12 | Insights — Services remainder | C | full | QUEUED-WAVE1C |
-| P-10 | S12 | Insights — SharedModels + AgentInsights models (FIX-6 re-slice) | C | full | QUEUED-WAVE1C |
+| P-09 | S12 | Insights — Services remainder (Verdict/Adapters/Cadence/Trace +Demo fixture, FIX-8) | C | full | QUEUED-WAVE1C |
+| P-10 | S12 | Insights — SharedModels + AgentInsights models (FIX-6 + FIX-8 re-slices) | C | full | QUEUED-WAVE1C |
 | P-11 | S5 | MissionGroupContracts + MissionConsoleTypes inversion → Kernel | A | draft | QUEUED |
 | P-12 | S6 | OpenBurnBarLogParsers | B | draft | QUEUED |
 | P-13 | S7 | OpenBurnBarQuota | C | draft | QUEUED |
@@ -310,6 +311,25 @@ PR #1559. Executors of wave-1b must internalize these:
    `InsightConfidence`/`InsightAnalysisResult`/… are referenced by Verdict/Bundle files
    that STAY in P-10), so the minimal cut was a 1-symbol source extraction — proving the
    re-slice must be validated by grep in BOTH directions, per packet, after the change.
+
+8. **Demo/fixture files follow their ENGINE, not their models — and "the engine" is the
+   packet that owns the exact symbol they CALL, not the nearest-looking one.** P-10's
+   original mv list also carried `Demo/InsightVerdictDemoFixture.swift`, which calls
+   `RuleBasedVerdictEngine.hash(of: verdict)` (line ~225). The obvious re-slice (mirror
+   FIX-6: send it to P-08, the "Insights engine" packet) is WRONG:
+   `RuleBasedVerdictEngine` is defined in `Services/Insights/Verdict/`, a SUBDIRECTORY
+   owned by **P-09** — P-08's scope is only the 23 ROOT `Services/Insights/*.swift` files.
+   The Verdict subtree lands in P-09, AFTER P-08, so a fixture parked in P-08 would
+   reference a still-in-Core engine and break P-08's standalone build — the very failure
+   FIX-6 prevents. The fix moves the fixture P-10→**P-09** (FIX-8), where its engine
+   `RuleBasedVerdictEngine` AND its ONLY consumer `Verdict/VerdictComposer.swift`
+   (`InsightVerdictDemoFixture.sample(...)`) both live — fixture + engine + sole consumer
+   move as one unit. Its model refs (`InsightCitation`/`InsightModelTag`/`InsightVerdict`)
+   still resolve to P-10 (merges first). The `openBurnBarCoreExcludes` deletion for the
+   Demo file moves to P-09 too (the mover owns the exclude). Lesson: to place a
+   fixture/demo/sample, grep the actual symbol it invokes and follow THAT symbol's file to
+   its owning packet — sub-directory ownership (P-09 vs P-08) matters, and a fixture belongs
+   with its engine's packet, never merely with its models' packet.
 
 Gate/lane/CI hardening shipped with the repair (Codex PR #1559 threads): the umbrella
 regex now matches `@testable import OpenBurnBarCore` (and `@_exported`/`@_spi(...)`
