@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 /// Lightweight verdict snapshot written by the main app and read by
 /// the Insights widget extension. Serialized to the App Group container.
