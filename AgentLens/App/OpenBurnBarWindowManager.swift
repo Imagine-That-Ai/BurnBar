@@ -105,6 +105,9 @@ final class WindowManager: ObservableObject {
         )
         window.contentView = NSHostingView(rootView: contentView)
         window.center()
+        // Restore the user's last frame; center() above is only the
+        // first-launch fallback before a saved frame exists.
+        window.setFrameAutosaveName("openburnbar.dashboard")
         window.makeKeyAndOrderFront(nil)
         window.isReleasedWhenClosed = false
         let lifecycleDelegate = DashboardWindowLifecycleDelegate()
@@ -152,6 +155,7 @@ final class WindowManager: ObservableObject {
         window.contentMinSize = NSSize(width: 780, height: 560)
         window.contentView = NSHostingView(rootView: contentView)
         window.center()
+        window.setFrameAutosaveName("openburnbar.settings")
         window.makeKeyAndOrderFront(nil)
         window.isReleasedWhenClosed = false
 

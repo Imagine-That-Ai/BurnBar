@@ -5,6 +5,8 @@ struct InsightsCanvasLibraryView: View {
 
     @Bindable var environment: InsightsMacEnvironment
     @State private var showTemplateGallery = false
+    @State private var canvasPendingDeletion: InsightCanvas?
+    @State private var deleteError: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -25,6 +27,36 @@ struct InsightsCanvasLibraryView: View {
         .background(UnifiedDesignSystem.Colors.background.opacity(0.6))
         .sheet(isPresented: $showTemplateGallery) {
             InsightsTemplateGalleryView(environment: environment, isPresented: $showTemplateGallery)
+        }
+        .alert(
+            "Delete “\(canvasPendingDeletion?.title ?? "")”?",
+            isPresented: Binding(
+                get: { canvasPendingDeletion != nil },
+                set: { if !$0 { canvasPendingDeletion = nil } }
+            )
+        ) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                guard let canvas = canvasPendingDeletion else { return }
+                environment.selectedCanvasID = canvas.id
+                Task {
+                    do {
+                        try await environment.deleteCurrentCanvas()
+                    } catch {
+                        deleteError = error.localizedDescription
+                    }
+                }
+            }
+        } message: {
+            Text("This permanently deletes the canvas and its widgets. This cannot be undone.")
+        }
+        .alert("Couldn’t Delete Canvas", isPresented: Binding(
+            get: { deleteError != nil },
+            set: { if !$0 { deleteError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(deleteError ?? "")
         }
     }
 
@@ -85,8 +117,7 @@ struct InsightsCanvasLibraryView: View {
         .buttonStyle(.plain)
         .contextMenu {
             Button("Delete", role: .destructive) {
-                environment.selectedCanvasID = canvas.id
-                Task { await environment.deleteCurrentCanvas() }
+                canvasPendingDeletion = canvas
             }
         }
     }

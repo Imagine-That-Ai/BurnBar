@@ -1,0 +1,8 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  OpenBurnBar.App.Components.Tests -> /private/tmp/burnbar-cert-a364b9ece8/windows/tests/components/bin/Release/net10.0/OpenBurnBar.App.Components.Tests.dll
+Test run for /private/tmp/burnbar-cert-a364b9ece8/windows/tests/components/bin/Release/net10.0/OpenBurnBar.App.Components.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:   181, Skipped:     0, Total:   181, Duration: 129 ms - OpenBurnBar.App.Components.Tests.dll (net10.0)

@@ -1,0 +1,944 @@
+{
+  "actor": {
+    "identitySha256": "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+    "isSession0": false,
+    "sessionId": 1
+  },
+  "appExe": "C:\\candidate778e735a_final\\windows\\app\\OpenBurnBar.App\\bin\\ARM64\\Debug\\net8.0-windows10.0.19041.0\\OpenBurnBar.App.exe",
+  "completedAtUtc": "2026-07-11T22:23:32.7143216Z",
+  "repoRoot": "C:\\candidate778e735a_final",
+  "scenarios": [
+    {
+      "actions": [
+        {
+          "action": "findWindow",
+          "processId": 9788,
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.surface",
+            "controlType": "ControlType.Group",
+            "isEnabled": true,
+            "name": "Chat",
+            "value": null
+          },
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.executable.setup",
+            "controlType": "ControlType.Text",
+            "isEnabled": true,
+            "name": "Chat CLI setup required.",
+            "value": null
+          },
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.executable.path",
+            "controlType": "ControlType.Edit",
+            "isEnabled": true,
+            "name": "Chat executable path",
+            "value": ""
+          },
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.executable.approve",
+            "controlType": "ControlType.Button",
+            "isEnabled": true,
+            "name": "Approve chat executable",
+            "value": null
+          },
+          "status": "captured"
+        }
+      ],
+      "actor": {
+        "identitySha256": "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+        "sessionId": 1
+      },
+      "artifacts": [
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.setup\\uia-before.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.setup\\screenshot-before.png",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.setup\\route-smoke\\chat-result.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.setup\\route-smoke\\chat.png"
+      ],
+      "exitCode": 0,
+      "id": "chat.executable.setup",
+      "localAppData": "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\profiles\\chat.executable.setup\\LocalAppData",
+      "processId": 9788,
+      "route": "chat",
+      "status": "captured"
+    },
+    {
+      "actions": [
+        {
+          "action": "findWindow",
+          "processId": 9804,
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.surface",
+            "controlType": "ControlType.Group",
+            "isEnabled": true,
+            "name": "Chat",
+            "value": null
+          },
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.executable.path",
+            "controlType": "ControlType.Edit",
+            "isEnabled": true,
+            "name": "Chat executable path",
+            "value": ""
+          },
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.executable.approve",
+            "controlType": "ControlType.Button",
+            "isEnabled": true,
+            "name": "Approve chat executable",
+            "value": null
+          },
+          "status": "captured"
+        },
+        {
+          "action": "scenarioAction",
+          "result": {
+            "approvedPath": "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.approve\\claude.exe",
+            "observed": {
+              "automationId": "chat.executable.summary",
+              "controlType": "ControlType.Text",
+              "isEnabled": true,
+              "name": "claude -> C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.approve\\claude.exe",
+              "value": null
+            }
+          },
+          "status": "captured"
+        }
+      ],
+      "actor": {
+        "identitySha256": "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+        "sessionId": 1
+      },
+      "artifacts": [
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.approve\\uia-before.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.approve\\screenshot-before.png",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.approve\\uia-after.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.approve\\screenshot-after.png",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.approve\\route-smoke\\chat-result.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.approve\\route-smoke\\chat.png"
+      ],
+      "exitCode": 0,
+      "id": "chat.executable.approve",
+      "localAppData": "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\profiles\\chat.executable.approve\\LocalAppData",
+      "processId": 9804,
+      "route": "chat",
+      "status": "captured"
+    },
+    {
+      "actions": [
+        {
+          "action": "findWindow",
+          "processId": 9372,
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.surface",
+            "controlType": "ControlType.Group",
+            "isEnabled": true,
+            "name": "Chat",
+            "value": null
+          },
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.executable.path",
+            "controlType": "ControlType.Edit",
+            "isEnabled": true,
+            "name": "Chat executable path",
+            "value": ""
+          },
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.executable.approve",
+            "controlType": "ControlType.Button",
+            "isEnabled": true,
+            "name": "Approve chat executable",
+            "value": null
+          },
+          "status": "captured"
+        },
+        {
+          "action": "scenarioAction",
+          "result": {
+            "first": "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.rotate\\claude.exe",
+            "observed": {
+              "automationId": "chat.executable.summary",
+              "controlType": "ControlType.Text",
+              "isEnabled": true,
+              "name": "claude -> C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.rotate\\claude-rotated.exe",
+              "value": null
+            },
+            "rotated": "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.rotate\\claude-rotated.exe"
+          },
+          "status": "captured"
+        }
+      ],
+      "actor": {
+        "identitySha256": "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+        "sessionId": 1
+      },
+      "artifacts": [
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.rotate\\uia-before.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.rotate\\screenshot-before.png",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.rotate\\uia-after.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.rotate\\screenshot-after.png",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.rotate\\route-smoke\\chat-result.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.rotate\\route-smoke\\chat.png"
+      ],
+      "exitCode": 0,
+      "id": "chat.executable.rotate",
+      "localAppData": "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\profiles\\chat.executable.rotate\\LocalAppData",
+      "processId": 9372,
+      "route": "chat",
+      "status": "captured"
+    },
+    {
+      "actions": [
+        {
+          "action": "findWindow",
+          "processId": 1540,
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.surface",
+            "controlType": "ControlType.Group",
+            "isEnabled": true,
+            "name": "Chat",
+            "value": null
+          },
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.executable.path",
+            "controlType": "ControlType.Edit",
+            "isEnabled": true,
+            "name": "Chat executable path",
+            "value": ""
+          },
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.executable.approve",
+            "controlType": "ControlType.Button",
+            "isEnabled": true,
+            "name": "Approve chat executable",
+            "value": null
+          },
+          "status": "captured"
+        },
+        {
+          "action": "scenarioAction",
+          "result": {
+            "observed": {
+              "automationId": "chat.executable.setup",
+              "controlType": "ControlType.Text",
+              "isEnabled": true,
+              "name": "Chat CLI setup required.",
+              "value": null
+            },
+            "removedPath": "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.remove\\claude.exe"
+          },
+          "status": "captured"
+        }
+      ],
+      "actor": {
+        "identitySha256": "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+        "sessionId": 1
+      },
+      "artifacts": [
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.remove\\uia-before.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.remove\\screenshot-before.png",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.remove\\uia-after.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.remove\\screenshot-after.png",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.remove\\route-smoke\\chat-result.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.remove\\route-smoke\\chat.png"
+      ],
+      "exitCode": 0,
+      "id": "chat.executable.remove",
+      "localAppData": "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\profiles\\chat.executable.remove\\LocalAppData",
+      "processId": 1540,
+      "route": "chat",
+      "status": "captured"
+    },
+    {
+      "actions": [
+        {
+          "action": "findWindow",
+          "processId": 5560,
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.surface",
+            "controlType": "ControlType.Group",
+            "isEnabled": true,
+            "name": "Chat",
+            "value": null
+          },
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.executable.setup",
+            "controlType": "ControlType.Text",
+            "isEnabled": true,
+            "name": "Chat CLI setup required.",
+            "value": null
+          },
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.executable.setupMessage",
+            "controlType": "ControlType.Text",
+            "isEnabled": true,
+            "name": "Approve a CLI executable before starting a chat turn.",
+            "value": null
+          },
+          "status": "captured"
+        }
+      ],
+      "actor": {
+        "identitySha256": "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+        "sessionId": 1
+      },
+      "artifacts": [
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.denial.unapproved\\uia-before.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.denial.unapproved\\screenshot-before.png",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.denial.unapproved\\route-smoke\\chat-result.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.denial.unapproved\\route-smoke\\chat.png"
+      ],
+      "exitCode": 0,
+      "id": "chat.executable.denial.unapproved",
+      "localAppData": "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\profiles\\chat.executable.denial.unapproved\\LocalAppData",
+      "processId": 5560,
+      "route": "chat",
+      "status": "captured"
+    },
+    {
+      "actions": [
+        {
+          "action": "findWindow",
+          "processId": 9448,
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.surface",
+            "controlType": "ControlType.Group",
+            "isEnabled": true,
+            "name": "Chat",
+            "value": null
+          },
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.executable.setup",
+            "controlType": "ControlType.Text",
+            "isEnabled": true,
+            "name": "Approved chat executable is missing.",
+            "value": null
+          },
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.executable.setupMessage",
+            "controlType": "ControlType.Text",
+            "isEnabled": true,
+            "name": "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.denial.missing.setup\\claude.exe",
+            "value": null
+          },
+          "status": "captured"
+        }
+      ],
+      "actor": {
+        "identitySha256": "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+        "sessionId": 1
+      },
+      "artifacts": [
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.denial.missing\\uia-before.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.denial.missing\\screenshot-before.png",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.denial.missing\\route-smoke\\chat-result.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.denial.missing\\route-smoke\\chat.png"
+      ],
+      "exitCode": 0,
+      "id": "chat.executable.denial.missing",
+      "localAppData": "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\profiles\\chat.executable.denial.missing\\LocalAppData",
+      "processId": 9448,
+      "route": "chat",
+      "status": "captured"
+    },
+    {
+      "actions": [
+        {
+          "action": "findWindow",
+          "processId": 9424,
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.surface",
+            "controlType": "ControlType.Group",
+            "isEnabled": true,
+            "name": "Chat",
+            "value": null
+          },
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.executable.setup",
+            "controlType": "ControlType.Text",
+            "isEnabled": true,
+            "name": "Approved chat executable was replaced.",
+            "value": null
+          },
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.executable.setupMessage",
+            "controlType": "ControlType.Text",
+            "isEnabled": true,
+            "name": "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.denial.replaced.setup\\claude.exe",
+            "value": null
+          },
+          "status": "captured"
+        }
+      ],
+      "actor": {
+        "identitySha256": "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+        "sessionId": 1
+      },
+      "artifacts": [
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.denial.replaced\\uia-before.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.denial.replaced\\screenshot-before.png",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.denial.replaced\\route-smoke\\chat-result.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.executable.denial.replaced\\route-smoke\\chat.png"
+      ],
+      "exitCode": 0,
+      "id": "chat.executable.denial.replaced",
+      "localAppData": "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\profiles\\chat.executable.denial.replaced\\LocalAppData",
+      "processId": 9424,
+      "route": "chat",
+      "status": "captured"
+    },
+    {
+      "actions": [
+        {
+          "action": "findWindow",
+          "processId": 10164,
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.surface",
+            "controlType": "ControlType.Group",
+            "isEnabled": true,
+            "name": "Chat",
+            "value": null
+          },
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.history.degraded",
+            "controlType": "ControlType.Text",
+            "isEnabled": true,
+            "name": "Chat history is unavailable.",
+            "value": null
+          },
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.history.message",
+            "controlType": "ControlType.Text",
+            "isEnabled": true,
+            "name": "Configuration field SqlCipherPassphraseRef references a missing protected secret.",
+            "value": null
+          },
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.history.retry",
+            "controlType": "ControlType.Button",
+            "isEnabled": true,
+            "name": "Retry chat history",
+            "value": null
+          },
+          "status": "captured"
+        }
+      ],
+      "actor": {
+        "identitySha256": "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+        "sessionId": 1
+      },
+      "artifacts": [
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.history.unavailable\\uia-before.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.history.unavailable\\screenshot-before.png",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.history.unavailable\\route-smoke\\chat-result.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.history.unavailable\\route-smoke\\chat.png"
+      ],
+      "exitCode": 0,
+      "id": "chat.history.unavailable",
+      "localAppData": "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\profiles\\chat.history.unavailable\\LocalAppData",
+      "processId": 10164,
+      "route": "chat",
+      "status": "captured"
+    },
+    {
+      "actions": [
+        {
+          "action": "findWindow",
+          "processId": 8524,
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.surface",
+            "controlType": "ControlType.Group",
+            "isEnabled": true,
+            "name": "Chat",
+            "value": null
+          },
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.history.degraded",
+            "controlType": "ControlType.Text",
+            "isEnabled": true,
+            "name": "Chat history needs recovery.",
+            "value": null
+          },
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.history.message",
+            "controlType": "ControlType.Text",
+            "isEnabled": true,
+            "name": "Retry, archive the damaged file for support, or reset only after explicit confirmation.",
+            "value": null
+          },
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.history.retry",
+            "controlType": "ControlType.Button",
+            "isEnabled": true,
+            "name": "Retry chat history",
+            "value": null
+          },
+          "status": "captured"
+        }
+      ],
+      "actor": {
+        "identitySha256": "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+        "sessionId": 1
+      },
+      "artifacts": [
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.history.corrupt\\uia-before.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.history.corrupt\\screenshot-before.png",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.history.corrupt\\route-smoke\\chat-result.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.history.corrupt\\route-smoke\\chat.png"
+      ],
+      "exitCode": 0,
+      "id": "chat.history.corrupt",
+      "localAppData": "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\profiles\\chat.history.corrupt\\LocalAppData",
+      "processId": 8524,
+      "route": "chat",
+      "status": "captured"
+    },
+    {
+      "actions": [
+        {
+          "action": "findWindow",
+          "processId": 5100,
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.surface",
+            "controlType": "ControlType.Group",
+            "isEnabled": true,
+            "name": "Chat",
+            "value": null
+          },
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.history.degraded",
+            "controlType": "ControlType.Text",
+            "isEnabled": true,
+            "name": "Chat history access was denied.",
+            "value": null
+          },
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.history.message",
+            "controlType": "ControlType.Text",
+            "isEnabled": true,
+            "name": "Fix folder permissions or choose a writable profile path, then retry.",
+            "value": null
+          },
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.history.retry",
+            "controlType": "ControlType.Button",
+            "isEnabled": true,
+            "name": "Retry chat history",
+            "value": null
+          },
+          "status": "captured"
+        }
+      ],
+      "actor": {
+        "identitySha256": "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+        "sessionId": 1
+      },
+      "artifacts": [
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.history.locked\\uia-before.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.history.locked\\screenshot-before.png",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.history.locked\\route-smoke\\chat-result.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.history.locked\\route-smoke\\chat.png"
+      ],
+      "exitCode": 0,
+      "id": "chat.history.locked",
+      "localAppData": "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\profiles\\chat.history.locked\\LocalAppData",
+      "processId": 5100,
+      "route": "chat",
+      "status": "captured"
+    },
+    {
+      "actions": [
+        {
+          "action": "findWindow",
+          "processId": 8288,
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.surface",
+            "controlType": "ControlType.Group",
+            "isEnabled": true,
+            "name": "Chat",
+            "value": null
+          },
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.history.degraded",
+            "controlType": "ControlType.Text",
+            "isEnabled": true,
+            "name": "Chat history needs recovery.",
+            "value": null
+          },
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.history.retry",
+            "controlType": "ControlType.Button",
+            "isEnabled": true,
+            "name": "Retry chat history",
+            "value": null
+          },
+          "status": "captured"
+        },
+        {
+          "action": "scenarioAction",
+          "result": {
+            "invoked": "chat.history.retry",
+            "observed": {
+              "automationId": "chat.history.degraded",
+              "controlType": "ControlType.Text",
+              "isEnabled": true,
+              "name": "Chat history needs recovery.",
+              "value": null
+            }
+          },
+          "status": "captured"
+        }
+      ],
+      "actor": {
+        "identitySha256": "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+        "sessionId": 1
+      },
+      "artifacts": [
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.history.retry\\uia-before.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.history.retry\\screenshot-before.png",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.history.retry\\uia-after.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.history.retry\\screenshot-after.png",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.history.retry\\route-smoke\\chat-result.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.history.retry\\route-smoke\\chat.png"
+      ],
+      "exitCode": 0,
+      "id": "chat.history.retry",
+      "localAppData": "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\profiles\\chat.history.retry\\LocalAppData",
+      "processId": 8288,
+      "route": "chat",
+      "status": "captured"
+    },
+    {
+      "actions": [
+        {
+          "action": "findWindow",
+          "processId": 9232,
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.surface",
+            "controlType": "ControlType.Group",
+            "isEnabled": true,
+            "name": "Chat",
+            "value": null
+          },
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.executable.path",
+            "controlType": "ControlType.Edit",
+            "isEnabled": true,
+            "name": "Chat executable path",
+            "value": ""
+          },
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.input",
+            "controlType": "ControlType.Edit",
+            "isEnabled": true,
+            "name": "Message OpenBurnBar",
+            "value": ""
+          },
+          "status": "captured"
+        },
+        {
+          "action": "scenarioAction",
+          "result": {
+            "observed": {
+              "automationId": "chat.messages",
+              "controlType": "ControlType.Pane",
+              "isEnabled": true,
+              "name": "Chat messages",
+              "value": null
+            },
+            "submitted": "durable restart marker"
+          },
+          "status": "captured"
+        }
+      ],
+      "actor": {
+        "identitySha256": "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+        "sessionId": 1
+      },
+      "artifacts": [
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.restart.process\\uia-before.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.restart.process\\screenshot-before.png",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.restart.process\\uia-after.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.restart.process\\screenshot-after.png",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.restart.process\\route-smoke\\chat-result.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.restart.process\\route-smoke\\chat.png"
+      ],
+      "exitCode": 0,
+      "id": "chat.restart.process",
+      "localAppData": "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\profiles\\chat.restart\\LocalAppData",
+      "processId": 9232,
+      "route": "chat",
+      "status": "captured"
+    },
+    {
+      "actions": [
+        {
+          "action": "findWindow",
+          "processId": 8232,
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.surface",
+            "controlType": "ControlType.Group",
+            "isEnabled": true,
+            "name": "Chat",
+            "value": null
+          },
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.messages",
+            "controlType": "ControlType.Pane",
+            "isEnabled": true,
+            "name": "Chat messages",
+            "value": null
+          },
+          "status": "captured"
+        }
+      ],
+      "actor": {
+        "identitySha256": "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+        "sessionId": 1
+      },
+      "artifacts": [
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.restart.durable-rehydrate\\uia-before.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.restart.durable-rehydrate\\screenshot-before.png",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.restart.durable-rehydrate\\route-smoke\\chat-result.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.restart.durable-rehydrate\\route-smoke\\chat.png"
+      ],
+      "exitCode": 0,
+      "id": "chat.restart.durable-rehydrate",
+      "localAppData": "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\profiles\\chat.restart\\LocalAppData",
+      "processId": 8232,
+      "route": "chat",
+      "status": "captured"
+    },
+    {
+      "actions": [
+        {
+          "action": "findWindow",
+          "processId": 9876,
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.surface",
+            "controlType": "ControlType.Group",
+            "isEnabled": true,
+            "name": "Chat",
+            "value": null
+          },
+          "status": "captured"
+        },
+        {
+          "action": "requireAutomationId",
+          "element": {
+            "automationId": "chat.input",
+            "controlType": "ControlType.Edit",
+            "isEnabled": true,
+            "name": "Message OpenBurnBar",
+            "value": ""
+          },
+          "status": "captured"
+        },
+        {
+          "action": "scenarioAction",
+          "result": {
+            "observed": {
+              "automationId": "chat.attachments.pending",
+              "controlType": "ControlType.Text",
+              "isEnabled": true,
+              "name": "pasted-text.txt",
+              "value": null
+            }
+          },
+          "status": "captured"
+        }
+      ],
+      "actor": {
+        "identitySha256": "6603ad580c3a4165a66df8eabf023958617054f41a4a90150454fb23b02713a1",
+        "sessionId": 1
+      },
+      "artifacts": [
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.attachment.paste\\uia-before.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.attachment.paste\\screenshot-before.png",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.attachment.paste\\uia-after.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.attachment.paste\\screenshot-after.png",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.attachment.paste\\route-smoke\\chat-result.json",
+        "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\scenarios\\chat.attachment.paste\\route-smoke\\chat.png"
+      ],
+      "exitCode": 0,
+      "id": "chat.attachment.paste",
+      "localAppData": "C:\\Users\\Public\\foundation-host-final-778e735a-v6\\interactive-uia\\profiles\\chat.attachment.paste\\LocalAppData",
+      "processId": 9876,
+      "route": "chat",
+      "status": "captured"
+    }
+  ],
+  "schema": "openburnbar.windows.foundation-interactive-uia.v1",
+  "startedAtUtc": "2026-07-11T22:19:06.6872002Z"
+}

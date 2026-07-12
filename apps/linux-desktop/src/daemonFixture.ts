@@ -136,7 +136,17 @@ export function isDaemonFixtureMode(): boolean {
   }
 }
 
-export function fixtureMercuryMediaStatus(): MercuryMediaStatus {
+/**
+ * Default fixture matches live capability-absent posture (VAL-MEDIA-001).
+ * Pass `{ rich: true }` only when a test needs populated peers/session.
+ */
+export function fixtureMercuryMediaStatus(options?: { rich?: boolean }): MercuryMediaStatus {
+  if (!options?.rich) {
+    return {
+      capabilityAvailable: false,
+      pairedDevices: []
+    };
+  }
   const now = Date.now();
   return {
     capabilityAvailable: true,

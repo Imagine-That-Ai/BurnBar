@@ -1,0 +1,16 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  OpenBurnBar.CloudSync -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/cloudsync/OpenBurnBar.CloudSync/bin/Release/net8.0/OpenBurnBar.CloudSync.dll
+  OpenBurnBar.App.Configuration -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.Configuration/bin/Release/net8.0/OpenBurnBar.App.Configuration.dll
+  OpenBurnBar.CloudSync.Crypto -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/cloudsync/OpenBurnBar.CloudSync.Crypto/bin/Release/net8.0/OpenBurnBar.CloudSync.Crypto.dll
+  OpenBurnBar.CloudSync.AppCheck -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/cloudsync/appcheck/OpenBurnBar.CloudSync.AppCheck/bin/Release/net8.0/OpenBurnBar.CloudSync.AppCheck.dll
+  OpenBurnBar.Storage -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/storage/OpenBurnBar.Storage/bin/Release/net8.0/OpenBurnBar.Storage.dll
+  OpenBurnBar.App.Presentation -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.Presentation/bin/Release/net8.0/OpenBurnBar.App.Presentation.dll
+  OpenBurnBar.App.CloudSync -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/app/OpenBurnBar.App.CloudSync/bin/Release/net8.0/OpenBurnBar.App.CloudSync.dll
+  OpenBurnBar.Storage -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/storage/OpenBurnBar.Storage/bin/Release/net10.0/OpenBurnBar.Storage.dll
+  OpenBurnBar.App.CloudSync.Tests -> /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/cloudsync-app/bin/Release/net10.0/OpenBurnBar.App.CloudSync.Tests.dll
+Test run for /private/tmp/burnbar-cert-349a34e7d8.y2JvAf/repo/windows/tests/cloudsync-app/bin/Release/net10.0/OpenBurnBar.App.CloudSync.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    59, Skipped:     0, Total:    59, Duration: 594 ms - OpenBurnBar.App.CloudSync.Tests.dll (net10.0)

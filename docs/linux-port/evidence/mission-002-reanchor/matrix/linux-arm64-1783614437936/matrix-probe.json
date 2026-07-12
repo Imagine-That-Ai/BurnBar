@@ -1,0 +1,60 @@
+{
+  "generatedAt": "2026-07-09T16:27:17.945Z",
+  "environment": {
+    "platform": "linux",
+    "arch": "arm64",
+    "release": "6.8.0-124-generic",
+    "sessionType": "tty",
+    "desktop": null,
+    "waylandDisplay": null,
+    "display": ":0",
+    "dbusSession": true,
+    "runtimeDir": "/run/user/1000"
+  },
+  "checks": [
+    {
+      "id": "os-linux",
+      "ok": true,
+      "detail": "platform=linux"
+    },
+    {
+      "id": "session-desktop",
+      "ok": true,
+      "detail": "desktop=null"
+    },
+    {
+      "id": "display-server",
+      "ok": true,
+      "detail": "need WAYLAND_DISPLAY or DISPLAY"
+    },
+    {
+      "id": "dbus-session",
+      "ok": true,
+      "detail": "Secret Service / notifications need session bus"
+    },
+    {
+      "id": "secret-tool",
+      "ok": true,
+      "detail": "/usr/bin/secret-tool"
+    },
+    {
+      "id": "kwallet-query",
+      "ok": false,
+      "detail": "kwallet-query not on PATH"
+    }
+  ],
+  "blocked": [
+    {
+      "capability": "kwallet-query",
+      "status": "blocked",
+      "platformReason": "kwallet-query not on PATH",
+      "recordedAt": "2026-07-09T16:27:17.945Z"
+    }
+  ],
+  "note": "Scaffold only: does not claim multi-DE screenshot proof. Run on target desktops and attach AT-SPI/screenshot artifacts under this directory.",
+  "val": [
+    "VAL-MATRIX-001",
+    "VAL-MATRIX-002",
+    "VAL-SECURITY-001"
+  ]
+}

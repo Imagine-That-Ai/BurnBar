@@ -36,9 +36,17 @@ body.reduced-motion * { animation: none !important; transition: none !important;
 /* ---------------------------------------------------------------- layout */
 
 .skip-link { position: absolute; left: -9999px; top: 0; }
-.skip-link:focus { left: var(--space-4); top: var(--space-4); z-index: 1000; background: var(--color-brass-core); color: #000; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); }
+.skip-link:focus { left: var(--space-4); top: var(--space-4); z-index: 1000; background: var(--color-brass-core); color: var(--color-ink-void); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); }
 
-.shell { display: flex; flex-direction: column; width: 100%; min-height: 100vh; position: relative; z-index: 1; }
+.shell {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 100vh;
+  position: relative;
+  z-index: 1;
+  background: transparent;
+}
 .shell-body { display: grid; grid-template-columns: 280px 1fr; flex: 1; min-height: 0; position: relative; overflow: hidden; }
 .shell-nav { border-right: 1px solid var(--color-glass-line); background: color-mix(in srgb, var(--color-glass-bg) 50%, transparent); padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); backdrop-filter: blur(28px) saturate(160%); -webkit-backdrop-filter: blur(28px) saturate(160%); }
 .shell-main { padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-4); position: relative; overflow-y: auto; }
@@ -296,7 +304,7 @@ button.ghost:hover { border-color: var(--color-glass-line-bright); background: v
 /* ------------------------------------------------------------------- pet */
 
 .pet-stage { min-height: 220px; display: grid; place-items: center; border: 1px dashed var(--color-glass-line); border-radius: var(--radius-sm); overflow: hidden; }
-.pet-canvas { width: 100%; min-height: 220px; aspect-ratio: 16 / 7; display: block; background: radial-gradient(circle at 50% 48%, rgba(60, 214, 192, 0.12), transparent 56%); }
+.pet-canvas { width: 100%; min-height: 220px; aspect-ratio: 16 / 7; display: block; background: radial-gradient(circle at 50% 48%, color-mix(in srgb, var(--color-tier-end-to-end) 12%, transparent), transparent 56%); }
 .pet-runtime-caption { margin: 0; padding: 0 var(--space-3) var(--space-3); }
 .pet-graph { font-family: var(--font-mono); font-size: 0.8rem; white-space: pre-wrap; background: var(--color-ink-elevated); padding: var(--space-3); border-radius: var(--radius-sm); border: 1px solid var(--color-glass-line); }
 

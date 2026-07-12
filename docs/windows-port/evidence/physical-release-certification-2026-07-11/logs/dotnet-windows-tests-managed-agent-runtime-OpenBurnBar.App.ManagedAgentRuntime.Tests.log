@@ -1,0 +1,9 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  OpenBurnBar.App.ManagedAgentRuntime -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/app/OpenBurnBar.App.ManagedAgentRuntime/bin/Release/net8.0/OpenBurnBar.App.ManagedAgentRuntime.dll
+  OpenBurnBar.App.ManagedAgentRuntime.Tests -> /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/managed-agent-runtime/bin/Release/net10.0/OpenBurnBar.App.ManagedAgentRuntime.Tests.dll
+Test run for /Users/albertonunez/Documents/Developer/BurnBar-windows-physical-release-certification-2026-07-11/windows/tests/managed-agent-runtime/bin/Release/net10.0/OpenBurnBar.App.ManagedAgentRuntime.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    97, Skipped:     0, Total:    97, Duration: 189 ms - OpenBurnBar.App.ManagedAgentRuntime.Tests.dll (net10.0)

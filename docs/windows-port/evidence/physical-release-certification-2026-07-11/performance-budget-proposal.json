@@ -1,0 +1,113 @@
+{
+  "schema": "openburnbar.windows.release-performance-budgets.v1",
+  "status": "PROVISIONAL_NOT_A_RELEASE_GATE",
+  "proposedAtUtc": "2026-07-11T21:20:00Z",
+  "ownerApprovalRequired": true,
+  "basis": {
+    "documented": [
+      "docs/runbooks/slos.md:50-52 defines local search p95 <350 ms and dashboard refresh p95 <5 s",
+      "docs/windows-port/evidence/accessibility-certification/README.md requires measured DPI and UIA evidence but does not define performance limits"
+    ],
+    "provisional": "The remaining interaction, frame, resource, and soak thresholds are explicit proposals for physical-device comparison; they must not be used to claim PASS until the release owner approves them."
+  },
+  "budgets": [
+    {
+      "id": "cold-start-p95",
+      "metric": "clean-install cold first usable window",
+      "unit": "seconds",
+      "limit": 5,
+      "direction": "at_most",
+      "classification": "provisional",
+      "rationale": "Aligns first usable state with the documented dashboard-refresh p95 ceiling."
+    },
+    {
+      "id": "warm-start-p95",
+      "metric": "warm restart to usable window",
+      "unit": "seconds",
+      "limit": 2,
+      "direction": "at_most",
+      "classification": "provisional",
+      "rationale": "Keeps tray-first restart responsive without treating package registration as launch proof."
+    },
+    {
+      "id": "tray-input-p95",
+      "metric": "tray/flyout open plus first input acknowledgement",
+      "unit": "milliseconds",
+      "limit": 100,
+      "direction": "at_most",
+      "classification": "provisional",
+      "rationale": "A human-interaction responsiveness floor; report p50, p95, and worst sample."
+    },
+    {
+      "id": "dashboard-refresh-p95",
+      "metric": "dashboard refresh with declared dataset",
+      "unit": "seconds",
+      "limit": 5,
+      "direction": "at_most",
+      "classification": "documented",
+      "rationale": "Inherited from docs/runbooks/slos.md."
+    },
+    {
+      "id": "search-p95",
+      "metric": "local search response",
+      "unit": "milliseconds",
+      "limit": 350,
+      "direction": "at_most",
+      "classification": "documented",
+      "rationale": "Inherited from docs/runbooks/slos.md."
+    },
+    {
+      "id": "frame-pacing-floor",
+      "metric": "interactive route frame time",
+      "unit": "milliseconds",
+      "limit": 33.3,
+      "direction": "at_most",
+      "classification": "provisional",
+      "rationale": "Requires a 30 fps floor while reporting a separate 60 fps target; avoids silently treating a VM result as GPU certification."
+    },
+    {
+      "id": "dropped-frame-rate",
+      "metric": "dropped or stalled frames during declared workload",
+      "unit": "percent",
+      "limit": 1,
+      "direction": "at_most",
+      "classification": "provisional",
+      "rationale": "A low visible-stall budget for tray/dashboard/search workflows; must be measured with ETW/WPR or an equivalent frame source."
+    },
+    {
+      "id": "steady-state-working-set",
+      "metric": "private bytes after warm idle",
+      "unit": "megabytes",
+      "limit": 500,
+      "direction": "at_most",
+      "classification": "provisional",
+      "rationale": "A bounded desktop baseline for detecting runaway WebView2/Win2D or scan retention; report exact dataset and architecture."
+    },
+    {
+      "id": "soak-working-set-growth",
+      "metric": "private-bytes growth over 30-minute soak",
+      "unit": "percent",
+      "limit": 10,
+      "direction": "at_most",
+      "classification": "provisional",
+      "rationale": "Catches sustained retention while allowing normal cache warm-up."
+    },
+    {
+      "id": "soak-crashes",
+      "metric": "WER/Application Error/.NET Runtime/fatal WinUI events during 30-minute soak",
+      "unit": "count",
+      "limit": 0,
+      "direction": "equal",
+      "classification": "provisional",
+      "rationale": "A release safety floor; the signed lifecycle verifier already rejects fatal launch events."
+    }
+  ],
+  "requiredReporting": [
+    "manufacturer/model/CPU/RAM/GPU/storage/OS build/display/DPI/WebView2/TPM",
+    "power mode, charging/idle/thermal state",
+    "cold and warm repetitions with p50/p95/max",
+    "idle and active CPU/private bytes/GPU/disk I/O",
+    "frame pacing and dropped/stalled frames",
+    "sleep/wake, Explorer restart, process restart, and 30-minute soak"
+  ]
+}

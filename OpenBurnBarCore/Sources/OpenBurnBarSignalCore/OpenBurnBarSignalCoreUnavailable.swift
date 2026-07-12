@@ -215,9 +215,35 @@ private enum OpenBurnBarSignalCoreFallbackCrypto {
         data.map { String(format: "%02x", $0) }.joined()
     }
 
-    static func hmacSHA256(_ data: Data, keyData: Data) -> Data {
-        Data(HMAC<SHA256>.authenticationCode(for: data, using: SymmetricKey(data: keyData)))
+    // cov:ignore-start -- fallback-only Linux/Windows path is excluded from macOS coverage
+    /// Signs `message` with the P256 identity PRIVATE key (ECDSA over SHA-256),
+    /// mirroring the libsignal XEdDSA path: only the private-key holder can
+    /// produce a tag that `p256Verify` accepts. Identity keys in this fallback
+    /// are NIST P-256 (`OpenBurnBarSignalIdentityKeypair` stores the private
+    /// scalar as `rawRepresentation` and the public key as `x963Representation`).
+    static func p256Sign(_ message: Data, privateKeyData: Data) throws -> Data {
+        let privateKey = try P256.Signing.PrivateKey(rawRepresentation: privateKeyData)
+        return try privateKey.signature(for: message).rawRepresentation
     }
+
+    /// Verifies an ECDSA signature produced by `p256Sign` against the signer's
+    /// PUBLIC key. A party holding only the public key cannot forge an accepted
+    /// signature. Accepts both raw and DER signature encodings.
+    static func p256Verify(_ signature: Data, message: Data, publicKeyData: Data) -> Bool {
+        guard let publicKey = try? P256.Signing.PublicKey(x963Representation: publicKeyData) else {
+            return false
+        }
+        if let raw = try? P256.Signing.ECDSASignature(rawRepresentation: signature),
+           publicKey.isValidSignature(raw, for: message) {
+            return true
+        }
+        if let der = try? P256.Signing.ECDSASignature(derRepresentation: signature),
+           publicKey.isValidSignature(der, for: message) {
+            return true
+        }
+        return false
+    }
+    // cov:ignore-end
 
     static func secureRandomBytes(count: Int) throws -> Data {
         precondition(count >= 0)
@@ -410,10 +436,12 @@ public enum OpenBurnBarSignalAtRest {
             payloadCiphertextB64: payloadCiphertextB64,
             wraps: wraps
         )
-        let signature = OpenBurnBarSignalCoreFallbackCrypto.hmacSHA256(
+        // cov:ignore-start -- fallback-only Linux/Windows path is excluded from macOS coverage
+        let signature = try OpenBurnBarSignalCoreFallbackCrypto.p256Sign(
             signedMessage,
-            keyData: senderPublicKeyData
+            privateKeyData: senderIdentityPrivateKey
         )
+        // cov:ignore-end
 
         return CloudVaultSignalEnvelope(
             ciphertextLayer: CloudVaultSignalCiphertextLayer(
@@ -464,10 +492,16 @@ public enum OpenBurnBarSignalAtRest {
             payloadCiphertextB64: envelope.ciphertextLayer.payloadCiphertextB64,
             wraps: envelope.keyDelivery.wraps
         )
+        // cov:ignore-start -- fallback-only Linux/Windows path is excluded from macOS coverage
         guard let signatureBytes = Data(base64Encoded: senderAuth.signatureB64),
-              signatureBytes == OpenBurnBarSignalCoreFallbackCrypto.hmacSHA256(signedMessage, keyData: pinnedSenderKey) else {
+              OpenBurnBarSignalCoreFallbackCrypto.p256Verify(
+                signatureBytes,
+                message: signedMessage,
+                publicKeyData: pinnedSenderKey
+              ) else {
             throw OpenBurnBarSignalCoreError.senderSignatureInvalid
         }
+        // cov:ignore-end
         let wrap = envelope.keyDelivery.wraps.first { $0.recipientIdentityKeyId == recipientIdentityKeyId }
         guard let wrap else {
             throw OpenBurnBarSignalCoreError.missingRecipientWrap(recipientIdentityKeyId)
@@ -614,10 +648,12 @@ public enum CloudVaultDeviceTrustChain {
         _ payload: CloudVaultDeviceTrustChainPayload,
         approverIdentity: OpenBurnBarSignalIdentityKeypair
     ) throws -> String {
-        OpenBurnBarSignalCoreFallbackCrypto.hmacSHA256(
+        // cov:ignore-start -- fallback-only Linux/Windows path is excluded from macOS coverage
+        try OpenBurnBarSignalCoreFallbackCrypto.p256Sign(
             canonicalPayload(payload),
-            keyData: approverIdentity.publicKeyData
+            privateKeyData: approverIdentity.privateKeyData
         ).base64EncodedString()
+        // cov:ignore-end
     }
 
     public static func verify(
@@ -628,10 +664,13 @@ public enum CloudVaultDeviceTrustChain {
         guard let signature = Data(base64Encoded: signatureBase64) else {
             return false
         }
-        return signature == OpenBurnBarSignalCoreFallbackCrypto.hmacSHA256(
-            canonicalPayload(payload),
-            keyData: approverPublicKeyData
+        // cov:ignore-start -- fallback-only Linux/Windows path is excluded from macOS coverage
+        return OpenBurnBarSignalCoreFallbackCrypto.p256Verify(
+            signature,
+            message: canonicalPayload(payload),
+            publicKeyData: approverPublicKeyData
         )
+        // cov:ignore-end
     }
 }
 
@@ -698,10 +737,12 @@ public enum CloudVaultTrustedDeviceActionProof {
         _ payload: CloudVaultTrustedDeviceActionProofPayload,
         identity: OpenBurnBarSignalIdentityKeypair
     ) throws -> String {
-        OpenBurnBarSignalCoreFallbackCrypto.hmacSHA256(
+        // cov:ignore-start -- fallback-only Linux/Windows path is excluded from macOS coverage
+        try OpenBurnBarSignalCoreFallbackCrypto.p256Sign(
             canonicalPayload(payload),
-            keyData: identity.publicKeyData
+            privateKeyData: identity.privateKeyData
         ).base64EncodedString()
+        // cov:ignore-end
     }
 
     public static func verify(
@@ -712,10 +753,13 @@ public enum CloudVaultTrustedDeviceActionProof {
         guard let signature = Data(base64Encoded: signatureBase64) else {
             return false
         }
-        return signature == OpenBurnBarSignalCoreFallbackCrypto.hmacSHA256(
-            canonicalPayload(payload),
-            keyData: publicKeyData
+        // cov:ignore-start -- fallback-only Linux/Windows path is excluded from macOS coverage
+        return OpenBurnBarSignalCoreFallbackCrypto.p256Verify(
+            signature,
+            message: canonicalPayload(payload),
+            publicKeyData: publicKeyData
         )
+        // cov:ignore-end
     }
 }
 

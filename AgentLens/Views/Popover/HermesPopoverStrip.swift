@@ -88,6 +88,8 @@ struct AssistantsPopoverStrip: View {
                 }
                 .buttonStyle(.plain)
                 .transition(.scale.combined(with: .opacity))
+                .accessibilityLabel("Send message")
+                .help("Send message")
             }
 
             if controller.isStreaming {
@@ -99,6 +101,8 @@ struct AssistantsPopoverStrip: View {
                         .foregroundStyle(DesignSystem.Colors.error)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Stop generating")
+                .help("Stop generating")
             }
         }
         .frame(height: 44)

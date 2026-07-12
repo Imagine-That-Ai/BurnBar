@@ -219,6 +219,13 @@ struct HermesSquareRoot: View {
     // MARK: Body
 
     var body: some View {
+        missionDialogContent
+            .navigationDestination(item: $navTarget) { target in
+                navigationDestination(for: target)
+            }
+    }
+
+    private var lifecycleContent: some View {
         ZStack(alignment: .top) {
             squareBackground
             squareContent
@@ -279,6 +286,10 @@ struct HermesSquareRoot: View {
             searchReindexTask = nil
             mercuryPeerSource.stop()
         }
+    }
+
+    private var presentedContent: some View {
+        lifecycleContent
         .sheet(isPresented: $isShowingDiscover) {
             discoverDrawerSheet
         }
@@ -308,69 +319,93 @@ struct HermesSquareRoot: View {
         } message: {
             Text("Enter a new title for this conversation.")
         }
+    }
+
+    private var missionDialogContent: some View {
+        presentedContent
         .confirmationDialog(
             "Manage Mission",
-            isPresented: Binding(
-                get: { missionForActionSheet != nil },
-                set: { if !$0 { missionForActionSheet = nil } }
-            ),
+            isPresented: missionManagementIsPresented,
             titleVisibility: .visible
         ) {
-            Button("Cancel & Dismiss", role: .destructive) {
-                if let mission = missionForActionSheet {
-                    let mid = mission.id
-                    Task {
-                        await missionHost.cancelMission(id: mid)
-                        missionHost.dismissMission(id: mid)
-                    }
-                }
-                missionForActionSheet = nil
-            }
-
-            Button("Just Dismiss", role: .none) {
-                if let mission = missionForActionSheet {
-                    missionHost.dismissMission(id: mission.id)
-                }
-                missionForActionSheet = nil
-            }
-
-            Button("Keep Running", role: .cancel) {
-                missionForActionSheet = nil
-            }
+            missionManagementActions
         } message: {
-            if let mission = missionForActionSheet {
-                Text("Manage mission \"\(mission.title)\". Aborting will stop the processes on the Mac immediately.")
-            }
+            missionManagementMessage
         }
-        .navigationDestination(item: $navTarget) { target in
-            switch target {
-            case .thread(let id):
-                threadDetailView(id: id)
-            case .brandZone(let uri):
-                brandZoneView(uri: uri)
-            case .runtimeNative(let runtime):
-                runtimeNativeView(for: runtime)
-            case .runtimeThread(let runtime):
-                runtimeThreadView(for: runtime)
-            case .cloudSession(let hitID):
-                if let row = cloudSearchRowsByID[hitID] {
-                    HermesSquareCloudSessionDetailView(row: row)
-                } else {
-                    Text("Session unavailable")
-                }
-            case .projectMemory(let projectID):
-                projectMemoryView(projectID: projectID)
-            case .mercuryLive(let connectionID):
-                MercuryLiveDetailView(
-                    connectionID: connectionID,
-                    peer: mercuryPeerSource.peer,
-                    bootError: mercuryBootError,
-                    isBooting: bootingMercuryConnectionID != nil,
-                    ensureMercuryLive: { id in
-                        await ensureMercuryLive(connectionID: id)
-                    }
-                )
+    }
+
+    @ViewBuilder
+    private func navigationDestination(for target: NavTarget) -> some View {
+        switch target {
+        case .thread(let id):
+            threadDetailView(id: id)
+        case .brandZone(let uri):
+            brandZoneView(uri: uri)
+        case .runtimeNative(let runtime):
+            runtimeNativeView(for: runtime)
+        case .runtimeThread(let runtime):
+            runtimeThreadView(for: runtime)
+        case .cloudSession(let hitID):
+            if let row = cloudSearchRowsByID[hitID] {
+                HermesSquareCloudSessionDetailView(row: row)
+            } else {
+                Text("Session unavailable")
             }
+        case .projectMemory(let projectID):
+            projectMemoryView(projectID: projectID)
+        case .mercuryLive(let connectionID):
+            MercuryLiveDetailView(
+                connectionID: connectionID,
+                peer: mercuryPeerSource.peer,
+                bootError: mercuryBootError,
+                isBooting: bootingMercuryConnectionID != nil,
+                ensureMercuryLive: { id in
+                    await ensureMercuryLive(connectionID: id)
+                }
+            )
+        }
+    }
+
+    private var missionManagementIsPresented: Binding<Bool> {
+        Binding(
+            get: { missionForActionSheet != nil },
+            set: { if !$0 { missionForActionSheet = nil } }
+        )
+    }
+
+    @ViewBuilder
+    private var missionManagementActions: some View {
+        Button("Cancel & Dismiss", role: .destructive) {
+            if let mission = missionForActionSheet {
+                cancelAndDismissMission(mission)
+            }
+            missionForActionSheet = nil
+        }
+
+        Button("Just Dismiss", role: .none) {
+            if let mission = missionForActionSheet {
+                missionHost.dismissMission(id: mission.id)
+            }
+            missionForActionSheet = nil
+        }
+
+        Button("Keep Running", role: .cancel) {
+            missionForActionSheet = nil
+        }
+    }
+
+    @ViewBuilder
+    private var missionManagementMessage: some View {
+        if let mission = missionForActionSheet {
+            Text("Manage mission \"\(mission.title)\". Aborting will stop the processes on the Mac immediately.")
+        }
+    }
+
+    private func cancelAndDismissMission(_ mission: MissionConsoleActiveTile) {
+        let missionID = mission.id
+        Task {
+            await missionHost.cancelMission(id: missionID)
+            missionHost.dismissMission(id: missionID)
         }
     }
 

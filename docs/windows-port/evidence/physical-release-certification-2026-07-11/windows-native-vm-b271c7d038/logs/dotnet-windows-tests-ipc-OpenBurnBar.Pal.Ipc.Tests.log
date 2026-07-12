@@ -1,0 +1,9 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  OpenBurnBar.Pal.Ipc -> C:\candidate-7e346b2c7d\windows\pal\ipc\bin\Release\net10.0\OpenBurnBar.Pal.Ipc.dll
+  OpenBurnBar.Pal.Ipc.Tests -> C:\candidate-7e346b2c7d\windows\tests\ipc\bin\Release\net10.0\OpenBurnBar.Pal.Ipc.Tests.dll
+Test run for C:\candidate-7e346b2c7d\windows\tests\ipc\bin\Release\net10.0\OpenBurnBar.Pal.Ipc.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    20, Skipped:     0, Total:    20, Duration: 130 ms - OpenBurnBar.Pal.Ipc.Tests.dll (net10.0)

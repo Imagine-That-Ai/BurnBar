@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../app/OpenBurnBar.App.Presentation/OpenBurnBar.App.Presentation.csproj" />
+    <ProjectReference Include="process-helper/OpenBurnBar.Chat.ProcessTestHelper.csproj" />
   </ItemGroup>
 
   <ItemGroup>

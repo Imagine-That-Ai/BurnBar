@@ -1,4 +1,4 @@
-# OpenBurnBar Windows Port — Master Handoff (2026-07-03)
+# OpenBurnBar Windows Port — Historical Handoff (2026-07-03)
 
 > **⚠️ SUPERSEDED FOR PARITY STATUS (2026-07-09):** Production-parity status is **only**
 > [`WINDOWS_PARITY_LEDGER.yml`](WINDOWS_PARITY_LEDGER.yml) (closed set: Real / Substituted /
@@ -107,7 +107,9 @@ Plans already written (execute through the factory):
   macOS-tested** (Node Firebase-Admin mint backend, mock-fenced, in `functions/`); build the Windows TPM
   attestation client (CNG `NCryptCreateClaim`) + prove real-TPM→createToken→enforced-callable on the dev
   host (TPM 2.0 + Win11; clear firebase-admin-node #2308).
-- **W0 procurement (calendar-bound, Alberto):** Authenticode/Trusted-Signing cert + Microsoft Store account
+- **W0 procurement:** Azure Artifact Signing identity validation and signed x64/ARM64
+  production are **resolved** by run [29160512069](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29160512069).
+  Microsoft Store and winget publisher onboarding remain calendar-bound.
   + winget publisher — external lead-times; start now, gates G5.
 
 ## 5. Execution model (how to keep running it)
