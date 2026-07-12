@@ -47,3 +47,16 @@ The candidate artifact digest is learned only after GitHub uploads the candidate
 embedded into that artifact without a circular digest. The environment closure supplies that final
 binding after the exact candidate is resolved, while the registry SHA inside the candidate prevents
 the environment job from changing the accepted artifact contract.
+
+## P-02 parity certification preflight
+
+P-02 captures `feature.parity-certification-preflight` before feature closure finalization. The
+report inventories exactly P-01 through P-40, all canonical policies and seven environments,
+substantive validator modules, registered capture roles, and release or feature materializer
+ownership. It detects missing and duplicate rows, reused validator bytes or capture roles, fixture
+implementations, stale candidate bindings, unsupported materializers, and self-reference.
+
+Collection deliberately succeeds with `status: blocked` so the missing ownership is preserved as
+evidence. The P-02 validator recomputes and validates the inventory and can pass only when every one
+of the 40 rows is substantive and ready. The repository currently has five ready rows and 35 named
+blockers; no generic module or hand-authored passed JSON may satisfy them.

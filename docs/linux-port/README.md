@@ -102,8 +102,12 @@ replace them. Current release closures must directly match the invoked
 requirement, environment, and selected package, and registered materialized
 feature subjects are byte-validated and required in the validator result.
 Requirement-specific validators exist for P-01 release
-integrity, P-03 installed runtime, P-04 architecture reach, and P-37 Linux
-matrix coverage. The other 36 modules remain intentionally absent until their
+integrity, P-02 parity-certification preflight, P-03 installed runtime, P-04
+architecture reach, and P-37 Linux matrix coverage. P-02 captures a
+candidate-bound inventory of all 40 requirements, policies, support
+environments, substantive validator modules, registered capture roles, and
+materializer ownership. It remains blocked while any lane is incomplete; today
+35 substantive lanes are absent. The other 35 modules remain intentionally absent until their
 installed-product acceptance packets land. Source availability is not a parity
 claim: every row remains blocked until all seven signed live receipts exist.
 

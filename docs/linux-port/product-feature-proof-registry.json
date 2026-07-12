@@ -1,5 +1,16 @@
 {
   "schemaVersion": 1,
   "id": "openburnbar-linux-product-feature-proof-registry-v1",
-  "requirements": []
+  "requirements": [
+    {
+      "requirementId": "P-02",
+      "artifacts": [
+        {
+          "role": "feature.parity-certification-preflight",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        }
+      ]
+    }
+  ]
 }

@@ -118,6 +118,25 @@ jobs:
           github-token: ${{ github.token }}
           path: docs/linux-port/evidence/product-parity-inputs/${{ inputs.requirement }}/${{ inputs.environment }}
 
+      - name: Capture parity certification preflight
+        if: inputs.requirement == 'P-02'
+        shell: bash
+        env:
+          REQUIREMENT_ID: ${{ inputs.requirement }}
+          ENVIRONMENT_ID: ${{ inputs.environment }}
+          CANDIDATE_RUN_ID: ${{ steps.evidence.outputs.run_id }}
+          CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}
+          TARGET_HEAD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"
+          node scripts/linux-port/capture-parity-certification-preflight.mjs \
+            --input-root "$input_root" \
+            --environment "$ENVIRONMENT_ID" \
+            --target-head "$TARGET_HEAD" \
+            --candidate-run-id "$CANDIDATE_RUN_ID" \
+            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"
+
       - name: Finalize registered feature proof closure
         shell: bash
         env:

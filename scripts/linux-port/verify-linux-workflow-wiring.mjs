@@ -113,6 +113,7 @@ export function verifyLinuxWorkflowWiring(input) {
     'smoke-linux-packages.test.mjs',
     'product-proof-closure.test.mjs',
     'product-feature-proof-closure.test.mjs',
+    'parity-certification-preflight.test.mjs',
     'run-linux-matrix-harness.test.mjs',
     'run-product-requirement-validator.test.mjs',
     'resolve-product-evidence-run.test.mjs',
@@ -131,6 +132,8 @@ export function verifyLinuxWorkflowWiring(input) {
     'artifact-ids: ${{ steps.evidence.outputs.artifact_id }}',
     'CANDIDATE_RUN_ID: ${{ steps.evidence.outputs.run_id }}',
     'CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}',
+    'capture-parity-certification-preflight.mjs',
+    "if: inputs.requirement == 'P-02'",
     'finalize-product-feature-proof-closure.mjs',
     'prepare-product-requirement-input.mjs',
     'run-product-requirement-validator.mjs',
@@ -145,6 +148,7 @@ export function verifyLinuxWorkflowWiring(input) {
   }
   requireOrder(input.productParityWorkflow, [
     'Download exact-candidate installed evidence',
+    'Capture parity certification preflight',
     'Finalize registered feature proof closure',
     'Materialize the requirement-owned release closure',
     'Run the registered requirement validator'
