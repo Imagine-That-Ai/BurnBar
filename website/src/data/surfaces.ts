@@ -35,8 +35,8 @@ export const SURFACES: Surface[] = [
     id: "ios",
     name: "iPhone & iPad companion",
     platform: "iOS 17+",
-    status: "review",
-    statusLabel: "In App Store review",
+    status: "shipping",
+    statusLabel: "On the App Store",
     description:
       "Your whole burn picture, in your pocket. The Mac does the work; the phone and tablet show it — and reach back to it.",
     bullets: [
@@ -46,7 +46,7 @@ export const SURFACES: Surface[] = [
       "Watch an agent work, or approve its moves, on the go",
       "Ask your Mac's assistant from anywhere — privately (paid)"
     ],
-    cta: { href: "/download#ios", label: "iOS launch status" }
+    cta: { href: "/download#ios", label: "Get the iOS app" }
   },
   {
     id: "cursor",

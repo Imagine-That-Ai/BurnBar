@@ -129,7 +129,8 @@ export const SITE = {
   linuxArch: "aarch64 (ARM64)",
   linuxStatus: "preview · signed prerelease",
   iosMin: "iOS 17",
-  iosStatus: "in App Store review",
+  iosStatus: "on the App Store",
+  iosAppStoreUrl: "https://apps.apple.com/us/app/openburnbar/id6766366964",
   androidStatus: "feature-complete, Play Store pending",
   cursorExtStatus: "source-only beta"
 };
