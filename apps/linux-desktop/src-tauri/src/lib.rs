@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Receiver;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::ipc::Channel;
@@ -110,6 +110,23 @@ struct SmartHubCommandPayload {
     payload: serde_json::Value,
 }
 
+const SMART_HUB_MAX_OPERATION_BYTES: usize = 64;
+const SMART_HUB_MAX_REQUEST_ID_BYTES: usize = 96;
+const SMART_HUB_MAX_OUTPUT_BYTES: usize = 512 * 1024;
+const SMART_HUB_MAX_JSON_DEPTH: usize = 8;
+const SMART_HUB_MAX_JSON_ITEMS: usize = 128;
+const SMART_HUB_MAX_JSON_STRING_BYTES: usize = 32 * 1024;
+const SMART_HUB_TIMEOUT: Duration = Duration::from_secs(8);
+
+static SMART_HUB_CANCELLATIONS: OnceLock<
+    Mutex<HashMap<String, tokio_util::sync::CancellationToken>>,
+> = OnceLock::new();
+
+fn smart_hub_cancellations() -> &'static Mutex<HashMap<String, tokio_util::sync::CancellationToken>>
+{
+    SMART_HUB_CANCELLATIONS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
 /// The Linux CLI is the existing SmartHub contract. Keep this operation map
 /// intentionally closed: the renderer can request a known operation, never an
 /// arbitrary executable or argument vector.
@@ -117,11 +134,80 @@ fn smart_hub_cli_args(operation: &str) -> Result<&'static [&'static str], String
     match operation {
         "discover" => Ok(&["devices", "discover", "smarthub", "--json"]),
         "status" => Ok(&["devices", "iot", "smarthub", "status", "--json"]),
-        "cast_status" => Ok(&["devices", "iot", "cast", "status", "--json"]),
+        // The Linux CLI has one safe bridge probe. Keep `test` as a typed
+        // product operation without exposing a shell command or free-form args.
+        "test" => Ok(&["devices", "iot", "smarthub", "status", "--json"]),
+        "cast" | "cast_status" => Ok(&["devices", "iot", "cast", "status", "--json"]),
         "homeassistant_status" => Ok(&["devices", "iot", "homeassistant", "status", "--json"]),
+        // `pixel-clock control` is a fixed, simulator-safe device probe. It
+        // never accepts a device id, URL, or user-supplied HTTP body.
+        "device" | "pixel_clock_control" => Ok(&["devices", "pixel-clock", "control", "--json"]),
         "parity" => Ok(&["devices", "parity", "--json"]),
         _ => Err("smarthub_operation_not_allowlisted".to_string()),
     }
+}
+
+fn validate_smart_hub_operation(operation: String) -> Result<String, String> {
+    let operation = operation.trim().to_string();
+    if operation.is_empty() || operation.len() > SMART_HUB_MAX_OPERATION_BYTES {
+        return Err("smarthub_operation_invalid".to_string());
+    }
+    smart_hub_cli_args(&operation)?;
+    Ok(operation)
+}
+
+fn validate_smart_hub_request_id(request_id: &str) -> Result<(), String> {
+    if request_id.is_empty()
+        || request_id.len() > SMART_HUB_MAX_REQUEST_ID_BYTES
+        || !request_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    {
+        return Err("smarthub_invalid_request_id".to_string());
+    }
+    Ok(())
+}
+
+fn validate_smart_hub_json_value(value: &serde_json::Value, depth: usize) -> Result<(), String> {
+    if depth > SMART_HUB_MAX_JSON_DEPTH {
+        return Err("openburnbar_cli_smarthub_payload_too_deep".to_string());
+    }
+    match value {
+        serde_json::Value::String(text) => {
+            if text.len() > SMART_HUB_MAX_JSON_STRING_BYTES
+                || text.chars().any(|character| {
+                    character.is_control() && !matches!(character, '\n' | '\r' | '\t')
+                })
+            {
+                return Err("openburnbar_cli_smarthub_payload_invalid_text".to_string());
+            }
+        }
+        serde_json::Value::Array(items) => {
+            if items.len() > SMART_HUB_MAX_JSON_ITEMS {
+                return Err("openburnbar_cli_smarthub_payload_too_many_items".to_string());
+            }
+            for item in items {
+                validate_smart_hub_json_value(item, depth + 1)?;
+            }
+        }
+        serde_json::Value::Object(fields) => {
+            if fields.len() > SMART_HUB_MAX_JSON_ITEMS {
+                return Err("openburnbar_cli_smarthub_payload_too_many_fields".to_string());
+            }
+            for (key, item) in fields {
+                if key.len() > 256
+                    || key.chars().any(|character| {
+                        character.is_control() && !matches!(character, '\n' | '\r' | '\t')
+                    })
+                {
+                    return Err("openburnbar_cli_smarthub_payload_invalid_key".to_string());
+                }
+                validate_smart_hub_json_value(item, depth + 1)?;
+            }
+        }
+        serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::Number(_) => {}
+    }
+    Ok(())
 }
 
 /// First non-empty trimmed env value among the given keys (VAL-PATH-001 parity with TS/Swift).
@@ -1730,47 +1816,129 @@ fn integrations_status() -> Result<IntegrationsStatusPayload, String> {
 ///
 /// This intentionally does not become a generic CLI bridge. Every operation
 /// has a fixed argv, the executable must be the root-owned packaged binary,
-/// and the response must be bounded JSON before it reaches the renderer.
-#[tauri::command]
-fn smarthub_command(operation: String) -> Result<SmartHubCommandPayload, String> {
+/// and the response is drained concurrently and bounded before it reaches the
+/// renderer. The cancellation token kills the child instead of merely hiding
+/// a stale promise in the renderer.
+fn run_smarthub_cli(
+    operation: String,
+    cli: PathBuf,
+    cancellation: tokio_util::sync::CancellationToken,
+) -> Result<SmartHubCommandPayload, String> {
     let args = smart_hub_cli_args(operation.as_str())?;
-    let cli = trusted_openburnbar_cli()?;
     let mut child = Command::new(cli)
         .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
         .map_err(|_| "openburnbar_cli_smarthub_launch_failed".to_string())?;
-    let deadline = Instant::now() + Duration::from_secs(8);
-    loop {
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "openburnbar_cli_smarthub_output_unavailable".to_string())?;
+    let output_too_large = Arc::new(AtomicBool::new(false));
+    let output_too_large_for_reader = output_too_large.clone();
+    let reader = thread::spawn(move || {
+        let mut bounded = stdout.take((SMART_HUB_MAX_OUTPUT_BYTES + 1) as u64);
+        let mut bytes = Vec::new();
+        let result = bounded.read_to_end(&mut bytes);
+        if bytes.len() > SMART_HUB_MAX_OUTPUT_BYTES {
+            output_too_large_for_reader.store(true, Ordering::Release);
+        }
+        result.map(|_| bytes)
+    });
+
+    let deadline = Instant::now() + SMART_HUB_TIMEOUT;
+    let status = loop {
+        if cancellation.is_cancelled() {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = reader.join();
+            return Err("openburnbar_cli_smarthub_cancelled".to_string());
+        }
+        if output_too_large.load(Ordering::Acquire) {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = reader.join();
+            return Err("openburnbar_cli_smarthub_output_too_large".to_string());
+        }
         match child.try_wait() {
-            Ok(Some(_)) => break,
+            Ok(Some(status)) => break status,
             Ok(None) if Instant::now() >= deadline => {
                 let _ = child.kill();
                 let _ = child.wait();
+                let _ = reader.join();
                 return Err("openburnbar_cli_smarthub_timeout".to_string());
             }
             Ok(None) => thread::sleep(Duration::from_millis(25)),
             Err(_) => {
                 let _ = child.kill();
                 let _ = child.wait();
+                let _ = reader.join();
                 return Err("openburnbar_cli_smarthub_wait_failed".to_string());
             }
         }
-    }
-    let output = child
-        .wait_with_output()
+    };
+    let stdout = reader
+        .join()
+        .map_err(|_| "openburnbar_cli_smarthub_output_failed".to_string())?
         .map_err(|_| "openburnbar_cli_smarthub_output_failed".to_string())?;
-    if !output.status.success() {
-        return Err("openburnbar_cli_smarthub_command_failed".to_string());
-    }
-    const MAX_SMARTHUB_OUTPUT_BYTES: usize = 1_048_576;
-    if output.stdout.len() > MAX_SMARTHUB_OUTPUT_BYTES {
+    if output_too_large.load(Ordering::Acquire) || stdout.len() > SMART_HUB_MAX_OUTPUT_BYTES {
         return Err("openburnbar_cli_smarthub_output_too_large".to_string());
     }
-    let payload = serde_json::from_slice::<serde_json::Value>(&output.stdout)
+    if !status.success() {
+        return Err("openburnbar_cli_smarthub_command_failed".to_string());
+    }
+    let payload = serde_json::from_slice::<serde_json::Value>(&stdout)
         .map_err(|_| "openburnbar_cli_smarthub_invalid_json".to_string())?;
+    let expected_array = matches!(operation.as_str(), "discover" | "parity");
+    if expected_array != payload.is_array() {
+        return Err("openburnbar_cli_smarthub_payload_shape_invalid".to_string());
+    }
+    validate_smart_hub_json_value(&payload, 0)?;
     Ok(SmartHubCommandPayload { operation, payload })
+}
+
+#[tauri::command]
+async fn smarthub_command(
+    operation: String,
+    request_id: Option<String>,
+) -> Result<SmartHubCommandPayload, String> {
+    let operation = validate_smart_hub_operation(operation)?;
+    let request_id =
+        request_id.unwrap_or_else(|| format!("smarthub-{}", uuid::Uuid::new_v4().simple()));
+    validate_smart_hub_request_id(&request_id)?;
+    let cli = trusted_openburnbar_cli()?;
+    let cancellation = tokio_util::sync::CancellationToken::new();
+    {
+        let mut requests = smart_hub_cancellations()
+            .lock()
+            .map_err(|_| "smarthub_cancellation_registry_poisoned")?;
+        if requests.contains_key(&request_id) {
+            return Err("smarthub_duplicate_request_id".to_string());
+        }
+        requests.insert(request_id.clone(), cancellation.clone());
+    }
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        run_smarthub_cli(operation, cli, cancellation)
+    })
+    .await
+    .map_err(|_| "openburnbar_cli_smarthub_worker_failed".to_string())?;
+    if let Ok(mut requests) = smart_hub_cancellations().lock() {
+        requests.remove(&request_id);
+    }
+    result
+}
+
+#[tauri::command]
+fn smarthub_cancel(request_id: String) -> Result<(), String> {
+    validate_smart_hub_request_id(&request_id)?;
+    let requests = smart_hub_cancellations()
+        .lock()
+        .map_err(|_| "smarthub_cancellation_registry_poisoned")?;
+    if let Some(cancellation) = requests.get(&request_id) {
+        cancellation.cancel();
+    }
+    Ok(())
 }
 
 fn validate_external_url(raw_url: &str) -> Result<String, String> {
@@ -5626,7 +5794,8 @@ pub fn run() {
             computer_use_panic_halt,
             computer_use_audit_export,
             integrations_status,
-            smarthub_command
+            smarthub_command,
+            smarthub_cancel
         ])
         .setup(move |app| {
             app.manage(instance_guard);
@@ -6352,6 +6521,14 @@ mod tests {
             &["devices", "iot", "smarthub", "status", "--json"]
         );
         assert_eq!(
+            smart_hub_cli_args("test").unwrap(),
+            &["devices", "iot", "smarthub", "status", "--json"]
+        );
+        assert_eq!(
+            smart_hub_cli_args("cast").unwrap(),
+            &["devices", "iot", "cast", "status", "--json"]
+        );
+        assert_eq!(
             smart_hub_cli_args("cast_status").unwrap(),
             &["devices", "iot", "cast", "status", "--json"]
         );
@@ -6362,6 +6539,10 @@ mod tests {
         assert_eq!(
             smart_hub_cli_args("parity").unwrap(),
             &["devices", "parity", "--json"]
+        );
+        assert_eq!(
+            smart_hub_cli_args("device").unwrap(),
+            &["devices", "pixel-clock", "control", "--json"]
         );
         for rejected in [
             "",
@@ -6376,6 +6557,58 @@ mod tests {
                 "unexpectedly accepted {rejected:?}"
             );
         }
+    }
+
+    #[test]
+    fn smarthub_request_validation_rejects_injection_and_bounds_payloads() {
+        assert_eq!(
+            validate_smart_hub_operation("status --json".to_string()).unwrap_err(),
+            "smarthub_operation_not_allowlisted"
+        );
+        assert_eq!(
+            validate_smart_hub_request_id("../../tmp").unwrap_err(),
+            "smarthub_invalid_request_id"
+        );
+        assert_eq!(
+            validate_smart_hub_request_id(&"a".repeat(SMART_HUB_MAX_REQUEST_ID_BYTES + 1))
+                .unwrap_err(),
+            "smarthub_invalid_request_id"
+        );
+        assert_eq!(
+            validate_smart_hub_json_value(&serde_json::json!("bad\u{0000}text"), 0).unwrap_err(),
+            "openburnbar_cli_smarthub_payload_invalid_text"
+        );
+        assert_eq!(
+            validate_smart_hub_json_value(
+                &serde_json::Value::Array(vec![
+                    serde_json::Value::Null;
+                    SMART_HUB_MAX_JSON_ITEMS + 1
+                ]),
+                0
+            )
+            .unwrap_err(),
+            "openburnbar_cli_smarthub_payload_too_many_items"
+        );
+    }
+
+    #[test]
+    fn smarthub_cancel_cancels_only_the_registered_request() {
+        let request_id = "smarthub-test-cancel".to_string();
+        let token = tokio_util::sync::CancellationToken::new();
+        smart_hub_cancellations()
+            .lock()
+            .unwrap()
+            .insert(request_id.clone(), token.clone());
+        smarthub_cancel(request_id.clone()).unwrap();
+        assert!(token.is_cancelled());
+        smart_hub_cancellations()
+            .lock()
+            .unwrap()
+            .remove(&request_id);
+        assert_eq!(
+            smarthub_cancel("smarthub/../../other".to_string()).unwrap_err(),
+            "smarthub_invalid_request_id"
+        );
     }
 
     #[test]
