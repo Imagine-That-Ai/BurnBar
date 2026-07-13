@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 public enum BurnBarPersistentVectorIndexError: LocalizedError {
     case missingIndexFile(URL)

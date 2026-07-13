@@ -1,7 +1,39 @@
-# Packet P-14 (DRAFT): move vector indexes + SearchPlanner + SearchContracts + Pensieve → OpenBurnBarVectorKit
-STATE: QUEUED
+# Packet P-14: move vector indexes + SearchPlanner + SearchContracts + Pensieve → OpenBurnBarVectorKit
+STATE: PR_OPEN (branch core-decomp/p-14-w2, base core-decomp/wave2-base)
 LANE: D          DEPENDS-ON: S0, P-03 (root mission contracts in Kernel)
 BASELINE-TOUCHING: none
+
+## AT-WAVE CONVERGED (compile-closure)
+Enumerated the mv list (9 files, all present in Core; VectorKit held only
+ModuleMarker.swift) and converged by compiler evidence:
+- **AE-IMPORT `import OpenBurnBarKernel`** added to 4 moved files that reference
+  Kernel symbols the old Core target resolved without an import:
+  `BurnBarHNSWVectorIndex.swift`, `BurnBarSignpostVectorIndex.swift`,
+  `BurnBarVectorIndexDelta.swift` (all use `Locked<T>` from
+  `OpenBurnBarKernel/BurnBarLockedState.swift`), and `BurnBarPersistentVectorIndex.swift`
+  (uses `PlatformCrypto.sha256` + `Locked`). The 3 Pensieve/Search files that stayed
+  Foundation-only need no Kernel import EXCEPT the two below.
+- **AE-IMPORT `import OpenBurnBarKernel`** also on both Pensieve SharedModels
+  (`PensieveKnowledgeChunker.swift` → `PlatformCrypto.sha256Hex`;
+  `PensieveVectorCloak.swift` → `PlatformCrypto.hmacSHA256`/`sha256`/`sha256Hex`).
+- **CryptoKit resolution (card EXTRA):** neither Pensieve file imports CryptoKit at
+  all — they call `PlatformCrypto` (Kernel), which is cross-platform (CryptoKit on
+  Apple, swift-crypto off-Apple). So NO canImport guard and NO VectorKit off-Apple
+  exclude is needed; their Core off-Apple exclude entries were DELETED from
+  `openBurnBarCoreExcludes` (they now compile off-Apple through the Kernel dep). The
+  only Accelerate import (OpenBurnBarVectorKit.swift) was already `canImport`-guarded.
+- **AE-TESTABLE:** exactly ONE test file needed it —
+  `BurnBarHNSWVectorIndexTests.swift` reaches internal `BurnBarHNSWIndexFormat`, so
+  `@testable import OpenBurnBarVectorKit` was added beneath its existing
+  `@testable import OpenBurnBarCore`. The other 7 anticipated tests
+  (BurnBarVectorIndexDeltaTests, OpenBurnBarSearchPlannerTests, OpenBurnBarVectorKitTests,
+  PensieveCloakTSParityTests, PensieveKnowledgeChunkerTests, PensieveVectorCloakTests,
+  CloudVaultAADParityTests) compile against PUBLIC symbols via the `@_exported` umbrella
+  and needed no `@testable`.
+- **Daemon proof:** `BurnBarVectorBlobCodec` (OpenBurnBarVectorKit.swift) +
+  `BurnBarSearchQueryRequest` (OpenBurnBarSearchContracts.swift) reach the daemon via
+  Core's `OpenBurnBarVectorKitReexport.swift` (`@_exported import OpenBurnBarVectorKit`);
+  daemon builds with ZERO changes.
 
 Root vector files + SearchPlanner + **`OpenBurnBarSearchContracts.swift`** (re-sliced
 here by S0-repair FIX 4 — it references `BurnBarEmbeddingDistanceMetric`

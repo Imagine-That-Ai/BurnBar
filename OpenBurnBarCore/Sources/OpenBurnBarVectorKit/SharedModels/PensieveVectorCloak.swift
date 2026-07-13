@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 /// Swift port of the Pensieve on-device embedding + vault-key vector cloaking
 /// (mirrors `tools/openburnbar-mcp-remote/src/embed.ts`). Lets the iOS/iPadOS
