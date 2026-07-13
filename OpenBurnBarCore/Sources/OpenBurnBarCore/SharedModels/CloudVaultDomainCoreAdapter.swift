@@ -38,6 +38,14 @@ enum CloudVaultDomainCoreAdapterError: Error, Equatable {
 }
 
 enum CloudVaultDomainCoreAdapter {
+    struct AESGCMDetachedBox: Equatable, Sendable {
+        let nonce: Data
+        let ciphertext: Data
+        let tag: Data
+
+        var combined: Data { nonce + ciphertext + tag }
+    }
+
     static var isNativeAvailable: Bool {
         #if canImport(OpenBurnBarDomainCoreFFI)
         true
@@ -234,6 +242,189 @@ enum CloudVaultDomainCoreAdapter {
                 key: keyData,
                 bodyHashVersion: version
             )
+            #else
+            throw CloudVaultDomainCoreAdapterError.nativeUnavailable
+            #endif
+        }
+    }
+
+    static func sealAESGCMDetached(
+        plaintext: Data,
+        keyData: Data,
+        nonce: Data,
+        authenticating aad: Data,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        logger: any CloudVaultDomainCoreLogging = PlatformCloudVaultDomainCoreLogger(),
+        legacy: () throws -> AESGCMDetachedBox
+    ) throws -> AESGCMDetachedBox {
+        try select(
+            operation: "aes_gcm_seal_detached",
+            environment: environment,
+            logger: logger,
+            legacy: legacy
+        ) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            let box = try OpenBurnBarDomainCoreFFI.cloudVaultAesGcmSealDetached(
+                plaintext: plaintext,
+                key: keyData,
+                nonce: nonce,
+                aad: aad
+            )
+            return AESGCMDetachedBox(nonce: box.nonce, ciphertext: box.ciphertext, tag: box.tag)
+            #else
+            throw CloudVaultDomainCoreAdapterError.nativeUnavailable
+            #endif
+        }
+    }
+
+    static func sealAESGCMCombined(
+        plaintext: Data,
+        keyData: Data,
+        nonce: Data,
+        authenticating aad: Data,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        logger: any CloudVaultDomainCoreLogging = PlatformCloudVaultDomainCoreLogger(),
+        legacy: () throws -> Data
+    ) throws -> Data {
+        try select(
+            operation: "aes_gcm_seal_combined",
+            environment: environment,
+            logger: logger,
+            legacy: legacy
+        ) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            try OpenBurnBarDomainCoreFFI.cloudVaultAesGcmSealCombined(
+                plaintext: plaintext,
+                key: keyData,
+                nonce: nonce,
+                aad: aad
+            )
+            #else
+            throw CloudVaultDomainCoreAdapterError.nativeUnavailable
+            #endif
+        }
+    }
+
+    static func openAESGCMDetached(
+        nonce: Data,
+        ciphertext: Data,
+        tag: Data,
+        keyData: Data,
+        authenticating aad: Data,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        logger: any CloudVaultDomainCoreLogging = PlatformCloudVaultDomainCoreLogger(),
+        legacy: () throws -> Data
+    ) throws -> Data {
+        try select(
+            operation: "aes_gcm_open_detached",
+            environment: environment,
+            logger: logger,
+            legacy: legacy
+        ) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            try OpenBurnBarDomainCoreFFI.cloudVaultAesGcmOpenDetached(
+                nonce: nonce,
+                ciphertext: ciphertext,
+                tag: tag,
+                key: keyData,
+                aad: aad
+            )
+            #else
+            throw CloudVaultDomainCoreAdapterError.nativeUnavailable
+            #endif
+        }
+    }
+
+    static func openAESGCMTextDetached(
+        nonce: Data,
+        ciphertext: Data,
+        tag: Data,
+        keyData: Data,
+        authenticating aad: Data,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        logger: any CloudVaultDomainCoreLogging = PlatformCloudVaultDomainCoreLogger(),
+        legacy: () throws -> String
+    ) throws -> String {
+        try select(
+            operation: "aes_gcm_open_text_detached",
+            environment: environment,
+            logger: logger,
+            legacy: legacy
+        ) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            try OpenBurnBarDomainCoreFFI.cloudVaultAesGcmOpenTextDetached(
+                nonce: nonce,
+                ciphertext: ciphertext,
+                tag: tag,
+                key: keyData,
+                aad: aad
+            )
+            #else
+            throw CloudVaultDomainCoreAdapterError.nativeUnavailable
+            #endif
+        }
+    }
+
+    static func openAESGCMCombined(
+        combined: Data,
+        keyData: Data,
+        authenticating aad: Data,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        logger: any CloudVaultDomainCoreLogging = PlatformCloudVaultDomainCoreLogger(),
+        legacy: () throws -> Data
+    ) throws -> Data {
+        try select(
+            operation: "aes_gcm_open_combined",
+            environment: environment,
+            logger: logger,
+            legacy: legacy
+        ) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            try OpenBurnBarDomainCoreFFI.cloudVaultAesGcmOpenCombined(
+                combined: combined,
+                key: keyData,
+                aad: aad
+            )
+            #else
+            throw CloudVaultDomainCoreAdapterError.nativeUnavailable
+            #endif
+        }
+    }
+
+    static func base64Encode(
+        _ data: Data,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        logger: any CloudVaultDomainCoreLogging = PlatformCloudVaultDomainCoreLogger(),
+        legacy: () throws -> String
+    ) throws -> String {
+        try select(
+            operation: "base64_encode",
+            environment: environment,
+            logger: logger,
+            legacy: legacy
+        ) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            OpenBurnBarDomainCoreFFI.cloudVaultBase64Encode(data: data)
+            #else
+            throw CloudVaultDomainCoreAdapterError.nativeUnavailable
+            #endif
+        }
+    }
+
+    static func base64DecodeStrict(
+        _ value: String,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        logger: any CloudVaultDomainCoreLogging = PlatformCloudVaultDomainCoreLogger(),
+        legacy: () throws -> Data
+    ) throws -> Data {
+        try select(
+            operation: "base64_decode_strict",
+            environment: environment,
+            logger: logger,
+            legacy: legacy
+        ) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            try OpenBurnBarDomainCoreFFI.cloudVaultBase64DecodeStrict(value: value)
             #else
             throw CloudVaultDomainCoreAdapterError.nativeUnavailable
             #endif

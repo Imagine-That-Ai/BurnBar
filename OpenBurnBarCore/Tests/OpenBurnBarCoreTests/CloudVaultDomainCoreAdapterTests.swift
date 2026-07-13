@@ -92,6 +92,44 @@ final class CloudVaultDomainCoreAdapterTests: XCTestCase {
                 vector.hex
             )
         }
+
+        for vector in fixture.aesGcm {
+            let key = try Data(hex: vector.keyHex)
+            let nonce = try Data(hex: vector.nonceHex)
+            let plaintext = try Data(hex: vector.plaintextHex)
+            let aad = try Data(hex: vector.aadHex)
+            let expectedCiphertext = try Data(hex: vector.ciphertextHex)
+            let expectedTag = try Data(hex: vector.tagHex)
+            let sealed = try CloudVaultDomainCoreAdapter.sealAESGCMDetached(
+                plaintext: plaintext,
+                keyData: key,
+                nonce: nonce,
+                authenticating: aad,
+                environment: rustEnvironment,
+                legacy: { XCTFail("Rust mode evaluated the AES legacy closure"); throw FixtureError.unexpectedLegacy }
+            )
+            XCTAssertEqual(sealed.nonce, nonce)
+            XCTAssertEqual(sealed.ciphertext, expectedCiphertext)
+            XCTAssertEqual(sealed.tag, expectedTag)
+            XCTAssertEqual(
+                try CloudVaultDomainCoreAdapter.base64Encode(
+                    sealed.combined,
+                    environment: rustEnvironment,
+                    legacy: { XCTFail("Rust mode evaluated the Base64 legacy closure"); return "" }
+                ),
+                vector.combinedBase64
+            )
+            XCTAssertEqual(
+                try CloudVaultDomainCoreAdapter.openAESGCMCombined(
+                    combined: sealed.combined,
+                    keyData: key,
+                    authenticating: aad,
+                    environment: rustEnvironment,
+                    legacy: { XCTFail("Rust mode evaluated the AES legacy closure"); return Data() }
+                ),
+                plaintext
+            )
+        }
     }
 
     func testShadowReturnsLegacyAndDiagnosticsNeverContainSecretsOrHashes() throws {
@@ -183,6 +221,98 @@ final class CloudVaultDomainCoreAdapterTests: XCTestCase {
         }
     }
 
+    func testRustAESRejectsNonCanonicalBase64WithoutLegacyFallback() throws {
+        var legacyEvaluations = 0
+        XCTAssertThrowsError(
+            try CloudVaultDomainCoreAdapter.base64DecodeStrict(
+                "AA==\n",
+                environment: rustEnvironment,
+                legacy: {
+                    legacyEvaluations += 1
+                    return Data([0])
+                }
+            )
+        ) { error in
+            XCTAssertEqual(error as? CloudVaultDomainCoreAdapterError, .invalidInput)
+        }
+        XCTAssertEqual(legacyEvaluations, 0)
+    }
+
+    func testRustAESRejectsInvalidUTF8AndAuthenticationFailureWithoutLegacyFallback() throws {
+        let key = Data(repeating: 0x42, count: 32)
+        let nonce = Data(repeating: 0x24, count: 12)
+        let aad = Data("aad".utf8)
+        let invalidUTF8 = try CloudVaultDomainCoreAdapter.sealAESGCMDetached(
+            plaintext: Data([0xFF]),
+            keyData: key,
+            nonce: nonce,
+            authenticating: aad,
+            environment: rustEnvironment,
+            legacy: { throw FixtureError.unexpectedLegacy }
+        )
+
+        var legacyEvaluations = 0
+        XCTAssertThrowsError(
+            try CloudVaultDomainCoreAdapter.openAESGCMTextDetached(
+                nonce: invalidUTF8.nonce,
+                ciphertext: invalidUTF8.ciphertext,
+                tag: invalidUTF8.tag,
+                keyData: key,
+                authenticating: aad,
+                environment: rustEnvironment,
+                legacy: {
+                    legacyEvaluations += 1
+                    return "legacy"
+                }
+            )
+        )
+
+        var tamperedTag = invalidUTF8.tag
+        tamperedTag[tamperedTag.startIndex] ^= 0x01
+        XCTAssertThrowsError(
+            try CloudVaultDomainCoreAdapter.openAESGCMDetached(
+                nonce: invalidUTF8.nonce,
+                ciphertext: invalidUTF8.ciphertext,
+                tag: tamperedTag,
+                keyData: key,
+                authenticating: aad,
+                environment: rustEnvironment,
+                legacy: {
+                    legacyEvaluations += 1
+                    return Data()
+                }
+            )
+        )
+        XCTAssertEqual(legacyEvaluations, 0)
+    }
+
+    func testShadowAESUsesIdenticalExplicitNonceAndReturnsLegacy() throws {
+        let key = Data(repeating: 0x11, count: 32)
+        let nonce = Data(repeating: 0x22, count: 12)
+        let plaintext = Data("shadow".utf8)
+        let aad = Data("aad".utf8)
+        var legacyEvaluations = 0
+        let result = try CloudVaultDomainCoreAdapter.sealAESGCMDetached(
+            plaintext: plaintext,
+            keyData: key,
+            nonce: nonce,
+            authenticating: aad,
+            environment: ["OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE": "shadow"],
+            legacy: {
+                legacyEvaluations += 1
+                let sealed = try PlatformCrypto.sealAESGCMDetached(
+                    plaintext: plaintext,
+                    keyData: key,
+                    nonce: nonce,
+                    authenticating: aad
+                )
+                return .init(nonce: sealed.nonce, ciphertext: sealed.ciphertext, tag: sealed.tag)
+            }
+        )
+        XCTAssertEqual(result.nonce, nonce)
+        XCTAssertEqual(legacyEvaluations, 1)
+    }
+
     private func purpose(_ value: String) throws -> CloudVaultDomainCoreAdapter.Purpose {
         switch value {
         case "blob-integrity": .blobIntegrity
@@ -216,6 +346,7 @@ private final class RecordingCloudVaultDomainCoreLogger: CloudVaultDomainCoreLog
 
 private enum FixtureError: Error {
     case invalidHex
+    case unexpectedLegacy
     case unknownPurpose
 }
 
@@ -225,6 +356,7 @@ private struct Fixture: Decodable {
     let vaultKeyID: [VaultKeyID]
     let keyedHashes: [KeyedHash]
     let expectedSessionBodyHash: [ExpectedSessionBodyHash]
+    let aesGcm: [AESGCM]
 
     struct AAD: Decodable {
         let uid: String
@@ -257,6 +389,16 @@ private struct Fixture: Decodable {
     struct ExpectedSessionBodyHash: Decodable {
         let bodyHashVersion: Int
         let hex: String
+    }
+
+    struct AESGCM: Decodable {
+        let keyHex: String
+        let nonceHex: String
+        let plaintextHex: String
+        let aadHex: String
+        let ciphertextHex: String
+        let tagHex: String
+        let combinedBase64: String
     }
 }
 
