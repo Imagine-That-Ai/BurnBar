@@ -26,6 +26,14 @@ SWIFT_PKG_DIR="${ROOT_DIR}/OpenBurnBarCore/Sources/OpenBurnBarDomainCore"
 GENERATED_DIR="${SWIFT_PKG_DIR}/Generated"
 HEADERS_DIR="${ROOT_DIR}/build/domain-core-xcframework-headers"
 UNIFFI_HELPER_DIR="${ROOT_DIR}/build/uniffi-bindgen-swift-helper"
+PROVENANCE_DIR="${CRATE_DIR}/artifact-provenance"
+FINGERPRINT_NAME="openburnbar-domain-core-source.sha256"
+SOURCE_FINGERPRINT="$(
+  python3 "${ROOT_DIR}/scripts/ci/domain-core-union-gate.py" --source-fingerprint
+)"
+export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-1704067200}"
+export TZ=UTC
+REMAP_FLAGS="--remap-path-prefix=${ROOT_DIR}=. --remap-path-prefix=${HOME}=~"
 
 PROFILE="${DOMAIN_CORE_BUILD_PROFILE:-release}"
 PROFILE_FLAG=""
@@ -124,6 +132,7 @@ build_target() {
     MACOSX_DEPLOYMENT_TARGET=14.0 \
     IPHONEOS_DEPLOYMENT_TARGET=17.0 \
     IPHONE_SIMULATOR_DEPLOYMENT_TARGET=17.0 \
+    RUSTFLAGS="${RUSTFLAGS:-} ${REMAP_FLAGS}" \
     PATH="${HOME}/.cargo/bin:${PATH}" \
       "${CARGO_BIN}" build ${PROFILE_FLAG} --target "${target}"
   )
@@ -159,6 +168,8 @@ if compgen -G "${GENERATED_DIR}/*.modulemap" >/dev/null; then
 fi
 find "${GENERATED_DIR}" -maxdepth 1 -type f -exec \
   perl -0pi -e 's/[ \t]+$//mg; s/\n+\z/\n/' {} +
+mkdir -p "${PROVENANCE_DIR}"
+printf '%s\n' "${SOURCE_FINGERPRINT}" > "${PROVENANCE_DIR}/swift.sha256"
 
 # Tear down any prior xcframework so the recipe is hermetic.
 rm -rf "${XCFRAMEWORK}"
@@ -253,6 +264,7 @@ log "assembling xcframework"
 xcodebuild -create-xcframework \
   "${build_xcframework_args[@]}" \
   -output "${XCFRAMEWORK}"
+printf '%s\n' "${SOURCE_FINGERPRINT}" > "${XCFRAMEWORK}/${FINGERPRINT_NAME}"
 
 log "DONE: ${XCFRAMEWORK}"
 log "swift bindings: ${GENERATED_DIR}"

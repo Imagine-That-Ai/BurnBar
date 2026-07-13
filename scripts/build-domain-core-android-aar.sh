@@ -17,6 +17,7 @@ CRATE_DIR="${ROOT_DIR}/crates/openburnbar-domain-core"
 VENDOR_DIR="${ROOT_DIR}/Vendor"
 AAR_PATH="${VENDOR_DIR}/openburnbar-domain-core.aar"
 GENERATED_DIR="${ROOT_DIR}/android/openburnbar-domain-core/src/main/java/uniffi/openburnbar_domain_ffi"
+PROVENANCE_DIR="${CRATE_DIR}/artifact-provenance"
 BUILD_DIR="${ROOT_DIR}/build/domain-core-aar"
 JNI_DIR="${BUILD_DIR}/jni"
 HELPER_DIR="${ROOT_DIR}/build/uniffi-bindgen-domain-core-kotlin-helper"
@@ -38,38 +39,25 @@ fi
 
 DRY_RUN=0
 CHECK_SOURCE=0
+CHECK_ARTIFACT=0
 for arg in "$@"; do
   case "${arg}" in
     --dry-run) DRY_RUN=1 ;;
     --check-source) CHECK_SOURCE=1 ;;
+    --check-artifact) CHECK_ARTIFACT=1 ;;
     *) echo "unknown arg: ${arg}" >&2; exit 64 ;;
   esac
 done
+if (( CHECK_SOURCE + CHECK_ARTIFACT + DRY_RUN > 1 )); then
+  echo "--dry-run, --check-source, and --check-artifact are mutually exclusive" >&2
+  exit 64
+fi
 
 log() { printf '[domain-core-aar] %s\n' "$*" >&2; }
 abort() { log "FATAL: $*"; exit 1; }
 
 source_fingerprint() {
-  python3 - "${CRATE_DIR}" <<'PY'
-import hashlib
-import pathlib
-import sys
-
-root = pathlib.Path(sys.argv[1])
-digest = hashlib.sha256()
-roots = [root / "Cargo.toml", root / "Cargo.lock", root / "domain-core", root / "domain-ffi"]
-paths = []
-for candidate in roots:
-    paths.extend([candidate] if candidate.is_file() else candidate.rglob("*"))
-for path in sorted(p for p in paths if p.is_file() and "target" not in p.parts):
-    relative = path.relative_to(root).as_posix().encode()
-    digest.update(len(relative).to_bytes(4, "big"))
-    digest.update(relative)
-    contents = path.read_bytes()
-    digest.update(len(contents).to_bytes(8, "big"))
-    digest.update(contents)
-print(digest.hexdigest())
-PY
+  python3 "${ROOT_DIR}/scripts/ci/domain-core-union-gate.py" --source-fingerprint
 }
 
 abi_to_target() {
@@ -104,6 +92,38 @@ with zipfile.ZipFile(output, "w") as archive:
 PY
 }
 
+compare_aar_entries() {
+  local committed="$1" rebuilt="$2"
+  python3 - "${committed}" "${rebuilt}" <<'PY'
+import hashlib
+import sys
+import zipfile
+
+def inventory(path):
+    with zipfile.ZipFile(path) as archive:
+        names = archive.namelist()
+        if len(names) != len(set(names)):
+            raise SystemExit(f"duplicate ZIP entry in {path}")
+        return {
+            name: hashlib.sha256(archive.read(name)).hexdigest()
+            for name in sorted(names)
+            if not name.endswith("/")
+        }
+
+committed = inventory(sys.argv[1])
+rebuilt = inventory(sys.argv[2])
+if committed != rebuilt:
+    for name in sorted(set(committed) | set(rebuilt)):
+        if committed.get(name) != rebuilt.get(name):
+            print(
+                f"AAR entry {name}: committed={committed.get(name, 'missing')} "
+                f"rebuilt={rebuilt.get(name, 'missing')}",
+                file=sys.stderr,
+            )
+    raise SystemExit("rebuilt AAR normalized entry tree differs")
+PY
+}
+
 RUSTUP_BIN="${HOME}/.cargo/bin/rustup"
 [[ -x "${RUSTUP_BIN}" ]] || RUSTUP_BIN="$(command -v rustup || true)"
 [[ -x "${RUSTUP_BIN}" ]] || abort "rustup not found"
@@ -129,6 +149,20 @@ PY
     abort "committed AAR source fingerprint is stale"
   log "committed AAR matches domain-core source ${SOURCE_FINGERPRINT}"
   exit 0
+fi
+
+EXPECTED_AAR=""
+restore_committed_aar() {
+  if [[ -n "${EXPECTED_AAR}" && -f "${EXPECTED_AAR}" ]]; then
+    cp "${EXPECTED_AAR}" "${AAR_PATH}"
+    rm -f "${EXPECTED_AAR}"
+  fi
+}
+if [[ "${CHECK_ARTIFACT}" -eq 1 ]]; then
+  [[ -f "${AAR_PATH}" ]] || abort "missing committed AAR: ${AAR_PATH}"
+  EXPECTED_AAR="$(mktemp "${TMPDIR:-/tmp}/openburnbar-domain-core.aar.XXXXXX")"
+  cp "${AAR_PATH}" "${EXPECTED_AAR}"
+  trap restore_committed_aar EXIT
 fi
 
 ANDROID_SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}"
@@ -157,6 +191,8 @@ if [[ ! -d "${NDK_HOME}" ]]; then
 fi
 [[ -d "${NDK_HOME}" ]] || abort "NDK install failed: ${NDK_HOME}"
 export ANDROID_NDK_HOME="${NDK_HOME}" ANDROID_NDK_ROOT="${NDK_HOME}"
+export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-1704067200}"
+export TZ=UTC
 
 if ! command -v cargo-ndk >/dev/null 2>&1; then
   log "installing cargo-ndk"
@@ -276,6 +312,8 @@ find "${GENERATED_DIR}" -name '*.kt' -type f | while IFS= read -r file; do
   ' "${file}" > "${file}.normalized"
   mv "${file}.normalized" "${file}"
 done
+mkdir -p "${PROVENANCE_DIR}"
+printf '%s\n' "${SOURCE_FINGERPRINT}" > "${PROVENANCE_DIR}/kotlin.sha256"
 
 STAGING="${BUILD_DIR}/staging"
 mkdir -p "${STAGING}/jni"
@@ -333,6 +371,19 @@ for abi in "${ABIS[@]}"; do
   done <<< "${alignments}"
   log "${abi}: 16 KB compatible"
 done
+
+if [[ "${CHECK_ARTIFACT}" -eq 1 ]]; then
+  compare_aar_entries "${EXPECTED_AAR}" "${AAR_PATH}" || \
+    abort "rebuilt AAR entry tree differs from the committed artifact"
+  if ! cmp -s "${EXPECTED_AAR}" "${AAR_PATH}"; then
+    expected_sha="$(shasum -a 256 "${EXPECTED_AAR}" | awk '{print $1}')"
+    actual_sha="$(shasum -a 256 "${AAR_PATH}" | awk '{print $1}')"
+    abort "rebuilt AAR differs byte-for-byte (committed=${expected_sha} rebuilt=${actual_sha})"
+  fi
+  log "rebuilt AAR is byte-identical to the committed artifact"
+  restore_committed_aar
+  trap - EXIT
+fi
 
 log "DONE: ${AAR_PATH}"
 log "Kotlin bindings: ${GENERATED_DIR}"
