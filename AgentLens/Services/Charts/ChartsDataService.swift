@@ -47,23 +47,23 @@ final class ChartsDataService {
         buildTask?.cancel()
         isBuilding = snapshot == nil
         buildTask = Task { [weak self] in
-            let rows: [TokenUsage]
-            let recentRows: [TokenUsage]
+            let fetchedRows: (selected: [TokenUsage], recent: [TokenUsage])
             do {
+                let selectedRows: [TokenUsage]
                 if let requestedRange = timeRange.dateRange() {
-                    rows = try await dataStore.fetchUsage(in: requestedRange, limit: Int.max)
+                    selectedRows = try await dataStore.fetchUsage(in: requestedRange, limit: Int.max)
                 } else {
-                    rows = try await dataStore.fetchAllUsage()
+                    selectedRows = try await dataStore.fetchAllUsage()
                 }
-                recentRows = try await dataStore.fetchUsage(in: recentLower...now, limit: Int.max)
+                let recentRows = try await dataStore.fetchUsage(in: recentLower...now, limit: Int.max)
+                fetchedRows = (selectedRows, recentRows)
             } catch {
-                rows = fallbackRows
-                recentRows = fallbackRecentRows
+                fetchedRows = (fallbackRows, fallbackRecentRows)
             }
             guard !Task.isCancelled else { return }
             let built = await Self.buildDetached(
-                rows: rows,
-                recentRows: recentRows,
+                rows: fetchedRows.selected,
+                recentRows: fetchedRows.recent,
                 timeRange: timeRange,
                 usagesVersion: key.usagesVersion,
                 now: now

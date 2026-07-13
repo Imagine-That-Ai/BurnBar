@@ -95,7 +95,10 @@ struct ChartsPageView: View {
             service.refresh(dataStore: dataStore, timeRange: selectedTimeRange)
         }
         .task(id: insightKey) {
-            guard aiInsightsEnabled, let snapshot = service.snapshot, !snapshot.isEmpty else { return }
+            guard aiInsightsEnabled,
+                  let snapshot = service.snapshot,
+                  snapshot.timeRange == selectedTimeRange,
+                  !snapshot.isEmpty else { return }
             insightEngine.generateIfNeeded(
                 snapshot: snapshot,
                 bridge: chatController.cliBridge,
@@ -111,7 +114,8 @@ struct ChartsPageView: View {
 
     private var insightKey: String {
         let version = service.snapshot?.usagesVersion ?? -1
-        return "\(aiInsightsEnabled)|\(version)|\(selectedTimeRange.rawValue)"
+        let snapshotRange = service.snapshot?.timeRange.rawValue ?? "none"
+        return "\(aiInsightsEnabled)|\(version)|\(selectedTimeRange.rawValue)|\(snapshotRange)"
     }
 
     // MARK: Header

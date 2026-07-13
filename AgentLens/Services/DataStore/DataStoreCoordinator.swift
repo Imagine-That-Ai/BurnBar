@@ -55,6 +55,7 @@ final class DataStoreCoordinator {
     var debugRefreshGenerationForTesting: Int { refreshGeneration }
     #endif
     private var lastAppliedFingerprint: UsageContentFingerprint?
+    private var lastAppliedSnapshotFingerprint: DashboardUsageSnapshotFingerprint?
     private var nextWindowBoundary: Date = .distantPast
     /// Injectable clock so boundary-crossing behavior is unit-testable.
     @ObservationIgnored var nowProvider: () -> Date = Date.init
@@ -390,6 +391,7 @@ final class DataStoreCoordinator {
 
     func replaceUsages(_ newUsages: [TokenUsage]) {
         guard applyGateAdmits(newUsages) else { return }
+        lastAppliedSnapshotFingerprint = nil
         let sortedUsages = newUsages.sorted { $0.startTime > $1.startTime }
         usages = sortedUsages
         usageViewModel.replaceUsages(sortedUsages)
@@ -398,7 +400,11 @@ final class DataStoreCoordinator {
     }
 
     func replaceUsageSnapshot(_ snapshot: DashboardUsageSnapshot) {
-        guard applyGateAdmits(snapshot.loadedUsages) else { return }
+        let snapshotFingerprint = DashboardUsageSnapshotFingerprint(snapshot: snapshot)
+        let aggregateChanged = snapshotFingerprint != lastAppliedSnapshotFingerprint
+        let rowsChanged = applyGateAdmits(snapshot.loadedUsages)
+        guard aggregateChanged || rowsChanged else { return }
+        lastAppliedSnapshotFingerprint = snapshotFingerprint
         let sortedUsages = snapshot.loadedUsages.sorted { $0.startTime > $1.startTime }
         usages = sortedUsages
         usageViewModel.replaceUsageSnapshot(snapshot)

@@ -367,9 +367,14 @@ extension DashboardView {
                 .font(.system(size: 12 * scale, weight: .semibold, design: .rounded))
             Text("Updated")
                 .foregroundStyle(DesignSystem.Colors.textMuted)
-            Text(Date.now, style: .time)
-                .monospacedDigit()
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
+            if let lastRefresh = dataStore.lastRefresh {
+                Text(lastRefresh, style: .time)
+                    .monospacedDigit()
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+            } else {
+                Text("Waiting")
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
 
             Divider()
                 .frame(height: 22 * scale)

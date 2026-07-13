@@ -41,6 +41,37 @@ struct UsageContentFingerprint: Equatable, Sendable {
     }
 }
 
+struct DashboardUsageSnapshotFingerprint: Equatable, Sendable {
+    let contentHash: Int
+
+    init(snapshot: DashboardUsageSnapshot) {
+        var hasher = Hasher()
+        for range in TimeRange.allCases {
+            guard let summary = snapshot.windowSummaries[range] else { continue }
+            hasher.combine(range.rawValue)
+            hasher.combine(summary.totalCost)
+            hasher.combine(summary.totalTokens)
+            hasher.combine(summary.sessionCount)
+            hasher.combine(summary.activeProviderCount)
+            hasher.combine(summary.providerSummaries)
+            hasher.combine(summary.modelSummaries)
+        }
+        hasher.combine(snapshot.rollingDailyAverage)
+        hasher.combine(snapshot.distinctUsageDayCount)
+        hasher.combine(snapshot.last7DayCosts)
+        hasher.combine(snapshot.last7DayTokenTotals)
+        for day in snapshot.dailySummaries {
+            hasher.combine(day.date)
+            hasher.combine(day.provider)
+            hasher.combine(day.totalTokens)
+            hasher.combine(day.totalCost)
+            hasher.combine(day.sessionCount)
+            hasher.combine(day.models)
+        }
+        contentHash = hasher.finalize()
+    }
+}
+
 enum UsageReplaceGate {
     /// Rolling windows the dashboard renders (`TimeRange.last7Days` /
     /// `.last30Days` are anchored at `now`, so rows exit continuously).
