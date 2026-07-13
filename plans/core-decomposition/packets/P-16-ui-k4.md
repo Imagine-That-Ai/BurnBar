@@ -1,5 +1,5 @@
 # Packet P-16a…f: move Views/ + UI SharedModels → OpenBurnBarUI (K4)
-STATE: P-16a MERGED (base); P-16b PR #1650; P-16c PR #1656 (Views/MissionControl); P-16b2/d/e/f QUEUED
+STATE: P-16a MERGED (base); P-16b PR #1650; P-16c PR #1656 (Views/MissionControl); P-16d PR #1666 (Cards/Square + straggler cluster); P-16b2/e/f QUEUED
 LANE: A (serial-within-lane; owns core-ui-purity-baseline.json)
 DEPENDS-ON: S0, S-H (headless-app-build CI job green), P-04a/b, P-11, P-13, P-05, P-06, P-08/09/10
 BASELINE-TOUCHING: core-ui-purity (this is where the baseline ratchets toward zero)
@@ -22,8 +22,8 @@ now DONE). Every intermediate state builds; each sub-packet is its own lane-A PR
 | **P-16b** | **`Views/Insights/` root (32)** **+ pulled-forward design-system closure (8)**: `Views/{UnifiedDesignSystem,UnifiedGlassCard,UnifiedProviderLogoView}.swift`, `SharedModels/{ThemePrimitives,DesignSystemTokens,AgentProvider+LogoBackdrop}.swift`, `UIModeTheme.swift`, `AgentInsights/AgentInsightsViewModel.swift` (see P-16b convergence note). **`Views/Insights/Verdict/` DEFERRED → P-16b2.** | 40 | 6,381 | **THIS PR** |
 | P-16b2 | `Views/Insights/Verdict/` (6) — trailing sub-packet (the card-prescribed 6k relief valve; Verdict is bidirectionally decoupled from Insights-root views, uses only the now-in-UI `UnifiedDesignSystem`) | 6 | 926 | QUEUED |
 | P-16c | `Views/MissionControl/` (11; `MissionConsoleTypes` already moved in P-11; `UnifiedDesignSystem`/`UIModeTheme`/color cluster already in UI via P-16b — no design-system pull-forward needed) | 11 | 3,694 | **PR #1656** (base p-16b; see P-16c convergence note) |
-| P-16d | `Views/Cards/CardEnvelopeView.swift` (1) + `Views/Square/UnifiedSearchIndex.swift` (1) | 2 | 802 | QUEUED |
-| P-16e | UI `SharedModels` + renderers + `Services/Insights/Share/InsightShareCardRenderer.swift` (see P-16e list below). **`UIModeTheme.swift` + `AgentInsights/AgentInsightsViewModel.swift` REMOVED — pulled forward by P-16b.** | 12 | ~2.5k | QUEUED |
+| P-16d | `Views/Cards/CardEnvelopeView.swift` + `Views/Square/UnifiedSearchIndex.swift` **+ the still-in-Core UI-straggler cluster from P-16e** (`SharedModels/{SwarmColorDriver,PixelClockSettingsModel,SmartHubDisplaySettingsModel,AgentWatchLiveActivityAttributes,AgentWatchLiveActivityIntents,BurnBarLiveActivityAttributes}.swift`, `PixelClockQuotaRenderer.swift`, `PixelClockProviderLogoAssets.generated.swift`) — merged per the P-16d executor directive + live-tree verification (see P-16d convergence note). | 10 | 3,610 | **PR #1666** (base p-16c) |
+| P-16e | `Services/Insights/Share/InsightShareCardRenderer.swift` (1) — the ONLY UI-straggler left after P-16d; the SharedModels/renderers cluster shipped in P-16d, `UIModeTheme.swift` + `AgentInsights/AgentInsightsViewModel.swift` in P-16b. Rides the `"Services/Insights/Share"` exclude (drop that entry). | 1 | ~0.2k | QUEUED |
 | P-16f | `Views/` **root** (26 — `UnifiedDesignSystem`/`UnifiedGlassCard`/`UnifiedProviderLogoView` already moved by P-16b) — the LAST sub-packet; deletes `"Views"` from `openBurnBarCoreExcludes` entirely + every remaining SharedModels UI exclude | 26 | ~9.4k | QUEUED |
 
 > P-16b may exceed the 6k cap once compile-closure adds imports; if so, split
@@ -38,19 +38,20 @@ now DONE). Every intermediate state builds; each sub-packet is its own lane-A PR
 > (e.g. the `SwarmCanvasView+*` cluster vs the `Unified*` design-system cluster vs
 > the logo/loader views); the mover enumerates the cut by compile-closure.
 
-**P-16e (UI SharedModels + renderers), enumerated (still in Core as of P-16b):**
-`Services/Insights/Share/InsightShareCardRenderer.swift`,
-`SharedModels/{SwarmColorDriver,
-PixelClockSettingsModel,SmartHubDisplaySettingsModel,AgentWatchLiveActivityAttributes,
-AgentWatchLiveActivityIntents,BurnBarLiveActivityAttributes}.swift`,
-`PixelClockQuotaRenderer.swift`, `PixelClockProviderLogoAssets.generated.swift`.
-> `SharedModels/RGBA.swift` was REMOVED from this list — P-16a pulled it forward.
-> **`UIModeTheme.swift`, `AgentInsights/AgentInsightsViewModel.swift`, and
-> `SharedModels/{ThemePrimitives,DesignSystemTokens,AgentProvider+LogoBackdrop}.swift`
-> were REMOVED from this list — P-16b pulled them forward** (P-16b convergence note below;
-> the `Views/Insights/` compile-closure hard-depends on them). `SwarmColorDriver` stays
-> (its `DesignSystemColors` consumer refs resolve via the now-in-UI cluster + re-export;
-> it lands with P-16e or P-16f). `Views/Cards/CardEnvelope.swift` + the pure `RGBA` struct
+**P-16e (UI-straggler remainder), enumerated (still in Core as of P-16d):**
+`Services/Insights/Share/InsightShareCardRenderer.swift` — the SINGLE remaining
+UI-straggler (AppKit/UIKit share-card renderer under the `"Services/Insights/Share"`
+exclude). Everything else this list previously carried has already landed:
+> `SharedModels/RGBA.swift` — P-16a pulled it forward. `UIModeTheme.swift`,
+> `AgentInsights/AgentInsightsViewModel.swift`, `SharedModels/{ThemePrimitives,
+> DesignSystemTokens,AgentProvider+LogoBackdrop}.swift` — P-16b pulled them forward.
+> **`SharedModels/{SwarmColorDriver,PixelClockSettingsModel,SmartHubDisplaySettingsModel,
+> AgentWatchLiveActivityAttributes,AgentWatchLiveActivityIntents,BurnBarLiveActivityAttributes}.swift`
+> + `PixelClockQuotaRenderer.swift` + `PixelClockProviderLogoAssets.generated.swift` —
+> P-16d shipped them (PR #1666)** with `Views/Cards`+`Views/Square` (P-16d convergence
+> note below). `SwarmColorDriver` landed in P-16d (its `DesignSystemColors`/RGBA-color-math
+> refs resolve same-module in UI; its still-in-Core `SwarmCanvasView*` consumers reach it
+> cross-module via the re-export). `Views/Cards/CardEnvelope.swift` + the pure `RGBA` struct
 > were already moved to the Kernel by P-04a. Note the `Kernel` off-Apple `SubstrateCatalog` stub
 > (`LinuxSubstrateSupport.swift`) shadows the real UI `SubstrateCatalog` on Apple once
 > the real one is re-exported — any P-16b–f consumer that references `SubstrateCatalog`
@@ -165,6 +166,43 @@ P-16a/P-16b; `MissionConsoleTypes` in the Kernel via P-11):
   only — **no exclude line edits, no new excludes**. Daemon build graph verified to contain **0**
   `OpenBurnBarUI` module references (daemon still does not link UI). Zero functional path-pins;
   no `Bundle.module` resource-bundle hit. `budgets/core-ui-purity-baseline.json` `--update`: 41→30.
+
+### P-16d convergence note (executed 2026-07-13, PR #1666) — Cards/Square + straggler cluster, one access-widening hub
+The P-16d executor directive scoped this packet as `Views/Cards` + `Views/Square` **plus** the
+still-in-Core UI-straggler SharedModels/renderers (the card's P-16e cluster), verified file-by-file
+against the live p-16c tree + the P-04a RGBA split. Result: **10 files, 3,610 LOC** moved
+Core→UI (`UIModeTheme.swift` + the 3 theme SharedModels were already in UI via P-16a/b, so they
+were excluded; `InsightShareCardRenderer.swift` stays for P-16e). Compile-closure
+(`swift build --target OpenBurnBarUI`, learnings 9/10):
+- **AE-IMPORT (compiler-driven):** `import OpenBurnBarKernel` ×6 — `SwarmColorDriver.swift`
+  (`AgentProvider`/`RGBA`), `CardEnvelopeView.swift` (`CardEnvelope`/`CardApproval` P-04a,
+  `MissionConsoleSnapshot` P-11), `UnifiedSearchIndex.swift` (`CardEnvelope`/`MissionConsoleActiveTile`),
+  `PixelClockSettingsModel.swift` + `SmartHubDisplaySettingsModel.swift` (`AgentProvider`),
+  `PixelClockQuotaRenderer.swift` (`PixelClock{Config,Palette,DrawInstruction,QuotaItem,RenderedPage,
+  AgentStatus,SpinnerStyle}` — Kernel `SharedModels/PixelClockConfig.swift`). The other 4 need NO
+  import (self-contained: `PixelClockProviderLogoAssets.generated.swift` → `PixelClockProviderLogo`
+  same-module; the 3 LiveActivity files → ActivityKit/AppIntents + self). No `import OpenBurnBarCore`;
+  only Kernel demanded.
+- **Access-widening hub (learning 10):** still-in-Core `Views/PixelClockPreviewView.swift` (P-16f)
+  calls `PixelClockQuotaRenderer.providerLogo(for:)` and reads the returned `PixelClockProviderLogo`'s
+  `.pixels`/`.colorHex(row:column:)` cross-module via the re-export → bumped `PixelClockProviderLogo`
+  (type) + `pixels` + `colorHex` + `providerLogo` module-`internal`→`public`. Making the type public
+  dropped its implicit-internal `Sendable` (global-static instances in `PixelClockProviderLogoAssets`),
+  so added explicit `Sendable` (members `String`+`[[String?]]`, already Sendable — zero behavior
+  change). `SwarmColorDriver` needed **NO** widening (already fully `public`; its `SwarmCanvasView*`
+  Core consumers reach it via the re-export).
+- **AE-TESTABLE ×1:** `@testable import OpenBurnBarUI` in `OpenBurnBarCoreTests/PixelClockQuotaRendererTests.swift`
+  (reads internal `PixelClockProviderLogo.sourceName/rows` + `providerLogoPattern`).
+  `SwarmColorDriverTests` + `HermesSquarePhaseATests` compile via the umbrella (public-only, no
+  `@testable`). `SmartHubDisplaySettingsModelTests` already in `openBurnBarCoreTestExcludes`.
+- **Package.swift:** removed the **5** stale off-Apple excludes for moved files
+  (`AgentWatchLiveActivityAttributes`, `BurnBarLiveActivityAttributes`, `PixelClockSettingsModel`,
+  `SmartHubDisplaySettingsModel`, `SwarmColorDriver`); the other 5 were never excluded (Foundation-
+  only / `#if os(iOS)`; Cards/Square rode `"Views"`). **NO new UI exclude** (UI pruned whole
+  off-Apple). **OFF-APPLE SAFE:** the ONLY still-in-Core consumers of every moved symbol are 3 files
+  (`PixelClockPreviewView`, `SwarmCanvasView`, `SwarmCanvasView+Color`), ALL under `"Views"`; boundary
+  manifest parses clean (`swift package dump-package`, `OPENBURNBAR_DAEMON_LINUX_BOUNDARY_BUILD=1`).
+  V1 UI / V2 Core / Engine / daemon builds ✔; full `swift test` ✔ exit 0; ui-purity `--update` 30→29.
 
 ## Per-sub-packet rules
 - Deps: `OpenBurnBarUI` already depends on Kernel/Quota/Insights/Hermes/Pretext/LogParsers
