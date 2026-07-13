@@ -193,6 +193,33 @@ extension CLIAgentMissionRequestListener {
         }
     }
 
+    /// Builds the typed shadow input from the listener's post-decryption data.
+    /// Kept as a pure helper so the security-sensitive field mapping is
+    /// directly testable without requiring a live Firestore listener.
+    nonisolated static func makeShadowContext(
+        data: [String: Any],
+        missionID: String,
+        prompt: String,
+        fanOutCount: Int
+    ) -> MissionRemoteAuthorizationShadow.ShadowContext {
+        MissionRemoteAuthorizationShadow.ShadowContext(
+            missionID: missionID, prompt: prompt,
+            runtime: (data["requestedRuntime"] as? String) ?? "auto",
+            modelID: (data["requestedModelID"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+            commandsAllowed: (data["commandsAllowed"] as? Bool) ?? false,
+            fileEditsAllowed: (data["fileEditsAllowed"] as? Bool) ?? false,
+            originDeviceID: (data["originDeviceID"] as? String)?.nilIfBlank ?? (data["createdBy"] as? String)?.nilIfBlank ?? "unknown",
+            originPlatform: (data["originPlatform"] as? String)?.nilIfBlank ?? (data["source"] as? String)?.nilIfBlank ?? "unknown",
+            personaScopeJSON: (data["personaScopeJSON"] as? String)?.nilIfBlank,
+            approvalMode: (data["approvalMode"] as? String)?.nilIfBlank,
+            approvalStatus: (data["approvalStatus"] as? String) ?? "",
+            approverDeviceID: (data["approverDeviceID"] as? String)?.nilIfBlank,
+            entitlementTier: (data["entitlementTier"] as? String)?.nilIfBlank ?? "none",
+            workingDirectory: (data["workingDirectory"] as? String)?.nilIfBlank,
+            fanOutCount: fanOutCount
+        )
+    }
+
     func handle(document: QueryDocumentSnapshot) async {
         let cancellationTracker = MissionCancellationTracker()
         let logger = self.logger
@@ -235,20 +262,10 @@ extension CLIAgentMissionRequestListener {
         var data = mergePrivateMissionPayload(privatePayload, into: rawData)
         // Build shadow context from current data at call time (reads post-wand-routing values).
         func shadowCtx(_ id: String, _ p: String, _ fanOut: Int) -> MissionRemoteAuthorizationShadow.ShadowContext {
-            MissionRemoteAuthorizationShadow.ShadowContext(
-                missionID: id, prompt: p,
-                runtime: (data["requestedRuntime"] as? String) ?? "auto",
-                modelID: (data["requestedModelID"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                commandsAllowed: (data["commandsAllowed"] as? Bool) ?? false,
-                fileEditsAllowed: (data["fileEditsAllowed"] as? Bool) ?? false,
-                originDeviceID: (data["originDeviceID"] as? String)?.nilIfBlank ?? (data["createdBy"] as? String)?.nilIfBlank ?? "unknown",
-                originPlatform: (data["originPlatform"] as? String)?.nilIfBlank ?? (data["source"] as? String)?.nilIfBlank ?? "unknown",
-                personaScopeJSON: (data["personaScopeJSON"] as? String)?.nilIfBlank,
-                approvalMode: (data["approvalMode"] as? String)?.nilIfBlank,
-                approvalStatus: (data["approvalStatus"] as? String) ?? "",
-                approverDeviceID: (data["approverDeviceID"] as? String)?.nilIfBlank,
-                entitlementTier: (data["entitlementTier"] as? String)?.nilIfBlank ?? "none",
-                workingDirectory: (data["workingDirectory"] as? String)?.nilIfBlank,
+            Self.makeShadowContext(
+                data: data,
+                missionID: id,
+                prompt: p,
                 fanOutCount: fanOut
             )
         }

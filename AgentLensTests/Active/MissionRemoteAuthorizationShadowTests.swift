@@ -19,6 +19,27 @@ final class MissionRemoteAuthorizationShadowTests: XCTestCase {
         BurnBarRemoteMissionAuthorizeResponse(verdict: verdict, deniedReason: reason)
     }
 
+    private func context(
+        missionID: String = "m1",
+        prompt: String = "inspect the project",
+        approvalStatus: String = "pending"
+    ) -> MissionRemoteAuthorizationShadow.ShadowContext {
+        MissionRemoteAuthorizationShadow.ShadowContext(
+            missionID: missionID, prompt: prompt, runtime: "codex", modelID: "gpt-x",
+            commandsAllowed: true, fileEditsAllowed: false,
+            originDeviceID: "device-1", originPlatform: "macos",
+            personaScopeJSON: nil, approvalMode: "manual_all", approvalStatus: approvalStatus,
+            approverDeviceID: nil, entitlementTier: "pro", workingDirectory: nil, fanOutCount: 1
+        )
+    }
+
+    @MainActor
+    private func restoreMode(after body: () async -> Void) async {
+        let previousMode = MissionRemoteAuthorizationShadow.mode
+        defer { MissionRemoteAuthorizationShadow.mode = previousMode }
+        await body()
+    }
+
     // MARK: - Comparator table
 
     func testComparatorAgreementAndDivergenceTable() {
@@ -272,5 +293,161 @@ final class MissionRemoteAuthorizationShadowTests: XCTestCase {
             executorTrustState: "trusted"
         )
         XCTAssertNil(request.personaScope)
+    }
+
+    // MARK: - Listener field mapping and observation plumbing
+
+    func testListenerShadowContextMapsFieldsAndFailsClosedForMissingValues() {
+        let populated = CLIAgentMissionRequestListener.makeShadowContext(
+            data: [
+                "requestedRuntime": "ollama",
+                "requestedModelID": "  llama3  ",
+                "commandsAllowed": true,
+                "fileEditsAllowed": true,
+                "originDeviceID": "device-9",
+                "originPlatform": "ios",
+                "personaScopeJSON": "{\"personaID\":\"reviewer\"}",
+                "approvalMode": "manual_all",
+                "approvalStatus": "pending",
+                "approverDeviceID": "approver-1",
+                "entitlementTier": "pro",
+                "workingDirectory": "/tmp/project"
+            ],
+            missionID: "mapped",
+            prompt: "prompt",
+            fanOutCount: 4
+        )
+        XCTAssertEqual(populated.missionID, "mapped")
+        XCTAssertEqual(populated.runtime, "ollama")
+        XCTAssertEqual(populated.modelID, "llama3")
+        XCTAssertTrue(populated.commandsAllowed)
+        XCTAssertTrue(populated.fileEditsAllowed)
+        XCTAssertEqual(populated.originDeviceID, "device-9")
+        XCTAssertEqual(populated.originPlatform, "ios")
+        XCTAssertEqual(populated.approvalMode, "manual_all")
+        XCTAssertEqual(populated.approverDeviceID, "approver-1")
+        XCTAssertEqual(populated.entitlementTier, "pro")
+        XCTAssertEqual(populated.workingDirectory, "/tmp/project")
+        XCTAssertEqual(populated.fanOutCount, 4)
+
+        let missing = CLIAgentMissionRequestListener.makeShadowContext(
+            data: [
+                "createdBy": "creator-1",
+                "source": "mobile",
+                "approvalStatus": "",
+                "entitlementTier": "  "
+            ],
+            missionID: "fallbacks",
+            prompt: "",
+            fanOutCount: 0
+        )
+        XCTAssertEqual(missing.runtime, "auto")
+        XCTAssertNil(missing.modelID)
+        XCTAssertFalse(missing.commandsAllowed)
+        XCTAssertFalse(missing.fileEditsAllowed)
+        XCTAssertEqual(missing.originDeviceID, "creator-1")
+        XCTAssertEqual(missing.originPlatform, "mobile")
+        XCTAssertNil(missing.personaScopeJSON)
+        XCTAssertNil(missing.approvalMode)
+        XCTAssertEqual(missing.approvalStatus, "")
+        XCTAssertNil(missing.approverDeviceID)
+        XCTAssertEqual(missing.entitlementTier, "none")
+        XCTAssertNil(missing.workingDirectory)
+    }
+
+    func testEmitHandlesEverySignalKind() {
+        MissionRemoteAuthorizationShadow.emit(MissionRemoteAuthorizationShadow.compare(
+            missionID: "agree", gui: .allow, daemon: daemon(.authorized), promptSHA256: "a"
+        ))
+        MissionRemoteAuthorizationShadow.emit(MissionRemoteAuthorizationShadow.compare(
+            missionID: "unreachable", gui: .deny, daemon: nil, promptSHA256: "b", unreachableDetail: "offline"
+        ))
+        MissionRemoteAuthorizationShadow.emit(MissionRemoteAuthorizationShadow.compare(
+            missionID: "daemon-stricter", gui: .allow, daemon: daemon(.denied), promptSHA256: "c"
+        ))
+        MissionRemoteAuthorizationShadow.emit(MissionRemoteAuthorizationShadow.compare(
+            missionID: "gui-stricter", gui: .deny, daemon: daemon(.authorized), promptSHA256: "d"
+        ))
+    }
+
+    @MainActor
+    func testObserveReturnsWithoutDaemonWhenShadowModeIsOff() async {
+        await restoreMode { @MainActor in
+            MissionRemoteAuthorizationShadow.mode = .off
+            await MissionRemoteAuthorizationShadow.observe(
+                ctx: context(), guiDecision: .allow, executorTrustState: "trusted"
+            )
+        }
+    }
+
+    @MainActor
+    func testObserveClassifiesUnhealthyDaemonAsUnreachable() async {
+        await restoreMode { @MainActor in
+            MissionRemoteAuthorizationShadow.mode = .shadow
+            let manager = OpenBurnBarDaemonManager()
+            manager.status = .unhealthy("test daemon unavailable")
+            await MissionRemoteAuthorizationShadow.observe(
+                ctx: context(), guiDecision: .requiresApproval, executorTrustState: "trusted", manager: manager
+            )
+        }
+    }
+
+    @MainActor
+    func testObserveClassifiesSocketFailureAsUnreachable() async {
+        await restoreMode { @MainActor in
+            MissionRemoteAuthorizationShadow.mode = .shadow
+            let root = FileManager.default.temporaryDirectory
+                .appendingPathComponent("MissionRemoteAuthorizationShadowTests-\(UUID().uuidString)", isDirectory: true)
+            let paths = OpenBurnBarDaemonRuntimePaths(
+                supportDirectory: root,
+                daemonDirectory: root.appendingPathComponent("daemon", isDirectory: true),
+                frameworksDirectory: root.appendingPathComponent("Frameworks", isDirectory: true),
+                installedBinaryURL: root.appendingPathComponent("daemon/OpenBurnBarDaemon"),
+                socketURL: root.appendingPathComponent("missing.sock"),
+                logURL: root.appendingPathComponent("daemon.log"),
+                launchAgentPlistURL: root.appendingPathComponent("launch-agent.plist")
+            )
+            let manager = OpenBurnBarDaemonManager(paths: paths, dependencies: .live())
+            let health = BurnBarHealthResponse(
+                ok: true,
+                daemonVersion: "test",
+                protocolVersion: BurnBarProtocolVersion.current,
+                socketPath: paths.socketURL.path
+            )
+            manager.status = .healthy(OpenBurnBarDaemonHealthSnapshot(response: health))
+            await MissionRemoteAuthorizationShadow.observe(
+                ctx: context(), guiDecision: .allow, executorTrustState: "trusted", manager: manager
+            )
+        }
+    }
+
+    @MainActor
+    func testFireAndForgetHelpersScheduleShadowObservations() async {
+        await restoreMode { @MainActor in
+            MissionRemoteAuthorizationShadow.mode = .off
+            let ctx = context(approvalStatus: "pending")
+            MissionRemoteAuthorizationShadow.observeDeny(ctx: ctx, executorTrustState: "untrusted")
+            MissionRemoteAuthorizationShadow.observeTrustedDecision(
+                ctx: ctx,
+                isTerminalDenial: false,
+                personaScopeMalformed: false,
+                willPauseForApproval: true
+            )
+            MissionRemoteAuthorizationShadow.observeTrustedDecision(
+                ctx: ctx,
+                isTerminalDenial: true,
+                personaScopeMalformed: false,
+                willPauseForApproval: true
+            )
+            MissionRemoteAuthorizationShadow.observeTrustedDecision(
+                ctx: ctx,
+                isTerminalDenial: false,
+                personaScopeMalformed: true,
+                willPauseForApproval: false
+            )
+            for _ in 0..<3 {
+                await Task.yield()
+            }
+        }
     }
 }
