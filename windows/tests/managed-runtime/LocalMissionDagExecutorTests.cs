@@ -92,4 +92,84 @@ public sealed class LocalMissionDagExecutorTests
             File.Delete(path);
         }
     }
+
+    [Fact]
+    public async Task ExecuteAsync_RejectsCyclesBeforeWritingJournal()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"obb-mission-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var executor = new LocalMissionDagExecutor(
+                new HeadlessRunService(new JsonLinesHeadlessRunJournal(path)));
+
+            await Assert.ThrowsAsync<ArgumentException>(() => executor.ExecuteAsync(
+                new MissionDefinition("mission-cycle", new[]
+                {
+                    new MissionNode("a", "safe", "a", new[] { "b" }),
+                    new MissionNode("b", "safe", "b", new[] { "a" }),
+                }),
+                new MissionPolicy(AllowedKinds: new HashSet<string> { "safe" }),
+                (_, _) => Task.FromResult(MissionStepResult.Ok())));
+
+            Assert.False(File.Exists(path));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_FailsClosedWhenRateWindowIsExhausted()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"obb-mission-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var executor = new LocalMissionDagExecutor(
+                new HeadlessRunService(new JsonLinesHeadlessRunJournal(path)),
+                rateLimiter: new MissionRateLimiter(1, TimeSpan.FromMinutes(1)));
+
+            MissionExecutionResult result = await executor.ExecuteAsync(
+                new MissionDefinition("mission-rate", new[]
+                {
+                    new MissionNode("first", "safe", "one"),
+                    new MissionNode("second", "safe", "two"),
+                }),
+                new MissionPolicy(AllowedKinds: new HashSet<string> { "safe" }),
+                (_, _) => Task.FromResult(MissionStepResult.Ok()));
+
+            Assert.Equal(HeadlessRunState.Failed, result.State);
+            Assert.Equal("second", result.FailedNodeId);
+            Assert.Equal("mission_rate_limit_exceeded", result.Error);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_RejectsOversizedPayloadBeforeWritingJournal()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"obb-mission-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var executor = new LocalMissionDagExecutor(
+                new HeadlessRunService(new JsonLinesHeadlessRunJournal(path)));
+
+            await Assert.ThrowsAsync<ArgumentException>(() => executor.ExecuteAsync(
+                new MissionDefinition("mission-payload", new[]
+                {
+                    new MissionNode("x", "safe", "12345"),
+                }),
+                new MissionPolicy(MaxPayloadBytes: 4),
+                (_, _) => Task.FromResult(MissionStepResult.Ok())));
+
+            Assert.False(File.Exists(path));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
 }

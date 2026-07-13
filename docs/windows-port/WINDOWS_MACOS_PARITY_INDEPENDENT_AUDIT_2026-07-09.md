@@ -96,8 +96,11 @@ unproven host behavior to certification:
   healthy route is available.
 - Headless runs and local Mission Control DAGs now have an append-only,
   write-through JSONL journal, dependency validation, approval policy, bounded
-  recovery/resume, cancellation records, and tests proving that request
-  payloads and secrets are not persisted.
+  recovery/resume, cancellation records, deterministic topological planning,
+  bounded UTF-8 payloads, and a shared fixed-window execution limiter that
+  fails closed rather than queueing unbounded work. Tests prove that request
+  payloads and secrets are not persisted and that malformed cycles are rejected
+  before journaling.
 - Browser Computer Use process mode now uses a direct executable plus a
   JSON-line bridge with no shell interpolation, bounded responses, serialized
   commands, cancellation, and process-tree cleanup. The bridge now accepts the
@@ -125,8 +128,9 @@ unproven host behavior to certification:
   gateway executor; unconfigured provider routes fail closed. Provider response
   bodies are bounded before entering the fusion loop.
 
-These changes are covered by focused managed-runtime (97/97), presentation
-(749/749), Computer Use, bridge-policy, and provider-boundary tests. They are an implementation increment, not a claim that
+These changes are covered by focused managed-runtime (29/29 mission/runtime
+tests plus 97/97 managed-agent-runtime tests), presentation (749/749),
+Computer Use, bridge-policy, and provider-boundary tests. They are an implementation increment, not a claim that
 the F2 workstreams are all promoted to `Real`: full static parsing, live
 Pensieve storage integration, production composition of every F2 service,
 physical Computer Use/media safety, and host evidence still remain. The
