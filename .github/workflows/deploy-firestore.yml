@@ -18,6 +18,8 @@ on:
       - "scripts/ci/check-firestore-deploy-drift.mjs"
       - "scripts/ci/check-firestore-rules-size.mjs"
       - "scripts/ci/compact-firestore-rules-inplace.mjs"
+      - "scripts/ci/repair-firestore-rules-release.mjs"
+      - "scripts/ci/repair-firestore-rules-release.test.mjs"
       - "scripts/ci/propagate-storage-rules-secondary-buckets.mjs"
       - "scripts/ci/firebase-rules-source.mjs"
       - "functions/scripts/test-firestore-rules.mjs"
@@ -76,6 +78,9 @@ jobs:
       - name: Guard Firestore rules size against the release limit
         run: node scripts/ci/check-firestore-rules-size.mjs
 
+      - name: Test Firestore release conflict repair path
+        run: node --test scripts/ci/repair-firestore-rules-release.test.mjs
+
       - name: Prepare Firebase deploy config and CLI before auth
         run: |
           node scripts/ci/write-firebase-hosting-ci-config.mjs \
@@ -123,11 +128,25 @@ jobs:
           # comment/blank-stripped — preserving the size margin AND keeping the
           # drift check (which compacts the repo side) hash-identical.
           node scripts/ci/compact-firestore-rules-inplace.mjs firestore.rules
-          "$FIREBASE_TOOLS_BIN" deploy \
+          set +e
+          deploy_output="$("$FIREBASE_TOOLS_BIN" deploy \
             --only firestore,storage \
             --project "$FIREBASE_PROJECT" \
             --config "$FIREBASE_FIRESTORE_CI_CONFIG" \
-            --non-interactive
+            --non-interactive 2>&1)"
+          deploy_status=$?
+          set -e
+          printf '%s\n' "$deploy_output"
+          if [[ "$deploy_status" -ne 0 ]]; then
+            if grep -Fq "firebaserules.googleapis.com/v1/projects/" <<<"$deploy_output" \
+              && grep -Fq "409, Requested entity already exists" <<<"$deploy_output"; then
+              echo "Firebase Rules release already exists; repairing the existing cloud.firestore release idempotently."
+              node scripts/ci/repair-firestore-rules-release.mjs "$FIREBASE_PROJECT"
+            else
+              echo "::error::Firebase deploy failed outside the narrowly-scoped existing-release conflict repair path."
+              exit "$deploy_status"
+            fi
+          fi
 
       # firebase deploy --only storage only ships rules to the default bucket.
       # The deleted helper enumerated every firebase.storage/ release; the drift
