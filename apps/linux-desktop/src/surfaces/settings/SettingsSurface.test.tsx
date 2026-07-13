@@ -159,6 +159,42 @@ describe('SettingsSurface', () => {
     expect(screen.getByText(/No destructive deletion RPC is exposed/i)).toBeTruthy();
   });
 
+  it('clears only the daemon-owned local proxy route log after explicit confirmation', async () => {
+    let routeRows = [{
+      id: 'route-1',
+      occurredAt: '2026-07-13T12:00:00.000Z',
+      endpoint: '/v1/chat/completions',
+      clientModelSlug: 'burnbar-default',
+      routingModelSlug: 'provider-model',
+      providerName: 'Local provider',
+      finalStatus: 'success',
+      rewriteKind: 'none',
+      exactModelInvariant: 'provider-model',
+      streamed: false,
+      httpStatus: 200
+    }];
+    const proxyRouteLogRecent = vi.fn(async () => routeRows);
+    const proxyRouteLogClear = vi.fn(async () => {
+      routeRows = [];
+      return true;
+    });
+    useShellStore.setState({
+      bridge: bridge({ proxyRouteLogRecent, proxyRouteLogClear }),
+      fixtureMode: false
+    });
+    useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
+    render(<SettingsSurface />);
+    fireEvent.click(screen.getAllByRole('button', { name: /Data & Privacy/i })[0]!);
+    await waitFor(() => expect(screen.getByText('1 retained')).toBeTruthy());
+    const clearButton = screen.getByRole('button', { name: 'Clear local route log' });
+    fireEvent.click(clearButton);
+    expect(screen.getByRole('button', { name: 'Confirm clear route log' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm clear route log' }));
+    await waitFor(() => expect(proxyRouteLogClear).toHaveBeenCalledOnce());
+    await waitFor(() => expect(screen.getByText('0 retained')).toBeTruthy());
+    expect(proxyRouteLogRecent).toHaveBeenCalled();
+  });
+
   it('shows loading skeleton without fixture', () => {
     vi.spyOn(useSystemStore.getState(), 'loadConfig').mockImplementation(async () => {});
     useSystemStore.setState({ loading: true, config: null, error: null });

@@ -147,6 +147,66 @@ function PrivacyToggle({
   );
 }
 
+function ProxyRouteRetentionControl({ fixtureMode }: { fixtureMode: boolean }) {
+  const routeLog = useSettingsWiringStore((state) => state.routeLog);
+  const loadingRouteLog = useSettingsWiringStore((state) => state.loadingRouteLog);
+  const busy = useSettingsWiringStore((state) => state.busy);
+  const error = useSettingsWiringStore((state) => state.error);
+  const loadRouteLog = useSettingsWiringStore((state) => state.loadRouteLog);
+  const clearRouteLog = useSettingsWiringStore((state) => state.clearRouteLog);
+  const [confirming, setConfirming] = useState(false);
+
+  useEffect(() => {
+    void loadRouteLog();
+  }, [loadRouteLog]);
+
+  const clearBusy = busy === 'route-log.clear';
+  const disabled = Boolean(busy) || loadingRouteLog;
+  const requestClear = () => {
+    if (!confirming) {
+      setConfirming(true);
+      return;
+    }
+    setConfirming(false);
+    void clearRouteLog();
+  };
+
+  return (
+    <>
+      <SettingRow
+        iconGlyph="⌫"
+        label="Proxy route retention"
+        description={
+          fixtureMode
+            ? 'Fixture route events are local-only and can be cleared from this pane.'
+            : 'Clear the daemon-owned local proxy route log. This does not delete transcripts, credentials, or account data.'
+        }
+        control={
+          <span className="settings-verification-value">
+            <span className="muted" role="status">{routeLog.length} retained</span>
+            <button type="button" className="ghost" disabled={disabled} onClick={() => void loadRouteLog()}>
+              {loadingRouteLog ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </span>
+        }
+      />
+      <div className="actions">
+        <button
+          type="button"
+          className={confirming ? 'danger' : 'ghost'}
+          disabled={disabled || routeLog.length === 0}
+          aria-busy={clearBusy}
+          onClick={requestClear}
+        >
+          {clearBusy ? 'Clearing…' : confirming ? 'Confirm clear route log' : 'Clear local route log'}
+        </button>
+        {confirming ? <button type="button" className="ghost" onClick={() => setConfirming(false)}>Cancel</button> : null}
+      </div>
+      {error && (clearBusy || confirming) ? <p className="muted" role="alert">{error}</p> : null}
+    </>
+  );
+}
+
 function cloneConfig(config: ConfigSnapshot): ConfigSnapshot {
   return JSON.parse(JSON.stringify(config)) as ConfigSnapshot;
 }
@@ -1232,6 +1292,7 @@ export function SettingsDetailPane({
                 control={<span className="muted" role="status">Unavailable</span>}
                 readOnlyNote="No destructive deletion RPC is exposed; nothing is deleted from this pane."
               />
+              <ProxyRouteRetentionControl fixtureMode={fixtureMode} />
               <SettingRow
                 iconGlyph="◎"
                 label="Account erasure"
