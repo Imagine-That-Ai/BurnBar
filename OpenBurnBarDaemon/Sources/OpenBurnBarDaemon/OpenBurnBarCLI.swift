@@ -513,21 +513,94 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
     }
 }
 
+public protocol BurnBarCLIServiceControlling: Sendable {
+    func start() throws
+    func restart() throws
+}
+
+public struct BurnBarSystemdUserServiceController: BurnBarCLIServiceControlling, Sendable {
+    public let serviceName: String
+
+    public init(serviceName: String = "openburnbar-daemon.service") {
+        self.serviceName = serviceName
+    }
+
+    public func start() throws {
+        try runSystemctl(arguments: ["--user", "start", serviceName])
+    }
+
+    public func restart() throws {
+        try runSystemctl(arguments: ["--user", "restart", serviceName])
+    }
+
+    private func runSystemctl(arguments: [String]) throws {
+        #if os(Linux)
+        guard serviceName == "openburnbar-daemon.service" else {
+            throw BurnBarCLIServiceControlError.invalidServiceName
+        }
+        let executable = ["/usr/bin/systemctl", "/bin/systemctl"].first {
+            FileManager.default.isExecutableFile(atPath: $0)
+        }
+        guard let executable else {
+            throw BurnBarCLIServiceControlError.systemdUnavailable
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = output
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            let bytes = output.fileHandleForReading.readDataToEndOfFile()
+            let detail = String(data: bytes, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            throw BurnBarCLIServiceControlError.commandFailed(
+                detail ?? "systemctl exited \(process.terminationStatus)"
+            )
+        }
+        #else
+        throw BurnBarCLIServiceControlError.systemdUnavailable
+        #endif
+    }
+}
+
+public enum BurnBarCLIServiceControlError: Error, LocalizedError, Sendable {
+    case invalidServiceName
+    case systemdUnavailable
+    case commandFailed(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalidServiceName:
+            return "Refusing to control an unapproved OpenBurnBar systemd unit."
+        case .systemdUnavailable:
+            return "The Linux systemd user service is unavailable on this platform."
+        case .commandFailed(let detail):
+            return "OpenBurnBar systemd service command failed: \(detail)"
+        }
+    }
+}
+
 public struct BurnBarCLIRunner {
     public let client: any BurnBarCLIClient
     public let shellExecutor: any BurnBarCLIShellExecuting
     public let shellShimInstaller: any BurnBarCLIShellShimInstalling
     public let remoteUnlockCertificationStore: RemoteUnlockCertificationReportStore
+    public let serviceController: any BurnBarCLIServiceControlling
     private let logger = BurnBarDaemonLogger(category: "cli-runner")
 
     public init(
         client: any BurnBarCLIClient,
         shellExecutor: (any BurnBarCLIShellExecuting)? = nil,
         shellShimInstaller: (any BurnBarCLIShellShimInstalling)? = nil,
-        remoteUnlockCertificationStore: RemoteUnlockCertificationReportStore = RemoteUnlockCertificationReportStore()
+        remoteUnlockCertificationStore: RemoteUnlockCertificationReportStore = RemoteUnlockCertificationReportStore(),
+        serviceController: (any BurnBarCLIServiceControlling)? = nil
     ) {
         self.client = client
         self.remoteUnlockCertificationStore = remoteUnlockCertificationStore
+        self.serviceController = serviceController ?? BurnBarSystemdUserServiceController()
         let profileStore: any BurnBarSwitcherProfileStoreProviding
         do {
             let sqliteStore = try BurnBarSwitcherSQLiteProfileStore()
@@ -687,10 +760,18 @@ public struct BurnBarCLIRunner {
 
         if effectiveArguments.first == "service",
            effectiveArguments.dropFirst().first == "restart" {
-            return BurnBarCLIInvocationResult(
-                output: "service_restart=unsupported foreground_daemon=true",
-                exitCode: 69
-            )
+            do {
+                return BurnBarCLIInvocationResult(
+                    output: try run(arguments: effectiveArguments),
+                    exitCode: EXIT_SUCCESS
+                )
+            } catch BurnBarCLIServiceControlError.systemdUnavailable,
+                    BurnBarCLIServiceControlError.commandFailed {
+                return BurnBarCLIInvocationResult(
+                    output: "service_restart=unsupported foreground_daemon=true",
+                    exitCode: 69
+                )
+            }
         }
 
         if effectiveArguments.first == "resume" {
@@ -778,20 +859,55 @@ public struct BurnBarCLIRunner {
             throw BurnBarCLIError.missingArgument("Usage: openburnbar-cli service <status|foreground|restart>")
         }
         switch subcommand {
-        case "status", "foreground":
-            let health = try client.health()
-            return [
-                "service=\(subcommand == "foreground" ? "foreground" : "running")",
-                "daemon_version=\(health.daemonVersion)",
-                "protocol=\(health.protocolVersion)",
-                "socket=\(health.socketPath ?? "n/a")",
-                "gateway=\(health.gatewayEnabled ? "enabled" : "disabled")"
-            ].joined(separator: "\n")
+        case "status":
+            return formatServiceStatus(try client.health(), service: "running")
+        case "foreground":
+            do {
+                return formatServiceStatus(try client.health(), service: "running", detail: "already_running=true")
+            } catch {
+                try serviceController.start()
+                let health = try waitForServiceHealth()
+                return formatServiceStatus(health, service: "foreground", detail: "started=true")
+            }
         case "restart":
-            return "service_restart=unsupported foreground_daemon=true"
+            try serviceController.restart()
+            let health = try waitForServiceHealth()
+            return formatServiceStatus(health, service: "restarted", detail: "restart_requested=true")
         default:
             throw BurnBarCLIError.invalidCommand("service \(subcommand)")
         }
+    }
+
+    private func formatServiceStatus(
+        _ health: BurnBarHealthResponse,
+        service: String,
+        detail: String? = nil
+    ) -> String {
+        [
+                "service=\(service)",
+                "daemon_version=\(health.daemonVersion)",
+                "protocol=\(health.protocolVersion)",
+                "socket=\(health.socketPath ?? "n/a")",
+                "gateway=\(health.gatewayEnabled ? "enabled" : "disabled")",
+                detail
+            ].compactMap { $0 }.joined(separator: "\n")
+    }
+
+    private func waitForServiceHealth(
+        timeout: TimeInterval = 5,
+        pollInterval: TimeInterval = 0.1
+    ) throws -> BurnBarHealthResponse {
+        let deadline = Date().addingTimeInterval(timeout)
+        var lastError: Error?
+        repeat {
+            do {
+                return try client.health()
+            } catch {
+                lastError = error
+                Thread.sleep(forTimeInterval: pollInterval)
+            }
+        } while Date() < deadline
+        throw lastError ?? BurnBarCLIError.invalidCommand("daemon health did not become ready")
     }
 
     private func runCapabilitiesCommand(_ arguments: [String]) throws -> String {
