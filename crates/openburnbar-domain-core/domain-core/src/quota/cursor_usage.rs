@@ -274,16 +274,11 @@ mod tests {
             }"#,
             None,
         );
-        let Some(bucket) = actual
-            .snapshot
-            .buckets
-            .iter()
-            .find(|bucket| bucket.key == "cursor-team-ondemand")
-        else {
-            panic!("team on-demand bucket");
-        };
-        assert_eq!(bucket.used_value, Some(5.0));
-        assert_eq!(bucket.limit_value, Some(10.0));
-        assert_eq!(bucket.remaining_value, Some(5.0));
+        assert!(actual.snapshot.buckets.iter().any(|bucket| {
+            bucket.key == "cursor-team-ondemand"
+                && bucket.used_value == Some(5.0)
+                && bucket.limit_value == Some(10.0)
+                && bucket.remaining_value == Some(5.0)
+        }));
     }
 }
