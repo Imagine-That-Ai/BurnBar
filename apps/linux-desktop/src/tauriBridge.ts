@@ -661,6 +661,49 @@ export type NotificationHealth = {
   channels: { channel: 'local' | 'telegram' | 'calendar'; status: string; detail?: string | null; checkedAt: string }[];
 };
 export type NotificationCommandResult = { command: string; ok: boolean; message: string };
+export type NativeNotificationRoute =
+  | 'overview'
+  | 'chat'
+  | 'insights'
+  | 'settings'
+  | 'activity'
+  | 'account'
+  | 'updates'
+  | 'support';
+export type NativeNotificationRequest = {
+  id?: string;
+  title: string;
+  body: string;
+  route: NativeNotificationRoute;
+  action: 'open';
+  urgency?: 'low' | 'normal' | 'critical';
+};
+export type NativeNotificationCapabilities = {
+  available: boolean;
+  actions: boolean;
+  persistence: boolean;
+  body: boolean;
+  bodyMarkup: boolean;
+  serverCapabilities: string[];
+  degradedReason?: string;
+};
+export type NativeNotificationResult = {
+  notificationId: string;
+  delivered: boolean;
+  actionsAttached: boolean;
+  degradedReason?: string;
+};
+export type NativeNotificationActionEvent = {
+  notificationId: string;
+  route: NativeNotificationRoute;
+  action: 'open';
+};
+export type NativeShortcutStatus = {
+  available: boolean;
+  registered: boolean;
+  shortcuts: string[];
+  degradedReason?: string;
+};
 
 // ─────────────────────────── P11: session env ─────────────────────────────
 
@@ -1086,6 +1129,9 @@ export interface LinuxShellBridge {
   notificationConfigUpdate?(config: NotificationConfig): Promise<NotificationConfig>;
   notificationHealth?(): Promise<NotificationHealth>;
   notificationCommand?(command: string, args?: string[]): Promise<NotificationCommandResult>;
+  nativeNotificationCapabilities?(): Promise<NativeNotificationCapabilities>;
+  nativeNotificationShow?(request: NativeNotificationRequest): Promise<NativeNotificationResult>;
+  nativeShortcutStatus?(): Promise<NativeShortcutStatus>;
   toolApprovalRespond?(
     approvalId: string,
     decision: 'approve' | 'reject' | 'cancel',
@@ -2762,6 +2808,61 @@ function mapNotificationCommand(raw: RawJsonValue): NotificationCommandResult {
   };
 }
 
+const NATIVE_NOTIFICATION_ROUTES: readonly NativeNotificationRoute[] = [
+  'overview', 'chat', 'insights', 'settings', 'activity', 'account', 'updates', 'support'
+];
+
+export function decodeNativeNotificationCapabilities(raw: RawJsonValue): NativeNotificationCapabilities {
+  const value = requireObject(raw, 'native notification capabilities');
+  const serverCapabilities = arr(pick(value, 'serverCapabilities', 'server_capabilities'))
+    .map((entry) => requireString(entry, 'native notification capability'));
+  const degradedReason = str(pick(value, 'degradedReason', 'degraded_reason')) || undefined;
+  return {
+    available: requireBoolean(pick(value, 'available'), 'native notification availability'),
+    actions: requireBoolean(pick(value, 'actions'), 'native notification actions capability'),
+    persistence: requireBoolean(pick(value, 'persistence'), 'native notification persistence capability'),
+    body: requireBoolean(pick(value, 'body'), 'native notification body capability'),
+    bodyMarkup: requireBoolean(pick(value, 'bodyMarkup', 'body_markup'), 'native notification body-markup capability'),
+    serverCapabilities,
+    degradedReason
+  };
+}
+
+export function decodeNativeNotificationResult(raw: RawJsonValue): NativeNotificationResult {
+  const value = requireObject(raw, 'native notification result');
+  return {
+    notificationId: requireString(pick(value, 'notificationId', 'notification_id'), 'native notification id'),
+    delivered: requireBoolean(pick(value, 'delivered'), 'native notification delivery'),
+    actionsAttached: requireBoolean(pick(value, 'actionsAttached', 'actions_attached'), 'native notification actions attached'),
+    degradedReason: str(pick(value, 'degradedReason', 'degraded_reason')) || undefined
+  };
+}
+
+export function decodeNativeNotificationActionEvent(raw: RawJsonValue): NativeNotificationActionEvent {
+  const value = requireObject(raw, 'native notification action');
+  const route = requireString(pick(value, 'route'), 'native notification action route');
+  if (!NATIVE_NOTIFICATION_ROUTES.includes(route as NativeNotificationRoute)) {
+    throw new Error(`native notification action route is unsupported: ${route}`);
+  }
+  const action = requireString(pick(value, 'action'), 'native notification action id');
+  if (action !== 'open') throw new Error(`native notification action id is unsupported: ${action}`);
+  return {
+    notificationId: requireString(pick(value, 'notificationId', 'notification_id'), 'native notification action notificationId'),
+    route: route as NativeNotificationRoute,
+    action: 'open'
+  };
+}
+
+export function decodeNativeShortcutStatus(raw: RawJsonValue): NativeShortcutStatus {
+  const value = requireObject(raw, 'native shortcut status');
+  return {
+    available: requireBoolean(pick(value, 'available'), 'native shortcut availability'),
+    registered: requireBoolean(pick(value, 'registered'), 'native shortcut registration'),
+    shortcuts: arr(pick(value, 'shortcuts')).map((shortcut) => requireString(shortcut, 'native shortcut')),
+    degradedReason: str(pick(value, 'degradedReason', 'degraded_reason')) || undefined
+  };
+}
+
 function normalizeChannel(s: string): AppVersionInfo['packageChannel'] {
   const lower = s.toLowerCase();
   if (lower.includes('deb')) return 'deb';
@@ -3284,6 +3385,12 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       const raw = await invoke<RawJsonValue>('notification_command', { command, arguments: args });
       return mapNotificationCommand(raw);
     },
+    nativeNotificationCapabilities: async () =>
+      decodeNativeNotificationCapabilities(await invoke<RawJsonValue>('native_notification_capabilities')),
+    nativeNotificationShow: async (request) =>
+      decodeNativeNotificationResult(await invoke<RawJsonValue>('native_notification_show', { request })),
+    nativeShortcutStatus: async () =>
+      decodeNativeShortcutStatus(await invoke<RawJsonValue>('native_shortcut_status')),
     // P07 — derived from daemon.config.get + daemon.health
     dbStatus: async () => {
       const raw = await invoke<RawJsonValue>('db_status');

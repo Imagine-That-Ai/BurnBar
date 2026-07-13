@@ -32,3 +32,6 @@ tokio-util = "0.7"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 openburnbar-media = { path = "../crates/openburnbar-media", optional = true }
+
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+notify-rust = "4.18"

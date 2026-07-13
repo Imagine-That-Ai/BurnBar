@@ -13,6 +13,8 @@ import type {
   NotificationCommandResult,
   NotificationConfig,
   NotificationHealth,
+  NativeNotificationCapabilities,
+  NativeShortcutStatus,
   ProviderSettings,
   ProviderCredentialSlot,
   ProxyRouteLogEntry
@@ -38,6 +40,8 @@ export type SettingsWiringState = {
   notificationConfig: NotificationConfig | null;
   notificationHealth: NotificationHealth | null;
   notificationCommandResult: NotificationCommandResult | null;
+  nativeNotificationCapabilities: NativeNotificationCapabilities | null;
+  nativeShortcutStatus: NativeShortcutStatus | null;
   loadingRouteLog: boolean;
   loadingNotifications: boolean;
   busy: MutationKind | null;
@@ -105,6 +109,8 @@ export const useSettingsWiringStore = create<SettingsWiringState>()((set, get) =
   notificationConfig: null,
   notificationHealth: null,
   notificationCommandResult: null,
+  nativeNotificationCapabilities: null,
+  nativeShortcutStatus: null,
   loadingRouteLog: false,
   loadingNotifications: false,
   busy: null,
@@ -155,6 +161,8 @@ export const useSettingsWiringStore = create<SettingsWiringState>()((set, get) =
       set({
         notificationConfig: fixtureNotificationConfig(),
         notificationHealth: fixtureNotificationHealth(),
+        nativeNotificationCapabilities: null,
+        nativeShortcutStatus: null,
         loadingNotifications: false,
         error: null
       });
@@ -164,6 +172,8 @@ export const useSettingsWiringStore = create<SettingsWiringState>()((set, get) =
       set({
         notificationConfig: null,
         notificationHealth: null,
+        nativeNotificationCapabilities: null,
+        nativeShortcutStatus: null,
         loadingNotifications: false,
         error: 'Packaged shell required for notification settings.'
       });
@@ -171,11 +181,13 @@ export const useSettingsWiringStore = create<SettingsWiringState>()((set, get) =
     }
     set({ loadingNotifications: true, error: null });
     try {
-      const [notificationConfig, notificationHealth] = await Promise.all([
+      const [notificationConfig, notificationHealth, nativeNotificationCapabilities, nativeShortcutStatus] = await Promise.all([
         bridge.notificationConfigGet ? bridge.notificationConfigGet() : Promise.reject(new Error('Notification config RPC bridge is unavailable.')),
-        bridge.notificationHealth ? bridge.notificationHealth() : Promise.reject(new Error('Notification health RPC bridge is unavailable.'))
+        bridge.notificationHealth ? bridge.notificationHealth() : Promise.reject(new Error('Notification health RPC bridge is unavailable.')),
+        bridge.nativeNotificationCapabilities ? bridge.nativeNotificationCapabilities() : Promise.resolve(null),
+        bridge.nativeShortcutStatus ? bridge.nativeShortcutStatus() : Promise.resolve(null)
       ]);
-      set({ notificationConfig, notificationHealth, loadingNotifications: false, error: null });
+      set({ notificationConfig, notificationHealth, nativeNotificationCapabilities, nativeShortcutStatus, loadingNotifications: false, error: null });
     } catch (e) {
       set({ loadingNotifications: false, error: message(e, 'Notification request failed') });
     }
