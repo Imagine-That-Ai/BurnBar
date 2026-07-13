@@ -259,8 +259,10 @@ unproven host behavior to certification:
   language-server client. It performs initialize/open/document-symbol or
   references/shutdown lifecycle exchange, correlates framed responses, confines
   returned paths, and emits `exact_lsp` evidence only for the current source
-  blob. The configured production language-server inventory and per-language
-  host coverage remain external deployment/evidence gates.
+  blob. App startup composes this client from an explicit JSON command map and
+  falls back to the bundled Tree-sitter parser when an LSP is unavailable. The
+  configured production language-server inventory and per-language host
+  coverage remain external deployment/evidence gates.
 - Native Swift engine staging now requires the SwiftPM
   `OpenBurnBarCore_OpenBurnBarCore.resources` bundle, copies it beside the C ABI
   DLL into every RID's publish output, and records SHA-256/size entries for its

@@ -84,4 +84,26 @@ public sealed class LanguageServerProjectCodeParserClientTests
             Directory.Delete(root, recursive: true);
         }
     }
+
+    [Fact]
+    public async Task LspFailureFallsBackToTreeSitterParser()
+    {
+        var fallback = new DelegateProjectCodeStaticParserClient((request, _) => Task.FromResult(
+            new ProjectCodeParseResponse(
+                true,
+                false,
+                new[] { new ProjectCodeParsedSymbol("Fallback", "class", 1, 1, "static_tree_sitter", true, "tree-sitter") },
+                Array.Empty<string>(),
+                "tree-sitter",
+                true)));
+        var primary = new DelegateProjectCodeStaticParserClient((_, _) =>
+            throw new ProjectCodeParserException("lsp_timeout"));
+        var client = new FallbackProjectCodeStaticParserClient(primary, fallback);
+
+        ProjectCodeParseResponse response = await client.ParseAsync(
+            new ProjectCodeParseRequest("fallback", "Runner.cs", "cs", "sha", "class Runner {}", "/tmp"));
+
+        Assert.Equal("tree-sitter", response.Parser);
+        Assert.Equal("Fallback", Assert.Single(response.Symbols).Name);
+    }
 }

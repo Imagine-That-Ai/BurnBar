@@ -404,10 +404,14 @@ public partial class App : Application
             parserPath = File.Exists(packagedPath) ? packagedPath : null;
         }
 
-        IProjectCodeStaticParserClient? parser = !string.IsNullOrWhiteSpace(parserPath)
+        IProjectCodeStaticParserClient? treeSitterParser = !string.IsNullOrWhiteSpace(parserPath)
             && File.Exists(parserPath)
             ? new JsonLinesProjectCodeStaticParserClient(parserPath)
             : null;
+        IProjectCodeStaticParserClient? lspParser = CreateLanguageServerParser();
+        IProjectCodeStaticParserClient? parser = lspParser is not null && treeSitterParser is not null
+            ? new FallbackProjectCodeStaticParserClient(lspParser, treeSitterParser)
+            : lspParser ?? treeSitterParser;
         string? indexPath = Environment.GetEnvironmentVariable("OPENBURNBAR_PROJECT_INDEX_PATH");
         ProjectCodeMemoryStore? store = null;
         try
@@ -430,6 +434,47 @@ public partial class App : Application
 
         var index = new ProjectCodeSymbolIndex(projectRoot, indexPath, parser: parser, store: store);
         return new ProjectCodeMemoryService(index, parser);
+    }
+
+    private static IProjectCodeStaticParserClient? CreateLanguageServerParser()
+    {
+        string? raw = Environment.GetEnvironmentVariable("OPENBURNBAR_CODE_LSP_COMMANDS");
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return null;
+        }
+
+        try
+        {
+            Dictionary<string, string[]>? commands = JsonSerializer.Deserialize<Dictionary<string, string[]>>(raw);
+            if (commands is null || commands.Count == 0)
+            {
+                return null;
+            }
+
+            var normalized = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+            foreach ((string language, string[]? command) in commands)
+            {
+                if (command is { Length: > 0 })
+                {
+                    normalized[language] = command;
+                }
+            }
+
+            return normalized.Count == 0
+                ? null
+                : new LanguageServerProjectCodeParserClient(normalized);
+        }
+        catch (JsonException ex)
+        {
+            AppDiagnostics.LogException("project-code.lsp-config", ex);
+            return null;
+        }
+        catch (ArgumentException ex)
+        {
+            AppDiagnostics.LogException("project-code.lsp-config", ex);
+            return null;
+        }
     }
 
     private static async Task RefreshProjectCodeMemoryAsync(ProjectCodeMemoryService service)

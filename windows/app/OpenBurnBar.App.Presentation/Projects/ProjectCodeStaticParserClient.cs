@@ -75,6 +75,39 @@ public sealed class DelegateProjectCodeStaticParserClient : IProjectCodeStaticPa
 }
 
 /// <summary>
+/// Chooses a configured language server first and falls back to the bundled
+/// integrity-checked Tree-sitter parser when the server is unavailable. A
+/// successful LSP response is never silently downgraded.
+/// </summary>
+public sealed class FallbackProjectCodeStaticParserClient : IProjectCodeStaticParserClient
+{
+    private readonly IProjectCodeStaticParserClient _primary;
+    private readonly IProjectCodeStaticParserClient _fallback;
+
+    public FallbackProjectCodeStaticParserClient(
+        IProjectCodeStaticParserClient primary,
+        IProjectCodeStaticParserClient fallback)
+    {
+        _primary = primary ?? throw new ArgumentNullException(nameof(primary));
+        _fallback = fallback ?? throw new ArgumentNullException(nameof(fallback));
+    }
+
+    public async Task<ProjectCodeParseResponse> ParseAsync(
+        ProjectCodeParseRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _primary.ParseAsync(request, cancellationToken).ConfigureAwait(false);
+        }
+        catch (ProjectCodeParserException)
+        {
+            return await _fallback.ParseAsync(request, cancellationToken).ConfigureAwait(false);
+        }
+    }
+}
+
+/// <summary>
 /// Invokes the bundled project-code-static-parser without a shell. Each request
 /// gets a bounded process so a crashed or wedged parser cannot poison the index.
 /// </summary>

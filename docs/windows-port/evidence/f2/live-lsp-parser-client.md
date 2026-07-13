@@ -25,13 +25,16 @@ dotnet test windows/tests/presentation/OpenBurnBar.App.Presentation.Tests.csproj
 dotnet test windows/tests/presentation/OpenBurnBar.App.Presentation.Tests.csproj --no-restore
 ```
 
-Results: **2 protocol tests passed** and the full presentation suite passed
-(763 tests). The tests launch the checked-in fake language-server executable,
+Results: **3 protocol/composition tests passed** and the full presentation suite
+passed (764 tests). The tests launch the checked-in fake language-server executable,
 verify symbol and reference responses, validate `exact_lsp` and SHA evidence,
-and prove missing-language/path-traversal fail-closed behavior.
+prove missing-language/path-traversal fail-closed behavior, and prove LSP
+failure falls back to the bundled parser. App startup now composes the same
+selection from `OPENBURNBAR_CODE_LSP_COMMANDS` when configured.
 
 ## Boundary
 
-This closes the Windows JSON-RPC LSP adapter seam. It does not claim a specific
-production language server is installed on a user's machine, compiler-quality
-coverage for every language, or physical Windows release certification.
+This closes the Windows JSON-RPC LSP adapter and app-selection seam. It does
+not claim a specific production language server is installed on a user's
+machine, compiler-quality coverage for every language, or physical Windows
+release certification.
