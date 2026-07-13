@@ -1298,7 +1298,7 @@ public actor BurnBarDaemonServer {
                     decoder: decoder,
                     requestData: requestData
                 )
-            case .databaseRecoveryBundleExport, .databaseRecoveryBundleImport:
+            case .databaseRecoveryStatus, .databaseRecoveryBundleExport, .databaseRecoveryBundleImport:
                 return try await handleDatabaseRecoveryRPC(
                     method: method,
                     decoder: decoder,

@@ -101,12 +101,16 @@ describe('VAL-RPC bridge contract', () => {
   });
 
   it('wires database recovery only to canonical daemon-owned RPCs', () => {
+    expect(rustBridge).toContain('daemon.database.recovery.status');
     expect(rustBridge).toContain('daemon.database.recovery_bundle.export');
     expect(rustBridge).toContain('daemon.database.recovery_bundle.import');
+    expect(rustBridge).toContain('fn database_recovery_bundle_status');
     expect(rustBridge).toContain('fn database_recovery_bundle_export');
     expect(rustBridge).toContain('fn database_recovery_bundle_import');
     expect(tsBridge).toContain("'database_recovery_bundle_export'");
     expect(tsBridge).toContain("'database_recovery_bundle_import'");
+    expect(tsBridge).toContain("'database_recovery_bundle_status'");
+    expect(canonicalRpc).toContain('id: "daemon.database.recovery.status"');
     expect(canonicalRpc).toContain('id: "daemon.database.recovery_bundle.export"');
     expect(canonicalRpc).toContain('id: "daemon.database.recovery_bundle.import"');
   });

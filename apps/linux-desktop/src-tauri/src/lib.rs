@@ -3224,6 +3224,13 @@ fn bounded_recovery_passphrase(passphrase: String) -> Result<String, String> {
     Ok(passphrase)
 }
 
+/// Read the daemon-owned recovery posture without exposing key material or
+/// implying success from custody alone.
+#[tauri::command]
+fn database_recovery_bundle_status() -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.database.recovery.status", None)
+}
+
 #[tauri::command]
 fn database_recovery_bundle_export(
     destination_path: String,
@@ -5881,6 +5888,7 @@ pub fn run() {
             database_restore,
             database_code_search,
             database_code_context_pack,
+            database_recovery_bundle_status,
             database_recovery_bundle_export,
             database_recovery_bundle_import,
             account_status,

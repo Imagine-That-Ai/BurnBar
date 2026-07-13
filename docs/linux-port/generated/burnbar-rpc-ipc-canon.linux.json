@@ -1,6 +1,6 @@
 {
   "generatedBy": "tools/ipc/generate-burnbarrpc-canon.mjs",
-  "methodCount": 137,
+  "methodCount": 138,
   "methods": [
     {
       "id": "approval.respond",
@@ -550,6 +550,16 @@
       "owner": "OpenBurnBarDaemon",
       "params": "BurnBarDatabaseRecoveryBundleImportRequest",
       "result": "BurnBarDatabaseRecoveryBundleImportResponse",
+      "error": "BurnBarRPCError"
+    },
+    {
+      "id": "daemon.database.recovery.status",
+      "caseName": "databaseRecoveryStatus",
+      "domain": "database_recovery",
+      "capability": "config",
+      "owner": "OpenBurnBarDaemon",
+      "params": "BurnBarRPCRequestEnvelope",
+      "result": "BurnBarDatabaseRecoveryStatusResponse",
       "error": "BurnBarRPCError"
     },
     {

@@ -82,4 +82,42 @@ final class BurnBarDatabaseRecoveryBundleCryptoTests: XCTestCase {
             XCTAssertEqual(error as? BurnBarDatabaseRecoveryBundleCrypto.Error, .invalidIterationCount(1))
         }
     }
+
+    func testDeviceTransferResponseSeparatesStoredKeyFromDatabaseProof() throws {
+        let response = BurnBarDatabaseRecoveryBundleImportResponse(
+            sourcePath: "/tmp/recovery.obb",
+            stored: true
+        )
+
+        XCTAssertTrue(response.stored)
+        XCTAssertFalse(response.candidateKeyVerified)
+        XCTAssertFalse(response.databaseIntegrityVerified)
+        XCTAssertEqual(response.phase, .awaitingDatabaseVerification)
+        XCTAssertEqual(response.recommendedAction, .restoreEncryptedSnapshot)
+
+        let roundTrip = try JSONDecoder().decode(
+            BurnBarDatabaseRecoveryBundleImportResponse.self,
+            from: JSONEncoder().encode(response)
+        )
+        XCTAssertEqual(roundTrip, response)
+    }
+
+    func testRecoveryStatusNeverUsesKeyCustodyAsIntegrityProof() throws {
+        let status = BurnBarDatabaseRecoveryStatusResponse(
+            phase: .keyUnavailable,
+            code: "database_key_unavailable",
+            message: "Unlock the key store or import a recovery bundle.",
+            recommendedAction: .importRecoveryBundle,
+            canExport: false,
+            canImport: true,
+            databasePresent: true,
+            databaseIntegrityVerified: false
+        )
+
+        XCTAssertFalse(status.databaseIntegrityVerified)
+        XCTAssertEqual(status.recommendedAction, .importRecoveryBundle)
+        let encoded = try JSONEncoder().encode(status)
+        let decoded = try JSONDecoder().decode(BurnBarDatabaseRecoveryStatusResponse.self, from: encoded)
+        XCTAssertEqual(decoded, status)
+    }
 }

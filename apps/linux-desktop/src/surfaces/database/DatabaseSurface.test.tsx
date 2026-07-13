@@ -206,6 +206,65 @@ describe('DatabaseSurface', () => {
     expect(screen.getByRole('alert').textContent).toContain('OPENBURNBAR_INDEX_DATABASE_PATH');
   });
 
+  it('keeps device-transfer recovery honest when no database is present', async () => {
+    vi.spyOn(useSystemStore.getState(), 'loadDb').mockImplementation(async () => {});
+    vi.spyOn(useDatabaseStore.getState(), 'loadWorkspace').mockImplementation(async () => {});
+    const databaseRecoveryBundleStatus = vi.fn(async () => ({
+      phase: 'database_missing' as const,
+      code: 'database_missing',
+      message: 'No encrypted database is present. Restore a snapshot before claiming recovery succeeded.',
+      recommendedAction: 'restore_encrypted_snapshot' as const,
+      canExport: false,
+      canImport: true,
+      databasePresent: false,
+      databaseIntegrityVerified: false,
+      restartRequired: false
+    }));
+    const databaseRecoveryBundleImport = vi.fn(async () => ({
+      sourcePath: '/tmp/recovery.obb',
+      stored: true,
+      candidateKeyVerified: false,
+      databaseIntegrityVerified: false,
+      phase: 'awaiting_database_verification' as const,
+      recommendedAction: 'restore_encrypted_snapshot' as const,
+      message: 'The recovery key was stored, but no encrypted database was present to verify it.',
+      restartRequired: true
+    }));
+    const databaseRecoveryBundleExport = vi.fn(async () => ({
+      destinationPath: '/tmp/recovery.obb',
+      byteCount: 96,
+      formatVersion: 1
+    }));
+    useShellStore.setState({
+      bridge: {
+        databaseRecoveryBundleStatus,
+        databaseRecoveryBundleImport,
+        databaseRecoveryBundleExport
+      } as unknown as LinuxShellBridge,
+      fixtureMode: false
+    });
+    useSystemStore.setState({
+      db: { sqlcipherOk: true, migrationVersion: 54, sizeBytes: 4096, walMode: true },
+      loading: false,
+      error: null
+    });
+    render(<DatabaseSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /system/i }));
+    await waitFor(() => expect(screen.getByText(/No encrypted database is present/i)).toBeTruthy());
+    expect((screen.getByRole('button', { name: /export bundle/i }) as HTMLButtonElement).disabled).toBe(true);
+    const importButton = screen.getByRole('button', { name: /import bundle/i });
+    expect((importButton as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.change(screen.getByLabelText(/Import path/i), { target: { value: '/tmp/recovery.obb' } });
+    fireEvent.change(screen.getByLabelText(/Import passphrase/i), { target: { value: 'passphrase' } });
+    fireEvent.click(importButton);
+    await waitFor(() => expect(screen.getByText(/no encrypted database was present to verify/i)).toBeTruthy());
+    expect(databaseRecoveryBundleImport).toHaveBeenCalledWith({
+      sourcePath: '/tmp/recovery.obb',
+      passphrase: 'passphrase'
+    });
+    expect(databaseRecoveryBundleExport).not.toHaveBeenCalled();
+  });
+
   it('searches bounded code snippets, warns about untrusted source, and paginates results', async () => {
     vi.spyOn(useSystemStore.getState(), 'loadDb').mockImplementation(async () => {});
     vi.spyOn(useDatabaseStore.getState(), 'loadWorkspace').mockImplementation(async () => {});

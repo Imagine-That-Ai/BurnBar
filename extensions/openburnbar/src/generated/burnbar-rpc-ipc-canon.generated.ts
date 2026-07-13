@@ -562,6 +562,16 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.database.recovery.status",
+    "caseName": "databaseRecoveryStatus",
+    "domain": "database_recovery",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelope",
+    "result": "BurnBarDatabaseRecoveryStatusResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.followup.calendar",
     "caseName": "followupCalendar",
     "domain": "mission_control",
