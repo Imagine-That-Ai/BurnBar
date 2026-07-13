@@ -27,14 +27,20 @@ workspace (#1655), P16 account/enrollment posture (#1658), P12 quota account
 switching (#1659, stacked on P23), P13 onboarding first-data verification
 (#1667), P14 chat approval boundary (#1662), P17 activity/session depth (#1661),
 P21 insights brief (#1669), P24 settings inventory (#1665), P28 SmartHub
-allowlist (#1668), and P29 secure text-expansion storage (#1663). The
+allowlist (#1668), and P29 secure text-expansion storage (#1663). Follow-on
+source slices add P07 typed Browser Computer Use actions (#1681), P14 exact
+persisted chat threads plus safe loaded-message export (#1684), P22 bounded
+database inspection (#1680), P27 native startup/deep-link handoff (#1679), P31
+accessibility preference contracts (#1683), and P39 differential evidence
+comparison (#1682). The
 authoritative promotion ledger remains 0/40 ready and 0/7 environment receipts;
 no PR in this checkpoint may be treated as full parity or as evidence that the
 Linux release candidate is shippable.
 
 Recommended landing order for this wave is P26, then P23 and P12, followed by
-P13, P17, P21, P24, P28, P29, P35, and P16; P14 can land independently because
-it is an explicit non-claim boundary. After the code stack is review-clean, rerun
+P13, P17, P21, P24, P28, P29, P35, and P16; P07, P14, P22, P27, P31, and P39
+can land as independently reviewable source slices because each preserves an
+explicit installed-proof boundary. After the code stack is review-clean, rerun
 the strict ledger on the exact candidate and collect the installed GNOME
 X11/Wayland, KDE/wlroots, x86_64/aarch64, accessibility, performance,
 update/rollback, and physical-device receipts listed below.
