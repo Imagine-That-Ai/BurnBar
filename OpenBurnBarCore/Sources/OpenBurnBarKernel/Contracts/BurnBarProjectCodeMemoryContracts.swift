@@ -807,6 +807,92 @@ public struct BurnBarProjectCodeOpsDiagnosticsResponse: Codable, Hashable, Senda
     }
 }
 
+/// Writes a point-in-time copy of the daemon-owned project-code database.
+/// Snapshots are intentionally path-based and local-only: the daemon validates
+/// ownership, permissions, encryption, and the byte ceiling before exposing a
+/// copy to the shell.
+public struct BurnBarProjectCodeDatabaseSnapshotRequest: Codable, Hashable, Sendable {
+    public let destinationPath: String
+    public let maxBytes: Int
+
+    public init(destinationPath: String, maxBytes: Int = 512 * 1_024 * 1_024) {
+        self.destinationPath = destinationPath
+        self.maxBytes = maxBytes
+    }
+}
+
+public struct BurnBarProjectCodeDatabaseSnapshotResponse: Codable, Hashable, Sendable {
+    public let traceID: String
+    public let snapshotPath: String
+    public let byteCount: Int
+    public let sha256: String
+    public let schemaVersion: Int
+    public let databaseEncrypted: Bool
+    public let integrityCheck: String
+    public let createdAt: String
+
+    public init(
+        traceID: String,
+        snapshotPath: String,
+        byteCount: Int,
+        sha256: String,
+        schemaVersion: Int,
+        databaseEncrypted: Bool,
+        integrityCheck: String,
+        createdAt: String
+    ) {
+        self.traceID = traceID
+        self.snapshotPath = snapshotPath
+        self.byteCount = byteCount
+        self.sha256 = sha256
+        self.schemaVersion = schemaVersion
+        self.databaseEncrypted = databaseEncrypted
+        self.integrityCheck = integrityCheck
+        self.createdAt = createdAt
+    }
+}
+
+public struct BurnBarProjectCodeDatabaseRestoreRequest: Codable, Hashable, Sendable {
+    public let snapshotPath: String
+    public let maxBytes: Int
+
+    public init(snapshotPath: String, maxBytes: Int = 512 * 1_024 * 1_024) {
+        self.snapshotPath = snapshotPath
+        self.maxBytes = maxBytes
+    }
+}
+
+public struct BurnBarProjectCodeDatabaseRestoreResponse: Codable, Hashable, Sendable {
+    public let traceID: String
+    public let restoredPath: String
+    public let byteCount: Int
+    public let sha256: String
+    public let schemaVersion: Int
+    public let databaseEncrypted: Bool
+    public let integrityCheck: String
+    public let restoredAt: String
+
+    public init(
+        traceID: String,
+        restoredPath: String,
+        byteCount: Int,
+        sha256: String,
+        schemaVersion: Int,
+        databaseEncrypted: Bool,
+        integrityCheck: String,
+        restoredAt: String
+    ) {
+        self.traceID = traceID
+        self.restoredPath = restoredPath
+        self.byteCount = byteCount
+        self.sha256 = sha256
+        self.schemaVersion = schemaVersion
+        self.databaseEncrypted = databaseEncrypted
+        self.integrityCheck = integrityCheck
+        self.restoredAt = restoredAt
+    }
+}
+
 public struct BurnBarProjectCodeIndexStatusResponse: Codable, Hashable, Sendable {
     public let traceID: String
     public let projectID: String

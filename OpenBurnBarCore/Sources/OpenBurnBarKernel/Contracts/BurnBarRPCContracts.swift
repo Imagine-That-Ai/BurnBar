@@ -149,6 +149,8 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case codeExplore = "daemon.code.explore"
     case codeWatchProject = "daemon.code.watch_project"
     case codeOpsDiagnostics = "daemon.code.ops_diagnostics"
+    case codeDatabaseSnapshot = "daemon.code.database_snapshot"
+    case codeDatabaseRestore = "daemon.code.database_restore"
     case runResume = "run.resume"
 }
 

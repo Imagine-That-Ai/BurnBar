@@ -68,7 +68,13 @@ export function DatabaseSurface() {
   const watchAction = useDatabaseStore((s) => s.watchAction);
   const indexProject = useDatabaseStore((s) => s.indexProject);
   const watchProject = useDatabaseStore((s) => s.watchProject);
+  const snapshotAction = useDatabaseStore((s) => s.snapshotAction);
+  const restoreAction = useDatabaseStore((s) => s.restoreAction);
+  const exportSnapshot = useDatabaseStore((s) => s.exportSnapshot);
+  const restoreSnapshot = useDatabaseStore((s) => s.restoreSnapshot);
   const [mode, setMode] = useState<DatabaseWorkspaceMode>('story');
+  const [snapshotPath, setSnapshotPath] = useState('');
+  const [restorePath, setRestorePath] = useState('');
   const loadAll = useCallback(async () => {
     await Promise.all([loadDb(), loadWorkspace()]);
   }, [loadDb, loadWorkspace]);
@@ -411,6 +417,68 @@ export function DatabaseSurface() {
                     <li key={reason}>{reason}</li>
                   ))}
                 </ul>
+              ) : null}
+            </section>
+            <section className="database-system-band" aria-labelledby="database-recovery-heading">
+              <h4 id="database-recovery-heading" className="database-system-band-title">
+                Encrypted snapshot &amp; recovery
+              </h4>
+              <p className="muted">
+                Export or restore the daemon-owned SQLCipher code-memory store. Paths must be absolute, owner-only,
+                and outside the active database; the daemon refuses plaintext stores and oversized files.
+              </p>
+              <label className="system-field-label" htmlFor="database-snapshot-path">Snapshot destination</label>
+              <input
+                id="database-snapshot-path"
+                className="system-text-input"
+                value={snapshotPath}
+                onChange={(event) => setSnapshotPath(event.target.value)}
+                placeholder="/home/user/openburnbar-code.snapshot"
+                inputMode="text"
+              />
+              <div className="actions">
+                <button
+                  type="button"
+                  className="ghost"
+                  disabled={snapshotAction.pending || snapshotPath.trim().length === 0}
+                  aria-busy={snapshotAction.pending}
+                  onClick={() => void exportSnapshot(snapshotPath.trim())}
+                >
+                  {snapshotAction.pending ? 'Exporting...' : 'Export encrypted snapshot'}
+                </button>
+              </div>
+              {snapshotAction.error ? <p className="muted" role="alert">{snapshotAction.error}</p> : null}
+              {snapshotAction.result ? (
+                <p className="muted" role="status">
+                  Snapshot written to {snapshotAction.result.snapshotPath} ({formatBytes(snapshotAction.result.byteCount)}).
+                </p>
+              ) : null}
+              <label className="system-field-label" htmlFor="database-restore-path">Snapshot to restore</label>
+              <input
+                id="database-restore-path"
+                className="system-text-input"
+                value={restorePath}
+                onChange={(event) => setRestorePath(event.target.value)}
+                placeholder="/home/user/openburnbar-code.snapshot"
+                inputMode="text"
+              />
+              <div className="actions">
+                <button
+                  type="button"
+                  className="ghost"
+                  disabled={restoreAction.pending || restorePath.trim().length === 0}
+                  aria-busy={restoreAction.pending}
+                  onClick={() => void restoreSnapshot(restorePath.trim())}
+                >
+                  {restoreAction.pending ? 'Restoring...' : 'Restore encrypted snapshot'}
+                </button>
+              </div>
+              {restoreAction.error ? <p className="muted" role="alert">{restoreAction.error}</p> : null}
+              {restoreAction.result ? (
+                <p className="muted" role="status">
+                  Restored {formatBytes(restoreAction.result.byteCount)} and verified integrity. Index watchers were
+                  stopped; re-index the project after recovery.
+                </p>
               ) : null}
             </section>
           </div>

@@ -12,6 +12,7 @@ import {
   type DatabaseCodeContextPackResult,
   type DatabaseCodeSearchResult,
   type DatabaseIndexActionResult,
+  type DatabaseSnapshotResult,
   type DatabaseWorkspaceStatus
 } from '../tauriBridge.js';
 import { useShellStore } from './shellStore.js';
@@ -31,12 +32,20 @@ export type DatabaseActionState = {
   result: DatabaseIndexActionResult | null;
 };
 
+export type DatabaseSnapshotActionState = {
+  pending: boolean;
+  error: string | null;
+  result: DatabaseSnapshotResult | null;
+};
+
 export type DatabaseState = {
   workspace: DatabaseWorkspaceStatus | null;
   loading: boolean;
   error: string | null;
   indexAction: DatabaseActionState;
   watchAction: DatabaseActionState;
+  snapshotAction: DatabaseSnapshotActionState;
+  restoreAction: DatabaseSnapshotActionState;
   codeSearch: DatabaseCodeSearchResult | null;
   codeSearchLoading: boolean;
   codeSearchError: string | null;
@@ -46,12 +55,19 @@ export type DatabaseState = {
   loadWorkspace(projectPath?: string): Promise<void>;
   indexProject(projectPath?: string): Promise<void>;
   watchProject(projectPath?: string): Promise<void>;
+  exportSnapshot(destinationPath: string, maxBytes?: number): Promise<void>;
+  restoreSnapshot(snapshotPath: string, maxBytes?: number): Promise<void>;
   searchCode(query: string, projectPath?: string, limit?: number): Promise<void>;
   buildCodeContextPack(query: string, projectPath?: string, limit?: number): Promise<void>;
   clearCodeRetrieval(): void;
 };
 
 const idleAction: DatabaseActionState = {
+  pending: false,
+  error: null,
+  result: null
+};
+const idleSnapshotAction: DatabaseSnapshotActionState = {
   pending: false,
   error: null,
   result: null
@@ -63,6 +79,8 @@ export const useDatabaseStore = create<DatabaseState>()((set, get) => ({
   error: null,
   indexAction: idleAction,
   watchAction: idleAction,
+  snapshotAction: idleSnapshotAction,
+  restoreAction: idleSnapshotAction,
   codeSearch: null,
   codeSearchLoading: false,
   codeSearchError: null,
@@ -144,6 +162,37 @@ export const useDatabaseStore = create<DatabaseState>()((set, get) => ({
           result: null
         }
       });
+    }
+  },
+
+  async exportSnapshot(destinationPath, maxBytes) {
+    const { fixtureMode, bridge } = useShellStore.getState();
+    if (fixtureMode || !bridge?.databaseSnapshot) {
+      set({ snapshotAction: { pending: false, error: 'Encrypted database snapshots require the packaged Linux daemon.', result: null } });
+      return;
+    }
+    set({ snapshotAction: { pending: true, error: null, result: null } });
+    try {
+      const result = await bridge.databaseSnapshot(destinationPath, maxBytes);
+      set({ snapshotAction: { pending: false, error: null, result } });
+    } catch (e) {
+      set({ snapshotAction: { pending: false, error: e instanceof Error ? e.message : 'Database snapshot export failed.', result: null } });
+    }
+  },
+
+  async restoreSnapshot(snapshotPath, maxBytes) {
+    const { fixtureMode, bridge } = useShellStore.getState();
+    if (fixtureMode || !bridge?.databaseRestore) {
+      set({ restoreAction: { pending: false, error: 'Encrypted database recovery requires the packaged Linux daemon.', result: null } });
+      return;
+    }
+    set({ restoreAction: { pending: true, error: null, result: null } });
+    try {
+      const result = await bridge.databaseRestore(snapshotPath, maxBytes);
+      set({ restoreAction: { pending: false, error: null, result } });
+      await get().loadWorkspace();
+    } catch (e) {
+      set({ restoreAction: { pending: false, error: e instanceof Error ? e.message : 'Database snapshot restore failed.', result: null } });
     }
   },
 

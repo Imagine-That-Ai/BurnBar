@@ -89,6 +89,17 @@ describe('VAL-RPC bridge contract', () => {
     expect(canonicalRpc).toContain('id: "daemon.code.context_pack"');
   });
 
+  it('wires encrypted database snapshot and restore to canonical code RPCs', () => {
+    expect(rustBridge).toContain('daemon.code.database_snapshot');
+    expect(rustBridge).toContain('daemon.code.database_restore');
+    expect(rustBridge).toContain('fn database_snapshot');
+    expect(rustBridge).toContain('fn database_restore');
+    expect(tsBridge).toContain("'database_snapshot'");
+    expect(tsBridge).toContain("'database_restore'");
+    expect(canonicalRpc).toContain('id: "daemon.code.database_snapshot"');
+    expect(canonicalRpc).toContain('id: "daemon.code.database_restore"');
+  });
+
   it('wires computer use wrappers to existing enum methods', () => {
     for (const method of [
       'daemon.computer_use.session.start',
