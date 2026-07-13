@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Text.Json;
 using Xunit;
+using DomainCore = uniffi.openburnbar_domain_ffi.OpenburnbarDomainFfiMethods;
 
 namespace OpenBurnBar.CloudSync.Crypto.Tests
 {
@@ -14,6 +15,13 @@ namespace OpenBurnBar.CloudSync.Crypto.Tests
     [Collection(DomainCoreCloudVaultCollection.Name)]
     public sealed class DomainCoreCloudVaultBridgeTests
     {
+        [Fact]
+        public void NativeLibrary_ReportsAbiVersionThree()
+        {
+            if (!NativeRequired()) return;
+            Assert.Equal(3u, DomainCore.DomainCoreAbiVersion());
+        }
+
         [Fact]
         public void RustMode_ConsumesCanonicalDeterministicKat()
         {

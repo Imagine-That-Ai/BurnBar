@@ -103,7 +103,7 @@ fn cloudvault_crypto_recovery_and_escrow_fuzz_smoke() -> Result<(), Box<dyn Erro
                     .map_err(case_error)?;
             prop_assert_eq!(&opened, &plaintext);
 
-            let encoded = cloud_vault_base64_encode(sealed.clone());
+            let encoded = cloud_vault_base64_encode(sealed.clone()).map_err(case_error)?;
             prop_assert_eq!(
                 cloud_vault_base64_decode_strict(encoded).map_err(case_error)?,
                 sealed
@@ -220,7 +220,9 @@ fn cloudvault_document_rewrap_fuzz_smoke() -> Result<(), Box<dyn Error>> {
                     nonce: None,
                     ciphertext: None,
                     tag: None,
-                    sealed_box_base64: Some(cloud_vault_base64_encode(source_box)),
+                    sealed_box_base64: Some(
+                        cloud_vault_base64_encode(source_box).map_err(case_error)?,
+                    ),
                     plaintext_sha256: None,
                     plaintext_hmac: None,
                     integrity_hash_version: None,
