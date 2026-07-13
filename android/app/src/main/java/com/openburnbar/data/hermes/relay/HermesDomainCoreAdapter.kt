@@ -142,7 +142,7 @@ internal object HermesDomainCoreAdapter {
     ): T {
         diagnostic(operation, "native_unavailable")
         if (mode == HermesDomainCoreMode.RUST) {
-            throw IllegalStateException("Hermes Rust mode requires domain-core ABI v2")
+            throw IllegalStateException("Hermes Rust mode requires domain-core ABI v3")
         }
         return legacy()
     }

@@ -103,12 +103,13 @@ class DomainCoreNativeLoadTest {
                 docId = "requestA",
                 documentFieldNames = listOf("vaultKeyID", "plainStatus", "sealedPayload"),
                 envelopes = listOf(envelope),
-                resealNoncePlan = listOf(
-                    CloudVaultResealNonce(
-                        fieldName = "sealedPayload",
-                        nonce = ByteArray(12) { 0x22 },
+                resealNoncePlan =
+                    listOf(
+                        CloudVaultResealNonce(
+                            fieldName = "sealedPayload",
+                            nonce = ByteArray(12) { 0x22 },
+                        ),
                     ),
-                ),
                 vaultGeneration = 7L,
                 rotationJobId = "job-7",
             )
