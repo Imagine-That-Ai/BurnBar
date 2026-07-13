@@ -47,7 +47,10 @@ homebrew_version="$(sed -nE 's/^[[:space:]]*version "([^"]+)".*/\1/p' "$homebrew
 homebrew_sha="$(sed -nE 's/^[[:space:]]*sha256 "([^"]+)".*/\1/p' "$homebrew_file" | head -1 || true)"
 placeholder_sha="0000000000000000000000000000000000000000000000000000000000000000"
 require_current_homebrew="${OPENBURNBAR_REQUIRE_CURRENT_HOMEBREW_CASK:-0}"
-if [[ "${GITHUB_REF_TYPE:-}" == "tag" || "${GITHUB_REF:-}" =~ refs/tags/ ]]; then
+# A Windows release tag must not block on the macOS-only Homebrew cask. The
+# Windows gate below enforces the Windows app identity independently; the
+# macOS release workflow still requires the cask on ordinary v* tags.
+if [[ "${GITHUB_REF_TYPE:-}" == "tag" && "${GITHUB_REF_NAME:-}" != windows-v* ]]; then
   require_current_homebrew=1
 fi
 if [[ -z "$homebrew_version" ]]; then
