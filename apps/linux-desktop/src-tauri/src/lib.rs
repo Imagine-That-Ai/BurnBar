@@ -355,6 +355,7 @@ const DAEMON_RUN_RESUME_METHOD: &str = "run.resume";
 
 static INITIAL_DEEP_LINK_ROUTE: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static FORWARDED_ROUTE_QUEUE: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+const SINGLE_INSTANCE_NOTIFICATION_ID_MAX_BYTES: usize = 96;
 
 fn initial_deep_link_route_store() -> &'static Mutex<Option<String>> {
     INITIAL_DEEP_LINK_ROUTE.get_or_init(|| Mutex::new(None))
@@ -367,6 +368,31 @@ fn forwarded_route_queue() -> &'static Mutex<Vec<String>> {
 /// Accept only the routes registered by the Linux shell. External URLs,
 /// credentials, query strings, and fragments are deliberately rejected at the
 /// native boundary before they can influence renderer navigation.
+fn canonical_shell_route(value: &str) -> Option<&'static str> {
+    match value {
+        "overview" => Some("overview"),
+        "insights" => Some("insights"),
+        "database" => Some("database"),
+        "providers" => Some("providers"),
+        "projects" => Some("projects"),
+        "missions" => Some("missions"),
+        "activity" => Some("activity"),
+        "chat" => Some("chat"),
+        "memory" => Some("memory"),
+        "settings" => Some("settings"),
+        "account" => Some("account"),
+        "updates" => Some("updates"),
+        "support" => Some("support"),
+        "onboarding" => Some("onboarding"),
+        "pet" => Some("pet"),
+        "text-expansion" => Some("text-expansion"),
+        "computer-use" => Some("computer-use"),
+        "mercury" => Some("mercury"),
+        "smarthub" => Some("smarthub"),
+        _ => None,
+    }
+}
+
 fn validated_deep_link_route(raw: &str) -> Option<&'static str> {
     let url = reqwest::Url::parse(raw.trim()).ok()?;
     if url.scheme() != "openburnbar"
@@ -383,15 +409,66 @@ fn validated_deep_link_route(raw: &str) -> Option<&'static str> {
     match (host, path) {
         ("dashboard", "") | ("overview", "") => Some("overview"),
         ("chat", "") => Some("chat"),
+        ("insights", "" | "today" | "year") => Some("insights"),
+        ("membership", "" | "success" | "cancel") => Some("account"),
+        ("route", route) => canonical_shell_route(route),
         ("settings", "") => Some("settings"),
         ("updates", "") => Some("updates"),
-        ("membership", "success" | "cancel") => Some("account"),
-        ("route", "overview") => Some("overview"),
-        ("route", "chat") => Some("chat"),
-        ("route", "settings") => Some("settings"),
-        ("route", "updates") => Some("updates"),
+        ("database", "") => Some("database"),
+        ("providers", "") => Some("providers"),
+        ("projects", "") => Some("projects"),
+        ("missions", "") => Some("missions"),
+        ("activity", "") => Some("activity"),
+        ("memory", "") => Some("memory"),
+        ("support", "") => Some("support"),
+        ("onboarding", "") => Some("onboarding"),
+        ("pet", "") => Some("pet"),
+        ("text-expansion", "") => Some("text-expansion"),
+        ("computer-use", "") => Some("computer-use"),
+        ("mercury", "") => Some("mercury"),
+        ("smarthub", "") => Some("smarthub"),
         _ => None,
     }
+}
+
+fn valid_single_instance_notification_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= SINGLE_INSTANCE_NOTIFICATION_ID_MAX_BYTES
+        && value
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || "._-".contains(character))
+}
+
+/// Normalize relaunch/second-instance notification actions to the same event
+/// envelope emitted by the direct freedesktop adapter. Action aliases are
+/// route selectors, not arbitrary renderer commands; unsupported values never
+/// produce an event. Payloads remain bounded by `single_instance` validation
+/// and are carried only as opaque JSON for a route-specific surface to inspect.
+fn notification_action_event(
+    action: &str,
+    payload: &serde_json::Value,
+) -> Option<serde_json::Value> {
+    if !payload.is_object() {
+        return None;
+    }
+    let route = single_instance::notification_action_route(action)?;
+    let notification_id = ["notificationId", "notification_id"]
+        .iter()
+        .find_map(|key| payload.get(*key).and_then(serde_json::Value::as_str))
+        .map(str::trim)
+        .filter(|value| valid_single_instance_notification_id(value))
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("single-instance-{route}"));
+
+    Some(serde_json::json!({
+        "notificationId": notification_id,
+        "route": route,
+        // Linux currently supports an actionable Open button. Aliases such as
+        // `reply` intentionally degrade to opening the owning surface rather
+        // than pretending an inline text action exists.
+        "action": "open",
+        "payload": payload,
+    }))
 }
 
 fn store_initial_deep_link_route(route: Option<String>) {
@@ -430,10 +507,9 @@ fn start_single_instance_dispatcher(app: AppHandle, receiver: Receiver<single_in
                     emit_tray_route(&app, &route);
                 }
                 if let single_instance::Message::NotificationAction { action, payload } = message {
-                    let _ = app.emit(
-                        "notification-action",
-                        serde_json::json!({ "action": action, "payload": payload }),
-                    );
+                    if let Some(event) = notification_action_event(&action, &payload) {
+                        let _ = app.emit("notification-action", event);
+                    }
                 }
             }
         });
@@ -7545,8 +7621,20 @@ mod tests {
             Some("overview")
         );
         assert_eq!(
+            validated_deep_link_route("openburnbar://membership"),
+            Some("account")
+        );
+        assert_eq!(
             validated_deep_link_route("openburnbar://membership/success"),
             Some("account")
+        );
+        assert_eq!(
+            validated_deep_link_route("openburnbar://insights/today"),
+            Some("insights")
+        );
+        assert_eq!(
+            validated_deep_link_route("openburnbar://route/computer-use"),
+            Some("computer-use")
         );
         assert_eq!(
             validated_deep_link_route("openburnbar://route/chat"),
@@ -7562,6 +7650,53 @@ mod tests {
             None
         );
         assert_eq!(validated_deep_link_route("openburnbar://unknown"), None);
+    }
+
+    #[test]
+    fn relaunch_notification_actions_use_the_direct_native_event_contract() {
+        let payload = serde_json::json!({
+            "notificationId": "agent-reply-42",
+            "threadId": "thread-42"
+        });
+        assert_eq!(
+            notification_action_event("reply", &payload),
+            Some(serde_json::json!({
+                "notificationId": "agent-reply-42",
+                "route": "chat",
+                "action": "open",
+                "payload": payload,
+            }))
+        );
+
+        let fallback = notification_action_event("settings", &serde_json::json!({})).unwrap();
+        assert_eq!(fallback["notificationId"], "single-instance-settings");
+        assert_eq!(fallback["route"], "settings");
+        assert_eq!(fallback["action"], "open");
+        assert_eq!(
+            notification_action_event("execute", &serde_json::json!({})),
+            None
+        );
+        assert_eq!(
+            notification_action_event("chat", &serde_json::json!(["not-an-object"])),
+            None
+        );
+    }
+
+    #[test]
+    fn relaunch_notification_ids_reject_unsafe_values_and_use_route_fallback() {
+        let event = notification_action_event(
+            "chat",
+            &serde_json::json!({"notification_id": "agent/reply", "threadId": "thread-9"}),
+        )
+        .unwrap();
+        assert_eq!(event["notificationId"], "single-instance-chat");
+
+        let event = notification_action_event(
+            "chat",
+            &serde_json::json!({"notification_id": "agent-reply-9"}),
+        )
+        .unwrap();
+        assert_eq!(event["notificationId"], "agent-reply-9");
     }
 
     #[test]

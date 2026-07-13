@@ -55,10 +55,10 @@ async function boot(): Promise<void> {
       cacheOnboarding(authoritative);
       if (chatPopout) {
         useShellStore.getState().setRoute('chat');
-      } else if (shouldRouteToOnboarding(authoritative)) {
-        useShellStore.getState().setRoute('onboarding');
       } else if (requestedNativeRoute) {
         useShellStore.getState().setRoute(requestedNativeRoute);
+      } else if (shouldRouteToOnboarding(authoritative)) {
+        useShellStore.getState().setRoute('onboarding');
       } else if (hadDeepLink) {
         location.hash = requestedHash;
         useShellStore.getState().syncRouteFromHash();

@@ -50,10 +50,22 @@ pub(crate) fn notification_action_route(action: &str) -> Option<&'static str> {
         "open" | "overview" | "dashboard" => Some("overview"),
         "insights" | "usage" => Some("insights"),
         "chat" | "reply" => Some("chat"),
+        "database" => Some("database"),
+        "providers" | "models" => Some("providers"),
+        "projects" => Some("projects"),
+        "missions" => Some("missions"),
+        "memory" => Some("memory"),
+        "computer-use" | "computer_use" => Some("computer-use"),
+        "mercury" => Some("mercury"),
+        "smarthub" | "smart-hub" => Some("smarthub"),
         "settings" => Some("settings"),
         "updates" => Some("updates"),
         "account" => Some("account"),
         "activity" | "logs" => Some("activity"),
+        "support" => Some("support"),
+        "onboarding" => Some("onboarding"),
+        "pet" => Some("pet"),
+        "text-expansion" | "text_expansion" => Some("text-expansion"),
         _ => None,
     }
 }
@@ -505,6 +517,25 @@ mod tests {
             br#"{"protocol":1,"message":{"kind":"route","route":"chat","extra":true}}"#
         )
         .is_err());
+    }
+
+    #[test]
+    fn notification_action_aliases_resolve_only_to_registered_routes() {
+        for (action, route) in [
+            ("open", "overview"),
+            ("dashboard", "overview"),
+            ("reply", "chat"),
+            ("models", "providers"),
+            ("computer_use", "computer-use"),
+            ("smart-hub", "smarthub"),
+            ("text_expansion", "text-expansion"),
+            ("support", "support"),
+        ] {
+            assert_eq!(notification_action_route(action), Some(route));
+        }
+        for action in ["execute", "open-url", "javascript", ""] {
+            assert_eq!(notification_action_route(action), None);
+        }
     }
 
     #[test]
