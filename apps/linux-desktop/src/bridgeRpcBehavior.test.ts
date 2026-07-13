@@ -102,6 +102,42 @@ describe('VAL-RPC-002 bridge behavior', () => {
       timestamp: '2026-07-10T12:00:00Z'
     })).rejects.toThrow('idempotency identity');
   });
+
+  it('passes stable chat pagination cursors without changing daemon field names', async () => {
+    const message = {
+      id: 'older-message',
+      threadID: 'thread-1',
+      role: 'assistant',
+      content: 'Older reply',
+      timestamp: '2026-07-10T11:59:00.000Z'
+    };
+    invoke.mockResolvedValueOnce({
+      thread: {
+        id: 'thread-1',
+        title: 'Thread',
+        preview: 'Older reply',
+        messageCount: 2,
+        createdAt: '2026-07-10T11:59:00.000Z',
+        updatedAt: '2026-07-10T12:00:00.000Z'
+      },
+      messages: [message],
+      hasMoreBefore: false
+    });
+    const b = await bridge();
+
+    await b.chatThreadGet('thread-1', 200, {
+      timestamp: '2026-07-10T12:00:00.000Z',
+      messageID: 'newest-page-oldest'
+    });
+
+    expect(invoke).toHaveBeenCalledWith('chat_thread_get', {
+      threadId: 'thread-1',
+      maxMessages: 200,
+      beforeTimestamp: '2026-07-10T12:00:00.000Z',
+      beforeMessageID: 'newest-page-oldest'
+    });
+  });
+
   it('runtimeCapabilities invokes and validates the native manifest', async () => {
     const { makeAvailableRuntimeCapabilityManifest } = await import('./testing/bridgeStubs.js');
     const manifest = makeAvailableRuntimeCapabilityManifest();

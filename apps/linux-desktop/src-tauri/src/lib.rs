@@ -1676,16 +1676,40 @@ fn chat_thread_list(query: Option<String>, limit: u32) -> Result<serde_json::Val
     call_daemon_method(method, Some(params))
 }
 
-fn chat_thread_get_wire(thread_id: String, max_messages: u32) -> (&'static str, serde_json::Value) {
-    (
-        "daemon.chat.thread.get",
-        serde_json::json!({ "threadID": thread_id, "maxMessages": max_messages }),
-    )
+fn chat_thread_get_wire(
+    thread_id: String,
+    max_messages: u32,
+    before_timestamp: Option<String>,
+    before_message_id: Option<String>,
+) -> (&'static str, serde_json::Value) {
+    let mut params = serde_json::Map::from_iter([
+        ("threadID".into(), serde_json::json!(thread_id)),
+        ("maxMessages".into(), serde_json::json!(max_messages)),
+    ]);
+    if let Some(before_timestamp) = before_timestamp {
+        params.insert(
+            "beforeTimestamp".into(),
+            serde_json::json!(before_timestamp),
+        );
+    }
+    if let Some(before_message_id) = before_message_id {
+        params.insert(
+            "beforeMessageID".into(),
+            serde_json::json!(before_message_id),
+        );
+    }
+    ("daemon.chat.thread.get", serde_json::Value::Object(params))
 }
 
 #[tauri::command]
-fn chat_thread_get(thread_id: String, max_messages: u32) -> Result<serde_json::Value, String> {
-    let (method, params) = chat_thread_get_wire(thread_id, max_messages);
+fn chat_thread_get(
+    thread_id: String,
+    max_messages: u32,
+    before_timestamp: Option<String>,
+    before_message_id: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let (method, params) =
+        chat_thread_get_wire(thread_id, max_messages, before_timestamp, before_message_id);
     call_daemon_method(method, Some(params))
 }
 
@@ -4840,11 +4864,20 @@ mod tests {
         assert!(params.get("query").is_none());
         assert_eq!(params["limit"], 100);
 
-        let (method, params) = chat_thread_get_wire("thread-42".into(), 500);
+        let (method, params) = chat_thread_get_wire("thread-42".into(), 500, None, None);
         assert_eq!(method, "daemon.chat.thread.get");
         assert_eq!(params["threadID"], "thread-42");
         assert_eq!(params["maxMessages"], 500);
         assert!(params.get("threadId").is_none());
+
+        let (_, params) = chat_thread_get_wire(
+            "thread-42".into(),
+            500,
+            Some("2026-07-10T12:00:00.000Z".into()),
+            Some("message-42".into()),
+        );
+        assert_eq!(params["beforeTimestamp"], "2026-07-10T12:00:00.000Z");
+        assert_eq!(params["beforeMessageID"], "message-42");
 
         let source = include_str!("lib.rs");
         assert!(source.contains("daemon.chat.message.append"));

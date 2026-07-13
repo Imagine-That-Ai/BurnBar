@@ -136,6 +136,8 @@ const resetChatStore = () => {
     selectedThreadId: null,
     messages: [],
     messagesLoading: false,
+    loadingOlderMessages: false,
+    hasMoreMessages: false,
     config: null,
     loading: false,
     error: null,

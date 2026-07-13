@@ -83,10 +83,22 @@ public struct BurnBarChatThreadListResponse: Codable, Equatable, Sendable {
 public struct BurnBarChatThreadGetRequest: Codable, Equatable, Sendable {
     public let threadID: String
     public let maxMessages: Int
+    /// Fetch the page immediately before this stable `(timestamp, messageID)` cursor.
+    /// Both values must be supplied together; omitting them keeps the existing
+    /// newest-page behavior for older clients.
+    public let beforeTimestamp: String?
+    public let beforeMessageID: String?
 
-    public init(threadID: String, maxMessages: Int = 200) {
+    public init(
+        threadID: String,
+        maxMessages: Int = 200,
+        beforeTimestamp: String? = nil,
+        beforeMessageID: String? = nil
+    ) {
         self.threadID = threadID
         self.maxMessages = maxMessages
+        self.beforeTimestamp = beforeTimestamp
+        self.beforeMessageID = beforeMessageID
     }
 }
 

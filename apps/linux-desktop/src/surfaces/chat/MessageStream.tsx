@@ -134,6 +134,9 @@ function assistantLogoSrc(message: ChatMessage): string | null {
 type MessageStreamProps = {
   messages: ChatMessage[];
   loading: boolean;
+  hasMoreBefore?: boolean;
+  loadingOlderMessages?: boolean;
+  onLoadOlder?: () => void;
   warnings: ChatWarningBanner[];
   sharedFeaturesAvailable: boolean;
   streamError: string | null;
@@ -143,6 +146,9 @@ type MessageStreamProps = {
 export function MessageStream({
   messages,
   loading,
+  hasMoreBefore = false,
+  loadingOlderMessages = false,
+  onLoadOlder,
   warnings,
   sharedFeaturesAvailable,
   streamError,
@@ -164,6 +170,19 @@ export function MessageStream({
   return (
     <div className="chat-stream" role="log" aria-live="polite" aria-relevant="additions">
       <div className="chat-stream-column">
+        {hasMoreBefore && onLoadOlder ? (
+          <div className="chat-load-older">
+            <button
+              type="button"
+              className="ghost"
+              onClick={onLoadOlder}
+              disabled={loadingOlderMessages}
+              aria-busy={loadingOlderMessages}
+            >
+              {loadingOlderMessages ? 'Loading earlier messages…' : 'Load earlier messages'}
+            </button>
+          </div>
+        ) : null}
         <WarningBanners warnings={warnings} sharedFeaturesAvailable={sharedFeaturesAvailable} />
         {streamError ? (
           <div className="chat-warning-banner" role="alert">

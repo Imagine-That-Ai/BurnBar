@@ -18,7 +18,7 @@ it does not claim complete `LNX-CHAT-001` parity.
 | Method | Purpose | Bound |
 |---|---|---|
 | `daemon.chat.thread.list` | List real non-empty threads, optionally searching stored message content | 1-100 threads; 512 UTF-8 query bytes |
-| `daemon.chat.thread.get` | Read the exact requested thread in chronological order | 1-500 messages; 2 MiB aggregate response content |
+| `daemon.chat.thread.get` | Read the exact requested thread in chronological order, or page older rows with a stable `(beforeTimestamp, beforeMessageID)` cursor | 1-500 messages per page; 2 MiB aggregate response content |
 | `daemon.chat.message.append` | Append one caller-identified user, assistant, or system message | 48 KiB content; 256-byte thread/message IDs |
 
 All timestamps cross IPC as UTC ISO 8601 strings. The daemon accepts the SQLite
@@ -37,6 +37,9 @@ invalid dates, oversized rows, schema drift, and corrupt data fail closed.
    transaction. Existing messages are never overwritten.
 7. Thread search is derived from stored content, not usage or session metadata.
 8. Synthetic transcript generation is available only in explicit fixture mode.
+9. Long threads expose `hasMoreBefore` and the renderer loads older durable pages
+   with the oldest loaded row as a deterministic cursor; no history is silently
+   discarded at the per-response bound.
 
 The renderer validates all daemon results again at the WebView boundary,
 including bounded UTF-8 sizes, exact roles, canonical timestamps, same-thread
