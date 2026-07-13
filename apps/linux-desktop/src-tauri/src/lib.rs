@@ -8,6 +8,7 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::Receiver;
 use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
@@ -19,6 +20,7 @@ use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
 use tauri_plugin_shell::ShellExt;
 
 mod media;
+mod single_instance;
 mod update_feed;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -231,9 +233,14 @@ const DAEMON_SUBSCRIPTION_RESUME_METHOD: &str = "subscription.resume";
 const DAEMON_SUBSCRIPTION_STOP_METHOD: &str = "subscription.stop";
 
 static INITIAL_DEEP_LINK_ROUTE: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+static FORWARDED_ROUTE_QUEUE: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
 
 fn initial_deep_link_route_store() -> &'static Mutex<Option<String>> {
     INITIAL_DEEP_LINK_ROUTE.get_or_init(|| Mutex::new(None))
+}
+
+fn forwarded_route_queue() -> &'static Mutex<Vec<String>> {
+    FORWARDED_ROUTE_QUEUE.get_or_init(|| Mutex::new(Vec::new()))
 }
 
 /// Accept only the routes registered by the Linux shell. External URLs,
@@ -270,6 +277,45 @@ fn store_initial_deep_link_route(route: Option<String>) {
     if let Some(mut slot) = initial_deep_link_route_store().lock().ok() {
         *slot = route;
     }
+}
+
+fn route_from_single_instance_message(message: &single_instance::Message) -> Option<String> {
+    match message {
+        single_instance::Message::Focus => Some("overview".to_string()),
+        single_instance::Message::Route { route } => Some(route.clone()),
+        single_instance::Message::NotificationAction { action, .. } => {
+            single_instance::notification_action_route(action).map(str::to_string)
+        }
+    }
+}
+
+fn store_forwarded_route(route: String) {
+    if let Ok(mut routes) = forwarded_route_queue().lock() {
+        routes.push(route);
+        if routes.len() > 16 {
+            let excess = routes.len() - 16;
+            routes.drain(0..excess);
+        }
+    }
+}
+
+fn start_single_instance_dispatcher(app: AppHandle, receiver: Receiver<single_instance::Message>) {
+    let _ = thread::Builder::new()
+        .name("openburnbar-single-instance-dispatch".to_string())
+        .spawn(move || {
+            while let Ok(message) = receiver.recv() {
+                if let Some(route) = route_from_single_instance_message(&message) {
+                    store_forwarded_route(route.clone());
+                    emit_tray_route(&app, &route);
+                }
+                if let single_instance::Message::NotificationAction { action, payload } = message {
+                    let _ = app.emit(
+                        "notification-action",
+                        serde_json::json!({ "action": action, "payload": payload }),
+                    );
+                }
+            }
+        });
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -1439,10 +1485,17 @@ fn open_dashboard(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 fn initial_deep_link_route() -> Option<String> {
-    initial_deep_link_route_store()
+    if let Some(route) = initial_deep_link_route_store()
         .lock()
         .ok()
         .and_then(|mut route| route.take())
+    {
+        return Some(route);
+    }
+    forwarded_route_queue()
+        .lock()
+        .ok()
+        .and_then(|mut routes| routes.first().cloned().map(|_| routes.remove(0)))
 }
 
 #[tauri::command]
@@ -4394,6 +4447,31 @@ pub fn run() {
         }
     }
 
+    let startup_messages = match single_instance::startup_messages_from_args(
+        std::env::args().skip(1),
+        validated_deep_link_route,
+    ) {
+        Ok(messages) => messages,
+        Err(error) => {
+            eprintln!("openburnbar: refusing startup arguments: {error}");
+            return;
+        }
+    };
+    let instance = match single_instance::acquire(
+        &single_instance::directory(linux_support_dir),
+        &startup_messages,
+    ) {
+        Ok(instance) => instance,
+        Err(error) => {
+            eprintln!("openburnbar: single-instance startup unavailable: {error}");
+            return;
+        }
+    };
+    let (instance_guard, instance_receiver) = match instance {
+        single_instance::Acquire::Primary { guard, receiver } => (guard, receiver),
+        single_instance::Acquire::Forwarded => return,
+    };
+
     // Install the process-wide tracing subscriber so the remote stack's
     // `tracing::info!/warn!` events (and Tauri/tao/wry diagnostics) actually go
     // somewhere. Placed after the `--version`/`--help` fast-exit so probe output
@@ -4491,7 +4569,9 @@ pub fn run() {
             computer_use_audit_export,
             integrations_status
         ])
-        .setup(|app| {
+        .setup(move |app| {
+            app.manage(instance_guard);
+            start_single_instance_dispatcher(app.handle().clone(), instance_receiver);
             start_packaged_daemon_lifecycle(app.handle().clone());
             if let Err(e) = build_tray(app.handle()) {
                 TRAY_INIT_FAILED.store(true, Ordering::Relaxed);
