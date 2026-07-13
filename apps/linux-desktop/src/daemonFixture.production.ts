@@ -3,6 +3,10 @@ import type {
   AccountStatus,
   ConfigSnapshot,
   DatabaseIndexActionResult,
+  DatabaseCodeSearchRequest,
+  DatabaseCodeSearchResult,
+  DatabaseCodeContextPackRequest,
+  DatabaseCodeContextPackResult,
   DatabaseWorkspaceStatus,
   DbStatus,
   IntegrationsStatus,
@@ -60,6 +64,8 @@ export function fixtureProviderCatalog(): ProviderCatalog { return unavailable()
 export function fixtureMemoryReviewInbox(): MemoryReviewInbox { return unavailable(); }
 export function fixtureDatabaseWorkspaceStatus(): DatabaseWorkspaceStatus { return unavailable(); }
 export function fixtureDatabaseIndexAction(_kind: 'index' | 'watch'): DatabaseIndexActionResult { return unavailable(); }
+export function fixtureDatabaseCodeSearch(_request: DatabaseCodeSearchRequest): DatabaseCodeSearchResult { return unavailable(); }
+export function fixtureDatabaseCodeContextPack(_request: DatabaseCodeContextPackRequest): DatabaseCodeContextPackResult { return unavailable(); }
 export function fixtureSessionList(): SessionListResult { return unavailable(); }
 export function fixtureUsageInsights(): UsageInsights { return unavailable(); }
 export function fixtureMissionList(): MissionListResult { return unavailable(); }

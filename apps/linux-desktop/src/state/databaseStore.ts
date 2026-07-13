@@ -1,12 +1,29 @@
 import { create } from 'zustand';
 import {
+  fixtureDatabaseCodeContextPack,
+  fixtureDatabaseCodeSearch,
   fixtureDatabaseIndexAction,
   fixtureDatabaseWorkspaceStatus
 } from '../daemonFixture.js';
-import type { DatabaseIndexActionResult, DatabaseWorkspaceStatus } from '../tauriBridge.js';
+import {
+  DATABASE_CODE_DEFAULT_RESULTS,
+  DATABASE_CODE_MAX_CONTEXT_BYTES,
+  DATABASE_CODE_MAX_RESULTS,
+  type DatabaseCodeContextPackResult,
+  type DatabaseCodeSearchResult,
+  type DatabaseIndexActionResult,
+  type DatabaseWorkspaceStatus
+} from '../tauriBridge.js';
 import { useShellStore } from './shellStore.js';
 
 const OFFLINE_ERROR = 'Packaged shell required for live database workspace RPCs.';
+const CODE_SEARCH_UNAVAILABLE = 'Code search is unavailable until the packaged shell exposes the daemon index.';
+const CODE_SEARCH_EMPTY = 'Enter a code search query.';
+
+function clampCodeLimit(limit: number | undefined, fallback = DATABASE_CODE_DEFAULT_RESULTS): number {
+  const value = Number.isFinite(limit) ? Math.trunc(limit as number) : fallback;
+  return Math.max(1, Math.min(DATABASE_CODE_MAX_RESULTS, value));
+}
 
 export type DatabaseActionState = {
   pending: boolean;
@@ -20,9 +37,18 @@ export type DatabaseState = {
   error: string | null;
   indexAction: DatabaseActionState;
   watchAction: DatabaseActionState;
+  codeSearch: DatabaseCodeSearchResult | null;
+  codeSearchLoading: boolean;
+  codeSearchError: string | null;
+  codeContextPack: DatabaseCodeContextPackResult | null;
+  codeContextLoading: boolean;
+  codeContextError: string | null;
   loadWorkspace(projectPath?: string): Promise<void>;
   indexProject(projectPath?: string): Promise<void>;
   watchProject(projectPath?: string): Promise<void>;
+  searchCode(query: string, projectPath?: string, limit?: number): Promise<void>;
+  buildCodeContextPack(query: string, projectPath?: string, limit?: number): Promise<void>;
+  clearCodeRetrieval(): void;
 };
 
 const idleAction: DatabaseActionState = {
@@ -37,6 +63,12 @@ export const useDatabaseStore = create<DatabaseState>()((set, get) => ({
   error: null,
   indexAction: idleAction,
   watchAction: idleAction,
+  codeSearch: null,
+  codeSearchLoading: false,
+  codeSearchError: null,
+  codeContextPack: null,
+  codeContextLoading: false,
+  codeContextError: null,
 
   async loadWorkspace(projectPath) {
     const { fixtureMode, bridge } = useShellStore.getState();
@@ -113,5 +145,75 @@ export const useDatabaseStore = create<DatabaseState>()((set, get) => ({
         }
       });
     }
+  },
+
+  async searchCode(query, projectPath, limit) {
+    const normalizedQuery = query.trim();
+    if (!normalizedQuery) {
+      set({ codeSearch: null, codeSearchLoading: false, codeSearchError: CODE_SEARCH_EMPTY });
+      return;
+    }
+    const { fixtureMode, bridge } = useShellStore.getState();
+    const request = {
+      query: normalizedQuery,
+      projectPath,
+      limit: clampCodeLimit(limit)
+    };
+    set({ codeSearchLoading: true, codeSearchError: null, codeSearch: null, codeContextPack: null, codeContextError: null });
+    try {
+      const result = fixtureMode
+        ? fixtureDatabaseCodeSearch(request)
+        : bridge?.databaseCodeSearch
+          ? await bridge.databaseCodeSearch(request)
+          : (() => { throw new Error(CODE_SEARCH_UNAVAILABLE); })();
+      set({ codeSearch: result, codeSearchLoading: false, codeSearchError: null });
+    } catch (e) {
+      set({
+        codeSearch: null,
+        codeSearchLoading: false,
+        codeSearchError: e instanceof Error ? e.message : 'Code search failed.'
+      });
+    }
+  },
+
+  async buildCodeContextPack(query, projectPath, limit) {
+    const normalizedQuery = query.trim();
+    if (!normalizedQuery) {
+      set({ codeContextPack: null, codeContextLoading: false, codeContextError: CODE_SEARCH_EMPTY });
+      return;
+    }
+    const { fixtureMode, bridge } = useShellStore.getState();
+    const request = {
+      query: normalizedQuery,
+      projectPath,
+      limit: clampCodeLimit(limit, 10),
+      maxBytes: DATABASE_CODE_MAX_CONTEXT_BYTES
+    };
+    set({ codeContextLoading: true, codeContextError: null, codeContextPack: null });
+    try {
+      const result = fixtureMode
+        ? fixtureDatabaseCodeContextPack(request)
+        : bridge?.databaseCodeContextPack
+          ? await bridge.databaseCodeContextPack(request)
+          : (() => { throw new Error(CODE_SEARCH_UNAVAILABLE); })();
+      set({ codeContextPack: result, codeContextLoading: false, codeContextError: null });
+    } catch (e) {
+      set({
+        codeContextPack: null,
+        codeContextLoading: false,
+        codeContextError: e instanceof Error ? e.message : 'Context pack failed.'
+      });
+    }
+  },
+
+  clearCodeRetrieval() {
+    set({
+      codeSearch: null,
+      codeSearchLoading: false,
+      codeSearchError: null,
+      codeContextPack: null,
+      codeContextLoading: false,
+      codeContextError: null
+    });
   }
 }));

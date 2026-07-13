@@ -70,6 +70,9 @@ Primary files:
 - [`performance-reliability-validation.md`](performance-reliability-validation.md) -
   repeated packaged-shell percentiles, matched production-linked macOS/Linux
   workloads, resource soak, supervisor behavior, and fail-closed QA contract.
+- [`P22_DATABASE_CODE_INSPECTION.md`](P22_DATABASE_CODE_INSPECTION.md) - bounded
+  daemon-owned code search/context-pack behavior in the Database route, with
+  trust warnings and fail-closed packaging behavior.
 - [`LINUX_EVENT_SUBSCRIPTION_AUTHORITY.md`](LINUX_EVENT_SUBSCRIPTION_AUTHORITY.md) -
   daemon start/resume/stop cursors, desktop cadence and cancellation, recovery
   behavior, honest degraded-pull status, and remaining installed certification.
