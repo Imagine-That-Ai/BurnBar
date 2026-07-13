@@ -37,15 +37,40 @@ else
 fi
 
 DRY_RUN=0
+CHECK_SOURCE=0
 for arg in "$@"; do
   case "${arg}" in
     --dry-run) DRY_RUN=1 ;;
+    --check-source) CHECK_SOURCE=1 ;;
     *) echo "unknown arg: ${arg}" >&2; exit 64 ;;
   esac
 done
 
 log() { printf '[domain-core-aar] %s\n' "$*" >&2; }
 abort() { log "FATAL: $*"; exit 1; }
+
+source_fingerprint() {
+  python3 - "${CRATE_DIR}" <<'PY'
+import hashlib
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+digest = hashlib.sha256()
+roots = [root / "Cargo.toml", root / "Cargo.lock", root / "domain-core", root / "domain-ffi"]
+paths = []
+for candidate in roots:
+    paths.extend([candidate] if candidate.is_file() else candidate.rglob("*"))
+for path in sorted(p for p in paths if p.is_file() and "target" not in p.parts):
+    relative = path.relative_to(root).as_posix().encode()
+    digest.update(len(relative).to_bytes(4, "big"))
+    digest.update(relative)
+    contents = path.read_bytes()
+    digest.update(len(contents).to_bytes(8, "big"))
+    digest.update(contents)
+print(digest.hexdigest())
+PY
+}
 
 abi_to_target() {
   case "$1" in
@@ -85,6 +110,26 @@ RUSTUP_BIN="${HOME}/.cargo/bin/rustup"
 CARGO_BIN="${HOME}/.cargo/bin/cargo"
 [[ -x "${CARGO_BIN}" ]] || CARGO_BIN="$(command -v cargo || true)"
 [[ -x "${CARGO_BIN}" ]] || abort "cargo not found"
+
+SOURCE_FINGERPRINT="$(source_fingerprint)"
+if [[ "${CHECK_SOURCE}" -eq 1 ]]; then
+  [[ -f "${AAR_PATH}" ]] || abort "missing committed AAR: ${AAR_PATH}"
+  COMMITTED_FINGERPRINT="$(python3 - "${AAR_PATH}" <<'PY'
+import sys
+import zipfile
+
+with zipfile.ZipFile(sys.argv[1]) as archive:
+    try:
+        print(archive.read("META-INF/openburnbar-domain-core-source.sha256").decode().strip())
+    except KeyError:
+        raise SystemExit("committed AAR has no source fingerprint")
+PY
+)"
+  [[ "${COMMITTED_FINGERPRINT}" == "${SOURCE_FINGERPRINT}" ]] || \
+    abort "committed AAR source fingerprint is stale"
+  log "committed AAR matches domain-core source ${SOURCE_FINGERPRINT}"
+  exit 0
+fi
 
 ANDROID_SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}"
 [[ -d "${ANDROID_SDK}" ]] || abort "Android SDK not found at ${ANDROID_SDK}; export ANDROID_HOME"
@@ -259,6 +304,9 @@ find "${BUILD_DIR}/empty-classes" -exec touch -h -t "${ZIP_TIME}" {} +
 write_stored_zip "${STAGING}/classes.jar" "${BUILD_DIR}/empty-classes" META-INF/MANIFEST.MF
 : > "${STAGING}/proguard.txt"
 : > "${STAGING}/R.txt"
+mkdir -p "${STAGING}/META-INF"
+printf '%s\n' "${SOURCE_FINGERPRINT}" > \
+  "${STAGING}/META-INF/openburnbar-domain-core-source.sha256"
 
 find "${STAGING}" -exec touch -h -t "${ZIP_TIME}" {} +
 AAR_ENTRIES=()

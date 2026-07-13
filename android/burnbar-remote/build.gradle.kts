@@ -44,6 +44,10 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("net.java.dev.jna:jna:5.19.0")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    val committedRemoteAar = rootProject.layout.projectDirectory.dir("..").asFile.resolve("Vendor/burnbar-remote.aar")
+    if (committedRemoteAar.exists()) {
+        androidTestImplementation(files(committedRemoteAar))
+    }
 }
 
 tasks.withType<Test>().configureEach {
