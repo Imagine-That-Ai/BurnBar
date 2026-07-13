@@ -223,7 +223,7 @@ also converged the Insights adapter/registry re-slice inside S12 (see the P-08 c
 | P-13 | S7 | OpenBurnBarQuota | C | draft | QUEUED |
 | P-14 | S8 | OpenBurnBarVectorKit (now also OpenBurnBarSearchContracts — FIX 4) | D | full | PR_OPEN (base wave2-base; AE-IMPORT Kernel×6 for Locked/PlatformCrypto, AE-TESTABLE×1, Pensieve off-Apple excludes removed — cross-platform via Kernel PlatformCrypto) |
 | P-15 | S13 | OpenBurnBarLaunchServices | A | draft | QUEUED |
-| P-16a…f | S14 | OpenBurnBarUI (K4) — by Views subdirectory | A | draft | QUEUED |
+| P-16a…f | S14 | OpenBurnBarUI (K4) — by Views subdirectory (ENUMERATED: a=Substrate+RGBA.swift, b=Insights, c=MissionControl, d=Cards+Square, e=UI SharedModels, f=Views root LAST) | A | full | P-16a PR_OPEN (Substrate 35f + pulled-forward `SharedModels/RGBA.swift`; AE-IMPORT Kernel×32, RGBA color-math internal→public, AE-TESTABLE×2 + `SubstrateCatalog` module-qualified for the Kernel off-Apple-stub shadow); b–f QUEUED |
 | P-17 | S16 | OpenBurnBarEngine umbrella (fill) | Integrator | draft | QUEUED |
 | P-18 | S17 | daemon/CLI repoint → OpenBurnBarEngine | Integrator | draft | QUEUED |
 | P-19 | S18 | Widget repoint | Integrator | draft | QUEUED |
@@ -366,6 +366,31 @@ PR #1559. Executors of wave-1b must internalize these:
    resource-loader hub. Run compile-closure (`swift build --target <dest>`) before
    finalizing ANY slice, and treat every `BurnBarCatalogLoader`/`bundledCatalog`/pricing-
    lookup reference as an implicit P-02 edge.
+
+10. **Retroactive-extension members on a moved-away type are a hidden hub; and a
+    moved-out extension consumed by files that STAY (via `@_exported`) must be `public`,
+    not module-`internal`. Cross-module type-name shadows from a re-exported sibling stub
+    need module qualification.** (P-16a, S14 UI.) `Views/Substrate/` looked Kernel-only,
+    but compile-closure (`swift build --target OpenBurnBarUI`) proved it hard-depends on
+    `SharedModels/RGBA.swift`'s extension members — `RGBA.color`/`.mix`/`.bucketKey`/
+    `.darkened` (×185/72/5/4) — which live in Core's SwiftUI-carrying `RGBA.swift`, NOT in
+    the Kernel's `RGBA` struct. grep-by-import and grep-by-path both miss extension-member
+    hubs (an `extension RGBA { … }` in another file adds members with no import at the use
+    site). Fix: pull the ONE file forward (Core→UI, minimal), and — because Core files that
+    stay above UI (`SwarmColorDriver`, `SwarmCanvasView+*`) reach those members across the
+    module boundary through Core's `@_exported import OpenBurnBarUI` — bump the moved
+    members from module-`internal` to `public` (access widening only; single definition
+    graph-wide, so no ambiguity; behavior unchanged). Separately, the Kernel's off-Apple
+    `SubstrateCatalog` stub (`LinuxSubstrateSupport.swift`, unguarded, compiled on Apple too)
+    stopped being masked by same-module resolution once the REAL `SubstrateCatalog` moved to
+    UI and Core re-exported it: Apple now sees two `SubstrateCatalog` (Kernel stub + UI real)
+    → `ambiguous use`. Since only tests referenced it unqualified (the whole-Core build stayed
+    green), the fix is test-local module qualification (`OpenBurnBarUI.SubstrateCatalog`) +
+    `@testable import OpenBurnBarUI` for the moved internals — NOT a privileged-Kernel edit.
+    Lesson for P-16b–f: run compile-closure per sub-packet; treat every retroactive
+    `extension <MovedType>` as a hub; make moved members reachable by re-exporting Core
+    consumers `public`; qualify any `SubstrateCatalog` (and any Kernel-off-Apple-stub name)
+    used unqualified on Apple.
 
 Gate/lane/CI hardening shipped with the repair (Codex PR #1559 threads): the umbrella
 regex now matches `@testable import OpenBurnBarCore` (and `@_exported`/`@_spi(...)`

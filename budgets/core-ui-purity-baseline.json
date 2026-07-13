@@ -1,6 +1,6 @@
 {
   "note": "Files in OpenBurnBarCore/Sources/OpenBurnBarCore importing SwiftUI/AppKit. Shrink-only: entries may only be removed (audit 2026-06-30 finding #4, kernel extraction). Regenerate via scripts/debt/check-core-ui-purity-budget.sh --update.",
-  "total": 109,
+  "total": 79,
   "files": [
     {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/Insights/Share/InsightShareCardRenderer.swift",
@@ -10,12 +10,6 @@
     },
     {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/AgentProvider+LogoBackdrop.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/RGBA.swift",
       "frameworks": [
         "SwiftUI"
       ]
@@ -383,181 +377,6 @@
     },
     {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/PixelClockPreviewView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Aurora/AuroraFilamentSubstrate.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Aurora/DriftMotesSubstrate.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Aurora/IcePrismSubstrate.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Aurora/WispSubstrate.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Constellation/RimefrostSubstrate.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Constellation/StarfireSubstrate.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Constellation/StarSapphireSubstrate.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Constellation/StellariumSubstrate.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Flow/GlassRibbonSubstrate.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Flow/PetalDriftSubstrate.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Flow/PlanktonWakeSubstrate.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Flow/SilkStreamlineSubstrate.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Mesh/MeshCausticSubstrate.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Mesh/MeshGrainSubstrate.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Mesh/MeshIsolineSubstrate.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Mesh/MeshPatchSubstrate.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Moire/FilmBubbleSubstrate.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Moire/FringeBloomSubstrate.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Moire/LatticeFacetSubstrate.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Moire/RulingGratingSubstrate.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/PlainDotsSubstrate.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/SubstrateCatalog.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/SubstrateKit.swift",
-      "frameworks": [
-        "AppKit",
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/SwarmSubstrate.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/SwarmSubstrateBox.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Volumetric/DustMotesSubstrate.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Volumetric/SilkFilamentSubstrate.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Volumetric/SmokedGlassSubstrate.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/Substrate/Volumetric/SunshaftSubstrate.swift",
       "frameworks": [
         "SwiftUI"
       ]

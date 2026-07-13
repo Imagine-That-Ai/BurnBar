@@ -167,7 +167,7 @@ struct SwarmWallpaperView: View {
     let viewModel: SwarmWallpaperViewModel
     @StateObject private var substrateBox = SwarmSubstrateBox()
     @AppStorage(SwarmSubstratePreferences.enabledKey) private var substrateEnabled: Bool = false
-    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = SubstrateCatalog.plainID
+    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = OpenBurnBarUI.SubstrateCatalog.plainID
     @AppStorage(SwarmSubstratePreferences.backdropKernelKey) private var backdropKernel: String = SwarmSubstratePreferences.defaultKernelID
 
     private var substrate: SwarmSubstrate {
