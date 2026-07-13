@@ -133,8 +133,8 @@ unproven host behavior to certification:
   gateway executor; unconfigured provider routes fail closed. Provider response
   bodies are bounded before entering the fusion loop.
 
-These changes are covered by focused managed-runtime (31/31 mission/runtime
-tests plus 97/97 managed-agent-runtime tests), presentation (749/749),
+These changes are covered by focused managed-runtime (32/32 mission/runtime
+tests plus 97/97 managed-agent-runtime tests), presentation (750/750),
 Computer Use, bridge-policy, and provider-boundary tests. They are an implementation increment, not a claim that
 the F2 workstreams are all promoted to `Real`: full static parsing, live
 Pensieve storage integration, production composition of every F2 service,

@@ -20,7 +20,7 @@ public static class AnthropicProviderAdapter
     public static byte[] ToMessagesRequest(byte[] openAiBody, string model)
     {
         JsonObject source = ParseObject(openAiBody, "anthropic_request_invalid_json");
-        if (source["stream"]?.GetValue<bool>() == true)
+        if (ReadBool(source["stream"], "anthropic_stream_invalid"))
         {
             throw new ProviderWireFormatException(501, "anthropic_streaming_not_supported");
         }
@@ -40,7 +40,9 @@ public static class AnthropicProviderAdapter
                 throw new ProviderWireFormatException(400, "anthropic_message_invalid");
             }
 
-            string role = message["role"]?.GetValue<string>()?.Trim().ToLowerInvariant() ?? "user";
+            string role = (ReadString(message["role"], "anthropic_role_invalid") ?? "user")
+                .Trim()
+                .ToLowerInvariant();
             string content = TextContent(message["content"]);
             if (string.IsNullOrWhiteSpace(content))
             {
@@ -92,8 +94,8 @@ public static class AnthropicProviderAdapter
     {
         JsonObject source = ParseObject(anthropicBody, "anthropic_response_invalid_json");
         string text = TextContent(source["content"]);
-        string model = source["model"]?.GetValue<string>() ?? fallbackModel;
-        string finishReason = source["stop_reason"]?.GetValue<string>() switch
+        string model = ReadString(source["model"], "anthropic_model_invalid") ?? fallbackModel;
+        string finishReason = ReadString(source["stop_reason"], "anthropic_stop_reason_invalid") switch
         {
             "max_tokens" => "length",
             "tool_use" => "tool_calls",
@@ -152,6 +154,11 @@ public static class AnthropicProviderAdapter
             return text ?? string.Empty;
         }
 
+        if (node is JsonValue)
+        {
+            throw new ProviderWireFormatException(400, "anthropic_content_invalid");
+        }
+
         if (node is not JsonArray blocks)
         {
             return string.Empty;
@@ -165,7 +172,7 @@ public static class AnthropicProviderAdapter
                 continue;
             }
 
-            if (string.Equals(block["type"]?.GetValue<string>(), "text", StringComparison.OrdinalIgnoreCase)
+            if (string.Equals(ReadString(block["type"], "anthropic_content_type_invalid"), "text", StringComparison.OrdinalIgnoreCase)
                 && block["text"] is JsonValue blockText
                 && blockText.TryGetValue<string>(out string? textValue)
                 && !string.IsNullOrWhiteSpace(textValue))
@@ -175,6 +182,36 @@ public static class AnthropicProviderAdapter
         }
 
         return string.Join("\n", parts);
+    }
+
+    private static string? ReadString(JsonNode? node, string error)
+    {
+        if (node is null)
+        {
+            return null;
+        }
+
+        if (node is JsonValue value && value.TryGetValue<string>(out string? result))
+        {
+            return result;
+        }
+
+        throw new ProviderWireFormatException(400, error);
+    }
+
+    private static bool ReadBool(JsonNode? node, string error)
+    {
+        if (node is null)
+        {
+            return false;
+        }
+
+        if (node is JsonValue value && value.TryGetValue<bool>(out bool result))
+        {
+            return result;
+        }
+
+        throw new ProviderWireFormatException(400, error);
     }
 
     private static int? ReadPositiveInt(JsonObject? source, string property)

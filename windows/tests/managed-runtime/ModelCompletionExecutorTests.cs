@@ -85,6 +85,24 @@ public sealed class ModelCompletionExecutorTests
         Assert.Null(handler.RequestBody);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_FailsClosedForMalformedAnthropicTypes()
+    {
+        var handler = new CapturingResponseHandler(new HttpResponseMessage(HttpStatusCode.OK));
+        using var client = new HttpClient(handler);
+        var executor = new HttpModelCompletionExecutor(client);
+
+        ModelCompletionResult result = await executor.ExecuteAsync(
+            new ModelRoute("anthropic-route", "anthropic", "claude-test", 0, true, new Uri("https://api.anthropic.test/v1/messages")),
+            Encoding.UTF8.GetBytes(
+                "{\"model\":\"claude-test\",\"stream\":\"yes\",\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}"),
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(400, result.StatusCode);
+        Assert.Null(handler.RequestBody);
+    }
+
     private sealed class FixedResponseHandler : HttpMessageHandler
     {
         private readonly HttpResponseMessage _response;
