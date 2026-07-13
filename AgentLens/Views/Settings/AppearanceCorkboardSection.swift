@@ -866,11 +866,11 @@ private struct KernelBackdropSettingsRow: View {
 /// `swarmSubstrate` key honored by the dashboard, wallpaper, and iOS.
 private struct SwarmSubstrateSettingsRow: View {
     @AppStorage(SwarmSubstratePreferences.enabledKey) private var substrateEnabled: Bool = false
-    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = SubstrateCatalog.plainID
+    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = OpenBurnBarUI.SubstrateCatalog.plainID
     @AppStorage(KernelBackdropPreferences.kernelKey) private var backdropKernel: String = KernelCatalog.defaultID
 
     private var family: SubstrateFamily { SubstrateFamily.forKernel(backdropKernel) }
-    private var styles: [SubstrateDescriptor] { SubstrateCatalog.styles(forKernel: backdropKernel) }
+    private var styles: [SubstrateDescriptor] { OpenBurnBarUI.SubstrateCatalog.styles(forKernel: backdropKernel) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
