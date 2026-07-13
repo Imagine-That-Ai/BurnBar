@@ -525,15 +525,10 @@ extension MercuryRouter {
                 frame: request.frame,
                 replySender: request.replySender
             )
-            if request.autoAcceptedByMirrorGrant {
-                consentStore.renewAutoAcceptGrant(
-                    connectionId: request.frame.connectionId,
-                    viewerDeviceId: mirrorRequest.viewerDeviceId,
-                    controlAuthorityPeerNodeId: mirrorRequest.controlAuthorityPeerNodeId,
-                    remotePeerNodeId: request.remotePeerNodeID,
-                    now: clock()
-                )
-            }
+            // Auto-accepted sessions intentionally do NOT renew the grant:
+            // remembered-peer grants live for a fixed TTL from the explicit
+            // Accept, so an auto-accepting device must ring again once the
+            // original grant expires (no sliding-window renewal).
             if waitingForRemoteUnlock {
                 Self.log.info("router_locked_mirror_waiting_for_remote_unlock requestID=\(request.id, privacy: .public)")
                 Self.debugTrace("router_locked_mirror_waiting_for_remote_unlock requestID=\(request.id)")
