@@ -64,6 +64,10 @@ on:
         description: Successful first-attempt Linux Release Candidate run at this exact commit
         required: true
         type: string
+      macos_oracle_run_id:
+        description: Successful first-attempt macOS P-39 oracle run at this exact commit (required for P-39)
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -115,6 +119,31 @@ jobs:
           artifact-ids: ${{ steps.evidence.outputs.artifact_id }}
           repository: Imagine-That-Ai/BurnBar
           run-id: ${{ inputs.candidate_run_id }}
+          github-token: ${{ github.token }}
+          path: docs/linux-port/evidence/product-parity-inputs/${{ inputs.requirement }}/${{ inputs.environment }}
+
+      - name: Resolve exact P-39 macOS oracle artifact
+        id: macos_oracle
+        if: inputs.requirement == 'P-39'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MACOS_ORACLE_RUN_ID: ${{ inputs.macos_oracle_run_id }}
+          TARGET_HEAD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test -n "$MACOS_ORACLE_RUN_ID"
+          node scripts/linux-port/resolve-p39-macos-oracle-run.mjs \
+            --run-id "$MACOS_ORACLE_RUN_ID" \
+            --target-head "$TARGET_HEAD"
+
+      - name: Download exact P-39 macOS oracle evidence
+        if: inputs.requirement == 'P-39'
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          artifact-ids: ${{ steps.macos_oracle.outputs.artifact_id }}
+          repository: Imagine-That-Ai/BurnBar
+          run-id: ${{ steps.macos_oracle.outputs.run_id }}
           github-token: ${{ github.token }}
           path: docs/linux-port/evidence/product-parity-inputs/${{ inputs.requirement }}/${{ inputs.environment }}
 

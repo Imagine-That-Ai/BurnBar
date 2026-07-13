@@ -78,7 +78,7 @@ The P-02 validator independently repeats that isolated execution instead of trus
 claims in the feature proof, then recomputes and validates the inventory. It can pass only when
 every one of the 40 rows has executable, mutation-sensitive ownership. A role, policy, empty test,
 reused test, workflow comment, untracked helper, or hand-authored passed JSON cannot satisfy a
-lane. The repository currently has six ready rows and 34 named blockers.
+lane. The repository currently has nine implementation-ready rows and 31 named blockers.
 
 If collection itself fails, the capture producer atomically leaves a non-promotable
 `capture-failed` diagnostic in a runner-owned `mktemp` directory, even when the downloaded input
@@ -123,3 +123,10 @@ fail before registration. The validator re-reads every source and binary record 
 recomputes the comparison, and rejects a stale proof or candidate substitution. A green P-39 receipt
 therefore proves the attested current-commit corpus and outputs only; it does not allow a pre-existing
 fixture or a Linux-generated stand-in to claim macOS parity.
+
+The Linux product-parity workflow requires a separate `macos_oracle_run_id` for P-39. The resolver
+accepts only a first-attempt successful run of `.github/workflows/linux-p39-macos-oracle.yml` at the
+same target commit, with one live `linux-p39-macos-oracle` artifact bound to that run. The workflow
+downloads that artifact into the exact Linux environment evidence root before capture. If the oracle
+run is omitted, stale, rerun, from another repository, or contains the wrong artifact, P-39 fails
+closed; no Linux job is permitted to synthesize the macOS side.
