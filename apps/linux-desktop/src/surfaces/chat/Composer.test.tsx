@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { configureTextExpansionConsentStorage, writeTextExpansionConsent } from '../../textExpansionConsent.js';
+import { configureTextExpansionStorage, upsertSnippet } from '../../textExpansionStore.js';
 import { MAX_CHAT_ATTACHMENT_BYTES, Composer } from './Composer.js';
 
-function renderComposer() {
+function renderComposer(secureField = false) {
   return render(
     <Composer
       backend="hermes"
@@ -11,13 +13,23 @@ function renderComposer() {
       disabledReason=""
       streaming={false}
       busy={false}
+      secureField={secureField}
       onSend={vi.fn()}
       onStop={vi.fn()}
     />
   );
 }
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  configureTextExpansionStorage(null);
+  configureTextExpansionConsentStorage(null, true);
+});
+
+function enableInAppExpansion() {
+  writeTextExpansionConsent({ inAppOnly: true, declinedGlobalCapture: true });
+  upsertSnippet({ title: 'Signature', trigger: ';;sig', body: 'Thanks', enabled: true });
+}
 
 describe('chat composer attachments', () => {
   it('shows accepted file metadata, disables send, and removes it cleanly', () => {
@@ -47,5 +59,23 @@ describe('chat composer attachments', () => {
     const unsupported = new File(['binary'], 'program.exe', { type: 'application/octet-stream' });
     fireEvent.change(input, { target: { files: [unsupported] } });
     expect(screen.getByRole('alert').textContent).toMatch(/Unsupported attachment type/i);
+  });
+});
+
+describe('chat composer text expansion', () => {
+  it('expands a consented in-app trigger as the user types', () => {
+    enableInAppExpansion();
+    renderComposer();
+    const composer = screen.getByLabelText('Message composer');
+    fireEvent.change(composer, { target: { value: 'reply ;;sig' } });
+    expect(composer).toHaveProperty('value', 'reply Thanks');
+  });
+
+  it('does not expand a secure field', () => {
+    enableInAppExpansion();
+    renderComposer(true);
+    const composer = screen.getByLabelText('Message composer');
+    fireEvent.change(composer, { target: { value: 'reply ;;sig' } });
+    expect(composer).toHaveProperty('value', 'reply ;;sig');
   });
 });
