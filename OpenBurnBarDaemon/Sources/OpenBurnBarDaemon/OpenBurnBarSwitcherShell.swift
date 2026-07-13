@@ -1,6 +1,6 @@
 import Foundation
 import GRDB
-import OpenBurnBarCore
+import OpenBurnBarEngine
 #if os(macOS)
 import LocalAuthentication
 import Security

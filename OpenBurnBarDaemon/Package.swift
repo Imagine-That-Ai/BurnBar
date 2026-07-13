@@ -9,8 +9,14 @@ var packageDependencies: [Package.Dependency] = [
     .package(path: "../OpenBurnBarCore")
 ]
 let buildForLinuxBoundary = ProcessInfo.processInfo.environment["OPENBURNBAR_DAEMON_LINUX_BOUNDARY_BUILD"] == "1"
+// Core-decomposition S17 (packet P-18): the daemon links the UI-free
+// `OpenBurnBarEngine` umbrella instead of the SwiftUI/AppKit `OpenBurnBarCore`
+// monolith, so the most privileged binary gains NO transitive path to the
+// presentation layer (OpenBurnBarUI / OpenBurnBarInsights views). Keep
+// ComputerUseCore / IrohRelay / Media / LinuxSecurity as-is (they are pure
+// sibling products, not part of the Engine umbrella).
 var daemonTargetDependencies: [Target.Dependency] = [
-    .product(name: "OpenBurnBarCore", package: "OpenBurnBarCore"),
+    .product(name: "OpenBurnBarEngine", package: "OpenBurnBarCore"),
     .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore"),
     .product(name: "OpenBurnBarIrohRelay", package: "OpenBurnBarCore"),
     .product(name: "OpenBurnBarMedia", package: "OpenBurnBarCore"),
@@ -205,7 +211,7 @@ var packageTargets: [Target] = [
         name: "OpenBurnBarDaemonLinuxGatewayTests",
         dependencies: [
             "OpenBurnBarDaemon",
-            .product(name: "OpenBurnBarCore", package: "OpenBurnBarCore"),
+            .product(name: "OpenBurnBarEngine", package: "OpenBurnBarCore"),
             .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore"),
             .product(name: "OpenBurnBarIrohRelay", package: "OpenBurnBarCore"),
             .product(name: "OpenBurnBarMedia", package: "OpenBurnBarCore")

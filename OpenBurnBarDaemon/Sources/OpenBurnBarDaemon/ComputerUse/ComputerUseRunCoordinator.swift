@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import OpenBurnBarComputerUseCore
 
 /// Routes a `BurnBarToolInvocation` whose `tool` is a Computer Use

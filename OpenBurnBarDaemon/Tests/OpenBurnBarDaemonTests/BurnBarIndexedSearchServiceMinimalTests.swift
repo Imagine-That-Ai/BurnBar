@@ -1,7 +1,10 @@
 import XCTest
 import Foundation
 import SQLite3
-@testable import OpenBurnBarCore
+// P-18: BurnBarSemanticSearchConfig is public in OpenBurnBarVectorKit (an Engine
+// leaf). The daemon repoint drops the OpenBurnBarCore link, so reach the type via
+// its owning engine module instead of the retired Core umbrella.
+@testable import OpenBurnBarVectorKit
 @testable import OpenBurnBarDaemon
 
 final class BurnBarIndexedSearchServiceMinimalTests: XCTestCase {
