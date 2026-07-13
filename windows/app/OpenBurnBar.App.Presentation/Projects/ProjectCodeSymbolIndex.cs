@@ -23,6 +23,7 @@ public sealed class ProjectCodeSymbolIndex : IDisposable
     private readonly string _indexPath;
     private readonly int _maxFiles;
     private readonly int _maxSymbols;
+    private readonly ProjectCodeMemoryStore? _store;
     private IProjectCodeStaticParserClient? _parser;
     private readonly object _gate = new();
     private FileSystemWatcher? _watcher;
@@ -35,7 +36,8 @@ public sealed class ProjectCodeSymbolIndex : IDisposable
         string? indexPath = null,
         int maxFiles = 500,
         int maxSymbols = 10_000,
-        IProjectCodeStaticParserClient? parser = null)
+        IProjectCodeStaticParserClient? parser = null,
+        ProjectCodeMemoryStore? store = null)
     {
         if (string.IsNullOrWhiteSpace(root))
         {
@@ -52,6 +54,7 @@ public sealed class ProjectCodeSymbolIndex : IDisposable
         _maxFiles = maxFiles;
         _maxSymbols = maxSymbols;
         _parser = parser;
+        _store = store;
     }
 
     public IReadOnlyList<ProjectCodeSymbol> Symbols
@@ -68,6 +71,10 @@ public sealed class ProjectCodeSymbolIndex : IDisposable
     public string Root => _root;
 
     public bool IsWatching => _watcher is not null;
+
+    public bool HasDurableStore => _store is not null;
+
+    public ProjectCodeMemoryStoreStats? DurableStoreStats => _store?.ReadStats();
 
     public ProjectCodeIndexSnapshot? Snapshot
     {
@@ -220,6 +227,17 @@ public sealed class ProjectCodeSymbolIndex : IDisposable
 
     public bool TryLoad()
     {
+        if (_store is not null && _store.TryLoad(_root, out ProjectCodeIndexSnapshot durableSnapshot))
+        {
+            SetSymbols(durableSnapshot.Symbols);
+            lock (_gate)
+            {
+                _snapshot = durableSnapshot;
+            }
+
+            return true;
+        }
+
         try
         {
             if (!File.Exists(_indexPath))
@@ -277,6 +295,7 @@ public sealed class ProjectCodeSymbolIndex : IDisposable
         _watcher = null;
         _refreshTimer?.Dispose();
         _refreshTimer = null;
+        _store?.Dispose();
     }
 
     private static IEnumerable<string> EnumerateCodeFiles(string root, int maxFiles)
@@ -377,6 +396,7 @@ public sealed class ProjectCodeSymbolIndex : IDisposable
         {
             _snapshot = snapshot;
         }
+        _store?.SaveIndex(_root, snapshot);
         try
         {
             string? directory = Path.GetDirectoryName(_indexPath);

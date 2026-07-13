@@ -138,6 +138,14 @@ unproven host behavior to certification:
   `code.context_pack` companion operations without persisting source text.
   Context packs are explicit, path-confined, UTF-8 bounded, secret-redacted,
   and wrapped as untrusted source before returning to a caller.
+- The project-code watcher now writes a durable Pensieve-compatible SQLite
+  metadata store by default under `%LOCALAPPDATA%\\OpenBurnBar`. Atomic refresh
+  transactions persist project identity, file manifests, artifact hashes,
+  symbols, lexical references/call edges, and index checkpoints; restart loads
+  the durable checkpoint before falling back to the legacy JSON index. Source
+  text is never inserted into the store, and `code.status` exposes bounded
+  storage/index counters. Semantic chunk/embedding parity remains an explicit
+  follow-on rather than being implied by this metadata-store evidence.
 - App startup composes the loopback gateway, companion CLI, and durable run
   journal together. The CLI exposes health/models plus bounded `run.submit`,
   `run.resume`, and `run.recover` commands; startup surfaces the count of
@@ -182,11 +190,11 @@ unproven host behavior to certification:
 
 These changes are covered by focused managed-runtime (40/40 mission/runtime
 tests plus 97/97 managed-agent-runtime tests), CloudSync (60/60), connector
-(99/99), presentation (756/756), Computer Use, bridge-policy, and
+(99/99), presentation (757/757), Computer Use, bridge-policy, and
 provider-boundary tests. They are an
 implementation increment, not a claim that
-the F2 workstreams are all promoted to `Real`: full static parsing, live
-Pensieve storage integration, production composition of every F2 service,
+the F2 workstreams are all complete: semantic project-code chunk/embedding
+parity, full static parsing, production composition of every F2 service,
 physical Computer Use/media safety, and host evidence still remain. The
 ledger's 46/46 `Real` result is the scoped F1 source/product gate; WPD-0009
 continues to define F2 True 1:1 as the actual 100% parity endpoint.

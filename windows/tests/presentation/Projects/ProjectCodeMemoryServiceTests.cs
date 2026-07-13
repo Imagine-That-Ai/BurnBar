@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text;
 using System.Threading.Tasks;
 using OpenBurnBar.App.Presentation.Projects;
 using Xunit;
@@ -140,6 +141,56 @@ public sealed class ProjectCodeMemoryServiceTests
             Assert.True(result.ShaMatch);
             Assert.Equal("Runner.swift", result.FilePath);
             Assert.Equal("exact_lsp", Assert.Single(result.References).ConfidenceTier);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task DurableStore_PersistsMetadataReferencesAndCheckpointWithoutSource()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "obb-code-store-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(root);
+        string databasePath = Path.Combine(root, "memory.sqlite");
+        const string passphrase = "obb-project-code-test-key-2026";
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(root, "Widget.cs"),
+                "public class Widget { public void Run() {} }\n");
+            await File.WriteAllTextAsync(
+                Path.Combine(root, "Caller.cs"),
+                "public class Caller { public void Invoke() { Widget(); } }\n");
+
+            using (var store = new ProjectCodeMemoryStore(databasePath, encryptionPassphrase: passphrase))
+            using (var service = new ProjectCodeMemoryService(
+                new ProjectCodeSymbolIndex(root, store: store)))
+            {
+                ProjectCodeIndexSnapshot snapshot = await service.RefreshAsync();
+                Assert.True(service.HasDurableStore);
+                Assert.Equal("lexical", snapshot.ParserMode);
+                ProjectCodeMemoryStoreStats stats = Assert.IsType<ProjectCodeMemoryStoreStats>(service.DurableStoreStats);
+                Assert.Equal(2, stats.ArtifactCount);
+                Assert.True(stats.SymbolCount >= 4);
+                Assert.True(stats.ReferenceCount >= 1);
+                Assert.True(stats.CallEdgeCount >= 1);
+                Assert.True(stats.StorageBytes > 0);
+            }
+
+            string databaseText = Encoding.UTF8.GetString(await File.ReadAllBytesAsync(databasePath));
+            Assert.DoesNotContain("public class Widget", databaseText, System.StringComparison.Ordinal);
+
+            using var restoredStore = new ProjectCodeMemoryStore(databasePath, encryptionPassphrase: passphrase);
+            using var restoredService = new ProjectCodeMemoryService(
+                new ProjectCodeSymbolIndex(root, store: restoredStore));
+            Assert.True(restoredService.TryLoad());
+            Assert.Equal("Widget", Assert.Single(restoredService.FindSymbol("Widget")).Name);
+            Assert.True(restoredService.DurableStoreStats?.ReferenceCount >= 1);
         }
         finally
         {

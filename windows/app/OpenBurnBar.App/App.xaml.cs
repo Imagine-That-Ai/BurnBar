@@ -409,7 +409,26 @@ public partial class App : Application
             ? new JsonLinesProjectCodeStaticParserClient(parserPath)
             : null;
         string? indexPath = Environment.GetEnvironmentVariable("OPENBURNBAR_PROJECT_INDEX_PATH");
-        var index = new ProjectCodeSymbolIndex(projectRoot, indexPath, parser: parser);
+        ProjectCodeMemoryStore? store = null;
+        try
+        {
+            string storePath = Environment.GetEnvironmentVariable("OPENBURNBAR_PROJECT_MEMORY_PATH")
+                ?? Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "OpenBurnBar",
+                    "project-code-memory.sqlite");
+            (_, string? passphrase) = WindowsStorageDevHost.ResolveCredentials();
+            store = new ProjectCodeMemoryStore(storePath, encryptionPassphrase: passphrase);
+        }
+        catch (Exception ex)
+        {
+            // The JSON index remains a bounded, source-free fallback when a
+            // local SQLite provider is unavailable; surface the degradation in
+            // diagnostics instead of making companion startup fail closed.
+            AppDiagnostics.LogException("project-code-memory.store", ex);
+        }
+
+        var index = new ProjectCodeSymbolIndex(projectRoot, indexPath, parser: parser, store: store);
         return new ProjectCodeMemoryService(index, parser);
     }
 
@@ -498,11 +517,13 @@ public partial class App : Application
         {
             root = service.Root,
             watching = service.IsWatching,
+            durableStore = service.HasDurableStore,
             loaded = snapshot is not null,
             refreshedAt = snapshot?.RefreshedAt,
             parserMode = snapshot?.ParserMode ?? "none",
             symbolCount = snapshot?.Symbols.Count ?? service.Symbols.Count,
             truncated = snapshot?.Truncated ?? false,
+            store = service.DurableStoreStats,
         };
 
     private static string RequiredString(JsonElement request, string property)

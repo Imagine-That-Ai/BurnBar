@@ -48,6 +48,10 @@ public sealed class ProjectCodeMemoryService : IDisposable
 
     public bool IsWatching => _index.IsWatching;
 
+    public bool HasDurableStore => _index.HasDurableStore;
+
+    public ProjectCodeMemoryStoreStats? DurableStoreStats => _index.DurableStoreStats;
+
     public IReadOnlyList<ProjectCodeSymbol> Symbols => _index.Symbols;
 
     public bool TryLoad() => _index.TryLoad();
