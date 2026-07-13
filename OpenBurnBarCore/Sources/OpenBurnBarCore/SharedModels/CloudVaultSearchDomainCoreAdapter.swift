@@ -68,7 +68,7 @@ enum CloudVaultSearchDomainCoreAdapter {
     static var productionBackend: NativeBackend? {
         #if canImport(OpenBurnBarDomainCoreFFI)
         NativeBackend(
-            abiVersion: { OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() },
+            abiVersion: { DomainCoreNativeProbe.abiVersion() ?? 0 },
             coreVersion: { OpenBurnBarDomainCoreFFI.domainCoreVersion() },
             search: { operation, text, keyData, limit in
                 let ffiOperation: OpenBurnBarDomainCoreFFI.CloudVaultSearchOperation = switch operation {

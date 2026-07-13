@@ -11,6 +11,7 @@ public enum CloudVaultCryptoError: LocalizedError, Sendable {
     case keychainError(Int)
     case keychainDataMissing
     case domainCoreUnavailable
+    case invalidSearchInput
 
     public var errorDescription: String? {
         switch self {
@@ -28,6 +29,8 @@ public enum CloudVaultCryptoError: LocalizedError, Sendable {
             return "The cloud vault key is missing from the Keychain."
         case .domainCoreUnavailable:
             return "The required CloudVault domain core is unavailable."
+        case .invalidSearchInput:
+            return "Cloud vault search input exceeds the supported indexing boundary."
         }
     }
 }
@@ -1071,6 +1074,76 @@ public enum CloudVaultCrypto {
             .lowercased()
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
             .filter { $0.count >= 2 && searchStopwords.contains($0) == false }
+    }
+
+    public static func cloudSearchBodyChunks(
+        _ body: String,
+        metadata: String,
+        maxBytes: Int = 16_000,
+        maxExtractedTokens: Int = 4_096
+    ) throws -> [String] {
+        guard maxBytes > 0, maxExtractedTokens > 0 else {
+            throw CloudVaultCryptoError.invalidSearchInput
+        }
+        let metadataTokens = exactPhraseTokens(from: metadata).count
+        guard metadataTokens < maxExtractedTokens
+                || exactPhraseTokens(from: body).isEmpty else {
+            throw CloudVaultCryptoError.invalidSearchInput
+        }
+
+        var pending = utf8Chunks(body, maxBytes: maxBytes)
+        var accepted: [String] = []
+        while !pending.isEmpty {
+            let chunk = pending.removeFirst()
+            let searchInput = metadata.isEmpty ? chunk : chunk + " " + metadata
+            if exactPhraseTokens(from: searchInput).count <= maxExtractedTokens {
+                accepted.append(chunk)
+                continue
+            }
+            guard let split = splitSearchChunk(chunk) else {
+                throw CloudVaultCryptoError.invalidSearchInput
+            }
+            pending.insert(contentsOf: split, at: 0)
+        }
+        return accepted
+    }
+
+    private static func utf8Chunks(_ string: String, maxBytes: Int) -> [String] {
+        let data = Data(string.utf8)
+        guard data.count > maxBytes else { return [string] }
+        var chunks: [String] = []
+        var offset = 0
+        while offset < data.count {
+            var end = min(offset + maxBytes, data.count)
+            while end > offset, String(data: data[offset..<end], encoding: .utf8) == nil {
+                end -= 1
+            }
+            guard end > offset,
+                  let chunk = String(data: data[offset..<end], encoding: .utf8) else {
+                return [string]
+            }
+            chunks.append(chunk)
+            offset = end
+        }
+        return chunks.isEmpty ? [string] : chunks
+    }
+
+    private static func splitSearchChunk(_ chunk: String) -> [String]? {
+        guard chunk.count > 1 else { return nil }
+        let midpoint = chunk.index(chunk.startIndex, offsetBy: chunk.count / 2)
+        let delimiter = CharacterSet.alphanumerics.inverted
+        let backward = chunk.rangeOfCharacter(
+            from: delimiter,
+            options: .backwards,
+            range: chunk.startIndex..<midpoint
+        )
+        let forward = chunk.rangeOfCharacter(
+            from: delimiter,
+            range: midpoint..<chunk.endIndex
+        )
+        let splitIndex = backward?.upperBound ?? forward?.upperBound ?? midpoint
+        guard splitIndex > chunk.startIndex, splitIndex < chunk.endIndex else { return nil }
+        return [String(chunk[..<splitIndex]), String(chunk[splitIndex...])]
     }
 
     internal static func exactPhraseTokensForContract(from text: String) -> [String] {

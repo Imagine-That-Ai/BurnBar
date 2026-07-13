@@ -227,6 +227,56 @@ final class CloudVaultSearchDomainCoreAdapterTests: XCTestCase {
         }
     }
 
+    func testDenseShortTokenBodyChunksStayWithinNativeCapWithoutDataLoss() throws {
+        let body = Array(repeating: "aa", count: 5_000).joined(separator: " ")
+        let metadata = "dense title provider"
+        let chunks = try CloudVaultCrypto.cloudSearchBodyChunks(
+            body,
+            metadata: metadata,
+            maxBytes: 16_000,
+            maxExtractedTokens: 4_096
+        )
+
+        XCTAssertGreaterThan(chunks.count, 1)
+        XCTAssertEqual(chunks.joined(), body)
+        for chunk in chunks {
+            XCTAssertLessThanOrEqual(chunk.utf8.count, 16_000)
+            XCTAssertLessThanOrEqual(
+                CloudVaultCrypto.exactPhraseTokensForContract(from: chunk + " " + metadata).count,
+                4_096
+            )
+        }
+
+        #if canImport(OpenBurnBarDomainCoreFFI)
+        let backend = try XCTUnwrap(CloudVaultSearchDomainCoreAdapter.productionBackend)
+        for chunk in chunks {
+            XCTAssertNoThrow(
+                try CloudVaultSearchDomainCoreAdapter.hashes(
+                    operation: .index,
+                    text: chunk + " " + metadata,
+                    keyData: key,
+                    limit: 1_024,
+                    mode: .rust,
+                    logger: InvocationRecorder(),
+                    backend: backend,
+                    legacy: { XCTFail("Rust mode evaluated legacy"); return [] }
+                )
+            )
+        }
+        #endif
+    }
+
+    func testSearchBodyChunkingRejectsMetadataThatConsumesTokenBudget() {
+        let metadata = Array(repeating: "meta", count: 4_096).joined(separator: " ")
+        XCTAssertThrowsError(
+            try CloudVaultCrypto.cloudSearchBodyChunks("body token", metadata: metadata)
+        ) { error in
+            guard case CloudVaultCryptoError.invalidSearchInput = error else {
+                return XCTFail("Expected invalidSearchInput, got \(error)")
+            }
+        }
+    }
+
     #if canImport(OpenBurnBarDomainCoreFFI)
     func testProductionNativeBackendMatchesEveryCanonicalHashFixture() throws {
         let fixture = try Self.loadFixture()
