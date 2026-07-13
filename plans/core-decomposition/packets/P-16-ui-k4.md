@@ -1,5 +1,5 @@
 # Packet P-16a…f: move Views/ + UI SharedModels → OpenBurnBarUI (K4)
-STATE: P-16a MERGED (base); P-16b PR #1650; P-16c PR #1656 (Views/MissionControl); P-16d PR #1666 (Cards/Square + straggler cluster); P-16b2+P-16e+Swarm-half-of-P-16f CONSOLIDATED → PR #1675; P-16f remainder → PR #1678 (+ follow-up commit `9f963f0c8d`: annotate the now-empty off-Apple `openBurnBarCoreExcludes` as `[String]` — unbreaks the Windows/Linux manifest; see the P-16f off-Apple manifest fix note). **K4 COMPLETE: Core ui-purity baseline → 0** (see the P-16e/f consolidation note)
+STATE: P-16a MERGED (base); P-16b PR #1650; P-16c PR #1656 (Views/MissionControl); P-16d PR #1666 (Cards/Square + straggler cluster); P-16b2+P-16e+Swarm-half-of-P-16f CONSOLIDATED → PR #1675; P-16f remainder → PR #1678 (tip `4a04044ee5`; + follow-up commit `9f963f0c8d` annotate the now-empty off-Apple `openBurnBarCoreExcludes` as `[String]` to unbreak the Windows/Linux manifest — both `*-windows-msvc` OpenBurnBarCore CI jobs now PASS; + commit `4a04044ee5` delete the filled OpenBurnBarUI ModuleMarker stub; see the P-16f off-Apple manifest fix + ModuleMarker cleanup notes). **K4 COMPLETE: Core ui-purity baseline → 0** (see the P-16e/f consolidation note)
 LANE: A (serial-within-lane; owns core-ui-purity-baseline.json)
 DEPENDS-ON: S0, S-H (headless-app-build CI job green), P-04a/b, P-11, P-13, P-05, P-06, P-08/09/10
 BASELINE-TOUCHING: core-ui-purity (this is where the baseline ratchets toward zero)
@@ -239,6 +239,20 @@ refs / off-Apple manifest clean" gate (learning 9) firing correctly.
   package `swift build` ✔ (56.8s, against the edited `../OpenBurnBarCore` manifest), ui-purity
   `--check` baseline=0 live=0 ✔, membership + umbrella gates ✔, `swift package dump-package` ✔.
   Off-Apple full build is CI-covered by the two Windows jobs on #1678 (no Linux SDK on the Apple host).
+- **CI confirmed:** on the fixed tip, `swift build --target OpenBurnBarCore (aarch64-unknown-windows-msvc)`
+  and `(x86_64-unknown-windows-msvc)` both **pass** (were the only red jobs before the fix); PR #1678
+  check summary 7 pass / 2 skipping / 0 fail.
+
+### P-16f ModuleMarker cleanup (executed 2026-07-13, PR #1678 follow-up commit `4a04044ee5`)
+Deleted the S0 scaffold placeholder `OpenBurnBarUI/ModuleMarker.swift` (`internal enum
+OpenBurnBarUIModuleMarker {}`) — it existed only to keep the empty target valid before its move
+packet landed (SwiftPM rejects a target with no source files). OpenBurnBarUI now has 130 real
+source files, so the stub is obsolete (its own header: "Remove once the target has real sources"),
+matching the merged sibling precedent (P-07 TextExpansion #1579 et al. carry no ModuleMarker on
+`main` once filled). Zero references graph-wide (grep-verified); zero behavior change. Validated:
+`swift build --target OpenBurnBarUI` Build complete (target still valid, no "no source files"
+rejection) + Core build ✔ (Apple host, borrowed `.spm-cache`). This closes the P-16f card
+deliverable "delete the OpenBurnBarUI ModuleMarker".
 
 ## Per-sub-packet rules
 - Deps: `OpenBurnBarUI` already depends on Kernel/Quota/Insights/Hermes/Pretext/LogParsers
