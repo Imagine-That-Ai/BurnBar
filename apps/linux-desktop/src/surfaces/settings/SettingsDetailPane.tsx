@@ -1,12 +1,11 @@
 import type { ReactNode } from 'react';
-import { useMemo, useState } from 'react';
-import type { ConfigSnapshot, NotificationConfig, ProviderSettings } from '../../tauriBridge.js';
+import { useEffect, useMemo, useState } from 'react';
+import type { AccountStatus, ConfigSnapshot, LinuxShellBridge, NotificationConfig, ProviderSettings } from '../../tauriBridge.js';
 import type { DaemonStatusCopy } from '../../daemonStatusCopy.js';
 import { Banner } from '../../components/Banner.js';
 import { OfflineNotice } from '../../components/OfflineNotice.js';
 import {
   LINUX_PROVIDER_PATH_REGISTRY,
-  providerCoverageSummary,
   resolveProviderLogicalPath
 } from '../../providerPathRegistry.js';
 import { useSupportStore } from '../../state/supportStore.js';
@@ -25,6 +24,7 @@ import { SettingsHomeView } from './SettingsHomeView.js';
 import { SettingsAppearanceControls } from './SettingsAppearanceControls.js';
 import { SettingsDrillRow } from './SettingsDrillRow.js';
 import { settingsTabMeta, type SettingsTabId } from './settingsTabs.js';
+import { fixtureAccountStatus } from '../../daemonFixture.js';
 
 const UPDATE_CHANNEL_COPY: Record<'deb' | 'rpm' | 'appimage' | 'unknown', string> = {
   deb: 'Installed via the Debian package channel; apt/dpkg owns upgrades.',
@@ -141,17 +141,6 @@ function firstWritableModel(provider: ProviderSettings): string {
 
 function providerDisplay(provider: ProviderSettings): string {
   return provider.providerID.charAt(0).toUpperCase() + provider.providerID.slice(1);
-}
-
-function providerCoverageLabel(coverage: 'local-parser' | 'api-backed' | 'unavailable'): string {
-  switch (coverage) {
-    case 'local-parser':
-      return 'Local parser registered';
-    case 'api-backed':
-      return 'API-backed; no local parser';
-    case 'unavailable':
-      return 'Local usage unavailable';
-  }
 }
 
 function AgentsDetail({ config }: { config: ConfigSnapshot }) {
@@ -588,25 +577,172 @@ function NotificationsDetail({ mode }: { mode: 'alerts' | 'notifications' }) {
   );
 }
 
-function DevicesAndSyncDetail({ config, onSelectTab }: { config: ConfigSnapshot; onSelectTab: (tab: SettingsTabId) => void }) {
+type DeviceSyncAction = 'refresh' | 'sign-out' | 'rotate-identity' | null;
+
+function accountPostureCopy(status: AccountStatus | null, loading: boolean, error: string | null): string {
+  if (loading) return 'Checking daemon-owned account and enrollment posture…';
+  if (error) return `Account posture unavailable: ${error}`;
+  if (!status) return 'Account posture has not been loaded.';
+  if (status.state === 'unavailable') {
+    return status.detail === 'device_rejected'
+      ? 'This installation was rejected; replace its identity before requesting approval again.'
+      : 'Cloud account services are unavailable; local SQLite remains canonical.';
+  }
+  if (status.state === 'awaiting-device-approval' || status.deviceApprovalRequired) {
+    return 'This installation is enrolled and waiting for approval from a trusted OpenBurnBar device.';
+  }
+  if (status.signedIn) return `Signed in as ${status.identityLabel ?? 'Linux identity'}; cloud sync is ${status.syncState}.`;
+  return 'Signed out; local-first mode remains available.';
+}
+
+function DevicesAndSyncDetail({
+  config,
+  fixtureMode,
+  bridge,
+  onSelectTab
+}: {
+  config: ConfigSnapshot;
+  fixtureMode: boolean;
+  bridge: LinuxShellBridge | null;
+  onSelectTab: (tab: SettingsTabId) => void;
+}) {
+  const [account, setAccount] = useState<AccountStatus | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [action, setAction] = useState<DeviceSyncAction>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadAccountPosture = async (requestedAction: DeviceSyncAction = 'refresh') => {
+    if (action !== null) return;
+    setLoading(true);
+    setAction(requestedAction);
+    setError(null);
+    try {
+      const next = fixtureMode
+        ? fixtureAccountStatus()
+        : bridge
+          ? await bridge.accountStatus()
+          : null;
+      if (!next) throw new Error('Packaged shell required for live account posture.');
+      setAccount(next);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Account status request failed.');
+    } finally {
+      setLoading(false);
+      setAction(null);
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    const request = fixtureMode
+      ? Promise.resolve(fixtureAccountStatus())
+      : bridge
+        ? bridge.accountStatus()
+        : Promise.reject(new Error('Packaged shell required for live account posture.'));
+    void request
+      .then((next) => {
+        if (!cancelled) setAccount(next);
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : 'Account status request failed.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fixtureMode, bridge]);
+
+  const runAccountMutation = async (kind: Exclude<DeviceSyncAction, 'refresh' | null>) => {
+    if (action !== null || fixtureMode || !bridge) return;
+    setAction(kind);
+    setError(null);
+    try {
+      const next = kind === 'sign-out'
+        ? await bridge.accountSignOut()
+        : await bridge.accountRotateIdentity();
+      setAccount(next);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Account mutation failed.');
+    } finally {
+      setAction(null);
+    }
+  };
+
+  const rejected = account?.detail === 'device_rejected';
+  const awaitingApproval = account?.state === 'awaiting-device-approval' || account?.deviceApprovalRequired;
+  const statusText = accountPostureCopy(account, loading, error);
+
   return (
-    <SettingGroup title="Devices & Sync" sectionHeader hideTitle>
-      <p className="muted settings-tab-lede">
-        Linux sync status is derived from daemon.config.get/account posture. No trusted-device mutation RPC is available in this lane.
-      </p>
-      <SettingRow
-        iconGlyph="⊞"
-        label="Cloud sync source"
-        description={`Local SQLite remains canonical. Provider rows: ${(config.providers ?? []).length}.`}
-        control={<button type="button" className="ghost" onClick={() => onSelectTab('account')}>Open Account</button>}
-      />
-      <SettingRow
-        iconGlyph="⛨"
-        label="Secret Service"
-        description="Cloud credentials require unlocked GNOME Keyring/KWallet before sync credentials can be saved."
-        control={<span className="muted">{config.secretServiceStatus}</span>}
-      />
-    </SettingGroup>
+    <>
+      {error ? <Banner tone="degraded" role="alert">{error}</Banner> : null}
+      <SettingGroup title="Devices & Sync" sectionHeader hideTitle>
+        <p className="muted settings-tab-lede">
+          Account and enrollment posture comes from the daemon&apos;s authenticated account RPC. Secrets stay in the native
+          Secret Service; local SQLite remains canonical while cloud sync is unavailable.
+        </p>
+        <SettingRow
+          iconGlyph="⊞"
+          label="Cloud sync source"
+          description={`Provider rows: ${(config.providers ?? []).length}. ${statusText}`}
+          control={<button type="button" className="ghost" onClick={() => onSelectTab('account')}>Open Account</button>}
+        />
+        <SettingRow
+          iconGlyph="⛨"
+          label="Secret Service"
+          description="Cloud credentials require unlocked GNOME Keyring/KWallet before sync credentials can be saved."
+          control={<span className="muted">{config.secretServiceStatus}</span>}
+        />
+        {account?.installationDeviceID ? (
+          <SettingRow
+            iconGlyph="⌘"
+            label="Linux installation identity"
+            description={awaitingApproval ? 'Approval is required on a trusted OpenBurnBar device.' : 'Daemon-owned identity used for cloud enrollment.'}
+            control={
+              <span className="settings-verification-value">
+                <code className="mono">{account.installationDeviceID}</code>
+                <CopyPathButton path={account.installationDeviceID} label="Copy device ID" />
+              </span>
+            }
+          />
+        ) : null}
+        {account?.installationSafetyFingerprint ? (
+          <SettingRow
+            iconGlyph="#"
+            label="Safety fingerprint"
+            description="Compare this value on the approving device before trusting the installation."
+            control={
+              <span className="settings-verification-value">
+                <code className="mono">{account.installationSafetyFingerprint}</code>
+                <CopyPathButton path={account.installationSafetyFingerprint} label="Copy fingerprint" />
+              </span>
+            }
+          />
+        ) : null}
+        <div className="actions">
+          <button type="button" className="ghost" disabled={loading || action !== null} onClick={() => void loadAccountPosture()}>
+            {action === 'refresh' ? 'Checking…' : 'Check account posture'}
+          </button>
+          {account?.signedIn ? (
+            <button type="button" className="ghost" disabled={action !== null || fixtureMode} onClick={() => void runAccountMutation('sign-out')}>
+              {action === 'sign-out' ? 'Signing out…' : 'Sign out'}
+            </button>
+          ) : null}
+          {rejected ? (
+            <button type="button" className="danger" disabled={action !== null || fixtureMode} onClick={() => void runAccountMutation('rotate-identity')}>
+              {action === 'rotate-identity' ? 'Replacing identity…' : 'Replace rejected identity'}
+            </button>
+          ) : null}
+        </div>
+        <p className="muted settings-tab-lede">
+          Trusted-device approval and revoke remain unavailable here because the daemon exposes no Linux mutation contract
+          for those cloud callables. The pending/rejected state is shown fail-closed instead of presenting a fixture device.
+        </p>
+      </SettingGroup>
+    </>
   );
 }
 
@@ -767,27 +903,17 @@ export function SettingsDetailPane({
             <p className="system-path-row">
               <code>{config.paths.configDir}</code>
             </p>
-            <SettingRow
-              iconGlyph="∑"
-              label="Usage ingestion coverage"
-              description="The catalog mirrors all canonical providers and labels local parser, API-backed, and unavailable sources separately."
-              control={<span className="muted" role="status">{providerCoverageSummary()}</span>}
-            />
-            {/* VAL-PARSER-002: the catalog is the source of truth for display paths and coverage. */}
+            {/* VAL-PARSER-002: registry is the source of truth for display paths. */}
             {providerRegistryRows.map((row) => (
               <div key={row.providerId}>
                 <SettingRow
                   iconGlyph="📄"
                   label={`${row.displayLabel} log path`}
-                  description={`${providerCoverageLabel(row.coverage)} · ${row.coverageNote} · pattern ${row.filePattern}`}
+                  description={`Parser source ${row.parserSourceId} · pattern ${row.filePattern}`}
                   control={<CopyPathButton path={row.logicalPath} label="Copy log path" />}
                 />
                 <p className="system-path-row">
                   <code>{row.logicalPath}</code>
-                  {' '}
-                  <span className={`provider-coverage provider-coverage--${row.coverage}`} data-provider-coverage={row.coverage}>
-                    {providerCoverageLabel(row.coverage)}
-                  </span>
                   {row.resolvedHint ? (
                     <>
                       {' '}
@@ -882,7 +1008,14 @@ export function SettingsDetailPane({
         content = <NotificationsDetail mode={activeTab} />;
         break;
       case 'devices-and-sync':
-        content = <DevicesAndSyncDetail config={config} onSelectTab={onSelectTab} />;
+        content = (
+          <DevicesAndSyncDetail
+            config={config}
+            fixtureMode={fixtureMode}
+            bridge={bridge as LinuxShellBridge | null}
+            onSelectTab={onSelectTab}
+          />
+        );
         break;
       case 'media':
         content = <MediaDetail />;
