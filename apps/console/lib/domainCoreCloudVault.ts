@@ -1,0 +1,98 @@
+import initDomainCore, {
+  CloudVaultHashPurpose,
+  cloudVaultAadV2,
+  cloudVaultKeyedHashHex,
+  cloudVaultSha256Hex,
+  initSync,
+  type InitInput,
+  type SyncInitInput,
+} from "../vendor/openburnbar-domain-core-wasm/openburnbar_domain_core.js";
+
+export type CloudVaultDomainCoreMode = "legacy" | "shadow" | "rust";
+
+let initialized = false;
+let initialization: Promise<void> | undefined;
+let testMode: CloudVaultDomainCoreMode | undefined;
+let requireCoreForTests = false;
+
+function configuredMode(): CloudVaultDomainCoreMode {
+  if (testMode) return testMode;
+  const value = process.env.NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE;
+  return value === "shadow" || value === "rust" ? value : "legacy";
+}
+
+async function ensureInitialized(input?: InitInput): Promise<void> {
+  if (initialized) return;
+  initialization ??= initDomainCore(input).then(() => {
+    initialized = true;
+  });
+  await initialization;
+}
+
+function warn(operation: string, category: "native_unavailable" | "shadow_mismatch"): void {
+  console.warn(`domain_core.cloudvault.${category} operation=${operation} core=abi2`);
+}
+
+export async function applyCloudVaultDomainCore<T>(
+  operation: string,
+  legacy: () => T | Promise<T>,
+  rust: () => T,
+): Promise<T> {
+  const mode = configuredMode();
+  if (mode === "legacy") return legacy();
+
+  try {
+    await ensureInitialized();
+  } catch (error) {
+    if (requireCoreForTests) throw error;
+    warn(operation, "native_unavailable");
+    return legacy();
+  }
+
+  if (mode === "rust") return rust();
+
+  const legacyValue = await legacy();
+  const rustValue = rust();
+  if (legacyValue !== rustValue) warn(operation, "shadow_mismatch");
+  return legacyValue;
+}
+
+export function applyCloudVaultDomainCoreSync<T>(
+  operation: string,
+  legacy: () => T,
+  rust: () => T,
+): T {
+  const mode = configuredMode();
+  if (mode === "legacy") return legacy();
+  if (!initialized) {
+    if (requireCoreForTests) throw new Error("domain core Wasm is required but not initialized");
+    void ensureInitialized().catch(() => undefined);
+    warn(operation, "native_unavailable");
+    return legacy();
+  }
+  if (mode === "rust") return rust();
+  const legacyValue = legacy();
+  const rustValue = rust();
+  if (legacyValue !== rustValue) warn(operation, "shadow_mismatch");
+  return legacyValue;
+}
+
+export const domainCoreCloudVault = {
+  aadV2: cloudVaultAadV2,
+  sha256Hex: cloudVaultSha256Hex,
+  keyedHashHex: cloudVaultKeyedHashHex,
+  hashPurpose: CloudVaultHashPurpose,
+};
+
+export function initializeCloudVaultDomainCoreForTests(module: SyncInitInput): void {
+  initSync({ module });
+  initialized = true;
+}
+
+export function configureCloudVaultDomainCoreForTests(
+  mode: CloudVaultDomainCoreMode | undefined,
+  requireCore = false,
+): void {
+  testMode = mode;
+  requireCoreForTests = requireCore;
+}
