@@ -1,5 +1,26 @@
 import Foundation
-import OpenBurnBarKernel
+
+// MARK: - CLI Terminal Session Supervisor (Foundation-pure stream supervision)
+//
+// Core-decomposition P-18 (docs/CORE_DECOMPOSITION_PROGRAM.md): the pure,
+// Foundation-only supervised-CLI stream/quota-classification surface, extracted
+// DOWN from `OpenBurnBarLaunchServices/CLITerminalSessionSupervisor.swift` into the
+// cross-platform Kernel so the daemon repoint reaches it WITHOUT linking the
+// AppKit-adjacent, Apple-only `OpenBurnBarLaunchServices` target (Engine — the
+// UI-free umbrella the daemon links — re-exports Kernel but NOT LaunchServices).
+// The daemon's supervised-CLI shell (`OpenBurnBarSwitcherShell`) constructs a
+// `CLITerminalSessionSupervisor` and calls `CLIQuotaExhaustionClassifier.classify`;
+// AgentLens' CLIBridge uses the same types. Pure code motion, zero behavior change.
+// `SwitcherCLIProfileType` / `Locked` resolve in-module now (both Kernel), so the
+// former `import OpenBurnBarKernel` (a self-import inside the Kernel target) is
+// dropped.
+//
+// This file was ungated inside the whole-off-Apple-pruned LaunchServices target, so
+// it compiled on every Apple platform (macOS + iOS) and never off-Apple. The
+// `#if canImport(Darwin)` guard preserves that exact surface now that it lives in
+// the cross-platform Kernel (which also builds on Linux/Windows): the types stay
+// present on Apple and absent off-Apple, byte-identical to the pre-move build.
+#if canImport(Darwin)
 
 public enum CLITerminalSessionOutputSource: String, Equatable, Sendable {
     case stdout
@@ -337,3 +358,5 @@ public final class CLITerminalSessionPipeObserver: Sendable {
         cancelAction()
     }
 }
+
+#endif
