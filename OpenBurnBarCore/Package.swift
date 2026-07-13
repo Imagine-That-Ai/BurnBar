@@ -444,7 +444,13 @@ let openBurnBarCoreExcludes = [
     // Insights + Verdict subsystem: heavy, model-gateway/LLM-analysis coupled, and
     // consumed only by Views/ (excluded) — drop the whole tree off-Apple rather than
     // the prior partial set that left model files referencing excluded types.
-    "AgentInsights/AgentInsightsViewModel.swift",
+    // P-16b (S14 UI): AgentInsights/AgentInsightsViewModel.swift moved to the Apple-only
+    // OpenBurnBarUI target (pulled forward with Views/Insights/ — AgentInsightsView binds
+    // it as `@Bindable public var viewModel: AgentInsightsViewModel`). It is
+    // Foundation/Observation-only (no SwiftUI) but rides UI because its sole build-time
+    // consumers are the Insights views; OpenBurnBarUI is pruned WHOLE off-Apple, so its
+    // stale exclude entry is removed (no off-Apple Core file references it — the only
+    // off-Apple mention is a doc comment in OpenBurnBarInsights/AgentInsightsScope.swift).
     // P-08/P-09: files that moved out of Core into the Apple-only OpenBurnBarInsights
     // target (which is pruned WHOLE off-Apple) no longer exist in the off-Apple Core
     // source tree, so their stale exclude entries are removed by the mover (a stale
@@ -461,7 +467,14 @@ let openBurnBarCoreExcludes = [
     // Core off-Apple exclude (see the P-15 comment above), so it is intentionally NOT
     // re-listed here even though p-09's base (pre-P-15) still carried that exclude.
     "Services/Insights/Share",
-    "SharedModels/AgentProvider+LogoBackdrop.swift",
+    // P-16b (S14 UI): SharedModels/AgentProvider+LogoBackdrop.swift moved to the
+    // Apple-only OpenBurnBarUI target (pulled forward with Views/Insights/ — it is the
+    // AgentProvider logo-backdrop extension hub consumed by UnifiedProviderLogoView).
+    // OpenBurnBarUI is pruned WHOLE off-Apple, so the file no longer exists in the
+    // off-Apple Core source tree and its stale exclude entry is removed here (a stale
+    // exclude on a moved-out file makes SwiftPM reject the off-Apple manifest). The
+    // "Views" wholesale exclude below still resolves (Views/ root + Views/Insights/Verdict/
+    // + Views/MissionControl/Cards/Square remain in Core until later P-16 sub-packets).
     "SharedModels/AgentWatchLiveActivityAttributes.swift",
     "SharedModels/BurnBarLiveActivityAttributes.swift",
     // P-04b: the crypto-chain SharedModels below moved to OpenBurnBarKernel (they now
@@ -480,8 +493,18 @@ let openBurnBarCoreExcludes = [
     // CryptoKit. Their Core off-Apple exclude entries are therefore removed.
     "SharedModels/PixelClockSettingsModel.swift",
     "SharedModels/SmartHubDisplaySettingsModel.swift",
-    "SharedModels/SwarmColorDriver.swift",
-    "SharedModels/ThemePrimitives.swift"
+    // P-16b (S14 UI): SharedModels/ThemePrimitives.swift moved to the Apple-only
+    // OpenBurnBarUI target (pulled forward with Views/Insights/ — it defines the
+    // `Color(editorial:light:dark:)` bridge + AppSkin/DashboardLayout that
+    // UnifiedDesignSystem's Colors palette consumes; its companion
+    // SharedModels/DesignSystemTokens.swift (Foundation-only, was NOT excluded here)
+    // moved with it). OpenBurnBarUI is pruned WHOLE off-Apple, so ThemePrimitives no
+    // longer exists in the off-Apple Core tree and its stale exclude is removed. Every
+    // off-Apple consumer of DesignSystemTokens/DesignSystemColors is itself off-Apple-
+    // excluded (SwarmColorDriver explicit; SwarmCanvasView+Color / MissionFanOutGroup /
+    // CardEnvelopeView under the "Views" wholesale exclude), so no off-Apple-live Core
+    // file dangles on the moved color cluster.
+    "SharedModels/SwarmColorDriver.swift"
 ]
 // Core-decomposition S0 (docs/CORE_DECOMPOSITION_PROGRAM.md): per-sibling-target
 // off-Apple exclude seams for the new decomposition targets. They are EMPTY at
