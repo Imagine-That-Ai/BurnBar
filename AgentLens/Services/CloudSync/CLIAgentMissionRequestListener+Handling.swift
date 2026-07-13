@@ -51,10 +51,9 @@ private enum WandMissionEntitlements {
 
 extension CLIAgentMissionRequestListener {
     struct ShadowContextFields {
-        let requestedRuntime: String?, requestedModelID: String?, originDeviceID: String?, createdBy: String?
-        let originPlatform: String?, source: String?, personaScopeJSON: String?, approvalMode: String?
+        let requestedRuntime: String?, requestedModelID: String?, commandsAllowed: Bool?, fileEditsAllowed: Bool?, originDeviceID: String?
+        let createdBy: String?, originPlatform: String?, source: String?, personaScopeJSON: String?, approvalMode: String?
         let approvalStatus: String?, approverDeviceID: String?, entitlementTier: String?, workingDirectory: String?
-        let commandsAllowed: Bool?, fileEditsAllowed: Bool?
     }
 
     private func validateMissionGroupClaimIfNeeded(
