@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace OpenBurnBar.App.Presentation.Projects;
 
@@ -22,6 +23,7 @@ public sealed class ProjectCodeSymbolIndex : IDisposable
     private readonly string _indexPath;
     private readonly int _maxFiles;
     private readonly int _maxSymbols;
+    private IProjectCodeStaticParserClient? _parser;
     private readonly object _gate = new();
     private FileSystemWatcher? _watcher;
     private Timer? _refreshTimer;
@@ -31,7 +33,8 @@ public sealed class ProjectCodeSymbolIndex : IDisposable
         string root,
         string? indexPath = null,
         int maxFiles = 500,
-        int maxSymbols = 10_000)
+        int maxSymbols = 10_000,
+        IProjectCodeStaticParserClient? parser = null)
     {
         if (string.IsNullOrWhiteSpace(root))
         {
@@ -47,6 +50,7 @@ public sealed class ProjectCodeSymbolIndex : IDisposable
         _indexPath = Path.GetFullPath(indexPath ?? Path.Combine(_root, ".openburnbar", "project-symbols.json"));
         _maxFiles = maxFiles;
         _maxSymbols = maxSymbols;
+        _parser = parser;
     }
 
     public IReadOnlyList<ProjectCodeSymbol> Symbols
@@ -107,6 +111,95 @@ public sealed class ProjectCodeSymbolIndex : IDisposable
         SetSymbols(symbols);
         ProjectCodeIndexSnapshot snapshot = Persist(inventory.Truncated || symbols.Count >= _maxSymbols);
         return snapshot;
+    }
+
+    /// <summary>
+    /// Refreshes the index through the bundled Tree-sitter parser. If a file
+    /// cannot be parsed, it is omitted rather than represented by fabricated
+    /// symbols; callers can use <see cref="Refresh"/> for the explicit lexical
+    /// fallback when the parser is unavailable.
+    /// </summary>
+    public async Task<ProjectCodeIndexSnapshot> RefreshWithParserAsync(
+        IProjectCodeStaticParserClient parser,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(parser);
+        _parser = parser;
+        if (!Directory.Exists(_root))
+        {
+            SetSymbols(Array.Empty<ProjectCodeSymbol>());
+            return Persist(parserMode: "tree-sitter");
+        }
+
+        var symbols = new List<ProjectCodeSymbol>();
+        bool truncated = false;
+        foreach (string path in EnumerateCodeFiles(_root, _maxFiles))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (symbols.Count >= _maxSymbols)
+            {
+                truncated = true;
+                break;
+            }
+
+            string text;
+            try
+            {
+                text = File.ReadAllText(path);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                continue;
+            }
+            catch (IOException)
+            {
+                continue;
+            }
+
+            string language = Path.GetExtension(path).TrimStart('.').ToLowerInvariant();
+            ProjectCodeParseResponse response;
+            try
+            {
+                response = await parser.ParseAsync(
+                    new ProjectCodeParseRequest(
+                        Guid.NewGuid().ToString("N"),
+                        path,
+                        language,
+                        JsonLinesProjectCodeStaticParserClient.ComputeGitBlobSha(text),
+                        text,
+                        _root),
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (ProjectCodeParserException)
+            {
+                continue;
+            }
+
+            if (!response.Ok || !response.ShaMatch)
+            {
+                continue;
+            }
+
+            foreach (ProjectCodeParsedSymbol symbol in response.Symbols)
+            {
+                if (symbols.Count >= _maxSymbols)
+                {
+                    truncated = true;
+                    break;
+                }
+
+                symbols.Add(new ProjectCodeSymbol(
+                    symbol.Name,
+                    symbol.Kind,
+                    path,
+                    symbol.StartLine,
+                    symbol.ConfidenceTier,
+                    symbol.Parser));
+            }
+        }
+
+        SetSymbols(symbols);
+        return Persist(truncated, parserMode: "tree-sitter");
     }
 
     public bool TryLoad()
@@ -220,8 +313,32 @@ public sealed class ProjectCodeSymbolIndex : IDisposable
     {
         lock (_gate)
         {
-            _refreshTimer ??= new Timer(_ => Refresh(), null, Timeout.Infinite, Timeout.Infinite);
+            _refreshTimer ??= new Timer(_ => _ = RefreshFromWatcherAsync(), null, Timeout.Infinite, Timeout.Infinite);
             _refreshTimer.Change(250, Timeout.Infinite);
+        }
+    }
+
+    private async Task RefreshFromWatcherAsync()
+    {
+        try
+        {
+            IProjectCodeStaticParserClient? parser = _parser;
+            if (parser is null)
+            {
+                Refresh();
+            }
+            else
+            {
+                await RefreshWithParserAsync(parser).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // A superseding watcher event can cancel the in-flight refresh.
+        }
+        catch (ProjectCodeParserException)
+        {
+            // Keep the last good index when the parser process is unavailable.
         }
     }
 
@@ -233,9 +350,9 @@ public sealed class ProjectCodeSymbolIndex : IDisposable
         }
     }
 
-    private ProjectCodeIndexSnapshot Persist(bool truncated = false)
+    private ProjectCodeIndexSnapshot Persist(bool truncated = false, string parserMode = "lexical")
     {
-        ProjectCodeIndexSnapshot snapshot = new(_root, DateTimeOffset.UtcNow, Symbols, truncated);
+        ProjectCodeIndexSnapshot snapshot = new(_root, DateTimeOffset.UtcNow, Symbols, truncated, parserMode);
         try
         {
             string? directory = Path.GetDirectoryName(_indexPath);
@@ -257,10 +374,17 @@ public sealed class ProjectCodeSymbolIndex : IDisposable
     }
 }
 
-public sealed record ProjectCodeSymbol(string Name, string Kind, string FilePath, int Line);
+public sealed record ProjectCodeSymbol(
+    string Name,
+    string Kind,
+    string FilePath,
+    int Line,
+    string ConfidenceTier = "lexical_fallback",
+    string Parser = "lexical");
 
 public sealed record ProjectCodeIndexSnapshot(
     string Root,
     DateTimeOffset RefreshedAt,
     IReadOnlyList<ProjectCodeSymbol> Symbols,
-    bool Truncated);
+    bool Truncated,
+    string ParserMode = "lexical");

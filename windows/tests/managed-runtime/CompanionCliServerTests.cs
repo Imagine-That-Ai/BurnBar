@@ -1,8 +1,8 @@
 using System.IO;
 using System.Net.Sockets;
 using System.Text;
-using System.Text.Json;
 using System.Threading;
+using OpenBurnBar.App.ManagedAgentRuntime.Run;
 using System.Threading.Tasks;
 using OpenBurnBar.App.ManagedAgentRuntime.Gateway;
 using Xunit;
@@ -64,5 +64,36 @@ public sealed class CompanionCliServerTests
         string line = "{\"op\":\"ping\",\"payload\":\"" + new string('x', CompanionCliServer.MaxLineBytes) + "\"}";
         string response = await CompanionCliServer.HandleLineAsync(line, null);
         Assert.Contains("request_too_large", response, System.StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task HeadlessRunHandler_SubmitsSafeNoopAndRejectsUnknownKind()
+    {
+        string path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "obb-cli-run-" + System.IO.Path.GetRandomFileName());
+        try
+        {
+            var runs = new HeadlessRunService(new JsonLinesHeadlessRunJournal(path));
+            var handler = new CompanionCliHeadlessRunHandler(runs, BuiltInHeadlessRunSteps.ExecuteAsync);
+            var router = new CompanionCliCommandRouter(
+                submit: handler.SubmitAsync,
+                resume: handler.ResumeAsync);
+
+            string success = await router.HandleAsync(
+                "{\"op\":\"run.submit\",\"runId\":\"safe-1\",\"steps\":[{\"id\":\"a\",\"kind\":\"noop\"}]}",
+                CancellationToken.None);
+            Assert.Contains("Succeeded", success, System.StringComparison.Ordinal);
+
+            string failed = await router.HandleAsync(
+                "{\"op\":\"run.submit\",\"runId\":\"safe-2\",\"steps\":[{\"id\":\"a\",\"kind\":\"shell\"}]}",
+                CancellationToken.None);
+            Assert.Contains("step_kind_unavailable", failed, System.StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (System.IO.File.Exists(path))
+            {
+                System.IO.File.Delete(path);
+            }
+        }
     }
 }

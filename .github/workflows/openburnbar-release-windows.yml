@@ -108,6 +108,9 @@ jobs:
       - name: Run distribution-core unit tests
         run: dotnet test windows/tests/dist/OpenBurnBar.Dist.Tests.csproj -c Release --nologo
 
+      - name: Run project-code static parser tests
+        run: cargo test --manifest-path crates/project-code-static-parser/Cargo.toml
+
       - name: Signer round-trip (good pin verifies, wrong pin fails closed)
         run: |
           set -euo pipefail
@@ -225,6 +228,23 @@ jobs:
           name: openburnbar-native-engine-win-arm64
           path: windows/native-engine/win-arm64
 
+      - name: Build project-code static parser for x64 and ARM64
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup target add x86_64-pc-windows-msvc aarch64-pc-windows-msvc
+          for rid in win-x64 win-arm64; do
+            target="x86_64-pc-windows-msvc"
+            [[ "$rid" == "win-arm64" ]] && target="aarch64-pc-windows-msvc"
+            cargo build \
+              --manifest-path crates/project-code-static-parser/Cargo.toml \
+              --release \
+              --target "$target"
+            mkdir -p "project-code-parser/$rid"
+            cp "target/$target/release/project-code-static-parser.exe" \
+              "project-code-parser/$rid/project-code-static-parser.exe"
+          done
+
       - name: Preflight signing configuration
         id: config
         env:
@@ -261,6 +281,8 @@ jobs:
               -p:FileVersion="${VERSION}.0" -p:InformationalVersion="$VERSION" \
               -p:OpenBurnBarNativeEngineDirectory="$GITHUB_WORKSPACE/windows/native-engine/$rid" \
               -p:OpenBurnBarRequireNativeEngine=true \
+              -p:OpenBurnBarProjectCodeParserPath="$GITHUB_WORKSPACE/project-code-parser/$rid/project-code-static-parser.exe" \
+              -p:OpenBurnBarRequireProjectCodeParser=true \
               -o "publish/$rid"
           done
 
@@ -275,7 +297,7 @@ jobs:
           azure-client-id: ${{ secrets.WINDOWS_CODESIGN_AZURE_CLIENT_ID }}
           azure-client-secret: ${{ secrets.WINDOWS_CODESIGN_AZURE_CLIENT_SECRET }}
           files-folder: ${{ github.workspace }}/publish
-          files-folder-filter: OpenBurnBar*.exe,OpenBurnBar*.dll
+          files-folder-filter: OpenBurnBar*.exe,OpenBurnBar*.dll,project-code-static-parser.exe
           files-folder-recurse: true
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
@@ -294,11 +316,19 @@ jobs:
               throw "Publish root is missing: publish/$rid"
             }
             $signedFiles += Get-ChildItem -Path $publishRoot -Recurse -File |
-              Where-Object { $_.Name -like "OpenBurnBar*.exe" -or $_.Name -like "OpenBurnBar*.dll" }
+              Where-Object {
+                $_.Name -like "OpenBurnBar*.exe" -or
+                $_.Name -like "OpenBurnBar*.dll" -or
+                $_.Name -eq "project-code-static-parser.exe"
+              }
           }
 
           if ($signedFiles.Count -lt 2) {
             throw "Expected OpenBurnBar-owned portable binaries to verify; found $($signedFiles.Count)."
+          }
+          $parserFiles = @($signedFiles | Where-Object { $_.Name -eq "project-code-static-parser.exe" })
+          if ($parserFiles.Count -ne 2) {
+            throw "Expected one signed project-code parser per RID; found $($parserFiles.Count)."
           }
 
           foreach ($file in $signedFiles) {

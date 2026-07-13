@@ -1,4 +1,6 @@
 using System.IO;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using OpenBurnBar.App.Presentation.Projects;
 using Xunit;
 
@@ -65,5 +67,49 @@ public sealed class ProjectCodeLexicalScannerTests
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    [Fact]
+    public async Task SymbolIndex_UsesTreeSitterClientWhenConfigured()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "obb-parser-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(root);
+        try
+        {
+            string sourcePath = Path.Combine(root, "Runner.swift");
+            File.WriteAllText(sourcePath, "struct Runner {\n  func start() {}\n}\n");
+            var parser = new DelegateProjectCodeStaticParserClient((request, _) =>
+                Task.FromResult(new ProjectCodeParseResponse(
+                    Ok: true,
+                    HasParseError: false,
+                    Symbols: new[]
+                    {
+                        new ProjectCodeParsedSymbol("Runner", "struct", 1, 3, "static_tree_sitter", true, "tree-sitter"),
+                    },
+                    Errors: new List<string>(),
+                    Parser: "tree-sitter",
+                    ShaMatch: true)));
+
+            using var index = new ProjectCodeSymbolIndex(root);
+            ProjectCodeIndexSnapshot snapshot = await index.RefreshWithParserAsync(parser);
+            Assert.Equal("tree-sitter", snapshot.ParserMode);
+            Assert.Contains(index.Symbols, symbol =>
+                symbol.Name == "Runner" && symbol.ConfidenceTier == "static_tree_sitter");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void GitBlobSha_IsStableAndContentAddressed()
+    {
+        string first = JsonLinesProjectCodeStaticParserClient.ComputeGitBlobSha("hello\n");
+        string same = JsonLinesProjectCodeStaticParserClient.ComputeGitBlobSha("hello\n");
+        string different = JsonLinesProjectCodeStaticParserClient.ComputeGitBlobSha("hello\r\n");
+        Assert.Equal(first, same);
+        Assert.NotEqual(first, different);
+        Assert.Equal(40, first.Length);
     }
 }

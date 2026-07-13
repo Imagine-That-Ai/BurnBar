@@ -13,6 +13,7 @@ using OpenBurnBar.App.Storage;
 using OpenBurnBar.App.Tray;
 using OpenBurnBar.App.UsageRuntime;
 using OpenBurnBar.App.ManagedAgentRuntime.Gateway;
+using OpenBurnBar.App.ManagedAgentRuntime.Run;
 
 namespace OpenBurnBar.App;
 
@@ -41,6 +42,8 @@ public partial class App : Application
     private IUsageRuntime? _usageRuntime;
     private GatewayComposition? _gatewayComposition;
     private LocalHttpGatewayHost? _gateway;
+    private CompanionCliServer? _companionCli;
+    private HeadlessRunService? _headlessRuns;
     private bool _hotkeyRegistered;
     private bool _activationRegistered;
     private bool _isExiting;
@@ -82,6 +85,7 @@ public partial class App : Application
         WinAppCloudSyncHost.ConfigureFromAppConfiguration();
         Quota.Acquisition.Windows.WindowsQuotaAcquisitionHost.ConfigureDefault();
         StartLocalGateway();
+        StartCompanionCli();
 
         // Production Liquid Glass prefs (registry) — InMemory is reserved for unit tests.
         LiquidGlassEnvironment.Current = new LiquidGlassEnvironment(new RegistryLiquidGlassPreferenceStore());
@@ -283,6 +287,42 @@ public partial class App : Application
         }
     }
 
+    private void StartCompanionCli()
+    {
+        try
+        {
+            int port = 8765;
+            string? configuredPort = Environment.GetEnvironmentVariable("OPENBURNBAR_COMPANION_CLI_PORT");
+            if (int.TryParse(configuredPort, out int parsedPort) && parsedPort is > 0 and <= 65535)
+            {
+                port = parsedPort;
+            }
+
+            string journalPath = Environment.GetEnvironmentVariable("OPENBURNBAR_RUN_JOURNAL_PATH")
+                ?? Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "OpenBurnBar",
+                    "headless-runs.jsonl");
+            _headlessRuns = new HeadlessRunService(new JsonLinesHeadlessRunJournal(journalPath));
+            var runHandler = new CompanionCliHeadlessRunHandler(
+                _headlessRuns,
+                BuiltInHeadlessRunSteps.ExecuteAsync);
+            var router = new CompanionCliCommandRouter(
+                _gatewayComposition?.Router,
+                runHandler.SubmitAsync,
+                runHandler.ResumeAsync);
+            _companionCli = new CompanionCliServer(port, router);
+            _companionCli.Start();
+            AppDiagnostics.LogEvent("companion-cli.started", $"127.0.0.1:{port}");
+        }
+        catch (Exception ex)
+        {
+            AppDiagnostics.LogException("companion-cli.start", ex);
+            _companionCli = null;
+            _headlessRuns = null;
+        }
+    }
+
     private static async Task StartUsageRuntimeAsync(IUsageRuntime runtime)
     {
         try
@@ -321,6 +361,12 @@ public partial class App : Application
             await _gateway.DisposeAsync();
             _gateway = null;
         }
+        if (_companionCli is not null)
+        {
+            await _companionCli.DisposeAsync();
+            _companionCli = null;
+        }
+        _headlessRuns = null;
         _gatewayComposition?.HttpClient.Dispose();
         _gatewayComposition = null;
         _flyout?.Close();

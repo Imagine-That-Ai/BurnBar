@@ -102,8 +102,14 @@ unproven host behavior to certification:
   JSON-line bridge with no shell interpolation, bounded responses, serialized
   commands, cancellation, and process-tree cleanup.
 - Project code now has a bounded symbol index with durable metadata-only
-  persistence and a file watcher; the companion CLI has bounded input and
-  injectable health/models/run command handlers.
+  persistence and a file watcher. The index can invoke the existing Rust
+  Tree-sitter JSONL parser through a direct process client with Git-blob SHA
+  verification, and the Windows release workflow builds and signs one parser
+  executable for each RID before packaging it into portable and MSIX outputs.
+- App startup composes the loopback gateway, companion CLI, and durable run
+  journal together. The CLI exposes health/models plus bounded `run.submit` and
+  `run.resume` commands; only explicitly safe built-in steps execute by default,
+  while arbitrary shell/provider work fails closed.
 - Elder Wand fusion can journal lifecycle metadata and SHA-256 output digests
   without writing prompts or tool output to disk.
 

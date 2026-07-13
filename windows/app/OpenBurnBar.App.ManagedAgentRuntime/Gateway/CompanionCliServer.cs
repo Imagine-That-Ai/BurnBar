@@ -178,6 +178,10 @@ public sealed class CompanionCliServer : IAsyncDisposable
         {
             throw;
         }
+        catch (ArgumentException)
+        {
+            return JsonSerializer.Serialize(new { ok = false, error = "invalid_request" });
+        }
         catch (Exception)
         {
             return JsonSerializer.Serialize(new { ok = false, error = "handler_failed" });

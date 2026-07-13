@@ -44,6 +44,7 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <OpenBurnBarNativeEngineDirectory
       Condition="'$(OpenBurnBarNativeEngineDirectory)' == ''">$(MSBuildProjectDirectory)\..\..\native-engine\$(RuntimeIdentifier)</OpenBurnBarNativeEngineDirectory>
+    <OpenBurnBarProjectCodeParserPath Condition="'$(OpenBurnBarProjectCodeParserPath)' == ''"></OpenBurnBarProjectCodeParserPath>
   </PropertyGroup>
 
   <ItemGroup Condition="Exists('$(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCoreCAbi.dll')">
@@ -64,6 +65,21 @@
     <Error
       Condition="!Exists('$(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCoreCAbi.dll')"
       Text="Required Windows parser engine is missing: $(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCoreCAbi.dll" />
+  </Target>
+
+  <ItemGroup Condition="Exists('$(OpenBurnBarProjectCodeParserPath)')">
+    <Content Include="$(OpenBurnBarProjectCodeParserPath)"
+             Link="ProjectCode\project-code-static-parser.exe"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="RequireOpenBurnBarProjectCodeParser"
+          BeforeTargets="Publish"
+          Condition="'$(OpenBurnBarRequireProjectCodeParser)' == 'true'">
+    <Error
+      Condition="!Exists('$(OpenBurnBarProjectCodeParserPath)')"
+      Text="Required Windows project-code parser is missing: $(OpenBurnBarProjectCodeParserPath)" />
   </Target>
 
   <ItemGroup>
