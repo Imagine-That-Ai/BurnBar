@@ -230,6 +230,48 @@ const DAEMON_SUBSCRIPTION_START_METHOD: &str = "subscription.start";
 const DAEMON_SUBSCRIPTION_RESUME_METHOD: &str = "subscription.resume";
 const DAEMON_SUBSCRIPTION_STOP_METHOD: &str = "subscription.stop";
 
+static INITIAL_DEEP_LINK_ROUTE: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+
+fn initial_deep_link_route_store() -> &'static Mutex<Option<String>> {
+    INITIAL_DEEP_LINK_ROUTE.get_or_init(|| Mutex::new(None))
+}
+
+/// Accept only the routes registered by the Linux shell. External URLs,
+/// credentials, query strings, and fragments are deliberately rejected at the
+/// native boundary before they can influence renderer navigation.
+fn validated_deep_link_route(raw: &str) -> Option<&'static str> {
+    let url = reqwest::Url::parse(raw.trim()).ok()?;
+    if url.scheme() != "openburnbar"
+        || url.username() != ""
+        || url.password().is_some()
+        || url.port().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return None;
+    }
+    let host = url.host_str()?;
+    let path = url.path().trim_matches('/');
+    match (host, path) {
+        ("dashboard", "") | ("overview", "") => Some("overview"),
+        ("chat", "") => Some("chat"),
+        ("settings", "") => Some("settings"),
+        ("updates", "") => Some("updates"),
+        ("membership", "success" | "cancel") => Some("account"),
+        ("route", "overview") => Some("overview"),
+        ("route", "chat") => Some("chat"),
+        ("route", "settings") => Some("settings"),
+        ("route", "updates") => Some("updates"),
+        _ => None,
+    }
+}
+
+fn store_initial_deep_link_route(route: Option<String>) {
+    if let Some(mut slot) = initial_deep_link_route_store().lock().ok() {
+        *slot = route;
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct GatewayProxyMessage {
@@ -1393,6 +1435,14 @@ fn open_dashboard(app: AppHandle) -> Result<(), String> {
         window.set_focus().map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+#[tauri::command]
+fn initial_deep_link_route() -> Option<String> {
+    initial_deep_link_route_store()
+        .lock()
+        .ok()
+        .and_then(|mut route| route.take())
 }
 
 #[tauri::command]
@@ -4311,6 +4361,11 @@ fn init_tracing() {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let initial_route = std::env::args()
+        .skip(1)
+        .find_map(|arg| validated_deep_link_route(&arg).map(str::to_string));
+    store_initial_deep_link_route(initial_route);
+
     // Fast-exit CLI flags before booting the GUI: a GTK/WebKit app launched
     // headless (packaging smoke, CI) would otherwise spin forever on `--version`.
     for arg in std::env::args().skip(1) {
@@ -4358,6 +4413,7 @@ pub fn run() {
             open_external_url,
             open_update_url,
             open_dashboard,
+            initial_deep_link_route,
             quit_app,
             tray_degraded,
             record_perf_sample,
@@ -5719,5 +5775,31 @@ mod tests {
         status.state = "available".into();
         status.latest_version = Some("0.2.0".into());
         assert_eq!(tray_update_text(&status), "Update available: 0.2.0");
+    }
+
+    #[test]
+    fn deep_link_decoder_allows_registered_routes_only() {
+        assert_eq!(
+            validated_deep_link_route("openburnbar://dashboard"),
+            Some("overview")
+        );
+        assert_eq!(
+            validated_deep_link_route("openburnbar://membership/success"),
+            Some("account")
+        );
+        assert_eq!(
+            validated_deep_link_route("openburnbar://route/chat"),
+            Some("chat")
+        );
+        assert_eq!(validated_deep_link_route("https://example.com/chat"), None);
+        assert_eq!(
+            validated_deep_link_route("openburnbar://chat?prompt=secret"),
+            None
+        );
+        assert_eq!(
+            validated_deep_link_route("openburnbar://chat#fragment"),
+            None
+        );
+        assert_eq!(validated_deep_link_route("openburnbar://unknown"), None);
     }
 }

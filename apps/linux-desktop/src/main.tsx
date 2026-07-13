@@ -8,6 +8,7 @@ import {
   shouldRouteToOnboarding
 } from './onboardingStore.js';
 import { markStart } from './perfMarks.js';
+import { ROUTES, type ShellRoute } from './routes.js';
 import { DaemonHealthSupervisor, installDaemonHealthLifecycle } from './state/daemonHealthSupervisor.js';
 import {
   DaemonSubscriptionSupervisor,
@@ -41,9 +42,17 @@ async function boot(): Promise<void> {
   if (bridge) {
     try {
       const authoritative = await bridge.onboardingSnapshot();
+      const nativeDeepLink = bridge.initialDeepLinkRoute
+        ? await bridge.initialDeepLinkRoute()
+        : null;
+      const requestedNativeRoute = nativeDeepLink && ROUTES.some((route) => route.id === nativeDeepLink)
+        ? (nativeDeepLink as ShellRoute)
+        : null;
       cacheOnboarding(authoritative);
       if (shouldRouteToOnboarding(authoritative)) {
         useShellStore.getState().setRoute('onboarding');
+      } else if (requestedNativeRoute) {
+        useShellStore.getState().setRoute(requestedNativeRoute);
       } else if (hadDeepLink) {
         location.hash = requestedHash;
         useShellStore.getState().syncRouteFromHash();

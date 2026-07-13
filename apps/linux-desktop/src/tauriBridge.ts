@@ -601,6 +601,7 @@ export interface LinuxShellBridge {
   gatewayChatStream(request: GatewayProxyRequest, onChunk: (chunk: string) => void): Promise<void>;
   gatewayChatCancel(requestId: string): Promise<void>;
   openDashboard(): Promise<void>;
+  initialDeepLinkRoute?(): Promise<string | null>;
   quitApp(): Promise<void>;
   trayDegraded(): Promise<boolean>;
   measurePerfOperation(
@@ -1931,6 +1932,7 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     },
     gatewayChatCancel: (requestId) => invoke<void>('gateway_chat_cancel', { requestId }),
     openDashboard: () => invoke<void>('open_dashboard'),
+    initialDeepLinkRoute: () => invoke<string | null>('initial_deep_link_route'),
     quitApp: () => invoke<void>('quit_app'),
     trayDegraded: () => invoke<boolean>('tray_degraded'),
     measurePerfOperation: (name) =>
