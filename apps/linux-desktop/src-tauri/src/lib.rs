@@ -2566,11 +2566,14 @@ fn app_version_info() -> Result<serde_json::Value, String> {
     let daemon_version = probe_daemon_health()
         .daemon_version
         .unwrap_or_else(|| "unknown".to_string());
-    let package_channel = detect_linux_package_channel();
+    let package = detect_linux_package_facts();
+    let runtime = linux_runtime_facts();
     Ok(serde_json::json!({
         "shellVersion": shell_version,
         "daemonVersion": daemon_version,
-        "packageChannel": package_channel
+        "packageChannel": package.channel.clone(),
+        "package": package,
+        "runtime": runtime
     }))
 }
 
@@ -2584,9 +2587,42 @@ async fn update_status() -> update_feed::LinuxUpdateStatus {
 }
 
 // ───────────────── P09: redacted diagnostics export ─────────────────
+fn diagnostics_bundle(
+    stamp: u64,
+    health: &DaemonHealth,
+    package: &LinuxPackageFacts,
+    runtime: &LinuxRuntimeFacts,
+) -> serde_json::Value {
+    serde_json::json!({
+        "schemaVersion": 1,
+        "exportedAt": stamp,
+        "shellVersion": env!("CARGO_PKG_VERSION"),
+        "daemonHealth": {
+            "ok": health.ok,
+            "daemonVersion": health.daemon_version,
+            "protocolVersion": health.protocol_version,
+            "socketPath": health.socket_path,
+        },
+        "package": package,
+        "runtime": runtime,
+        "included": DIAGNOSTICS_INCLUDED,
+        "excluded": DIAGNOSTICS_EXCLUDED,
+    })
+}
+
+fn diagnostics_preview(byte_count: usize) -> serde_json::Value {
+    serde_json::json!({
+        "schemaVersion": 1,
+        "byteCount": byte_count,
+        "fileMode": "0600",
+        "included": DIAGNOSTICS_INCLUDED,
+        "excluded": DIAGNOSTICS_EXCLUDED,
+    })
+}
+
 // Writes a JSON bundle to the support dir. Redaction is structural: this
-// command only persists shell/health metadata — it never reads provider
-// payloads, tokens, or socket auth material. File mode is 0600.
+// command only persists shell/health/package/runtime metadata — it never reads
+// provider payloads, tokens, or socket auth material. File mode is 0600.
 #[tauri::command]
 fn export_diagnostics() -> Result<serde_json::Value, String> {
     use std::io::Write;
@@ -2602,28 +2638,11 @@ fn export_diagnostics() -> Result<serde_json::Value, String> {
         .unwrap_or(0);
     let path = dir.join(format!("diagnostics-{stamp}.json"));
     let health = probe_daemon_health();
-    let bundle = serde_json::json!({
-        "exportedAt": stamp,
-        "shellVersion": env!("CARGO_PKG_VERSION"),
-        "daemonHealth": {
-            "ok": health.ok,
-            "daemonVersion": health.daemon_version,
-            "protocolVersion": health.protocol_version,
-            "socketPath": health.socket_path,
-        },
-        "included": [
-            "shell version",
-            "daemon health (ok, version, protocol, socket path)",
-            "perf sample names and durations"
-        ],
-        "excluded": [
-            "provider API keys and credentials",
-            "socket auth tokens",
-            "provider response payloads",
-            "user session content"
-        ]
-    });
+    let package = detect_linux_package_facts();
+    let runtime = linux_runtime_facts();
+    let bundle = diagnostics_bundle(stamp, &health, &package, &runtime);
     let json = serde_json::to_string_pretty(&bundle).map_err(|e| e.to_string())?;
+    let preview = diagnostics_preview(json.len());
     let mut file = fs::OpenOptions::new()
         .write(true)
         .create(true)
@@ -2632,7 +2651,13 @@ fn export_diagnostics() -> Result<serde_json::Value, String> {
         .open(&path)
         .map_err(|e| e.to_string())?;
     file.write_all(json.as_bytes()).map_err(|e| e.to_string())?;
-    Ok(serde_json::json!({ "path": path.display().to_string() }))
+    // Re-apply the owner-only mode even when a timestamp collision reopens an
+    // existing file; `OpenOptionsExt::mode` only affects newly-created files.
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())?;
+    Ok(serde_json::json!({
+        "path": path.display().to_string(),
+        "preview": preview
+    }))
 }
 
 // ───────────────── P11: session env ─────────────────
@@ -3622,32 +3647,183 @@ where
 }
 
 fn detect_linux_package_channel() -> String {
-    if let Ok(channel) = std::env::var("OPENBURNBAR_PACKAGE_CHANNEL") {
-        let channel = channel.trim().to_ascii_lowercase();
-        if matches!(channel.as_str(), "appimage" | "deb" | "rpm") {
-            return channel;
-        }
+    detect_linux_package_facts().channel
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct LinuxPackageFacts {
+    channel: String,
+    manager: String,
+    evidence: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct LinuxRuntimeFacts {
+    os: String,
+    architecture: String,
+    kernel: Option<String>,
+    session_type: Option<String>,
+    desktop: Option<String>,
+    display_server: Option<String>,
+}
+
+const DIAGNOSTICS_INCLUDED: [&str; 4] = [
+    "shell version",
+    "daemon health (ok, version, protocol, socket path)",
+    "package channel and runtime facts",
+    "export schema and file permissions",
+];
+
+const DIAGNOSTICS_EXCLUDED: [&str; 4] = [
+    "provider API keys and credentials",
+    "socket auth tokens",
+    "provider response payloads",
+    "user session content",
+];
+
+fn normalized_package_channel(value: &str) -> Option<&'static str> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "appimage" => Some("appimage"),
+        "deb" => Some("deb"),
+        "rpm" => Some("rpm"),
+        _ => None,
     }
-    if Command::new("dpkg-query")
-        .args(["-W", "-f=${Status}", "open-burn-bar"])
+}
+
+fn package_manager_for_channel(channel: &str) -> &'static str {
+    match channel {
+        "deb" => "dpkg",
+        "rpm" => "rpm",
+        "appimage" => "appimage",
+        _ => "unknown",
+    }
+}
+
+fn command_reports_installed(command: &str, args: &[&str]) -> bool {
+    Command::new(command)
+        .args(args)
+        .output()
+        .map(|output| {
+            output.status.success()
+                && !String::from_utf8_lossy(&output.stdout)
+                    .to_ascii_lowercase()
+                    .contains("not installed")
+        })
+        .unwrap_or(false)
+}
+
+fn deb_package_reports_installed(command: &str, package_id: &str) -> bool {
+    Command::new(command)
+        .args(["-W", "-f=${Status}", package_id])
         .output()
         .map(|output| {
             output.status.success()
                 && String::from_utf8_lossy(&output.stdout).contains("install ok installed")
         })
         .unwrap_or(false)
-    {
-        return "deb".to_string();
+}
+
+fn package_query_ids() -> [&'static str; 2] {
+    // The release smoke path historically emitted both names. Keep the probe
+    // explicit instead of accepting arbitrary package-manager input.
+    ["openburnbar", "open-burn-bar"]
+}
+
+fn detect_linux_package_facts() -> LinuxPackageFacts {
+    if let Ok(channel) = std::env::var("OPENBURNBAR_PACKAGE_CHANNEL") {
+        if let Some(channel) = normalized_package_channel(&channel) {
+            return LinuxPackageFacts {
+                channel: channel.to_string(),
+                manager: package_manager_for_channel(channel).to_string(),
+                evidence: "OPENBURNBAR_PACKAGE_CHANNEL".to_string(),
+            };
+        }
     }
-    if Command::new("rpm")
-        .args(["-q", "open-burn-bar"])
-        .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
-    {
-        return "rpm".to_string();
+    if first_non_empty_env(&["APPIMAGE", "APPDIR"]).is_some() {
+        return LinuxPackageFacts {
+            channel: "appimage".to_string(),
+            manager: "appimage".to_string(),
+            evidence: "APPIMAGE/APPDIR".to_string(),
+        };
     }
-    "appimage".to_string()
+
+    for package_id in package_query_ids() {
+        if deb_package_reports_installed("/usr/bin/dpkg-query", package_id)
+            || deb_package_reports_installed("/bin/dpkg-query", package_id)
+        {
+            return LinuxPackageFacts {
+                channel: "deb".to_string(),
+                manager: "dpkg".to_string(),
+                evidence: format!("dpkg-query:{package_id}"),
+            };
+        }
+    }
+    for package_id in package_query_ids() {
+        if command_reports_installed("/usr/bin/rpm", &["-q", package_id])
+            || command_reports_installed("/bin/rpm", &["-q", package_id])
+        {
+            return LinuxPackageFacts {
+                channel: "rpm".to_string(),
+                manager: "rpm".to_string(),
+                evidence: format!("rpm:{package_id}"),
+            };
+        }
+    }
+    if first_non_empty_env(&["FLATPAK_ID"]).is_some() {
+        return LinuxPackageFacts {
+            channel: "unknown".to_string(),
+            manager: "flatpak".to_string(),
+            evidence: "FLATPAK_ID (unsupported update channel)".to_string(),
+        };
+    }
+    LinuxPackageFacts {
+        channel: "unknown".to_string(),
+        manager: "unknown".to_string(),
+        evidence: "no-installed-package-evidence".to_string(),
+    }
+}
+
+fn sanitized_runtime_fact(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.is_empty() || value.len() > 128 || value.chars().any(|c| c.is_control()) {
+        return None;
+    }
+    Some(value.to_string())
+}
+
+fn runtime_env_fact(key: &str) -> Option<String> {
+    std::env::var(key)
+        .ok()
+        .and_then(|value| sanitized_runtime_fact(&value))
+}
+
+fn linux_kernel_release() -> Option<String> {
+    fs::read_to_string("/proc/sys/kernel/osrelease")
+        .ok()
+        .and_then(|value| sanitized_runtime_fact(&value))
+}
+
+fn linux_runtime_facts() -> LinuxRuntimeFacts {
+    let session_type = runtime_env_fact("XDG_SESSION_TYPE");
+    let display_server = session_type.as_deref().and_then(|session| {
+        if session.eq_ignore_ascii_case("wayland") {
+            Some("wayland".to_string())
+        } else if session.eq_ignore_ascii_case("x11") || session.eq_ignore_ascii_case("xorg") {
+            Some("x11".to_string())
+        } else {
+            None
+        }
+    });
+    LinuxRuntimeFacts {
+        os: std::env::consts::OS.to_string(),
+        architecture: std::env::consts::ARCH.to_string(),
+        kernel: linux_kernel_release(),
+        session_type,
+        desktop: runtime_env_fact("XDG_CURRENT_DESKTOP"),
+        display_server,
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -5077,6 +5253,75 @@ mod tests {
             "expiresAt": 800_000_300.0,
             "denialReason": null
         })
+    }
+
+    #[test]
+    fn diagnostics_bundle_is_metadata_only_and_has_a_safe_preview_contract() {
+        let health = DaemonHealth {
+            ok: false,
+            daemon_version: Some("1.2.3".to_string()),
+            protocol_version: Some(7),
+            socket_path: Some("/run/user/1000/openburnbar/daemon.sock".to_string()),
+            error: Some("socket auth token should never be serialized".to_string()),
+            ..Default::default()
+        };
+        let package = LinuxPackageFacts {
+            channel: "unknown".to_string(),
+            manager: "unknown".to_string(),
+            evidence: "no-installed-package-evidence".to_string(),
+        };
+        let runtime = LinuxRuntimeFacts {
+            os: "linux".to_string(),
+            architecture: "x86_64".to_string(),
+            kernel: Some("6.8.0".to_string()),
+            session_type: Some("wayland".to_string()),
+            desktop: Some("GNOME".to_string()),
+            display_server: Some("wayland".to_string()),
+        };
+        let bundle = diagnostics_bundle(42, &health, &package, &runtime);
+        let encoded = serde_json::to_string(&bundle).unwrap();
+        assert!(!encoded.contains("packageChannel"));
+        assert!(!encoded.contains("socket auth token should never be serialized"));
+        assert!(encoded.contains("provider API keys and credentials"));
+        assert!(encoded.contains("runtime"));
+
+        let preview = diagnostics_preview(encoded.len());
+        assert_eq!(preview["schemaVersion"], 1);
+        assert_eq!(preview["fileMode"], "0600");
+        assert_eq!(preview["byteCount"], encoded.len());
+        assert!(preview["included"].as_array().unwrap().len() >= 4);
+        assert!(preview["excluded"].as_array().unwrap().len() >= 4);
+    }
+
+    #[test]
+    fn package_channel_override_is_strict_and_unknown_is_not_promoted_to_appimage() {
+        assert_eq!(normalized_package_channel(" DEB "), Some("deb"));
+        assert_eq!(normalized_package_channel("rpm"), Some("rpm"));
+        assert_eq!(normalized_package_channel("appimage"), Some("appimage"));
+        assert_eq!(normalized_package_channel("flatpak"), None);
+        assert_eq!(package_manager_for_channel("unknown"), "unknown");
+    }
+
+    #[test]
+    fn runtime_facts_reject_control_input_and_normalize_display_server() {
+        assert_eq!(
+            sanitized_runtime_fact("  GNOME  "),
+            Some("GNOME".to_string())
+        );
+        assert_eq!(sanitized_runtime_fact("bad\nvalue"), None);
+        assert_eq!(sanitized_runtime_fact(&"x".repeat(129)), None);
+
+        let session = Some("x11".to_string());
+        let display_server = session.as_deref().and_then(|value| {
+            if value.eq_ignore_ascii_case("wayland") {
+                Some("wayland".to_string())
+            } else if value.eq_ignore_ascii_case("x11") || value.eq_ignore_ascii_case("xorg") {
+                Some("x11".to_string())
+            } else {
+                None
+            }
+        });
+        assert_eq!(display_server.as_deref(), Some("x11"));
     }
 
     // BurnBarMissionApproveRequest/CancelRequest decode `missionID` (capital ID,

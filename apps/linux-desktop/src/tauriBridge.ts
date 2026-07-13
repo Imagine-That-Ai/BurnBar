@@ -522,6 +522,19 @@ export type AppVersionInfo = {
   shellVersion: string;
   daemonVersion: string;
   packageChannel: 'deb' | 'rpm' | 'appimage' | 'unknown';
+  package?: {
+    channel: 'deb' | 'rpm' | 'appimage' | 'unknown';
+    manager: string;
+    evidence: string;
+  };
+  runtime?: {
+    os: string;
+    architecture: string;
+    kernel?: string;
+    sessionType?: string;
+    desktop?: string;
+    displayServer?: string;
+  };
   /** Legacy fixture field. Live update truth comes from updateStatus(). */
   updateCheck?: string;
 };
@@ -580,7 +593,14 @@ export type LinuxUpdateStatus = {
   compatibility?: LinuxUpdateCompatibility;
   reason?: string;
 };
-export type DiagnosticsExport = { path: string };
+export type DiagnosticsExportPreview = {
+  schemaVersion: 1;
+  byteCount: number;
+  fileMode: '0600';
+  included: string[];
+  excluded: string[];
+};
+export type DiagnosticsExport = { path: string; preview?: DiagnosticsExportPreview };
 
 // ─────────────────────────── P10: proxy route log ─────────────────────────
 
@@ -2272,11 +2292,91 @@ function mapMembershipCheckoutUrl(raw: RawJsonValue): string {
   return value;
 }
 
+export function isSafeDiagnosticsPath(path: string): boolean {
+  if (!path.startsWith('/') || path.includes('\\') || path.length > 4096) return false;
+  if ([...path].some((character) => character.charCodeAt(0) < 0x20 || character.charCodeAt(0) === 0x7f)) {
+    return false;
+  }
+  const segments = path.split('/');
+  const interiorSegments = segments.slice(1, -1);
+  if (interiorSegments.some((segment) => segment.length === 0 || segment === '.' || segment === '..')) return false;
+  const filename = segments.at(-1) ?? '';
+  return /^(?:diagnostics-[A-Za-z0-9._-]+|openburnbar-diagnostics-[A-Za-z0-9._-]+)\.json$/.test(filename);
+}
+
+export function isSafeDiagnosticsPreview(preview: DiagnosticsExportPreview): boolean {
+  const validEntry = (entry: string): boolean =>
+    entry.length > 0 && entry.length <= 256 && ![...entry].some((character) => character.charCodeAt(0) < 0x20 || character.charCodeAt(0) === 0x7f);
+  return (
+    preview.schemaVersion === 1 &&
+    Number.isSafeInteger(preview.byteCount) &&
+    preview.byteCount >= 0 &&
+    preview.byteCount <= 10 * 1024 * 1024 &&
+    preview.fileMode === '0600' &&
+    preview.included.length <= 32 &&
+    preview.excluded.length <= 32 &&
+    preview.included.every(validEntry) &&
+    preview.excluded.every(validEntry)
+  );
+}
+
+function mapDiagnosticsPreview(raw: RawJsonValue): DiagnosticsExportPreview {
+  const preview = obj(raw);
+  if (num(pick(preview, 'schemaVersion', 'schema_version')) !== 1) {
+    throw new Error('Native diagnostics preview returned an unsupported schema.');
+  }
+  const byteCount = num(pick(preview, 'byteCount', 'byte_count'), -1);
+  const fileMode = str(pick(preview, 'fileMode', 'file_mode'));
+  const included = arr(pick(preview, 'included')).map((entry) => str(entry));
+  const excluded = arr(pick(preview, 'excluded')).map((entry) => str(entry));
+  const candidate = { schemaVersion: 1 as const, byteCount, fileMode: fileMode as '0600', included, excluded };
+  if (!isSafeDiagnosticsPreview(candidate)) {
+    throw new Error('Native diagnostics preview returned invalid privacy metadata.');
+  }
+  return candidate;
+}
+
+function mapDiagnosticsExport(raw: RawJsonValue): DiagnosticsExport {
+  const path = str(pick(raw, 'path')).trim();
+  if (!isSafeDiagnosticsPath(path)) {
+    throw new Error('Native diagnostics export returned an unsafe path.');
+  }
+  const previewRaw = pick(raw, 'preview');
+  return {
+    path,
+    preview: previewRaw === undefined ? undefined : mapDiagnosticsPreview(previewRaw)
+  };
+}
+
 function mapAppVersionInfo(raw: RawJsonValue): AppVersionInfo {
+  const packageRaw = obj(pick(raw, 'package'));
+  const runtimeRaw = obj(pick(raw, 'runtime'));
+  const packageChannel = normalizeChannel(
+    str(pick(packageRaw, 'channel'), str(pick(raw, 'packageChannel', 'package_channel'), 'unknown'))
+  );
+  const packageInfo = Object.keys(packageRaw).length === 0
+    ? undefined
+    : {
+        channel: packageChannel,
+        manager: str(pick(packageRaw, 'manager'), 'unknown'),
+        evidence: str(pick(packageRaw, 'evidence'), 'unknown')
+      };
+  const runtime = Object.keys(runtimeRaw).length === 0
+    ? undefined
+    : {
+        os: str(pick(runtimeRaw, 'os'), 'unknown'),
+        architecture: str(pick(runtimeRaw, 'architecture'), 'unknown'),
+        kernel: str(pick(runtimeRaw, 'kernel')) || undefined,
+        sessionType: str(pick(runtimeRaw, 'sessionType', 'session_type')) || undefined,
+        desktop: str(pick(runtimeRaw, 'desktop')) || undefined,
+        displayServer: str(pick(runtimeRaw, 'displayServer', 'display_server')) || undefined
+      };
   return {
     shellVersion: str(pick(raw, 'shellVersion', 'shell_version')),
     daemonVersion: str(pick(raw, 'daemonVersion', 'daemon_version')),
-    packageChannel: normalizeChannel(str(pick(raw, 'packageChannel', 'package_channel'), 'unknown'))
+    packageChannel,
+    package: packageInfo,
+    runtime
   };
 }
 
@@ -3277,7 +3377,7 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     // P09 — redacted diagnostics export → file path
     exportDiagnostics: async () => {
       const raw = await invoke<RawJsonValue>('export_diagnostics');
-      return { path: str(pick(raw, 'path')) };
+      return mapDiagnosticsExport(raw);
     },
     // P11 — session env for pet tier detection
     sessionEnv: async () => {

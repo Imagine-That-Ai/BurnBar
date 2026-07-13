@@ -1,14 +1,40 @@
 import { create } from 'zustand';
 import { useShellStore } from './shellStore.js';
-import type { AppVersionInfo, LinuxUpdateStatus } from '../tauriBridge.js';
+import {
+  isSafeDiagnosticsPath,
+  isSafeDiagnosticsPreview,
+  type AppVersionInfo,
+  type DiagnosticsExportPreview,
+  type LinuxUpdateStatus
+} from '../tauriBridge.js';
 
 export type ExportState = 'idle' | 'exporting' | 'success' | 'failed';
+export type CopyState = 'idle' | 'copying' | 'success' | 'failed';
+
+const FIXTURE_PREVIEW: DiagnosticsExportPreview = {
+  schemaVersion: 1,
+  byteCount: 0,
+  fileMode: '0600',
+  included: [
+    'shell version',
+    'daemon health (ok, version, protocol, socket path)',
+    'package channel and runtime facts',
+    'export schema and file permissions'
+  ],
+  excluded: [
+    'provider API keys and credentials',
+    'socket auth tokens',
+    'provider response payloads',
+    'user session content'
+  ]
+};
 
 function fixtureVersionInfo(): AppVersionInfo {
   return {
     shellVersion: '0.1.0-fixture',
     daemonVersion: '0.1.0-fixture',
-    packageChannel: 'deb',
+    packageChannel: 'unknown',
+    package: { channel: 'unknown', manager: 'unknown', evidence: 'fixture-only' },
     updateCheck: 'fixture-only'
   };
 }
@@ -60,10 +86,14 @@ export type SupportStoreState = {
   updateError: string | null;
   exportState: ExportState;
   exportPath: string | null;
+  exportPreview: DiagnosticsExportPreview | null;
   exportError: string | null;
+  copyState: CopyState;
+  copyError: string | null;
   loadVersion(): Promise<void>;
   checkUpdate(): Promise<void>;
   exportDiagnostics(): Promise<void>;
+  copyDiagnosticsPath(): Promise<void>;
   resetExport(): void;
 };
 
@@ -76,9 +106,19 @@ export const useSupportStore = create<SupportStoreState>()((set) => ({
   updateError: null,
   exportState: 'idle',
   exportPath: null,
+  exportPreview: null,
   exportError: null,
+  copyState: 'idle',
+  copyError: null,
   resetExport() {
-    set({ exportState: 'idle', exportPath: null, exportError: null });
+    set({
+      exportState: 'idle',
+      exportPath: null,
+      exportPreview: null,
+      exportError: null,
+      copyState: 'idle',
+      copyError: null
+    });
   },
   async loadVersion() {
     const { fixtureMode, bridge } = useShellStore.getState();
@@ -146,25 +186,72 @@ export const useSupportStore = create<SupportStoreState>()((set) => ({
       set({
         exportState: 'failed',
         exportPath: null,
+        exportPreview: null,
         exportError: 'Packaged shell required to export diagnostics.'
       });
       return;
     }
-    set({ exportState: 'exporting', exportPath: null, exportError: null });
+    set({
+      exportState: 'exporting',
+      exportPath: null,
+      exportPreview: null,
+      exportError: null,
+      copyState: 'idle',
+      copyError: null
+    });
     try {
       if (fixtureMode) {
         const path = '/tmp/openburnbar-diagnostics-fixture.json';
-        set({ exportState: 'success', exportPath: path, exportError: null });
+        set({
+          exportState: 'success',
+          exportPath: path,
+          exportPreview: FIXTURE_PREVIEW,
+          exportError: null,
+          copyState: 'idle',
+          copyError: null
+        });
         return;
       }
       const result = await bridge!.exportDiagnostics();
-      set({ exportState: 'success', exportPath: result.path, exportError: null });
+      if (!isSafeDiagnosticsPath(result.path)) {
+        throw new Error('Native diagnostics export returned an unsafe path.');
+      }
+      if (result.preview && !isSafeDiagnosticsPreview(result.preview)) {
+        throw new Error('Native diagnostics export returned unsafe preview metadata.');
+      }
+      set({
+        exportState: 'success',
+        exportPath: result.path,
+        exportPreview: result.preview ?? null,
+        exportError: null,
+        copyState: 'idle',
+        copyError: null
+      });
     } catch (e) {
       set({
         exportState: 'failed',
         exportPath: null,
+        exportPreview: null,
         exportError: e instanceof Error ? e.message : 'Export failed'
       });
+    }
+  },
+  async copyDiagnosticsPath() {
+    const path = useSupportStore.getState().exportPath;
+    if (!path || !isSafeDiagnosticsPath(path)) {
+      set({ copyState: 'failed', copyError: 'Export a diagnostics bundle before copying its path.' });
+      return;
+    }
+    if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
+      set({ copyState: 'failed', copyError: 'Clipboard access is unavailable in this packaged shell.' });
+      return;
+    }
+    set({ copyState: 'copying', copyError: null });
+    try {
+      await navigator.clipboard.writeText(path);
+      set({ copyState: 'success', copyError: null });
+    } catch {
+      set({ copyState: 'failed', copyError: 'Clipboard access was denied; copy the path manually.' });
     }
   }
 }));
