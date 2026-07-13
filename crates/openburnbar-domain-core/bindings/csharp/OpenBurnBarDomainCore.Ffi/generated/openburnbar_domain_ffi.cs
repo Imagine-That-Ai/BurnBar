@@ -745,6 +745,12 @@ static class _UniFFILib {
 
 
 
+
+
+
+
+
+
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
         _UniFFILib.uniffiCheckApiChecksums();
@@ -760,7 +766,19 @@ static class _UniFFILib {
     );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_parse_anthropic_rate_limit_headers(RustBuffer @payload,long @nowUnix,RustBuffer @shape,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_parse_claude_statusline_quota(RustBuffer @payload,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_parse_codex_usage_quota(RustBuffer @payload,long @nowUnix,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_parse_cursor_usage_quota(RustBuffer @payload,RustBuffer @userEmail,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
@@ -996,7 +1014,19 @@ static class _UniFFILib {
     );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_parse_anthropic_rate_limit_headers(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_parse_claude_statusline_quota(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_parse_codex_usage_quota(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_parse_cursor_usage_quota(
     );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
@@ -1026,9 +1056,27 @@ static class _UniFFILib {
             }
         }
         {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_parse_anthropic_rate_limit_headers();
+            if (checksum != 49269) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_parse_anthropic_rate_limit_headers` checksum `49269`, library returned `{checksum}`");
+            }
+        }
+        {
             var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_parse_claude_statusline_quota();
             if (checksum != 44207) {
                 throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_parse_claude_statusline_quota` checksum `44207`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_parse_codex_usage_quota();
+            if (checksum != 48415) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_parse_codex_usage_quota` checksum `48415`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_parse_cursor_usage_quota();
+            if (checksum != 39634) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_parse_cursor_usage_quota` checksum `39634`, library returned `{checksum}`");
             }
         }
     }
@@ -1353,6 +1401,39 @@ class FfiConverterTypeQuotaSnapshot: FfiConverterRustBuffer<QuotaSnapshot> {
 
 
 
+public enum AnthropicCredentialShape: int {
+
+    OauthBearer,
+    ConsoleApiKey
+}
+
+class FfiConverterTypeAnthropicCredentialShape: FfiConverterRustBuffer<AnthropicCredentialShape> {
+    public static FfiConverterTypeAnthropicCredentialShape INSTANCE = new FfiConverterTypeAnthropicCredentialShape();
+
+    public override AnthropicCredentialShape Read(BigEndianStream stream) {
+        var value = stream.ReadInt() - 1;
+        if (Enum.IsDefined(typeof(AnthropicCredentialShape), value)) {
+            return (AnthropicCredentialShape)value;
+        } else {
+            throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeAnthropicCredentialShape.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(AnthropicCredentialShape value) {
+        return 4;
+    }
+
+    public override void Write(AnthropicCredentialShape value, BigEndianStream stream) {
+        stream.WriteInt((int)value + 1);
+    }
+}
+
+
+
+
+
+
+
 public enum QuotaConfidence: int {
 
     Exact,
@@ -1595,6 +1676,37 @@ class FfiConverterOptionalDouble: FfiConverterRustBuffer<double?> {
 
 
 
+class FfiConverterOptionalString: FfiConverterRustBuffer<string?> {
+    public static FfiConverterOptionalString INSTANCE = new FfiConverterOptionalString();
+
+    public override string? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterString.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(string? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterString.INSTANCE.AllocationSize((string)value);
+        }
+    }
+
+    public override void Write(string? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterString.INSTANCE.Write((string)value, stream);
+        }
+    }
+}
+
+
+
+
 class FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer<List<QuotaBucket>> {
     public static FfiConverterSequenceTypeQuotaBucket INSTANCE = new FfiConverterSequenceTypeQuotaBucket();
 
@@ -1651,10 +1763,34 @@ public static class OpenburnbarDomainFfiMethods {
     }
 
 
+    public static QuotaParseResult ParseAnthropicRateLimitHeaders(byte[] @payload, long @nowUnix, AnthropicCredentialShape @shape) {
+        return FfiConverterTypeQuotaParseResult.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_parse_anthropic_rate_limit_headers(FfiConverterByteArray.INSTANCE.Lower(@payload), FfiConverterInt64.INSTANCE.Lower(@nowUnix), FfiConverterTypeAnthropicCredentialShape.INSTANCE.Lower(@shape), ref _status)
+));
+    }
+
+
     public static QuotaParseResult ParseClaudeStatuslineQuota(byte[] @payload) {
         return FfiConverterTypeQuotaParseResult.INSTANCE.Lift(
     _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
     _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_parse_claude_statusline_quota(FfiConverterByteArray.INSTANCE.Lower(@payload), ref _status)
+));
+    }
+
+
+    public static QuotaParseResult ParseCodexUsageQuota(byte[] @payload, long @nowUnix) {
+        return FfiConverterTypeQuotaParseResult.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_parse_codex_usage_quota(FfiConverterByteArray.INSTANCE.Lower(@payload), FfiConverterInt64.INSTANCE.Lower(@nowUnix), ref _status)
+));
+    }
+
+
+    public static QuotaParseResult ParseCursorUsageQuota(byte[] @payload, string? @userEmail) {
+        return FfiConverterTypeQuotaParseResult.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_parse_cursor_usage_quota(FfiConverterByteArray.INSTANCE.Lower(@payload), FfiConverterOptionalString.INSTANCE.Lower(@userEmail), ref _status)
 ));
     }
 
