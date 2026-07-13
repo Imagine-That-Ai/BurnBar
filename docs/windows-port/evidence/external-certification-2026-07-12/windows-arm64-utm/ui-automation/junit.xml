@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<testsuite name="OpenBurnBar.Windows.UiAutomation" tests="35" failures="26" skipped="0">
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="route.baseline.dashboard" time="6.967">
+    <failure message="Route smoke result JSON was not written: C:\Users\Public\external-cert-rehearsal-7c36229823-runner-v11\ui-automation\routes\baseline\dashboard\dashboard-result.json" />
+  </testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="route.baseline.quota" time="3.237">
+    <failure message="Route smoke result JSON was not written: C:\Users\Public\external-cert-rehearsal-7c36229823-runner-v11\ui-automation\routes\baseline\quota\quota-result.json" />
+  </testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="route.baseline.insights" time="3.647">
+    <failure message="Route smoke result JSON was not written: C:\Users\Public\external-cert-rehearsal-7c36229823-runner-v11\ui-automation\routes\baseline\insights\insights-result.json" />
+  </testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="route.baseline.sessionLogs" time="3.08">
+    <failure message="Route smoke result JSON was not written: C:\Users\Public\external-cert-rehearsal-7c36229823-runner-v11\ui-automation\routes\baseline\sessionLogs\sessionLogs-result.json" />
+  </testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="route.baseline.memory" time="3.844">
+    <failure message="Route smoke result JSON was not written: C:\Users\Public\external-cert-rehearsal-7c36229823-runner-v11\ui-automation\routes\baseline\memory\memory-result.json" />
+  </testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="route.baseline.missionControl" time="4.036">
+    <failure message="Route smoke result JSON was not written: C:\Users\Public\external-cert-rehearsal-7c36229823-runner-v11\ui-automation\routes\baseline\missionControl\missionControl-result.json" />
+  </testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="route.baseline.budget" time="4.763">
+    <failure message="Route smoke result JSON was not written: C:\Users\Public\external-cert-rehearsal-7c36229823-runner-v11\ui-automation\routes\baseline\budget\budget-result.json" />
+  </testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="route.baseline.dataControlCenter" time="4.16">
+    <failure message="Route smoke result JSON was not written: C:\Users\Public\external-cert-rehearsal-7c36229823-runner-v11\ui-automation\routes\baseline\dataControlCenter\dataControlCenter-result.json" />
+  </testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="route.baseline.chat" time="4.729">
+    <failure message="Route smoke result JSON was not written: C:\Users\Public\external-cert-rehearsal-7c36229823-runner-v11\ui-automation\routes\baseline\chat\chat-result.json" />
+  </testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="route.baseline.switcher" time="3.663">
+    <failure message="Route smoke result JSON was not written: C:\Users\Public\external-cert-rehearsal-7c36229823-runner-v11\ui-automation\routes\baseline\switcher\switcher-result.json" />
+  </testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="route.baseline.onboarding" time="3.759">
+    <failure message="Route smoke result JSON was not written: C:\Users\Public\external-cert-rehearsal-7c36229823-runner-v11\ui-automation\routes\baseline\onboarding\onboarding-result.json" />
+  </testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="route.baseline.settings" time="3.606">
+    <failure message="Route smoke result JSON was not written: C:\Users\Public\external-cert-rehearsal-7c36229823-runner-v11\ui-automation\routes\baseline\settings\settings-result.json" />
+  </testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="route.baseline.elderWand" time="5.148">
+    <failure message="Route smoke result JSON was not written: C:\Users\Public\external-cert-rehearsal-7c36229823-runner-v11\ui-automation\routes\baseline\elderWand\elderWand-result.json" />
+  </testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="route.high-contrast.dashboard" time="2.553">
+    <failure message="Route smoke result JSON was not written: C:\Users\Public\external-cert-rehearsal-7c36229823-runner-v11\ui-automation\routes\high-contrast\dashboard\dashboard-result.json" />
+  </testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="route.high-contrast.chat" time="2.702">
+    <failure message="Route smoke result JSON was not written: C:\Users\Public\external-cert-rehearsal-7c36229823-runner-v11\ui-automation\routes\high-contrast\chat\chat-result.json" />
+  </testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="route.high-contrast.settings" time="2.556">
+    <failure message="Route smoke result JSON was not written: C:\Users\Public\external-cert-rehearsal-7c36229823-runner-v11\ui-automation\routes\high-contrast\settings\settings-result.json" />
+  </testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="route.high-contrast.onboarding" time="2.647">
+    <failure message="Route smoke result JSON was not written: C:\Users\Public\external-cert-rehearsal-7c36229823-runner-v11\ui-automation\routes\high-contrast\onboarding\onboarding-result.json" />
+  </testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="route.high-contrast.dataControlCenter" time="3.111">
+    <failure message="Route smoke result JSON was not written: C:\Users\Public\external-cert-rehearsal-7c36229823-runner-v11\ui-automation\routes\high-contrast\dataControlCenter\dataControlCenter-result.json" />
+  </testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="route.reduced-transparency.dashboard" time="3.202">
+    <failure message="Route smoke result JSON was not written: C:\Users\Public\external-cert-rehearsal-7c36229823-runner-v11\ui-automation\routes\reduced-transparency\dashboard\dashboard-result.json" />
+  </testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="route.reduced-transparency.quota" time="3.09">
+    <failure message="Route smoke result JSON was not written: C:\Users\Public\external-cert-rehearsal-7c36229823-runner-v11\ui-automation\routes\reduced-transparency\quota\quota-result.json" />
+  </testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="route.reduced-transparency.missionControl" time="2.701">
+    <failure message="Route smoke result JSON was not written: C:\Users\Public\external-cert-rehearsal-7c36229823-runner-v11\ui-automation\routes\reduced-transparency\missionControl\missionControl-result.json" />
+  </testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="route.reduced-transparency.memory" time="2.558">
+    <failure message="Route smoke result JSON was not written: C:\Users\Public\external-cert-rehearsal-7c36229823-runner-v11\ui-automation\routes\reduced-transparency\memory\memory-result.json" />
+  </testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="route.dpi-100.dashboard" time="3.149">
+    <failure message="Route smoke result JSON was not written: C:\Users\Public\external-cert-rehearsal-7c36229823-runner-v11\ui-automation\routes\dpi-100\dashboard\dashboard-result.json" />
+  </testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="route.dpi-100.settings" time="3.137">
+    <failure message="Route smoke result JSON was not written: C:\Users\Public\external-cert-rehearsal-7c36229823-runner-v11\ui-automation\routes\dpi-100\settings\settings-result.json" />
+  </testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="route.dpi-100.chat" time="2.688">
+    <failure message="Route smoke result JSON was not written: C:\Users\Public\external-cert-rehearsal-7c36229823-runner-v11\ui-automation\routes\dpi-100\chat\chat-result.json" />
+  </testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="semantic.frontmost-window" time="0">
+    <failure message="OpenBurnBar.App exited before creating a main window. Exit code: -1073741189" />
+  </testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="input-route.Click" time="0"></testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="input-route.Type" time="0"></testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="input-route.Key" time="0"></testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="input-route.Shortcut" time="0"></testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="input-route.DragDrop" time="0"></testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="input-route.Scroll" time="0"></testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="input-route.PointerMove" time="0"></testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="input-route.PointerClick" time="0"></testcase>
+  <testcase classname="OpenBurnBar.Windows.UiAutomation" name="input-route.Inspect" time="0"></testcase>
+</testsuite>

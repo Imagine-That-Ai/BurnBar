@@ -843,6 +843,107 @@ final class PiServicePersistenceTests: XCTestCase {
         XCTAssertNil(service.currentThreadID)
     }
 
+    func testCancelStreamingFinalizesPartialAssistantTurnInPlace() {
+        let local = InMemoryLocalStore()
+        let store = MobileChatHistoryStore(local: local, cloud: nil)
+        let service = PiService(defaults: makeDefaults(), history: store)
+        service.messages = [
+            PiChatMessage(role: .user, text: "Hello Pi"),
+            PiChatMessage(role: .assistant, text: "Partial reply", isStreaming: true)
+        ]
+        service.isStreaming = true
+
+        service.cancelStreaming()
+
+        XCTAssertFalse(service.isStreaming)
+        XCTAssertEqual(service.messages.count, 2)
+        XCTAssertEqual(service.messages.last?.text, "Partial reply")
+        XCTAssertEqual(service.messages.last?.isStreaming, false)
+        XCTAssertFalse(service.messages.last?.isError ?? true)
+    }
+
+    func testCancelStreamingDropsEmptyStreamingPlaceholder() {
+        let local = InMemoryLocalStore()
+        let store = MobileChatHistoryStore(local: local, cloud: nil)
+        let service = PiService(defaults: makeDefaults(), history: store)
+        service.messages = [
+            PiChatMessage(role: .user, text: "Hello Pi"),
+            PiChatMessage(role: .assistant, text: "", isStreaming: true)
+        ]
+        service.isStreaming = true
+
+        service.cancelStreaming()
+
+        XCTAssertFalse(service.isStreaming)
+        XCTAssertEqual(service.messages.count, 1)
+        XCTAssertEqual(service.messages.first?.role, .user)
+    }
+
+    func testCancelStreamingAfterSendResetsStreamingFlag() {
+        let local = InMemoryLocalStore()
+        let store = MobileChatHistoryStore(local: local, cloud: nil)
+        let service = PiService(defaults: makeDefaults(), history: store)
+        service.send(prompt: "Hello Pi")
+        XCTAssertTrue(service.isStreaming)
+
+        service.cancelStreaming()
+
+        XCTAssertFalse(service.isStreaming)
+        XCTAssertEqual(service.messages.map(\.role), [.user])
+    }
+
+    func testCancelStreamingWithoutActiveStreamIsANoOp() {
+        let local = InMemoryLocalStore()
+        let store = MobileChatHistoryStore(local: local, cloud: nil)
+        let service = PiService(defaults: makeDefaults(), history: store)
+        service.messages = [PiChatMessage(role: .assistant, text: "Done")]
+
+        service.cancelStreaming()
+
+        XCTAssertEqual(service.messages.count, 1)
+        XCTAssertFalse(service.isStreaming)
+    }
+
+    func testResolvedBearerTokenMigratesLegacyDefaultsCopyIntoKeychain() {
+        let defaults = makeDefaults()
+        let secrets = FakePiSecretStore()
+        let local = InMemoryLocalStore()
+        let store = MobileChatHistoryStore(local: local, cloud: nil)
+        let service = PiService(defaults: defaults, history: store, secretStore: secrets)
+        let connectionID = service.selectedConnection.id
+        defaults.set("legacy-token", forKey: "pi.bearer.\(connectionID)")
+
+        XCTAssertEqual(service.resolvedBearerToken, "legacy-token")
+        // Migrated into the keychain seam and scrubbed from defaults.
+        XCTAssertEqual(secrets.values[connectionID], "legacy-token")
+        XCTAssertNil(defaults.string(forKey: "pi.bearer.\(connectionID)"))
+        // Subsequent reads come straight from the keychain store.
+        XCTAssertEqual(service.resolvedBearerToken, "legacy-token")
+    }
+
+    func testAddDirectConnectionStoresBearerInKeychainAndRevokeDeletesIt() async throws {
+        let defaults = makeDefaults()
+        let secrets = FakePiSecretStore()
+        let local = InMemoryLocalStore()
+        let store = MobileChatHistoryStore(local: local, cloud: nil)
+        let service = PiService(defaults: defaults, history: store, secretStore: secrets)
+
+        let record = try XCTUnwrap(
+            service.addDirectConnection(
+                name: "Home Mac",
+                urlString: "http://127.0.0.1:9642",
+                bearerToken: "s3cret"
+            )
+        )
+
+        XCTAssertEqual(secrets.values[record.id], "s3cret")
+        XCTAssertNil(defaults.string(forKey: "pi.bearer.\(record.id)"))
+
+        try await service.revokeConnection(record)
+
+        XCTAssertNil(secrets.values[record.id])
+    }
+
     func testPiServiceClearSelectedModelRemovesPersistedPreference() {
         let defaults = makeDefaults()
         let local = InMemoryLocalStore()
@@ -1002,5 +1103,24 @@ final class PiServicePersistenceTests: XCTestCase {
     private func makeDefaults() -> UserDefaults {
         let suite = UserDefaults(suiteName: "pi.persistence.\(UUID().uuidString)")!
         return suite
+    }
+}
+
+/// In-memory stand-in for `PiConnectionSecretStore` (via the shared
+/// `HermesConnectionSecretStoring` seam) so bearer-token tests never touch
+/// the real Keychain.
+private final class FakePiSecretStore: HermesConnectionSecretStoring {
+    var values: [String: String] = [:]
+
+    func save(_ value: String, connectionID: String) throws {
+        values[connectionID] = value
+    }
+
+    func load(connectionID: String) throws -> String? {
+        values[connectionID]
+    }
+
+    func delete(connectionID: String) throws {
+        values.removeValue(forKey: connectionID)
     }
 }

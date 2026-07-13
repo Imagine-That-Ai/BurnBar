@@ -1,0 +1,61 @@
+{
+  "schema": "openburnbar.windows.release-certification-receipt.v1",
+  "status": "BLOCKED",
+  "gate": "media-computer-use-safety",
+  "target": "media-computer-use-safety",
+  "source": {
+    "commitSha": "b271c7d0387060fb1c040f0047cf0f2ebd8408ac",
+    "dirtyTree": false
+  },
+  "artifact": {
+    "name": "source-checkout",
+    "architecture": "win32-x64",
+    "availability": "not-applicable",
+    "sha256": null,
+    "workflowRunId": "not-applicable-local",
+    "workflowRunUrl": "not-applicable",
+    "signature": {
+      "result": "not-applicable",
+      "identity": "not-applicable"
+    }
+  },
+  "device": {
+    "kind": "windows-native-unattested",
+    "manufacturer": "unattested",
+    "model": "virt-10.0",
+    "architecture": "x64",
+    "osBuild": "win32 10.0.26200",
+    "tpm": "not-inspected",
+    "cpu": "virt-10.0",
+    "ramBytes": 8580235264
+  },
+  "protocol": {
+    "commands": [],
+    "manualSteps": [
+      "No physical Windows host plus paired Mac/mobile staging peers and capture/camera/microphone permissions are available for end-to-end Mercury, transfer, or Computer Use safety proof.",
+      "Run harmless fixtures on physical Windows with paired Mac/mobile devices; capture permission, reconnect/cancel/quarantine/MOTW, protected-target/secure-desktop denial, approval/kill/watchdog, audit-chain, and phone replay evidence."
+    ]
+  },
+  "time": {
+    "startedAtUtc": "2026-07-12T01:22:14.870Z",
+    "endedAtUtc": "2026-07-12T01:40:13.495Z",
+    "durationSeconds": 1078.625
+  },
+  "expected": "The complete physical/live/private-flight protocol passes with exact signed artifact and raw evidence.",
+  "observed": "The required external device, account, permission, or approval is unavailable in this session; no pass is claimed.",
+  "exitCode": null,
+  "evidence": {
+    "files": [
+      {
+        "path": "blockers/media-computer-use-safety.md",
+        "sha256": "0df946817091fa6b284b8582014b8163ae3232f2a0b6962335b6e5ac8fea44aa"
+      }
+    ]
+  },
+  "blocker": {
+    "id": "EXT-WINDOWS-MEDIA-COMPUTER-USE-PEERS",
+    "owner": "Alberto",
+    "missing": "No physical Windows host plus paired Mac/mobile staging peers and capture/camera/microphone permissions are available for end-to-end Mercury, transfer, or Computer Use safety proof.",
+    "recovery": "Run harmless fixtures on physical Windows with paired Mac/mobile devices; capture permission, reconnect/cancel/quarantine/MOTW, protected-target/secure-desktop denial, approval/kill/watchdog, audit-chain, and phone replay evidence."
+  }
+}

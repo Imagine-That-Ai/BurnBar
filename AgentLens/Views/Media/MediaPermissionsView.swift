@@ -167,7 +167,7 @@ struct MediaPermissionsView: View {
             Text("Remember accepted mirror devices")
                 .font(DesignSystem.Typography.body)
                 .fontWeight(.semibold)
-            Text("When on, accepting a mirror request remembers that exact peer, and every auto-accepted session renews the grant -- so an active device only needs its first Accept. New or changed devices still require an Accept tap.")
+            Text("When on, accepting a mirror request remembers that exact peer for 30 days. Auto-accepted sessions do not extend the grant, and new or changed devices still require an Accept tap.")
                 .font(DesignSystem.Typography.caption)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)

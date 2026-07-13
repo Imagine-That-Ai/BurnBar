@@ -1,0 +1,49 @@
+{
+  "generatedAt": "2026-07-09T18:01:22Z",
+  "source": "branch OpenBurnBarDaemon guest-built Swift 6.1 + allow-shlib-undefined + CU params-optional",
+  "buildId": "90d0eb3d55c4f8f1f4879f0d6b86439ecdc75610",
+  "binary": "/usr/local/bin/openburnbar-daemon",
+  "prebuiltBackup": "/usr/local/bin/openburnbar-daemon.1.0.29.prebuilt.bak",
+  "runtime": "LD_LIBRARY_PATH=/opt/openburnbar/lib/swift (rsync from Swift 6.1) + /opt/openburnbar/lib",
+  "daemonHealth": {
+    "id": "daemon.health",
+    "result": {
+      "gatewayEnabled": true,
+      "protocolVersion": 1,
+      "gatewayHost": "127.0.0.1",
+      "ok": true,
+      "gatewayPort": 8317,
+      "socketPath": "/run/user/1000/openburnbar/daemon.sock",
+      "daemonVersion": "1.0.29"
+    },
+    "protocolVersion": 1
+  },
+  "cuPending": {
+    "id": "daemon.computer_use.approval.pending",
+    "protocolVersion": 1,
+    "result": {
+      "requests": []
+    }
+  },
+  "gatewayHealth": {
+    "http": 200,
+    "body": {
+      "ok": true,
+      "gateway": "openburnbar",
+      "platform": "linux"
+    }
+  },
+  "modelsCount": 67,
+  "modelsCatalog": {
+    "http": 200,
+    "catalog": true,
+    "platform": "linux",
+    "count": 67
+  },
+  "pensieve": "pensieve_watcher_configured root_count=1",
+  "vsPrebuilt": {
+    "prebuiltCatalog": "404 not found",
+    "branchCatalog": "200 catalog=true platform=linux n=67",
+    "cuPending": "requests:[] via app peer without params"
+  }
+}

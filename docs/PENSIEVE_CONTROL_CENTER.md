@@ -35,7 +35,7 @@ contact's approval is the out-of-band proof; this lives in the deferred recovery
   JetBrains Mono; per-tier badge colors).
 - **Callable contract** — every surface binds to the same Cloud Functions (all
   `onCall`, us-central1, App Check, auth-gated): `getDataDomainUsage`,
-  `exportUserData`, `deleteDomainData`, `setupRecovery`/`confirmRecovery`/
+  `exportUserData`, `deleteDomainData` (trusted-device step-up + `confirm: true`), `setupRecovery`/`confirmRecovery`/
   `listRecovery`, `revokeAllAccess` (panic), `getAuditLog`/`verifyAuditLog`,
   `registerBrowserEscrowDevice`. The server never sees plaintext or the vault key.
 

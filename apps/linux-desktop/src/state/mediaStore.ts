@@ -231,10 +231,23 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
   async load() {
     const { fixtureMode, bridge } = useShellStore.getState();
     if (fixtureMode) {
-      const status = fixtureMercuryMediaStatus();
+      // Rich fixture is opt-in for UX demos; default is capability-absent (live parity).
+      const rich = (() => {
+        try {
+          return localStorage.getItem('openburnbar.linux.mediaFixtureRich') === '1';
+        } catch {
+          return false;
+        }
+      })();
+      const status = fixtureMercuryMediaStatus({ rich });
+      const loadState: MediaLoadState = !status.capabilityAvailable
+        ? 'capability-absent'
+        : status.pairedDevices.length === 0 && !status.activeSession
+          ? 'empty'
+          : 'ready';
       set({
         status,
-        loadState: 'ready',
+        loadState,
         error: null,
         callError: null,
         callState: fixtureRingingState(),

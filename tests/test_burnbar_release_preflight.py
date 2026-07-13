@@ -411,16 +411,33 @@ def test_app_test_wrapper_supports_multiple_normalized_filters():
 
 def test_firestore_deploy_matches_firebase_tools_release_patch_shape():
     body = (ROOT / ".github/workflows/deploy-firestore.yml").read_text(encoding="utf-8")
-    deployer = (ROOT / "scripts/ci/deploy-firebase-rules-releases.mjs").read_text(encoding="utf-8")
-    assert "--only firestore:indexes,storage" in body
-    assert "firestore:rules" not in body
-    assert "deploy-firebase-rules-releases.mjs" in body
-    assert 'updateMask: "rulesetName"' not in deployer
-    assert "supplying updateMask currently causes" in deployer
-    assert "rulesSourceForDeploy" in deployer
+    # The bespoke REST rules-release helper (deploy-firebase-rules-releases.mjs)
+    # 400'd on every push for ~3 weeks and was removed in favor of firebase-tools'
+    # proven release path. Assert the new shape, not the deleted helper.
+    assert "--only firestore,storage" in body
+    assert "--only firestore:indexes,storage" not in body
+    assert "node scripts/ci/deploy-firebase-rules-releases.mjs" not in body
+    assert "compact-firestore-rules-inplace.mjs firestore.rules" in body
 
-    drift_checker = (ROOT / "scripts/ci/check-firestore-deploy-drift.mjs").read_text(encoding="utf-8")
+    # rulesSourceForDeploy moved into the shared firebase-rules-source.mjs module
+    # so both the in-place compactor and the drift check agree on what gets
+    # shipped.
+    rules_source = (
+        ROOT / "scripts/ci/firebase-rules-source.mjs"
+    ).read_text(encoding="utf-8")
+    assert "rulesSourceForDeploy" in rules_source
+
+    drift_checker = (
+        ROOT / "scripts/ci/check-firestore-deploy-drift.mjs"
+    ).read_text(encoding="utf-8")
     assert "rulesSourceForDeploy" in drift_checker
+
+    # Secondary Storage bucket coverage: the old helper enumerated every
+    # firebase.storage/ release and propagated rules to each.  firebase deploy
+    # --only storage only covers the default bucket, so the workflow must run a
+    # propagation step for secondary buckets (or the drift gate would catch
+    # them).
+    assert "propagate-storage-rules-secondary-buckets.mjs" in body
 
 
 def test_release_uses_keyless_provenance_when_legacy_gpg_is_absent():

@@ -1,0 +1,40 @@
+name: Preserve-tag Leak Tripwire
+
+# After-the-fact alarm for V-47: local preserve/* stash tags carry real secrets
+# (keystore passwords, IROH_SERVICES_API_SECRET) and must never reach origin.
+# The pre-push hook (scripts/hooks/pre-push) is the machine-side prevention; this
+# is the server-side backstop — if a preserve/* tag ever appears on the remote,
+# fail loudly so the secret can be rotated and the tag purged immediately.
+
+permissions:
+  contents: read
+
+on:
+  push:
+    tags:
+      - "**"
+  schedule:
+    - cron: "23 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  scan-for-preserve-tags:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail if any preserve/* tag exists on origin
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Fail-closed: authenticate the ls-remote query and let real
+          # auth/network errors fail the job instead of being masked by `|| true`
+          # (which would turn errors into leaked='' and report a false `ok`).
+          leaked="$(git ls-remote --tags "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" 'refs/tags/preserve/*')"
+          if [[ -n "${leaked}" ]]; then
+            echo "::error::SECRET LEAK: preserve/* tag(s) present on origin. These carry V-47 secrets."
+            echo "${leaked}" | awk '{ print "  " $0 }'
+            echo "Rotate the affected credentials and delete the tag(s): git push origin --delete <tag>" >&2
+            exit 1
+          fi
+          echo "ok: no preserve/* tags on origin"

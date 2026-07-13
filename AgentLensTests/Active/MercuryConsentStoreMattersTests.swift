@@ -171,12 +171,12 @@ final class MercuryConsentStoreMattersTests: XCTestCase {
         cancellable.cancel()
     }
 
-    // MARK: - Remember-by-default + sliding renewal (2026-07-03)
+    // MARK: - Explicit remembered-peer consent (2026-07-03)
 
-    func test_rememberAcceptedMirrorPeersDefaultsOnWhenUnset() {
+    func test_rememberAcceptedMirrorPeersDefaultsOffWhenUnset() {
         let store = MercuryConsentStore(defaults: defaults)
-        XCTAssertTrue(store.rememberAcceptedMirrorPeers,
-                      "an unset key must default to remembering, so users only Accept once")
+        XCTAssertFalse(store.rememberAcceptedMirrorPeers,
+                       "an unset key must not silently turn one normal Accept into a remembered grant")
     }
 
     func test_explicitUserOptOutIsRespected() {
@@ -185,52 +185,162 @@ final class MercuryConsentStoreMattersTests: XCTestCase {
         XCTAssertFalse(store.rememberAcceptedMirrorPeers)
     }
 
-    func test_legacyAlwaysAllowMigratesToRememberOn() {
+    func test_normalAcceptDoesNotCreateGrantWhenRememberPreferenceUnset() {
+        let store = MercuryConsentStore(defaults: defaults)
+        store.rememberAcceptedPeer(
+            connectionId: "conn-1",
+            viewerDeviceId: "device-1",
+            controlAuthorityPeerNodeId: "abc123",
+            remotePeerNodeId: "ABC123",
+            requesterName: "iPhone"
+        )
+        XCTAssertEqual(store.grants.count, 0,
+                       "the default Mac-side Accept must not silently create a remembered grant")
+    }
+
+    func test_legacyAlwaysAllowTrueMigratesToRememberOnWhenNewPreferenceIsUnset() {
         defaults.set(true, forKey: "mercuryAlwaysAllowMyIPhoneToMirror")
         let store = MercuryConsentStore(defaults: defaults)
         XCTAssertTrue(store.rememberAcceptedMirrorPeers,
-                      "the legacy global consent was broader than device-bound grants; carry intent forward")
-        XCTAssertTrue(defaults.bool(forKey: "mercuryRememberAcceptedMirrorPeers"),
-                      "legacy migration must persist remember-on, not just mutate the launch-time store")
+                      "an affirmative legacy choice may migrate only when the user has not chosen the new setting")
+        XCTAssertTrue(defaults.bool(forKey: "mercuryRememberAcceptedMirrorPeers"))
         XCTAssertNil(defaults.object(forKey: "mercuryAlwaysAllowMyIPhoneToMirror"))
     }
 
-    func test_legacyAlwaysAllowDoesNotOverrideExplicitRememberOptOut() {
+    func test_legacyAlwaysAllowPresenceDoesNotOverrideExplicitNewOptOut() {
         defaults.set(true, forKey: "mercuryAlwaysAllowMyIPhoneToMirror")
         defaults.set(false, forKey: "mercuryRememberAcceptedMirrorPeers")
         let store = MercuryConsentStore(defaults: defaults)
         XCTAssertFalse(store.rememberAcceptedMirrorPeers,
-                       "an explicit remember opt-out must beat the broader legacy allow bit")
-        XCTAssertFalse(defaults.bool(forKey: "mercuryRememberAcceptedMirrorPeers"),
-                       "legacy migration must not persist remember-on over an explicit opt-out")
+                       "an explicit new opt-out must beat the legacy key")
         XCTAssertNil(defaults.object(forKey: "mercuryAlwaysAllowMyIPhoneToMirror"))
     }
 
-    func test_legacyAlwaysAllowFalseDoesNotOverrideExplicitRememberOptIn() {
+    func test_legacyAlwaysAllowFalseDoesNotMigrateToRememberOn() {
         defaults.set(false, forKey: "mercuryAlwaysAllowMyIPhoneToMirror")
-        defaults.set(true, forKey: "mercuryRememberAcceptedMirrorPeers")
         let store = MercuryConsentStore(defaults: defaults)
-        XCTAssertTrue(store.rememberAcceptedMirrorPeers,
-                      "an explicit remember opt-in must beat the obsolete legacy opt-out")
-        XCTAssertTrue(defaults.bool(forKey: "mercuryRememberAcceptedMirrorPeers"),
-                      "legacy migration must preserve the explicit remember-on choice")
+        XCTAssertFalse(store.rememberAcceptedMirrorPeers,
+                       "legacy key presence alone is not consent")
+        XCTAssertFalse(defaults.bool(forKey: "mercuryRememberAcceptedMirrorPeers"))
         XCTAssertNil(defaults.object(forKey: "mercuryAlwaysAllowMyIPhoneToMirror"))
     }
 
-    func test_liveStoresObserveRememberOptOutChanges() async {
-        let routerStore = MercuryConsentStore(defaults: defaults)
-        let settingsStore = MercuryConsentStore(defaults: defaults)
-        XCTAssertTrue(routerStore.rememberAcceptedMirrorPeers)
+    /// Upgrade path from the previous default-on build: a grant was persisted
+    /// by a normal Accept, but the user never explicitly chose the remember
+    /// preference. With the preference resolving to off, that stored grant has
+    /// no consent backing it and must be dropped, not silently honored.
+    func test_persistedGrantsAreClearedWhenRememberPreferenceWasNeverSet() throws {
+        let grants = [grant(connectionId: "conn-legacy", peer: "peer-legacy")]
+        defaults.set(try JSONEncoder().encode(grants), forKey: "mercuryMirrorAutoAcceptGrants.v2")
 
-        settingsStore.rememberAcceptedMirrorPeers = false
-        NotificationCenter.default.post(name: UserDefaults.didChangeNotification, object: defaults)
-        await Task.yield()
+        let store = MercuryConsentStore(defaults: defaults)
 
-        XCTAssertFalse(routerStore.rememberAcceptedMirrorPeers,
-                       "the live router store must observe Settings opt-outs without waiting for restart")
+        XCTAssertFalse(store.rememberAcceptedMirrorPeers)
+        XCTAssertEqual(store.grants.count, 0,
+                       "grants persisted without an explicit opt-in must be cleared on load")
+        XCTAssertFalse(store.canAutoAccept(
+            connectionId: "conn-legacy",
+            viewerDeviceId: nil,
+            controlAuthorityPeerNodeId: "peer-legacy",
+            remotePeerNodeId: "peer-legacy"
+        ), "a pre-opt-in grant must not bypass the approval UI")
+
+        let reloaded = MercuryConsentStore(defaults: defaults)
+        XCTAssertEqual(reloaded.grants.count, 0, "the cleared ledger must be persisted, not just hidden")
     }
 
-    func test_autoAcceptSlidesGrantExpiryForward() {
+    func test_persistedGrantsAreClearedWhenUserExplicitlyOptedOut() throws {
+        defaults.set(false, forKey: "mercuryRememberAcceptedMirrorPeers")
+        let grants = [grant(connectionId: "conn-a", peer: "peer-a")]
+        defaults.set(try JSONEncoder().encode(grants), forKey: "mercuryMirrorAutoAcceptGrants.v2")
+
+        let store = MercuryConsentStore(defaults: defaults)
+        XCTAssertEqual(store.grants.count, 0, "an explicit opt-out must clear remembered grants")
+    }
+
+    func test_autoAcceptRequiresLiveOptIn() {
+        let store = MercuryConsentStore(defaults: defaults)
+        store.rememberAcceptedMirrorPeers = true
+        store.rememberAcceptedPeer(
+            connectionId: "conn-1",
+            viewerDeviceId: "device-1",
+            controlAuthorityPeerNodeId: "abc123",
+            remotePeerNodeId: "ABC123",
+            requesterName: "iPhone"
+        )
+        XCTAssertTrue(store.canAutoAccept(
+            connectionId: "conn-1",
+            viewerDeviceId: "device-1",
+            controlAuthorityPeerNodeId: "abc123",
+            remotePeerNodeId: "ABC123"
+        ))
+
+        store.rememberAcceptedMirrorPeers = false
+        XCTAssertFalse(store.canAutoAccept(
+            connectionId: "conn-1",
+            viewerDeviceId: "device-1",
+            controlAuthorityPeerNodeId: "abc123",
+            remotePeerNodeId: "ABC123"
+        ), "turning the preference off must immediately stop auto-accepts")
+    }
+
+    /// Grants serialized by the prior 365-day sliding implementation must not
+    /// keep auto-accepting for up to a year: on load each grant is capped to
+    /// `grantedAt + 30 days`.
+    func test_overlongPersistedGrantIsCappedToCurrentTTLOnLoad() throws {
+        defaults.set(true, forKey: "mercuryRememberAcceptedMirrorPeers")
+        let now = Date()
+        let staleGrant = MercuryConsentStore.MirrorAutoAcceptGrant(
+            key: "conn-old|_|peer-old",
+            connectionId: "conn-old",
+            viewerDeviceId: nil,
+            controlAuthorityPeerNodeId: "peer-old",
+            requesterName: "Old phone",
+            grantedAt: now.addingTimeInterval(-40 * 24 * 60 * 60),
+            expiresAt: now.addingTimeInterval(300 * 24 * 60 * 60),
+            lastUsedAt: nil
+        )
+        let freshOverlongGrant = MercuryConsentStore.MirrorAutoAcceptGrant(
+            key: "conn-new|_|peer-new",
+            connectionId: "conn-new",
+            viewerDeviceId: nil,
+            controlAuthorityPeerNodeId: "peer-new",
+            requesterName: "New phone",
+            grantedAt: now.addingTimeInterval(-1 * 24 * 60 * 60),
+            expiresAt: now.addingTimeInterval(364 * 24 * 60 * 60),
+            lastUsedAt: nil
+        )
+        defaults.set(
+            try JSONEncoder().encode([staleGrant, freshOverlongGrant]),
+            forKey: "mercuryMirrorAutoAcceptGrants.v2"
+        )
+
+        let store = MercuryConsentStore(defaults: defaults)
+
+        XCTAssertEqual(store.grants.map(\.key), [freshOverlongGrant.key],
+                       "a grant older than the TTL must be pruned once capped")
+        let capped = try XCTUnwrap(store.grants.first)
+        XCTAssertEqual(
+            capped.expiresAt.timeIntervalSince1970,
+            freshOverlongGrant.grantedAt.addingTimeInterval(30 * 24 * 60 * 60).timeIntervalSince1970,
+            accuracy: 0.001,
+            "a surviving overlong grant must expire 30 days after its original grant time"
+        )
+        XCTAssertFalse(store.canAutoAccept(
+            connectionId: "conn-old",
+            viewerDeviceId: nil,
+            controlAuthorityPeerNodeId: "peer-old",
+            remotePeerNodeId: "peer-old"
+        ))
+        XCTAssertTrue(store.canAutoAccept(
+            connectionId: "conn-new",
+            viewerDeviceId: nil,
+            controlAuthorityPeerNodeId: "peer-new",
+            remotePeerNodeId: "peer-new"
+        ))
+    }
+
+    func test_autoAcceptDoesNotSlideGrantExpiryForward() {
         let store = MercuryConsentStore(defaults: defaults)
         store.rememberAcceptedMirrorPeers = true
         let t0 = Date(timeIntervalSince1970: 1_700_000_000)
@@ -245,9 +355,9 @@ final class MercuryConsentStoreMattersTests: XCTestCase {
         let firstExpiry = store.grants.first?.expiresAt
         XCTAssertNotNil(firstExpiry)
 
-        // Auto-accept 200 days later: still inside the window, and the grant
-        // must renew so an actively-used device never re-rings the Mac.
-        let t1 = t0.addingTimeInterval(200 * 24 * 60 * 60)
+        // Auto-accept inside the 30-day window: the grant is usable, but
+        // usage must not renew it into an indefinite authorization.
+        let t1 = t0.addingTimeInterval(10 * 24 * 60 * 60)
         XCTAssertTrue(store.canAutoAccept(
             connectionId: "conn-1",
             viewerDeviceId: "device-1",
@@ -255,20 +365,13 @@ final class MercuryConsentStoreMattersTests: XCTestCase {
             remotePeerNodeId: "ABC123",
             now: t1
         ))
-        store.renewAutoAcceptGrant(
-            connectionId: "conn-1",
-            viewerDeviceId: "device-1",
-            controlAuthorityPeerNodeId: "abc123",
-            remotePeerNodeId: "ABC123",
-            now: t1
-        )
         let renewedExpiry = store.grants.first?.expiresAt
         XCTAssertNotNil(renewedExpiry)
-        XCTAssertGreaterThan(renewedExpiry!, firstExpiry!,
-                             "each auto-accepted session must extend the grant (sliding window)")
+        XCTAssertEqual(renewedExpiry!, firstExpiry!,
+                       "auto-accepted sessions must not extend the grant")
 
         // A device dormant past the TTL expires and must ring again.
-        let t2 = t1.addingTimeInterval(400 * 24 * 60 * 60)
+        let t2 = t0.addingTimeInterval(31 * 24 * 60 * 60)
         XCTAssertFalse(store.canAutoAccept(
             connectionId: "conn-1",
             viewerDeviceId: "device-1",

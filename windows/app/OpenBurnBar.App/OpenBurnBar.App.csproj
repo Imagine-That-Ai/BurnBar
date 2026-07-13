@@ -51,6 +51,13 @@
              Link="%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
+    <!-- Start the recursive glob at the engine root so %(RecursiveDir) retains
+         the OpenBurnBarCore_OpenBurnBarCore.resources directory segment. -->
+    <Content Include="$(OpenBurnBarNativeEngineDirectory)\**\*"
+             Exclude="$(OpenBurnBarNativeEngineDirectory)\*.dll;$(OpenBurnBarNativeEngineDirectory)\native-engine-manifest.json"
+             Link="%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
     <Content Include="$(OpenBurnBarNativeEngineDirectory)\native-engine-manifest.json"
              Condition="Exists('$(OpenBurnBarNativeEngineDirectory)\native-engine-manifest.json')"
              Link="native-engine-manifest.json"
@@ -136,6 +143,7 @@
     <ProjectReference Include="../OpenBurnBar.App.Presentation/OpenBurnBar.App.Presentation.csproj" />
     <ProjectReference Include="../OpenBurnBar.App.UsageRuntime/OpenBurnBar.App.UsageRuntime.csproj" />
     <ProjectReference Include="../OpenBurnBar.App.Configuration/OpenBurnBar.App.Configuration.csproj" />
+    <ProjectReference Include="../OpenBurnBar.App.UsageRuntime/OpenBurnBar.App.UsageRuntime.csproj" />
     <ProjectReference Include="../OpenBurnBar.App.CloudSync/OpenBurnBar.App.CloudSync.csproj" />
     <ProjectReference Include="../../packaging/updater/OpenBurnBar.Updater.Windows/OpenBurnBar.Updater.Windows.csproj" />
     <ProjectReference Include="../../storage/OpenBurnBar.Storage/OpenBurnBar.Storage.csproj" />

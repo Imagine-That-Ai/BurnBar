@@ -1,0 +1,38 @@
+{
+  "schema": "openburnbar.windows.signed-x64-msix-lifecycle.v1",
+  "status": "passed",
+  "completedAt": "2026-07-11T18:49:23.1951294Z",
+  "workflowRunId": "29162867538",
+  "workflowRunAttempt": "1",
+  "commit": "333c14152c4cbd7653f0625bc976f4dd9d429e16",
+  "package": "OpenBurnBar-1.0.29-x64.msix",
+  "steps": [
+    {
+      "name": "clean-install",
+      "completedAt": "2026-07-11T18:49:15.3820759Z",
+      "packageFullName": "ImagineThat.OpenBurnBar_1.0.29.0_x64__h8fy5g99tgfa4",
+      "version": "1.0.29.0",
+      "architecture": "X64",
+      "publisher": "CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US",
+      "installLocation": "C:\\Program Files\\WindowsApps\\ImagineThat.OpenBurnBar_1.0.29.0_x64__h8fy5g99tgfa4"
+    },
+    {
+      "name": "uninstall",
+      "completedAt": "2026-07-11T18:49:16.9085860Z",
+      "packageFullName": null,
+      "version": null,
+      "architecture": null,
+      "publisher": null,
+      "installLocation": null
+    },
+    {
+      "name": "reinstall",
+      "completedAt": "2026-07-11T18:49:23.1904607Z",
+      "packageFullName": "ImagineThat.OpenBurnBar_1.0.29.0_x64__h8fy5g99tgfa4",
+      "version": "1.0.29.0",
+      "architecture": "X64",
+      "publisher": "CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US",
+      "installLocation": "C:\\Program Files\\WindowsApps\\ImagineThat.OpenBurnBar_1.0.29.0_x64__h8fy5g99tgfa4"
+    }
+  ]
+}

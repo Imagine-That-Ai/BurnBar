@@ -1,0 +1,2 @@
+CERTIFICATION_REPORT.md whitespace=-trailing-space
+logs/*.log whitespace=-trailing-space

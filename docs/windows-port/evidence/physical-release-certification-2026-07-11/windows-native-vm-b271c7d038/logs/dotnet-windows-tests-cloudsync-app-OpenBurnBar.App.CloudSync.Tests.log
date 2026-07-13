@@ -1,0 +1,16 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  OpenBurnBar.CloudSync.AppCheck -> C:\candidate-7e346b2c7d\windows\cloudsync\appcheck\OpenBurnBar.CloudSync.AppCheck\bin\Release\net8.0\OpenBurnBar.CloudSync.AppCheck.dll
+  OpenBurnBar.CloudSync -> C:\candidate-7e346b2c7d\windows\cloudsync\OpenBurnBar.CloudSync\bin\Release\net8.0\OpenBurnBar.CloudSync.dll
+  OpenBurnBar.CloudSync.Crypto -> C:\candidate-7e346b2c7d\windows\cloudsync\OpenBurnBar.CloudSync.Crypto\bin\Release\net8.0\OpenBurnBar.CloudSync.Crypto.dll
+  OpenBurnBar.App.Configuration -> C:\candidate-7e346b2c7d\windows\app\OpenBurnBar.App.Configuration\bin\Release\net8.0\OpenBurnBar.App.Configuration.dll
+  OpenBurnBar.Storage -> C:\candidate-7e346b2c7d\windows\storage\OpenBurnBar.Storage\bin\Release\net8.0\OpenBurnBar.Storage.dll
+  OpenBurnBar.App.Presentation -> C:\candidate-7e346b2c7d\windows\app\OpenBurnBar.App.Presentation\bin\Release\net8.0\OpenBurnBar.App.Presentation.dll
+  OpenBurnBar.App.CloudSync -> C:\candidate-7e346b2c7d\windows\app\OpenBurnBar.App.CloudSync\bin\Release\net8.0\OpenBurnBar.App.CloudSync.dll
+  OpenBurnBar.Storage -> C:\candidate-7e346b2c7d\windows\storage\OpenBurnBar.Storage\bin\Release\net10.0\OpenBurnBar.Storage.dll
+  OpenBurnBar.App.CloudSync.Tests -> C:\candidate-7e346b2c7d\windows\tests\cloudsync-app\bin\Release\net10.0\OpenBurnBar.App.CloudSync.Tests.dll
+Test run for C:\candidate-7e346b2c7d\windows\tests\cloudsync-app\bin\Release\net10.0\OpenBurnBar.App.CloudSync.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:    59, Skipped:     0, Total:    59, Duration: 960 ms - OpenBurnBar.App.CloudSync.Tests.dll (net10.0)

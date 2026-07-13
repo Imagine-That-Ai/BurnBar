@@ -1,0 +1,132 @@
+{
+  "predicateType": "https://openburnbar.dev/attestations/linux-release-artifact/v1",
+  "generatedAt": "2026-07-09T18:19:59.959Z",
+  "expectedCosignIdentity": "https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-release.yml@refs/tags/v0.1.0",
+  "git": {
+    "commit": "f0d6a85fe1d5cd3c5cc62ebaba235fa77f4d6fcc",
+    "branch": "windows/liquid-glass-kernel-reskin",
+    "remote": "https://github.com/Imagine-That-Ai/BurnBar.git",
+    "dirty": false,
+    "dirtyEntries": [],
+    "gitAvailable": true
+  },
+  "version": "0.1.0",
+  "artifacts": [
+    {
+      "type": "appimage",
+      "file": "docs/linux-port/evidence/mission-002-reanchor/artifacts/OpenBurnBar_0.1.0_aarch64.AppImage",
+      "sourceFile": "apps/linux-desktop/src-tauri/target/release/bundle/appimage/OpenBurnBar_0.1.0_aarch64.AppImage",
+      "size": 80103944,
+      "sha256": "e545e6e452e054278b66b92af293ba607e8bd7b1c812e37e3d2400ad9183d0f5"
+    },
+    {
+      "type": "deb",
+      "file": "docs/linux-port/evidence/mission-002-reanchor/artifacts/OpenBurnBar_0.1.0_arm64.deb",
+      "sourceFile": "apps/linux-desktop/src-tauri/target/release/bundle/deb/OpenBurnBar_0.1.0_arm64.deb",
+      "size": 53975410,
+      "sha256": "322ff158b4d61e2be2629b649eecd9a195b869639886ac23dfc6ec4fb34d660d"
+    },
+    {
+      "type": "rpm",
+      "file": "docs/linux-port/evidence/mission-002-reanchor/artifacts/OpenBurnBar-0.1.0-1.aarch64.rpm",
+      "sourceFile": "apps/linux-desktop/src-tauri/target/release/bundle/rpm/OpenBurnBar-0.1.0-1.aarch64.rpm",
+      "size": 72955734,
+      "sha256": "6bb31a65e1f0f6f5838acb85cff936b7c36a3474e63fc7ff801b0604508d693a"
+    },
+    {
+      "type": "daemon",
+      "file": "docs/linux-port/evidence/mission-002-reanchor/artifacts/openburnbar-daemon-0.1.0-linux-aarch64",
+      "sourceFile": "OpenBurnBarDaemon/.build/release/OpenBurnBarDaemon",
+      "size": 97396968,
+      "sha256": "c8c6185d84eb9575c509d8dd76f1f5aa5a883d25a66adf67340ced351bf09bbb"
+    }
+  ],
+  "metadata": [
+    {
+      "kind": "aur",
+      "file": "packaging/linux/aur/PKGBUILD",
+      "exists": true,
+      "sha256": "bb91bf58a91a58d6ae2188a25f3f3051a78596a6c65480a8a432df07b2a60b36"
+    },
+    {
+      "kind": "flatpak",
+      "file": "packaging/linux/flatpak/dev.openburnbar.OpenBurnBar.yml",
+      "exists": true,
+      "sha256": "d846628bdb21f775746cfc10b2be7bdd02d294f0aeda30f80e6bc6733d7a8036"
+    },
+    {
+      "kind": "desktopEntry",
+      "file": "packaging/linux/openburnbar.desktop",
+      "exists": true,
+      "sha256": "5fd6ab84a5100e3a05d9edace67b10b96510bd273899bf9da994dbb337ca733b"
+    },
+    {
+      "kind": "safeModeDesktopEntry",
+      "file": "packaging/linux/openburnbar-safe-mode.desktop",
+      "exists": true,
+      "sha256": "c3774a2188203988476012d7461072b4e33350f069da3d672bb5593a2fbd854b"
+    },
+    {
+      "kind": "autostartEntry",
+      "file": "packaging/linux/autostart/openburnbar.desktop",
+      "exists": true,
+      "sha256": "a0405fdd9a3e91ae0fb229429993c9df18560a0f04b8dcc8eaa6af331d59be12"
+    },
+    {
+      "kind": "systemdUserService",
+      "file": "packaging/linux/openburnbar-daemon.service",
+      "exists": true,
+      "sha256": "4e05062ac12b8f02d8ef7b04ba6b5e1ef811007c50511c06c81d56e8ce9ea6d9"
+    },
+    {
+      "kind": "daemonLaunchScript",
+      "file": "packaging/linux/openburnbar-daemon-launch.sh",
+      "exists": true,
+      "sha256": "5477b1ca676fdd2b2f9f2a7cc9895b4ddb7787f3c035d1c65d4a1816f52d6fd7"
+    },
+    {
+      "kind": "daemonEnvExample",
+      "file": "packaging/linux/daemon.env.example",
+      "exists": true,
+      "sha256": "1abebbb2322265bab3a6d3a56a15a8900812e381add59d949deb85467e7a9e65"
+    },
+    {
+      "kind": "customXdgDropInExample",
+      "file": "packaging/linux/systemd/openburnbar-daemon.service.d/custom-xdg.conf.example",
+      "exists": true,
+      "sha256": "1ad1d9a0a7204f9ab106489f684ea74f333ed7f7b7443f27146d6c40a94db7c3"
+    }
+  ],
+  "checksums": "docs/linux-port/evidence/mission-002-reanchor/sidecars/OpenBurnBar-0.1.0-linux-checksums.txt",
+  "sbom": "docs/linux-port/evidence/mission-002-reanchor/sidecars/OpenBurnBar-0.1.0-linux.spdx.json",
+  "vex": "docs/linux-port/evidence/mission-002-reanchor/sidecars/OpenBurnBar-0.1.0-linux.openvex.json",
+  "sourceArchive": {
+    "file": "docs/linux-port/evidence/mission-002-reanchor/sidecars/OpenBurnBar-0.1.0-source-f0d6a85fe1d5.tar",
+    "sha256": "e0b447219340d7c452967e789134d4baeffd23a835bc8758d6eca260e1314623",
+    "represents": "HEAD only"
+  },
+  "signatures": [
+    {
+      "artifact": "docs/linux-port/evidence/mission-002-reanchor/artifacts/OpenBurnBar_0.1.0_aarch64.AppImage",
+      "signature": "docs/linux-port/evidence/mission-002-reanchor/sidecars/OpenBurnBar_0.1.0_aarch64.AppImage.ed25519.sig",
+      "algorithm": "Ed25519"
+    },
+    {
+      "artifact": "docs/linux-port/evidence/mission-002-reanchor/artifacts/OpenBurnBar_0.1.0_arm64.deb",
+      "signature": "docs/linux-port/evidence/mission-002-reanchor/sidecars/OpenBurnBar_0.1.0_arm64.deb.ed25519.sig",
+      "algorithm": "Ed25519"
+    },
+    {
+      "artifact": "docs/linux-port/evidence/mission-002-reanchor/artifacts/OpenBurnBar-0.1.0-1.aarch64.rpm",
+      "signature": "docs/linux-port/evidence/mission-002-reanchor/sidecars/OpenBurnBar-0.1.0-1.aarch64.rpm.ed25519.sig",
+      "algorithm": "Ed25519"
+    },
+    {
+      "artifact": "docs/linux-port/evidence/mission-002-reanchor/artifacts/openburnbar-daemon-0.1.0-linux-aarch64",
+      "signature": "docs/linux-port/evidence/mission-002-reanchor/sidecars/openburnbar-daemon-0.1.0-linux-aarch64.ed25519.sig",
+      "algorithm": "Ed25519"
+    }
+  ],
+  "promotionBlocked": false,
+  "blockers": []
+}

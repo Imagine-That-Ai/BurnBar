@@ -1,0 +1,4 @@
+windows-storage-architecture: PASS
+  1 boundary-flag workflow(s) named by WPD-0005 (docs/windows-port/decisions/0005-windows-storage-architecture.md, status: accepted):
+    - .github/workflows/openburnbar-engine-windows.yml
+  C# storage seam tests present: windows/storage/OpenBurnBar.Storage.Tests

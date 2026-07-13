@@ -602,6 +602,34 @@ final class HermesService {
         currentConversationTokenBurn = 0
     }
 
+    /// User-initiated stop for the in-flight chat turn (the composer's
+    /// stop button). Cancels the stream task and finalizes conversation
+    /// state the same way the completion teardown does — streaming
+    /// placeholders stop pulsing and get their response metrics stamped,
+    /// partial text is kept, and a placeholder that never received any
+    /// content is dropped — WITHOUT clearing the chat (contrast
+    /// `clearChat()`).
+    func cancelGeneration() {
+        guard isStreaming || currentTask != nil else { return }
+        currentTask?.cancel()
+        currentTask = nil
+        for index in messages.indices where messages[index].isStreaming {
+            var message = messages[index]
+            message.isStreaming = false
+            message.finalizeResponseMetrics()
+            messages[index] = message
+        }
+        if let last = messages.last,
+           last.role == .assistant,
+           last.text.isEmpty,
+           last.toolCalls.isEmpty,
+           !last.isError {
+            messages.removeLast()
+        }
+        isStreaming = false
+        persistCurrentThread()
+    }
+
     func ensureDesktopGrantThreadID() -> String {
         if selectedSessionID == nil {
             selectedSessionID = UUID().uuidString
@@ -776,11 +804,19 @@ final class HermesService {
         currentTask?.cancel()
         currentTask = Task { @MainActor in
             do {
+                // A stop can land before this task ever runs (the task is
+                // created suspended) — bail before the engine appends a
+                // streaming placeholder nobody will fill.
+                try Task.checkCancellation()
                 try await streamingEngine.streamCompletion(coordinator: self, context: context)
             } catch {
                 if !Task.isCancelled {
                     streamingEngine.handleStreamError(error, coordinator: self)
-                } else {
+                } else if currentTask == nil {
+                    // Cancelled and not superseded (`cancelGeneration()` /
+                    // `clearChat()` nil the task out): make sure the flag
+                    // is down. When a newer send has already installed its
+                    // own task here, leave its streaming state alone.
                     isStreaming = false
                 }
             }

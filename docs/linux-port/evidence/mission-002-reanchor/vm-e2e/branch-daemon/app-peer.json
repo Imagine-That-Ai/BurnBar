@@ -1,0 +1,2 @@
+=== daemon.health ===
+{"result":{"protocolVersion":1,"daemonVersion":"1.0.29","ok":true,"socketPath":"\/run\/user\/1000\/openburnbar\/daemon.sock","gatewayPort":8317,"gatewayHost":"127.0.0.1","gatewayEnabled":true},"id":"daemon.health","protocolVersion":1}
