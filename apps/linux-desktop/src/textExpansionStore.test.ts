@@ -15,6 +15,7 @@ import {
   upsertSnippet
 } from './textExpansionStore.js';
 import type { TextExpansionSnapshot, TextExpansionWireSnippet } from './tauriBridge.js';
+import type { TextExpansionStorageBackend } from './textExpansionStore.js';
 
 beforeEach(() => {
   localStorage.clear();
@@ -172,5 +173,73 @@ describe('native snapshot storage boundary', () => {
     await deleteSnippetPersisted(saved.id);
     expect(listSnippets()).toHaveLength(0);
     expect(fake.state().snippets[0]?.deletedAt).toBeTruthy();
+  });
+
+  it('serializes native mutations so a late delete snapshot cannot clobber a newer upsert', async () => {
+    const keep: TextExpansionWireSnippet = {
+      id: 'keep',
+      title: 'Keep',
+      trigger: 'keep',
+      body: 'old',
+      mode: 'static',
+      isEnabled: true,
+      scope: { surfaces: ['in_app_thread'], bundleIdentifiers: [], threadIDs: [] },
+      revision: 1,
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date(0).toISOString(),
+      deletedAt: null,
+      syncedAt: null,
+      sourceDeviceID: null
+    };
+    const remove: TextExpansionWireSnippet = {
+      ...keep,
+      id: 'remove',
+      title: 'Remove',
+      trigger: 'remove'
+    };
+    let snapshot: TextExpansionSnapshot = {
+      schemaVersion: 1,
+      exportedAt: new Date(0).toISOString(),
+      snippets: [keep, remove]
+    };
+    const calls: string[] = [];
+    let releaseDelete: (() => void) | undefined;
+    const staleDeleteSnapshot: TextExpansionSnapshot = {
+      ...snapshot,
+      snippets: [{ ...remove, isEnabled: false, deletedAt: new Date(1).toISOString() }, keep]
+    };
+    const fake: TextExpansionStorageBackend = {
+      textExpansionList: async () => snapshot,
+      textExpansionUpsert: async (snippet) => {
+        calls.push(`upsert:${snippet.id}`);
+        snapshot = { ...snapshot, snippets: [...snapshot.snippets.filter((item) => item.id !== snippet.id), snippet] };
+        return snippet;
+      },
+      textExpansionDelete: (id) => {
+        calls.push(`delete:${id}`);
+        return new Promise((resolve) => {
+          releaseDelete = () => resolve(staleDeleteSnapshot);
+        });
+      }
+    };
+
+    await hydrateTextExpansionStorage(fake);
+    const deletePromise = deleteSnippetPersisted('remove');
+    const updatePromise = upsertSnippetPersisted({
+      id: 'keep',
+      title: 'Keep',
+      trigger: ';;keep',
+      body: 'new',
+      enabled: true
+    });
+    await Promise.resolve();
+    expect(calls).toEqual(['delete:remove']);
+    releaseDelete?.();
+    await Promise.all([deletePromise, updatePromise]);
+
+    expect(calls).toEqual(['delete:remove', 'upsert:keep']);
+    expect(listSnippets()).toEqual([
+      expect.objectContaining({ id: 'keep', body: 'new' })
+    ]);
   });
 });

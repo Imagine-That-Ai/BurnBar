@@ -34,6 +34,37 @@ let nativeItems: TextExpansionSnippet[] = [];
 let memoryItems: TextExpansionSnippet[] = [];
 let backendError: string | null = null;
 let allowLocalFallback = true;
+// The daemon protects its encrypted file with a lock, but renderer calls can
+// still complete out of order. Keep the local snapshot in the same order as
+// the daemon and fence operations that belong to an older bridge instance.
+let nativeMutationQueue: Promise<void> = Promise.resolve();
+let backendGeneration = 0;
+
+type NativeMutationContext = {
+  backend: TextExpansionStorageBackend;
+  generation: number;
+};
+
+function nativeMutationContext(): NativeMutationContext | null {
+  if (!backendReady || !backend) return null;
+  return { backend, generation: backendGeneration };
+}
+
+function isCurrentNativeMutation(context: NativeMutationContext): boolean {
+  return backendReady && backend === context.backend && backendGeneration === context.generation;
+}
+
+function staleNativeMutationError(): Error {
+  return new Error('Native text expansion storage changed; retry the operation.');
+}
+
+function enqueueNativeMutation<T>(operation: () => Promise<T>): Promise<T> {
+  const next = nativeMutationQueue.then(operation);
+  // Keep the queue usable after a rejected operation while preserving the
+  // original rejection for the caller that owns this mutation.
+  nativeMutationQueue = next.then(() => undefined, () => undefined);
+  return next;
+}
 
 function now(): string {
   return new Date().toISOString();
@@ -140,6 +171,7 @@ export function configureTextExpansionStorageWithPolicy(
   preserveMemory = false
 ): void {
   if (backend === next && allowLocalFallback === allowFallback && next !== null && backendReady) return;
+  backendGeneration += 1;
   const backendChanged = backend !== next;
   backend = next;
   backendReady = false;
@@ -183,10 +215,18 @@ export function upsertSnippet(
   input: Omit<TextExpansionSnippet, 'id' | 'updatedAt' | 'scope'> & { id?: string }
 ): TextExpansionSnippet {
   const next = buildSnippet(input);
-  if (backendReady && backend) {
+  const context = nativeMutationContext();
+  if (context) {
     nativeItems = replaceItem(nativeItems, next);
-    void backend.textExpansionUpsert(toWireSnippet(next)).catch((error) => {
-      backendError = error instanceof Error ? error.message : 'Native text expansion save failed.';
+    void enqueueNativeMutation(async () => {
+      if (!isCurrentNativeMutation(context)) throw staleNativeMutationError();
+      const stored = fromWireSnippet(await context.backend.textExpansionUpsert(toWireSnippet(next)));
+      if (!stored) throw new Error('Native text expansion save returned a deleted snippet.');
+      nativeItems = replaceItem(nativeItems, stored);
+    }).catch((error) => {
+      if (isCurrentNativeMutation(context)) {
+        backendError = error instanceof Error ? error.message : 'Native text expansion save failed.';
+      }
     });
   } else if (allowLocalFallback) {
     memoryItems = replaceItem(memoryItems, next);
@@ -200,31 +240,44 @@ export async function upsertSnippetPersisted(
   input: Omit<TextExpansionSnippet, 'id' | 'updatedAt' | 'scope'> & { id?: string }
 ): Promise<TextExpansionSnippet> {
   const next = buildSnippet(input);
-  if (!backendReady || !backend) {
+  const context = nativeMutationContext();
+  if (!context) {
     if (!allowLocalFallback) throw new Error('Native text expansion storage is unavailable.');
     memoryItems = replaceItem(memoryItems, next);
     return next;
   }
-  const previous = nativeItems;
-  nativeItems = replaceItem(nativeItems, next);
-  try {
-    const stored = fromWireSnippet(await backend.textExpansionUpsert(toWireSnippet(next)));
-    if (!stored) throw new Error('Native text expansion save returned a deleted snippet.');
-    nativeItems = replaceItem(nativeItems, stored);
-    backendError = null;
-    return stored;
-  } catch (error) {
-    nativeItems = previous;
-    backendError = error instanceof Error ? error.message : 'Native text expansion save failed.';
-    throw error;
-  }
+  return enqueueNativeMutation(async () => {
+    if (!isCurrentNativeMutation(context)) throw staleNativeMutationError();
+    const previous = nativeItems;
+    nativeItems = replaceItem(nativeItems, next);
+    try {
+      const stored = fromWireSnippet(await context.backend.textExpansionUpsert(toWireSnippet(next)));
+      if (!stored) throw new Error('Native text expansion save returned a deleted snippet.');
+      nativeItems = replaceItem(nativeItems, stored);
+      backendError = null;
+      return stored;
+    } catch (error) {
+      if (isCurrentNativeMutation(context)) {
+        nativeItems = previous;
+        backendError = error instanceof Error ? error.message : 'Native text expansion save failed.';
+      }
+      throw error;
+    }
+  });
 }
 
 export function deleteSnippet(id: string): void {
-  if (backendReady && backend) {
+  const context = nativeMutationContext();
+  if (context) {
     nativeItems = nativeItems.filter((item) => item.id !== id);
-    void backend.textExpansionDelete(id).catch((error) => {
-      backendError = error instanceof Error ? error.message : 'Native text expansion delete failed.';
+    void enqueueNativeMutation(async () => {
+      if (!isCurrentNativeMutation(context)) throw staleNativeMutationError();
+      const snapshot = await context.backend.textExpansionDelete(id);
+      nativeItems = fromSnapshot(snapshot);
+    }).catch((error) => {
+      if (isCurrentNativeMutation(context)) {
+        backendError = error instanceof Error ? error.message : 'Native text expansion delete failed.';
+      }
     });
   } else if (allowLocalFallback) {
     memoryItems = memoryItems.filter((snippet) => snippet.id !== id);
@@ -234,22 +287,28 @@ export function deleteSnippet(id: string): void {
 }
 
 export async function deleteSnippetPersisted(id: string): Promise<void> {
-  if (!backendReady || !backend) {
+  const context = nativeMutationContext();
+  if (!context) {
     if (!allowLocalFallback) throw new Error('Native text expansion storage is unavailable.');
     memoryItems = memoryItems.filter((snippet) => snippet.id !== id);
     return;
   }
-  const previous = nativeItems;
-  nativeItems = nativeItems.filter((snippet) => snippet.id !== id);
-  try {
-    const snapshot = await backend.textExpansionDelete(id);
-    nativeItems = fromSnapshot(snapshot);
-    backendError = null;
-  } catch (error) {
-    nativeItems = previous;
-    backendError = error instanceof Error ? error.message : 'Native text expansion delete failed.';
-    throw error;
-  }
+  return enqueueNativeMutation(async () => {
+    if (!isCurrentNativeMutation(context)) throw staleNativeMutationError();
+    const previous = nativeItems;
+    nativeItems = nativeItems.filter((snippet) => snippet.id !== id);
+    try {
+      const snapshot = await context.backend.textExpansionDelete(id);
+      nativeItems = fromSnapshot(snapshot);
+      backendError = null;
+    } catch (error) {
+      if (isCurrentNativeMutation(context)) {
+        nativeItems = previous;
+        backendError = error instanceof Error ? error.message : 'Native text expansion delete failed.';
+      }
+      throw error;
+    }
+  });
 }
 
 export function expandInAppBuffer(
@@ -349,9 +408,18 @@ export function importSnippets(json: string): { added: number; skipped: number }
     throw new Error('Native text expansion storage is unavailable.');
   }
   const { result, addedItems } = applyImport(json);
-  if (backendReady && backend) {
-    void Promise.all(addedItems.map((item) => backend!.textExpansionUpsert(toWireSnippet(item)))).catch((error) => {
-      backendError = error instanceof Error ? error.message : 'Native text expansion import failed.';
+  const context = nativeMutationContext();
+  if (context && addedItems.length > 0) {
+    void enqueueNativeMutation(async () => {
+      if (!isCurrentNativeMutation(context)) throw staleNativeMutationError();
+      for (const item of addedItems) {
+        await context.backend.textExpansionUpsert(toWireSnippet(item));
+      }
+      nativeItems = fromSnapshot(await context.backend.textExpansionList());
+    }).catch((error) => {
+      if (isCurrentNativeMutation(context)) {
+        backendError = error instanceof Error ? error.message : 'Native text expansion import failed.';
+      }
     });
   }
   return result;
@@ -361,22 +429,28 @@ export async function importSnippetsPersisted(json: string): Promise<{ added: nu
   if (!backendReady && !allowLocalFallback) {
     throw new Error('Native text expansion storage is unavailable.');
   }
-  const previous = nativeItems;
-  const { result, addedItems } = applyImport(json);
-  if (!backendReady || !backend) return result;
-  try {
-    for (const item of addedItems) {
-      await backend.textExpansionUpsert(toWireSnippet(item));
+  const context = nativeMutationContext();
+  if (!context) return applyImport(json).result;
+  return enqueueNativeMutation(async () => {
+    if (!isCurrentNativeMutation(context)) throw staleNativeMutationError();
+    const previous = nativeItems;
+    const { result, addedItems } = applyImport(json);
+    try {
+      for (const item of addedItems) {
+        await context.backend.textExpansionUpsert(toWireSnippet(item));
+      }
+      const snapshot = await context.backend.textExpansionList();
+      nativeItems = fromSnapshot(snapshot);
+      backendError = null;
+      return result;
+    } catch (error) {
+      if (isCurrentNativeMutation(context)) {
+        nativeItems = previous;
+        backendError = error instanceof Error ? error.message : 'Native text expansion import failed.';
+      }
+      throw error;
     }
-    const snapshot = await backend.textExpansionList();
-    nativeItems = fromSnapshot(snapshot);
-    backendError = null;
-    return result;
-  } catch (error) {
-    nativeItems = previous;
-    backendError = error instanceof Error ? error.message : 'Native text expansion import failed.';
-    throw error;
-  }
+  });
 }
 
 export function findTriggerConflict(
