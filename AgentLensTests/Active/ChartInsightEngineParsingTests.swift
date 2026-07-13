@@ -3,6 +3,46 @@ import XCTest
 
 final class ChartInsightEngineParsingTests: XCTestCase {
 
+    func test_cacheDecision_neverReusesInsightsForDifferentSnapshotKey() {
+        let now = Date(timeIntervalSince1970: 10_000)
+        let cached = ChartsDataService.SnapshotKey(usagesVersion: 7, timeRange: .today)
+        let requested = ChartsDataService.SnapshotKey(usagesVersion: 8, timeRange: .last7Days)
+
+        XCTAssertEqual(
+            ChartInsightEngine.cacheDecision(
+                cachedKey: cached,
+                cachedAt: now.addingTimeInterval(-60),
+                requestedKey: requested,
+                now: now
+            ),
+            .throttle
+        )
+        XCTAssertEqual(
+            ChartInsightEngine.cacheDecision(
+                cachedKey: cached,
+                cachedAt: now.addingTimeInterval(-16 * 60),
+                requestedKey: requested,
+                now: now
+            ),
+            .generate
+        )
+    }
+
+    func test_cacheDecision_reusesOnlyAnExactSnapshotKey() {
+        let now = Date(timeIntervalSince1970: 10_000)
+        let key = ChartsDataService.SnapshotKey(usagesVersion: 7, timeRange: .today)
+
+        XCTAssertEqual(
+            ChartInsightEngine.cacheDecision(
+                cachedKey: key,
+                cachedAt: now.addingTimeInterval(-60 * 60),
+                requestedKey: key,
+                now: now
+            ),
+            .reuse
+        )
+    }
+
     private let validPayload = """
     {"insights":[{"id":"a","severity":"warning","title":"Spend doubled",\
     "body":"This week's burn is 2x last week's.","metricRefs":["weekOverWeekDelta"]}],\

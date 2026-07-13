@@ -184,6 +184,12 @@ enum ChartInsightMetrics {
 @Observable
 final class ChartInsightEngine {
 
+    enum CacheDecision: Equatable {
+        case reuse
+        case throttle
+        case generate
+    }
+
     enum State: Equatable {
         case idle
         case loading
@@ -204,7 +210,18 @@ final class ChartInsightEngine {
 
     private var cache: CacheEntry?
     private var task: Task<Void, Never>?
-    private static let reaskFloor: TimeInterval = 15 * 60
+    nonisolated private static let reaskFloor: TimeInterval = 15 * 60
+
+    nonisolated static func cacheDecision(
+        cachedKey: ChartsDataService.SnapshotKey?,
+        cachedAt: Date?,
+        requestedKey: ChartsDataService.SnapshotKey,
+        now: Date
+    ) -> CacheDecision {
+        guard let cachedKey, let cachedAt else { return .generate }
+        if cachedKey == requestedKey { return .reuse }
+        return now.timeIntervalSince(cachedAt) < reaskFloor ? .throttle : .generate
+    }
 
     func generateIfNeeded(
         snapshot: ChartsSnapshot,
@@ -215,9 +232,22 @@ final class ChartInsightEngine {
         let key = ChartsDataService.SnapshotKey(
             usagesVersion: snapshot.usagesVersion, timeRange: snapshot.timeRange
         )
-        if let cache, cache.key == key || now.timeIntervalSince(cache.at) < Self.reaskFloor {
-            state = cache.state
-            return
+        if let cache {
+            switch Self.cacheDecision(
+                cachedKey: cache.key,
+                cachedAt: cache.at,
+                requestedKey: key,
+                now: now
+            ) {
+            case .reuse:
+                state = cache.state
+                return
+            case .throttle:
+                state = .unavailable("Fresh insights will be available shortly.")
+                return
+            case .generate:
+                break
+            }
         }
         guard task == nil else { return }
 
