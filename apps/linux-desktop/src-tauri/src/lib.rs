@@ -96,6 +96,58 @@ struct IntegrationsStatusPayload {
     integrations: Vec<IntegrationStatusRow>,
 }
 
+// Text expansion storage deliberately uses the shared TextExpansionSnapshot
+// JSON shape. Linux does not install a global keyboard hook; the native store
+// is an owner-only local snapshot until the daemon database exposes a
+// canonical text-expansion RPC.
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct TextExpansionScopePayload {
+    surfaces: Vec<String>,
+    bundle_identifiers: Vec<String>,
+    #[serde(rename = "threadIDs")]
+    thread_ids: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct TextExpansionSnippetPayload {
+    id: String,
+    title: String,
+    trigger: String,
+    body: String,
+    mode: String,
+    is_enabled: bool,
+    scope: TextExpansionScopePayload,
+    revision: u64,
+    created_at: String,
+    updated_at: String,
+    deleted_at: Option<String>,
+    synced_at: Option<String>,
+    #[serde(rename = "sourceDeviceID")]
+    source_device_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct TextExpansionSnapshotPayload {
+    schema_version: u32,
+    exported_at: String,
+    snippets: Vec<TextExpansionSnippetPayload>,
+}
+
+const TEXT_EXPANSION_SCHEMA_VERSION: u32 = 1;
+const TEXT_EXPANSION_MAX_SNIPPETS: usize = 500;
+const TEXT_EXPANSION_MAX_TITLE_BYTES: usize = 256;
+const TEXT_EXPANSION_MAX_TRIGGER_BYTES: usize = 64;
+const TEXT_EXPANSION_MAX_BODY_BYTES: usize = 128 * 1024;
+const TEXT_EXPANSION_MAX_SNAPSHOT_BYTES: usize = 4 * 1024 * 1024;
+static TEXT_EXPANSION_STORAGE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn text_expansion_storage_lock() -> &'static Mutex<()> {
+    TEXT_EXPANSION_STORAGE_LOCK.get_or_init(|| Mutex::new(()))
+}
+
 /// First non-empty trimmed env value among the given keys (VAL-PATH-001 parity with TS/Swift).
 fn first_non_empty_env(keys: &[&str]) -> Option<String> {
     for key in keys {
@@ -123,6 +175,203 @@ fn linux_support_dir() -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/"))
         .join(".local/share/openburnbar")
+}
+
+fn text_expansion_snapshot_path() -> PathBuf {
+    linux_support_dir().join("text-expansion-snippets.json")
+}
+
+fn text_expansion_now() -> String {
+    let duration = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    let seconds = duration.as_secs() as libc::time_t;
+    let mut tm = std::mem::MaybeUninit::<libc::tm>::zeroed();
+    // SAFETY: gmtime_r writes the complete tm value when it returns non-null.
+    let result = unsafe { libc::gmtime_r(&seconds, tm.as_mut_ptr()) };
+    if result.is_null() {
+        return "1970-01-01T00:00:00Z".to_string();
+    }
+    // SAFETY: gmtime_r returned the pointer to the initialized value.
+    let tm = unsafe { tm.assume_init() };
+    let nanos = duration.subsec_nanos();
+    if nanos == 0 {
+        format!(
+            "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+            tm.tm_year + 1900,
+            tm.tm_mon + 1,
+            tm.tm_mday,
+            tm.tm_hour,
+            tm.tm_min,
+            tm.tm_sec
+        )
+    } else {
+        format!(
+            "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:09}Z",
+            tm.tm_year + 1900,
+            tm.tm_mon + 1,
+            tm.tm_mday,
+            tm.tm_hour,
+            tm.tm_min,
+            tm.tm_sec,
+            nanos
+        )
+    }
+}
+
+fn canonical_text_expansion_trigger(raw: &str) -> String {
+    let mut trigger = raw.trim().to_ascii_lowercase();
+    while let Some(rest) = trigger.strip_prefix("&&") {
+        trigger = rest.to_string();
+    }
+    while let Some(rest) = trigger.strip_prefix(";;") {
+        trigger = rest.to_string();
+    }
+    trigger
+}
+
+fn validate_text_expansion_snippet(
+    snippet: &TextExpansionSnippetPayload,
+) -> Result<TextExpansionSnippetPayload, String> {
+    if snippet.id.trim().is_empty() || snippet.id.len() > 128 {
+        return Err("Text expansion snippet id is invalid.".to_string());
+    }
+    if snippet.title.trim().is_empty() || snippet.title.len() > TEXT_EXPANSION_MAX_TITLE_BYTES {
+        return Err("Text expansion title is empty or too long.".to_string());
+    }
+    let trigger = canonical_text_expansion_trigger(&snippet.trigger);
+    if trigger.len() < 2 || trigger.len() > TEXT_EXPANSION_MAX_TRIGGER_BYTES {
+        return Err("Text expansion trigger must be 2-64 characters.".to_string());
+    }
+    if !trigger.bytes().all(|byte| {
+        byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_' || byte == b'-'
+    }) {
+        return Err("Text expansion trigger contains unsupported characters.".to_string());
+    }
+    if snippet.body.len() > TEXT_EXPANSION_MAX_BODY_BYTES {
+        return Err("Text expansion body is too long.".to_string());
+    }
+    if snippet.mode != "static" && snippet.mode != "llm_rewrite" {
+        return Err("Text expansion mode is unsupported.".to_string());
+    }
+    // Linux is explicitly in-app only. Preserve the canonical scope fields so
+    // future daemon/database sync can round-trip the model without claiming
+    // global capture support that is not installed here.
+    if snippet.scope.surfaces != ["in_app_thread"]
+        || !snippet.scope.bundle_identifiers.is_empty()
+        || !snippet.scope.thread_ids.is_empty()
+    {
+        return Err("Linux text expansion storage only accepts the in-app surface.".to_string());
+    }
+    let mut normalized = snippet.clone();
+    normalized.id = snippet.id.trim().to_string();
+    normalized.title = snippet.title.trim().to_string();
+    normalized.trigger = trigger;
+    normalized.scope = TextExpansionScopePayload {
+        surfaces: vec!["in_app_thread".to_string()],
+        bundle_identifiers: Vec::new(),
+        thread_ids: Vec::new(),
+    };
+    normalized.revision = normalized.revision.max(1);
+    Ok(normalized)
+}
+
+fn empty_text_expansion_snapshot() -> TextExpansionSnapshotPayload {
+    TextExpansionSnapshotPayload {
+        schema_version: TEXT_EXPANSION_SCHEMA_VERSION,
+        exported_at: text_expansion_now(),
+        snippets: Vec::new(),
+    }
+}
+
+fn read_text_expansion_snapshot() -> Result<TextExpansionSnapshotPayload, String> {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+    let path = text_expansion_snapshot_path();
+    if !path.exists() {
+        return Ok(empty_text_expansion_snapshot());
+    }
+    let metadata = fs::symlink_metadata(&path).map_err(|error| error.to_string())?;
+    if !metadata.file_type().is_file()
+        || metadata.permissions().mode() & 0o077 != 0
+        || metadata.uid() != unsafe { libc::geteuid() }
+        || metadata.nlink() != 1
+    {
+        return Err("Text expansion snapshot must be a regular owner-only file.".to_string());
+    }
+    if metadata.size() as usize > TEXT_EXPANSION_MAX_SNAPSHOT_BYTES {
+        return Err("Text expansion snapshot exceeds the size limit.".to_string());
+    }
+    let bytes = fs::read(&path).map_err(|error| error.to_string())?;
+    let mut snapshot: TextExpansionSnapshotPayload =
+        serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
+    if snapshot.schema_version != TEXT_EXPANSION_SCHEMA_VERSION {
+        return Err("Unsupported text expansion snapshot schema.".to_string());
+    }
+    if snapshot.snippets.len() > TEXT_EXPANSION_MAX_SNIPPETS {
+        return Err("Text expansion snapshot contains too many snippets.".to_string());
+    }
+    let mut seen_ids = std::collections::HashSet::new();
+    let mut seen_triggers = std::collections::HashSet::new();
+    for snippet in &mut snapshot.snippets {
+        *snippet = validate_text_expansion_snippet(snippet)?;
+        if !seen_ids.insert(snippet.id.clone()) {
+            return Err("Text expansion snapshot contains duplicate ids.".to_string());
+        }
+        if snippet.deleted_at.is_none() && !seen_triggers.insert(snippet.trigger.clone()) {
+            return Err("Text expansion snapshot contains duplicate active triggers.".to_string());
+        }
+    }
+    Ok(snapshot)
+}
+
+fn write_text_expansion_snapshot(mut snapshot: TextExpansionSnapshotPayload) -> Result<(), String> {
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+
+    if snapshot.snippets.len() > TEXT_EXPANSION_MAX_SNIPPETS {
+        return Err("Text expansion snapshot contains too many snippets.".to_string());
+    }
+    snapshot.schema_version = TEXT_EXPANSION_SCHEMA_VERSION;
+    snapshot.exported_at = text_expansion_now();
+    let mut seen_ids = std::collections::HashSet::new();
+    let mut seen_triggers = std::collections::HashSet::new();
+    for snippet in &mut snapshot.snippets {
+        *snippet = validate_text_expansion_snippet(snippet)?;
+        if !seen_ids.insert(snippet.id.clone()) {
+            return Err("Text expansion snapshot contains duplicate ids.".to_string());
+        }
+        if snippet.deleted_at.is_none() && !seen_triggers.insert(snippet.trigger.clone()) {
+            return Err("Text expansion snapshot contains duplicate active triggers.".to_string());
+        }
+    }
+    let bytes = serde_json::to_vec_pretty(&snapshot).map_err(|error| error.to_string())?;
+    if bytes.len() > TEXT_EXPANSION_MAX_SNAPSHOT_BYTES {
+        return Err("Text expansion snapshot exceeds the size limit.".to_string());
+    }
+    let dir = linux_support_dir();
+    fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+    fs::set_permissions(&dir, fs::Permissions::from_mode(0o700))
+        .map_err(|error| error.to_string())?;
+    let path = text_expansion_snapshot_path();
+    let temp = dir.join(format!(
+        ".text-expansion-snippets.{}.tmp",
+        std::process::id()
+    ));
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(&temp)
+        .map_err(|error| error.to_string())?;
+    use std::io::Write;
+    file.write_all(&bytes).map_err(|error| error.to_string())?;
+    file.sync_all().map_err(|error| error.to_string())?;
+    drop(file);
+    fs::rename(&temp, &path).map_err(|error| error.to_string())?;
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o600))
+        .map_err(|error| error.to_string())?;
+    Ok(())
 }
 
 fn linux_socket_path() -> PathBuf {
@@ -2334,6 +2583,91 @@ fn export_diagnostics() -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({ "path": path.display().to_string() }))
 }
 
+// ───────────────── P29: text expansion storage ─────────────────
+// Local Tauri commands intentionally do not add daemon RPC method names. The
+// daemon database has no canonical text-expansion RPC yet; this owner-only
+// snapshot keeps the shared TextExpansionSnapshot wire contract and provides
+// an explicit in-app-only Linux fallback until that boundary exists.
+#[tauri::command]
+fn text_expansion_list() -> Result<serde_json::Value, String> {
+    let _guard = text_expansion_storage_lock()
+        .lock()
+        .map_err(|_| "Text expansion storage lock is poisoned.".to_string())?;
+    serde_json::to_value(read_text_expansion_snapshot()?).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn text_expansion_upsert(
+    snippet: TextExpansionSnippetPayload,
+) -> Result<serde_json::Value, String> {
+    let _guard = text_expansion_storage_lock()
+        .lock()
+        .map_err(|_| "Text expansion storage lock is poisoned.".to_string())?;
+    let mut snapshot = read_text_expansion_snapshot()?;
+    let mut normalized = validate_text_expansion_snippet(&snippet)?;
+    if let Some(index) = snapshot
+        .snippets
+        .iter()
+        .position(|item| item.id == normalized.id)
+    {
+        let existing = &snapshot.snippets[index];
+        normalized.created_at = existing.created_at.clone();
+        normalized.revision = existing.revision.saturating_add(1).max(normalized.revision);
+        snapshot.snippets[index] = normalized.clone();
+    } else {
+        if normalized.created_at.trim().is_empty() {
+            normalized.created_at = text_expansion_now();
+        }
+        normalized.revision = normalized.revision.max(1);
+        if snapshot
+            .snippets
+            .iter()
+            .any(|item| item.deleted_at.is_none() && item.trigger == normalized.trigger)
+        {
+            return Err("An active text expansion snippet already uses this trigger.".to_string());
+        }
+        snapshot.snippets.push(normalized.clone());
+    }
+    normalized.updated_at = text_expansion_now();
+    normalized.deleted_at = None;
+    // Re-assign after setting timestamps so the normalized value is exactly
+    // what is returned and persisted.
+    if let Some(index) = snapshot
+        .snippets
+        .iter()
+        .position(|item| item.id == normalized.id)
+    {
+        snapshot.snippets[index] = normalized.clone();
+    }
+    write_text_expansion_snapshot(snapshot)?;
+    serde_json::to_value(normalized).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn text_expansion_delete(id: String) -> Result<serde_json::Value, String> {
+    let _guard = text_expansion_storage_lock()
+        .lock()
+        .map_err(|_| "Text expansion storage lock is poisoned.".to_string())?;
+    let mut snapshot = read_text_expansion_snapshot()?;
+    let normalized_id = id.trim();
+    if normalized_id.is_empty() || normalized_id.len() > 128 {
+        return Err("Text expansion snippet id is invalid.".to_string());
+    }
+    if let Some(snippet) = snapshot
+        .snippets
+        .iter_mut()
+        .find(|item| item.id == normalized_id)
+    {
+        let now = text_expansion_now();
+        snippet.deleted_at = Some(now.clone());
+        snippet.updated_at = now;
+        snippet.is_enabled = false;
+        snippet.revision = snippet.revision.saturating_add(1).max(1);
+    }
+    write_text_expansion_snapshot(snapshot.clone())?;
+    serde_json::to_value(snapshot).map_err(|error| error.to_string())
+}
+
 // ───────────────── P11: session env ─────────────────
 // Reads XDG env vars for real pet-tier detection (not hardcoded).
 #[tauri::command]
@@ -4469,6 +4803,9 @@ pub fn run() {
             app_version_info,
             update_status,
             export_diagnostics,
+            text_expansion_list,
+            text_expansion_upsert,
+            text_expansion_delete,
             session_env,
             media_status,
             media_session_state,
@@ -5801,5 +6138,60 @@ mod tests {
             None
         );
         assert_eq!(validated_deep_link_route("openburnbar://unknown"), None);
+    }
+
+    fn text_expansion_fixture() -> TextExpansionSnippetPayload {
+        TextExpansionSnippetPayload {
+            id: "snippet-1".into(),
+            title: "Reply".into(),
+            trigger: "&&Reply".into(),
+            body: "Thanks".into(),
+            mode: "static".into(),
+            is_enabled: true,
+            scope: TextExpansionScopePayload {
+                surfaces: vec!["in_app_thread".into()],
+                bundle_identifiers: Vec::new(),
+                thread_ids: Vec::new(),
+            },
+            revision: 1,
+            created_at: "2026-07-13T00:00:00Z".into(),
+            updated_at: "2026-07-13T00:00:00Z".into(),
+            deleted_at: None,
+            synced_at: None,
+            source_device_id: None,
+        }
+    }
+
+    #[test]
+    fn text_expansion_storage_normalizes_canonical_trigger_and_scope() {
+        let normalized = validate_text_expansion_snippet(&text_expansion_fixture()).unwrap();
+        assert_eq!(normalized.trigger, "reply");
+        assert_eq!(normalized.scope.surfaces, vec!["in_app_thread"]);
+        assert!(normalized.scope.bundle_identifiers.is_empty());
+        assert!(normalized.scope.thread_ids.is_empty());
+        let encoded = serde_json::to_value(&normalized).unwrap();
+        let encoded_scope = encoded.get("scope").unwrap();
+        assert!(encoded_scope.get("threadIDs").is_some());
+        assert!(encoded_scope.get("threadIds").is_none());
+        assert!(encoded.get("sourceDeviceID").is_some());
+        assert!(encoded.get("sourceDeviceId").is_none());
+        assert!(text_expansion_now().ends_with('Z'));
+    }
+
+    #[test]
+    fn text_expansion_storage_rejects_global_or_malformed_payloads() {
+        let mut global = text_expansion_fixture();
+        global.scope.surfaces = vec!["mac_global".into()];
+        assert!(validate_text_expansion_snippet(&global)
+            .unwrap_err()
+            .contains("in-app"));
+
+        let mut bad_trigger = text_expansion_fixture();
+        bad_trigger.trigger = "&&reply!".into();
+        assert!(validate_text_expansion_snippet(&bad_trigger).is_err());
+
+        let mut bad_mode = text_expansion_fixture();
+        bad_mode.mode = "unknown".into();
+        assert!(validate_text_expansion_snippet(&bad_mode).is_err());
     }
 }

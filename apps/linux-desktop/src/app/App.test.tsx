@@ -178,7 +178,8 @@ describe('App shell', () => {
     expect(await screen.findByText('Step 2 of 8')).toBeTruthy();
   });
 
-  it('gates text expansion behind consent and supports snippet CRUD', () => {
+  it('gates text expansion behind consent and supports snippet CRUD', async () => {
+    useShellStore.setState({ fixtureMode: true });
     const { container } = render(<App />);
     act(() => useShellStore.getState().setRoute('text-expansion'));
     expect(screen.getByText('Acknowledge in-app-only expansion before saving snippets.')).toBeTruthy();
@@ -195,10 +196,14 @@ describe('App shell', () => {
       target: { value: '-- OpenBurnBar' }
     });
     fireEvent.submit(container.querySelector('.snippet-form') as HTMLFormElement);
-    expect(within(container.querySelector('.snippet-list') as HTMLElement).getByText(';;sig')).toBeTruthy();
+    await waitFor(() => {
+      expect(within(container.querySelector('.snippet-list') as HTMLElement).getByText(';;sig')).toBeTruthy();
+    });
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
-    expect(container.querySelectorAll('.snippet-list li')).toHaveLength(0);
+    await waitFor(() => {
+      expect(container.querySelectorAll('.snippet-list li')).toHaveLength(0);
+    });
   });
 
   it('keeps failure-state hooks on system routes', () => {

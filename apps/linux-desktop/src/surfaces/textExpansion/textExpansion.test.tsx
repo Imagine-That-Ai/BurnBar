@@ -2,10 +2,12 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { writeTextExpansionConsent } from '../../textExpansionConsent.js';
 import { upsertSnippet } from '../../textExpansionStore.js';
+import { useShellStore } from '../../state/shellStore.js';
 import { TextExpansionSurface } from '../TextExpansionSurface.js';
 
 beforeEach(() => {
   localStorage.clear();
+  useShellStore.setState({ bridge: null, bridgeReady: true, fixtureMode: true });
   writeTextExpansionConsent({ inAppOnly: true, declinedGlobalCapture: true });
 });
 

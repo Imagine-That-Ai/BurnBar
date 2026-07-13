@@ -108,6 +108,16 @@ describe('VAL-RPC bridge contract', () => {
     }
   });
 
+  it('keeps text expansion storage local to typed Tauri commands', () => {
+    expect(rustBridge).toContain('fn text_expansion_list');
+    expect(rustBridge).toContain('fn text_expansion_upsert');
+    expect(rustBridge).toContain('fn text_expansion_delete');
+    expect(tsBridge).toContain("'text_expansion_list'");
+    expect(tsBridge).toContain("'text_expansion_upsert'");
+    expect(tsBridge).toContain("'text_expansion_delete'");
+    expect(canonicalRpc).not.toContain('daemon.textexpansion.');
+  });
+
   it('wires daemon-owned Linux auth without renderer credential material', () => {
     for (const method of [
       'daemon.auth.status',

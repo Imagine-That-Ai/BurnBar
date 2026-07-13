@@ -2,17 +2,23 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  configureTextExpansionStorage,
   deleteSnippet,
+  deleteSnippetPersisted,
   expandInAppBuffer,
   exportSnippets,
   findTriggerConflict,
+  hydrateTextExpansionStorage,
   importSnippets,
   listSnippets,
+  upsertSnippetPersisted,
   upsertSnippet
 } from './textExpansionStore.js';
+import type { TextExpansionSnapshot, TextExpansionWireSnippet } from './tauriBridge.js';
 
 beforeEach(() => {
   localStorage.clear();
+  configureTextExpansionStorage(null);
 });
 
 describe('text expansion v1', () => {
@@ -105,5 +111,65 @@ describe('text expansion safety pins', () => {
       expect(forbidden.filter((term) => text.includes(term))).toEqual([]);
       expect((text.match(/addEventListener\(['"]keydown/g) ?? []).length).toBe(0);
     }
+  });
+});
+
+describe('native snapshot storage boundary', () => {
+  function backend(initial: TextExpansionWireSnippet[] = []) {
+    let snapshot: TextExpansionSnapshot = {
+      schemaVersion: 1,
+      exportedAt: new Date(0).toISOString(),
+      snippets: [...initial]
+    };
+    return {
+      state: () => snapshot,
+      textExpansionList: async () => snapshot,
+      textExpansionUpsert: async (snippet: TextExpansionWireSnippet) => {
+        snapshot = {
+          ...snapshot,
+          exportedAt: new Date().toISOString(),
+          snippets: [...snapshot.snippets.filter((item) => item.id !== snippet.id), snippet]
+        };
+        return snippet;
+      },
+      textExpansionDelete: async (id: string) => {
+        snapshot = {
+          ...snapshot,
+          exportedAt: new Date().toISOString(),
+          snippets: snapshot.snippets.map((item) =>
+            item.id === id
+              ? { ...item, isEnabled: false, deletedAt: new Date().toISOString() }
+              : item
+          )
+        };
+        return snapshot;
+      }
+    };
+  }
+
+  it('hydrates the canonical snapshot and migrates the old local fallback', async () => {
+    upsertSnippet({ title: 'Local', trigger: ';;local', body: 'LOCAL', enabled: true });
+    const fake = backend();
+    await hydrateTextExpansionStorage(fake);
+    expect(fake.state().snippets[0]?.trigger).toBe('local');
+    expect(listSnippets()[0]?.trigger).toBe(';;local');
+    expect(localStorage.getItem('openburnbar.linux.textExpansion.v1')).toBeNull();
+  });
+
+  it('uses canonical in-app scope for native CRUD and reflects soft deletion', async () => {
+    const fake = backend();
+    await hydrateTextExpansionStorage(fake);
+    const saved = await upsertSnippetPersisted({
+      title: 'Reply',
+      trigger: '&&Reply',
+      body: 'Thanks',
+      enabled: true
+    });
+    expect(fake.state().snippets[0]?.trigger).toBe('reply');
+    expect(fake.state().snippets[0]?.scope.surfaces).toEqual(['in_app_thread']);
+    expect(saved.trigger).toBe(';;reply');
+    await deleteSnippetPersisted(saved.id);
+    expect(listSnippets()).toHaveLength(0);
+    expect(fake.state().snippets[0]?.deletedAt).toBeTruthy();
   });
 });
