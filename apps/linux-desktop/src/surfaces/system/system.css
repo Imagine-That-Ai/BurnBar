@@ -114,6 +114,21 @@
   cursor: not-allowed;
 }
 
+.setting-toggle--privacy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.setting-toggle--privacy input {
+  accent-color: var(--color-brass-bright);
+}
+
+.setting-toggle--privacy input:disabled {
+  cursor: wait;
+}
+
 .system-danger-link {
   color: var(--color-brass-bright);
 }
