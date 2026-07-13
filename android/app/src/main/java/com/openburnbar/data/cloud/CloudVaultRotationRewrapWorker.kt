@@ -225,8 +225,14 @@ class CloudVaultRotationRewrapWorker(
                     titlePlaintext(data["sealedTitle"], uid, document.id, oldKey, newKey)
                         ?: document.id
                 val preview = bodyText.take(500)
-                val chunks = chunkUtf8String(bodyText, cloudSearchChunkMaxBytes)
                 val provider = data["provider"] as? String ?: "unknown"
+                val searchContext = "$title $provider"
+                val chunks =
+                    CloudVaultSearchChunker.chunkUtf8String(
+                        text = bodyText,
+                        maxBytes = cloudSearchChunkMaxBytes,
+                        reservedText = searchContext,
+                    )
                 val sourceID = data["id"] as? String ?: document.id
                 val sealedSearchTitle =
                     CloudVaultCrypto.sealText(
@@ -555,25 +561,6 @@ class CloudVaultRotationRewrapWorker(
                     objectJson.get(key).takeUnless { it == JSONObject.NULL }
                 }
         return CloudVaultCrypto.blobEnvelopeFromMap(map) ?: error("Invalid encrypted blob envelope")
-    }
-
-    private fun chunkUtf8String(text: String, maxBytes: Int): List<String> {
-        if (text.toByteArray(Charsets.UTF_8).size <= maxBytes) return listOf(text)
-        val chunks = mutableListOf<String>()
-        var current = StringBuilder()
-        var currentBytes = 0
-        for (ch in text) {
-            val charBytes = ch.toString().toByteArray(Charsets.UTF_8).size
-            if (currentBytes > 0 && currentBytes + charBytes > maxBytes) {
-                chunks += current.toString()
-                current = StringBuilder()
-                currentBytes = 0
-            }
-            current.append(ch)
-            currentBytes += charBytes
-        }
-        if (current.isNotEmpty()) chunks += current.toString()
-        return chunks.ifEmpty { listOf(text) }
     }
 
     private fun updatePayload(result: CloudVaultDocumentRewrapResult, vaultGeneration: Int, jobId: String): Map<String, Any> {
