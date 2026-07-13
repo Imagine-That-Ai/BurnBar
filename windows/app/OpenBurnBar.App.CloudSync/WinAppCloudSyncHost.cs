@@ -7,8 +7,9 @@ using OpenBurnBar.CloudSync.Crypto;
 namespace OpenBurnBar.App.CloudSync;
 
 /// <summary>
-/// Dev-host singleton wiring: composition root, memory store, and callable hub accessors.
-/// Desktop OAuth remains deferred — use env tokens via <see cref="CloudSyncCompositionRoot.CreateDevHost"/>.
+/// Desktop composition singleton: live OAuth roots are restored from the
+/// protected session store when available; static tokens remain an explicit
+/// dev-host fallback.
 /// </summary>
 public static class WinAppCloudSyncHost
 {
@@ -127,6 +128,16 @@ public static class WinAppCloudSyncHost
         if (!string.IsNullOrWhiteSpace(keyB64))
         {
             vaultKey = Convert.FromBase64String(keyB64);
+        }
+
+        // Restore a previously completed browser sign-in without opening a
+        // browser on launch. The credentials provider loads its protected
+        // Firebase session and passive accessors remain non-interactive.
+        DesktopOAuthCredentialsProvider? oauth = CloudAuthProductionComposition.TryCreateOAuthCredentialsProvider();
+        if (oauth?.CurrentSession is { } session && !session.IsExpired(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()))
+        {
+            ConfigureWithOAuth(oauth, project, session.Uid, vaultKey);
+            return;
         }
 
         ConfigureForDevHost(

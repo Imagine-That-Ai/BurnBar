@@ -101,6 +101,10 @@ unproven host behavior to certification:
   generates and persists a URL-safe 256-bit token through the Windows secret
   store; unauthenticated loopback is available only through the explicit opt
   out. The token itself is never logged or placed in route metadata.
+- Cloud startup now restores a non-expired OAuth session from the protected
+  session store without opening a browser; only a signed-out or expired session
+  falls back to the explicit dev-host path. Live Firebase/App Check/TPM
+  staging remains an external certification gate.
 - Headless runs and local Mission Control DAGs now have an append-only,
   write-through JSONL journal, dependency validation, approval policy, bounded
   recovery/resume, cancellation records, deterministic topological planning,
