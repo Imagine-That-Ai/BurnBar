@@ -227,8 +227,8 @@ also converged the Insights adapter/registry re-slice inside S12 (see the P-08 c
 | P-16a…f | S14 | OpenBurnBarUI (K4) — by Views subdirectory (a=Substrate, b=Insights-root+design-system, b2=Verdict, c=MissionControl, d=Cards+Square+straggler-cluster, e=InsightShareCardRenderer, f=Views-root LAST) | A | full | P-16a MERGED (base); P-16b PR #1650 (Insights root 32 + design-system closure 8; Verdict→P-16b2); **P-16c PR #1656** (MissionControl 11, AE-IMPORT Kernel×10, Kernel-closed — no pull-forward/widening/`SubstrateCatalog` qual, ui-purity 41→30); **P-16d PR #1666** (Cards/Square + the P-16e UI-straggler SharedModels/PixelClock cluster merged per executor directive; 10 files/3,610 LOC, AE-IMPORT Kernel×6, AE-TESTABLE×1, `PixelClockProviderLogo` internal→public+explicit Sendable for the still-in-Core `PixelClockPreviewView` cross-module read, ui-purity 30→29); e now = `InsightShareCardRenderer.swift` only; b2/e/f QUEUED |
 | P-17 | S16 | OpenBurnBarEngine umbrella (fill) | Integrator | draft | QUEUED |
 | P-18 | S17 | daemon/CLI repoint → OpenBurnBarEngine | Integrator | draft | QUEUED |
-| P-19 | S18 | Widget repoint | Integrator | draft | QUEUED |
-| P-20 | S19 | Keyboard repoint (DEPENDS-ON P-07 **+ P-16 UI/K4** — `KeyboardView.swift` uses `UnifiedDesignSystem`) | Integrator | draft | BLOCKED(compile-closure): undeclared P-16 edge — re-slice to Wave 3 (see card) |
+| P-19 | S18 | Widget repoint (base p-16f) | Integrator | draft | **PR_OPEN #1719** — 17 files off umbrella onto Kernel/Insights/UI (Kernel+UI×7, Kernel×5, Insights×2, UI×1, none×2); project.yml Widget product Core→Kernel+Insights+UI; umbrella ratchet Widget→0. Carries a **Package.swift forward-ref fix** (learning 11): the Apple-only products were declared-but-never-emitted, so the repoint's first build hit `Missing package product 'OpenBurnBarInsights'`. Validated by full iOS build of OpenBurnBarMobile (embeds Widget+Keyboard appex), Xcode 27, iPhone 17 Pro Max sim — BUILD SUCCEEDED, both appex link. |
+| P-20 | S19 | Keyboard repoint (DEPENDS-ON P-07 **+ P-16 UI/K4** — `KeyboardView.swift` uses `UnifiedDesignSystem`) | Integrator | draft | **PR_OPEN #1720** (base = P-19 branch; stacked, serial — both touch project.yml+pbxproj). Both files off umbrella: `KeyboardViewController`→TextExpansion, `KeyboardView`→TextExpansion+UI (Kernel NOT demanded — transitive via TextExpansion/UI). project.yml Keyboard product Core→TextExpansion+UI; umbrella ratchet Keyboard→0. UNBLOCKED once P-16 UI populated + P-19's product-emission fix landed; validated by the same OpenBurnBarMobile iOS build — BUILD SUCCEEDED. |
 | S-H | — | headless-app-build CI job (precursor to S14) | Integrator | draft | QUEUED |
 
 ## Sizing
@@ -426,3 +426,30 @@ Core build never compiled it).
     of which package target hosts a type, so a whole-file move between package targets needs
     NO AgentLens-test edit (P-15 set the precedent; P-15b confirmed it) — the AE-TESTABLE
     set is the Core-package tests the compiler actually rejects, nothing more.
+
+11. **A host-flag global referenced BEFORE its `let` declaration is a forward reference that
+    silently evaluates to the type's zero value — for a `Bool` gate that means the guarded
+    PRODUCTS never emit, even though the guarded TARGETS do. A repoint packet is not
+    dependency-closed until the destination PRODUCT is resolvable, not just declared.** (P-19,
+    Widget repoint.) The S0 manifest declared the Apple-only products (`OpenBurnBarUI`/
+    `Insights`/`TextExpansion`/`LaunchServices`) inside `packageProductsBase` gated on
+    `buildApplePrunedDecompositionTargets`, but that `let` was declared ~660 lines LATER than
+    `packageProductsBase` uses it. Swift initializes file-scope globals lazily, and a global
+    read before its initializer runs returns the zero value — so the gate was `false` on EVERY
+    host (Apple included), and the four Apple-only PRODUCTS were dropped from the package graph
+    while their TARGETS still emitted (via `applePrunedDecompositionTargets`, declared AFTER the
+    gate). Nothing caught it because no consumer referenced those products until now — the app
+    links `OpenBurnBarCore` and gets UI/Insights as transitive TARGETS. The Widget repoint is
+    the first consumer to name the products, and its first build failed with
+    `Missing package product 'OpenBurnBarInsights'`; `swift package dump-package` on macOS
+    confirmed the products absent while the targets were present. Fix: move the
+    `buildApplePrunedDecompositionTargets` declaration up beside the other host-evaluated flags
+    (`buildForLinuxBoundary`, the `has*XCFramework` probes) so `packageProductsBase` reads an
+    initialized value. `dump-package` then emits all four; off-Apple manifest variants
+    (`OPENBURNBAR_DAEMON_LINUX_BOUNDARY_BUILD=1`, `OPENBURNBAR_LINUX_SECURITY_ONLY_BUILD=1`)
+    still parse and still prune (the `#if os(Linux) || os(Windows)` is position-independent).
+    Lesson for P-17/P-18 (Engine/daemon repoints) and any future consumer of a decomposition
+    product: run `swift package dump-package` (or a real link) and confirm the destination
+    PRODUCT is in the emitted set — a `.library(...)` line proves declaration, not emission,
+    and a manifest global consumed above its declaration is the trap. The one-line move landed
+    in P-19 (PR #1719); it is a precondition for P-20 (Keyboard→TextExpansion, #1720) too.
