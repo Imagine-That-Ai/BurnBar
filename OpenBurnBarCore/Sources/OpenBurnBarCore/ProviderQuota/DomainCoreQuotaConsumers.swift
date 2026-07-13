@@ -173,7 +173,7 @@ enum CodexQuotaDomainCoreAdapter {
         guard mode != .legacy else { return try legacy() }
 
         #if canImport(OpenBurnBarDomainCoreFFI)
-        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 1 else {
+        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 2 else {
             quotaLogger.log("domain_core.codex_quota.abi_mismatch")
             return try legacy()
         }
@@ -221,7 +221,7 @@ enum CursorQuotaDomainCoreAdapter {
         guard mode != .legacy else { return try legacy() }
 
         #if canImport(OpenBurnBarDomainCoreFFI)
-        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 1 else {
+        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 2 else {
             quotaLogger.log("domain_core.cursor_quota.abi_mismatch")
             return try legacy()
         }
@@ -266,7 +266,7 @@ enum AnthropicRateLimitDomainCoreAdapter {
         guard mode != .legacy else { return legacy() }
 
         #if canImport(OpenBurnBarDomainCoreFFI)
-        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 1 else {
+        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 2 else {
             quotaLogger.log("domain_core.anthropic_ratelimit.abi_mismatch")
             return legacy()
         }
