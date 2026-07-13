@@ -468,9 +468,41 @@ export type DatabaseRecoveryBundleImportRequest = {
   sourcePath: string;
   passphrase: string;
 };
+export type DatabaseRecoveryPhase =
+  | 'ready'
+  | 'database_missing'
+  | 'cipher_unavailable'
+  | 'database_not_encrypted'
+  | 'key_unavailable'
+  | 'integrity_failed'
+  | 'awaiting_database_verification'
+  | 'unavailable';
+export type DatabaseRecoveryAction =
+  | 'none'
+  | 'export_recovery_bundle'
+  | 'import_recovery_bundle'
+  | 'restore_encrypted_snapshot'
+  | 'unlock_secret_store'
+  | 'restart_daemon';
+export type DatabaseRecoveryStatusResult = {
+  phase: DatabaseRecoveryPhase;
+  code: string;
+  message: string;
+  recommendedAction: DatabaseRecoveryAction;
+  canExport: boolean;
+  canImport: boolean;
+  databasePresent: boolean;
+  databaseIntegrityVerified: boolean;
+  restartRequired: boolean;
+};
 export type DatabaseRecoveryBundleImportResult = {
   sourcePath: string;
   stored: boolean;
+  candidateKeyVerified: boolean;
+  databaseIntegrityVerified: boolean;
+  phase: DatabaseRecoveryPhase;
+  recommendedAction: DatabaseRecoveryAction;
+  message: string;
   restartRequired: boolean;
 };
 
@@ -1206,6 +1238,8 @@ export interface LinuxShellBridge {
   databaseSnapshot?(destinationPath: string, maxBytes?: number): Promise<DatabaseSnapshotResult>;
   /** Optional on older packaged shells; restores only validated encrypted snapshots. */
   databaseRestore?(snapshotPath: string, maxBytes?: number): Promise<DatabaseSnapshotResult>;
+  /** Optional on older packaged shells; callers must fail closed when absent. */
+  databaseRecoveryBundleStatus?(): Promise<DatabaseRecoveryStatusResult>;
   databaseRecoveryBundleExport?(
     request: DatabaseRecoveryBundleExportRequest
   ): Promise<DatabaseRecoveryBundleExportResult>;
@@ -2406,10 +2440,62 @@ function mapDatabaseRecoveryBundleExport(raw: RawJsonValue): DatabaseRecoveryBun
   };
 }
 
+const DATABASE_RECOVERY_PHASES: readonly DatabaseRecoveryPhase[] = [
+  'ready',
+  'database_missing',
+  'cipher_unavailable',
+  'database_not_encrypted',
+  'key_unavailable',
+  'integrity_failed',
+  'awaiting_database_verification',
+  'unavailable'
+];
+const DATABASE_RECOVERY_ACTIONS: readonly DatabaseRecoveryAction[] = [
+  'none',
+  'export_recovery_bundle',
+  'import_recovery_bundle',
+  'restore_encrypted_snapshot',
+  'unlock_secret_store',
+  'restart_daemon'
+];
+
+function boundedRecoveryPhase(value: RawJsonValue): DatabaseRecoveryPhase {
+  const phase = str(value);
+  return (DATABASE_RECOVERY_PHASES as readonly string[]).includes(phase)
+    ? phase as DatabaseRecoveryPhase
+    : 'unavailable';
+}
+
+function boundedRecoveryAction(value: RawJsonValue): DatabaseRecoveryAction {
+  const action = str(value);
+  return (DATABASE_RECOVERY_ACTIONS as readonly string[]).includes(action)
+    ? action as DatabaseRecoveryAction
+    : 'none';
+}
+
+function mapDatabaseRecoveryStatus(raw: RawJsonValue): DatabaseRecoveryStatusResult {
+  return {
+    phase: boundedRecoveryPhase(pick(raw, 'phase')),
+    code: str(pick(raw, 'code'), 'recovery_status_unavailable'),
+    message: str(pick(raw, 'message'), 'Database recovery status is unavailable.'),
+    recommendedAction: boundedRecoveryAction(pick(raw, 'recommendedAction', 'recommended_action')),
+    canExport: Boolean(pick(raw, 'canExport', 'can_export')),
+    canImport: Boolean(pick(raw, 'canImport', 'can_import')),
+    databasePresent: Boolean(pick(raw, 'databasePresent', 'database_present')),
+    databaseIntegrityVerified: Boolean(pick(raw, 'databaseIntegrityVerified', 'database_integrity_verified')),
+    restartRequired: Boolean(pick(raw, 'restartRequired', 'restart_required'))
+  };
+}
+
 function mapDatabaseRecoveryBundleImport(raw: RawJsonValue): DatabaseRecoveryBundleImportResult {
   return {
     sourcePath: str(pick(raw, 'sourcePath', 'source_path'), ''),
     stored: Boolean(pick(raw, 'stored')),
+    candidateKeyVerified: Boolean(pick(raw, 'candidateKeyVerified', 'candidate_key_verified')),
+    databaseIntegrityVerified: Boolean(pick(raw, 'databaseIntegrityVerified', 'database_integrity_verified')),
+    phase: boundedRecoveryPhase(pick(raw, 'phase')),
+    recommendedAction: boundedRecoveryAction(pick(raw, 'recommendedAction', 'recommended_action')),
+    message: str(pick(raw, 'message'), 'The recovery key was stored, but database integrity is not verified yet.'),
     restartRequired: pick(raw, 'restartRequired', 'restart_required') === undefined
       ? true
       : Boolean(pick(raw, 'restartRequired', 'restart_required'))
@@ -3921,6 +4007,12 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
         maxBytes: maxBytes == null ? undefined : Math.max(1, Math.min(512 * 1_024 * 1_024, Math.trunc(maxBytes)))
       });
       return mapDatabaseSnapshot(raw, true);
+    },
+    // P22 — read-only recovery posture. The daemon decides whether key
+    // custody, database presence, and integrity verification are each proven.
+    databaseRecoveryBundleStatus: async () => {
+      const raw = await invoke<RawJsonValue>('database_recovery_bundle_status');
+      return mapDatabaseRecoveryStatus(raw);
     },
     // P22 — daemon-owned passphrase recovery bundle. Passphrases stay in the
     // native invoke/RPC call and are never persisted in Zustand or web storage.

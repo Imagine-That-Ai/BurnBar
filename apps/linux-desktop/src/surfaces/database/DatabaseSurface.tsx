@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { Banner } from '../../components/Banner.js';
 import { OfflineNotice } from '../../components/OfflineNotice.js';
@@ -7,6 +7,7 @@ import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
 import { useSystemStore } from '../../state/systemStore.js';
 import { formatBytes } from '../system/systemFormat.js';
 import { CodeRetrievalPanel } from './CodeRetrievalPanel.js';
+import type { DatabaseRecoveryStatusResult } from '../../tauriBridge.js';
 import '../system/system.css';
 
 type DatabaseWorkspaceMode = 'story' | 'atlas' | 'system';
@@ -66,8 +67,44 @@ function DatabaseRecoveryBundleControls({
   const [busy, setBusy] = useState<'export' | 'import' | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const statusAvailable = !fixtureMode && typeof bridge?.databaseRecoveryBundleStatus === 'function';
   const available = !fixtureMode && typeof bridge?.databaseRecoveryBundleExport === 'function'
     && typeof bridge?.databaseRecoveryBundleImport === 'function';
+  const [recoveryStatus, setRecoveryStatus] = useState<DatabaseRecoveryStatusResult | null>(null);
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!statusAvailable || !bridge?.databaseRecoveryBundleStatus) {
+      setRecoveryStatus(null);
+      setStatusError(null);
+      setStatusLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setStatusLoading(true);
+    setStatusError(null);
+    void bridge.databaseRecoveryBundleStatus()
+      .then((status) => {
+        if (!cancelled) setRecoveryStatus(status);
+      })
+      .catch((caught) => {
+        if (!cancelled) {
+          setRecoveryStatus(null);
+          setStatusError(caught instanceof Error ? caught.message : 'Recovery status is unavailable.');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setStatusLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [bridge, statusAvailable]);
 
   const exportBundle = async () => {
     if (!bridge?.databaseRecoveryBundleExport) return;
@@ -98,7 +135,7 @@ function DatabaseRecoveryBundleControls({
         sourcePath: importPath,
         passphrase: importPassphrase
       });
-      setMessage(result.restartRequired ? 'Database key restored. Restart the daemon to reopen the store.' : 'Database key restored.');
+      setMessage(result.message);
       setImportPassphrase('');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Recovery bundle import failed.');
@@ -116,6 +153,17 @@ function DatabaseRecoveryBundleControls({
         Export or restore only the SQLCipher key. The daemon performs PBKDF2/AES-GCM and native secret-store writes;
         this view never persists a passphrase.
       </p>
+      {statusLoading ? <p className="muted" role="status">Checking encrypted-store recovery state...</p> : null}
+      {statusError ? <p className="muted" role="alert">{statusError}</p> : null}
+      {recoveryStatus ? (
+        <div className="database-recovery-status" role="status" aria-live="polite">
+          <strong>{`Recovery state: ${recoveryStatus.phase.replaceAll('_', ' ')}`}</strong>
+          <p className="muted">{recoveryStatus.message}</p>
+          {recoveryStatus.recommendedAction !== 'none' ? (
+            <p className="muted">{`Next action: ${recoveryStatus.recommendedAction.replaceAll('_', ' ')}`}</p>
+          ) : null}
+        </div>
+      ) : null}
       {!available ? (
         <p className="muted" role="status">Recovery bundle controls require a packaged Linux daemon with SQLCipher and native secret storage.</p>
       ) : (
@@ -140,7 +188,12 @@ function DatabaseRecoveryBundleControls({
                 autoComplete="new-password"
               />
             </label>
-            <button type="button" className="ghost" onClick={() => void exportBundle()} disabled={busy !== null}>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => void exportBundle()}
+              disabled={busy !== null || recoveryStatus?.canExport !== true}
+            >
               {busy === 'export' ? 'Exporting...' : 'Export bundle'}
             </button>
           </div>
@@ -164,7 +217,12 @@ function DatabaseRecoveryBundleControls({
                 autoComplete="current-password"
               />
             </label>
-            <button type="button" className="ghost" onClick={() => void importBundle()} disabled={busy !== null}>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => void importBundle()}
+              disabled={busy !== null || recoveryStatus?.canImport !== true}
+            >
               {busy === 'import' ? 'Importing...' : 'Import bundle'}
             </button>
           </div>

@@ -7,6 +7,20 @@ extension BurnBarDaemonServer {
         decoder: JSONDecoder,
         requestData: Data
     ) async throws -> Data {
+        if method == .databaseRecoveryStatus {
+            let request = try decoder.decode(BurnBarRPCRequestEnvelope.self, from: requestData)
+            let status = databaseRecoveryService?.status()
+                ?? BurnBarDatabaseRecoveryStatusResponse.unavailable(
+                    message: "Database recovery is unavailable. Configure OPENBURNBAR_INDEX_DATABASE_PATH before attempting key-loss or device-transfer recovery."
+                )
+            return encode(
+                BurnBarRPCResponseEnvelope(
+                    id: request.id,
+                    result: status
+                )
+            )
+        }
+
         guard let databaseRecoveryService else {
             return encodeErrorResponse(
                 id: "database-recovery-unavailable",
@@ -16,6 +30,8 @@ extension BurnBarDaemonServer {
         }
 
         switch method {
+        case .databaseRecoveryStatus:
+            preconditionFailure("databaseRecoveryStatus is handled before the mutating recovery bundle cases")
         case .databaseRecoveryBundleExport:
             let request = try decoder.decode(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarDatabaseRecoveryBundleExportRequest>.self,

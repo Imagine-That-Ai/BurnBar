@@ -629,9 +629,34 @@ describe('VAL-RPC-002 bridge behavior', () => {
 
   it('database recovery bundle bridge keeps passphrases native and maps daemon results', async () => {
     invoke
+      .mockResolvedValueOnce({
+        phase: 'awaiting_database_verification',
+        code: 'database_missing',
+        message: 'Restore an encrypted snapshot before claiming recovery succeeded.',
+        recommendedAction: 'restore_encrypted_snapshot',
+        canExport: false,
+        canImport: true,
+        databasePresent: false,
+        databaseIntegrityVerified: false,
+        restartRequired: false
+      })
       .mockResolvedValueOnce({ destinationPath: '/tmp/recovery.obb', byteCount: 96, formatVersion: 1 })
-      .mockResolvedValueOnce({ sourcePath: '/tmp/recovery.obb', stored: true, restartRequired: true });
+      .mockResolvedValueOnce({
+        sourcePath: '/tmp/recovery.obb',
+        stored: true,
+        candidateKeyVerified: false,
+        databaseIntegrityVerified: false,
+        phase: 'awaiting_database_verification',
+        recommendedAction: 'restore_encrypted_snapshot',
+        message: 'The recovery key was stored, but no encrypted database was present to verify it.',
+        restartRequired: true
+      });
     const b = await bridge();
+    await expect(b.databaseRecoveryBundleStatus?.()).resolves.toMatchObject({
+      phase: 'awaiting_database_verification',
+      canImport: true,
+      databaseIntegrityVerified: false
+    });
     await expect(b.databaseRecoveryBundleExport?.({
       destinationPath: '/tmp/recovery.obb',
       passphrase: 'correct horse battery staple'
@@ -640,11 +665,12 @@ describe('VAL-RPC-002 bridge behavior', () => {
       sourcePath: '/tmp/recovery.obb',
       passphrase: 'correct horse battery staple'
     })).resolves.toMatchObject({ stored: true, restartRequired: true });
-    expect(invoke).toHaveBeenNthCalledWith(1, 'database_recovery_bundle_export', {
+    expect(invoke).toHaveBeenNthCalledWith(1, 'database_recovery_bundle_status');
+    expect(invoke).toHaveBeenNthCalledWith(2, 'database_recovery_bundle_export', {
       destinationPath: '/tmp/recovery.obb',
       passphrase: 'correct horse battery staple'
     });
-    expect(invoke).toHaveBeenNthCalledWith(2, 'database_recovery_bundle_import', {
+    expect(invoke).toHaveBeenNthCalledWith(3, 'database_recovery_bundle_import', {
       sourcePath: '/tmp/recovery.obb',
       passphrase: 'correct horse battery staple'
     });

@@ -150,6 +150,7 @@ const explicitTypes = {
   "subscription.start": ["BurnBarSubscriptionStartRequest", "BurnBarSubscriptionResponse"],
   "subscription.resume": ["BurnBarSubscriptionResumeRequest", "BurnBarSubscriptionResponse"],
   "subscription.stop": ["BurnBarSubscriptionStopRequest", "BurnBarSubscriptionStopResponse"],
+  "daemon.database.recovery.status": ["BurnBarRPCRequestEnvelope", "BurnBarDatabaseRecoveryStatusResponse"],
   "daemon.database.recovery_bundle.export": ["BurnBarDatabaseRecoveryBundleExportRequest", "BurnBarDatabaseRecoveryBundleExportResponse"],
   "daemon.database.recovery_bundle.import": ["BurnBarDatabaseRecoveryBundleImportRequest", "BurnBarDatabaseRecoveryBundleImportResponse"]
 };

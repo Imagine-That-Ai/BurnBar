@@ -37,7 +37,7 @@ enum BurnBarDatabaseRecoveryBundleServiceError: Error, CustomStringConvertible, 
         case .databaseUnavailable: return "The daemon database path is not configured or does not exist."
         case .databaseNotEncrypted: return "The daemon database is not an encrypted SQLCipher database."
         case .cipherUnavailable: return "SQLCipher is not available in this daemon build."
-        case .keyUnavailable: return "The daemon database key is unavailable from approved native secret storage."
+        case .keyUnavailable: return "The daemon database key is unavailable from approved native secret storage. Unlock the key store or import a recovery bundle from the original device."
         case .candidateKeyRejected: return "The recovery bundle key could not open the encrypted database."
         case .keyStorageUnavailable: return "No approved writable native secret store is available."
         case let .crypto(error): return "Recovery bundle authentication failed or the bundle is malformed: \(error)."
@@ -62,6 +62,92 @@ final class BurnBarDatabaseRecoveryBundleService: Sendable {
         self.logger = logger
         #if os(Linux)
         self.secretStore = LinuxSecretStoreFactory.production()
+        #endif
+    }
+
+    /// Return a typed, secret-free recovery posture. This is intentionally a
+    /// read-only diagnostic: it never treats key custody as proof that the
+    /// active database is readable.
+    func status() -> BurnBarDatabaseRecoveryStatusResponse {
+        #if !os(Linux)
+        return .unavailable(message: "Database recovery status requires the packaged Linux daemon.")
+        #else
+        guard BurnBarDaemonDatabaseCipher.isCipherAvailable() else {
+            return BurnBarDatabaseRecoveryStatusResponse(
+                phase: .cipherUnavailable,
+                code: "sqlcipher_unavailable",
+                message: "SQLCipher is not available in this daemon build. Install a packaged Linux build with SQLCipher before attempting recovery.",
+                recommendedAction: .none,
+                canExport: false,
+                canImport: false,
+                databasePresent: FileManager.default.fileExists(atPath: databasePath),
+                databaseIntegrityVerified: false
+            )
+        }
+
+        let databasePresent = FileManager.default.fileExists(atPath: databasePath)
+        guard databasePresent else {
+            return BurnBarDatabaseRecoveryStatusResponse(
+                phase: .databaseMissing,
+                code: "database_missing",
+                message: "No encrypted database is present. Import the recovery bundle, then restore an encrypted database snapshot before claiming recovery succeeded.",
+                recommendedAction: .restoreEncryptedSnapshot,
+                canExport: false,
+                canImport: true,
+                databasePresent: false,
+                databaseIntegrityVerified: false
+            )
+        }
+
+        guard BurnBarDaemonDatabaseCipher.isEncryptedDatabaseFile(at: databasePath) else {
+            return BurnBarDatabaseRecoveryStatusResponse(
+                phase: .databaseNotEncrypted,
+                code: "database_not_encrypted",
+                message: "The local database is not an encrypted SQLCipher store. Restore an encrypted snapshot before using recovery-key custody.",
+                recommendedAction: .restoreEncryptedSnapshot,
+                canExport: false,
+                canImport: false,
+                databasePresent: true,
+                databaseIntegrityVerified: false
+            )
+        }
+
+        guard let key = BurnBarDaemonDatabaseCipher.resolveKey() else {
+            return BurnBarDatabaseRecoveryStatusResponse(
+                phase: .keyUnavailable,
+                code: "database_key_unavailable",
+                message: "The database key is unavailable because the native secret store is missing or locked. Unlock it, or import a recovery bundle from the original device.",
+                recommendedAction: .importRecoveryBundle,
+                canExport: false,
+                canImport: true,
+                databasePresent: true,
+                databaseIntegrityVerified: false
+            )
+        }
+
+        guard BurnBarDaemonDatabaseCipher.canOpenEncryptedDatabase(at: databasePath, key: key) else {
+            return BurnBarDatabaseRecoveryStatusResponse(
+                phase: .integrityFailed,
+                code: "database_integrity_unverified",
+                message: "The stored key did not open a healthy encrypted database. Import a verified recovery bundle or restore a known-good encrypted snapshot.",
+                recommendedAction: .importRecoveryBundle,
+                canExport: false,
+                canImport: true,
+                databasePresent: true,
+                databaseIntegrityVerified: false
+            )
+        }
+
+        return BurnBarDatabaseRecoveryStatusResponse(
+            phase: .ready,
+            code: "database_ready",
+            message: "The encrypted database opened with the native key and passed integrity verification.",
+            recommendedAction: .exportRecoveryBundle,
+            canExport: true,
+            canImport: true,
+            databasePresent: true,
+            databaseIntegrityVerified: true
+        )
         #endif
     }
 
@@ -142,7 +228,9 @@ final class BurnBarDatabaseRecoveryBundleService: Sendable {
         // If an encrypted database is present, prove the recovered key before
         // mutating native secret storage. A wrong-but-authenticated bundle must
         // never brick the existing profile.
-        if FileManager.default.fileExists(atPath: databasePath) {
+        let databasePresent = FileManager.default.fileExists(atPath: databasePath)
+        var candidateKeyVerified = false
+        if databasePresent {
             guard BurnBarDaemonDatabaseCipher.isCipherAvailable() else {
                 throw BurnBarDatabaseRecoveryBundleServiceError.cipherUnavailable
             }
@@ -152,6 +240,7 @@ final class BurnBarDatabaseRecoveryBundleService: Sendable {
             guard BurnBarDaemonDatabaseCipher.canOpenEncryptedDatabase(at: databasePath, key: key) else {
                 throw BurnBarDatabaseRecoveryBundleServiceError.candidateKeyRejected
             }
+            candidateKeyVerified = true
         }
 
         do {
@@ -171,7 +260,32 @@ final class BurnBarDatabaseRecoveryBundleService: Sendable {
             "database_recovery_bundle_imported",
             metadata: ["path": source.path, "restart_required": "true"]
         )
-        return BurnBarDatabaseRecoveryBundleImportResponse(sourcePath: source.path, stored: true)
+        if candidateKeyVerified {
+            return BurnBarDatabaseRecoveryBundleImportResponse(
+                sourcePath: source.path,
+                stored: true,
+                candidateKeyVerified: true,
+                databaseIntegrityVerified: true,
+                phase: .ready,
+                recommendedAction: .restartDaemon,
+                message: "The recovery key opened the encrypted database and passed integrity verification. Restart the daemon to adopt the recovered custody.",
+                restartRequired: true
+            )
+        }
+
+        // Device-transfer import can legitimately happen before the encrypted
+        // database file is restored. Keep the key, but make the missing proof
+        // explicit so the renderer cannot claim that recovery completed.
+        return BurnBarDatabaseRecoveryBundleImportResponse(
+            sourcePath: source.path,
+            stored: true,
+            candidateKeyVerified: false,
+            databaseIntegrityVerified: false,
+            phase: .awaitingDatabaseVerification,
+            recommendedAction: .restoreEncryptedSnapshot,
+            message: "The recovery key was stored, but no encrypted database was present to verify it. Restore an encrypted snapshot, then restart the daemon.",
+            restartRequired: true
+        )
         #endif
     }
 

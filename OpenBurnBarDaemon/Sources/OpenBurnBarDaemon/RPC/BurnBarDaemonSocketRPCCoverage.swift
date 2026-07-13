@@ -188,6 +188,7 @@ enum BurnBarDaemonSocketRPCCoverage {
     ]
 
     static let databaseRecovery: Set<BurnBarRPCMethod> = [
+        .databaseRecoveryStatus,
         .databaseRecoveryBundleExport,
         .databaseRecoveryBundleImport
     ]
