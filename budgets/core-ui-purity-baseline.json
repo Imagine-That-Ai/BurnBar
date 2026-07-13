@@ -1,6 +1,6 @@
 {
   "note": "Files in OpenBurnBarCore/Sources/OpenBurnBarCore importing SwiftUI/AppKit. Shrink-only: entries may only be removed (audit 2026-06-30 finding #4, kernel extraction). Regenerate via scripts/debt/check-core-ui-purity-budget.sh --update.",
-  "total": 41,
+  "total": 30,
   "files": [
     {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/Insights/Share/InsightShareCardRenderer.swift",
@@ -89,72 +89,6 @@
     },
     {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/MiningPickLoader.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/MissionControl/MissionBurnForecast.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/MissionControl/MissionComposerControls.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/MissionControl/MissionConsoleHero.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/MissionControl/MissionConsolePreviewHost.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/MissionControl/MissionControlConsoleView.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/MissionControl/MissionFABGauge.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/MissionControl/MissionFanOutGroup.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/MissionControl/MissionGlassSurface.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/MissionControl/MissionKindChooser.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/MissionControl/MissionRuntimeConstellation.swift",
-      "frameworks": [
-        "SwiftUI"
-      ]
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarCore/Views/MissionControl/MissionSituationRoom.swift",
       "frameworks": [
         "SwiftUI"
       ]

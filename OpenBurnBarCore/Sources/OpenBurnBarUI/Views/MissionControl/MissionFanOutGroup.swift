@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarKernel
 
 // MARK: - Mission Fan-Out Group Card (Hermes Square §6.4)
 //

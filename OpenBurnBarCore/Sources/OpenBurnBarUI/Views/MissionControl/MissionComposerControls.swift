@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarKernel
 
 // MARK: - Composer Controls
 //
