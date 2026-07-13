@@ -75,7 +75,6 @@ function DatabaseRecoveryBundleControls({
   const loadRecoveryStatus = useDatabaseStore((state) => state.loadRecoveryStatus);
   const exportRecoveryBundle = useDatabaseStore((state) => state.exportRecoveryBundle);
   const importRecoveryBundle = useDatabaseStore((state) => state.importRecoveryBundle);
-  const statusAvailable = !fixtureMode && typeof bridge?.databaseRecoveryBundleStatus === 'function';
   const available = !fixtureMode && typeof bridge?.databaseRecoveryBundleExport === 'function'
     && typeof bridge?.databaseRecoveryBundleImport === 'function';
   const recoveryStatus = statusAction.result;
