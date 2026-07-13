@@ -161,6 +161,11 @@ copying reviewer or issue metadata.
 5. Run source/compile gates proving the inventory's named deletion targets are
    absent before marking that row complete.
 
+The source gate and receipt procedure are defined in the
+[Shared Rust Legacy Deletion Runbook](shared-rust-legacy-deletion.md). Promotion
+reports do not update deletion state automatically, and a passing quantitative
+report cannot substitute for the stable-release or deletion-review receipts.
+
 Never commit runtime telemetry or synthetic passing evidence to the repository.
 The test suite constructs synthetic bundles in memory solely to prove evaluator
 behavior.
