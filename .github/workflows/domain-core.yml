@@ -122,6 +122,18 @@ jobs:
           cargo test --workspace
           cargo build -p openburnbar-domain-ffi
 
+      - name: Run deterministic domain fuzz smoke
+        working-directory: crates/openburnbar-domain-core
+        run: >-
+          cargo test -p openburnbar-domain-ffi --test fuzz_smoke --
+          --test-threads=1
+
+      - name: Guard complete-payload FFI performance
+        working-directory: crates/openburnbar-domain-core
+        run: >-
+          cargo test --release -p openburnbar-domain-ffi
+          --test performance_smoke -- --ignored --nocapture --test-threads=1
+
       - name: Test and verify union ABI manifest
         run: |
           python3 tests/test_domain_core_union_gate.py
