@@ -25,6 +25,10 @@ extension OpenBurnBarApp {
         router.openDashboard = {
             openDashboard(context: context)
         }
+        router.openCharts = {
+            openDashboard(context: context)
+            navigationCoordinator.setDashboardRoute(.charts)
+        }
         router.openConversationSearch = {
             openDashboard(context: context)
             navigationCoordinator.openConversationSearch()

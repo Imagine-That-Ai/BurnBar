@@ -218,6 +218,71 @@ COVERAGE_ALLOWLIST = {
         "by ComputerUseSecurityCallableClientTests and "
         "CloudVaultRotationPickupTests."
     ),
+    "AgentLens/App/AgentLensApp+LiveServices.swift": (
+        "SwiftUI scene-environment wiring for the live dashboard services. "
+        "The routed Charts destination is covered by ChartsRouteTests; chart "
+        "data decisions are covered by ChartsSnapshotBuilderTests."
+    ),
+    "AgentLens/App/AppCommandRouter.swift": (
+        "NSApplication command routing into dashboard windows and live scene "
+        "state cannot be driven deterministically by headless XCTest. Charts "
+        "route identity and selection behavior are covered by ChartsRouteTests."
+    ),
+    "AgentLens/App/AppDelegate+StatusItem.swift": (
+        "NSStatusItem and popover lifecycle glue requires a live AppKit status "
+        "bar. Popover content decisions remain covered by the dashboard and "
+        "provider-quota test surfaces."
+    ),
+    "AgentLens/App/OpenBurnBarStatusItemSupport.swift": (
+        "NSStatusItem button drawing, popover anchoring, and event-monitor glue "
+        "require a live window server. Chart aggregation and quota decisions "
+        "are covered independently by their model tests."
+    ),
+    "AgentLens/Models/Charts/ChartKind.swift": (
+        "Chart presentation metadata and SwiftUI-facing labels/styles. Layout "
+        "and route behavior are covered by ChartsPageLayoutTests and "
+        "ChartsRouteTests; series construction is covered separately."
+    ),
+    "AgentLens/Services/Charts/ChartInsightEngine.swift": (
+        "Live provider CLI execution and actor scheduling cannot run reliably "
+        "inside the headless app coverage lane. Parsing, cache identity, and "
+        "retry decisions are covered by ChartInsightEngineParsingTests."
+    ),
+    "AgentLens/Services/Charts/ChartsDataService.swift": (
+        "Live SQLite snapshot orchestration and detached refresh scheduling. "
+        "Its window boundaries are covered by DashboardUsageViewModelTests and "
+        "its derived output by ChartsSnapshotBuilderTests."
+    ),
+    "AgentLens/Support/AccessibilityIdentifiers.swift": (
+        "Accessibility identifier declarations and SwiftUI modifier glue are "
+        "consumed by UI automation rather than executable headless unit paths."
+    ),
+    "AgentLens/Views/Charts/": (
+        "SwiftUI and Swift Charts rendering, drag/drop, and glass-material glue "
+        "requires a live window server. Layout and navigation decisions are "
+        "covered by ChartsPageLayoutTests and ChartsRouteTests; chart data is "
+        "covered by ChartBucketingTests and ChartsSnapshotBuilderTests."
+    ),
+    "AgentLens/Views/Dashboard/": (
+        "SwiftUI dashboard rendering, liquid-glass composition, toolbar "
+        "interaction, and layout glue require a live window server. Navigation "
+        "and data decisions are covered by ChartsRouteTests, "
+        "ChartsPageLayoutTests, and DashboardUsageViewModelTests."
+    ),
+    "AgentLens/Views/Components/ProviderLogoView.swift": (
+        "Provider asset selection and SwiftUI image rendering require the app "
+        "resource bundle; provider grouping remains covered by "
+        "DashboardUsageViewModelTests."
+    ),
+    "AgentLens/Views/Popover/CloudWhisperStrip.swift": (
+        "Liquid-glass SwiftUI popover presentation requires a live window "
+        "server; underlying cloud state decisions are tested outside the view."
+    ),
+    "AgentLens/Views/Popover/MenuBarPopoverView.swift": (
+        "Menu-bar popover layout, material composition, and AppKit interaction "
+        "require a live status item and window server. Quota and dashboard "
+        "decision logic are covered by their dedicated tests."
+    ),
     "AgentLens/Services/CloudSync/CLIAgentMissionRequestListener.swift": (
         "Live Firestore listener and mission-state writer. The changed AAD "
         "construction and sealed-event payload logic are exercised through "
