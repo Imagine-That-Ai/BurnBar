@@ -151,12 +151,12 @@ function registry(complete) {
           ? 'scripts/linux-port/capture-parity-certification-preflight.mjs'
           : requirementId === 'P-39'
             ? 'scripts/linux-port/capture-p39-differential.mjs'
-          : requirementId === 'P-40'
-            ? 'scripts/linux-port/capture-p40-data-privacy.mjs'
-          : `scripts/linux-port/capture-${requirementId.toLowerCase()}.mjs`;
+            : requirementId === 'P-40'
+              ? 'scripts/linux-port/capture-p40-data-privacy.mjs'
+              : `scripts/linux-port/capture-${requirementId.toLowerCase()}.mjs`;
       const materializerProducerPath = RELEASE_ONLY.has(requirementId)
         ? 'scripts/linux-port/prepare-product-requirement-input.mjs'
-        : ['P-02', 'P-31', 'P-34', 'P-39'].includes(requirementId)
+        : ['P-02', 'P-31', 'P-34', 'P-39', 'P-40'].includes(requirementId)
           ? 'scripts/linux-port/finalize-product-feature-proof-closure.mjs'
           : `scripts/linux-port/materialize-${requirementId.toLowerCase()}.mjs`;
       return {
@@ -170,7 +170,7 @@ function registry(complete) {
         capture: {
           producerPath: captureProducerPath,
           entrypoint: 'requirement',
-        workflowPath: RELEASE_ONLY.has(requirementId)
+          workflowPath: RELEASE_ONLY.has(requirementId)
             ? '.github/workflows/linux-release.yml'
             : ['P-02', 'P-39', 'P-40'].includes(requirementId)
               ? '.github/workflows/linux-product-parity.yml'
