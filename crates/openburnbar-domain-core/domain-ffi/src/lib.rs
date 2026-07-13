@@ -1,5 +1,5 @@
 use openburnbar_domain_core::quota as core;
-use openburnbar_domain_core::{cloudvault, cloudvault_rewrap, quota};
+use openburnbar_domain_core::{cloudvault, cloudvault_rewrap, hermes, quota};
 use zeroize::{Zeroize, Zeroizing};
 
 pub const DOMAIN_CORE_ABI_VERSION: u32 = 2;
@@ -153,6 +153,42 @@ pub enum CloudVaultFfiError {
     InvalidRewrapText,
     #[error("the source envelope integrity hash did not verify")]
     RewrapIntegrityMismatch,
+}
+
+#[derive(Clone, Copy, Debug, uniffi::Enum)]
+pub enum HermesAadKind {
+    Request,
+    Key,
+    AuthenticatedRequest,
+    AuthenticatedKey,
+    Chunk,
+    MediaSealKey,
+    ControlSealKey,
+    GatewayEvent,
+    GatewayEventKey,
+    GatewayMessage,
+    GatewayMessageKey,
+    GatewayAttachmentKey,
+    GatewayAttachmentManifest,
+    GatewayAttachmentBody,
+}
+
+#[derive(Debug, thiserror::Error, uniffi::Error)]
+pub enum HermesFfiError {
+    #[error("Hermes AAD argument count does not match its domain")]
+    InvalidAadArguments,
+    #[error("Hermes symmetric keys must be exactly 32 bytes")]
+    InvalidKeyLength,
+    #[error("Hermes AES-GCM nonces must be exactly 12 bytes")]
+    InvalidNonceLength,
+    #[error("Hermes ciphertext is malformed")]
+    InvalidCiphertext,
+    #[error("Hermes AES-GCM authentication failed")]
+    AuthenticationFailed,
+    #[error("Hermes HKDF output length is invalid")]
+    InvalidHkdfLength,
+    #[error("Hermes HMAC initialization failed")]
+    HmacFailure,
 }
 
 #[derive(Clone, Copy, Debug, uniffi::Enum)]
@@ -331,8 +367,116 @@ pub fn cloud_vault_expected_session_body_hash(
 }
 
 #[uniffi::export]
-pub fn cloud_vault_aes_gcm_seal_detached(
+pub fn hermes_relay_aad(
+    kind: HermesAadKind,
+    arguments: Vec<String>,
+) -> Result<Vec<u8>, HermesFfiError> {
+    hermes::aad(kind.into(), &arguments).map_err(Into::into)
+}
+
+#[uniffi::export]
+pub fn hermes_key_wrap_info_v1(aad: Vec<u8>) -> Vec<u8> {
+    hermes::key_wrap_info_v1(&aad)
+}
+
+#[uniffi::export]
+pub fn hermes_key_wrap_info_v2(
+    aad: Vec<u8>,
+    enc: Vec<u8>,
+    recipient_public_key: Vec<u8>,
+    sender_public_key: Vec<u8>,
+) -> Vec<u8> {
+    hermes::key_wrap_info_v2(&aad, &enc, &recipient_public_key, &sender_public_key)
+}
+
+#[uniffi::export]
+pub fn hermes_hpke_v3_info(aad: Vec<u8>) -> Vec<u8> {
+    hermes::hpke_v3_info(&aad)
+}
+
+#[uniffi::export]
+pub fn hermes_hkdf_sha256(
+    mut input_key_material: Vec<u8>,
+    salt: Vec<u8>,
+    info: Vec<u8>,
+    output_byte_count: u32,
+) -> Result<Vec<u8>, HermesFfiError> {
+    let result = hermes::hkdf_sha256(
+        &input_key_material,
+        &salt,
+        &info,
+        output_byte_count as usize,
+    )
+    .map(|output| output.to_vec())
+    .map_err(Into::into);
+    input_key_material.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn hermes_sha256(bytes: Vec<u8>) -> Vec<u8> {
+    hermes::sha256(&bytes)
+}
+
+#[uniffi::export]
+pub fn hermes_hmac_sha256(mut key: Vec<u8>, data: Vec<u8>) -> Result<Vec<u8>, HermesFfiError> {
+    let output = hermes::hmac_sha256(&key, &data).map_err(Into::into);
+    key.zeroize();
+    output
+}
+
+#[uniffi::export]
+// reason: explicit fields preserve the versioned ratchet wire contract across UniFFI.
+#[allow(clippy::too_many_arguments, reason = "wire fields")]
+pub fn hermes_ratchet_envelope_aad(
+    associated_data: Vec<u8>,
+    algorithm: String,
+    session_id: String,
+    sender_device_id: String,
+    receiver_device_id: String,
+    ratchet_public_key_base64: String,
+    version: u64,
+    previous_chain_length: u64,
+    message_number: u64,
+    epoch: u64,
+) -> Vec<u8> {
+    hermes::ratchet_envelope_aad(
+        &associated_data,
+        &algorithm,
+        &session_id,
+        &sender_device_id,
+        &receiver_device_id,
+        &ratchet_public_key_base64,
+        version,
+        previous_chain_length,
+        message_number,
+        epoch,
+    )
+}
+
+#[uniffi::export]
+pub fn hermes_gateway_relay_safety_code(
+    agent_public_key: Vec<u8>,
+    phone_public_key: Vec<u8>,
+) -> String {
+    hermes::gateway_relay_safety_code(&agent_public_key, &phone_public_key)
+}
+
+#[uniffi::export]
+pub fn hermes_seal_base64(
     plaintext: Vec<u8>,
+    mut key: Vec<u8>,
+    aad: Vec<u8>,
+    nonce: Vec<u8>,
+) -> Result<String, HermesFfiError> {
+    let result = hermes::seal_base64(&plaintext, &key, &aad, &nonce).map_err(Into::into);
+    key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn cloud_vault_aes_gcm_seal_detached(
+    mut plaintext: Vec<u8>,
     mut key: Vec<u8>,
     nonce: Vec<u8>,
     aad: Vec<u8>,
@@ -340,19 +484,56 @@ pub fn cloud_vault_aes_gcm_seal_detached(
     let result = cloudvault::aes_gcm_seal_detached(&plaintext, &key, &nonce, &aad)
         .map(Into::into)
         .map_err(Into::into);
+    plaintext.zeroize();
+    key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn hermes_open_base64(
+    ciphertext: String,
+    mut key: Vec<u8>,
+    aad: Vec<u8>,
+) -> Result<Vec<u8>, HermesFfiError> {
+    let result = hermes::open_base64(&ciphertext, &key, &aad).map_err(Into::into);
+    key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn hermes_seal_combined(
+    mut plaintext: Vec<u8>,
+    mut key: Vec<u8>,
+    aad: Vec<u8>,
+    nonce: Vec<u8>,
+) -> Result<Vec<u8>, HermesFfiError> {
+    let result = hermes::seal_combined(&plaintext, &key, &aad, &nonce).map_err(Into::into);
+    plaintext.zeroize();
     key.zeroize();
     result
 }
 
 #[uniffi::export]
 pub fn cloud_vault_aes_gcm_seal_combined(
-    plaintext: Vec<u8>,
+    mut plaintext: Vec<u8>,
     mut key: Vec<u8>,
     nonce: Vec<u8>,
     aad: Vec<u8>,
 ) -> Result<Vec<u8>, CloudVaultFfiError> {
     let result =
         cloudvault::aes_gcm_seal_combined(&plaintext, &key, &nonce, &aad).map_err(Into::into);
+    plaintext.zeroize();
+    key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn hermes_open_combined(
+    combined: Vec<u8>,
+    mut key: Vec<u8>,
+    aad: Vec<u8>,
+) -> Result<Vec<u8>, HermesFfiError> {
+    let result = hermes::open_combined(&combined, &key, &aad).map_err(Into::into);
     key.zeroize();
     result
 }
@@ -565,6 +746,41 @@ impl From<CloudVaultHashPurpose> for cloudvault::CloudVaultHashPurpose {
             CloudVaultHashPurpose::SessionBody => Self::SessionBody,
             CloudVaultHashPurpose::SessionChunk => Self::SessionChunk,
             CloudVaultHashPurpose::ProjectMemoryContent => Self::ProjectMemoryContent,
+        }
+    }
+}
+
+impl From<HermesAadKind> for hermes::AadKind {
+    fn from(value: HermesAadKind) -> Self {
+        match value {
+            HermesAadKind::Request => Self::Request,
+            HermesAadKind::Key => Self::Key,
+            HermesAadKind::AuthenticatedRequest => Self::AuthenticatedRequest,
+            HermesAadKind::AuthenticatedKey => Self::AuthenticatedKey,
+            HermesAadKind::Chunk => Self::Chunk,
+            HermesAadKind::MediaSealKey => Self::MediaSealKey,
+            HermesAadKind::ControlSealKey => Self::ControlSealKey,
+            HermesAadKind::GatewayEvent => Self::GatewayEvent,
+            HermesAadKind::GatewayEventKey => Self::GatewayEventKey,
+            HermesAadKind::GatewayMessage => Self::GatewayMessage,
+            HermesAadKind::GatewayMessageKey => Self::GatewayMessageKey,
+            HermesAadKind::GatewayAttachmentKey => Self::GatewayAttachmentKey,
+            HermesAadKind::GatewayAttachmentManifest => Self::GatewayAttachmentManifest,
+            HermesAadKind::GatewayAttachmentBody => Self::GatewayAttachmentBody,
+        }
+    }
+}
+
+impl From<hermes::HermesError> for HermesFfiError {
+    fn from(value: hermes::HermesError) -> Self {
+        match value {
+            hermes::HermesError::InvalidAadArguments => Self::InvalidAadArguments,
+            hermes::HermesError::InvalidKeyLength => Self::InvalidKeyLength,
+            hermes::HermesError::InvalidNonceLength => Self::InvalidNonceLength,
+            hermes::HermesError::InvalidCiphertext => Self::InvalidCiphertext,
+            hermes::HermesError::AuthenticationFailed => Self::AuthenticationFailed,
+            hermes::HermesError::InvalidHkdfLength => Self::InvalidHkdfLength,
+            hermes::HermesError::HmacFailure => Self::HmacFailure,
         }
     }
 }

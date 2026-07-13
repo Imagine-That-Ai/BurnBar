@@ -5,9 +5,12 @@
 **Source inventory:** [Shared Rust Domain Inventory](SHARED_RUST_DOMAIN_INVENTORY.md)
 **First contract:** [`tests/fixtures/domain-core/quota/v1/`](../tests/fixtures/domain-core/quota/v1/)
 **CloudVault contract:** [`tests/fixtures/domain-core/cloudvault/v1/`](../tests/fixtures/domain-core/cloudvault/v1/)
+**Hermes contract:** [`tests/fixtures/domain-core/hermes/v1/`](../tests/fixtures/domain-core/hermes/v1/)
 
 The pilot is implemented behind `OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE`. Its
 accepted values are `legacy` (default), `shadow`, and `rust`.
+Hermes relay and ratchet byte transforms use
+`OPENBURNBAR_DOMAIN_CORE_HERMES_MODE` with the same values.
 
 ## Invariants
 
@@ -30,7 +33,7 @@ accepted values are `legacy` (default), `shadow`, and `rust`.
 | Q1 | Claude statusline quota | Swift + C# | Rust enforced on Apple/Windows; legacy parsers deleted |
 | Q2 | Codex, Cursor, Anthropic quota | Swift + C# | Four quota mechanisms share Rust parsing |
 | C1 | CloudVault primitives and envelopes | Swift + Kotlin + C# + browser TypeScript | KAT/cross-open clean; duplicated portable crypto copies deleted without exporting browser non-extractable keys |
-| C2 | Hermes relay HPKE/AAD/ratchet | Swift + Kotlin | Existing wire vectors pass through Rust sessions |
+| C2 | Hermes relay crypto and ratchet byte transforms | Swift + Kotlin | Existing wire vectors pass through Rust; P-256 custody and state mutation remain platform-owned |
 | P1 | Model pricing and cost arithmetic | Swift + TypeScript | Integer nano-USD Rust/WASM path enforced |
 
 Provider log parsing remains in Swift until a second real implementation exists,
@@ -55,6 +58,11 @@ persistence, timestamps, orchestration, and nonce generation. Its contract is
 `cloudvault-document-rewrap-contract.json`; production Swift/Kotlin flips remain
 separate rollout PRs. Search normalization remains last. Browser device
 private keys stay non-extractable WebCrypto handles throughout.
+
+Hermes C2 shares relay AAD, v1/v2 wrap-info construction, HPKE v3 info,
+SHA-256/safety codes, HKDF/HMAC, AES-GCM payload framing, and ratchet envelope
+AAD through ABI 2. CryptoKit/JCA continue to own P-256 private keys, ECDH,
+secure random generation, and ratchet state mutation.
 
 ## Rollout and deletion gates
 
