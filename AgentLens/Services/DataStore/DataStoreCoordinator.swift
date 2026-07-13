@@ -146,7 +146,11 @@ final class DataStoreCoordinator {
     /// comparisons. Callers should prefer this over `usageWindowSummary(in:)`
     /// when they only need cost or token totals for an arbitrary window.
     func usageTotals(in dateRange: ClosedRange<Date>?) async -> UsageTotals? {
-        try? await actor.fetchUsageTotals(in: dateRange)
+        do {
+            return try await actor.fetchUsageTotals(in: dateRange)
+        } catch {
+            return nil
+        }
     }
 
     var totalUsageSessionCount: Int {
