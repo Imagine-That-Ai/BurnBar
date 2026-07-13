@@ -93,7 +93,8 @@ function ledger(rows = [row()], overrides = {}) {
     environmentCoverage: [{
       id: 'test-linux',
       status: 'blocked',
-      evidencePath: 'docs/linux-port/evidence/environments/test-linux.json'
+      evidencePath: 'docs/linux-port/evidence/product-parity/environments/test-linux.json',
+      command: 'node scripts/linux-port/run-linux-matrix-harness.mjs --environment test-linux'
     }],
     ...overrides
   };
@@ -198,20 +199,71 @@ function writeReadyEvidence(repoRoot, targetRow, options = {}) {
 }
 
 function writeReadyEnvironmentEvidence(repoRoot, environmentId = 'test-linux') {
-  const artifactRel = `docs/linux-port/evidence/environments/${environmentId}/proof.txt`;
-  const artifactPath = path.join(repoRoot, artifactRel);
-  fs.mkdirSync(path.dirname(artifactPath), { recursive: true });
-  fs.writeFileSync(artifactPath, `environment proof for ${environmentId}\n`);
-  const digest = crypto.createHash('sha256').update(fs.readFileSync(artifactPath)).digest('hex');
-  const evidencePath = `docs/linux-port/evidence/environments/${environmentId}.json`;
+  const artifactRoot = `docs/linux-port/evidence/product-parity/environments/${environmentId}`;
+  const installedArtifactRel = `${artifactRoot}/installed-proof.txt`;
+  const accessibilityArtifactRel = `${artifactRoot}/accessibility-proof.txt`;
+  const installedArtifactPath = path.join(repoRoot, installedArtifactRel);
+  const accessibilityArtifactPath = path.join(repoRoot, accessibilityArtifactRel);
+  fs.mkdirSync(path.dirname(installedArtifactPath), { recursive: true });
+  fs.writeFileSync(installedArtifactPath, `installed environment proof for ${environmentId}\n`);
+  fs.writeFileSync(accessibilityArtifactPath, `accessibility environment proof for ${environmentId}\n`);
+  const digest = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+  const installedDigest = digest(installedArtifactPath);
+  const accessibilityDigest = digest(accessibilityArtifactPath);
+  const evidencePath = `docs/linux-port/evidence/product-parity/environments/${environmentId}.json`;
   fs.writeFileSync(path.join(repoRoot, evidencePath), `${JSON.stringify({
     schemaVersion: 1,
+    generatedAt: '2026-07-12T00:00:00.000Z',
     environmentId,
     targetHead: HEAD,
     status: 'passed',
-    artifacts: [{ path: artifactRel, sha256: digest }]
+    artifacts: [
+      { path: accessibilityArtifactRel, sha256: accessibilityDigest },
+      { path: installedArtifactRel, sha256: installedDigest }
+    ],
+    git: {
+      commit: HEAD,
+      branch: 'test',
+      remote: 'origin',
+      dirty: false,
+      dirtyEntries: [],
+      gitAvailable: true
+    },
+    declared: {
+      id: environmentId,
+      os: 'Test OS',
+      desktop: 'Test Desktop',
+      session: 'test',
+      architecture: 'x86_64'
+    },
+    detected: { platform: 'linux' },
+    evidenceInputs: {
+      installedEvidence: {
+        path: installedArtifactRel,
+        sha256: installedDigest,
+        passed: true,
+        commit: HEAD
+      },
+      accessibilityEvidence: {
+        path: accessibilityArtifactRel,
+        sha256: accessibilityDigest,
+        passed: true,
+        commit: HEAD
+      }
+    },
+    checks: [
+      { id: 'installed-package-evidence', passed: true, detail: 'ok' },
+      { id: 'installed-accessibility-evidence', passed: true, detail: 'ok' }
+    ],
+    blocked: [],
+    note: 'passed test environment evidence'
   }, null, 2)}\n`);
-  return { id: environmentId, status: 'ready', evidencePath };
+  return {
+    id: environmentId,
+    status: 'ready',
+    evidencePath,
+    command: `node scripts/linux-port/run-linux-matrix-harness.mjs --environment ${environmentId}`
+  };
 }
 
 function validate(
@@ -286,6 +338,25 @@ test('noncanonical evidence command is structural red even for blocked rows', ()
   );
   assert.equal(result.structuralPassed, false);
   assert.ok(result.structuralFailures.some((failure) => /evidence command must be exactly/.test(failure.message)));
+});
+
+test('environment coverage command and evidence path are canonical', () => {
+  const result = validate(
+    ledger([], {
+      environmentCoverage: [{
+        id: 'test-linux',
+        status: 'blocked',
+        evidencePath: 'docs/linux-port/evidence/environments/test-linux.json',
+        command: 'node scripts/linux-port/run-linux-matrix-harness.mjs --environment other'
+      }]
+    }),
+    repo(),
+    requirements([], ['test-linux']),
+    true
+  );
+  assert.equal(result.structuralPassed, false);
+  assert.ok(result.structuralFailures.some((failure) => /environment coverage command must be exactly/.test(failure.message)));
+  assert.ok(result.structuralFailures.some((failure) => /environment coverage evidence path must be exactly/.test(failure.message)));
 });
 
 test('missing requirement policy is structural red even for blocked rows', () => {
@@ -532,25 +603,47 @@ test('ready environment evidence must be current-HEAD and artifact-hash bound', 
   const root = repo();
   const ready = row('P-01', { status: 'ready' });
   writeReadyEvidence(root, ready, { environmentId: 'ubuntu' });
-  const artifactRel = 'artifacts/environment.txt';
-  const artifactPath = path.join(root, artifactRel);
-  fs.mkdirSync(path.dirname(artifactPath), { recursive: true });
-  fs.writeFileSync(artifactPath, 'environment proof\n');
-  const hash = crypto.createHash('sha256').update(fs.readFileSync(artifactPath)).digest('hex');
-  const evidenceRel = 'evidence/environment.json';
-  fs.mkdirSync(path.join(root, 'evidence'), { recursive: true });
-  fs.writeFileSync(path.join(root, evidenceRel), `${JSON.stringify({
-    schemaVersion: 1,
-    environmentId: 'ubuntu',
-    targetHead: 'old-head',
-    status: 'passed',
-    artifacts: [{ path: artifactRel, sha256: hash }]
-  })}\n`);
+  const environment = writeReadyEnvironmentEvidence(root, 'ubuntu');
+  const evidenceRel = environment.evidencePath;
+  const evidencePath = path.join(root, evidenceRel);
+  const evidence = JSON.parse(fs.readFileSync(evidencePath, 'utf8'));
+  evidence.targetHead = 'old-head';
+  fs.writeFileSync(evidencePath, `${JSON.stringify(evidence)}\n`);
   const value = ledger([ready], {
     semantics: { productParityClaim: true },
-    environmentCoverage: [{ id: 'ubuntu', status: 'ready', evidencePath: evidenceRel }]
+    environmentCoverage: [{
+      ...environment,
+      command: 'node scripts/linux-port/run-linux-matrix-harness.mjs --environment ubuntu'
+    }]
   });
   const result = validate(value, root, requirements(['P-01'], ['ubuntu']), true);
   assert.equal(result.passed, false);
   assert.ok(result.promotionFailures.some((failure) => /does not match current HEAD/.test(failure.message)));
+});
+
+test('ready environment cannot substitute an arbitrary repository artifact', () => {
+  const root = repo();
+  const ready = row('P-01', { status: 'ready' });
+  writeReadyEvidence(root, ready);
+  const environment = writeReadyEnvironmentEvidence(root);
+  const evidencePath = path.join(root, environment.evidencePath);
+  const evidence = JSON.parse(fs.readFileSync(evidencePath, 'utf8'));
+  const arbitraryRel = 'docs/linux-port/parity-ledger.json';
+  const arbitraryHash = crypto.createHash('sha256').update(fs.readFileSync(path.join(root, arbitraryRel))).digest('hex');
+  evidence.artifacts[0] = { path: arbitraryRel, sha256: arbitraryHash };
+  fs.writeFileSync(evidencePath, `${JSON.stringify(evidence)}\n`);
+  const result = validate(
+    ledger([ready], {
+      semantics: { productParityClaim: true },
+      environmentCoverage: [{
+        ...environment,
+        command: 'node scripts/linux-port/run-linux-matrix-harness.mjs --environment test-linux'
+      }]
+    }),
+    root,
+    requirements(),
+    true
+  );
+  assert.equal(result.promotionPassed, false);
+  assert.ok(result.promotionFailures.some((failure) => /not bound to a passed evidence input/.test(failure.message)));
 });

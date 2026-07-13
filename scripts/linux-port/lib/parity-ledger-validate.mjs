@@ -25,6 +25,12 @@ const REQUIRED_ROW_FIELDS = [
   'promotionCriterion',
   'environment'
 ];
+const REQUIRED_ENVIRONMENT_COVERAGE_FIELDS = [
+  'id',
+  'status',
+  'evidencePath',
+  'command'
+];
 
 const FORBIDDEN_HEAD_FIELDS = [
   'commit',
@@ -58,6 +64,24 @@ const RECEIPT_PRODUCER_FIELDS = [
 ];
 const PRODUCT_VALIDATOR_REPOSITORY = 'Imagine-That-Ai/BurnBar';
 const PRODUCT_VALIDATOR_WORKFLOW = 'github.com/Imagine-That-Ai/BurnBar/.github/workflows/linux-product-parity.yml';
+const ENVIRONMENT_ATTESTATION_FIELDS = [
+  'schemaVersion',
+  'generatedAt',
+  'environmentId',
+  'targetHead',
+  'status',
+  'artifacts',
+  'git',
+  'declared',
+  'detected',
+  'evidenceInputs',
+  'checks',
+  'blocked',
+  'note'
+];
+const ENVIRONMENT_INPUT_FIELDS = ['path', 'sha256', 'passed', 'commit'];
+const ENVIRONMENT_CHECK_FIELDS = ['id', 'passed', 'detail'];
+const ENVIRONMENT_GIT_FIELDS = ['commit', 'branch', 'remote', 'dirty', 'dirtyEntries', 'gitAvailable'];
 
 export const PRODUCT_ATTESTER_PATH = 'scripts/linux-port/attest-product-requirement.mjs';
 export const PRODUCT_EVIDENCE_POLICY_PATH = 'docs/linux-port/product-parity-evidence-policies.json';
@@ -627,6 +651,12 @@ function validateAttestation(attestation, row, policy, options, failPromotion, f
 }
 
 function validateEnvironmentAttestation(attestation, coverage, options, failPromotion, failStructural) {
+  const actualFields = attestation && typeof attestation === 'object' && !Array.isArray(attestation)
+    ? Object.keys(attestation).sort()
+    : [];
+  if (!sameStringArray(actualFields, [...ENVIRONMENT_ATTESTATION_FIELDS].sort())) {
+    failStructural(`${coverage.id} environment evidence fields are not canonical.`);
+  }
   if (attestation?.schemaVersion !== 1 || attestation?.environmentId !== coverage.id) {
     failPromotion(`environment evidence does not name ${coverage.id}.`);
   }
@@ -636,6 +666,134 @@ function validateEnvironmentAttestation(attestation, coverage, options, failProm
   if (attestation?.status !== 'passed') {
     failPromotion(`minimum support environment ${coverage.id} attestation is not passed.`);
   }
+  if (typeof attestation?.generatedAt !== 'string' || attestation.generatedAt.trim().length === 0) {
+    failStructural(`${coverage.id} environment evidence generatedAt is required.`);
+  }
+  if (typeof attestation?.note !== 'string' || attestation.note.trim().length === 0) {
+    failStructural(`${coverage.id} environment evidence note is required.`);
+  }
+
+  const gitFields = attestation.git && typeof attestation.git === 'object' && !Array.isArray(attestation.git)
+    ? Object.keys(attestation.git).sort()
+    : [];
+  if (!sameStringArray(gitFields, [...ENVIRONMENT_GIT_FIELDS].sort())) {
+    failStructural(`${coverage.id} environment evidence git fields are not canonical.`);
+  } else {
+    if (attestation.git.commit !== options.currentHead) {
+      failPromotion(`minimum support environment ${coverage.id} git commit does not match current HEAD.`);
+    }
+    if (attestation.git.dirty !== false
+        || !Array.isArray(attestation.git.dirtyEntries)
+        || attestation.git.dirtyEntries.length !== 0
+        || attestation.git.gitAvailable !== true) {
+      failPromotion(`minimum support environment ${coverage.id} git state is not a clean, available checkout.`);
+    }
+    for (const field of ['branch', 'remote']) {
+      if (typeof attestation.git[field] !== 'string' || attestation.git[field].trim().length === 0) {
+        failStructural(`${coverage.id} environment evidence git.${field} is required.`);
+      }
+    }
+  }
+
+  const evidenceInputs = attestation.evidenceInputs;
+  const inputFields = evidenceInputs && typeof evidenceInputs === 'object' && !Array.isArray(evidenceInputs)
+    ? Object.keys(evidenceInputs).sort()
+    : [];
+  if (!sameStringArray(inputFields, ['accessibilityEvidence', 'installedEvidence'].sort())) {
+    failStructural(`${coverage.id} environment evidence inputs are not canonical.`);
+  }
+  const inputArtifacts = new Map();
+  for (const inputName of ['installedEvidence', 'accessibilityEvidence']) {
+    const input = evidenceInputs?.[inputName];
+    const fields = input && typeof input === 'object' && !Array.isArray(input)
+      ? Object.keys(input).sort()
+      : [];
+    if (!sameStringArray(fields, [...ENVIRONMENT_INPUT_FIELDS].sort())) {
+      failStructural(`${coverage.id} ${inputName} fields are not canonical.`);
+      continue;
+    }
+    const resolved = resolveConfinedPath(options.repoRoot, input.path);
+    if (resolved.error) {
+      failStructural(`${coverage.id} ${inputName} ${resolved.error}: ${input.path ?? '<missing>'}.`);
+      continue;
+    }
+    if (!resolved.exists) {
+      failPromotion(`${coverage.id} ${inputName} does not exist: ${input.path}.`);
+      continue;
+    }
+    if (!fs.statSync(resolved.path).isFile()) {
+      failStructural(`${coverage.id} ${inputName} must be a regular file: ${input.path}.`);
+      continue;
+    }
+    if (!/^[a-f0-9]{64}$/u.test(input.sha256 ?? '')) {
+      failStructural(`${coverage.id} ${inputName} has an invalid SHA-256 digest.`);
+      continue;
+    }
+    if (sha256(resolved.path) !== input.sha256) {
+      failPromotion(`${coverage.id} ${inputName} hash mismatch: ${input.path}.`);
+    }
+    if (input.passed !== true || input.commit !== options.currentHead) {
+      failPromotion(`${coverage.id} ${inputName} is not a passed current-HEAD input.`);
+    }
+    inputArtifacts.set(input.path, input.sha256);
+  }
+  if (inputArtifacts.size !== 2) {
+    failPromotion(`minimum support environment ${coverage.id} must bind two distinct matrix evidence inputs.`);
+  }
+
+  const checks = Array.isArray(attestation.checks) ? attestation.checks : [];
+  if (checks.length === 0) {
+    failPromotion(`minimum support environment ${coverage.id} has no matrix checks.`);
+  }
+  const checkIds = new Set();
+  for (const check of checks) {
+    const fields = check && typeof check === 'object' && !Array.isArray(check)
+      ? Object.keys(check).sort()
+      : [];
+    if (!sameStringArray(fields, [...ENVIRONMENT_CHECK_FIELDS].sort())) {
+      failStructural(`${coverage.id} environment check fields are not canonical.`);
+      continue;
+    }
+    if (checkIds.has(check.id)) {
+      failStructural(`${coverage.id} environment checks contain a duplicate id: ${check.id}.`);
+    }
+    checkIds.add(check.id);
+    if (typeof check.id !== 'string' || check.id.trim().length === 0
+        || typeof check.detail !== 'string' || check.detail.trim().length === 0) {
+      failStructural(`${coverage.id} environment checks require id and detail.`);
+    }
+    if (check.passed !== true) {
+      failPromotion(`minimum support environment ${coverage.id} has a failed matrix check: ${check.id}.`);
+    }
+  }
+  const declaredEnvironment = options.requirements?.minimumSupportMatrix?.find(
+    (environment) => environment.id === coverage.id
+  );
+  if (declaredEnvironment?.desktop && declaredEnvironment?.session && declaredEnvironment?.architecture) {
+    const expectedCheckIds = [
+      'os-linux',
+      'checkout-clean',
+      'session-bus',
+      'display-server',
+      'runtime-directory',
+      'declared-os',
+      'declared-architecture',
+      'declared-session',
+      'declared-desktop',
+      declaredEnvironment.desktop === 'KDE Plasma' ? 'kwallet-query' : 'secret-tool',
+      'installed-package-evidence',
+      'installed-accessibility-evidence'
+    ];
+    if (!sameStringArray([...checkIds], expectedCheckIds)) {
+      failStructural(`${coverage.id} environment checks do not match the canonical matrix harness.`);
+    }
+  }
+  if (!Array.isArray(attestation.blocked)) {
+    failStructural(`${coverage.id} environment blocked must be an array.`);
+  } else if (attestation.blocked.length > 0) {
+    failPromotion(`minimum support environment ${coverage.id} has blocked capabilities.`);
+  }
+
   if (!Array.isArray(attestation?.artifacts) || attestation.artifacts.length === 0) {
     failPromotion(`minimum support environment ${coverage.id} has no attested artifacts.`);
     return;
@@ -672,6 +830,14 @@ function validateEnvironmentAttestation(attestation, coverage, options, failProm
     } else if (sha256(resolved.path) !== artifact.sha256) {
       failPromotion(`${coverage.id} attested artifact hash mismatch: ${artifact.path}.`);
     }
+    if (inputArtifacts.get(artifact.path) !== artifact.sha256) {
+      failPromotion(`${coverage.id} attested artifact is not bound to a passed evidence input: ${artifact.path}.`);
+    }
+  }
+  if (paths.size !== inputArtifacts.size
+      || [...inputArtifacts].some(([artifactPath, digest]) => !paths.has(artifactPath)
+        || attestation.artifacts.find((artifact) => artifact.path === artifactPath)?.sha256 !== digest)) {
+    failPromotion(`${coverage.id} attested artifact set does not match its passed evidence inputs.`);
   }
 }
 
@@ -875,6 +1041,11 @@ export function validateParityLedger(ledger, options) {
   for (const coverage of coverageRows) {
     if (coverageById.has(coverage.id)) structural(`duplicate environment coverage row: ${coverage.id}`);
     coverageById.set(coverage.id, coverage);
+    for (const field of REQUIRED_ENVIRONMENT_COVERAGE_FIELDS) {
+      if (coverage[field] === undefined || coverage[field] === '') {
+        structural(`missing required environment coverage field: ${field}`, coverage);
+      }
+    }
     if (!requiredEnvironments.some((required) => required.id === coverage.id)) {
       structural(`unknown environment coverage row: ${coverage.id}`);
     }
@@ -885,6 +1056,14 @@ export function validateParityLedger(ledger, options) {
     }
     if (!['ready', 'blocked'].includes(coverage.status)) {
       structural(`environment coverage ${coverage.id} status must be ready or blocked.`);
+    }
+    const expectedEnvironmentCommand = `node scripts/linux-port/run-linux-matrix-harness.mjs --environment ${coverage.id}`;
+    if (coverage.command !== expectedEnvironmentCommand) {
+      structural(`environment coverage command must be exactly: ${expectedEnvironmentCommand}`, coverage);
+    }
+    const expectedEnvironmentEvidencePath = `docs/linux-port/evidence/product-parity/environments/${coverage.id}.json`;
+    if (coverage.evidencePath !== expectedEnvironmentEvidencePath) {
+      structural(`environment coverage evidence path must be exactly: ${expectedEnvironmentEvidencePath}`, coverage);
     }
     const evidence = resolveConfinedPath(options.repoRoot, coverage.evidencePath);
     if (evidence.error) {
