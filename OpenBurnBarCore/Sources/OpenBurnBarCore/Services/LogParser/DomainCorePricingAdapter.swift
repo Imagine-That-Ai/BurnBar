@@ -69,6 +69,9 @@ enum DomainCorePricingAdapter {
                 rates: rates,
                 buckets: buckets
             )
+            guard nanoUsd <= UInt64(maximumExactlyRepresentableInteger) else {
+                return rejected(mode: mode, event: "domain_core.pricing.inexact_output", legacy: legacy)
+            }
             let rust = Double(nanoUsd) / nanoUsdPerUsd
             if mode == .rust { return rust }
             let swift = legacy()

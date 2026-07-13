@@ -6,6 +6,8 @@ use super::{
     QuotaSourceKind, QuotaUnit, QuotaWindowKind, MAX_QUOTA_PAYLOAD_BYTES,
 };
 
+const MAX_USER_EMAIL_BYTES: usize = 320;
+
 pub fn parse_cursor_usage_quota(payload: &[u8], user_email: Option<&str>) -> QuotaParseResult {
     if payload.len() > MAX_QUOTA_PAYLOAD_BYTES {
         return QuotaParseResult {
@@ -105,7 +107,11 @@ pub fn parse_cursor_usage_quota(payload: &[u8], user_email: Option<&str>) -> Quo
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| "Cursor".to_owned());
     let suffix = user_email
-        .filter(|value| !value.is_empty())
+        .filter(|value| {
+            !value.is_empty()
+                && value.len() <= MAX_USER_EMAIL_BYTES
+                && !value.chars().any(char::is_control)
+        })
         .map_or_else(String::new, |value| format!(" ({value})"));
     let unlimited = boolean(&root, "is_unlimited", "isUnlimited").unwrap_or(false);
     QuotaParseResult {
@@ -250,5 +256,21 @@ mod tests {
         let actual = parse_cursor_usage_quota(b"not json", None);
         assert_eq!(actual.status, QuotaParseStatus::Malformed);
         assert_eq!(actual.snapshot.confidence, QuotaConfidence::Unavailable);
+    }
+
+    #[test]
+    fn invalid_user_email_is_omitted_from_status() {
+        for invalid in [
+            "a".repeat(MAX_USER_EMAIL_BYTES + 1),
+            "user\n@example.com".to_owned(),
+        ] {
+            let actual = parse_cursor_usage_quota(b"{}", Some(&invalid));
+            assert_eq!(actual.snapshot.status_message, "Cursor — Capped plan.");
+        }
+        let valid = parse_cursor_usage_quota(b"{}", Some("user@example.com"));
+        assert_eq!(
+            valid.snapshot.status_message,
+            "Cursor (user@example.com) — Capped plan."
+        );
     }
 }

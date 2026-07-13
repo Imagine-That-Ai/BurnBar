@@ -181,6 +181,7 @@ function encodeTokenCount(value: number): bigint {
 }
 
 function nanoUsdToUsd(value: bigint): number {
+  if (value > BigInt(Number.MAX_SAFE_INTEGER)) throw new DomainCorePricingError();
   return Number(value) / NANO_USD_PER_USD;
 }
 

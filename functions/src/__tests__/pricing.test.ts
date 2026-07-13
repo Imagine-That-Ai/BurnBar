@@ -188,6 +188,7 @@ describe("shared domain-core pricing", () => {
     { rates: { inputPerMToken: -1, outputPerMToken: 1, cacheReadPerMToken: 0 }, inputTokens: 1 },
     { rates: { inputPerMToken: Number.NaN, outputPerMToken: 1, cacheReadPerMToken: 0 }, inputTokens: 1 },
     { rates: { inputPerMToken: 0.0000000001, outputPerMToken: 1, cacheReadPerMToken: 0 }, inputTokens: 1 },
+    { rates: { inputPerMToken: 1, outputPerMToken: 1, cacheReadPerMToken: 0 }, inputTokens: Number.MAX_SAFE_INTEGER },
     { rates: { inputPerMToken: 9_007_199.25474099, outputPerMToken: 1, cacheReadPerMToken: 0 }, inputTokens: Number.MAX_SAFE_INTEGER },
   ])("rejects invalid or overflowing fixed-point input in rust mode", ({ rates, inputTokens }) => {
     let legacyCalls = 0;

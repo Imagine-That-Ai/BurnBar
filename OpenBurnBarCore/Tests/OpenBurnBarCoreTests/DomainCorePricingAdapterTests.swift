@@ -57,6 +57,7 @@ final class DomainCorePricingAdapterTests: XCTestCase {
             (-1, 1),
             (.nan, 1),
             (0.000_000_000_1, 1),
+            (1, Int.max),
             (9_007_199.254_740_99, Int.max),
         ]
         for testCase in cases {
