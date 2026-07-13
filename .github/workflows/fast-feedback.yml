@@ -799,7 +799,7 @@ jobs:
           fi
           git diff --name-only "$base" "$head" > /tmp/fast-feedback-changed-paths.txt
           cat /tmp/fast-feedback-changed-paths.txt
-          if grep -Eq '^(crates/(openburnbar-iroh|project-code-static-parser)/|\.github/workflows/fast-feedback\.yml$|\.cargo/config(\.toml)?$|\.?rustfmt\.toml$|clippy\.toml$|rust-toolchain(\.toml)?$|Cargo\.(toml|lock)$)' /tmp/fast-feedback-changed-paths.txt; then
+          if grep -Eq '^(crates/(openburnbar-iroh|openburnbar-domain-core|project-code-static-parser)/|\.github/workflows/fast-feedback\.yml$|\.cargo/config(\.toml)?$|\.?rustfmt\.toml$|clippy\.toml$|rust-toolchain(\.toml)?$|Cargo\.(toml|lock)$)' /tmp/fast-feedback-changed-paths.txt; then
             echo "rust_changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "rust_changed=false" >> "$GITHUB_OUTPUT"
@@ -828,6 +828,7 @@ jobs:
         with:
           workspaces: |
             crates/openburnbar-iroh -> target
+            crates/openburnbar-domain-core -> target
             crates/project-code-static-parser -> target
 
       - name: cargo fmt check (openburnbar-iroh)
@@ -835,6 +836,9 @@ jobs:
 
       - name: cargo fmt check (project-code-static-parser)
         run: cargo fmt --manifest-path crates/project-code-static-parser/Cargo.toml --check
+
+      - name: cargo fmt check (openburnbar-domain-core)
+        run: cargo fmt --manifest-path crates/openburnbar-domain-core/Cargo.toml --all --check
 
       - name: cargo clippy deny warnings (openburnbar-iroh)
         run: |
@@ -846,6 +850,13 @@ jobs:
       - name: cargo clippy deny warnings (project-code-static-parser)
         run: |
           cargo clippy --manifest-path crates/project-code-static-parser/Cargo.toml --all-targets -- \
+            -D warnings \
+            -D clippy::unwrap_used \
+            -D clippy::expect_used
+
+      - name: cargo clippy deny warnings (openburnbar-domain-core)
+        run: |
+          cargo clippy --manifest-path crates/openburnbar-domain-core/Cargo.toml --workspace --all-targets -- \
             -D warnings \
             -D clippy::unwrap_used \
             -D clippy::expect_used
@@ -873,6 +884,9 @@ jobs:
 
       - name: cargo deny check (openburnbar-iroh)
         run: cd crates/openburnbar-iroh && cargo deny check
+
+      - name: cargo deny check (openburnbar-domain-core)
+        run: cd crates/openburnbar-domain-core && cargo deny check
 
   # ── Security vitest + iroh bindgen gate ───────────────────────────────────
   functions-security-fast:
