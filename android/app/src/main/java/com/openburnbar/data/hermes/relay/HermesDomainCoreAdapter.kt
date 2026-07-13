@@ -133,7 +133,7 @@ internal object HermesDomainCoreAdapter {
         return value
     }
 
-    private fun nativeReady(): Boolean = runCatching { domainCoreAbiVersion() == 2u }.getOrDefault(false)
+    private fun nativeReady(): Boolean = runCatching { domainCoreAbiVersion() == 3u }.getOrDefault(false)
 
     private fun <T> unavailable(
         operation: String,

@@ -107,7 +107,7 @@ struct HermesGatewayAttachmentRecord: Identifiable, Hashable, Sendable {
     /// primitive shared by the manifest-only and full-body paths.
     func unwrapBodyKey(using keypair: HermesGatewayRelayKeypair, uid: String, pinnedSenderKey: String?) -> Data? {
         guard isRelaySealed, let wrappedKey, let pinnedSenderKey else { return nil }
-        let keyAAD = HermesRelayCrypto.gatewayAttachmentKeyAAD(uid: uid, clientId: clientId, attachmentId: id)
+        let keyAAD = try HermesRelayCrypto.gatewayAttachmentKeyAAD(uid: uid, clientId: clientId, attachmentId: id)
         if relayKeyVersion == HermesRelayCrypto.gatewayRelayKeyVersion {
             guard relayEncryption == HermesRelayCrypto.algorithm else { return nil }
             return try? HermesRelayCrypto.unwrapSymmetricKey(
@@ -143,7 +143,7 @@ struct HermesGatewayAttachmentRecord: Identifiable, Hashable, Sendable {
         let manifestData = try HermesRelayCrypto.openBase64(
             ciphertext: payloadCiphertext,
             keyData: bodyKey,
-            aad: HermesRelayCrypto.gatewayAttachmentManifestAAD(uid: uid, clientId: clientId, attachmentId: id)
+            aad: try HermesRelayCrypto.gatewayAttachmentManifestAAD(uid: uid, clientId: clientId, attachmentId: id)
         )
         guard let manifest = HermesGatewayAttachmentManifest(jsonData: manifestData) else {
             throw FunctionsError.gatewayAttachmentUnreadable
@@ -167,7 +167,7 @@ struct HermesGatewayAttachmentRecord: Identifiable, Hashable, Sendable {
         return try HermesRelayCrypto.openBase64(
             ciphertext: ciphertextBase64,
             keyData: bodyKey,
-            aad: HermesRelayCrypto.gatewayAttachmentBodyAAD(uid: uid, clientId: clientId, attachmentId: id)
+            aad: try HermesRelayCrypto.gatewayAttachmentBodyAAD(uid: uid, clientId: clientId, attachmentId: id)
         )
     }
 

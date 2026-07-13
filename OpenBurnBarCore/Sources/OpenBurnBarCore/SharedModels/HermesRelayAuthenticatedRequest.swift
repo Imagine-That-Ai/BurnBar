@@ -227,7 +227,7 @@ public struct HermesRelayAuthenticatedRequestOpener: Sendable {
         }
         try await verifiedSignalIdentity(for: trustContext)
 
-        let keyAAD = HermesRelayCrypto.authenticatedKeyAAD(
+        let keyAAD = try HermesRelayCrypto.authenticatedKeyAAD(
             uid: uid,
             connectionID: connectionID,
             requestID: requestID,
@@ -255,7 +255,7 @@ public struct HermesRelayAuthenticatedRequestOpener: Sendable {
         let plaintext = try HermesRelayCrypto.openBase64(
             ciphertext: payloadCiphertext,
             keyData: keyData,
-            aad: HermesRelayCrypto.authenticatedRequestAAD(
+            aad: try HermesRelayCrypto.authenticatedRequestAAD(
                 uid: uid,
                 connectionID: connectionID,
                 requestID: requestID,

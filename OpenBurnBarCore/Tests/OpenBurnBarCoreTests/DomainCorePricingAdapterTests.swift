@@ -10,7 +10,7 @@ final class DomainCorePricingAdapterTests: XCTestCase {
         for vector in fixture.costVectors {
             for mode in availableModes {
                 var legacyCalls = 0
-                let actual = DomainCorePricingAdapter.cost(
+                let actual = try XCTUnwrap(DomainCorePricingAdapter.cost(
                     inputPerMToken: vector.rates.inputUsdPerMToken,
                     outputPerMToken: vector.rates.outputUsdPerMToken,
                     cacheCreationPerMToken: vector.rates.cacheCreationUsdPerMToken,
@@ -33,7 +33,7 @@ final class DomainCorePricingAdapterTests: XCTestCase {
                             + Double(vector.buckets.cacheReadTokens) / 1_000_000
                             * vector.rates.cacheReadUsdPerMToken
                     }
-                )
+                ))
                 XCTAssertLessThanOrEqual(
                     abs(actual * 1_000_000_000 - Double(vector.expectedCostNanoUsd)),
                     0.500_001
@@ -77,7 +77,7 @@ final class DomainCorePricingAdapterTests: XCTestCase {
                     return -1
                 }
             )
-            XCTAssertTrue(actual.isNaN)
+            XCTAssertNil(actual)
             XCTAssertEqual(legacyCalls, 0)
         }
     }

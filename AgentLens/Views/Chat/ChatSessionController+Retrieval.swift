@@ -99,7 +99,7 @@ extension ChatSessionController {
         }()
 
         let pricing = OpenBurnBarCore.ModelPricing.lookup(model: model)
-        let cost = pricing.cost(
+        let cost = try pricing.cost(
             inputTokens: usageSnapshot.inputTokens,
             outputTokens: usageSnapshot.outputTokens,
             cacheCreationTokens: usageSnapshot.cacheCreationTokens,

@@ -43,12 +43,12 @@ enum DomainCorePricingAdapter {
         cacheReadTokens: Int,
         environment: [String: String],
         legacy: () -> Double
-    ) -> Double {
+    ) -> Double? {
         let mode = DomainCorePricingMigrationMode.resolve(environment: environment)
         guard mode != .legacy else { return legacy() }
 
         #if canImport(OpenBurnBarDomainCoreFFI)
-        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 2 else {
+        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3 else {
             return rejected(mode: mode, event: "domain_core.pricing.abi_mismatch", legacy: legacy)
         }
         guard let rates = encodeRates(
@@ -147,8 +147,8 @@ enum DomainCorePricingAdapter {
         mode: DomainCorePricingMigrationMode,
         event: String,
         legacy: () -> Double
-    ) -> Double {
+    ) -> Double? {
         ParserDiagnostics.silentFailure(event)
-        return mode == .shadow ? legacy() : .nan
+        return mode == .shadow ? legacy() : nil
     }
 }

@@ -656,9 +656,9 @@ fn rewrap_envelope(
             let combined = base64_decode_strict(sealed_box_base64)?;
             let plaintext = Zeroizing::new(aes_gcm_open_combined(&combined, old_key, &source_aad)?);
             let integrity_matches = match *schema_version {
-                1 => plaintext_sha256
-                    .as_ref()
-                    .is_some_and(|expected| sha256_hex(&plaintext) == *expected),
+                1 => plaintext_sha256.as_ref().is_some_and(|expected| {
+                    sha256_hex(&plaintext).is_ok_and(|hash| hash == *expected)
+                }),
                 CURRENT_SCHEMA_VERSION => {
                     *integrity_hash_version == Some(BLOB_INTEGRITY_HASH_VERSION)
                         && plaintext_hmac.as_ref().is_some_and(|expected| {
@@ -1267,7 +1267,7 @@ mod tests {
                     schema_version: 1,
                     algorithm: AES_GCM_ALGORITHM.to_owned(),
                     key_version: 1,
-                    plaintext_sha256: Some(sha256_hex(blob_plaintext)),
+                    plaintext_sha256: Some(sha256_hex(blob_plaintext)?),
                     plaintext_hmac: None,
                     integrity_hash_version: None,
                     sealed_box_base64: base64_encode(&blob_combined),

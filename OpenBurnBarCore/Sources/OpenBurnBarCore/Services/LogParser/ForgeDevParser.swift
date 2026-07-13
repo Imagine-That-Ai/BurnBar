@@ -74,7 +74,7 @@ public final class ForgeDevParser: LogParser, Sendable {
 
         for jsonlFile in jsonlFiles {
             let sessionId = jsonlFile.deletingPathExtension().lastPathComponent
-            if let pair = parseJsonlSession(file: jsonlFile, sessionId: sessionId, projectName: sessionId),
+            if let pair = try parseJsonlSession(file: jsonlFile, sessionId: sessionId, projectName: sessionId),
                let usage = pair.usage {
                 usages.append(usage)
                 if let conversation = pair.conversation {
@@ -88,7 +88,7 @@ public final class ForgeDevParser: LogParser, Sendable {
             let files = (try? fm.contentsOfDirectory(at: projectDir, includingPropertiesForKeys: nil)) ?? [] // try?-ok(dir listing fallback)
             for file in files where file.pathExtension == "jsonl" {
                 let sessionId = file.deletingPathExtension().lastPathComponent
-                if let pair = parseJsonlSession(file: file, sessionId: sessionId, projectName: projectName),
+                if let pair = try parseJsonlSession(file: file, sessionId: sessionId, projectName: projectName),
                    let usage = pair.usage {
                     usages.append(usage)
                     if let conversation = pair.conversation {
@@ -182,7 +182,7 @@ public final class ForgeDevParser: LogParser, Sendable {
             let startTime = metricsStart ?? createdAt ?? Date()
             let endTime = updatedAt ?? startTime
 
-            if let usage = usage(
+            if let usage = try usage(
                 sessionId: sessionId,
                 projectName: projectName,
                 model: model,
@@ -337,7 +337,7 @@ public final class ForgeDevParser: LogParser, Sendable {
         file: URL,
         sessionId: String,
         projectName: String
-    ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
+    ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return nil } // try?-ok(guard-return-nil open)
         defer { try? handle.close() } // try?-ok(file handle teardown)
 
@@ -388,7 +388,7 @@ public final class ForgeDevParser: LogParser, Sendable {
             summary.outputTokens = estimated.output
         }
 
-        let usage = usage(
+        let usage = try usage(
             sessionId: sessionId,
             projectName: projectName,
             model: TokenExtractionUtility.normalizeModelName(summary.model ?? "forge"),
@@ -424,11 +424,11 @@ public final class ForgeDevParser: LogParser, Sendable {
         cacheReadTokens: Int,
         startTime: Date,
         endTime: Date
-    ) -> TokenUsage? {
+    ) throws -> TokenUsage? {
         guard inputTokens > 0 || outputTokens > 0 || cacheReadTokens > 0 else { return nil }
 
         let pricing = ModelPricing.lookup(model: model)
-        let cost = pricing.cost(
+        let cost = try pricing.cost(
             inputTokens: inputTokens,
             outputTokens: outputTokens,
             cacheReadTokens: cacheReadTokens

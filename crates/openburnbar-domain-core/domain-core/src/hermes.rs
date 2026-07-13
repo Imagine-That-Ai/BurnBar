@@ -405,6 +405,26 @@ mod tests {
                 .as_str()
                 .ok_or(HermesError::InvalidCiphertext)?
         );
+        let agent = BASE64
+            .decode(
+                fixture["safetyCode"]["agentPublicKeyBase64"]
+                    .as_str()
+                    .ok_or(HermesError::InvalidCiphertext)?,
+            )
+            .map_err(|_| HermesError::InvalidCiphertext)?;
+        let phone = BASE64
+            .decode(
+                fixture["safetyCode"]["phonePublicKeyBase64"]
+                    .as_str()
+                    .ok_or(HermesError::InvalidCiphertext)?,
+            )
+            .map_err(|_| HermesError::InvalidCiphertext)?;
+        assert_eq!(
+            gateway_relay_safety_code(&agent, &phone)?,
+            fixture["safetyCode"]["display"]
+                .as_str()
+                .ok_or(HermesError::InvalidCiphertext)?
+        );
         Ok(())
     }
 

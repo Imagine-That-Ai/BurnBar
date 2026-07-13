@@ -105,13 +105,6 @@ fn make_bucket(
     window_kind: QuotaWindowKind,
     values: BucketValues,
 ) -> Option<QuotaBucket> {
-    if values
-        .limit
-        .zip(values.remaining)
-        .is_some_and(|(limit, remaining)| remaining > limit)
-    {
-        return None;
-    }
     let used_value = values
         .limit
         .zip(values.remaining)
@@ -191,5 +184,19 @@ mod tests {
                 .status,
             QuotaParseStatus::Empty
         );
+    }
+
+    #[test]
+    fn remaining_above_limit_preserves_legacy_bucket_math() {
+        let actual = parse_anthropic_rate_limit_headers(
+            br#"{"anthropic-ratelimit-unified-tokens-limit":"100","anthropic-ratelimit-unified-tokens-remaining":"125"}"#,
+            0,
+            AnthropicCredentialShape::OauthBearer,
+        );
+        assert_eq!(actual.status, QuotaParseStatus::Parsed);
+        let bucket = &actual.snapshot.buckets[0];
+        assert_eq!(bucket.used_value, Some(-25.0));
+        assert_eq!(bucket.remaining_value, Some(125.0));
+        assert_eq!(bucket.used_percent, Some(0.0));
     }
 }

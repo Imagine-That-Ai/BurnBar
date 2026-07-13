@@ -310,7 +310,7 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
         let resolvedStart = startTime ?? conv.startTime ?? Date()
         let resolvedEnd = endTime ?? conv.endTime ?? resolvedStart
 
-        let cost = OpenBurnBarCore.ModelPricing.lookup(model: model).cost(
+        let cost = try OpenBurnBarCore.ModelPricing.lookup(model: model).cost(
             inputTokens: inputTokens,
             outputTokens: outputTokens,
             cacheCreationTokens: cacheCreationTokens,
@@ -592,7 +592,7 @@ final class OpenCodeParser: OpenBurnBarCore.LogParser, Sendable {
             }
 
             if cost <= 0 {
-                cost = OpenBurnBarCore.ModelPricing.lookup(model: model).cost(
+                cost = try OpenBurnBarCore.ModelPricing.lookup(model: model).cost(
                     inputTokens: input,
                     outputTokens: output,
                     cacheCreationTokens: cacheCreation,
@@ -904,7 +904,7 @@ final class PiAgentParser: OpenBurnBarCore.LogParser, Sendable {
 
         guard inputTokens > 0 || outputTokens > 0 || cacheCreationTokens > 0 || cacheReadTokens > 0 else { return nil }
 
-        let cost = OpenBurnBarCore.ModelPricing.lookup(model: model).cost(
+        let cost = try OpenBurnBarCore.ModelPricing.lookup(model: model).cost(
             inputTokens: inputTokens,
             outputTokens: outputTokens,
             cacheCreationTokens: cacheCreationTokens,

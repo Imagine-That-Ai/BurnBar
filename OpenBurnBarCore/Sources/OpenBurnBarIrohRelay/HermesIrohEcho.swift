@@ -53,7 +53,7 @@ public struct HermesIrohEchoClient: Sendable {
         recipientPublicKeyBase64: String
     ) async throws -> HermesIrohEcho.Response {
         let symmetricKey = try HermesRelayCrypto.generateSymmetricKeyData()
-        let keyAAD = HermesRelayCrypto.keyAAD(
+        let keyAAD = try HermesRelayCrypto.keyAAD(
             uid: request.uid,
             connectionID: request.connectionId,
             requestID: request.requestId
@@ -63,7 +63,7 @@ public struct HermesIrohEchoClient: Sendable {
             recipientPublicKeyBase64: recipientPublicKeyBase64,
             aad: keyAAD
         )
-        let requestAAD = HermesRelayCrypto.requestAAD(
+        let requestAAD = try HermesRelayCrypto.requestAAD(
             uid: request.uid,
             connectionID: request.connectionId,
             requestID: request.requestId
@@ -106,7 +106,7 @@ public struct HermesIrohEchoClient: Sendable {
                       let ciphertext = payload.ciphertext else {
                     throw IrohRelayTransportError.decodeFailed("malformed response chunk")
                 }
-                let chunkAAD = HermesRelayCrypto.chunkAAD(
+                let chunkAAD = try HermesRelayCrypto.chunkAAD(
                     uid: request.uid,
                     connectionID: request.connectionId,
                     requestID: request.requestId,
@@ -162,7 +162,7 @@ public struct HermesIrohEchoHost: Sendable {
             let symmetricKey = try HermesRelayCrypto.unwrapSymmetricKey(
                 wrappedKey,
                 privateKey: privateKey,
-                aad: HermesRelayCrypto.keyAAD(
+                aad: try HermesRelayCrypto.keyAAD(
                     uid: frame.uid,
                     connectionID: frame.connectionId,
                     requestID: requestId
@@ -171,7 +171,7 @@ public struct HermesIrohEchoHost: Sendable {
             let plaintext = try HermesRelayCrypto.openBase64(
                 ciphertext: ciphertext,
                 keyData: symmetricKey,
-                aad: HermesRelayCrypto.requestAAD(
+                aad: try HermesRelayCrypto.requestAAD(
                     uid: frame.uid,
                     connectionID: frame.connectionId,
                     requestID: requestId
@@ -181,7 +181,7 @@ public struct HermesIrohEchoHost: Sendable {
             let body = envelope.body ?? ""
 
             // Single-chunk echo response.
-            let chunkAAD = HermesRelayCrypto.chunkAAD(
+            let chunkAAD = try HermesRelayCrypto.chunkAAD(
                 uid: frame.uid,
                 connectionID: frame.connectionId,
                 requestID: requestId,

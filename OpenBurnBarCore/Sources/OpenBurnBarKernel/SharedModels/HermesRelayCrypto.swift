@@ -141,12 +141,12 @@ public enum HermesRelayCrypto {
         }
     }
 
-    public static func requestAAD(uid: String, connectionID: String, requestID: String) -> Data {
-        aad(["request", uid, connectionID, requestID])
+    public static func requestAAD(uid: String, connectionID: String, requestID: String) throws -> Data {
+        try aad(["request", uid, connectionID, requestID])
     }
 
-    public static func keyAAD(uid: String, connectionID: String, requestID: String) -> Data {
-        aad(["key", uid, connectionID, requestID])
+    public static func keyAAD(uid: String, connectionID: String, requestID: String) throws -> Data {
+        try aad(["key", uid, connectionID, requestID])
     }
 
     public static func authenticatedRequestAAD(
@@ -158,8 +158,8 @@ public enum HermesRelayCrypto {
         senderPeerNodeID: String,
         senderCounter: Int64,
         keyID: String
-    ) -> Data {
-        aad([
+    ) throws -> Data {
+        try aad([
             "request-v3",
             uid,
             connectionID,
@@ -181,8 +181,8 @@ public enum HermesRelayCrypto {
         senderPeerNodeID: String,
         senderCounter: Int64,
         keyID: String
-    ) -> Data {
-        aad([
+    ) throws -> Data {
+        try aad([
             "key-v3",
             uid,
             connectionID,
@@ -201,8 +201,8 @@ public enum HermesRelayCrypto {
         requestID: String,
         sequence: Int,
         kind: String
-    ) -> Data {
-        aad(["chunk", uid, connectionID, requestID, String(sequence), kind])
+    ) throws -> Data {
+        try aad(["chunk", uid, connectionID, requestID, String(sequence), kind])
     }
 
     /// F7 — AAD for wrapping the per-mirror media-frame-AEAD session key the
@@ -217,8 +217,8 @@ public enum HermesRelayCrypto {
         senderDeviceID: String,
         senderKeyID: String,
         senderCounter: Int64
-    ) -> Data {
-        aad(["mediaSealKey", uid, connectionID, viewerId, senderDeviceID, senderKeyID, String(senderCounter)])
+    ) throws -> Data {
+        try aad(["mediaSealKey", uid, connectionID, viewerId, senderDeviceID, senderKeyID, String(senderCounter)])
     }
 
     /// F10 — AAD for wrapping the control-frame-seal session key the phone
@@ -234,8 +234,8 @@ public enum HermesRelayCrypto {
         senderDeviceID: String,
         senderKeyID: String,
         senderCounter: Int64
-    ) -> Data {
-        aad(["controlSealKey", uid, connectionID, peerNodeId, senderDeviceID, senderKeyID, String(senderCounter)])
+    ) throws -> Data {
+        try aad(["controlSealKey", uid, connectionID, peerNodeId, senderDeviceID, senderKeyID, String(senderCounter)])
     }
 
     // MARK: Hermes Gateway AAD namespacing
@@ -250,24 +250,24 @@ public enum HermesRelayCrypto {
     /// AAD for the sealed payload of a phone→agent gateway event
     /// (`hermes_gateway_events`), binding owner + client + the client-generated
     /// event id so a ciphertext cannot be moved across users/clients/events.
-    public static func gatewayEventAAD(uid: String, clientId: String, eventId: String) -> Data {
-        aad(["gatewayEvent", uid, clientId, eventId])
+    public static func gatewayEventAAD(uid: String, clientId: String, eventId: String) throws -> Data {
+        try aad(["gatewayEvent", uid, clientId, eventId])
     }
 
     /// AAD for wrapping the per-event symmetric key to the agent's relay pubkey.
-    public static func gatewayEventKeyAAD(uid: String, clientId: String, eventId: String) -> Data {
-        aad(["gatewayEventKey", uid, clientId, eventId])
+    public static func gatewayEventKeyAAD(uid: String, clientId: String, eventId: String) throws -> Data {
+        try aad(["gatewayEventKey", uid, clientId, eventId])
     }
 
     /// AAD for the sealed payload of an agent→phone gateway message
     /// (`hermes_gateway_messages`), bound to owner + client + message id.
-    public static func gatewayMessageAAD(uid: String, clientId: String, messageId: String) -> Data {
-        aad(["gatewayMessage", uid, clientId, messageId])
+    public static func gatewayMessageAAD(uid: String, clientId: String, messageId: String) throws -> Data {
+        try aad(["gatewayMessage", uid, clientId, messageId])
     }
 
     /// AAD for unwrapping the per-message symmetric key with the phone's relay key.
-    public static func gatewayMessageKeyAAD(uid: String, clientId: String, messageId: String) -> Data {
-        aad(["gatewayMessageKey", uid, clientId, messageId])
+    public static func gatewayMessageKeyAAD(uid: String, clientId: String, messageId: String) throws -> Data {
+        try aad(["gatewayMessageKey", uid, clientId, messageId])
     }
 
     // MARK: Gateway attachment AAD namespacing
@@ -284,18 +284,18 @@ public enum HermesRelayCrypto {
     // can open what the agent sealed.
 
     /// AAD for the sealed attachment *manifest* (`{fileName, byteCount, contentType}`).
-    public static func gatewayAttachmentManifestAAD(uid: String, clientId: String, attachmentId: String) -> Data {
-        aad(["gatewayAttachmentManifest", uid, clientId, attachmentId])
+    public static func gatewayAttachmentManifestAAD(uid: String, clientId: String, attachmentId: String) throws -> Data {
+        try aad(["gatewayAttachmentManifest", uid, clientId, attachmentId])
     }
 
     /// AAD for the sealed attachment *body* (the raw file bytes).
-    public static func gatewayAttachmentBodyAAD(uid: String, clientId: String, attachmentId: String) -> Data {
-        aad(["gatewayAttachmentBody", uid, clientId, attachmentId])
+    public static func gatewayAttachmentBodyAAD(uid: String, clientId: String, attachmentId: String) throws -> Data {
+        try aad(["gatewayAttachmentBody", uid, clientId, attachmentId])
     }
 
     /// AAD for wrapping/unwrapping the per-attachment body key to the phone's relay pubkey.
-    public static func gatewayAttachmentKeyAAD(uid: String, clientId: String, attachmentId: String) -> Data {
-        aad(["gatewayAttachmentKey", uid, clientId, attachmentId])
+    public static func gatewayAttachmentKeyAAD(uid: String, clientId: String, attachmentId: String) throws -> Data {
+        try aad(["gatewayAttachmentKey", uid, clientId, attachmentId])
     }
 
     public static func sealToBase64(plaintext: Data, keyData: Data, aad: Data) throws -> String {
@@ -597,8 +597,8 @@ public enum HermesRelayCrypto {
     public static func gatewayRelaySafetyCode(
         agentPublicKeyX963: Data,
         phonePublicKeyX963: Data
-    ) -> String {
-        HermesDomainCoreAdapter.safetyCode(agent: agentPublicKeyX963, phone: phonePublicKeyX963) {
+    ) throws -> String {
+        try HermesDomainCoreAdapter.safetyCode(agent: agentPublicKeyX963, phone: phonePublicKeyX963) {
             let ordered = [agentPublicKeyX963, phonePublicKeyX963].sorted {
                 $0.lexicographicallyPrecedes($1)
             }
@@ -609,12 +609,12 @@ public enum HermesRelayCrypto {
         }
     }
 
-    private static func aad(_ parts: [String]) -> Data {
+    private static func aad(_ parts: [String]) throws -> Data {
         let legacy = {
             "OpenBurnBar-HermesRelay-v1|\(parts.joined(separator: "|"))".data(using: .utf8)!
         }
         guard let label = parts.first, let kind = aadKind(label) else { return legacy() }
-        return HermesDomainCoreAdapter.aad(
+        return try HermesDomainCoreAdapter.aad(
             kind: kind,
             arguments: Array(parts.dropFirst()),
             legacy: legacy

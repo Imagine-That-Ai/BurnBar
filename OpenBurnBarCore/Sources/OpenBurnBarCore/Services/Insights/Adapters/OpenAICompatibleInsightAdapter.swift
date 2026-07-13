@@ -185,7 +185,7 @@ public struct OpenAICompatibleInsightAdapter: InsightModelGateway {
 
     private func estimateCost(input: Int, output: Int, cacheCreation: Int = 0, cacheRead: Int = 0, modelID: String) -> Double {
         if let pricing = BurnBarCatalogLoader.bundledCatalog.pricing(forModelName: modelID) {
-            return pricing.cost(
+            return try pricing.cost(
                 inputTokens: input,
                 outputTokens: output,
                 cacheCreationTokens: cacheCreation,

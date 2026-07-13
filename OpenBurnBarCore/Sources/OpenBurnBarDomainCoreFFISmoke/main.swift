@@ -28,7 +28,7 @@ func data(hex: String) -> Data {
     return Data(bytes)
 }
 
-require(OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 2, "unexpected ABI version")
+require(OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3, "unexpected ABI version")
 require(!OpenBurnBarDomainCoreFFI.domainCoreVersion().isEmpty, "empty crate version")
 
 let fixtureURL = URL(fileURLWithPath: #filePath)

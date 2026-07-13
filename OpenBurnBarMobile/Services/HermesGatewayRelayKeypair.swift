@@ -776,7 +776,7 @@ struct HermesGatewayAgentKeyPinStore: Sendable {
         }
         guard decoded.count == publicKeysBase64.count, decoded.count >= 2 else { return nil }
         if decoded.count == 2 {
-            return HermesRelayCrypto.gatewayRelaySafetyCode(
+            return try? HermesRelayCrypto.gatewayRelaySafetyCode(
                 agentPublicKeyX963: decoded[0],
                 phonePublicKeyX963: decoded[1]
             )
@@ -796,7 +796,7 @@ struct HermesGatewayAgentKeyPinStore: Sendable {
         guard let agent = Data(base64Encoded: agentPublicKeyBase64),
               let phone = Data(base64Encoded: phonePublicKeyBase64),
               !agent.isEmpty, !phone.isEmpty else { return nil }
-        return HermesRelayCrypto.gatewayRelaySafetyCode(
+        return try? HermesRelayCrypto.gatewayRelaySafetyCode(
             agentPublicKeyX963: agent,
             phonePublicKeyX963: phone
         )

@@ -65,7 +65,7 @@ internal static class DomainCoreQuotaBridge
         result = null;
         try
         {
-            if (DomainCore.DomainCoreAbiVersion() != 2)
+            if (DomainCore.DomainCoreAbiVersion() != 3)
             {
                 return false;
             }

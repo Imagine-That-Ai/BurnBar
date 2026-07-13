@@ -247,8 +247,8 @@ pub fn cloud_vault_aad_v1(
 }
 
 #[wasm_bindgen(js_name = cloudVaultSha256Hex)]
-pub fn cloud_vault_sha256_hex(data: &[u8]) -> String {
-    cloudvault::sha256_hex(data)
+pub fn cloud_vault_sha256_hex(data: &[u8]) -> Result<String, JsError> {
+    cloudvault::sha256_hex(data).map_err(js_error)
 }
 
 #[wasm_bindgen(js_name = cloudVaultKeyId)]
@@ -308,8 +308,8 @@ pub fn cloud_vault_aes_gcm_open_combined(
 }
 
 #[wasm_bindgen(js_name = cloudVaultBase64Encode)]
-pub fn cloud_vault_base64_encode(data: &[u8]) -> String {
-    cloudvault::base64_encode(data)
+pub fn cloud_vault_base64_encode(data: &[u8]) -> Result<String, JsError> {
+    cloudvault::base64_encode_checked(data).map_err(js_error)
 }
 
 #[wasm_bindgen(js_name = cloudVaultBase64DecodeStrict)]
@@ -523,6 +523,7 @@ fn js_error(error: CloudVaultError) -> JsError {
         CloudVaultError::InvalidSharedSecretLength => "invalid_shared_secret_length",
         CloudVaultError::InvalidP256PublicKey => "invalid_p256_public_key",
         CloudVaultError::InvalidEscrowWireLength => "invalid_escrow_wire_length",
+        CloudVaultError::InputTooLarge => "input_too_large",
     };
     JsError::new(&format!("{code}: {error}"))
 }

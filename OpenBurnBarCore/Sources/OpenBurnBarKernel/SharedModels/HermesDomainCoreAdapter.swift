@@ -24,7 +24,7 @@ enum HermesDomainCoreAdapterError: Error {
 enum HermesDomainCoreAdapter {
     static var isNativeAvailable: Bool {
         #if canImport(OpenBurnBarDomainCoreFFI)
-        OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 2
+        OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3
         #else
         false
         #endif
@@ -35,13 +35,13 @@ enum HermesDomainCoreAdapter {
         arguments: [String],
         environment: [String: String] = ProcessInfo.processInfo.environment,
         legacy: () -> Data
-    ) -> Data {
+    ) throws -> Data {
         let mode = HermesDomainCoreMode.resolve(environment: environment)
         guard mode != .legacy else { return legacy() }
         #if canImport(OpenBurnBarDomainCoreFFI)
-        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 2 else {
+        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3 else {
             diagnostic("aad", "native_unavailable")
-            if mode == .rust { preconditionFailure("Hermes Rust mode requires ABI v2") }
+            if mode == .rust { throw HermesDomainCoreAdapterError.nativeUnavailable }
             return legacy()
         }
         let rust: Data
@@ -52,7 +52,7 @@ enum HermesDomainCoreAdapter {
             )
         } catch {
             diagnostic("aad", "native_unavailable")
-            if mode == .rust { preconditionFailure("Hermes Rust AAD validation failed: \(error)") }
+            if mode == .rust { throw error }
             return legacy()
         }
         guard mode == .shadow else { return rust }
@@ -61,7 +61,7 @@ enum HermesDomainCoreAdapter {
         return old
         #else
         diagnostic("aad", "native_unavailable")
-        if mode == .rust { preconditionFailure("Hermes Rust mode requires the native core") }
+        if mode == .rust { throw HermesDomainCoreAdapterError.nativeUnavailable }
         return legacy()
         #endif
     }
@@ -76,7 +76,7 @@ enum HermesDomainCoreAdapter {
         let mode = HermesDomainCoreMode.resolve(environment: environment)
         guard mode != .legacy else { return try legacy() }
         #if canImport(OpenBurnBarDomainCoreFFI)
-        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 2 else {
+        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3 else {
             diagnostic("seal", "abi_mismatch")
             if mode == .shadow { return try legacy() }
             throw HermesDomainCoreAdapterError.nativeUnavailable
@@ -115,7 +115,7 @@ enum HermesDomainCoreAdapter {
         let mode = HermesDomainCoreMode.resolve(environment: environment)
         guard mode != .legacy else { return try legacy() }
         #if canImport(OpenBurnBarDomainCoreFFI)
-        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 2 else {
+        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3 else {
             diagnostic("open", "abi_mismatch")
             if mode == .shadow { return try legacy() }
             throw HermesDomainCoreAdapterError.nativeUnavailable
@@ -141,12 +141,12 @@ enum HermesDomainCoreAdapter {
         phone: Data,
         environment: [String: String] = ProcessInfo.processInfo.environment,
         legacy: () -> String
-    ) -> String {
+    ) throws -> String {
         let mode = HermesDomainCoreMode.resolve(environment: environment)
         guard mode != .legacy else { return legacy() }
         #if canImport(OpenBurnBarDomainCoreFFI)
-        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 2 else {
-            if mode == .rust { preconditionFailure("Hermes Rust mode requires ABI v2") }
+        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3 else {
+            if mode == .rust { throw HermesDomainCoreAdapterError.nativeUnavailable }
             return legacy()
         }
         let rust: String
@@ -156,7 +156,7 @@ enum HermesDomainCoreAdapter {
                 phonePublicKey: phone
             )
         } catch {
-            if mode == .rust { preconditionFailure("Hermes Rust safety-code validation failed: \(error)") }
+            if mode == .rust { throw error }
             return legacy()
         }
         guard mode == .shadow else { return rust }
@@ -164,7 +164,7 @@ enum HermesDomainCoreAdapter {
         if old != rust { diagnostic("safety_code", "shadow_mismatch") }
         return old
         #else
-        if mode == .rust { preconditionFailure("Hermes Rust mode requires the native core") }
+        if mode == .rust { throw HermesDomainCoreAdapterError.nativeUnavailable }
         return legacy()
         #endif
     }
@@ -233,7 +233,7 @@ enum HermesDomainCoreAdapter {
         let mode = HermesDomainCoreMode.resolve(environment: environment)
         guard mode != .legacy else { return try legacy() }
         #if canImport(OpenBurnBarDomainCoreFFI)
-        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 2 else {
+        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3 else {
             diagnostic("hkdf", "abi_mismatch")
             if mode == .shadow { return try legacy() }
             throw HermesDomainCoreAdapterError.nativeUnavailable
@@ -263,7 +263,7 @@ enum HermesDomainCoreAdapter {
         let mode = HermesDomainCoreMode.resolve(environment: environment)
         guard mode != .legacy else { return try legacy() }
         #if canImport(OpenBurnBarDomainCoreFFI)
-        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 2 else {
+        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3 else {
             diagnostic(operation, "abi_mismatch")
             if mode == .shadow { return try legacy() }
             throw HermesDomainCoreAdapterError.nativeUnavailable

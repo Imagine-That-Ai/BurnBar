@@ -10,7 +10,7 @@ final class HermesDomainCoreMigrationTests: XCTestCase {
         setenv("OPENBURNBAR_DOMAIN_CORE_HERMES_MODE", "rust", 1)
         defer { unsetenv("OPENBURNBAR_DOMAIN_CORE_HERMES_MODE") }
 
-        let aad = HermesRelayCrypto.requestAAD(
+        let aad = try HermesRelayCrypto.requestAAD(
             uid: "user-1",
             connectionID: "connection-2",
             requestID: "request-3"
@@ -38,11 +38,25 @@ final class HermesDomainCoreMigrationTests: XCTestCase {
         setenv("OPENBURNBAR_DOMAIN_CORE_HERMES_MODE", "rust", 1)
         defer { unsetenv("OPENBURNBAR_DOMAIN_CORE_HERMES_MODE") }
         XCTAssertEqual(
-            HermesRelayCrypto.gatewayRelaySafetyCode(
-                agentPublicKeyX963: Data((0..<65).map(UInt8.init)),
-                phonePublicKeyX963: Data((0..<65).reversed().map(UInt8.init))
+            try HermesRelayCrypto.gatewayRelaySafetyCode(
+                agentPublicKeyX963: data(hex:
+                    "046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296" +
+                    "4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5"
+                ),
+                phonePublicKeyX963: data(hex:
+                    "047cf27b188d034f7e8a52380304b51ac3c08969e277f21b35a60b48fc47669978" +
+                    "07775510db8ed040293d9ac69f7430dbba7dade63ce982299e04b79d227873d1"
+                )
             ),
-            "897E 3E16 F194 F44A 9E79 B41E F88E CBE7"
+            "97AB 6CD8 FEF0 9594 D5ED FAF1 1D10 B6F7"
         )
+    }
+
+    private func data(hex: String) -> Data {
+        Data(stride(from: 0, to: hex.count, by: 2).compactMap { offset in
+            let start = hex.index(hex.startIndex, offsetBy: offset)
+            let end = hex.index(start, offsetBy: 2)
+            return UInt8(hex[start..<end], radix: 16)
+        })
     }
 }

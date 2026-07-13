@@ -43,7 +43,7 @@ enum ClaudeQuotaDomainCoreAdapter {
         guard mode != .legacy else { return legacyBuckets(from: rateLimits) }
 
         #if canImport(OpenBurnBarDomainCoreFFI)
-        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 2 else {
+        guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3 else {
             quotaLogger.log("domain_core.claude_quota.abi_mismatch")
             return mode == .shadow ? legacyBuckets(from: rateLimits) : []
         }

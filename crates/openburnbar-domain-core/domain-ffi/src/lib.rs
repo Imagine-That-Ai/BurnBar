@@ -4,7 +4,7 @@ use openburnbar_domain_core::{
 };
 use zeroize::{Zeroize, Zeroizing};
 
-pub const DOMAIN_CORE_ABI_VERSION: u32 = 2;
+pub const DOMAIN_CORE_ABI_VERSION: u32 = 3;
 
 #[derive(Clone, Copy, Debug, uniffi::Enum)]
 pub enum CloudVaultHashPurpose {
@@ -205,6 +205,8 @@ pub enum CloudVaultFfiError {
     InvalidP256PublicKey,
     #[error("the P-256 escrow wire must contain a public key and AES-GCM combined box")]
     InvalidEscrowWireLength,
+    #[error("the CloudVault input exceeds its bounded contract")]
+    InputTooLarge,
     #[error("cloud vault search text exceeds 1048576 UTF-8 bytes")]
     SearchTextTooLarge,
     #[error("cloud vault search limits must not exceed 1024")]
@@ -432,8 +434,8 @@ pub fn cloud_vault_resolve_aad(
 }
 
 #[uniffi::export]
-pub fn cloud_vault_sha256_hex(data: Vec<u8>) -> String {
-    cloudvault::sha256_hex(&data)
+pub fn cloud_vault_sha256_hex(data: Vec<u8>) -> Result<String, CloudVaultFfiError> {
+    cloudvault::sha256_hex(&data).map_err(Into::into)
 }
 
 #[uniffi::export]
@@ -683,8 +685,8 @@ pub fn cloud_vault_aes_gcm_open_combined(
 }
 
 #[uniffi::export]
-pub fn cloud_vault_base64_encode(data: Vec<u8>) -> String {
-    cloudvault::base64_encode(&data)
+pub fn cloud_vault_base64_encode(data: Vec<u8>) -> Result<String, CloudVaultFfiError> {
+    cloudvault::base64_encode_checked(&data).map_err(Into::into)
 }
 
 #[uniffi::export]
@@ -982,6 +984,7 @@ impl From<cloudvault::CloudVaultError> for CloudVaultFfiError {
             }
             cloudvault::CloudVaultError::InvalidP256PublicKey => Self::InvalidP256PublicKey,
             cloudvault::CloudVaultError::InvalidEscrowWireLength => Self::InvalidEscrowWireLength,
+            cloudvault::CloudVaultError::InputTooLarge => Self::InputTooLarge,
         }
     }
 }
@@ -1497,7 +1500,7 @@ mod tests {
 
     #[test]
     fn ffi_surface_reports_version_and_parses_without_throwing() -> Result<(), CloudVaultFfiError> {
-        assert_eq!(domain_core_abi_version(), 2);
+        assert_eq!(domain_core_abi_version(), 3);
         assert_eq!(domain_core_version(), "0.1.0");
         let result =
             parse_claude_statusline_quota(br#"{"five_hour":{"used_percentage":42}}"#.to_vec());
@@ -1525,7 +1528,7 @@ mod tests {
             QuotaParseStatus::Parsed
         ));
         assert_eq!(
-            cloud_vault_sha256_hex(b"OpenBurnBar".to_vec()),
+            cloud_vault_sha256_hex(b"OpenBurnBar".to_vec())?,
             "59800516f507102c0d9257d31f7bc779b876d6ad343d610387e74ece02a35ad7"
         );
         let key: Vec<u8> = (0_u8..32).collect();

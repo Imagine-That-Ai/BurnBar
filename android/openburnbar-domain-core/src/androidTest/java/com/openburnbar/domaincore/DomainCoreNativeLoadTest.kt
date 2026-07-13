@@ -22,8 +22,8 @@ import uniffi.openburnbar_domain_ffi.domainCoreVersion
 @RunWith(AndroidJUnit4::class)
 class DomainCoreNativeLoadTest {
     @Test
-    fun generatedBindingLoadsAbiVersionTwoNativeLibrary() {
-        assertEquals(2u, domainCoreAbiVersion())
+    fun generatedBindingLoadsAbiVersionThreeNativeLibrary() {
+        assertEquals(3u, domainCoreAbiVersion())
         assertTrue(domainCoreVersion().isNotBlank())
     }
 

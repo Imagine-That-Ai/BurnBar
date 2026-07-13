@@ -85,10 +85,10 @@ fn append_windows(
         let Some(raw_used) = window.get("used_percent").and_then(Value::as_f64) else {
             continue;
         };
-        if !raw_used.is_finite() || !(0.0..=100.0).contains(&raw_used) {
+        if !raw_used.is_finite() {
             continue;
         }
-        let used = raw_used;
+        let used = raw_used.clamp(0.0, 100.0);
         let window_kind = window
             .get("limit_window_seconds")
             .and_then(Value::as_i64)
@@ -213,11 +213,16 @@ mod tests {
             parse_codex_usage_quota(br#"{"plan_type":"pro"}"#, 0).status,
             QuotaParseStatus::Empty
         );
-        let parsed = parse_codex_usage_quota(
-            br#"{"rate_limit":{"primary_window":{"used_percent":137.5}}}"#,
-            0,
-        );
-        assert!(parsed.snapshot.buckets.is_empty());
+        for (raw, expected) in [("137.5", 100.0), ("-1", 0.0)] {
+            let payload =
+                format!(r#"{{"rate_limit":{{"primary_window":{{"used_percent":{raw}}}}}}}"#);
+            let parsed = parse_codex_usage_quota(payload.as_bytes(), 0);
+            assert_eq!(parsed.snapshot.buckets[0].used_percent, Some(expected));
+            assert_eq!(
+                parsed.snapshot.buckets[0].remaining_value,
+                Some(100.0 - expected)
+            );
+        }
         let extreme = parse_codex_usage_quota(
             br#"{"rate_limit":{"primary_window":{"used_percent":10,"reset_after_seconds":9223372036854775807}}}"#,
             i64::MAX,

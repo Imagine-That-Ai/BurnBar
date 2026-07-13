@@ -495,7 +495,7 @@ struct ElderWandFusionOrchestrator: Sendable {
         usage: BurnBarProviderProxyUsage?
     ) -> FusionSubCallSpend? {
         guard let usage else { return nil }
-        let cost = route.route.pricing.cost(
+        let cost = try route.route.pricing.cost(
             inputTokens: usage.inputTokens,
             outputTokens: usage.outputTokens,
             cacheCreationTokens: usage.cacheCreationTokens,
