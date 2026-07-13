@@ -5,13 +5,6 @@ import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { useChatStore } from '../../state/chatStore.js';
 import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
 import { ChatWorkspacePanel } from './ChatWorkspacePanel.js';
-import {
-  buildChatExportDocument,
-  downloadChatExport,
-  sanitizeChatExportFilename,
-  serializeChatExport,
-  type ChatExportFormat
-} from './chatExport.js';
 import './chat.css';
 
 export function ChatSurface() {
@@ -46,8 +39,6 @@ export function ChatSurface() {
   const sendMessage = useChatStore((s) => s.sendMessage);
   const stopStreaming = useChatStore((s) => s.stopStreaming);
   const [streamAnnouncement, setStreamAnnouncement] = useState({ text: '', count: 0 });
-  const [exportFormat, setExportFormat] = useState<ChatExportFormat>('json');
-  const [exportStatus, setExportStatus] = useState<string | null>(null);
 
   useLaneLoad(load);
 
@@ -59,19 +50,11 @@ export function ChatSurface() {
     }
   }, [streamPhase]);
 
-  useEffect(() => {
-    setExportStatus(null);
-  }, [selectedThreadId]);
-
   const offline = !fixtureMode && !bridge;
   const provenance = fixtureMode ? 'fixture transcript' : 'live daemon session index';
   const visibleThreads = threads.slice(0, visibleThreadCount);
   const hasMoreThreads = threads.length > visibleThreadCount;
   const selectedThread = threads.find((t) => t.id === selectedThreadId) ?? null;
-  const exportableMessageCount = selectedThread
-    ? buildChatExportDocument(selectedThread, messages).messages.length
-    : 0;
-  const exportDisabled = !selectedThread || exportableMessageCount === 0;
   const gatewayHint = gatewayBaseURL ? `gateway ${gatewayBaseURL}` : null;
   const liveComposerDisabled = !fixtureMode && gatewayStatus !== 'reachable';
   const liveComposerDisabledReason =
@@ -82,23 +65,6 @@ export function ChatSurface() {
         : gatewayStatus === 'unknown'
           ? 'Checking gateway health…'
           : '';
-
-  const exportChat = () => {
-    if (!selectedThread || exportDisabled) return;
-    try {
-      const document = buildChatExportDocument(selectedThread, messages);
-      const filename = sanitizeChatExportFilename(selectedThread.title, selectedThread.id, exportFormat);
-      const content = serializeChatExport(document, exportFormat);
-      downloadChatExport({
-        filename,
-        content,
-        mimeType: exportFormat === 'markdown' ? 'text/markdown' : 'application/json'
-      });
-      setExportStatus(`Exported ${filename}`);
-    } catch (error) {
-      setExportStatus(error instanceof Error ? error.message : 'Chat export failed.');
-    }
-  };
 
   const panelProps = {
     threads: visibleThreads,
@@ -115,11 +81,6 @@ export function ChatSurface() {
     backend,
     modelLabel,
     onBackendChange: setBackend,
-    exportFormat,
-    onExportFormatChange: setExportFormat,
-    onExport: exportChat,
-    exportDisabled,
-    exportStatus,
     messages,
     messagesLoading,
     warnings,

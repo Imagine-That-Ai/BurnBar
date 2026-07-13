@@ -3,21 +3,15 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fixtureSessionList } from '../../daemonFixture.js';
 import { bridgeStubDefaults } from '../../testing/bridgeStubs.js';
-import type {
-  ChatThreadGetResult,
-  ChatThreadListResult,
-  GatewayProxyRequest,
-  LinuxShellBridge,
-  SessionListResult
-} from '../../tauriBridge.js';
+import type { GatewayProxyRequest, LinuxShellBridge, SessionListResult } from '../../tauriBridge.js';
 import { useChatStore } from '../../state/chatStore.js';
 import { useShellStore } from '../../state/shellStore.js';
 import { availableRuntimeCapabilities } from '../../testing/bridgeStubs.js';
 import { ChatSurface } from './ChatSurface.js';
 
 function mockBridge(handlers: {
-  chatThreadList?: (query?: string, limit?: number) => Promise<ChatThreadListResult>;
-  chatThreadGet?: (threadID: string, maxMessages?: number) => Promise<ChatThreadGetResult>;
+  sessionList?: () => Promise<SessionListResult>;
+  sessionSearch?: (query: string) => Promise<SessionListResult>;
   gatewayProbe?: () => Promise<boolean>;
   gatewayChatStream?: (request: GatewayProxyRequest, onChunk: (chunk: string) => void) => Promise<void>;
 }): LinuxShellBridge {
@@ -37,20 +31,8 @@ function mockBridge(handlers: {
       recentEvents: []
     }),
     providerCatalog: async () => [],
-    sessionList: emptyList,
-    sessionSearch: emptyList,
-    chatThreadList: handlers.chatThreadList ?? (async () => ({ threads: [] })),
-    chatThreadGet: handlers.chatThreadGet ?? (async (threadID) => ({
-      messages: [{
-        id: `${threadID}-message`,
-        threadID,
-        role: 'assistant',
-        content: `Persisted message for ${threadID}`,
-        timestamp: '2026-07-10T12:00:00Z'
-      }],
-      hasMoreBefore: false
-    })),
-    chatMessageAppend: bridgeStubDefaults.chatMessageAppend,
+    sessionList: handlers.sessionList ?? emptyList,
+    sessionSearch: handlers.sessionSearch ?? emptyList,
     usageInsights: async () => ({ weekly: [], providerMix: [], modelMix: [], cacheHitRatePct: 0 }),
     missionList: async () => ({ missions: [], pendingApprovals: [] }),
     missionApprovalDecision: async () => {},
@@ -114,21 +96,6 @@ function mockBridge(handlers: {
   return bridge;
 }
 
-function chatThreadsFromSessions(result: SessionListResult): ChatThreadListResult {
-  return {
-    threads: result.sessions.map((session) => ({
-      id: session.id,
-      title: session.title,
-      preview: `${session.provider} / ${session.model}`,
-      messageCount: 1,
-      createdAt: session.startedAt,
-      updatedAt: session.startedAt,
-      lastMessageAt: session.startedAt,
-      backendID: session.provider
-    }))
-  };
-}
-
 const resetChatStore = () => {
   useChatStore.setState({
     threads: [],
@@ -136,8 +103,6 @@ const resetChatStore = () => {
     selectedThreadId: null,
     messages: [],
     messagesLoading: false,
-    loadingOlderMessages: false,
-    hasMoreMessages: false,
     config: null,
     loading: false,
     error: null,
@@ -172,7 +137,7 @@ describe('ChatSurface', () => {
 
   it('shows empty state when no threads', async () => {
     useShellStore.setState({
-      bridge: mockBridge({ chatThreadList: async () => ({ threads: [] }) }),
+      bridge: mockBridge({ sessionList: async () => ({ sessions: [], nextCursor: null }) }),
       fixtureMode: false,
       bridgeReady: true
     });
@@ -182,10 +147,10 @@ describe('ChatSurface', () => {
     });
   });
 
-  it('renders persisted thread summaries and messages', async () => {
+  it('renders thread rail and messages from fixture sessions', async () => {
     const list = fixtureSessionList();
     useShellStore.setState({
-      bridge: mockBridge({ chatThreadList: async () => chatThreadsFromSessions(list) }),
+      bridge: mockBridge({ sessionList: async () => list }),
       fixtureMode: false,
       bridgeReady: true
     });
@@ -196,135 +161,10 @@ describe('ChatSurface', () => {
     expect(screen.getAllByText(list.sessions[0].title).length).toBeGreaterThan(0);
   });
 
-  it('exports the loaded transcript as Markdown through the toolbar', async () => {
-    const summary = {
-      id: 'thread-export-ui',
-      title: 'Exportable thread',
-      preview: 'A durable transcript',
-      messageCount: 2,
-      createdAt: '2026-07-10T12:00:00Z',
-      updatedAt: '2026-07-10T12:04:00Z'
-    };
-    useShellStore.setState({
-      bridge: mockBridge({
-        chatThreadList: async () => ({ threads: [summary] }),
-        chatThreadGet: async () => ({
-          thread: summary,
-          messages: [
-            {
-              id: 'export-user',
-              threadID: summary.id,
-              role: 'user',
-              content: 'Please export this.',
-              timestamp: '2026-07-10T12:00:00Z'
-            },
-            {
-              id: 'export-assistant',
-              threadID: summary.id,
-              role: 'assistant',
-              content: 'Here is the durable answer.',
-              timestamp: '2026-07-10T12:04:00Z'
-            }
-          ],
-          hasMoreBefore: false
-        })
-      }),
-      fixtureMode: false,
-      bridgeReady: true
-    });
-    render(<ChatSurface />);
-    await waitFor(() => expect(screen.getByRole('log')).toBeTruthy());
-
-    expect((screen.getByRole('button', { name: 'Export chat as JSON' }) as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.change(screen.getByRole('combobox', { name: 'Chat export format' }), {
-      target: { value: 'markdown' }
-    });
-    const exportButton = screen.getByRole('button', { name: 'Export chat as Markdown' });
-    expect((exportButton as HTMLButtonElement).disabled).toBe(false);
-
-    const url = globalThis.URL;
-    const originalCreateObjectURL = url.createObjectURL;
-    const originalRevokeObjectURL = url.revokeObjectURL;
-    const createObjectURL = vi.fn(() => 'blob:chat-export');
-    const revokeObjectURL = vi.fn();
-    Object.defineProperty(url, 'createObjectURL', {
-      configurable: true,
-      writable: true,
-      value: createObjectURL
-    });
-    Object.defineProperty(url, 'revokeObjectURL', {
-      configurable: true,
-      writable: true,
-      value: revokeObjectURL
-    });
-    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
-    try {
-      fireEvent.click(exportButton);
-      await waitFor(() => {
-        expect(screen.getByRole('status').textContent).toContain(
-          'Exported openburnbar-chat-Exportable-thread.md'
-        );
-      });
-      expect(createObjectURL).toHaveBeenCalledOnce();
-      expect(click).toHaveBeenCalled();
-    } finally {
-      if (originalCreateObjectURL) {
-        Object.defineProperty(url, 'createObjectURL', {
-          configurable: true,
-          writable: true,
-          value: originalCreateObjectURL
-        });
-      } else {
-        delete (url as { createObjectURL?: unknown }).createObjectURL;
-      }
-      if (originalRevokeObjectURL) {
-        Object.defineProperty(url, 'revokeObjectURL', {
-          configurable: true,
-          writable: true,
-          value: originalRevokeObjectURL
-        });
-      } else {
-        delete (url as { revokeObjectURL?: unknown }).revokeObjectURL;
-      }
-    }
-  });
-
-  it('renders persisted system messages with an accessible system label', async () => {
-    const summary = {
-      id: 'thread-system',
-      title: 'Policy thread',
-      preview: 'Pinned policy',
-      messageCount: 1,
-      createdAt: '2026-07-10T12:00:00Z',
-      updatedAt: '2026-07-10T12:00:00Z'
-    };
-    useShellStore.setState({
-      bridge: mockBridge({
-        chatThreadList: async () => ({ threads: [summary] }),
-        chatThreadGet: async () => ({
-          thread: summary,
-          messages: [{
-            id: 'system-1',
-            threadID: summary.id,
-            role: 'system',
-            content: 'Pinned policy context',
-            timestamp: '2026-07-10T12:00:00Z'
-          }],
-          hasMoreBefore: false
-        })
-      }),
-      fixtureMode: false,
-      bridgeReady: true
-    });
-    render(<ChatSurface />);
-    await waitFor(() => expect(screen.getByRole('note', { name: /System message/i })).toBeTruthy());
-    expect(screen.getByText(/live daemon chat history/i)).toBeTruthy();
-  });
-
   it('shows error banner on fetch failure', async () => {
     useShellStore.setState({
       bridge: mockBridge({
-        chatThreadList: async () => {
+        sessionList: async () => {
           throw new Error('daemon down');
         }
       }),
@@ -351,7 +191,7 @@ describe('ChatSurface', () => {
   it('shows streaming stop control when streaming flag is set', async () => {
     const list = fixtureSessionList();
     useShellStore.setState({
-      bridge: mockBridge({ chatThreadList: async () => chatThreadsFromSessions(list) }),
+      bridge: mockBridge({ sessionList: async () => list }),
       fixtureMode: true,
       bridgeReady: true
     });
@@ -393,34 +233,10 @@ describe('ChatSurface', () => {
     await waitFor(() => expect(screen.getByText('Stream stopped. 3')).toBeTruthy());
   });
 
-  it('keeps the draft and blocks sends while a turn is still composing', async () => {
-    const list = fixtureSessionList();
-    useShellStore.setState({
-      bridge: mockBridge({ chatThreadList: async () => chatThreadsFromSessions(list) }),
-      fixtureMode: true,
-      bridgeReady: true
-    });
-    render(<ChatSurface />);
-    await waitFor(() => expect(screen.getByRole('log')).toBeTruthy());
-    act(() => {
-      useChatStore.setState({ streamPhase: 'composing' });
-    });
-    const composer = screen.getByLabelText(/Message composer/i) as HTMLTextAreaElement;
-    fireEvent.change(composer, { target: { value: 'second message' } });
-    expect(screen.getByRole('button', { name: /Send message/i })).toHaveProperty('disabled', true);
-    fireEvent.keyDown(composer, { key: 'Enter' });
-    // The store's composing guard drops sends, so the Composer must not have
-    // cleared the draft — otherwise the user's text is silently lost.
-    expect(composer.value).toBe('second message');
-    expect(
-      useChatStore.getState().messages.some((message) => message.text === 'second message')
-    ).toBe(false);
-  });
-
   it('uses backend-specific composer placeholder for Codex', async () => {
     const list = fixtureSessionList();
     useShellStore.setState({
-      bridge: mockBridge({ chatThreadList: async () => chatThreadsFromSessions(list) }),
+      bridge: mockBridge({ sessionList: async () => list }),
       fixtureMode: true,
       bridgeReady: true
     });
@@ -460,7 +276,7 @@ describe('ChatSurface', () => {
       })
     );
     useShellStore.setState({
-      bridge: mockBridge({ chatThreadList: async () => ({ threads: [] }) }),
+      bridge: mockBridge({ sessionList: async () => ({ sessions: [], nextCursor: null }) }),
       fixtureMode: false,
       bridgeReady: true,
       health: { ok: true, gatewayEnabled: true, gatewayHost: '127.0.0.1', gatewayPort: 8642 }
@@ -473,7 +289,7 @@ describe('ChatSurface', () => {
   it('renders an unimplemented response from the native gateway proxy honestly', async () => {
     useShellStore.setState({
       bridge: mockBridge({
-        chatThreadList: async () => ({ threads: [] }),
+        sessionList: async () => ({ sessions: [], nextCursor: null }),
         gatewayProbe: async () => true,
         gatewayChatStream: async () => {
           throw new Error('gateway_http:503:chat completions unimplemented');
