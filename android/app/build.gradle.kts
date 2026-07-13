@@ -518,7 +518,7 @@ dependencies {
     implementation("com.amplitude:analytics-android:1.21.0")
 
     // Vico 2.x — Compose-first chart library for Insights
-    implementation("com.patrykandpatrick.vico:compose-m3:2.1.2")
+    implementation("com.patrykandpatrick.vico:compose-m3:3.2.3")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
