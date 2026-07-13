@@ -38,6 +38,11 @@ val openBurnBarUseDebugAppCheck =
 val openBurnBarDebugAppCheckToken =
     providers.environmentVariable("OPENBURNBAR_APP_CHECK_DEBUG_TOKEN")
         .orElse("")
+val cloudVaultSearchDomainCoreMode =
+    providers.environmentVariable("OPENBURNBAR_CLOUDVAULT_SEARCH_MODE")
+        .map { it.trim().lowercase() }
+        .map { mode -> if (mode in setOf("legacy", "shadow", "rust")) mode else "legacy" }
+        .orElse("legacy")
 
 fun Any?.asJsonMap(): Map<*, *> = this as? Map<*, *> ?: emptyMap<Any, Any>()
 fun Any?.asJsonList(): List<*> = this as? List<*> ?: emptyList<Any>()
@@ -131,6 +136,11 @@ android {
         buildConfigField("boolean", "USE_DEBUG_APP_CHECK", useDebugAppCheck.toString())
         val debugAppCheckToken = openBurnBarDebugAppCheckToken.get()
         buildConfigField("String", "APP_CHECK_DEBUG_TOKEN", "\"" + debugAppCheckToken + "\"")
+        buildConfigField(
+            "String",
+            "CLOUDVAULT_SEARCH_DOMAIN_CORE_MODE",
+            "\"" + cloudVaultSearchDomainCoreMode.get() + "\""
+        )
 
         // Sentry DSN injected at build time — empty string disables Sentry.
         // CI sets OPENBURNBAR_ANDROID_SENTRY_DSN from the GitHub secret.

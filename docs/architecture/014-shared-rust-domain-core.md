@@ -65,7 +65,9 @@ text/query rather than crossing the boundary per token. Inputs fail closed over
 1 MiB of UTF-8, 4,096 extracted tokens, or a positive requested limit over
 1,024. Nonpositive limits remain a successful empty result because that is part
 of the versioned legacy contract. Platform search services and Firestore I/O
-remain outside Rust until their dedicated shadow-mode consumer changes land.
+remain outside Rust. Android's dedicated adapter now selects legacy,
+legacy-authoritative shadow, or fail-closed Rust execution at the four existing
+search entry points; callers and persistence mapping do not cross that boundary.
 
 ## Consequences
 

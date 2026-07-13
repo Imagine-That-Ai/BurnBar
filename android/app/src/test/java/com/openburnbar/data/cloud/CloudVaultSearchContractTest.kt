@@ -9,11 +9,20 @@ import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import uniffi.openburnbar_domain_ffi.CloudVaultSearchOperation as FfiSearchOperation
+import uniffi.openburnbar_domain_ffi.CloudVaultSearchRequest
+import uniffi.openburnbar_domain_ffi.CloudVaultSearchResult
 
 class CloudVaultSearchContractTest {
+    @After
+    fun tearDown() {
+        CloudVaultSearchDomainCore.resetTestOverrides()
+    }
+
     @Test
     fun tokenizationAndSemanticFeaturesMatchSharedContract() {
         val fixture = loadFixture()
@@ -40,6 +49,31 @@ class CloudVaultSearchContractTest {
     @Test
     fun hashOperationsMatchSharedContractAndRemainBounded() {
         val fixture = loadFixture()
+        assertHashContract(fixture)
+    }
+
+    @Test
+    fun rustAdapterRoutesEveryCompleteOperationThroughTheSharedContract() {
+        CloudVaultSearchDomainCore.modeOverride = CloudVaultSearchMode.RUST
+        var abiCalls = 0
+        CloudVaultSearchDomainCore.abiVersionOverride = {
+            abiCalls += 1
+            2u
+        }
+        var nativeCalls = 0
+        CloudVaultSearchDomainCore.nativeSearchOverride = { request ->
+            nativeCalls += 1
+            legacyResult(request)
+        }
+        val fixture = loadFixture()
+
+        assertHashContract(fixture)
+
+        assertEquals(fixture.array("hashCases").size, nativeCalls)
+        assertEquals(1, abiCalls)
+    }
+
+    private fun assertHashContract(fixture: JsonObject) {
         val primaryKey = fixture.string("primaryKeyHex").hexBytes()
         val alternateKey = fixture.string("alternateKeyHex").hexBytes()
         val isolationOutputs = linkedMapOf<String, MutableList<Set<String>>>()
@@ -70,6 +104,16 @@ class CloudVaultSearchContractTest {
             assertEquals(group, 2, outputs.size)
             assertTrue(group, outputs[0].intersect(outputs[1]).isEmpty())
         }
+    }
+
+    private fun legacyResult(request: CloudVaultSearchRequest): CloudVaultSearchResult {
+        val hashes = when (request.operation) {
+            FfiSearchOperation.TOKEN -> CloudVaultCryptoSearch.tokenHashes(request.text, request.vaultKey, request.limit)
+            FfiSearchOperation.INDEX -> CloudVaultCryptoSearch.searchIndexTokenHashes(request.text, request.vaultKey, request.limit)
+            FfiSearchOperation.QUERY -> CloudVaultCryptoSearch.searchQueryTokenHashes(request.text, request.vaultKey, request.limit)
+            FfiSearchOperation.SEMANTIC -> CloudVaultCryptoSearch.semanticHashes(request.text, request.vaultKey, request.limit)
+        }
+        return CloudVaultSearchResult(request.operation, hashes)
     }
 
     private fun loadFixture(): JsonObject {

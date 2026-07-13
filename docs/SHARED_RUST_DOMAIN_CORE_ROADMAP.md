@@ -50,9 +50,17 @@ strict on-curve 65-byte X9.63 validation, escrow HKDF from caller-provided ECDH
 output, and exact public-key-plus-AES wire assembly. Random nonces and P-256
 private-key operations remain platform-owned; no private key crosses UniFFI or
 Wasm. The search core and generated artifacts now own the contract-pinned v1
-analysis and trapdoor transforms; production Swift/Kotlin shadow routing and
-document rewrap remain last. Browser device private keys stay non-extractable
-WebCrypto handles throughout.
+analysis and trapdoor transforms. Android routes all four search operations
+through one UniFFI call per complete text/query behind
+`OPENBURNBAR_CLOUDVAULT_SEARCH_MODE=legacy|shadow|rust`; `legacy` remains the
+default and shadow remains legacy-authoritative. Swift routing and document
+rewrap remain last. Browser device private keys stay non-extractable WebCrypto
+handles throughout.
+
+Android treats missing, blank, or unknown search rollout values as `legacy`.
+Before its first native search it caches and verifies UniFFI ABI v2; an ABI
+mismatch is a fail-closed Rust error and a sanitized shadow rejection, never an
+automatic Rust-to-legacy fallback.
 
 The search slice starts from the versioned Swift/Kotlin contract fixture before
 adding any Rust export. The fixture pins Unicode normalization, stopwords,
@@ -67,7 +75,13 @@ one text. `cloud_vault_search` accepts one typed operation plus the complete
 text, 32-byte vault key, and signed limit, then returns ordered hashes. The core
 rejects text above 1 MiB, more than 4,096 extracted tokens, and limits above
 1,024; nonpositive limits return the contract-required empty array. Owned FFI
-and Wasm key copies and derived search keys are zeroized before return.
+and Wasm key copies and derived search keys are zeroized before return. Android
+additionally wipes its owned lowering copy of the vault key after every native
+attempt. Kotlin `String` is immutable, so Android avoids making an extra mutable
+plaintext copy and relies on the UniFFI/Rust-owned input zeroization. Shadow
+diagnostics contain only a bounded mismatch/error category, core version, and
+counter; Rust mode propagates validation or native-load failures without
+evaluating the legacy implementation.
 
 ## Rollout and deletion gates
 

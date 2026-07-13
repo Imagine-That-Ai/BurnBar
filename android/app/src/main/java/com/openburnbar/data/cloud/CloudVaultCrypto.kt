@@ -282,15 +282,25 @@ object CloudVaultCrypto {
         return plaintext.toString(Charsets.UTF_8)
     }
 
-    fun tokenHashes(text: String, vaultKey: ByteArray, limit: Int = 250): List<String> = CloudVaultCryptoSearch.tokenHashes(text, vaultKey, limit)
+    fun tokenHashes(text: String, vaultKey: ByteArray, limit: Int = 250): List<String> =
+        CloudVaultSearchDomainCore.search(CloudVaultSearchOperation.TOKEN, text, vaultKey, limit) {
+            CloudVaultCryptoSearch.tokenHashes(text, vaultKey, limit)
+        }
 
     fun searchIndexTokenHashes(text: String, vaultKey: ByteArray, limit: Int = 250): List<String> =
-        CloudVaultCryptoSearch.searchIndexTokenHashes(text, vaultKey, limit)
+        CloudVaultSearchDomainCore.search(CloudVaultSearchOperation.INDEX, text, vaultKey, limit) {
+            CloudVaultCryptoSearch.searchIndexTokenHashes(text, vaultKey, limit)
+        }
 
     fun searchQueryTokenHashes(text: String, vaultKey: ByteArray, limit: Int = 250): List<String> =
-        CloudVaultCryptoSearch.searchQueryTokenHashes(text, vaultKey, limit)
+        CloudVaultSearchDomainCore.search(CloudVaultSearchOperation.QUERY, text, vaultKey, limit) {
+            CloudVaultCryptoSearch.searchQueryTokenHashes(text, vaultKey, limit)
+        }
 
-    fun semanticHashes(text: String, vaultKey: ByteArray, limit: Int = 24): List<String> = CloudVaultCryptoSearch.semanticHashes(text, vaultKey, limit)
+    fun semanticHashes(text: String, vaultKey: ByteArray, limit: Int = 24): List<String> =
+        CloudVaultSearchDomainCore.search(CloudVaultSearchOperation.SEMANTIC, text, vaultKey, limit) {
+            CloudVaultCryptoSearch.semanticHashes(text, vaultKey, limit)
+        }
 
     fun openBlob(envelope: CloudVaultBlobEnvelope, vaultKey: ByteArray, aadContext: CloudVaultAADContext? = null): ByteArray {
         require(envelope.algorithm == "AES-256-GCM") { "Unsupported envelope algorithm" }
