@@ -11,25 +11,25 @@ export const P31_ROLES = Object.freeze([
 
 export const P31_ENVIRONMENTS = Object.freeze({
   'ubuntu-24.04-gnome-x11-x86_64': {
-    os: 'Ubuntu 24.04', desktop: 'GNOME', session: 'X11', architecture: 'x86_64'
+    os: 'Ubuntu 24.04', desktop: 'GNOME', session: 'X11', architecture: 'x86_64', format: 'deb'
   },
   'ubuntu-24.04-gnome-x11-aarch64': {
-    os: 'Ubuntu 24.04', desktop: 'GNOME', session: 'X11', architecture: 'aarch64'
+    os: 'Ubuntu 24.04', desktop: 'GNOME', session: 'X11', architecture: 'aarch64', format: 'deb'
   },
   'ubuntu-24.04-gnome-wayland-x86_64': {
-    os: 'Ubuntu 24.04', desktop: 'GNOME', session: 'Wayland', architecture: 'x86_64'
+    os: 'Ubuntu 24.04', desktop: 'GNOME', session: 'Wayland', architecture: 'x86_64', format: 'deb'
   },
   'ubuntu-24.04-gnome-wayland-aarch64': {
-    os: 'Ubuntu 24.04', desktop: 'GNOME', session: 'Wayland', architecture: 'aarch64'
+    os: 'Ubuntu 24.04', desktop: 'GNOME', session: 'Wayland', architecture: 'aarch64', format: 'deb'
   },
   'fedora-kde-wayland-x86_64': {
-    os: 'Fedora', desktop: 'KDE Plasma', session: 'Wayland', architecture: 'x86_64'
+    os: 'Fedora', desktop: 'KDE Plasma', session: 'Wayland', architecture: 'x86_64', format: 'rpm'
   },
   'fedora-kde-wayland-aarch64': {
-    os: 'Fedora', desktop: 'KDE Plasma', session: 'Wayland', architecture: 'aarch64'
+    os: 'Fedora', desktop: 'KDE Plasma', session: 'Wayland', architecture: 'aarch64', format: 'rpm'
   },
   'arch-sway-wayland-x86_64': {
-    os: 'Arch Linux', desktop: 'Sway/wlroots', session: 'Wayland', architecture: 'x86_64'
+    os: 'Arch Linux', desktop: 'Sway/wlroots', session: 'Wayland', architecture: 'x86_64', format: 'arch'
   }
 });
 
@@ -210,7 +210,8 @@ export function validateP31LiveSession(document, {
   assertCandidate(document.candidate, targetHead, candidateRunId, candidateArtifactDigest, 'P-31 live session');
   exactKeys(document.package, ['architecture', 'format', 'installed', 'manifestSha256', 'source', 'version'], 'P-31 package observation');
   const expected = expectedEnvironment(environmentId);
-  if (document.package.architecture !== expected.architecture || document.package.installed !== true
+  if (document.package.architecture !== expected.architecture || document.package.format !== expected.format
+      || document.package.installed !== true
       || document.package.source !== 'signed-installed-candidate' || !SHA256.test(document.package.manifestSha256 ?? '')
       || typeof document.package.version !== 'string' || document.package.version.length === 0) {
     throw new Error('P-31 package observation is not the signed installed candidate');

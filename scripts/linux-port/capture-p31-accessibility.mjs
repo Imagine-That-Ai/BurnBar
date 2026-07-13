@@ -53,12 +53,15 @@ function assertInside(root, candidate, label) {
   }
 }
 
-function readRegular(file, root, label) {
+function readRegular(file, root, repository, label) {
   const lexical = path.resolve(file);
   assertInside(root, lexical, label);
   const relative = path.relative(root, lexical).split(path.sep).join('/');
   const snapshot = readRegularSnapshot(root, relative, label);
-  return { bytes: snapshot.bytes, path: relative };
+  return {
+    bytes: snapshot.bytes,
+    path: path.relative(repository, lexical).split(path.sep).join('/')
+  };
 }
 
 function writeJsonAtomic(file, value) {
@@ -98,7 +101,7 @@ export function captureP31Accessibility({
     : spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repository, encoding: 'utf8' }).stdout.trim();
   if (currentHead !== targetHead) throw new Error('P-31 capture checkout is not the requested target HEAD');
 
-  const source = readRegular(sessionReport, root, 'P-31 live session report');
+  const source = readRegular(sessionReport, root, path.resolve(repoRoot), 'P-31 live session report');
   const session = parseP31Json(source.bytes, 'P-31 live session report');
   validateP31LiveSession(session, { environmentId, targetHead, candidateRunId, candidateArtifactDigest });
   const sourceSha256 = sha256Bytes(source.bytes);

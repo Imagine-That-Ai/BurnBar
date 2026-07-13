@@ -1,6 +1,7 @@
 import {
   P31_ROLES,
   parseP31Json,
+  validateP31LiveSession,
   validateP31Proof
 } from '../lib/p31-accessibility-proof.mjs';
 import {
@@ -32,6 +33,26 @@ function featureProofs(context) {
   return byRole;
 }
 
+function validateSourceBinding(context, role, proof) {
+  const root = `docs/linux-port/evidence/product-parity-inputs/${context.requirementId}`;
+  if (typeof proof.source?.path !== 'string' || !proof.source.path.startsWith(`${root}/`)) {
+    throw new Error(`${role} proof source must remain under the requirement evidence root`);
+  }
+  const source = readRegularSnapshot(context.repoRoot, proof.source.path, `${role} live session source`);
+  if (source.sha256 !== proof.source.sha256) throw new Error(`${role} live session source bytes changed`);
+  const session = parseP31Json(source.bytes, `${role} live session source`);
+  validateP31LiveSession(session, {
+    environmentId: context.environmentId,
+    targetHead: context.targetHead,
+    candidateRunId: context.releaseClosure.document.candidate.runId,
+    candidateArtifactDigest: context.releaseClosure.document.candidate.artifactDigest
+  });
+  const key = role.slice('feature.accessibility-'.length).replace('assistive-tech', 'assistiveTech');
+  if (JSON.stringify(proof.claim) !== JSON.stringify(session.observations[key])) {
+    throw new Error(`${role} proof claim does not match the live session source`);
+  }
+}
+
 export async function validateProductRequirement(context) {
   const validated = validateRequirementContext(context, ['aggregate-product-proof-closure']);
   requirePassedJsonProof(validated.proofs.get('aggregate-product-proof-closure'), 'aggregate-product-proof-closure');
@@ -44,6 +65,7 @@ export async function validateProductRequirement(context) {
       candidateRunId: context.releaseClosure.document.candidate.runId,
       candidateArtifactDigest: context.releaseClosure.document.candidate.artifactDigest
     });
+    validateSourceBinding(context, role, proofs.get(role));
   }
   return result(context, validated.artifacts);
 }
