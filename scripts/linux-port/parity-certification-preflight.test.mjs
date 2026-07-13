@@ -127,11 +127,11 @@ function policies(requirements) {
 
 function registry(complete) {
   const featureRequirements = complete
-    ? ['P-02', 'P-05', 'P-06', 'P-31', 'P-34']
-    : ['P-02', 'P-31', 'P-34'];
+    ? ['P-02', 'P-05', 'P-06', 'P-31', 'P-34', 'P-39']
+    : ['P-02', 'P-31', 'P-34', 'P-39'];
   const certificationIds = complete
-    ? ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-31', 'P-34', 'P-37', 'P-38']
-    : ['P-01', 'P-02', 'P-03', 'P-04', 'P-31', 'P-34', 'P-37', 'P-38'];
+    ? ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-31', 'P-34', 'P-37', 'P-38', 'P-39']
+    : ['P-01', 'P-02', 'P-03', 'P-04', 'P-31', 'P-34', 'P-37', 'P-38', 'P-39'];
   return {
     schemaVersion: 1,
     id: 'openburnbar-linux-product-feature-proof-registry-v1',
@@ -149,10 +149,12 @@ function registry(complete) {
         ? 'scripts/linux-port/finalize-product-proof-closure.mjs'
         : requirementId === 'P-02'
           ? 'scripts/linux-port/capture-parity-certification-preflight.mjs'
+          : requirementId === 'P-39'
+            ? 'scripts/linux-port/capture-p39-differential.mjs'
           : `scripts/linux-port/capture-${requirementId.toLowerCase()}.mjs`;
       const materializerProducerPath = RELEASE_ONLY.has(requirementId)
         ? 'scripts/linux-port/prepare-product-requirement-input.mjs'
-        : ['P-02', 'P-31', 'P-34'].includes(requirementId)
+        : ['P-02', 'P-31', 'P-34', 'P-39'].includes(requirementId)
           ? 'scripts/linux-port/finalize-product-feature-proof-closure.mjs'
           : `scripts/linux-port/materialize-${requirementId.toLowerCase()}.mjs`;
       return {
@@ -168,7 +170,7 @@ function registry(complete) {
           entrypoint: 'requirement',
           workflowPath: RELEASE_ONLY.has(requirementId)
             ? '.github/workflows/linux-release.yml'
-            : requirementId === 'P-02'
+            : ['P-02', 'P-39'].includes(requirementId)
               ? '.github/workflows/linux-product-parity.yml'
               : `.github/workflows/${requirementId.toLowerCase()}-capture.yml`,
           testPath,
@@ -177,7 +179,7 @@ function registry(complete) {
         materializer: {
           producerPath: materializerProducerPath,
           entrypoint: 'requirement',
-          workflowPath: RELEASE_ONLY.has(requirementId) || ['P-02', 'P-31', 'P-34'].includes(requirementId)
+          workflowPath: RELEASE_ONLY.has(requirementId) || ['P-02', 'P-31', 'P-34', 'P-39'].includes(requirementId)
             ? '.github/workflows/linux-product-parity.yml'
             : `.github/workflows/${requirementId.toLowerCase()}-materialize.yml`,
           testPath,
@@ -203,8 +205,8 @@ function createRepository({ complete = true } = {}) {
     'schemas/linux-product-feature-proof-registry.schema.json'
   ]) write(root, schema, fs.readFileSync(path.join(SOURCE_ROOT, schema)));
   const validatorIds = complete
-    ? ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-31', 'P-34', 'P-37', 'P-38']
-    : ['P-01', 'P-02', 'P-03', 'P-04', 'P-31', 'P-34', 'P-37', 'P-38'];
+    ? ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-31', 'P-34', 'P-37', 'P-38', 'P-39']
+    : ['P-01', 'P-02', 'P-03', 'P-04', 'P-31', 'P-34', 'P-37', 'P-38', 'P-39'];
   for (const requirementId of validatorIds) {
     write(root, `scripts/linux-port/product-validators/${requirementId}.mjs`,
       `export async function validateProductRequirement(context) {\n`
@@ -492,20 +494,20 @@ function validatorContext(subject, captureResult) {
   };
 }
 
-test('current implementation inventory truthfully blocks exactly the 32 unimplemented requirement lanes', async (t) => {
+test('current implementation inventory truthfully blocks exactly the 31 unimplemented requirement lanes', async (t) => {
   const subject = createRepository({ complete: false });
   t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
   const captured = capture(subject, {
     testExecutions: collectCertificationTestExecutions(subject.root, subject.head)
   });
   assert.equal(captured.document.status, 'blocked');
-  assert.equal(captured.document.summary.validatorCount, 8);
-  assert.equal(captured.document.summary.captureCount, 8);
-  assert.equal(captured.document.summary.materializerCount, 8);
-  assert.equal(captured.document.summary.readyCount, 8);
+  assert.equal(captured.document.summary.validatorCount, 9);
+  assert.equal(captured.document.summary.captureCount, 9);
+  assert.equal(captured.document.summary.materializerCount, 9);
+  assert.equal(captured.document.summary.readyCount, 9);
   assert.deepEqual(
     captured.document.requirements.filter((row) => !row.ready).map((row) => row.requirementId),
-    REQUIREMENT_IDS.filter((id) => !['P-01', 'P-02', 'P-03', 'P-04', 'P-31', 'P-34', 'P-37', 'P-38'].includes(id))
+    REQUIREMENT_IDS.filter((id) => !['P-01', 'P-02', 'P-03', 'P-04', 'P-31', 'P-34', 'P-37', 'P-38', 'P-39'].includes(id))
   );
   await assert.rejects(
     () => validateProductRequirement(validatorContext(subject, captured)),
@@ -563,7 +565,7 @@ test('P-02 capture emits a blocked candidate-bound diagnostic inventory', (t) =>
   assert.equal(captured.document.candidate.runId, RUN_ID);
   assert.equal(captured.document.candidate.artifactDigest, DIGEST);
   assert.equal(captured.document.status, 'blocked');
-  assert.equal(captured.document.summary.readyCount, 8);
+  assert.equal(captured.document.summary.readyCount, 9);
   assert.equal(fs.existsSync(captured.output), true);
 });
 

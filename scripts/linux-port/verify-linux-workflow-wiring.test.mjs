@@ -32,6 +32,9 @@ function valid() {
       'p38-release-automation-proof.test.mjs',
       'p31-accessibility-proof.test.mjs',
       'p34-credential-security-proof.test.mjs',
+      'p39-differential-proof.test.mjs',
+      'capture-p39-macos-oracle.test.mjs',
+      'resolve-p39-macos-oracle-run.test.mjs',
       'parity-certification-preflight.test.mjs',
       'run-linux-matrix-harness.test.mjs',
       'run-product-requirement-validator.test.mjs',
@@ -59,8 +62,10 @@ function valid() {
       'CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}',
       'capture-parity-certification-preflight.mjs',
       'capture-p34-credential-security-proof.mjs',
+      'capture-p39-differential.mjs',
       "if: inputs.requirement == 'P-02'",
       "if: inputs.requirement == 'P-34'",
+      "if: inputs.requirement == 'P-39'",
       "if: always() && inputs.requirement == 'P-02'",
       'linux-product-parity-diagnostic-',
       'id: p02_capture',
@@ -87,8 +92,17 @@ function valid() {
       'if-no-files-found: error',
       'include-hidden-files: true',
       'Download exact-candidate installed evidence',
+      'macos_oracle_run_id:',
+      'Resolve exact P-39 macOS oracle artifact',
+      'resolve-p39-macos-oracle-run.mjs',
+      'MACOS_ORACLE_RUN_ID: ${{ inputs.macos_oracle_run_id }}',
+      'artifact-ids: ${{ steps.macos_oracle.outputs.artifact_id }}',
+      'run-id: ${{ steps.macos_oracle.outputs.run_id }}',
+      'Download exact P-39 macOS oracle evidence',
+      'Resolve exact P-39 macOS oracle artifact',
+      'Download exact P-39 macOS oracle evidence',
       [
-        '      - name: Capture P-38 release automation verification',
+      '      - name: Capture P-38 release automation verification',
         "        if: inputs.requirement == 'P-38'",
         '        run: |',
         '          set -euo pipefail',
@@ -100,6 +114,16 @@ function valid() {
       'Preserve non-promotable P-02 diagnostic evidence',
       'Capture P-31 installed accessibility matrix evidence',
       'Capture P-34 credential security proof',
+      [
+        '      - name: Capture P-39 cross-platform differential proof',
+        "        if: inputs.requirement == 'P-39'",
+        '        run: |',
+        '          set -euo pipefail',
+        '          node scripts/linux-port/capture-p39-differential.mjs',
+        '            --candidate-run-id "$CANDIDATE_RUN_ID"',
+        '            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"'
+      ].join('\n'),
+      'Capture P-39 cross-platform differential proof',
       'Finalize registered feature proof closure',
       'Materialize the requirement-owned release closure',
       'Run the registered requirement validator'
@@ -152,6 +176,18 @@ function valid() {
       'OB_MATCHED_MACOS_INPUT',
       'OB_MATCHED_LINUX_INPUT',
       'linux-parity-matched-performance-nightly'
+    ].join('\n'),
+    macosP39OracleWorkflow: [
+      'workflow_dispatch:',
+      'workflow_call:',
+      'target_head:',
+      'runs-on: macos-26',
+      'P39_MACOS_ORACLE_COMMAND_JSON',
+      'capture-p39-macos-oracle.mjs',
+      'name: linux-p39-macos-oracle',
+      'actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874',
+      'if-no-files-found: error',
+      'include-hidden-files: true'
     ].join('\n'),
     release: [
       '- "linux-v*"',
@@ -311,6 +347,30 @@ test('P-38 workflow step cannot be removed or weakened', () => {
     const result = verifyLinuxWorkflowWiring(input);
     assert.equal(result.passed, false, name);
     assert.ok(result.failures.some((failure) => /P-38 release automation verification/u.test(failure)), name);
+  }
+});
+
+test('P-39 differential workflow step cannot be removed or weakened', () => {
+  for (const marker of [
+    'capture-p39-differential.mjs',
+    "if: inputs.requirement == 'P-39'",
+    'Capture P-39 cross-platform differential proof'
+  ]) {
+    const input = valid();
+    input.productParityWorkflow = input.productParityWorkflow.replaceAll(marker, 'removed-p39-capture-marker');
+    const result = verifyLinuxWorkflowWiring(input);
+    assert.equal(result.passed, false, marker);
+    assert.ok(result.failures.some((failure) => /P-39 cross-platform differential proof/u.test(failure)), marker);
+  }
+  for (const [name, from, to] of [
+    ['commented producer', '          node scripts/linux-port/capture-p39-differential.mjs', '          # node scripts/linux-port/capture-p39-differential.mjs'],
+    ['swallowed producer failure', '          set -euo pipefail', '          set -euo pipefail\n          continue-on-error: true'],
+    ['disabled fail-fast shell', '          set -euo pipefail', '          set +e']
+  ]) {
+    const input = valid();
+    input.productParityWorkflow = input.productParityWorkflow.replace(from, to);
+    const result = verifyLinuxWorkflowWiring(input);
+    assert.equal(result.passed, false, name);
   }
 });
 

@@ -1,0 +1,62 @@
+name: Linux P39 macOS oracle
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_head:
+        description: Exact commit to exercise as the macOS gold-standard oracle
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      target_head:
+        description: Exact commit to exercise as the macOS gold-standard oracle
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-p39-macos-oracle-${{ inputs.target_head }}
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    name: Capture macOS oracle at ${{ inputs.target_head }}
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - name: Check out the exact oracle source
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          ref: ${{ inputs.target_head }}
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+
+      - name: Install P-39 oracle dependencies
+        run: npm ci --prefix scripts/linux-port --ignore-scripts
+
+      - name: Capture product-generated macOS oracle
+        env:
+          P39_MACOS_ORACLE_COMMAND_JSON: ${{ vars.OPENBURNBAR_P39_MACOS_ORACLE_COMMAND_JSON }}
+          TARGET_HEAD: ${{ inputs.target_head }}
+        run: |
+          set -euo pipefail
+          input_root="docs/linux-port/evidence/product-parity-inputs/P-39/macos-oracle"
+          node scripts/linux-port/capture-p39-macos-oracle.mjs \
+            --input-root "$input_root" \
+            --target-head "$TARGET_HEAD" \
+            --run-id "$GITHUB_RUN_ID"
+
+      - name: Upload immutable macOS oracle artifact
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.6.1
+        with:
+          name: linux-p39-macos-oracle
+          path: docs/linux-port/evidence/product-parity-inputs/P-39/macos-oracle/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 30

@@ -78,7 +78,7 @@ The P-02 validator independently repeats that isolated execution instead of trus
 claims in the feature proof, then recomputes and validates the inventory. It can pass only when
 every one of the 40 rows has executable, mutation-sensitive ownership. A role, policy, empty test,
 reused test, workflow comment, untracked helper, or hand-authored passed JSON cannot satisfy a
-lane. The repository currently has six ready rows and 34 named blockers.
+lane. The repository currently has nine implementation-ready rows and 31 named blockers.
 
 If collection itself fails, the capture producer atomically leaves a non-promotable
 `capture-failed` diagnostic in a runner-owned `mktemp` directory, even when the downloaded input
@@ -102,3 +102,31 @@ and rejects stale sources, a partial signing matrix, missing architecture sessio
 or update/rollback records that do not name a distinct older version and the exact candidate.
 Capture and materialization delete stale outputs first, so a forced workflow or mutation failure
 cannot leave a reusable passed receipt.
+
+## P-39 cross-platform differential certification
+
+P-39 is the macOS-gold-standard differential lane. The canonical contract in
+`docs/linux-port/p39-differential-contract.json` owns the corpus case IDs, normalized-output schema,
+and platform-only metadata policy. A downloaded candidate must provide four source files under the
+environment evidence root: one versioned corpus, a macOS oracle envelope, a Linux output envelope,
+and the binary bytes used by each envelope. The envelopes must identify live macOS and Linux
+producers, their immutable source commit, release version, binary digest, runtime/OS metadata,
+frozen UTC clock, feature flags, and the contract/corpus digests. The Linux candidate run and
+artifact digest are bound to the independently resolved release candidate; the macOS run is
+independently identified and may not be replaced by a Linux-generated row.
+
+Capture computes the sorted-JSON digest for every normalized case, requires all eight required
+features, compares both sides directly, and writes one `feature.cross-platform-differential-proof`
+artifact. Missing inputs, fixture/synthetic modes, stale source bytes, mismatched commits or
+versions, changed flags/timezone, substituted binaries, case omissions, and any normalized mismatch
+fail before registration. The validator re-reads every source and binary record after materialization,
+recomputes the comparison, and rejects a stale proof or candidate substitution. A green P-39 receipt
+therefore proves the attested current-commit corpus and outputs only; it does not allow a pre-existing
+fixture or a Linux-generated stand-in to claim macOS parity.
+
+The Linux product-parity workflow requires a separate `macos_oracle_run_id` for P-39. The resolver
+accepts only a first-attempt successful run of `.github/workflows/linux-p39-macos-oracle.yml` at the
+same target commit, with one live `linux-p39-macos-oracle` artifact bound to that run. The workflow
+downloads that artifact into the exact Linux environment evidence root before capture. If the oracle
+run is omitted, stale, rerun, from another repository, or contains the wrong artifact, P-39 fails
+closed; no Linux job is permitted to synthesize the macOS side.

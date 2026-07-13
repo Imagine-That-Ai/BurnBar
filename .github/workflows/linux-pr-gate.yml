@@ -109,6 +109,9 @@ jobs:
           scripts/linux-port/p38-release-automation-proof.test.mjs
           scripts/linux-port/p31-accessibility-proof.test.mjs
           scripts/linux-port/p34-credential-security-proof.test.mjs
+          scripts/linux-port/p39-differential-proof.test.mjs
+          scripts/linux-port/capture-p39-macos-oracle.test.mjs
+          scripts/linux-port/resolve-p39-macos-oracle-run.test.mjs
           scripts/linux-port/parity-certification-preflight.test.mjs
           scripts/linux-port/run-linux-matrix-harness.test.mjs
           scripts/linux-port/run-product-requirement-validator.test.mjs
