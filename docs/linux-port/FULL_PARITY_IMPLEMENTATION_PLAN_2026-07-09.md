@@ -64,6 +64,29 @@ the strict ledger on the exact candidate and collect the installed GNOME
 X11/Wayland, KDE/wlroots, x86_64/aarch64, accessibility, performance,
 update/rollback, and physical-device receipts listed below.
 
+### Follow-on source checkpoint — 2026-07-13
+
+The integration branch now includes the next bounded source slices:
+
+- `0d8ee32526`: chat attachment upload/metadata, reconnect and visibility
+  continuity, functional options, and browser/Tauri pop-out boundaries. Upload
+  bytes remain process-lived by design; a daemon restart requires re-upload.
+- `4a2138897c` and `01784940c5`: exact update artifact/channel safety plus
+  account context/generation fences that reject stale identity responses.
+- `5ddd81245d`: selectable Insights canvas/library/inspector widgets, bounded
+  audit disclosure, refresh, and chat follow-up handoff.
+- `5f74018422`: normalized notification actions, expanded allowlisted routes,
+  and cold-start native-route precedence over onboarding.
+- `9a527310f9`: contained pet summon/focus/status and selection/clear controls;
+  native overlay and click-through remain explicitly unavailable.
+
+The combined frontend suite is **74 files / 621 tests**, the Tauri Rust suite
+is **87/87**, TypeScript and the production bundle verifier pass, and the
+daemon target builds. These are source gates only. The promotion ledger remains
+0/40 product rows and 0/7 environment receipts until the exact signed
+candidate, installed matrix, Linux keyring/portal/D-Bus evidence, update/
+rollback proof, and physical-iPad flow are exercised.
+
 > **Execution update through 2026-07-12 UTC:** the implementation wave completed the
 > fail-closed 40-requirement inventory, Linux secret custody/native gateway
 > boundary, runtime capability manifest, installed accessibility harness,
@@ -96,10 +119,10 @@ integrated chat model/attachment state, persisted activity replay/resume, and
 SQLCipher-gated encrypted database snapshot/restore. The
 following checks passed:
 
-- Linux frontend: 73 Vitest files / 607 tests.
+- Linux frontend: 74 Vitest files / 621 tests.
 - TypeScript: `npx tsc --noEmit --pretty false`.
 - Production bundle: `npm run build` plus the production bundle verifier.
-- Tauri Rust: 80/80 library tests.
+- Tauri Rust: 87/87 library tests.
 - RPC canon, Rust formatting, and suppression-policy checks.
 - Platform differential oracle: 6/6 tests.
 - Supported SQLCipher-backed daemon chat selector: 9/9 tests.
@@ -129,7 +152,7 @@ commits remain separately inspectable in the branch history:
 
 | Order | Slice | Dependencies | Acceptance criteria | Remaining boundary |
 |---|---|---|---|---|
-| 1 | Chat model/options, attachment transport, citations, and approvals | Existing encrypted thread RPCs, gateway model catalog, Composer/ChatSurface stores, daemon private data root | Selected model and thinking level survive the active composer lifecycle and reach the gateway as the exact model ID; daemon-owned attachment refs enforce 10 MiB/file/send caps, 80 MiB registry, 0700/0600 storage, single-use UUIDs, allowlisted text/Markdown/CSV/JSON/PDF policy, text-only gateway payloads, explicit PDF unsupported behavior, bounded citation source handling, and daemon-issued approve/reject/cancel IDs; no renderer secret, raw path, or fake upload path | Image/binary provider handling, unloaded-history export/resume, pop-out, and remaining backend catalog still require real daemon/provider contracts |
+| 1 | Chat model/options, attachment transport, citations, and approvals | Existing encrypted thread RPCs, gateway model catalog, Composer/ChatSurface stores, daemon private data root | Selected model and thinking level survive the active composer lifecycle and reach the gateway as the exact model ID; daemon-owned attachment refs enforce 10 MiB/file/send caps, 80 MiB registry, 0700/0600 storage, single-use UUIDs, allowlisted text/Markdown/CSV/JSON/PDF policy, text-only gateway payloads, explicit PDF unsupported behavior, bounded citation source handling, daemon-issued approve/reject/cancel IDs, reconnect/visibility handling, functional options, and browser/Tauri pop-out boundaries; no renderer secret, raw path, or fake upload path | Image/binary provider handling, unloaded-history export/resume, attachment re-upload after daemon restart, and remaining backend catalog still require real daemon/provider contracts |
 | 2 | Activity body replay and resume | Existing indexed activity search/detail RPCs, canonical `run.resume`, bounded transcript decoder | Body replay is daemon-backed, size-bounded, untrusted-rendered, and honest on missing/offline/error; native resume carries the persisted briefing without launching a process; providers without validated native resume use the same-harness handoff; plaintext legacy SQLite remains readable under SQLCipher builds; Swift 4/4 and frontend/Rust contracts pass | Full-history export, source resolution, resume-from-export, and installed provider/runtime proof remain open |
 | 3 | Encrypted project database snapshot/restore | Project-code SQLite store, SQLCipher codec/key custody, watcher lifecycle, canonical RPC generator | Snapshot rejects traversal/symlinks/unsafe ownership, active-db overwrite, and >512 MiB; checkpoints WAL, writes owner-only temporary files, hashes content, atomically installs; restore validates integrity, stops/reopens watchers, and rolls back on failure; bridge/Rust contract suites pass | This is same-key encrypted snapshot recovery only. Key-loss/device-transfer recovery and installed proof remain open |
 | 4 | macOS-compatible database recovery bundle | Existing SQLCipher key custody, Swift Crypto, daemon RPC/canon, Database surface | v1 bundle uses exact salt16/PBKDF2-HMAC-SHA256 100k/AES-GCM combined format; parser bounds bundle/version/iterations/key length; export/import uses owner-only 0600 atomic files, candidate-key verification, and native Secret Service/KWallet custody hooks; passphrases never enter renderer persistence; source/build tests pass | Live Linux keyring round-trip, key-loss/device transfer, recovery UX for missing stores, and installed proof remain open |
