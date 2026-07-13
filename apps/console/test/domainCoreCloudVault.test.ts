@@ -2,8 +2,13 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
+  base64ToBytes,
   blobPlaintextHMAC,
+  bytesToBase64,
   cloudVaultAADContext,
+  importVaultKey,
+  openBlob,
+  sealBlob,
 } from "../lib/escrow";
 import {
   configureCloudVaultDomainCoreForTests,
@@ -26,6 +31,19 @@ interface DeterministicKat {
     dataHex: string;
     hex: string;
   }>;
+  aesGcm: Array<{
+    keyHex: string;
+    nonceHex: string;
+    plaintextHex: string;
+    aadHex: string;
+    ciphertextHex: string;
+    tagHex: string;
+    combinedBase64: string;
+  }>;
+}
+
+function fromHex(value: string): Uint8Array {
+  return Uint8Array.from(Buffer.from(value, "hex"));
 }
 
 let fixture: DeterministicKat;
@@ -94,5 +112,43 @@ describe("CloudVault domain-core browser adapter", () => {
 
     expect(actual).toBe(vector!.hex);
     expect(legacyImport).not.toHaveBeenCalled();
+  });
+
+  it("uses canonical Base64 and rejects non-canonical input in rust mode", () => {
+    configureCloudVaultDomainCoreForTests("rust", true);
+    for (const vector of fixture.aesGcm) {
+      expect(bytesToBase64(base64ToBytes(vector.combinedBase64))).toBe(vector.combinedBase64);
+    }
+    expect(() => base64ToBytes("AA==\n")).toThrow();
+  });
+
+  it("routes v2 AES through Wasm without exporting the browser CryptoKey", async () => {
+    configureCloudVaultDomainCoreForTests("rust", true);
+    const rawKey = fromHex(fixture.aesGcm[1]!.keyHex);
+    const vaultKey = await importVaultKey(rawKey);
+    const webEncrypt = vi.spyOn(globalThis.crypto.subtle, "encrypt");
+    const webDecrypt = vi.spyOn(globalThis.crypto.subtle, "decrypt");
+
+    const envelope = await sealBlob(new TextEncoder().encode("wasm custody proof"), vaultKey, {
+      rawVaultKey: rawKey,
+    });
+    const plaintext = await openBlob(envelope, vaultKey, { rawVaultKey: rawKey });
+
+    expect(new TextDecoder().decode(plaintext)).toBe("wasm custody proof");
+    expect(webEncrypt).toHaveBeenCalledTimes(1);
+    expect(webDecrypt).not.toHaveBeenCalled();
+    expect(vaultKey.extractable).toBe(false);
+  });
+
+  it("rejects raw bytes that do not match the non-extractable browser key", async () => {
+    configureCloudVaultDomainCoreForTests("rust", true);
+    const rawKey = fromHex(fixture.aesGcm[1]!.keyHex);
+    const vaultKey = await importVaultKey(rawKey);
+    const wrongRawKey = rawKey.slice();
+    wrongRawKey[0] ^= 1;
+
+    await expect(
+      sealBlob(new TextEncoder().encode("misbound"), vaultKey, { rawVaultKey: wrongRawKey }),
+    ).rejects.toMatchObject({ code: "invalid_key_length" });
   });
 });

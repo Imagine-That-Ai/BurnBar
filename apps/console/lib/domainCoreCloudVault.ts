@@ -1,6 +1,10 @@
 import initDomainCore, {
   CloudVaultHashPurpose,
   cloudVaultAadV2,
+  cloudVaultAesGcmOpenCombined,
+  cloudVaultAesGcmSealCombined,
+  cloudVaultBase64DecodeStrict,
+  cloudVaultBase64Encode,
   cloudVaultKeyedHashHex,
   cloudVaultSha256Hex,
   initSync,
@@ -21,6 +25,10 @@ function configuredMode(): CloudVaultDomainCoreMode {
   return value === "shadow" || value === "rust" ? value : "legacy";
 }
 
+export function cloudVaultDomainCoreMode(): CloudVaultDomainCoreMode {
+  return configuredMode();
+}
+
 async function ensureInitialized(input?: InitInput): Promise<void> {
   if (initialized) return;
   initialization ??= initDomainCore(input).then(() => {
@@ -29,7 +37,7 @@ async function ensureInitialized(input?: InitInput): Promise<void> {
   await initialization;
 }
 
-function warn(operation: string, category: "native_unavailable" | "shadow_mismatch"): void {
+function warn(operation: string, category: "native_unavailable" | "shadow_mismatch" | "rust_error"): void {
   console.warn(`domain_core.cloudvault.${category} operation=${operation} core=abi2`);
 }
 
@@ -37,6 +45,7 @@ export async function applyCloudVaultDomainCore<T>(
   operation: string,
   legacy: () => T | Promise<T>,
   rust: () => T,
+  equivalent: (legacyValue: T, rustValue: T) => boolean = Object.is,
 ): Promise<T> {
   const mode = configuredMode();
   if (mode === "legacy") return legacy();
@@ -44,7 +53,7 @@ export async function applyCloudVaultDomainCore<T>(
   try {
     await ensureInitialized();
   } catch (error) {
-    if (requireCoreForTests) throw error;
+    if (mode === "rust" || requireCoreForTests) throw error;
     warn(operation, "native_unavailable");
     return legacy();
   }
@@ -52,8 +61,14 @@ export async function applyCloudVaultDomainCore<T>(
   if (mode === "rust") return rust();
 
   const legacyValue = await legacy();
-  const rustValue = rust();
-  if (legacyValue !== rustValue) warn(operation, "shadow_mismatch");
+  let rustValue: T;
+  try {
+    rustValue = rust();
+  } catch {
+    warn(operation, "rust_error");
+    return legacyValue;
+  }
+  if (!equivalent(legacyValue, rustValue)) warn(operation, "shadow_mismatch");
   return legacyValue;
 }
 
@@ -61,28 +76,45 @@ export function applyCloudVaultDomainCoreSync<T>(
   operation: string,
   legacy: () => T,
   rust: () => T,
+  equivalent: (legacyValue: T, rustValue: T) => boolean = Object.is,
 ): T {
   const mode = configuredMode();
   if (mode === "legacy") return legacy();
   if (!initialized) {
-    if (requireCoreForTests) throw new Error("domain core Wasm is required but not initialized");
+    if (mode === "rust" || requireCoreForTests) {
+      throw new Error("domain core Wasm is required but not initialized");
+    }
     void ensureInitialized().catch(() => undefined);
     warn(operation, "native_unavailable");
     return legacy();
   }
   if (mode === "rust") return rust();
   const legacyValue = legacy();
-  const rustValue = rust();
-  if (legacyValue !== rustValue) warn(operation, "shadow_mismatch");
+  let rustValue: T;
+  try {
+    rustValue = rust();
+  } catch {
+    warn(operation, "rust_error");
+    return legacyValue;
+  }
+  if (!equivalent(legacyValue, rustValue)) warn(operation, "shadow_mismatch");
   return legacyValue;
 }
 
 export const domainCoreCloudVault = {
   aadV2: cloudVaultAadV2,
+  aesOpenCombined: cloudVaultAesGcmOpenCombined,
+  aesSealCombined: cloudVaultAesGcmSealCombined,
+  base64DecodeStrict: cloudVaultBase64DecodeStrict,
+  base64Encode: cloudVaultBase64Encode,
   sha256Hex: cloudVaultSha256Hex,
   keyedHashHex: cloudVaultKeyedHashHex,
   hashPurpose: CloudVaultHashPurpose,
 };
+
+export async function prepareCloudVaultDomainCore(): Promise<void> {
+  await applyCloudVaultDomainCore("initialize", () => undefined, () => undefined);
+}
 
 export function initializeCloudVaultDomainCoreForTests(module: SyncInitInput): void {
   initSync({ module });
