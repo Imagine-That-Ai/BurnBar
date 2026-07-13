@@ -1,0 +1,80 @@
+{
+  "schema": "openburnbar.domain-core.pricing.v1",
+  "costVectors": [
+    {
+      "rates": {
+        "inputPerMToken": 3.0,
+        "outputPerMToken": 15.0,
+        "cacheCreationPerMToken": null,
+        "cacheReadPerMToken": 0.5
+      },
+      "buckets": {
+        "inputTokens": 1000000,
+        "outputTokens": 2000000,
+        "cacheCreationTokens": 500000,
+        "cacheReadTokens": 250000
+      },
+      "expectedCostUsd": 34.625
+    },
+    {
+      "rates": {
+        "inputPerMToken": 0.6,
+        "outputPerMToken": 2.5,
+        "cacheCreationPerMToken": 0.6,
+        "cacheReadPerMToken": 0.15
+      },
+      "buckets": {
+        "inputTokens": 700,
+        "outputTokens": 300,
+        "cacheCreationTokens": 200,
+        "cacheReadTokens": 100
+      },
+      "expectedCostUsd": 0.001305
+    },
+    {
+      "rates": {
+        "inputPerMToken": 0.255,
+        "outputPerMToken": 1.0,
+        "cacheCreationPerMToken": null,
+        "cacheReadPerMToken": 0.0
+      },
+      "buckets": {
+        "inputTokens": 1234,
+        "outputTokens": 567,
+        "cacheCreationTokens": 0,
+        "cacheReadTokens": 0
+      },
+      "expectedCostUsd": 0.00088167
+    }
+  ],
+  "legacyKimiVectors": [
+    {
+      "provider": "KIMI",
+      "model": "chatcmpl-abc123",
+      "buckets": {
+        "inputTokens": 1000,
+        "outputTokens": 300,
+        "cacheCreationTokens": 200,
+        "cacheReadTokens": 100
+      },
+      "isLegacy": true,
+      "expected": {
+        "model": "kimi-for-coding",
+        "totalTokens": 1300,
+        "costUsd": 0.001305
+      }
+    },
+    {
+      "provider": "kimi",
+      "model": "kimi-k2",
+      "buckets": {
+        "inputTokens": 1,
+        "outputTokens": 1,
+        "cacheCreationTokens": 0,
+        "cacheReadTokens": 0
+      },
+      "isLegacy": false,
+      "expected": null
+    }
+  ]
+}

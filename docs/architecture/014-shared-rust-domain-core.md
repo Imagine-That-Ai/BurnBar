@@ -44,6 +44,14 @@ contract to ABI 2 and adds Android and Wasm packaging. Consumers must verify the
 expected ABI before invoking Rust; release artifacts must prove native loading
 on their supported architectures rather than relying on binding compilation.
 
+Pricing consumers use the separate
+`OPENBURNBAR_DOMAIN_CORE_PRICING_MODE=legacy|shadow|rust` switch. Swift calls
+the ABI 2 UniFFI surface after catalog selection. Cloud Functions installs the
+same generated WASM bytes from a deploy-contained `file:` package and performs
+synchronous lazy initialization on the first shadow/Rust operation. This keeps
+default cold starts unchanged and avoids an unavailable path outside the
+Firebase Functions deployment root.
+
 ## Consequences
 
 - Quota parsing is the pilot because it removes real duplication with a small,

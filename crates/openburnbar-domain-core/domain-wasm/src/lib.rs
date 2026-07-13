@@ -1,7 +1,63 @@
 use openburnbar_domain_core::cloudvault::{
     self, CloudVaultAadContext, CloudVaultError, CloudVaultHashPurpose as CoreHashPurpose,
 };
+use openburnbar_domain_core::pricing::{self, TokenBuckets, TokenRates};
 use wasm_bindgen::prelude::*;
+
+#[wasm_bindgen(js_name = domainCoreVersion)]
+pub fn domain_core_version() -> String {
+    env!("CARGO_PKG_VERSION").to_owned()
+}
+
+#[wasm_bindgen(js_name = calculateTokenCost)]
+pub fn calculate_token_cost(rates: &[f64], buckets: &[f64]) -> Result<f64, JsError> {
+    if rates.len() != 4 || buckets.len() != 4 {
+        return Err(JsError::new(
+            "invalid_pricing_vector: expected four rates and four token buckets",
+        ));
+    }
+    Ok(pricing::token_cost(
+        TokenRates {
+            input_per_m_token: rates[0],
+            output_per_m_token: rates[1],
+            cache_creation_per_m_token: (!rates[2].is_nan()).then_some(rates[2]),
+            cache_read_per_m_token: rates[3],
+        },
+        TokenBuckets {
+            input_tokens: buckets[0],
+            output_tokens: buckets[1],
+            cache_creation_tokens: buckets[2],
+            cache_read_tokens: buckets[3],
+        },
+    ))
+}
+
+#[wasm_bindgen(js_name = isLegacyKimiWireEvent)]
+pub fn is_legacy_kimi_wire_event(provider: &str, model: &str) -> bool {
+    pricing::is_legacy_kimi_wire_event(provider, model)
+}
+
+/// Returns `[total_tokens, cost_usd]`; the canonical model is exported separately.
+#[wasm_bindgen(js_name = priceLegacyKimiWireEvent)]
+pub fn price_legacy_kimi_wire_event(
+    input_tokens: f64,
+    output_tokens: f64,
+    cache_creation_tokens: f64,
+    cache_read_tokens: f64,
+) -> Vec<f64> {
+    let result = pricing::legacy_kimi_metrics(TokenBuckets {
+        input_tokens,
+        output_tokens,
+        cache_creation_tokens,
+        cache_read_tokens,
+    });
+    vec![result.total_tokens, result.cost_usd]
+}
+
+#[wasm_bindgen(js_name = legacyKimiWireModel)]
+pub fn legacy_kimi_wire_model() -> String {
+    pricing::legacy_kimi_model().to_owned()
+}
 
 #[wasm_bindgen]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

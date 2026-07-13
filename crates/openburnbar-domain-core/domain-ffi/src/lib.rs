@@ -1,5 +1,5 @@
 use openburnbar_domain_core::quota as core;
-use openburnbar_domain_core::{cloudvault, quota};
+use openburnbar_domain_core::{cloudvault, pricing, quota};
 use zeroize::Zeroize;
 
 pub const DOMAIN_CORE_ABI_VERSION: u32 = 2;
@@ -20,6 +20,29 @@ pub struct CloudVaultAadContextInput {
     pub field: String,
     pub schema_version: u32,
     pub purpose: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, uniffi::Record)]
+pub struct TokenPricingRates {
+    pub input_per_m_token: f64,
+    pub output_per_m_token: f64,
+    pub cache_creation_per_m_token: Option<f64>,
+    pub cache_read_per_m_token: f64,
+}
+
+#[derive(Clone, Copy, Debug, uniffi::Record)]
+pub struct TokenPricingBuckets {
+    pub input_tokens: f64,
+    pub output_tokens: f64,
+    pub cache_creation_tokens: f64,
+    pub cache_read_tokens: f64,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct LegacyKimiPricingResult {
+    pub model: String,
+    pub total_tokens: f64,
+    pub cost_usd: f64,
 }
 
 #[derive(Debug, thiserror::Error, uniffi::Error)]
@@ -133,6 +156,21 @@ pub fn domain_core_version() -> String {
 }
 
 #[uniffi::export]
+pub fn calculate_token_cost(rates: TokenPricingRates, buckets: TokenPricingBuckets) -> f64 {
+    pricing::token_cost(rates.into(), buckets.into())
+}
+
+#[uniffi::export]
+pub fn is_legacy_kimi_wire_event(provider: String, model: String) -> bool {
+    pricing::is_legacy_kimi_wire_event(&provider, &model)
+}
+
+#[uniffi::export]
+pub fn price_legacy_kimi_wire_event(buckets: TokenPricingBuckets) -> LegacyKimiPricingResult {
+    pricing::legacy_kimi_metrics(buckets.into()).into()
+}
+
+#[uniffi::export]
 pub fn cloud_vault_aad_v2(
     uid: String,
     collection: String,
@@ -239,6 +277,38 @@ impl From<CloudVaultHashPurpose> for cloudvault::CloudVaultHashPurpose {
             CloudVaultHashPurpose::SessionBody => Self::SessionBody,
             CloudVaultHashPurpose::SessionChunk => Self::SessionChunk,
             CloudVaultHashPurpose::ProjectMemoryContent => Self::ProjectMemoryContent,
+        }
+    }
+}
+
+impl From<TokenPricingRates> for pricing::TokenRates {
+    fn from(value: TokenPricingRates) -> Self {
+        Self {
+            input_per_m_token: value.input_per_m_token,
+            output_per_m_token: value.output_per_m_token,
+            cache_creation_per_m_token: value.cache_creation_per_m_token,
+            cache_read_per_m_token: value.cache_read_per_m_token,
+        }
+    }
+}
+
+impl From<TokenPricingBuckets> for pricing::TokenBuckets {
+    fn from(value: TokenPricingBuckets) -> Self {
+        Self {
+            input_tokens: value.input_tokens,
+            output_tokens: value.output_tokens,
+            cache_creation_tokens: value.cache_creation_tokens,
+            cache_read_tokens: value.cache_read_tokens,
+        }
+    }
+}
+
+impl From<pricing::LegacyKimiMetrics> for LegacyKimiPricingResult {
+    fn from(value: pricing::LegacyKimiMetrics) -> Self {
+        Self {
+            model: value.model,
+            total_tokens: value.total_tokens,
+            cost_usd: value.cost_usd,
         }
     }
 }

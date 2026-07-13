@@ -5,6 +5,7 @@
 **Source inventory:** [Shared Rust Domain Inventory](SHARED_RUST_DOMAIN_INVENTORY.md)
 **First contract:** [`tests/fixtures/domain-core/quota/v1/`](../tests/fixtures/domain-core/quota/v1/)
 **CloudVault contract:** [`tests/fixtures/domain-core/cloudvault/v1/`](../tests/fixtures/domain-core/cloudvault/v1/)
+**Pricing contract:** [`tests/fixtures/domain-core/pricing/v1/`](../tests/fixtures/domain-core/pricing/v1/)
 
 The pilot is implemented behind `OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE`. Its
 accepted values are `legacy` (default), `shadow`, and `rust`.
@@ -31,7 +32,7 @@ accepted values are `legacy` (default), `shadow`, and `rust`.
 | Q2 | Codex, Cursor, Anthropic quota | Swift + C# | Four quota mechanisms share Rust parsing |
 | C1 | CloudVault primitives and envelopes | Swift + Kotlin + C# + browser TypeScript | KAT/cross-open clean; duplicated portable crypto copies deleted without exporting browser non-extractable keys |
 | C2 | Hermes relay HPKE/AAD/ratchet | Swift + Kotlin | Existing wire vectors pass through Rust sessions |
-| P1 | Model pricing and cost arithmetic | Swift + TypeScript | Integer nano-USD Rust/WASM path enforced |
+| P1 | Model pricing and cost arithmetic | Swift + TypeScript | Rust/UniFFI/WASM cost and historical-alias path enforced; legacy arithmetic deleted |
 
 Provider log parsing remains in Swift until a second real implementation exists,
 Android becomes a local log-reading peer, or Windows/Linux Swift runtime evidence
@@ -43,6 +44,16 @@ It ships through UniFFI ABI 2, a four-ABI Android AAR, and a deterministic brows
 Wasm package. C1b adds AES text/blob/payload cross-open; C1c adds recovery and
 P-256 escrow; search normalization and document rewrap remain last. Browser
 device private keys stay non-extractable WebCrypto handles throughout.
+
+Pricing P1 preserves the existing IEEE-754 operation order so historical costs
+remain numerically identical. The shared core owns per-million-token arithmetic,
+cache-creation fallback, and the era-pinned Kimi wire-event alias/rates. Swift
+catalog loading, Swift-only model normalization, and Functions environment-rate
+parsing stay platform-owned. The audit found no duplicated pricing rounding
+rule: six-decimal rollup presentation remains a Functions aggregation concern
+rather than being invented as a cross-platform contract. Consumers use
+`OPENBURNBAR_DOMAIN_CORE_PRICING_MODE`; Functions loads its checked-in WASM
+package lazily and makes one domain call per event or complete token breakdown.
 
 ## Rollout and deletion gates
 

@@ -9,8 +9,10 @@ UI, and operating-system integration.
 - `openburnbar-domain-core`: dependency-light Rust transformations.
 - `openburnbar-domain-ffi`: versioned UniFFI records and functions.
 
-The first migrated domain is Claude statusline quota parsing. Its contract lives
-in `tests/fixtures/domain-core/quota/v1` at the repository root.
+Executable contracts live under `tests/fixtures/domain-core` at the repository
+root. The current pure domains are provider quota transforms, CloudVault
+deterministic primitives, and pricing/model compatibility rules. Native clients
+use UniFFI; browser and Functions TypeScript use the generated WASM package.
 
 ```bash
 cargo fmt --all --check

@@ -735,6 +735,12 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
+
+
+
+
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
 
@@ -750,6 +756,8 @@ internal interface UniffiLib : Library {
 
     }
 
+    fun uniffi_openburnbar_domain_ffi_fn_func_calculate_token_cost(`rates`: RustBuffer.ByValue,`buckets`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Double
     fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aad_v1(`uid`: RustBuffer.ByValue,`collection`: RustBuffer.ByValue,`docId`: RustBuffer.ByValue,`field`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aad_v2(`uid`: RustBuffer.ByValue,`collection`: RustBuffer.ByValue,`docId`: RustBuffer.ByValue,`field`: RustBuffer.ByValue,`schemaVersion`: Int,`purpose`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
@@ -768,6 +776,8 @@ internal interface UniffiLib : Library {
     ): Int
     fun uniffi_openburnbar_domain_ffi_fn_func_domain_core_version(uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_is_legacy_kimi_wire_event(`provider`: RustBuffer.ByValue,`model`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Byte
     fun uniffi_openburnbar_domain_ffi_fn_func_parse_anthropic_rate_limit_headers(`payload`: RustBuffer.ByValue,`nowUnix`: Long,`shape`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_parse_claude_statusline_quota(`payload`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
@@ -775,6 +785,8 @@ internal interface UniffiLib : Library {
     fun uniffi_openburnbar_domain_ffi_fn_func_parse_codex_usage_quota(`payload`: RustBuffer.ByValue,`nowUnix`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_parse_cursor_usage_quota(`payload`: RustBuffer.ByValue,`userEmail`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_price_legacy_kimi_wire_event(`buckets`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun ffi_openburnbar_domain_ffi_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
@@ -888,6 +900,8 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_openburnbar_domain_ffi_rust_future_complete_void(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
+    fun uniffi_openburnbar_domain_ffi_checksum_func_calculate_token_cost(
+    ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aad_v1(
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aad_v2(
@@ -906,6 +920,8 @@ internal interface UniffiLib : Library {
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_domain_core_version(
     ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_is_legacy_kimi_wire_event(
+    ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_parse_anthropic_rate_limit_headers(
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_parse_claude_statusline_quota(
@@ -913,6 +929,8 @@ internal interface UniffiLib : Library {
     fun uniffi_openburnbar_domain_ffi_checksum_func_parse_codex_usage_quota(
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_parse_cursor_usage_quota(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_price_legacy_kimi_wire_event(
     ): Short
     fun ffi_openburnbar_domain_ffi_uniffi_contract_version(
     ): Int
@@ -930,6 +948,9 @@ private fun uniffiCheckContractApiVersion(lib: UniffiLib) {
 }
 
 private fun uniffiCheckApiChecksums(lib: UniffiLib) {
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_calculate_token_cost() != 20590.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aad_v1() != 43983.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -957,6 +978,9 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_domain_core_version() != 28819.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_is_legacy_kimi_wire_event() != 19138.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_parse_anthropic_rate_limit_headers() != 49269.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -967,6 +991,9 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_parse_cursor_usage_quota() != 39634.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_price_legacy_kimi_wire_event() != 31427.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
 }
@@ -1234,6 +1261,42 @@ public object FfiConverterTypeCloudVaultAadContextInput: FfiConverterRustBuffer<
 
 
 
+data class LegacyKimiPricingResult (
+    var `model`: kotlin.String,
+    var `totalTokens`: kotlin.Double,
+    var `costUsd`: kotlin.Double
+) {
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLegacyKimiPricingResult: FfiConverterRustBuffer<LegacyKimiPricingResult> {
+    override fun read(buf: ByteBuffer): LegacyKimiPricingResult {
+        return LegacyKimiPricingResult(
+            FfiConverterString.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: LegacyKimiPricingResult) = (
+            FfiConverterString.allocationSize(value.`model`) +
+            FfiConverterDouble.allocationSize(value.`totalTokens`) +
+            FfiConverterDouble.allocationSize(value.`costUsd`)
+    )
+
+    override fun write(value: LegacyKimiPricingResult, buf: ByteBuffer) {
+            FfiConverterString.write(value.`model`, buf)
+            FfiConverterDouble.write(value.`totalTokens`, buf)
+            FfiConverterDouble.write(value.`costUsd`, buf)
+    }
+}
+
+
+
 data class QuotaBucket (
     var `key`: kotlin.String,
     var `label`: kotlin.String,
@@ -1373,6 +1436,86 @@ public object FfiConverterTypeQuotaSnapshot: FfiConverterRustBuffer<QuotaSnapsho
             FfiConverterString.write(value.`statusMessage`, buf)
             FfiConverterOptionalLong.write(value.`nowUnix`, buf)
             FfiConverterSequenceTypeQuotaBucket.write(value.`buckets`, buf)
+    }
+}
+
+
+
+data class TokenPricingBuckets (
+    var `inputTokens`: kotlin.Double,
+    var `outputTokens`: kotlin.Double,
+    var `cacheCreationTokens`: kotlin.Double,
+    var `cacheReadTokens`: kotlin.Double
+) {
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTokenPricingBuckets: FfiConverterRustBuffer<TokenPricingBuckets> {
+    override fun read(buf: ByteBuffer): TokenPricingBuckets {
+        return TokenPricingBuckets(
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: TokenPricingBuckets) = (
+            FfiConverterDouble.allocationSize(value.`inputTokens`) +
+            FfiConverterDouble.allocationSize(value.`outputTokens`) +
+            FfiConverterDouble.allocationSize(value.`cacheCreationTokens`) +
+            FfiConverterDouble.allocationSize(value.`cacheReadTokens`)
+    )
+
+    override fun write(value: TokenPricingBuckets, buf: ByteBuffer) {
+            FfiConverterDouble.write(value.`inputTokens`, buf)
+            FfiConverterDouble.write(value.`outputTokens`, buf)
+            FfiConverterDouble.write(value.`cacheCreationTokens`, buf)
+            FfiConverterDouble.write(value.`cacheReadTokens`, buf)
+    }
+}
+
+
+
+data class TokenPricingRates (
+    var `inputPerMToken`: kotlin.Double,
+    var `outputPerMToken`: kotlin.Double,
+    var `cacheCreationPerMToken`: kotlin.Double?,
+    var `cacheReadPerMToken`: kotlin.Double
+) {
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTokenPricingRates: FfiConverterRustBuffer<TokenPricingRates> {
+    override fun read(buf: ByteBuffer): TokenPricingRates {
+        return TokenPricingRates(
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+            FfiConverterDouble.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: TokenPricingRates) = (
+            FfiConverterDouble.allocationSize(value.`inputPerMToken`) +
+            FfiConverterDouble.allocationSize(value.`outputPerMToken`) +
+            FfiConverterOptionalDouble.allocationSize(value.`cacheCreationPerMToken`) +
+            FfiConverterDouble.allocationSize(value.`cacheReadPerMToken`)
+    )
+
+    override fun write(value: TokenPricingRates, buf: ByteBuffer) {
+            FfiConverterDouble.write(value.`inputPerMToken`, buf)
+            FfiConverterDouble.write(value.`outputPerMToken`, buf)
+            FfiConverterOptionalDouble.write(value.`cacheCreationPerMToken`, buf)
+            FfiConverterDouble.write(value.`cacheReadPerMToken`, buf)
     }
 }
 
@@ -1869,7 +2012,16 @@ public object FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer<List<Q
             FfiConverterTypeQuotaBucket.write(it, buf)
         }
     }
+} fun `calculateTokenCost`(`rates`: TokenPricingRates, `buckets`: TokenPricingBuckets): kotlin.Double {
+            return FfiConverterDouble.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_calculate_token_cost(
+        FfiConverterTypeTokenPricingRates.lower(`rates`),FfiConverterTypeTokenPricingBuckets.lower(`buckets`),_status)
 }
+    )
+    }
+
+
     @Throws(CloudVaultFfiException::class) fun `cloudVaultAadV1`(`uid`: kotlin.String, `collection`: kotlin.String, `docId`: kotlin.String, `field`: kotlin.String): kotlin.String {
             return FfiConverterString.lift(
     uniffiRustCallWithError(CloudVaultFfiException) { _status ->
@@ -1956,6 +2108,15 @@ public object FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer<List<Q
     )
     }
 
+ fun `isLegacyKimiWireEvent`(`provider`: kotlin.String, `model`: kotlin.String): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_is_legacy_kimi_wire_event(
+        FfiConverterString.lower(`provider`),FfiConverterString.lower(`model`),_status)
+}
+    )
+    }
+
  fun `parseAnthropicRateLimitHeaders`(`payload`: kotlin.ByteArray, `nowUnix`: kotlin.Long, `shape`: AnthropicCredentialShape): QuotaParseResult {
             return FfiConverterTypeQuotaParseResult.lift(
     uniffiRustCall() { _status ->
@@ -1988,6 +2149,15 @@ public object FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer<List<Q
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_parse_cursor_usage_quota(
         FfiConverterByteArray.lower(`payload`),FfiConverterOptionalString.lower(`userEmail`),_status)
+}
+    )
+    }
+
+ fun `priceLegacyKimiWireEvent`(`buckets`: TokenPricingBuckets): LegacyKimiPricingResult {
+            return FfiConverterTypeLegacyKimiPricingResult.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_price_legacy_kimi_wire_event(
+        FfiConverterTypeTokenPricingBuckets.lower(`buckets`),_status)
 }
     )
     }

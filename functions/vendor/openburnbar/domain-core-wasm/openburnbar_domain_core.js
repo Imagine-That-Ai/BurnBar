@@ -1,4 +1,6 @@
-let wasm;
+
+let imports = {};
+imports['__wbindgen_placeholder__'] = module.exports;
 
 let cachedUint8ArrayMemory0 = null;
 
@@ -13,15 +15,7 @@ let cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true 
 
 cachedTextDecoder.decode();
 
-const MAX_SAFARI_DECODE_BYTES = 2146435072;
-let numBytesDecoded = 0;
 function decodeText(ptr, len) {
-    numBytesDecoded += len;
-    if (numBytesDecoded >= MAX_SAFARI_DECODE_BYTES) {
-        cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });
-        cachedTextDecoder.decode();
-        numBytesDecoded = len;
-    }
     return cachedTextDecoder.decode(getUint8ArrayMemory0().subarray(ptr, ptr + len));
 }
 
@@ -56,7 +50,7 @@ function getDataViewMemory0() {
 /**
  * @returns {string}
  */
-export function domainCoreVersion() {
+exports.domainCoreVersion = function() {
     let deferred1_0;
     let deferred1_1;
     try {
@@ -71,7 +65,7 @@ export function domainCoreVersion() {
         wasm.__wbindgen_add_to_stack_pointer(16);
         wasm.__wbindgen_export(deferred1_0, deferred1_1, 1);
     }
-}
+};
 
 let WASM_VECTOR_LEN = 0;
 
@@ -153,7 +147,7 @@ function takeObject(idx) {
  * @param {string | null} [purpose]
  * @returns {string}
  */
-export function cloudVaultAadV1(uid, collection, doc_id, field, schema_version, purpose) {
+exports.cloudVaultAadV1 = function(uid, collection, doc_id, field, schema_version, purpose) {
     let deferred7_0;
     let deferred7_1;
     try {
@@ -186,7 +180,7 @@ export function cloudVaultAadV1(uid, collection, doc_id, field, schema_version, 
         wasm.__wbindgen_add_to_stack_pointer(16);
         wasm.__wbindgen_export(deferred7_0, deferred7_1, 1);
     }
-}
+};
 
 function passArray8ToWasm0(arg, malloc) {
     const ptr = malloc(arg.length * 1, 1) >>> 0;
@@ -198,7 +192,7 @@ function passArray8ToWasm0(arg, malloc) {
  * @param {Uint8Array} key
  * @returns {string}
  */
-export function cloudVaultKeyId(key) {
+exports.cloudVaultKeyId = function(key) {
     let deferred3_0;
     let deferred3_1;
     try {
@@ -223,12 +217,12 @@ export function cloudVaultKeyId(key) {
         wasm.__wbindgen_add_to_stack_pointer(16);
         wasm.__wbindgen_export(deferred3_0, deferred3_1, 1);
     }
-}
+};
 
 /**
  * @returns {string}
  */
-export function legacyKimiWireModel() {
+exports.legacyKimiWireModel = function() {
     let deferred1_0;
     let deferred1_1;
     try {
@@ -243,13 +237,13 @@ export function legacyKimiWireModel() {
         wasm.__wbindgen_add_to_stack_pointer(16);
         wasm.__wbindgen_export(deferred1_0, deferred1_1, 1);
     }
-}
+};
 
 /**
  * @param {Uint8Array} data
  * @returns {string}
  */
-export function cloudVaultSha256Hex(data) {
+exports.cloudVaultSha256Hex = function(data) {
     let deferred2_0;
     let deferred2_1;
     try {
@@ -266,7 +260,7 @@ export function cloudVaultSha256Hex(data) {
         wasm.__wbindgen_add_to_stack_pointer(16);
         wasm.__wbindgen_export(deferred2_0, deferred2_1, 1);
     }
-}
+};
 
 let cachedFloat64ArrayMemory0 = null;
 
@@ -289,7 +283,7 @@ function getArrayF64FromWasm0(ptr, len) {
  * @param {number} cache_read_tokens
  * @returns {Float64Array}
  */
-export function priceLegacyKimiWireEvent(input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens) {
+exports.priceLegacyKimiWireEvent = function(input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens) {
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
         wasm.priceLegacyKimiWireEvent(retptr, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens);
@@ -301,21 +295,21 @@ export function priceLegacyKimiWireEvent(input_tokens, output_tokens, cache_crea
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
     }
-}
+};
 
 /**
  * @param {string} provider
  * @param {string} model
  * @returns {boolean}
  */
-export function isLegacyKimiWireEvent(provider, model) {
+exports.isLegacyKimiWireEvent = function(provider, model) {
     const ptr0 = passStringToWasm0(provider, wasm.__wbindgen_export2, wasm.__wbindgen_export3);
     const len0 = WASM_VECTOR_LEN;
     const ptr1 = passStringToWasm0(model, wasm.__wbindgen_export2, wasm.__wbindgen_export3);
     const len1 = WASM_VECTOR_LEN;
     const ret = wasm.isLegacyKimiWireEvent(ptr0, len0, ptr1, len1);
     return ret !== 0;
-}
+};
 
 /**
  * @param {Uint8Array} data
@@ -323,7 +317,7 @@ export function isLegacyKimiWireEvent(provider, model) {
  * @param {number} body_hash_version
  * @returns {string}
  */
-export function cloudVaultExpectedSessionBodyHash(data, key, body_hash_version) {
+exports.cloudVaultExpectedSessionBodyHash = function(data, key, body_hash_version) {
     let deferred4_0;
     let deferred4_1;
     try {
@@ -350,7 +344,7 @@ export function cloudVaultExpectedSessionBodyHash(data, key, body_hash_version) 
         wasm.__wbindgen_add_to_stack_pointer(16);
         wasm.__wbindgen_export(deferred4_0, deferred4_1, 1);
     }
-}
+};
 
 /**
  * @param {Uint8Array} data
@@ -358,7 +352,7 @@ export function cloudVaultExpectedSessionBodyHash(data, key, body_hash_version) 
  * @param {CloudVaultHashPurpose} purpose
  * @returns {string}
  */
-export function cloudVaultKeyedHashHex(data, key, purpose) {
+exports.cloudVaultKeyedHashHex = function(data, key, purpose) {
     let deferred4_0;
     let deferred4_1;
     try {
@@ -385,7 +379,7 @@ export function cloudVaultKeyedHashHex(data, key, purpose) {
         wasm.__wbindgen_add_to_stack_pointer(16);
         wasm.__wbindgen_export(deferred4_0, deferred4_1, 1);
     }
-}
+};
 
 /**
  * @param {string} uid
@@ -396,7 +390,7 @@ export function cloudVaultKeyedHashHex(data, key, purpose) {
  * @param {string | null} [purpose]
  * @returns {string}
  */
-export function cloudVaultAadV2(uid, collection, doc_id, field, schema_version, purpose) {
+exports.cloudVaultAadV2 = function(uid, collection, doc_id, field, schema_version, purpose) {
     let deferred7_0;
     let deferred7_1;
     try {
@@ -429,7 +423,7 @@ export function cloudVaultAadV2(uid, collection, doc_id, field, schema_version, 
         wasm.__wbindgen_add_to_stack_pointer(16);
         wasm.__wbindgen_export(deferred7_0, deferred7_1, 1);
     }
-}
+};
 
 function passArrayF64ToWasm0(arg, malloc) {
     const ptr = malloc(arg.length * 8, 8) >>> 0;
@@ -442,7 +436,7 @@ function passArrayF64ToWasm0(arg, malloc) {
  * @param {Float64Array} buckets
  * @returns {number}
  */
-export function calculateTokenCost(rates, buckets) {
+exports.calculateTokenCost = function(rates, buckets) {
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
         const ptr0 = passArrayF64ToWasm0(rates, wasm.__wbindgen_export2);
@@ -460,127 +454,28 @@ export function calculateTokenCost(rates, buckets) {
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
     }
-}
+};
 
 /**
  * @enum {0 | 1 | 2 | 3}
  */
-export const CloudVaultHashPurpose = Object.freeze({
+exports.CloudVaultHashPurpose = Object.freeze({
     BlobIntegrity: 0, "0": "BlobIntegrity",
     SessionBody: 1, "1": "SessionBody",
     SessionChunk: 2, "2": "SessionChunk",
     ProjectMemoryContent: 3, "3": "ProjectMemoryContent",
 });
 
-const EXPECTED_RESPONSE_TYPES = new Set(['basic', 'cors', 'default']);
+exports.__wbg_Error_e83987f665cf5504 = function(arg0, arg1) {
+    const ret = Error(getStringFromWasm0(arg0, arg1));
+    return addHeapObject(ret);
+};
 
-async function __wbg_load(module, imports) {
-    if (typeof Response === 'function' && module instanceof Response) {
-        if (typeof WebAssembly.instantiateStreaming === 'function') {
-            try {
-                return await WebAssembly.instantiateStreaming(module, imports);
+exports.__wbg___wbindgen_throw_b855445ff6a94295 = function(arg0, arg1) {
+    throw new Error(getStringFromWasm0(arg0, arg1));
+};
 
-            } catch (e) {
-                const validResponse = module.ok && EXPECTED_RESPONSE_TYPES.has(module.type);
-
-                if (validResponse && module.headers.get('Content-Type') !== 'application/wasm') {
-                    console.warn("`WebAssembly.instantiateStreaming` failed because your server does not serve Wasm with `application/wasm` MIME type. Falling back to `WebAssembly.instantiate` which is slower. Original error:\n", e);
-
-                } else {
-                    throw e;
-                }
-            }
-        }
-
-        const bytes = await module.arrayBuffer();
-        return await WebAssembly.instantiate(bytes, imports);
-
-    } else {
-        const instance = await WebAssembly.instantiate(module, imports);
-
-        if (instance instanceof WebAssembly.Instance) {
-            return { instance, module };
-
-        } else {
-            return instance;
-        }
-    }
-}
-
-function __wbg_get_imports() {
-    const imports = {};
-    imports.wbg = {};
-    imports.wbg.__wbg_Error_e83987f665cf5504 = function(arg0, arg1) {
-        const ret = Error(getStringFromWasm0(arg0, arg1));
-        return addHeapObject(ret);
-    };
-    imports.wbg.__wbg___wbindgen_throw_b855445ff6a94295 = function(arg0, arg1) {
-        throw new Error(getStringFromWasm0(arg0, arg1));
-    };
-
-    return imports;
-}
-
-function __wbg_finalize_init(instance, module) {
-    wasm = instance.exports;
-    __wbg_init.__wbindgen_wasm_module = module;
-    cachedDataViewMemory0 = null;
-    cachedFloat64ArrayMemory0 = null;
-    cachedUint8ArrayMemory0 = null;
-
-
-
-    return wasm;
-}
-
-function initSync(module) {
-    if (wasm !== undefined) return wasm;
-
-
-    if (typeof module !== 'undefined') {
-        if (Object.getPrototypeOf(module) === Object.prototype) {
-            ({module} = module)
-        } else {
-            console.warn('using deprecated parameters for `initSync()`; pass a single object instead')
-        }
-    }
-
-    const imports = __wbg_get_imports();
-
-    if (!(module instanceof WebAssembly.Module)) {
-        module = new WebAssembly.Module(module);
-    }
-
-    const instance = new WebAssembly.Instance(module, imports);
-
-    return __wbg_finalize_init(instance, module);
-}
-
-async function __wbg_init(module_or_path) {
-    if (wasm !== undefined) return wasm;
-
-
-    if (typeof module_or_path !== 'undefined') {
-        if (Object.getPrototypeOf(module_or_path) === Object.prototype) {
-            ({module_or_path} = module_or_path)
-        } else {
-            console.warn('using deprecated parameters for the initialization function; pass a single object instead')
-        }
-    }
-
-    if (typeof module_or_path === 'undefined') {
-        module_or_path = new URL('openburnbar_domain_core_bg.wasm', import.meta.url);
-    }
-    const imports = __wbg_get_imports();
-
-    if (typeof module_or_path === 'string' || (typeof Request === 'function' && module_or_path instanceof Request) || (typeof URL === 'function' && module_or_path instanceof URL)) {
-        module_or_path = fetch(module_or_path);
-    }
-
-    const { instance, module } = await __wbg_load(await module_or_path, imports);
-
-    return __wbg_finalize_init(instance, module);
-}
-
-export { initSync };
-export default __wbg_init;
+const wasmPath = `${__dirname}/openburnbar_domain_core_bg.wasm`;
+const wasmBytes = require('fs').readFileSync(wasmPath);
+const wasmModule = new WebAssembly.Module(wasmBytes);
+const wasm = exports.__wasm = new WebAssembly.Instance(wasmModule, imports).exports;

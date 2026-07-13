@@ -765,11 +765,21 @@ static class _UniFFILib {
 
 
 
+
+
+
+
+
+
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
         _UniFFILib.uniffiCheckApiChecksums();
 
         }
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern double uniffi_openburnbar_domain_ffi_fn_func_calculate_token_cost(RustBuffer @rates,RustBuffer @buckets,ref UniffiRustCallStatus _uniffi_out_err
+    );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aad_v1(RustBuffer @uid,RustBuffer @collection,RustBuffer @docId,RustBuffer @field,ref UniffiRustCallStatus _uniffi_out_err
@@ -808,6 +818,10 @@ static class _UniFFILib {
     );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern sbyte uniffi_openburnbar_domain_ffi_fn_func_is_legacy_kimi_wire_event(RustBuffer @provider,RustBuffer @model,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_parse_anthropic_rate_limit_headers(RustBuffer @payload,long @nowUnix,RustBuffer @shape,ref UniffiRustCallStatus _uniffi_out_err
     );
 
@@ -821,6 +835,10 @@ static class _UniFFILib {
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_parse_cursor_usage_quota(RustBuffer @payload,RustBuffer @userEmail,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_openburnbar_domain_ffi_fn_func_price_legacy_kimi_wire_event(RustBuffer @buckets,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
@@ -1048,6 +1066,10 @@ static class _UniFFILib {
     );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_calculate_token_cost(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aad_v1(
     );
 
@@ -1084,6 +1106,10 @@ static class _UniFFILib {
     );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_is_legacy_kimi_wire_event(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_parse_anthropic_rate_limit_headers(
     );
 
@@ -1100,6 +1126,10 @@ static class _UniFFILib {
     );
 
     [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_openburnbar_domain_ffi_checksum_func_price_legacy_kimi_wire_event(
+    );
+
+    [DllImport("openburnbar_domain_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern uint ffi_openburnbar_domain_ffi_uniffi_contract_version(
     );
 
@@ -1113,6 +1143,12 @@ static class _UniFFILib {
     }
 
     static void uniffiCheckApiChecksums() {
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_calculate_token_cost();
+            if (checksum != 20590) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_calculate_token_cost` checksum `20590`, library returned `{checksum}`");
+            }
+        }
         {
             var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_aad_v1();
             if (checksum != 43983) {
@@ -1168,6 +1204,12 @@ static class _UniFFILib {
             }
         }
         {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_is_legacy_kimi_wire_event();
+            if (checksum != 19138) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_is_legacy_kimi_wire_event` checksum `19138`, library returned `{checksum}`");
+            }
+        }
+        {
             var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_parse_anthropic_rate_limit_headers();
             if (checksum != 49269) {
                 throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_parse_anthropic_rate_limit_headers` checksum `49269`, library returned `{checksum}`");
@@ -1189,6 +1231,12 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_parse_cursor_usage_quota();
             if (checksum != 39634) {
                 throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_parse_cursor_usage_quota` checksum `39634`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_openburnbar_domain_ffi_checksum_func_price_legacy_kimi_wire_event();
+            if (checksum != 31427) {
+                throw new UniffiContractChecksumException($"uniffi.openburnbar_domain_ffi: uniffi bindings expected function `uniffi_openburnbar_domain_ffi_checksum_func_price_legacy_kimi_wire_event` checksum `31427`, library returned `{checksum}`");
             }
         }
     }
@@ -1419,6 +1467,40 @@ class FfiConverterTypeCloudVaultAadContextInput: FfiConverterRustBuffer<CloudVau
 
 
 
+public record LegacyKimiPricingResult (
+    string @model,
+    double @totalTokens,
+    double @costUsd
+) {
+}
+
+class FfiConverterTypeLegacyKimiPricingResult: FfiConverterRustBuffer<LegacyKimiPricingResult> {
+    public static FfiConverterTypeLegacyKimiPricingResult INSTANCE = new FfiConverterTypeLegacyKimiPricingResult();
+
+    public override LegacyKimiPricingResult Read(BigEndianStream stream) {
+        return new LegacyKimiPricingResult(
+            @model: FfiConverterString.INSTANCE.Read(stream),
+            @totalTokens: FfiConverterDouble.INSTANCE.Read(stream),
+            @costUsd: FfiConverterDouble.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(LegacyKimiPricingResult value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.@model)
+            + FfiConverterDouble.INSTANCE.AllocationSize(value.@totalTokens)
+            + FfiConverterDouble.INSTANCE.AllocationSize(value.@costUsd);
+    }
+
+    public override void Write(LegacyKimiPricingResult value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.@model, stream);
+            FfiConverterDouble.INSTANCE.Write(value.@totalTokens, stream);
+            FfiConverterDouble.INSTANCE.Write(value.@costUsd, stream);
+    }
+}
+
+
+
 public record QuotaBucket (
     string @key,
     string @label,
@@ -1552,6 +1634,82 @@ class FfiConverterTypeQuotaSnapshot: FfiConverterRustBuffer<QuotaSnapshot> {
             FfiConverterString.INSTANCE.Write(value.@statusMessage, stream);
             FfiConverterOptionalInt64.INSTANCE.Write(value.@nowUnix, stream);
             FfiConverterSequenceTypeQuotaBucket.INSTANCE.Write(value.@buckets, stream);
+    }
+}
+
+
+
+public record TokenPricingBuckets (
+    double @inputTokens,
+    double @outputTokens,
+    double @cacheCreationTokens,
+    double @cacheReadTokens
+) {
+}
+
+class FfiConverterTypeTokenPricingBuckets: FfiConverterRustBuffer<TokenPricingBuckets> {
+    public static FfiConverterTypeTokenPricingBuckets INSTANCE = new FfiConverterTypeTokenPricingBuckets();
+
+    public override TokenPricingBuckets Read(BigEndianStream stream) {
+        return new TokenPricingBuckets(
+            @inputTokens: FfiConverterDouble.INSTANCE.Read(stream),
+            @outputTokens: FfiConverterDouble.INSTANCE.Read(stream),
+            @cacheCreationTokens: FfiConverterDouble.INSTANCE.Read(stream),
+            @cacheReadTokens: FfiConverterDouble.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(TokenPricingBuckets value) {
+        return 0
+            + FfiConverterDouble.INSTANCE.AllocationSize(value.@inputTokens)
+            + FfiConverterDouble.INSTANCE.AllocationSize(value.@outputTokens)
+            + FfiConverterDouble.INSTANCE.AllocationSize(value.@cacheCreationTokens)
+            + FfiConverterDouble.INSTANCE.AllocationSize(value.@cacheReadTokens);
+    }
+
+    public override void Write(TokenPricingBuckets value, BigEndianStream stream) {
+            FfiConverterDouble.INSTANCE.Write(value.@inputTokens, stream);
+            FfiConverterDouble.INSTANCE.Write(value.@outputTokens, stream);
+            FfiConverterDouble.INSTANCE.Write(value.@cacheCreationTokens, stream);
+            FfiConverterDouble.INSTANCE.Write(value.@cacheReadTokens, stream);
+    }
+}
+
+
+
+public record TokenPricingRates (
+    double @inputPerMToken,
+    double @outputPerMToken,
+    double? @cacheCreationPerMToken,
+    double @cacheReadPerMToken
+) {
+}
+
+class FfiConverterTypeTokenPricingRates: FfiConverterRustBuffer<TokenPricingRates> {
+    public static FfiConverterTypeTokenPricingRates INSTANCE = new FfiConverterTypeTokenPricingRates();
+
+    public override TokenPricingRates Read(BigEndianStream stream) {
+        return new TokenPricingRates(
+            @inputPerMToken: FfiConverterDouble.INSTANCE.Read(stream),
+            @outputPerMToken: FfiConverterDouble.INSTANCE.Read(stream),
+            @cacheCreationPerMToken: FfiConverterOptionalDouble.INSTANCE.Read(stream),
+            @cacheReadPerMToken: FfiConverterDouble.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(TokenPricingRates value) {
+        return 0
+            + FfiConverterDouble.INSTANCE.AllocationSize(value.@inputPerMToken)
+            + FfiConverterDouble.INSTANCE.AllocationSize(value.@outputPerMToken)
+            + FfiConverterOptionalDouble.INSTANCE.AllocationSize(value.@cacheCreationPerMToken)
+            + FfiConverterDouble.INSTANCE.AllocationSize(value.@cacheReadPerMToken);
+    }
+
+    public override void Write(TokenPricingRates value, BigEndianStream stream) {
+            FfiConverterDouble.INSTANCE.Write(value.@inputPerMToken, stream);
+            FfiConverterDouble.INSTANCE.Write(value.@outputPerMToken, stream);
+            FfiConverterOptionalDouble.INSTANCE.Write(value.@cacheCreationPerMToken, stream);
+            FfiConverterDouble.INSTANCE.Write(value.@cacheReadPerMToken, stream);
     }
 }
 
@@ -2071,6 +2229,14 @@ class FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer<List<QuotaBuck
 }
 #pragma warning restore 8625
 public static class OpenburnbarDomainFfiMethods {
+    public static double CalculateTokenCost(TokenPricingRates @rates, TokenPricingBuckets @buckets) {
+        return FfiConverterDouble.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_calculate_token_cost(FfiConverterTypeTokenPricingRates.INSTANCE.Lower(@rates), FfiConverterTypeTokenPricingBuckets.INSTANCE.Lower(@buckets), ref _status)
+));
+    }
+
+
     /// <exception cref="CloudVaultFfiException"></exception>
     public static string CloudVaultAadV1(string @uid, string @collection, string @docId, string @field) {
         return FfiConverterString.INSTANCE.Lift(
@@ -2149,6 +2315,14 @@ public static class OpenburnbarDomainFfiMethods {
     }
 
 
+    public static bool IsLegacyKimiWireEvent(string @provider, string @model) {
+        return FfiConverterBoolean.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_is_legacy_kimi_wire_event(FfiConverterString.INSTANCE.Lower(@provider), FfiConverterString.INSTANCE.Lower(@model), ref _status)
+));
+    }
+
+
     public static QuotaParseResult ParseAnthropicRateLimitHeaders(byte[] @payload, long @nowUnix, AnthropicCredentialShape @shape) {
         return FfiConverterTypeQuotaParseResult.INSTANCE.Lift(
     _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
@@ -2177,6 +2351,14 @@ public static class OpenburnbarDomainFfiMethods {
         return FfiConverterTypeQuotaParseResult.INSTANCE.Lift(
     _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
     _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_parse_cursor_usage_quota(FfiConverterByteArray.INSTANCE.Lower(@payload), FfiConverterOptionalString.INSTANCE.Lower(@userEmail), ref _status)
+));
+    }
+
+
+    public static LegacyKimiPricingResult PriceLegacyKimiWireEvent(TokenPricingBuckets @buckets) {
+        return FfiConverterTypeLegacyKimiPricingResult.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_openburnbar_domain_ffi_fn_func_price_legacy_kimi_wire_event(FfiConverterTypeTokenPricingBuckets.INSTANCE.Lower(@buckets), ref _status)
 ));
     }
 

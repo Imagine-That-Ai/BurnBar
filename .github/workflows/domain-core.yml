@@ -10,6 +10,8 @@ on:
       - "crates/openburnbar-domain-core/**"
       - "OpenBurnBarCore/Package.swift"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ModelPricing.swift"
+      - "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/DomainCorePricingAdapter.swift"
       - "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/**"
       - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/*DomainCore*Tests.swift"
       - "windows/app/OpenBurnBar.App.Presentation/Quota/**"
@@ -26,6 +28,13 @@ on:
       - "apps/console/lib/escrow.ts"
       - "apps/console/test/escrow.test.ts"
       - "apps/console/vendor/openburnbar-domain-core-wasm/**"
+      - "functions/src/domainCorePricing.ts"
+      - "functions/src/pricing.ts"
+      - "functions/src/rollupCounters.ts"
+      - "functions/src/insightsHostedAnswer.ts"
+      - "functions/src/__tests__/pricing.test.ts"
+      - "functions/vendor/openburnbar/domain-core-wasm/**"
+      - "functions/package*.json"
       - "Vendor/openburnbar-domain-core.aar"
       - "tests/fixtures/domain-core/**"
       - "scripts/build-domain-core-xcframework.sh"
@@ -37,6 +46,8 @@ on:
       - "crates/openburnbar-domain-core/**"
       - "OpenBurnBarCore/Package.swift"
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ModelPricing.swift"
+      - "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/DomainCorePricingAdapter.swift"
       - "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/**"
       - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/*DomainCore*Tests.swift"
       - "windows/app/OpenBurnBar.App.Presentation/Quota/**"
@@ -53,6 +64,13 @@ on:
       - "apps/console/lib/escrow.ts"
       - "apps/console/test/escrow.test.ts"
       - "apps/console/vendor/openburnbar-domain-core-wasm/**"
+      - "functions/src/domainCorePricing.ts"
+      - "functions/src/pricing.ts"
+      - "functions/src/rollupCounters.ts"
+      - "functions/src/insightsHostedAnswer.ts"
+      - "functions/src/__tests__/pricing.test.ts"
+      - "functions/vendor/openburnbar/domain-core-wasm/**"
+      - "functions/package*.json"
       - "Vendor/openburnbar-domain-core.aar"
       - "tests/fixtures/domain-core/**"
       - "scripts/build-domain-core-xcframework.sh"
@@ -188,6 +206,36 @@ jobs:
         run: >-
           node crates/openburnbar-domain-core/domain-wasm/tests/package-smoke.mjs
           apps/console/vendor/openburnbar-domain-core-wasm
+
+  functions-pricing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install Functions dependencies
+        working-directory: functions
+        run: npm ci
+
+      - name: Run Functions pricing contracts
+        working-directory: functions
+        run: npx vitest run src/__tests__/pricing.test.ts
+
+      - name: Typecheck and lint Functions
+        working-directory: functions
+        run: |
+          npm run build
+          npm run lint
 
   android:
     runs-on: macos-26
@@ -331,8 +379,8 @@ jobs:
           fi
           ./scripts/build-domain-core-xcframework.sh
 
-      - name: Run Swift quota consumer contracts
+      - name: Run Swift domain-core consumer contracts
         env:
-          OPENBURNBAR_CORE_SWIFT_FILTER: DomainCoreQuotaConsumerTests
+          OPENBURNBAR_CORE_SWIFT_FILTER: DomainCore
           OPENBURNBAR_SKIP_DAEMON_SWIFT_TESTS: "1"
         run: ./scripts/test-openburnbar-swift.sh
