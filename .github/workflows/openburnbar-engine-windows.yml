@@ -271,10 +271,13 @@ jobs:
           $bin = swift build --package-path OpenBurnBarCore -c release --show-bin-path
           $engine = Join-Path $bin "OpenBurnBarCoreCAbi.dll"
           $stage = Join-Path $env:RUNNER_TEMP "openburnbar-native-engine-win-x64"
-          python scripts/windows-port/stage-swift-runtime.py --engine $engine --destination $stage --search-path $bin
           cargo build --manifest-path crates/openburnbar-domain-core/Cargo.toml -p openburnbar-domain-ffi --release
           $domainCore = Resolve-Path "crates/openburnbar-domain-core/target/release/openburnbar_domain_ffi.dll"
-          Copy-Item -Force $domainCore (Join-Path $stage "openburnbar_domain_ffi.dll")
+          python scripts/windows-port/stage-swift-runtime.py --engine $engine --extra $domainCore --destination $stage --search-path $bin
+          $manifest = Get-Content (Join-Path $stage "native-engine-manifest.json") -Raw | ConvertFrom-Json
+          if ($manifest.extras -notcontains "openburnbar_domain_ffi.dll") {
+            throw "Native engine manifest omits openburnbar_domain_ffi.dll"
+          }
           "OPENBURNBAR_CORE_CABI_PATH=$engine" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "OPENBURNBAR_NATIVE_ENGINE_STAGE=$stage" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
@@ -287,6 +290,13 @@ jobs:
           --filter FullyQualifiedName~NativeUsageEngineIntegrationTests
           --blame-hang
           --blame-hang-timeout 5m
+
+      - name: Load staged release domain core and run quota contract
+        env:
+          OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
+        run: |
+          $env:PATH = "$env:OPENBURNBAR_NATIVE_ENGINE_STAGE;$env:PATH"
+          dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj -c Release --filter FullyQualifiedName~RustMode_RecordedStatuslineSnapshot --runtime win-x64
 
       - name: Upload x64 native engine bundle
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
@@ -514,10 +524,13 @@ jobs:
           $bin = swift build --package-path OpenBurnBarCore -c release --show-bin-path
           $engine = Join-Path $bin "OpenBurnBarCoreCAbi.dll"
           $stage = Join-Path $env:RUNNER_TEMP "openburnbar-native-engine-win-arm64"
-          python scripts/windows-port/stage-swift-runtime.py --engine $engine --destination $stage --search-path $bin
           cargo build --manifest-path crates/openburnbar-domain-core/Cargo.toml -p openburnbar-domain-ffi --release
           $domainCore = Resolve-Path "crates/openburnbar-domain-core/target/release/openburnbar_domain_ffi.dll"
-          Copy-Item -Force $domainCore (Join-Path $stage "openburnbar_domain_ffi.dll")
+          python scripts/windows-port/stage-swift-runtime.py --engine $engine --extra $domainCore --destination $stage --search-path $bin
+          $manifest = Get-Content (Join-Path $stage "native-engine-manifest.json") -Raw | ConvertFrom-Json
+          if ($manifest.extras -notcontains "openburnbar_domain_ffi.dll") {
+            throw "Native engine manifest omits openburnbar_domain_ffi.dll"
+          }
           "OPENBURNBAR_CORE_CABI_PATH=$engine" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "OPENBURNBAR_NATIVE_ENGINE_STAGE=$stage" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
@@ -530,6 +543,13 @@ jobs:
           --filter FullyQualifiedName~NativeUsageEngineIntegrationTests
           --blame-hang
           --blame-hang-timeout 5m
+
+      - name: Load staged release domain core and run quota contract (ARM64)
+        env:
+          OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
+        run: |
+          $env:PATH = "$env:OPENBURNBAR_NATIVE_ENGINE_STAGE;$env:PATH"
+          dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj -c Release --filter FullyQualifiedName~RustMode_RecordedStatuslineSnapshot --runtime win-arm64
 
       - name: Upload ARM64 native engine bundle
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
