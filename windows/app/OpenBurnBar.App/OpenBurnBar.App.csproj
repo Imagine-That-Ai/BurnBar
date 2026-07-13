@@ -51,7 +51,10 @@
              Link="%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="$(OpenBurnBarNativeEngineDirectory)\*.resources\**\*"
+    <!-- Start the recursive glob at the engine root so %(RecursiveDir) retains
+         the OpenBurnBarCore_OpenBurnBarCore.resources directory segment. -->
+    <Content Include="$(OpenBurnBarNativeEngineDirectory)\**\*"
+             Exclude="$(OpenBurnBarNativeEngineDirectory)\*.dll;$(OpenBurnBarNativeEngineDirectory)\native-engine-manifest.json"
              Link="%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
