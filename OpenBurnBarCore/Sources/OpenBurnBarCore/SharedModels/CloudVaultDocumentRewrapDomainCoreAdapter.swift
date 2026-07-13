@@ -232,16 +232,30 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
             )
         }
 
-        let envelopes = try lowerEnvelopes(data)
-        let noncePlan = try makeNoncePlan(
-            envelopes: envelopes,
-            newVaultKeyID: newVaultKeyID,
-            generator: nonceGenerator
-        )
-
         if mode == .shadow {
-            let legacyResult = try legacy(noncePlan)
+            let legacyNoncePlan = try makeLegacyNoncePlan(
+                data: data,
+                newVaultKeyID: newVaultKeyID,
+                generator: nonceGenerator
+            )
+            let legacyResult = try legacy(legacyNoncePlan)
             do {
+                let envelopes = try lowerEnvelopes(data)
+                var nonceIndex = 0
+                let noncePlan = try makeNoncePlan(
+                    envelopes: envelopes,
+                    newVaultKeyID: newVaultKeyID
+                ) {
+                    guard legacyNoncePlan.indices.contains(nonceIndex) else {
+                        throw CloudVaultDocumentRewrapAdapterError.invalidInput
+                    }
+                    defer { nonceIndex += 1 }
+                    return legacyNoncePlan[nonceIndex].bytes
+                }
+                guard noncePlan.map(\.fieldName) == legacyNoncePlan.map(\.fieldName),
+                      nonceIndex == legacyNoncePlan.count else {
+                    throw CloudVaultDocumentRewrapAdapterError.invalidInput
+                }
                 let rustResult = try rustRewrap(
                     data: data,
                     uid: uid,
@@ -266,6 +280,13 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
             }
             return legacyResult
         }
+
+        let envelopes = try lowerEnvelopes(data)
+        let noncePlan = try makeNoncePlan(
+            envelopes: envelopes,
+            newVaultKeyID: newVaultKeyID,
+            generator: nonceGenerator
+        )
 
         return try rustRewrap(
             data: data,
