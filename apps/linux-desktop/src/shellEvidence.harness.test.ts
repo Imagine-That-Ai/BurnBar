@@ -617,7 +617,10 @@ describe('shell evidence harness', () => {
         disabledProbe,
         persistedCount: persisted.length,
         persistedAfterRestartCount: restartPersistence.length,
-        persistenceSurvivesRestart: restartPersistence.some((snippet) => snippet.id === created.id),
+        // This harness runs fixture mode in memory. Restart persistence is
+        // proven by BurnBarTextExpansionService Linux tests, not this renderer fixture.
+        persistenceSurvivesRestart: false,
+        persistenceBoundary: 'daemon-owned AES-GCM sealed snapshot; fixture mode is memory-only',
         afterDeleteCount: afterDelete.length
       },
       enabledDisabledBehavior: {
