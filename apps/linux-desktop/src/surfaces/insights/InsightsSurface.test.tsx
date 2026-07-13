@@ -12,6 +12,7 @@ import {
 } from './insightsChartMath.js';
 import { InsightsSurface } from './InsightsSurface.js';
 import { TrendChart } from './TrendChart.js';
+import { buildInsightsBrief } from './insightsBrief.js';
 
 
 function noopLoad(): Promise<void> {
@@ -57,6 +58,19 @@ describe('insightsChartMath', () => {
   });
 });
 
+describe('insights brief', () => {
+  it('derives a bounded brief from normalized aggregates without adding provider claims', () => {
+    const brief = buildInsightsBrief(fixtureUsageInsights());
+    expect(brief.headline).toMatch(/trending/i);
+    expect(brief.observations).toEqual(expect.arrayContaining([
+      expect.stringMatching(/Primary provider by recorded share/),
+      expect.stringMatching(/Cache hit rate/)
+    ]));
+    expect(brief.summary).toMatch(/recorded activity only/i);
+    expect(brief.followUps.map((item) => item.href)).toEqual(['#/providers', '#/activity']);
+  });
+});
+
 describe('InsightsSurface', () => {
   beforeEach(resetStores);
   afterEach(cleanup);
@@ -65,6 +79,7 @@ describe('InsightsSurface', () => {
     useShellStore.setState({ fixtureMode: true });
     render(<InsightsSurface />);
     expect(screen.getByText(/fixture transcript/i)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: /Usage is trending/i })).toBeTruthy();
     const imgs = screen.getAllByRole('img');
     expect(imgs.length).toBeGreaterThanOrEqual(3);
     for (const img of imgs) {

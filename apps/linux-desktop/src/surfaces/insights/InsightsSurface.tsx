@@ -7,6 +7,8 @@ import { hasInsightsUsage, weekOverWeekTokenDeltaPct } from './insightsChartMath
 import { MixBar } from './MixBar.js';
 import { StatCallout } from './StatCallout.js';
 import { TrendChart } from './TrendChart.js';
+import { InsightsEditorialBrief } from './InsightsEditorialBrief.js';
+import { buildInsightsBrief } from './insightsBrief.js';
 import './insights.css';
 
 function InsightsSkeleton() {
@@ -71,10 +73,12 @@ export function InsightsSurface() {
 
   const wow = weekOverWeekTokenDeltaPct(data.weekly);
   const sourceLabel = fixtureMode ? 'fixture transcript' : 'live daemon usage insights';
+  const brief = buildInsightsBrief(data);
 
   return (
     <div className="insights-observatory">
       <p className="data-source muted">Provenance: {sourceLabel}</p>
+      <InsightsEditorialBrief brief={brief} />
       <div className="insights-grid">
         <div className="insights-panel insights-panel--chart">
           <TrendChart weekly={data.weekly} />
