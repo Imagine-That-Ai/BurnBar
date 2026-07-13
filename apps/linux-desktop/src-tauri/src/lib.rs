@@ -1656,7 +1656,40 @@ fn session_list() -> Result<serde_json::Value, String> {
 fn session_search(query: String) -> Result<serde_json::Value, String> {
     call_daemon_method(
         "daemon.search.query",
-        Some(serde_json::json!({"query": query})),
+        Some(serde_json::json!({
+            "query": query,
+            "resultLimit": 50,
+            "skipSemanticSearch": true,
+        })),
+    )
+}
+
+// ───────────────── P17: indexed session detail ─────────────────
+// There is no transcript-body RPC in BurnBarRPCMethod. Reuse the canonical
+// daemon.search.query contract and return indexed excerpts for this session id.
+#[tauri::command]
+fn session_detail(session_id: String) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.search.query",
+        Some(serde_json::json!({
+            "query": session_id,
+            "resultLimit": 20,
+            "skipSemanticSearch": true,
+        })),
+    )
+}
+
+// ───────────────── P17: session resume ─────────────────
+// Wire: run.resume (BurnBarRPCMethod.runResume). The daemon owns target
+// selection and detached process launch; the renderer never receives argv.
+#[tauri::command]
+fn session_resume(session_id: String) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "run.resume",
+        Some(serde_json::json!({
+            "sessionID": session_id,
+            "mode": "spawn",
+        })),
     )
 }
 
@@ -4428,6 +4461,8 @@ pub fn run() {
             provider_catalog,
             session_list,
             session_search,
+            session_detail,
+            session_resume,
             usage_insights,
             mission_list,
             mission_create,

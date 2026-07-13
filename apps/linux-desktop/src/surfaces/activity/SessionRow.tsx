@@ -30,11 +30,23 @@ export function SessionRow({
         <span className="activity-row-title">{session.title}</span>
         <span className="activity-model-chip mono">{session.model}</span>
         <span className="activity-row-metric activity-row-metric--primary mono tabular-nums">
-          {metricMode === 'cost' ? formatCostUsd(session.costUsd) : formatTokens(session.tokens)}
+          {session.searchHit
+            ? 'Indexed match'
+            : metricMode === 'cost'
+              ? session.costAvailable === false
+                ? 'Cost unavailable'
+                : formatCostUsd(session.costUsd)
+              : session.tokenTotalAvailable === false
+                ? 'Token total unavailable'
+                : formatTokens(session.tokens)}
         </span>
-        <time className="activity-row-time" dateTime={session.startedAt} title={formatAbsoluteTime(session.startedAt)}>
-          {formatRelativeTime(session.startedAt)}
-        </time>
+        {session.startedAt ? (
+          <time className="activity-row-time" dateTime={session.startedAt} title={formatAbsoluteTime(session.startedAt)}>
+            {formatRelativeTime(session.startedAt)}
+          </time>
+        ) : (
+          <span className="activity-row-time">Date unavailable</span>
+        )}
         <button
           type="button"
           className="activity-row-toggle"

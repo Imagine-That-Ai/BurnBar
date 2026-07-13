@@ -34,7 +34,11 @@ export function ActivitySurface() {
   const [metricMode, setMetricMode] = useState<ActivityMetricMode>('cost');
 
   const offline = !fixtureMode && !bridge;
-  const provenance = fixtureMode ? 'fixture transcript' : 'live daemon session index';
+  const provenance = fixtureMode
+    ? 'fixture transcript'
+    : query.trim()
+      ? 'live daemon indexed transcript search'
+      : 'live daemon session index';
 
   useLaneLoad(load);
 

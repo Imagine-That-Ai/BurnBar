@@ -126,4 +126,19 @@ describe('VAL-RPC bridge contract', () => {
     );
     expect(accountTypes).not.toMatch(/\b(refreshToken|idToken|appCheckToken|sessionGeneration|deviceID)\b/);
   });
+
+  it('keeps P17 session detail/search/resume on canonical RPCs', () => {
+    expect(rustBridge).toContain('fn session_detail');
+    expect(rustBridge).toContain('fn session_resume');
+    expect(rustBridge).toContain('daemon.search.query');
+    expect(rustBridge).toContain('run.resume');
+    expect(rustBridge).toContain('"sessionID": session_id');
+    expect(rustBridge).toContain('"mode": "spawn"');
+    expect(canonicalRpc).toContain('id: "daemon.search.query"');
+    expect(canonicalRpc).toContain('id: "run.resume"');
+    expect(rustBridge).not.toMatch(/daemon\.session\.(detail|body|export|resume)/);
+    expect(tsBridge).not.toMatch(/daemon\.session\.(detail|body|export|resume)/);
+    expect(rustBridge).not.toContain('session_export');
+    expect(tsBridge).not.toContain('session_export');
+  });
 });

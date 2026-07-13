@@ -48,8 +48,50 @@ export type SessionEntry = {
   tokens: number;
   costUsd: number;
   title: string;
+  tokenTotalAvailable?: boolean;
+  costAvailable?: boolean;
+  /** Stable daemon session identity when the usage event carries one. */
+  sessionID?: string;
+  runID?: string;
+  projectName?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheCreationTokens?: number;
+  cacheReadTokens?: number;
+  reasoningTokens?: number;
+  /** Indexed transcript metadata returned by daemon.search.query. */
+  sourceID?: string;
+  sourceKind?: string;
+  bodySnippet?: string;
+  searchHit?: boolean;
 };
 export type SessionListResult = { sessions: SessionEntry[]; nextCursor: string | null };
+export type SessionTranscriptExcerpt = {
+  id: string;
+  sourceID: string;
+  sourceKind: string;
+  title: string;
+  snippet: string;
+  provider?: string;
+  projectName?: string;
+  relevanceScore?: number;
+  hitSource?: 'lexical' | 'semantic' | 'hybrid';
+};
+export type SessionDetailResult = {
+  sessionID: string;
+  excerpts: SessionTranscriptExcerpt[];
+  indexed: boolean;
+  degradedMessage?: string;
+};
+export type SessionResumeResult = {
+  kind: string;
+  targetHarness?: string;
+  workingDirectory?: string;
+  pid?: number;
+  note?: string;
+  errorCode?: string;
+  errorRecovery?: string;
+};
 
 // ─────────────────────────── P05: insights ────────────────────────────────
 
@@ -619,6 +661,8 @@ export interface LinuxShellBridge {
   providerCatalog(): Promise<ProviderCatalog>;
   sessionList(): Promise<SessionListResult>;
   sessionSearch(query: string): Promise<SessionListResult>;
+  sessionDetail?(sessionID: string): Promise<SessionDetailResult>;
+  sessionResume?(sessionID: string): Promise<SessionResumeResult>;
   usageInsights(): Promise<UsageInsights>;
   missionList(): Promise<MissionListResult>;
   missionApprovalDecision(id: string, decision: ApprovalDecision): Promise<void>;
@@ -941,20 +985,119 @@ function normalizeQuotaState(s: string): QuotaBucketState {
   return 'ok';
 }
 
+function optionalNum(v: RawJsonValue): number | undefined {
+  const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function normalizeHitSource(v: RawJsonValue): SessionTranscriptExcerpt['hitSource'] | undefined {
+  const value = str(v).toLowerCase();
+  if (value === 'lexical' || value === 'semantic' || value === 'hybrid') return value;
+  return undefined;
+}
+
+function mapTranscriptHit(raw: RawJsonValue, index: number): SessionTranscriptExcerpt {
+  return {
+    id: str(pick(raw, 'chunkID', 'chunkId', 'chunk_id'), `excerpt-${index}`),
+    sourceID: str(pick(raw, 'sourceID', 'sourceId', 'source_id'), `source-${index}`),
+    sourceKind: str(pick(raw, 'sourceKind', 'source_kind'), 'indexed transcript'),
+    title: str(pick(raw, 'title', 'name'), 'Indexed transcript excerpt'),
+    snippet: str(pick(raw, 'snippet', 'text', 'body'), ''),
+    provider: str(pick(raw, 'provider', 'providerID', 'providerId')) || undefined,
+    projectName: str(pick(raw, 'projectName', 'project_name')) || undefined,
+    relevanceScore: optionalNum(pick(raw, 'relevanceScore', 'relevance_score')),
+    hitSource: normalizeHitSource(pick(raw, 'hitSource', 'hit_source'))
+  };
+}
+
+function mapSearchHit(raw: RawJsonValue, index: number): SessionEntry {
+  const excerpt = mapTranscriptHit(raw, index);
+  const sessionLike = /session|conversation|transcript/i.test(excerpt.sourceKind);
+  return {
+    id: excerpt.sourceID,
+    sessionID: sessionLike ? excerpt.sourceID : undefined,
+    provider: excerpt.provider ?? 'indexed',
+    model: 'Indexed transcript',
+    startedAt: '',
+    tokens: 0,
+    costUsd: 0,
+    title: excerpt.title,
+    tokenTotalAvailable: false,
+    costAvailable: false,
+    projectName: excerpt.projectName,
+    sourceID: excerpt.sourceID,
+    sourceKind: excerpt.sourceKind,
+    bodySnippet: excerpt.snippet || undefined,
+    searchHit: true
+  };
+}
+
 function mapSessionList(raw: RawJsonValue): SessionListResult {
-  const list = arr(pick(raw, 'sessions', 'usage', 'results'));
+  const source = pick(raw, 'result') ?? raw;
+  const hits = arr(pick(source, 'hits'));
+  if (hits.length > 0) {
+    return {
+      sessions: hits.map(mapSearchHit),
+      nextCursor: str(pick(source, 'nextCursor', 'cursor')) || null
+    };
+  }
+
+  const list = arr(pick(source, 'sessions', 'usage', 'results'));
   const sessions = list.map(
-    (s, i): SessionEntry => ({
-      id: str(pick(s, 'id', 'sessionId', 'session_id'), `session-${i}`),
-      provider: str(pick(s, 'provider', 'providerId', 'provider_id'), 'unknown'),
-      model: str(pick(s, 'model', 'modelId', 'model_id'), 'unknown'),
-      startedAt: str(pick(s, 'startedAt', 'timestamp', 'createdAt', 'at'), new Date().toISOString()),
-      tokens: num(pick(s, 'tokens', 'totalTokens', 'tokenCount')),
-      costUsd: num(pick(s, 'costUsd', 'cost', 'estimatedCostUsd')),
-      title: str(pick(s, 'title', 'summary', 'name'), 'Untitled session')
-    })
+    (s, i): SessionEntry => {
+      const sessionID = str(pick(s, 'sessionID', 'sessionId', 'session_id')) || undefined;
+      const runID = str(pick(s, 'runID', 'runId', 'run_id')) || undefined;
+      const provider = str(pick(s, 'provider', 'providerID', 'providerId', 'provider_id'), 'unknown');
+      const model = str(pick(s, 'model', 'modelID', 'modelId', 'model_id'), 'unknown');
+      const projectName = str(pick(s, 'projectName', 'project_name')) || undefined;
+      const exactTokens = optionalNum(pick(s, 'tokens', 'totalTokens', 'tokenCount'));
+      const directCost = optionalNum(pick(s, 'costUsd', 'cost', 'estimatedCostUsd'));
+      return {
+        id: str(pick(s, 'id'), sessionID ?? runID ?? `session-${i}`),
+        sessionID,
+        runID,
+        provider,
+        model,
+        startedAt: str(pick(s, 'startedAt', 'recordedAt', 'timestamp', 'createdAt', 'at')),
+        tokens: exactTokens ?? 0,
+        costUsd: directCost ?? 0,
+        title: str(pick(s, 'title', 'summary', 'name'), projectName ?? `${provider} session`),
+        tokenTotalAvailable: exactTokens !== undefined,
+        costAvailable: directCost !== undefined,
+        projectName,
+        inputTokens: optionalNum(pick(s, 'inputTokens', 'input_tokens')),
+        outputTokens: optionalNum(pick(s, 'outputTokens', 'output_tokens')),
+        cacheCreationTokens: optionalNum(pick(s, 'cacheCreationTokens', 'cache_creation_tokens')),
+        cacheReadTokens: optionalNum(pick(s, 'cacheReadTokens', 'cache_read_tokens')),
+        reasoningTokens: optionalNum(pick(s, 'reasoningTokens', 'reasoning_tokens'))
+      };
+    }
   );
-  return { sessions, nextCursor: str(pick(raw, 'nextCursor', 'cursor')) || null };
+  return { sessions, nextCursor: str(pick(source, 'nextCursor', 'cursor')) || null };
+}
+
+function mapSessionDetail(raw: RawJsonValue, sessionID: string): SessionDetailResult {
+  const source = pick(raw, 'result') ?? raw;
+  const excerpts = arr(pick(source, 'hits')).map(mapTranscriptHit);
+  return {
+    sessionID,
+    excerpts,
+    indexed: excerpts.length > 0,
+    degradedMessage: str(pick(source, 'degradedMessage', 'degraded_message', 'error')) || undefined
+  };
+}
+
+function mapSessionResume(raw: RawJsonValue): SessionResumeResult {
+  const source = pick(raw, 'result') ?? raw;
+  return {
+    kind: str(pick(source, 'kind'), 'unknown'),
+    targetHarness: str(pick(source, 'targetHarness', 'target_harness')) || undefined,
+    workingDirectory: str(pick(source, 'workingDirectory', 'working_directory')) || undefined,
+    pid: optionalNum(pick(source, 'pid')),
+    note: str(pick(source, 'note')) || undefined,
+    errorCode: str(pick(source, 'errorCode', 'error_code', 'code')) || undefined,
+    errorRecovery: str(pick(source, 'errorRecovery', 'error_recovery', 'recovery')) || undefined
+  };
 }
 
 function mapUsageInsights(raw: RawJsonValue): UsageInsights {
@@ -1983,6 +2126,42 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     sessionSearch: async (query) => {
       const raw = await invoke<RawJsonValue>('session_search', { query });
       return mapSessionList(raw);
+    },
+    // P17 — daemon.search.query filtered by the stable session id. The daemon
+    // has no separate transcript-body RPC, so the indexed search result is the
+    // only body surface exposed here.
+    sessionDetail: async (sessionID) => {
+      try {
+        const raw = await invoke<RawJsonValue>('session_detail', { sessionId: sessionID });
+        return mapSessionDetail(raw, sessionID);
+      } catch (e) {
+        if (isCapabilityAbsentError(e)) {
+          return {
+            sessionID,
+            excerpts: [],
+            indexed: false,
+            degradedMessage: 'Indexed transcript search is unavailable in this daemon session.'
+          };
+        }
+        throw e;
+      }
+    },
+    // P17 — canonical run.resume. The daemon owns target selection and
+    // process launch; renderer receives only redacted outcome metadata.
+    sessionResume: async (sessionID) => {
+      try {
+        const raw = await invoke<RawJsonValue>('session_resume', { sessionId: sessionID });
+        return mapSessionResume(raw);
+      } catch (e) {
+        if (isCapabilityAbsentError(e)) {
+          return {
+            kind: 'capability_absent',
+            errorCode: 'capability_absent',
+            errorRecovery: 'Resume is unavailable in this daemon session.'
+          };
+        }
+        throw e;
+      }
     },
     // P05 — daemon.usage.recent → insights aggregation
     usageInsights: async () => {

@@ -59,7 +59,7 @@ export function SearchBox() {
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={onKeyDown}
           aria-labelledby={labelId}
-          placeholder="Title, provider, or model"
+          placeholder="Title, provider, model, or transcript"
           autoComplete="off"
         />
         {local ? (

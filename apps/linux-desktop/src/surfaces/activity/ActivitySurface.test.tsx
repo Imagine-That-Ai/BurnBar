@@ -3,7 +3,12 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fixtureSessionList } from '../../daemonFixture.js';
 import { bridgeStubDefaults } from '../../testing/bridgeStubs.js';
-import type { LinuxShellBridge, SessionListResult } from '../../tauriBridge.js';
+import type {
+  LinuxShellBridge,
+  SessionDetailResult,
+  SessionListResult,
+  SessionResumeResult
+} from '../../tauriBridge.js';
 import { ACTIVITY_PAGE_SIZE, useActivityStore } from '../../state/activityStore.js';
 import { useShellStore } from '../../state/shellStore.js';
 import { availableRuntimeCapabilities } from '../../testing/bridgeStubs.js';
@@ -33,6 +38,8 @@ function resetShell(): void {
 function mockBridge(handlers: {
   sessionList?: () => Promise<SessionListResult>;
   sessionSearch?: (query: string) => Promise<SessionListResult>;
+  sessionDetail?: (sessionID: string) => Promise<SessionDetailResult>;
+  sessionResume?: (sessionID: string) => Promise<SessionResumeResult>;
 }): LinuxShellBridge {
   const emptyList = async (): Promise<SessionListResult> => ({ sessions: [], nextCursor: null });
   const bridge: LinuxShellBridge = {
@@ -52,6 +59,8 @@ function mockBridge(handlers: {
     providerCatalog: async () => [],
     sessionList: handlers.sessionList ?? emptyList,
     sessionSearch: handlers.sessionSearch ?? emptyList,
+    sessionDetail: handlers.sessionDetail,
+    sessionResume: handlers.sessionResume,
     usageInsights: async () => ({ weekly: [], providerMix: [], modelMix: [], cacheHitRatePct: 0 }),
     missionList: async () => ({ missions: [], pendingApprovals: [] }),
     missionApprovalDecision: async () => {},
@@ -279,6 +288,68 @@ describe('ActivitySurface', () => {
     expect(within(region as HTMLElement).getByText(/Session id/i)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /hide details/i }));
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('loads daemon-backed transcript excerpts and resumes through the bridge', async () => {
+    const resume = vi.fn(async (_sessionID: string): Promise<SessionResumeResult> => ({
+      kind: 'spawned',
+      targetHarness: 'codex',
+      pid: 42
+    }));
+    const session = {
+      id: 'row-1',
+      sessionID: 'Codex:session-1',
+      provider: 'codex',
+      model: 'gpt-5.5',
+      startedAt: new Date().toISOString(),
+      tokens: 100,
+      costUsd: 0.25,
+      title: 'Build failure investigation'
+    };
+    useShellStore.setState({
+      bridge: mockBridge({
+        sessionList: async () => ({ sessions: [session], nextCursor: null }),
+        sessionDetail: async () => ({
+          sessionID: 'Codex:session-1',
+          indexed: true,
+          excerpts: [
+            {
+              id: 'chunk-1',
+              sourceID: 'Codex:session-1',
+              sourceKind: 'session_log',
+              title: 'Build failure investigation',
+              snippet: 'The compiler reported a missing module.'
+            }
+          ]
+        }),
+        sessionResume: resume
+      })
+    });
+    render(<ActivitySurface />);
+    await act(async () => {
+      await useActivityStore.getState().load();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /show details/i }));
+    expect(await screen.findByText('The compiler reported a missing module.')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Export unavailable' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Resume session' }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(resume).toHaveBeenCalledWith('Codex:session-1');
+    expect(screen.getByText(/Session resumed in codex/i)).toBeTruthy();
+  });
+
+  it('labels transcript and mutation capabilities honestly when unavailable', async () => {
+    useShellStore.setState({ fixtureMode: true });
+    render(<ActivitySurface />);
+    await act(async () => {
+      await useActivityStore.getState().load();
+    });
+    fireEvent.click(screen.getAllByRole('button', { name: /show details/i })[0]);
+    expect(await screen.findByText(/Transcript body is unavailable in fixture mode/i)).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Resume unavailable' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Export unavailable' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('announces result count via aria-live', async () => {

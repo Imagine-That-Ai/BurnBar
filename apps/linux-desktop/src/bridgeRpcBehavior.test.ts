@@ -475,6 +475,107 @@ describe('VAL-RPC-002 bridge behavior', () => {
       reason: undefined
     });
   });
+
+  it('maps daemon usage events without inventing session totals', async () => {
+    invoke.mockResolvedValueOnce({
+      usage: [
+        {
+          sessionID: 'Codex:session-1',
+          runID: 'run-1',
+          providerID: 'codex',
+          modelID: 'gpt-5.5',
+          recordedAt: '2026-07-13T08:00:00Z',
+          inputTokens: 80,
+          outputTokens: 20,
+          cost: 0.25,
+          projectName: 'BurnBar'
+        }
+      ]
+    });
+    const b = await bridge();
+    await expect(b.sessionList()).resolves.toMatchObject({
+      sessions: [
+        {
+          id: 'Codex:session-1',
+          sessionID: 'Codex:session-1',
+          runID: 'run-1',
+          provider: 'codex',
+          model: 'gpt-5.5',
+          startedAt: '2026-07-13T08:00:00Z',
+          tokens: 0,
+          tokenTotalAvailable: false,
+          costUsd: 0.25,
+          costAvailable: true,
+          inputTokens: 80,
+          outputTokens: 20,
+          projectName: 'BurnBar'
+        }
+      ]
+    });
+  });
+
+  it('maps daemon indexed search hits to transcript-backed activity rows', async () => {
+    invoke.mockResolvedValueOnce({
+      hits: [
+        {
+          chunkID: 'chunk-1',
+          sourceID: 'Codex:session-1',
+          sourceKind: 'session_log',
+          title: 'Build failure investigation',
+          snippet: 'The compiler reported a missing module.',
+          provider: 'codex',
+          hitSource: 'lexical'
+        }
+      ]
+    });
+    const b = await bridge();
+    await expect(b.sessionSearch('missing module')).resolves.toMatchObject({
+      sessions: [
+        {
+          id: 'Codex:session-1',
+          sessionID: 'Codex:session-1',
+          provider: 'codex',
+          model: 'Indexed transcript',
+          title: 'Build failure investigation',
+          bodySnippet: 'The compiler reported a missing module.',
+          searchHit: true
+        }
+      ]
+    });
+  });
+
+  it('loads indexed detail and resumes only through canonical native commands', async () => {
+    invoke
+      .mockResolvedValueOnce({
+        hits: [
+          {
+            chunkID: 'chunk-1',
+            sourceID: 'Codex:session-1',
+            sourceKind: 'session_log',
+            title: 'Build failure investigation',
+            snippet: 'The compiler reported a missing module.'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({ kind: 'spawned', target_harness: 'codex', pid: 42 });
+    const b = await bridge();
+    await expect(b.sessionDetail?.('Codex:session-1')).resolves.toMatchObject({
+      sessionID: 'Codex:session-1',
+      indexed: true,
+      excerpts: [{ sourceID: 'Codex:session-1', snippet: 'The compiler reported a missing module.' }]
+    });
+    await expect(b.sessionResume?.('Codex:session-1')).resolves.toEqual({
+      kind: 'spawned',
+      targetHarness: 'codex',
+      workingDirectory: undefined,
+      pid: 42,
+      note: undefined,
+      errorCode: undefined,
+      errorRecovery: undefined
+    });
+    expect(invoke).toHaveBeenNthCalledWith(1, 'session_detail', { sessionId: 'Codex:session-1' });
+    expect(invoke).toHaveBeenNthCalledWith(2, 'session_resume', { sessionId: 'Codex:session-1' });
+  });
 });
 
 /**

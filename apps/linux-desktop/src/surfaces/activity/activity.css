@@ -237,6 +237,114 @@
   margin: 0;
 }
 
+.activity-detail-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.activity-detail-heading h3 {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--color-text-base);
+}
+
+.activity-transcript {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.activity-transcript-list {
+  display: grid;
+  gap: var(--space-2);
+  list-style: decimal;
+  margin: 0;
+  padding-left: 1.5rem;
+}
+
+.activity-transcript-excerpt {
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-glass-line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-glass-elevated) 72%, transparent);
+}
+
+.activity-transcript-title,
+.activity-transcript-snippet,
+.activity-transcript-source {
+  margin: 0;
+}
+
+.activity-transcript-title {
+  color: var(--color-text-bright);
+  font-weight: 600;
+}
+
+.activity-transcript-snippet {
+  margin-top: var(--space-1);
+  color: var(--color-text-base);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.activity-transcript-source {
+  margin-top: var(--space-1);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.activity-capability {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px dashed var(--color-glass-line);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-mute);
+}
+
+.activity-capability--error {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--color-danger, #d66) 60%, var(--color-glass-line));
+  color: var(--color-text-base);
+}
+
+.activity-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.activity-detail-actions button {
+  font-size: 0.8rem;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-glass-line);
+  background: var(--color-glass-elevated);
+  color: var(--color-text-base);
+  cursor: pointer;
+}
+
+.activity-detail-actions button.primary {
+  border-color: var(--color-brass-core);
+}
+
+.activity-detail-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.activity-action-status {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--color-text-mute);
+  font-size: 0.8rem;
+}
+
 .activity-empty {
   margin: var(--space-2) 0 0;
   color: var(--color-text-mute);
