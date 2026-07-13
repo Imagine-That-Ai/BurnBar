@@ -24,6 +24,10 @@ public final class AntigravityParser: LogParser, Sendable {
     }
 
     public func parse() async throws -> ParseResult {
+        try await parse(options: .default)
+    }
+
+    public func parse(options: LogParseOptions) async throws -> ParseResult {
         let fm = FileManager.default
         let basePath = ((logDirectoryOverride ?? "~/.gemini/antigravity-cli") as NSString).expandingTildeInPath
         let brainPath = (basePath as NSString).appendingPathComponent("brain")
@@ -64,13 +68,22 @@ public final class AntigravityParser: LogParser, Sendable {
 
             guard fm.fileExists(atPath: transcriptFile.path) else { continue }
 
+            if let minimumFileModificationDate = options.minimumFileModificationDate,
+               let modifiedAt = (try? fm.attributesOfItem(atPath: transcriptFile.path)[.modificationDate]) as? Date,
+               modifiedAt < minimumFileModificationDate {
+                continue
+            }
+
             if let pair = parseSession(
                 transcriptFile: transcriptFile,
                 sessionId: sessionId,
                 fallbackModel: fallbackModelName
             ) {
                 if let usage = pair.usage { usages.append(usage) }
-                if let conv = pair.conversation { conversations.append(conv) }
+                if options.includeConversationBodies,
+                   let conv = pair.conversation {
+                    conversations.append(conv)
+                }
             }
         }
 

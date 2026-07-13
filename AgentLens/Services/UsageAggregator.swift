@@ -44,6 +44,7 @@ final class UsageAggregator {
     /// Usage records fetched from provider billing APIs (separate from log-parsed data).
     private(set) var apiUsages: [ProviderUsageRecord] = []
     private var projectionWorkerTask: Task<Void, Never>?
+    private var conversationIndexingTask: Task<Void, Never>?
     private var projectionSweepRequested = false
     private var lastProjectionInsightRefreshAt: Date?
 
@@ -223,6 +224,13 @@ final class UsageAggregator {
             launchProjectionSweep()
         }
 
+        scheduleConversationIndexingIfNeeded(
+            parsers: parsers,
+            orchestrator: orchestrator,
+            indexingEnabled: settings.conversationIndexingEnabled,
+            indexedAfter: refreshStartedAt
+        )
+
         let totalDuration = Date().timeIntervalSince(refreshStartedAt)
         AppLogger.parser.info(
             "usage_refresh_timing",
@@ -393,6 +401,12 @@ final class UsageAggregator {
         if result.indexedConversationChanges > 0 || pendingProjectionJobs > 0 {
             launchProjectionSweep()
         }
+        scheduleConversationIndexingIfNeeded(
+            parsers: [provider: parser],
+            orchestrator: refreshOrchestrator,
+            indexingEnabled: settings.conversationIndexingEnabled,
+            indexedAfter: refreshStartedAt
+        )
         if ProviderQuotaService.supportedProviders.contains(provider) {
             await quotaService.refresh(provider: provider, dataStore: dataStore)
         }
@@ -402,6 +416,63 @@ final class UsageAggregator {
 // MARK: - Private Helpers
 
 private extension UsageAggregator {
+    func scheduleConversationIndexingIfNeeded(
+        parsers: [AgentProvider: any OpenBurnBarCore.LogParser],
+        orchestrator: RefreshOrchestrator,
+        indexingEnabled: Bool,
+        indexedAfter: Date
+    ) {
+        if !indexingEnabled {
+            conversationIndexingTask?.cancel()
+            return
+        }
+        guard conversationIndexingTask == nil else { return }
+
+        let dataStore = self.dataStore
+        conversationIndexingTask = Task(priority: .utility) { [weak self] in
+            defer { self?.conversationIndexingTask = nil }
+
+            let result = await RefreshBackgroundWork.runConversationIndexing(
+                parsers: parsers,
+                dataStore: dataStore,
+                orchestrator: orchestrator,
+                indexingEnabled: indexingEnabled
+            )
+            guard !Task.isCancelled, let self else { return }
+
+            if !result.errors.isEmpty {
+                for (provider, error) in result.errors {
+                    AppLogger.parser.error(
+                        "conversation_indexing_failed",
+                        metadata: [
+                            "provider": provider.rawValue,
+                            "error": error
+                        ]
+                    )
+                }
+            }
+
+            if result.indexedConversationChanges > 0 {
+                let pendingProjectionJobs = (try? await self.dataStore.countProjectionJobs(
+                    statuses: [.queued, .leased, .running]
+                )) ?? 0 // try?-ok(opportunistic sweep gate)
+                if pendingProjectionJobs < AutoSummaryPolicy.pauseWhenProjectionQueueExceeds {
+                    self.summaryEngine.launchAutoSummarySweep(indexedAfter: indexedAfter)
+                }
+                self.launchProjectionSweep()
+            }
+
+            AppLogger.parser.info(
+                "conversation_indexing_timing",
+                metadata: [
+                    "duration_ms": Self.formatMilliseconds(result.duration),
+                    "indexed_changes": String(result.indexedConversationChanges),
+                    "provider_errors": String(result.errors.count)
+                ]
+            )
+        }
+    }
+
     func upsertParserImportHealth(importedUsageCount: Int, persistenceError: String?) async throws {
         let providers = parsers.keys.sorted { $0.rawValue < $1.rawValue }
         let providerStates = providers.map { provider -> ParserImportHealthProviderState in

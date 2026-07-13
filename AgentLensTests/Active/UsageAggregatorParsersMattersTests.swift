@@ -175,6 +175,65 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
         XCTAssertFalse(scrubbedCache.containsRawString(privateAnswer))
     }
 
+    @MainActor
+    func testCodexParserMinimumDateLimitsHistoricalThreadScan() async throws {
+        let harness = try ParserIntegrationTestHarness(name: "codex-minimum-date-\(UUID().uuidString.prefix(8))")
+        defer { harness.cleanup() }
+
+        let oldRollout = harness.rootURL.appendingPathComponent(".codex/sessions/2026/06/22/old.jsonl")
+        let recentRollout = harness.rootURL.appendingPathComponent(".codex/sessions/2026/07/12/recent.jsonl")
+        try harness.fileManager.createDirectory(
+            at: oldRollout.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try harness.fileManager.createDirectory(
+            at: recentRollout.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let session = """
+        {"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":10}}}}
+        """
+        try session.write(to: oldRollout, atomically: true, encoding: .utf8)
+        try session.write(to: recentRollout, atomically: true, encoding: .utf8)
+
+        _ = try harness.createCodexThreadDatabase(threads: [
+            (
+                id: "codex-old-thread",
+                model: "openai/gpt-5.2-codex",
+                tokensUsed: 110,
+                rolloutPath: oldRollout.path,
+                createdAt: 1_782_156_300,
+                updatedAt: 1_782_156_360,
+                cwd: "/tmp/OpenBurnBar"
+            ),
+            (
+                id: "codex-recent-thread",
+                model: "openai/gpt-5.2-codex",
+                tokensUsed: 110,
+                rolloutPath: recentRollout.path,
+                createdAt: 1_783_915_200,
+                updatedAt: 1_783_915_260,
+                cwd: "/tmp/OpenBurnBar"
+            )
+        ])
+
+        let parser = TestableCodexParser(
+            fileManager: harness.fileManager,
+            codexRoot: harness.rootURL.appendingPathComponent(".codex", isDirectory: true),
+            appPaths: OpenBurnBar.OpenBurnBarAppPaths(
+                applicationSupportRoot: harness.rootURL.appendingPathComponent("support", isDirectory: true)
+            )
+        )
+
+        let result = try await parser.parse(options: LogParseOptions(
+            includeConversationBodies: false,
+            minimumFileModificationDate: Date(timeIntervalSince1970: 1_783_915_200)
+        ))
+
+        XCTAssertEqual(result.usages.map(\.sessionId), ["codex-recent-thread"])
+        XCTAssertTrue(result.conversations.isEmpty)
+    }
+
     func testParserConversationCacheScrubberRedactsKnownParserCaches() throws {
         let supportRoot = uniqueTempURL()
         let appPaths = OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)

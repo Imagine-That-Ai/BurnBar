@@ -16,6 +16,10 @@ public final class GrokParser: LogParser, Sendable {
     }
 
     public func parse() async throws -> ParseResult {
+        try await parse(options: .default)
+    }
+
+    public func parse(options: LogParseOptions) async throws -> ParseResult {
         let fileManager = FileManager.default
         let sessionsRoot = logDirectoryOverride ?? NSString(string: provider.logDirectory).expandingTildeInPath
         guard fileManager.fileExists(atPath: sessionsRoot) else {
@@ -40,14 +44,20 @@ public final class GrokParser: LogParser, Sendable {
             for sessionDir in sessionDirs {
                 let summaryURL = sessionDir.appendingPathComponent("summary.json")
                 guard fileManager.fileExists(atPath: summaryURL.path) else { continue }
+                if let minimumFileModificationDate = options.minimumFileModificationDate,
+                   let signature = FileSignature(for: summaryURL),
+                   Date(timeIntervalSince1970: signature.modifiedAt) < minimumFileModificationDate {
+                    continue
+                }
 
                 if let pair = try parseSession(
                     sessionDir: sessionDir,
                     summaryURL: summaryURL,
-                    projectName: projectName
+                    projectName: projectName,
+                    includeConversationBodies: options.includeConversationBodies
                 ), let usage = pair.usage {
                     usages.append(usage)
-                    if let conversation = pair.conversation {
+                    if options.includeConversationBodies, let conversation = pair.conversation {
                         conversations.append(conversation)
                     }
                 }
@@ -62,7 +72,8 @@ public final class GrokParser: LogParser, Sendable {
     private func parseSession(
         sessionDir: URL,
         summaryURL: URL,
-        projectName: String
+        projectName: String,
+        includeConversationBodies: Bool
     ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         let mtime = (try? FileManager.default.attributesOfItem(atPath: summaryURL.path)[.modificationDate]) as? Date // try?-ok(mtime falls back)
         guard let summaryData = try? Data(contentsOf: summaryURL), // try?-ok(missing summary skipped)
@@ -87,7 +98,7 @@ public final class GrokParser: LogParser, Sendable {
         let signalsURL = sessionDir.appendingPathComponent("signals.json")
         let signals = loadSignals(at: signalsURL)
         let chatHistoryURL = sessionDir.appendingPathComponent("chat_history.jsonl")
-        let chatTurns = parseChatHistory(at: chatHistoryURL)
+        let chatTurns = includeConversationBodies ? parseChatHistory(at: chatHistoryURL) : []
 
         let tokenBreakdown = tokenBreakdown(from: signals, chatTurns: chatTurns, updatesURL: sessionDir.appendingPathComponent("updates.jsonl"))
         guard tokenBreakdown.totalTokens > 0 else { return nil }
@@ -124,15 +135,17 @@ public final class GrokParser: LogParser, Sendable {
             ?? (summary["session_summary"] as? String)?.nilIfEmpty
             ?? sessionId
 
-        let conversation = buildConversation(
-            sessionId: sessionId,
-            projectName: resolvedProject,
-            title: title,
-            chatTurns: chatTurns,
-            startTime: startTime,
-            endTime: endTime,
-            mtime: mtime
-        )
+        let conversation = includeConversationBodies
+            ? buildConversation(
+                sessionId: sessionId,
+                projectName: resolvedProject,
+                title: title,
+                chatTurns: chatTurns,
+                startTime: startTime,
+                endTime: endTime,
+                mtime: mtime
+            )
+            : nil
 
         return (usage, conversation)
     }

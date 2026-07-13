@@ -731,8 +731,8 @@ struct DashboardView: View {
     }
 
     private var layoutSwitcherBar: some View {
-        HStack {
-            DashboardLayoutSwitcher(selection: Binding(
+        DashboardLayoutShelf(
+            selection: Binding(
                 get: { settingsManager.dashboardLayout },
                 set: { newValue in
                     guard newValue != settingsManager.dashboardLayout else { return }
@@ -743,13 +743,13 @@ struct DashboardView: View {
                         "source": "overview_switcher"
                     ])
                 }
-            ))
-            .accessibilityIdentifier(OBBAccessibilityID.dashboardLayoutSwitcher)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, DesignSystem.Spacing.xl)
-        .padding(.top, DesignSystem.Spacing.sm)
-        .padding(.bottom, DesignSystem.Spacing.xs)
+            ),
+            rangeLabel: selectedTimeRange.displayName,
+            isRefreshing: isScanning,
+            canRefresh: aggregator != nil,
+            lastRefresh: dataStore.lastRefresh,
+            onRefresh: runScan
+        )
     }
 
     @ViewBuilder
