@@ -98,11 +98,11 @@ export function InsightsWorkspace({ data, sourceLabel, onRefresh, onFollowUp }: 
         </nav>
       </aside>
 
-      <main className="insights-workspace-main">
+      <section className="insights-workspace-main" aria-labelledby="insights-workspace-title">
         <header className="insights-workspace-toolbar">
           <div>
             <span className="insights-eyebrow">Insights</span>
-            <h2>Usage observatory</h2>
+            <h2 id="insights-workspace-title">Usage observatory</h2>
             <p className="data-source muted">Provenance: {sourceLabel}</p>
           </div>
           <div className="insights-workspace-actions">
@@ -189,7 +189,7 @@ export function InsightsWorkspace({ data, sourceLabel, onRefresh, onFollowUp }: 
             </button>
           </div>
         </form>
-      </main>
+      </section>
 
       <aside className="insights-inspector" aria-label="Insight inspector">
         <div className="insights-workspace-heading">
