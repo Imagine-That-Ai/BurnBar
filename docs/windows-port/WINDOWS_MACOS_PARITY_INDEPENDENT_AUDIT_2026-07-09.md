@@ -7,10 +7,11 @@
 
 ## Certification Update - 2026-07-11
 
-The remediation plan's F1 source/product ledger currently reports 46 rows as
-Real, with zero DeferredApproved, Blocked, or Substituted rows. That is the
-scoped F1 Ship Peer result, not proof that the F2 True 1:1 workstreams or the
-public release gates are complete.
+At the time of this certification update, the remediation plan's F1
+source/product ledger reported 46 rows as Real, with zero DeferredApproved,
+Blocked, or Substituted rows. The current ledger is 47/47 Real. Both are scoped
+F1 Ship Peer results, not proof that the F2 True 1:1 workstreams or the public
+release gates are complete.
 
 Current evidence materially supersedes the original source-only findings:
 
