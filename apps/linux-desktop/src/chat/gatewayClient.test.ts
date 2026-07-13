@@ -207,6 +207,10 @@ describe('streamGatewayChatNative', () => {
   it('abort discards queued events and bypasses them on the next read', async () => {
     const abort = new AbortController();
     const cancel = vi.fn(async () => undefined);
+    let releaseNative!: () => void;
+    const nativeCompletion = new Promise<void>((resolve) => {
+      releaseNative = resolve;
+    });
     const iterator = streamGatewayChatNative(
       {
         start: async (_request, onEvent) => {
@@ -214,6 +218,7 @@ describe('streamGatewayChatNative', () => {
           onEvent({ type: 'usage', usage: { totalTokens: 1 } });
           onEvent({ type: 'delta', text: 'must-not-render' });
           onEvent({ type: 'done', finishReason: 'stop' });
+          await nativeCompletion;
         },
         cancel
       },
@@ -228,6 +233,36 @@ describe('streamGatewayChatNative', () => {
     await expect(iterator.next()).resolves.toMatchObject({ value: { type: 'delta', text: 'first' } });
     abort.abort();
     await expect(iterator.next()).rejects.toMatchObject({ kind: 'aborted' });
+    releaseNative();
     expect(cancel).toHaveBeenCalledWith('gateway-test-abort-queued');
+  });
+
+  it('keeps queued events when an abort arrives after native completion', async () => {
+    const abort = new AbortController();
+    const cancel = vi.fn(async () => undefined);
+    const iterator = streamGatewayChatNative(
+      {
+        start: async (_request, onEvent) => {
+          onEvent({ type: 'delta', text: 'first' });
+          onEvent({ type: 'usage', usage: { totalTokens: 1 } });
+          onEvent({ type: 'done', finishReason: 'stop' });
+        },
+        cancel
+      },
+      {
+        requestId: 'gateway-test-late-abort',
+        model: 'hermes',
+        messages: [{ role: 'user', content: 'hello' }],
+        signal: abort.signal
+      }
+    );
+
+    await expect(iterator.next()).resolves.toMatchObject({ value: { type: 'delta', text: 'first' } });
+    await Promise.resolve();
+    abort.abort();
+    await expect(iterator.next()).resolves.toMatchObject({ value: { type: 'usage', usage: { totalTokens: 1 } } });
+    await expect(iterator.next()).resolves.toMatchObject({ value: { type: 'done', finishReason: 'stop' } });
+    await expect(iterator.next()).resolves.toEqual({ value: undefined, done: true });
+    expect(cancel).not.toHaveBeenCalled();
   });
 });

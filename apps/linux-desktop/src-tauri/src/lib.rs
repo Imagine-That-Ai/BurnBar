@@ -199,6 +199,7 @@ fn read_token_file_secure_zeroizing(path: &std::path::Path) -> Option<Zeroizing<
     trim_token_in_place(contents)
 }
 
+const GATEWAY_MIN_TOKEN_BYTES: usize = 16;
 const GATEWAY_MAX_TOKEN_BYTES: usize = 16_384;
 
 fn trim_token_in_place(mut token: Zeroizing<String>) -> Option<Zeroizing<String>> {
@@ -212,7 +213,7 @@ fn trim_token_in_place(mut token: Zeroizing<String>) -> Option<Zeroizing<String>
 }
 
 fn validate_gateway_token(token: Zeroizing<String>) -> Option<Zeroizing<String>> {
-    let valid = token.len() <= GATEWAY_MAX_TOKEN_BYTES
+    let valid = (GATEWAY_MIN_TOKEN_BYTES..=GATEWAY_MAX_TOKEN_BYTES).contains(&token.len())
         && token.bytes().all(|byte| {
             byte.is_ascii_alphanumeric()
                 || matches!(byte, b'-' | b'.' | b'_' | b'~' | b'+' | b'/' | b'=')
@@ -360,6 +361,12 @@ impl GatewayStreamEvent {
             }
             Self::Usage { .. } => {}
         }
+    }
+}
+
+impl Drop for GatewayStreamEvent {
+    fn drop(&mut self) {
+        self.zeroize_text_fields();
     }
 }
 
@@ -5372,11 +5379,12 @@ mod tests {
     #[test]
     fn gateway_token_validation_trims_in_place_and_enforces_the_header_contract() {
         let token = validate_gateway_token(
-            trim_token_in_place(Zeroizing::new("  valid-token_123  \n".into())).unwrap(),
+            trim_token_in_place(Zeroizing::new("  valid-token_1234  \n".into())).unwrap(),
         )
         .unwrap();
-        assert_eq!(token.as_str(), "valid-token_123");
+        assert_eq!(token.as_str(), "valid-token_1234");
         assert!(trim_token_in_place(Zeroizing::new("   \n".into())).is_none());
+        assert!(validate_gateway_token(Zeroizing::new("short-token".into())).is_none());
         assert!(validate_gateway_token(Zeroizing::new("token with spaces".into())).is_none());
         assert!(
             validate_gateway_token(Zeroizing::new("x".repeat(GATEWAY_MAX_TOKEN_BYTES + 1)))

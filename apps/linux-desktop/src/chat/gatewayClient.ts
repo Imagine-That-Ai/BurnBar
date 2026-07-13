@@ -160,6 +160,9 @@ export async function* streamGatewayChatNative(
     notify();
   };
   const abort = () => {
+    // A late AbortSignal must not discard events already queued after native
+    // completion; the iterator still needs to drain them before returning.
+    if (completed) return;
     failure = new GatewayChatError('aborted', 'Chat stream aborted.');
     completed = true;
     clearQueue();

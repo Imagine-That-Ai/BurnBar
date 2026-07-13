@@ -231,9 +231,12 @@ export function applyChatStreamEvent(messages: ChatMessage[], assistantId: strin
         }
       ];
     case 'tool_call':
-      if (messages.some((message) => message.id === event.toolCall.key && message.role === 'tool')) {
+      // Tool-call keys are only unique within one assistant turn. Scope the
+      // renderer id so a later turn cannot mutate an earlier tool card.
+      const renderedToolId = `${assistantId}:${event.toolCall.key}`;
+      if (messages.some((message) => message.id === renderedToolId && message.role === 'tool')) {
         return messages.map((message) =>
-          message.id === event.toolCall.key
+          message.id === renderedToolId
             ? {
                 ...message,
                 text: summarizeToolArgs(event.toolCall.arguments),
@@ -246,7 +249,7 @@ export function applyChatStreamEvent(messages: ChatMessage[], assistantId: strin
       return [
         ...messages,
         {
-          id: event.toolCall.key,
+          id: renderedToolId,
           role: 'tool',
           text: summarizeToolArgs(event.toolCall.arguments),
           toolName: event.toolCall.name,

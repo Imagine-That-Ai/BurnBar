@@ -5,7 +5,7 @@ import type {
   LinuxShellBridge,
   SessionEntry
 } from '../tauriBridge.js';
-import { useChatStore } from './chatStore.js';
+import { applyChatStreamEvent, useChatStore } from './chatStore.js';
 import { useShellStore } from './shellStore.js';
 
 type PendingStream = {
@@ -252,5 +252,33 @@ describe('chat request ownership', () => {
     expect(state.streamPhase).toBe('idle');
     expect(state.activeRequestId).toBeNull();
     expect(state.activeAbortController).toBeNull();
+  });
+});
+
+describe('chat stream tool-call identity', () => {
+  it('scopes repeated provider keys to the assistant turn', () => {
+    const firstTurn = applyChatStreamEvent(
+      [{ id: 'assistant-1', role: 'assistant', text: '' }],
+      'assistant-1',
+      {
+        type: 'tool_call',
+        toolCall: { key: 'tool-0', id: 'call-1', name: 'read', arguments: '{"path":"one"}' }
+      }
+    );
+    const secondTurn = applyChatStreamEvent(
+      [...firstTurn, { id: 'assistant-2', role: 'assistant', text: '' }],
+      'assistant-2',
+      {
+        type: 'tool_call',
+        toolCall: { key: 'tool-0', id: 'call-2', name: 'write', arguments: '{"path":"two"}' }
+      }
+    );
+
+    expect(secondTurn.filter((message) => message.role === 'tool').map((message) => message.id)).toEqual([
+      'assistant-1:tool-0',
+      'assistant-2:tool-0'
+    ]);
+    expect(secondTurn.find((message) => message.id === 'assistant-1:tool-0')?.toolName).toBe('read');
+    expect(secondTurn.find((message) => message.id === 'assistant-2:tool-0')?.toolName).toBe('write');
   });
 });
