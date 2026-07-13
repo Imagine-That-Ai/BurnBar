@@ -416,6 +416,34 @@ COVERAGE_ALLOWLIST = {
         "can host. Engine logic lives in OpenBurnBarRemoteAccessAgentCore "
         "(VirtualHIDKeyboardEngine), which IS line-gated here."
     ),
+    "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota/ClaudeQuotaAdapter.swift": (
+        "Anthropic credential/statusline and rate-limit-header orchestration. "
+        "The changed call sites only hand provider payloads to the deterministic "
+        "ClaudeQuotaDomainCoreAdapter; parser and bucket semantics are covered "
+        "by the Claude quota/domain-core tests, while live credential refresh, "
+        "filesystem snapshots, and HTTP headers require provider integration "
+        "fixtures unavailable to the package coverage lane."
+    ),
+    "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota/ClaudeQuotaDomainCoreAdapter.swift": (
+        "Provider migration adapter with native-FFI availability, ABI/version "
+        "fallback, shadow comparison, and logger wiring. The legacy parser and "
+        "Rust quota semantics are covered by focused Claude/domain-core tests; "
+        "the native branch requires the platform FFI artifact and its dedicated "
+        "smoke/contract lane, which is not emitted into Swift package line "
+        "coverage."
+    ),
+    "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated/openburnbar_domain_ffi.swift": (
+        "Generated UniFFI bindings emitted from the domain-core Rust contract. "
+        "The generator output is validated by the Rust/Swift ABI contract and "
+        "native smoke lanes; generated bridge glue is not independently line-hit "
+        "by Swift package XCTest."
+    ),
+    "OpenBurnBarCore/Sources/OpenBurnBarDomainCoreFFISmoke/main.swift": (
+        "Native FFI smoke executable entry point. Its process-level ABI and "
+        "payload checks run in the dedicated native smoke job, not inside the "
+        "Swift package XCTest coverage target, so line attribution here would "
+        "be misleading."
+    ),
 }
 
 for waiver_path, waiver_reason in COVERAGE_ALLOWLIST.items():
