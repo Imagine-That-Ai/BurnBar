@@ -84,6 +84,8 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case controllerProjectsList = "daemon.controller.project.list"
     case controllerProjectGet = "daemon.controller.project.get"
     case controllerProjectUpsert = "daemon.controller.project.upsert"
+    case controllerProjectDelete = "daemon.controller.project.delete"
+    case controllerProjectReassign = "daemon.controller.project.reassign"
     case reviewRunRecord = "daemon.controller.review.record"
     case questionCreate = "daemon.question.create"
     case questionGet = "daemon.question.get"

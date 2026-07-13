@@ -23,6 +23,8 @@ public protocol BurnBarMissionControlServing: AnyObject, Sendable {
     func controllerProjects(_ request: BurnBarControllerProjectsListRequest) async throws -> BurnBarControllerProjectsListResponse
     func controllerProject(_ request: BurnBarControllerProjectGetRequest) async throws -> BurnBarControllerProjectResponse
     func controllerProjectUpsert(_ request: BurnBarControllerProjectUpsertRequest) async throws -> BurnBarControllerProjectResponse
+    func controllerProjectDelete(_ request: BurnBarControllerProjectDeleteRequest) async throws -> BurnBarControllerProjectDeleteResponse
+    func controllerProjectReassign(_ request: BurnBarControllerProjectReassignRequest) async throws -> BurnBarControllerProjectReassignResponse
     func reviewRunRecord(_ request: BurnBarControllerReviewRunRecordRequest) async throws -> BurnBarControllerReviewRunRecordResponse
 
     func questionCreate(_ request: BurnBarQuestionCreateRequest) async throws -> BurnBarQuestionResponse
@@ -61,6 +63,18 @@ public protocol BurnBarMissionControlServing: AnyObject, Sendable {
 }
 
 extension BurnBarMissionControlServing {
+    public func controllerProjectDelete(
+        _ request: BurnBarControllerProjectDeleteRequest
+    ) async throws -> BurnBarControllerProjectDeleteResponse {
+        throw BurnBarMissionControlError.invalidProjectIdentifier("project deletion unavailable")
+    }
+
+    public func controllerProjectReassign(
+        _ request: BurnBarControllerProjectReassignRequest
+    ) async throws -> BurnBarControllerProjectReassignResponse {
+        throw BurnBarMissionControlError.invalidProjectIdentifier("project reassignment unavailable")
+    }
+
     /// Default implementation for every conformer: remote-mission
     /// authorization is a PURE, stateless policy evaluation
     /// (`BurnBarRemoteMissionAuthorizationPolicy`), so no store or transport

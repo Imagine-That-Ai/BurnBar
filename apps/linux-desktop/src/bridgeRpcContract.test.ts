@@ -165,17 +165,21 @@ describe('VAL-RPC bridge contract', () => {
     expect(tsBridge).toContain('chat_message_append');
   });
 
-  it('wires project detail and upsert only to canonical controller RPCs', () => {
+  it('wires project lifecycle operations only to canonical controller RPCs', () => {
     for (const method of [
       'daemon.controller.project.list',
       'daemon.controller.project.get',
-      'daemon.controller.project.upsert'
+      'daemon.controller.project.upsert',
+      'daemon.controller.project.delete',
+      'daemon.controller.project.reassign'
     ]) {
       expect(rustBridge).toContain(method);
       expect(canonicalRpc, `${method} must exist in BurnBarRPCIPCCanon`).toContain(`id: "${method}"`);
     }
     expect(tsBridge).toContain('projectGet');
     expect(tsBridge).toContain('projectUpsert');
+    expect(tsBridge).toContain('projectDelete');
+    expect(tsBridge).toContain('projectReassign');
   });
 
   it('wires mission detail and explicit cancellation only to canonical RPCs', () => {

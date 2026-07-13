@@ -697,6 +697,37 @@ body.reduced-motion .system-skeleton-line {
   margin: 0;
 }
 
+.project-lifecycle-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-glass-line);
+}
+
+.project-lifecycle-actions label {
+  display: grid;
+  min-width: min(100%, 18rem);
+  gap: var(--space-1);
+  color: var(--color-text-base);
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.project-lifecycle-actions select {
+  border: 1px solid var(--color-glass-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-glass-bg);
+  color: var(--color-text-bright);
+  font: inherit;
+  padding: var(--space-2) var(--space-3);
+}
+
+.project-lifecycle-danger {
+  justify-content: flex-end;
+}
+
 .project-editor-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

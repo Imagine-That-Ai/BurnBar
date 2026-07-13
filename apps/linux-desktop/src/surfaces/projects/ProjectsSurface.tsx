@@ -221,14 +221,45 @@ function ProjectDetail({
   record,
   onBack,
   onEdit,
-  canEdit
+  canEdit,
+  reassignTargets,
+  canDelete,
+  canReassign,
+  lifecycleBusy,
+  lifecycleError,
+  onDelete,
+  onReassign
 }: {
   record: ProjectRecord;
   onBack: () => void;
   onEdit: () => void;
   canEdit: boolean;
+  reassignTargets: ProjectRecord[];
+  canDelete: boolean;
+  canReassign: boolean;
+  lifecycleBusy: boolean;
+  lifecycleError: string | null;
+  onDelete: () => void;
+  onReassign: (targetProjectSlug: string) => void;
 }) {
   const stats = projectStats(record);
+  const [targetProjectSlug, setTargetProjectSlug] = useState('');
+
+  const confirmDelete = () => {
+    if (window.confirm(`Delete project "${record.displayName}"? Project history will remain available for reassignment.`)) {
+      onDelete();
+    }
+  };
+
+  const confirmReassign = () => {
+    if (!targetProjectSlug) return;
+    const target = reassignTargets.find((candidate) => candidate.projectSlug === targetProjectSlug);
+    if (!target) return;
+    if (window.confirm(`Reassign all durable references from "${record.displayName}" to "${target.displayName}"?`)) {
+      onReassign(target.projectSlug);
+    }
+  };
+
   return (
     <section className="project-detail-panel" aria-labelledby="project-detail-title">
       <div className="project-detail-heading">
@@ -240,10 +271,11 @@ function ProjectDetail({
           <h2 id="project-detail-title">{record.displayName}</h2>
           <p className="mono project-detail-slug">{record.projectSlug}</p>
         </div>
-        <button type="button" className="primary" onClick={onEdit} disabled={!canEdit}>
+        <button type="button" className="primary" onClick={onEdit} disabled={!canEdit || lifecycleBusy}>
           Edit project
         </button>
       </div>
+      {lifecycleError ? <p className="project-inline-error" role="alert">{lifecycleError}</p> : null}
       <p className="project-detail-summary">{record.summary || 'No project summary has been recorded.'}</p>
       <dl className="project-detail-facts">
         <div><dt>Status</dt><dd>{projectStatusLabel(record)}</dd></div>
@@ -262,6 +294,34 @@ function ProjectDetail({
         <div className="project-detail-aliases">
           <strong>Aliases</strong>
           <span>{record.aliases.join(', ')}</span>
+        </div>
+      ) : null}
+      {canReassign && reassignTargets.length > 0 ? (
+        <div className="project-lifecycle-actions">
+          <label>
+            <span>Reassign references to</span>
+            <select
+              aria-label="Reassign references to"
+              value={targetProjectSlug}
+              onChange={(event) => setTargetProjectSlug(event.target.value)}
+              disabled={lifecycleBusy}
+            >
+              <option value="">Select a target project</option>
+              {reassignTargets.map((target) => (
+                <option key={target.projectSlug} value={target.projectSlug}>{target.displayName}</option>
+              ))}
+            </select>
+          </label>
+          <button type="button" className="ghost" onClick={confirmReassign} disabled={!targetProjectSlug || lifecycleBusy}>
+            {lifecycleBusy ? 'Updating...' : 'Reassign references'}
+          </button>
+        </div>
+      ) : null}
+      {canDelete ? (
+        <div className="project-lifecycle-actions project-lifecycle-danger">
+          <button type="button" className="ghost" onClick={confirmDelete} disabled={lifecycleBusy}>
+            {lifecycleBusy ? 'Deleting...' : 'Delete project'}
+          </button>
         </div>
       ) : null}
     </section>
@@ -325,10 +385,14 @@ export function ProjectsSurface() {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [lifecycleBusy, setLifecycleBusy] = useState(false);
+  const [lifecycleError, setLifecycleError] = useState<string | null>(null);
 
   useLaneLoad(loadProjects);
 
   const canManage = Boolean(bridge && !fixtureMode && bridge.projectGet && bridge.projectUpsert);
+  const canDelete = Boolean(bridge && !fixtureMode && bridge.projectDelete);
+  const canReassign = Boolean(bridge && !fixtureMode && bridge.projectReassign);
   const selectedEntry = useMemo(
     () => projects?.find((project) => project.projectSlug === selectedSlug || project.id === selectedSlug),
     [projects, selectedSlug]
@@ -338,6 +402,7 @@ export function ProjectsSurface() {
     const slug = entry.projectSlug ?? entry.id;
     setSelectedSlug(slug);
     setDetailError(null);
+    setLifecycleError(null);
     setEditing(false);
     if (entry.record && !bridge?.projectGet) {
       setDetail(entry.record);
@@ -358,6 +423,37 @@ export function ProjectsSurface() {
       setDetailError(cause instanceof Error ? cause.message : 'Project detail request failed');
     } finally {
       setDetailLoading(false);
+    }
+  };
+
+  const deleteProject = async () => {
+    if (!bridge?.projectDelete || !detail) return;
+    setLifecycleBusy(true);
+    setLifecycleError(null);
+    try {
+      const result = await bridge.projectDelete(detail.projectSlug);
+      if (!result.deleted) throw new Error('The daemon did not confirm project deletion.');
+      await loadProjects();
+      setDetail(null);
+      setSelectedSlug(null);
+    } catch (cause) {
+      setLifecycleError(cause instanceof Error ? cause.message : 'Project deletion failed');
+    } finally {
+      setLifecycleBusy(false);
+    }
+  };
+
+  const reassignProject = async (targetProjectSlug: string) => {
+    if (!bridge?.projectReassign || !detail) return;
+    setLifecycleBusy(true);
+    setLifecycleError(null);
+    try {
+      await bridge.projectReassign(detail.projectSlug, targetProjectSlug);
+      await loadProjects();
+    } catch (cause) {
+      setLifecycleError(cause instanceof Error ? cause.message : 'Project reassignment failed');
+    } finally {
+      setLifecycleBusy(false);
     }
   };
 
@@ -450,6 +546,9 @@ export function ProjectsSurface() {
       );
     }
     if (detail) {
+      const reassignTargets = list
+        .map((entry) => entry.record)
+        .filter((candidate): candidate is ProjectRecord => Boolean(candidate && candidate.projectSlug !== detail.projectSlug));
       return (
         <ProjectDetail
           record={detail}
@@ -458,6 +557,13 @@ export function ProjectsSurface() {
             if (canManage) setEditing(true);
           }}
           canEdit={canManage}
+          reassignTargets={reassignTargets}
+          canDelete={canDelete}
+          canReassign={canReassign}
+          lifecycleBusy={lifecycleBusy}
+          lifecycleError={lifecycleError}
+          onDelete={() => void deleteProject()}
+          onReassign={(targetProjectSlug) => void reassignProject(targetProjectSlug)}
         />
       );
     }

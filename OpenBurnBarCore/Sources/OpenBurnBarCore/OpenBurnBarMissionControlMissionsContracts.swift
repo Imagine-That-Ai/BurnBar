@@ -733,6 +733,56 @@ public struct BurnBarControllerProjectUpsertRequest: Codable, Hashable, Sendable
     }
 }
 
+/// Deletes only the daemon-owned project registry entry. Associated missions,
+/// questions, followups, and review history remain durable and can be
+/// reassigned explicitly through `BurnBarControllerProjectReassignRequest`.
+public struct BurnBarControllerProjectDeleteRequest: Codable, Hashable, Sendable {
+    public let projectSlug: String
+
+    public init(projectSlug: String) {
+        self.projectSlug = projectSlug
+    }
+}
+
+public struct BurnBarControllerProjectDeleteResponse: Codable, Hashable, Sendable {
+    public let projectSlug: String
+    public let deleted: Bool
+
+    public init(projectSlug: String, deleted: Bool = true) {
+        self.projectSlug = projectSlug
+        self.deleted = deleted
+    }
+}
+
+/// Reassigns durable controller references from one project to another. The
+/// daemon resolves each identifier against the canonical slug, stable id, or
+/// unique alias and rejects missing/ambiguous matches before writing an event.
+public struct BurnBarControllerProjectReassignRequest: Codable, Hashable, Sendable {
+    public let sourceProjectSlug: String
+    public let targetProjectSlug: String
+
+    public init(sourceProjectSlug: String, targetProjectSlug: String) {
+        self.sourceProjectSlug = sourceProjectSlug
+        self.targetProjectSlug = targetProjectSlug
+    }
+}
+
+public struct BurnBarControllerProjectReassignResponse: Codable, Hashable, Sendable {
+    public let sourceProjectSlug: String
+    public let targetProjectSlug: String
+    public let updatedReferenceCount: Int
+
+    public init(
+        sourceProjectSlug: String,
+        targetProjectSlug: String,
+        updatedReferenceCount: Int
+    ) {
+        self.sourceProjectSlug = sourceProjectSlug
+        self.targetProjectSlug = targetProjectSlug
+        self.updatedReferenceCount = updatedReferenceCount
+    }
+}
+
 public struct BurnBarControllerReviewRunRecordRequest: Codable, Hashable, Sendable {
     public let run: BurnBarReviewRunSnapshot
 

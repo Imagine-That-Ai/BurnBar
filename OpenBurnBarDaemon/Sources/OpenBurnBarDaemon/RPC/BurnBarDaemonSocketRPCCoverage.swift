@@ -103,6 +103,8 @@ enum BurnBarDaemonSocketRPCCoverage {
         .controllerProjectsList,
         .controllerProjectGet,
         .controllerProjectUpsert,
+        .controllerProjectDelete,
+        .controllerProjectReassign,
         .reviewRunRecord,
         .questionCreate,
         .questionGet,

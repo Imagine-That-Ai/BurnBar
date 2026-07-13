@@ -330,6 +330,17 @@ export type ProjectRecord = {
 /** Full snapshot required by daemon.controller.project.upsert. */
 export type ProjectUpsertInput = ProjectRecord;
 
+export type ProjectDeleteResult = {
+  projectSlug: string;
+  deleted: boolean;
+};
+
+export type ProjectReassignResult = {
+  sourceProjectSlug: string;
+  targetProjectSlug: string;
+  updatedReferenceCount: number;
+};
+
 /**
  * Compatibility envelope for existing mission filters. Live controller rows
  * carry the canonical record; path is intentionally empty because the
@@ -1025,6 +1036,8 @@ export interface LinuxShellBridge {
   projectList(): Promise<ProjectEntry[]>;
   projectGet?(projectSlug: string): Promise<ProjectRecord | null>;
   projectUpsert?(project: ProjectUpsertInput): Promise<ProjectRecord | null>;
+  projectDelete?(projectSlug: string): Promise<ProjectDeleteResult>;
+  projectReassign?(sourceProjectSlug: string, targetProjectSlug: string): Promise<ProjectReassignResult>;
   memoryBoundaries(): Promise<MemoryBoundary[]>;
   memoryReviewInbox(): Promise<MemoryReviewInbox>;
   memoryReviewDecision(id: string, decision: Exclude<MemoryReviewStatus, 'pending'>): Promise<void>;
@@ -1894,6 +1907,30 @@ function mapProjectRecord(raw: RawJsonValue, index = 0): ProjectRecord | null {
     needsOperatorAttention: Boolean(pick(source, 'needsOperatorAttention', 'needs_operator_attention')),
     ingestionSource: projectEnum(pick(source, 'ingestionSource', 'ingestion_source'), ['manual', 'app_activity'] as const, 'unknown'),
     metadata: obj(pick(source, 'metadata'))
+  };
+}
+
+function mapProjectDeleteResult(raw: RawJsonValue): ProjectDeleteResult {
+  const response = unwrapProjectResponse(raw);
+  const projectSlug = str(pick(response, 'projectSlug', 'project_slug'));
+  if (!projectSlug) throw new Error('The daemon returned an invalid project deletion result.');
+  return {
+    projectSlug,
+    deleted: Boolean(pick(response, 'deleted'))
+  };
+}
+
+function mapProjectReassignResult(raw: RawJsonValue): ProjectReassignResult {
+  const response = unwrapProjectResponse(raw);
+  const sourceProjectSlug = str(pick(response, 'sourceProjectSlug', 'source_project_slug'));
+  const targetProjectSlug = str(pick(response, 'targetProjectSlug', 'target_project_slug'));
+  if (!sourceProjectSlug || !targetProjectSlug) {
+    throw new Error('The daemon returned an invalid project reassignment result.');
+  }
+  return {
+    sourceProjectSlug,
+    targetProjectSlug,
+    updatedReferenceCount: num(pick(response, 'updatedReferenceCount', 'updated_reference_count'))
   };
 }
 
@@ -3266,6 +3303,16 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     projectUpsert: async (project) => {
       const raw = await invoke<RawJsonValue>('project_upsert', { project });
       return mapProjectRecord(raw);
+    },
+    // P19 — daemon.controller.project.delete
+    projectDelete: async (projectSlug) => {
+      const raw = await invoke<RawJsonValue>('project_delete', { projectSlug });
+      return mapProjectDeleteResult(raw);
+    },
+    // P19 — daemon.controller.project.reassign
+    projectReassign: async (sourceProjectSlug, targetProjectSlug) => {
+      const raw = await invoke<RawJsonValue>('project_reassign', { sourceProjectSlug, targetProjectSlug });
+      return mapProjectReassignResult(raw);
     },
     // P07 — daemon.memory.analytics
     memoryBoundaries: async () => {
