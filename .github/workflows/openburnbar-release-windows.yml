@@ -239,6 +239,7 @@ jobs:
             cargo build \
               --manifest-path crates/project-code-static-parser/Cargo.toml \
               --release \
+              --target-dir target \
               --target "$target"
             mkdir -p "project-code-parser/$rid"
             cp "target/$target/release/project-code-static-parser.exe" \
