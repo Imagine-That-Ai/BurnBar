@@ -1,4 +1,5 @@
-import type { ProviderCatalog, ProviderCatalogEntry, ProviderCatalogModel, ProviderHealthState } from '../../tauriBridge.js';
+import { useState } from 'react';
+import type { CustomModel, ProviderCatalog, ProviderCatalogEntry, ProviderCatalogModel, ProviderHealthState } from '../../tauriBridge.js';
 import { useProvidersStore } from '../../state/providersStore.js';
 import './provider-model-workspace.css';
 
@@ -9,7 +10,17 @@ const HEALTH_LABEL: Record<ProviderHealthState, string> = {
   unknown: 'Status unavailable'
 };
 
-function ModelRow({ model }: { model: ProviderCatalogModel }) {
+function ModelRow({
+  providerID,
+  model,
+  disabled,
+  onRemoveCustomModel
+}: {
+  providerID: string;
+  model: ProviderCatalogModel;
+  disabled: boolean;
+  onRemoveCustomModel: (providerID: string, modelID: string) => void;
+}) {
   return (
     <li className="provider-model-row" data-model={model.id}>
       <div className="provider-model-row-heading">
@@ -17,9 +28,22 @@ function ModelRow({ model }: { model: ProviderCatalogModel }) {
           <strong>{model.label}</strong>
           <code>{model.id}</code>
         </div>
-        <span className="provider-model-status" data-state={model.health}>
-          {model.enabled ? 'Route ready' : HEALTH_LABEL[model.health]}
-        </span>
+        <div className="provider-model-row-actions">
+          <span className="provider-model-status" data-state={model.health}>
+            {model.enabled ? 'Route ready' : HEALTH_LABEL[model.health]}
+          </span>
+          {model.provenance === 'custom-model' ? (
+            <button
+              type="button"
+              className="ghost"
+              disabled={disabled}
+              onClick={() => onRemoveCustomModel(providerID, model.id)}
+              aria-label={`Remove custom model ${model.label}`}
+            >
+              Remove
+            </button>
+          ) : null}
+        </div>
       </div>
       {model.aliases.length > 0 ? (
         <p className="provider-model-detail">Aliases: <code>{model.aliases.join(', ')}</code></p>
@@ -32,7 +56,15 @@ function ModelRow({ model }: { model: ProviderCatalogModel }) {
   );
 }
 
-function ProviderCard({ provider }: { provider: ProviderCatalogEntry }) {
+function ProviderCard({
+  provider,
+  mutationBusy,
+  onRemoveCustomModel
+}: {
+  provider: ProviderCatalogEntry;
+  mutationBusy: string | null;
+  onRemoveCustomModel: (providerID: string, modelID: string) => void;
+}) {
   const models = provider.models ?? [];
   const health = provider.health ?? 'unknown';
   const failover = provider.failover;
@@ -61,7 +93,15 @@ function ProviderCard({ provider }: { provider: ProviderCatalogEntry }) {
       </p>
       {models.length > 0 ? (
         <ul className="provider-model-list" aria-label={`${provider.label} model catalog`}>
-          {models.map((model) => <ModelRow key={`${provider.id}:${model.id}`} model={model} />)}
+          {models.map((model) => (
+            <ModelRow
+              key={`${provider.id}:${model.id}`}
+              providerID={provider.id}
+              model={model}
+              disabled={mutationBusy != null}
+              onRemoveCustomModel={onRemoveCustomModel}
+            />
+          ))}
         </ul>
       ) : (
         <p className="provider-model-empty" role="status">
@@ -77,7 +117,12 @@ function ProviderCard({ provider }: { provider: ProviderCatalogEntry }) {
 /** Provider/model deep-dive surface backed only by daemon catalog/config data. */
 export function ProviderModelWorkspace({ providers }: { providers: ProviderCatalog }) {
   const loading = useProvidersStore((state) => state.loading);
+  const mutationBusy = useProvidersStore((state) => state.mutationBusy);
+  const mutationError = useProvidersStore((state) => state.mutationError);
+  const addCustomModel = useProvidersStore((state) => state.addCustomModel);
+  const removeCustomModel = useProvidersStore((state) => state.removeCustomModel);
   const load = useProvidersStore((state) => state.load);
+  const [selectedProviderID, setSelectedProviderID] = useState(providers[0]?.id ?? '');
   const modelCount = providers.reduce((count, provider) => count + (provider.models?.length ?? 0), 0);
   const catalogUnavailable = providers.some((provider) => provider.catalogAvailable === false);
   return (
@@ -95,12 +140,62 @@ export function ProviderModelWorkspace({ providers }: { providers: ProviderCatal
           </button>
         </div>
       </header>
+      <form
+        className="provider-custom-model-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const form = new FormData(event.currentTarget);
+          const providerID = String(form.get('providerID') ?? '').trim();
+          const modelID = String(form.get('modelID') ?? '').trim();
+          const displayName = String(form.get('displayName') ?? '').trim();
+          if (!providerID || !modelID) return;
+          const customModel: CustomModel = { modelID, displayName: displayName || modelID };
+          void addCustomModel(providerID, customModel);
+          event.currentTarget.reset();
+        }}
+      >
+        <div>
+          <p className="provider-model-eyebrow">CUSTOM MODEL</p>
+          <strong>Add a provider model outside the bundled catalog</strong>
+        </div>
+        <label>
+          <span>Provider</span>
+          <select
+            name="providerID"
+            value={selectedProviderID}
+            onChange={(event) => setSelectedProviderID(event.currentTarget.value)}
+            disabled={mutationBusy != null}
+            aria-label="Custom model provider"
+          >
+            {providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.label}</option>)}
+          </select>
+        </label>
+        <label>
+          <span>Model ID</span>
+          <input name="modelID" required placeholder="vendor/model-id" disabled={mutationBusy != null} aria-label="Custom model ID" />
+        </label>
+        <label>
+          <span>Display name</span>
+          <input name="displayName" placeholder="Optional label" disabled={mutationBusy != null} aria-label="Custom model display name" />
+        </label>
+        <button type="submit" className="ghost" disabled={mutationBusy != null || providers.length === 0} aria-busy={mutationBusy != null}>
+          {mutationBusy?.includes('.upsert:') ? 'Adding…' : 'Add model'}
+        </button>
+      </form>
+      {mutationError ? <p className="provider-model-mutation-error" role="alert">{mutationError}</p> : null}
       <p className="provider-model-source" role="status">
         Source: {catalogUnavailable ? 'daemon config; verified model catalog unavailable' : 'daemon catalog + daemon config'}
       </p>
       {providers.length > 0 ? (
         <div className="provider-model-grid">
-          {providers.map((provider) => <ProviderCard key={provider.id} provider={provider} />)}
+          {providers.map((provider) => (
+            <ProviderCard
+              key={provider.id}
+              provider={provider}
+              mutationBusy={mutationBusy}
+              onRemoveCustomModel={(providerID, modelID) => void removeCustomModel(providerID, modelID)}
+            />
+          ))}
         </div>
       ) : (
         <p className="provider-model-empty" role="status">No daemon provider rows are available.</p>

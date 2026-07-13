@@ -7,7 +7,8 @@
 .provider-model-workspace-header,
 .provider-model-card-header,
 .provider-model-row-heading,
-.provider-model-actions {
+.provider-model-actions,
+.provider-custom-model-form {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -45,6 +46,51 @@
 
 .provider-model-source {
   padding: 0.65rem 0;
+}
+
+.provider-custom-model-form {
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+  padding: 0.8rem;
+  border: 1px solid color-mix(in srgb, var(--color-text-muted) 20%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-panel) 72%, transparent);
+}
+
+.provider-custom-model-form > div:first-child {
+  flex: 1 1 15rem;
+  min-width: 12rem;
+}
+
+.provider-custom-model-form label {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 10rem;
+  color: var(--color-text-muted);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+}
+
+.provider-custom-model-form input,
+.provider-custom-model-form select {
+  min-width: 0;
+  padding: 0.42rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--color-text-muted) 28%, transparent);
+  border-radius: 4px;
+  color: var(--color-text);
+  background: var(--color-panel);
+  font: inherit;
+  font-size: 0.78rem;
+  text-transform: none;
+}
+
+.provider-custom-model-form button { white-space: nowrap; }
+
+.provider-model-mutation-error {
+  margin: 0.65rem 0 0;
+  color: var(--color-danger, #e27c7c);
+  font-size: 0.82rem;
 }
 
 .provider-model-grid {
@@ -122,9 +168,20 @@
 .provider-model-row strong { display: block; font-size: 0.82rem; }
 .provider-model-row code { color: var(--color-text-muted); font-size: 0.7rem; overflow-wrap: anywhere; }
 
+.provider-model-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 @media (max-width: 640px) {
   .provider-model-workspace-header,
   .provider-model-card-header,
   .provider-model-row-heading { flex-direction: column; }
+  .provider-custom-model-form { align-items: stretch; }
+  .provider-custom-model-form label,
+  .provider-custom-model-form button { width: 100%; }
   .provider-model-meta { grid-template-columns: 1fr; }
 }
