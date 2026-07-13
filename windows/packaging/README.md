@@ -45,7 +45,9 @@ When a publish contains `OpenBurnBarCoreCAbi.dll`, the portable and MSIX package
 and the Windows release workflow require `native-engine-manifest.json` and verify
 every declared file's relative path, byte count, and SHA-256. The Swift resource
 bundle (`OpenBurnBarCore_OpenBurnBarCore.resources`) must be present and represented
-in the manifest. A mismatch fails before signing or archive creation.
+in the manifest. Authenticode signing changes PE bytes, so the release workflow
+refreshes the manifest after portable signing and re-verifies it before zips/MSIX
+are created. A mismatch fails before signing or archive creation.
 
 The unsigned workflow-dispatch rehearsal builds x64 + ARM64 portable and MSIX artifacts on a
 Windows runner. The following remain gated on release-time credentials and publisher-channel access:

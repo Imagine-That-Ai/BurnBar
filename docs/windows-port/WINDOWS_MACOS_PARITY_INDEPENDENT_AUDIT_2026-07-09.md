@@ -86,6 +86,29 @@ cross-device flows; physical Computer Use/media/file-safety validation; and the
 public update/rollback/Store release lifecycle. The QA checklist below remains
 unchecked where a row combines any of these unproven requirements.
 
+## Signed Windows Candidate Update - 2026-07-13
+
+Fresh signed workflow [29259964411](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29259964411)
+completed successfully from commit `2683c57e77c60f40feecf24e6bb734a8941eaa90`.
+Both x64 and ARM64 native Swift engine legs, Tree-sitter parser builds, WinUI
+publish, native-engine manifest verification, Azure Authenticode signing,
+portable signature checks, MSIX creation/signing, pinned update-feed signing,
+SBOM/OpenVEX/Sigstore provenance, and the signed x64 MSIX clean-install,
+20-second launch, uninstall, reinstall, and second 20-second launch all passed.
+The lifecycle receipt records zero crash events and zero fatal crash-log findings.
+
+Exact artifact hashes:
+
+- x64 portable ZIP: `194f1b058558932dc80bff6b64a2a3a302e9a3c29d5650e7bfc8456b53a75ecd`
+- ARM64 portable ZIP: `5d7504cd4310dec8cc2ab4e5fb3d3d146fb6917a9c5a2b0e7214e0206ce9a026`
+- x64 MSIX: `ca7f3c7ab8d74be0035714634f8be3c844d8aae752c507d2cd9f91f01a8f4019`
+- ARM64 MSIX: `4eea35eb423790f6a093ec4e07ea1bc1d04f688c40daac3430e20e192d83a029`
+
+This supersedes the earlier missing-resource-bundle candidate for automated
+packaging/runtime evidence. It does not convert the candidate into physical
+Intel/ARM hardware certification or close the manual accessibility/display,
+live staging, advanced Computer Use/media safety, or public Store/update gates.
+
 ## Implementation Update - 2026-07-13
 
 The current checkout adds a real F2 implementation slice, without promoting
