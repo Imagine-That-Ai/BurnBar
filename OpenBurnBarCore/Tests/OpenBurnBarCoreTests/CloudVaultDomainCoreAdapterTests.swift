@@ -8,6 +8,13 @@ final class CloudVaultDomainCoreAdapterTests: XCTestCase {
         "OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE": "1"
     ]
 
+    override func setUpWithError() throws {
+        try XCTSkipUnless(
+            CloudVaultDomainCoreAdapter.isNativeAvailable,
+            "CloudVault native contracts require the optional domain-core XCFramework"
+        )
+    }
+
     func testNativeRustModeMatchesCanonicalCloudVaultKAT() throws {
         XCTAssertTrue(CloudVaultDomainCoreAdapter.isNativeAvailable)
         let fixture = try loadFixture()

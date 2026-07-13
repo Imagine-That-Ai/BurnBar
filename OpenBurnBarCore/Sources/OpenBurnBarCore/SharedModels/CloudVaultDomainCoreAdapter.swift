@@ -669,7 +669,9 @@ enum CloudVaultDomainCoreAdapter {
         #if canImport(OpenBurnBarDomainCoreFFI)
         guard OpenBurnBarDomainCoreFFI.domainCoreAbiVersion() == 3 else {
             logger.log("domain_core.cloudvault operation=\(operation) version=3 category=abi_mismatch")
-            if requiresNative(environment) { throw CloudVaultDomainCoreAdapterError.nativeUnavailable }
+            if mode == .rust || requiresNative(environment) {
+                throw CloudVaultDomainCoreAdapterError.nativeUnavailable
+            }
             return try legacy()
         }
 
@@ -692,7 +694,9 @@ enum CloudVaultDomainCoreAdapter {
         return legacyValue
         #else
         logger.log("domain_core.cloudvault operation=\(operation) version=3 category=native_unavailable")
-        if requiresNative(environment) { throw CloudVaultDomainCoreAdapterError.nativeUnavailable }
+        if mode == .rust || requiresNative(environment) {
+            throw CloudVaultDomainCoreAdapterError.nativeUnavailable
+        }
         return try legacy()
         #endif
     }
