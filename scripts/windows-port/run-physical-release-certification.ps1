@@ -234,7 +234,7 @@ function Get-DeviceIdentity {
     $assetTag = @([string]$enclosure.SMBIOSAssetTag, [string]$systemProduct.IdentifyingNumber) |
         Where-Object {
             -not [string]::IsNullOrWhiteSpace($_) -and
-            $_ -notmatch '(?i)^(none|unknown|default string|to be filled by o\.e\.m\.|not specified|system asset tag)$'
+            $_ -notmatch '(?i)^(none|unknown|default string|to be filled by o\.e\.m\.|not specified|system asset tag|chassis asset tag)$'
         } |
         Select-Object -First 1
     if ($PhysicalHardware) {

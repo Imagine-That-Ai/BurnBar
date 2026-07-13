@@ -20,6 +20,11 @@ assert.match(script, /placeholder chassis tag/);
 assert.match(script, /systemProduct\.IdentifyingNumber/);
 assert.match(
   script,
+  /system asset tag\|chassis asset tag/,
+  "generic chassis asset tags must fall back to the system-product identifier",
+);
+assert.match(
+  script,
   /Hardware attestation \$field does not match the current device/,
 );
 assert.match(script, /Physical hardware architecture mismatch/);
