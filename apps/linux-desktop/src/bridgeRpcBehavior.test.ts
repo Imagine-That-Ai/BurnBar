@@ -352,7 +352,12 @@ describe('VAL-RPC-002 bridge behavior', () => {
         deviceApprovalRequired: true,
         installationDeviceID: `linux_${'ab'.repeat(32)}`,
         installationSafetyFingerprint: Array(16).fill('ABAB').join(' '),
-        detail: 'Approval required.'
+        detail: 'Approval required.',
+        refreshToken: 'refresh-secret',
+        idToken: 'id-secret',
+        appCheckToken: 'app-check-secret',
+        privateKey: 'private-key-secret',
+        sessionGeneration: 'generation-secret'
       })
       .mockResolvedValueOnce({ operationID: 'op-1', expiresAt: '2026-07-11T22:00:00Z' })
       .mockResolvedValueOnce({
@@ -434,12 +439,35 @@ describe('VAL-RPC-002 bridge behavior', () => {
     });
   });
 
+  it.each(['authorizing', 'signed_out'])(
+    'does not trust a stale signedIn bit during %s',
+    async (phase) => {
+      invoke.mockResolvedValueOnce({
+        state: phase,
+        signedIn: true,
+        identityLabel: 'stale@example.com',
+        trustClass: 'linux-lower-trust',
+        syncState: 'active'
+      });
+      const b = await bridge();
+
+      const status = await b.accountStatus();
+      expect(status).toMatchObject({
+        state: phase === 'signed_out' ? 'signed-out' : 'authorizing',
+        signedIn: false,
+        syncState: 'local-only'
+      });
+      expect(status.identityLabel).toBeUndefined();
+    }
+  );
+
   it.each(['refreshing', 'locked', 'configuration_required', 'error', 'future_state'])(
     'keeps daemon auth phase %s unavailable instead of misreporting signed out',
     async (phase) => {
       invoke.mockResolvedValueOnce({
         state: phase,
         signedIn: true,
+        identityLabel: 'stale@example.com',
         trustClass: 'linux-lower-trust',
         syncState: 'local-only',
         detail: phase
@@ -448,7 +476,8 @@ describe('VAL-RPC-002 bridge behavior', () => {
 
       await expect(b.accountStatus()).resolves.toMatchObject({
         state: 'unavailable',
-        signedIn: true,
+        signedIn: false,
+        identityLabel: undefined,
         detail: phase
       });
     }

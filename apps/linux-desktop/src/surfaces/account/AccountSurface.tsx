@@ -109,6 +109,18 @@ export function AccountSurface() {
   const authUnavailable = statusForCard?.state === 'unavailable';
   const deviceRejected = statusForCard?.detail === 'device_rejected';
   const authRetryAvailable = authUnavailable && RETRYABLE_AUTH_FAILURES.has(statusForCard?.detail ?? '');
+  // A daemon transitional/error snapshot may carry the previous account's
+  // signedIn bit for diagnostics. Never render that identity or offer a
+  // destructive sign-out action until an authoritative active snapshot lands.
+  const displayStatus = statusForCard?.state === 'unavailable'
+    ? {
+        ...statusForCard,
+        signedIn: false,
+        identityLabel: undefined,
+        syncState: 'local-only' as const,
+        lastSyncAt: undefined
+      }
+    : statusForCard;
 
   const politeSummary = useMemo(() => {
     if (loading) return 'Loading account and sync status.';
@@ -165,10 +177,10 @@ export function AccountSurface() {
         />
       ) : null}
 
-      {!loading && statusForCard ? (
+      {!loading && displayStatus ? (
         <SurfaceCard title="Identity and sync" titleId="account-identity-panel">
           <div className="account-identity-card">
-            {!statusForCard.signedIn ? (
+            {!displayStatus.signedIn ? (
               <div className="account-hero">
                 <div className="account-hero-icon" aria-hidden="true">
                   <svg viewBox="0 0 64 64" focusable="false">
@@ -198,25 +210,25 @@ export function AccountSurface() {
               </div>
             ) : (
               <p className="muted account-identity">
-                Signed in as <strong>{statusForCard.identityLabel ?? 'Linux identity'}</strong>
+                Signed in as <strong>{displayStatus.identityLabel ?? 'Linux identity'}</strong>
               </p>
             )}
-            {statusForCard.installationDeviceID && statusForCard.installationSafetyFingerprint ? (
+            {displayStatus.installationDeviceID && displayStatus.installationSafetyFingerprint ? (
               <section className="account-installation-verification" aria-labelledby="installation-verification-title">
                 <h3 id="installation-verification-title">Installation verification</h3>
                 <dl>
                   <div>
                     <dt>Device ID</dt>
                     <dd className="account-verification-value">
-                      <code>{statusForCard.installationDeviceID}</code>
-                      <CopyPathButton path={statusForCard.installationDeviceID} label="Copy device ID" />
+                      <code>{displayStatus.installationDeviceID}</code>
+                      <CopyPathButton path={displayStatus.installationDeviceID} label="Copy device ID" />
                     </dd>
                   </div>
                   <div>
                     <dt>Safety fingerprint</dt>
                     <dd className="account-verification-value">
-                      <code>{statusForCard.installationSafetyFingerprint}</code>
-                      <CopyPathButton path={statusForCard.installationSafetyFingerprint} label="Copy fingerprint" />
+                      <code>{displayStatus.installationSafetyFingerprint}</code>
+                      <CopyPathButton path={displayStatus.installationSafetyFingerprint} label="Copy fingerprint" />
                     </dd>
                   </div>
                 </dl>
@@ -226,8 +238,8 @@ export function AccountSurface() {
                 </p>
               </section>
             ) : null}
-            <TrustBadge planTier={accountPlanTier(statusForCard)} />
-            <SyncStateCard status={statusForCard} />
+            <TrustBadge planTier={accountPlanTier(displayStatus)} />
+            <SyncStateCard status={displayStatus} />
           </div>
         </SurfaceCard>
       ) : null}
@@ -235,7 +247,7 @@ export function AccountSurface() {
       <MembershipSection />
 
       <div className="actions">
-        {!statusForCard?.signedIn && statusForCard?.state !== 'authorizing' && (!authUnavailable || authRetryAvailable) ? (
+        {!displayStatus?.signedIn && displayStatus?.state !== 'authorizing' && (!authUnavailable || authRetryAvailable) ? (
           <button
             type="button"
             className="primary"
@@ -250,7 +262,7 @@ export function AccountSurface() {
             Sign in unavailable
           </button>
         ) : null}
-        {statusForCard?.state === 'authorizing' ? (
+        {displayStatus?.state === 'authorizing' ? (
           <button
             type="button"
             className="ghost"
@@ -293,12 +305,12 @@ export function AccountSurface() {
             </button>
           </div>
         ) : null}
-        {statusForCard?.signedIn && !confirmingSignOut ? (
+        {displayStatus?.signedIn && !confirmingSignOut ? (
           <button type="button" className="ghost" disabled={busyAction !== null} onClick={() => setConfirmingSignOut(true)}>
             Sign out
           </button>
         ) : null}
-        {statusForCard?.signedIn && confirmingSignOut ? (
+        {displayStatus?.signedIn && confirmingSignOut ? (
           <div className="account-signout-confirmation" role="group" aria-label="Confirm sign out">
             <span>Sign out and stop cloud-backed controller routes?</span>
             <button

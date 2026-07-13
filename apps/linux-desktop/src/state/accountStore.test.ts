@@ -197,6 +197,86 @@ describe('accountStore daemon-owned auth actions', () => {
     expect(useAccountStore.getState().loading).toBe(false);
   });
 
+  it('restarts status loading for a replacement shell and ignores the stale identity', async () => {
+    const oldPoll = deferred<AccountStatus>();
+    const newPoll = deferred<AccountStatus>();
+    const oldIdentity: AccountStatus = {
+      ...signedOut,
+      state: 'active',
+      signedIn: true,
+      identityLabel: 'old@example.com',
+      syncState: 'active'
+    };
+    const newIdentity: AccountStatus = {
+      ...signedOut,
+      state: 'active',
+      signedIn: true,
+      identityLabel: 'new@example.com',
+      syncState: 'active'
+    };
+    const oldBridge = { accountStatus: vi.fn(() => oldPoll.promise) };
+    const newBridge = { accountStatus: vi.fn(() => newPoll.promise) };
+    useShellStore.setState({ bridge: oldBridge as never });
+
+    const oldLoad = useAccountStore.getState().load();
+    await Promise.resolve();
+    useShellStore.setState({ bridge: newBridge as never });
+    const newLoad = useAccountStore.getState().load();
+    await Promise.resolve();
+
+    oldPoll.resolve(oldIdentity);
+    await Promise.resolve();
+    expect(useAccountStore.getState().data).not.toMatchObject({ identityLabel: 'old@example.com' });
+
+    newPoll.resolve(newIdentity);
+    await Promise.all([oldLoad, newLoad]);
+
+    expect(oldBridge.accountStatus).toHaveBeenCalledOnce();
+    expect(newBridge.accountStatus).toHaveBeenCalledOnce();
+    expect(useAccountStore.getState().data).toMatchObject({ identityLabel: 'new@example.com' });
+    expect(useAccountStore.getState().loading).toBe(false);
+  });
+
+  it('does not let a completed sign-out overwrite a newer account sign-in', async () => {
+    const signOut = deferred<AccountStatus>();
+    const beginSignIn = deferred<{ operationID: string; expiresAt: string }>();
+    const oldBridge = { accountSignOut: vi.fn(() => signOut.promise) };
+    const newBridge = { accountBeginSignIn: vi.fn(() => beginSignIn.promise) };
+    const active: AccountStatus = {
+      ...signedOut,
+      state: 'active',
+      signedIn: true,
+      identityLabel: 'old@example.com',
+      syncState: 'active'
+    };
+    useAccountStore.setState({ data: active });
+    useShellStore.setState({ bridge: oldBridge as never });
+
+    const signOutRequest = useAccountStore.getState().signOut();
+    await Promise.resolve();
+    useShellStore.setState({ bridge: newBridge as never });
+    const signInRequest = useAccountStore.getState().beginSignIn();
+    await Promise.resolve();
+
+    signOut.resolve(signedOut);
+    await signOutRequest;
+
+    // The late old-account response must not clear the new mutation's busy
+    // state or make the renderer look signed out before the new operation
+    // returns its own authoritative phase.
+    expect(useAccountStore.getState().busyAction).toBe('sign-in');
+    beginSignIn.resolve({ operationID: 'new-op', expiresAt: '2026-07-11T22:00:00Z' });
+    await signInRequest;
+
+    expect(oldBridge.accountSignOut).toHaveBeenCalledOnce();
+    expect(newBridge.accountBeginSignIn).toHaveBeenCalledOnce();
+    expect(useAccountStore.getState().data).toMatchObject({
+      state: 'authorizing',
+      authorizationOperationID: 'new-op'
+    });
+    expect(useAccountStore.getState().busyAction).toBeNull();
+  });
+
   it('coalesces overlapping status polls', async () => {
     const poll = deferred<AccountStatus>();
     const accountStatus = vi.fn(() => poll.promise);

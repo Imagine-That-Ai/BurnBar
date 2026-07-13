@@ -317,13 +317,24 @@ describe('SettingsSurface', () => {
   });
 
   it('surfaces daemon-owned account posture while keeping unsupported device mutations explicit', async () => {
-    useShellStore.setState({ fixtureMode: true });
+    const accountSignOut = vi.fn(async () => ({
+      state: 'signed-out' as const,
+      signedIn: false,
+      trustClass: 'linux-lower-trust' as const,
+      syncState: 'local-only' as const,
+      deviceApprovalRequired: false
+    }));
+    useShellStore.setState({ fixtureMode: true, bridge: bridge({ accountSignOut }) });
     useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
     render(<SettingsSurface />);
     fireEvent.click(screen.getByRole('button', { name: /^Devices & Sync/i }));
     expect(await screen.findByText(/Account and enrollment posture comes from the daemon/i)).toBeTruthy();
     expect(await screen.findByText(/Signed in as alberto@burnbar.dev/i)).toBeTruthy();
     expect(screen.getByText(/Trusted-device approval and revoke remain unavailable/i)).toBeTruthy();
+    const signOut = screen.getByRole('button', { name: 'Sign out' }) as HTMLButtonElement;
+    expect(signOut.disabled).toBe(true);
+    fireEvent.click(signOut);
+    expect(accountSignOut).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: /^Media & Sharing/i }));
     expect(screen.getByText(/No daemon settings RPC exists here/i)).toBeTruthy();
   });
