@@ -75,8 +75,9 @@ function DatabaseRecoveryBundleControls({
   const loadRecoveryStatus = useDatabaseStore((state) => state.loadRecoveryStatus);
   const exportRecoveryBundle = useDatabaseStore((state) => state.exportRecoveryBundle);
   const importRecoveryBundle = useDatabaseStore((state) => state.importRecoveryBundle);
-  const available = !fixtureMode && typeof bridge?.databaseRecoveryBundleExport === 'function'
-    && typeof bridge?.databaseRecoveryBundleImport === 'function';
+  const exportAvailable = !fixtureMode && typeof bridge?.databaseRecoveryBundleExport === 'function';
+  const importAvailable = !fixtureMode && typeof bridge?.databaseRecoveryBundleImport === 'function';
+  const available = exportAvailable || importAvailable;
   const recoveryStatus = statusAction.result;
   const busy = exportAction.pending ? 'export' : importAction.pending ? 'import' : null;
 
@@ -128,64 +129,72 @@ function DatabaseRecoveryBundleControls({
         <p className="muted" role="status">Recovery bundle controls require a packaged Linux daemon with SQLCipher and native secret storage.</p>
       ) : (
         <>
-          <div className="actions">
-            <label>
-              Export path
-              <input
-                type="text"
-                value={exportPath}
-                onChange={(event) => setExportPath(event.target.value)}
-                placeholder="/home/user/openburnbar-recovery.obb"
-                autoComplete="off"
-              />
-            </label>
-            <label>
-              Export passphrase
-              <input
-                type="password"
-                value={exportPassphrase}
-                onChange={(event) => setExportPassphrase(event.target.value)}
-                autoComplete="new-password"
-              />
-            </label>
-            <button
-              type="button"
-              className="ghost"
-              onClick={() => void exportBundle()}
-              disabled={busy !== null || recoveryStatus?.canExport !== true || exportPath.trim().length === 0 || exportPassphrase.length === 0}
-            >
-              {busy === 'export' ? 'Exporting...' : 'Export bundle'}
-            </button>
-          </div>
-          <div className="actions">
-            <label>
-              Import path
-              <input
-                type="text"
-                value={importPath}
-                onChange={(event) => setImportPath(event.target.value)}
-                placeholder="/home/user/openburnbar-recovery.obb"
-                autoComplete="off"
-              />
-            </label>
-            <label>
-              Import passphrase
-              <input
-                type="password"
-                value={importPassphrase}
-                onChange={(event) => setImportPassphrase(event.target.value)}
-                autoComplete="current-password"
-              />
-            </label>
-            <button
-              type="button"
-              className="ghost"
-              onClick={() => void importBundle()}
-              disabled={busy !== null || recoveryStatus?.canImport !== true || importPath.trim().length === 0 || importPassphrase.length === 0}
-            >
-              {busy === 'import' ? 'Importing...' : 'Import bundle'}
-            </button>
-          </div>
+          {exportAvailable ? (
+            <div className="actions">
+              <label>
+                Export path
+                <input
+                  type="text"
+                  value={exportPath}
+                  onChange={(event) => setExportPath(event.target.value)}
+                  placeholder="/home/user/openburnbar-recovery.obb"
+                  autoComplete="off"
+                />
+              </label>
+              <label>
+                Export passphrase
+                <input
+                  type="password"
+                  value={exportPassphrase}
+                  onChange={(event) => setExportPassphrase(event.target.value)}
+                  autoComplete="new-password"
+                />
+              </label>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => void exportBundle()}
+                disabled={busy !== null || recoveryStatus?.canExport !== true || exportPath.trim().length === 0 || exportPassphrase.length === 0}
+              >
+                {busy === 'export' ? 'Exporting...' : 'Export bundle'}
+              </button>
+            </div>
+          ) : (
+            <p className="muted" role="status">Recovery export is unavailable in this packaged shell.</p>
+          )}
+          {importAvailable ? (
+            <div className="actions">
+              <label>
+                Import path
+                <input
+                  type="text"
+                  value={importPath}
+                  onChange={(event) => setImportPath(event.target.value)}
+                  placeholder="/home/user/openburnbar-recovery.obb"
+                  autoComplete="off"
+                />
+              </label>
+              <label>
+                Import passphrase
+                <input
+                  type="password"
+                  value={importPassphrase}
+                  onChange={(event) => setImportPassphrase(event.target.value)}
+                  autoComplete="current-password"
+                />
+              </label>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => void importBundle()}
+                disabled={busy !== null || recoveryStatus?.canImport !== true || importPath.trim().length === 0 || importPassphrase.length === 0}
+              >
+                {busy === 'import' ? 'Importing...' : 'Import bundle'}
+              </button>
+            </div>
+          ) : (
+            <p className="muted" role="status">Recovery import is unavailable in this packaged shell.</p>
+          )}
           {exportAction.result ? (
             <p className="muted" role="status">
               Recovery bundle exported successfully ({formatBytes(exportAction.result.byteCount)}). The destination path is kept private.
