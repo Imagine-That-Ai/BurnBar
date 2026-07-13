@@ -380,6 +380,12 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
             isDirectory: true
         )
         try FileManager.default.createDirectory(at: sourceBundleURL, withIntermediateDirectories: true)
+        // Core-decomposition P-02: the Kernel resource bundle is staged alongside the Core bundle.
+        let sourceKernelBundleURL = harness.rootURL.appendingPathComponent(
+            OpenBurnBarDaemonManager.kernelResourceBundleName,
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: sourceKernelBundleURL, withIntermediateDirectories: true)
 
         try "#!/bin/sh\nexit 0\necho stale\n".write(to: harness.paths.installedBinaryURL, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: harness.paths.installedBinaryURL.path)
@@ -435,6 +441,7 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
             try Data(contentsOf: sourceBinaryURL)
         )
         XCTAssertTrue(FileManager.default.fileExists(atPath: harness.paths.daemonDirectory.appendingPathComponent(OpenBurnBarDaemonManager.resourceBundleName).path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: harness.paths.daemonDirectory.appendingPathComponent(OpenBurnBarDaemonManager.kernelResourceBundleName).path))
         XCTAssertTrue(
             FileManager.default.fileExists(
                 atPath: harness.paths.daemonDirectory
@@ -461,10 +468,16 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
             OpenBurnBarDaemonManager.resourceBundleName,
             isDirectory: true
         )
+        // Core-decomposition P-02: the Kernel resource bundle is staged alongside the Core bundle.
+        let sourceKernelBundleURL = harness.rootURL.appendingPathComponent(
+            OpenBurnBarDaemonManager.kernelResourceBundleName,
+            isDirectory: true
+        )
         let sourceCorpusURL = harness.rootURL
             .appendingPathComponent(OpenBurnBarDaemonManager.projectCodeMemoryResourceDirectoryName, isDirectory: true)
             .appendingPathComponent(OpenBurnBarDaemonManager.projectCodeMemorySecretCorpusFileName, isDirectory: false)
         try FileManager.default.createDirectory(at: sourceBundleURL, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: sourceKernelBundleURL, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: sourceCorpusURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try #"{"version":"test","patterns":[]}"#.write(to: sourceCorpusURL, atomically: true, encoding: .utf8)
 
@@ -533,10 +546,18 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
             OpenBurnBarDaemonManager.resourceBundleName,
             isDirectory: true
         )
+        // Core-decomposition P-02: the Kernel resource bundle is pre-staged in the
+        // installed daemon directory alongside the Core bundle so the fallback install path
+        // (resolveDaemonBinary == nil) resolves both bundles at their installed locations.
+        let installedKernelBundleURL = harness.paths.daemonDirectory.appendingPathComponent(
+            OpenBurnBarDaemonManager.kernelResourceBundleName,
+            isDirectory: true
+        )
         let installedCorpusURL = harness.paths.daemonDirectory
             .appendingPathComponent(OpenBurnBarDaemonManager.projectCodeMemoryResourceDirectoryName, isDirectory: true)
             .appendingPathComponent(OpenBurnBarDaemonManager.projectCodeMemorySecretCorpusFileName, isDirectory: false)
         try FileManager.default.createDirectory(at: installedBundleURL, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: installedKernelBundleURL, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: installedCorpusURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try #"{"version":"test","patterns":[]}"#.write(to: installedCorpusURL, atomically: true, encoding: .utf8)
 
@@ -1486,6 +1507,11 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
             OpenBurnBarDaemonManager.resourceBundleName,
             isDirectory: true
         )
+        // Core-decomposition P-02: the Kernel resource bundle is staged alongside the Core bundle.
+        let sourceKernelResourceBundleURL = resourcesURL.appendingPathComponent(
+            OpenBurnBarDaemonManager.kernelResourceBundleName,
+            isDirectory: true
+        )
         let sourceCorpusURL = resourcesURL
             .appendingPathComponent(OpenBurnBarDaemonManager.projectCodeMemoryResourceDirectoryName, isDirectory: true)
             .appendingPathComponent(OpenBurnBarDaemonManager.projectCodeMemorySecretCorpusFileName, isDirectory: false)
@@ -1493,6 +1519,7 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         try FileManager.default.createDirectory(at: helpersURL, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: sourceSQLCipherURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: sourceResourceBundleURL, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: sourceKernelResourceBundleURL, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: sourceCorpusURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try "#!/bin/sh\nexit 0\n".write(to: sourceBinaryURL, atomically: true, encoding: .utf8)
         try Data([0x53, 0x51, 0x4c, 0x43]).write(to: sourceSQLCipherURL)

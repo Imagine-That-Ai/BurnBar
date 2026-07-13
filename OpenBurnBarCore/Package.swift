@@ -756,7 +756,8 @@ let firstPartyTargetsBase: [Target] = [
             dependencies: [
                 "OpenBurnBarFirestoreModels",
                 swiftCryptoNonAppleDependency
-            ]
+            ],
+            resources: [.process("Resources")]
         ),
         // Core-decomposition S0 (docs/CORE_DECOMPOSITION_PROGRAM.md): cross-platform
         // engine-layer targets carved from the OpenBurnBarCore monolith. At S0 each
