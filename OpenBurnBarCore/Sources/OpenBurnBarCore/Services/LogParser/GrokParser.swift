@@ -30,32 +30,36 @@ public final class GrokParser: LogParser, Sendable {
             includingPropertiesForKeys: [.isDirectoryKey]
         ).filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } // try?-ok(non-dir excluded)
 
+        var sessions: [(directory: URL, projectName: String)] = []
         for workspaceDir in workspaceDirs {
             let projectName = decodedWorkspaceName(from: workspaceDir.lastPathComponent)
             let sessionDirs = try fileManager.contentsOfDirectory(
                 at: workspaceDir,
                 includingPropertiesForKeys: [.isDirectoryKey]
             ).filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } // try?-ok(non-dir excluded)
-            let exactUsageBySessionID = exactUsageBySessionID(in: sessionDirs)
-            let reconciledExactUsage = reconciledExactUsageBySessionID(
-                in: sessionDirs,
-                exactUsageBySessionID: exactUsageBySessionID
-            )
+            sessions.append(contentsOf: sessionDirs.map { ($0, projectName) })
+        }
 
-            for sessionDir in sessionDirs {
-                let summaryURL = sessionDir.appendingPathComponent("summary.json")
-                guard fileManager.fileExists(atPath: summaryURL.path) else { continue }
+        let sessionDirs = sessions.map(\.directory)
+        let exactUsageByDirectory = exactUsageByDirectory(in: sessionDirs)
+        let reconciledExactUsage = reconciledExactUsageByDirectory(
+            in: sessionDirs,
+            exactUsageByDirectory: exactUsageByDirectory
+        )
 
-                if let pair = try parseSession(
-                    sessionDir: sessionDir,
-                    summaryURL: summaryURL,
-                    projectName: projectName,
-                    exactUsage: reconciledExactUsage[sessionDir.lastPathComponent]
-                ), let usage = pair.usage {
-                    usages.append(usage)
-                    if let conversation = pair.conversation {
-                        conversations.append(conversation)
-                    }
+        for session in sessions {
+            let summaryURL = session.directory.appendingPathComponent("summary.json")
+            guard fileManager.fileExists(atPath: summaryURL.path) else { continue }
+
+            if let pair = try parseSession(
+                sessionDir: session.directory,
+                summaryURL: summaryURL,
+                projectName: session.projectName,
+                exactUsage: reconciledExactUsage[session.directory]
+            ), let usage = pair.usage {
+                usages.append(usage)
+                if let conversation = pair.conversation {
+                    conversations.append(conversation)
                 }
             }
         }
@@ -63,11 +67,11 @@ public final class GrokParser: LogParser, Sendable {
         return ParseResult(usages: usages, conversations: conversations)
     }
 
-    private func exactUsageBySessionID(in sessionDirs: [URL]) -> [String: TokenBreakdown] {
-        var result: [String: TokenBreakdown] = [:]
+    private func exactUsageByDirectory(in sessionDirs: [URL]) -> [URL: TokenBreakdown] {
+        var result: [URL: TokenBreakdown] = [:]
         for sessionDir in sessionDirs {
             if let usage = exactTurnUsage(in: sessionDir.appendingPathComponent("updates.jsonl")) {
-                result[sessionDir.lastPathComponent] = usage
+                result[sessionDir] = usage
             }
         }
         return result
@@ -77,15 +81,16 @@ public final class GrokParser: LogParser, Sendable {
     /// agents, while each child is also stored as a normal session. Keep both
     /// rows (so existing database rows are updated in place) but subtract each
     /// child's aggregate from its parent before persistence.
-    private func reconciledExactUsageBySessionID(
+    private func reconciledExactUsageByDirectory(
         in sessionDirs: [URL],
-        exactUsageBySessionID: [String: TokenBreakdown]
-    ) -> [String: TokenBreakdown] {
-        var result = exactUsageBySessionID
+        exactUsageByDirectory: [URL: TokenBreakdown]
+    ) -> [URL: TokenBreakdown] {
+        var result = exactUsageByDirectory
         let fileManager = FileManager.default
+        let directoriesBySessionID = Dictionary(grouping: sessionDirs, by: \.lastPathComponent)
 
         for parentDir in sessionDirs {
-            guard let parentUsage = exactUsageBySessionID[parentDir.lastPathComponent] else { continue }
+            guard let parentUsage = exactUsageByDirectory[parentDir] else { continue }
             let metadataRoot = parentDir.appendingPathComponent("subagents", isDirectory: true)
             guard let metadataDirs = try? fileManager.contentsOfDirectory(
                 at: metadataRoot,
@@ -103,11 +108,17 @@ public final class GrokParser: LogParser, Sendable {
                       let childSessionID = (metadata["child_session_id"] as? String)?.nilIfEmpty else {
                     continue
                 }
-                if let childUsage = exactUsageBySessionID[childSessionID] {
+                // Session IDs are expected to be globally unique. If corrupt
+                // logs duplicate an ID across roots, skip subtraction rather
+                // than guessing which child's usage belongs to this parent.
+                if let childDirs = directoriesBySessionID[childSessionID],
+                   childDirs.count == 1,
+                   let childDir = childDirs.first,
+                   let childUsage = exactUsageByDirectory[childDir] {
                     childAggregate = childAggregate.adding(childUsage)
                 }
             }
-            result[parentDir.lastPathComponent] = parentUsage.subtracting(childAggregate)
+            result[parentDir] = parentUsage.subtracting(childAggregate)
         }
 
         return result
@@ -152,7 +163,9 @@ public final class GrokParser: LogParser, Sendable {
             updatesURL: sessionDir.appendingPathComponent("updates.jsonl"),
             exactUsage: exactUsage
         )
-        guard tokenBreakdown.totalTokens > 0 else { return nil }
+        // An exact zero is a meaningful correction: normal refresh upserts
+        // rows but does not delete a stale pre-reconciliation parent row.
+        guard tokenBreakdown.totalTokens > 0 || tokenBreakdown.isExact else { return nil }
 
         let pricing = ModelPricing.lookup(model: model)
         let cost = pricing.cost(

@@ -44,7 +44,9 @@ final class GrokParserTests: XCTestCase {
             .appendingPathComponent("obb-grok-child-usage-\(UUID().uuidString)", isDirectory: true)
         let workspace = root.appendingPathComponent("%2Ftmp%2Fgrok-project", isDirectory: true)
         let parent = workspace.appendingPathComponent("parent-session", isDirectory: true)
-        let child = workspace.appendingPathComponent("child-session", isDirectory: true)
+        let child = root
+            .appendingPathComponent("%2Ftmp%2Fgrok-project%2Fworktree", isDirectory: true)
+            .appendingPathComponent("child-session", isDirectory: true)
         let childMetadata = parent
             .appendingPathComponent("subagents", isDirectory: true)
             .appendingPathComponent("child-session", isDirectory: true)
@@ -72,6 +74,37 @@ final class GrokParserTests: XCTestCase {
         XCTAssertEqual(Set(result.usages.map(\.sessionId)), ["parent-session", "child-session"])
         XCTAssertEqual(result.usages.map(\.totalTokens).reduce(0, +), 1_800)
         XCTAssertEqual(result.usages.first { $0.sessionId == "parent-session" }?.totalTokens, 600)
+        XCTAssertEqual(result.usages.first { $0.sessionId == "child-session" }?.totalTokens, 1_200)
+    }
+
+    func test_parse_emitsExactZeroParentCorrectionWhenChildConsumesAllUsage() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("obb-grok-zero-parent-\(UUID().uuidString)", isDirectory: true)
+        let workspace = root.appendingPathComponent("%2Ftmp%2Fgrok-project", isDirectory: true)
+        let parent = workspace.appendingPathComponent("parent-session", isDirectory: true)
+        let child = workspace.appendingPathComponent("child-session", isDirectory: true)
+        let childMetadata = parent
+            .appendingPathComponent("subagents", isDirectory: true)
+            .appendingPathComponent("child-session", isDirectory: true)
+        try FileManager.default.createDirectory(at: childMetadata, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: child, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        for (directory, sessionID) in [(parent, "parent-session"), (child, "child-session")] {
+            try """
+            {"info":{"id":"\(sessionID)","cwd":"/tmp/grok-project"},"current_model_id":"grok-4.5"}
+            """.write(to: directory.appendingPathComponent("summary.json"), atomically: true, encoding: .utf8)
+            try #"{"method":"session/update","params":{"update":{"sessionUpdate":"turn_completed","prompt_id":"turn-1","usage":{"inputTokens":1000,"outputTokens":200,"totalTokens":1200,"cachedReadTokens":600,"reasoningTokens":50}}}}"#
+                .write(to: directory.appendingPathComponent("updates.jsonl"), atomically: true, encoding: .utf8)
+        }
+        try #"{"parent_session_id":"parent-session","child_session_id":"child-session"}"#
+            .write(to: childMetadata.appendingPathComponent("meta.json"), atomically: true, encoding: .utf8)
+
+        let result = try await GrokParser(logDirectoryOverride: root.path).parse()
+
+        let parentUsage = try XCTUnwrap(result.usages.first { $0.sessionId == "parent-session" })
+        XCTAssertEqual(parentUsage.totalTokens, 0)
+        XCTAssertEqual(parentUsage.provenanceConfidence, .exact)
         XCTAssertEqual(result.usages.first { $0.sessionId == "child-session" }?.totalTokens, 1_200)
     }
 
