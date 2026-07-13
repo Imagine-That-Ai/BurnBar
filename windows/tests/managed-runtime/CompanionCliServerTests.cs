@@ -1,6 +1,8 @@
 using System.IO;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using OpenBurnBar.App.ManagedAgentRuntime.Gateway;
 using Xunit;
@@ -39,5 +41,28 @@ public sealed class CompanionCliServerTests
         string? line = await reader.ReadLineAsync();
         Assert.NotNull(line);
         Assert.Contains("f2-companion-cli-1", line, System.StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CommandRouter_HandlesHealthModelsAndRunSubmit()
+    {
+        var router = new CompanionCliCommandRouter(
+            new ModelProxyRouter(new[] { new ModelRoute("r1", "openai", "gpt-test", 1, true) }),
+            (request, _) => Task.FromResult<object?>(new { accepted = request.GetProperty("runId").GetString() }));
+
+        string health = await router.HandleAsync("{\"op\":\"health\"}", CancellationToken.None);
+        Assert.Contains("\"status\":\"ready\"", health, System.StringComparison.Ordinal);
+        string models = await router.HandleAsync("{\"op\":\"models\"}", CancellationToken.None);
+        Assert.Contains("gpt-test", models, System.StringComparison.Ordinal);
+        string submit = await router.HandleAsync("{\"op\":\"run.submit\",\"runId\":\"r-1\"}", CancellationToken.None);
+        Assert.Contains("r-1", submit, System.StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task HandleLineAsync_RejectsOversizedRequest()
+    {
+        string line = "{\"op\":\"ping\",\"payload\":\"" + new string('x', CompanionCliServer.MaxLineBytes) + "\"}";
+        string response = await CompanionCliServer.HandleLineAsync(line, null);
+        Assert.Contains("request_too_large", response, System.StringComparison.Ordinal);
     }
 }

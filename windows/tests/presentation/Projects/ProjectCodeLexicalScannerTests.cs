@@ -35,4 +35,35 @@ public sealed class ProjectCodeLexicalScannerTests
             Directory.Delete(root, recursive: true);
         }
     }
+
+    [Fact]
+    public void SymbolIndex_RefreshesAndPersistsMetadataOnly()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "obb-symbols-" + Path.GetRandomFileName());
+        string indexPath = Path.Combine(root, "state", "symbols.json");
+        Directory.CreateDirectory(root);
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "Feature.cs"),
+                "namespace Demo;\npublic class Feature { public void Run() {} }");
+
+            using (var index = new ProjectCodeSymbolIndex(root, indexPath))
+            {
+                ProjectCodeIndexSnapshot snapshot = index.Refresh();
+                Assert.Contains(index.Symbols, symbol => symbol.Name == "Feature");
+                Assert.Contains(index.Symbols, symbol => symbol.Name == "Run");
+                Assert.True(File.Exists(indexPath));
+                Assert.DoesNotContain("public class", File.ReadAllText(indexPath), System.StringComparison.Ordinal);
+                Assert.Equal(snapshot.Symbols.Count, index.Symbols.Count);
+            }
+
+            using var reloaded = new ProjectCodeSymbolIndex(root, indexPath);
+            Assert.True(reloaded.TryLoad());
+            Assert.Contains(reloaded.Symbols, symbol => symbol.Name == "Feature");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
 }

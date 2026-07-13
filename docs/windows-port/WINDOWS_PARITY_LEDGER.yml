@@ -753,9 +753,11 @@ f1_coverage_register:
   windows_status: Real
   note: IA-4 ProjectsPage
 finish_line_note: >-
-  100% parity under ledger laws = finish_line F2_True_1to1 with all rows Real
-  (or allowed residuals). Achieved 2026-07-09: 46 Real / 0 DeferredApproved /
-  0 Blocked / 0 Substituted. Operational residuals outside the ledger gate
+  100% parity under the named finish line is F2_True_1to1. The current 46-row
+  histogram is the scoped F1 Ship Peer source/product gate: 46 Real / 0
+  DeferredApproved / 0 Blocked / 0 Substituted. WPD-0009 governs promotion of
+  F2 workstreams to full parity; production composition and host evidence remain
+  explicit requirements. Operational residuals outside the ledger gate
   (Authenticode private key, branch-protection required-check flip, physical
   TPM claim on hardware) are host/admin steps, not silent product gaps.
 f2_workstream_register:

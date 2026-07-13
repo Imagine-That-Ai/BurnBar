@@ -16,8 +16,8 @@
 > (ledger `finish_line: F2_True_1to1`). Canonical execution plan:
 > [`WINDOWS_FULL_PARITY_MASTER_PLAN_2026-07-09.md`](WINDOWS_FULL_PARITY_MASTER_PLAN_2026-07-09.md).
 >
-> **Achieved 2026-07-09 under ledger laws:** **46 Real / 0 DeferredApproved / 0 Blocked /
-> 0 Substituted.** F1/F2 column cells below remain historical **exit-criteria** language
+> **F1 ledger result (2026-07-09):** **46 Real / 0 DeferredApproved / 0 Blocked /
+> 0 Substituted.** This is the scoped Ship Peer gate; F2/F1 column cells below remain historical **exit-criteria** language
 > from plan authoring; **current** production-parity status is only the ledger row + §1
 > Status column (all primary nav **Real**). Artifact Signing is proven by release
 > run 29160512069; Store/winget publication, required GH check configuration, and
@@ -49,7 +49,9 @@
 
 ## 0.2 Certification checkpoint - 2026-07-11
 
-The F2 implementation ledger remains complete at 46 Real rows. Signed x64 and
+The F1 implementation ledger remains complete at 46 Real rows. F2 True 1:1
+workstreams remain governed by WPD-0009 and are not implied by this scoped
+ledger result. Signed x64 and
 ARM64 candidate production, Authenticode verification, timestamps, checksums,
 Ed25519 feed generation, SBOM, OpenVEX, and Sigstore passed in release run
 [29160512069](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29160512069).

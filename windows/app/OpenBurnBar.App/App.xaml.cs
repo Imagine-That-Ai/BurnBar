@@ -12,6 +12,7 @@ using OpenBurnBar.App.Settings.Winui;
 using OpenBurnBar.App.Storage;
 using OpenBurnBar.App.Tray;
 using OpenBurnBar.App.UsageRuntime;
+using OpenBurnBar.App.ManagedAgentRuntime.Gateway;
 
 namespace OpenBurnBar.App;
 
@@ -38,6 +39,8 @@ public partial class App : Application
     private FlyoutWindow? _flyout;
     private DispatcherQueue? _dispatcherQueue;
     private IUsageRuntime? _usageRuntime;
+    private GatewayComposition? _gatewayComposition;
+    private LocalHttpGatewayHost? _gateway;
     private bool _hotkeyRegistered;
     private bool _activationRegistered;
     private bool _isExiting;
@@ -78,6 +81,7 @@ public partial class App : Application
         _ = WindowsUpdateService.RunAutomaticCheckIfDueAsync(WindowsSettingsComposition.SharedPersistence);
         WinAppCloudSyncHost.ConfigureFromAppConfiguration();
         Quota.Acquisition.Windows.WindowsQuotaAcquisitionHost.ConfigureDefault();
+        StartLocalGateway();
 
         // Production Liquid Glass prefs (registry) — InMemory is reserved for unit tests.
         LiquidGlassEnvironment.Current = new LiquidGlassEnvironment(new RegistryLiquidGlassPreferenceStore());
@@ -249,6 +253,36 @@ public partial class App : Application
             errorSink: ex => AppDiagnostics.LogException("usage-runtime", ex));
     }
 
+    private void StartLocalGateway()
+    {
+        try
+        {
+            _gatewayComposition = GatewayCompositionFactory.CreateFromEnvironment();
+            int port = 8642;
+            string? configuredPort = Environment.GetEnvironmentVariable("OPENBURNBAR_GATEWAY_PORT");
+            if (int.TryParse(configuredPort, out int parsedPort) && parsedPort is > 0 and <= 65535)
+            {
+                port = parsedPort;
+            }
+
+            _gateway = new LocalHttpGatewayHost(
+                port,
+                _gatewayComposition.Router,
+                _gatewayComposition.Executor);
+            _gateway.Start();
+            AppDiagnostics.LogEvent("gateway.started", _gateway.BaseAddress.ToString());
+        }
+        catch (Exception ex)
+        {
+            // The desktop shell remains usable when another local service owns
+            // the configured port; the gateway's failure is visible in diagnostics.
+            AppDiagnostics.LogException("gateway.start", ex);
+            _gateway = null;
+            _gatewayComposition?.HttpClient.Dispose();
+            _gatewayComposition = null;
+        }
+    }
+
     private static async Task StartUsageRuntimeAsync(IUsageRuntime runtime)
     {
         try
@@ -282,6 +316,13 @@ public partial class App : Application
             await _usageRuntime.DisposeAsync();
             _usageRuntime = null;
         }
+        if (_gateway is not null)
+        {
+            await _gateway.DisposeAsync();
+            _gateway = null;
+        }
+        _gatewayComposition?.HttpClient.Dispose();
+        _gatewayComposition = null;
         _flyout?.Close();
         _mainWindow?.Close();
         Exit();

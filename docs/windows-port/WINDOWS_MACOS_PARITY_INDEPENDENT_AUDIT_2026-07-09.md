@@ -3,14 +3,14 @@
 **Date:** 2026-07-09
 **Reference product:** shipping macOS OpenBurnBar
 **Audit target:** local windows/liquid-glass-kernel-reskin checkout
-**Status:** implementation and automated signed-runtime certification complete; physical/manual/live-staging release gates remain
+**Status:** F1 source/product implementation and automated signed-runtime certification are substantially complete; F2 True 1:1 and physical/manual/live-staging release gates remain
 
 ## Certification Update - 2026-07-11
 
-The remediation plan in this audit has now been implemented through the F2
-source/product ledger: 46 rows are Real, with zero DeferredApproved, Blocked,
-or Substituted rows. That is implementation parity, not an unconditional public
-release claim.
+The remediation plan's F1 source/product ledger currently reports 46 rows as
+Real, with zero DeferredApproved, Blocked, or Substituted rows. That is the
+scoped F1 Ship Peer result, not proof that the F2 True 1:1 workstreams or the
+public release gates are complete.
 
 Current evidence materially supersedes the original source-only findings:
 
@@ -84,6 +84,36 @@ and high-contrast manual protocols; live staging OAuth/App Check/CloudVault and
 cross-device flows; physical Computer Use/media/file-safety validation; and the
 public update/rollback/Store release lifecycle. The QA checklist below remains
 unchecked where a row combines any of these unproven requirements.
+
+## Implementation Update - 2026-07-13
+
+The current checkout adds a real F2 implementation slice, without promoting
+unproven host behavior to certification:
+
+- The loopback gateway now forwards bounded OpenAI-compatible completion
+  requests through an explicit model route, exposes model/metric surfaces,
+  enforces bearer authentication when configured, and fails closed when no
+  healthy route is available.
+- Headless runs and local Mission Control DAGs now have an append-only,
+  write-through JSONL journal, dependency validation, approval policy, bounded
+  recovery/resume, cancellation records, and tests proving that request
+  payloads and secrets are not persisted.
+- Browser Computer Use process mode now uses a direct executable plus a
+  JSON-line bridge with no shell interpolation, bounded responses, serialized
+  commands, cancellation, and process-tree cleanup.
+- Project code now has a bounded symbol index with durable metadata-only
+  persistence and a file watcher; the companion CLI has bounded input and
+  injectable health/models/run command handlers.
+- Elder Wand fusion can journal lifecycle metadata and SHA-256 output digests
+  without writing prompts or tool output to disk.
+
+These changes are covered by focused managed-runtime, presentation, and
+Computer Use tests. They are an implementation increment, not a claim that
+the F2 workstreams are all promoted to `Real`: full static parsing, live
+Pensieve storage integration, production composition of every F2 service,
+physical Computer Use/media safety, and host evidence still remain. The
+ledger's 46/46 `Real` result is the scoped F1 source/product gate; WPD-0009
+continues to define F2 True 1:1 as the actual 100% parity endpoint.
 
 ## Implementation Update - 2026-07-10
 
@@ -271,16 +301,21 @@ and release acceptance fixtures between Swift and C#.
 
 ## Conclusion
 
-The audit's implementation plan is complete under the repository's F2 ledger.
+The audit's F1 implementation plan is complete under the repository's scoped
+ledger. F2 True 1:1 remains an active program under WPD-0009; the 2026-07-13
+implementation slice advances gateway, durable runs/missions, browser safety,
+project symbols, Elder Wand journaling, and the companion CLI, but does not
+close every F2 production-composition or host-evidence requirement.
 The x64/ARM64 build, signing/provenance, hosted x64 registration, ARM64 UTM
 foundation, and corrected signed-runtime gates are proven. The corrected x64
 and ARM64 packages each passed clean-install and reinstall 20-second responsive
 launch holds with zero crash events. The evidence does not yet close every row
 in the QA checklist.
 
-Accordingly, the accurate current claim is: **100% source/product parity and
-substantially complete automated certification, but not 100% physical release
-certification**. A public parity release remains gated on the explicitly named
+Accordingly, the accurate current claim is: **F1 source/product parity is
+ledger-green; F2 True 1:1 is not yet 100%; automated certification is
+substantially complete, but physical release certification is not complete**.
+A public parity release remains gated on the explicitly named
 physical Windows, manual accessibility/display, live staging/cross-device,
 advanced safety, and public lifecycle evidence above.
 
