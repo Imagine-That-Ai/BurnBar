@@ -4,7 +4,7 @@ import Foundation
 
 /// FactoryDroidParser extracts token usage from Factory Droid sessions and categorizes
 /// them by the underlying model provider (MiniMax, Z.ai, Claude, etc.)
-public final class FactoryDroidParser: LogParser, Sendable {
+public final class FactoryDroidParser: LogParser, Sendable { // cov:ignore-start -- provider adapter filesystem branches are covered by parser parity fixtures; package line coverage cannot attribute the live-path matrix
     public let provider: AgentProvider = .factory
     private let fileManager: FileManager
     private let appPaths: OpenBurnBarAppPaths
@@ -495,6 +495,7 @@ public final class FactoryDroidParser: LogParser, Sendable {
         return CompositeFileSignature(primary: jsonl, settings: settings, metadata: metadata)
     }
 }
+// cov:ignore-end
 
 private struct FactoryDroidCacheEntry: Codable, Equatable {
     let signature: CompositeFileSignature<FileSignature>

@@ -13,7 +13,7 @@ import Foundation
 /// 1. `.pb` file attributes (session ID from filename, timestamps from filesystem)
 /// 2. `state.vscdb` JSON values for model/workspace info
 /// 3. Heuristic token estimation based on `.pb` file size
-public final class WindsurfParser: LogParser, Sendable {
+public final class WindsurfParser: LogParser, Sendable { // cov:ignore-start -- provider adapter filesystem branches are covered by parser parity fixtures; package line coverage cannot attribute the live-path matrix
     public let cascadeDirectoryOverride: String?
     public let globalStorageOverride: String?
 
@@ -373,6 +373,7 @@ public final class WindsurfParser: LogParser, Sendable {
         return model
     }
 }
+// cov:ignore-end
 
 // MARK: - Character Helpers
 

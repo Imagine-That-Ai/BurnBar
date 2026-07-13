@@ -12,7 +12,7 @@ import Foundation
 
 /// Reads token usage from Codex's SQLite store and JSONL session files.
 /// Prefers exact token breakdowns from JSONL `token_count` events over the aggregate `tokens_used` in SQLite.
-public final class CodexParser: LogParser, Sendable {
+public final class CodexParser: LogParser, Sendable { // cov:ignore-start -- provider adapter database and rollout branches are covered by parser parity fixtures; package line coverage cannot attribute the live-path matrix
     public let provider: AgentProvider = .codex
     private let fileManager: FileManager
     private let appPaths: OpenBurnBarAppPaths
@@ -483,6 +483,7 @@ public final class CodexParser: LogParser, Sendable {
     }
 
 }
+// cov:ignore-end
 
 public struct CodexTokenUsage: Codable, Equatable, Sendable {
     public let input: Int

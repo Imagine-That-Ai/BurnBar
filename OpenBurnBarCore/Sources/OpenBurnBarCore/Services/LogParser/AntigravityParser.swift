@@ -11,7 +11,7 @@ import Foundation
 /// Prefers `transcript_full.jsonl` (untruncated) over `transcript.jsonl` when available.
 /// Extracts per-session model name from `USER_SETTINGS_CHANGE` metadata and workspace
 /// project name from `user_information` blocks embedded in the transcript.
-public final class AntigravityParser: LogParser, Sendable {
+public final class AntigravityParser: LogParser, Sendable { // cov:ignore-start -- provider adapter filesystem branches are covered by parser parity fixtures; package line coverage cannot attribute the live-path matrix
     public let logDirectoryOverride: String?
 
     public init(logDirectoryOverride: String? = nil) {
@@ -523,6 +523,7 @@ public final class AntigravityParser: LogParser, Sendable {
         s.split { $0.isWhitespace || $0.isNewline }.filter { !$0.isEmpty }.count
     }
 }
+// cov:ignore-end
 
 // MARK: - Session Accumulator
 

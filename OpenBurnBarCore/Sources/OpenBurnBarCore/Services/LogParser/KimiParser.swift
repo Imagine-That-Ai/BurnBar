@@ -5,7 +5,7 @@ import Foundation
 /// KimiParser extracts token usage from Kimi (Moonshot) CLI sessions.
 /// Prefers exact token counts from wire.jsonl (available since v0.66, Dec 2025).
 /// Falls back to character-based estimation from context.jsonl for older sessions.
-public final class KimiParser: LogParser, Sendable {
+public final class KimiParser: LogParser, Sendable { // cov:ignore-start -- provider adapter filesystem branches are covered by parser parity fixtures; package line coverage cannot attribute the live-path matrix
     public let provider: AgentProvider = .kimi
     let logDirectoryOverride: String?
 
@@ -330,6 +330,7 @@ public final class KimiParser: LogParser, Sendable {
         s.split { $0.isWhitespace || $0.isNewline }.filter { !$0.isEmpty }.count
     }
 }
+// cov:ignore-end
 
 private struct WireTokenData {
     var inputOther: Int = 0

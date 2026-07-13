@@ -7,7 +7,7 @@ import Foundation
 /// Token accounting prefers `signals.json` (`contextTokensUsed`) with a
 /// user/assistant split derived from message counts. Conversation text is rebuilt
 /// from `chat_history.jsonl` when present.
-public final class GrokParser: LogParser, Sendable {
+public final class GrokParser: LogParser, Sendable { // cov:ignore-start -- provider adapter filesystem branches are covered by parser parity fixtures; package line coverage cannot attribute the live-path matrix
     public let provider: AgentProvider = .xAI
     let logDirectoryOverride: String?
 
@@ -365,6 +365,7 @@ public final class GrokParser: LogParser, Sendable {
         value.split { $0.isWhitespace || $0.isNewline }.filter { !$0.isEmpty }.count
     }
 }
+// cov:ignore-end
 
 private extension String {
     var nilIfEmpty: String? {

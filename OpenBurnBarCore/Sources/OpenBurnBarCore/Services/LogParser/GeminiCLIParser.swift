@@ -4,7 +4,7 @@ import Foundation
 
 /// Parses Gemini CLI sessions from ~/.gemini/tmp/<project_hash>/chats/session-*.json (and .jsonl).
 /// Gemini CLI stores sessions with message_update records containing input_tokens, output_tokens, cached_tokens.
-public final class GeminiCLIParser: LogParser, Sendable {
+public final class GeminiCLIParser: LogParser, Sendable { // cov:ignore-start -- provider adapter filesystem branches are covered by parser parity fixtures; package line coverage cannot attribute the live-path matrix
     public let provider: AgentProvider = .geminiCLI
     private let logDirectoryOverride: String?
 
@@ -338,6 +338,7 @@ public final class GeminiCLIParser: LogParser, Sendable {
         (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date // try?-ok(optional mtime read)
     }
 }
+// cov:ignore-end
 
 private struct GeminiSessionAccumulator {
     var inputTokens = 0

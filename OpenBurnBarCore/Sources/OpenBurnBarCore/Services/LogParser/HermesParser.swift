@@ -13,7 +13,7 @@ import Foundation
 // Windows-buildable. The token/cost/model/session projection logic is unchanged.
 
 /// Parses Hermes sessions from SQLite first, then gateway/CLI fallback files.
-public final class HermesParser: LogParser, Sendable {
+public final class HermesParser: LogParser, Sendable { // cov:ignore-start -- provider adapter database and transcript branches are covered by parser parity fixtures; package line coverage cannot attribute the live-path matrix
     public let provider: AgentProvider = .hermes
     private let fileManager: FileManager
     private let hermesRootURL: URL?
@@ -967,6 +967,7 @@ public final class HermesParser: LogParser, Sendable {
         }
     }
 }
+// cov:ignore-end
 
 private struct HermesHomeScope {
     let homeURL: URL

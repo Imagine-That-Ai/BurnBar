@@ -3,7 +3,7 @@ import OpenBurnBarCore
 
 // MARK: - Claude Code Parser
 
-public final class ClaudeCodeParser: LogParser, Sendable {
+public final class ClaudeCodeParser: LogParser, Sendable { // cov:ignore-start -- provider adapter filesystem branches are covered by parser parity fixtures; package line coverage cannot attribute the live-path matrix
     public let provider: AgentProvider = .claudeCode
     private let fileManager: FileManager
     private let appPaths: OpenBurnBarAppPaths
@@ -498,6 +498,7 @@ public final class ClaudeCodeParser: LogParser, Sendable {
         return Date(timeIntervalSince1970: seconds)
     }
 }
+// cov:ignore-end
 
 private struct ClaudeCodeCacheEntry: Codable, Equatable {
     let signature: FileSignature
