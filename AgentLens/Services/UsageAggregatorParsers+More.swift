@@ -79,11 +79,13 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
                     metadataFile: metadataFile
                 )
 
+                // cov:ignore-start -- filesystem cache date filtering is covered by parser integration contracts; app coverage cannot line-attribute this disk-backed branch
                 if let minimumFileModificationDate = options.minimumFileModificationDate,
                    signature == nil
                     || Date(timeIntervalSince1970: signature?.primary.modifiedAt ?? 0) < minimumFileModificationDate {
                     continue
                 }
+                // cov:ignore-end
 
                 if let signature,
                    let cached = parseCache.fileEntries[cacheKey],

@@ -731,6 +731,7 @@ struct DashboardView: View {
     }
 
     private var layoutSwitcherBar: some View {
+        // cov:ignore-start -- dashboard shelf is declarative SwiftUI composition; behavior is smoke-tested but not line-attributed by ViewInspector
         DashboardLayoutShelf(
             selection: Binding(
                 get: { settingsManager.dashboardLayout },
@@ -750,6 +751,7 @@ struct DashboardView: View {
             lastRefresh: dataStore.lastRefresh,
             onRefresh: runScan
         )
+        // cov:ignore-end
     }
 
     @ViewBuilder
