@@ -488,8 +488,8 @@ exercised in installed packages.</li>
 </tr>
 <tr>
 <td>Core product workflows</td>
-<td>Six dashboard layouts, XDG/provider paths, daemon-authoritative memory decisions, exact persisted chat thread storage/pagination (PR #1684), and bounded database inspection (PR #1680) are implemented; several routes remain partial/read-only</td>
-<td>Complete onboarding, chat attachments/citations/approvals/options/pop-out and remaining backends, sessions, account/cloud, and workspace depth</td>
+<td>Six dashboard layouts, XDG/provider paths, daemon-authoritative memory decisions, exact persisted chat thread storage/pagination plus safe loaded-message export (PR #1684), and bounded database inspection (PR #1680) are implemented; several routes remain partial/read-only</td>
+<td>Complete onboarding, chat attachments/citations/approvals/options/unloaded-history export/resume/pop-out and remaining backends, sessions, account/cloud, and workspace depth</td>
 </tr>
 <tr>
 <td>Advanced platform features</td>
@@ -875,7 +875,7 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-14</td>
 <td>Chat</td>
 <td>Persisted threads, search, streaming, models, attachments, citations, approvals, panes/pop-out</td>
-<td>Exact encrypted thread list/get/search, idempotent user/assistant persistence, older-message pagination, strict Tauri decoding, and durable send ordering are implemented in <a href="https://github.com/Imagine-That-Ai/BurnBar/pull/1684">PR #1684</a>; attachments, citations, approvals, options, export, pop-out, and the remaining backend catalog are still open</td>
+<td>Exact encrypted thread list/get/search, idempotent user/assistant persistence, older-message pagination, strict Tauri decoding, durable send ordering, and safe JSON/Markdown export of loaded durable messages are implemented in <a href="https://github.com/Imagine-That-Ai/BurnBar/pull/1684">PR #1684</a>; attachments, citations, approvals, options, unloaded-history export/resume, pop-out, and the remaining backend catalog are still open</td>
 <td>Partial</td>
 <td>High</td>
 </tr>
