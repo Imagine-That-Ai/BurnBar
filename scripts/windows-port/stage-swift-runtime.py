@@ -42,6 +42,7 @@ SYSTEM_LIBRARIES = {
     "winmm.dll",
     "ws2_32.dll",
 }
+RESOURCE_BUNDLE_NAME = "OpenBurnBarCore_OpenBurnBarCore.resources"
 
 
 def parse_dependencies(output: str) -> list[str]:
@@ -86,6 +87,20 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def find_resource_bundle(search_paths: list[Path]) -> Path | None:
+    """Find SwiftPM's resource bundle emitted beside the C ABI DLL."""
+    for directory in search_paths:
+        if not directory.is_dir():
+            continue
+        try:
+            for candidate in directory.iterdir():
+                if candidate.is_dir() and candidate.name.casefold() == RESOURCE_BUNDLE_NAME.casefold():
+                    return candidate
+        except OSError:
+            continue
+    return None
+
+
 def stage(
     engine: Path,
     destination: Path,
@@ -105,6 +120,11 @@ def stage(
             ordered_paths.append(resolved)
 
     destination.mkdir(parents=True, exist_ok=True)
+    resource_bundle = find_resource_bundle(ordered_paths)
+    if resource_bundle is None:
+        raise ValueError(
+            f"could not resolve required Swift resource bundle {RESOURCE_BUNDLE_NAME}"
+        )
     queue = [engine.resolve()]
     queued = {engine.name.casefold()}
     staged: list[Path] = []
@@ -131,14 +151,31 @@ def stage(
             queued.add(key)
             queue.append(resolved)
 
+    shutil.copytree(
+        resource_bundle,
+        destination / resource_bundle.name,
+        dirs_exist_ok=True,
+    )
+
     files = [
         {
-            "fileName": path.name,
+            "fileName": path.relative_to(destination).as_posix(),
             "sha256": sha256(path),
             "sizeBytes": path.stat().st_size,
         }
         for path in sorted(staged, key=lambda item: item.name.casefold())
     ]
+    files.extend(
+        {
+            "fileName": path.relative_to(destination).as_posix(),
+            "sha256": sha256(path),
+            "sizeBytes": path.stat().st_size,
+        }
+        for path in sorted(
+            (path for path in (destination / resource_bundle.name).rglob("*") if path.is_file()),
+            key=lambda item: item.relative_to(destination).as_posix().casefold(),
+        )
+    )
     manifest: dict[str, object] = {
         "schemaVersion": 1,
         "engine": engine.name,
@@ -173,7 +210,7 @@ def main() -> int:
     except (OSError, subprocess.CalledProcessError, ValueError) as error:
         print(f"stage-swift-runtime: {error}", file=sys.stderr)
         return 1
-    print(f"stage-swift-runtime: staged {len(manifest['files'])} DLLs to {args.destination}")
+    print(f"stage-swift-runtime: staged {len(manifest['files'])} engine files to {args.destination}")
     return 0
 
 

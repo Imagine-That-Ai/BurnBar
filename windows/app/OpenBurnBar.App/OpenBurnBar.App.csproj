@@ -57,6 +57,11 @@
              Link="native-engine-manifest.json"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCore_OpenBurnBarCore.resources\**\*"
+             Condition="Exists('$(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCore_OpenBurnBarCore.resources')"
+             Link="OpenBurnBarCore_OpenBurnBarCore.resources\%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <Target Name="RequireOpenBurnBarNativeEngine"
@@ -65,6 +70,9 @@
     <Error
       Condition="!Exists('$(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCoreCAbi.dll')"
       Text="Required Windows parser engine is missing: $(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCoreCAbi.dll" />
+    <Error
+      Condition="!Exists('$(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCore_OpenBurnBarCore.resources')"
+      Text="Required Swift resource bundle is missing: $(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCore_OpenBurnBarCore.resources" />
   </Target>
 
   <ItemGroup Condition="Exists('$(OpenBurnBarProjectCodeParserPath)')">

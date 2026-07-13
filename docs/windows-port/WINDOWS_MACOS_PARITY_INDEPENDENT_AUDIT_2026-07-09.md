@@ -200,6 +200,12 @@ unproven host behavior to certification:
   live Windows LSP host remain separate evidence gates, so this does not yet
   promote the full parser row to F2 completion. The inventory still uses bounded
   lexical fallback only when a parser is unavailable.
+- Native Swift engine staging now requires the SwiftPM
+  `OpenBurnBarCore_OpenBurnBarCore.resources` bundle, copies it beside the C ABI
+  DLL into every RID's publish output, and records SHA-256/size entries for its
+  files in `native-engine-manifest.json`. The Windows app publish target also
+  carries that directory into portable and MSIX layouts, failing closed when a
+  required native-engine publish omits it.
 
 These changes are covered by focused managed-runtime (40/40 mission/runtime
 tests plus 41/41 managed-agent-runtime tests), CloudSync (60/60), connector
