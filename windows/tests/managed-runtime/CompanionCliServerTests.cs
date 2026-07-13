@@ -96,4 +96,22 @@ public sealed class CompanionCliServerTests
             }
         }
     }
+
+    [Fact]
+    public async Task CommandRouter_ExposesBoundedFusionHook()
+    {
+        var router = new CompanionCliCommandRouter(
+            fusion: (request, _) => Task.FromResult<object?>(new
+            {
+                runId = request.GetProperty("runId").GetString(),
+                accepted = true,
+            }));
+
+        string response = await router.HandleAsync(
+            "{\"op\":\"fusion.run\",\"runId\":\"fusion-1\"}",
+            CancellationToken.None);
+
+        Assert.Contains("fusion-1", response, System.StringComparison.Ordinal);
+        Assert.Contains("accepted", response, System.StringComparison.Ordinal);
+    }
 }

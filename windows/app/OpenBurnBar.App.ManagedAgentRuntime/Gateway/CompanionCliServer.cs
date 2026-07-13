@@ -225,15 +225,18 @@ public sealed class CompanionCliCommandRouter : ICompanionCliCommandHandler
     private readonly ModelProxyRouter? _router;
     private readonly Func<JsonElement, CancellationToken, Task<object?>>? _submit;
     private readonly Func<JsonElement, CancellationToken, Task<object?>>? _resume;
+    private readonly Func<JsonElement, CancellationToken, Task<object?>>? _fusion;
 
     public CompanionCliCommandRouter(
         ModelProxyRouter? router = null,
         Func<JsonElement, CancellationToken, Task<object?>>? submit = null,
-        Func<JsonElement, CancellationToken, Task<object?>>? resume = null)
+        Func<JsonElement, CancellationToken, Task<object?>>? resume = null,
+        Func<JsonElement, CancellationToken, Task<object?>>? fusion = null)
     {
         _router = router;
         _submit = submit;
         _resume = resume;
+        _fusion = fusion;
     }
 
     public async Task<string> HandleAsync(string line, CancellationToken cancellationToken)
@@ -257,6 +260,7 @@ public sealed class CompanionCliCommandRouter : ICompanionCliCommandHandler
                 }),
                 "run.submit" => await InvokeRunAsync(_submit, root, cancellationToken).ConfigureAwait(false),
                 "run.resume" => await InvokeRunAsync(_resume, root, cancellationToken).ConfigureAwait(false),
+                "fusion.run" => await InvokeRunAsync(_fusion, root, cancellationToken).ConfigureAwait(false),
                 "ping" => JsonSerializer.Serialize(new { ok = true, pong = true }),
                 "version" => JsonSerializer.Serialize(new { ok = true, version = "f2-companion-cli-2" }),
                 _ => JsonSerializer.Serialize(new { ok = false, error = "unknown_op", op }),
