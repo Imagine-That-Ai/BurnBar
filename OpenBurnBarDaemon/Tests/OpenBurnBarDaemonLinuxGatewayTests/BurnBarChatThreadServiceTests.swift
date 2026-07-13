@@ -117,6 +117,93 @@ final class BurnBarChatThreadServiceTests: XCTestCase {
         XCTAssertNil(threadB.thread)
     }
 
+    func testAttachmentMetadataPersistsAcrossReadAndIdempotentRetry() async throws {
+        let service = try makeService()
+        let attachment = validAttachment()
+        let request = append(
+            threadID: "thread-attachments",
+            messageID: "message-with-attachment",
+            role: .user,
+            content: "Please summarize this note",
+            timestamp: "2026-07-10T12:00:00Z",
+            backendID: "codex",
+            attachments: [attachment]
+        )
+
+        let initial = try await service.appendMessage(request)
+        XCTAssertTrue(initial.inserted)
+        XCTAssertEqual(initial.message.attachments, [attachment])
+
+        let loaded = try await service.getThread(.init(threadID: "thread-attachments"))
+        XCTAssertEqual(loaded.messages.first?.attachments, [attachment])
+
+        let retry = try await service.appendMessage(request)
+        XCTAssertFalse(retry.inserted)
+        XCTAssertEqual(retry.message.attachments, [attachment])
+
+        do {
+            _ = try await service.appendMessage(
+                append(
+                    threadID: "thread-attachments",
+                    messageID: "message-with-attachment",
+                    role: .user,
+                    content: "Please summarize this note",
+                    timestamp: "2026-07-10T12:00:00Z",
+                    backendID: "codex"
+                )
+            )
+            XCTFail("Dropping attachment metadata on an idempotent retry must conflict")
+        } catch BurnBarChatThreadServiceError.conflict {
+            // Expected.
+        }
+    }
+
+    func testAttachmentColumnIsAddedToOlderChatSchema() async throws {
+        let databasePath = try makeDatabasePath()
+        try rawExecute(at: databasePath, [
+            """
+            CREATE TABLE chat_messages (
+                id TEXT PRIMARY KEY,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                timestamp DATETIME NOT NULL,
+                cliUsed TEXT,
+                transcriptPiecesJSON TEXT,
+                threadId TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE TABLE chat_threads (
+                id TEXT PRIMARY KEY,
+                createdAt DATETIME NOT NULL,
+                updatedAt DATETIME NOT NULL
+            )
+            """
+        ])
+
+        let service = try BurnBarChatThreadService(databasePath: databasePath)
+        _ = try await service.appendMessage(
+            append(
+                threadID: "thread-migrated",
+                messageID: "message-migrated",
+                role: .user,
+                content: "Metadata survives migration",
+                timestamp: "2026-07-10T12:00:00Z",
+                attachments: [validAttachment()]
+            )
+        )
+
+        XCTAssertEqual(
+            try rawQuerySingle(
+                at: databasePath,
+                "SELECT COUNT(1) FROM pragma_table_info('chat_messages') WHERE name = 'attachmentsJSON'"
+            ),
+            "1"
+        )
+        let loaded = try await service.getThread(.init(threadID: "thread-migrated"))
+        XCTAssertEqual(loaded.messages.first?.attachments, [validAttachment()])
+    }
+
     func testCursorPaginationUsesMessageIDAsTieBreaker() async throws {
         let service = try makeService()
         let timestamp = "2026-07-10T12:00:00.000Z"
@@ -177,6 +264,26 @@ final class BurnBarChatThreadServiceTests: XCTestCase {
                     role: .user,
                     content: "   ",
                     timestamp: "2026-07-10T12:00:00Z"
+                )
+            )
+        }
+        await assertInvalidRequest {
+            _ = try await service.appendMessage(
+                self.append(
+                    threadID: "thread-a",
+                    messageID: "message-attachment",
+                    role: .user,
+                    content: "valid",
+                    timestamp: "2026-07-10T12:00:00Z",
+                    attachments: [
+                        BurnBarChatAttachmentMetadata(
+                            attachmentID: "upload-1",
+                            fileName: "notes.md",
+                            mimeType: "text/plain",
+                            byteSize: 10,
+                            sha256: String(repeating: "z", count: 64)
+                        )
+                    ]
                 )
             )
         }
@@ -461,7 +568,8 @@ final class BurnBarChatThreadServiceTests: XCTestCase {
         role: BurnBarChatMessageRole,
         content: String,
         timestamp: String,
-        backendID: String? = nil
+        backendID: String? = nil,
+        attachments: [BurnBarChatAttachmentMetadata]? = nil
     ) -> BurnBarChatMessageAppendRequest {
         BurnBarChatMessageAppendRequest(
             threadID: threadID,
@@ -469,7 +577,18 @@ final class BurnBarChatThreadServiceTests: XCTestCase {
             role: role,
             content: content,
             timestamp: timestamp,
-            backendID: backendID
+            backendID: backendID,
+            attachments: attachments
+        )
+    }
+
+    private func validAttachment() -> BurnBarChatAttachmentMetadata {
+        BurnBarChatAttachmentMetadata(
+            attachmentID: "upload-1",
+            fileName: "notes.md",
+            mimeType: "text/markdown",
+            byteSize: 42,
+            sha256: String(repeating: "a", count: 64)
         )
     }
 

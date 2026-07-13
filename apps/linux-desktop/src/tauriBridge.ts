@@ -84,6 +84,8 @@ export type PersistedChatMessage = {
   content: string;
   timestamp: string;
   backendID?: string;
+  /** Optional metadata only; Linux never returns attachment bytes or paths. */
+  attachments?: ChatAttachmentUploadResult[];
 };
 
 export type ChatThreadListResult = { threads: ChatThreadSummary[] };
@@ -103,6 +105,8 @@ export type ChatMessageAppendRequest = {
   content: string;
   timestamp: string;
   backendID?: string;
+  /** Metadata only; the daemon persists no renderer-side file paths or bytes. */
+  attachments?: ChatAttachmentUploadResult[];
 };
 export type ChatMessageAppendResult = { message: PersistedChatMessage; inserted: boolean };
 
@@ -1657,8 +1661,26 @@ function decodePersistedChatMessage(raw: RawJsonValue, label: string): Persisted
     role: decodePersistedChatRole(source.role, `${label}.role`),
     content: requireBoundedString(source.content, `${label}.content`, CHAT_CONTENT_LIMIT, { allowEmpty: true }),
     timestamp: requireTimestamp(source.timestamp, `${label}.timestamp`),
-    backendID: optionalBoundedString(source.backendID, `${label}.backendID`, CHAT_BACKEND_ID_LIMIT)
+    backendID: optionalBoundedString(source.backendID, `${label}.backendID`, CHAT_BACKEND_ID_LIMIT),
+    attachments: decodeChatAttachmentMetadata(source.attachments, `${label}.attachments`)
   };
+}
+
+function decodeChatAttachmentMetadata(
+  value: RawJsonValue,
+  label: string
+): ChatAttachmentUploadResult[] | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value)) throw new Error(`${label} must be an array.`);
+  if (value.length > 8) throw new Error(`${label} exceeds 8 entries.`);
+  return value.map((rawAttachment, index) => {
+    try {
+      return decodeChatAttachmentUpload(rawAttachment);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(`${label}[${index}]: ${detail}`);
+    }
+  });
 }
 
 export function decodeChatThreadList(raw: RawJsonValue): ChatThreadListResult {
@@ -1744,12 +1766,27 @@ export function decodeChatAttachmentUpload(raw: RawJsonValue): ChatAttachmentUpl
 function assertAppendEcho(request: ChatMessageAppendRequest, result: ChatMessageAppendResult): void {
   const message = result.message;
   const timestampsMatch = Math.abs(Date.parse(message.timestamp) - Date.parse(request.timestamp)) < 1;
+  const requestedAttachments = request.attachments ?? [];
+  const echoedAttachments = message.attachments ?? [];
+  const attachmentsMatch =
+    requestedAttachments.length === echoedAttachments.length &&
+    requestedAttachments.every((requested, index) => {
+      const echoed = echoedAttachments[index];
+      return (
+        echoed?.attachmentId === requested.attachmentId &&
+        echoed.fileName === requested.fileName &&
+        echoed.mimeType === requested.mimeType &&
+        echoed.byteSize === requested.byteSize &&
+        echoed.sha256 === requested.sha256
+      );
+    });
   if (
     message.id !== request.messageID ||
     message.threadID !== request.threadID ||
     message.role !== request.role ||
     message.content !== request.content ||
     message.backendID !== request.backendID ||
+    !attachmentsMatch ||
     !timestampsMatch
   ) {
     throw new Error('chat message append response does not match the requested idempotency identity.');

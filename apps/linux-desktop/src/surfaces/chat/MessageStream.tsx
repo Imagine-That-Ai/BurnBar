@@ -189,6 +189,22 @@ function ThinkingBlock({ message }: { message: ChatMessage }) {
   );
 }
 
+function AttachmentSummary({ message }: { message: ChatMessage }) {
+  const attachments = message.attachments ?? [];
+  if (attachments.length === 0) return null;
+  return (
+    <ul className="chat-attachment-summary" aria-label="Message attachments">
+      {attachments.map((attachment) => (
+        <li key={attachment.attachmentId}>
+          <span aria-hidden="true">+</span>
+          <span>{attachment.fileName}</span>
+          <span className="muted">{(attachment.byteSize / 1024).toFixed(1)} KB</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function MercuryIdle() {
   return (
     <div className="chat-mercury-idle" aria-label="Hermes is thinking" role="status">
@@ -323,6 +339,7 @@ export function MessageStream({
               <div key={m.id} className="chat-bubble-row chat-bubble-row--user">
                 <article className="chat-bubble chat-bubble--user" data-chat-message-id={m.id}>
                   <p className="chat-bubble-text">{m.text}</p>
+                  <AttachmentSummary message={m} />
                 </article>
               </div>
             );

@@ -10,8 +10,10 @@ import type {
   ChatMessageAppendRequest,
   ChatThreadSummary,
   ConfigSnapshot,
+  ChatAttachmentUploadResult,
   PersistedChatMessage
 } from '../tauriBridge.js';
+import type { GatewayChatAttachmentReference } from '../chat/gatewayClient.js';
 import type {
   ChatBackendId,
   ChatApprovalDecision,
@@ -46,6 +48,8 @@ export type ChatMessage = {
   /** Indexed/live session provider id when known (codex, claude-code, hermes, …). */
   provider?: string;
   memoryCitations?: MemoryCitation[];
+  /** Metadata for attachments staged on this local turn. Raw bytes never enter the renderer transcript. */
+  attachments?: ChatAttachmentUploadResult[];
 };
 
 export type ChatStreamPhase = 'idle' | 'composing' | 'streaming' | 'done' | 'error' | 'aborted';
@@ -77,6 +81,7 @@ export type ChatState = {
   warnings: ChatWarningBanner[];
   sharedFeaturesAvailable: boolean;
   load(): Promise<void>;
+  reconnectGateway(): Promise<void>;
   search(query: string): Promise<void>;
   selectThread(id: string | null): Promise<void>;
   loadOlderMessages(): Promise<void>;
@@ -85,8 +90,13 @@ export type ChatState = {
   setModelOption(id: string): void;
   setThinkingLevel(level: ChatThinkingSelection): void;
   startNewChat(): void;
-  sendToThread(input: { threadID?: string; backend: ChatBackendId; text: string }): Promise<void>;
-  sendMessage(text: string): Promise<void>;
+  sendToThread(input: {
+    threadID?: string;
+    backend: ChatBackendId;
+    text: string;
+    attachments?: ChatAttachmentUploadResult[];
+  }): Promise<void>;
+  sendMessage(text: string, attachments?: ChatAttachmentUploadResult[]): Promise<void>;
   respondToToolApproval(messageID: string, decision: ChatApprovalDecision): Promise<void>;
   retryToolApproval(messageID: string): Promise<void>;
   stopStreaming(): void;
@@ -253,7 +263,8 @@ function messageFromPersisted(message: PersistedChatMessage): ChatMessage {
     threadID: message.threadID,
     timestamp: message.timestamp,
     viaHermes: message.role === 'assistant' && (message.backendID === 'hermes' || message.backendID === 'openclaw'),
-    provider: message.backendID
+    provider: message.backendID,
+    attachments: message.attachments
   };
 }
 
@@ -534,6 +545,16 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     await get().load();
   },
 
+  async reconnectGateway() {
+    const { fixtureMode } = useShellStore.getState();
+    const gateway = await resolveGatewayStatus(fixtureMode);
+    set({
+      gatewayStatus: gateway.status,
+      gatewayBaseURL: gateway.baseURL,
+      streamError: gateway.status === 'reachable' ? null : 'Gateway is still unavailable.'
+    });
+  },
+
   async selectThread(id: string | null) {
     if (get().streaming || get().streamPhase === 'composing') return;
     const { fixtureMode, bridge } = useShellStore.getState();
@@ -702,6 +723,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
   async sendToThread(input) {
     const prompt = input.text.trim();
+    const attachments = input.attachments ?? [];
     const current = get();
     if (!prompt || current.streaming || current.streamPhase === 'composing') return;
 
@@ -756,7 +778,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       text: prompt,
       threadID,
       timestamp: userTimestamp,
-      provider: backend === 'cli' ? undefined : backend
+      provider: backend === 'cli' ? undefined : backend,
+      attachments: attachments.length > 0 ? attachments : undefined
     };
     const assistant: ChatMessage = {
       id: assistantID,
@@ -776,15 +799,34 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           }
         : defaultSelectionForBackend(get().config, backend);
     const hasMoreForTarget = current.selectedThreadId === threadID ? current.hasMoreMessages : false;
-    const outboundHistory = [
+    const outboundHistory: Array<{
+      role: 'user' | 'assistant';
+      content: string;
+      attachments?: GatewayChatAttachmentReference[];
+    }> = [
       ...history
         .filter((message) => message.role === 'user' || (message.role === 'assistant' && message.text.trim()))
-        .map((message) => ({
-          role: message.role as 'user' | 'assistant',
-          content: message.text
-        })),
-      { role: 'user' as const, content: prompt }
+        .map((message) => {
+          const entry: {
+            role: 'user' | 'assistant';
+            content: string;
+            attachments?: GatewayChatAttachmentReference[];
+          } = { role: message.role as 'user' | 'assistant', content: message.text };
+          // Persisted attachment metadata is display-only. Upload refs are
+          // daemon-owned one-shot handles and must never be replayed from a
+          // later turn or a reloaded transcript.
+          return entry;
+        }),
+      {
+        role: 'user' as const,
+        content: prompt
+      }
     ];
+    if (attachments.length > 0) {
+      outboundHistory[outboundHistory.length - 1]!.attachments = attachments.map((attachment) => ({
+        attachmentId: attachment.attachmentId
+      }));
+    }
 
     set({
       selectedThreadId: threadID,
@@ -813,7 +855,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           role: 'user',
           content: prompt,
           timestamp: userTimestamp,
-          backendID: backend
+          backendID: backend,
+          attachments: attachments.length > 0 ? attachments : undefined
         };
         await bridge!.chatMessageAppend(appendRequest);
         await refreshThreadSummaries(get().query);
@@ -915,11 +958,12 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     }
   },
 
-  async sendMessage(text: string) {
+  async sendMessage(text: string, attachments: ChatAttachmentUploadResult[] = []) {
     await get().sendToThread({
       threadID: get().selectedThreadId ?? undefined,
       backend: get().backend,
-      text
+      text,
+      attachments
     });
   },
 

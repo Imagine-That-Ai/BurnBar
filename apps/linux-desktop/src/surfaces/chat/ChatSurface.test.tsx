@@ -18,6 +18,7 @@ import { ChatSurface } from './ChatSurface.js';
 function mockBridge(handlers: {
   chatThreadList?: (query?: string, limit?: number) => Promise<ChatThreadListResult>;
   chatThreadGet?: (threadID: string, maxMessages?: number) => Promise<ChatThreadGetResult>;
+  chatAttachmentUpload?: LinuxShellBridge['chatAttachmentUpload'];
   gatewayProbe?: () => Promise<boolean>;
   gatewayChatStream?: (request: GatewayProxyRequest, onChunk: (chunk: string) => void) => Promise<void>;
 }): LinuxShellBridge {
@@ -51,6 +52,7 @@ function mockBridge(handlers: {
       hasMoreBefore: false
     })),
     chatMessageAppend: bridgeStubDefaults.chatMessageAppend,
+    chatAttachmentUpload: handlers.chatAttachmentUpload ?? bridgeStubDefaults.chatAttachmentUpload,
     usageInsights: async () => ({ weekly: [], providerMix: [], modelMix: [], cacheHitRatePct: 0 }),
     missionList: async () => ({ missions: [], pendingApprovals: [] }),
     missionApprovalDecision: async () => {},
@@ -289,6 +291,75 @@ describe('ChatSurface', () => {
         delete (url as { revokeObjectURL?: unknown }).revokeObjectURL;
       }
     }
+  });
+
+  it('uploads an attachment before sending an opaque reference to the gateway', async () => {
+    const summary = {
+      id: 'thread-attachment-ui',
+      title: 'Attachment thread',
+      preview: 'A durable transcript',
+      messageCount: 1,
+      createdAt: '2026-07-10T12:00:00Z',
+      updatedAt: '2026-07-10T12:00:00Z'
+    };
+    const upload = vi.fn(async () => ({
+      attachmentId: 'attachment-ui-1',
+      fileName: 'notes.md',
+      mimeType: 'text/markdown',
+      byteSize: 5,
+      sha256: 'a'.repeat(64)
+    }));
+    const gatewayRequests: GatewayProxyRequest[] = [];
+    useShellStore.setState({
+      bridge: mockBridge({
+        chatAttachmentUpload: upload,
+        chatThreadList: async () => ({ threads: [summary] }),
+        chatThreadGet: async () => ({
+          thread: summary,
+          messages: [{
+            id: 'attachment-existing',
+            threadID: summary.id,
+            role: 'assistant',
+            content: 'Ready.',
+            timestamp: '2026-07-10T12:00:00Z'
+          }],
+          hasMoreBefore: false
+        }),
+        gatewayProbe: async () => true,
+        gatewayChatStream: async (request, onChunk) => {
+          gatewayRequests.push(request);
+          onChunk('data: {"choices":[{"delta":{"content":"Done"}}]}\n\n');
+          onChunk('data: [DONE]\n\n');
+        }
+      }),
+      fixtureMode: false,
+      bridgeReady: true,
+      health: { ok: true, gatewayEnabled: true, gatewayHost: '127.0.0.1', gatewayPort: 8642 }
+    });
+    render(<ChatSurface />);
+    await waitFor(() => expect(screen.getByRole('log')).toBeTruthy());
+    fireEvent.change(screen.getByLabelText('Message composer'), { target: { value: 'Review this' } });
+    fireEvent.change(screen.getByLabelText('Attachment file'), {
+      target: { files: [new File(['hello'], 'notes.md', { type: 'text/markdown' })] }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await waitFor(() => expect(upload).toHaveBeenCalledOnce());
+    await waitFor(() => expect(gatewayRequests).toHaveLength(1));
+    expect(gatewayRequests[0]?.messages.at(-1)?.attachments).toEqual([
+      { attachmentId: 'attachment-ui-1' }
+    ]);
+  });
+
+  it('keeps options functional for reconnect and the Linux pop-out boundary', async () => {
+    useShellStore.setState({ fixtureMode: true, bridge: null, bridgeReady: true });
+    const open = vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+    render(<ChatSurface />);
+    await waitFor(() => expect(screen.getByRole('log')).toBeTruthy());
+    fireEvent.click(screen.getAllByLabelText('Chat options')[0]!);
+    expect(screen.getByRole('menu', { name: 'Chat options' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Pop out chat' }));
+    await waitFor(() => expect(open).toHaveBeenCalledOnce());
+    expect(screen.getByText('Chat opened in a separate window.')).toBeTruthy();
   });
 
   it('renders persisted system messages with an accessible system label', async () => {

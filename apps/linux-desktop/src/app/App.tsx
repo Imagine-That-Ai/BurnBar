@@ -8,6 +8,7 @@ import { SurfaceRouter } from '../surfaces/SurfaceRouter.js';
 import { ROUTES, type ShellRoute } from '../routes.js';
 import { readPersistedKernelId, writePersistedKernelId } from '../state/kernelPrefs.js';
 import { useShellStore } from '../state/shellStore.js';
+import { isChatPopoutWindow } from '../surfaces/chat/chatWindow.js';
 
 function isComputerUsePanicHotkey(event: KeyboardEvent): boolean {
   const isPeriod = event.key === '.' || event.code === 'Period';
@@ -26,6 +27,7 @@ export function App() {
   const skin = useShellStore((s) => s.skin);
   const syncRouteFromHash = useShellStore((s) => s.syncRouteFromHash);
   const bridge = useShellStore((s) => s.bridge);
+  const chatPopout = isChatPopoutWindow();
 
   useEffect(() => {
     window.addEventListener('hashchange', syncRouteFromHash);
@@ -118,6 +120,14 @@ export function App() {
     document.documentElement.dataset.skin = skin;
     document.documentElement.style.setProperty('--ds-skin', skin);
   }, [skin]);
+
+  if (chatPopout) {
+    return (
+      <main className="chat-popout-shell" id="main" tabIndex={-1}>
+        <SurfaceRouter route="chat" />
+      </main>
+    );
+  }
 
   return (
     <>

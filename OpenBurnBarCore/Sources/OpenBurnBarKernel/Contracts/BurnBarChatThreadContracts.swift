@@ -6,6 +6,42 @@ public enum BurnBarChatMessageRole: String, Codable, CaseIterable, Hashable, Sen
     case system
 }
 
+/// Metadata for a chat attachment that has been accepted by the daemon.
+///
+/// The record is intentionally content-addressed and path-free. Attachment
+/// bytes stay in the daemon's short-lived upload registry; persisted history
+/// can safely display what was attached without exposing a local filesystem
+/// path or attempting to replay a consumed upload handle after restart.
+public struct BurnBarChatAttachmentMetadata: Codable, Equatable, Sendable {
+    public let attachmentID: String
+    public let fileName: String
+    public let mimeType: String
+    public let byteSize: Int
+    public let sha256: String
+
+    public init(
+        attachmentID: String,
+        fileName: String,
+        mimeType: String,
+        byteSize: Int,
+        sha256: String
+    ) {
+        self.attachmentID = attachmentID
+        self.fileName = fileName
+        self.mimeType = mimeType
+        self.byteSize = byteSize
+        self.sha256 = sha256
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case attachmentID = "attachmentId"
+        case fileName
+        case mimeType
+        case byteSize
+        case sha256
+    }
+}
+
 public struct BurnBarChatMessage: Codable, Equatable, Sendable {
     public let id: String
     public let threadID: String
@@ -13,6 +49,7 @@ public struct BurnBarChatMessage: Codable, Equatable, Sendable {
     public let content: String
     public let timestamp: String
     public let backendID: String?
+    public let attachments: [BurnBarChatAttachmentMetadata]?
 
     public init(
         id: String,
@@ -20,7 +57,8 @@ public struct BurnBarChatMessage: Codable, Equatable, Sendable {
         role: BurnBarChatMessageRole,
         content: String,
         timestamp: String,
-        backendID: String? = nil
+        backendID: String? = nil,
+        attachments: [BurnBarChatAttachmentMetadata]? = nil
     ) {
         self.id = id
         self.threadID = threadID
@@ -28,6 +66,7 @@ public struct BurnBarChatMessage: Codable, Equatable, Sendable {
         self.content = content
         self.timestamp = timestamp
         self.backendID = backendID
+        self.attachments = attachments
     }
 }
 
@@ -125,6 +164,7 @@ public struct BurnBarChatMessageAppendRequest: Codable, Equatable, Sendable {
     public let content: String
     public let timestamp: String
     public let backendID: String?
+    public let attachments: [BurnBarChatAttachmentMetadata]?
 
     public init(
         threadID: String,
@@ -132,7 +172,8 @@ public struct BurnBarChatMessageAppendRequest: Codable, Equatable, Sendable {
         role: BurnBarChatMessageRole,
         content: String,
         timestamp: String,
-        backendID: String? = nil
+        backendID: String? = nil,
+        attachments: [BurnBarChatAttachmentMetadata]? = nil
     ) {
         self.threadID = threadID
         self.messageID = messageID
@@ -140,6 +181,7 @@ public struct BurnBarChatMessageAppendRequest: Codable, Equatable, Sendable {
         self.content = content
         self.timestamp = timestamp
         self.backendID = backendID
+        self.attachments = attachments
     }
 }
 

@@ -18,7 +18,11 @@ export type PendingChatAttachment = {
   size: number;
   type: string;
   lastModified: number;
+  /** Kept in memory only until the daemon accepts the upload. */
+  file: File;
 };
+
+export type ChatComposerSendResult = void | boolean | Promise<void | boolean>;
 
 type ComposerProps = {
   backend: ChatBackendId;
@@ -31,7 +35,7 @@ type ComposerProps = {
   busy: boolean;
   /** Secure/password-like fields must never run text expansion. */
   secureField?: boolean;
-  onSend: (text: string) => void;
+  onSend: (text: string, attachment?: PendingChatAttachment) => ChatComposerSendResult;
   onStop: () => void;
 };
 
@@ -51,9 +55,10 @@ export function Composer({
   const [draft, setDraft] = useState('');
   const [pendingAttachment, setPendingAttachment] = useState<PendingChatAttachment | null>(null);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const placeholder = composerPlaceholder(backend);
   const sendDisabled =
-    disabled || streaming || busy || draft.trim().length === 0 || pendingAttachment !== null;
+    disabled || streaming || busy || uploadingAttachment || draft.trim().length === 0;
 
   const inspectAttachment = (file: File): PendingChatAttachment | null => {
     if (file.size > MAX_CHAT_ATTACHMENT_BYTES) {
@@ -71,7 +76,8 @@ export function Composer({
       name: file.name,
       size: file.size,
       type: type || 'application/octet-stream',
-      lastModified: file.lastModified
+      lastModified: file.lastModified,
+      file
     };
   };
 
@@ -95,12 +101,23 @@ export function Composer({
     setDraft(value);
   };
 
-  const submit = (ev?: FormEvent) => {
+  const submit = async (ev?: FormEvent) => {
     ev?.preventDefault();
     const message = draft.trim();
-    if (!message || disabled || streaming || busy || pendingAttachment) return;
-    setDraft('');
-    onSend(message);
+    if (!message || disabled || streaming || busy || uploadingAttachment) return;
+    const attachment = pendingAttachment;
+    setUploadingAttachment(Boolean(attachment));
+    setAttachmentError(null);
+    try {
+      const accepted = await onSend(message, attachment ?? undefined);
+      if (accepted === false) return;
+      setDraft('');
+      setPendingAttachment(null);
+    } catch (error) {
+      setAttachmentError(error instanceof Error ? error.message : 'Attachment upload failed.');
+    } finally {
+      setUploadingAttachment(false);
+    }
   };
 
   return (
@@ -111,7 +128,7 @@ export function Composer({
             type="button"
             className="ghost chat-composer-attach"
             disabled={disabled}
-            title="Attach file metadata (sending is unavailable)"
+            title="Attach a bounded text document"
             aria-label="Attach files"
             onClick={() => fileInputRef.current?.click()}
           >
@@ -165,7 +182,7 @@ export function Composer({
                 sendDisabled
                   ? disabledReason ||
                     (pendingAttachment
-                      ? 'Remove the attachment; attachment transport is unavailable.'
+                      ? 'Send the message with the staged attachment.'
                       : busy
                         ? 'Sending…'
                         : 'Enter a message before sending')
@@ -203,7 +220,9 @@ export function Composer({
         ) : null}
         <p className="chat-composer-hint muted">
           {pendingAttachment
-            ? 'Attachment is staged as metadata only. Remove it to send; transport is unavailable.'
+            ? uploadingAttachment
+              ? 'Uploading attachment through the local daemon…'
+              : 'Attachment is ready to send through the local daemon.'
             : disabled && disabledReason
             ? disabledReason
             : streaming

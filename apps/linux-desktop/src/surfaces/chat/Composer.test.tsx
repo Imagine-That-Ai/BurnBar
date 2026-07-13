@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { configureTextExpansionConsentStorage, writeTextExpansionConsent } from '../../textExpansionConsent.js';
 import { configureTextExpansionStorage, upsertSnippet } from '../../textExpansionStore.js';
@@ -32,7 +32,7 @@ function enableInAppExpansion() {
 }
 
 describe('chat composer attachments', () => {
-  it('shows accepted file metadata, disables send, and removes it cleanly', () => {
+  it('shows accepted file metadata, keeps send available, and removes it cleanly', () => {
     renderComposer();
     const composer = screen.getByLabelText('Message composer');
     fireEvent.change(composer, { target: { value: 'summarize this' } });
@@ -40,7 +40,7 @@ describe('chat composer attachments', () => {
     fireEvent.change(screen.getByLabelText('Attachment file'), { target: { files: [file] } });
 
     expect(screen.getByTestId('pending-attachment').textContent).toContain('notes.md');
-    expect(screen.getByRole('button', { name: 'Send message' })).toHaveProperty('disabled', true);
+    expect(screen.getByRole('button', { name: 'Send message' })).toHaveProperty('disabled', false);
     fireEvent.click(screen.getByRole('button', { name: 'Remove attachment notes.md' }));
     expect(screen.queryByTestId('pending-attachment')).toBeNull();
     expect(screen.getByRole('button', { name: 'Send message' })).toHaveProperty('disabled', false);
@@ -59,6 +59,31 @@ describe('chat composer attachments', () => {
     const unsupported = new File(['binary'], 'program.exe', { type: 'application/octet-stream' });
     fireEvent.change(input, { target: { files: [unsupported] } });
     expect(screen.getByRole('alert').textContent).toMatch(/Unsupported attachment type/i);
+  });
+
+  it('passes the selected file to the daemon upload boundary before clearing it', async () => {
+    const onSend = vi.fn(async (_text: string, attachment?: { file: File }) => {
+      expect(attachment?.file.name).toBe('notes.md');
+      return true;
+    });
+    render(
+      <Composer
+        backend="hermes"
+        disabled={false}
+        disabledReason=""
+        streaming={false}
+        busy={false}
+        onSend={onSend}
+        onStop={vi.fn()}
+      />
+    );
+    fireEvent.change(screen.getByLabelText('Message composer'), { target: { value: 'Review this' } });
+    fireEvent.change(screen.getByLabelText('Attachment file'), {
+      target: { files: [new File(['hello'], 'notes.md', { type: 'text/markdown' })] }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+    expect(screen.queryByTestId('pending-attachment')).toBeNull();
   });
 });
 

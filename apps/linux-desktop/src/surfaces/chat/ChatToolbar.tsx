@@ -15,6 +15,11 @@ type ChatToolbarProps = {
   onBackendChange: (id: ChatBackendId) => void;
   onModelOptionChange: (id: string) => void;
   onThinkingLevelChange: (level: ChatThinkingSelection) => void;
+  onReconnect: () => void;
+  onPopOut?: () => void;
+  onClosePopOut?: () => void;
+  popoutWindow: boolean;
+  popoutStatus?: string | null;
   onNewChat: () => void;
   exportFormat: ChatExportFormat;
   onExportFormatChange: (format: ChatExportFormat) => void;
@@ -35,6 +40,11 @@ export function ChatToolbar({
   onBackendChange,
   onModelOptionChange,
   onThinkingLevelChange,
+  onReconnect,
+  onPopOut,
+  onClosePopOut,
+  popoutWindow,
+  popoutStatus,
   onNewChat,
   exportFormat,
   onExportFormatChange,
@@ -96,16 +106,27 @@ export function ChatToolbar({
         >
           ✎ New
         </button>
-        <button
-          type="button"
-          className="ghost chat-toolbar-icon"
-          disabled
-          title="Chat options (v1)"
-          aria-label="Chat options"
-        >
-          <span aria-hidden="true">⋯</span>
-        </button>
-        {/* Floating HUD controls (pop-out / restore / close) are macOS-only. */}
+        <details className="chat-options-control">
+          <summary className="ghost chat-toolbar-icon" title="Chat options" aria-label="Chat options">
+            <span aria-hidden="true">⋯</span>
+          </summary>
+          <div className="chat-options-menu" role="menu" aria-label="Chat options">
+            <button type="button" role="menuitem" onClick={onReconnect}>
+              Reconnect gateway
+            </button>
+            {onPopOut ? (
+              <button type="button" role="menuitem" onClick={onPopOut}>
+                Pop out chat
+              </button>
+            ) : null}
+            {popoutWindow && onClosePopOut ? (
+              <button type="button" role="menuitem" onClick={onClosePopOut}>
+                Close chat window
+              </button>
+            ) : null}
+            {popoutStatus ? <span className="chat-options-status" role="status">{popoutStatus}</span> : null}
+          </div>
+        </details>
       </div>
     </div>
   );

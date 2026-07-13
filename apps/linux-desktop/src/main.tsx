@@ -19,12 +19,13 @@ import { useShellStore } from './state/shellStore.js';
 async function boot(): Promise<void> {
   const end = markStart('app.start');
   applyReducedMotionClass();
+  const chatPopout = new URLSearchParams(location.search).get('window') === 'chat-popout';
   const requestedHash = location.hash;
-  const hadDeepLink = Boolean(requestedHash && requestedHash !== '#/onboarding');
+  const hadDeepLink = chatPopout || Boolean(requestedHash && requestedHash !== '#/onboarding');
 
   // First run lands on the onboarding wizard unless a deep link is present.
   const ob = readOnboarding();
-  if (location.hash !== '#/onboarding') {
+  if (!chatPopout && location.hash !== '#/onboarding') {
     location.hash = '#/onboarding';
     useShellStore.getState().syncRouteFromHash();
   }
@@ -39,6 +40,9 @@ async function boot(): Promise<void> {
 
   await useShellStore.getState().boot();
   const bridge = useShellStore.getState().bridge;
+  if (chatPopout) {
+    useShellStore.getState().setRoute('chat');
+  }
   if (bridge) {
     try {
       const authoritative = await bridge.onboardingSnapshot();
@@ -49,7 +53,9 @@ async function boot(): Promise<void> {
         ? (nativeDeepLink as ShellRoute)
         : null;
       cacheOnboarding(authoritative);
-      if (shouldRouteToOnboarding(authoritative)) {
+      if (chatPopout) {
+        useShellStore.getState().setRoute('chat');
+      } else if (shouldRouteToOnboarding(authoritative)) {
         useShellStore.getState().setRoute('onboarding');
       } else if (requestedNativeRoute) {
         useShellStore.getState().setRoute(requestedNativeRoute);
@@ -64,7 +70,7 @@ async function boot(): Promise<void> {
       useShellStore.getState().setRoute('onboarding');
     }
   } else {
-    useShellStore.getState().setRoute('onboarding');
+    if (!chatPopout) useShellStore.getState().setRoute('onboarding');
   }
   end();
 
