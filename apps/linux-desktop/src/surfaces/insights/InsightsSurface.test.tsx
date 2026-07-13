@@ -11,6 +11,7 @@ import {
   trendAriaSummary
 } from './insightsChartMath.js';
 import { InsightsSurface } from './InsightsSurface.js';
+import { InsightsWorkspace } from './InsightsWorkspace.js';
 import { TrendChart } from './TrendChart.js';
 import { buildInsightsBrief } from './insightsBrief.js';
 
@@ -131,6 +132,32 @@ describe('InsightsSurface', () => {
     render(<InsightsSurface />);
     expect(screen.getByRole('status')).toBeTruthy();
     expect(screen.getByText(/packaged shell/i)).toBeTruthy();
+  });
+
+  it('supports evidence selection, audit disclosure, and chat follow-up handoff', () => {
+    const refresh = vi.fn();
+    const followUp = vi.fn();
+    render(
+      <InsightsWorkspace
+        data={fixtureUsageInsights()}
+        sourceLabel="live daemon usage insights"
+        onRefresh={refresh}
+        onFollowUp={followUp}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /provider mix/i }));
+    expect(screen.getByText('Live daemon usage')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^audit$/i }));
+    expect(screen.getByRole('dialog', { name: /insights audit/i })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /close/i }));
+
+    const input = screen.getByRole('textbox', { name: /ask about this data/i });
+    fireEvent.change(input, { target: { value: 'Compare provider mix with last week' } });
+    fireEvent.click(screen.getByRole('button', { name: /open in chat/i }));
+    expect(followUp).toHaveBeenCalledWith('Compare provider mix with last week');
+    fireEvent.click(screen.getByRole('button', { name: /refresh insights/i }));
+    expect(refresh).toHaveBeenCalledTimes(1);
   });
 });
 

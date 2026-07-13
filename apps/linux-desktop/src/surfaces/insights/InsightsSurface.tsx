@@ -3,12 +3,11 @@ import { Banner } from '../../components/Banner.js';
 import { OfflineNotice } from '../../components/OfflineNotice.js';
 import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
 import { useInsightsStore } from '../../state/insightsStore.js';
-import { hasInsightsUsage, weekOverWeekTokenDeltaPct } from './insightsChartMath.js';
-import { MixBar } from './MixBar.js';
-import { StatCallout } from './StatCallout.js';
-import { TrendChart } from './TrendChart.js';
+import { hasInsightsUsage } from './insightsChartMath.js';
 import { InsightsEditorialBrief } from './InsightsEditorialBrief.js';
 import { buildInsightsBrief } from './insightsBrief.js';
+import { InsightsWorkspace } from './InsightsWorkspace.js';
+import { useChatStore } from '../../state/chatStore.js';
 import './insights.css';
 
 function InsightsSkeleton() {
@@ -32,6 +31,11 @@ export function InsightsSurface() {
   const loading = useInsightsStore((s) => s.loading);
   const error = useInsightsStore((s) => s.error);
   const load = useInsightsStore((s) => s.load);
+  const openFollowUp = (question: string) => {
+    useShellStore.getState().setRoute('chat');
+    useChatStore.getState().startNewChat();
+    void useChatStore.getState().sendToThread({ backend: 'hermes', text: question });
+  };
 
   useLaneLoad(load);
 
@@ -71,37 +75,17 @@ export function InsightsSurface() {
     );
   }
 
-  const wow = weekOverWeekTokenDeltaPct(data.weekly);
   const sourceLabel = fixtureMode ? 'fixture transcript' : 'live daemon usage insights';
   const brief = buildInsightsBrief(data);
-
   return (
     <div className="insights-observatory">
-      <p className="data-source muted">Provenance: {sourceLabel}</p>
       <InsightsEditorialBrief brief={brief} />
-      <div className="insights-grid">
-        <div className="insights-panel insights-panel--chart">
-          <TrendChart weekly={data.weekly} />
-        </div>
-        <div className="insights-panel insights-panel--stats">
-          <StatCallout cacheHitRatePct={data.cacheHitRatePct} caption="Cache hit rate" />
-          <StatCallout value={`${data.weekly.length}`} caption="Weeks tracked" deltaPct={wow} />
-        </div>
-        <div className="insights-panel">
-          <MixBar
-            title="Provider mix"
-            entries={data.providerMix}
-            ariaLabel={`Provider mix: ${data.providerMix.map((e) => `${e.label} ${e.pct}%`).join(', ')}`}
-          />
-        </div>
-        <div className="insights-panel">
-          <MixBar
-            title="Model mix"
-            entries={data.modelMix}
-            ariaLabel={`Model mix: ${data.modelMix.map((e) => `${e.label} ${e.pct}%`).join(', ')}`}
-          />
-        </div>
-      </div>
+      <InsightsWorkspace
+        data={data}
+        sourceLabel={sourceLabel}
+        onRefresh={() => void load()}
+        onFollowUp={openFollowUp}
+      />
     </div>
   );
 }
