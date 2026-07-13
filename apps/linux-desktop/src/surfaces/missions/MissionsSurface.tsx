@@ -35,8 +35,14 @@ export function MissionsSurface() {
   const loading = useMissionsStore((s) => s.loading);
   const error = useMissionsStore((s) => s.error);
   const approvalById = useMissionsStore((s) => s.approvalById);
+  const cancelById = useMissionsStore((s) => s.cancelById);
+  const detailById = useMissionsStore((s) => s.detailById);
+  const detailLoadingById = useMissionsStore((s) => s.detailLoadingById);
+  const detailErrorById = useMissionsStore((s) => s.detailErrorById);
   const load = useMissionsStore((s) => s.load);
+  const inspect = useMissionsStore((s) => s.inspect);
   const decide = useMissionsStore((s) => s.decide);
+  const cancelMission = useMissionsStore((s) => s.cancel);
   const [liveMessage, setLiveMessage] = useState('');
   const [stateFilter, setStateFilter] = useState<MissionStateFilterKey>('all');
   const [projectFilter, setProjectFilter] = useState<string | null>(null);
@@ -105,6 +111,17 @@ export function MissionsSurface() {
   const missions = data?.missions ?? [];
   const pendingApprovals = data?.pendingApprovals ?? [];
 
+  const runCancellation = useCallback(
+    async (missionId: string, note?: string) => {
+      const ok = await cancelMission(missionId, note);
+      if (ok) {
+        const title = missions.find((mission) => mission.id === missionId)?.title ?? missionId;
+        setLiveMessage(`Cancelled: ${title}`);
+      }
+    },
+    [cancelMission, missions]
+  );
+
   const missionsForProject = useMemo(
     () => missions.filter((m) => missionMatchesProject(m, projectFilter)),
     [missions, projectFilter]
@@ -125,6 +142,20 @@ export function MissionsSurface() {
   }, [missionsForProject, stateFilter, pendingApprovals]);
   const runwayStats = runwayStripStats(missionsForProject);
   const showGroupedSections = stateFilter === 'all';
+
+  const renderMissionRow = (mission: (typeof missions)[number]) => (
+    <MissionRow
+      key={mission.id}
+      mission={mission}
+      pendingApprovals={pendingApprovals}
+      detail={detailById[mission.id]}
+      detailLoading={detailLoadingById[mission.id] ?? false}
+      detailError={detailErrorById[mission.id]}
+      cancelState={cancelById[mission.id]}
+      onInspect={(id) => void inspect(id)}
+      onCancel={fixtureMode ? undefined : (id, note) => void runCancellation(id, note)}
+    />
+  );
 
   if (loading && !data) {
     return (
@@ -248,13 +279,7 @@ export function MissionsSurface() {
           >
             <h3 id={`missions-group-${group.key}`}>{group.label}</h3>
             <ul className="missions-gate-list">
-              {group.missions.map((mission) => (
-                <MissionRow
-                  key={mission.id}
-                  mission={mission}
-                  pendingApprovals={pendingApprovals}
-                />
-              ))}
+              {group.missions.map((mission) => renderMissionRow(mission))}
             </ul>
           </section>
         ))
@@ -264,9 +289,7 @@ export function MissionsSurface() {
             Filtered missions
           </h3>
           <ul className="missions-gate-list">
-            {flatFiltered.map((mission) => (
-              <MissionRow key={mission.id} mission={mission} pendingApprovals={pendingApprovals} />
-            ))}
+            {flatFiltered.map((mission) => renderMissionRow(mission))}
           </ul>
         </section>
       )}

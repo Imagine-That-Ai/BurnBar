@@ -1752,6 +1752,16 @@ fn mission_list() -> Result<serde_json::Value, String> {
     )
 }
 
+// ───────────────── P20: mission detail ─────────────────
+// Wire: daemon.mission.get (BurnBarRPCMethod.missionGet)
+#[tauri::command]
+fn mission_get(mission_id: String) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.mission.get",
+        Some(serde_json::json!({"missionID": mission_id})),
+    )
+}
+
 // ───────────────── P06: mission create ─────────────────
 // Wire: daemon.mission.create (BurnBarRPCMethod.missionCreate)
 // BurnBarMissionCreateRequest requires projectSlug, title, summary,
@@ -1800,6 +1810,20 @@ fn mission_decision_wire(id: &str, decision: &str) -> (&'static str, serde_json:
 fn mission_approval_decision(id: String, decision: String) -> Result<serde_json::Value, String> {
     let (method, params) = mission_decision_wire(&id, &decision);
     call_daemon_method(method, Some(params))
+}
+
+// ───────────────── P20: explicit mission cancellation ─────────────────
+// Wire: daemon.mission.cancel (BurnBarMissionCancelRequest)
+#[tauri::command]
+fn mission_cancel(mission_id: String, note: Option<String>) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.mission.cancel",
+        Some(serde_json::json!({
+            "missionID": mission_id,
+            "actor": "linux-shell",
+            "note": note
+        })),
+    )
 }
 
 // ───────────────── P07: config snapshot ─────────────────
@@ -4586,8 +4610,10 @@ pub fn run() {
             chat_message_append,
             usage_insights,
             mission_list,
+            mission_get,
             mission_create,
             mission_approval_decision,
+            mission_cancel,
             config_snapshot,
             config_update,
             provider_credential_slot_upsert,

@@ -26,6 +26,7 @@ import type {
   MercuryMediaStatus,
   MercuryMediaSessionState,
   MissionCreateInput,
+  MissionDetail,
   MissionListResult
 } from '../tauriBridge.js';
 import type {
@@ -79,6 +80,11 @@ export const emptyIntegrationsStatus = (): Promise<IntegrationsStatus> =>
 export const emptyMissionCreate = (
   _input: MissionCreateInput
 ): Promise<MissionListResult['missions'][number] | null> => Promise.resolve(null);
+
+export const emptyMissionGet = (_id: string): Promise<MissionDetail | null> => Promise.resolve(null);
+
+export const emptyMissionCancel = (_id: string, _note?: string): Promise<MissionDetail | null> =>
+  Promise.resolve(null);
 
 export const emptyMemoryReviewInbox = (): Promise<MemoryReviewInbox> =>
   Promise.resolve({ items: [], auditEvents: [] });
@@ -346,6 +352,8 @@ export const bridgeStubDefaults = {
   mediaFileDecline: emptyMediaFileAction,
   mediaFileSend: emptyMediaFileAction,
   integrationsStatus: emptyIntegrationsStatus,
+  missionGet: emptyMissionGet,
+  missionCancel: emptyMissionCancel,
   missionCreate: emptyMissionCreate,
   memoryReviewInbox: emptyMemoryReviewInbox,
   memoryReviewDecision: emptyMemoryReviewDecision,

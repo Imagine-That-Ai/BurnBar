@@ -1,6 +1,9 @@
 import type { CSSProperties } from 'react';
 import { useId, useState } from 'react';
-import type { PendingApproval } from '../../tauriBridge.js';
+import type {
+  MissionDetail,
+  PendingApproval
+} from '../../tauriBridge.js';
 import {
   formatMissionApprovalLabel,
   formatMissionLifecycleLabel,
@@ -12,21 +15,36 @@ import {
   normalizeMissionLifecycle,
   type MissionRecord
 } from './missionGroups.js';
+import type { ApprovalDecisionState } from '../../state/missionsStore.js';
 
 export type MissionRowMission = MissionRecord;
 
 export function MissionRow({
   mission,
   pendingApprovals,
-  onInspectLogs
+  onInspectLogs,
+  detail,
+  detailLoading = false,
+  detailError,
+  cancelState,
+  onInspect,
+  onCancel
 }: {
   mission: MissionRowMission;
   pendingApprovals: PendingApproval[];
   onInspectLogs?: (missionId: string) => void;
+  detail?: MissionDetail;
+  detailLoading?: boolean;
+  detailError?: string | null;
+  cancelState?: ApprovalDecisionState;
+  onInspect?: (missionId: string) => void;
+  onCancel?: (missionId: string, note?: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
   const detailsId = useId();
   const lifecycle = normalizeMissionLifecycle(mission.state);
+  const snapshot = detail ?? mission;
   const lifecycleAccent = missionLifecycleAccent(lifecycle);
   const approval = missionApprovalDisplay(mission.id, pendingApprovals);
   const approvalAccent = missionApprovalAccent(approval);
@@ -104,6 +122,14 @@ export function MissionRow({
 
         {expanded ? (
           <div className="missions-gate-details" id={detailsId}>
+            {detailLoading ? (
+              <p className="muted" role="status" aria-busy="true">Loading mission detail…</p>
+            ) : null}
+            {detailError ? (
+              <p className="missions-detail-unavailable" role="status">
+                Detail refresh unavailable: {detailError}. Showing the last daemon list snapshot.
+              </p>
+            ) : null}
             <dl className="missions-gate-detail-list">
               <div>
                 <dt>Mission id</dt>
@@ -122,10 +148,86 @@ export function MissionRow({
               <div>
                 <dt>Updated</dt>
                 <dd>
-                  <time dateTime={mission.updatedAt}>{mission.updatedAt}</time>
+                  <time dateTime={snapshot.updatedAt}>{snapshot.updatedAt || 'Unavailable'}</time>
                 </dd>
               </div>
+              {snapshot.createdAt ? (
+                <div>
+                  <dt>Created</dt>
+                  <dd><time dateTime={snapshot.createdAt}>{snapshot.createdAt}</time></dd>
+                </div>
+              ) : null}
+              {snapshot.recommendation ? (
+                <div>
+                  <dt>Recommendation</dt>
+                  <dd>{snapshot.recommendation}</dd>
+                </div>
+              ) : null}
+              <div>
+                <dt>Freshness</dt>
+                <dd>{snapshot.freshness === 'fresh' ? 'Fresh' : snapshot.freshness === 'stale' ? 'Stale' : 'Unknown'}</dd>
+              </div>
+              <div>
+                <dt>Runtime health</dt>
+                <dd>Unavailable from the mission contract.</dd>
+              </div>
             </dl>
+            {snapshot.summary ? <p className="missions-detail-summary">{snapshot.summary}</p> : null}
+
+            <section className="missions-detail-section" aria-labelledby={`${detailsId}-packets`}>
+              <h5 id={`${detailsId}-packets`}>Packets / tasks</h5>
+              {(snapshot.packets ?? []).length > 0 ? (
+                <ul className="missions-detail-list">
+                  {(snapshot.packets ?? []).map((packet) => (
+                    <li key={packet.id}>
+                      <strong>{packet.workerName}</strong>
+                      <span>{packet.objective}</span>
+                      <span className="muted">{packet.status}{packet.runId ? ` · run ${packet.runId}` : ''}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="muted">No packet/task records are present in this snapshot.</p>
+              )}
+            </section>
+
+            <section className="missions-detail-section" aria-labelledby={`${detailsId}-results`}>
+              <h5 id={`${detailsId}-results`}>Results / evidence</h5>
+              {(snapshot.results ?? []).length > 0 ? (
+                <ul className="missions-detail-list">
+                  {(snapshot.results ?? []).map((result) => (
+                    <li key={result.id}>
+                      <strong>{result.summary}</strong>
+                      <span>{result.status}{result.detail ? ` · ${result.detail}` : ''}</span>
+                      {result.evidenceRefs.length > 0 ? (
+                        <span className="muted">Evidence: {result.evidenceRefs.join(', ')}</span>
+                      ) : (
+                        <span className="muted">Evidence references unavailable.</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="muted">No result/evidence records are present in this snapshot.</p>
+              )}
+            </section>
+
+            <section className="missions-detail-section" aria-labelledby={`${detailsId}-history`}>
+              <h5 id={`${detailsId}-history`}>Controller history</h5>
+              {(snapshot.takeoverHistory ?? []).length > 0 ? (
+                <ul className="missions-detail-list">
+                  {(snapshot.takeoverHistory ?? []).map((record) => (
+                    <li key={record.id}>
+                      <strong>{record.status}</strong>
+                      <span>{record.reason}</span>
+                      <span className="muted">{record.updatedAt || record.createdAt || 'Timestamp unavailable'}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="muted">No takeover history is present; the daemon exposes no separate history RPC.</p>
+              )}
+            </section>
           </div>
         ) : null}
 
@@ -162,12 +264,43 @@ export function MissionRow({
             className="missions-gate-expand"
             aria-expanded={expanded}
             aria-controls={detailsId}
-            onClick={() => setExpanded((v) => !v)}
+            onClick={() => {
+              setExpanded((v) => {
+                const next = !v;
+                if (next) onInspect?.(mission.id);
+                return next;
+              });
+            }}
           >
             {expanded ? 'Less' : 'Details'}
           </button>
+          {onCancel && !['completed', 'cancelled', 'failed'].includes(mission.state.toLowerCase()) ? (
+            confirmCancel ? (
+              <button
+                type="button"
+                className="missions-gate-btn missions-gate-btn--danger"
+                disabled={cancelState?.pending}
+                onClick={() => {
+                  setConfirmCancel(false);
+                  onCancel(mission.id, 'Cancelled from Linux mission control.');
+                }}
+              >
+                {cancelState?.pending ? 'Cancelling…' : 'Confirm cancel'}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="missions-gate-btn missions-gate-btn--secondary"
+                disabled={cancelState?.pending}
+                onClick={() => setConfirmCancel(true)}
+              >
+                Cancel mission
+              </button>
+            )
+          ) : null}
+          </div>
+          {cancelState?.error ? <p className="missions-detail-unavailable" role="alert">{cancelState.error}</p> : null}
         </div>
-      </div>
     </li>
   );
 }
