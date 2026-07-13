@@ -104,26 +104,36 @@ public sealed class ProjectCodeLexicalScannerTests
     }
 
     [Fact]
-    public async Task SymbolIndex_UsesLexicalFallbackForInventoryFormatsWithoutGrammar()
+    public void SymbolIndex_UsesLexicalFallbackWhenParserIsUnavailable()
     {
         string root = Path.Combine(Path.GetTempPath(), "obb-parser-fallback-" + Path.GetRandomFileName());
         Directory.CreateDirectory(root);
         try
         {
             File.WriteAllText(Path.Combine(root, "notes.md"), "class Notes\n");
-            var parser = new DelegateProjectCodeStaticParserClient((_, _) =>
-                throw new Xunit.Sdk.XunitException("The markdown fallback must not invoke Tree-sitter."));
-
             using var index = new ProjectCodeSymbolIndex(root);
-            ProjectCodeIndexSnapshot snapshot = await index.RefreshWithParserAsync(parser);
+            ProjectCodeIndexSnapshot snapshot = index.Refresh();
 
-            Assert.Equal("tree-sitter", snapshot.ParserMode);
+            Assert.Equal("lexical", snapshot.ParserMode);
             Assert.Contains(index.Symbols, symbol =>
                 symbol.Name == "Notes" && symbol.Parser == "lexical");
         }
         finally
         {
             Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void TreeSitterExtensions_CoverMacOSInventoryFormats()
+    {
+        foreach (string path in new[]
+        {
+            "main.c", "main.cpp", "main.h", "main.hpp", "Widget.m", "Widget.mm",
+            "config.json", "README.md", "config.yml", "config.yaml",
+        })
+        {
+            Assert.True(ProjectCodeLexicalScanner.SupportsTreeSitter(path), path);
         }
     }
 

@@ -73,6 +73,22 @@ jobs:
           if (-not ($response.symbols | Where-Object { $_.name -eq "Runner" -and $_.kind -eq "class" })) { throw "C# class symbol missing" }
           if (-not ($response.symbols | Where-Object { $_.name -eq "Start" -and $_.kind -eq "function" })) { throw "C# method symbol missing" }
 
+          $extended = @(
+            @{ path = "native.c"; language = "c"; text = "struct Native { int value; };" },
+            @{ path = "widget.cpp"; language = "cpp"; text = "namespace demo { class Widget {}; }" },
+            @{ path = "Widget.m"; language = "objc"; text = "@interface Widget : NSObject`n@end" },
+            @{ path = "config.json"; language = "json"; text = '{"name":"BurnBar"}' },
+            @{ path = "README.md"; language = "markdown"; text = "# BurnBar" },
+            @{ path = "config.yaml"; language = "yaml"; text = "name: BurnBar" }
+          )
+          foreach ($case in $extended) {
+            $request = @{ requestId = "windows-extended-$($case.language)"; filePath = $case.path; language = $case.language; blobSha = "wrong"; text = $case.text } | ConvertTo-Json -Compress
+            $response = $request | & $binary | ConvertFrom-Json
+            if (-not $response.ok) { throw "parser smoke request failed for $($case.language)" }
+            if ($response.language -ne $case.language) { throw "language normalization failed for $($case.language)" }
+            if (-not $response.symbols -or $response.symbols.Count -lt 1) { throw "symbol extraction missing for $($case.language)" }
+          }
+
       - name: Build parser for ARM64 (build-only)
         run: cargo build --manifest-path crates/project-code-static-parser/Cargo.toml --release --target aarch64-pc-windows-msvc
 

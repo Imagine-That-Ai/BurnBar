@@ -225,16 +225,22 @@ fn parse_request(request: ParseRequest) -> ParseResponse {
 
 fn language_for(language: &str) -> Option<Language> {
     match language {
+        "c" => Some(tree_sitter_c::LANGUAGE.into()),
         "csharp" => Some(tree_sitter_c_sharp::LANGUAGE.into()),
+        "cpp" => Some(tree_sitter_cpp::LANGUAGE.into()),
         "go" => Some(tree_sitter_go::LANGUAGE.into()),
         "java" => Some(tree_sitter_java::LANGUAGE.into()),
         "javascript" => Some(tree_sitter_javascript::LANGUAGE.into()),
+        "json" => Some(tree_sitter_json::LANGUAGE.into()),
         "kotlin" => Some(tree_sitter_kotlin_ng::LANGUAGE.into()),
+        "markdown" => Some(tree_sitter_md::LANGUAGE.into()),
+        "objc" => Some(tree_sitter_objc::LANGUAGE.into()),
         "python" => Some(tree_sitter_python::LANGUAGE.into()),
         "rust" => Some(tree_sitter_rust::LANGUAGE.into()),
         "swift" => Some(tree_sitter_swift::LANGUAGE.into()),
         "typescript" => Some(tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into()),
         "tsx" => Some(tree_sitter_typescript::LANGUAGE_TSX.into()),
+        "yaml" => Some(tree_sitter_yaml::LANGUAGE.into()),
         _ => None,
     }
 }
@@ -242,16 +248,22 @@ fn language_for(language: &str) -> Option<Language> {
 fn normalize_language(language: Option<&str>, file_path: &str) -> String {
     let raw = language.unwrap_or_default().trim().to_ascii_lowercase();
     match raw.as_str() {
+        "c" => "c".to_string(),
         "c#" | "cs" | "csharp" => "csharp".to_string(),
+        "cc" | "cpp" | "cxx" | "c++" => "cpp".to_string(),
         "go" | "golang" => "go".to_string(),
         "java" => "java".to_string(),
         "js" | "javascript" | "jsx" => "javascript".to_string(),
+        "json" => "json".to_string(),
         "kt" | "kotlin" => "kotlin".to_string(),
+        "md" | "markdown" => "markdown".to_string(),
+        "m" | "mm" | "objc" | "objective-c" => "objc".to_string(),
         "py" | "python" => "python".to_string(),
         "rs" | "rust" => "rust".to_string(),
         "swift" => "swift".to_string(),
         "ts" | "typescript" => "typescript".to_string(),
         "tsx" => "tsx".to_string(),
+        "yaml" | "yml" => "yaml".to_string(),
         _ => match file_path
             .rsplit('.')
             .next()
@@ -259,16 +271,22 @@ fn normalize_language(language: Option<&str>, file_path: &str) -> String {
             .to_ascii_lowercase()
             .as_str()
         {
+            "c" | "h" => "c".to_string(),
             "cs" => "csharp".to_string(),
+            "cc" | "cpp" | "cxx" | "hpp" => "cpp".to_string(),
             "go" => "go".to_string(),
             "java" => "java".to_string(),
             "js" | "jsx" => "javascript".to_string(),
+            "json" => "json".to_string(),
             "kt" => "kotlin".to_string(),
+            "md" => "markdown".to_string(),
+            "m" | "mm" => "objc".to_string(),
             "py" => "python".to_string(),
             "rs" => "rust".to_string(),
             "swift" => "swift".to_string(),
             "ts" => "typescript".to_string(),
             "tsx" => "tsx".to_string(),
+            "yaml" | "yml" => "yaml".to_string(),
             _ => raw,
         },
     }
@@ -1040,6 +1058,16 @@ fn sha1_hex(data: &[u8]) -> String {
 fn symbol_name_and_kind(node: Node<'_>, source: &[u8], language: &str) -> Option<(String, String)> {
     let kind = node.kind();
     let normalized_kind = match language {
+        "c" => match kind {
+            "function_definition" => "function",
+            "struct_specifier" => "struct",
+            "union_specifier" => "union",
+            "enum_specifier" => "enum",
+            "type_definition" => "type",
+            "preproc_def" | "preproc_function_def" => "macro",
+            _ => return None,
+        }
+        .to_string(),
         "csharp" => match kind {
             "namespace_declaration" => "namespace",
             "class_declaration" => "class",
@@ -1049,6 +1077,16 @@ fn symbol_name_and_kind(node: Node<'_>, source: &[u8], language: &str) -> Option
             "record_declaration" => "record",
             "method_declaration" | "local_function_statement" => "function",
             "property_declaration" => "property",
+            "field_declaration" => "field",
+            _ => return None,
+        }
+        .to_string(),
+        "cpp" => match kind {
+            "function_definition" => "function",
+            "class_specifier" => "class",
+            "namespace_definition" => "namespace",
+            "enum_specifier" => "enum",
+            "alias_declaration" => "type",
             "field_declaration" => "field",
             _ => return None,
         }
@@ -1081,12 +1119,32 @@ fn symbol_name_and_kind(node: Node<'_>, source: &[u8], language: &str) -> Option
             _ => return None,
         }
         .to_string(),
+        "json" => match kind {
+            "pair" => "property",
+            "object" => "object",
+            _ => return None,
+        }
+        .to_string(),
         "kotlin" => match kind {
             "class_declaration" => "class",
             "object_declaration" => "object",
             "function_declaration" => "function",
             "property_declaration" => "property",
             "type_alias" => "type",
+            _ => return None,
+        }
+        .to_string(),
+        "markdown" => match kind {
+            "atx_heading" | "setext_heading" => "heading",
+            "link_reference_definition" => "reference",
+            _ => return None,
+        }
+        .to_string(),
+        "objc" => match kind {
+            "class_interface" | "class_implementation" => "class",
+            "protocol_declaration" => "protocol",
+            "method_declaration" | "method_definition" | "function_definition" => "function",
+            "property_declaration" => "property",
             _ => return None,
         }
         .to_string(),
@@ -1130,12 +1188,21 @@ fn symbol_name_and_kind(node: Node<'_>, source: &[u8], language: &str) -> Option
             _ => return None,
         }
         .to_string(),
+        "yaml" => match kind {
+            "block_mapping_pair" | "flow_pair" => "property",
+            "block_sequence_item" => "item",
+            _ => return None,
+        }
+        .to_string(),
         _ => return None,
     };
     let name_node = node
         .child_by_field_name("name")
+        .or_else(|| node.child_by_field_name("key"))
         .or_else(|| first_named_identifier(node, source));
-    let name = name_node.and_then(|candidate| text(candidate, source))?;
+    let name = name_node
+        .and_then(|candidate| text(candidate, source))
+        .or_else(|| first_named_text(node, source))?;
     Some((name, normalized_kind))
 }
 
@@ -1161,6 +1228,18 @@ fn first_named_identifier<'tree>(node: Node<'tree>, source: &[u8]) -> Option<Nod
         }
         if let Some(nested) = first_named_identifier(child, source) {
             return Some(nested);
+        }
+    }
+    None
+}
+
+fn first_named_text<'tree>(node: Node<'tree>, source: &[u8]) -> Option<String> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.is_named() {
+            if let Some(value) = text(child, source) {
+                return Some(value);
+            }
         }
     }
     None

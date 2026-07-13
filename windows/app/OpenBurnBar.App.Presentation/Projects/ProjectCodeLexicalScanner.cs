@@ -21,6 +21,7 @@ public static class ProjectCodeLexicalScanner
     private static readonly HashSet<string> TreeSitterExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".cs", ".swift", ".ts", ".tsx", ".js", ".jsx", ".py", ".rs", ".kt", ".java", ".go",
+        ".m", ".mm", ".h", ".hpp", ".c", ".cc", ".cpp", ".json", ".md", ".yml", ".yaml",
     };
 
     public static bool IsCodeFile(string path) => CodeExtensions.Contains(Path.GetExtension(path));

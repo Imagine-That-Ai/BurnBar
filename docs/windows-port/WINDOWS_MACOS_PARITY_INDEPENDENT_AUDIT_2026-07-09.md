@@ -192,16 +192,16 @@ unproven host behavior to certification:
   coordinates, confines files to the configured project root, and returns
   relative reference paths. Tree-sitter symbol extraction now covers the
   repository's primary C#, JavaScript, Rust, Swift, Python, TypeScript, and TSX
-  files. Java/Kotlin/Go grammar coverage is now implemented, and a dedicated
-  Windows x64/ARM64 MSVC workflow includes native x64 smoke coverage; its first
-  green Windows run and a live Windows LSP host remain separate evidence gates,
-  so this does not yet promote the full parser row to F2 completion. The
-  inventory now includes the macOS C/C++/Objective-C, JSON, Markdown, and YAML
-  extension set; unsupported grammar formats use bounded lexical fallback.
+  files, Java/Kotlin/Go, and the remaining macOS inventory grammars for
+  C/C++/Objective-C, JSON, Markdown, and YAML. The dedicated Windows x64/ARM64
+  MSVC workflow now smoke-tests each grammar; its first green Windows run and a
+  live Windows LSP host remain separate evidence gates, so this does not yet
+  promote the full parser row to F2 completion. The inventory still uses bounded
+  lexical fallback only when a parser is unavailable.
 
 These changes are covered by focused managed-runtime (40/40 mission/runtime
 tests plus 41/41 managed-agent-runtime tests), CloudSync (60/60), connector
-(99/99), presentation (759/759), Computer Use, bridge-policy, and
+(99/99), presentation (760/760), Computer Use, bridge-policy, and
 provider-boundary tests. They are an
 implementation increment, not a claim that
 the F2 workstreams are all complete: full macOS semantic/provider embedding
