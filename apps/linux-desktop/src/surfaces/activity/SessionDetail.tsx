@@ -18,6 +18,7 @@ export function SessionDetail({ session, detailId }: { session: SessionEntry; de
   const [bodyError, setBodyError] = useState<string | null>(null);
   const [resumeLoading, setResumeLoading] = useState(false);
   const [resumeStatus, setResumeStatus] = useState<string | null>(null);
+  const replayID = session.sourceID ?? session.id;
 
   const renderReplayError = (result: SessionReplayResult): string => {
     if (result.errorCode === 'session_not_found') {
@@ -38,7 +39,7 @@ export function SessionDetail({ session, detailId }: { session: SessionEntry; de
     }
     setBodyLoading(true);
     try {
-      const result = await bridge.sessionReplay(session.id);
+      const result = await bridge.sessionReplay(replayID);
       if (result.kind === 'error' || result.errorCode) {
         setBody(null);
         setBodyError(renderReplayError(result));
@@ -65,7 +66,7 @@ export function SessionDetail({ session, detailId }: { session: SessionEntry; de
     }
     setResumeLoading(true);
     try {
-      const result = await bridge.sessionResume(session.id);
+      const result = await bridge.sessionResume(replayID);
       if (result.kind === 'error' || result.errorCode) {
         setResumeStatus(renderReplayError(result));
       } else if (result.pid) {
@@ -113,6 +114,16 @@ export function SessionDetail({ session, detailId }: { session: SessionEntry; de
           <dt>Session id</dt>
           <dd className="mono">{session.id}</dd>
         </div>
+        <div className="fact">
+          <dt>Source identity</dt>
+          <dd className="mono">{session.sourceID ?? 'Unavailable from daemon row'}</dd>
+        </div>
+        {session.projectName ? (
+          <div className="fact">
+            <dt>Project</dt>
+            <dd>{session.projectName}</dd>
+          </div>
+        ) : null}
       </dl>
       <div className="activity-session-actions" aria-label="Persisted session actions">
         <button type="button" className="ghost" onClick={() => void loadBody()} disabled={bodyLoading}>

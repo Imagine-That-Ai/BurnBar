@@ -302,7 +302,10 @@ describe('VAL-RPC-002 bridge behavior', () => {
         startedAt: '2026-07-13T12:00:00Z',
         tokens: 20,
         costUsd: 0.12,
-        title: 'BurnBar'
+        title: 'BurnBar',
+        sourceID: 'Codex:session-2',
+        providerSessionID: 'Codex:session-2',
+        projectName: 'BurnBar'
       }]
     });
   });
@@ -311,6 +314,51 @@ describe('VAL-RPC-002 bridge behavior', () => {
     invoke.mockResolvedValueOnce({ projects: [{ title: 'Apollo', path: '/tmp/Apollo' }] });
     const b = await bridge();
     await expect(b.projectList()).resolves.toEqual([]);
+  });
+
+  it('normalizes plain provider session ids to the stable conversation identity', async () => {
+    invoke.mockResolvedValueOnce({
+      usage: [{
+        sessionID: 'session-plain',
+        providerID: 'codex',
+        modelID: 'gpt-5',
+        recordedAt: '2026-07-13T12:00:00Z',
+        inputTokens: 1,
+        outputTokens: 2,
+        cost: 0
+      }]
+    });
+    const b = await bridge();
+    await expect(b.sessionList()).resolves.toMatchObject({
+      sessions: [{
+        id: 'session-plain',
+        sourceID: 'Codex:session-plain',
+        providerSessionID: 'session-plain'
+      }]
+    });
+  });
+
+  it('retains indexed search-hit source identity without inventing usage metrics', async () => {
+    invoke.mockResolvedValueOnce({
+      hits: [{
+        sourceID: 'Claude Code:session-search',
+        sourceKind: 'conversation',
+        title: 'Indexed result',
+        snippet: 'Untrusted indexed text',
+        provider: 'claude_code',
+        projectName: 'BurnBar'
+      }]
+    });
+    const b = await bridge();
+    await expect(b.sessionSearch('indexed')).resolves.toMatchObject({
+      sessions: [{
+        id: 'Claude Code:session-search',
+        sourceID: 'Claude Code:session-search',
+        title: 'Indexed result',
+        tokens: 0,
+        costUsd: 0
+      }]
+    });
   });
 
   it('mission detail and cancellation use canonical get/cancel wire commands', async () => {
