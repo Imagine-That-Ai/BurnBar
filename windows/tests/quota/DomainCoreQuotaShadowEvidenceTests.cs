@@ -72,24 +72,50 @@ public sealed class DomainCoreQuotaShadowEvidenceTests : IDisposable
     {
         var spool = new DomainCoreQuotaShadowEvidenceSpool(_directory);
         var batchSizes = new List<int>();
+        var delays = new Queue<TaskCompletionSource>();
+        var delayStarted = new SemaphoreSlim(0);
+        Task ControlledDelay(TimeSpan _)
+        {
+            var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            lock (delays) delays.Enqueue(completion);
+            delayStarted.Release();
+            return completion.Task;
+        }
+        async Task ReleaseNextDelay()
+        {
+            await delayStarted.WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
+            TaskCompletionSource completion;
+            lock (delays) completion = delays.Dequeue();
+            completion.SetResult();
+        }
+        var uploaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var coordinator = new DomainCoreQuotaShadowUploadCoordinator(
             spool,
             (samples, _) =>
             {
                 lock (batchSizes) batchSizes.Add(samples.Count);
+                uploaded.SetResult();
                 return Task.CompletedTask;
             },
-            TimeSpan.FromMilliseconds(60));
+            TimeSpan.FromSeconds(5),
+            ControlledDelay);
 
         spool.Append(Sample(1));
         coordinator.Schedule();
-        await Task.Delay(40, CancellationToken.None);
+        await delayStarted.WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
         spool.Append(Sample(2));
         coordinator.Schedule();
-        await Task.Delay(40, CancellationToken.None);
+        TaskCompletionSource first;
+        lock (delays) first = delays.Dequeue();
+        first.SetResult();
+        await delayStarted.WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
         spool.Append(Sample(3));
         coordinator.Schedule();
-        await Task.Delay(160, CancellationToken.None);
+        TaskCompletionSource second;
+        lock (delays) second = delays.Dequeue();
+        second.SetResult();
+        await ReleaseNextDelay();
+        await uploaded.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         lock (batchSizes) Assert.Equal(new[] { 3 }, batchSizes);
         Assert.Equal(0, spool.PendingSampleCount());

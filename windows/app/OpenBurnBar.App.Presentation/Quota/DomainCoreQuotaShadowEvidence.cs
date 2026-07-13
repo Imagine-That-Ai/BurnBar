@@ -195,6 +195,7 @@ internal sealed class DomainCoreQuotaShadowUploadCoordinator
     private readonly SemaphoreSlim _flushGate = new(1, 1);
     private readonly DomainCoreQuotaShadowEvidenceSpool _spool;
     private readonly Func<IReadOnlyList<DomainCoreQuotaShadowSampleV1>, CancellationToken, Task> _uploader;
+    private readonly Func<TimeSpan, Task> _delay;
     private readonly TimeSpan _debounce;
     private Task? _scheduledFlush;
     private long _scheduleVersion;
@@ -202,10 +203,12 @@ internal sealed class DomainCoreQuotaShadowUploadCoordinator
     internal DomainCoreQuotaShadowUploadCoordinator(
         DomainCoreQuotaShadowEvidenceSpool spool,
         Func<IReadOnlyList<DomainCoreQuotaShadowSampleV1>, CancellationToken, Task> uploader,
-        TimeSpan? debounce = null)
+        TimeSpan? debounce = null,
+        Func<TimeSpan, Task>? delay = null)
     {
         _spool = spool ?? throw new ArgumentNullException(nameof(spool));
         _uploader = uploader ?? throw new ArgumentNullException(nameof(uploader));
+        _delay = delay ?? (duration => Task.Delay(duration));
         _debounce = debounce ?? TimeSpan.FromSeconds(5);
         if (_debounce < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(debounce));
     }
@@ -227,7 +230,7 @@ internal sealed class DomainCoreQuotaShadowUploadCoordinator
             long observedVersion;
             lock (_scheduleGate) observedVersion = _scheduleVersion;
 
-            await Task.Delay(_debounce).ConfigureAwait(false);
+            await _delay(_debounce).ConfigureAwait(false);
 
             lock (_scheduleGate)
             {
