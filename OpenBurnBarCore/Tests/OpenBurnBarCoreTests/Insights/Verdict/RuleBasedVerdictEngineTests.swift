@@ -1,5 +1,6 @@
 import XCTest
 @testable import OpenBurnBarCore
+@testable import OpenBurnBarInsights
 
 final class RuleBasedVerdictEngineTests: XCTestCase {
 

@@ -445,13 +445,22 @@ let openBurnBarCoreExcludes = [
     // consumed only by Views/ (excluded) — drop the whole tree off-Apple rather than
     // the prior partial set that left model files referencing excluded types.
     "AgentInsights/AgentInsightsViewModel.swift",
-    // P-08: AgentInsightsBundleAssembler.swift moved out of Core into the
-    // Apple-only OpenBurnBarInsights target (FIX-6 re-slice), which is pruned WHOLE
-    // off-Apple, so the file no longer exists in the off-Apple Core source tree and
-    // its exclude entry is removed here (a stale exclude on a moved-out file makes
-    // SwiftPM reject the off-Apple manifest). The mover owns the exclude deletion.
-    "Demo/InsightVerdictDemoFixture.swift",
-    "Services/Insights",
+    // P-08/P-09: files that moved out of Core into the Apple-only OpenBurnBarInsights
+    // target (which is pruned WHOLE off-Apple) no longer exist in the off-Apple Core
+    // source tree, so their stale exclude entries are removed by the mover (a stale
+    // exclude on a moved-out file makes SwiftPM reject the off-Apple manifest):
+    // P-08 removed "AgentInsights/AgentInsightsBundleAssembler.swift" (FIX-6); P-09
+    // removes "Demo/InsightVerdictDemoFixture.swift" (FIX-8, moved to
+    // OpenBurnBarInsights/Demo/ with its RuleBasedVerdictEngine).
+    // P-09 also narrows "Services/Insights" -> "Services/Insights/Share": the
+    // Adapters/Cadence/Trace/Verdict subtrees + InsightProviderGatewayRegistry.swift
+    // all moved to OpenBurnBarInsights, leaving only Share/InsightShareCardRenderer.swift
+    // (AppKit/UIKit) in Core until S14/UI. The narrowed path excludes exactly that file.
+    // NOTE: P-15 (merged earlier on wave3-base) already moved
+    // SwitcherBrowserLaunchService.swift into OpenBurnBarLaunchServices and removed its
+    // Core off-Apple exclude (see the P-15 comment above), so it is intentionally NOT
+    // re-listed here even though p-09's base (pre-P-15) still carried that exclude.
+    "Services/Insights/Share",
     "SharedModels/AgentProvider+LogoBackdrop.swift",
     "SharedModels/AgentWatchLiveActivityAttributes.swift",
     "SharedModels/BurnBarLiveActivityAttributes.swift",
