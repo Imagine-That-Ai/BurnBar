@@ -210,7 +210,8 @@ final class CloudVaultDocumentRewrapDomainCoreAdapterTests: XCTestCase {
                 ]) { left, _ in left }
             ],
             ["field": ["nonce": "AA=="]],
-            ["field": validPayload.merging(["futureMember": 1]) { left, _ in left }]
+            ["field": validPayload.merging(["futureMember": 1]) { left, _ in left }],
+            ["field": validPayload.merging(["schemaVersion": true]) { _, right in right }]
         ] + reservedFields.map { [$0: validPayload] }
         for source in invalidMaps {
             let recorder = RewrapRecorder()

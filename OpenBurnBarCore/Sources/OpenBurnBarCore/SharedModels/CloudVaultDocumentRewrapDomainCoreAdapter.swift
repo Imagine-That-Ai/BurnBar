@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(CoreFoundation)
 import CoreFoundation
+#endif
 
 #if canImport(OpenBurnBarDomainCoreFFI)
 import OpenBurnBarDomainCoreFFI
@@ -779,7 +781,7 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
     private static func optionalUInt32(_ raw: [String: Any], _ name: String) throws -> UInt32? {
         guard let rawValue = raw[name] else { return nil }
         guard let number = rawValue as? NSNumber,
-              CFGetTypeID(number) != CFBooleanGetTypeID() else {
+              !isBoolean(number) else {
             throw CloudVaultDocumentRewrapAdapterError.invalidInput
         }
         let double = number.doubleValue
@@ -790,6 +792,15 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
             throw CloudVaultDocumentRewrapAdapterError.invalidInput
         }
         return UInt32(double)
+    }
+
+    private static func isBoolean(_ number: NSNumber) -> Bool {
+        #if canImport(CoreFoundation)
+        return CFGetTypeID(number) == CFBooleanGetTypeID()
+        #else
+        // swift-corelibs-foundation has no standalone CoreFoundation module.
+        return String(cString: number.objCType) == "c"
+        #endif
     }
 
     #if canImport(OpenBurnBarDomainCoreFFI)
