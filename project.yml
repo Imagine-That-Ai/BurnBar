@@ -495,11 +495,22 @@ targets:
             done
           fi
     dependencies:
+      # Core-decomposition P-18 (S17): the app-side OpenBurnBarDaemon target
+      # mirrors OpenBurnBarDaemon/Package.swift — its 133 source files import the
+      # UI-free OpenBurnBarEngine umbrella (+ ComputerUseCore/IrohRelay/Media/
+      # LinuxSecurity), NEVER the SwiftUI/AppKit OpenBurnBarCore monolith, so this
+      # binary has no path to the UI. See docs/CORE_DECOMPOSITION_PROGRAM.md.
       - package: OpenBurnBarCore
-        product: OpenBurnBarCore
+        product: OpenBurnBarEngine
         link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
+        link: false
+      - package: OpenBurnBarCore
+        product: OpenBurnBarIrohRelay
+        link: false
+      - package: OpenBurnBarCore
+        product: OpenBurnBarMedia
         link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarLinuxSecurity
@@ -527,11 +538,18 @@ targets:
         OTHER_CODE_SIGN_FLAGS: --identifier com.openburnbar.daemon --options runtime,library
         SKIP_INSTALL: true
     dependencies:
+      # Core-decomposition P-18 (S17): OpenBurnBarDaemonMain imports OpenBurnBarEngine
+      # (the UI-free umbrella), matching OpenBurnBarDaemon/Package.swift; no path to
+      # the OpenBurnBarCore UI monolith. See docs/CORE_DECOMPOSITION_PROGRAM.md.
       - target: OpenBurnBarDaemon
       - package: OpenBurnBarCore
-        product: OpenBurnBarCore
+        product: OpenBurnBarEngine
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
+      - package: OpenBurnBarCore
+        product: OpenBurnBarIrohRelay
+      - package: OpenBurnBarCore
+        product: OpenBurnBarMedia
       - package: OpenBurnBarCore
         product: OpenBurnBarLinuxSecurity
 
@@ -741,12 +759,16 @@ targets:
         PRODUCT_NAME: OpenBurnBarDaemonTests
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.daemon.tests
     dependencies:
+      # Core-decomposition P-18 (S17): the daemon test bundle links the UI-free
+      # OpenBurnBarEngine umbrella (58 test files import it; ZERO import
+      # OpenBurnBarCore), matching the OpenBurnBarDaemon target under test.
+      # See docs/CORE_DECOMPOSITION_PROGRAM.md.
       - target: OpenBurnBarDaemon
       - target: OpenBurnBarDaemonExecutable
         link: false
         embed: false
       - package: OpenBurnBarCore
-        product: OpenBurnBarCore
+        product: OpenBurnBarEngine
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
       - package: OpenBurnBarCore
