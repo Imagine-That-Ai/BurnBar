@@ -114,4 +114,22 @@ public sealed class CompanionCliServerTests
         Assert.Contains("fusion-1", response, System.StringComparison.Ordinal);
         Assert.Contains("accepted", response, System.StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task CommandRouter_ExposesCodeMemoryHook()
+    {
+        var router = new CompanionCliCommandRouter(
+            code: (request, _) => Task.FromResult<object?>(new
+            {
+                op = request.GetProperty("op").GetString(),
+                ready = true,
+            }));
+
+        string response = await router.HandleAsync(
+            "{\"op\":\"code.status\"}",
+            CancellationToken.None);
+
+        Assert.Contains("code.status", response, System.StringComparison.Ordinal);
+        Assert.Contains("ready", response, System.StringComparison.Ordinal);
+    }
 }

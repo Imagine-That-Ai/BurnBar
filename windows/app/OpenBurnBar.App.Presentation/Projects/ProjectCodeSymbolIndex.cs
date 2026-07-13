@@ -28,6 +28,7 @@ public sealed class ProjectCodeSymbolIndex : IDisposable
     private FileSystemWatcher? _watcher;
     private Timer? _refreshTimer;
     private IReadOnlyList<ProjectCodeSymbol> _symbols = Array.Empty<ProjectCodeSymbol>();
+    private ProjectCodeIndexSnapshot? _snapshot;
 
     public ProjectCodeSymbolIndex(
         string root,
@@ -60,6 +61,21 @@ public sealed class ProjectCodeSymbolIndex : IDisposable
             lock (_gate)
             {
                 return _symbols.ToArray();
+            }
+        }
+    }
+
+    public string Root => _root;
+
+    public bool IsWatching => _watcher is not null;
+
+    public ProjectCodeIndexSnapshot? Snapshot
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _snapshot;
             }
         }
     }
@@ -219,6 +235,10 @@ public sealed class ProjectCodeSymbolIndex : IDisposable
             }
 
             SetSymbols(snapshot.Symbols);
+            lock (_gate)
+            {
+                _snapshot = snapshot;
+            }
             return true;
         }
         catch (JsonException)
@@ -353,6 +373,10 @@ public sealed class ProjectCodeSymbolIndex : IDisposable
     private ProjectCodeIndexSnapshot Persist(bool truncated = false, string parserMode = "lexical")
     {
         ProjectCodeIndexSnapshot snapshot = new(_root, DateTimeOffset.UtcNow, Symbols, truncated, parserMode);
+        lock (_gate)
+        {
+            _snapshot = snapshot;
+        }
         try
         {
             string? directory = Path.GetDirectoryName(_indexPath);

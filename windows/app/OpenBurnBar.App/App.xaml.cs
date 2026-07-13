@@ -17,6 +17,7 @@ using OpenBurnBar.App.UsageRuntime;
 using OpenBurnBar.App.ManagedAgentRuntime.Gateway;
 using OpenBurnBar.App.ManagedAgentRuntime.Run;
 using OpenBurnBar.App.Presentation.ElderWand;
+using OpenBurnBar.App.Presentation.Projects;
 
 namespace OpenBurnBar.App;
 
@@ -48,6 +49,7 @@ public partial class App : Application
     private CompanionCliServer? _companionCli;
     private HeadlessRunService? _headlessRuns;
     private ElderWandFusionOrchestrator? _fusion;
+    private ProjectCodeMemoryService? _projectCodeMemory;
     private bool _hotkeyRegistered;
     private bool _activationRegistered;
     private bool _isExiting;
@@ -319,11 +321,19 @@ public partial class App : Application
             _fusion = new ElderWandFusionOrchestrator(
                 ExecuteFusionToolAsync,
                 new JsonLinesFusionRunJournal(fusionJournalPath));
+            _projectCodeMemory = CreateProjectCodeMemoryService();
+            if (_projectCodeMemory is not null)
+            {
+                _projectCodeMemory.TryLoad();
+                _projectCodeMemory.StartWatching();
+                _ = RefreshProjectCodeMemoryAsync(_projectCodeMemory);
+            }
             var router = new CompanionCliCommandRouter(
                 _gatewayComposition?.Router,
                 runHandler.SubmitAsync,
                 runHandler.ResumeAsync,
-                HandleFusionRunAsync);
+                HandleFusionRunAsync,
+                HandleProjectCodeAsync);
             _companionCli = new CompanionCliServer(port, router);
             _companionCli.Start();
             AppDiagnostics.LogEvent("companion-cli.started", $"127.0.0.1:{port}");
@@ -334,7 +344,126 @@ public partial class App : Application
             _companionCli = null;
             _headlessRuns = null;
             _fusion = null;
+            _projectCodeMemory?.Dispose();
+            _projectCodeMemory = null;
         }
+    }
+
+    private static ProjectCodeMemoryService? CreateProjectCodeMemoryService()
+    {
+        string? projectRoot = Environment.GetEnvironmentVariable("OPENBURNBAR_PROJECT_ROOT");
+        if (string.IsNullOrWhiteSpace(projectRoot) || !Directory.Exists(projectRoot))
+        {
+            return null;
+        }
+
+        string? parserPath = Environment.GetEnvironmentVariable("OPENBURNBAR_CODE_STATIC_PARSER_PATH");
+        if (string.IsNullOrWhiteSpace(parserPath))
+        {
+            string packagedPath = Path.Combine(
+                AppContext.BaseDirectory,
+                "ProjectCode",
+                "project-code-static-parser.exe");
+            parserPath = File.Exists(packagedPath) ? packagedPath : null;
+        }
+
+        IProjectCodeStaticParserClient? parser = !string.IsNullOrWhiteSpace(parserPath)
+            && File.Exists(parserPath)
+            ? new JsonLinesProjectCodeStaticParserClient(parserPath)
+            : null;
+        string? indexPath = Environment.GetEnvironmentVariable("OPENBURNBAR_PROJECT_INDEX_PATH");
+        var index = new ProjectCodeSymbolIndex(projectRoot, indexPath, parser: parser);
+        return new ProjectCodeMemoryService(index, parser);
+    }
+
+    private static async Task RefreshProjectCodeMemoryAsync(ProjectCodeMemoryService service)
+    {
+        try
+        {
+            await service.RefreshAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            AppDiagnostics.LogException("project-code-memory.refresh", ex);
+        }
+    }
+
+    private async Task<object?> HandleProjectCodeAsync(JsonElement request, CancellationToken cancellationToken)
+    {
+        ProjectCodeMemoryService? service = _projectCodeMemory;
+        if (service is null)
+        {
+            throw new InvalidOperationException("project_code_unavailable");
+        }
+
+        string op = request.TryGetProperty("op", out JsonElement opElement)
+            ? opElement.GetString() ?? string.Empty
+            : string.Empty;
+        switch (op)
+        {
+            case "code.index":
+                return ToProjectCodeStatus(await service.RefreshAsync(cancellationToken).ConfigureAwait(false), service);
+            case "code.search":
+                return new
+                {
+                    query = RequiredString(request, "query"),
+                    hits = service.Search(
+                        RequiredString(request, "query"),
+                        OptionalBoundedInt(request, "limit", 50, 1, 100)),
+                };
+            case "code.symbol":
+                return new
+                {
+                    name = RequiredString(request, "name"),
+                    symbols = service.FindSymbol(
+                        RequiredString(request, "name"),
+                        OptionalBoundedInt(request, "limit", 50, 1, 100)),
+                };
+            case "code.status":
+                return ToProjectCodeStatus(service.Snapshot, service);
+            default:
+                throw new ArgumentException("Unknown project-code operation.", nameof(request));
+        }
+    }
+
+    private static object ToProjectCodeStatus(
+        ProjectCodeIndexSnapshot? snapshot,
+        ProjectCodeMemoryService service) => new
+        {
+            root = service.Root,
+            watching = service.IsWatching,
+            loaded = snapshot is not null,
+            refreshedAt = snapshot?.RefreshedAt,
+            parserMode = snapshot?.ParserMode ?? "none",
+            symbolCount = snapshot?.Symbols.Count ?? service.Symbols.Count,
+            truncated = snapshot?.Truncated ?? false,
+        };
+
+    private static string RequiredString(JsonElement request, string property)
+    {
+        if (!request.TryGetProperty(property, out JsonElement element)
+            || element.ValueKind != JsonValueKind.String
+            || string.IsNullOrWhiteSpace(element.GetString()))
+        {
+            throw new ArgumentException($"{property} is required.", nameof(request));
+        }
+
+        return element.GetString()!;
+    }
+
+    private static int OptionalBoundedInt(JsonElement request, string property, int fallback, int minimum, int maximum)
+    {
+        if (!request.TryGetProperty(property, out JsonElement element))
+        {
+            return fallback;
+        }
+
+        if (!element.TryGetInt32(out int value) || value < minimum || value > maximum)
+        {
+            throw new ArgumentException($"{property} must be between {minimum} and {maximum}.", nameof(request));
+        }
+
+        return value;
     }
 
     private async Task<object?> HandleFusionRunAsync(JsonElement request, CancellationToken cancellationToken)
@@ -548,6 +677,8 @@ public partial class App : Application
         }
         _headlessRuns = null;
         _fusion = null;
+        _projectCodeMemory?.Dispose();
+        _projectCodeMemory = null;
         _gatewayComposition?.HttpClient.Dispose();
         _gatewayComposition = null;
         _flyout?.Close();

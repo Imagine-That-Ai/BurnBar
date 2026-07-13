@@ -110,6 +110,11 @@ unproven host behavior to certification:
   Tree-sitter JSONL parser through a direct process client with Git-blob SHA
   verification, and the Windows release workflow builds and signs one parser
   executable for each RID before packaging it into portable and MSIX outputs.
+- The app now composes a long-lived `ProjectCodeMemoryService` when a project
+  root is configured. It restores and watches the metadata-only index, refreshes
+  asynchronously with lexical fallback or Tree-sitter parsing, and exposes
+  bounded `code.index`, `code.search`, `code.symbol`, and `code.status` companion
+  operations without persisting source text.
 - App startup composes the loopback gateway, companion CLI, and durable run
   journal together. The CLI exposes health/models plus bounded `run.submit` and
   `run.resume` commands; only explicitly safe built-in steps execute by default,
@@ -120,8 +125,8 @@ unproven host behavior to certification:
   gateway executor; unconfigured provider routes fail closed. Provider response
   bodies are bounded before entering the fusion loop.
 
-These changes are covered by focused managed-runtime, presentation, Computer
-Use, bridge-policy, and provider-boundary tests. They are an implementation increment, not a claim that
+These changes are covered by focused managed-runtime (97/97), presentation
+(749/749), Computer Use, bridge-policy, and provider-boundary tests. They are an implementation increment, not a claim that
 the F2 workstreams are all promoted to `Real`: full static parsing, live
 Pensieve storage integration, production composition of every F2 service,
 physical Computer Use/media safety, and host evidence still remain. The
