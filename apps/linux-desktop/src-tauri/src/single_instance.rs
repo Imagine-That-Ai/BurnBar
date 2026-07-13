@@ -434,17 +434,21 @@ pub(crate) fn acquire(directory: &Path, startup_messages: &[Message]) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    static TEMP_DIRECTORY_COUNTER: AtomicU64 = AtomicU64::new(0);
 
     fn temp_directory() -> PathBuf {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
+        let sequence = TEMP_DIRECTORY_COUNTER.fetch_add(1, Ordering::Relaxed);
         // Keep the Unix socket path below sockaddr_un's 108-byte limit even
         // when a test runner provides a deeply nested TMPDIR.
         let directory =
-            PathBuf::from("/tmp").join(format!("obb-si-{}-{nonce}", std::process::id()));
+            PathBuf::from("/tmp").join(format!("obb-si-{}-{nonce}-{sequence}", std::process::id()));
         fs::create_dir_all(&directory).unwrap();
         directory
     }
