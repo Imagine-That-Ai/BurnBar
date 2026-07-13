@@ -23,6 +23,7 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+. (Join-Path (Join-Path $scriptRoot '..') (Join-Path 'scripts' 'Assert-NativeEngineManifest.ps1'))
 $publish = (Resolve-Path -LiteralPath $PublishDir).Path
 $manifestSource = Join-Path $scriptRoot "Package.appxmanifest"
 $imagesSource = Join-Path $scriptRoot "Images"
@@ -70,6 +71,11 @@ $priWork = Join-Path ([System.IO.Path]::GetTempPath()) ("openburnbar-pri-" + [gu
 try {
     Copy-Item -Path (Join-Path $publish "*") -Destination $stage -Recurse -Force
     Copy-Item -LiteralPath $imagesSource -Destination (Join-Path $stage "Images") -Recurse -Force
+
+    $nativeEngine = Join-Path $stage "OpenBurnBarCoreCAbi.dll"
+    if (Test-Path -LiteralPath $nativeEngine -PathType Leaf) {
+        Assert-OpenBurnBarNativeEngineManifest -Root $stage
+    }
 
     $document = [System.Xml.XmlDocument]::new()
     $document.PreserveWhitespace = $false

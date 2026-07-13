@@ -73,6 +73,9 @@
     <Error
       Condition="!Exists('$(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCore_OpenBurnBarCore.resources')"
       Text="Required Swift resource bundle is missing: $(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCore_OpenBurnBarCore.resources" />
+    <Error
+      Condition="!Exists('$(OpenBurnBarNativeEngineDirectory)\native-engine-manifest.json')"
+      Text="Required native-engine manifest is missing: $(OpenBurnBarNativeEngineDirectory)\native-engine-manifest.json" />
   </Target>
 
   <ItemGroup Condition="Exists('$(OpenBurnBarProjectCodeParserPath)')">

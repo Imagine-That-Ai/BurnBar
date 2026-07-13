@@ -286,6 +286,16 @@ jobs:
               -o "publish/$rid"
           done
 
+      - name: Verify native-engine publish layouts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          . "$env:GITHUB_WORKSPACE/windows/packaging/scripts/Assert-NativeEngineManifest.ps1"
+          foreach ($rid in @("win-x64", "win-arm64")) {
+            $publishRoot = Join-Path $env:GITHUB_WORKSPACE "publish/$rid"
+            Assert-OpenBurnBarNativeEngineManifest -Root $publishRoot
+          }
+
       - name: Authenticode sign (Azure Artifact Signing — no staple analog)
         if: steps.config.outputs.codesign == 'true'
         uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0

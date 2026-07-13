@@ -205,7 +205,10 @@ unproven host behavior to certification:
   DLL into every RID's publish output, and records SHA-256/size entries for its
   files in `native-engine-manifest.json`. The Windows app publish target also
   carries that directory into portable and MSIX layouts, failing closed when a
-  required native-engine publish omits it.
+  required native-engine publish omits it. Portable/MSIX packagers and the
+  release workflow independently reverify every manifest file's relative path,
+  size, and SHA-256, including the resource bundle, before an artifact can be
+  signed or zipped.
 
 These changes are covered by focused managed-runtime (40/40 mission/runtime
 tests plus 41/41 managed-agent-runtime tests), CloudSync (60/60), connector
