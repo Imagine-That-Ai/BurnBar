@@ -15,7 +15,9 @@ public sealed class ProjectCodeMemoryServiceTests
         try
         {
             string sourcePath = Path.Combine(root, "Widget.cs");
-            await File.WriteAllTextAsync(sourcePath, "public class Widget { public void Run() {} }");
+            await File.WriteAllTextAsync(
+                sourcePath,
+                "public class Widget { public void Run() {} }\nconst string api_key = \"sk-live-abcdefghijklmnopqrstuvwxyz123456\";");
             var service = new ProjectCodeMemoryService(new ProjectCodeSymbolIndex(root));
             service.StartWatching();
 
@@ -27,6 +29,13 @@ public sealed class ProjectCodeMemoryServiceTests
             Assert.Equal(0, hit.Score);
             Assert.True(service.IsWatching);
             Assert.DoesNotContain("public class", File.ReadAllText(Path.Combine(root, ".openburnbar", "project-symbols.json")));
+
+            ProjectCodeContextPack pack = service.BuildContextPack("Widget");
+            Assert.Contains("<<<UNTRUSTED_SOURCE_BEGIN>>>", pack.Context, System.StringComparison.Ordinal);
+            Assert.Contains("[REDACTED]", pack.Context, System.StringComparison.Ordinal);
+            Assert.DoesNotContain("sk-live-abcdefghijklmnopqrstuvwxyz123456", pack.Context, System.StringComparison.Ordinal);
+            Assert.True(pack.UntrustedContentWrapped);
+            Assert.True(pack.WrappedCount >= 1);
 
             var restored = new ProjectCodeMemoryService(new ProjectCodeSymbolIndex(root));
             Assert.True(restored.TryLoad());
@@ -54,6 +63,32 @@ public sealed class ProjectCodeMemoryServiceTests
             await service.RefreshAsync();
             Assert.Throws<System.ArgumentException>(() => service.Search(string.Empty));
             Assert.Throws<System.ArgumentOutOfRangeException>(() => service.Search("x", 101));
+            service.Dispose();
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ContextPack_EnforcesByteBudgetAndDoesNotPersistSource()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "obb-code-memory-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(root);
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(root, "Alpha.cs"), "public class Alpha { }\n");
+            var service = new ProjectCodeMemoryService(new ProjectCodeSymbolIndex(root));
+            await service.RefreshAsync();
+
+            ProjectCodeContextPack pack = service.BuildContextPack("Alpha", maxBytes: 32);
+            Assert.True(pack.Truncated);
+            Assert.True(System.Text.Encoding.UTF8.GetByteCount(pack.Context) <= 32);
+            Assert.DoesNotContain("public class", File.ReadAllText(Path.Combine(root, ".openburnbar", "project-symbols.json")));
             service.Dispose();
         }
         finally

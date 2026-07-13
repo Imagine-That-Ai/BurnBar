@@ -131,5 +131,10 @@ public sealed class CompanionCliServerTests
 
         Assert.Contains("code.status", response, System.StringComparison.Ordinal);
         Assert.Contains("ready", response, System.StringComparison.Ordinal);
+
+        string context = await router.HandleAsync(
+            "{\"op\":\"code.context_pack\",\"query\":\"Widget\"}",
+            CancellationToken.None);
+        Assert.Contains("code.context_pack", context, System.StringComparison.Ordinal);
     }
 }

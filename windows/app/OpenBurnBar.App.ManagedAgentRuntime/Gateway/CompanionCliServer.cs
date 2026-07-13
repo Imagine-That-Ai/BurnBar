@@ -264,7 +264,7 @@ public sealed class CompanionCliCommandRouter : ICompanionCliCommandHandler
                 "run.submit" => await InvokeRunAsync(_submit, root, cancellationToken).ConfigureAwait(false),
                 "run.resume" => await InvokeRunAsync(_resume, root, cancellationToken).ConfigureAwait(false),
                 "fusion.run" => await InvokeRunAsync(_fusion, root, cancellationToken).ConfigureAwait(false),
-                "code.index" or "code.search" or "code.symbol" or "code.status" =>
+                "code.index" or "code.search" or "code.symbol" or "code.status" or "code.context_pack" =>
                     await InvokeRunAsync(_code, root, cancellationToken).ConfigureAwait(false),
                 "ping" => JsonSerializer.Serialize(new { ok = true, pong = true }),
                 "version" => JsonSerializer.Serialize(new { ok = true, version = "f2-companion-cli-2" }),

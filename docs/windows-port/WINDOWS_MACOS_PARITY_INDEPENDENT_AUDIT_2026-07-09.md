@@ -116,8 +116,10 @@ unproven host behavior to certification:
 - The app now composes a long-lived `ProjectCodeMemoryService` when a project
   root is configured. It restores and watches the metadata-only index, refreshes
   asynchronously with lexical fallback or Tree-sitter parsing, and exposes
-  bounded `code.index`, `code.search`, `code.symbol`, and `code.status` companion
-  operations without persisting source text.
+  bounded `code.index`, `code.search`, `code.symbol`, `code.status`, and
+  `code.context_pack` companion operations without persisting source text.
+  Context packs are explicit, path-confined, UTF-8 bounded, secret-redacted,
+  and wrapped as untrusted source before returning to a caller.
 - App startup composes the loopback gateway, companion CLI, and durable run
   journal together. The CLI exposes health/models plus bounded `run.submit` and
   `run.resume` commands; only explicitly safe built-in steps execute by default,

@@ -419,6 +419,11 @@ public partial class App : Application
                         RequiredString(request, "name"),
                         OptionalBoundedInt(request, "limit", 50, 1, 100)),
                 };
+            case "code.context_pack":
+                return service.BuildContextPack(
+                    RequiredString(request, "query"),
+                    OptionalBoundedInt(request, "limit", 10, 1, ProjectCodeMemoryService.MaxContextPackHits),
+                    OptionalBoundedInt(request, "maxBytes", 24_000, 1, ProjectCodeMemoryService.MaxContextPackBytes));
             case "code.status":
                 return ToProjectCodeStatus(service.Snapshot, service);
             default:

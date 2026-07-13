@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -8,11 +11,26 @@ namespace OpenBurnBar.App.Presentation.Projects;
 
 /// <summary>
 /// Long-lived Windows project-code memory seam. It keeps only bounded symbol
-/// metadata and integrity state; source text is read transiently by the parser
-/// and never enters the persisted index or companion responses.
+/// metadata and integrity state. Source text is read only for an explicit,
+/// bounded context-pack request; it is never persisted and is always wrapped as
+/// untrusted data before it leaves the service.
 /// </summary>
 public sealed class ProjectCodeMemoryService : IDisposable
 {
+    public const int MaxContextPackHits = 20;
+    public const int MaxContextPackBytes = 64 * 1024;
+    private const int ContextLinesAroundSymbol = 3;
+    private const int MaxSourceLineCharacters = 16 * 1024;
+    private const long MaxSourceFileBytes = 8 * 1024 * 1024;
+    private static readonly Regex SecretAssignment = new(
+        "(?i)(\\b(?:api[_-]?key|secret|token|password|authorization)\\b\\s*[:=]\\s*)([\\\"']?)[A-Za-z0-9_./+=:-]{12,}\\2",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex KnownSecretToken = new(
+        "(?i)(?:sk-(?:ant-)?|gh[pousr]_|xox[baprs]-|AIza)[A-Za-z0-9_./+=:-]{12,}",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex PrivateKey = new(
+        "-----BEGIN [A-Z0-9 ]+ PRIVATE KEY-----[\\s\\S]*?-----END [A-Z0-9 ]+ PRIVATE KEY-----",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private readonly ProjectCodeSymbolIndex _index;
     private readonly IProjectCodeStaticParserClient? _parser;
 
@@ -99,7 +117,182 @@ public sealed class ProjectCodeMemoryService : IDisposable
             .ToArray();
     }
 
+    /// <summary>
+    /// Builds a transient source context pack for an explicit query. The index
+    /// remains metadata-only; snippets are bounded, path-confined, secret
+    /// redacted, and marked as untrusted so callers cannot mistake source data
+    /// for instructions.
+    /// </summary>
+    public ProjectCodeContextPack BuildContextPack(
+        string query,
+        int limit = 10,
+        int maxBytes = 24_000)
+    {
+        string normalized = (query ?? string.Empty).Trim();
+        if (normalized.Length == 0 || normalized.Length > 256)
+        {
+            throw new ArgumentException("A context query between 1 and 256 characters is required.", nameof(query));
+        }
+
+        if (limit is < 1 or > MaxContextPackHits)
+        {
+            throw new ArgumentOutOfRangeException(nameof(limit));
+        }
+
+        if (maxBytes is < 1 or > MaxContextPackBytes)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxBytes));
+        }
+
+        IReadOnlyList<ProjectCodeSearchHit> hits = Search(normalized, limit);
+        var context = new StringBuilder();
+        var included = new List<ProjectCodeSearchHit>();
+        bool truncated = false;
+        foreach (ProjectCodeSearchHit hit in hits)
+        {
+            string? snippet = ReadSnippet(hit.Symbol);
+            if (snippet is null)
+            {
+                continue;
+            }
+
+            string block = BuildContextBlock(hit.Symbol, snippet);
+            int remaining = maxBytes - Encoding.UTF8.GetByteCount(context.ToString());
+            if (remaining <= 0)
+            {
+                truncated = true;
+                break;
+            }
+
+            if (Encoding.UTF8.GetByteCount(block) > remaining)
+            {
+                context.Append(TakeUtf8Prefix(block, remaining));
+                included.Add(hit);
+                truncated = true;
+                break;
+            }
+
+            context.Append(block);
+            included.Add(hit);
+        }
+
+        return new ProjectCodeContextPack(
+            normalized,
+            context.ToString(),
+            included,
+            truncated || included.Count < hits.Count,
+            UntrustedContentWrapped: included.Count > 0,
+            WrappedCount: included.Count);
+    }
+
     public void Dispose() => _index.Dispose();
+
+    private string? ReadSnippet(ProjectCodeSymbol symbol)
+    {
+        string fullPath;
+        try
+        {
+            fullPath = Path.GetFullPath(symbol.FilePath);
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+
+        string rootPrefix = Root.EndsWith(Path.DirectorySeparatorChar)
+            ? Root
+            : Root + Path.DirectorySeparatorChar;
+        if (!fullPath.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase)
+            || !File.Exists(fullPath))
+        {
+            return null;
+        }
+
+        try
+        {
+            if (new FileInfo(fullPath).Length > MaxSourceFileBytes)
+            {
+                return null;
+            }
+
+            int startLine = Math.Max(1, symbol.Line - ContextLinesAroundSymbol);
+            int endLine = symbol.Line + ContextLinesAroundSymbol;
+            var lines = new List<string>(ContextLinesAroundSymbol * 2 + 1);
+            int lineNumber = 0;
+            foreach (string line in File.ReadLines(fullPath))
+            {
+                lineNumber++;
+                if (lineNumber < startLine)
+                {
+                    continue;
+                }
+
+                if (lineNumber > endLine)
+                {
+                    break;
+                }
+
+                string bounded = line.Length > MaxSourceLineCharacters
+                    ? line[..MaxSourceLineCharacters] + " [line truncated]"
+                    : line;
+                lines.Add(RedactSecrets(bounded));
+            }
+
+            return lines.Count == 0 ? null : string.Join(Environment.NewLine, lines);
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    private string BuildContextBlock(ProjectCodeSymbol symbol, string snippet)
+    {
+        string relativePath = Path.GetRelativePath(Root, symbol.FilePath).Replace('\\', '/');
+        string safeName = SanitizeHeaderValue(symbol.Name);
+        string safePath = SanitizeHeaderValue(relativePath);
+        return $"[project-code file=\"{safePath}\" line={symbol.Line} symbol=\"{safeName}\"]{Environment.NewLine}"
+            + $"<<<UNTRUSTED_SOURCE_BEGIN>>>{Environment.NewLine}{snippet}{Environment.NewLine}"
+            + $"<<<UNTRUSTED_SOURCE_END>>>{Environment.NewLine}{Environment.NewLine}";
+    }
+
+    private static string RedactSecrets(string text)
+    {
+        string redacted = PrivateKey.Replace(text, "[REDACTED_PRIVATE_KEY]");
+        redacted = SecretAssignment.Replace(redacted, "$1$2[REDACTED]$2");
+        return KnownSecretToken.Replace(redacted, "[REDACTED_TOKEN]");
+    }
+
+    private static string SanitizeHeaderValue(string value) =>
+        value.Replace('\r', ' ').Replace('\n', ' ').Replace('"', '\'');
+
+    private static string TakeUtf8Prefix(string value, int maxBytes)
+    {
+        if (maxBytes <= 0)
+        {
+            return string.Empty;
+        }
+
+        int bytes = 0;
+        int characters = 0;
+        foreach (Rune rune in value.EnumerateRunes())
+        {
+            int runeBytes = Encoding.UTF8.GetByteCount(rune.ToString());
+            if (bytes + runeBytes > maxBytes)
+            {
+                break;
+            }
+
+            bytes += runeBytes;
+            characters += rune.Utf16SequenceLength;
+        }
+
+        return value[..characters];
+    }
 
     private static int Score(ProjectCodeSymbol symbol, string query)
     {
@@ -123,3 +316,11 @@ public sealed class ProjectCodeMemoryService : IDisposable
 }
 
 public sealed record ProjectCodeSearchHit(ProjectCodeSymbol Symbol, int Score);
+
+public sealed record ProjectCodeContextPack(
+    string Query,
+    string Context,
+    IReadOnlyList<ProjectCodeSearchHit> Hits,
+    bool Truncated,
+    bool UntrustedContentWrapped,
+    int WrappedCount);
