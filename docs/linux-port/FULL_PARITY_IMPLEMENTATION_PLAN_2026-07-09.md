@@ -108,8 +108,9 @@ notification tests still require a Linux host.
 
 ### Source-slice implementation addendum - 2026-07-13
 
-These three slices are now integrated in the clean parity worktree and should
-land as separate reviewable units before the installed-certification wave:
+These three slices are now integrated in [PR #1691](https://github.com/Imagine-That-Ai/BurnBar/pull/1691) and should land as a
+reviewable unit before the installed-certification wave; the individual feature
+commits remain separately inspectable in the branch history:
 
 | Order | Slice | Dependencies | Acceptance criteria | Remaining boundary |
 |---|---|---|---|---|
