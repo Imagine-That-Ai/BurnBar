@@ -92,8 +92,11 @@ The integration branch now includes the next bounded source slices:
   usage/replay identities and typed unavailable state for incomplete proof.
 - `e0451afa5e`: strict provider catalog/config mapping, model provenance and
   failover posture, provider workspace, and config-derived backend gates.
+- `fcf4667682` and `e4827a4090`: serialized text-expansion mutations with
+  stale-generation fencing, plus isolated Linux SwiftPM scratch state for
+  deterministic native test runs.
 
-The combined frontend suite is **75 files / 647 tests**, the Tauri Rust suite
+The combined frontend suite is **75 files / 648 tests**, the Tauri Rust suite
 is **87/87**, TypeScript and the production bundle verifier pass, and the
 daemon target builds. These are source gates only. The promotion ledger remains
 0/40 product rows and 0/7 environment receipts until the exact signed
@@ -132,12 +135,14 @@ integrated chat model/attachment state, persisted activity replay/resume, and
 SQLCipher-gated encrypted database snapshot/restore. The
 following checks passed:
 
-- Linux frontend: 75 Vitest files / 647 tests.
+- Linux frontend: 75 Vitest files / 648 tests.
 - TypeScript: `npx tsc --noEmit --pretty false`.
 - Production bundle: `npm run build` plus the production bundle verifier.
 - Tauri Rust: 87/87 library tests.
 - RPC canon, Rust formatting, and suppression-policy checks.
 - Platform differential oracle: 6/6 tests.
+- Linux parity validator, matrix harness, renderer, and workflow contracts:
+  53/53 tests.
 - Supported SQLCipher-backed daemon chat selector: 9/9 tests.
 - P19 daemon project lifecycle selector: 4/4 tests, covering delete,
   reassignment, durable nested/reference migration, collision rejection, and
